@@ -127,6 +127,24 @@ class ReversePortCodec:
                 "right reverse state is outside its reachable domain"
             ) from None
 
+    def active_truth_bits(self, symbol: int) -> int:
+        """Return the exact live-output predicate from closed port geometry.
+
+        Every nonblank pair symbol is live for every nonsink left state.  A
+        blank symbol is live only when the existing carry creates the terminal
+        growth digit: the active, preblank carry-one band plus its threshold
+        boundary state.  These intervals are part of this codec's canonical
+        state numbering, so constructing the mask does not need to decode or
+        inspect every state again.
+        """
+        blank = 2 * self.base - 1
+        if type(symbol) is not int or not 0 <= symbol <= blank:
+            raise ValueError("reverse activity symbol lies outside its alphabet")
+        if symbol != blank:
+            return ((1 << self.left_count) - 1) ^ (1 << (4 * self.base + 1))
+        carry_one_band = ((1 << (self.base - 1)) - 1) << (self.base + 1)
+        return carry_one_band | (1 << (3 * self.base + 1))
+
 
 @dataclass(frozen=True, slots=True)
 class ReverseLeftTransfer:
@@ -218,6 +236,54 @@ class ReverseLeftTransfer:
             self.last_symbol,
             self.has_blank,
         )
+
+    def predicate_preimage(self, truth_bits: int) -> int:
+        """Pull back a left-state predicate through this closed transfer.
+
+        The left-state numbering consists of four carry/blank bands plus one
+        sink.  A transfer either preserves those states, moves the two live
+        bands into their blank copies, or collapses each carry band to one
+        edge state.  Pulling a predicate back therefore needs only bounded
+        mask operations and at most two representative transition checks.
+        """
+        self.__post_init__()
+        codec = ReversePortCodec(self.base)
+        limit = (1 << codec.left_count) - 1
+        if type(truth_bits) is not int or truth_bits < 0 or truth_bits & ~limit:
+            raise ValueError("reverse predicate exceeds its left-state domain")
+        base = self.base
+        nonblank_zero = (1 << (base + 1)) - 1
+        nonblank_one = (
+            ((1 << (base - 1)) - 1) << (base + 1)
+        ) | (1 << (3 * base + 1))
+        blank_zero = ((1 << (base + 1)) - 1) << (2 * base)
+        blank_one = (
+            ((1 << (base - 1)) - 1) << (3 * base + 2)
+        ) | (1 << (4 * base + 2))
+        sink = 1 << (4 * base + 1)
+        sink_live = bool(truth_bits & sink)
+        if self.sinks:
+            return limit if sink_live else 0
+        if self.has_active:
+            result = (blank_zero | blank_one | sink) if sink_live else 0
+            targets = (
+                codec.encode_left(self.apply(codec.decode_left(0))),
+                codec.encode_left(self.apply(codec.decode_left(base + 1))),
+            )
+            if truth_bits & (1 << targets[0]):
+                result |= nonblank_zero
+            if truth_bits & (1 << targets[1]):
+                result |= nonblank_one
+            return result
+        if not self.has_blank:
+            return truth_bits
+        result = truth_bits & (blank_zero | blank_one | sink)
+        result |= (truth_bits & blank_zero) >> (2 * base)
+        regular_one = nonblank_one & ~(1 << (3 * base + 1))
+        result |= ((truth_bits & blank_one) >> (2 * base + 1)) & regular_one
+        if truth_bits & (1 << (4 * base + 2)):
+            result |= 1 << (3 * base + 1)
+        return result
 
 
 @dataclass(frozen=True, slots=True)
@@ -459,15 +525,16 @@ class ReversePortFunction:
                 right.then(self.right, ledger),
                 self.symbol,
             )
-        codec = ReversePortCodec(self.base)
-        truth = 0
-        ledger.bump("reverse_port_predicate_state_evaluations", codec.left_count)
-        for left_index in range(codec.left_count):
-            mapped_left = codec.encode_left(left.apply(codec.decode_left(left_index)))
-            if (self.truth_bits >> mapped_left) & 1:
-                truth |= 1 << left_index
+        if left.has_active and not left.sinks:
+            # The closed-form pullback distinguishes only the two incoming
+            # carry bands.  Keep those representative state observations in
+            # the existing work counter instead of making them disappear.
+            ledger.bump("reverse_port_predicate_state_evaluations", 2)
         return ReversePortFunction(
-            self.signature, self.base, "predicate", truth_bits=truth
+            self.signature,
+            self.base,
+            "predicate",
+            truth_bits=left.predicate_preimage(self.truth_bits),
         )
 
     def predicate_or(

@@ -2,8 +2,9 @@
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Literal
 
+from number_compiler.hashlife.execution.tile_clock_kernel import complete_clock_kernel
 from number_compiler.hashlife.tiles.tile_context import TemporalCocycle
 from number_compiler.hashlife.tiles.tile_result_records import CompletedResult
 from number_compiler.hashlife.tiles.tile_results import ResultLease
@@ -19,27 +20,91 @@ if TYPE_CHECKING:
     from number_compiler.hashlife.tiles.tile_result_records import PoweredResultKey
 
 
-def _cycle_source(scheduler: TileScheduler, key: PoweredResultKey) -> int | None:
-    record = scheduler.tiles.resolve(key.input)
-    if not 1 <= record.extent <= 3:
+_PowerSummary = tuple[Literal["zero", "blank", "power", "invalid"], int]
+
+
+def _power_of_two_exponent(
+    scheduler: TileScheduler,
+    source: TileID,
+) -> int | None:
+    """Recognize ``0**k 1 blank**`` from the canonical tile DAG.
+
+    The summary is a four-element regular monoid. Repeated zero and blank
+    subtrees are visited once, so a sparse power-of-two source takes work
+    proportional to its canonical source DAG rather than its padded extent.
+    """
+    tiles = scheduler.tiles
+    source_record = tiles.resolve(source)
+    scheduler.ledger.bump("collatz_power_two_summary_requests")
+    # Every nontrivial power of two has a zero low bit. Reject the ordinary
+    # odd Collatz case before allocating or walking the summary DAG.
+    if source_record.extent > 1 and tiles.point(source, 0) != 0:
+        scheduler.ledger.bump("collatz_power_two_low_bit_declines")
         return None
-    value = 0
-    for coordinate in range(record.extent):
-        symbol = scheduler.tiles.point(key.input, coordinate)
-        if symbol not in (0, 1):
-            return None
-        value |= symbol << coordinate
-    return value if value in (1, 2, 4) else None
+    summaries: dict[TileID, _PowerSummary] = {}
+    pending = [(source, False)]
+    peak_pending = 1
+    while pending:
+        current, ready = pending.pop()
+        if current in summaries:
+            continue
+        record = tiles.resolve(current)
+        scheduler.ledger.bump("collatz_power_two_summary_node_visits")
+        if record.level == 0:
+            if record.symbol == 0:
+                summary: _PowerSummary = ("zero", 0)
+            elif record.symbol == 1:
+                summary = ("power", 0)
+            elif record.symbol == tiles.alphabet(record.alphabet).blank:
+                summary = ("blank", 0)
+            else:
+                summary = ("invalid", 0)
+            summaries[current] = summary
+            continue
+        if record.left is None or record.right is None:
+            raise ValueError("malformed Collatz source tile")
+        if not ready:
+            pending.extend(((current, True), (record.right, False), (record.left, False)))
+            peak_pending = max(peak_pending, len(pending))
+            continue
+        left = summaries[record.left]
+        right = summaries[record.right]
+        if left[0] == right[0] == "zero":
+            summary = ("zero", 0)
+        elif left[0] == right[0] == "blank":
+            summary = ("blank", 0)
+        elif left[0] == "zero" and right[0] == "power":
+            summary = ("power", (1 << (record.level - 1)) + right[1])
+        elif left[0] == "power" and right[0] == "blank":
+            summary = left
+        else:
+            summary = ("invalid", 0)
+        summaries[current] = summary
+    scheduler.ledger.bump(
+        "collatz_power_two_summary_peak_entries",
+        max(
+            0,
+            len(summaries)
+            - scheduler.ledger.counters.get(
+                "collatz_power_two_summary_peak_entries", 0
+            ),
+        ),
+    )
+    scheduler.ledger.bump(
+        "collatz_power_two_summary_peak_frames",
+        max(
+            0,
+            peak_pending
+            - scheduler.ledger.counters.get("collatz_power_two_summary_peak_frames", 0),
+        ),
+    )
+    result = summaries[source]
+    return result[1] if result[0] == "power" else None
 
 
-def _event_weight(source: int, ticks: int) -> int:
-    if source == 1:
-        return (ticks + 2) // 3
-    if source == 2:
-        return (ticks + 1) // 3
-    if source == 4:
-        return ticks // 3
-    raise AssertionError("unrecognized Collatz cycle source")
+def _event_weight(cycle_ticks: int) -> int:
+    """Count odd events after a power of two reaches cycle phase one."""
+    return (cycle_ticks + 2) // 3
 
 
 def _compact_cycle_tile(
@@ -100,7 +165,7 @@ def complete_collatz_cycle(
     scheduler: TileScheduler,
     key: PoweredResultKey,
 ) -> ResultLease | None:
-    """Publish a proved ``1 -> 4 -> 2 -> 1`` result without deep execution."""
+    """Publish a proved power-of-two tail and cycle without deep execution."""
     from number_compiler.hashlife.execution.tile_kernel import (
         PrimitiveTileKernelAdapter,
     )
@@ -126,8 +191,8 @@ def complete_collatz_cycle(
         or key.wiring != adapter.wiring(key.action)
     ):
         return None
-    source = _cycle_source(scheduler, key)
-    if source is None:
+    entry_ticks = _power_of_two_exponent(scheduler, key.input)
+    if entry_ticks is None or ticks < entry_ticks:
         return None
     primitive_index = adapter._action_keys.get(
         ("power", action.kernel, 1, TemporalCocycle(1))
@@ -135,17 +200,13 @@ def complete_collatz_cycle(
     if type(primitive_index) is not int:
         raise ValueError("Collatz cycle action has no canonical primitive")
     primitive = adapter._handle(primitive_index)
-    reduced_ticks = ticks % 3 or 3
+    cycle_ticks = ticks - entry_ticks
+    reduced_ticks = cycle_ticks % 3 or 3
     reduced = adapter.power(primitive, reduced_ticks)
     input_record = scheduler.tiles.resolve(key.input)
-    compact = _compact_cycle_tile(scheduler.tiles, input_record.alphabet, source)
+    compact = _compact_cycle_tile(scheduler.tiles, input_record.alphabet, 1)
     try:
-        reduced_result = scheduler.complete(
-            reduced,
-            compact.tile,
-            adapter.initial_ports(reduced),
-            adapter.wiring(reduced),
-        )
+        reduced_result = complete_clock_kernel(scheduler, reduced, compact.tile)
         try:
             result = reduced_result.result
             output = _extend_with_blank(
@@ -159,13 +220,15 @@ def complete_collatz_cycle(
                     result.outgoing,
                     result.outgoing_ports,
                     ticks,
-                    _event_weight(source, ticks),
+                    _event_weight(cycle_ticks),
                     result.frame_shift,
                     result.relative_origin,
                     scheduler.tiles.resolve(output.tile).extent,
                     observed_input_ports=result.observed_input_ports,
                 )
                 scheduler.ledger.bump("tile_collatz_cycle_completions")
+                if entry_ticks:
+                    scheduler.ledger.bump("tile_collatz_power_two_entries")
                 scheduler.ledger.bump(
                     "causal_extent_discharged_by_behavior",
                     input_record.width,

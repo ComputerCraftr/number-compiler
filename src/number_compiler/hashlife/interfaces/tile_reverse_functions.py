@@ -103,16 +103,7 @@ def reverse_leaf_components(
         ReverseRightTransfer.identity(base),
         symbol,
     )
-    truth = 0
-    ledger.bump("reverse_port_predicate_state_evaluations", codec.left_count)
-    for index in range(codec.left_count):
-        state = codec.decode_left(index)
-        live = not state.sink and (
-            symbol != blank
-            or (not state.blank_seen and state.previous_pair >= 0 and state.carry == 1)
-        )
-        truth |= int(live) << index
-    active = _predicate(ports, base, truth)
+    active = _predicate(ports, base, codec.active_truth_bits(symbol))
     return _finish(
         left,
         right,

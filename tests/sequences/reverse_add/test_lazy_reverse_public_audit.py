@@ -36,6 +36,12 @@ def test_public_reverse_point_has_no_exact_future_carrier_or_global_offset_cache
     assert metrics.resource_accounting_mismatch == 0
     assert metrics.exact_endpoint_nodes == 0
     assert metrics.lowering_cache_entries == 0
+    # Each spatial parent can need at most two carry-band representatives for
+    # each of its two activity predicates.  The old implementation decoded
+    # all 43 decimal left states for both predicates.
+    assert metrics.reverse_port_predicate_state_evaluations <= (
+        4 * metrics.reverse_port_parent_interfaces
+    )
 
 
 def test_unrelated_public_reverse_query_cannot_change_existing_inventory_or_work() -> (

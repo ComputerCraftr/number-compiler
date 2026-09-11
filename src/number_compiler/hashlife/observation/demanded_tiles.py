@@ -5,6 +5,7 @@ from __future__ import annotations
 from typing import TYPE_CHECKING
 
 from number_compiler.hashlife.actions.field_actions import FieldCellActionID
+from number_compiler.hashlife.execution.tile_clock_dispatch import complete_clock
 from number_compiler.hashlife.tiles.tile_boundaries import BoundaryTileOperands
 from number_compiler.hashlife.tiles.tile_context import (
     ChildContext,
@@ -41,20 +42,16 @@ def point(
     root = self.tiles.resolve(source)
     if not 0 <= coordinate < root.width:
         raise IndexError(coordinate)
-    self._validate_execution_key(
-        self._key(action, source, ports, wiring, boundaries, fusion)
-    )
     action_now, tile_now, ports_now, wiring_now = action, source, ports, wiring
     held: list[ResultLease] = []
     try:
         while True:
-            self._workspace_peak(len(held) + 1)
-            self.ledger.bump("tile_scheduler_demand_descents")
             key = self._key(
                 action_now, tile_now, ports_now, wiring_now, boundaries, fusion
             )
-            self._validate_execution_key(key)
-            found = self.results.lookup(key)
+            found = self._lookup_execution_key(key)
+            self._workspace_peak(len(held) + 1)
+            self.ledger.bump("tile_scheduler_demand_descents")
             if found is not None:
                 self.ledger.bump("tile_scheduler_demand_parent_hits")
                 output = found.output
@@ -64,6 +61,14 @@ def point(
                     self._pin(_application, key, found)
                 return self.tiles.point(output, coordinate)
             self.ledger.bump("tile_scheduler_demand_parent_misses")
+            clock = complete_clock(self, key, whole_output=False)
+            if clock is not None:
+                output = clock.output
+                if _application is None:
+                    held.append(clock)
+                else:
+                    self._pin(_application, key, clock)
+                return self.tiles.point(output, coordinate)
             from number_compiler.hashlife.execution.tile_causal_entry import (
                 causal_point,
             )
@@ -81,7 +86,7 @@ def point(
                     producer.wiring,
                     producer.boundaries,
                 )
-                midpoint = self.results.lookup(before_key)
+                midpoint = self._lookup_execution_key(before_key)
                 if midpoint is not None:
                     self.ledger.bump("tile_scheduler_midpoint_hits")
                     context = after_context(self, key, children[1], midpoint.result)
@@ -156,10 +161,10 @@ def width(
         raise TypeError("tile width limit requires an exact integer")
     if not 0 <= stop <= root.width:
         raise ValueError("tile width limit lies outside the source")
-    self._validate_execution_key(
-        self._key(action, source, ports, wiring, boundaries, fusion)
-    )
     if not stop:
+        self._validate_execution_key(
+            self._key(action, source, ports, wiring, boundaries, fusion)
+        )
         return 0
     action_now, tile_now, ports_now, wiring_now = action, source, ports, wiring
     offset = 0
@@ -168,13 +173,12 @@ def width(
     initial_request = True
     try:
         while True:
-            self._workspace_peak(len(held) + 1)
-            self.ledger.bump("tile_scheduler_width_descents")
             key = self._key(
                 action_now, tile_now, ports_now, wiring_now, boundaries, fusion
             )
-            self._validate_execution_key(key)
-            found = self.results.lookup(key)
+            found = self._lookup_execution_key(key)
+            self._workspace_peak(len(held) + 1)
+            self.ledger.bump("tile_scheduler_width_descents")
             if found is not None:
                 self.ledger.bump("tile_scheduler_demand_parent_hits")
                 output = found.output
@@ -203,6 +207,14 @@ def width(
                     self.ledger.bump("reverse_current_growth_width_shortcuts")
                     return min(remaining, root.extent + growth)
             initial_request = False
+            clock = complete_clock(self, key, whole_output=False)
+            if clock is not None:
+                output = clock.output
+                if _application is None:
+                    held.append(clock)
+                else:
+                    self._pin(_application, key, clock)
+                return offset + self.tiles.active_width(output, remaining)
             from number_compiler.hashlife.execution.tile_causal_entry import (
                 causal_width_query,
             )
@@ -220,7 +232,7 @@ def width(
                     producer.wiring,
                     producer.boundaries,
                 )
-                midpoint = self.results.lookup(before_key)
+                midpoint = self._lookup_execution_key(before_key)
                 if midpoint is not None:
                     self.ledger.bump("tile_scheduler_midpoint_hits")
                     context = after_context(self, key, children[1], midpoint.result)

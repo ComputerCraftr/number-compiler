@@ -39,6 +39,14 @@ from number_compiler.arithmetic.polynomials.digit_cyclotomic import (
 from number_compiler.arithmetic.polynomials.cyclotomic_carry import (
     CarryCyclotomicTransducer,
 )
+from number_compiler.arithmetic.polynomials.folded_square_packet import (
+    FoldedSquareProjection,
+    folded_square_packet as project_folded_square_packet,
+)
+from number_compiler.arithmetic.polynomials.radix64_mirror import (
+    FoldedFifthProjection,
+    folded_fifth_residue as project_folded_fifth_residue,
+)
 
 
 @dataclass(frozen=True, slots=True)
@@ -323,6 +331,27 @@ class ArithmeticTile:
     def step(self) -> ArithmeticTileStep:
         step, _field = self._step_with_field()
         return step
+
+    def folded_square_packet(self) -> FoldedSquareProjection:
+        """Read two square residues without stepping or decoding the integer.
+
+        The coefficient precision is a multiple of eight, so the stored
+        representatives give the same packet as their signed lifts. This is
+        an arithmetic projection, not an admitted primality certificate.
+        """
+        return project_folded_square_packet(
+            self.block.residue, sign=self.spec.boundary_sign
+        )
+
+    def folded_fifth_residue(self) -> FoldedFifthProjection:
+        """Observe a binary tile's transient radix-64 mirror residue.
+
+        Exceptional signed charts are outside this binary observation. Zero
+        does not certify support; no temporal identity or history is refined.
+        """
+        return project_folded_fifth_residue(
+            self.block.residue, sign=self.spec.boundary_sign
+        )
 
     def step_with_harmonic_consumer(
         self,

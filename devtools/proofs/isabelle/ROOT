@@ -23,6 +23,10 @@ session Temporal_Clock_Jumps in temporal_clocks = Reverse_Residuals +
   theories
     Temporal_Clock_Jumps
     Decimal_Clock_Jumps
+    Decimal_Publisher_Constructor
     Power_Clock_Jumps
     Collatz_Clock_Jumps
+    Collatz_Cylinder_Constructor
     Inverse_Three_Lift
+    Five_Bit_Folded_Square
+    Radix64_Mirror_Correlation

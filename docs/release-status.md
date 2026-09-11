@@ -1,8 +1,114 @@
 # Repository cleanup and current release status
 
+## Radix-64 mirror action refinement — September 11
+
+The production arithmetic tile now computes the fifth folded coefficient modulo
+sixteen through seven leaf actions and sixteen canonical additive mirror IDs.
+The [mirror refinement report](research/power-numbers/radix64-mirror-refinement.md)
+records the 72-sheet differential, the repaired M53 output `13`, and all six
+reproduced first-hole filtrations. The focused production/research/CLI selection
+passes 72 tests. The new Isabelle theory proves the spatial mirror and modular
+composition laws and the one-sided nonzero-source witness.
+
+Source lowering from dense coefficients remains linear, and zero does not
+certify unrestricted support. No candidate-to-cylinder complexity theorem or
+new default CLI primality acceptance is claimed. Existing temporal ActionIDs
+are unchanged; the refinement belongs to the transient mirror consumer.
+
+## Fermat/Mersenne five-bit square observation — September 11
+
+The production arithmetic tile exposes a demanded `(r1 mod 4, r2 mod 8)`
+projection without a full square or carry scan. A new Isabelle theory and
+bounded support-sheet research tests track the exact scope; see the
+[five-bit folded-square report](research/power-numbers/five-bit-folded-square.md).
+The generic mirror-pair extraction remains linear. This is an arithmetic API
+deployment, **not** promotion of a new CLI primality classifier or a logarithmic
+tile-scheduler certificate.
+The 64 supplied complete/partial-modulus sheets reproduce the five-bit rule,
+but an additional M53 mixed sheet has packet zero without full support. It is
+outside M53's common-threshold temporal patterns; the report records this exact
+admission boundary rather than generalizing the bounded rule into a classifier.
+
+## Production root-cylinder dispatch — September 11
+
+The CLI's complete-output scheduler now consumes a proved first Collatz root
+run using two primitive field evaluations and a structural tile shift. It skips
+the intervening divisions and publishes the exact full-duration result,
+including boundary interfaces, ports, extent and event weight, through the
+existing result arena. Direct scheduler point/width requests also reach the
+existing certified cycle completion; first-root point/width requests retain
+their lazy coordinate pullback. All paths admit the full execution context
+before probing or reusing a result.
+
+On one 14-bit source, the 13-tick complete-output request drops from 9,620
+causal frames and 0.703 seconds to zero temporal causal frames and 0.074 seconds.
+A 1,025-tick admitted root run takes 0.187 seconds with the same two primitive
+field evaluations. These are measured supported-sector improvements, not an
+arbitrary-input temporal work bound. See the
+[production dispatch audit](constructor-quotient-proof-audit.md#production-root-cylinder-dispatch).
+
+**General 196/Collatz P0 remains open.** The new owned-state 196 prototype also
+failed an A4 differential: a nested consumer still depends on the opposite
+boundary at emission. The prototype and its integration were removed. The
+replacement needs a bivariate lazy publisher application with canonical
+consumer pullback; an arena of one-sided state IDs is insufficient. General
+Collatz needs the admitted-image constructor attached to an accounted recursive
+output publisher. The exact fallback remains for these unsupported cases.
+
+## Physical consumer normalization and sparse images — September 11
+
+The [latest integration attempt](constructor-quotient-proof-audit.md#production-integration-attempt-consumer-normalization-and-exact-state-types)
+corrects duplicated Collatz affine histories, preserves physical tick and event
+weights separately, and advances sparse constant images without rebuilding a
+whole width chart. Three-, five- and eight-bit controls now reach 1,024 physical
+ticks within the bounded probe. Their measured scalar future-endpoint work is
+reported explicitly; it is not zero-work clock execution.
+
+No new general production clock dispatch was installed. The 196 reassociation
+candidate violated the finite carry-state contract at A4 and was removed.
+Collatz still lacks an accounted recursive tile publisher for general inputs;
+its finite image maps remain research objects. These are implementation limits,
+not counterexamples to the proposed clock-cylinder algebra. The prior five-bit
+T128 broad-chart memory failure below is superseded by the sparse-image result.
+
+## Guarded cylinder construction and cache admission — September 11
+
+The [constructor follow-up](constructor-quotient-proof-audit.md#constructor-implementation-follow-up)
+adds an executable Collatz guard-trie pullback experiment and removes dead
+predicate precision within an explicit source chart. At 16 accelerated events
+on the three-bit chart, it uses 12,223 guard visits and four reachable endpoint
+decision nodes. The 32-event construction exceeds its guard-work budget while
+building a wide intermediate predicate; this is not production P0 closure.
+196 still needs canonical composition of its lazy future value publisher.
+
+Production direct point requests for both families now validate the live
+execution contract before scalar or microblock cache hits. This closes an
+admission bypass; it does not change general temporal constructor dispatch.
+The report separates this production repair from the bounded research result.
+
+## Constructor quotient theorem repair — September 11
+
+The [constructor proof audit](constructor-quotient-proof-audit.md) corrects the
+earlier abstraction error: LT/EQ/GT is a derived consumer readout, not the
+clock-cylinder state. The domain-only impossibility theorem is removed and
+the 2/8 example becomes a positive source-sensitive predicate-pullback test.
+The earlier 71-test/seven-theory checkpoint certified local arithmetic laws;
+it did not certify implementation of the latest cylinder constructor.
+General 196/Collatz P0 remains open on production integration and measured
+cold construction work relative to the original source DAG. The audit does
+not reject the source-sensitive clock proposal or require source-independent
+logarithmic work for arbitrary inputs.
+The corrected seven-theory session and 36 selected tests pass; the actual
+scheduler still constructs intermediate occurrences and has no general
+cylinder-pullback constructor dispatch. These passing checks are explicitly
+local proof/component validation, not a green production-integration gate.
+
 ## P0 production CLI and HashLife integration — September 11
 
-**Release remains blocked on first-use execution and clock admission.** The
+**Release remains blocked on 196/Collatz first-use execution.** Expensive F/M
+prime-certificate extraction is deferred to outputs requiring certification.
+The [focused P0 follow-up](production-p0-followup.md) records the latest scheduler
+and family changes and an adversarial check of the actual proof premises. The
 [production integration report](production-p0-integration.md) records new 196
 threshold-probe and physical Collatz source-read elisions, bounded reuse of
 powered API owners, and compact F/M PASS certificate metadata. The new

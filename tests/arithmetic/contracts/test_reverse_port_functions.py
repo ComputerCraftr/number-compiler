@@ -116,9 +116,39 @@ def test_reverse_closed_leaf_transfers_and_outputs_match_exact_kernel(
                     0,
                 )
     assert ledger.nodes == 0
-    assert ledger.counters["reverse_port_predicate_state_evaluations"] == (
-        (effect.blank + 1) * codec.left_count
-    )
+    assert ledger.counters.get("reverse_port_predicate_state_evaluations", 0) == 0
+
+
+@pytest.mark.parametrize("base", range(2, 16))
+def test_reverse_activity_mask_is_the_exact_closed_port_predicate(base: int) -> None:
+    codec = ReversePortCodec(base)
+    blank = 2 * base - 1
+    for symbol in range(blank + 1):
+        truth = codec.active_truth_bits(symbol)
+        for index in range(codec.left_count):
+            state = codec.decode_left(index)
+            expected = not state.sink and (
+                symbol != blank
+                or (
+                    not state.blank_seen
+                    and state.previous_pair >= 0
+                    and state.carry == 1
+                )
+            )
+            assert ((truth >> index) & 1) == int(expected)
+
+
+def test_reverse_activity_mask_does_not_decode_the_left_state_domain(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    codec = ReversePortCodec(10)
+
+    def forbidden(*_args: object, **_kwargs: object) -> _BaseLeftState:
+        raise AssertionError("closed activity mask enumerated left states")
+
+    monkeypatch.setattr(ReversePortCodec, "decode_left", forbidden)
+    assert codec.active_truth_bits(0).bit_count() == codec.left_count - 1
+    assert codec.active_truth_bits(19).bit_count() == 10
 
 
 @pytest.mark.parametrize("base", (2, 3, 10, 15))
@@ -157,6 +187,33 @@ def test_reverse_transfer_composition_is_closed_in_both_directions(
                     effect.advance(BoundarySide.RIGHT, expected_right, first),
                 )
                 assert right.apply(right_state) == expected_right
+
+
+@pytest.mark.parametrize("base", (2, 3, 10, 15))
+def test_reverse_predicate_preimage_matches_every_left_state(base: int) -> None:
+    codec = ReversePortCodec(base)
+    limit = (1 << codec.left_count) - 1
+    predicates = (0, limit, 0x1555555555555555 & limit) + tuple(
+        1 << index for index in range(codec.left_count)
+    )
+    symbols = tuple(range(2 * base))
+    transfers = {
+        ReverseLeftTransfer.identity(base),
+        *(ReverseLeftTransfer.leaf(base, symbol) for symbol in symbols),
+        *(
+            ReverseLeftTransfer.leaf(base, first).then(
+                ReverseLeftTransfer.leaf(base, second)
+            )
+            for first in symbols
+            for second in symbols
+        )
+    }
+    for transfer in transfers:
+        for truth in predicates:
+            pulled = transfer.predicate_preimage(truth)
+            for index in range(codec.left_count):
+                target = codec.encode_left(transfer.apply(codec.decode_left(index)))
+                assert ((pulled >> index) & 1) == ((truth >> target) & 1)
 
 
 @pytest.mark.parametrize("base", (2, 3, 10, 15))

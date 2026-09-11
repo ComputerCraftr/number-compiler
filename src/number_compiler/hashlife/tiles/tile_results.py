@@ -622,8 +622,16 @@ class CompletedResultArena:
             self._result_operand_views(result),
         )
 
-    def lookup(self, key: PoweredResultKey) -> ResultLease | None:
+    def lookup(
+        self,
+        key: PoweredResultKey,
+        *,
+        validate_context: Callable[[PoweredResultKey], None] | None = None,
+    ) -> ResultLease | None:
+        """Admit the key and optional execution context before any memo access."""
         self._validate_key(key)
+        if validate_context is not None:
+            validate_context(key)
         key = normalize_output_region(self.tiles, key)
         found = self._memo.get(key)
         self.ledger.bump("completed_result_requests")

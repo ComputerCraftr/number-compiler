@@ -211,7 +211,7 @@ class HashLifeBlockIndex:
         # answer.  Program ownership alone does not confer source authority.
         if type(self._lazy_application) is not LazyProjection:
             raise ValueError("point observation requires its tile application")
-        self._lazy_application._open()
+        self._lazy_application._open().validate_execution()
         self._point_queries += 1
         self._direct_powered_point_queries += 1
         return self._point_response.query(self.program, position, self._point)

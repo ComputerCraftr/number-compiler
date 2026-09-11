@@ -276,9 +276,7 @@ def test_decimal_leaf_interface_uses_exact_factored_output_law() -> None:
     assert ledger.counters.get(
         "reverse_port_primitive_output_evaluations", 0
     ) - before == ((effect.blank + 1) * kernel.left_count * kernel.right_count)
-    assert ledger.counters["reverse_port_predicate_state_evaluations"] == (
-        20 * kernel.left_count
-    )
+    assert ledger.counters.get("reverse_port_predicate_state_evaluations", 0) == 0
 
 
 @pytest.mark.parametrize("base", (2, 3, 4, 5, 10))

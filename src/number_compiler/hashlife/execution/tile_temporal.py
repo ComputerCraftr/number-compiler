@@ -37,7 +37,6 @@ def complete_temporal(
     root: PoweredResultKey,
 ) -> ResultLease:
     """Complete a checked-miss composite through canonical midpoint tiles."""
-    scheduler._validate_execution_key(root)
     if scheduler.adapter.action_children(root.action) is None:
         raise ValueError("completed-midpoint execution requires a composite action")
     frames: list[_Frame] = [_Frame(root)]
@@ -57,9 +56,8 @@ def complete_temporal(
         while frames:
             frame = frames.pop()
             key = frame.key
-            scheduler._validate_execution_key(key)
+            found = scheduler._lookup_execution_key(key)
             scheduler.ledger.bump("tile_temporal_complete_frames")
-            found = scheduler.results.lookup(key)
             if found is not None:
                 values.append(own(found))
                 continue

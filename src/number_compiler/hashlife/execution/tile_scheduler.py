@@ -18,7 +18,7 @@ from number_compiler.hashlife.execution.tile_application_authority import (
     application_by_id,
     application_source,
 )
-from number_compiler.hashlife.execution.tile_collatz_cycle import complete_collatz_cycle
+from number_compiler.hashlife.execution.tile_clock_dispatch import complete_clock
 from number_compiler.hashlife.execution.tile_causal_interfaces import (
     CausalInterfacePayload,
     interface_payload_from_completed,
@@ -382,38 +382,17 @@ class TileScheduler:
 
     def _validate_execution_key(self, key: PoweredResultKey) -> None:
         self.results._validate_key(key)
-        contexts: tuple[
-            tuple[FieldCellActionID, BoundaryTileOperands, ResultWiring], ...
-        ] = ((key.action, key.boundaries, key.wiring),)
-        if key.fusion is not None:
-            children = self._children(key.action)
-            if children is None:
-                raise ValueError("fused execution requires two temporal children")
-            contexts = tuple(
-                (child, bound.boundaries, bound.wiring)
-                for child, bound in zip(
-                    children, (key.fusion.producer, key.fusion.consumer), strict=True
-                )
-            )
-        for action, boundaries, wiring in contexts:
-            if boundaries == BoundaryTileOperands():
-                continue
-            validator = getattr(self.adapter, "validate_boundaries", None)
-            if validator is None:
-                from number_compiler.hashlife.actions.lazy_compiler import (
-                    UnsupportedInterfaceError,
-                )
+        self._validate_execution_context(key)
 
-                raise UnsupportedInterfaceError(
-                    "adapter has no boundary-tile execution law"
-                )
-            validator(action, boundaries, wiring)
-        input_validator = getattr(self.adapter, "validate_input", None)
-        if input_validator is not None:
-            input_validator(key.action, key.input)
-        validator = getattr(self.adapter, "validate_wiring", None)
-        if validator is not None:
-            validator(key.action, key.wiring)
+    def _validate_execution_context(self, key: PoweredResultKey) -> None:
+        from number_compiler.hashlife.execution.tile_execution_validation import (
+            validate_execution_context,
+        )
+
+        validate_execution_context(self, key)
+
+    def _lookup_execution_key(self, key: PoweredResultKey) -> ResultLease | None:
+        return self.results.lookup(key, validate_context=self._validate_execution_context)
 
     def _publish_leaf(
         self,
@@ -492,8 +471,11 @@ class TileScheduler:
                 frame = frames.pop()
                 key = frame.key
                 if frame.stage == 0:
-                    self._validate_execution_key(key)
-                    found = None if frame.checked_miss else self.results.lookup(key)
+                    if frame.checked_miss:
+                        self._validate_execution_key(key)
+                        found = None
+                    else:
+                        found = self._lookup_execution_key(key)
                     if found is not None:
                         values.append(found)
                         continue
@@ -612,14 +594,13 @@ class TileScheduler:
         fusion: FusedBoundaryContract | None = None,
     ) -> ResultLease:
         key = self._key(action, source, ports, wiring, boundaries, fusion)
-        self._validate_execution_key(key)
-        found = self.results.lookup(key)
+        found = self._lookup_execution_key(key)
         if found is not None:
             self.ledger.bump("tile_scheduler_parent_early_hits")
             return found
-        cycle = complete_collatz_cycle(self, key)
-        if cycle is not None:
-            return cycle
+        clock = complete_clock(self, key)
+        if clock is not None:
+            return clock
         from number_compiler.hashlife.execution.tile_causal_entry import causal_complete
 
         causal = causal_complete(self, key)
@@ -650,7 +631,7 @@ class TileScheduler:
                 producer.wiring,
                 producer.boundaries,
             )
-            midpoint = self.results.lookup(before_key)
+            midpoint = self._lookup_execution_key(before_key)
             if midpoint is not None:
                 try:
                     context = after_context(self, key, children[1], midpoint.result)
@@ -766,7 +747,7 @@ class TileScheduler:
         wiring: ResultWiring,
     ) -> TileApplication:
         key = PoweredResultKey(action, source, ports, wiring)
-        found = self.results.lookup(key)
+        found = self._lookup_execution_key(key)
         identity = self._next_application
         self._next_application += 1
         try:
@@ -835,7 +816,7 @@ class TileApplication:
         if type(identity) is not int or not 0 <= identity < scheduler._next_application:
             raise ValueError("tile application has an invalid scoped identity")
         key = PoweredResultKey(action, source, ports, wiring)
-        scheduler.results._validate_key(key)
+        scheduler._validate_execution_key(key)
         if root is not None:
             if type(root) is not ResultLease or root._issuer is not scheduler.results:
                 raise ValueError("tile application has a foreign completed root")
@@ -863,16 +844,19 @@ class TileApplication:
     def source(self) -> TileID:
         return application_source(self)
 
+    def validate_execution(self) -> None:
+        """Admit the live contract before an outer observation cache answers."""
+        self.scheduler._validate_execution_key(
+            PoweredResultKey(self.action, self.source, self.ports, self.wiring)
+        )
+
     def _cached_root(self) -> ResultLease | None:
         key = PoweredResultKey(self.action, self.source, self.ports, self.wiring)
         root = self._validate_root(key)
         if root is not None:
-            self.scheduler.results._validate_key(key)
+            self.scheduler._validate_execution_key(key)
             return root
-        self.scheduler.results._validate_key(key)
-        found = self.scheduler.results.lookup(key)
-        if found is None:
-            found = complete_collatz_cycle(self.scheduler, key)
+        found = self.scheduler._lookup_execution_key(key)
         if found is not None:
             self._adopt_root(found)
         return found
@@ -955,6 +939,11 @@ class TileApplication:
     @source_reads_only
     def interface(self) -> CausalInterfacePayload:
         found = self._cached_root()
+        if found is None:
+            key = PoweredResultKey(self.action, self.source, self.ports, self.wiring)
+            found = complete_clock(self.scheduler, key)
+            if found is not None:
+                self._adopt_root(found)
         if found is not None:
             return interface_payload_from_completed(
                 self.scheduler.results, found.result, self.ports

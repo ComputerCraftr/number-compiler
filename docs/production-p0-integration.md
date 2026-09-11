@@ -1,9 +1,12 @@
 # Production integration P0 — September 11
 
-**Release remains blocked.** Production CLI execution, first-use HashLife
-construction, and removal of implicit recurrence work are P0 requirements for
-196, Collatz, Fermat and Mersenne. Passing local quotient proofs or warm-cache
-checks does not clear this gate.
+**Release remains blocked on 196 and Collatz.** Production CLI execution,
+first-use HashLife construction, and removal of implicit recurrence work remain
+their P0 requirements. Expensive Fermat/Mersenne prime-certificate extraction is
+deferred to outputs that actually require certification. Passing local quotient
+proofs or warm-cache checks does not clear the 196/Collatz gate. The latest
+[focused implementation audit](production-p0-followup.md) records the changes
+after this checkpoint and the exact proof assumptions still outstanding.
 
 ## Implemented production changes
 
@@ -79,8 +82,8 @@ Those commands do not request primality and must not pay for a theorem clock.
 | --- | --- | --- |
 | 196 | Redundant threshold-summary probes; rebuilt owners on repeated API requests | Construct future nonlinear forcing and canonical tiles with the required first-use work bound |
 | Physical Collatz | Provably unnecessary source reads; rebuilt owners and radix views | Compose future forcing under physical-clock semantics with the required first-use work bound |
-| Fermat | Full filtration allocation after PASS; implicit recurrence in default CLI classification | Candidate-derived terminal depth admission without recurrence-equivalent extraction |
-| Mersenne | Full filtration allocation after PASS; implicit recurrence in default CLI classification | Candidate-derived local-capacity/terminal admission, including composite candidates, without recurrence-equivalent extraction |
+| Fermat | Full filtration allocation after PASS; implicit recurrence in default CLI classification | Deferred: terminal-depth admission for outputs requiring prime certificates |
+| Mersenne | Full filtration allocation after PASS; implicit recurrence in default CLI classification | Deferred: local-capacity/terminal admission for outputs requiring prime certificates |
 
 Sharing completed results across different powered terms needs a deliberately
 shared authority and resource budget. Existing per-index radix owner names and

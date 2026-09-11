@@ -74,3 +74,48 @@ def test_completed_cycle_interface_bypasses_causal_evaluation(
     assert payload.outgoing_ports == completed.outgoing_ports
     assert payload.physical_ticks == completed.physical_ticks
     assert payload.event_weight == completed.event_weight
+
+
+@pytest.mark.parametrize("exponent", (4, 8))
+@pytest.mark.parametrize("cycle_ticks", (0, 1, 2, 3, 4))
+def test_power_of_two_enters_cycle_with_bounded_residual_work(
+    exponent: int,
+    cycle_ticks: int,
+) -> None:
+    steps = exponent + cycle_ticks
+    expected = (1, 4, 2)[cycle_ticks % 3]
+    term = PoweredCollatzTerm(1 << exponent, steps)
+    projection = term._point_index()._lazy_application
+    assert type(projection) is LazyProjection
+    completed = projection._application.complete()
+    assert completed.physical_ticks == steps
+    assert completed.event_weight == (cycle_ticks + 2) // 3
+    assert completed.relative_extent == expected.bit_length()
+    assert term.materialize(max_bits=4) == expected
+    assert term._ledger.counters.get("tile_collatz_power_two_entries", 0) == 1
+    assert term._ledger.counters.get("tile_causal_frames", 0) < 1024
+
+
+def test_wide_power_of_two_cycle_entry_is_independent_of_temporal_extent() -> None:
+    exponent = 1000
+    steps = 10**12 + exponent
+    cycle_ticks = steps - exponent
+    expected = (1, 4, 2)[cycle_ticks % 3]
+    term = PoweredCollatzTerm(1 << exponent, steps)
+    assert term.materialize(max_bits=4) == expected
+    assert term._ledger.counters.get("tile_collatz_power_two_entries", 0) == 1
+    assert term._ledger.counters.get("tile_causal_frames", 0) < 1024
+
+
+def test_power_of_two_short_prefix_does_not_claim_cycle_entry() -> None:
+    term = PoweredCollatzTerm(1 << 8, 4)
+    assert term.materialize(max_bits=16) == 1 << 4
+    assert term._ledger.counters.get("tile_collatz_cycle_completions", 0) == 0
+
+
+def test_multi_one_source_does_not_claim_power_of_two_cycle_entry() -> None:
+    term = PoweredCollatzTerm((1 << 8) | 1, 4)
+    assert term.materialize(max_bits=16) == 580
+    assert term._ledger.counters.get("tile_collatz_cycle_completions", 0) == 0
+    assert term._ledger.counters.get("collatz_power_two_low_bit_declines", 0) > 0
+    assert term._ledger.counters.get("collatz_power_two_summary_node_visits", 0) == 0
