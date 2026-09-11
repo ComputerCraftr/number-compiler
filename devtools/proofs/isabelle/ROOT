@@ -1,0 +1,28 @@
+session Reverse_Residuals = HOL +
+  options [document = false, quick_and_dirty = false, threads = 1]
+  theories
+    Reverse_Residuals
+    Reverse_Invariant
+    Reverse_Seven_Bands
+    Reverse_Observability
+    Reverse_Uniform_Runs
+    Reverse_Factored_Channels
+    Reverse_Threshold_Cocycle
+    Mirror_Pair_Step
+    Reverse_Growth_Coboundary
+    Reverse_Mod9_Skew
+    Reverse_Threshold_Geometry
+    Reverse_Carry_Harmonic_Ports
+    Collatz_Harmonic_Ports
+    Port_Valued_Mealy
+    Hensel_Cylinders
+    Reverse_Contextual_Fixed_Point
+
+session Temporal_Clock_Jumps in temporal_clocks = Reverse_Residuals +
+  options [document = false, quick_and_dirty = false, threads = 1]
+  theories
+    Temporal_Clock_Jumps
+    Decimal_Clock_Jumps
+    Power_Clock_Jumps
+    Collatz_Clock_Jumps
+    Inverse_Three_Lift

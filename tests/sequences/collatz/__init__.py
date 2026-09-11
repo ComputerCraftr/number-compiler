@@ -1,0 +1,1 @@
+"""tests sequences collatz tests."""

@@ -1,0 +1,1 @@
+"""tests hashlife interfaces tests."""

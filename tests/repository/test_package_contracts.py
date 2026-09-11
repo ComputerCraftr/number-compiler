@@ -1,0 +1,93 @@
+"""Canonical import ownership replaces handwritten migration inventories."""
+
+import ast
+import importlib
+import importlib.util
+import tomllib
+from pathlib import Path
+
+from devtools.checks.package_contracts import module_inventory, package_violations
+from devtools.paths import repository_root
+
+ROOT = repository_root()
+
+
+def test_package_ownership_is_derived_and_unambiguous() -> None:
+    assert package_violations(ROOT) == ()
+    modules = module_inventory(ROOT)
+    assert len(modules) == len(set(modules.values()))
+
+
+def test_public_api_is_deliberate_and_has_no_dynamic_compatibility_dispatch() -> None:
+    import number_compiler
+
+    assert len(number_compiler.__all__) == len(set(number_compiler.__all__))
+    assert {
+        "NumberCompiler",
+        "CanonicalSequenceCompiler",
+        "ReverseAddPoweredTerm",
+        "PoweredCollatzTerm",
+    } <= set(number_compiler.__all__)
+    assert not {
+        "ComposedBlockEffect",
+        "TileArena",
+        "HigherSemanticArena",
+        "ReverseAddCarrySlab",
+    } & set(number_compiler.__all__)
+    tree = ast.parse((ROOT / "src/number_compiler/__init__.py").read_text())
+    assert not any(
+        isinstance(node, ast.FunctionDef) and node.name == "__getattr__"
+        for node in tree.body
+    )
+    for name in number_compiler.__all__:
+        assert getattr(number_compiler, name) is not None
+
+
+def test_cli_entry_point_has_one_canonical_owner() -> None:
+    config = tomllib.loads((ROOT / "pyproject.toml").read_text())
+    assert (
+        config["project"]["scripts"]["number-compiler"]
+        == "number_compiler.api.cli:main"
+    )
+    assert callable(importlib.import_module("number_compiler.api.cli").main)
+
+
+def test_old_forwarding_paths_do_not_resolve() -> None:
+    for name in (
+        "number_compiler.reverse_power",
+        "number_compiler.semantic_structures",
+        "number_compiler.block_power",
+        "number_compiler.core",
+        "number_compiler.runtime",
+        "number_compiler.sequences.collatz.concrete_port",
+        "number_compiler.sequences.collatz.higher_interface",
+        "number_compiler.hashlife.execution.finite_tile_action",
+    ):
+        assert importlib.util.find_spec(name) is None
+
+
+def test_discovery_detects_missing_developer_initializer(tmp_path: Path) -> None:
+    module = tmp_path / "devtools" / "experiments" / "sample.py"
+    module.parent.mkdir(parents=True)
+    module.write_text("VALUE = 1\n")
+    (tmp_path / "src/number_compiler").mkdir(parents=True)
+    assert any(
+        "missing package initializer" in item for item in package_violations(tmp_path)
+    )
+
+
+def test_discovery_rejects_initializer_alias_and_forwarding_module(
+    tmp_path: Path,
+) -> None:
+    package = tmp_path / "src/number_compiler"
+    api = package / "api"
+    api.mkdir(parents=True)
+    (package / "__init__.py").write_text('"""Public package."""\n')
+    (api / "__init__.py").write_text('"""Public declarations."""\n')
+    (api / "alias.py").write_text(
+        '"""Obsolete forwarding path."""\n'
+        "from number_compiler.api.__init__ import Example\n"
+    )
+    failures = package_violations(tmp_path)
+    assert any("forwarding module without implementation" in item for item in failures)
+    assert any("alternate initializer identity" in item for item in failures)

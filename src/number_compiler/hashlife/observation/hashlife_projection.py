@@ -1,0 +1,275 @@
+"""Point-lazy execution of output-complete programs over immutable source geometry."""
+
+from __future__ import annotations
+
+from collections.abc import Iterator, Sequence
+
+from number_compiler.arithmetic.contracts.block_effect import BlockEffect
+from number_compiler.arithmetic.contracts.exact_tree_context import (
+    OriginalSourceConstruction,
+    source_reads_only,
+)
+from number_compiler.arithmetic.contracts.input_validation import require_integer
+from number_compiler.arithmetic.contracts.scoped_handles import (
+    ArenaToken,
+    ExactSource,
+    LoweringCapability,
+)
+from number_compiler.arithmetic.contracts.source_geometry import SourceGeometry
+from number_compiler.arithmetic.contracts.temporal_family import (
+    TemporalFamilyCertificate,
+    _issue_certificate,
+)
+from number_compiler.arithmetic.fields.dyadic_tile import DyadicTile
+from number_compiler.hashlife.actions.lazy_compiler import (
+    LazyCompiler,
+    UnsupportedInterfaceError,
+)
+from number_compiler.hashlife.execution.bounded_application import (
+    build_bounded_application,
+)
+from number_compiler.hashlife.observation.tile_projection import (
+    LazyProjection,
+    build_tile_projection,
+    lower_fixed_tile_compatibility,
+    validate_fixed_tile_compatibility,
+)
+from number_compiler.projection.microblock_cache import (
+    ExactMicroblock,
+    MicroblockCache,
+    MicroblockKey,
+)
+from number_compiler.projection.point_response import PointResponseRegister
+from number_compiler.resources.ledger import ResourceLedger
+from number_compiler.resources.metric_records import (
+    HashLifeBehaviorMetrics,
+    HashLifeProjectionMetrics,
+)
+
+
+class HashLifeBlockIndex:
+    """One compiler, source, lazy application and resource ownership scope."""
+
+    def __init__(
+        self,
+        effect: BlockEffect,
+        source: Sequence[int],
+        *,
+        logical_length: int,
+        max_tile_nodes: int | None = None,
+        max_cache_entries: int | None = None,
+        certificate: TemporalFamilyCertificate | None = None,
+        ledger: ResourceLedger | None = None,
+        compiler: LazyCompiler | None = None,
+        source_construction: OriginalSourceConstruction | None = None,
+        microblocks: MicroblockCache | None = None,
+    ) -> None:
+        logical_length = require_integer(logical_length, "logical source length", 0)
+        values = tuple(source)
+        if any(type(value) is not int for value in values):
+            raise TypeError("original source symbols must be integers")
+        if not values or any(value < 0 or value >= effect.blank for value in values):
+            raise ValueError("invalid source alphabet")
+        if logical_length < len(values):
+            raise ValueError("source exceeds logical extent")
+        # Authenticate the proof C4 facade before this index creates or
+        # registers any ledger-owned runtime object. Ordinary effects return
+        # without importing the proof definition.
+        validate_fixed_tile_compatibility(effect)
+        original = ExactSource(
+            values,
+            effect.base,
+            blank=effect.blank,
+            extent=logical_length,
+            alphabet_size=effect.blank,
+        )
+        if source_construction is not None:
+            OriginalSourceConstruction.validate_source(source_construction, original)
+        self._certificate = certificate
+        if certificate is not None:
+            certificate.validate(effect)
+        self._ledger = (
+            ResourceLedger(max_tile_nodes, max_cache_entries)
+            if ledger is None
+            else ledger
+        )
+        if compiler is not None and compiler.ledger is not self._ledger:
+            raise ValueError("compiler belongs to a different index ledger")
+        if ledger is not None:
+            ledger.tighten_limits(max_tile_nodes, max_cache_entries)
+        # Every nonempty index needs a source node as well as an entry.
+        # Reject an impossible index before an entry-only compiler cache fills.
+        self._ledger.check_capacity(entries=1, nodes=1)
+        self._ledger.register_execution_root(self)
+        self._compiler = LazyCompiler(self._ledger) if compiler is None else compiler
+        effect = lower_fixed_tile_compatibility(effect, self._compiler)
+        self._microblocks = (
+            MicroblockCache.shared(
+                self._ledger,
+                self._compiler.token,
+                self._compiler.resolve,
+            )
+            if microblocks is None
+            else microblocks
+        )
+        if self._microblocks.ledger is not self._ledger:
+            raise ValueError("microblock cache belongs to a different index ledger")
+        if compiler is None:
+            effect = self._compiler.import_effect(effect)
+            if certificate is not None:
+                certificate = _issue_certificate(
+                    effect, certificate.family, certificate.steps, ledger=self._ledger
+                )
+                self._certificate = certificate
+        else:
+            effect = self._compiler.atom(effect)
+        self.effect, self.source, self.logical_length = effect, values, logical_length
+        self.program = self._compiler.reference(effect)
+        self._effect_metric_baseline = tuple(effect.runtime_stats().items())
+        self._source_geometry = SourceGeometry(
+            self._ledger,
+            original,
+            source_construction,
+        )
+        self.seed_root = self._source_geometry.span(values, effect.blank, len(values))
+        self.evaluation_root = self._source_geometry.span(
+            values, effect.blank, self.logical_length
+        )
+        self.root = self.evaluation_root
+        bounded = build_bounded_application(
+            effect,
+            values,
+            logical_length=self.logical_length,
+            certificate=certificate,
+            ledger=self._ledger,
+            compiler=self._compiler,
+            source_geometry=self._source_geometry,
+            microblocks=self._microblocks,
+        )
+        self._bounded_application: LazyProjection | None
+        if bounded is None:
+            self._bounded_application = None
+            self._lazy_application = build_tile_projection(
+                effect, self._source_geometry
+            )
+        elif type(bounded) is LazyProjection:
+            self._bounded_application = self._lazy_application = bounded
+        else:
+            raise UnsupportedInterfaceError(
+                "public projection requires the canonical tile executor"
+            )
+        self._point_response = PointResponseRegister(self._compiler)
+        self._point_queries = self._direct_powered_point_queries = 0
+        self._lowering_owner = ArenaToken("endpoint-lowering")
+        from number_compiler.hashlife.execution.tile_kernel import (
+            PrimitiveTileKernelAdapter,
+        )
+
+        application = self._lazy_application._open()
+        adapter = application.scheduler.adapter
+        if type(adapter) is not PrimitiveTileKernelAdapter:
+            raise ValueError("point observation requires an admitted output alphabet")
+        self._output_symbol_count = application.scheduler.tiles.alphabet(
+            adapter.alphabet(application.action)
+        ).symbol_count
+        self._canonical_tiles_at_build = len(
+            self._lazy_application.scheduler.tiles._nodes
+        )
+
+    @property
+    def _tile_roots(self) -> set[DyadicTile]:
+        return {chunk.tile for chunk in self.evaluation_root.chunks}
+
+    @staticmethod
+    def _collect_tile_nodes(roots: set[DyadicTile]) -> set[DyadicTile]:
+        nodes: set[DyadicTile] = set()
+        stack = list(roots)
+        while stack:
+            node = stack.pop()
+            if node in nodes:
+                continue
+            nodes.add(node)
+            if node.left is not None:
+                stack.append(node.left)
+            if node.right is not None:
+                stack.append(node.right)
+        return nodes
+
+    def _retained_tile_nodes(self) -> set[DyadicTile]:
+        return set(self._source_geometry.nodes.values())
+
+    def _retained_tile_node_count(self) -> int:
+        return len(self._source_geometry.nodes)
+
+    @source_reads_only
+    def direct_powered_point(self, position: int) -> int:
+        """Project one exact scalar through source/program/transfer summaries."""
+        position = require_integer(position, "digit coordinate")
+        if not 0 <= position < self.logical_length:
+            raise IndexError(position)
+        # Authenticate the issued application before either scalar cache can
+        # answer.  Program ownership alone does not confer source authority.
+        if type(self._lazy_application) is not LazyProjection:
+            raise ValueError("point observation requires its tile application")
+        self._lazy_application._open()
+        self._point_queries += 1
+        self._direct_powered_point_queries += 1
+        return self._point_response.query(self.program, position, self._point)
+
+    def _point(self, position: int) -> int:
+        """Read or publish one bounded exact point after program authentication."""
+        self._lazy_application._open()
+        key = MicroblockKey(
+            self.program,
+            self.effect.base,
+            0,
+            position,
+            "output",
+            source_scope=self._source_geometry.token,
+        )
+        cached = self._microblocks.get(key)
+        if cached is not None:
+            value = cached.encoded
+            if not 0 <= value < self._output_symbol_count:
+                raise ValueError("cached point belongs to another alphabet")
+            return value
+        value = self._lazy_application.point(position)
+        if not 0 <= value < self._output_symbol_count:
+            raise ValueError("tile point belongs to another alphabet")
+        self._microblocks.put(
+            key,
+            ExactMicroblock(value, max(1, self.effect.blank.bit_length())),
+        )
+        return value
+
+    @source_reads_only
+    def direct_active_width(self) -> int:
+        """Find the output extent without constructing an endpoint tape."""
+        return self._lazy_application.active_width()
+
+    def iter_direct_active(self) -> Iterator[int]:
+        """Explicit output lowering, separated from the scalar query path."""
+        from number_compiler.projection.endpoint_lowering import (
+            iter_canonical_endpoint_digits,
+        )
+
+        yield from iter_canonical_endpoint_digits(
+            self._lazy_application,
+            owner=self._lowering_owner,
+            capability=LoweringCapability(self._lowering_owner),
+        )
+
+    def behavior_metrics(self) -> HashLifeBehaviorMetrics:
+        from number_compiler.resources.behavior_metrics import collect_behavior_metrics
+
+        return collect_behavior_metrics(self)
+
+    def metrics(self) -> HashLifeProjectionMetrics:
+        from number_compiler.resources.projection_metrics import (
+            collect_projection_metrics,
+        )
+
+        return collect_projection_metrics(self)
+
+
+__all__ = ["HashLifeProjectionMetrics", "HashLifeBehaviorMetrics", "HashLifeBlockIndex"]

@@ -216,3 +216,17 @@ __marimo__/
 
 # Streamlit
 .streamlit/secrets.toml
+
+# Number Compiler: generated evidence stays local; review summaries and scripts.
+/results/**
+!/results/**/
+!/results/**/*.md
+!/results/**/*.py
+/results/**/__pycache__/
+.DS_Store
+*.pstats
+.isabelle/
+/results/**/isabelle-home/
+/results/**/isabelle-user-root/
+.env.*
+!.env.example

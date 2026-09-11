@@ -1,0 +1,428 @@
+"""Exact bounded spatial actions for reverse/add source macrocells.
+
+This is the runtime port of the finite-tile action algorithm.  A source cell is
+represented by its complete action on the two finite primitive boundary
+domains, in both scan orientations.  Parent actions are composed from child
+action IDs and canonicalized under reflection before publication.  No digit
+word, carry row, future tile, or proof-machine state is retained.
+
+The codec is deliberately spatial.  Temporal composition must substitute the
+coordinate output and all thirteen macro channels through this action; treating
+spatial word-action composition as temporal composition would be incorrect.
+"""
+
+from __future__ import annotations
+
+from collections.abc import MutableMapping, MutableSequence
+from dataclasses import dataclass
+
+from number_compiler.arithmetic.automata.symmetry_powering import ActionTransform
+from number_compiler.arithmetic.contracts.block_effect import (
+    BoundarySide,
+    BoundaryState,
+)
+from number_compiler.arithmetic.contracts.block_kernel import BaseBlockEffect
+from number_compiler.arithmetic.contracts.scoped_handles import ArenaHandle, ArenaToken
+from number_compiler.hashlife.execution.field_images import (
+    SourceCellArena,
+    SourceCellID,
+    SourceForestID,
+)
+from number_compiler.resources.ledger import ResourceLedger
+
+
+@dataclass(frozen=True, slots=True)
+class ReverseLocalActionID(ArenaHandle):
+    """Canonical finite local action plus its geometric orientation."""
+
+    transform: ActionTransform = ActionTransform.IDENTITY
+
+    def __post_init__(self) -> None:
+        super(ReverseLocalActionID, self).__post_init__()
+        if type(self.transform) is not ActionTransform or int(self.transform) & ~1:
+            raise ValueError("reverse local actions support only proved reflection")
+
+
+@dataclass(frozen=True, slots=True)
+class ReverseLocalAction:
+    """Both oriented word actions on both primitive boundary domains."""
+
+    left_forward: tuple[int, ...]
+    left_reverse: tuple[int, ...]
+    right_forward: tuple[int, ...]
+    right_reverse: tuple[int, ...]
+
+    def mirrored(self) -> ReverseLocalAction:
+        return ReverseLocalAction(
+            self.left_reverse,
+            self.left_forward,
+            self.right_reverse,
+            self.right_forward,
+        )
+
+
+@dataclass(frozen=True, slots=True)
+class ReversePoweredLocalCodecMetrics:
+    action_count: int
+    source_bindings: int
+    leaf_requests: int
+    leaf_hits: int
+    spatial_requests: int
+    spatial_hits: int
+    semantic_alias_hits: int
+    mirror_alias_hits: int
+
+
+class ReversePoweredLocalCodec:
+    """Index-owned extensional codec over canonical recursive source cells."""
+
+    _KIND = "reverse-powered-local-action"
+
+    def __init__(
+        self,
+        base: int,
+        sources: SourceCellArena,
+        *,
+        ledger: ResourceLedger | None = None,
+    ) -> None:
+        resources = sources.ledger if ledger is None else ledger
+        if type(resources) is not ResourceLedger or sources.ledger is not resources:
+            raise ValueError("reverse powered local codec requires one index ledger")
+        if type(base) is not int or base < 2:
+            raise ValueError("reverse powered local codec requires an exact radix")
+        self.base = base
+        self.blank = 2 * base - 1
+        self.sources = sources
+        self.ledger = resources
+        self.kernel = BaseBlockEffect(base)
+        left = self.kernel.boundary_universe(BoundarySide.LEFT)
+        right = self.kernel.boundary_universe(BoundarySide.RIGHT)
+        if left is None or right is None:
+            raise AssertionError("primitive reverse boundary is not finite")
+        self._states = left, right
+        self.owner = ArenaToken("reverse-powered-local-codec")
+        self.ledger.register_execution_root(self)
+        prefix = f"reverse-powered-local-{len(self.ledger.inventory())}"
+        state_owners = (
+            self.ledger.register(
+                prefix + "-left-state-index", "reverse_local_state_index"
+            ),
+            self.ledger.register(
+                prefix + "-right-state-index", "reverse_local_state_index"
+            ),
+        )
+        state_ids: tuple[
+            MutableMapping[BoundaryState, int], MutableMapping[BoundaryState, int]
+        ] = (
+            self.ledger.make_dict(state_owners[0]),
+            self.ledger.make_dict(state_owners[1]),
+        )
+        self.ledger.reserve_many(
+            ((state_owners[0], len(left), 0), (state_owners[1], len(right), 0)),
+        )
+        state_ids[0].update((state, index) for index, state in enumerate(left))
+        state_ids[1].update((state, index) for index, state in enumerate(right))
+        self._state_ids = state_ids
+        self._node_owner = self.ledger.register(
+            prefix + "-nodes", "reverse_local_action"
+        )
+        self._key_owner = self.ledger.register(
+            prefix + "-interner", "reverse_local_action_interner"
+        )
+        self._compose_owner = self.ledger.register(
+            prefix + "-compose", "reverse_local_action_composition"
+        )
+        self._leaf_owner = self.ledger.register(
+            prefix + "-leaves", "reverse_local_leaf_binding"
+        )
+        self._source_owner = self.ledger.register(
+            prefix + "-sources", "reverse_local_source_binding"
+        )
+        self._nodes: MutableSequence[ReverseLocalAction] = self.ledger.make_list(
+            self._node_owner
+        )
+        self._keys: MutableMapping[ReverseLocalAction, int] = self.ledger.make_dict(
+            self._key_owner
+        )
+        self._compose: MutableMapping[
+            tuple[ReverseLocalActionID, ReverseLocalActionID], ReverseLocalActionID
+        ] = self.ledger.make_dict(self._compose_owner)
+        self._leaf_actions: MutableMapping[int, ReverseLocalActionID] = (
+            self.ledger.make_dict(self._leaf_owner)
+        )
+        self._source_actions: MutableMapping[
+            SourceCellID | SourceForestID, ReverseLocalActionID
+        ] = self.ledger.make_dict(self._source_owner)
+        self.ledger.register_container(
+            self._compose_owner,
+            self._compose,
+            payloads=self._compose.items,
+            composition_count=lambda: len(self._compose),
+        )
+        self.leaf_requests = 0
+        self.leaf_hits = 0
+        self.spatial_requests = 0
+        self.spatial_hits = 0
+        self.semantic_alias_hits = 0
+        self.mirror_alias_hits = 0
+
+    def _handle(
+        self,
+        local_id: int,
+        transform: ActionTransform = ActionTransform.IDENTITY,
+    ) -> ReverseLocalActionID:
+        return ReverseLocalActionID(self.owner, self._KIND, local_id, transform)
+
+    def resolve(self, reference: ReverseLocalActionID) -> ReverseLocalAction:
+        if type(reference) is not ReverseLocalActionID:
+            raise TypeError("expected a reverse powered local action ID")
+        reference.validate(self.owner, self._KIND, size=len(self._nodes))
+        raw = self._nodes[reference.local_id]
+        return raw.mirrored() if reference.transform is ActionTransform.MIRROR else raw
+
+    def _intern(
+        self,
+        action: ReverseLocalAction,
+        reservations: tuple[tuple[int, int, int], ...] = (),
+    ) -> ReverseLocalActionID:
+        mirrored = action.mirrored()
+        canonical, transform = min(
+            ((action, ActionTransform.IDENTITY), (mirrored, ActionTransform.MIRROR)),
+            key=lambda item: (
+                item[0].left_forward,
+                item[0].left_reverse,
+                item[0].right_forward,
+                item[0].right_reverse,
+                int(item[1]),
+            ),
+        )
+        found = self._keys.get(canonical)
+        if found is not None:
+            self.ledger.reserve_many(reservations)
+            self.semantic_alias_hits += 1
+            if transform is ActionTransform.MIRROR:
+                self.mirror_alias_hits += 1
+            return self._handle(found, transform)
+        self.ledger.reserve_many(
+            ((self._node_owner, 1, 1), (self._key_owner, 1, 0), *reservations)
+        )
+        local_id = len(self._nodes)
+        self._nodes.append(canonical)
+        self._keys[canonical] = local_id
+        if transform is ActionTransform.MIRROR:
+            self.mirror_alias_hits += 1
+        return self._handle(local_id, transform)
+
+    def _mapping(self, side: BoundarySide, symbol: int) -> tuple[int, ...]:
+        index = int(side)
+        states, ids = self._states[index], self._state_ids[index]
+        return tuple(ids[self.kernel.advance(side, state, symbol)] for state in states)
+
+    def _leaf(
+        self,
+        symbol: int,
+        reservations: tuple[tuple[int, int, int], ...] = (),
+    ) -> ReverseLocalActionID:
+        if type(symbol) is not int or not 0 <= symbol <= self.blank:
+            raise ValueError("reverse local leaf is outside the pair alphabet")
+        self.leaf_requests += 1
+        found = self._leaf_actions.get(symbol)
+        if found is not None:
+            self.ledger.reserve_many(reservations)
+            self.leaf_hits += 1
+            return found
+        left = self._mapping(BoundarySide.LEFT, symbol)
+        right = self._mapping(BoundarySide.RIGHT, symbol)
+        result = self._intern(
+            ReverseLocalAction(left, left, right, right),
+            ((self._leaf_owner, 1, 0), *reservations),
+        )
+        self._leaf_actions[symbol] = result
+        return result
+
+    def leaf(self, symbol: int) -> ReverseLocalActionID:
+        return self._leaf(symbol)
+
+    @staticmethod
+    def _then(before: tuple[int, ...], after: tuple[int, ...]) -> tuple[int, ...]:
+        return tuple(after[value] for value in before)
+
+    def _compose_actions(
+        self,
+        left: ReverseLocalActionID,
+        right: ReverseLocalActionID,
+        reservations: tuple[tuple[int, int, int], ...] = (),
+    ) -> ReverseLocalActionID:
+        """Return the action of spatial concatenation ``left || right``."""
+        a, b = self.resolve(left), self.resolve(right)
+        self.spatial_requests += 1
+        # Resolution above must precede this lookup.  The complete scoped
+        # handles keep owner, kind, ID, and orientation in the cache key.
+        key = left, right
+        found = self._compose.get(key)
+        if found is not None:
+            self.ledger.reserve_many(reservations)
+            self.spatial_hits += 1
+            return found
+        result = self._intern(
+            ReverseLocalAction(
+                self._then(a.left_forward, b.left_forward),
+                self._then(b.left_reverse, a.left_reverse),
+                self._then(a.right_forward, b.right_forward),
+                self._then(b.right_reverse, a.right_reverse),
+            ),
+            ((self._compose_owner, 1, 0), *reservations),
+        )
+        self._compose[key] = result
+        return result
+
+    def compose(
+        self,
+        left: ReverseLocalActionID,
+        right: ReverseLocalActionID,
+    ) -> ReverseLocalActionID:
+        return self._compose_actions(left, right)
+
+    def transformed(
+        self,
+        action: ReverseLocalActionID,
+        transform: ActionTransform,
+    ) -> ReverseLocalActionID:
+        self.resolve(action)
+        if type(transform) is not ActionTransform or int(transform) & ~1:
+            raise ValueError(
+                "reverse local codec has only the proved mirror automorphism"
+            )
+        return self._handle(action.local_id, action.transform ^ transform)
+
+    def apply(
+        self,
+        action: ReverseLocalActionID,
+        side: BoundarySide,
+        state: BoundaryState,
+        *,
+        reverse: bool = False,
+    ) -> BoundaryState:
+        record = self.resolve(action)
+        if type(side) is not BoundarySide or type(reverse) is not bool:
+            raise TypeError(
+                "reverse local observation requires a direction and orientation"
+            )
+        index = int(side)
+        state_id = self._state_ids[index].get(state)
+        if state_id is None:
+            raise ValueError("boundary state is outside the primitive reverse domain")
+        if side is BoundarySide.LEFT:
+            mapping = record.left_reverse if reverse else record.left_forward
+        else:
+            mapping = record.right_reverse if reverse else record.right_forward
+        return self._states[index][mapping[state_id]]
+
+    def apply_index(
+        self,
+        action: ReverseLocalActionID,
+        side: BoundarySide,
+        state: int,
+        *,
+        reverse: bool = False,
+    ) -> int:
+        """Apply a source action directly to the schema's bounded state ID."""
+        record = self.resolve(action)
+        if (
+            type(side) is not BoundarySide
+            or type(state) is not int
+            or type(reverse) is not bool
+        ):
+            raise TypeError("reverse indexed action requires exact bounded inputs")
+        domain = self._states[int(side)]
+        if not 0 <= state < len(domain):
+            raise ValueError("reverse indexed state lies outside its port domain")
+        if side is BoundarySide.LEFT:
+            mapping = record.left_reverse if reverse else record.left_forward
+        else:
+            mapping = record.right_reverse if reverse else record.right_forward
+        return mapping[state]
+
+    @staticmethod
+    def _source_key(
+        source: SourceCellID | SourceForestID,
+    ) -> SourceCellID | SourceForestID:
+        if type(source) not in (SourceCellID, SourceForestID):
+            raise TypeError("reverse local source requires a scoped cell or forest ID")
+        return source
+
+    def _source_cell_action(self, source: SourceCellID) -> ReverseLocalActionID:
+        """Compile one canonical dyadic source cell with an iterative trampoline."""
+        self.sources.resolve(source)
+        source_key = self._source_key(source)
+        found = self._source_actions.get(source_key)
+        if found is not None:
+            return found
+        pending: list[tuple[SourceCellID, bool]] = [(source, False)]
+        while pending:
+            current, ready = pending.pop()
+            current_key = self._source_key(current)
+            if current_key in self._source_actions:
+                continue
+            record = self.sources.resolve(current)
+            if record.level == 0:
+                result = self._leaf(
+                    self.sources.symbol(current),
+                    ((self._source_owner, 1, 0),),
+                )
+            elif not ready:
+                left, right = self.sources.children(current)
+                pending.extend(((current, True), (right, False), (left, False)))
+                continue
+            else:
+                left, right = self.sources.children(current)
+                result = self._compose_actions(
+                    self._source_actions[self._source_key(left)],
+                    self._source_actions[self._source_key(right)],
+                    ((self._source_owner, 1, 0),),
+                )
+            self._source_actions[current_key] = result
+        return self._source_actions[source_key]
+
+    def source_action(
+        self,
+        source: SourceCellID | SourceForestID,
+    ) -> ReverseLocalActionID:
+        """Compile an exact source cover without recursion or packed digit state."""
+        if type(source) is SourceCellID:
+            return self._source_cell_action(source)
+        if type(source) is not SourceForestID:
+            raise TypeError("reverse local source requires a scoped cell or forest ID")
+        # Validate the forest before probing the retained binding cache.
+        forest = self.sources.resolve_forest(source)
+        source_key = self._source_key(source)
+        found = self._source_actions.get(source_key)
+        if found is not None:
+            return found
+        first, *following = forest.cells
+        result = self._source_cell_action(first)
+        for cell in following:
+            result = self._compose_actions(result, self._source_cell_action(cell))
+        self.ledger.reserve(self._source_owner, entries=1, nodes=0)
+        self._source_actions[source_key] = result
+        return result
+
+    def metrics(self) -> ReversePoweredLocalCodecMetrics:
+        return ReversePoweredLocalCodecMetrics(
+            len(self._nodes),
+            len(self._source_actions),
+            self.leaf_requests,
+            self.leaf_hits,
+            self.spatial_requests,
+            self.spatial_hits,
+            self.semantic_alias_hits,
+            self.mirror_alias_hits,
+        )
+
+
+__all__ = [
+    "ReverseLocalAction",
+    "ReverseLocalActionID",
+    "ReversePoweredLocalCodec",
+    "ReversePoweredLocalCodecMetrics",
+]

@@ -1,0 +1,1 @@
+"""tests arithmetic contracts tests."""

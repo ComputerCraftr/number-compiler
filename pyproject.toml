@@ -1,0 +1,48 @@
+[project]
+name = "number-compiler"
+version = "0.59.9"
+description = "Canonical cross-family radix compiler for reverse-add, Collatz, primes, Fermat, and Mersenne sequences"
+requires-python = ">=3.11"
+
+[project.optional-dependencies]
+dev = ["pytest>=8", "mypy>=1.15", "ruff>=0.15.22"]
+
+[project.scripts]
+number-compiler = "number_compiler.api.cli:main"
+
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools]
+package-dir = {"" = "src"}
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.setuptools.package-data]
+number_compiler = ["kernels/*.zlib", "py.typed"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "-m 'not validation' --strict-markers"
+markers = [
+    "validation: exhaustive proofs, research sweeps, and end-to-end release workloads; run explicitly with -m validation",
+    "algebra: finite semantic functions, quotient identities, and composition laws",
+    "representation: source authority, lazy output, and forbidden-payload invariants",
+    "accounting: resource ownership, budgets, inventories, and reporting",
+    "proof: independent exact oracles and immutable kernel certificates",
+    "cli: command-line parsing and validation",
+]
+
+[tool.mypy]
+strict = true
+files = ["."]
+mypy_path = "$MYPY_CONFIG_FILE_DIR/src"
+explicit_package_bases = true
+# Wheel build products are generated copies, not authored Python.
+exclude = ["^build/", "^dist/"]
+
+[tool.ruff.lint]
+# Preserve the existing Ruff 0.15 default gate across tool-version upgrades.
+select = ["E4", "E7", "E9", "F"]
