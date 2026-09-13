@@ -12,6 +12,13 @@ Pepin/Lucas--Lehmer.
 from __future__ import annotations
 
 from dataclasses import dataclass
+from number_compiler.sequences.power_numbers.etale_factor import (
+    MersenneAdditiveEtaleFrobeniusProbe as MersenneAdditiveEtaleFrobeniusProbe,
+    FermatAdditiveEtaleFrobeniusProbe as FermatAdditiveEtaleFrobeniusProbe,
+    mersenne_additive_etale_frobenius_probe as mersenne_additive_etale_frobenius_probe,
+    fermat_additive_etale_frobenius_probe as fermat_additive_etale_frobenius_probe,
+)
+
 from math import prod
 
 from devtools.experiments.algebra.dyadic_difference_germ_core import (
@@ -170,63 +177,6 @@ class SpecialEtaleTileApplicabilityAudit:
     certified_tile_family: bool
     scheduler_promotion_safe: bool
     production_status: str
-
-
-@dataclass(frozen=True, slots=True)
-class MersenneAdditiveEtaleFrobeniusProbe:
-    """Specific Frobenius-additivity probe in the LL quadratic algebra.
-
-    Work in ``R[s]/(s^2-3)`` and test the additive element ``3+s``.  On a
-    prime Mersenne field, ``s^N=-s`` and characteristic-N Frobenius gives
-    ``(3+s)^N=3-s``.  A nonzero defect is an exact composite witness.  A zero
-    defect is not promoted to primality, and the exponentiation still has the
-    same linear-in-p chain depth as the classical LL proof.
-    """
-
-    exponent: int
-    candidate_modulus: int
-    powered_value: tuple[int, int]
-    expected_value: tuple[int, int]
-    defect: tuple[int, int]
-    nontrivial_gcds: tuple[int, ...]
-    ring_multiplications: int
-    composite_witness: bool
-    prime_certificate: bool
-    scalable: bool
-    candidate_derived: bool = True
-    factor_enumeration: int = 0
-
-
-@dataclass(frozen=True, slots=True)
-class FermatAdditiveEtaleFrobeniusProbe:
-    """Candidate-only Frobenius additivity probe in the first missing layer.
-
-    ``y`` alone is formally blind because ``y^N=y``.  The additive probe tests
-
-        (1+y)^N == 1+y
-
-    in ``R[y]/(y^2-r1)``.  A prime Fermat candidate must pass because the
-    algebra is split over the field and characteristic-N Frobenius is the
-    identity.  A nonzero defect is therefore an exact composite witness for
-    n>=3.  A zero defect is *not* promoted to prime: quadratic/Frobenius
-    pseudoprimes are not excluded by the present theorem.
-
-    The implementation intentionally counts the raw candidate-ring products;
-    this is a research probe, not a scalable terminal selector.
-    """
-
-    parameter: int
-    candidate_modulus: int
-    radicand: int
-    powered_value: tuple[int, int]
-    defect: tuple[int, int]
-    nontrivial_gcds: tuple[int, ...]
-    ring_multiplications: int
-    composite_witness: bool
-    prime_certificate: bool
-    scalable: bool
-    candidate_derived: bool = True
-    factor_enumeration: int = 0
 
 
 @dataclass(frozen=True, slots=True)
@@ -437,108 +387,6 @@ def fermat_pure_order_layer_audit(
         1 << universal_h,
         True,
         "formal powers of the universal root are split-blind; only base-ring membership is missing",
-    )
-
-
-def _quadratic_mul_pair(
-    left: tuple[int, int],
-    right: tuple[int, int],
-    radicand: int,
-    modulus: int,
-) -> tuple[int, int]:
-    a, b = left
-    c, d = right
-    return (
-        (a * c + b * d * radicand) % modulus,
-        (a * d + b * c) % modulus,
-    )
-
-
-def _quadratic_power_pair(
-    base: tuple[int, int],
-    exponent: int,
-    radicand: int,
-    modulus: int,
-) -> tuple[tuple[int, int], int]:
-    result = (1, 0)
-    current = (base[0] % modulus, base[1] % modulus)
-    e = int(exponent)
-    products = 0
-    while e:
-        if e & 1:
-            result = _quadratic_mul_pair(result, current, radicand, modulus)
-            products += 1
-        e >>= 1
-        if e:
-            current = _quadratic_mul_pair(current, current, radicand, modulus)
-            products += 1
-    return result, products
-
-
-def mersenne_additive_etale_frobenius_probe(
-    exponent: int,
-) -> MersenneAdditiveEtaleFrobeniusProbe:
-    p = int(exponent)
-    if p < 3 or not (p & 1):
-        raise ValueError(p)
-    N = mersenne_number(p)
-    powered, products = _quadratic_power_pair((3, 1), N, 3, N)
-    expected = (3 % N, (-1) % N)
-    defect = ((powered[0] - expected[0]) % N, (powered[1] - expected[1]) % N)
-    from math import gcd
-
-    gcds = tuple(
-        sorted(
-            {g for coefficient in defect for g in (gcd(coefficient, N),) if 1 < g < N}
-        )
-    )
-    return MersenneAdditiveEtaleFrobeniusProbe(
-        p,
-        N,
-        powered,
-        expected,
-        defect,
-        gcds,
-        products,
-        defect != (0, 0),
-        False,
-        False,
-    )
-
-
-def fermat_additive_etale_frobenius_probe(
-    parameter: int,
-) -> FermatAdditiveEtaleFrobeniusProbe:
-    n = int(parameter)
-    if n < 3:
-        raise ValueError(
-            (n, "probe is only a composite witness after level-2 is required")
-        )
-    N = fermat_number(n)
-    # r1=t+t^-1 is the canonical first root of 2 and is candidate-derived.
-    t = pow(2, 1 << (n - 2), N)
-    r1 = (t + pow(t, -1, N)) % N
-    powered, products = _quadratic_power_pair((1, 1), N, r1, N)
-    defect = ((powered[0] - 1) % N, (powered[1] - 1) % N)
-    from math import gcd
-
-    gcds = tuple(
-        sorted(
-            {g for coefficient in defect for g in (gcd(coefficient, N),) if 1 < g < N}
-        )
-    )
-    composite = defect != (0, 0)
-    return FermatAdditiveEtaleFrobeniusProbe(
-        n,
-        N,
-        r1,
-        powered,
-        defect,
-        gcds,
-        products,
-        composite,
-        False,
-        False,
     )
 
 

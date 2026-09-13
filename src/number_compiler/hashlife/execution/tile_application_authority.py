@@ -3,11 +3,12 @@
 from __future__ import annotations
 
 from collections.abc import Mapping
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from sys import is_finalizing
 from typing import TYPE_CHECKING
 from weakref import ReferenceType, ref
 
+from number_compiler.hashlife.tiles.tile_result_records import PoweredResultKey
 from number_compiler.hashlife.tiles.tiles import TileLease
 from number_compiler.resources.ledger import ResourceLedger
 from number_compiler.resources.stores import LedgerDict
@@ -27,13 +28,21 @@ class _TileApplicationCleanup:
 
     application: ReferenceType[TileApplication]
     source: TileLease
+    source_id: int
     root: ResultLease | None
+    admitted: PoweredResultKey
 
     def __post_init__(self) -> None:
         from number_compiler.hashlife.tiles.tile_results import ResultLease
 
+        if type(self.admitted) is not PoweredResultKey:
+            raise TypeError("application cleanup requires its admitted binding")
         if type(self.application) is not ReferenceType:
             raise TypeError("application cleanup requires one weak occurrence")
+        if type(self.source_id) is not int or self.source_id < 0:
+            raise ValueError(
+                "application cleanup requires its original source lease ID"
+            )
         if type(self.source) is not TileLease:
             raise TypeError("application cleanup requires one source lease")
         if self.root is not None and type(self.root) is not ResultLease:
@@ -57,16 +66,18 @@ class TileApplicationRegistry:
             prefix + "-applications", "tile_application_registry"
         )
         self.records: LedgerDict[int, _TileApplicationCleanup] = ledger.make_dict(
-            self.owner, nodes_per_entry=3
+            self.owner, nodes_per_entry=8
         )
         ledger.register_container(
             self.owner,
             self.records,
-            node_count=lambda: 3 * len(self.records),
+            node_count=lambda: 8 * len(self.records),
             payloads=self.records.items,
         )
 
-    def register(self, application: TileApplication) -> None:
+    def register(
+        self, application: TileApplication, admitted: PoweredResultKey
+    ) -> None:
         """Publish one issued application without retaining the application."""
         from number_compiler.hashlife.execution.tile_scheduler import TileApplication
 
@@ -93,14 +104,23 @@ class TileApplicationRegistry:
         cleanup = _TileApplicationCleanup(
             ref(application, expire),
             application._input,
+            application._input._id,
             application._root,
+            # Copy scoped handles as well as wiring: a forged in-place edit of
+            # an application handle must not also rewrite its admission record.
+            PoweredResultKey(
+                replace(admitted.action),
+                replace(admitted.input),
+                admitted.ports,
+                replace(admitted.wiring, signature=replace(admitted.wiring.signature)),
+            ),
         )
-        self.ledger.reserve(self.owner, entries=1, nodes=3)
+        self.ledger.reserve(self.owner, entries=1, nodes=8)
         try:
             self.records[identity] = cleanup
         except BaseException:
             self.records.pop(identity, None)
-            self.ledger.release(self.owner, entries=1, nodes=3)
+            self.ledger.release(self.owner, entries=1, nodes=8)
             raise
 
     def application(self, identity: int) -> TileApplication:
@@ -124,6 +144,8 @@ class TileApplicationRegistry:
             or type(application._closed) is not bool
             or application._closed
             or cleanup.source is not application._input
+            or type(application._input._id) is not int
+            or application._input._id != cleanup.source_id
         ):
             raise ValueError("tile application identity is stale or unpublished")
         if cleanup.root is not application._root:
@@ -135,11 +157,12 @@ class TileApplicationRegistry:
             or application._input._arena is not application.scheduler.tiles
         ):
             raise ValueError("tile application has a foreign source lease")
-        application.scheduler.tiles.resolve(application._input.tile)
+        source = application._input.tile
         if cleanup.root is not None:
             if cleanup.root._issuer is not application.scheduler.results:
                 raise ValueError("tile application has a foreign completed root")
             cleanup.root.result
+        validate_admitted_binding(application, cleanup.admitted, source)
         return application
 
     def replace_root(
@@ -185,7 +208,7 @@ class TileApplicationRegistry:
             except BaseException as caught:
                 if error is None:
                     error = caught
-        self.ledger.release(self.owner, entries=1, nodes=3)
+        self.ledger.release(self.owner, entries=1, nodes=8)
         if error is not None:
             raise error
 
@@ -224,8 +247,8 @@ def audit_tile_application_registry(
         and account is not None
         and account.entries == len(registry.records)
         and account.observed_entries == len(registry.records)
-        and account.nodes == 3 * len(registry.records)
-        and account.observed_nodes == 3 * len(registry.records)
+        and account.nodes == 8 * len(registry.records)
+        and account.observed_nodes == 8 * len(registry.records)
     )
     scheduler = registry._scheduler()
     for identity, cleanup in registry.records.items():
@@ -249,16 +272,19 @@ def audit_tile_application_registry(
                 and type(application._input) is TileLease
                 and application._input._arena is application.scheduler.tiles
                 and cleanup.source is application._input
+                and type(application._input._id) is int
+                and application._input._id == cleanup.source_id
                 and cleanup.root is application._root
                 and scheduler is application.scheduler
             )
             if application is None:
                 raise ValueError("tile application reference expired")
-            application.scheduler.tiles.resolve(application._input.tile)
+            source = application._input.tile
             if cleanup.root is not None:
                 valid &= cleanup.root._issuer is application.scheduler.results
                 cleanup.root.result
             validate_application_issuer(application)
+            validate_admitted_binding(application, cleanup.admitted, source)
         except (AttributeError, KeyError, TypeError, ValueError):
             valid = False
         if valid:
@@ -268,6 +294,11 @@ def audit_tile_application_registry(
                     id(cleanup),
                     id(cleanup.application),
                     id(cleanup.source),
+                    id(cleanup.admitted),
+                    id(cleanup.admitted.action),
+                    id(cleanup.admitted.input),
+                    id(cleanup.admitted.wiring),
+                    id(cleanup.admitted.wiring.signature),
                 )
             )
             if cleanup.root is not None:
@@ -279,6 +310,21 @@ def audit_tile_application_registry(
     elif not valid_store:
         invalid.add((registry.owner, id(registry.records)))
     return approved, invalid
+
+
+def validate_admitted_binding(
+    application: TileApplication,
+    admitted: PoweredResultKey,
+    source: TileID,
+) -> None:
+    """Reuse an immutable port tuple only under its original issued contract."""
+    if (
+        application.action != admitted.action
+        or source != admitted.input
+        or application.ports is not admitted.ports
+        or application.wiring != admitted.wiring
+    ):
+        raise ValueError("tile application differs from its admitted binding")
 
 
 def validate_application_issuer(application: TileApplication) -> None:

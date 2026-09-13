@@ -384,7 +384,11 @@ def mersenne_cyclotomic_step(
     coefficient_modulus: int,
     factor_index: int | None = None,
 ) -> FamilyCyclotomicStep:
-    """One Lucas--Lehmer step in ``Phi_p`` or one finite-field factor thereof."""
+    """Project one trace-square in ``Phi_p`` or one finite-field factor.
+
+    This arithmetic operation has no initial seed, recurrence horizon or
+    primality acceptance criterion.
+    """
     from number_compiler.arithmetic.carry.carry_normalization import (
         end_around_normalization_defect,
         normalization_digits_lsf,
@@ -436,7 +440,7 @@ def fermat_cyclotomic_step(
     factor_index: int | None = None,
     local_power: int | None = None,
 ) -> FamilyCyclotomicStep:
-    """One Pepin squaring component in the negacyclic Fermat digit ring.
+    """One squaring component in the negacyclic Fermat digit ring.
 
     For odd coefficient primes, ``factor_index`` selects an irreducible factor
     of ``Phi_(2N)``.  For coefficient modulus 2, ``local_power<=N`` selects the

@@ -87,6 +87,7 @@ def _primitive_parent_payload(
     if not zero_occurrence and type(kernel.effect) is not CollatzPhysicalBlockEffect:
         return None
     occurrence = TemporalCocycle()
+    support = None
     if type(kernel.effect) is CollatzPhysicalBlockEffect:
         # A physical Collatz action records one odd event only at the unique
         # low boundary.  Reading that canonical leaf is logarithmic in the
@@ -101,6 +102,10 @@ def _primitive_parent_payload(
             odd = 0
             engine.ledger.bump("collatz_physical_event_source_reads_elided")
         occurrence = TemporalCocycle(event_weight=odd)
+        arena = engine.scheduler.physical_supports
+        support = (
+            (arena.odd if odd else arena.even) if at_low_boundary else arena.identity
+        )
     return primitive_interface_payload(
         engine.scheduler.results,
         action,
@@ -108,6 +113,7 @@ def _primitive_parent_payload(
         PrimitiveCausalPorts(left, right),
         engine.adapter.wiring(action),
         occurrence,
+        physical_support=support,
     )
 
 
@@ -133,6 +139,20 @@ def _leaf(
     )
     active = bool(engine.adapter._observe(interface, "activity", (left, right)))
     law = engine.adapter.primitive_law(action)
+    support = None
+    from number_compiler.sequences.collatz.block_power import (
+        CollatzPhysicalBlockEffect,
+    )
+
+    if type(law.effect) is CollatzPhysicalBlockEffect:
+        from number_compiler.arithmetic.contracts.block_effect import BoundarySide
+
+        arena = engine.scheduler.physical_supports
+        support = (
+            (arena.odd if symbol == 1 else arena.even)
+            if left == law.initial(BoundarySide.LEFT)
+            else arena.identity
+        )
     bound_reverse_output = (
         ReverseBoundOutput.leaf(law.base, output)
         if require_output and type(law.effect) is BaseBlockEffect
@@ -147,6 +167,7 @@ def _leaf(
         action_weight.physical_ticks + occurrence.physical_ticks,
         action_weight.event_weight + occurrence.event_weight,
         action_weight.frame_shift + occurrence.frame_shift,
+        physical_support=support,
     )
     if require_output and bound_reverse_output is not None:
         payload = _attach_bound_reverse_output(payload, bound_reverse_output)
@@ -510,6 +531,10 @@ def interface_step(
         raise ValueError("composite interface emission requires causal prefixes")
     if frame.stage == 4:
         second, first = values.pop(), frame.saved[0]
+        from number_compiler.hashlife.execution.tile_physical_support import (
+            temporal_physical_support,
+        )
+
         second_payload = CausalInterfacePayload(
             second.payload.interface,
             second.payload.incoming_ports,
@@ -519,6 +544,12 @@ def interface_step(
             first.payload.physical_ticks + second.payload.physical_ticks,
             first.payload.event_weight + second.payload.event_weight,
             first.payload.frame_shift + second.payload.frame_shift,
+            physical_support=temporal_physical_support(
+                first.payload.physical_support,
+                second.payload.physical_support,
+                before_ticks=first.payload.physical_ticks,
+                after_ticks=second.payload.physical_ticks,
+            ),
         )
         if second.payload.bound_reverse_output is not None:
             second_payload = _attach_bound_reverse_output(

@@ -33,9 +33,6 @@ if TYPE_CHECKING:
     from number_compiler.projection.output_quotient import SpecialSourceGuard
     from number_compiler.sequences.collatz.frame import CollatzFutureValuationRoot
     from number_compiler.sequences.collatz.pair import CollatzValuationProjectionBlock
-    from number_compiler.sequences.power_numbers.digit_power import (
-        DigitPowerProjectionResult,
-    )
 
 
 def _canonical_int_tuple(values: Sequence[int], *, minimum: int) -> tuple[int, ...]:
@@ -311,10 +308,9 @@ class SpecialDepthCertificateSummary:
 
     ``status`` is one of ``prime``, ``composite`` or ``unknown``.  Raw source
     compilation never asks for this object.  On an explicitly demanded theorem
-    query, compact constraint propagation runs first; if it remains unresolved,
-    production may use the exact classical special-form recurrence with its
-    charged linear squaring count.  Exhaustive carriers and factor-slot scans
-    are never implicit fallbacks.
+    query, compact constraint propagation runs first; unavailable candidate
+    recovery stays unknown. Recurrence oracles are not production fallbacks.
+    An explicitly requested proper-factor witness can establish compositeness.
     """
 
     family: str
@@ -336,6 +332,7 @@ class SpecialDepthCertificateSummary:
     stable_image_states: int = 0
     image_depth_classes: int = 0
     moore_equals_image_depth: bool | None = None
+    factor_witness: int | None = None
 
     def __post_init__(self) -> None:
         if self.family not in ("fermat", "mersenne"):
@@ -383,7 +380,7 @@ class FermatCompiledTerm:
     factor_witness: int | None = None
     reinterpretations: tuple[RadixTermMetrics, ...] = ()
     shifted_sensitivity: ValuationSensitivityMorphism | None = None
-    digit_projection: DigitPowerProjectionResult | None = None
+    digit_projection: None = None
     source_guard: SpecialSourceGuard | None = None
 
 
@@ -419,7 +416,7 @@ class MersenneCompiledTerm:
     factor_witness: int | None = None
     reinterpretations: tuple[RadixTermMetrics, ...] = ()
     successor_sensitivity: ValuationSensitivityMorphism | None = None
-    digit_projection: DigitPowerProjectionResult | None = None
+    digit_projection: None = None
     source_guard: SpecialSourceGuard | None = None
 
 

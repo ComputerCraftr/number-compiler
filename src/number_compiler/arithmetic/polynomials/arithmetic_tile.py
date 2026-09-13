@@ -13,6 +13,9 @@ these recurrences yet, so scheduler composition is reported as zero.
 from __future__ import annotations
 
 from dataclasses import dataclass, field
+from number_compiler.arithmetic.polynomials.twisted_observer import (
+    TwistedCylinderProjection,
+)
 
 from number_compiler.arithmetic.carry.carry_normalization import (
     EndAroundCarryNormalization,
@@ -42,6 +45,10 @@ from number_compiler.arithmetic.polynomials.cyclotomic_carry import (
 from number_compiler.arithmetic.polynomials.folded_square_packet import (
     FoldedSquareProjection,
     folded_square_packet as project_folded_square_packet,
+)
+from number_compiler.arithmetic.polynomials.primary_carry_jet import (
+    EtalePrimaryCarryJetKey,
+    PrimaryEtaleCarryJetTransducer,
 )
 from number_compiler.arithmetic.polynomials.radix64_mirror import (
     FoldedFifthProjection,
@@ -270,11 +277,24 @@ class SquareTileAction:
 
 
 @dataclass(frozen=True, slots=True)
+class _PreparedSquare:
+    normalization: EndAroundCarryNormalization
+    convolution: ConvolutionMetrics
+    field: tuple[int, ...]
+    naive_products: int
+    sign_applied: bool
+    digits_saved: int
+
+
+@dataclass(frozen=True, slots=True)
 class ArithmeticTile:
     """One canonical digit block and its derived special-number ring spec."""
 
     spec: ArithmeticTileSpec
     block: CyclotomicDigitBlock
+    _prepared: _PreparedSquare | None = field(
+        default=None, init=False, repr=False, compare=False
+    )
 
     def __post_init__(self) -> None:
         expected = self.spec.block((0,) * self.spec.width)
@@ -373,6 +393,40 @@ class ArithmeticTile:
         )
         return step, harmonic
 
+    def step_with_twisted_projection(
+        self,
+        *,
+        width: int,
+        sign: int,
+    ) -> tuple[ArithmeticTileStep, TwistedCylinderProjection]:
+        """Project one existing square field; factor support is a later demand."""
+        step, coefficients = self._step_with_field()
+        return step, TwistedCylinderProjection.observe(
+            coefficients, width=width, sign=sign
+        )
+
+    def step_with_primary_carry_jet(
+        self,
+    ) -> tuple[ArithmeticTileStep, EtalePrimaryCarryJetKey]:
+        """Observe the exact one-step key; constructing the word costs a square.
+
+        The deck bit records input sign canonicalization. This observation
+        does not assert the input is an etale root or a terminal clock defect.
+        """
+        step, coefficients = self._step_with_field()
+        normal = step.normalization
+        transducer = PrimaryEtaleCarryJetTransducer.from_coefficients(
+            coefficients,
+            incoming_min=normal.boundary_in,
+            incoming_max=normal.boundary_in + int(normal.exceptional_minus_one),
+        )
+        return step, transducer.seam_key(
+            deck_branch=int(step.sign_quotient_applied),
+            seam_carry=normal.boundary_in,
+            boundary_sign=self.spec.boundary_sign,
+            exceptional_minus_one=normal.exceptional_minus_one,
+        )
+
     def step_with_carry_interval(
         self,
     ) -> tuple[ArithmeticTileStep, tuple[int, int]]:
@@ -382,6 +436,26 @@ class ArithmeticTile:
         return step, (min(boundaries), max(boundaries))
 
     def _step_with_field(self) -> tuple[ArithmeticTileStep, tuple[int, ...]]:
+        prepared = self._prepared
+        if prepared is None:
+            prepared = self._prepare_square()
+            object.__setattr__(self, "_prepared", prepared)
+        # Cache no successor tile: retaining this tile must not retain an orbit.
+        next_tile = ArithmeticTile(
+            self.spec, self.spec.block(normalization_digits_lsf(prepared.normalization))
+        )
+        if next_tile.residue != prepared.normalization.residue:
+            raise AssertionError((next_tile.residue, prepared.normalization.residue))
+        return ArithmeticTileStep(
+            next_tile,
+            prepared.normalization,
+            prepared.convolution,
+            prepared.naive_products,
+            prepared.sign_applied,
+            prepared.digits_saved,
+        ), prepared.field
+
+    def _prepare_square(self) -> _PreparedSquare:
         value = self.residue
         representative = binary_square_sign_representative(
             value, self.spec.width, self.spec.boundary_sign
@@ -401,24 +475,15 @@ class ArithmeticTile:
             if self.spec.boundary_sign == 1
             else normalize_negacyclic_block(carry)
         )
-        next_tile = ArithmeticTile(
-            self.spec,
-            self.spec.block(normalization_digits_lsf(normalization)),
-        )
-        if next_tile.residue != normalization.residue:
-            raise AssertionError((next_tile.residue, normalization.residue))
         original_weight = sum(int(digit != 0) for digit in original_digits)
         weight = sum(int(digit != 0) for digit in digits)
-        return (
-            ArithmeticTileStep(
-                next_tile,
-                normalization,
-                convolution,
-                weight * weight,
-                representative != value,
-                max(0, original_weight - weight),
-            ),
+        return _PreparedSquare(
+            normalization,
+            convolution,
             field,
+            weight * weight,
+            representative != value,
+            max(0, original_weight - weight),
         )
 
     def run(self, steps: int) -> ArithmeticTileRun:

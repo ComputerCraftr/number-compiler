@@ -352,6 +352,21 @@ class CausalTileEngine(CausalTileAPI):
                             wiring,
                             occurrence,
                         )
+                        from number_compiler.hashlife.execution.tile_physical_support import (
+                            primitive_physical_support,
+                        )
+
+                        support = primitive_physical_support(
+                            self.scheduler,
+                            action,
+                            source.tile,
+                            (left, right),
+                        )
+                        if support is not None:
+                            semantics = replace(
+                                semantics,
+                                physical_support=support,
+                            )
                         forward = BoundaryTileView(output.tile, 0, 1)
                         backward = BoundaryTileView(output.tile, 0, 1, 1)
                         payload = CausalCompletedOutput(

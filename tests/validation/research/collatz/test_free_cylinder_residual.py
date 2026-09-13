@@ -158,13 +158,15 @@ def test_source_conditioned_physical_power_has_exact_ticks_and_event_weight(
         )
 
 
-def test_guard_consumption_collapses_duplicate_physical_source_histories() -> None:
+def test_guard_consumption_preserves_output_and_clock_projection_aliases() -> None:
     arena = FreeCylinderResidualArena(max_precision=64)
     action = arena.power_physical(16, 5)
     metrics = arena.metrics(action)
     assert metrics["consumer_output_ids"] == 8
     assert metrics["weighted_consumer_ids"] == 10
     assert metrics["weighted_consumer_ids"] < (1 << 5) - 1
+    # These aliases are output/clock projections, not support-program identity.
+    assert metrics["support_consumer_ids"] == 31
 
 
 def test_sparse_constant_image_powers_without_rebuilding_the_primitive(
@@ -182,6 +184,8 @@ def test_sparse_constant_image_powers_without_rebuilding_the_primitive(
     metrics = arena.metrics(action)
     assert metrics["consumer_output_ids"] == 3
     assert metrics["weighted_consumer_ids"] == 7
+    assert metrics["support_consumer_ids"] == 31
+    assert metrics["support_arena_nodes"] < 512
     assert metrics["max_transport_offset_bits"] == 0
     assert metrics["future_endpoint_consumptions"] == 471
     assert metrics["original_source_bit_probes"] == 0

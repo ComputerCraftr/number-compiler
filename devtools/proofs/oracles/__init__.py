@@ -28,7 +28,7 @@ from devtools.proofs.oracles.special_primality import (
     lucas_lehmer_test,
     pepin_test,
 )
-from number_compiler.sequences.power_numbers.digit_power import (
+from devtools.proofs.oracles.digit_power import (
     DigitPowerProjectionResult,
     lucas_lehmer_digit_field,
     pepin_digit_field,

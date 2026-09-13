@@ -1,6 +1,6 @@
 # Shared arithmetic square tiles
 
-Fermat and Mersenne bounded digit recurrence execution shares one
+Fermat and Mersenne folded square arithmetic shares one
 `ArithmeticTile`.  The tile stores one canonical `CyclotomicDigitBlock` in the
 full boundary quotient `X**w-sign`; family and width are its only independent
 policy fields.  The minimal exact forward coefficient precision is derived:
@@ -30,21 +30,16 @@ separate type from the Collatz Hensel pullback and has no inverse-3 coordinate.
 This prevents the common arithmetic interface from conflating square
 precision with valuation-dependent Collatz division.
 
-The canonical digit carrier is bounded to callers that requested the digit
-projection.  The production `classical_ceiling` shares `SquareTileAction` but
-applies it through native integer modular arithmetic: replacing its hard speed
-ceiling with Python coefficient fields would make large unresolved candidates
-slower.  Only the bounded diagnostic path has the canonical spatial tile and
-detailed convolution accounting.
+The canonical digit carrier is bounded to callers that request a digit
+projection. Research-only recurrence runners use `SquareTileAction` through
+native modular arithmetic or the diagnostic digit tile. They live under
+`devtools/proofs/oracles`; production cannot import them or select them as a
+fallback classifier.
 
-This does not claim compact temporal powering.  Squaring is nonlinear, and
-the tile executes one primitive operation for each Pépin or Lucas--Lehmer
-recurrence step.  Consequently:
-
-- `arithmetic_tile_steps == iterations` for the bounded digit projection;
-- `scheduler_compositions == 0`;
-- no `TemporalFamilyCertificate` is issued for Fermat or Mersenne; and
-- the terminal étale/prime bit remains an external output observer.
+One tile step is one primitive square or trace-square. It does not establish
+compact temporal powering. The diagnostic runner charges every primitive
+step, issues no `TemporalFamilyCertificate`, and performs no scheduler
+composition.
 
 The deterministic terminal germ depth now uses the shared `SquareTileAction`.
 It retains one `QuadraticPower`; `span` is derived from that power's depth
@@ -59,10 +54,11 @@ successor-congruent finite interface and a power-number family certificate are
 proved.  Wrapping the primitive loop in a scheduler adapter would not reduce
 work and would falsely imply that dyadic temporal composition is closed.
 
-The tile does not contain the terminal prime bit.  Pépin's `-1` and
-Lucas--Lehmer's zero test remain external output observers.  A finite étale
-projection can justify an observer or an early structural result, but cannot
-by itself decide primality over an unresolved composite modulus.
+The tile does not construct the terminal prime bit. Production classification
+requires the candidate-derived admitted shadow action and a proved recovery
+predicate. The supplied-root primary carry key alone does not provide that
+binding. The missing recovery remains a
+[P0 release blocker](../production-shadow-jet-release-blocker-2026-09-12.md).
 
 The persistent block's explicit factor is the full boundary polynomial.  It
 must not be passed off as an irreducible étale factor.  When an angular or jet
@@ -77,10 +73,10 @@ admitted carry bounds when needed; ordinary steps do not perform that scan.
 Neither observer is retained in the next tile. All measured bounded carry and
 harmonic partitions still have successor conflicts.
 
-The executable owners are
-[`arithmetic_tile.py`](../../src/number_compiler/arithmetic/polynomials/arithmetic_tile.py),
-[`digit_power.py`](../../src/number_compiler/sequences/power_numbers/digit_power.py),
-with the separate native speed ceiling in
-[`classical_ceiling.py`](../../src/number_compiler/sequences/power_numbers/classical_ceiling.py).
+The arithmetic owner is
+[`arithmetic_tile.py`](../../src/number_compiler/arithmetic/polynomials/arithmetic_tile.py).
+The research-only runners are
+[`special_digit_power.py`](../../devtools/proofs/oracles/special_digit_power.py)
+and [`special_classical_ceiling.py`](../../devtools/proofs/oracles/special_classical_ceiling.py).
 The bounded square-only congruence evidence is documented in
 [`square-consumer-congruence.md`](../research/power-numbers/square-consumer-congruence.md).

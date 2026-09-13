@@ -17,6 +17,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from math import ceil, log2
 from typing import Iterator
+from number_compiler.arithmetic.polynomials.twisted_observer import TwistedCylinderProjection
 
 from number_compiler.arithmetic.contracts.block_effect import BlockEffect
 from number_compiler.arithmetic.contracts.exact_tree_context import (
@@ -440,6 +441,25 @@ class ReverseAddPoweredTerm:
 
     def digits(self) -> tuple[int, ...]:
         return tuple(self.iter_digits())
+
+    def is_palindrome(self) -> bool:
+        """Demand mirror equality, stopping at the first certified mismatch.
+
+        The outer three comparisons cover the observed growth safety tube for
+        196. Surviving those comparisons requires the full exact consumer;
+        no finite observation is promoted to an all-future ray certificate.
+        """
+        from number_compiler.sequences.reverse_add.palindrome import mirror_palindrome
+
+        return mirror_palindrome(self.width(), self.digit)
+
+    def mirror_obstruction(self, *, first_width: int = 1) -> TwistedCylinderProjection | None:
+        """Demand a cyclic/negacyclic certificate for this powered target."""
+        from number_compiler.arithmetic.polynomials.twisted_observer import first_mirror_obstruction
+
+        if self.generation == 0:
+            return first_mirror_obstruction(self.width(), self.digit, first_width=first_width)
+        return self._point_index().direct_mirror_obstruction(first_width=first_width)
 
     def materialize(self, *, max_bits: int) -> int:
         max_bits = require_integer(max_bits, "output bit cap", 0)

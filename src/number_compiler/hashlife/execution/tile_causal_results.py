@@ -147,6 +147,7 @@ def cached_causal_output(
         value.relative_extent,
         boundaries,
         value.fusion,
+        physical_support=value.physical_support,
     )
     return CausalCompletedOutput(
         value.output,
@@ -453,6 +454,10 @@ def combine_causal_outputs(
         if left.semantics.event_weight != right.semantics.event_weight:
             raise ValueError("causal spatial children have different event weights")
         events = left.semantics.event_weight
+    from number_compiler.hashlife.execution.tile_physical_support import (
+        spatial_physical_support,
+    )
+
     return CausalCompletedOutput(
         output,
         ResultSemantics(
@@ -464,6 +469,10 @@ def combine_causal_outputs(
             relative_extent=parent.extent,
             outgoing_boundaries=output_boundaries,
             fusion=fusion,
+            physical_support=spatial_physical_support(
+                left.semantics.physical_support,
+                right.semantics.physical_support,
+            ),
         ),
         incoming_ports,
     )

@@ -55,6 +55,7 @@ from number_compiler.resources.metric_records import (
 from number_compiler.resources.powered_metrics import project_powered_metrics
 
 if TYPE_CHECKING:
+    from number_compiler.sequences.collatz.clock_observers import SArithmeticClock
     from number_compiler.projection.lazy_radix import RadixProjection
 
 
@@ -95,6 +96,8 @@ class CollatzPhysicalBlockMetrics(LedgerMetrics):
     right_boundary_residuals: int
     direct_powered_point_queries: int
     temporal_leaf_applications: int
+    collatz_physical_factored_output_compilations: int = 0
+    collatz_physical_joint_output_tables_elided: int = 0
     canonical_spacetime_macrocell_roots: int = 0
     spacetime_tile_output_entries: int = 0
     spacetime_tile_output_max_level: int = 0
@@ -586,6 +589,23 @@ class PoweredCollatzTerm:
     def estimated_bit_length(self) -> int:
         return self.width()
 
+    @source_reads_only
+    def s_arithmetic_clock(self) -> SArithmeticClock:
+        """Derive the slope places from this physical, source-bound application.
+
+        This queries the existing bound interface and reuses a completed result
+        when present. It does not build an accelerated itinerary or treat a
+        clock readout as an action identity.
+        """
+        from number_compiler.sequences.collatz.clock_observers import SArithmeticClock
+
+        if self.steps == 0:
+            return SArithmeticClock(0, 0)
+        support = self._point_index().direct_physical_support()
+        if support.ticks != self.steps or support.odd_ticks > self.steps:
+            raise ValueError("bound Collatz result has an invalid physical clock")
+        return SArithmeticClock(support.odd_ticks, self.steps - support.odd_ticks)
+
     def iter_digits(self) -> Iterator[int]:
         if self.steps == 0:
             yield from self.seed_digits
@@ -597,9 +617,10 @@ class PoweredCollatzTerm:
 
     def materialize(self, *, max_bits: int) -> int:
         max_bits = require_integer(max_bits, "output bit cap", 0)
-        width = self.width()
-        if width > max_bits:
-            raise ValueError((width, max_bits))
+        if self.maximum_width > max_bits:
+            width = self.width()
+            if width > max_bits:
+                raise ValueError((width, max_bits))
         return value_from_lsd_digits(self.iter_digits(), 2)
 
     def behavior_metrics(self) -> HashLifeBehaviorMetrics:
@@ -625,6 +646,12 @@ class PoweredCollatzTerm:
             compose_operations=self.compose_operations,
             syntax_depth_bound=self.syntax_depth_bound,
             descriptor_bits=self.descriptor_bits,
+            collatz_physical_factored_output_compilations=point.resource_work_counters.get(
+                "collatz_physical_factored_output_compilations", 0
+            ),
+            collatz_physical_joint_output_tables_elided=point.resource_work_counters.get(
+                "collatz_physical_joint_output_tables_elided", 0
+            ),
         )
 
 

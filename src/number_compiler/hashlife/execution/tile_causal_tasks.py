@@ -336,6 +336,10 @@ def temporal_payload(
                 second.semantics.outgoing_boundaries,
             ),
         )
+    from number_compiler.hashlife.execution.tile_physical_support import (
+        temporal_physical_support,
+    )
+
     return replace(
         second,
         semantics=replace(
@@ -346,6 +350,12 @@ def temporal_payload(
             event_weight=(first.semantics.event_weight + second.semantics.event_weight),
             frame_shift=first.semantics.frame_shift + second.semantics.frame_shift,
             fusion=fusion,
+            physical_support=temporal_physical_support(
+                first.semantics.physical_support,
+                second.semantics.physical_support,
+                before_ticks=first.semantics.physical_ticks,
+                after_ticks=second.semantics.physical_ticks,
+            ),
         ),
     )
 

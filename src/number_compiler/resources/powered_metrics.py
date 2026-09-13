@@ -71,6 +71,15 @@ _RETIRED_COUNTERS = frozenset(
     )
 )
 
+# Live output-consumer counters are captured in the same resource-work snapshot,
+# but do not duplicate columns on the engine-wide metric record.
+_WORK_COUNTER_FIELDS = _RETIRED_COUNTERS | frozenset(
+    (
+        "collatz_physical_factored_output_compilations",
+        "collatz_physical_joint_output_tables_elided",
+    )
+)
+
 
 def project_powered_metrics(
     kind: type[_MetricT],
@@ -87,7 +96,7 @@ def project_powered_metrics(
         source = _ALIASES.get(name, name)
         if source in observed:
             values[name] = observed[source]
-        elif name in _RETIRED_COUNTERS:
+        elif name in _WORK_COUNTER_FIELDS:
             values[name] = point.resource_work_counters.get(name, 0)
         else:
             raise ValueError(f"powered metric has no observation: {name}")

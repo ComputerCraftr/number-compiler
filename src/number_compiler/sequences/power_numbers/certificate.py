@@ -1,15 +1,9 @@
 """Scalable Fermat/Mersenne theorem certificates.
 
-Production first consumes the logarithmic constrained terminal germ.  A proved
-PASS/FAIL/SPLIT is used immediately.  If that compact quotient remains
-``UNKNOWN``, the demanded theorem query falls back to the exact classical
-special-form recurrence with an explicit linear squaring budget.  This is the
-hard production ceiling: no factor-slot/tropical scan, exhaustive carrier, CRT
-factorization, or saved itinerary is permitted.
-
-The recurrence implementation lives in :mod:`special_classical_ceiling`, not
-the oracle package, because it is now an intentional production fallback rather
-than a hidden research escape.
+Production consumes only the constrained terminal étale threshold.  A proved
+PASS/FAIL/SPLIT is used immediately; an incomplete shadow-cylinder recovery is
+reported as ``UNKNOWN``.  Reference special-form recurrences live outside the
+production package and cannot complete this certificate path.
 """
 
 from __future__ import annotations
@@ -19,8 +13,8 @@ from number_compiler.arithmetic.polynomials.two_primary_filtration import (
     PureTwoPrimaryClockShape,
     pure_two_primary_clock_shape,
 )
-from number_compiler.sequences.power_numbers.classical_ceiling import (
-    SpecialClassicalCeilingResult,
+from number_compiler.sequences.power_numbers.admission import (
+    require_special_candidate_budget,
 )
 from number_compiler.sequences.power_numbers.numbers import mersenne_exponent_is_prime
 from number_compiler.sequences.power_numbers.terminal_threshold import (
@@ -83,6 +77,7 @@ def _summary_from_terminal_composite(
         character_queries=probe.character_queries,
         reciprocity_descents=probe.reciprocity_descents,
         gcd_witnesses=int(probe.status == "SPLIT"),
+        factor_witness=probe.gcd_packet,
     )
 
 
@@ -97,50 +92,10 @@ def _summary_from_terminal_unknown(
         probe.modulus_bits,
         "unknown",
         f"terminal-threshold:{probe.method}",
-        scalable_construction=True,
+        scalable_construction=False,
         carrier_states_enumerated=0,
         character_queries=probe.character_queries,
         reciprocity_descents=probe.reciprocity_descents,
-    )
-
-
-def _summary_from_classical_ceiling(
-    row: SpecialClassicalCeilingResult,
-) -> SpecialDepthCertificateSummary:
-    """Promote an exact classical target pullback into the certificate lattice."""
-    if row.passes:
-        shape = _proved_pure_clock_shape(row.family, row.parameter)
-        return SpecialDepthCertificateSummary(
-            row.family,
-            row.parameter,
-            row.modulus_bits,
-            "prime",
-            row.method,
-            shape.quotient_classes,
-            max(1, (shape.quotient_classes - 1).bit_length()),
-            0,
-            0,
-            row.raw_specialization_squarings,
-            shape.target_depth,
-            True,
-            0,
-            0,
-            0,
-            0,
-            shape.stable_image_states,
-            shape.image_depth_classes,
-            True,
-        )
-    return SpecialDepthCertificateSummary(
-        row.family,
-        row.parameter,
-        row.modulus_bits,
-        "composite",
-        row.method,
-        specialization_raw_squarings=row.raw_specialization_squarings,
-        scalable_construction=True,
-        carrier_states_enumerated=0,
-        gcd_witnesses=int(row.gcd_packet is not None),
     )
 
 
@@ -148,24 +103,32 @@ def fermat_depth_certificate(
     index: int,
     *,
     max_exact_width: int | None = None,
-    allow_classical_ceiling: bool = True,
+    max_candidate_bits: int = 1_000_000,
+    allow_classical_ceiling: bool = False,
+    collect_gcd_packet: bool = False,
 ) -> SpecialDepthCertificateSummary:
-    """Classify ``F_index`` with constrained terminal proof then optional ceiling.
+    """Classify ``F_index`` from the constrained terminal étale threshold.
 
     ``max_exact_width`` is retained as a compatibility keyword but is
     intentionally ignored.  Production never re-enters the old exhaustive
     bounded carrier or factor-slot tropical scan.
 
-    When ``allow_classical_ceiling`` is false, an unresolved compact terminal
-    probe returns ``unknown`` without executing the recurrence.
+    ``allow_classical_ceiling`` remains only as a compatibility keyword.  True
+    is rejected because special-form recurrence completion is not a production
+    theorem source.
     """
     n = int(index)
     if n < 0:
         raise ValueError(n)
     if max_exact_width is not None and int(max_exact_width) < 1:
         raise ValueError(max_exact_width)
+    if type(collect_gcd_packet) is not bool:
+        raise TypeError("collect_gcd_packet must be a Boolean")
     if type(allow_classical_ceiling) is not bool:
         raise TypeError("allow_classical_ceiling must be a Boolean")
+    if allow_classical_ceiling:
+        raise ValueError("classical primality recurrences are not production paths")
+    require_special_candidate_budget("fermat", n, max_candidate_bits)
     width = 1 << n
     modulus_bits = width + 1
     if n in (0, 1):
@@ -178,40 +141,43 @@ def fermat_depth_certificate(
             scalable_construction=True,
         )
 
-    threshold = terminal_threshold_probe("fermat", n)
+    threshold = terminal_threshold_probe(
+        "fermat", n, max_candidate_bits=max_candidate_bits
+    )
     if threshold.all_pass:
         return _summary_from_terminal_pass(threshold)
     if threshold.proves_composite:
         return _summary_from_terminal_composite(threshold)
-    if not allow_classical_ceiling:
-        return _summary_from_terminal_unknown(threshold)
-    from number_compiler.sequences.power_numbers.classical_ceiling import (
-        fermat_classical_ceiling,
-    )
-
-    return _summary_from_classical_ceiling(fermat_classical_ceiling(n))
+    return _summary_from_terminal_unknown(threshold)
 
 
 def mersenne_depth_certificate(
     exponent: int,
     *,
     max_exact_exponent: int | None = None,
-    allow_classical_ceiling: bool = True,
+    max_candidate_bits: int = 1_000_000,
+    allow_classical_ceiling: bool = False,
+    collect_gcd_packet: bool = False,
 ) -> SpecialDepthCertificateSummary:
-    """Classify ``M_exponent`` with exponent/constraint gates and optional ceiling.
+    """Classify ``M_exponent`` from exponent gates and the étale threshold.
 
     ``max_exact_exponent`` is retained for source compatibility but never
     enables the historical exhaustive carrier or factor-slot fallback.
-    Disabling the ceiling leaves an unresolved terminal probe ``unknown`` while
-    preserving exact small cases and composite-exponent rejection.
+    The compatibility ceiling keyword rejects true.  Unresolved terminal bits
+    remain ``unknown`` while exact small cases and exponent rejection survive.
     """
     p = int(exponent)
     if p < 2:
         raise ValueError(p)
     if max_exact_exponent is not None and int(max_exact_exponent) < 3:
         raise ValueError(max_exact_exponent)
+    if type(collect_gcd_packet) is not bool:
+        raise TypeError("collect_gcd_packet must be a Boolean")
     if type(allow_classical_ceiling) is not bool:
         raise TypeError("allow_classical_ceiling must be a Boolean")
+    if allow_classical_ceiling:
+        raise ValueError("classical primality recurrences are not production paths")
+    require_special_candidate_budget("mersenne", p, max_candidate_bits)
     if p == 2:
         return SpecialDepthCertificateSummary(
             "mersenne",
@@ -220,6 +186,28 @@ def mersenne_depth_certificate(
             "prime",
             "exact-small-special-form",
             scalable_construction=True,
+        )
+
+    # The exact exponent predicate is deliberately machine-word bounded.
+    # Preserve the immediate 2/3 divisor cases, but do not let this direct
+    # certificate entry point reach the historical unbounded factor search.
+    if p >= 1 << 64:
+        if not (p & 1) or p % 3 == 0:
+            return SpecialDepthCertificateSummary(
+                "mersenne",
+                p,
+                p,
+                "composite",
+                "composite-exponent-small-factor",
+                scalable_construction=True,
+            )
+        return SpecialDepthCertificateSummary(
+            "mersenne",
+            p,
+            p,
+            "unknown",
+            "exponent-gate-budget",
+            scalable_construction=False,
         )
 
     if not mersenne_exponent_is_prime(p):
@@ -234,18 +222,14 @@ def mersenne_depth_certificate(
     if not (p & 1):
         raise AssertionError((p, "even exponent escaped factor rejection"))
 
-    threshold = terminal_threshold_probe("mersenne", p)
+    threshold = terminal_threshold_probe(
+        "mersenne", p, max_candidate_bits=max_candidate_bits
+    )
     if threshold.all_pass:
         return _summary_from_terminal_pass(threshold)
     if threshold.proves_composite:
         return _summary_from_terminal_composite(threshold)
-    if not allow_classical_ceiling:
-        return _summary_from_terminal_unknown(threshold)
-    from number_compiler.sequences.power_numbers.classical_ceiling import (
-        mersenne_classical_ceiling,
-    )
-
-    return _summary_from_classical_ceiling(mersenne_classical_ceiling(p))
+    return _summary_from_terminal_unknown(threshold)
 
 
 __all__ = ["fermat_depth_certificate", "mersenne_depth_certificate"]

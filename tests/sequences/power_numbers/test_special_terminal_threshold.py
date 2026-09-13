@@ -105,7 +105,7 @@ def test_terminal_query_is_fail_closed_and_never_hides_recurrence_or_carrier_wor
         assert row.raw_specialization_squarings == 0
 
 
-def test_production_certificate_uses_terminal_pass_then_linear_classical_ceiling() -> (
+def test_production_certificate_keeps_missing_terminal_extractor_unresolved() -> (
     None
 ):
     f2 = fermat_depth_certificate(2)
@@ -115,24 +115,22 @@ def test_production_certificate_uses_terminal_pass_then_linear_classical_ceiling
     assert f2.carrier_states_enumerated == 0
     assert f2.construction_raw_squarings == 0
 
-    # Deeper unresolved compact germs fall through only to the exact classical
-    # recurrence ceiling, never to the old bounded carrier or tropical scan.
-    f4 = fermat_depth_certificate(4)
-    assert f4.status == "prime"
-    assert f4.method == "classical-ceiling:pepin-target-pullback"
-    assert f4.specialization_raw_squarings == 15 == f4.modulus_bits - 2
-    assert f4.carrier_states_enumerated == 0
-    assert f4.construction_raw_squarings == 0
-    f5 = fermat_depth_certificate(5)
-    assert f5.status == "composite"
-    assert f5.specialization_raw_squarings == 31 == f5.modulus_bits - 2
+    # Missing candidate recovery cannot be replaced with a recurrence.
+    for n in (4, 5):
+        cert = fermat_depth_certificate(n)
+        assert cert.status == "unknown"
+        assert cert.method.startswith("terminal-threshold:")
+        assert cert.specialization_raw_squarings == 0
+        assert cert.carrier_states_enumerated == 0
+        assert cert.construction_raw_squarings == 0
+        assert not cert.scalable_construction
 
 
 def test_classical_ceiling_uses_shared_native_square_action(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     from number_compiler.arithmetic.polynomials.arithmetic_tile import SquareTileAction
-    from number_compiler.sequences.power_numbers.classical_ceiling import (
+    from devtools.proofs.oracles.classical_ceiling import (
         fermat_classical_ceiling,
         mersenne_classical_ceiling,
     )

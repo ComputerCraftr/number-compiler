@@ -1,5 +1,60 @@
 # Repository cleanup and current release status
 
+## Restored transverse-germ target — September 12
+
+The latest retest identifies the actual Fermat/Mersenne semantic criterion:
+the admissible progression holonomy is a unit iff the candidate is prime.
+Its transverse annihilator support is part of the required common cylinder;
+the finite mod-16 carry key does not replace it. The exact research holonomy
+already exists, but enumerates the square-root window. Its compact powered
+pullback, CLI refinement and work bound are P0 in the
+[current release ledger](cylinder-p0-release-gates-2026-09-12.md). An enumerative
+fallback is not being added to make the four candidate gates appear complete.
+The exact Fermat and Mersenne factor-progression admission, indexed holonomy
+prime-bit criteria, and nonunit annihilator proofs now pass Isabelle with
+oracle-dependency checks. They do not supply that evaluator. The combined
+session took 21.41s under the unchanged 35-second/4GiB guard.
+
+## P0 release hold — September 12
+
+**Pépin/Lucas–Lehmer production fallback is prohibited.** The recurrence
+implementations have been moved to research oracles, with no production
+enabling option. Missing candidate-derived transverse shadow-cylinder recovery
+must stay UNKNOWN. Its primality-bit, conditional factor and runtime-refinement
+proof obligations remain P0; removing fallback is not their completion.
+
+The [ordered support repair](support-owner-repair-2026-09-12.md) fixes an actual
+research consumer collision: equal endpoints and clock weights had erased
+distinct physical support. Support is now retained through guard consumption
+and composition. The source-to-publisher production bridge for the four
+families and its performance gates remain P0; this repair does not close them.
+
+**Release blocked.** Conditional proper-factor output is accepted: print the
+checked factor when one is available. A missing factor is not, by itself, a
+release blocker or permission to infer primality. Any separate factor search
+remains explicitly demanded, budgeted and metered.
+
+The performance gates and the source-derived powered constructions for 196,
+Collatz, Fermat and Mersenne are **P0**. Observer dispatch, finite experimental
+corpora and abstract composition lemmas do not satisfy those gates. The
+[P0 acceptance ledger](cylinder-p0-release-gates-2026-09-12.md) records the
+missing production and Isabelle integration points. Release remains blocked
+until their construction, refinement and performance evidence is complete.
+
+The attempted carry-only Collatz and mirror-only 196 counterexamples have been
+withdrawn: they tested derived observations, not the common source-bound
+shadow-cylinder action. No counterexample to that full construction has been
+established. The [corrected proof contract](shadow-cylinder-proof-contract-2026-09-12.md)
+records the required normalized composition, source binding and consumer
+pullback laws. A passing component Isabelle session is not a passing powered
+production release gate.
+
+The [physical Collatz follow-up](physical-bound-clock-refinement-2026-09-12.md)
+connects a demanded S-arithmetic clock to the actual source-bound tile interface
+and adds primitive publisher/clock proof obligations and CLI poison tests. Full
+executor refinement and the other family constructors remain P0; this is not
+a release-completion declaration.
+
 ## Radix-64 mirror action refinement — September 11
 
 The production arithmetic tile now computes the fifth folded coefficient modulo
@@ -987,3 +1042,50 @@ No runtime execution-scaling claim is made by this structural milestone.
 The recoverable pre-cleanup source snapshot, baseline JUnit, dependency graph,
 and intermediate diagnostic runs remain outside the working tree at
 `/Users/john/Documents/number-compiler-cleanup-checkpoint/`.
+
+## September 12 cylinder-ray and étale restoration
+
+See [primary carry jet and factor output](research/power-numbers/primary-carry-jet-restoration.md)
+and [196/Collatz cylinder rays](cylinder-helix-rays.md). Exact carry-jet composition,
+conditional coefficient-factor output, demanded palindrome rejection, and cached
+Collatz helix child projection are available. The compact all-local étale
+selector and both all-future ray conjectures remain unproved; no release gate
+has been relaxed on the strength of bounded observations.
+
+The follow-up [Isabelle étale formalization](research/power-numbers/etale-isabelle-proof.md)
+checks the exact carry-jet algebra, all-local Fermat/Mersenne thresholds, proper
+factor output from every nontrivial quadratic root, and the odd-width Mersenne
+zero-section. The exact one-step key is available through
+`ArithmeticTile.step_with_primary_carry_jet()`, and `factor_from_etale_root`
+checks and consumes a supplied root. The 320-row corpus was clarified to be a
+factor-backed root-variety audit with no temporal admission. Fermat separation
+and the terminal defect/pullback construction remain outside the proved boundary.
+
+The [skew cylinder observer integration](cylinder-skew-observers.md) now derives
+Collatz modular, Hasse, twisted, Hensel, S-arithmetic and tropical observations
+from its existing shared event action. Fermat/Mersenne tiles expose compatible
+signed-field support; reverse/add exposes an optional mirror-obstruction ladder.
+The tropical divisor algebra has one production owner, reused by research.
+Two added Isabelle theories pass without oracle dependencies, and 138 selected
+Python tests pass. Three broader opt-in Collatz release failures reproduce on
+unchanged HEAD; the [validation record](../results/current/cylinder-skew-observers-2026-09-12/README.md)
+preserves them. Proper-factor output remains conditional on a separating
+observation; no universal CRT factor-discovery theorem is claimed.
+
+## September 12 adversarial-audit fixes
+
+The [CLI follow-up](cylinder-cli-release-fixes-2026-09-12.md) adds real demanded
+observer commands, bounds optional CLI arithmetic, removes redundant default
+gcd and width work, shares observer computations, and canonicalizes event-word
+association. Issued point applications reuse charged admission records while
+preserving live authority checks; invalid wiring is rejected before lookup.
+Isabelle now also checks the exact mirror stopping ladder, min-plus
+event-tree support, and the explicit Hensel residue/integrality equivalence. Candidate-derived terminal selectors, universal factor
+discovery, general nonlinear source quotients and all-future rays remain open.
+The full release gate remains unpassed. A frozen ordinary-unit run completed
+within the unchanged five-minute limit with 4,718 passes and four baseline
+failures; those four failures subsequently passed targeted checks after fixes.
+The final frozen ordinary-unit rerun hit the unchanged 300-second guard near
+the end with no captured failure markers; it is incomplete. The CLI follow-up
+records the exact results. The separate opt-in Collatz failures, production
+source-bridge/retention issues and mathematical obligations remain open.

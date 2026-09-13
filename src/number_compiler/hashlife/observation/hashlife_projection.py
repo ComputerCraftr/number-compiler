@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from collections.abc import Iterator, Sequence
+from typing import TYPE_CHECKING
 
 from number_compiler.arithmetic.contracts.block_effect import BlockEffect
 from number_compiler.arithmetic.contracts.exact_tree_context import (
@@ -45,6 +46,13 @@ from number_compiler.resources.metric_records import (
     HashLifeBehaviorMetrics,
     HashLifeProjectionMetrics,
 )
+
+if TYPE_CHECKING:
+    from number_compiler.hashlife.tiles.tile_context import TemporalCocycle
+    from number_compiler.arithmetic.polynomials.twisted_observer import (
+        TwistedCylinderProjection,
+    )
+    from number_compiler.sequences.collatz.physical_support import PhysicalSupport
 
 
 class HashLifeBlockIndex:
@@ -215,6 +223,26 @@ class HashLifeBlockIndex:
         self._point_queries += 1
         self._direct_powered_point_queries += 1
         return self._point_response.query(self.program, position, self._point)
+
+    @source_reads_only
+    def direct_temporal_cocycle(self) -> TemporalCocycle:
+        if type(self._lazy_application) is not LazyProjection:
+            raise ValueError("cocycle observation requires its tile application")
+        return self._lazy_application.temporal_cocycle()
+
+    @source_reads_only
+    def direct_physical_support(self) -> PhysicalSupport:
+        if type(self._lazy_application) is not LazyProjection:
+            raise ValueError("support observation requires its tile application")
+        return self._lazy_application.physical_support()
+
+    @source_reads_only
+    def direct_mirror_obstruction(
+        self, *, first_width: int = 1
+    ) -> TwistedCylinderProjection | None:
+        if type(self._lazy_application) is not LazyProjection:
+            raise ValueError("mirror observation requires its tile application")
+        return self._lazy_application.mirror_obstruction(first_width=first_width)
 
     def _point(self, position: int) -> int:
         """Read or publish one bounded exact point after program authentication."""

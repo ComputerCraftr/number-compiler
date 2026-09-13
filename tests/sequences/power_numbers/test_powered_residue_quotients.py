@@ -4,6 +4,10 @@ import pytest
 
 from devtools.proofs import exact_oracle
 from devtools.proofs.carry_action_quotient import CarryThresholdSignature
+from devtools.proofs.oracles.digit_power import (
+    lucas_lehmer_digit_field,
+    pepin_digit_field,
+)
 from devtools.proofs.oracles.special_primality import lucas_lehmer_test, pepin_test
 from number_compiler.api.sequence_compiler import CanonicalSequenceCompiler
 from number_compiler.api.sequence_types import (
@@ -38,10 +42,6 @@ from number_compiler.arithmetic.polynomials.digit_convolution import (
 from number_compiler.sequences.collatz.parity import (
     collatz_parity_slab,
     collatz_parity_word,
-)
-from number_compiler.sequences.power_numbers.digit_power import (
-    lucas_lehmer_digit_field,
-    pepin_digit_field,
 )
 from number_compiler.sequences.power_numbers.factor_morphism import (
     batched_special_factor_witness,
@@ -184,7 +184,7 @@ def test_special_digit_power_uses_shared_arithmetic_tile_without_legacy_convolut
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     import number_compiler.arithmetic.polynomials.digit_convolution as legacy
-    import number_compiler.sequences.power_numbers.digit_power as digit_power
+    from devtools.proofs.oracles import digit_power
 
     def forbidden(*args: object, **kwargs: object) -> None:
         raise AssertionError((args, kwargs))
@@ -292,9 +292,12 @@ def test_unified_compiler_retains_shared_sensitivity_and_digit_projection_interf
     assert fermat.terms[0].factor_witness is None
     assert fermat.terms[0].digit_projection is None
     f5 = compiler.resolve_special_theorem("fermat", 5)
-    assert f5.projection_method == "classical-ceiling:pepin-target-pullback"
+    assert f5.projection_method.startswith("terminal-threshold:")
     assert f5.primality is not None
-    assert f5.factor_witness is None and f5.primality.status == "composite"
+    assert f5.factor_witness is None and f5.primality.status == "unknown"
+    assert f5.primality.specialization_raw_squarings == 0
+    assert not f5.primality.decided and f5.primality.target_depth is None
+    assert f5.source_guard.failure_bit is None
     # The historical packed factor projection remains an explicit opt-in tool;
     # it is no longer charged to the default theorem path.
     f5_factor = CanonicalSequenceCompiler().resolve_special_theorem(
@@ -313,8 +316,11 @@ def test_unified_compiler_retains_shared_sensitivity_and_digit_projection_interf
     assert mersenne.terms[0].digit_projection is None
     assert mersenne.terms[0].primality is None
     m31 = compiler.resolve_special_theorem("mersenne", 31)
-    assert m31.projection_method == "classical-ceiling:lucas-lehmer-target-pullback"
-    assert m31.primality is not None and m31.primality.status == "prime"
+    assert m31.projection_method.startswith("terminal-threshold:")
+    assert m31.primality is not None and m31.primality.status == "unknown"
+    assert m31.primality.specialization_raw_squarings == 0
+    assert not m31.primality.decided and m31.primality.target_depth is None
+    assert m31.source_guard.failure_bit is None
 
 
 @exact_oracle()

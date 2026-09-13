@@ -119,6 +119,11 @@ def complete_collatz_root(
                     BoundaryTileView(value.output, 0, output_node.width),
                     BoundaryTileView(value.output, 0, output_node.width, 1),
                 )
+                support_arena = scheduler.physical_supports
+                physical_support = support_arena.concat(
+                    support_arena.odd,
+                    support_arena.run(False, ticks - 1),
+                )
                 completed = CompletedResult(
                     value.output,
                     value.outgoing,
@@ -131,6 +136,7 @@ def complete_collatz_root(
                     outgoing_boundaries,
                     value.fusion,
                     key.ports,
+                    physical_support,
                 )
                 scheduler.ledger.bump("tile_collatz_initial_root_completions")
                 scheduler.ledger.bump(

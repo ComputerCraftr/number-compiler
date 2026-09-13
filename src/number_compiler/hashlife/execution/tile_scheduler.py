@@ -1,10 +1,4 @@
-"""Demand-driven execution over canonical exact future tiles.
-
-The scheduler owns traversal.  Family adapters provide canonical compiled leaf
-functions and bounded interface operations; they cannot publish tiles or
-completed results.  A composed leaf is applied through its finite interface,
-never by flattening its temporal action into primitive steps.
-"""
+"""Demand-driven execution over canonical exact future tiles."""
 
 from __future__ import annotations
 
@@ -59,15 +53,11 @@ from number_compiler.resources.causal_workspace import (
 )
 from number_compiler.resources.stores import LedgerDict
 from number_compiler.resources.tile_dependency_leases import TileDependencyLeases
+from number_compiler.sequences.collatz.physical_support import PhysicalSupportArena
 
 
 class TileExecutionAdapter(Protocol):
-    """Fixed-interface family law consumed by the shared scheduler.
-
-    ``child_context`` and ``output_active`` must be bounded transfer
-    operations.  They may inspect canonical interface summaries, but must not
-    emit an exact sibling, scan source leaves, or invoke a temporal evaluator.
-    """
+    """Fixed-interface family law consumed by the shared scheduler."""
 
     complete_via_midpoint_tiles: bool
 
@@ -84,9 +74,7 @@ class TileExecutionAdapter(Protocol):
         action: FieldCellActionID,
     ) -> tuple[FieldCellActionID, FieldCellActionID] | None: ...
 
-    def action_cocycle(self, action: FieldCellActionID) -> TemporalCocycle:
-        """Return the verified constant-size cocycle for one action."""
-        ...
+    def action_cocycle(self, action: FieldCellActionID) -> TemporalCocycle: ...
 
     def leaf_observation(
         self,
@@ -101,17 +89,13 @@ class TileExecutionAdapter(Protocol):
         action: FieldCellActionID,
         source: TileID,
         wiring: ResultWiring,
-    ) -> LocalInterfaceID:
-        """Return the canonical, output-complete action/source-leaf product."""
-        ...
+    ) -> LocalInterfaceID: ...
 
     def apply_leaf(
         self,
         interface: LocalInterfaceID,
         ports: tuple[int, ...],
-    ) -> PrimitiveTileResult:
-        """Evaluate one already compiled finite leaf function."""
-        ...
+    ) -> PrimitiveTileResult: ...
 
     def child_context(
         self,
@@ -223,11 +207,24 @@ class TileScheduler:
         )
         self._causal_workspace = CausalSpatialWorkspace(self.ledger, prefix)
         self._causal_tasks = CausalTaskWorkspace(self.ledger, prefix)
+        self._physical_supports: PhysicalSupportArena | None = None
         self.results.attach_causal_tasks(self._causal_tasks)
         if not self.ledger.counters.get("tile_causal_accounting_version"):
             self.ledger.bump("tile_causal_accounting_version", 2)
         self._next_application = 0
         self.ledger.register_execution_root(self)
+
+    @property
+    def physical_supports(self) -> PhysicalSupportArena:
+        found = self._physical_supports
+        if found is None:
+            found = PhysicalSupportArena(
+                max_nodes=max(4096, self.ledger.max_nodes or 0),
+                ledger=self.ledger,
+            )
+            self.results.attach_physical_supports(found)
+            self._physical_supports = found
+        return found
 
     def _workspace_peak(self, size: int) -> None:
         previous = self.ledger.counters.get("tile_scheduler_workspace_peak", 0)
@@ -277,7 +274,6 @@ class TileScheduler:
         key: PoweredResultKey,
         lease: ResultLease,
     ) -> None:
-        """Atomically retain one causal result and its exact request inputs."""
         if (
             type(application) is not int
             or not 0 <= application < self._next_application
@@ -392,7 +388,9 @@ class TileScheduler:
         validate_execution_context(self, key)
 
     def _lookup_execution_key(self, key: PoweredResultKey) -> ResultLease | None:
-        return self.results.lookup(key, validate_context=self._validate_execution_context)
+        return self.results.lookup(
+            key, validate_context=self._validate_execution_context
+        )
 
     def _publish_leaf(
         self,
@@ -410,7 +408,6 @@ class TileScheduler:
             return self.results.publish(key, result)
 
     def _complete_leaf(self, root: PoweredResultKey) -> ResultLease:
-        """Complete a leaf after its caller has already checked the memo."""
         self.results._validate_key(root)
         source = self.tiles.resolve(root.input)
         if source.level or source.symbol is None:
@@ -456,6 +453,25 @@ class TileScheduler:
             value.semantics.outgoing_boundaries,
             observed_input_ports=bound.ports,
         )
+        from number_compiler.hashlife.execution.tile_physical_support import (
+            primitive_physical_support,
+        )
+
+        support = primitive_physical_support(self, root.action, root.input, bound.ports)
+        if support is not None:
+            semantics = ResultSemantics(
+                semantics.outgoing,
+                semantics.outgoing_ports,
+                semantics.physical_ticks,
+                semantics.event_weight,
+                semantics.frame_shift,
+                semantics.relative_origin,
+                semantics.relative_extent,
+                semantics.outgoing_boundaries,
+                semantics.fusion,
+                semantics.observed_input_ports,
+                support,
+            )
         self.ledger.bump("tile_scheduler_leaf_function_applications")
         return self._publish_leaf(root, value.symbol, semantics)
 
@@ -593,6 +609,11 @@ class TileScheduler:
         boundaries: BoundaryTileOperands = BoundaryTileOperands(),
         fusion: FusedBoundaryContract | None = None,
     ) -> ResultLease:
+        # Reject unsupported public wiring before consulting the result store.
+        # The store still performs full key/context admission on every lookup.
+        validator = getattr(self.adapter, "validate_wiring", None)
+        if validator is not None:
+            validator(action, wiring)
         key = self._key(action, source, ports, wiring, boundaries, fusion)
         found = self._lookup_execution_key(key)
         if found is not None:
@@ -768,18 +789,8 @@ class TileScheduler:
 
 
 class TileApplication:
-    """An observation owner that pins its input and any completed root result."""
-
-    __slots__ = (
-        "scheduler",
-        "identity",
-        "action",
-        "ports",
-        "wiring",
-        "_input",
-        "_root",
-        "_closed",
-        "__weakref__",
+    __slots__ = tuple(
+        "scheduler identity action ports wiring _input _root _closed __weakref__".split()
     )
 
     def __setattr__(self, name: str, value: object) -> None:
@@ -790,10 +801,7 @@ class TileApplication:
             "ports",
             "wiring",
             "_input",
-        } and hasattr(
-            self,
-            name,
-        ):
+        } and hasattr(self, name):
             raise AttributeError("tile application identity is immutable")
         object.__setattr__(self, name, value)
 
@@ -835,7 +843,7 @@ class TileApplication:
         self._closed = False
         scheduler.ledger.register_execution_root(self)
         try:
-            scheduler._applications.register(self)
+            scheduler._applications.register(self, key)
         except BaseException:
             self._input.close()
             raise
@@ -845,10 +853,9 @@ class TileApplication:
         return application_source(self)
 
     def validate_execution(self) -> None:
-        """Admit the live contract before an outer observation cache answers."""
-        self.scheduler._validate_execution_key(
-            PoweredResultKey(self.action, self.source, self.ports, self.wiring)
-        )
+        key = PoweredResultKey(self.action, self.source, self.ports, self.wiring)
+        self.scheduler.results._validate_base(key.action, key.input, key.wiring)
+        self.scheduler._validate_execution_context(key)
 
     def _cached_root(self) -> ResultLease | None:
         key = PoweredResultKey(self.action, self.source, self.ports, self.wiring)
@@ -862,7 +869,6 @@ class TileApplication:
         return found
 
     def _adopt_root(self, root: ResultLease) -> None:
-        """Transfer one completed lease to the registry's cleanup record."""
         try:
             self.scheduler._applications.replace_root(self, root)
         except BaseException:

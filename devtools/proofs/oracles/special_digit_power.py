@@ -1,11 +1,4 @@
-"""Bounded Fermat/Mersenne projections through the shared arithmetic tile.
-
-The canonical state is the tile's ``CyclotomicDigitBlock``.  Each recurrence
-uses the common convolution, quotient-ring reduction, and end-around carry
-owners.  The nonlinear iteration count remains explicit because no
-successor-congruent temporal square action has been certified for the shared
-scheduler.
-"""
+"""Bounded cyclic/negacyclic recurrence projections for research validation."""
 
 from __future__ import annotations
 
@@ -57,8 +50,8 @@ class DigitPowerProjectionResult:
     def description_bits(self) -> int:
         return (
             sum(
-                bit_width(v)
-                for v in (
+                bit_width(value)
+                for value in (
                     self.parameter,
                     self.modulus_bits,
                     self.iterations,
@@ -78,26 +71,25 @@ class DigitPowerProjectionResult:
 def lucas_lehmer_digit_field(
     exponent: int, *, max_exponent: int = 127
 ) -> DigitPowerProjectionResult:
-    """Run Lucas--Lehmer entirely through cyclic digit fields."""
+    """Run the bounded cyclic reference recurrence through digit fields."""
     p = int(exponent)
-    max_exponent = int(max_exponent)
-    if p < 2 or p > max_exponent:
-        raise ValueError((p, max_exponent))
+    maximum = int(max_exponent)
+    if p < 2 or p > maximum:
+        raise ValueError((p, maximum))
     if p == 2:
         return DigitPowerProjectionResult(
             "mersenne", p, p, 0, 0, True, 0, 0, 0, 0, 0, 0
         )
     iterations = p - 2
     run = ArithmeticTile.from_value(ArithmeticTileSpec.mersenne(p), 4).run(iterations)
-    residue = run.residue
     metrics = run.metrics
     return DigitPowerProjectionResult(
         "mersenne",
         p,
         p,
         iterations,
-        residue,
-        residue == 0,
+        run.residue,
+        run.residue == 0,
         metrics.scalar_multiplications,
         metrics.naive_scalar_products,
         metrics.coefficient_additions,
@@ -115,30 +107,29 @@ def lucas_lehmer_digit_field(
 def pepin_digit_field(
     index: int, *, base: int = 3, max_width: int = 64
 ) -> DigitPowerProjectionResult:
-    """Run Pepin entirely through negacyclic digit fields."""
+    """Run the bounded negacyclic reference recurrence through digit fields."""
     n = int(index)
     base = int(base)
-    max_width = int(max_width)
+    maximum = int(max_width)
     if n < 1 or base <= 1:
         raise ValueError((n, base))
     spec = FermatNumberSpec(n)
     width = spec.exponent
-    if width > max_width:
-        raise ValueError((width, max_width))
+    if width > maximum:
+        raise ValueError((width, maximum))
     modulus = (1 << width) + 1
     iterations = width - 1
     run = ArithmeticTile.from_value(ArithmeticTileSpec.fermat(width), base).run(
         iterations
     )
-    residue = run.residue
     metrics = run.metrics
     return DigitPowerProjectionResult(
         "fermat",
         n,
         width + 1,
         iterations,
-        residue,
-        residue == modulus - 1,
+        run.residue,
+        run.residue == modulus - 1,
         metrics.scalar_multiplications,
         metrics.naive_scalar_products,
         metrics.coefficient_additions,

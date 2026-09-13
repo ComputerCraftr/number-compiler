@@ -1,7 +1,4 @@
-"""Retirement-aware completed results over canonical future tiles.
-The memo owns no tile content.  Returned result leases explicitly pin completed
-output roots, while tile retirement removes every non-owning memo occurrence.
-"""
+"""Retirement-aware completed results over canonical future tiles."""
 
 from __future__ import annotations
 
@@ -281,6 +278,7 @@ class CompletedResultArena:
             Callable[[FieldCellActionID, ResultWiring, ResultWiring], object] | None
         ) = fused_wiring_validator
         self._causal_tasks: CausalTaskWorkspace | None = None
+        self._physical_supports: object | None = None
         self._interface_publication_seal = object()
         self._boundary_lease_count = 0
         prefix = f"completed-results-{len(ledger.inventory())}"
@@ -320,6 +318,27 @@ class CompletedResultArena:
         if self._causal_tasks is not None:
             raise ValueError("completed results already have a causal task workspace")
         self._causal_tasks = tasks
+
+    def attach_physical_supports(self, arena: object) -> None:
+        from number_compiler.sequences.collatz.physical_support import (
+            PhysicalSupportArena,
+        )
+
+        if type(arena) is not PhysicalSupportArena or arena.ledger is not self.ledger:
+            raise ValueError("physical support arena belongs to another index")
+        if self._physical_supports is not None and self._physical_supports is not arena:
+            raise ValueError("completed results already have a support arena")
+        self._physical_supports = arena
+
+    def validate_physical_support(self, support: object) -> None:
+        from number_compiler.sequences.collatz.physical_support import PhysicalSupport
+
+        arena = self._physical_supports
+        if arena is None or type(support) is not PhysicalSupport:
+            raise ValueError("completed result has no bound physical support arena")
+        if support.owner is not arena:
+            raise ValueError("completed result support belongs to another scheduler")
+        arena.validate(support)
 
     def _validate_ports(
         self,

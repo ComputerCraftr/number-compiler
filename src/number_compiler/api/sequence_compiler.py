@@ -517,29 +517,64 @@ class CanonicalSequenceCompiler:
         factor_limit: int = 1000,
         use_factor_projection: bool = False,
         use_terminal_certificate: bool = True,
-        allow_classical_ceiling: bool = True,
+        allow_classical_ceiling: bool = False,
+        collect_etale_factor: bool = False,
+        max_factor_products: int = 4096,
+        max_candidate_bits: int = 1_000_000,
     ) -> SpecialTheoremResolution:
         """Explicitly demand Fermat/Mersenne theorem classification.
 
         This is intentionally absent from :meth:`compile`.  Source digits,
         lengths, and radix programs are exact without primality.  Any survivor
         mask proved by earlier output construction is consumed first; only an
-        unresolved two-sheet mask reaches arithmetic theorem work.  Set
-        ``allow_classical_ceiling=False`` to keep an unresolved compact probe
-        guarded instead of executing the linear recurrence fallback.
+        unresolved two-sheet mask reaches arithmetic theorem work.  The
+        ``allow_classical_ceiling`` compatibility keyword rejects true because
+        reference recurrences are not production theorem sources.
+        ``collect_etale_factor=True`` requests a separate coefficient-gcd
+        witness.  A verified proper divisor can decide an unresolved candidate;
+        the additional quadratic ring work is reported explicitly.
         """
         if type(family) is not str:
             raise TypeError("special family must be a string")
         parameter = require_integer(parameter, "special parameter", 0)
         factor_limit = require_integer(factor_limit, "factor limit", 0)
+        max_factor_products = require_integer(max_factor_products, "factor products", 0)
         if (
             type(use_factor_projection) is not bool
             or type(use_terminal_certificate) is not bool
             or type(allow_classical_ceiling) is not bool
+            or type(collect_etale_factor) is not bool
         ):
             raise TypeError("special theorem policies must be Booleans")
+        if allow_classical_ceiling:
+            raise ValueError("classical primality recurrences are not production paths")
+        from number_compiler.sequences.power_numbers.admission import require_special_candidate_budget
+        require_special_candidate_budget(family, parameter, max_candidate_bits)
+        factor_witness_key = ("etale-factor-witness", family, parameter)
+        if collect_etale_factor:
+            # Factor output enriches the existing theorem result without replaying it.
+            known_witness = self._theorem_cache.get(factor_witness_key)
+            if known_witness is not None and known_witness.factor_witness is not None:
+                return known_witness
+            factor_cache_key = (
+                "etale-factor-output",
+                max_factor_products,
+                family,
+                parameter,
+                use_factor_projection,
+                factor_limit if use_factor_projection else 0,
+                use_terminal_certificate,
+            )
+            cached_factor = self._theorem_cache.get(factor_cache_key)
         state = self._special_constraint_state(family, parameter)
         pulled_bit = self._special_constraint_failure_bit(state)
+        if collect_etale_factor and cached_factor is not None:
+            support = state.support_gcd
+            modulus = state.support_modulus
+            if support is None or modulus is None or not 1 < support < modulus:
+                return cached_factor
+            if cached_factor.factor_witness == support:
+                return cached_factor
         if pulled_bit is not None:
             from number_compiler.projection.output_quotient import SpecialSourceGuard
             from number_compiler.sequences.power_numbers.theorem_query import (
@@ -559,26 +594,34 @@ class CanonicalSequenceCompiler:
                 else "pulled-back-output-constraint"
             )
             guard = SpecialSourceGuard(family, parameter, pulled_bit, method)
-            return SpecialTheoremResolution(
+            result = SpecialTheoremResolution(
                 family,
                 parameter,
                 guard,
                 projection_method=method,
                 factor_witness=proper_support,
             )
+            if collect_etale_factor:
+                from number_compiler.sequences.power_numbers.theorem_query import (
+                    with_etale_factor,
+                )
+
+                result = with_etale_factor(result, max_products=max_factor_products)
+                self._theorem_cache[factor_cache_key] = result
+                if result.factor_witness is not None:
+                    self._theorem_cache[factor_witness_key] = result
+            return result
         # A factor limit is semantically irrelevant when the optional factor
-        # projection is disabled.  Normalize it out of theorem-cache identity so
-        # callers cannot duplicate the same classical theorem result merely by
-        # changing an unused policy knob.
+        # projection is disabled.  Normalize it out of theorem-cache identity.
         factor_key = factor_limit if use_factor_projection else 0
-        ceiling_key = allow_classical_ceiling if use_terminal_certificate else False
         key = (
             family,
             parameter,
             factor_key,
             use_factor_projection,
             use_terminal_certificate,
-            ceiling_key,
+            collect_etale_factor,
+            max_factor_products if collect_etale_factor else 0,
         )
         old = self._theorem_cache.get(key)
         if old is not None:
@@ -594,6 +637,9 @@ class CanonicalSequenceCompiler:
             use_factor_projection=use_factor_projection,
             use_terminal_certificate=use_terminal_certificate,
             allow_classical_ceiling=allow_classical_ceiling,
+            collect_etale_factor=collect_etale_factor,
+            max_factor_products=max_factor_products,
+            max_candidate_bits=max_candidate_bits,
         )
         if out.source_guard.failure_bit is not None:
             from number_compiler.projection.output_quotient import SpecialBranchMask
@@ -602,6 +648,10 @@ class CanonicalSequenceCompiler:
                 0b10 if out.source_guard.failure_bit else 0b01
             )
             self._refine_special_constraint_mask(family, parameter, theorem_mask)
+        if collect_etale_factor:
+            self._theorem_cache[factor_cache_key] = out
+            if out.factor_witness is not None:
+                self._theorem_cache[factor_witness_key] = out
         self._theorem_cache[key] = out
         return out
 

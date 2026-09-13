@@ -159,9 +159,13 @@ def test_fermat_and_mersenne_are_actual_symbolic_radix_compilations_not_material
     assert f5.radix_word.factored_projection is None and f5.source_guard is None
     assert f5.digit_projection is None
     lazy_f5 = compiler.resolve_special_theorem("fermat", 5)
-    assert lazy_f5.projection_method == "classical-ceiling:pepin-target-pullback"
+    assert lazy_f5.projection_method.startswith("terminal-threshold:")
     assert lazy_f5.factor_witness is None
-    assert lazy_f5.primality is not None and lazy_f5.primality.status == "composite"
+    assert lazy_f5.primality is not None and lazy_f5.primality.status == "unknown"
+    assert lazy_f5.primality.specialization_raw_squarings == 0
+    assert not lazy_f5.primality.decided and lazy_f5.primality.target_depth is None
+    assert not lazy_f5.primality.scalable_construction
+    assert lazy_f5.source_guard.failure_bit is None
 
     mersenne = compiler.compile_diagnostic(
         MersenneSequenceSpec((11, 13, 15, 8191), test_through=31)
@@ -180,7 +184,7 @@ def test_fermat_and_mersenne_are_actual_symbolic_radix_compilations_not_material
     assert m13.primality is None and m13.source_guard is None
     assert (
         compiler.resolve_special_theorem("mersenne", 13).source_guard.failure_bit
-        is False
+        is None
     )
 
 
@@ -270,7 +274,7 @@ def test_prime_compiler_exposes_work_optimized_residual_divisor_quotient() -> No
     )
 
 
-def test_special_theorem_query_short_circuits_known_composites_only_when_demanded() -> (
+def test_special_theorem_query_leaves_unproved_special_cases_unknown() -> (
     None
 ):
     compiler = CanonicalSequenceCompiler()
@@ -282,10 +286,12 @@ def test_special_theorem_query_short_circuits_known_composites_only_when_demande
     assert compiler.theorem_cache_size == 0
 
     f5 = compiler.resolve_special_theorem("fermat", 5)
-    assert f5.projection_method == "classical-ceiling:pepin-target-pullback"
+    assert f5.projection_method.startswith("terminal-threshold:")
     assert f5.factor_witness is None
-    assert f5.primality is not None and f5.primality.status == "composite"
-    assert f5.source_guard.failure_bit is True
+    assert f5.primality is not None and f5.primality.status == "unknown"
+    assert f5.primality.specialization_raw_squarings == 0
+    assert not f5.primality.decided and f5.primality.target_depth is None
+    assert f5.source_guard.failure_bit is None
 
     raw = compiler.compile_diagnostic(
         MersenneSequenceSpec((11, 23, 31), test_through=31)
@@ -295,16 +301,18 @@ def test_special_theorem_query_short_circuits_known_composites_only_when_demande
     m11 = compiler.resolve_special_theorem("mersenne", 11)
     m23 = compiler.resolve_special_theorem("mersenne", 23)
     m31 = compiler.resolve_special_theorem("mersenne", 31)
-    assert m11.projection_method == "classical-ceiling:lucas-lehmer-target-pullback"
-    assert m23.projection_method == "classical-ceiling:lucas-lehmer-target-pullback"
-    assert m31.projection_method == "classical-ceiling:lucas-lehmer-target-pullback"
+    assert all(
+        row.projection_method.startswith("terminal-threshold:")
+        for row in (m11, m23, m31)
+    )
     assert m11.factor_witness is m23.factor_witness is m31.factor_witness is None
-    assert m11.primality is not None
-    assert m11.primality.status == "composite"
-    assert m23.primality is not None
-    assert m23.primality.status == "composite"
-    assert m31.primality is not None
-    assert m31.primality.status == "prime"
+    for row in (m11, m23, m31):
+        assert row.primality is not None
+        assert row.primality.status == "unknown"
+        assert row.primality.specialization_raw_squarings == 0
+        assert not row.primality.decided and row.primality.target_depth is None
+        assert not row.primality.scalable_construction
+        assert row.source_guard.failure_bit is None
 
 
 def test_unused_factor_limit_is_not_part_of_default_theorem_cache_identity() -> None:
@@ -636,7 +644,7 @@ def test_collatz_compilation_exposes_one_self_branching_successor_not_an_itinera
     assert collatz.branches == ()
 
 
-def test_default_special_theorem_ceiling_skips_factor_automaton_before_recurrence(
+def test_default_special_theorem_fails_closed_without_factor_or_recurrence(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     import number_compiler.arithmetic.fields.congruence_automaton as congruence_automaton
@@ -655,13 +663,15 @@ def test_default_special_theorem_ceiling_skips_factor_automaton_before_recurrenc
     f4 = compiler.resolve_special_theorem("fermat", 4)
     m13 = compiler.resolve_special_theorem("mersenne", 13)
     assert f4.primality is not None
-    assert f4.primality.status == "prime"
-    assert f4.primality is not None
-    assert f4.primality.specialization_raw_squarings == 15
+    assert f4.primality.status == "unknown"
+    assert f4.primality.specialization_raw_squarings == 0
+    assert not f4.primality.decided and f4.primality.target_depth is None
+    assert f4.source_guard.failure_bit is None
     assert m13.primality is not None
-    assert m13.primality.status == "prime"
-    assert m13.primality is not None
-    assert m13.primality.specialization_raw_squarings == 11
+    assert m13.primality.status == "unknown"
+    assert m13.primality.specialization_raw_squarings == 0
+    assert not m13.primality.decided and m13.primality.target_depth is None
+    assert m13.source_guard.failure_bit is None
     assert f4.factored_projection is None and m13.factored_projection is None
 
 

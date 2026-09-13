@@ -24,22 +24,28 @@ The query result lattice is deliberately explicit:
 
     ALL_PASS | ALL_FAIL | SPLIT(g,N/g) | UNKNOWN
 
-Only an independently proved candidate-derived chunk extractor may return the
-first three for a nontrivial candidate.  The local r-level Frobenius quotient
-is already represented by :mod:`special_frobenius_chunk`; its unfactored
-zero-class extraction remains fail-closed.  Tiny cases whose guaranteed base
-stride already exceeds the square-root bound can be decided structurally; deeper
-candidates remain ``UNKNOWN`` until the chunk coefficient extractor is proved.
+Only an independently proved candidate-derived transverse unit/annihilator
+extractor may return the first three for a nontrivial candidate.  Production
+now retains the correct symbolic square-root progression but does not evaluate
+its linear-size interval product.  Tiny cases whose guaranteed base stride
+already exceeds the square-root bound can be decided structurally; deeper
+candidates remain ``UNKNOWN`` until the compact holonomy pullback is proved.
 """
 
 from __future__ import annotations
 
 from dataclasses import dataclass
 
+from number_compiler.sequences.power_numbers.admission import (
+    require_special_candidate_budget,
+)
 from number_compiler.sequences.power_numbers.frobenius_chunk import (
     SpecialFrobeniusChunkSpec,
 )
-from number_compiler.sequences.power_numbers.germ import build_special_germ_plan
+from number_compiler.sequences.power_numbers.transverse_pullback import (
+    SpecialTransverseWindow,
+    build_compact_transverse_pullback,
+)
 
 
 @dataclass(frozen=True, slots=True)
@@ -104,6 +110,10 @@ class SpecialTerminalThresholdResult:
     candidate_derived: bool = True
     carrier_states_enumerated: int = 0
     raw_specialization_squarings: int = 0
+    transverse_window: SpecialTransverseWindow | None = None
+    transverse_pullbacks: int = 0
+    transverse_atom_evaluations: int = 0
+    transverse_product_multiplications: int = 0
 
     def __post_init__(self) -> None:
         if self.family not in ("fermat", "mersenne"):
@@ -114,6 +124,17 @@ class SpecialTerminalThresholdResult:
             raise ValueError((self.level, self.modulus_bits))
         if self.carrier_states_enumerated or self.raw_specialization_squarings:
             raise ValueError("terminal threshold query cannot hide carrier/replay work")
+        if min(
+            self.transverse_pullbacks,
+            self.transverse_atom_evaluations,
+            self.transverse_product_multiplications,
+        ) < 0:
+            raise ValueError("transverse work counters cannot be negative")
+        if self.transverse_window is not None and (
+            self.transverse_window.family != self.family
+            or self.transverse_window.parameter != self.parameter
+        ):
+            raise ValueError("terminal result has another transverse window")
         if min(self.character_queries, self.reciprocity_descents) < 0:
             raise ValueError((self.character_queries, self.reciprocity_descents))
         if self.status == "SPLIT":
@@ -349,7 +370,7 @@ def prime_decision_chunk_spec(
 
 
 def terminal_threshold_probe(
-    family: str, parameter: int
+    family: str, parameter: int, *, max_candidate_bits: int = 1_000_000
 ) -> SpecialTerminalThresholdResult:
     """Return the exact terminal threshold result currently known scalably.
 
@@ -357,6 +378,9 @@ def terminal_threshold_probe(
     New higher-Kummer/Artin constructions belong here only after they have a
     complete proof and explicit nonunit/gcd accounting.
     """
+    # Admit the symbolic candidate before terminal_threshold_spec computes any
+    # family metadata containing ``2^parameter``.
+    require_special_candidate_budget(family, parameter, max_candidate_bits)
     spec = terminal_threshold_spec(family, parameter)
     if spec.family == "fermat" and spec.parameter == 2:
         return _fermat_f2_terminal_witness()
@@ -373,20 +397,28 @@ def terminal_threshold_probe(
             spec.modulus_bits,
         )
 
-    chunk_spec = prime_decision_chunk_spec(spec)
-    # The prime-clock-style germ plan separates logarithmic dyadic transport
-    # from the single support observation.  The observation itself remains
-    # fail-closed until its candidate-derived extractor is proved.
-    chunk = build_special_germ_plan(chunk_spec).probe()
+    # The relevant candidate-derived object is the transverse Frobenius
+    # holonomy, not a supplied zero-section defect.  Keep its square-root
+    # progression symbolic: a balanced product tree would still evaluate every
+    # atom.  The compact request remains fail-closed until a source-bound
+    # unit/annihilator evaluator is proved and implemented.
+    pullback = build_compact_transverse_pullback(
+        spec.family,
+        spec.parameter,
+        max_candidate_bits=max_candidate_bits,
+    )
     return SpecialTerminalThresholdResult(
         spec.family,
         spec.parameter,
         spec.prime_decision_level,
-        chunk.status,
-        chunk.method,
+        "UNKNOWN",
+        pullback.method,
         spec.modulus_bits,
-        gcd_packet=chunk.gcd_packet,
-        candidate_derived=chunk.candidate_derived,
+        candidate_derived=pullback.candidate_derived,
+        transverse_window=pullback.window,
+        transverse_pullbacks=1,
+        transverse_atom_evaluations=pullback.atom_evaluations,
+        transverse_product_multiplications=pullback.product_multiplications,
     )
 
 

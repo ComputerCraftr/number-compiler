@@ -325,12 +325,55 @@ def _parser() -> argparse.ArgumentParser:
     classify.add_argument("family", choices=("fermat", "mersenne"))
     classify.add_argument("index", type=_cli_integer)
     classify.add_argument("--format", choices=("value", "json"), default="value")
-    classify.add_argument("--max-candidate-bits", type=_cli_integer, default=1_000_000)
     classify.add_argument(
-        "--allow-classical-ceiling",
+        "--factor",
         action="store_true",
-        help="permit exact recurrence work if the compact certificate is unresolved",
+        help="print an available factor; permit a separately counted etale witness query",
     )
+    classify.add_argument("--max-factor-products", type=_cli_integer, default=4096)
+    classify.add_argument("--max-candidate-bits", type=_cli_integer, default=1_000_000)
+    observe = sub.add_parser("observe", help="demand a bounded cylinder observation")
+    observe.add_argument("family", choices=("collatz", "196", "fermat", "mersenne"))
+    observe.add_argument(
+        "index",
+        type=_cli_integer,
+        help="accelerated events (physical ticks for physical-clock), generation, or special parameter",
+    )
+    observe.add_argument(
+        "--kind",
+        choices=(
+            "clock",
+            "physical-clock",
+            "modular",
+            "twisted",
+            "hasse",
+            "hensel",
+            "tropical",
+            "factor",
+            "mirror",
+            "root",
+        ),
+    )
+    observe.add_argument("--seed", type=_cli_integer)
+    observe.add_argument(
+        "--defect",
+        type=_cli_integer,
+        help="supplied quadratic root, checked before observation",
+    )
+    observe.add_argument("--modulus", type=_cli_integer, default=257)
+    observe.add_argument("--width", type=_cli_integer, default=2)
+    observe.add_argument("--sign", type=_cli_integer, choices=(-1, 1), default=-1)
+    observe.add_argument("--precision", type=_cli_integer, default=8)
+    observe.add_argument("--target", type=_cli_integer, default=0)
+    observe.add_argument("--s-weight", type=_cli_integer, default=1)
+    observe.add_argument("--z-weight", type=_cli_integer, default=1)
+    observe.add_argument(
+        "--max-events",
+        type=_cli_integer,
+        default=4096,
+        help="cap accelerated events, or physical ticks for physical-clock",
+    )
+    observe.add_argument("--max-digits", type=_cli_integer, default=4096)
     sub.add_parser("families", help="list canonical sequence/index semantics")
     return parser
 
@@ -339,16 +382,31 @@ def _classify(args: argparse.Namespace) -> int:
     """Resolve the demanded terminal bit without a hidden recurrence fallback."""
     index = _integer(args.index, "index", 2 if args.family == "mersenne" else 0)
     cap = _integer(args.max_candidate_bits, "--max-candidate-bits", 1)
-    bits: int | DyadicExtent = DyadicExtent(index, 1) if args.family == "fermat" else index
-    if bits > cap:
-        raise ValueError(f"candidate exceeds --max-candidate-bits ({cap})")
+    from number_compiler.sequences.power_numbers.admission import (
+        require_special_candidate_budget,
+    )
+
+    try:
+        require_special_candidate_budget(args.family, index, cap)
+    except ValueError:
+        raise ValueError(f"candidate exceeds --max-candidate-bits ({cap})") from None
     from number_compiler.api.sequence_compiler import CanonicalSequenceCompiler
 
+    factor_budget = _integer(args.max_factor_products, "--max-factor-products", 0)
     resolution = CanonicalSequenceCompiler().resolve_special_theorem(
-        args.family, index, allow_classical_ceiling=args.allow_classical_ceiling
+        args.family,
+        index,
+        collect_etale_factor=args.factor,
+        max_factor_products=factor_budget,
+        max_candidate_bits=cap,
     )
     failure = resolution.source_guard.failure_bit
     status = "unknown" if failure is None else "composite" if failure else "prime"
+    factor_expression = (
+        None
+        if resolution.composite_exponent_factor is None
+        else f"2^{resolution.composite_exponent_factor.exponent}-1"
+    )
     if args.format == "json":
         print(
             json.dumps(
@@ -358,19 +416,30 @@ def _classify(args: argparse.Namespace) -> int:
                     "status": status,
                     "decided": resolution.decided,
                     "method": resolution.projection_method,
-                    "classical_ceiling_allowed": args.allow_classical_ceiling,
+                    "factor_query_status": resolution.factor_query_status,
                     "certificate": (
                         None
                         if resolution.primality is None
                         else asdict(resolution.primality)
                     ),
                     "factor_witness": resolution.factor_witness,
+                    "factor_proof": (
+                        "proper-coefficient-gcd"
+                        if resolution.factor_witness is not None
+                        else None
+                    ),
+                    "factor_expression": factor_expression,
+                    "etale_ring_multiplications": resolution.etale_ring_multiplications,
                 },
                 sort_keys=True,
             )
         )
     else:
         print(status)
+        if args.factor and resolution.factor_witness is not None:
+            print(f"factor: {resolution.factor_witness}")
+        elif args.factor and factor_expression is not None:
+            print(f"factor: {factor_expression}")
     return 0 if resolution.decided else 3
 
 
@@ -399,6 +468,11 @@ def main(argv: list[str] | None = None) -> int:
         return 0
 
     try:
+        if args.command == "observe":
+            from number_compiler.api.cylinder_observation import execute_observation
+
+            print(json.dumps(execute_observation(args), sort_keys=True))
+            return 0
         if args.command == "classify":
             return _classify(args)
         _validate_arguments(args)

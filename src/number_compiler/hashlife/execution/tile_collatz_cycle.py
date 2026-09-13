@@ -14,6 +14,7 @@ from number_compiler.hashlife.tiles.tiles import (
     TileID,
     TileLease,
 )
+from number_compiler.sequences.collatz.physical_support import PhysicalSupport
 
 if TYPE_CHECKING:
     from number_compiler.hashlife.execution.tile_scheduler import TileScheduler
@@ -64,7 +65,9 @@ def _power_of_two_exponent(
         if record.left is None or record.right is None:
             raise ValueError("malformed Collatz source tile")
         if not ready:
-            pending.extend(((current, True), (record.right, False), (record.left, False)))
+            pending.extend(
+                ((current, True), (record.right, False), (record.left, False))
+            )
             peak_pending = max(peak_pending, len(pending))
             continue
         left = summaries[record.left]
@@ -105,6 +108,11 @@ def _power_of_two_exponent(
 def _event_weight(cycle_ticks: int) -> int:
     """Count odd events after a power of two reaches cycle phase one."""
     return (cycle_ticks + 2) // 3
+
+
+def _cycle_support(scheduler: TileScheduler, entry: int, cycle: int) -> PhysicalSupport:
+    """Construct the proved E**entry (O E E)**q prefix in temporal order."""
+    return scheduler.physical_supports._proved_collatz_power_two_tail(entry, cycle)
 
 
 def _compact_cycle_tile(
@@ -225,6 +233,9 @@ def complete_collatz_cycle(
                     result.relative_origin,
                     scheduler.tiles.resolve(output.tile).extent,
                     observed_input_ports=result.observed_input_ports,
+                    physical_support=_cycle_support(
+                        scheduler, entry_ticks, cycle_ticks
+                    ),
                 )
                 scheduler.ledger.bump("tile_collatz_cycle_completions")
                 if entry_ticks:

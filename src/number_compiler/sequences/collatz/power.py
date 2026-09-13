@@ -19,7 +19,7 @@ from __future__ import annotations
 
 from collections.abc import Callable, Iterable
 from dataclasses import dataclass
-from typing import Literal, TypeVar
+from typing import Literal, TypeVar, cast
 
 from number_compiler.arithmetic.fields.morphism_core import (
     DyadicAffineCocycle,
@@ -27,6 +27,8 @@ from number_compiler.arithmetic.fields.morphism_core import (
     LazyLoweringCache,
     binary_power,
 )
+
+from number_compiler.arithmetic.functions.word_concatenation import concatenate_words
 
 Branch = Literal["E", "O"]
 
@@ -411,6 +413,8 @@ class CollatzEventArena:
     __slots__ = (
         "_by_key",
         "_cocycle_cache",
+        "_concat_cache",
+        "_uniform",
         "_events",
         "_identity",
         "_nodes",
@@ -423,6 +427,8 @@ class CollatzEventArena:
         self._nodes: list[CollatzEventNode] = []
         self._by_key: dict[tuple[object, ...], CollatzEventNode] = {}
         self._events: dict[int, CollatzEventNode] = {}
+        self._concat_cache: dict[tuple[int, int], CollatzEventNode] = {}
+        self._uniform: dict[int, int | None] = {}
         self._cocycle_cache: LazyLoweringCache[int, DyadicAffineCocycle] = (
             LazyLoweringCache()
         )
@@ -466,6 +472,15 @@ class CollatzEventArena:
     def identity(self) -> CollatzEventNode:
         return self._identity
 
+    def validate_node(self, node: CollatzEventNode) -> None:
+        if (
+            type(node) is not CollatzEventNode
+            or node.node_id < 1
+            or node.node_id > len(self._nodes)
+            or self._nodes[node.node_id - 1] is not node
+        ):
+            raise ValueError("event node belongs to another arena")
+
     def event(self, valuation: int) -> CollatzEventNode:
         k = int(valuation)
         if k <= 0:
@@ -480,23 +495,64 @@ class CollatzEventArena:
             "event",
             valuation=k,
         )
+        self._uniform[node.node_id] = k
         self._events[k] = node
         return node
 
-    def concat(
+    def _join(
         self, first: CollatzEventNode, second: CollatzEventNode
     ) -> CollatzEventNode:
-        if first.kind == "identity":
-            return second
-        if second.kind == "identity":
-            return first
         self.composition_operations += 1
-        return self._intern(
+        node = self._intern(
             ("concat", first.node_id, second.node_id),
             first.effect.then(second.effect),
             "concat",
             left=first,
             right=second,
+        )
+        a, b = self._uniform.get(first.node_id), self._uniform.get(second.node_id)
+        self._uniform[node.node_id] = a if a == b else None
+        return node
+
+    def _uniform_word(self, valuation: int, count: int) -> CollatzEventNode:
+        """Construct the canonical shape of one run, with logarithmic nodes."""
+        if count == 0:
+            return self.identity
+        block = self.event(valuation)
+        selected = []
+        while count:
+            if count & 1:
+                selected.append(block)
+            count >>= 1
+            if count:
+                block = self._join(block, block)
+        result = selected[0]
+        for block in selected[1:]:
+            result = self._join(block, result)
+        return result
+
+    def concat(
+        self, first: CollatzEventNode, second: CollatzEventNode
+    ) -> CollatzEventNode:
+        """Unique largest-dyadic-prefix association of an event word.
+
+        Pending joins are evaluated iteratively and memoized by input nodes.
+        Shared subwords stay shared; no exact affine value or sampled hash is
+        used to decide equality. This quotients association, not distinct words.
+        """
+        self.validate_node(first)
+        self.validate_node(second)
+        return concatenate_words(
+            first, second,
+            key_of=lambda node: node.node_id,
+            length=lambda node: node.effect.events,
+            children=lambda node: (cast(CollatzEventNode, node.left),
+                                   cast(CollatzEventNode, node.right)),
+            uniform=lambda node: self._uniform.get(node.node_id),
+            run=self._uniform_word,
+            join=self._join,
+            cache=self._concat_cache,
+            reserve=lambda: None,
         )
 
     def from_valuations(self, valuations: Iterable[int]) -> CollatzEventNode:
@@ -507,6 +563,13 @@ class CollatzEventArena:
         )
 
     def power(self, node: CollatzEventNode, exponent: int) -> CollatzEventNode:
+        self.validate_node(node)
+        exponent = int(exponent)
+        if exponent < 0:
+            raise ValueError(exponent)
+        uniform = self._uniform.get(node.node_id)
+        if uniform is not None:
+            return self._uniform_word(uniform, node.effect.events * exponent)
         return binary_power(
             node,
             int(exponent),

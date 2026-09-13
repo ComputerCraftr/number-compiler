@@ -14,7 +14,6 @@ claim for arbitrary Collatz sources.
 from __future__ import annotations
 
 from collections.abc import Callable
-from dataclasses import dataclass
 
 from number_compiler.arithmetic.contracts.block_effect import BlockContextBudgetExceeded
 from number_compiler.arithmetic.functions.decision import MultiTerminalDecisionArena
@@ -23,197 +22,15 @@ from number_compiler.sequences.collatz.hensel_cylinders import (
     HenselAffineBlock,
     HenselCylinder,
 )
+from devtools.experiments.collatz.physical_support import PhysicalSupport, PhysicalSupportArena
 
 
-@dataclass(frozen=True, slots=True)
-class FreeCylinderResidualID:
-    """Arena-local identity of one canonical free residual function."""
-
-    owner: object
-    index: int
-
-
-@dataclass(frozen=True, slots=True)
-class BoundCylinderEndpoint:
-    """A bound seam after all source-cylinder predicates were consumed."""
-
-    target: int
-    accelerated_events: int
-    physical_ticks: int
-
-    def __post_init__(self) -> None:
-        if any(
-            type(value) is not int
-            for value in (self.target, self.accelerated_events, self.physical_ticks)
-        ):
-            raise TypeError("bound Collatz endpoint fields require exact integers")
-        if self.target <= 0:
-            raise ValueError("bound Collatz endpoint must be positive")
-        if self.accelerated_events < 0 or self.physical_ticks < 0:
-            raise ValueError(self)
-
-
-@dataclass(frozen=True, slots=True)
-class BoundCylinderAction:
-    """Selected whole-block transport after its source predicate is consumed."""
-
-    constant_target: int | None
-    transport: HenselAffineBlock | None
-    accelerated_events: int
-    physical_ticks: int
-
-    def __post_init__(self) -> None:
-        if (self.constant_target is None) == (self.transport is None):
-            raise ValueError("bound action requires one output representation")
-        if self.constant_target is not None and self.constant_target <= 0:
-            raise ValueError("constant Collatz endpoint must be positive")
-        if self.transport is not None:
-            if type(self.transport) is not HenselAffineBlock:
-                raise TypeError("bound cylinder transport has the wrong type")
-            if self.accelerated_events != self.transport.steps:
-                raise ValueError("bound action event count disagrees with transport")
-            if self.physical_ticks != self.transport.steps + self.transport.divisions:
-                raise ValueError("bound action physical weight disagrees with transport")
-
-    def apply_exact(self, source: int) -> int:
-        if self.constant_target is not None:
-            return self.constant_target
-        if self.transport is None:
-            raise AssertionError("bound action has no output representation")
-        return int(self.transport.apply_exact(source))
-
-
-@dataclass(frozen=True, slots=True)
-class _ConsumerOutput:
-    """Output after a bounded source guard has been consumed."""
-
-    constant_target: int | None = None
-    transport: HenselAffineBlock | None = None
-
-    def __post_init__(self) -> None:
-        if (self.constant_target is None) == (self.transport is None):
-            raise ValueError("consumer output requires one representation")
-
-
-@dataclass(frozen=True, slots=True)
-class _ConsumerAction:
-    """Output identity and occurrence weight remain distinct coordinates."""
-
-    output: _ConsumerOutput
-    event_weight: int
-    physical_ticks: int
-
-
-@dataclass(frozen=True, slots=True)
-class _CylinderBranch:
-    domain: HenselCylinder
-    action: _ConsumerAction
-
-
-@dataclass(frozen=True, slots=True)
-class _FreeCylinderResidual:
-    accelerated_events: int | None
-    physical_ticks: int | None
-    max_source_bits: int
-    predicate_bits: int
-    decision_root: int
-    branches: tuple[_CylinderBranch, ...]
-
-
-@dataclass(frozen=True, slots=True)
-class _GuardTrieNode:
-    """One hash-consed low-to-high cylinder-prefix decision."""
-
-    terminal: _ConsumerAction | None
-    zero: int | None
-    one: int | None
-
-
-def _bounded_cylinder_nonempty(cylinder: HenselCylinder, bits: int) -> bool:
-    """Whether ``C(q,r)`` contains a positive integer below ``2**bits``."""
-    limit = 1 << bits
-    first_positive = cylinder.residue or 1 << cylinder.bits
-    return bool(first_positive < limit)
-
-
-def _branch_key(branch: _CylinderBranch) -> tuple[int, ...]:
-    domain, action = branch.domain, branch.action
-    transport = action.output.transport
-    return (
-        domain.bits,
-        domain.residue,
-        action.event_weight,
-        action.physical_ticks,
-        -1 if action.output.constant_target is None else action.output.constant_target,
-        -1 if transport is None else transport.steps,
-        -1 if transport is None else transport.divisions,
-        -1 if transport is None else transport.offset,
-    )
-
-
-def _consume_guard(branch: _CylinderBranch, source_bits: int) -> _ConsumerAction:
-    """Consume a bounded guard into its extensional output and separate weight."""
-    domain, action = branch.domain, branch.action
-    transport = action.output.transport
-    if transport is None:
-        return action
-    modulus = 1 << domain.bits
-    first = domain.residue or modulus
-    if first + modulus >= 1 << source_bits:
-        numerator = 3**transport.steps * first + transport.offset
-        denominator = 1 << transport.divisions
-        if numerator % denominator:
-            raise AssertionError("singleton guard lost affine integrality")
-        output = _ConsumerOutput(constant_target=numerator // denominator)
-    else:
-        output = _ConsumerOutput(transport=transport)
-    return _ConsumerAction(output, action.event_weight, action.physical_ticks)
-
-
-def _constant_target(action: _ConsumerAction) -> int:
-    target = action.output.constant_target
-    if target is None:
-        raise AssertionError("consumer output is not constant")
-    return target
-
-
-def _coalesce_sibling_guards(
-    branches: list[_CylinderBranch],
-) -> tuple[_CylinderBranch, ...]:
-    """Merge equal consumer leaves across complete sibling cylinders."""
-    by_guard: dict[tuple[int, int], _ConsumerAction] = {}
-    for branch in branches:
-        key = branch.domain.bits, branch.domain.residue
-        found = by_guard.get(key)
-        if found is not None and found != branch.action:
-            raise AssertionError("one cylinder has conflicting consumers")
-        by_guard[key] = branch.action
-    maximum = max((bits for bits, _residue in by_guard), default=0)
-    for bits in range(maximum, 0, -1):
-        high_bit = 1 << (bits - 1)
-        lows = sorted(
-            residue
-            for guard_bits, residue in by_guard
-            if guard_bits == bits and not residue & high_bit
-        )
-        for residue in lows:
-            left_key = bits, residue
-            right_key = bits, residue | high_bit
-            left = by_guard.get(left_key)
-            right = by_guard.get(right_key)
-            if left is None or left != right:
-                continue
-            del by_guard[left_key]
-            del by_guard[right_key]
-            parent_key = bits - 1, residue
-            parent = by_guard.get(parent_key)
-            if parent is not None and parent != left:
-                raise AssertionError("coalesced cylinder conflicts with its parent")
-            by_guard[parent_key] = left
-    return tuple(
-        _CylinderBranch(HenselCylinder(bits, residue), action)
-        for (bits, residue), action in by_guard.items()
-    )
+from devtools.experiments.collatz.free_cylinder_consumers import (
+    BoundCylinderAction, BoundCylinderEndpoint, FreeCylinderResidualID,
+    _ConsumerAction, _ConsumerOutput, _CylinderBranch, _FreeCylinderResidual,
+    _GuardTrieNode, _bounded_cylinder_nonempty, _branch_key, _coalesce_sibling_guards,
+    _constant_target, _consume_guard,
+)
 
 
 class FreeCylinderResidualArena:
@@ -232,6 +49,7 @@ class FreeCylinderResidualArena:
         max_actions: int = 4096,
         max_branches: int = 65536,
         max_pair_checks: int = 1000000,
+        max_support_nodes: int = 65536,
     ) -> None:
         values = (max_precision, max_actions, max_branches, max_pair_checks)
         if any(type(value) is not int or value < 1 for value in values):
@@ -242,6 +60,7 @@ class FreeCylinderResidualArena:
         self.max_actions = max_actions
         self.max_branches = max_branches
         self.max_pair_checks = max_pair_checks
+        self.supports = PhysicalSupportArena(max_nodes=max_support_nodes)
         self._owner = object()
         self._nodes: list[_FreeCylinderResidual] = []
         self._keys: dict[tuple[object, ...], FreeCylinderResidualID] = {}
@@ -366,8 +185,7 @@ class FreeCylinderResidualArena:
                 HenselCylinder.from_root(k + 1, 1, 1 - (1 << k)),
                 _ConsumerAction(
                     _ConsumerOutput(transport=HenselAffineBlock(1, k, 1)),
-                    1,
-                    1 + k,
+                    self.supports.event(k),
                 ),
             )
             for k in range(1, precision)
@@ -391,16 +209,14 @@ class FreeCylinderResidualArena:
                     HenselCylinder(1, 0),
                     _ConsumerAction(
                         _ConsumerOutput(transport=HenselAffineBlock(0, 1, 0)),
-                        0,
-                        1,
+                        self.supports.even,
                     ),
                 ),
                 _CylinderBranch(
                     HenselCylinder(1, 1),
                     _ConsumerAction(
                         _ConsumerOutput(transport=HenselAffineBlock(1, 0, 1)),
-                        1,
-                        1,
+                        self.supports.odd,
                     ),
                 ),
             ),
@@ -496,15 +312,14 @@ class FreeCylinderResidualArena:
             raise AssertionError("consumer action is not integral on its guard")
         return int(numerator // denominator)
 
-    @classmethod
     def _then_consumers(
-        cls, before: _ConsumerAction, after: _ConsumerAction
+        self, before: _ConsumerAction, after: _ConsumerAction
     ) -> _ConsumerAction:
         if after.output.constant_target is not None:
             output = after.output
         elif before.output.constant_target is not None:
             output = _ConsumerOutput(
-                constant_target=cls._apply_consumer(
+                constant_target=self._apply_consumer(
                     after, before.output.constant_target
                 )
             )
@@ -516,8 +331,7 @@ class FreeCylinderResidualArena:
             output = _ConsumerOutput(transport=first.then(second))
         return _ConsumerAction(
             output,
-            before.event_weight + after.event_weight,
-            before.physical_ticks + after.physical_ticks,
+            self.supports.concat(before.support, after.support),
         )
 
     def _select_value(
@@ -600,8 +414,7 @@ class FreeCylinderResidualArena:
                         endpoint, events = source // 2, 0
                     mapping[source] = _ConsumerAction(
                         _ConsumerOutput(constant_target=endpoint),
-                        events,
-                        1,
+                        self.supports.odd if events else self.supports.even,
                     )
                     self.parity_germ_applications += 1
                     self.future_endpoint_consumptions += 1
@@ -892,6 +705,7 @@ class FreeCylinderResidualArena:
             transport.output.transport,
             transport.event_weight,
             transport.physical_ticks,
+            transport.support,
         )
 
     def bind(self, residual: FreeCylinderResidualID, source: int) -> BoundCylinderEndpoint:
@@ -923,7 +737,8 @@ class FreeCylinderResidualArena:
         internal_nodes = 0
         terminals = 0
         output_ids: set[_ConsumerOutput] = set()
-        weighted_ids: set[_ConsumerAction] = set()
+        weighted_ids: set[tuple[_ConsumerOutput, int, int]] = set()
+        support_ids: set[PhysicalSupport] = set()
         while pending:
             decision = pending.pop()
             if decision in seen:
@@ -933,7 +748,9 @@ class FreeCylinderResidualArena:
             if record[0] == "T":
                 terminals += 1
                 if type(record[1]) is _ConsumerAction:
-                    weighted_ids.add(record[1])
+                    weighted_ids.add((record[1].output, record[1].event_weight,
+                                      record[1].physical_ticks))
+                    support_ids.add(record[1].support)
                     output_ids.add(record[1].output)
                 continue
             internal_nodes += 1
@@ -952,6 +769,10 @@ class FreeCylinderResidualArena:
             "decision_terminals": terminals,
             "consumer_output_ids": len(output_ids),
             "weighted_consumer_ids": len(weighted_ids),
+            "support_consumer_ids": len(support_ids),
+            "support_arena_nodes": self.supports.node_count,
+            "support_compositions": self.supports.compositions,
+            "support_intern_hits": self.supports.intern_hits,
             "max_transport_divisions": max(
                 (
                     branch.action.output.transport.divisions

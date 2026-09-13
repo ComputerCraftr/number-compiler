@@ -120,6 +120,13 @@ def _validate_result(
     if type(result) is not CompletedResult:
         raise TypeError("expected a frozen completed result")
     result.__post_init__()
+    if result.physical_support is not None:
+        self.validate_physical_support(result.physical_support)
+        if result.physical_support.ticks and (
+            result.physical_support.ticks != result.physical_ticks
+            or result.physical_support.odd_ticks != result.event_weight
+        ):
+            raise ValueError("physical support disagrees with result weights")
     output = self.tiles.resolve(result.output)
     validate_output_region(key.region)
     if key.region is not None and output.level != key.region[1]:
@@ -203,6 +210,13 @@ def _validate_leased(
                 key.fusion.consumer.wiring,
             )
     result.__post_init__()
+    if result.physical_support is not None:
+        self.validate_physical_support(result.physical_support)
+        if result.physical_support.ticks and (
+            result.physical_support.ticks != result.physical_ticks
+            or result.physical_support.odd_ticks != result.event_weight
+        ):
+            raise ValueError("leased physical support disagrees with result weights")
     if tile.tile != result.output:
         raise ValueError("completed-result lease pins another output")
     output = self.tiles.resolve(result.output)

@@ -23,6 +23,7 @@ from number_compiler.hashlife.tiles.tile_ports import (
     ResultWiring,
 )
 from number_compiler.hashlife.tiles.tiles import TileAlphabetID, TileID
+from number_compiler.sequences.collatz.physical_support import PhysicalSupport
 
 
 @dataclass(frozen=True, slots=True)
@@ -217,6 +218,7 @@ class CompletedInterfaceResult:
     physical_ticks: int = 0
     event_weight: int = 0
     frame_shift: int = 0
+    physical_support: PhysicalSupport | None = field(default=None, kw_only=True)
     bound_reverse_output: ReverseBoundOutput | None = field(default=None, kw_only=True)
     _publication_owner: object | None = None
     _publication_snapshot: tuple[object, ...] | None = None
@@ -244,6 +246,15 @@ class CompletedInterfaceResult:
             raise TypeError("completed interface weights require exact integers")
         if self.physical_ticks < 0 or self.event_weight < 0:
             raise ValueError("completed interface weights cannot be negative")
+        if self.physical_support is not None:
+            if type(self.physical_support) is not PhysicalSupport:
+                raise TypeError("completed interface has another shadow-support sort")
+            self.physical_support.owner.validate(self.physical_support)
+            if self.physical_support.ticks and (
+                self.physical_support.ticks != self.physical_ticks
+                or self.physical_support.odd_ticks != self.event_weight
+            ):
+                raise ValueError("completed interface support disagrees with weights")
         if self.bound_reverse_output is not None:
             if type(self.bound_reverse_output) is not ReverseBoundOutput:
                 raise TypeError("completed interface has another active behavior sort")
@@ -375,6 +386,7 @@ class CompletedResult:
     outgoing_boundaries: BoundaryTileOperands = EMPTY_BOUNDARY_TILES
     fusion: FusedBoundaryContract | None = None
     observed_input_ports: tuple[int, ...] | None = None
+    physical_support: PhysicalSupport | None = None
 
     def __post_init__(self) -> None:
         if type(self.output) is not TileID:
@@ -408,6 +420,10 @@ class CompletedResult:
             or any(type(value) is not int for value in self.observed_input_ports)
         ):
             raise TypeError("observed input ports require exact immutable integers")
+        if self.physical_support is not None:
+            if type(self.physical_support) is not PhysicalSupport:
+                raise TypeError("completed result has another shadow-support sort")
+            self.physical_support.owner.validate(self.physical_support)
 
 
 @dataclass(frozen=True, slots=True)

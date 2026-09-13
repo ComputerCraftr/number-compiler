@@ -128,7 +128,7 @@ def test_shared_morphism_core_has_no_legacy_parallel_power_types() -> None:
         assert not definitions.get(legacy)
 
 
-def test_special_certificate_compiler_path_is_oracle_free_and_classical_capped() -> (
+def test_special_certificate_compiler_path_has_no_classical_recurrence_owner() -> (
     None
 ):
     src = ROOT / "src" / "number_compiler"
@@ -144,23 +144,32 @@ def test_special_certificate_compiler_path_is_oracle_free_and_classical_capped()
         assert forbidden not in compiler
         assert forbidden not in certificate
     assert "terminal_threshold_probe" in certificate
-    assert "classical_ceiling" in certificate
+    assert "_summary_from_classical_ceiling" not in certificate
+    assert "power_numbers.classical_ceiling" not in certificate
     threshold = (special / "sequences/power_numbers/terminal_threshold.py").read_text()
-    assert "build_special_germ_plan" in threshold
+    assert "build_compact_transverse_pullback" in threshold
+    assert "transverse_pullback" in threshold
+    assert "build_special_germ_plan" not in threshold
     assert "bounded_candidate_image_filtration" not in certificate
     assert "tropical_ghost_flux" not in certificate
-    ceiling = (special / "sequences/power_numbers/classical_ceiling.py").read_text()
-    for forbidden in (
-        "oracle_support",
-        "FactoredPrimeAutomaton",
-        "tropical_ghost_flux",
-        "factor_enumeration",
+    production = special / "sequences/power_numbers"
+    assert not (production / "classical_ceiling.py").exists()
+    assert not (production / "digit_power.py").exists()
+    assert (
+        ROOT / "devtools/proofs/oracles/classical_ceiling.py"
+    ).is_file()
+    assert (ROOT / "devtools/proofs/oracles/digit_power.py").is_file()
+    definitions = _production_definitions()
+    for recurrence in (
+        "fermat_classical_ceiling",
+        "mersenne_classical_ceiling",
+        "special_classical_ceiling",
+        "lucas_lehmer_digit_field",
+        "pepin_digit_field",
     ):
-        # The dataclass field may name factor_enumeration only to assert it stays zero.
-        if forbidden == "factor_enumeration":
-            continue
-        assert forbidden not in ceiling
-    assert "modulus_bits - 2" in ceiling
+        assert not definitions.get(recurrence)
+    for path in src.rglob("*.py"):
+        assert "devtools.proofs.oracles" not in path.read_text()
 
 
 def test_terminal_frobenius_chunk_is_detached_from_constrained_production_germ() -> (
@@ -174,7 +183,9 @@ def test_terminal_frobenius_chunk_is_detached_from_constrained_production_germ()
     assert "class SpecialFrobeniusChunkSpec" in chunk
     assert "class SpecialFrobeniusChunkResult" in chunk
     assert "frobenius-chunk-zero-class-extractor-unavailable" in chunk
-    assert "build_special_germ_plan" in threshold
+    assert "build_compact_transverse_pullback" in threshold
+    assert "transverse_pullback" in threshold
+    assert "build_special_germ_plan" not in threshold
     assert "class SpecialGermConstraintState" in germ
     assert "special_frobenius_chunk_probe" not in germ
     assert (
@@ -251,7 +262,13 @@ def test_special_slow_oracles_are_explicit_opt_in_not_root_exports() -> None:
     oracle = ROOT / "devtools" / "proofs" / "oracles" / "__init__.py"
     assert oracle.is_file()
     production = ROOT / "src" / "number_compiler" / "sequences" / "power_numbers"
-    for proof_only in ("binary_jump.py", "power_monoid.py", "source_program.py"):
+    for proof_only in (
+        "binary_jump.py",
+        "power_monoid.py",
+        "source_program.py",
+        "classical_ceiling.py",
+        "digit_power.py",
+    ):
         assert not (production / proof_only).exists()
     assert (
         ROOT / "devtools" / "proofs" / "oracles" / "special_binary_jump.py"

@@ -9,6 +9,10 @@ from typing import TypedDict
 from devtools.paths import report_output, repository_root
 from devtools.proofs import exact_oracle
 from devtools.proofs.carry_action_quotient import analyze_carry_action_quotient
+from devtools.proofs.oracles.digit_power import (
+    lucas_lehmer_digit_field,
+    pepin_digit_field,
+)
 from number_compiler.api.sequence_compiler import CanonicalSequenceCompiler
 from number_compiler.api.sequence_types import (
     CollatzSequenceSpec,
@@ -31,10 +35,6 @@ from number_compiler.arithmetic.polynomials.cyclotomic_transport import (
 )
 from number_compiler.arithmetic.polynomials.digit_convolution import (
     adaptive_square_convolution,
-)
-from number_compiler.sequences.power_numbers.digit_power import (
-    lucas_lehmer_digit_field,
-    pepin_digit_field,
 )
 from number_compiler.sequences.power_numbers.factor_morphism import (
     fermat_factor_witness,

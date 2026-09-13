@@ -151,11 +151,21 @@ def cached_midpoint_interface_step(
         CausalInterfacePayload,
     ):
         raise AssertionError("cached interface edge returned another result sort")
+    from number_compiler.hashlife.execution.tile_physical_support import (
+        temporal_physical_support,
+    )
+
     payload = replace(
         second,
         physical_ticks=first.semantics.physical_ticks + second.physical_ticks,
         event_weight=first.semantics.event_weight + second.event_weight,
         frame_shift=first.semantics.frame_shift + second.frame_shift,
+        physical_support=temporal_physical_support(
+            first.semantics.physical_support,
+            second.physical_support,
+            before_ticks=first.semantics.physical_ticks,
+            after_ticks=second.physical_ticks,
+        ),
     )
     if saved_key is None:
         values.append(payload)

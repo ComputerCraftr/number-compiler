@@ -9,7 +9,7 @@ number-compiler families
 number-compiler nth 196 8
 number-compiler nth collatz 8 --seed 27
 number-compiler classify fermat 3 --format json
-number-compiler classify mersenne 13 --allow-classical-ceiling --format json
+number-compiler classify mersenne 131 --factor --format json
 ```
 
 The supported Python entry points are exported from `number_compiler`.
@@ -18,9 +18,12 @@ have been removed as described in the [API migration guide](docs/api-migration.m
 
 `classify` requests a primality certificate; `nth` emits the candidate itself.
 Classification defaults to the admitted compact proof route. It prints `unknown`
-and exits 3 when that route cannot decide. `--allow-classical-ceiling` explicitly
-enables the exact recurrence fallback, whose squaring count appears in JSON.
-`--max-candidate-bits` bounds candidate size before theorem work.
+and exits 3 when that route cannot decide. Pépin and Lucas–Lehmer are available
+only as research oracles. `--factor` requests a separately budgeted étale
+coefficient witness; a proper divisor proves composite, while a non-split does
+not prove prime. `--max-candidate-bits` bounds candidate size before theorem work.
+Candidate-derived mod-16 shadow-cylinder prime-bit recovery remains a P0
+release blocker.
 
 A reused `NumberCompiler` keeps up to eight recent powered execution owners.
 Repeated requests and Collatz radix views reuse their existing HashLife caches;

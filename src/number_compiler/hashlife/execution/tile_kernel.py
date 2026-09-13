@@ -398,7 +398,6 @@ class PrimitiveTileKernelAdapter:
         return self._action(action).signature
 
     def validated_signature_for(self, action: FieldCellActionID) -> PortSignatureID:
-        """Validate once and return the signature from that exact checked record."""
         return self.signature_for(action)
 
     def action_children(
@@ -439,7 +438,6 @@ class PrimitiveTileKernelAdapter:
         return self._action(action).cocycle
 
     def wiring(self, action: FieldCellActionID) -> ResultWiring:
-        """Return the sole normalized forward wiring for this primitive."""
         return ResultWiring(self.signature_for(action))
 
     def validate_wiring(
@@ -466,7 +464,6 @@ class PrimitiveTileKernelAdapter:
         return kernel.initial(BoundarySide.LEFT), kernel.initial(BoundarySide.RIGHT)
 
     def primitive_law(self, action: FieldCellActionID) -> PrimitiveKernel:
-        """Expose the verified leaf law to transient causal scheduler tasks."""
         record = self._action(action)
         if record.children is not None:
             raise ValueError("a composite action cannot masquerade as a primitive law")
@@ -775,7 +772,6 @@ class PrimitiveTileKernelAdapter:
         interface: LocalInterfaceID,
         ports: tuple[int, ...],
     ) -> TemporalCocycle:
-        """Bind occurrence-dependent weights without retaining source geometry."""
         node = self.tiles.resolve(source)
         if node.level or node.symbol is None:
             raise ValueError("leaf observations require one source symbol")
@@ -870,6 +866,10 @@ class PrimitiveTileKernelAdapter:
             if right.relative_extent
             else left.relative_extent
         )
+        from number_compiler.hashlife.execution.tile_physical_support import (
+            spatial_physical_support,
+        )
+
         return ResultSemantics(
             interface,
             outgoing,
@@ -879,6 +879,9 @@ class PrimitiveTileKernelAdapter:
             0,
             extent,
             observed_input_ports=ports,
+            physical_support=spatial_physical_support(
+                left.physical_support, right.physical_support
+            ),
         )
 
     def temporal_before_context(
@@ -960,6 +963,10 @@ class PrimitiveTileKernelAdapter:
         expected = record.cocycle
         if before.physical_ticks + after.physical_ticks != expected.physical_ticks:
             raise ValueError("temporal child cocycles do not compose to their parent")
+        from number_compiler.hashlife.execution.tile_physical_support import (
+            temporal_physical_support,
+        )
+
         return ResultSemantics(
             after.outgoing,
             after.outgoing_ports,
@@ -969,6 +976,12 @@ class PrimitiveTileKernelAdapter:
             after.relative_origin,
             after.relative_extent,
             observed_input_ports=after.observed_input_ports,
+            physical_support=temporal_physical_support(
+                before.physical_support,
+                after.physical_support,
+                before_ticks=before.physical_ticks,
+                after_ticks=after.physical_ticks,
+            ),
         )
 
     def output_active(

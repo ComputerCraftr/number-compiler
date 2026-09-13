@@ -101,6 +101,7 @@ def verify_wheel(wheel: Path) -> dict[str, object]:
                 """
 import json
 import sys
+from importlib.util import find_spec
 from importlib.resources import files
 import number_compiler as api
 from number_compiler.arithmetic.contracts.physical_collatz_kernel import PhysicalCollatzFourBlockEffect
@@ -109,6 +110,8 @@ assert not hasattr(api, 'ComposedBlockEffect')
 assert api.ReverseAddPoweredTerm(196, 0).digit(0) == 6
 kernel = PhysicalCollatzFourBlockEffect()
 assert kernel.left_count > 0 and kernel.right_count > 0
+for removed in ('classical_ceiling', 'digit_power'):
+    assert find_spec('number_compiler.sequences.power_numbers.' + removed) is None
 assert not any(name == 'devtools' or name.startswith('devtools.') for name in sys.modules)
 print(json.dumps({'public_exports': len(api.__all__), 'kernel_left_states': kernel.left_count, 'kernel_right_states': kernel.right_count, 'installed_path': api.__file__}))
 """,
@@ -140,11 +143,30 @@ print(json.dumps({'public_exports': len(api.__all__), 'kernel_left_states': kern
         result: object = json.loads(cli.stdout)
         if not isinstance(result, dict) or result.get("value") != "2":
             raise ValueError("installed CLI returned another prime result")
+        factor_cli = subprocess.run(
+            [
+                str(python), "-I", "-m", "number_compiler", "classify",
+                "mersenne", "11", "--factor", "--format", "json",
+            ],
+            cwd=work,
+            env=environment,
+            check=True,
+            capture_output=True,
+            text=True,
+        )
+        factor: object = json.loads(factor_cli.stdout)
+        if (
+            not isinstance(factor, dict)
+            or factor.get("status") != "composite"
+            or factor.get("factor_witness") != 23
+        ):
+            raise ValueError("installed CLI did not print the checked M11 factor")
         return {
             "wheel": wheel.name,
             "kernel_resources": resources,
             "smoke": json.loads(smoke.stdout),
             "cli_value": "2",
+            "cli_m11_factor": 23,
         }
 
 

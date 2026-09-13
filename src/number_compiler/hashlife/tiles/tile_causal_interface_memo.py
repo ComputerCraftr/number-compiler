@@ -112,6 +112,21 @@ def _reverse_output_snapshot(value: object) -> tuple[object, ...] | None:
     )
 
 
+def _physical_support_snapshot(value: object) -> tuple[object, ...] | None:
+    if value is None:
+        return None
+    return (
+        type(value),
+        getattr(value, "owner", None),
+        getattr(value, "node_id", None),
+        getattr(value, "ticks", None),
+        getattr(value, "odd_ticks", None),
+        getattr(value, "parity", None),
+        id(getattr(value, "left", None)),
+        id(getattr(value, "right", None)),
+    )
+
+
 def _publication_snapshot(
     key: CausalInterfaceKey,
     value: CompletedInterfaceResult,
@@ -127,6 +142,7 @@ def _publication_snapshot(
         value.physical_ticks,
         value.event_weight,
         value.frame_shift,
+        _physical_support_snapshot(value.physical_support),
         _reverse_output_snapshot(value.bound_reverse_output),
     )
 
@@ -193,6 +209,7 @@ def _record(payload: CausalInterfacePayload) -> CompletedInterfaceResult:
         payload.physical_ticks,
         payload.event_weight,
         payload.frame_shift,
+        physical_support=payload.physical_support,
         bound_reverse_output=payload.bound_reverse_output,
     )
 
@@ -213,6 +230,7 @@ def _seal_record(
         value.frame_shift,
         arena._interface_publication_seal,
         _publication_snapshot(key, value),
+        physical_support=value.physical_support,
         bound_reverse_output=value.bound_reverse_output,
     )
 
@@ -238,6 +256,7 @@ def _payload(
         value.physical_ticks,
         value.event_weight,
         value.frame_shift,
+        physical_support=value.physical_support,
     )
     if value.bound_reverse_output is None:
         return payload
@@ -307,6 +326,8 @@ def _validate_value(
     value: CompletedInterfaceResult,
 ) -> None:
     value.__post_init__()
+    if value.physical_support is not None:
+        arena.validate_physical_support(value.physical_support)
     if (key.observation == "reverse-output-carry") != (
         value.bound_reverse_output is not None
     ):
@@ -346,6 +367,8 @@ def _validate_published_value(
 ) -> None:
     """Validate a warm record without executing its semantic functions."""
     value.__post_init__()
+    if value.physical_support is not None:
+        arena.validate_physical_support(value.physical_support)
     if (key.observation == "reverse-output-carry") != (
         value.bound_reverse_output is not None
     ):

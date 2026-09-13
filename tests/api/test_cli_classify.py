@@ -1,4 +1,4 @@
-"""The public special-prime command exposes admission and charges fallback."""
+"""The special-prime command cannot enter research recurrence oracles."""
 
 from __future__ import annotations
 
@@ -9,7 +9,7 @@ import pytest
 
 from number_compiler.api.cli import main
 from number_compiler.api.sequence_compiler import CanonicalSequenceCompiler
-from number_compiler.sequences.power_numbers import classical_ceiling
+from devtools.proofs.oracles import classical_ceiling
 from number_compiler.arithmetic.polynomials import two_primary_filtration
 
 
@@ -32,7 +32,7 @@ def test_classify_admitted_clock_avoids_recurrence_and_full_filtration(
     assert main(["classify", family, str(parameter), "--format", "json"]) == 0
     row = json.loads(capsys.readouterr().out)
     assert row["status"] == "prime" and row["decided"]
-    assert not row["classical_ceiling_allowed"]
+    assert "classical_ceiling_allowed" not in row
     assert row["certificate"]["specialization_raw_squarings"] == 0
     assert row["certificate"]["carrier_states_enumerated"] == 0
 
@@ -52,38 +52,17 @@ def test_classify_unadmitted_clock_returns_unknown_without_fallback(
     assert row["certificate"]["specialization_raw_squarings"] == 0
 
 
-@pytest.mark.parametrize(
-    ("family", "parameter", "status", "steps"),
-    [
-        ("fermat", 4, "prime", 15),
-        ("fermat", 5, "composite", 31),
-        ("mersenne", 13, "prime", 11),
-        ("mersenne", 11, "composite", 9),
-    ],
-)
-def test_explicit_classical_option_preserves_exact_result_and_work(
-    family: str,
-    parameter: int,
-    status: str,
-    steps: int,
-    capsys: pytest.CaptureFixture[str],
+@pytest.mark.parametrize("option", ["--allow-classical-ceiling", "--max-classical-squarings"])
+def test_removed_classical_cli_options_are_rejected(
+    option: str, monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    assert (
-        main(
-            [
-                "classify",
-                family,
-                str(parameter),
-                "--allow-classical-ceiling",
-                "--format",
-                "json",
-            ]
-        )
-        == 0
-    )
-    row = json.loads(capsys.readouterr().out)
-    assert row["status"] == status and row["classical_ceiling_allowed"]
-    assert row["certificate"]["specialization_raw_squarings"] == steps
+    monkeypatch.setattr(CanonicalSequenceCompiler, "resolve_special_theorem", _forbidden)
+    args = ["classify", "fermat", "4", option]
+    if option == "--max-classical-squarings":
+        args.append("100")
+    with pytest.raises(SystemExit) as exc:
+        main(args)
+    assert exc.value.code == 2
 
 
 def test_composite_exponent_and_small_forms_remain_decidable(
@@ -112,3 +91,54 @@ def test_candidate_budget_and_domain_rejected_before_theorem_work(
     ]:
         assert main(["classify", *args]) == 2
         assert capsys.readouterr().err.startswith("number-compiler:")
+
+
+def test_factor_output_and_extra_work_are_explicit(
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    assert (
+        main(
+            [
+                "classify",
+                "mersenne",
+                "131",
+                "--factor",
+                "--format",
+                "json",
+            ]
+        )
+        == 0
+    )
+    row = json.loads(capsys.readouterr().out)
+    assert row["factor_witness"] == 263
+    assert row["etale_ring_multiplications"] == 261
+    assert row["certificate"]["specialization_raw_squarings"] == 0
+    assert (
+        main(["classify", "mersenne", "11", "--factor"])
+        == 0
+    )
+    assert capsys.readouterr().out == "composite\nfactor: 23\n"
+    assert main(["classify", "mersenne", "12", "--factor"]) == 0
+    assert capsys.readouterr().out == "composite\nfactor: 2^2-1\n"
+
+
+def test_no_factor_request_leaves_missing_prime_bit_unresolved(
+    monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str],
+) -> None:
+    from number_compiler.sequences.power_numbers import etale_factor
+
+    monkeypatch.setattr(etale_factor, "_quadratic_power_pair", _forbidden)
+    assert main(["classify", "mersenne", "131", "--format", "json"]) == 3
+    row = json.loads(capsys.readouterr().out)
+    assert row["status"] == "unknown"
+    assert row["factor_witness"] is None
+    assert row["etale_ring_multiplications"] == 0
+
+
+def test_factor_prime_control_does_not_become_a_prime_certificate(
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    assert main(["classify", "mersenne", "13", "--factor", "--format", "json"]) == 3
+    row = json.loads(capsys.readouterr().out)
+    assert row["status"] == "unknown" and row["factor_witness"] is None
+    assert row["etale_ring_multiplications"] > 0

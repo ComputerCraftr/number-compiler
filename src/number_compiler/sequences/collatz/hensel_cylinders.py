@@ -112,10 +112,23 @@ class HenselCylinder:
     def pullback(self, block: HenselAffineBlock) -> HenselCylinder:
         """Exact preimage, including the block's integrality condition."""
         precision = _precision(self.bits + block.divisions)
+        return self.pullback_modular(
+            multiplier=three_unit_phase(block.steps, precision),
+            offset=block.offset, divisions=block.divisions,
+        )
+
+    def pullback_modular(self, *, multiplier: int, offset: int, divisions: int) -> HenselCylinder:
+        """Pull back using coefficients known only at the demanded precision."""
+        _natural(divisions, "divisions")
+        precision = _precision(self.bits + divisions)
         modulus = 1 << precision
-        inverse = pow(three_unit_phase(block.steps, precision), -1, modulus)
+        if type(multiplier) is not int or type(offset) is not int:
+            raise TypeError("affine coefficients must be exact integers")
+        if precision and not multiplier & 1:
+            raise ValueError("dyadic pullback multiplier must be a unit")
+        inverse = pow(multiplier, -1, modulus)
         return HenselCylinder(
-            precision, inverse * ((self.residue << block.divisions) - block.offset)
+            precision, inverse * ((self.residue << divisions) - offset)
         )
 
 

@@ -26,6 +26,17 @@ def test_large_fixed_cycle_publishes_one_constant_tile_result(seed: int) -> None
     assert completed.physical_ticks == steps
     event_offset = {1: 2, 2: 1, 4: 0}[seed]
     assert completed.event_weight == (steps + event_offset) // 3
+    support = completed.physical_support
+    assert support is not None
+    assert (support.ticks, support.odd_ticks) == (steps, completed.event_weight)
+    assert (
+        tuple(support.tick(index) for index in range(5))
+        == {
+            1: (True, False, False, True, False),
+            2: (False, True, False, False, True),
+            4: (False, False, True, False, False),
+        }[seed]
+    )
     assert term._ledger.counters.get("tile_collatz_cycle_completions", 0) == 1
     assert term._ledger.counters.get("tile_causal_frames", 0) < 1024
     audit = audit_registered_payloads(term._ledger)

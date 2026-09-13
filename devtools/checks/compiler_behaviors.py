@@ -13,6 +13,10 @@ from devtools.proofs.oracles.special_binary_jump import (
     build_fermat_binary_jump,
     build_mersenne_binary_jump,
 )
+from devtools.proofs.oracles.digit_power import (
+    lucas_lehmer_digit_field,
+    pepin_digit_field,
+)
 from devtools.proofs.quotient_synthesis import (
     ObserverFeature,
     synthesize_finite_quotient,
@@ -57,10 +61,6 @@ from number_compiler.arithmetic.polynomials.polynomial import (
 from number_compiler.sequences.collatz.orbit import COLLATZ_PIECEWISE_MORPHISM
 from number_compiler.sequences.collatz.raw_field import (
     collatz_sentinel_orbit,
-)
-from number_compiler.sequences.power_numbers.digit_power import (
-    lucas_lehmer_digit_field,
-    pepin_digit_field,
 )
 from number_compiler.sequences.prime.lane_quotient import (
     compile_prime_block_lane_quotient,
@@ -218,26 +218,29 @@ def compiler_behavior_checks() -> dict[str, bool]:
         compiler.resolve_special_theorem("fermat", 5),
         compiler.resolve_special_theorem("mersenne", 11),
     )
-    special_digit_observer_short_circuits = (
+    special_theorem_query_fails_closed = (
         fermat.terms[1].projection_method == "deferred"
         and fermat.terms[1].factor_witness is None
         and fermat.terms[1].radix_word.factored_projection is None
-        and lazy_f5.projection_method == "classical-ceiling:pepin-target-pullback"
+        and lazy_f5.projection_method.startswith("terminal-threshold:")
         and lazy_f5.factor_witness is None
         and lazy_f5.factored_projection is None
         and lazy_f5.primality is not None
-        and lazy_f5.primality.status == "composite"
-        and lazy_f5.primality.specialization_raw_squarings
-        == lazy_f5.primality.modulus_bits - 2
+        and lazy_f5.primality.status == "unknown"
+        and not lazy_f5.primality.decided
+        and lazy_f5.primality.target_depth is None
+        and lazy_f5.primality.specialization_raw_squarings == 0
+        and lazy_f5.source_guard.failure_bit is None
         and mersenne.terms[0].projection_method == "deferred"
-        and lazy_m11.projection_method
-        == "classical-ceiling:lucas-lehmer-target-pullback"
+        and lazy_m11.projection_method.startswith("terminal-threshold:")
         and lazy_m11.factor_witness is None
         and lazy_m11.factored_projection is None
         and lazy_m11.primality is not None
-        and lazy_m11.primality.status == "composite"
-        and lazy_m11.primality.specialization_raw_squarings
-        == lazy_m11.primality.modulus_bits - 2
+        and lazy_m11.primality.status == "unknown"
+        and not lazy_m11.primality.decided
+        and lazy_m11.primality.target_depth is None
+        and lazy_m11.primality.specialization_raw_squarings == 0
+        and lazy_m11.source_guard.failure_bit is None
     )
     sentinel27 = collatz_sentinel_orbit(27, base=4)
     collatz_sentinel_quotient_exact = (
@@ -319,23 +322,26 @@ def compiler_behavior_checks() -> dict[str, bool]:
         compiler.resolve_special_theorem("fermat", 4),
         compiler.resolve_special_theorem("mersenne", 31),
     )
-    special_certificate_candidate_derived = (
+    special_certificate_unknown_without_recurrence = (
         fermat.terms[0].primality is None
         and mersenne.terms[1].primality is None
         and lazy_f4.primality is not None
-        and lazy_f4.primality.status == "prime"
-        and lazy_f4.primality.method == "classical-ceiling:pepin-target-pullback"
+        and lazy_f4.primality.status == "unknown"
+        and not lazy_f4.primality.decided
+        and lazy_f4.primality.target_depth is None
+        and lazy_f4.primality.method.startswith("terminal-threshold:")
         and lazy_f4.primality.carrier_states_enumerated == 0
-        and lazy_f4.primality.specialization_raw_squarings
-        == lazy_f4.primality.modulus_bits - 2
+        and lazy_f4.primality.specialization_raw_squarings == 0
+        and lazy_f4.source_guard.failure_bit is None
         and lazy_f4.factored_projection is None
         and lazy_m31.primality is not None
-        and lazy_m31.primality.status == "prime"
-        and lazy_m31.primality.method
-        == "classical-ceiling:lucas-lehmer-target-pullback"
+        and lazy_m31.primality.status == "unknown"
+        and not lazy_m31.primality.decided
+        and lazy_m31.primality.target_depth is None
+        and lazy_m31.primality.method.startswith("terminal-threshold:")
         and lazy_m31.primality.carrier_states_enumerated == 0
-        and lazy_m31.primality.specialization_raw_squarings
-        == lazy_m31.primality.modulus_bits - 2
+        and lazy_m31.primality.specialization_raw_squarings == 0
+        and lazy_m31.source_guard.failure_bit is None
         and lazy_m31.factored_projection is None
     )
     hensel7 = cyclotomic_factors_mod_prime_power(7, 2, 3)
@@ -419,13 +425,13 @@ def compiler_behavior_checks() -> dict[str, bool]:
         "reverse_add_pair_symmetry_not_duplicated_in_carry_key": carry_pair_symmetry_quotiented,
         "shared_tropical_sensitivity_interface_attached": shared_sensitivity_attached,
         "special_number_raw_digit_projection_detached_from_compiler": special_digit_field_detached_from_compiler,
-        "special_number_theorem_query_is_demand_driven_after_source_projection": special_digit_observer_short_circuits,
+        "special_number_theorem_query_fails_closed_without_recurrence": special_theorem_query_fails_closed,
         "special_number_square_sign_quotient_reduces_digit_work": special_square_sign_quotient_active,
         "collatz_sentinel_quotient_avoids_carry_vector": collatz_sentinel_quotient_exact,
         "collatz_valuation_projection_monoid_attached": collatz_valuation_projection_attached,
         "collatz_future_root_surface_is_two_sector_and_diagnostic_only": collatz_future_root_surface_exact,
         "collatz_successor_is_self_branching_cyclotomic_operator": collatz_piecewise_successor_exact,
-        "special_depth_certificate_is_candidate_derived_and_classical_capped": special_certificate_candidate_derived,
+        "special_depth_certificate_unknown_without_classical_recurrence": special_certificate_unknown_without_recurrence,
         "reverse_growth_itinerary_not_retained": reverse_growth_itinerary_not_retained,
         "reverse_growth_projection_smaller_than_reset_signature": reverse_growth_projection_reduced,
         "collatz_linear_valuation_itinerary_not_retained": collatz_linear_valuation_itinerary_not_retained,

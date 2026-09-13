@@ -7,7 +7,7 @@ it nor a finite evaluated ``W`` value enters the reusable clock identity.
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 
 from number_compiler.arithmetic.fields.morphism_core import DyadicAffineCocycle
 from number_compiler.arithmetic.fields.two_adic import v2_nonzero
@@ -32,6 +32,7 @@ class InverseThreeClock:
 
     precision: int
     phase: int
+    _lift_base: int | None = field(default=None, init=False, compare=False, repr=False)
 
     def __post_init__(self) -> None:
         if any(type(value) is not int for value in (self.precision, self.phase)):
@@ -97,10 +98,24 @@ class InverseThreeClock:
         """Return the next six root bits without recomputing a wide power."""
         if type(phase_digit) is not int or not 0 <= phase_digit < 64:
             raise ValueError("temporal radix-64 phase digit is outside 0..63")
-        base = InverseThreeClock(self.precision + 6, self.phase).root
+        base = self._lift_base
+        if base is None:
+            base = InverseThreeClock(self.precision + 6, self.phase).root
+            object.__setattr__(self, "_lift_base", base)
         base_digit = (base >> self.precision) & 63
-        slope = self.lift_coefficient * _root_digit_mod64(self.phase)
-        return (base_digit + slope * phase_digit) & 63
+        return (base_digit + self.centered_lift_digit(phase_digit)) & 63
+
+    def centered_lift_digit(self, phase_digit: int) -> int:
+        """Hasse tangent: a clock revolution shifts only the next six bits.
+
+        Requires neither a full root nor a spatial occurrence. At q=6 the
+        bootstrap coefficient is 35; at every q>=7 it is 3.
+        """
+        if type(phase_digit) is not int or not 0 <= phase_digit < 64:
+            raise ValueError("temporal radix-64 phase digit is outside 0..63")
+        return (
+            self.lift_coefficient * _root_digit_mod64(self.phase) * phase_digit
+        ) & 63
 
 
 @dataclass(frozen=True, slots=True)

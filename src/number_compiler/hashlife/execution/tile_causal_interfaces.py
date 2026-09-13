@@ -26,6 +26,7 @@ from number_compiler.hashlife.tiles.tile_result_records import SpatialInterfaceK
 from number_compiler.hashlife.tiles.tile_result_records import CompletedResult
 from number_compiler.hashlife.tiles.tile_results import CompletedResultArena
 from number_compiler.hashlife.tiles.tiles import TileID
+from number_compiler.sequences.collatz.physical_support import PhysicalSupport
 
 _BOUND_OUTPUT_SEAL = object()
 _BOUND_OUTPUT_REQUEST_SEAL = object()
@@ -86,6 +87,7 @@ class CausalInterfacePayload:
     physical_ticks: int = 0
     event_weight: int = 0
     frame_shift: int = 0
+    physical_support: PhysicalSupport | None = field(default=None, kw_only=True)
     bound_reverse_output: ReverseBoundOutput | None = field(default=None, kw_only=True)
     _bound_output_owner: object | None = field(default=None, kw_only=True, repr=False)
     _bound_output_snapshot: tuple[object, ...] | None = field(
@@ -128,6 +130,15 @@ class CausalInterfacePayload:
             raise TypeError("causal interface weights require exact integers")
         if self.physical_ticks < 0 or self.event_weight < 0:
             raise ValueError("causal interface weights cannot be negative")
+        if self.physical_support is not None:
+            if type(self.physical_support) is not PhysicalSupport:
+                raise TypeError("causal interface has another shadow-support sort")
+            self.physical_support.owner.validate(self.physical_support)
+            if self.physical_support.ticks and (
+                self.physical_support.ticks != self.physical_ticks
+                or self.physical_support.odd_ticks != self.event_weight
+            ):
+                raise ValueError("causal support disagrees with interface weights")
         if self.bound_reverse_output is not None:
             if type(self.bound_reverse_output) is not ReverseBoundOutput:
                 raise TypeError("causal interface has another active behavior sort")
@@ -178,6 +189,7 @@ def _attach_bound_reverse_output(
         payload.physical_ticks,
         payload.event_weight,
         payload.frame_shift,
+        physical_support=payload.physical_support,
         bound_reverse_output=output,
         _bound_output_owner=_BOUND_OUTPUT_SEAL,
         _bound_output_snapshot=_bound_output_snapshot_values(
@@ -215,6 +227,7 @@ def _bind_bound_reverse_output_request(
         payload.physical_ticks,
         payload.event_weight,
         payload.frame_shift,
+        physical_support=payload.physical_support,
         bound_reverse_output=payload.bound_reverse_output,
         _bound_output_owner=_BOUND_OUTPUT_SEAL,
         _bound_output_snapshot=_bound_output_snapshot(
@@ -249,6 +262,7 @@ def interface_payload_from_completed(
         completed.physical_ticks,
         completed.event_weight,
         completed.frame_shift,
+        physical_support=completed.physical_support,
         bound_reverse_output=None,
     )
 
@@ -346,6 +360,8 @@ def primitive_interface_payload(
     ports: PrimitiveCausalPorts,
     wiring: ResultWiring,
     occurrence: TemporalCocycle,
+    *,
+    physical_support: PhysicalSupport | None = None,
 ) -> CausalInterfacePayload:
     """Bind one primitive action to an exact input without emitting its output."""
     authority = _authority(results)
@@ -376,6 +392,7 @@ def primitive_interface_payload(
         action_weight.physical_ticks + occurrence.physical_ticks,
         action_weight.event_weight + occurrence.event_weight,
         action_weight.frame_shift + occurrence.frame_shift,
+        physical_support=physical_support,
         bound_reverse_output=None,
     )
 
@@ -416,6 +433,7 @@ def interface_payload_from_causal(
         completed.semantics.physical_ticks,
         completed.semantics.event_weight,
         completed.semantics.frame_shift,
+        physical_support=completed.semantics.physical_support,
         bound_reverse_output=None,
     )
 
@@ -470,6 +488,10 @@ def combine_causal_interfaces(
         if left.event_weight != right.event_weight:
             raise ValueError("causal interface children have different event weights")
         events = left.event_weight
+    from number_compiler.hashlife.execution.tile_physical_support import (
+        spatial_physical_support,
+    )
+
     payload = CausalInterfacePayload(
         interface,
         incoming,
@@ -479,6 +501,9 @@ def combine_causal_interfaces(
         left.physical_ticks,
         events,
         left.frame_shift,
+        physical_support=spatial_physical_support(
+            left.physical_support, right.physical_support
+        ),
     )
     if left.bound_reverse_output is None or right.bound_reverse_output is None:
         return payload

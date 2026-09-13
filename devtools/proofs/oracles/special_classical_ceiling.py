@@ -1,19 +1,4 @@
-"""Exact linear-work ceiling for demanded Fermat/Mersenne theorem queries.
-
-The special compiler first tries compact quotient/constraint propagation.  If
-that state remains unresolved, production is allowed to execute the classical
-special-form recurrence directly.  This module is the hard performance ceiling:
-there is no factor-slot, carrier, CRT, or tropical enumeration here.
-
-For ``F_n`` we square the canonical base 3 exactly ``2**n - 1`` times and test
-the Pépin target ``-1``.  For a prime Mersenne exponent ``p`` we execute the
-Lucas--Lehmer trace recurrence exactly ``p - 2`` times and test zero.  In both
-families the recurrence work is ``modulus_bits - 2`` nonlinear squarings.
-
-The final target equation is also exposed as a candidate-ring defect.  A single
-final gcd may produce a natural split/factor packet on a failing candidate, but
-no gcd is needed to decide the theorem bit itself.
-"""
+"""Bounded special-form recurrence oracle for differential validation only."""
 
 from __future__ import annotations
 
@@ -45,7 +30,7 @@ class SpecialClassicalCeilingResult:
         if self.steps > max(0, self.modulus_bits - 2):
             raise ValueError((self.steps, self.modulus_bits))
         if self.factor_enumeration or self.carrier_states_enumerated:
-            raise ValueError("classical ceiling cannot enumerate factors/carriers")
+            raise ValueError("reference recurrence cannot enumerate factors/carriers")
         if self.gcd_packet is not None and self.gcd_packet <= 1:
             raise ValueError(self.gcd_packet)
 
@@ -59,7 +44,6 @@ class SpecialClassicalCeilingResult:
 
 
 def _proper_gcd_packet(modulus: int, defect: int) -> int | None:
-    """Return a proper nontrivial target-defect gcd, if the failure exposes one."""
     g = gcd(int(modulus), int(defect))
     return g if 1 < g < int(modulus) else None
 
@@ -67,7 +51,7 @@ def _proper_gcd_packet(modulus: int, defect: int) -> int | None:
 def fermat_classical_ceiling(
     index: int, *, collect_gcd_packet: bool = False
 ) -> SpecialClassicalCeilingResult:
-    """Exact Pépin-equivalent fallback with an explicit squaring budget."""
+    """Execute the bounded Fermat recurrence as a research oracle."""
     n = int(index)
     if n < 1:
         raise ValueError(n)
@@ -75,7 +59,6 @@ def fermat_classical_ceiling(
     modulus = (1 << width) + 1
     steps = width - 1
     value = SquareTileAction.atom("fermat").power_block(steps).apply(3, modulus)
-    # Pépin target is -1.  This normalized defect is zero exactly on PASS.
     defect = (value + 1) % modulus
     passes = defect == 0
     packet = (
@@ -91,17 +74,15 @@ def fermat_classical_ceiling(
         value,
         defect,
         passes,
-        "classical-ceiling:pepin-target-pullback",
+        "oracle:fermat-target-recurrence",
         packet,
     )
 
 
 def mersenne_classical_ceiling(
-    exponent: int,
-    *,
-    collect_gcd_packet: bool = False,
+    exponent: int, *, collect_gcd_packet: bool = False
 ) -> SpecialClassicalCeilingResult:
-    """Exact Lucas--Lehmer fallback for an already-prime exponent candidate."""
+    """Execute the bounded Mersenne recurrence as a research oracle."""
     p = int(exponent)
     if p < 3 or not (p & 1):
         raise ValueError(p)
@@ -123,7 +104,7 @@ def mersenne_classical_ceiling(
         value,
         defect,
         passes,
-        "classical-ceiling:lucas-lehmer-target-pullback",
+        "oracle:mersenne-target-recurrence",
         packet,
     )
 
@@ -134,7 +115,6 @@ def special_classical_ceiling(
     *,
     collect_gcd_packet: bool = False,
 ) -> SpecialClassicalCeilingResult:
-    family = str(family)
     if family == "fermat":
         return fermat_classical_ceiling(
             parameter, collect_gcd_packet=collect_gcd_packet

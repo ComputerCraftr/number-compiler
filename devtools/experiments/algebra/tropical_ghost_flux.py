@@ -29,14 +29,14 @@ multiplicity after reaching the exponent of q in N, so exact deletion requires
 either factor-indexed overflow counters or a factor-free lift to divisors of
 N^r whose bit size grows linearly with the supported multiplicity horizon.
 
-Everything here is research-only.  Production must not import this module or
+Factor-free divisor operations are owned by production; the audits here remain research-only.  Production must not import this module or
 promote factor-backed tropical axes into the terminal source projector.
 """
 
 from __future__ import annotations
 
 from dataclasses import dataclass
-from math import gcd, lcm
+from math import gcd
 
 from devtools.experiments.algebra.arithmetic_ghost_flux import (
     arithmetic_ghost_flux_block,
@@ -47,6 +47,9 @@ from devtools.experiments.power_numbers.special_transverse_jet import (
 )
 from number_compiler.arithmetic.fields.adic_morphism import ValuationSensitivityMorphism
 from number_compiler.arithmetic.fields.radix import bit_width
+from number_compiler.arithmetic.fields.tropical_divisor import (
+    TropicalDivisorState as TropicalDivisorState,
+)
 
 
 def _vp(value: int, prime: int) -> int:
@@ -82,68 +85,6 @@ def _factor_multiplicities_truth(value: int) -> tuple[tuple[int, int], ...]:
     if n > 1:
         out.append((n, 1))
     return tuple(out)
-
-
-@dataclass(frozen=True, slots=True)
-class TropicalDivisorState:
-    """Factor-free bounded valuation vector encoded as one divisor of N."""
-
-    modulus: int
-    divisor: int
-
-    def __post_init__(self) -> None:
-        modulus, divisor = int(self.modulus), int(self.divisor)
-        if modulus < 2 or divisor < 1 or modulus % divisor:
-            raise ValueError((modulus, divisor))
-        object.__setattr__(self, "modulus", modulus)
-        object.__setattr__(self, "divisor", divisor)
-
-    @classmethod
-    def one(cls, modulus: int) -> TropicalDivisorState:
-        return cls(int(modulus), 1)
-
-    @classmethod
-    def zero(cls, modulus: int) -> TropicalDivisorState:
-        return cls(int(modulus), int(modulus))
-
-    @classmethod
-    def observe(cls, modulus: int, value: int) -> TropicalDivisorState:
-        modulus = int(modulus)
-        return cls(modulus, gcd(modulus, int(value)))
-
-    def _check(self, other: TropicalDivisorState) -> None:
-        if not isinstance(other, TropicalDivisorState) or self.modulus != other.modulus:
-            raise ValueError((self, other))
-
-    def multiply(self, other: TropicalDivisorState) -> TropicalDivisorState:
-        """Saturated tropical addition of all hidden local valuations."""
-        self._check(other)
-        return TropicalDivisorState(
-            self.modulus,
-            gcd(self.modulus, self.divisor * other.divisor),
-        )
-
-    def meet(self, other: TropicalDivisorState) -> TropicalDivisorState:
-        """Componentwise valuation minimum."""
-        self._check(other)
-        return TropicalDivisorState(self.modulus, gcd(self.divisor, other.divisor))
-
-    def join(self, other: TropicalDivisorState) -> TropicalDivisorState:
-        """Componentwise valuation maximum."""
-        self._check(other)
-        return TropicalDivisorState(self.modulus, lcm(self.divisor, other.divisor))
-
-    def local_height(self, prime: int, exponent: int) -> int:
-        prime, exponent = int(prime), int(exponent)
-        if exponent < 1 or self.modulus % (prime**exponent):
-            raise ValueError((prime, exponent, self.modulus))
-        return (
-            min(exponent, _vp(self.divisor, prime)) if self.divisor % prime == 0 else 0
-        )
-
-    @property
-    def description_bits(self) -> int:
-        return bit_width(self.modulus) + bit_width(self.divisor)
 
 
 @dataclass(frozen=True, slots=True)

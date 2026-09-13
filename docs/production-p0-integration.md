@@ -1,5 +1,12 @@
 # Production integration P0 — September 11
 
+> Superseded classification policy, September 12: production recurrence runners
+> and their CLI enabling flags have been removed. Commands using
+> `--allow-classical-ceiling` or `--max-classical-squarings` below are historical
+> and now rejected. See the [current recurrence-removal record](production-shadow-jet-release-blocker-2026-09-12.md)
+> and [candidate recovery audit](candidate-shadow-recovery-audit-2026-09-12.md).
+> The release remains blocked by the missing powered construction and proofs.
+
 **Release remains blocked on 196 and Collatz.** Production CLI execution,
 first-use HashLife construction, and removal of implicit recurrence work remain
 their P0 requirements. Expensive Fermat/Mersenne prime-certificate extraction is

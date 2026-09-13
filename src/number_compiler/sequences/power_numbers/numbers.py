@@ -6,11 +6,12 @@ operator machinery used by reverse-add, Collatz, and the prime projector:
 * ``F_n = 2**(2**n)+1 = Phi_(2**(n+1))(2)`` is a pure 2-power cyclotomic /
   negacyclic channel.  Subtracting one conjugates generation to squaring.
 * ``M_p = 2**p-1 = Phi_p(2)`` when ``p`` is prime is an odd cyclotomic /
-  cyclic channel.  Lucas-Lehmer's ``x -> x*x-2`` conjugates to exponent
+  cyclic channel.  The trace-square map ``x -> x*x-2`` conjugates to exponent
   doubling in the norm-one quadratic unit ``2+sqrt(3)``.
 
-The compact generators are not confused with compact primality projections:
-Pepin and Lucas-Lehmer still charge every modular squaring they execute.
+These generator identities do not construct the candidate's primality bit.
+Production classification requires a separately proved candidate-derived
+observation; missing recovery remains unresolved.
 """
 
 from __future__ import annotations
@@ -274,12 +275,14 @@ def mersenne_exponent_is_prime(exponent: int) -> bool:
     return smallest_factor(n) is None
 
 
-def mersenne_composite_exponent_factor(exponent: int) -> MersenneNumberSpec | None:
+def mersenne_composite_exponent_factor(
+    exponent: int, *, max_divisor: int | None = None
+) -> MersenneNumberSpec | None:
     """Return a symbolic proper Mersenne divisor when the exponent is composite."""
     n = int(exponent)
     if n <= 1:
         raise ValueError(n)
-    factor = smallest_factor(n)
+    factor = smallest_factor(n, max_divisor=max_divisor)
     return None if factor is None else MersenneNumberSpec(factor)
 
 

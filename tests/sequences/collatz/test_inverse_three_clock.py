@@ -1,6 +1,8 @@
 from __future__ import annotations
 
 from collections import Counter
+from collections.abc import Callable
+from typing import cast
 
 import pytest
 
@@ -153,3 +155,34 @@ def test_finite_normalized_window_is_not_exact_successor_complete() -> None:
     assert clock.normalized_prefix(left) == clock.normalized_prefix(right)
     assert accelerated_odd_collatz(left).target == 1
     assert accelerated_odd_collatz(right).target == 3073
+
+
+def test_helix_children_share_one_base_root(monkeypatch: pytest.MonkeyPatch) -> None:
+    original = cast(
+        Callable[[InverseThreeClock], int], InverseThreeClock.__dict__["root"].fget
+    )
+    calls = 0
+
+    def counted(clock: InverseThreeClock) -> int:
+        nonlocal calls
+        calls += 1
+        assert original is not None
+        return original(clock)
+
+    monkeypatch.setattr(InverseThreeClock, "root", property(counted))
+    for q in (6, 7, 12, 18, 30):
+        clock = InverseThreeClock(q, 12345)
+        key = clock.canonical_key
+        before = calls
+        centered = [clock.centered_lift_digit(a) for a in range(64)]
+        assert len(set(centered)) == 64
+        assert calls == before
+        digits = [clock.lifted_root_digit(a) for a in range(64)]
+        assert calls == before + 1
+        modulus = 1 << (q + 6)
+        assert digits == [
+            (-pow(3, -(clock.phase + a * clock.period), modulus) % modulus) >> q
+            for a in range(64)
+        ]
+        assert clock.canonical_key == key
+        assert clock == InverseThreeClock(q, 12345)

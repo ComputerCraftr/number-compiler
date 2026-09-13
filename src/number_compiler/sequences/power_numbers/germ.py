@@ -19,8 +19,8 @@ compose by gcd.  Neither operation enumerates factors or local slots.
 
 A :class:`SpecialGermPlan` never performs a detached support scan.  If its
 accumulated constraints remain unresolved, ``probe()`` returns ``UNKNOWN``.
-The demanded theorem path may then use the exact classical linear-work ceiling;
-it must never fall through to the historical tropical factor-slot scan.
+The demanded theorem path preserves that unresolved result. Research recurrence
+oracles and historical factor-slot scans are not production fallbacks.
 """
 
 from __future__ import annotations

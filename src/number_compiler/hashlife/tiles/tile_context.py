@@ -14,6 +14,7 @@ from number_compiler.hashlife.tiles.tile_ports import (
 )
 from number_compiler.hashlife.tiles.tile_result_records import CompletedResult
 from number_compiler.hashlife.tiles.tiles import TileID
+from number_compiler.sequences.collatz.physical_support import PhysicalSupport
 
 if TYPE_CHECKING:
     from number_compiler.hashlife.actions.field_actions import FieldCellActionID
@@ -41,6 +42,7 @@ class ResultSemantics:
     outgoing_boundaries: BoundaryTileOperands = BoundaryTileOperands()
     fusion: FusedBoundaryContract | None = None
     observed_input_ports: tuple[int, ...] | None = None
+    physical_support: PhysicalSupport | None = None
 
     def __post_init__(self) -> None:
         _validate_boundary_shape(self.outgoing_boundaries)
@@ -72,6 +74,10 @@ class ResultSemantics:
             or any(type(value) is not int for value in self.observed_input_ports)
         ):
             raise TypeError("observed input ports require exact immutable integers")
+        if self.physical_support is not None:
+            if type(self.physical_support) is not PhysicalSupport:
+                raise TypeError("result semantics has another shadow-support sort")
+            self.physical_support.owner.validate(self.physical_support)
 
     def completed(self, output: TileID) -> CompletedResult:
         return CompletedResult(
@@ -86,6 +92,7 @@ class ResultSemantics:
             self.outgoing_boundaries,
             self.fusion,
             self.observed_input_ports,
+            self.physical_support,
         )
 
 

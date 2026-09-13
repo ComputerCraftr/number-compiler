@@ -193,9 +193,10 @@ def jacobi_symbol(a: int, n: int) -> int:
     return result if n == 1 else 0
 
 
-def smallest_factor(n: int) -> int | None:
+def smallest_factor(n: int, *, max_divisor: int | None = None) -> int | None:
     """Return the least proper factor of ``n`` or ``None`` when ``n`` is prime.
 
+    With ``max_divisor``, None means no factor within that bound, not primality.
     This is the canonical bounded factor primitive shared by the prime and
     special-number compilers.  It does not retain a prime table.
     """
@@ -206,7 +207,12 @@ def smallest_factor(n: int) -> int | None:
         return None
     if n % 2 == 0:
         return 2
-    for factor in range(3, isqrt(n) + 1, 2):
+    limit = isqrt(n)
+    if max_divisor is not None:
+        if type(max_divisor) is not int or max_divisor < 2:
+            raise ValueError("trial divisor bound must be at least two")
+        limit = min(limit, max_divisor)
+    for factor in range(3, limit + 1, 2):
         if n % factor == 0:
             return factor
     return None

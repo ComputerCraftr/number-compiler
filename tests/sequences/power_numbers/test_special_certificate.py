@@ -8,7 +8,7 @@ from number_compiler.sequences.power_numbers.certificate import (
 )
 
 
-def test_demanded_depth_certificates_use_compact_terminal_then_classical_ceiling() -> (
+def test_demanded_depth_certificates_never_fall_back_from_missing_extractor() -> (
     None
 ):
     for n in (0, 1, 2):
@@ -20,13 +20,13 @@ def test_demanded_depth_certificates_use_compact_terminal_then_classical_ceiling
     f3 = fermat_depth_certificate(3)
     assert f3.status == "prime"
     assert f3.method == "terminal-threshold:fermat-sqrt-divisor-lower-bound"
-    expected_fermat = {4: ("prime", 15), 5: ("composite", 31)}
-    for n, (status, steps) in expected_fermat.items():
+    for n in (4, 5):
         cert = fermat_depth_certificate(n)
-        assert cert.status == status
-        assert cert.method == "classical-ceiling:pepin-target-pullback"
-        assert cert.specialization_raw_squarings == steps == cert.modulus_bits - 2
+        assert cert.status == "unknown"
+        assert cert.method.startswith("terminal-threshold:")
+        assert cert.specialization_raw_squarings == 0
         assert cert.carrier_states_enumerated == 0
+        assert not cert.scalable_construction
 
     assert mersenne_depth_certificate(2).status == "prime"
     m3 = mersenne_depth_certificate(3)
@@ -38,13 +38,13 @@ def test_demanded_depth_certificates_use_compact_terminal_then_classical_ceiling
         assert cert.method == "terminal-threshold:mersenne-order-divisor-sqrt-bound"
         assert cert.specialization_raw_squarings == 0
         assert cert.carrier_states_enumerated == 0
-    expected_mersenne = {11: "composite", 13: "prime", 17: "prime"}
-    for p, status in expected_mersenne.items():
+    for p in (11, 13, 17):
         cert = mersenne_depth_certificate(p)
-        assert cert.status == status
-        assert cert.method == "classical-ceiling:lucas-lehmer-target-pullback"
-        assert cert.specialization_raw_squarings == p - 2 == cert.modulus_bits - 2
+        assert cert.status == "unknown"
+        assert cert.method.startswith("terminal-threshold:")
+        assert cert.specialization_raw_squarings == 0
         assert cert.carrier_states_enumerated == 0
+        assert not cert.scalable_construction
     # Composite exponents are still rejected by the cheap symbolic exponent theorem.
     assert mersenne_depth_certificate(9).status == "composite"
 
@@ -56,8 +56,8 @@ def test_prime_depth_metadata_is_attached_only_after_candidate_derived_target_pr
     f4 = fermat_depth_certificate(4)
     m13 = mersenne_depth_certificate(13)
     assert f2.target_depth == 0 and f2.quotient_classes == 2
-    assert f4.target_depth is not None and f4.quotient_classes > 0
-    assert m13.target_depth is not None and m13.quotient_classes > 0
+    assert f4.target_depth is None and f4.quotient_classes == 0
+    assert m13.target_depth is None and m13.quotient_classes == 0
 
 
 def test_certificate_module_has_no_reference_classifier_dependency() -> None:
@@ -89,14 +89,14 @@ def test_proved_pass_metadata_does_not_materialize_the_image_filtration(
     monkeypatch.setattr(filtration, "pure_two_primary_image_filtration", forbidden)
     f4 = fermat_depth_certificate(4)
     m13 = mersenne_depth_certificate(13)
-    assert (f4.status, f4.quotient_classes, f4.target_depth) == ("prime", 12, 10)
-    assert (m13.status, m13.quotient_classes, m13.target_depth) == ("prime", 13, 11)
+    assert (f4.status, f4.quotient_classes, f4.target_depth) == ("unknown", 0, None)
+    assert (m13.status, m13.quotient_classes, m13.target_depth) == ("unknown", 0, None)
 
 
 def test_no_classical_policy_returns_unknown_without_entering_fallback(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    import number_compiler.sequences.power_numbers.classical_ceiling as ceiling
+    import devtools.proofs.oracles.classical_ceiling as ceiling
     from number_compiler.api.sequence_compiler import CanonicalSequenceCompiler
 
     def forbidden(*_args: object, **_kwargs: object) -> Never:
@@ -126,8 +126,8 @@ def test_no_classical_policy_preserves_independently_decided_branches() -> None:
         mersenne_depth_certificate(9, allow_classical_ceiling=False).status
         == "composite"
     )
-    assert fermat_depth_certificate(4).status == "prime"
-    assert mersenne_depth_certificate(13).status == "prime"
+    assert fermat_depth_certificate(4).status == "unknown"
+    assert mersenne_depth_certificate(13).status == "unknown"
 
 
 def test_public_pass_resolver_avoids_materialized_filtration(
@@ -140,7 +140,7 @@ def test_public_pass_resolver_avoids_materialized_filtration(
         raise AssertionError("public PASS path materialized full filtration")
 
     monkeypatch.setattr(filtration, "pure_two_primary_image_filtration", forbidden)
-    result = CanonicalSequenceCompiler().resolve_special_theorem("fermat", 4)
+    result = CanonicalSequenceCompiler().resolve_special_theorem("fermat", 3)
     assert result.decided and result.primality is not None
     assert result.primality.status == "prime"
 
@@ -174,3 +174,49 @@ def test_mersenne_exponent_gate_uses_exact_u64_primality_without_factor_scan(
     monkeypatch.setattr(special_numbers, "smallest_factor", forbidden)
     assert special_numbers.mersenne_exponent_is_prime(2_147_483_647)
     assert not special_numbers.mersenne_exponent_is_prime(2_147_483_645)
+
+
+def test_direct_mersenne_certificate_rejects_unbounded_exponent_factor_search(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    import number_compiler.sequences.power_numbers.numbers as special_numbers
+
+    def forbidden(*_args: object, **_kwargs: object) -> Never:
+        raise AssertionError("unbounded exponent factor search entered certificate")
+
+    monkeypatch.setattr(special_numbers, "smallest_factor", forbidden)
+    unresolved = mersenne_depth_certificate(
+        (1 << 64) + 13, max_candidate_bits=(1 << 64) + 20
+    )
+    assert unresolved.status == "unknown"
+    assert unresolved.method == "exponent-gate-budget"
+    assert not unresolved.scalable_construction
+
+    even = mersenne_depth_certificate(
+        (1 << 64) + 2, max_candidate_bits=(1 << 64) + 20
+    )
+    assert even.status == "composite"
+    assert even.method == "composite-exponent-small-factor"
+
+
+def test_direct_special_certificates_reject_symbolic_width_before_large_shift() -> (
+    None
+):
+    with pytest.raises(ValueError, match="candidate exceeds max_candidate_bits"):
+        fermat_depth_certificate(1_000_000)
+    with pytest.raises(ValueError, match="candidate exceeds max_candidate_bits"):
+        mersenne_depth_certificate(1_000_001)
+
+
+def test_removed_recurrence_policy_cannot_be_enabled_even_after_cache_hit() -> None:
+    from number_compiler.api.sequence_compiler import CanonicalSequenceCompiler
+    from number_compiler.sequences.power_numbers.theorem_query import resolve_special_theorem
+
+    compiler = CanonicalSequenceCompiler()
+    assert compiler.resolve_special_theorem("fermat", 3).decided
+    for resolve in (resolve_special_theorem, compiler.resolve_special_theorem):
+        with pytest.raises(ValueError):
+            resolve("fermat", 3, allow_classical_ceiling=True)
+    for certify in (fermat_depth_certificate, mersenne_depth_certificate):
+        with pytest.raises(ValueError):
+            certify(3, allow_classical_ceiling=True)

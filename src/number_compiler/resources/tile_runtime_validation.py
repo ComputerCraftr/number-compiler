@@ -105,6 +105,21 @@ def _reverse_output_snapshot(value: object) -> tuple[object, ...] | None:
     )
 
 
+def _physical_support_snapshot(value: object) -> tuple[object, ...] | None:
+    if value is None:
+        return None
+    return (
+        type(value),
+        getattr(value, "owner", None),
+        getattr(value, "node_id", None),
+        getattr(value, "ticks", None),
+        getattr(value, "odd_ticks", None),
+        getattr(value, "parity", None),
+        id(getattr(value, "left", None)),
+        id(getattr(value, "right", None)),
+    )
+
+
 def _causal_interface_snapshot(
     key: CausalInterfaceKey,
     value: CompletedInterfaceResult,
@@ -130,6 +145,7 @@ def _causal_interface_snapshot(
         value.physical_ticks,
         value.event_weight,
         value.frame_shift,
+        _physical_support_snapshot(value.physical_support),
         _reverse_output_snapshot(value.bound_reverse_output),
     )
 

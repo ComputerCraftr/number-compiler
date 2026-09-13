@@ -28,7 +28,13 @@ from number_compiler.resources.ledger import ResourceLedger
 from number_compiler.resources.stores import LedgerDict, LedgerList
 
 if TYPE_CHECKING:
+    from number_compiler.hashlife.tiles.tile_context import TemporalCocycle
+    from number_compiler.hashlife.observation.tile_cylinder import TileCylinderWorkspace
+    from number_compiler.arithmetic.polynomials.twisted_observer import (
+        TwistedCylinderProjection,
+    )
     from number_compiler.hashlife.actions.lazy_compiler import LazyCompiler
+    from number_compiler.sequences.collatz.physical_support import PhysicalSupport
 
 
 def _close_all(values: list[tuple[int, TileLease]]) -> None:
@@ -157,6 +163,7 @@ class LazyProjection:
         "ledger",
         "_application",
         "_logical_extent",
+        "_cylinder_workspace",
         "_closed",
         "__weakref__",
     )
@@ -186,6 +193,7 @@ class LazyProjection:
             len(source.digits) if source.extent is None else source.extent
         )
         self._closed = False
+        self._cylinder_workspace: TileCylinderWorkspace | None = None
         self.ledger.register_execution_root(self)
 
     def _open(self) -> TileApplication:
@@ -218,6 +226,58 @@ class LazyProjection:
         width = self._open().width(self._logical_extent)
         self.ledger.bump("tile_projection_width_observations")
         return width
+
+    @source_reads_only
+    def temporal_cocycle(self) -> TemporalCocycle:
+        """Demand authenticated bound weights through the existing interface."""
+        from number_compiler.hashlife.tiles.tile_context import TemporalCocycle
+
+        application = self._open()
+        application.validate_execution()
+        result = application.interface()
+        self.ledger.bump("tile_projection_cocycle_observations")
+        return TemporalCocycle(
+            result.physical_ticks, result.event_weight, result.frame_shift
+        )
+
+    @source_reads_only
+    def physical_support(self) -> PhysicalSupport:
+        """Demand the source-bound ordered support from the normal interface path."""
+        application = self._open()
+        application.validate_execution()
+        result = application.interface()
+        support = result.physical_support
+        if support is None:
+            raise ValueError("bound application has no physical support")
+        if support.owner is not self.scheduler.physical_supports:
+            raise ValueError("bound support belongs to another scheduler")
+        support.owner.validate(support)
+        if (
+            support.ticks != result.physical_ticks
+            or support.odd_ticks != result.event_weight
+        ):
+            raise ValueError("bound support disagrees with interface weights")
+        self.ledger.bump("tile_projection_physical_support_observations")
+        return support
+
+    @source_reads_only
+    def mirror_obstruction(
+        self, *, first_width: int = 1
+    ) -> TwistedCylinderProjection | None:
+        from number_compiler.hashlife.observation.tile_cylinder import (
+            TileCylinderWorkspace,
+            tile_mirror_obstruction,
+        )
+
+        application = self._open()
+        if self._cylinder_workspace is None:
+            self._cylinder_workspace = TileCylinderWorkspace(self.ledger)
+        return tile_mirror_obstruction(
+            application,
+            self._logical_extent,
+            self._cylinder_workspace,
+            first_width=first_width,
+        )
 
     def retained_entries(self) -> int:
         self._open()
@@ -255,7 +315,11 @@ class LazyProjection:
         if type(self._closed) is not bool:
             raise ValueError("malformed lazy tile projection")
         if not self._closed:
-            self._application.close()
+            try:
+                self._application.close()
+            finally:
+                if self._cylinder_workspace is not None:
+                    self._cylinder_workspace.dispose()
             self._closed = True
 
     def __enter__(self) -> LazyProjection:
