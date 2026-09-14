@@ -71,11 +71,11 @@ class _ReverseAddEventStencilArena:
     """Derive the signed event row from one forward carry row dyadically."""
 
     __slots__ = (
-        "base",
-        "_no_growth",
         "_growth",
-        "requests",
+        "_no_growth",
+        "base",
         "hits",
+        "requests",
     )
 
     def __init__(self, base: int) -> None:
@@ -386,7 +386,7 @@ class _ReverseAddEventStencilArena:
 class _ReverseAddAffineApplyArena:
     """Apply cached affine actions to exact pair payloads with dyadic zips."""
 
-    __slots__ = ("base", "_binary", "_ternary", "requests", "hits")
+    __slots__ = ("_binary", "_ternary", "base", "hits", "requests")
 
     def __init__(self, base: int) -> None:
         require_exact_oracle()
@@ -560,13 +560,13 @@ class ReverseAddAffineActionArena:
     """Intern/apply exact reverse/add operators independently of source payload."""
 
     __slots__ = (
+        "_actions",
+        "aliases",
+        "apply_arena",
         "base",
         "events",
-        "apply_arena",
-        "_actions",
-        "requests",
         "hits",
-        "aliases",
+        "requests",
     )
 
     def __init__(self, base: int = 10) -> None:
@@ -636,6 +636,6 @@ class ReverseAddAffineActionArena:
 
 __all__ = [
     "ReverseAddAffineAction",
-    "ReverseAddAffineActionMetrics",
     "ReverseAddAffineActionArena",
+    "ReverseAddAffineActionMetrics",
 ]

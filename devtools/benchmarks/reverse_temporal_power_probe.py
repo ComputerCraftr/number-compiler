@@ -1,4 +1,3 @@
-#!/usr/bin/env python3
 """Schema-six probe separating compiled images from actual projection work.
 
 Compact binary action syntax and a small image graph do not certify output
@@ -9,6 +8,7 @@ and temporal leaf descents alongside canonical spatial/temporal populations.
 from __future__ import annotations
 
 import ast
+import itertools
 import json
 from collections.abc import Mapping, Sequence
 from time import perf_counter
@@ -86,7 +86,9 @@ def _production_projection_rows() -> list[dict[str, object]]:
         scheduler_work = projection_accounting(point_metrics)
         projection = term._point_index()._lazy_application
         if type(projection) is not LazyProjection:
-            raise AssertionError(("reverse-projection-is-not-tile-hashlife", generation))
+            raise AssertionError(
+                ("reverse-projection-is-not-tile-hashlife", generation)
+            )
         if (
             metrics.hashlife_section_cache_entries
             or metrics.hashlife_leaf_cache_entries
@@ -315,7 +317,7 @@ def _doubling_envelope(rows: Sequence[Mapping[str, object]], field: str) -> bool
     return all(
         _metric_int(current["generation"]) == 2 * _metric_int(previous["generation"])
         and _metric_int(current[field]) <= 2 * _metric_int(previous[field]) + bootstrap
-        for previous, current in zip(rows, rows[1:])
+        for previous, current in itertools.pairwise(rows)
     )
 
 
@@ -376,7 +378,7 @@ def run_probe() -> dict[str, object]:
     if any(
         _metric_int(current["higher_concrete_operation_evaluations"])
         > 2 * _metric_int(previous["higher_concrete_operation_evaluations"]) + 64
-        for previous, current in zip(projection, projection[1:])
+        for previous, current in itertools.pairwise(projection)
     ):
         blockers.append("higher_interface_work_exceeds_doubling_envelope")
     interpreter_observed = any(

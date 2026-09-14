@@ -66,9 +66,8 @@ def test_slp_materialization_is_forbidden_in_powered_jump() -> None:
     a = SLPArena()
     q = a.word((1, 2, 3))
     audit = JumpAudit()
-    with pytest.raises(JumpGuardViolation):
-        with powered_jump_scope(audit):
-            a.materialize(q)
+    with pytest.raises(JumpGuardViolation), powered_jump_scope(audit):
+        a.materialize(q)
     assert audit.forbidden_attempts["slp_materialize"] == 1
 
 
@@ -178,7 +177,7 @@ def test_cascade_power_cap_is_not_usable_as_complete_operator() -> None:
 
 
 def test_semantic_residual_minimizer_has_no_cartesian_grid_regression() -> None:
-    import number_compiler.arithmetic.functions.residual as residual
+    from number_compiler.arithmetic.functions import residual
 
     assert not hasattr(residual, "CompactOutputGrid")
     b = build_pair_step_bimachine(10)
@@ -219,7 +218,7 @@ def test_quotient_first_composition_is_exhaustive_on_small_bases() -> None:
 def test_power_table_t4_forbids_raw_primitive_fallback(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    import number_compiler.hashlife.actions.power as power
+    from number_compiler.hashlife.actions import power
 
     b = minimize_bimachine(build_pair_step_bimachine(10), cache_outputs=False).machine
     table = power.ResidualPowerTable(b, state_cap=10000, time_cap=20)

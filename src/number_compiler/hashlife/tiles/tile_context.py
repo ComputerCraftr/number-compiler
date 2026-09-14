@@ -6,7 +6,10 @@ from dataclasses import dataclass
 from typing import TYPE_CHECKING
 
 from number_compiler.hashlife.interfaces.diamond_quotient import LocalInterfaceID
-from number_compiler.hashlife.tiles.tile_boundaries import BoundaryTileOperands
+from number_compiler.hashlife.tiles.tile_boundaries import (
+    EMPTY_BOUNDARY_TILES,
+    BoundaryTileOperands,
+)
 from number_compiler.hashlife.tiles.tile_ports import (
     BoundPorts,
     FusedBoundaryContract,
@@ -39,7 +42,7 @@ class ResultSemantics:
     frame_shift: int = 0
     relative_origin: int = 0
     relative_extent: int = 0
-    outgoing_boundaries: BoundaryTileOperands = BoundaryTileOperands()
+    outgoing_boundaries: BoundaryTileOperands = EMPTY_BOUNDARY_TILES
     fusion: FusedBoundaryContract | None = None
     observed_input_ports: tuple[int, ...] | None = None
     physical_support: PhysicalSupport | None = None
@@ -140,7 +143,7 @@ class PrimitiveTileResult:
 class ChildContext:
     ports: tuple[int, ...]
     wiring: ResultWiring
-    boundaries: BoundaryTileOperands = BoundaryTileOperands()
+    boundaries: BoundaryTileOperands = EMPTY_BOUNDARY_TILES
 
     def __post_init__(self) -> None:
         if type(self.ports) is not tuple or any(
@@ -176,7 +179,8 @@ def bind_context(
     context: BoundPorts,
 ) -> BoundPorts:
     """Resolve exact exterior operands only on an uncached execution path."""
-    from typing import Callable, cast
+    from collections.abc import Callable
+    from typing import cast
 
     if context.boundaries == BoundaryTileOperands():
         return context

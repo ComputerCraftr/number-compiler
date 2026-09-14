@@ -30,7 +30,7 @@ def test_import_facts_cover_nested_relative_and_aliased_imports(
     monkeypatch.setattr(ast, "parse", forbidden)
     assert source_imports(path) is facts
     with pytest.raises(FrozenInstanceError):
-        setattr(facts[0], "names", ())
+        facts[0].__setattr__("names", ())
 
 
 def test_import_facts_revalidate_content_even_when_stat_metadata_matches(

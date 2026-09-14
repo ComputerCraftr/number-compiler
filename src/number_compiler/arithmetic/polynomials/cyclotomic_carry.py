@@ -7,8 +7,8 @@ from becoming part of the canonical cyclotomic ring state.
 
 from __future__ import annotations
 
+from collections.abc import Sequence
 from dataclasses import dataclass
-from typing import Sequence
 
 from number_compiler.arithmetic.carry.carry_normalization import (
     RadixCarryAction,
@@ -92,7 +92,7 @@ class CarryCyclotomicTransducer:
         modulus: int,
         power: int = 1,
         factor: Sequence[int] | None = None,
-    ) -> "CarryCyclotomicTransducer":
+    ) -> CarryCyclotomicTransducer:
         coeffs = tuple(map(int, coefficients))
         block = RadixCarryBlock.from_coefficients(coeffs, base=int(base))
         action = RadixCarryAction.from_block(
@@ -179,7 +179,7 @@ class CarryCyclotomicTransducer:
             self.factor,
         )
 
-    def then(self, other: "CarryCyclotomicTransducer") -> "CarryCyclotomicTransducer":
+    def then(self, other: CarryCyclotomicTransducer) -> CarryCyclotomicTransducer:
         if self.module_key != other.module_key:
             raise ValueError((self.module_key, other.module_key))
         action = self.action.then(other.action)
@@ -198,7 +198,7 @@ class CarryCyclotomicTransducer:
             self.compositions + other.compositions + 1,
         )
 
-    def power_block(self, exponent: int) -> "CarryCyclotomicTransducer":
+    def power_block(self, exponent: int) -> CarryCyclotomicTransducer:
         identity_action = RadixCarryAction(
             self.action.base,
             0,

@@ -8,11 +8,11 @@ from number_compiler.arithmetic.contracts.block_effect import (
     BlockContextBudgetExceeded,
 )
 from number_compiler.arithmetic.contracts.block_kernel import BaseBlockEffect
-from number_compiler.resources.fused_traversal_workspace import (
-    FusedTraversalWorkspace,
-)
 from number_compiler.resources.fused_traversal_inventory import (
     audit_fused_traversal_workspace,
+)
+from number_compiler.resources.fused_traversal_workspace import (
+    FusedTraversalWorkspace,
 )
 from number_compiler.resources.ledger import ResourceLedger
 from number_compiler.resources.tile_runtime_inventory import audit_tile_runtime
@@ -22,10 +22,12 @@ from tests.arithmetic.contracts.test_tile_kernel import _runtime, _tile
 def test_fused_workspace_rejects_reentry_and_releases_after_failure() -> None:
     ledger = ResourceLedger()
     workspace = FusedTraversalWorkspace(ledger, "test")
-    with pytest.raises(RuntimeError, match="already active"):
-        with workspace.scope(3, 2):
-            with workspace.scope(0, 2):
-                raise AssertionError("unreachable")
+    with (
+        pytest.raises(RuntimeError, match="already active"),
+        workspace.scope(3, 2),
+        workspace.scope(0, 2),
+    ):
+        raise AssertionError("unreachable")
     account = ledger.inventory()[workspace.owner]
     assert workspace.active is False and workspace.nodes == 0
     assert (account.nodes, account.observed_nodes) == (0, 0)
@@ -39,9 +41,8 @@ def test_fused_workspace_budget_rejects_before_becoming_active() -> None:
     ledger = ResourceLedger(max_nodes=0)
     workspace = FusedTraversalWorkspace(ledger, "test")
     before = ledger.snapshot()
-    with pytest.raises(BlockContextBudgetExceeded):
-        with workspace.scope(1, 2):
-            raise AssertionError("unreachable")
+    with pytest.raises(BlockContextBudgetExceeded), workspace.scope(1, 2):
+        raise AssertionError("unreachable")
     assert ledger.snapshot() == before
     assert workspace.active is False and workspace.nodes == 0
 

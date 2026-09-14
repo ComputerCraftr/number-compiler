@@ -7,10 +7,10 @@ becoming a second polynomial-arithmetic/factorization implementation.
 
 from __future__ import annotations
 
+from collections.abc import Sequence
 from dataclasses import dataclass
-from functools import lru_cache
+from functools import cache
 from math import gcd
-from typing import Sequence
 
 from number_compiler.arithmetic.polynomials.cyclotomic import (
     cyclotomic_coefficients,
@@ -126,7 +126,7 @@ def _nullspace_mod_prime(
 ) -> tuple[tuple[int, ...], ...]:
     """Return a deterministic row-vector basis for a matrix nullspace over ``F_p``."""
     p = int(prime)
-    rows = [list(int(value) % p for value in row) for row in matrix]
+    rows = [[int(value) % p for value in row] for row in matrix]
     if not rows:
         return ()
     nrows, ncols = len(rows), len(rows[0])
@@ -292,7 +292,7 @@ def polynomial_crt_mod_prime(
     return polynomial_remainder_monic(out, total, modulus=p)
 
 
-@lru_cache(maxsize=None)
+@cache
 def cyclotomic_factors_mod_prime(order: int, prime: int) -> tuple[tuple[int, ...], ...]:
     """Factor ``Phi_order`` into monic irreducibles over ``F_prime``.
 
@@ -385,7 +385,7 @@ def _pad_polynomial(values: Sequence[int], length: int) -> list[int]:
     return out
 
 
-@lru_cache(maxsize=None)
+@cache
 def cyclotomic_factors_mod_prime_power(
     order: int,
     prime: int,
@@ -515,7 +515,7 @@ def polynomial_inverse_mod_prime_power(
             div,
             modulus=modulus,
         )
-        correction = list((-v) % modulus for v in ay)
+        correction = [(-v) % modulus for v in ay]
         correction[0] = (correction[0] + 2) % modulus
         inverse = polynomial_remainder_monic(
             polynomial_multiply(inverse, correction),
@@ -577,14 +577,14 @@ def polynomial_crt_mod_prime_power(
 
 
 __all__ = [
-    "multiplicative_order_mod",
-    "polynomial_inverse_mod_prime",
-    "polynomial_crt_mod_prime",
-    "polynomial_inverse_mod_prime_power",
-    "polynomial_crt_mod_prime_power",
+    "CyclotomicLinearFactorProfile",
     "cyclotomic_factors_mod_prime",
     "cyclotomic_factors_mod_prime_power",
-    "cyclotomic_primary_components",
-    "CyclotomicLinearFactorProfile",
     "cyclotomic_linear_factor_profile",
+    "cyclotomic_primary_components",
+    "multiplicative_order_mod",
+    "polynomial_crt_mod_prime",
+    "polynomial_crt_mod_prime_power",
+    "polynomial_inverse_mod_prime",
+    "polynomial_inverse_mod_prime_power",
 ]

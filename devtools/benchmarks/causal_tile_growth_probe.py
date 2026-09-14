@@ -1,9 +1,9 @@
-#!/usr/bin/env python3
 """Cold causal-tile growth evidence in separate work and space units."""
 
 from __future__ import annotations
 
 import argparse
+import itertools
 import json
 from collections.abc import Iterable
 from dataclasses import asdict, dataclass
@@ -285,7 +285,7 @@ def _interval_diagnostics(scheduler: Any, application: int) -> _IntervalDiagnost
             (view.source_offset, view.source_offset + view.relative_extent)
         )
 
-    for (owner, key), _lease in scheduler._pins.items():
+    for owner, key in scheduler._pins:
         if owner != application:
             continue
         children = scheduler.adapter.action_children(key.action)
@@ -657,7 +657,7 @@ def _growth_steps(
     rows: tuple[CausalGrowthRow, ...], axis: str, field: str
 ) -> list[dict[str, int | None]]:
     output: list[dict[str, int | None]] = []
-    for previous, current in zip(rows, rows[1:]):
+    for previous, current in itertools.pairwise(rows):
         before = getattr(previous, axis)
         after = getattr(current, axis)
         old = getattr(previous, field)
@@ -730,7 +730,7 @@ def series_report(
             continue
         if type(bootstrap) is not int:
             raise AssertionError((field, bootstrap))
-        pairs = tuple(zip(values, values[1:]))
+        pairs = tuple(itertools.pairwise(values))
         linear_envelopes[field] = all(
             getattr(current, axis) == 2 * getattr(previous, axis)
             and int(getattr(current, field))

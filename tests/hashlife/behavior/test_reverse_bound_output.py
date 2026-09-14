@@ -1,13 +1,14 @@
 from itertools import product
+from typing import cast
 
 import pytest
 
-from number_compiler.arithmetic.contracts.block_effect import BoundarySide
 from number_compiler.arithmetic.carry.reverse_port_functions import (
     ReverseLeftTransfer,
     ReversePortCodec,
     ReverseRightTransfer,
 )
+from number_compiler.arithmetic.contracts.block_effect import BoundarySide
 from number_compiler.hashlife.behavior.reverse_bound_output import ReverseBoundOutput
 from number_compiler.projection.digit_terminal import DigitNormalizeBlockEffect
 from number_compiler.resources.ledger import ResourceLedger
@@ -57,7 +58,7 @@ def test_bound_reverse_output_rejects_numeric_aliases() -> None:
     with pytest.raises((TypeError, ValueError)):
         summary.apply(False, 0)
     with pytest.raises((TypeError, ValueError)):
-        summary.apply(0, 0.0)  # type: ignore[arg-type]
+        summary.apply(0, cast(int, 0.0))
 
 
 def test_bound_reverse_output_rejects_unissued_payload() -> None:

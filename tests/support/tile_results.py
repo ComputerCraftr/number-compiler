@@ -43,14 +43,7 @@ from number_compiler.resources.ledger import ResourceLedger
 from number_compiler.resources.stores import LedgerList
 
 if TYPE_CHECKING:
-    from number_compiler.hashlife.actions.field_actions import FieldCellActionID
-    from number_compiler.hashlife.tiles.tile_result_records import (
-        CompletedResult,
-        PoweredResultKey,
-    )
-    from number_compiler.hashlife.tiles.tile_results import CompletedResultArena
-    from number_compiler.hashlife.tiles.tiles import TileArena, TileLease
-    from number_compiler.resources.ledger import ResourceLedger
+    from number_compiler.hashlife.tiles.tiles import TileLease
 
 
 class _ActionAuthority:

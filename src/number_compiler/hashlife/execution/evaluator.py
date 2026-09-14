@@ -7,7 +7,8 @@ objects.
 
 from __future__ import annotations
 
-from typing import Any, Dict, Iterator, Mapping, Optional, Tuple
+from collections.abc import Iterator, Mapping
+from typing import Any
 
 from number_compiler.arithmetic.automata.guard import forbid_in_powered_jump
 from number_compiler.arithmetic.formula.formula import FormulaArena, FormulaRoot
@@ -17,8 +18,8 @@ from number_compiler.arithmetic.formula.types import Expr
 def eval_bit(
     root: Expr,
     i: int,
-    env: Optional[Mapping[int, int]] = None,
-    memo: Optional[Dict[tuple[int, int], int]] = None,
+    env: Mapping[int, int] | None = None,
+    memo: dict[tuple[int, int], int] | None = None,
 ) -> int:
     """Evaluate one bit with an explicit continuation stack."""
     forbid_in_powered_jump("eval_bit")
@@ -276,7 +277,7 @@ def eval_bit(
 
 def iter_values(
     root: FormulaRoot,
-    env: Optional[Mapping[int, int]] = None,
+    env: Mapping[int, int] | None = None,
     *,
     reverse: bool = False,
 ) -> Iterator[int]:
@@ -288,7 +289,7 @@ def iter_values(
     copy of an already materialized word.
     """
     forbid_in_powered_jump("iter_values")
-    memo: Dict[tuple[int, int], int] = {}
+    memo: dict[tuple[int, int], int] = {}
     positions = range(root.width - 1, -1, -1) if reverse else range(root.width)
     for i in positions:
         yield sum(
@@ -297,15 +298,15 @@ def iter_values(
 
 
 def materialize_values(
-    root: FormulaRoot, env: Optional[Mapping[int, int]] = None
-) -> Tuple[int, ...]:
+    root: FormulaRoot, env: Mapping[int, int] | None = None
+) -> tuple[int, ...]:
     forbid_in_powered_jump("materialize_values")
     return tuple(iter_values(root, env))
 
 
-def value_at(root: FormulaRoot, i: int, env: Optional[Mapping[int, int]] = None) -> int:
+def value_at(root: FormulaRoot, i: int, env: Mapping[int, int] | None = None) -> int:
     forbid_in_powered_jump("value_at")
-    memo: Dict[tuple[int, int], int] = {}
+    memo: dict[tuple[int, int], int] = {}
     return sum(
         eval_bit(plane, i, env, memo) << b for b, plane in enumerate(root.planes)
     )
@@ -315,7 +316,7 @@ def substitute(
     root: Expr,
     mapping: Mapping[int, Expr],
     arena: FormulaArena,
-    memo: Optional[Dict[int, Expr]] = None,
+    memo: dict[int, Expr] | None = None,
 ) -> Expr:
     """Substitute a formula DAG iteratively, preserving shared descendants.
 
@@ -410,7 +411,7 @@ def substitute_root(
     ):
         raise ValueError("input/replacement shape mismatch")
     mapping = {src.id: dst for src, dst in zip(inputs.planes, replacement.planes)}
-    memo: Dict[int, Expr] = {}
+    memo: dict[int, Expr] = {}
     return FormulaRoot(tuple(substitute(p, mapping, arena, memo) for p in root.planes))
 
 
@@ -418,7 +419,7 @@ __all__ = [
     "eval_bit",
     "iter_values",
     "materialize_values",
-    "value_at",
     "substitute",
     "substitute_root",
+    "value_at",
 ]

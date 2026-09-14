@@ -19,12 +19,12 @@ from devtools.proofs.oracles.special_binary_jump import (
     fermat_radix_orbit_representative,
     mersenne_sign_representative,
 )
+from number_compiler.arithmetic.functions.finite_observer import (
+    minimize_finite_observer,
+)
 from number_compiler.arithmetic.polynomials.arithmetic_tile import (
     ArithmeticTile,
     ArithmeticTileSpec,
-)
-from number_compiler.arithmetic.functions.finite_observer import (
-    minimize_finite_observer,
 )
 
 
@@ -367,7 +367,7 @@ def multiplication_consumer_congruence_audits() -> tuple[
         for row in multiplication_preflight_audits()
         if row.refinement_admitted
     }
-    for family, parameter in closure:
+    for (family, parameter), closure_row in closure.items():
         if (family, parameter) not in admitted:
             continue
         proof, modulus, representatives = _carrier(family, parameter)
@@ -405,7 +405,7 @@ def multiplication_consumer_congruence_audits() -> tuple[
                 published_table,
                 square,
                 witness,
-                closure[family, parameter].addition_closed,
+                closure_row.addition_closed,
                 False,
             )
         )

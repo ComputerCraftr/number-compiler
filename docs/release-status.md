@@ -1,5 +1,11 @@
 # Repository cleanup and current release status
 
+The [September 14 Python quality cleanup](../results/current/python-quality-cleanup-2026-09-14/README.md)
+upgrades the development dependencies, removes inline mypy/Ruff suppressions,
+and repairs redundant arena/oracle/policy work. Its evidence separates quality
+checks from the unchanged full-unit and mathematical release gates. It does not
+close the remaining source-construction or non-halting obligations.
+
 The [September 14 digit CLI priority](digit-cli-cutover-priority-2026-09-14.md)
 puts removal of legacy execution and exact ordinary digit output first.
 Classification, factor reporting and non-halting certification are additional

@@ -31,9 +31,6 @@ from number_compiler.resources.ledger import ResourceLedger
 if TYPE_CHECKING:
     from number_compiler.arithmetic.contracts.scoped_handles import ActionProgramID
     from number_compiler.hashlife.actions.diamond_actions import CellID
-    from number_compiler.hashlife.execution.diamond_pair_macros import (
-        PrimitivePairMacros,
-    )
 
 
 def macros() -> tuple[

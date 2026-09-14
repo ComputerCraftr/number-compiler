@@ -27,7 +27,6 @@ from number_compiler.arithmetic.fields.morphism_core import (
     LazyLoweringCache,
     binary_power,
 )
-
 from number_compiler.arithmetic.functions.word_concatenation import concatenate_words
 from number_compiler.resources.ledger import OwnedMemo, ResourceLedger
 
@@ -415,21 +414,21 @@ class CollatzEventArena:
         "__weakref__",
         "_by_key",
         "_cocycle_cache",
+        "_cocycle_owner",
         "_concat_cache",
-        "_uniform",
+        "_concat_owner",
+        "_event_owner",
         "_events",
         "_identity",
+        "_key_owner",
+        "_ledger",
+        "_node_owner",
         "_nodes",
+        "_uniform",
+        "_uniform_owner",
         "composition_operations",
         "intern_hits",
         "intern_misses",
-        "_ledger",
-        "_node_owner",
-        "_key_owner",
-        "_event_owner",
-        "_concat_owner",
-        "_uniform_owner",
-        "_cocycle_owner",
     )
 
     def __init__(self, *, ledger: ResourceLedger | None = None) -> None:
@@ -437,9 +436,7 @@ class CollatzEventArena:
         self._ledger = ledger
         prefix = f"collatz-event-{len(ledger.inventory())}"
         self._node_owner = ledger.register(prefix + "-nodes", "action_program")
-        self._key_owner = ledger.register(
-            prefix + "-keys", "field_transfer_interner"
-        )
+        self._key_owner = ledger.register(prefix + "-keys", "field_transfer_interner")
         self._event_owner = ledger.register(
             prefix + "-atoms", "runtime_query_state_memo"
         )
@@ -449,9 +446,7 @@ class CollatzEventArena:
         self._uniform_owner = ledger.register(
             prefix + "-uniform", "runtime_query_state_memo"
         )
-        self._cocycle_owner = ledger.register(
-            prefix + "-cocycles", "observation_memo"
-        )
+        self._cocycle_owner = ledger.register(prefix + "-cocycles", "observation_memo")
         self._nodes: MutableSequence[CollatzEventNode] = ledger.make_list(
             self._node_owner
         )
@@ -656,11 +651,14 @@ class CollatzEventArena:
 
         try:
             return concatenate_words(
-                first, second,
+                first,
+                second,
                 key_of=lambda node: node.node_id,
                 length=lambda node: node.effect.events,
-                children=lambda node: (cast(CollatzEventNode, node.left),
-                                       cast(CollatzEventNode, node.right)),
+                children=lambda node: (
+                    cast(CollatzEventNode, node.left),
+                    cast(CollatzEventNode, node.right),
+                ),
                 uniform=lambda node: self._uniform.get(node.node_id),
                 run=self._uniform_word,
                 join=self._join,

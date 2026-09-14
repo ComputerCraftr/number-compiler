@@ -17,10 +17,6 @@ from number_compiler.resources.stores import LedgerList
 
 if TYPE_CHECKING:
     from number_compiler.arithmetic.contracts.scoped_handles import TransferSummaryID
-    from number_compiler.arithmetic.functions.finite_port_action import (
-        FinitePortActionArena,
-        PortVariable,
-    )
 
 
 def fixture() -> tuple[

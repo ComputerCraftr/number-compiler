@@ -45,10 +45,7 @@ from number_compiler.sequences.collatz.block_power import CollatzPhysicalBlockEf
 if TYPE_CHECKING:
     from number_compiler.arithmetic.automata.primitive_semantics import (
         PrimitiveSemantics,
-        PrimitiveSemanticsAdapter,
     )
-    from number_compiler.arithmetic.contracts.block_kernel import FiniteBlockEffect
-    from number_compiler.arithmetic.contracts.scoped_handles import ActionProgramID
     from number_compiler.arithmetic.functions.finite_function_types import SemanticNode
     from number_compiler.resources.ledger import ResourceInventory
 

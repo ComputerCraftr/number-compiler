@@ -1,4 +1,3 @@
-#!/usr/bin/env python3
 """Measure bounded vs theorem special-number image-filtration construction."""
 
 from __future__ import annotations

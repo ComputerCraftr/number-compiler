@@ -24,17 +24,8 @@ from number_compiler.hashlife.interfaces.semantic_structures import (
 from number_compiler.resources.ledger import ResourceLedger
 
 if TYPE_CHECKING:
-    from number_compiler.arithmetic.functions.finite_function_types import (
-        AtomSort,
-        FinitePort,
-    )
     from number_compiler.hashlife.interfaces.semantic_bits import (
-        BitFunctionArena,
         FactoredFunctionID,
-    )
-    from number_compiler.hashlife.interfaces.semantic_structures import (
-        StructureArena,
-        StructureID,
     )
 
 
@@ -171,7 +162,7 @@ def test_structured_root_failure_retains_no_partial_leaf_or_boolean_publication(
     ],
 )
 def test_structured_handles_validate_before_product_or_curry(
-    field: str, value: ArenaToken | Literal["semantic-function"] | bool | float | int
+    field: str, value: ArenaToken | Literal["semantic-function"] | bool | float
 ) -> None:
     _, arena, _, y, _, _, _, body = setup()
     arena.curry(body, (y,))

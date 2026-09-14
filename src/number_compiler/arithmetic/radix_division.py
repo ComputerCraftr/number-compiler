@@ -10,7 +10,6 @@ from number_compiler.arithmetic.contracts.block_effect import (
 )
 from number_compiler.arithmetic.contracts.block_kernel import FiniteBlockEffect
 
-
 _SYMBOLIC_DIVISION_SCHEMA = "symbolic-binary-division-v2"
 _MAX_ENUMERATED_BOUNDARY_STATES = 512
 

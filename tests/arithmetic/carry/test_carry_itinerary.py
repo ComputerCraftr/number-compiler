@@ -57,7 +57,7 @@ def test_threshold_itinerary_is_exact_last_event_carry_coordinate() -> None:
     for base in range(3, 17):
         for pair in (
             tuple(range(base - 1, base + 2)),
-            tuple([0, base - 1, 2 * (base - 1), base - 1, 0]),
+            (0, base - 1, 2 * (base - 1), base - 1, 0),
         ):
             symbols = carry_threshold_itinerary(pair, base=base)
             assert carry_from_threshold_itinerary(symbols) == carry_field(

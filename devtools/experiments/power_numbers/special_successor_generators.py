@@ -21,13 +21,8 @@ import pickle
 import subprocess
 import sys
 import tempfile
-from collections import deque as deque
 from dataclasses import asdict
-from dataclasses import dataclass as dataclass
-from functools import lru_cache as lru_cache
-from math import gcd as gcd
-from math import isqrt as isqrt
-from math import prod as prod
+from functools import lru_cache
 from pathlib import Path
 from typing import TypeVar, cast
 

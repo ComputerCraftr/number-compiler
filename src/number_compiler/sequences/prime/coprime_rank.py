@@ -16,7 +16,6 @@ from number_compiler.resources.ledger import OwnedMemo, ResourceLedger
 from number_compiler.resources.process_cache import MISSING, CacheLease
 from number_compiler.resources.stores import LedgerList
 
-
 MAX_SHARED_FACTOR_STAGES = 4096
 
 
@@ -24,13 +23,18 @@ class CoprimeRankDAG:
     """Query-owned recurrence storage with bounded, charged evaluation."""
 
     def __init__(
-        self, primes: tuple[int, ...] = (), *,
-        max_states: int | None = None, max_work: int | None = None,
+        self,
+        primes: tuple[int, ...] = (),
+        *,
+        max_states: int | None = None,
+        max_work: int | None = None,
         retain_queries: bool = True,
         shared_lease: CacheLease | None = None,
     ) -> None:
-        if any(v is not None and (type(v) is not int or v < 1)
-               for v in (max_states, max_work)):
+        if any(
+            v is not None and (type(v) is not int or v < 1)
+            for v in (max_states, max_work)
+        ):
             raise ValueError("prime states and work budgets must be positive integers")
         self.max_states = max_states
         self.max_work = max_work
@@ -40,14 +44,16 @@ class CoprimeRankDAG:
         progression_owner = self.ledger.register(
             "prime.rank.progressions", "congruence-restricted Legendre states"
         )
-        self.progression_memo: OwnedMemo[tuple[int, int, int, int], int] = (
-            OwnedMemo(self.ledger, progression_owner)
+        self.progression_memo: OwnedMemo[tuple[int, int, int, int], int] = OwnedMemo(
+            self.ledger, progression_owner
         )
         self.retain_queries = retain_queries
         self.shared_lease = shared_lease
         self.shared_publication_enabled = True
         self._closed = False
-        self._factor_owner = self.ledger.register("prime.rank.factors", "factor descriptor")
+        self._factor_owner = self.ledger.register(
+            "prime.rank.factors", "factor descriptor"
+        )
         self._primes: LedgerList[int] = self.ledger.make_list(
             self._factor_owner, append_only=True
         )
@@ -102,7 +108,8 @@ class CoprimeRankDAG:
 
     def append_factor(self, prime: int) -> None:
         if (
-            type(prime) is not int or prime < 2
+            type(prime) is not int
+            or prime < 2
             or (self._primes and prime <= self._primes[-1])
         ):
             raise ValueError("wheel factors must be increasing integers >= 2")
@@ -160,12 +167,13 @@ class CoprimeRankDAG:
             raise ValueError("fresh successor must follow a nonempty prefix")
         self.validate_consecutive_prefix()
         depth = len(self._primes)
-        if self.count(fresh_prime - 1, depth) != 1 or self.count(fresh_prime, depth) != 2:
+        if (
+            self.count(fresh_prime - 1, depth) != 1
+            or self.count(fresh_prime, depth) != 2
+        ):
             raise ValueError("fresh prime is not the least parent-wheel survivor")
 
-    def count_via_fresh_successor(
-        self, limit: int, depth: int | None = None
-    ) -> int:
+    def count_via_fresh_successor(self, limit: int, depth: int | None = None) -> int:
         """Apply the final admitted prime as an exact partial successor action.
 
         For the fresh final factor ``q``, multiplication by ``q`` bijects the
@@ -178,8 +186,10 @@ class CoprimeRankDAG:
             raise RuntimeError("prime rank workspace is closed")
         if depth is None:
             depth = len(self._primes)
-        if type(limit) is not int or type(depth) is not int or not 1 <= depth <= len(
-            self._primes
+        if (
+            type(limit) is not int
+            or type(depth) is not int
+            or not 1 <= depth <= len(self._primes)
         ):
             raise ValueError("invalid fresh-prime partial rank request")
         self.validate_consecutive_prefix(depth)
@@ -194,12 +204,18 @@ class CoprimeRankDAG:
             raise RuntimeError("prime rank workspace is closed")
         if depth is None:
             depth = len(self._primes)
-        if type(limit) is not int or type(depth) is not int or not 0 <= depth <= len(self._primes):
+        if (
+            type(limit) is not int
+            or type(depth) is not int
+            or not 0 <= depth <= len(self._primes)
+        ):
             raise ValueError("invalid wheel count request")
         root = (depth, limit)
         # A compatibility call owns this local map only for this evaluation.
         # It is never published on the execution owner or retained by a closure.
-        memo: MutableMapping[tuple[int, int], int] = self.memo if self.retain_queries else {}
+        memo: MutableMapping[tuple[int, int], int] = (
+            self.memo if self.retain_queries else {}
+        )
         stack = [(depth, limit, False)]
 
         def local_value(key: tuple[int, int]) -> int | None:
@@ -216,7 +232,7 @@ class CoprimeRankDAG:
             # conservative bound from the largest factor in the sorted prefix.
             bits = key[0] * self._primes[key[0] - 1].bit_length()
             self.charge_many(key[0], bits + abs(key[1]).bit_length())
-            return "phi", tuple(self._primes[:key[0]]), key[1]
+            return "phi", tuple(self._primes[: key[0]]), key[1]
 
         def shared_value(key: tuple[int, int]) -> int | None:
             if self.shared_lease is None or not 0 < key[0] <= MAX_SHARED_FACTOR_STAGES:
@@ -277,7 +293,9 @@ class CoprimeRankDAG:
                     if left_value is None or right_value is None:
                         raise RuntimeError("prime rank traversal lost a dependency")
                     result = left_value - right_value
-                    self.arithmetic_bit_work += left_value.bit_length() + right_value.bit_length()
+                    self.arithmetic_bit_work += (
+                        left_value.bit_length() + right_value.bit_length()
+                    )
                 if (
                     self.max_states is not None
                     and self.ledger.entries - self.factor_count >= self.max_states

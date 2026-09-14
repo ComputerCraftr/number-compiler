@@ -54,7 +54,7 @@ def test_probe_accepts_exact_fixed_limits_without_changing_trial_count() -> None
     ),
 )
 def test_slow_incomplete_wrong_or_failed_audit_is_not_accepted(
-    phase: str, field: str, value: bool | float | int | str
+    phase: str, field: str, value: bool | float | str
 ) -> None:
     row = deepcopy(complete())
     phase_record = object_record(row[phase])

@@ -26,7 +26,9 @@ def test_scheduler_lookup_admits_key_once_on_cold_and_warm_paths(
         monkeypatch.setattr(runtime.scheduler.results, "_validate_key", counted)
         assert runtime.scheduler._lookup_execution_key(key) is None
         assert calls == [key]
-        held = runtime.scheduler.complete(action, runtime.root.tile, (0,), runtime.wiring)
+        held = runtime.scheduler.complete(
+            action, runtime.root.tile, (0,), runtime.wiring
+        )
         try:
             calls.clear()
             warm = runtime.scheduler._lookup_execution_key(key)
@@ -56,7 +58,9 @@ def test_context_rejection_precedes_warm_cache_access() -> None:
             results.lookup(key, validate_context=reject)
         after = ledger.snapshot()
         assert (after.entries, after.nodes, after.inventory) == (
-            before.entries, before.nodes, before.inventory
+            before.entries,
+            before.nodes,
+            before.inventory,
         )
         for counter in ("completed_result_requests", "completed_result_early_hits"):
             assert after.counters.get(counter, 0) == before.counters.get(counter, 0)
@@ -88,6 +92,7 @@ def test_public_application_rejects_context_before_using_a_warm_root(
         action, runtime.root.tile, (0,), runtime.wiring
     )
     try:
+
         def reject(*_args: object) -> None:
             raise ValueError("execution wiring revoked")
 

@@ -1,5 +1,6 @@
-from devtools.benchmarks.nth_projection_probe import MAX_DOUBLING_RATIO, run_probe
 import pytest
+
+from devtools.benchmarks.nth_projection_probe import MAX_DOUBLING_RATIO, run_probe
 
 
 @pytest.mark.validation  # Maintained cross-family execution-scaling benchmark.

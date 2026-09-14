@@ -1,13 +1,13 @@
 import inspect
 
 import devtools.proofs.collatz_semantic_action as semantic_action
-import number_compiler.arithmetic.fields.causal_domain as causal_domain
 from devtools.proofs.block_recursive import (
     _RecursiveBoundaryState,
     _RecursiveResidualAction,
 )
 from devtools.proofs.collatz_forcing_morphism import CollatzForcingOccurrence
 from devtools.proofs.collatz_spacetime import CollatzPhysicalField, CollatzRadixField
+from number_compiler.arithmetic.fields import causal_domain
 
 
 def test_temporal_objects_do_not_retain_raw_scalar_tape_length() -> None:

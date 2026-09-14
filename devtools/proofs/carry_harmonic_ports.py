@@ -7,8 +7,8 @@ No pointwise carry/value field is recoverable from these two harmonic sums.
 
 from __future__ import annotations
 
+from collections.abc import Iterable
 from dataclasses import dataclass
-from typing import Iterable
 
 from number_compiler.arithmetic.carry.carry_monoid import CarryFn, apply_carry_fn
 from number_compiler.arithmetic.contracts.exact_tree_context import (

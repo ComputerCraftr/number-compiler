@@ -54,8 +54,10 @@ def test_binary_widths_through_ten_match_complete_fold(sign: int) -> None:
             full, _metrics = adaptive_square_convolution(coefficients)
             result = folded_fifth_residue(coefficients, sign=sign)
             assert result.residue == fold(full, width)[5] % 16
-            wrap = sum(coefficients[u + 6] * coefficients[width - 1 - u]
-                       for u in range(width - 6))
+            wrap = sum(
+                coefficients[u + 6] * coefficients[width - 1 - u]
+                for u in range(width - 6)
+            )
             assert result.mirror_action.residue == wrap % 16
 
 
@@ -79,9 +81,10 @@ def test_aligned_stream_consumes_only_the_action() -> None:
     assert compose_mirror_pairs(iter(())) is MirrorCorrActionID.ZERO
     assert mirror_leaf_action(1, 1) is mirror_leaf_action(32, 32)
     for low, sign in product(range(16), (-1, 1)):
-        assert folded_mirror_residue(low, whole, sign=sign) == (
-            low + sign * sum((a & b).bit_count() for a, b in pairs)
-        ) % 16
+        assert (
+            folded_mirror_residue(low, whole, sign=sign)
+            == (low + sign * sum((a & b).bit_count() for a, b in pairs)) % 16
+        )
 
 
 def test_counted_action_powering_never_reextracts_source_leaves(
@@ -128,7 +131,9 @@ def test_production_tile_path_uses_mirror_owner_without_full_square(
 
 
 @pytest.mark.parametrize("width", (6, 16, 64, 512))
-def test_zero_section_has_no_failure_witness_and_dense_work_is_visible(width: int) -> None:
+def test_zero_section_has_no_failure_witness_and_dense_work_is_visible(
+    width: int,
+) -> None:
     for sign in (-1, 1):
         result = folded_fifth_residue((0,) * width, sign=sign)
         assert result.vanishes

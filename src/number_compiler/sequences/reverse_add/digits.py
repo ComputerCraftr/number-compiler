@@ -12,8 +12,6 @@ exact position.  No seed-196 assumption appears here.
 
 from __future__ import annotations
 
-from typing import Tuple
-
 from number_compiler.arithmetic.fields.digit_formula import (
     DigitSpec,
     digit_root_from_values,
@@ -31,7 +29,7 @@ from number_compiler.arithmetic.formula.types import Expr, RadixSpec
 
 def _pair_value_masks(
     arena: FormulaArena, root: FormulaRoot, spec: RadixSpec
-) -> Tuple[Expr, ...]:
+) -> tuple[Expr, ...]:
     if root.plane_count != spec.plane_count:
         raise ValueError((root.plane_count, spec.plane_count))
     key = ("pair-value-masks", spec.base, canonical_root_key(root))
@@ -188,8 +186,8 @@ def reverse_add_orbit_formulas(
 
 
 __all__ = [
-    "next_digit_formula",
     "digits_lsd",
+    "next_digit_formula",
     "pair_root_from_integer",
     "reverse_add_nth_digit",
     "reverse_add_nth_formula",

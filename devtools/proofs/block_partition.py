@@ -7,7 +7,8 @@ carry ~450 lines of finite-domain behavioral refinement.
 
 from __future__ import annotations
 
-from typing import Callable, Protocol, cast
+from collections.abc import Callable
+from typing import Protocol, cast
 
 from number_compiler.arithmetic.contracts.block_effect import (
     _CONTEXT_IDS,
@@ -34,15 +35,15 @@ class _PartitionBoundaryState:
     """
 
     __slots__ = (
-        "node_id",
-        "side",
         "anchor",
-        "partition",
-        "transition_symbol",
-        "transition_result",
-        "transition_more",
         "lookup_arg",
         "lookup_result",
+        "node_id",
+        "partition",
+        "side",
+        "transition_more",
+        "transition_result",
+        "transition_symbol",
     )
     __hash__ = object.__hash__
 
@@ -86,7 +87,6 @@ class _ComparableStateKey(Protocol):
 
 
 class PartitionCompositionMixin:
-    _partition_domain_liftable: bool
     _partition_domains: tuple[
         tuple[BoundaryState, ...] | None, tuple[BoundaryState, ...] | None
     ]

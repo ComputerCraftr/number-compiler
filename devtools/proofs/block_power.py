@@ -417,16 +417,16 @@ def __getattr__(name: str) -> object:
 
 
 __all__ = [
-    "BoundarySide",
-    "BlockContextBudgetExceeded",
-    "BlockContextBudget",
-    "BlockEffect",
     "BaseBlockEffect",
-    "FiniteBlockEffect",
-    "ComposedBlockEffect",
-    "BlockPower",
     "BlockApplication",
+    "BlockContextBudget",
+    "BlockContextBudgetExceeded",
+    "BlockEffect",
+    "BlockPower",
+    "BoundarySide",
+    "ComposedBlockEffect",
+    "FiniteBlockEffect",
+    "apply_block_power",
     "compose_block_effects",
     "power_block_effect",
-    "apply_block_power",
 ]

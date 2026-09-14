@@ -1,4 +1,3 @@
-#!/usr/bin/env python3
 """Deterministic v0.53.6 Collatz lazy-character probe."""
 
 from __future__ import annotations

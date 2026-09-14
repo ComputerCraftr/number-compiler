@@ -14,7 +14,6 @@ if TYPE_CHECKING:
         ImageCellArena,
         TemporalActionArena,
     )
-    from number_compiler.hashlife.interfaces.diamond_boundary import BoundaryActionArena
     from number_compiler.resources.ledger import ResourceLedger
 
 

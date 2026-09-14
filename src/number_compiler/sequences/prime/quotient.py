@@ -103,8 +103,8 @@ def prime_block_summary_quotient(start: int, length: int) -> PrimeBlockQuotientR
 
 
 __all__ = [
-    "PrimeCountQuotientResult",
-    "prime_count_quotient",
     "PrimeBlockQuotientResult",
+    "PrimeCountQuotientResult",
     "prime_block_summary_quotient",
+    "prime_count_quotient",
 ]

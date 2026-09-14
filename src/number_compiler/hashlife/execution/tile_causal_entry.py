@@ -184,14 +184,13 @@ def causal_width_query(
         # Leave it to demanded_fused_width, just as causal_point does, before
         # constructing an oriented causal prefix for the sector shortcut.
         return None
-    if shallow:
-        if (
-            key.fusion is not None
-            or key.ports != adapter.initial_ports(key.action)
-            or key.boundaries != EMPTY_BOUNDARY_TILES
-            or not supports_reverse_sector_width(adapter, key.action)
-        ):
-            return None
+    if shallow and (
+        key.fusion is not None
+        or key.ports != adapter.initial_ports(key.action)
+        or key.boundaries != EMPTY_BOUNDARY_TILES
+        or not supports_reverse_sector_width(adapter, key.action)
+    ):
+        return None
     scheduler.results._validate_key(key)
     if not 0 <= limit <= scheduler.tiles.resolve(key.input).width:
         raise ValueError("causal width limit lies outside the input tile")

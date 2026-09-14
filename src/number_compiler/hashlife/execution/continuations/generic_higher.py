@@ -379,7 +379,7 @@ def generic_higher_runtime(runtime: DiamondRuntime) -> GenericHigherRuntime:
                 "generic higher runtime needs one source binding",
             )
         value = GenericHigherRuntime(runtime)
-        setattr(runtime, "_generic_higher_runtime", value)
+        runtime._generic_higher_runtime = value
     if type(value) is not GenericHigherRuntime or value.runtime is not runtime:
         raise ValueError("generic higher runtime binding is invalid")
     return value

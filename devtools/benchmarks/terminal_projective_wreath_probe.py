@@ -1,4 +1,3 @@
-#!/usr/bin/env python3
 """Reproducible projective-Cayley / Frobenius-wreath research metrics."""
 
 from __future__ import annotations

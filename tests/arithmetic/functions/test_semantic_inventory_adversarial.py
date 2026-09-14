@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING, Literal
+from typing import Literal
 
 import pytest
 
@@ -22,10 +22,6 @@ from number_compiler.hashlife.interfaces.diamond_kernel import DiamondKernelAren
 from number_compiler.hashlife.observation.diamond_observers import NonblankBlockEffect
 from number_compiler.resources.ledger import ResourceLedger
 from number_compiler.resources.semantic_payload import SemanticPayloadRegistry
-
-if TYPE_CHECKING:
-    from number_compiler.resources.ledger import ResourceLedger
-    from number_compiler.resources.semantic_payload import SemanticPayloadRegistry
 
 
 def _registry(
@@ -65,7 +61,7 @@ def test_terminal_opcode_admission_never_executes_a_payload_equality_callback() 
 
 @pytest.mark.parametrize("field", ("low", "high"))
 def test_terminal_child_sentinels_require_exact_integers(
-    field: Literal["high"] | Literal["low"],
+    field: Literal["high", "low"],
 ) -> None:
     ledger = ResourceLedger()
     functions = SemanticFunctionArena(ledger)
@@ -106,16 +102,18 @@ def test_terminal_child_sentinels_require_exact_integers(
     ),
 )
 def test_primitive_record_checks_every_declared_domain_and_definition_field(
-    field: Literal["base"]
-    | Literal["blank"]
-    | Literal["blank_left_tail"]
-    | Literal["blank_right_tail"]
-    | Literal["initial_left"]
-    | Literal["initial_right"]
-    | Literal["left_sort"]
-    | Literal["right_sort"]
-    | Literal["stable_blank_output"]
-    | Literal["symbol_sort"],
+    field: Literal[
+        "base",
+        "blank",
+        "blank_left_tail",
+        "blank_right_tail",
+        "initial_left",
+        "initial_right",
+        "left_sort",
+        "right_sort",
+        "stable_blank_output",
+        "symbol_sort",
+    ],
     value: object,
 ) -> None:
     ledger = ResourceLedger()

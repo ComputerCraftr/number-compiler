@@ -8,8 +8,8 @@ from typing import Never, cast
 import pytest
 
 from number_compiler.sequences.prime.coprime_rank import CoprimeRankDAG
-from number_compiler.sequences.prime.successor_action import PrimeSuccessorActionArena
 from number_compiler.sequences.prime.successor_action import (
+    PrimeSuccessorActionArena,
     PrimeSuccessorImageAdapter,
     PrimeSuccessorSource,
 )
@@ -48,8 +48,7 @@ def test_progression_recurrence_matches_direct_predicate_and_phi_owner(
         assert dag.count_progression(500, 1, 0) == expected
         assert calls == 1
         assert dag.count_progression_interval(37, 212, 11, 4) == sum(
-            gcd(value, 210) == 1 and value % 11 == 4
-            for value in range(37, 212)
+            gcd(value, 210) == 1 and value % 11 == 4 for value in range(37, 212)
         )
     finally:
         dag.close()
@@ -80,9 +79,13 @@ def test_partial_fresh_successor_is_the_production_rank_recurrence(
     def traced(
         self: PrimePartialSuccessorAdapter, action: object, source: object
     ) -> object:
+        from number_compiler.hashlife.execution.source_bound_images import (
+            SourceImageView,
+        )
+
         nonlocal calls
         calls += 1
-        return original(self, action, source)  # type: ignore[arg-type]
+        return original(self, action, cast(SourceImageView, source))
 
     monkeypatch.setattr(PrimePartialSuccessorAdapter, "apply_primitive", traced)
     assert nth_prime_at_or_after(2, 100)[0] == 547
@@ -97,9 +100,7 @@ def test_partial_successor_publications_respect_reduced_state_budget(
         PrimePartialSuccessorQuery,
     )
 
-    dag = CoprimeRankDAG(
-        (2, 3, 5, 7), max_states=max_states, max_work=100_000
-    )
+    dag = CoprimeRankDAG((2, 3, 5, 7), max_states=max_states, max_work=100_000)
     query: PrimePartialSuccessorQuery | None = None
     try:
         query = PrimePartialSuccessorQuery(dag)
@@ -148,16 +149,12 @@ def test_contained_descent_reuses_issued_stage_but_revalidates_image(
     original_payload = PrimePartialSuccessorAdapter.validate_payload
     stage_calls = payload_checks = 0
 
-    def traced_stage(
-        adapter: PrimePartialSuccessorAdapter, depth: int
-    ) -> object:
+    def traced_stage(adapter: PrimePartialSuccessorAdapter, depth: int) -> object:
         nonlocal stage_calls
         stage_calls += 1
         return original_stage(adapter, depth)
 
-    def traced_payload(
-        adapter: PrimePartialSuccessorAdapter, payload: object
-    ) -> None:
+    def traced_payload(adapter: PrimePartialSuccessorAdapter, payload: object) -> None:
         nonlocal payload_checks
         payload_checks += 1
         original_payload(adapter, payload)
@@ -274,8 +271,7 @@ def test_binary_prime_cycle_closes_without_eager_ports_or_parent_gaps(
         effect = arena.port_effect(action, 0)
         W = arena.descriptor.parent_period
         expected = [
-            value for value in range(1, fresh * W + 1)
-            if gcd(value, fresh * W) == 1
+            value for value in range(1, fresh * W + 1) if gcd(value, fresh * W) == 1
         ]
         assert effect.outgoing_phase == 0
         assert effect.surviving_values == len(expected)
@@ -336,7 +332,8 @@ def test_paired_residue_specialization_and_freshness_rejection() -> None:
     try:
         assert arena.descriptor.forbidden_residues == (0, 3)
         expected = [
-            value for value in range(1, 31)
+            value
+            for value in range(1, 31)
             if gcd(value, 30) == 1 and value % 7 not in (0, 3)
         ]
         assert arena.port_effect(arena.base, 0).surviving_values == len(expected)

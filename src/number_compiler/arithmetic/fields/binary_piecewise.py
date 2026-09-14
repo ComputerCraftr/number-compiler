@@ -13,8 +13,9 @@ branch callback.
 
 from __future__ import annotations
 
+from collections.abc import Callable
 from dataclasses import dataclass
-from typing import Callable, TypeVar
+from typing import TypeVar
 
 T = TypeVar("T")
 _VALID_KINDS = frozenset({"ZERO", "ONE", "SPLIT", "UNKNOWN"})
@@ -51,13 +52,13 @@ class BinaryBranchDecision:
     @classmethod
     def zero(
         cls, method: str, *, candidate_derived: bool = True
-    ) -> "BinaryBranchDecision":
+    ) -> BinaryBranchDecision:
         return cls("ZERO", method, candidate_derived=candidate_derived)
 
     @classmethod
     def one(
         cls, method: str, *, candidate_derived: bool = True
-    ) -> "BinaryBranchDecision":
+    ) -> BinaryBranchDecision:
         return cls("ONE", method, candidate_derived=candidate_derived)
 
     @classmethod
@@ -67,7 +68,7 @@ class BinaryBranchDecision:
         gcd_packet: int,
         *,
         candidate_derived: bool = True,
-    ) -> "BinaryBranchDecision":
+    ) -> BinaryBranchDecision:
         return cls("SPLIT", method, int(gcd_packet), candidate_derived)
 
     @classmethod
@@ -76,7 +77,7 @@ class BinaryBranchDecision:
         method: str,
         *,
         candidate_derived: bool = True,
-    ) -> "BinaryBranchDecision":
+    ) -> BinaryBranchDecision:
         return cls("UNKNOWN", method, candidate_derived=candidate_derived)
 
     @property

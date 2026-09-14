@@ -14,8 +14,8 @@ from number_compiler.arithmetic.carry.reverse_port_functions import (
 )
 from number_compiler.arithmetic.contracts.block_kernel import _reverse_output_carry
 from number_compiler.hashlife.behavior.reverse_bound_output import ReverseBoundOutput
-from number_compiler.hashlife.interfaces.semantic_bits import BitFunctionArena
 from number_compiler.hashlife.interfaces.diamond_kernel import PrimitiveKernel
+from number_compiler.hashlife.interfaces.semantic_bits import BitFunctionArena
 from number_compiler.hashlife.tiles.tiles import TileArena, TileID
 from number_compiler.resources.fused_traversal_workspace import FusedTraversalWorkspace
 from number_compiler.resources.ledger import OwnedMemo

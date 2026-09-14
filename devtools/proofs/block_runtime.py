@@ -1,6 +1,7 @@
 from __future__ import annotations
 
-from typing import TYPE_CHECKING, Callable, cast
+from collections.abc import Callable
+from typing import TYPE_CHECKING, cast
 
 from devtools.proofs.block_partition import _PartitionBoundaryState
 from devtools.proofs.block_recursive import (
@@ -33,13 +34,13 @@ class _FunctionalBoundaryState:
     """
 
     __slots__ = (
-        "node_id",
-        "side",
         "anchor",
         "image",
-        "transition_symbol",
-        "transition_result",
+        "node_id",
+        "side",
         "transition_more",
+        "transition_result",
+        "transition_symbol",
     )
     __hash__ = object.__hash__
 
@@ -65,7 +66,6 @@ class ComposedRuntimeMixin(SpacetimeRuntimeMixin):
     not regrow into a single oversized implementation module.
     """
 
-    _partition_domain_liftable: bool
     _functional_domains: tuple[
         tuple[BoundaryState, ...] | None, tuple[BoundaryState, ...] | None
     ]
@@ -265,11 +265,19 @@ class ComposedRuntimeMixin(SpacetimeRuntimeMixin):
     def advance(
         self, side: BoundarySide, state: BoundaryState, symbol: int
     ) -> BoundaryState:
-        if state.side is not side:  # type: ignore[attr-defined]
-            raise ValueError((state.side, side))  # type: ignore[attr-defined]
+        assert isinstance(
+            state,
+            (
+                _FunctionalBoundaryState,
+                _PartitionBoundaryState,
+                _RecursiveBoundaryState,
+            ),
+        ), type(state)
+        if state.side is not side:
+            raise ValueError((state.side, side))
         if isinstance(state, _PartitionBoundaryState):
             state = self._canonical_partition_state(side, state)
-        found = self._transition_get(state, symbol)  # type: ignore[arg-type]
+        found = self._transition_get(state, symbol)
         if found is not None:
             if isinstance(found, _PartitionBoundaryState):
                 return self._canonical_partition_state(side, found)
@@ -345,21 +353,28 @@ class ComposedRuntimeMixin(SpacetimeRuntimeMixin):
     def predecessor(
         self, side: BoundarySide, state: BoundaryState
     ) -> BoundaryState | None:
-        if state.side is not side:  # type: ignore[attr-defined]
-            raise ValueError((state.side, side))  # type: ignore[attr-defined]
-        if isinstance(
+        assert isinstance(
             state,
             (
                 _FunctionalBoundaryState,
                 _PartitionBoundaryState,
                 _RecursiveBoundaryState,
             ),
-        ):
-            return None
-        raise AssertionError(type(state))
+        ), type(state)
+        if state.side is not side:
+            raise ValueError((state.side, side))
+        return None
 
     def _state_anchor(self, side: BoundarySide, state: BoundaryState) -> BoundaryState:
-        return state.anchor  # type: ignore[attr-defined]
+        assert isinstance(
+            state,
+            (
+                _FunctionalBoundaryState,
+                _PartitionBoundaryState,
+                _RecursiveBoundaryState,
+            ),
+        ), (side, type(state))
+        return state.anchor
 
     def _residual_value_for_argument(
         self,
@@ -408,7 +423,7 @@ class ComposedRuntimeMixin(SpacetimeRuntimeMixin):
             ),
         )
         for i, state in enumerate(domain):
-            anchor = state.anchor  # type: ignore[attr-defined]
+            anchor = self._state_anchor(side, state)
             key = _state_key(anchor)
             prior = grouped.get(key)
             bit = 1 << i
@@ -456,7 +471,7 @@ class ComposedRuntimeMixin(SpacetimeRuntimeMixin):
             elif isinstance(state, _FunctionalBoundaryState):
                 value = state.image[coordinate]
             else:
-                raise AssertionError(type(state))
+                assert False, type(state)
             value = self._canonical_child_state(self.second, side, value)
             key = _state_key(value)
             prior = grouped.get(key)
@@ -502,7 +517,7 @@ class ComposedRuntimeMixin(SpacetimeRuntimeMixin):
         anchor_groups = self._boundary_anchor_groups(opposite)
         if anchor_groups is None:
             return None
-        first_anchor = anchor.anchor  # type: ignore[attr-defined]
+        first_anchor = self._state_anchor(side, anchor)
         symbol = int(symbol)
         if side is BoundarySide.LEFT:
             fixed_argument = self.first.advance(BoundarySide.LEFT, first_anchor, symbol)
@@ -683,10 +698,17 @@ class ComposedRuntimeMixin(SpacetimeRuntimeMixin):
         left: BoundaryState,
         right: BoundaryState,
     ) -> tuple[BoundaryState, BoundaryState]:
-        if left.side is not BoundarySide.LEFT:  # type: ignore[attr-defined]
-            raise ValueError((left.side, BoundarySide.LEFT))  # type: ignore[attr-defined]
-        if right.side is not BoundarySide.RIGHT:  # type: ignore[attr-defined]
-            raise ValueError((right.side, BoundarySide.RIGHT))  # type: ignore[attr-defined]
+        carriers = (
+            _FunctionalBoundaryState,
+            _PartitionBoundaryState,
+            _RecursiveBoundaryState,
+        )
+        assert isinstance(left, carriers), type(left)
+        assert isinstance(right, carriers), type(right)
+        if left.side is not BoundarySide.LEFT:
+            raise ValueError((left.side, BoundarySide.LEFT))
+        if right.side is not BoundarySide.RIGHT:
+            raise ValueError((right.side, BoundarySide.RIGHT))
         if isinstance(left, _PartitionBoundaryState):
             left = self._canonical_partition_state(BoundarySide.LEFT, left)
         if isinstance(right, _PartitionBoundaryState):
@@ -817,4 +839,4 @@ class ComposedRuntimeMixin(SpacetimeRuntimeMixin):
         return composed_runtime_stats(cast("ComposedBlockEffect", self))
 
 
-__all__ = ["_FunctionalBoundaryState", "ComposedRuntimeMixin"]
+__all__ = ["ComposedRuntimeMixin", "_FunctionalBoundaryState"]

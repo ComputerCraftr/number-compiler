@@ -10,6 +10,7 @@ from number_compiler.arithmetic.automata.program_word import (
     iter_runs,
 )
 from number_compiler.arithmetic.fields.radix import digits_lsd
+from number_compiler.sequences.collatz import frame
 from number_compiler.sequences.collatz.hensel_occurrence import (
     CollatzHenselAction,
     CollatzHenselOccurrence,
@@ -17,7 +18,6 @@ from number_compiler.sequences.collatz.hensel_occurrence import (
     canonicalize_hensel_occurrence,
     hensel_second_image,
 )
-from number_compiler.sequences.collatz import frame
 from number_compiler.sequences.collatz.pair import accelerated_odd_collatz
 
 

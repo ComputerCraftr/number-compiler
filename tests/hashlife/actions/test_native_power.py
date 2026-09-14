@@ -131,7 +131,7 @@ def test_native_two_step_does_not_construct_or_cache_first_successor(
 ) -> None:
     # A hard regression check for the distinction this primitive exists to make:
     # successor() must not be reachable from native T^2.
-    import number_compiler.arithmetic.formula.derived as derived
+    from number_compiler.arithmetic.formula import derived
 
     def forbidden(*_args: object, **_kwargs: object) -> Never:
         raise AssertionError("native T^2 called successor()")
@@ -201,8 +201,8 @@ def test_native_four_step_matches_four_successors_random_bases() -> None:
 def test_native_four_step_is_not_composed_from_native_t2_or_successor(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    import number_compiler.arithmetic.formula.derived as derived
-    import number_compiler.hashlife.actions.native_power as native_power
+    from number_compiler.arithmetic.formula import derived
+    from number_compiler.hashlife.actions import native_power
 
     def forbidden(*_args: object, **_kwargs: object) -> Never:
         raise AssertionError("native T4 used a semantic temporal step")
@@ -280,8 +280,8 @@ def test_native_four_step_digit_projector() -> None:
 def test_general_native_power_matches_reference_without_semantic_intermediate_roots(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    import number_compiler.arithmetic.formula.derived as derived
     import number_compiler.hashlife.actions.native_power as native_module
+    from number_compiler.arithmetic.formula import derived
     from number_compiler.hashlife.actions.native_power import compile_native_power
 
     def forbidden(*_args: object, **_kwargs: object) -> Never:
@@ -296,7 +296,7 @@ def test_general_native_power_matches_reference_without_semantic_intermediate_ro
     rng = random.Random(0x196B17)
     for base in (2, 3, 5, 10, 16):
         spec = RadixSpec(base)
-        for steps in range(0, 10):
+        for steps in range(10):
             values = symmetric_word(rng, base, rng.randint(1, 12))
             expected = values
             widths = [len(values)]
@@ -358,6 +358,5 @@ def test_general_native_power_is_guard_ineligible_until_growth_is_symbolic() -> 
     arena = FormulaArena()
     spec = RadixSpec(10)
     source = root_from_values((7, 18, 7), arena, spec)
-    with pytest.raises(JumpGuardViolation):
-        with powered_jump_scope(JumpAudit()):
-            native_power_root(arena, source, 3, spec)
+    with pytest.raises(JumpGuardViolation), powered_jump_scope(JumpAudit()):
+        native_power_root(arena, source, 3, spec)

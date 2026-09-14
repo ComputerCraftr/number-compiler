@@ -27,9 +27,7 @@ _DYADIC_CARRY_PARTITIONS = tuple(
 DOMAIN_ACTIONS, _DIGIT_DOMAINS = _DYADIC_CARRY_PARTITIONS[6]
 RADIX64_FREE_CARRY_ACTIONS = tuple(
     dict.fromkeys(
-        action
-        for actions, _classes in _DYADIC_CARRY_PARTITIONS
-        for action in actions
+        action for actions, _classes in _DYADIC_CARRY_PARTITIONS for action in actions
     )
 )
 
@@ -153,7 +151,7 @@ def _directional_domain_tables() -> tuple[
 ) = _directional_domain_tables()
 
 RADIX64_DIRECTIONAL_DOMAIN_COUNTS = tuple(
-    (len(table), len(RADIX64_DIRECTIONAL_DOMAIN_TABLES[shift][0]))
+    (len(table), len(table[0]))
     for shift, table in enumerate(RADIX64_DIRECTIONAL_DOMAIN_TABLES)
 )
 RADIX64_DIRECTIONAL_VALUE_COUNTS = tuple(
@@ -199,8 +197,7 @@ def radix64_free_directional_row(shift: int, carry: int) -> tuple[tuple[int, int
 
 
 RADIX64_FREE_GROWTH_TABLE = tuple(
-    tuple(radix64_growth_edge(carry, shift) for carry in range(3))
-    for shift in range(6)
+    tuple(radix64_growth_edge(carry, shift) for carry in range(3)) for shift in range(6)
 )
 
 

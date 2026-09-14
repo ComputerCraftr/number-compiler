@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import ast
+from collections.abc import Mapping
 from pathlib import Path
 
 PUBLIC_PACKAGES = frozenset(
@@ -29,7 +30,11 @@ def module_inventory(root: Path) -> dict[str, Path]:
     return modules
 
 
-def package_violations(root: Path) -> tuple[str, ...]:
+def package_violations(
+    root: Path,
+    *,
+    parsed_sources: Mapping[Path, ast.Module] | None = None,
+) -> tuple[str, ...]:
     """Check ownership without importing or executing the modules being audited."""
     violations: list[str] = []
     modules = module_inventory(root)
@@ -39,7 +44,11 @@ def package_violations(root: Path) -> tuple[str, ...]:
                 break
             if not (directory / "__init__.py").is_file():
                 violations.append(f"{module}: missing package initializer: {directory}")
-        tree = ast.parse(path.read_text(), filename=str(path))
+        tree = (
+            parsed_sources[path]
+            if parsed_sources is not None
+            else ast.parse(path.read_text(), filename=str(path))
+        )
         declarations = [
             node
             for node in tree.body
@@ -80,15 +89,19 @@ def package_violations(root: Path) -> tuple[str, ...]:
                         violations.append(
                             f"{module}:{node.lineno}: developer dependency {target}"
                         )
-            if isinstance(node, ast.Call) and isinstance(node.func, ast.Attribute):
-                if ast.unparse(node.func) in {
+            if (
+                isinstance(node, ast.Call)
+                and isinstance(node.func, ast.Attribute)
+                and ast.unparse(node.func)
+                in {
                     "sys.path.insert",
                     "sys.path.append",
                     "sys.path.extend",
-                }:
-                    violations.append(
-                        f"{module}:{node.lineno}: modifies module search path"
-                    )
+                }
+            ):
+                violations.append(
+                    f"{module}:{node.lineno}: modifies module search path"
+                )
             if isinstance(node, (ast.Assign, ast.AnnAssign)):
                 assigned = (
                     node.targets if isinstance(node, ast.Assign) else [node.target]

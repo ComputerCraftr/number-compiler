@@ -8,7 +8,7 @@ temporal elimination without creating an intermediate state representation.
 
 from __future__ import annotations
 
-from typing import Sequence, Tuple
+from collections.abc import Sequence
 
 from number_compiler.arithmetic.carry.carry_monoid import (
     CarryFn,
@@ -24,7 +24,7 @@ from number_compiler.arithmetic.formula.formula import FormulaArena
 from number_compiler.arithmetic.formula.types import Expr, RadixSpec
 
 
-def check_pair_planes(planes: Sequence[Expr], spec: RadixSpec) -> Tuple[Expr, ...]:
+def check_pair_planes(planes: Sequence[Expr], spec: RadixSpec) -> tuple[Expr, ...]:
     planes = tuple(planes)
     if len(planes) != spec.plane_count:
         raise ValueError((len(planes), spec.plane_count))
@@ -118,7 +118,7 @@ def branch_coefficient_planes(
     growth: int,
     spec: RadixSpec,
     carry: Expr,
-) -> Tuple[Expr, ...]:
+) -> tuple[Expr, ...]:
     """Apply one pair recurrence as a root-free algebraic expression family.
 
     ``carry[i]`` denotes ``L_(i+1)``.  For no growth this emits
@@ -170,10 +170,10 @@ def branch_coefficient_planes(
 
 
 __all__ = [
+    "branch_coefficient_planes",
+    "carry_boundary_at",
+    "carry_plane_scan",
+    "carry_prefix_projection",
     "check_pair_planes",
     "threshold_plane_views",
-    "carry_prefix_projection",
-    "carry_plane_scan",
-    "carry_boundary_at",
-    "branch_coefficient_planes",
 ]

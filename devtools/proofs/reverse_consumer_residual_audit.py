@@ -14,12 +14,12 @@ from devtools.proofs import exact_oracle
 from devtools.proofs.reverse_geometry_context import ReverseGeometryContext
 from devtools.proofs.reverse_successor_image_audit import _sources
 from devtools.proofs.threshold_expressions import ConsumerSchema
+from number_compiler.arithmetic.carry.event_memory import pair_step
 from number_compiler.arithmetic.contracts.block_effect import BlockContextBudgetExceeded
 from number_compiler.arithmetic.functions.finite_unary import (
     analyze_observer,
     minimize_unary_moore,
 )
-from number_compiler.arithmetic.carry.event_memory import pair_step
 
 _NATIVE_CONSUMERS = frozenset(
     {

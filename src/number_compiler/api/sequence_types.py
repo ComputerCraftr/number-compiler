@@ -7,16 +7,16 @@ into another multi-purpose sequence implementation.
 
 from __future__ import annotations
 
+import itertools
+from collections.abc import Sequence
 from dataclasses import dataclass
-from typing import TYPE_CHECKING, Generic, Sequence, TypeVar
+from typing import TYPE_CHECKING, Generic, TypeVar
 
 from number_compiler.arithmetic.fields.symbolic_extent import Extent
 from number_compiler.arithmetic.polynomials.primary_jet import PrimaryJetBlock
 from number_compiler.sequences.power_numbers.numbers import MersenneNumberSpec
 
 if TYPE_CHECKING:
-    from number_compiler.sequences.prime.lane_quotient import PrimeLaneQuotientCompilation
-    from number_compiler.sequences.prime.wheel_cyclotomic import PrimeWheelCyclotomicAutomaton
     from number_compiler.arithmetic.fields.adic_morphism import (
         PadicRadialQuotient,
         ValuationSensitivityMorphism,
@@ -30,6 +30,12 @@ if TYPE_CHECKING:
     from number_compiler.projection.output_quotient import SpecialSourceGuard
     from number_compiler.sequences.collatz.frame import CollatzFutureValuationRoot
     from number_compiler.sequences.collatz.pair import CollatzValuationProjectionBlock
+    from number_compiler.sequences.prime.lane_quotient import (
+        PrimeLaneQuotientCompilation,
+    )
+    from number_compiler.sequences.prime.wheel_cyclotomic import (
+        PrimeWheelCyclotomicAutomaton,
+    )
 
 
 def _canonical_int_tuple(values: Sequence[int], *, minimum: int) -> tuple[int, ...]:
@@ -233,10 +239,15 @@ class ReverseAddCompilation:
     def growths(self) -> tuple[int, ...]:
         widths: list[int] = []
         for term in self.terms:
-            if not isinstance(term.width, int):
-                raise ValueError("growth differences require projected integer widths")
+            match term.width:
+                case int():
+                    pass
+                case _:
+                    raise ValueError(
+                        "growth differences require projected integer widths"
+                    )
             widths.append(term.width)
-        return tuple(b - a for a, b in zip(widths[:-1], widths[1:], strict=True))
+        return tuple(b - a for a, b in itertools.pairwise(widths))
 
 
 @dataclass(frozen=True, slots=True)
@@ -432,24 +443,24 @@ SequenceCompilation = (
 
 
 __all__ = [
-    "ReverseAddSequenceSpec",
+    "CollatzCompilation",
+    "CollatzRawFieldQuotient",
     "CollatzSequenceSpec",
-    "PrimeBlockSequenceSpec",
-    "FermatSequenceSpec",
-    "MersenneSequenceSpec",
-    "SequenceSpec",
     "FactoredRadixProjection",
+    "FermatCompilation",
+    "FermatCompiledTerm",
+    "FermatSequenceSpec",
+    "MersenneCompilation",
+    "MersenneCompiledTerm",
+    "MersenneSequenceSpec",
+    "PrimeBlockCompilation",
+    "PrimeBlockSequenceSpec",
+    "PrimeFactoredAutomatonCompilation",
     "RadixTermMetrics",
     "ReverseAddCompilation",
-    "CollatzRawFieldQuotient",
-    "CollatzCompilation",
-    "PrimeFactoredAutomatonCompilation",
-    "PrimeBlockCompilation",
-    "SpecialDepthCertificateSummary",
-    "FermatCompiledTerm",
-    "SpecialCompilation",
-    "FermatCompilation",
-    "MersenneCompiledTerm",
-    "MersenneCompilation",
+    "ReverseAddSequenceSpec",
     "SequenceCompilation",
+    "SequenceSpec",
+    "SpecialCompilation",
+    "SpecialDepthCertificateSummary",
 ]

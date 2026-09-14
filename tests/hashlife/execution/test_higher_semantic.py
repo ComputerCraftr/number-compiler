@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import TYPE_CHECKING, Literal
+from typing import Literal, cast
 
 import pytest
 
@@ -30,12 +30,6 @@ from number_compiler.hashlife.execution.continuations.higher_values import (
 )
 from number_compiler.hashlife.interfaces.diamond_quotient import LocalInterfaceID
 from number_compiler.resources.ledger import ResourceLedger
-
-if TYPE_CHECKING:
-    from number_compiler.hashlife.actions.field_actions import FieldCellActionID
-    from number_compiler.hashlife.execution.continuations.higher_semantic import (
-        HigherSemanticArena,
-    )
 
 
 @dataclass
@@ -229,7 +223,7 @@ def test_higher_expression_publication_is_atomic_at_zero_budget() -> None:
 
 def test_higher_primitive_refuses_unbounded_state_enumeration() -> None:
     schema, arena = _arena()
-    setattr(schema, "state_count", lambda _action, _side: 2**64)
+    object.__setattr__(schema, "state_count", lambda _action, _side: 2**64)
     state = arena.variable(arena.state_sort(schema.primitive, 0), "large-state")
     symbol = arena.symbol(schema.primitive, 0)
     with pytest.raises(ValueError, match="bounded interface"):
@@ -306,9 +300,9 @@ def test_higher_handles_reject_foreign_integer_bool_and_wrong_sort() -> None:
     )
     for reference in invalid:
         with pytest.raises((TypeError, ValueError)):
-            arena.expression(reference)  # type: ignore[arg-type]
+            arena.expression(cast(HigherExpressionID, reference))
     with pytest.raises((TypeError, ValueError)):
-        arena.function_record(value)  # type: ignore[arg-type]
+        arena.function_record(cast(HigherFunctionID, value))
     assert (
         arena.function_record(function).signature.codomain
         == arena.expression(value).sort
@@ -341,7 +335,11 @@ def test_higher_payload_audit_validates_issued_records_and_rejects_mutation() ->
     assert audit_registered_payloads(arena.ledger).unknown_payloads == 0
 
     original = arena._expressions[0]
-    arena._expressions._data[0] = replace(original, value=1 << 65)  # type: ignore[attr-defined]
+    storage_attribute = "_data"
+    expressions = cast(
+        dict[int, object], getattr(arena._expressions, storage_attribute)
+    )
+    expressions[0] = replace(original, value=1 << 65)
     damaged = audit_registered_payloads(arena.ledger)
     assert damaged.forbidden_future_payloads > 0
 
@@ -364,7 +362,7 @@ def test_higher_local_interface_publishes_typed_components_without_integer_encod
     assert arena.resolve(quotient).components == components
     assert all(type(item) is HigherExpressionID for item in components.functions())
     with pytest.raises((TypeError, ValueError)):
-        arena.resolve(quotient.local_id)  # type: ignore[arg-type]
+        arena.resolve(cast(LocalInterfaceID, quotient.local_id))
     foreign = HigherExpressionID(ArenaToken("foreign"), value.kind, value.local_id)
     bad = HigherMacroComponents(foreign, *(value for _ in range(12)))
     with pytest.raises((TypeError, ValueError)):

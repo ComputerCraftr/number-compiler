@@ -150,9 +150,7 @@ class ReverseHigherActionSchema:
             raise ValueError("reverse higher boundary side must be zero or one")
         return BoundarySide(side)
 
-    def _primitive_after_validation(
-        self, action: FieldCellActionID
-    ) -> _PrimitiveCodec:
+    def _primitive_after_validation(self, action: FieldCellActionID) -> _PrimitiveCodec:
         for candidate, codec in self._codecs:
             if candidate == action:
                 return codec
@@ -163,9 +161,7 @@ class ReverseHigherActionSchema:
         kind = self.kind(action)
         if kind == "identity":
             return 1
-        return len(
-            self._primitive_after_validation(action).domains[int(direction)]
-        )
+        return len(self._primitive_after_validation(action).domains[int(direction)])
 
     def initial(self, action: FieldCellActionID, side: int) -> int:
         direction = self._side(side)

@@ -243,8 +243,7 @@ def main() -> None:
                 for node in required
                 if any(
                     node == selector
-                    or node.startswith(selector + "::")
-                    or node.startswith(selector + "[")
+                    or node.startswith((selector + "::", selector + "["))
                     for selector in CASES[name]
                 )
             )

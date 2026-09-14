@@ -1,20 +1,13 @@
-#!/usr/bin/env python3
 """Freeze the bounded T^2/C^4 checkpoint before higher-rung HashLife closure."""
 
 from __future__ import annotations
 
 import json
 from time import perf_counter
-from typing import TYPE_CHECKING
 
 from devtools.paths import repository_root
 from number_compiler.sequences.collatz.block_power import PoweredCollatzTerm
 from number_compiler.sequences.reverse_add.power import ReverseAddPoweredTerm
-
-if TYPE_CHECKING:
-    from number_compiler.sequences.collatz.block_power import PoweredCollatzTerm
-    from number_compiler.sequences.reverse_add.power import ReverseAddPoweredTerm
-
 
 ROOT = repository_root()
 INDICES = (16, 32, 64, 128, 256)

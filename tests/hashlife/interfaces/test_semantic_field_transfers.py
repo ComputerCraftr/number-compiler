@@ -47,17 +47,8 @@ from number_compiler.resources.ledger import ResourceLedger
 if TYPE_CHECKING:
     from number_compiler.arithmetic.contracts.scoped_handles import ActionProgramID
     from number_compiler.hashlife.execution.field_images import (
-        SourceCellArena,
         SourceCellID,
     )
-    from number_compiler.hashlife.interfaces.diamond_kernel import DiamondKernelArena
-    from number_compiler.hashlife.interfaces.diamond_quotient import (
-        DiamondQuotientArena,
-    )
-    from number_compiler.hashlife.interfaces.semantic_interfaces import (
-        SemanticLocalInterfaceCompiler,
-    )
-    from number_compiler.resources.ledger import ResourceLedger
 
 
 def _primitive(mode: str = "normal") -> FiniteBlockEffect:
@@ -202,7 +193,7 @@ def test_semantically_equal_source_bindings_alias_before_transfer_publication() 
 
 def test_source_interface_cache_is_scoped_by_complete_kernel_handle() -> None:
     word = (0, 1)
-    ledger, sources, root, kernels, first, quotients, compiler = _setup(word)
+    ledger, _sources, root, kernels, first, _quotients, compiler = _setup(word)
     second = kernels.intern(_primitive("forget-source"))
     first_signature = compiler.signature(first, 1)
     second_signature = compiler.signature(second, 1)
@@ -236,7 +227,7 @@ def test_huge_spatial_level_does_not_create_coordinate_port_or_cartesian_summary
 def test_parent_transfer_warm_hit_needs_no_compiler_or_source_leaf(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    ledger, sources, root, kernels, kernel, quotients, compiler = _setup((0, 1, 3, 0))
+    ledger, sources, root, _kernels, kernel, quotients, compiler = _setup((0, 1, 3, 0))
     action_owner = ArenaToken("semantic-test-actions")
     action = FieldCellActionID(action_owner, "field-cell-action", 0)
     boundaries = SemanticBoundaryArena(ledger)
@@ -285,13 +276,13 @@ def test_parent_transfer_warm_hit_needs_no_compiler_or_source_leaf(
     monkeypatch.setattr(executor, "transfer", no_transfer)
     for invalid in (True, False, 0.0, 2.0, "2"):
         with pytest.raises(TypeError, match="exact integer"):
-            application.point(invalid)  # type: ignore[arg-type]
+            application.point(cast(int, invalid))
 
 
 def test_transfer_request_rejects_scoped_aliases_before_warm_lookup_or_mutation() -> (
     None
 ):
-    ledger, sources, root, kernels, kernel, quotients, compiler = _setup((0, 1))
+    ledger, sources, root, _kernels, kernel, quotients, compiler = _setup((0, 1))
     action_owner = ArenaToken("semantic-test-actions")
     action = FieldCellActionID(action_owner, "field-cell-action", 0)
     boundaries = SemanticBoundaryArena(ledger)
@@ -583,7 +574,7 @@ def test_semantic_alias_with_inconsistent_occurrence_bound_rejects_atomically() 
 
 def test_transfer_observation_rejects_an_unpublished_source_alias() -> None:
     effect = _primitive("forget-source")
-    ledger, sources, root, kernels, kernel, quotients, compiler = _setup(
+    ledger, sources, root, _kernels, kernel, quotients, compiler = _setup(
         (0, 1),
         effect,
     )

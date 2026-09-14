@@ -187,15 +187,15 @@ class FieldTransferApplication:
     """Public point/width view that never constructs an exact future image."""
 
     __slots__ = (
-        "executor",
+        "__weakref__",
+        "_seal",
         "action",
-        "source",
+        "executor",
         "geometry",
-        "signature",
         "incoming",
         "ledger",
-        "_seal",
-        "__weakref__",
+        "signature",
+        "source",
     )
 
     is_algebraic_field_action_executor = True

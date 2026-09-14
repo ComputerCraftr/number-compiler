@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from typing import cast
+
 import pytest
 
 from number_compiler.api.antihydra_observation import observe_run
@@ -13,8 +15,9 @@ from number_compiler.sequences.antihydra.blocks import (
     arithmetic_kernel,
 )
 from number_compiler.sequences.antihydra.runtime import (
-    ArithmeticSegment,
     AntihydraArithmeticTerm,
+    ArithmeticResult,
+    ArithmeticSegment,
     CylinderEngine,
     run,
 )
@@ -25,8 +28,7 @@ def _reference(returns: int) -> tuple[int, int, int, int | None]:
     first_failure: int | None = None
     for index in range(returns):
         balance += -1 if h & 1 else 2
-        if balance < minimum:
-            minimum = balance
+        minimum = min(minimum, balance)
         if balance < 0 and first_failure is None:
             first_failure = index
         h += h // 2
@@ -43,9 +45,7 @@ def test_admitted_constructor_is_the_canonical_bounded_kernel(
 
 
 @pytest.mark.parametrize("width,residue", ((9, 341), (64, (1 << 63) + 17)))
-def test_admitted_constructor_owns_wide_source_parity(
-    width: int, residue: int
-) -> None:
+def test_admitted_constructor_owns_wide_source_parity(width: int, residue: int) -> None:
     admitted = admitted_arithmetic_cylinder(residue, width)
     assert admitted == arithmetic_from_word(residue, width, admitted.parity_word)
     with pytest.raises(ValueError, match="kernel width"):
@@ -219,9 +219,7 @@ def test_repeated_engine_execution_has_distinct_charged_publications() -> None:
     first.require_source()
     second.require_source()
     assert first is not second
-    rows = [
-        row for row in engine.ledger.inventory() if row.role == "physical_result"
-    ]
+    rows = [row for row in engine.ledger.inventory() if row.role == "physical_result"]
     assert len(rows) == 2
     assert all(row.entries == 1 and row.nodes == 2 for row in rows)
     audit = audit_registered_payloads(engine.ledger)
@@ -267,9 +265,7 @@ def test_consistent_but_foreign_arithmetic_word_is_not_source_admissible() -> No
     result = term.result()
     original = term.segments[0]
     block = original.cylinder
-    foreign = arithmetic_from_word(
-        block.residue, block.width, block.parity_word ^ 1
-    )
+    foreign = arithmetic_from_word(block.residue, block.width, block.parity_word ^ 1)
     term.segments[0] = ArithmeticSegment(original.start, foreign)
 
     with pytest.raises(ValueError, match="arithmetic support was changed"):
@@ -318,7 +314,7 @@ def test_retained_support_rejects_forged_segment_and_cylinder_types() -> None:
         term = AntihydraArithmeticTerm(64)
         result = term.result()
         if field == "segment":
-            term.segments[0] = object()  # type: ignore[call-overload]
+            term.segments[0] = cast(ArithmeticSegment, object())
         else:
             object.__setattr__(term.segments[0], "cylinder", object())
         with pytest.raises(ValueError, match="arithmetic support was changed"):
@@ -332,6 +328,6 @@ def test_run_rejects_forged_arithmetic_publication_type() -> None:
         def require_source(self) -> None:
             return None
 
-    result._term._result = ForgedArithmeticResult()  # type: ignore[assignment]
+    result._term._result = cast(ArithmeticResult, ForgedArithmeticResult())
     with pytest.raises(ValueError, match="unbound Antihydra arithmetic result"):
         result.require_source()

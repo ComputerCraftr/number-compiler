@@ -16,7 +16,7 @@ from tests.support.diamond_context_program import populated
 
 
 def test_spatial_context_programs_are_not_counted_as_extensional_functions() -> None:
-    runtime, action, contexts, request = populated()
+    runtime, _action, contexts, _request = populated()
     arena = runtime.pair_macros
     report = collect_ledger_metrics(runtime.ledger)
     assert report.representation_boundary_complete == 1

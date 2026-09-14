@@ -2,7 +2,12 @@
 
 from __future__ import annotations
 
-from typing import Any, cast
+from typing import TYPE_CHECKING, Any, cast
+
+if TYPE_CHECKING:
+    from number_compiler.hashlife.execution.tile_kernel import (
+        PrimitiveTileKernelAdapter,
+    )
 
 from number_compiler.hashlife.behavior.future_behavior import (
     FutureBehaviorClassID,
@@ -46,7 +51,7 @@ _RESERVATION_SEAL = object()
 class BehaviorPublicationReservation:
     """Transient result slots reserved before semantic-profile admission."""
 
-    __slots__ = ("_arena", "_tiles", "_reservations", "_open", "_seal")
+    __slots__ = ("_arena", "_open", "_reservations", "_seal", "_tiles")
 
     def __init__(
         self,
@@ -243,7 +248,7 @@ def _validate_blank_proof(
         raise UnsupportedBehaviorBinding(
             "quiescent behavior requires an inactive exact input"
         )
-    authority = cast(Any, arena.action_authority)
+    authority = cast("PrimitiveTileKernelAdapter", arena.action_authority)
     action_record = authority._action(key.action)
     if type(action_record.homogeneous) is not bool or not action_record.homogeneous:
         raise UnsupportedBehaviorBinding(
@@ -429,10 +434,10 @@ def publish_behavior_classification(
 
 
 __all__ = [
+    "BehaviorPublicationReservation",
+    "UnsupportedBehaviorBinding",
     "behavior_binding_key",
     "lookup_behavior_classification",
     "publish_behavior_classification",
     "reserve_behavior_publication",
-    "BehaviorPublicationReservation",
-    "UnsupportedBehaviorBinding",
 ]

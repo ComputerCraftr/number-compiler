@@ -1,4 +1,3 @@
-#!/usr/bin/env python3
 """Capped fresh-process profiles of the candidate higher diamond evaluator.
 
 This measures direct parametric queries, with no point-response register or
@@ -11,6 +10,7 @@ from __future__ import annotations
 import argparse
 import hashlib
 import json
+import logging
 import os
 import resource
 import signal
@@ -39,6 +39,7 @@ PHASE_SECONDS = 35
 CACHE_ENTRIES = 180_000
 STEPS = (16, 32, 64, 128, 256)
 WIDTHS = (16, 32, 64, 128, 256, 512)
+_LOGGER = logging.getLogger(__name__)
 
 
 class PhaseTimeout(TimeoutError):
@@ -88,6 +89,7 @@ def measured(operation: Callable[[], object]) -> dict[str, Any]:
         status = "timeout" if isinstance(exc, PhaseTimeout) else "budget_exceeded"
         error = f"{type(exc).__name__}: {exc}"
     except Exception as exc:
+        _LOGGER.debug("benchmark phase failed", exc_info=True)
         value, status, error = None, "error", f"{type(exc).__name__}: {exc}"
     elapsed, consumed = perf_counter() - start, process_time() - cpu
     return {
@@ -235,7 +237,11 @@ def worker(family: str, steps: int, width: int | None = None) -> dict[str, Any]:
         if ready:
             application, extent, _ = built[0]
 
-            def operation() -> int:
+            def operation(
+                application: ReverseAddPoweredTerm | DiamondApplication = application,
+                position: int | None = position,
+                extent: int = extent,
+            ) -> int:
                 if family == "reverse":
                     assert isinstance(application, ReverseAddPoweredTerm)
                     return (

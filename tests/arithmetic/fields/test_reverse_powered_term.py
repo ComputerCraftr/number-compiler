@@ -19,7 +19,7 @@ def _reverse_add(value: int, base: int) -> int:
 @pytest.mark.validation  # Complete 25-generation materialization/point matrix.
 def test_binary_powered_196_term_matches_scalar_orbit_and_random_digits() -> None:
     value = 196
-    for generation in range(0, 25):
+    for generation in range(25):
         if generation:
             value = _reverse_add(value, 10)
         term = ReverseAddPoweredTerm(196, generation, base=10)
@@ -37,7 +37,7 @@ def test_binary_powered_term_is_exact_across_small_radices_and_seeds() -> None:
         for _ in range(4):
             seed = rng.randrange(1, base**4)
             value = seed
-            for generation in range(0, 7):
+            for generation in range(7):
                 if generation:
                     value = _reverse_add(value, base)
                 term = ReverseAddPoweredTerm(seed, generation, base=base)

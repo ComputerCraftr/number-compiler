@@ -7,6 +7,9 @@ from typing import TYPE_CHECKING, Any
 
 from number_compiler.arithmetic.contracts.block_effect import BoundarySide
 from number_compiler.hashlife.actions.field_actions import FieldCellActionID
+from number_compiler.hashlife.execution.reverse_active_transfer import (
+    consume_reverse_bound_output,
+)
 from number_compiler.hashlife.execution.tile_causal_api import CausalTileAPI
 from number_compiler.hashlife.execution.tile_causal_behavior import quiescent_boundary
 from number_compiler.hashlife.execution.tile_causal_boundary_step import (
@@ -18,15 +21,8 @@ from number_compiler.hashlife.execution.tile_causal_midpoint import cached_midpo
 from number_compiler.hashlife.execution.tile_causal_pair_transfer import (
     finite_pair_transfer,
 )
-from number_compiler.hashlife.execution.tile_causal_promotion import promotion_step
 from number_compiler.hashlife.execution.tile_causal_point import point_step
-from number_compiler.hashlife.execution.tile_reverse_boundary import (
-    reverse_boundary_step,
-    supports_reverse_boundary,
-)
-from number_compiler.hashlife.execution.reverse_active_transfer import (
-    consume_reverse_bound_output,
-)
+from number_compiler.hashlife.execution.tile_causal_promotion import promotion_step
 from number_compiler.hashlife.execution.tile_causal_results import (
     CausalCompletedOutput,
     PrimitiveCausalPorts,
@@ -50,6 +46,10 @@ from number_compiler.hashlife.execution.tile_causal_tasks import (
     producer_parent,
     result_payload,
     temporal_payload,
+)
+from number_compiler.hashlife.execution.tile_reverse_boundary import (
+    reverse_boundary_step,
+    supports_reverse_boundary,
 )
 from number_compiler.hashlife.tiles.tile_boundaries import (
     BoundaryTileOperands,
@@ -412,12 +412,13 @@ class CausalTileEngine(CausalTileAPI):
                         )
                         continue
                     if frame.stage == 0:
-                        if not isinstance(left, _Prefix) or not isinstance(
-                            right, _Prefix
-                        ):
-                            raise ValueError(
-                                "composite emission requires two causal prefixes"
-                            )
+                        match (left, right):
+                            case (_Prefix(), _Prefix()):
+                                pass
+                            case _:
+                                raise ValueError(
+                                    "composite emission requires two causal prefixes"
+                                )
                         frame.stage = 1
                         frames.extend(
                             (
@@ -752,10 +753,13 @@ class CausalTileEngine(CausalTileAPI):
                             )
                             continue
                         payload = values.pop()
-                        if not isinstance(payload, CausalCompletedOutput):
-                            raise AssertionError(
-                                "causal leaf emission returned another result sort"
-                            )
+                        match payload:
+                            case CausalCompletedOutput():
+                                pass
+                            case _:
+                                raise AssertionError(
+                                    "causal leaf emission returned another result sort"
+                                )
                         key = self._composite_key(action, tile, left, right)
                         if key is not None:
                             completed = publish_causal_completed(
@@ -876,8 +880,13 @@ class CausalTileEngine(CausalTileAPI):
             result = values.pop()
             if not tile_result:
                 return result
-            if not isinstance(result, CausalCompletedOutput):
-                raise AssertionError("causal output did not return a completed tile")
+            match result:
+                case CausalCompletedOutput():
+                    pass
+                case _:
+                    raise AssertionError(
+                        "causal output did not return a completed tile"
+                    )
             if return_result:
                 action, tile, left, right = root.args
                 key = self._composite_key(action, tile, left, right)

@@ -63,7 +63,7 @@ def test_kernel_equality_is_extensional_and_verifies_digest_collisions(
 
 @pytest.mark.parametrize("target", (-1, 2, 0.5))
 def test_kernel_rejects_transitions_outside_its_finite_domain(
-    target: float | int,
+    target: float,
 ) -> None:
     with pytest.raises(ValueError, match="outside finite state domain"):
         FiniteKernel(
@@ -92,7 +92,7 @@ def test_kernel_subclass_cannot_replace_frozen_execution_with_a_live_callable() 
     ((True, 2), (2, False), (2.0, 2), (2, 2.0)),
 )
 def test_kernel_dimensions_reject_integer_aliases_before_reading_transition(
-    states: bool | float | int, alphabet: bool | float | int
+    states: bool | float, alphabet: bool | float
 ) -> None:
     calls = []
 
@@ -131,4 +131,4 @@ def test_oriented_arena_rejects_negative_cache_limit_and_kernel_subtypes() -> No
             raise AssertionError("must reject before invoking proxy behavior")
 
     with pytest.raises(TypeError, match="exact frozen finite kernel"):
-        OrientedFiniteActionArena(KernelProxy())  # type: ignore[arg-type]
+        OrientedFiniteActionArena(cast(FiniteKernel, KernelProxy()))

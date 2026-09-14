@@ -43,6 +43,8 @@ from number_compiler.hashlife.tiles.tiles import TileID, TileLease
 if TYPE_CHECKING:
     from number_compiler.hashlife.tiles.tile_result_types import (
         ExecutionKey as _ExecutionKey,
+    )
+    from number_compiler.hashlife.tiles.tile_result_types import (
         ExecutionValue as _ExecutionValue,
     )
     from number_compiler.hashlife.tiles.tile_results import CompletedResultArena

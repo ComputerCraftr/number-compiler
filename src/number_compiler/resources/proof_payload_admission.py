@@ -84,8 +84,8 @@ def proof_objects(root: object) -> set[int]:
 __all__ = [
     "audit_registered_proof_payloads",
     "proof_geometry_fields",
-    "proof_opaque_types",
     "proof_objects",
+    "proof_opaque_types",
     "register_proof_geometry_fields",
     "register_proof_opaque_types",
     "register_proof_payload_auditor",

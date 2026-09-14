@@ -66,8 +66,7 @@ def minimal_selectors(selectors: tuple[str, ...]) -> tuple[str, ...]:
         selector
         for selector in unique
         if not any(
-            selector != other
-            and (selector.startswith(other + "::") or selector.startswith(other + "["))
+            selector != other and (selector.startswith((other + "::", other + "[")))
             for other in unique
         )
     )

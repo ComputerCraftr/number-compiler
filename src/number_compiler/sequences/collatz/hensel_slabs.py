@@ -122,9 +122,7 @@ class HenselSlabArena:
     def intern(self, atoms: Iterable[Atom]) -> HenselSlabID:
         require_endpoint_construction()
         groups: dict[int, list[HenselCylinder]] = {}
-        count = 0
-        for label, cylinder in atoms:
-            count += 1
+        for count, (label, cylinder) in enumerate(atoms, start=1):
             if count > self.max_atoms:
                 raise BlockContextBudgetExceeded("Hensel slab atom budget exceeded")
             if (

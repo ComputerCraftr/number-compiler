@@ -100,8 +100,7 @@ def test_scan_canonicalizes_reflected_intervals_before_coefficient_work(
     def observe(
         generation: int, position: int, bits: int | None = None
     ) -> typing.Generator[
-        tuple[Literal["coefficient"] | Literal["carry"] | int, int, int]
-        | ReverseRangeRequest,
+        tuple[Literal["coefficient", "carry"] | int, int, int] | ReverseRangeRequest,
         int | TransferSummaryID,
         int | TransferSummaryID,
     ]:

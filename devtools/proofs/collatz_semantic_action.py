@@ -62,7 +62,7 @@ class CollatzBlockActionArena:
     boundary actions.  This arena deliberately does not duplicate those maps.
     """
 
-    __slots__ = ("mul3", "_actions", "requests", "hits", "aliases")
+    __slots__ = ("_actions", "aliases", "hits", "mul3", "requests")
 
     def __init__(self, mul3: DirectedTileTransducerArena) -> None:
         self.mul3 = mul3
@@ -101,4 +101,4 @@ class CollatzBlockActionArena:
         )
 
 
-__all__ = ["CollatzBlockAction", "CollatzBlockActionMetrics", "CollatzBlockActionArena"]
+__all__ = ["CollatzBlockAction", "CollatzBlockActionArena", "CollatzBlockActionMetrics"]

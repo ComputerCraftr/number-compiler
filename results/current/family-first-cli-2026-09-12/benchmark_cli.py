@@ -12,13 +12,24 @@ from time import perf_counter
 
 def main() -> None:
     arguments = [
-        "antihydra", "--nth", "512", "--info", "ledger", "--info", "clock",
-        "--info", "metrics", "--format", "json",
+        "antihydra",
+        "--nth",
+        "512",
+        "--info",
+        "ledger",
+        "--info",
+        "clock",
+        "--info",
+        "metrics",
+        "--format",
+        "json",
     ]
     started = perf_counter()
     cold = subprocess.run(
         [sys.executable, "-m", "number_compiler", *arguments],
-        capture_output=True, text=True, check=True,
+        capture_output=True,
+        text=True,
+        check=True,
     )
     cold_seconds = perf_counter() - started
     expected = json.loads(cold.stdout)
@@ -49,16 +60,22 @@ def main() -> None:
     context.information()
     after = dict(payload.term.ledger.counters)
     assert before == after
-    print(json.dumps({
-        "arguments": arguments,
-        "cold_cli_seconds": cold_seconds,
-        "warm_process_fresh_query_seconds": warm_seconds,
-        "warm_process_scope": "imports warm; each CLI call constructs a fresh query owner",
-        "repeated_same_query_additional_work": {},
-        "metrics": expected["info"]["metrics"],
-        "same_query_counters": after,
-        "scope": "512 finite returns; source discovery is charged, not assumed cheap",
-    }, indent=2, sort_keys=True))
+    print(
+        json.dumps(
+            {
+                "arguments": arguments,
+                "cold_cli_seconds": cold_seconds,
+                "warm_process_fresh_query_seconds": warm_seconds,
+                "warm_process_scope": "imports warm; each CLI call constructs a fresh query owner",
+                "repeated_same_query_additional_work": {},
+                "metrics": expected["info"]["metrics"],
+                "same_query_counters": after,
+                "scope": "512 finite returns; source discovery is charged, not assumed cheap",
+            },
+            indent=2,
+            sort_keys=True,
+        )
+    )
 
 
 if __name__ == "__main__":

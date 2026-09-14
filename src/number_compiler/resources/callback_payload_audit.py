@@ -3,10 +3,9 @@
 from __future__ import annotations
 
 from collections.abc import Mapping, Sequence
-from dataclasses import fields
+from dataclasses import fields, is_dataclass
 from functools import partial
 from types import FunctionType, MethodType, ModuleType
-from typing import Any, cast
 
 from number_compiler.arithmetic.contracts.scoped_handles import ExactSource
 from number_compiler.arithmetic.fields.dyadic_tile import DyadicSpan, DyadicTile
@@ -155,12 +154,15 @@ def audit_callback_future_payloads(
             pending.append((value.__defaults__, True, suspicious))
             pending.append((value.__kwdefaults__, True, suspicious))
             continue
-        if suspicious and isinstance(value, Mapping):
-            if value and all(type(item) is int for item in value.values()):
-                violations.add((-1, id(value)))
-        elif suspicious and isinstance(value, (Sequence, set, frozenset)):
-            if value and all(type(item) is int for item in value):
-                violations.add((-1, id(value)))
+        if suspicious and (
+            isinstance(value, Mapping)
+            and value
+            and all(type(item) is int for item in value.values())
+            or isinstance(value, (Sequence, set, frozenset))
+            and value
+            and all(type(item) is int for item in value)
+        ):
+            violations.add((-1, id(value)))
         if isinstance(value, Mapping):
             pending.extend(
                 (child, callback_scope, suspicious)
@@ -175,9 +177,10 @@ def audit_callback_future_payloads(
         layout = dataclass_fields.get(value_type)
         if layout is None and value_type not in non_dataclasses:
             try:
+                if not is_dataclass(value):
+                    raise TypeError
                 layout = tuple(
-                    (field.name, _payload_name(field.name))
-                    for field in fields(cast(Any, value))
+                    (field.name, _payload_name(field.name)) for field in fields(value)
                 )
             except TypeError:
                 non_dataclasses.add(value_type)

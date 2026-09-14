@@ -19,10 +19,10 @@ def _prefix_trace(
 ) -> Callable[[FrameType, str, object], None]:
     def trace(frame: FrameType, event: str, argument: object) -> None:
         if event != "call":
-            return None
+            return
         caller = frame.f_back
         if caller is None or caller.f_code.co_filename != filename:
-            return None
+            return
         for value in tuple(caller.f_locals.values()):
             if not isinstance(value, (list, tuple)) or len(value) < 32:
                 continue
@@ -31,7 +31,7 @@ def _prefix_trace(
                 assert decoded != prefix, (
                     "radix carry workspace contains an exact future prefix"
                 )
-        return None
+        return
 
     return trace
 

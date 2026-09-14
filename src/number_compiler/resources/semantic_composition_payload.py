@@ -230,11 +230,16 @@ def _agreement(
         assert variable is not None
         for high in (False, True):
 
-            def split(identity: int) -> int:
+            def split(
+                identity: int,
+                *,
+                selected_high: bool = high,
+                selected_variable: PortVariable = variable,
+            ) -> int:
                 node = arena.nodes[identity]
                 return (
-                    (node.high if high else node.low)
-                    if node.variable == variable
+                    (node.high if selected_high else node.low)
+                    if node.variable == selected_variable
                     else identity
                 )
 

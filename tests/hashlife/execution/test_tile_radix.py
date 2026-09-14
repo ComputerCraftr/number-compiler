@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from copy import copy
-from typing import TYPE_CHECKING
+from typing import cast
 
 import pytest
 
@@ -40,15 +40,6 @@ from number_compiler.projection.tile_radix import (
 from number_compiler.resources.ledger import ResourceLedger
 from number_compiler.resources.payload_audit import audit_registered_payloads
 from number_compiler.sequences.collatz.block_power import CollatzPhysicalBlockEffect
-
-if TYPE_CHECKING:
-    from number_compiler.hashlife.execution.tile_kernel import (
-        PrimitiveTileKernelAdapter,
-    )
-    from number_compiler.hashlife.execution.tile_scheduler import TileScheduler
-    from number_compiler.hashlife.tiles.tiles import TileArena
-    from number_compiler.projection.tile_radix import TileRadixProjection
-    from number_compiler.resources.ledger import ResourceLedger
 
 
 def _digits(value: int, radix: int) -> tuple[int, ...]:
@@ -268,7 +259,7 @@ def test_reserved_binary_symbol_rejects_without_projection_mutation() -> None:
 
 
 def test_tile_radix_prototype_is_not_in_the_public_radix_router() -> None:
-    import number_compiler.projection.lazy_radix as lazy_radix
+    from number_compiler.projection import lazy_radix
 
     assert "TileRadixProjection" not in vars(lazy_radix)
 
@@ -296,7 +287,7 @@ def test_tile_radix_rejects_invalid_radix_before_retaining_source(
                 scheduler,
                 adapter,
                 projection._source.tile,
-                radix,  # type: ignore[arg-type]
+                cast(int, radix),
             )
         assert ledger.snapshot() == before
     finally:
@@ -315,7 +306,7 @@ def test_tile_radix_rejects_legacy_numeric_coordinate_aliases_before_work(
     try:
         before = ledger.snapshot()
         with pytest.raises(error):
-            projection.point(coordinate)  # type: ignore[arg-type]
+            projection.point(cast(int, coordinate))
         after = ledger.snapshot()
         assert (after.entries, after.nodes) == (before.entries, before.nodes)
     finally:

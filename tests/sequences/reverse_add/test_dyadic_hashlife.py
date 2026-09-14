@@ -112,12 +112,12 @@ def test_certified_reverse_uses_tile_hashlife_and_reports_concrete_work() -> Non
 def test_finite_tile_actions_are_exact_for_every_t2_boundary_state_on_small_tiles() -> (
     None
 ):
-    from number_compiler.arithmetic.contracts.block_effect import BoundarySide
-    from number_compiler.arithmetic.contracts.block_kernel import _load_base10_t2_kernel
-    from number_compiler.arithmetic.fields.dyadic_tile import join, leaf
     from devtools.proofs.finite_tile_action import (
         FiniteTileActionArena,
     )
+    from number_compiler.arithmetic.contracts.block_effect import BoundarySide
+    from number_compiler.arithmetic.contracts.block_kernel import _load_base10_t2_kernel
+    from number_compiler.arithmetic.fields.dyadic_tile import join, leaf
 
     effect = _load_base10_t2_kernel()
     tile = join(join(leaf(7), leaf(18)), join(leaf(12), leaf(7)))

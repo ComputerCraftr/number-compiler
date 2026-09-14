@@ -29,14 +29,14 @@ class Radix64CollatzStage:
     """
 
     __slots__ = (
-        "stripped",
-        "shift",
         "carry",
         "carry_peak",
-        "pending",
-        "source_width",
-        "last_nonzero",
         "closed",
+        "last_nonzero",
+        "pending",
+        "shift",
+        "source_width",
+        "stripped",
     )
 
     def __init__(self) -> None:

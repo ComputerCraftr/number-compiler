@@ -124,11 +124,14 @@ class SpecialTerminalThresholdResult:
             raise ValueError((self.level, self.modulus_bits))
         if self.carrier_states_enumerated or self.raw_specialization_squarings:
             raise ValueError("terminal threshold query cannot hide carrier/replay work")
-        if min(
-            self.transverse_pullbacks,
-            self.transverse_atom_evaluations,
-            self.transverse_product_multiplications,
-        ) < 0:
+        if (
+            min(
+                self.transverse_pullbacks,
+                self.transverse_atom_evaluations,
+                self.transverse_product_multiplications,
+            )
+            < 0
+        ):
             raise ValueError("transverse work counters cannot be negative")
         if self.transverse_window is not None and (
             self.transverse_window.family != self.family
@@ -423,11 +426,11 @@ def terminal_threshold_probe(
 
 
 __all__ = [
-    "SpecialTerminalThresholdSpec",
     "SpecialTerminalThresholdResult",
+    "SpecialTerminalThresholdSpec",
     "fermat_terminal_threshold_spec",
     "mersenne_terminal_threshold_spec",
-    "terminal_threshold_spec",
     "prime_decision_chunk_spec",
     "terminal_threshold_probe",
+    "terminal_threshold_spec",
 ]

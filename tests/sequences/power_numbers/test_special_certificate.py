@@ -1,4 +1,4 @@
-from typing import Never
+from typing import Never, cast
 
 import pytest
 
@@ -8,9 +8,7 @@ from number_compiler.sequences.power_numbers.certificate import (
 )
 
 
-def test_demanded_depth_certificates_never_fall_back_from_missing_extractor() -> (
-    None
-):
+def test_demanded_depth_certificates_never_fall_back_from_missing_extractor() -> None:
     for n in (0, 1, 2):
         cert = fermat_depth_certificate(n)
         assert cert.status == "prime"
@@ -152,14 +150,14 @@ def test_classical_policy_requires_literal_bool() -> None:
     )
 
     with pytest.raises(TypeError):
-        fermat_depth_certificate(4, allow_classical_ceiling=1)  # type: ignore[arg-type]
+        fermat_depth_certificate(4, allow_classical_ceiling=cast(bool, 1))
     with pytest.raises(TypeError):
-        resolve_special_theorem("fermat", 4, allow_classical_ceiling=1)  # type: ignore[arg-type]
+        resolve_special_theorem("fermat", 4, allow_classical_ceiling=cast(bool, 1))
     with pytest.raises(TypeError):
         CanonicalSequenceCompiler().resolve_special_theorem(
             "fermat",
             4,
-            allow_classical_ceiling=1,  # type: ignore[arg-type]
+            allow_classical_ceiling=cast(bool, 1),
         )
 
 
@@ -192,16 +190,12 @@ def test_direct_mersenne_certificate_rejects_unbounded_exponent_factor_search(
     assert unresolved.method == "exponent-gate-budget"
     assert not unresolved.scalable_construction
 
-    even = mersenne_depth_certificate(
-        (1 << 64) + 2, max_candidate_bits=(1 << 64) + 20
-    )
+    even = mersenne_depth_certificate((1 << 64) + 2, max_candidate_bits=(1 << 64) + 20)
     assert even.status == "composite"
     assert even.method == "composite-exponent-small-factor"
 
 
-def test_direct_special_certificates_reject_symbolic_width_before_large_shift() -> (
-    None
-):
+def test_direct_special_certificates_reject_symbolic_width_before_large_shift() -> None:
     with pytest.raises(ValueError, match="candidate exceeds max_candidate_bits"):
         fermat_depth_certificate(1_000_000)
     with pytest.raises(ValueError, match="candidate exceeds max_candidate_bits"):
@@ -210,7 +204,9 @@ def test_direct_special_certificates_reject_symbolic_width_before_large_shift() 
 
 def test_removed_recurrence_policy_cannot_be_enabled_even_after_cache_hit() -> None:
     from number_compiler.api.sequence_compiler import CanonicalSequenceCompiler
-    from number_compiler.sequences.power_numbers.theorem_query import resolve_special_theorem
+    from number_compiler.sequences.power_numbers.theorem_query import (
+        resolve_special_theorem,
+    )
 
     compiler = CanonicalSequenceCompiler()
     assert compiler.resolve_special_theorem("fermat", 3).decided

@@ -15,10 +15,11 @@ powers any deterministic canonical state transition without Python recursion.
 from __future__ import annotations
 
 from collections import OrderedDict
+from collections.abc import Callable, Hashable, Iterable
 from dataclasses import dataclass
 from enum import IntFlag
 from hashlib import sha256
-from typing import Callable, Generic, Hashable, Iterable, TypeVar
+from typing import Generic, TypeVar
 
 from number_compiler.arithmetic.contracts.scoped_handles import (
     ActionProgramID,
@@ -33,7 +34,7 @@ class ActionTransform(IntFlag):
     CONJUGATE = 2
 
     @property
-    def inverse(self) -> "ActionTransform":
+    def inverse(self) -> ActionTransform:
         # Both generators are involutions and commute on oriented actions.
         return self
 
@@ -200,20 +201,20 @@ class OrientedFiniteActionArena:
     """
 
     __slots__ = (
-        "_kernel",
-        "_owner",
-        "_mapping_ids",
-        "_mappings",
-        "_compose",
-        "_conjugates",
         "_action_ids",
         "_actions",
+        "_compose",
+        "_conjugates",
+        "_kernel",
         "_leaf_refs",
+        "_mapping_ids",
+        "_mappings",
+        "_owner",
         "action_alias_hits",
-        "mirror_alias_hits",
-        "conjugate_alias_hits",
-        "compose_hits",
         "compose_cache_limit",
+        "compose_hits",
+        "conjugate_alias_hits",
+        "mirror_alias_hits",
     )
 
     def __init__(
@@ -542,16 +543,16 @@ class FiniteQuotientLiftEngine(Generic[S, W]):
     """
 
     __slots__ = (
-        "states",
-        "key",
-        "identity_weight",
-        "combine_weight",
         "_index",
         "_targets",
         "_weights",
+        "advance_queries",
+        "combine_weight",
+        "identity_weight",
+        "key",
         "primitive_step_evaluations",
         "squaring_operations",
-        "advance_queries",
+        "states",
     )
 
     def __init__(
@@ -680,16 +681,16 @@ class BinaryLiftEngine(Generic[S, W]):
     """
 
     __slots__ = (
-        "step",
-        "key",
-        "identity_weight",
-        "combine_weight",
         "_jumps",
-        "step_evaluations",
-        "jump_requests",
-        "jump_hits",
-        "jump_evictions",
+        "combine_weight",
+        "identity_weight",
         "jump_cache_limit",
+        "jump_evictions",
+        "jump_hits",
+        "jump_requests",
+        "key",
+        "step",
+        "step_evaluations",
     )
 
     def __init__(
@@ -808,12 +809,12 @@ class BinaryLiftEngine(Generic[S, W]):
 
 __all__ = [
     "ActionTransform",
-    "FiniteKernel",
-    "OrientedActionRef",
-    "OrientedActionMetrics",
-    "OrientedFiniteActionArena",
-    "FiniteQuotientLiftMetrics",
-    "FiniteQuotientLiftEngine",
-    "BinaryLiftMetrics",
     "BinaryLiftEngine",
+    "BinaryLiftMetrics",
+    "FiniteKernel",
+    "FiniteQuotientLiftEngine",
+    "FiniteQuotientLiftMetrics",
+    "OrientedActionMetrics",
+    "OrientedActionRef",
+    "OrientedFiniteActionArena",
 ]

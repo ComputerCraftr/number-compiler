@@ -418,10 +418,10 @@ def test_hashlife_tile_budget_counts_generated_quadtree_not_only_source_roots() 
 
 def test_core_hashlife_semantics_do_not_trust_construction_order_tile_ids() -> None:
     from devtools.proofs.block_power import power_block_effect
-    from devtools.proofs.spacetime_boundary import tile_uniform_symbol
     from devtools.proofs.finite_tile_action import (
         FiniteTileActionArena,
     )
+    from devtools.proofs.spacetime_boundary import tile_uniform_symbol
 
     # Deliberately manufacture non-interned tiles with colliding diagnostic IDs.
     # Core semantic caches/traversals must use canonical objects/structure rather

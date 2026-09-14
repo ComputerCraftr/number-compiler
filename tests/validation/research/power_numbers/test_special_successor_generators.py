@@ -541,7 +541,7 @@ def test_temporal_history_partition_refinement_matches_materialized_histories() 
 
     transition = (1, 2, 3, 3)
     marker = ("a", "b", "a", "c")
-    for horizon in range(0, 6):
+    for horizon in range(6):
         if horizon == 0:
             expected: tuple[int, ...] = (0, 0, 0, 0)
         else:
@@ -621,8 +621,8 @@ def test_carry_history_is_exactly_a_phase_refinement_of_independent_image_depth(
 
 
 def test_legacy_carry_event_and_source_only_theorem_surfaces_are_removed() -> None:
-    import number_compiler.arithmetic.polynomials.two_primary_filtration as filtration
     import devtools.proofs.oracles.special_binary_jump as special_jump
+    import number_compiler.arithmetic.polynomials.two_primary_filtration as filtration
     from devtools.experiments.power_numbers.special_successor_carry import (
         carry_phase_refinement_audits,
     )

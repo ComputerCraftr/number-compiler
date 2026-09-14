@@ -36,24 +36,8 @@ from number_compiler.sequences.reverse_add.higher_schema import (
 
 if TYPE_CHECKING:
     from number_compiler.hashlife.actions.field_actions import FieldCellActionID
-    from number_compiler.hashlife.execution.continuations.higher_bimachine import (
-        HigherBimachineRuntime,
-    )
-    from number_compiler.hashlife.execution.continuations.higher_interfaces import (
-        HigherLocalInterfaceArena,
-    )
-    from number_compiler.hashlife.execution.continuations.higher_semantic import (
-        HigherSemanticArena,
-    )
     from number_compiler.hashlife.execution.field_images import (
-        SourceCellArena,
         SourceForestID,
-    )
-    from number_compiler.sequences.reverse_add.field_action import (
-        ReverseFieldActionArena,
-    )
-    from number_compiler.sequences.reverse_add.higher_interface import (
-        ReverseHigherInterfaceCompiler,
     )
 
 

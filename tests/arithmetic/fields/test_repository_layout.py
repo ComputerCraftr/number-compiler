@@ -128,9 +128,7 @@ def test_shared_morphism_core_has_no_legacy_parallel_power_types() -> None:
         assert not definitions.get(legacy)
 
 
-def test_special_certificate_compiler_path_has_no_classical_recurrence_owner() -> (
-    None
-):
+def test_special_certificate_compiler_path_has_no_classical_recurrence_owner() -> None:
     src = ROOT / "src" / "number_compiler"
     compiler = (src / "api/sequence_compiler.py").read_text()
     special = src
@@ -155,9 +153,7 @@ def test_special_certificate_compiler_path_has_no_classical_recurrence_owner() -
     production = special / "sequences/power_numbers"
     assert not (production / "classical_ceiling.py").exists()
     assert not (production / "digit_power.py").exists()
-    assert (
-        ROOT / "devtools/proofs/oracles/classical_ceiling.py"
-    ).is_file()
+    assert (ROOT / "devtools/proofs/oracles/classical_ceiling.py").is_file()
     assert (ROOT / "devtools/proofs/oracles/digit_power.py").is_file()
     definitions = _production_definitions()
     for recurrence in (

@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import itertools
-from typing import TYPE_CHECKING, Never
+from typing import Never
 
 import pytest
 
@@ -14,9 +14,6 @@ from number_compiler.arithmetic.functions.semantic_function_transactions import 
 )
 from number_compiler.hashlife.interfaces.semantic_bits import BitFunctionArena, _Circuit
 from number_compiler.resources.ledger import ResourceLedger
-
-if TYPE_CHECKING:
-    from number_compiler.hashlife.interfaces.semantic_bits import _Circuit
 
 
 def raw_boolean(

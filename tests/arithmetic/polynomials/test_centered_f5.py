@@ -1,6 +1,7 @@
 """Independent coefficient and convolution checks for centered F5 transport."""
 
 from math import comb
+from typing import cast
 
 import pytest
 
@@ -46,6 +47,6 @@ def test_large_sparse_transport_stays_sparse_and_dense_transport_fails_closed() 
         CenteredF5Transport(0, degree - 1).shifts(max_terms=4096)
     for bad in (True, -1, 1.0):
         with pytest.raises(ValueError):
-            CenteredF5Transport(bad, 0)  # type: ignore[arg-type]
+            CenteredF5Transport(cast(int, bad), 0)
         with pytest.raises(ValueError):
-            operator.shifts(max_terms=bad)  # type: ignore[arg-type]
+            operator.shifts(max_terms=cast(int, bad))

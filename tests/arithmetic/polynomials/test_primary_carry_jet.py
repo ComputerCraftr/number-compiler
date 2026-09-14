@@ -93,8 +93,8 @@ def test_negacyclic_seam_uses_an_anti_fixed_carry() -> None:
 def test_signed_fermat_deck_is_derived_from_the_full_response() -> None:
     from number_compiler.arithmetic.carry.carry_normalization import (
         RadixCarryBlock,
-        normalize_negacyclic_block,
         normalization_carry_boundaries,
+        normalize_negacyclic_block,
     )
 
     for length in range(1, 17):
@@ -138,7 +138,9 @@ def test_sign_deck_is_independent_of_the_signed_output_chart() -> None:
     assert first != second
 
 
-@pytest.mark.parametrize("family,width", [("fermat", 4), ("fermat", 8), ("mersenne", 7)])
+@pytest.mark.parametrize(
+    "family,width", [("fermat", 4), ("fermat", 8), ("mersenne", 7)]
+)
 def test_tile_key_matches_independent_fold_and_carry(family: str, width: int) -> None:
     from number_compiler.arithmetic.polynomials.arithmetic_tile import (
         ArithmeticTile,
@@ -178,7 +180,9 @@ def test_tile_key_matches_independent_fold_and_carry(family: str, width: int) ->
             carry = (a + carry - r) // 2
             carries.append(carry)
         assert carry == spec.boundary_sign * seam
-        step, key = ArithmeticTile.from_value(spec, defect).step_with_primary_carry_jet()
+        step, key = ArithmeticTile.from_value(
+            spec, defect
+        ).step_with_primary_carry_jet()
         assert key.deck_branch == int(chosen != defect)
         assert key.seam_carry == seam
         assert key.jet == direct_jet(tuple(carries))

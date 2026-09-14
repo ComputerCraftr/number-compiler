@@ -11,9 +11,9 @@ from number_compiler.arithmetic.polynomials.twisted_observer import (
     TwistedCylinderProjection,
     first_mirror_obstruction,
 )
+from number_compiler.hashlife.execution.tile_scheduler import TileApplication
 from number_compiler.hashlife.observation.tile_cylinder import _sheet
 from number_compiler.hashlife.observation.tile_projection import LazyProjection
-from number_compiler.hashlife.execution.tile_scheduler import TileApplication
 from number_compiler.hashlife.tiles.tiles import TileAlphabet, TileArena
 from number_compiler.resources.ledger import ResourceLedger
 from number_compiler.sequences.reverse_add.power import ReverseAddPoweredTerm
@@ -129,31 +129,34 @@ def test_tile_fold_preserves_nonpalindromic_clipped_boundary_and_budget_cleanup(
             "canonical-tile-alphabet-v1",
         )
     )
-    with tiles.leaf(alphabet, 3) as a, tiles.leaf(alphabet, 8) as b:
-        with tiles.join(a.tile, b.tile) as pair:
-            with tiles.join(pair.tile, pair.tile) as root:
-                result = _sheet(tiles, root.tile, 3, 2, -1)
-                expected = first_mirror_obstruction(
-                    3, (3, 8, 3).__getitem__, first_width=2
-                )
-                assert not result.nonzero and expected is None
-                result = _sheet(tiles, root.tile, 2, 2, -1)
-                assert result.coefficients == (-5, 5)
-                old = ledger.max_nodes
-                ledger.max_nodes = ledger.nodes + 1
-                try:
-                    with pytest.raises(BlockContextBudgetExceeded):
-                        _sheet(tiles, root.tile, 4, 2, -1)
-                finally:
-                    ledger.max_nodes = old
-                assert all(
-                    account.entries == account.nodes == 0
-                    for account in ledger.inventory()
-                    if account.name.startswith("tile-cylinder-")
-                )
-    with tiles.leaf(alphabet, 10) as padding:
-        with pytest.raises(ValueError, match="interior padding"):
-            _sheet(tiles, padding.tile, 1, 1, 1)
+    with (
+        tiles.leaf(alphabet, 3) as a,
+        tiles.leaf(alphabet, 8) as b,
+        tiles.join(a.tile, b.tile) as pair,
+        tiles.join(pair.tile, pair.tile) as root,
+    ):
+        result = _sheet(tiles, root.tile, 3, 2, -1)
+        expected = first_mirror_obstruction(3, (3, 8, 3).__getitem__, first_width=2)
+        assert not result.nonzero and expected is None
+        result = _sheet(tiles, root.tile, 2, 2, -1)
+        assert result.coefficients == (-5, 5)
+        old = ledger.max_nodes
+        ledger.max_nodes = ledger.nodes + 1
+        try:
+            with pytest.raises(BlockContextBudgetExceeded):
+                _sheet(tiles, root.tile, 4, 2, -1)
+        finally:
+            ledger.max_nodes = old
+        assert all(
+            account.entries == account.nodes == 0
+            for account in ledger.inventory()
+            if account.name.startswith("tile-cylinder-")
+        )
+    with (
+        tiles.leaf(alphabet, 10) as padding,
+        pytest.raises(ValueError, match="interior padding"),
+    ):
+        _sheet(tiles, padding.tile, 1, 1, 1)
     assert all(
         account.entries == account.nodes == 0
         for account in ledger.inventory()

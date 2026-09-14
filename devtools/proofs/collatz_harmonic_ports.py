@@ -7,15 +7,14 @@ All polynomial arithmetic uses the existing primary-jet owner.
 
 from __future__ import annotations
 
+from collections.abc import Iterable
 from dataclasses import dataclass
-from typing import Iterable
 
 from number_compiler.arithmetic.carry.carry_monoid import (
     CarryFn,
     apply_carry_fn,
     carry_fn_from_outputs,
 )
-from number_compiler.arithmetic.carry.jet_cylinder import JetPortCylinder, JetPortRow
 from number_compiler.arithmetic.carry.carry_normalization import (
     linear_normalization_fields,
 )
@@ -23,6 +22,7 @@ from number_compiler.arithmetic.carry.collatz_carry_wires import (
     CollatzCarryWires,
     collatz_digit_carry_wires,
 )
+from number_compiler.arithmetic.carry.jet_cylinder import JetPortCylinder, JetPortRow
 from number_compiler.arithmetic.contracts.exact_tree_context import (
     require_endpoint_construction,
 )
@@ -101,7 +101,7 @@ class Radix64WireHarmonicAction:
         require_endpoint_construction()
         if type(self.phase) is not int or not 0 <= self.phase < 8:
             raise ValueError("radix-64 harmonic phase must lie in Z/8")
-        self.domain  # Validate the joint staircase ports.
+        _ = self.domain  # Validate the joint staircase ports.
 
     @classmethod
     def identity(cls) -> Radix64WireHarmonicAction:

@@ -12,10 +12,6 @@ from number_compiler.arithmetic.contracts.block_effect import (
 )
 from number_compiler.arithmetic.contracts.block_kernel import BaseBlockEffect
 from number_compiler.arithmetic.contracts.semantic_identity import SemanticIdentity
-from number_compiler.arithmetic.radix_division import (
-    SymbolicBinaryDivisionEffect,
-    certified_binary_division_radix,
-)
 from number_compiler.arithmetic.functions.finite_function_types import (
     BOOL,
     AtomSort,
@@ -23,6 +19,10 @@ from number_compiler.arithmetic.functions.finite_function_types import (
     FunctionSignature,
 )
 from number_compiler.arithmetic.functions.finite_port_action import PortVariable
+from number_compiler.arithmetic.radix_division import (
+    SymbolicBinaryDivisionEffect,
+    certified_binary_division_radix,
+)
 from number_compiler.hashlife.actions.diamond_actions import PortSignatureID
 from number_compiler.hashlife.actions.field_actions import FieldCellActionID
 from number_compiler.hashlife.execution.tile_fused_kernel import (

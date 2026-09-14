@@ -1,6 +1,6 @@
-from itertools import product
-from dataclasses import replace
 from collections.abc import Callable
+from dataclasses import replace
+from itertools import product
 
 import pytest
 
@@ -20,8 +20,7 @@ def test_guard_consumption_preserves_support_when_output_and_clock_coincide() ->
     arena = FreeCylinderResidualArena(max_precision=32)
     action = arena.power_physical(3, 3)
     selected = [
-        arena.select(action, source_bits=3, source_bit=_bits(x))
-        for x in (4, 5)
+        arena.select(action, source_bits=3, source_bit=_bits(x)) for x in (4, 5)
     ]
     a, b = selected
     assert a.apply_exact(4) == b.apply_exact(5) == 4
@@ -51,10 +50,7 @@ def test_guard_consumption_preserves_support_when_output_and_clock_coincide() ->
 def test_constant_output_consumers_retain_distinct_support() -> None:
     arena = FreeCylinderResidualArena(max_precision=32)
     action = arena.power_physical(8, 3)
-    a, b = [
-        arena.select(action, source_bits=3, source_bit=_bits(x))
-        for x in (4, 5)
-    ]
+    a, b = [arena.select(action, source_bits=3, source_bit=_bits(x)) for x in (4, 5)]
     assert a.constant_target == b.constant_target == 1
     assert a.transport is b.transport is None
     assert (
@@ -72,10 +68,14 @@ def test_source_generated_support_matches_every_physical_tick(ticks: int) -> Non
     arena = FreeCylinderResidualArena(max_precision=2048)
     action = arena.power_physical(ticks, 3)
     for source in range(1, 8):
+
+        def source_bit(bit: int, source: int = source) -> int:
+            return (source >> bit) & 1
+
         selected = arena.select(
             action,
             source_bits=source.bit_length(),
-            source_bit=lambda bit: (source >> bit) & 1,
+            source_bit=source_bit,
         )
         value = source
         odds = 0

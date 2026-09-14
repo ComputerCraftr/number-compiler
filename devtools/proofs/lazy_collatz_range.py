@@ -9,6 +9,7 @@ from __future__ import annotations
 
 from collections.abc import Generator, Iterator, MutableMapping, MutableSequence
 from dataclasses import dataclass
+from importlib import import_module
 from typing import TYPE_CHECKING, Literal, cast
 
 from devtools.proofs.lazy_collatz import (
@@ -323,7 +324,7 @@ class CollatzRangeEvaluator:
         return before, node.kind, node.shift
 
     def _point(self, request: _Request) -> _Computation:
-        before, kind, shift = self._input(request.program)
+        _before, kind, _shift = self._input(request.program)
         if kind != "identity":
             raise AssertionError(
                 "only original source leaves bypass the finite leaf kernel"
@@ -608,7 +609,7 @@ register_proof_geometry_fields(
 # fully defined.  Ordinary production metrics never load either module; an
 # explicitly constructed legacy Collatz proof application loads the range
 # evaluator and thereby opts its retained key/value relations into auditing.
-import devtools.proofs.lazy_observation_payload as _lazy_observation_payload  # noqa: E402, F401
+_lazy_observation_payload = import_module("devtools.proofs.lazy_observation_payload")
 
 if TYPE_CHECKING:
     from devtools.proofs.lazy_collatz import LazyCollatzApplication

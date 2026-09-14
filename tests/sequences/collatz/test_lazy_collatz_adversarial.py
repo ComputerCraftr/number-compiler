@@ -166,18 +166,18 @@ def test_program_width_and_view_validation_reject_aliases_before_mutation() -> N
             application.range_summary(invalid)
     for coordinate in (True, 1.5):
         with pytest.raises(TypeError):
-            application.view_point(application.initial, coordinate)  # type: ignore[arg-type]
+            application.view_point(application.initial, cast(int, coordinate))
         with pytest.raises(TypeError):
             application._range_evaluator.point(
                 application.initial.program,
-                coordinate,  # type: ignore[arg-type]
+                cast(int, coordinate),
             )
     for start, length in ((True, 1), (0, 1.5)):
         with pytest.raises(TypeError):
             application._range_evaluator.range_effect(
                 application.initial.program,
                 start,
-                length,  # type: ignore[arg-type]
+                cast(int, length),
             )
     assert application.ledger.snapshot() == before
 

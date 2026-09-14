@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from collections.abc import Callable
-from typing import TYPE_CHECKING, TypeVar
+from typing import TYPE_CHECKING, Self, TypeVar
 
 from number_compiler.arithmetic.functions.finite_function_types import (
     BOOL,
@@ -54,7 +54,7 @@ class _Transaction:
         self._staged_nodes = 0
         self._closed = False
 
-    def __enter__(self) -> _Transaction:
+    def __enter__(self) -> Self:
         if self._closed:
             raise RuntimeError("closed semantic construction transaction")
         return self
@@ -665,12 +665,14 @@ class _Transaction:
                         condition = self.bit(inputs, variable)
                     else:
 
-                        def extract(terminal: SemanticTerminal) -> int:
+                        def extract(
+                            terminal: SemanticTerminal, bit: int = variable.bit
+                        ) -> int:
                             value = (
                                 terminal
                                 if terminal.kind == "invalid"
                                 else SemanticTerminal(
-                                    "atom", (terminal.value >> variable.bit) & 1
+                                    "atom", (terminal.value >> bit) & 1
                                 )
                             )
                             return self.terminal(FunctionSignature(inputs, BOOL), value)

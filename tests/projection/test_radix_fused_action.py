@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from collections.abc import Mapping
 from itertools import product
 from typing import Never
 
@@ -10,6 +11,7 @@ import pytest
 from number_compiler.arithmetic.functions.finite_function_types import (
     SemanticFunctionID,
 )
+from number_compiler.arithmetic.functions.finite_port_action import PortVariable
 from number_compiler.projection.lazy_radix import collatz_radix_digit
 from number_compiler.projection.radix_fused_action import FusedRadixArena
 from number_compiler.resources.ledger import ResourceLedger
@@ -51,16 +53,19 @@ def test_complete_carries_coordinate_output_and_activity(physical: bool) -> None
             for port, value in zip(action.ports, (incoming, d0, d1, 0), strict=True)
         }
 
-        def read(bits: tuple[SemanticFunctionID, ...]) -> int:
+        def read(
+            bits: tuple[SemanticFunctionID, ...],
+            values: Mapping[PortVariable, int],
+        ) -> int:
             return sum(
-                arena.functions.evaluate(bit, inputs).value << index
+                arena.functions.evaluate(bit, values).value << index
                 for index, bit in enumerate(bits)
             )
 
-        assert read(action.physical_exit) == carry
-        assert tuple(read(component) for component in action.division_exit) == tuple(
-            exits
-        )
+        assert read(action.physical_exit, inputs) == carry
+        assert tuple(
+            read(component, inputs) for component in action.division_exit
+        ) == tuple(exits)
         assert arena.functions.evaluate(action.active, inputs).value == active
         for position in range(width):
             inputs[action.ports[-1].variable] = position

@@ -7,8 +7,8 @@ they do not hide the cost of constructing that bitmap/map.
 
 from __future__ import annotations
 
+from collections.abc import Sequence
 from dataclasses import dataclass
-from typing import Sequence
 
 
 @dataclass(frozen=True, slots=True)
@@ -234,10 +234,10 @@ def bitmap_radix_decision_metrics(
 
 
 __all__ = [
-    "RadixDecisionMetrics",
     "CollatzInverseDecisionMetrics",
-    "shared_radix_decision_metrics",
+    "RadixDecisionMetrics",
     "bitmap_radix_decision_metrics",
     "collatz_inverse_residual_state_upper_bound",
     "collatz_inverse_symbolic_decision_metrics",
+    "shared_radix_decision_metrics",
 ]

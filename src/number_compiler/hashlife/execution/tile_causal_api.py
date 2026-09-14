@@ -143,8 +143,11 @@ class CausalTileAPI:
             ),
             tile_result=False,
         )
-        if not isinstance(result, CausalInterfacePayload):
-            raise AssertionError("causal interface returned another payload sort")
+        match result:
+            case CausalInterfacePayload():
+                pass
+            case _:
+                raise AssertionError("causal interface returned another payload sort")
         return result
 
     def child_states(

@@ -1,4 +1,3 @@
-#!/usr/bin/env python3
 """Deterministic v0.29 prime-wheel / self-branching Collatz probe."""
 
 from __future__ import annotations

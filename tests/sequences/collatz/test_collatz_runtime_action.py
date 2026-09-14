@@ -1,12 +1,16 @@
 from __future__ import annotations
 
+from typing import cast
+
 import pytest
 
 from number_compiler.arithmetic.contracts.scoped_handles import (
     ActionProgramID,
     ArenaToken,
 )
+from number_compiler.hashlife.actions.field_actions import FieldCellActionID
 from number_compiler.resources.ledger import ResourceLedger
+from number_compiler.sequences.collatz.field_action import ProgramRole
 from number_compiler.sequences.collatz.runtime_action import (
     build_collatz_runtime_action,
 )
@@ -21,7 +25,7 @@ def test_collatz_runtime_action_rejects_numeric_step_aliases(steps: object) -> N
     ledger = ResourceLedger()
     before = ledger.snapshot()
     with pytest.raises(TypeError):
-        build_collatz_runtime_action(steps, ledger)  # type: ignore[arg-type]
+        build_collatz_runtime_action(cast(int, steps), ledger)
     after = ledger.snapshot()
     assert (after.entries, after.nodes) == (before.entries, before.nodes)
 
@@ -54,18 +58,18 @@ def test_collatz_field_action_semantics_do_not_use_local_integer_ordinals() -> N
         second.actions.semantic_identity(second.powered)
     )
     with pytest.raises(TypeError):
-        first.actions.semantic_identity(first.powered.local_id)  # type: ignore[arg-type]
+        first.actions.semantic_identity(cast(FieldCellActionID, first.powered.local_id))
     with pytest.raises(TypeError):
-        first.actions.semantic_identity(True)  # type: ignore[arg-type]
+        first.actions.semantic_identity(cast(FieldCellActionID, True))
     with pytest.raises(TypeError):
-        first.actions.semantic_identity(1.0)  # type: ignore[arg-type]
+        first.actions.semantic_identity(cast(FieldCellActionID, 1.0))
     with pytest.raises(ValueError):
         first.actions.semantic_identity(second.powered)
 
 
 def test_collatz_runtime_programs_validate_scope_sort_and_role_before_hits() -> None:
     with pytest.raises(ValueError, match="unknown Collatz"):
-        CollatzRuntimeProgram("bogus", 0)  # type: ignore[arg-type]
+        CollatzRuntimeProgram(cast(ProgramRole, "bogus"), 0)
     arena = CollatzRuntimeProgramArena(ResourceLedger())
     root = arena.primitive("root")
     output = arena.primitive("output")
@@ -81,7 +85,7 @@ def test_collatz_runtime_programs_validate_scope_sort_and_role_before_hits() -> 
     with pytest.raises(ValueError):
         arena.resolve(ActionProgramID(ArenaToken("foreign"), root.kind, root.local_id))
     with pytest.raises(TypeError):
-        arena.resolve(True)  # type: ignore[arg-type]
+        arena.resolve(cast(ActionProgramID, True))
 
 
 def test_runtime_programs_canonicalize_equal_powers_before_publication() -> None:
@@ -118,7 +122,7 @@ def test_runtime_program_semantics_are_source_free_and_owner_independent() -> No
     )
     for alias in (first_power.local_id, True, 1.0):
         with pytest.raises(TypeError):
-            first.semantic_identity("root", alias)  # type: ignore[arg-type]
+            first.semantic_identity("root", cast(ActionProgramID, alias))
 
 
 def test_collatz_runtime_program_budget_failure_is_atomic() -> None:

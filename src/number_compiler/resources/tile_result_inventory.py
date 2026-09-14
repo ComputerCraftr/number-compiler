@@ -12,15 +12,18 @@ from number_compiler.hashlife.actions.diamond_actions import PortSignatureID
 from number_compiler.hashlife.actions.field_actions import FieldCellActionID
 from number_compiler.hashlife.behavior.reverse_bound_output import ReverseBoundOutput
 from number_compiler.hashlife.interfaces.diamond_quotient import LocalInterfaceID
+from number_compiler.hashlife.tiles.source_root_match_memo import (
+    _validate_value as _validate_source_root_match,
+)
 from number_compiler.hashlife.tiles.tile_behavior_memo import (
     _validate_published as _validate_behavior,
-)
-from number_compiler.hashlife.tiles.tile_boundary_concat_memo import (
-    _validate_value as _validate_concat,
 )
 from number_compiler.hashlife.tiles.tile_boundaries import (
     BoundaryTileOperands,
     BoundaryTileView,
+)
+from number_compiler.hashlife.tiles.tile_boundary_concat_memo import (
+    _validate_value as _validate_concat,
 )
 from number_compiler.hashlife.tiles.tile_causal_interface_memo import (
     _validate_published_value,
@@ -32,9 +35,6 @@ from number_compiler.hashlife.tiles.tile_ports import (
 )
 from number_compiler.hashlife.tiles.tile_region_memo import (
     _validate_value as _validate_region,
-)
-from number_compiler.hashlife.tiles.source_root_match_memo import (
-    _validate_value as _validate_source_root_match,
 )
 from number_compiler.hashlife.tiles.tile_result_records import (
     BehaviorBindingKey,
@@ -61,13 +61,11 @@ from number_compiler.hashlife.tiles.tile_result_records import (
     _ReverseLinks,
     _ReverseMember,
 )
+from number_compiler.hashlife.tiles.tile_result_types import is_execution_key
 from number_compiler.hashlife.tiles.tile_result_validation import (
     validate_boundary_operands,
 )
-from number_compiler.hashlife.tiles.tile_results import (
-    CompletedResultArena,
-    _is_execution_key,
-)
+from number_compiler.hashlife.tiles.tile_results import CompletedResultArena
 from number_compiler.hashlife.tiles.tiles import TileID
 from number_compiler.resources.tile_reverse_output_inventory import (
     reverse_bound_output_scalar_slots,
@@ -812,7 +810,7 @@ def audit_tile_results(
     for tile, keys in expected.items():
         current = arena._reverse.get(_ReverseHead(tile))
         previous = None
-        while _is_execution_key(current):
+        while is_execution_key(current):
             member_key = _ReverseMember(tile, current)
             if member_key in visited_members:
                 invalid.add((arena._reverse_owner, id(member_key)))

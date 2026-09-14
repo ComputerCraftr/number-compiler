@@ -1,11 +1,11 @@
-from pathlib import Path
 import contextlib
 import json
 import os
 import statistics
+import subprocess
 import sys
 import tempfile
-import subprocess
+from pathlib import Path
 
 sys.path.insert(0, str(Path.cwd()))
 from devtools.benchmarks.cli_startup import _install

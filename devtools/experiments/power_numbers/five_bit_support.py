@@ -21,21 +21,21 @@ from devtools.experiments.algebra.dyadic_difference_germ_core import (
     ambient_capacity_truth,
     mixed_capacity_controls,
 )
+from devtools.experiments.power_numbers.special_germ_descent import _crt_pairwise
 from devtools.experiments.power_numbers.special_source_certificate import (
     _FERMAT_FACTORS,
     _MERSENNE_FACTORS,
 )
-from devtools.experiments.power_numbers.special_germ_descent import _crt_pairwise
 from number_compiler.arithmetic.fields.two_adic import v2_positive
-from number_compiler.arithmetic.polynomials.folded_square_packet import (
-    FoldedSquarePacket,
-    FoldedSquareProjection,
-    folded_square_packet,
-)
 from number_compiler.arithmetic.polynomials.digit_convolution import (
     adaptive_square_convolution,
     fold_cyclic,
     fold_negacyclic,
+)
+from number_compiler.arithmetic.polynomials.folded_square_packet import (
+    FoldedSquarePacket,
+    FoldedSquareProjection,
+    folded_square_packet,
 )
 from number_compiler.sequences.power_numbers.numbers import (
     fermat_number,
@@ -221,9 +221,10 @@ def _crt_orientation(
     ):
         raise ValueError((factors, orientations))
     representative = _crt_pairwise(orientations, factors)
-    if any(representative % q != orientation % q for q, orientation in zip(
-        factors, orientations, strict=True
-    )):
+    if any(
+        representative % q != orientation % q
+        for q, orientation in zip(factors, orientations, strict=True)
+    ):
         raise AssertionError((representative, orientations))
     return representative
 
@@ -251,7 +252,9 @@ def orientation_sheet(sheet: SuppliedFactorSheet) -> tuple[OrientationPacketRow,
 
 def assembled_factor_truth_corpus() -> tuple[OrientationPacketRow, ...]:
     """All orientation sheets over the actual complete supplied corpus."""
-    return tuple(row for sheet in supplied_factor_sheets() for row in orientation_sheet(sheet))
+    return tuple(
+        row for sheet in supplied_factor_sheets() for row in orientation_sheet(sheet)
+    )
 
 
 def assembled_local_support_corpus() -> tuple[OrientationPacketRow, ...]:
@@ -292,7 +295,9 @@ def minimum_bit_audit(
         if sufficient:
             break
     else:
-        raise AssertionError("the complete five-bit packet must classify its own corpus")
+        raise AssertionError(
+            "the complete five-bit packet must classify its own corpus"
+        )
 
     dense_rows = tuple((row, dense_folded_square_differential(row)) for row in rows)
     power_moduli: list[tuple[int, int]] = []
@@ -388,10 +393,7 @@ def partial_f9_first_hole_audit() -> TemporalFirstHoleAudit:
     rows = tuple(
         orientation_packet_row(
             sheet,
-            tuple(
-                1 if depth >= level else -1
-                for depth in control.local_lift_depths
-            ),
+            tuple(1 if depth >= level else -1 for depth in control.local_lift_depths),
         )
         for level in range(1, first_hole + 1)
     )

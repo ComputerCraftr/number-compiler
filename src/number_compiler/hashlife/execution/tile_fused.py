@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from collections.abc import Callable
-from typing import TYPE_CHECKING, Any, cast
+from typing import TYPE_CHECKING, Protocol, cast
 
 from number_compiler.hashlife.actions.field_actions import FieldCellActionID
 from number_compiler.hashlife.actions.lazy_compiler import UnsupportedInterfaceError
@@ -13,12 +13,68 @@ from number_compiler.hashlife.tiles.tile_context import (
     before_context,
     bind_context,
 )
-from number_compiler.hashlife.tiles.tile_ports import BoundPorts, FusedBoundaryContract
+from number_compiler.hashlife.tiles.tile_ports import (
+    BoundPorts,
+    FusedBoundaryContract,
+    ResultWiring,
+)
 from number_compiler.hashlife.tiles.tile_result_records import PoweredResultKey
 from number_compiler.hashlife.tiles.tiles import TileID
 
 if TYPE_CHECKING:
     from number_compiler.hashlife.execution.tile_scheduler import TileScheduler
+
+
+class FusedExecutionAdapter(Protocol):
+    """Optional adapter surface required after a fused pair is accepted."""
+
+    def fused_primitive_pair(
+        self,
+        action: FieldCellActionID,
+    ) -> tuple[FieldCellActionID, FieldCellActionID] | None: ...
+
+    def fused_child_contexts(
+        self,
+        action: FieldCellActionID,
+        parent: TileID,
+        producer_ports: tuple[int, ...],
+        consumer_ports: tuple[int, ...],
+        wiring: ResultWiring,
+        side: int,
+        *,
+        producer_wiring: ResultWiring | None = None,
+    ) -> tuple[ChildContext, ChildContext]: ...
+
+    def fused_leaf_result(
+        self,
+        action: FieldCellActionID,
+        source: TileID,
+        producer_ports: tuple[int, ...],
+        consumer_ports: tuple[int, ...],
+        wiring: ResultWiring,
+        *,
+        producer_wiring: ResultWiring | None = None,
+    ) -> PrimitiveTileResult: ...
+
+    def fused_output_active(
+        self,
+        action: FieldCellActionID,
+        source: TileID,
+        producer_ports: tuple[int, ...],
+        consumer_ports: tuple[int, ...],
+        wiring: ResultWiring,
+        *,
+        producer_wiring: ResultWiring | None = None,
+    ) -> bool: ...
+
+
+def _fused_adapter(scheduler: TileScheduler) -> FusedExecutionAdapter:
+    """Type the optional structural hooks at the adapter extension boundary.
+
+    Each selected path still accesses its own hook normally; a pair probe alone
+    does not validate other hooks or authorize substituting successor state.
+    """
+    return cast("FusedExecutionAdapter", scheduler.adapter)
 
 
 def supports_fused_pair(scheduler: TileScheduler, action: FieldCellActionID) -> bool:
@@ -85,12 +141,7 @@ def _initial_producer(
     scheduler: TileScheduler,
     key: PoweredResultKey,
 ) -> ChildContext:
-    pair = cast(
-        Callable[
-            [FieldCellActionID], tuple[FieldCellActionID, FieldCellActionID] | None
-        ],
-        getattr(scheduler.adapter, "fused_primitive_pair"),
-    )(key.action)
+    pair = _fused_adapter(scheduler).fused_primitive_pair(key.action)
     if pair is None:
         raise UnsupportedInterfaceError(
             "demanded temporal output requires a bounded fused primitive pair"
@@ -109,8 +160,7 @@ def _contexts(
     side: int,
 ) -> FusedBoundaryContract:
     producer, consumer = contract.producer, contract.consumer
-    hook = cast(Any, getattr(scheduler.adapter, "fused_child_contexts"))
-    result = hook(
+    result = _fused_adapter(scheduler).fused_child_contexts(
         key.action,
         tile,
         producer.ports,
@@ -161,8 +211,7 @@ def _active(
     )
     if prepared is not None:
         return prepared.active
-    hook = cast(Any, getattr(scheduler.adapter, "fused_output_active"))
-    result = hook(
+    result = _fused_adapter(scheduler).fused_output_active(
         key.action,
         tile,
         producer.ports,
@@ -209,8 +258,7 @@ def observe_fused_point(
         scheduler.ledger.bump("tile_fused_frames")
         node = scheduler.tiles.resolve(tile)
         if not node.level:
-            hook = cast(Any, getattr(scheduler.adapter, "fused_leaf_result"))
-            result = hook(
+            result = _fused_adapter(scheduler).fused_leaf_result(
                 key.action,
                 tile,
                 contract.producer.ports,

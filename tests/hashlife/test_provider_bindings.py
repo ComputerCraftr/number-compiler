@@ -104,8 +104,8 @@ def test_powered_provider_view_rejects_foreign_application_before_observation() 
     ),
 )
 def test_provider_geometry_rejects_unbounded_numeric_aliases_before_interning(
-    field: Literal["orientation"] | Literal["phase"] | Literal["phase_count"],
-    value: bool | float | int,
+    field: Literal["orientation", "phase", "phase_count"],
+    value: bool | float,
 ) -> None:
     ledger, _, _, _, action, images, adapter, _ = _setup((0, 1))
     providers = ProviderAbsorptionArena(
@@ -464,7 +464,7 @@ def test_provider_observation_releases_every_cached_entry_before_replacement() -
 
 @pytest.mark.parametrize("extent", (True, 2.0, 0, 1 << 100))
 def test_provider_extent_forgery_rejects_before_observation(
-    monkeypatch: pytest.MonkeyPatch, extent: bool | float | int
+    monkeypatch: pytest.MonkeyPatch, extent: bool | float
 ) -> None:
     ledger, source, signature, geometry, action, _, adapter, executor = _setup()
     incoming = ArenaHandle(adapter.port_owner, "test-image-port", 0)

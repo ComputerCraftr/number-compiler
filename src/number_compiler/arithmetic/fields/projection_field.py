@@ -16,9 +16,9 @@ chosen interface; merely changing coordinates does not constitute a quotient.
 
 from __future__ import annotations
 
+from collections.abc import Iterable, Sequence
 from dataclasses import dataclass
 from math import comb
-from typing import Iterable, Sequence
 
 from number_compiler.arithmetic.automata.program_word import from_runs, word_metrics
 from number_compiler.arithmetic.fields.morphism_core import binary_power
@@ -67,13 +67,13 @@ class BinomialMomentBlock:
         )
 
     @classmethod
-    def identity(cls, degree: int = 4, modulus: int = 32) -> "BinomialMomentBlock":
+    def identity(cls, degree: int = 4, modulus: int = 32) -> BinomialMomentBlock:
         return cls(int(degree), int(modulus), 0, (0,) * int(degree), 0)
 
     @classmethod
     def digit(
         cls, value: int, *, degree: int = 4, modulus: int = 32
-    ) -> "BinomialMomentBlock":
+    ) -> BinomialMomentBlock:
         return cls(
             int(degree),
             int(modulus),
@@ -82,7 +82,7 @@ class BinomialMomentBlock:
             0,
         )
 
-    def then(self, other: "BinomialMomentBlock") -> "BinomialMomentBlock":
+    def then(self, other: BinomialMomentBlock) -> BinomialMomentBlock:
         if (self.degree, self.modulus) != (other.degree, other.modulus):
             raise ValueError((self, other))
         out = []
@@ -99,7 +99,7 @@ class BinomialMomentBlock:
             self.compositions + other.compositions + 1,
         )
 
-    def power_block(self, exponent: int) -> "BinomialMomentBlock":
+    def power_block(self, exponent: int) -> BinomialMomentBlock:
         powered = binary_power(
             self,
             exponent,
@@ -162,7 +162,7 @@ class PaddedRadixEvaluation:
     @classmethod
     def from_msf_values(
         cls, values: Sequence[int], *, radix: int
-    ) -> "PaddedRadixEvaluation":
+    ) -> PaddedRadixEvaluation:
         radix = int(radix)
         digits = tuple(map(int, values))
         if radix < 2 or any(not 0 <= digit < radix for digit in digits):
@@ -529,17 +529,17 @@ def projection_field_summary_from_values(
 
 __all__ = [
     "BinomialMomentBlock",
-    "ProjectionFieldSummary",
-    "PaddedRadixEvaluation",
     "BoundedCyclotomicFactorization",
-    "padded_radix_evaluation",
-    "bounded_cyclotomic_factorization",
-    "offset_bit_planes",
-    "reconstruct_offset_bit_planes",
+    "PaddedRadixEvaluation",
+    "ProjectionFieldSummary",
     "binomial_moments_from_runs",
     "binomial_moments_from_values",
+    "bounded_cyclotomic_factorization",
     "cyclotomic_jet_from_runs",
     "cyclotomic_jet_from_values",
+    "offset_bit_planes",
+    "padded_radix_evaluation",
     "projection_field_summary_from_runs",
     "projection_field_summary_from_values",
+    "reconstruct_offset_bit_planes",
 ]

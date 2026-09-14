@@ -94,7 +94,7 @@ def test_sentinel_step_accepts_digits_directly_and_strips_full_radix_runs() -> N
     for base in (4, 16, 64):
         D = collatz_sentinel_digit(base)
         # q sentinel digits followed by x != D.
-        for q in range(0, 6):
+        for q in range(6):
             x = (D + 2) % base
             if x == D:
                 x = (x + 1) % base

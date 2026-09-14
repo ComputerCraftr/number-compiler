@@ -29,15 +29,17 @@ __all__ = [
     "ScalarTermPayload",
 ]
 
-_EXPORT_MODULES = {'FermatTermPayload': 'number_compiler.api.number_api',
- 'FormulaTermPayload': 'number_compiler.api.number_api',
- 'MersenneTermPayload': 'number_compiler.api.number_api',
- 'NumberCompiler': 'number_compiler.api.number_api',
- 'NumberFamily': 'number_compiler.api.number_api',
- 'PoweredReverseAddTermPayload': 'number_compiler.api.number_api',
- 'ProjectedNumberTerm': 'number_compiler.api.number_api',
- 'ProjectionMetrics': 'number_compiler.api.number_api',
- 'ScalarTermPayload': 'number_compiler.api.number_api'}
+_EXPORT_MODULES = {
+    "FermatTermPayload": "number_compiler.api.number_api",
+    "FormulaTermPayload": "number_compiler.api.number_api",
+    "MersenneTermPayload": "number_compiler.api.number_api",
+    "NumberCompiler": "number_compiler.api.number_api",
+    "NumberFamily": "number_compiler.api.number_api",
+    "PoweredReverseAddTermPayload": "number_compiler.api.number_api",
+    "ProjectedNumberTerm": "number_compiler.api.number_api",
+    "ProjectionMetrics": "number_compiler.api.number_api",
+    "ScalarTermPayload": "number_compiler.api.number_api",
+}
 
 
 def __getattr__(name: str) -> Any:

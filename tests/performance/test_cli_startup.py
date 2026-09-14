@@ -9,16 +9,25 @@ import sys
 import pytest
 
 
-@pytest.mark.parametrize("arguments", [
-    ["--list-families"], ["antihydra", "--help"],
-    ["fermat", "--nth", "0"], ["mersenne", "--nth", "1"],
-    ["prime", "--nth", "0"], ["antihydra", "--nth", "64"],
-    ["196", "--nth", "4"], ["collatz", "--nth", "4", "--seed", "27"],
-    ["fermat", "--nth", "0", "--no-value", "--info", "primality"],
-    ["mersenne", "--nth", "11", "--no-value", "--info", "factor"],
-    ["antihydra", "--nth", "64", "--no-value", "--info", "metrics"],
-])
-def test_cold_cli_does_not_import_unrequested_runtime_work(arguments: list[str]) -> None:
+@pytest.mark.parametrize(
+    "arguments",
+    [
+        ["--list-families"],
+        ["antihydra", "--help"],
+        ["fermat", "--nth", "0"],
+        ["mersenne", "--nth", "1"],
+        ["prime", "--nth", "0"],
+        ["antihydra", "--nth", "64"],
+        ["196", "--nth", "4"],
+        ["collatz", "--nth", "4", "--seed", "27"],
+        ["fermat", "--nth", "0", "--no-value", "--info", "primality"],
+        ["mersenne", "--nth", "11", "--no-value", "--info", "factor"],
+        ["antihydra", "--nth", "64", "--no-value", "--info", "metrics"],
+    ],
+)
+def test_cold_cli_does_not_import_unrequested_runtime_work(
+    arguments: list[str],
+) -> None:
     script = """
 import importlib.abc
 import json
@@ -56,7 +65,10 @@ assert main(arguments) == 0
 """
     completed = subprocess.run(
         [sys.executable, "-c", script, json.dumps(arguments)],
-        capture_output=True, text=True, check=False, timeout=5,
+        capture_output=True,
+        text=True,
+        check=False,
+        timeout=5,
     )
     assert completed.returncode == 0, completed.stderr
 
@@ -87,7 +99,10 @@ else:
     raise AssertionError('unknown public export accepted')
 """
     completed = subprocess.run(
-        [sys.executable, "-c", script], capture_output=True, text=True,
-        check=False, timeout=5,
+        [sys.executable, "-c", script],
+        capture_output=True,
+        text=True,
+        check=False,
+        timeout=5,
     )
     assert completed.returncode == 0, completed.stderr

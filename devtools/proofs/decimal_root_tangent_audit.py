@@ -8,13 +8,13 @@ closed.  It is proof/audit code; no production identity is changed.
 
 from __future__ import annotations
 
-from dataclasses import asdict, dataclass
 import json
+from dataclasses import asdict, dataclass
 from itertools import product
 
 from number_compiler.arithmetic.carry.decimal_jet_cylinder import (
-    DecimalCarryJetBlock,
     _CLOCK_POWERS,
+    DecimalCarryJetBlock,
 )
 from number_compiler.arithmetic.carry.event_memory import (
     _pair_step_with_carry,
@@ -29,7 +29,6 @@ from number_compiler.arithmetic.polynomials.primary_jet import (
     _poly_scale,
     primary_jet_from_digits,
 )
-
 
 DEGREE = 5
 MODULUS = 32

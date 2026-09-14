@@ -22,9 +22,6 @@ if TYPE_CHECKING:
     from number_compiler.hashlife.execution.continuations.diamond_runtime import (
         DiamondRuntime,
     )
-    from number_compiler.hashlife.execution.continuations.diamond_tasks import (
-        OutputFunction,
-    )
 
 
 def setup() -> tuple[DiamondRuntime, ActionProgramID, OutputFunction]:

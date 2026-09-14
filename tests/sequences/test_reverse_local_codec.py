@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from typing import Never
+from typing import Never, cast
 
 import pytest
 
@@ -236,7 +236,7 @@ def test_powered_local_codec_rejects_unscoped_and_proof_ids() -> None:
         ),
     ):
         with pytest.raises((TypeError, ValueError)):
-            codec.compose(invalid, action)  # type: ignore[arg-type]
+            codec.compose(cast(ReverseLocalActionID, invalid), action)
     assert codec.metrics() == before
     assert type(action) is ReverseLocalActionID
     record = codec.resolve(action)
@@ -370,5 +370,5 @@ def test_reverse_local_interface_rejects_foreign_and_wrong_side_ids_before_warm_
     foreign = ReversePortStateID(ArenaToken("foreign"), left.kind, left.local_id)
     for invalid in (wrong_side, foreign, left.local_id, True):
         with pytest.raises((TypeError, ValueError)):
-            ports.advance(BoundarySide.LEFT, invalid, 7)  # type: ignore[arg-type]
+            ports.advance(BoundarySide.LEFT, cast(ReversePortStateID, invalid), 7)
     assert ports.metrics() == before

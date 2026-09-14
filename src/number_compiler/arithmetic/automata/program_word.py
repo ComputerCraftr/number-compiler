@@ -28,8 +28,8 @@ class CanonicalWord:
     run_count: int
     symbol: int | None = None
     run_length: int = 0
-    left: "CanonicalWord|None" = None
-    right: "CanonicalWord|None" = None
+    left: CanonicalWord | None = None
+    right: CanonicalWord | None = None
 
     def __post_init__(self) -> None:
         if any(
@@ -560,21 +560,21 @@ def prune_stale_program_word_memos() -> None:
 
 
 __all__ = [
-    "prune_stale_program_word_memos",
-    "CanonicalWord",
     "EMPTY",
-    "run",
-    "leaf",
-    "first_run",
-    "last_run",
-    "slice_runs",
-    "concat_disjoint",
-    "concat",
-    "from_values",
-    "from_runs",
-    "iter_runs",
-    "word_metrics",
-    "reverse",
+    "CanonicalWord",
     "cap_symbol_runs",
     "clear_transient_program_word_caches",
+    "concat",
+    "concat_disjoint",
+    "first_run",
+    "from_runs",
+    "from_values",
+    "iter_runs",
+    "last_run",
+    "leaf",
+    "prune_stale_program_word_memos",
+    "reverse",
+    "run",
+    "slice_runs",
+    "word_metrics",
 ]

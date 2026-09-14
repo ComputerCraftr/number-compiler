@@ -1,7 +1,7 @@
 """Connected quotient control must keep exact values at downstream guards."""
 
-from itertools import product
 import random
+from itertools import product
 
 import pytest
 
@@ -259,28 +259,25 @@ def test_free_future_consumer_defers_carry_and_root_shift_without_raw_midpoint(
             expected = expected_rows[phase][incoming][value]
             observed = bits.evaluate(left, binding), bits.evaluate(right, binding)
             assert observed == expected
-            assert bits.evaluate(
-                growth,
-                {
-                    growth_ports[0].variable: incoming,
-                    growth_ports[1].variable: phase,
-                },
-            ) == incoming >> phase
+            assert (
+                bits.evaluate(
+                    growth,
+                    {
+                        growth_ports[0].variable: incoming,
+                        growth_ports[1].variable: phase,
+                    },
+                )
+                == incoming >> phase
+            )
             row.append(observed)
         free_rows.append(tuple(row))
     for phase, incoming in product(range(6), range(3)):
         fixed_counts.append(
-            len(
-                {
-                    expected_rows[phase][incoming][value]
-                    for value in range(64)
-                }
-            )
+            len({expected_rows[phase][incoming][value] for value in range(64)})
         )
     assert fixed_counts[::3] == [5, 10, 20, 25, 20, 10]
     assert all(
-        len(set(fixed_counts[offset : offset + 3])) == 1
-        for offset in range(0, 18, 3)
+        len(set(fixed_counts[offset : offset + 3])) == 1 for offset in range(0, 18, 3)
     )
     # Simultaneously exposing every hypothetical (carry, shift) context is an
     # exact leaf observer, so these rows are forbidden as semantic ActionIDs.

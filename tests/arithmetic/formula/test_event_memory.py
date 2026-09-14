@@ -27,7 +27,6 @@ from number_compiler.arithmetic.formula.types import RadixSpec
 
 if TYPE_CHECKING:
     from number_compiler.arithmetic.formula.event_formula import CarryEventFormulaView
-    from number_compiler.arithmetic.formula.formula import FormulaArena
 
 
 def _materialize_event_sets(
@@ -160,9 +159,8 @@ def test_event_formula_synthesis_is_forbidden_inside_powered_jump() -> None:
     source = (7, 18, 7)
     root = root_from_values(source, arena, spec)
     audit = JumpAudit()
-    with powered_jump_scope(audit):
-        with pytest.raises(JumpGuardViolation):
-            carry_event_formula_view(arena, root, spec, growth=1)
+    with powered_jump_scope(audit), pytest.raises(JumpGuardViolation):
+        carry_event_formula_view(arena, root, spec, growth=1)
     assert audit.forbidden_attempts["carry_event_formula"] == 1
 
 

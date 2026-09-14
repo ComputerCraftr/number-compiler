@@ -7,8 +7,10 @@ import pytest
 from devtools.proofs.carry_harmonic_port_probe import direct_rows, finite
 from devtools.proofs.carry_harmonic_ports import (
     CarryHarmonicPortAction as Action,
-    populations,
+)
+from devtools.proofs.carry_harmonic_ports import (
     population_harmonics,
+    populations,
     prefix_harmonics,
 )
 from number_compiler.arithmetic.carry.carry_monoid import (

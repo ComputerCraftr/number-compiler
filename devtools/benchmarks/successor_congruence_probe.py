@@ -1,4 +1,3 @@
-#!/usr/bin/env python3
 """Release probe for semantic operator reuse and successor-safe exact caching."""
 
 from __future__ import annotations

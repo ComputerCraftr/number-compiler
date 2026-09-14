@@ -52,10 +52,7 @@ from number_compiler.sequences.collatz.block_power import CollatzPhysicalBlockEf
 from tests.support.diamond_runtime import oracle
 
 if TYPE_CHECKING:
-    from number_compiler.hashlife.execution.tile_scheduler import TileScheduler
-    from number_compiler.hashlife.tiles.tile_ports import ResultWiring
-    from number_compiler.hashlife.tiles.tiles import TileAlphabetID, TileArena
-    from number_compiler.resources.ledger import ResourceLedger
+    from number_compiler.hashlife.tiles.tiles import TileAlphabetID
 
 
 class _Actions:
@@ -107,7 +104,6 @@ class _IdentityAdapter:
 
     def action_children(self, action: FieldCellActionID) -> None:
         self.validate_action(action)
-        return None
 
     def action_cocycle(self, action: FieldCellActionID) -> TemporalCocycle:
         self.validate_action(action)
@@ -353,7 +349,7 @@ def test_lazy_projection_points_width_and_explicit_endpoint_tiles() -> None:
 
 
 def test_projection_validates_action_and_ports_before_source_import() -> None:
-    ledger, actions, tiles, alphabet, scheduler, wiring = _runtime()
+    ledger, actions, _tiles, alphabet, scheduler, wiring = _runtime()
     source = ExactSource((1,), 2, blank=2, extent=1, alphabet_size=2)
     geometry = SourceGeometry(ledger, source)
     snapshot = ledger.snapshot()

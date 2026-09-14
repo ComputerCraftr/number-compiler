@@ -42,21 +42,11 @@ from number_compiler.resources.ownership import audit_execution_ownership
 
 if TYPE_CHECKING:
     from number_compiler.arithmetic.functions.finite_function_types import (
-        FinitePort,
         SemanticFunctionID,
     )
-    from number_compiler.arithmetic.functions.semantic_functions import (
-        SemanticFunctionArena,
-    )
     from number_compiler.hashlife.actions.diamond_actions import (
-        ImageCellArena,
         PortSignatureID,
     )
-    from number_compiler.hashlife.interfaces.diamond_quotient import (
-        DiamondQuotientArena,
-        MacroComponents,
-    )
-    from number_compiler.resources.ledger import ResourceLedger
 
 
 def setup_arena() -> tuple[
@@ -338,7 +328,7 @@ def test_only_complete_result_handles_can_enter_parent_cache() -> None:
 @pytest.mark.parametrize("warm", (False, True))
 @pytest.mark.parametrize("alias", (True, 0.0, -1))
 def test_forged_quotient_ids_reject_before_cold_and_warm_lookup(
-    warm: bool, alias: bool | float | int
+    warm: bool, alias: bool | float
 ) -> None:
     ledger, _, arena, cells, _, signature, components, _, _, _ = setup_arena()
     quotient = arena.intern(signature, components)

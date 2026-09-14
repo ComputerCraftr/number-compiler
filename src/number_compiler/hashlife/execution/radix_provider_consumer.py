@@ -7,6 +7,7 @@ from dataclasses import dataclass
 from typing import Literal, cast
 
 from number_compiler.arithmetic.contracts.scoped_handles import ArenaToken
+from number_compiler.arithmetic.radix_transfer import RadixRemainderTransfer
 from number_compiler.hashlife.actions.field_actions import FieldCellActionID
 from number_compiler.hashlife.execution.continuations.concrete_port_records import (
     PortAtom,
@@ -28,7 +29,6 @@ from number_compiler.hashlife.execution.radix_consumer import (
     RadixDivisionActionArena,
     RadixDivisionActionID,
 )
-from number_compiler.arithmetic.radix_transfer import RadixRemainderTransfer
 from number_compiler.resources.ledger import ResourceLedger
 
 

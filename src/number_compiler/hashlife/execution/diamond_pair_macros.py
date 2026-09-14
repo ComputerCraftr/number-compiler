@@ -294,9 +294,12 @@ class PrimitivePairMacros:
             self.ledger.bump("pair_macro_stack_peak", max(0, len(stack) - peak))
             current, ready, probed = stack.pop()
             key = PairMacroKey(action, current)
-            if not ready and not probed:
-                if self.cache_probe(action, current) is not None:
-                    continue
+            if (
+                not ready
+                and not probed
+                and self.cache_probe(action, current) is not None
+            ):
+                continue
             node = self.cells.resolve(current)
             if node.level:
                 left, right = self.build_children(current)
@@ -426,14 +429,21 @@ class PrimitivePairMacros:
         try:
             task = next(program)
             while True:
-                if isinstance(task, PairSummary):
-                    result = self.summary(task.action, task.cell)
-                elif isinstance(task, ContextObservation):
-                    result = self.contexts.execute(
-                        task.program, task.left, task.right, task.incoming, task.side
-                    )
-                else:
-                    raise AssertionError("unexpected primitive interface dependency")
+                match task:
+                    case PairSummary():
+                        result = self.summary(task.action, task.cell)
+                    case ContextObservation():
+                        result = self.contexts.execute(
+                            task.program,
+                            task.left,
+                            task.right,
+                            task.incoming,
+                            task.side,
+                        )
+                    case _:
+                        raise AssertionError(
+                            "unexpected primitive interface dependency"
+                        )
                 task = program.send(result)
         except StopIteration as completed:
             value = completed.value

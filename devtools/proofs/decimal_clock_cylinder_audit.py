@@ -9,6 +9,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
+from number_compiler.arithmetic.carry.carry_monoid import scan_carry_automaton
 from number_compiler.arithmetic.carry.decimal_jet_cylinder import (
     DecimalCarryJetBlock,
 )
@@ -18,7 +19,6 @@ from number_compiler.arithmetic.carry.event_memory import (
     forcing_event_from_carry,
     pair_step,
 )
-from number_compiler.arithmetic.carry.carry_monoid import scan_carry_automaton
 from number_compiler.arithmetic.fields.radix import reverse_pair_sums
 from number_compiler.arithmetic.polynomials.primary_jet import (
     PrimaryJetAffineMorphism,

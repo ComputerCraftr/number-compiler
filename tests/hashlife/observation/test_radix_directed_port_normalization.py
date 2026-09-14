@@ -1,7 +1,7 @@
 """Division activity cannot erase its carry or quotient output distinctions."""
 
 from dataclasses import replace
-from typing import Never
+from typing import Never, cast
 
 import pytest
 
@@ -31,14 +31,14 @@ def test_division_output_preserves_remainder_and_activity_ports() -> None:
 
 @pytest.mark.parametrize("invalid", (True, 0.0, -1, (1 << 63) + 1))
 def test_invalid_radix_rejects_before_application_publication(
-    invalid: bool | float | int,
+    invalid: bool | float,
 ) -> None:
     term = PoweredCollatzTerm(27, 4)
     projection = term._point_index()._lazy_application
     assert type(projection) is LazyProjection
     before = term._ledger.snapshot()
     with pytest.raises((TypeError, ValueError)):
-        TileRadixObservation(projection, invalid)  # type: ignore[arg-type]
+        TileRadixObservation(projection, cast(int, invalid))
     after = term._ledger.snapshot()
     assert (before.entries, before.nodes) == (after.entries, after.nodes)
 

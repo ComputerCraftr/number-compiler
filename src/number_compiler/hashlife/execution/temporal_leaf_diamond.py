@@ -54,8 +54,9 @@ def _apply_continuation(
 ) -> RuntimeAtom:
     machine = start_function_application(function, argument)
     result = advance_operation(semantics, machine)
-    if isinstance(result, RuntimeFunctionRequest):
-        raise ValueError("temporal image retained an opaque syntax continuation")
+    match result:
+        case RuntimeFunctionRequest():
+            raise ValueError("temporal image retained an opaque syntax continuation")
     return result
 
 

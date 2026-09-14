@@ -7,7 +7,6 @@ if TYPE_CHECKING:
 
 from number_compiler.resources.metric_records import HashLifeProjectionMetrics
 
-
 _COUNTERS = (
     "sequential_generation_advances",
     "primitive_transition_evaluations",

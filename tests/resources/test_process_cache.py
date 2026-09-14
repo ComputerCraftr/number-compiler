@@ -1,12 +1,19 @@
 from __future__ import annotations
 
+from typing import cast
+
 import pytest
 
 from number_compiler.arithmetic.contracts.block_effect import (
     BlockContextBudgetExceeded,
 )
-from number_compiler.resources.process_cache import CacheLease, MISSING, ProcessCache
 from number_compiler.resources.ownership import audit_execution_ownership
+from number_compiler.resources.process_cache import (
+    MISSING,
+    CacheLease,
+    ImmutableValue,
+    ProcessCache,
+)
 
 
 def test_source_qualified_lease_does_not_cross_partitions() -> None:
@@ -97,12 +104,12 @@ def test_immutable_wire_domain_rejects_mutable_or_behavioral_payloads() -> None:
     with pytest.raises(ValueError, match="identify a source"):
         cache.acquire("bad", "1", ())
     with pytest.raises(TypeError, match="source qualification"):
-        cache.acquire("bad", "1", ([1],))  # type: ignore[arg-type]
+        cache.acquire("bad", "1", cast(tuple[ImmutableValue, ...], ([1],)))
     with cache.acquire("good", "1", ("source",)) as lease:
         with pytest.raises(TypeError, match="cache key"):
-            lease.get(({"mutable": 1},))  # type: ignore[arg-type]
+            lease.get(cast(tuple[ImmutableValue, ...], ({"mutable": 1},)))
         with pytest.raises(TypeError, match="cache payload"):
-            lease.put(("value",), [1, 2])  # type: ignore[arg-type]
+            lease.put(("value",), cast(ImmutableValue, [1, 2]))
 
 
 def test_disabled_cache_bypasses_payload_storage_but_accounts_lease_records() -> None:
@@ -125,7 +132,7 @@ def test_disabled_cache_bypasses_payload_storage_but_accounts_lease_records() ->
 def test_disabled_cache_rejects_forged_reconstructed_and_mutated_leases() -> None:
     cache = ProcessCache(max_entries=8, max_bytes=100_000, enabled=False)
     real = cache.acquire("prime", "1", ("source",))
-    token = getattr(real, "_token")
+    token = real._token
     forged = CacheLease(
         cache,
         ("prime", "1", ("foreign",)),
@@ -144,10 +151,10 @@ def test_disabled_cache_rejects_forged_reconstructed_and_mutated_leases() -> Non
         reconstructed.put(("value",), 1)
 
     original_partition = real.source_qualification
-    setattr(real, "_partition", ("prime", "1", ("mutated",)))
+    real._partition = "prime", "1", ("mutated",)
     with pytest.raises(RuntimeError, match="foreign authority"):
         real.get(("value",))
-    setattr(real, "_partition", original_partition)
+    real._partition = original_partition
     real.close()
     assert cache.stats().active_leases == 0
 
@@ -195,7 +202,7 @@ def test_forged_and_foreign_lease_authority_is_rejected() -> None:
         cache,
         ("prime", "1", ("foreign-source",)),
         cache.generation,
-        _token=getattr(real, "_token"),
+        _token=real._token,
     )
     with pytest.raises(RuntimeError, match="foreign authority"):
         forged.get(("value",))
@@ -203,7 +210,7 @@ def test_forged_and_foreign_lease_authority_is_rejected() -> None:
         cache,
         real.source_qualification,
         cache.generation,
-        _token=getattr(real, "_token"),
+        _token=real._token,
     )
     with pytest.raises(RuntimeError, match="foreign authority"):
         reconstructed.get(("value",))

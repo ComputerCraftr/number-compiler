@@ -1,6 +1,7 @@
 """The powered local codec exposes bounded semantics, never exact tiles."""
 
 from dataclasses import fields
+from typing import cast
 
 import pytest
 
@@ -27,10 +28,13 @@ def test_powered_local_effect_accepts_only_exact_runtime_handle_sorts() -> None:
     assert tuple(field.name for field in fields(effect)) == ("interface", "output")
     with pytest.raises(TypeError, match="local-interface"):
         PoweredLocalEffect(
-            TransferSummaryID(  # type: ignore[arg-type]
-                ArenaToken("proof"),
-                "transfer-summary",
-                0,
+            cast(
+                LocalInterfaceID,
+                TransferSummaryID(
+                    ArenaToken("proof"),
+                    "transfer-summary",
+                    0,
+                ),
             ),
             output,
         )

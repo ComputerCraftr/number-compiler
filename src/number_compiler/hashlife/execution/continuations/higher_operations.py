@@ -206,8 +206,9 @@ def evaluate_operation(
         arena,
         start_operation(operation, action, side, arguments),
     )
-    if isinstance(result, RuntimeFunctionRequest):
-        raise ValueError("operation requires the unified continuation scheduler")
+    match result:
+        case RuntimeFunctionRequest():
+            raise ValueError("operation requires the unified continuation scheduler")
     return result
 
 
@@ -220,8 +221,9 @@ def force_value(arena: HigherSemanticArena, value: RuntimeAtom) -> RuntimeAtom:
         arena,
         OperationMachine([("force", value)], [], {}, {}, {}),
     )
-    if isinstance(result, RuntimeFunctionRequest):
-        raise ValueError("summary forcing reached a syntax continuation")
+    match result:
+        case RuntimeFunctionRequest():
+            raise ValueError("summary forcing reached a syntax continuation")
     return result
 
 

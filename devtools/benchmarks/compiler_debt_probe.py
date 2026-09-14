@@ -1,4 +1,3 @@
-#!/usr/bin/env python3
 """Deterministic v0.28 compiler-duplication / debt-closure probe.
 
 The probe compares the production semantic compiler with the explicit diagnostic

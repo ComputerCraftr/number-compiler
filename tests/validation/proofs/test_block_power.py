@@ -28,7 +28,7 @@ def symmetric_word(rng: random.Random, base: int, width: int) -> tuple[int, ...]
 def test_block_power_exact_multibase_without_intermediate_generations() -> None:
     rng = random.Random(0xB10C196)
     for base in range(2, 13):
-        for exponent in range(0, 9):
+        for exponent in range(9):
             power = power_block_effect(base=base, exponent=exponent)
             for _ in range(8):
                 source = symmetric_word(rng, base, rng.randint(1, 10))
@@ -132,8 +132,8 @@ def test_projection_memos_do_not_drop_exact_reusable_entries() -> None:
 
 def test_composed_runtime_stats_attribute_shared_finite_kernel_once() -> None:
     power = power_block_effect(base=10, exponent=1024)
-    assert isinstance(power.root, object)
-    stats = power.root.runtime_stats()  # type: ignore[union-attr]
+    assert power.root is not None
+    stats = power.root.runtime_stats()
     assert stats["finite_kernel_left_states"] == 757
     assert stats["finite_kernel_right_states"] == 179
     assert stats["finite_kernel_storage_bytes"] == 451_918
@@ -229,7 +229,8 @@ def test_higher_spacetime_macrocells_use_recursive_actions_not_boundary_roots() 
     # The frozen proof operator remains metadata only. Compatibility lowering
     # publishes its recursive parent/output records in the per-application
     # field runtime rather than repopulating the proof execution caches.
-    proof_stats = power.root.runtime_stats()  # type: ignore[union-attr]
+    assert power.root is not None
+    proof_stats = power.root.runtime_stats()
     assert proof_stats["spacetime_tile_output_entries"] == 0
     assert proof_stats["spacetime_macro_cache_entries"] == 0
 

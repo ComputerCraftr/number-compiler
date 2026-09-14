@@ -9,6 +9,11 @@ carrier enumeration or recurrence-equivalent reference arithmetic.
 from devtools.proofs.oracles.bounded_filtration import (
     bounded_candidate_image_filtration,
 )
+from devtools.proofs.oracles.digit_power import (
+    DigitPowerProjectionResult,
+    lucas_lehmer_digit_field,
+    pepin_digit_field,
+)
 from devtools.proofs.oracles.special_binary_jump import (
     SpecialBinaryJumpApplication,
     SpecialBinaryJumpProgram,
@@ -28,28 +33,23 @@ from devtools.proofs.oracles.special_primality import (
     lucas_lehmer_test,
     pepin_test,
 )
-from devtools.proofs.oracles.digit_power import (
-    DigitPowerProjectionResult,
-    lucas_lehmer_digit_field,
-    pepin_digit_field,
-)
 
 __all__ = [
-    "PepinResult",
-    "pepin_test",
-    "LucasLehmerResult",
-    "lucas_lehmer_test",
     "DigitPowerProjectionResult",
-    "lucas_lehmer_digit_field",
-    "pepin_digit_field",
+    "LucasLehmerResult",
+    "PepinResult",
     "SpecialBinaryJumpApplication",
     "SpecialBinaryJumpProgram",
-    "mersenne_sign_representative",
-    "build_mersenne_binary_jump",
-    "fermat_radix_orbit_representative",
-    "build_fermat_binary_jump",
-    "bounded_candidate_image_filtration",
     "SpecialPowerApplication",
     "apply_special_power_reference",
     "bounded_binary_target_jump",
+    "bounded_candidate_image_filtration",
+    "build_fermat_binary_jump",
+    "build_mersenne_binary_jump",
+    "fermat_radix_orbit_representative",
+    "lucas_lehmer_digit_field",
+    "lucas_lehmer_test",
+    "mersenne_sign_representative",
+    "pepin_digit_field",
+    "pepin_test",
 ]

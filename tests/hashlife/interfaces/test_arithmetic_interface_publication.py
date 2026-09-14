@@ -12,8 +12,8 @@ from number_compiler.arithmetic.contracts.scoped_handles import ExactSource
 from number_compiler.arithmetic.contracts.source_geometry import SourceGeometry
 from number_compiler.arithmetic.radix_division import SymbolicBinaryDivisionEffect
 from number_compiler.arithmetic.radix_port_functions import RadixPortFunction
-from number_compiler.hashlife.execution.tile_kernel import PrimitiveTileKernelAdapter
 from number_compiler.hashlife.actions.diamond_actions import PortSignatureID
+from number_compiler.hashlife.execution.tile_kernel import PrimitiveTileKernelAdapter
 from number_compiler.hashlife.interfaces.diamond_quotient import (
     DiamondQuotientArena,
     LocalInterfaceID,

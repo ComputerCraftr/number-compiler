@@ -1,5 +1,6 @@
 import json
 import sys
+
 from number_compiler.arithmetic.contracts.block_kernel import BaseBlockEffect
 from number_compiler.hashlife.execution.tile_causal import CausalTileEngine
 from tests.arithmetic.contracts.test_tile_kernel import _runtime
@@ -21,8 +22,12 @@ blank.close()
 action = adapter.power(primitive, 4)
 engine = CausalTileEngine(scheduler)
 width = 1 << level
-with padded:
-    with engine.output(action, padded.tile) as out:
-        points = [tiles.point(out.tile, i) for i in (0, 1, width - 1, width, width + 1)]
-        assert points == [7, 14, 14, 7, 19], points
-        print(json.dumps({'width':width,'points':points,'counters':dict(ledger.counters)}, indent=2))
+with padded, engine.output(action, padded.tile) as out:
+    points = [tiles.point(out.tile, i) for i in (0, 1, width - 1, width, width + 1)]
+    assert points == [7, 14, 14, 7, 19], points
+    print(
+        json.dumps(
+            {"width": width, "points": points, "counters": dict(ledger.counters)},
+            indent=2,
+        )
+    )

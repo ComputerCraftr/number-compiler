@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from collections.abc import MutableMapping
 from dataclasses import fields
 from typing import Never, cast
 
@@ -40,6 +41,9 @@ from number_compiler.hashlife.execution.recursive_outputs import (
     RecursiveOutputTemporal,
 )
 from number_compiler.hashlife.interfaces.diamond_quotient import LocalInterfaceID
+from number_compiler.sequences.reverse_add.higher_interface import (
+    ReverseHigherInterfaceCompilation,
+)
 from tests.support.reverse_higher_interface import _direct_step
 from tests.support.reverse_higher_runtime import _fixture
 
@@ -47,9 +51,16 @@ from tests.support.reverse_higher_runtime import _fixture
 def test_reverse_leaf_activity_positions_use_harmless_zero_for_blank_and_active() -> (
     None
 ):
-    actions, primitive, semantics, runtime, interfaces, compiler, _sources, _binding = (
-        _fixture()
-    )
+    (
+        _actions,
+        primitive,
+        semantics,
+        runtime,
+        interfaces,
+        compiler,
+        _sources,
+        _binding,
+    ) = _fixture()
     compiled = compiler.compile(primitive)
     components = interfaces.resolve(compiled.interface).components
     left = semantics.evaluate(runtime.initial(primitive, 0))
@@ -79,7 +90,9 @@ def test_reverse_schema_cache_cannot_be_entered_by_hash_equality_spoof() -> None
 
 
 def test_reverse_schema_readonly_validation_does_not_publish_cache_entries() -> None:
-    from number_compiler.sequences.reverse_add.higher_schema import ReverseHigherActionSchema
+    from number_compiler.sequences.reverse_add.higher_schema import (
+        ReverseHigherActionSchema,
+    )
 
     actions, primitive, semantics, *_ = _fixture()
     action = actions.power(primitive, 3)
@@ -225,7 +238,7 @@ def test_reverse_higher_interface_records_have_no_future_or_proof_payloads() -> 
 
 def test_recursive_output_observes_one_branch_without_coordinate_tape() -> None:
     (
-        actions,
+        _actions,
         primitive,
         semantics,
         runtime,
@@ -277,7 +290,7 @@ def test_recursive_output_observes_one_branch_without_coordinate_tape() -> None:
     assert len(outputs._nodes) == 3
     assert all(not hasattr(record, "digits") for record in outputs._nodes.values())
     with pytest.raises((TypeError, ValueError)):
-        outputs.resolve(parent.local_id)  # type: ignore[arg-type]
+        outputs.resolve(cast(CoordinateOutputMorphismID, parent.local_id))
 
 
 def test_temporal_output_normalizes_before_interning() -> None:
@@ -717,8 +730,13 @@ def test_higher_compiler_payload_audit_rejects_integer_cache_key_alias() -> None
         _binding,
     ) = _fixture()
     compiled = compiler.compile(primitive)
-    del compiler._cache._data[primitive]  # type: ignore[attr-defined]
-    compiler._cache._data[primitive.local_id] = compiled  # type: ignore[attr-defined]
+    storage_attribute = "_data"
+    cache = cast(
+        MutableMapping[object, ReverseHigherInterfaceCompilation],
+        getattr(compiler._cache, storage_attribute),
+    )
+    del cache[primitive]
+    cache[primitive.local_id] = compiled
     damaged = audit_registered_payloads(runtime.ledger)
     assert damaged.forbidden_future_payloads > 0
 

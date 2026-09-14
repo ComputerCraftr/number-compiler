@@ -1,5 +1,7 @@
 """Weak source-word interning rejects integer aliases before cache probes."""
 
+from typing import cast
+
 import pytest
 
 from number_compiler.arithmetic.automata.program_word import (
@@ -16,11 +18,11 @@ from number_compiler.arithmetic.automata.program_word import (
 @pytest.mark.parametrize("alias", [True, 1.0, "1"])
 def test_word_constructors_reject_integer_aliases(alias: object) -> None:
     with pytest.raises(TypeError):
-        leaf(alias)  # type: ignore[arg-type]
+        leaf(cast(int, alias))
     with pytest.raises(TypeError):
-        run(1, alias)  # type: ignore[arg-type]
+        run(1, cast(int, alias))
     with pytest.raises(TypeError):
-        from_runs(((1, alias),))  # type: ignore[arg-type]
+        from_runs(((1, cast(int, alias)),))
 
 
 def test_counterfeit_word_cannot_claim_a_warm_node_identity() -> None:
@@ -50,4 +52,4 @@ def test_mutated_live_word_cannot_use_its_old_warm_identity() -> None:
 @pytest.mark.parametrize("start,length", [(True, 1), (0, True), (0.0, 1), (0, 1.0)])
 def test_slice_rejects_coordinate_aliases(start: object, length: object) -> None:
     with pytest.raises(TypeError):
-        slice_runs(from_runs(((1, 2), (0, 1))), start, length)  # type: ignore[arg-type]
+        slice_runs(from_runs(((1, 2), (0, 1))), cast(int, start), cast(int, length))

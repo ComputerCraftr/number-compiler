@@ -715,9 +715,8 @@ class RuntimeValueArena:
             raise TypeError("higher environment projection requires integer bindings")
         if environment < 0 or not bindings:
             return -1
-        if projection is not None:
-            if type(projection) is not int:
-                raise TypeError("higher environment projection ID must be exact")
+        if projection is not None and type(projection) is not int:
+            raise TypeError("higher environment projection ID must be exact")
         pattern = self._projection_patterns.get(bindings)
         if pattern is None:
             self.ledger.reserve(self._projection_pattern_owner, entries=1)

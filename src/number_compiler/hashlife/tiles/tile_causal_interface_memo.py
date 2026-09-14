@@ -6,13 +6,13 @@ from number_compiler.arithmetic.contracts.block_kernel import BaseBlockEffect
 from number_compiler.hashlife.execution.tile_causal_interfaces import (
     CausalInterfacePayload,
 )
-from number_compiler.projection.digit_terminal import DigitNormalizeBlockEffect
 from number_compiler.hashlife.tiles.tile_result_records import (
     CausalInterfaceKey,
     CompletedInterfaceResult,
     PoweredResultKey,
 )
 from number_compiler.hashlife.tiles.tile_results import CompletedResultArena
+from number_compiler.projection.digit_terminal import DigitNormalizeBlockEffect
 from number_compiler.resources.cache_gc_metrics import record_cache_event, temporal_span
 from number_compiler.resources.result_cache_kinds import (
     record_unattributed_post_eviction_miss,

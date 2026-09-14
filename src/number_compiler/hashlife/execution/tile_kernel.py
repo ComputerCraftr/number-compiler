@@ -20,16 +20,18 @@ from number_compiler.arithmetic.functions.finite_function_types import (
     FunctionSignature,
 )
 from number_compiler.arithmetic.functions.finite_port_action import PortVariable
+from number_compiler.arithmetic.polynomials.frobenius_sector import decimal_reverse_plan
 from number_compiler.arithmetic.radix_division import (
     SymbolicBinaryDivisionEffect,
     certified_binary_division_radix,
 )
-from number_compiler.arithmetic.polynomials.frobenius_sector import decimal_reverse_plan
 from number_compiler.hashlife.actions.diamond_actions import PortSignatureID
 from number_compiler.hashlife.actions.field_actions import FieldCellActionID
 from number_compiler.hashlife.actions.tile_action_algebra import (
     ActionSemanticKey,
     blank_context_metadata,
+    retained_action_nodes,
+    retained_reverse_plan_nodes,
 )
 from number_compiler.hashlife.actions.tile_action_algebra import (
     PrimitiveTileAction as _Action,
@@ -37,9 +39,8 @@ from number_compiler.hashlife.actions.tile_action_algebra import (
 from number_compiler.hashlife.actions.tile_action_algebra import (
     compose_actions as _compose_actions,
 )
-from number_compiler.hashlife.actions.tile_action_algebra import (
-    retained_action_nodes,
-    retained_reverse_plan_nodes,
+from number_compiler.hashlife.execution.reverse_morphism_transfer import (
+    ReverseMorphismTransferArena,
 )
 from number_compiler.hashlife.execution.tile_boundary_transfer import (
     bind_boundaries as _bind_boundaries,
@@ -52,9 +53,6 @@ from number_compiler.hashlife.execution.tile_boundary_transfer import (
 )
 from number_compiler.hashlife.execution.tile_fused_kernel import (
     LeafProductKey,
-)
-from number_compiler.hashlife.execution.reverse_morphism_transfer import (
-    ReverseMorphismTransferArena,
 )
 from number_compiler.hashlife.execution.tile_fused_kernel import (
     fused_child_contexts as _fused_child_contexts,
@@ -97,6 +95,9 @@ from number_compiler.hashlife.interfaces.semantic_bits import (
 )
 from number_compiler.hashlife.interfaces.semantic_structures import StructureID
 from number_compiler.hashlife.observation.diamond_observers import NonblankBlockEffect
+from number_compiler.hashlife.tiles.reverse_threshold_summary import (
+    observe_current_growth,
+)
 from number_compiler.hashlife.tiles.tile_boundaries import (
     BoundaryTileOperands,
     BoundaryTileView,
@@ -112,9 +113,6 @@ from number_compiler.hashlife.tiles.tile_result_records import (
     CompletedResult,
 )
 from number_compiler.hashlife.tiles.tile_results import CompletedResultArena
-from number_compiler.hashlife.tiles.reverse_threshold_summary import (
-    observe_current_growth,
-)
 from number_compiler.hashlife.tiles.tiles import (
     TileAlphabet,
     TileAlphabetID,

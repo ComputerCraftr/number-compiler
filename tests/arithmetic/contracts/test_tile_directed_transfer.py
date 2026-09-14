@@ -77,7 +77,7 @@ def test_warm_parent_transfer_bypasses_kernel_and_descendants(
 def test_directed_workspace_releases_frames_after_failure(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    ledger, tiles, adapter, primitive, scheduler = _runtime(BaseBlockEffect(3))
+    _ledger, tiles, adapter, primitive, scheduler = _runtime(BaseBlockEffect(3))
     source = _tile(tiles, adapter, primitive, (0, 1, 2, 3))
     wiring = adapter.wiring(primitive)
     law = adapter.primitive_law(primitive)

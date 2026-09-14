@@ -2,7 +2,7 @@
 
 from dataclasses import dataclass
 from itertools import product
-from typing import TYPE_CHECKING, Literal
+from typing import Literal
 
 import pytest
 
@@ -53,11 +53,6 @@ from number_compiler.hashlife.interfaces.semantic_structures import (
 )
 from number_compiler.resources.ledger import ResourceLedger
 from tests.support.reverse_higher_runtime import _fixture
-
-if TYPE_CHECKING:
-    from number_compiler.arithmetic.functions.finite_function_types import FinitePort
-    from number_compiler.hashlife.actions.field_actions import FieldCellActionID
-    from number_compiler.hashlife.interfaces.semantic_structures import StructureArena
 
 
 @dataclass

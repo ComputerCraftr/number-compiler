@@ -325,7 +325,7 @@ def validate_bound_context(
 
 
 __all__ = [
-    "validate_boundary_operands",
     "validate_bound_context",
+    "validate_boundary_operands",
     "validate_ports_readonly",
 ]

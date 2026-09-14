@@ -13,13 +13,15 @@ from number_compiler.hashlife.tiles.tile_context import TemporalCocycle
 from number_compiler.resources.ledger import ResourceLedger
 from number_compiler.resources.stores import LedgerDict
 
+_DEFAULT_TEMPORAL_COCYCLE_1 = TemporalCocycle()
+
 
 @dataclass(frozen=True, slots=True)
 class PrimitiveTileAction:
     kernel: ActionProgramID
     signature: PortSignatureID
     children: tuple[FieldCellActionID, FieldCellActionID] | None = None
-    cocycle: TemporalCocycle = TemporalCocycle()
+    cocycle: TemporalCocycle = _DEFAULT_TEMPORAL_COCYCLE_1
     repetitions: int = 1
     homogeneous: bool = True
     spatial_events_add: bool = False

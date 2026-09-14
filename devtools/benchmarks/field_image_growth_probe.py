@@ -1,9 +1,9 @@
-#!/usr/bin/env python3
 """Cold schema-six M(N, X) measurements with explicit horizon ordering."""
 
 from __future__ import annotations
 
 import argparse
+import itertools
 import json
 from collections.abc import Callable, Iterable
 from dataclasses import asdict, dataclass
@@ -119,13 +119,13 @@ def cold_measurement(
         current.horizon != 2 * previous.horizon
         or current.total_internal_action_work
         <= 2 * previous.total_internal_action_work + bootstrap
-        for previous, current in zip(ordered, ordered[1:])
+        for previous, current in itertools.pairwise(ordered)
     )
     higher_work_within_doubling_envelope = all(
         current.horizon != 2 * previous.horizon
         or current.higher_concrete_operation_evaluations
         <= 2 * previous.higher_concrete_operation_evaluations + 64
-        for previous, current in zip(ordered, ordered[1:])
+        for previous, current in itertools.pairwise(ordered)
     )
     forbidden_work_zero = all(
         row.sequential_generation_advances == 0

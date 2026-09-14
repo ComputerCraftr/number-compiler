@@ -567,12 +567,12 @@ def profile_storage_metrics(ledger: ResourceLedger) -> ProfileStorageMetrics:
         if type(arena) is SemanticProfileArena and arena.ledger is ledger
     )
     if not arenas:
-        return dict(
-            reachable_profile_definition_records=0,
-            reachable_profile_definition_integer_slots=0,
-            reachable_profile_codec_records=0,
-            reachable_profile_decoder_cache_entries=0,
-        )
+        return {
+            "reachable_profile_definition_records": 0,
+            "reachable_profile_definition_integer_slots": 0,
+            "reachable_profile_codec_records": 0,
+            "reachable_profile_decoder_cache_entries": 0,
+        }
     from number_compiler.arithmetic.contracts.physical_collatz_pair_certificate import (
         C4PairLeftCertificate,
         ReachableLeftState,
@@ -614,9 +614,9 @@ def profile_storage_metrics(ledger: ResourceLedger) -> ProfileStorageMetrics:
                     for row in rows
                     if type(row) is tuple
                 )
-    return dict(
-        reachable_profile_definition_records=len(definitions),
-        reachable_profile_definition_integer_slots=slots,
-        reachable_profile_codec_records=codecs,
-        reachable_profile_decoder_cache_entries=decodes,
-    )
+    return {
+        "reachable_profile_definition_records": len(definitions),
+        "reachable_profile_definition_integer_slots": slots,
+        "reachable_profile_codec_records": codecs,
+        "reachable_profile_decoder_cache_entries": decodes,
+    }

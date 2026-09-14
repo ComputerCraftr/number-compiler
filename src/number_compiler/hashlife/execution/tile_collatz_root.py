@@ -23,8 +23,8 @@ def initial_event_shift(
     from number_compiler.hashlife.execution.tile_kernel import (
         PrimitiveTileKernelAdapter,
     )
-    from number_compiler.sequences.collatz.block_power import CollatzPhysicalBlockEffect
     from number_compiler.hashlife.tiles.tile_context import TemporalCocycle
+    from number_compiler.sequences.collatz.block_power import CollatzPhysicalBlockEffect
 
     adapter = scheduler.adapter
     if type(adapter) is not PrimitiveTileKernelAdapter:

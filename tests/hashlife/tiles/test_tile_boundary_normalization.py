@@ -18,7 +18,6 @@ from tests.arithmetic.contracts.test_tile_kernel import _runtime, _tile
 if TYPE_CHECKING:
     from number_compiler.hashlife.tiles.tiles import (
         TileArena,
-        TileID,
         TileLease,
         TileRecord,
     )

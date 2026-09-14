@@ -12,8 +12,8 @@ from typing import TYPE_CHECKING, Never, TypedDict, cast
 
 import pytest
 
-import number_compiler.api.cli as cli
 from devtools.paths import repository_root
+from number_compiler.api import cli
 from number_compiler.api.number_api import (
     FormulaTermPayload,
     NumberCompiler,
@@ -54,11 +54,25 @@ def forbid_compiler(monkeypatch: pytest.MonkeyPatch) -> None:
         (["196", "--nth", "3", "--base", "0"], "--base"),
         (["collatz", "--nth", "3", "--seed", "27", "--radix", "4"], "--radix"),
         (["collatz", "--nth", "3", "--seed", "27", "--radix", "-6"], "--radix"),
-        (["prime", "--nth", "1000000000000000", "--output-base", "37"], "--output-base"),
-        (["prime", "--nth", "1000000000000000", "--output-base", "1"], "--output-base"),
-        (["prime", "--nth", "1000000000000000", "--max-output-bits", "0"], "--max-output-bits"),
         (
-            ["fermat", "--nth", "20", "--format", "symbolic", "--max-output-bits", "-1"],
+            ["prime", "--nth", "1000000000000000", "--output-base", "37"],
+            "--output-base",
+        ),
+        (["prime", "--nth", "1000000000000000", "--output-base", "1"], "--output-base"),
+        (
+            ["prime", "--nth", "1000000000000000", "--max-output-bits", "0"],
+            "--max-output-bits",
+        ),
+        (
+            [
+                "fermat",
+                "--nth",
+                "20",
+                "--format",
+                "symbolic",
+                "--max-output-bits",
+                "-1",
+            ],
             "--max-output-bits",
         ),
         (["prime", "--nth", "1", "--start", "-1"], "--start"),
@@ -214,7 +228,7 @@ def test_powered_collatz_payload_rejects_radix_aliases(
 
 @pytest.mark.parametrize("alias", [0, 1, 0.0, 1.0, "true"])
 def test_public_digit_iterators_require_actual_boolean_orientation(
-    alias: float | int | str,
+    alias: float | str,
 ) -> None:
     arena = FormulaArena()
     with pytest.raises(TypeError, match="reverse must be a Boolean"):
@@ -254,7 +268,7 @@ def test_renderer_rejects_invalid_limits_before_touching_term(
     "value, base", [(-1, 2), (-1, 10), (True, 2), (1.5, 2), (1, True), (1, 2.5)]
 )
 def test_scalar_renderer_rejects_negative_or_coerced_values(
-    value: bool | float | int, base: bool | float | int
+    value: bool | float, base: bool | float
 ) -> None:
     with pytest.raises((TypeError, ValueError)):
         cli._radix_string(cast("int", value), cast("int", base))
@@ -264,7 +278,7 @@ def test_scalar_renderer_rejects_negative_or_coerced_values(
     "digits, base", [((-1,), 10), ((10,), 10), ((True,), 2), ((1.5,), 2), ((0,), 2.5)]
 )
 def test_digit_renderer_checks_the_actual_digit_alphabet(
-    digits: tuple[bool] | tuple[float] | tuple[int], base: float | int
+    digits: tuple[bool] | tuple[float] | tuple[int], base: float
 ) -> None:
     with pytest.raises((TypeError, ValueError)):
         cli._radix_string_from_lsd(cast("tuple[int, ...]", digits), cast("int", base))
@@ -344,6 +358,7 @@ def test_real_cli_invalid_option_exits_without_traceback() -> None:
         capture_output=True,
         text=True,
         timeout=10,
+        check=False,
     )
     assert result.returncode == 2
     assert not result.stdout
@@ -412,7 +427,18 @@ def test_emitted_execution_metrics_match_actual_rendered_term_ledger(
     monkeypatch.setattr(cli, "NumberCompiler", CapturingCompiler)
     monkeypatch.setattr(payload_type, "power_metrics", capture_metrics)
     assert (
-        cli.main([family, "--nth", "2", *extra, "--format", output_format, "--info", "metrics"])
+        cli.main(
+            [
+                family,
+                "--nth",
+                "2",
+                *extra,
+                "--format",
+                output_format,
+                "--info",
+                "metrics",
+            ]
+        )
         == 0
     )
     captured = capsys.readouterr()
@@ -501,7 +527,18 @@ def test_symbolic_metrics_do_not_execute_points_or_width(
         monkeypatch.setattr(cls, "_point_index", forbidden)
         monkeypatch.setattr(cls, "digit", forbidden)
     assert (
-        cli.main([family, "--nth", "256", *extra, "--format", "symbolic", "--info", "metrics"])
+        cli.main(
+            [
+                family,
+                "--nth",
+                "256",
+                *extra,
+                "--format",
+                "symbolic",
+                "--info",
+                "metrics",
+            ]
+        )
         == 0
     )
     output = capsys.readouterr()
@@ -524,14 +561,13 @@ def test_symbolic_metrics_do_not_execute_points_or_width(
 def test_families_without_runtime_ledger_report_unavailable_not_zero(
     capsys: pytest.CaptureFixture[str], family: str, index: str
 ) -> None:
-    assert cli.main([family, "--nth", index, "--format", "json", "--info", "metrics"]) == 0
+    assert (
+        cli.main([family, "--nth", index, "--format", "json", "--info", "metrics"]) == 0
+    )
     metrics = json.loads(capsys.readouterr().out)["info"]["metrics"]
     assert metrics["execution_metrics"] is None
     assert metrics["execution_metrics_scope"] == "unavailable_for_this_family"
-    assert (
-        metrics["metrics_scope"]
-        == "construction_and_projection_descriptors"
-    )
+    assert metrics["metrics_scope"] == "construction_and_projection_descriptors"
 
 
 class RenderOptions(TypedDict):

@@ -552,7 +552,7 @@ def test_collatz_field_actions_are_owner_validated_semantic_nodes() -> None:
     ledger = ResourceLedger()
     defects = CollatzDefectArena(((0,),), identity=0, ledger=ledger)
     arena = CollatzFieldActionArena(Programs(), defects, ledger=ledger)
-    arena.identity
+    _ = arena.identity
     report = collect_ledger_metrics(ledger)
     assert report.field_action_nodes == 1
     assert report.resource_audit_unknown_payloads == 0

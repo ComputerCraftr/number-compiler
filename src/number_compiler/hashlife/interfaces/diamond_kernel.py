@@ -180,7 +180,9 @@ class PrimitiveKernel:
         leaf. Valuation and frame changes belong to higher temporal actions
         for this primitive, so their local deltas are zero.
         """
-        from number_compiler.sequences.collatz.block_power import CollatzPhysicalBlockEffect
+        from number_compiler.sequences.collatz.block_power import (
+            CollatzPhysicalBlockEffect,
+        )
 
         self._check(left, self.left_count)
         self._check(right, self.right_count)
@@ -346,7 +348,9 @@ class DiamondKernelArena:
         *,
         symmetry_witnesses: tuple[LocalSymmetryWitness, ...] | None = None,
     ) -> ActionProgramID:
-        from number_compiler.sequences.collatz.block_power import CollatzPhysicalBlockEffect
+        from number_compiler.sequences.collatz.block_power import (
+            CollatzPhysicalBlockEffect,
+        )
 
         # Admission precedes all key lookups; a forged alias is not a kernel.
         common = (

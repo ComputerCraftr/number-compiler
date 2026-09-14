@@ -82,7 +82,7 @@ class ReverseAddSpatialIndex:
         arena: FormulaArena,
         pair: FormulaRoot,
         spec: RadixSpec,
-    ) -> "ReverseAddSpatialIndex":
+    ) -> ReverseAddSpatialIndex:
         if pair.plane_count != spec.plane_count:
             raise ValueError((pair.plane_count, spec.plane_count))
         summary = get_summary(arena, pair, spec)

@@ -4,13 +4,12 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 
-from number_compiler.hashlife.behavior.reverse_bound_output import ReverseBoundOutput
-
 from number_compiler.hashlife.actions.field_actions import FieldCellActionID
 from number_compiler.hashlife.behavior.future_behavior import (
     FutureBehaviorClassID,
     FutureBehaviorProfileID,
 )
+from number_compiler.hashlife.behavior.reverse_bound_output import ReverseBoundOutput
 from number_compiler.hashlife.interfaces.diamond_quotient import LocalInterfaceID
 from number_compiler.hashlife.tiles.tile_boundaries import (
     EMPTY_BOUNDARY_TILES,
@@ -517,8 +516,8 @@ __all__ = [
     "NormalizedRegionResult",
     "PoweredInterfaceKey",
     "PoweredResultKey",
-    "ReverseThresholdSummaryKey",
     "ReverseBoundOutputKey",
+    "ReverseThresholdSummaryKey",
     "RootMatchResult",
     "SourceRootMatchKey",
     "SpatialInterfaceKey",

@@ -17,15 +17,19 @@ from number_compiler.arithmetic.polynomials.arithmetic_tile import (
     ArithmeticTile,
     ArithmeticTileSpec,
 )
-from number_compiler.sequences.collatz.clock_observers import CollatzClockObservers
 from number_compiler.sequences.collatz.block_power import PoweredCollatzTerm
+from number_compiler.sequences.collatz.clock_observers import CollatzClockObservers
 from number_compiler.sequences.collatz.hensel_cylinders import HenselCylinder
 from number_compiler.sequences.power_numbers.etale_factor import factor_from_etale_root
 from number_compiler.sequences.reverse_add.power import ReverseAddPoweredTerm
 
 
 def observe_physical_clock(
-    seed: int, ticks: int, *, max_ticks: int, max_digits: int,
+    seed: int,
+    ticks: int,
+    *,
+    max_ticks: int,
+    max_digits: int,
     _term: PoweredCollatzTerm | None = None,
 ) -> dict[str, Any]:
     """Read the existing bound powered result; no accelerated-prefix discovery."""
@@ -64,8 +68,12 @@ def observe_physical_clock(
 class CollatzObservationContext:
     """One admitted accelerated prefix and one reusable observer for a query."""
 
-    def __init__(self, seed: int, events: int, *, max_events: int, max_digits: int) -> None:
-        from number_compiler.sequences.collatz.source_publisher import CollatzSourcePublisher
+    def __init__(
+        self, seed: int, events: int, *, max_events: int, max_digits: int
+    ) -> None:
+        from number_compiler.sequences.collatz.source_publisher import (
+            CollatzSourcePublisher,
+        )
 
         require_integer(seed, "seed", 1)
         require_integer(events, "events", 0)
@@ -132,7 +140,9 @@ def observe_collatz(
         seed, events, max_events=max_events, max_digits=max_digits
     )
     if context.binding != (seed, events, max_events, max_digits):
-        raise ValueError("accelerated observer context belongs to another source request")
+        raise ValueError(
+            "accelerated observer context belongs to another source request"
+        )
     context.published.validate()
     if (
         context.arena is not context.publisher.events
@@ -194,8 +204,13 @@ def observe_collatz(
 
 
 def observe_mirror(
-    seed: int, generation: int, *, first_width: int, max_digits: int,
-    base: int = 10, _term: ReverseAddPoweredTerm | None = None,
+    seed: int,
+    generation: int,
+    *,
+    first_width: int,
+    max_digits: int,
+    base: int = 10,
+    _term: ReverseAddPoweredTerm | None = None,
 ) -> dict[str, Any]:
     require_integer(max_digits, "digit budget", 1)
     first_width = require_integer(first_width, "first sheet width", 1)

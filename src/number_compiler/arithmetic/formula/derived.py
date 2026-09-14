@@ -2,8 +2,6 @@
 
 from __future__ import annotations
 
-from typing import Tuple
-
 from number_compiler.arithmetic.automata.guard import forbid_in_powered_jump
 from number_compiler.arithmetic.formula.formula import (
     FormulaArena,
@@ -20,7 +18,7 @@ from number_compiler.arithmetic.formula.types import Expr, RadixSpec
 
 def threshold_views(
     arena: FormulaArena, root: FormulaRoot, spec: RadixSpec
-) -> Tuple[Expr, Expr, Expr]:
+) -> tuple[Expr, Expr, Expr]:
     forbid_in_powered_jump("threshold_views")
     return threshold_plane_views(arena, root.planes, spec)
 
@@ -113,11 +111,11 @@ def successor(arena: FormulaArena, source: FormulaRoot, spec: RadixSpec) -> Form
 
 
 __all__ = [
-    "threshold_views",
-    "carry_out",
-    "growth_predicate",
-    "growth_bit",
     "border_view",
+    "carry_out",
     "compile_branch",
+    "growth_bit",
+    "growth_predicate",
     "successor",
+    "threshold_views",
 ]

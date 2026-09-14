@@ -14,8 +14,6 @@ from number_compiler.arithmetic.automata.primitive_semantics import (
     PrimitiveSemantics,
     PrimitiveSemanticsAdapter,
 )
-from number_compiler.arithmetic.contracts.block_effect import BoundarySide
-from number_compiler.arithmetic.contracts.scoped_handles import ArenaToken
 from number_compiler.arithmetic.carry.reverse_port_functions import (
     MAX_CLOSED_REVERSE_BASE,
     MIN_CLOSED_REVERSE_BASE,
@@ -27,6 +25,8 @@ from number_compiler.arithmetic.carry.reverse_sector_transfer import (
     ReverseCarrySectorTransfer,
     SectorCarrySums,
 )
+from number_compiler.arithmetic.contracts.block_effect import BoundarySide
+from number_compiler.arithmetic.contracts.scoped_handles import ArenaToken
 from number_compiler.arithmetic.functions.finite_function_types import (
     BOOL,
     AtomSort,
@@ -47,6 +47,11 @@ from number_compiler.arithmetic.functions.finite_port_action import PortVariable
 from number_compiler.arithmetic.functions.semantic_functions import (
     SemanticFunctionArena,
 )
+from number_compiler.arithmetic.radix_port_functions import (
+    DivisionCarry,
+    RadixPortFunction,
+)
+from number_compiler.arithmetic.radix_transfer import RadixRemainderTransfer
 from number_compiler.hashlife.actions.diamond_actions import PortSignatureID
 from number_compiler.hashlife.interfaces.diamond_quotient import (
     DiamondKey,
@@ -69,11 +74,6 @@ from number_compiler.hashlife.interfaces.semantic_structures import (
     _aliases,
 )
 from number_compiler.resources.ledger import ResourceLedger
-from number_compiler.arithmetic.radix_port_functions import (
-    DivisionCarry,
-    RadixPortFunction,
-)
-from number_compiler.arithmetic.radix_transfer import RadixRemainderTransfer
 from number_compiler.resources.semantic_auxiliary_payload import (
     SemanticAuxiliaryPayloadRegistry,
 )

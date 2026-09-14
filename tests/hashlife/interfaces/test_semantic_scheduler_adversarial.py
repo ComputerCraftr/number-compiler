@@ -17,9 +17,6 @@ from tests.support.diamond_continuation_reduction import machine
 if TYPE_CHECKING:
     import typing
 
-    from number_compiler.arithmetic.functions.finite_function_types import FinitePort
-    from number_compiler.hashlife.interfaces.diamond_boundary_expr import ExprID
-
 
 class _HashPayload:
     def __init__(self) -> None:

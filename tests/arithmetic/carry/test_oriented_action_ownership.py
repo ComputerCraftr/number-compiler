@@ -35,12 +35,12 @@ def test_oriented_actions_reject_foreign_handles_before_every_shortcut(
     wrong_kind = OrientedActionRef(local.owner, "wrong-kind", local.local_id)
     for bad in (foreign, invalid, wrong_kind):
         for operation in (
-            lambda: arena.compose(local, bad),
-            lambda: arena.compose(bad, local),
-            lambda: arena.transformed(bad, ActionTransform.IDENTITY),
-            lambda: arena.apply(bad, 0),
-            lambda: arena.raw_action(bad),
-            lambda: arena.oriented_pair(bad),
+            lambda bad=bad: arena.compose(local, bad),
+            lambda bad=bad: arena.compose(bad, local),
+            lambda bad=bad: arena.transformed(bad, ActionTransform.IDENTITY),
+            lambda bad=bad: arena.apply(bad, 0),
+            lambda bad=bad: arena.raw_action(bad),
+            lambda bad=bad: arena.oriented_pair(bad),
         ):
             with pytest.raises(ValueError):
                 operation()
@@ -60,10 +60,10 @@ def test_finite_mapping_boundaries_are_scoped_and_reject_negative_state() -> Non
         TransferSummaryID(local.owner, "wrong-kind", local.local_id),
     ):
         for operation in (
-            lambda: arena.mapping(bad),
-            lambda: arena.compose_mapping(local, bad),
-            lambda: arena.conjugate_mapping(bad),
-            lambda: arena.intern_oriented(local, bad),
+            lambda bad=bad: arena.mapping(bad),
+            lambda bad=bad: arena.compose_mapping(local, bad),
+            lambda bad=bad: arena.conjugate_mapping(bad),
+            lambda bad=bad: arena.intern_oriented(local, bad),
         ):
             with pytest.raises(ValueError):
                 operation()
@@ -88,7 +88,7 @@ def test_oriented_canonical_ids_survive_memo_eviction_and_kernel_is_fixed() -> N
     assert arena.mapping(old_mapping) == (0, 1)
     assert arena.leaf(0) == first
     with pytest.raises(AttributeError):
-        setattr(arena, "kernel", FiniteKernel(2, 2, lambda q, a: 1 - (q ^ a)))
+        arena.__setattr__("kernel", FiniteKernel(2, 2, lambda q, a: 1 - (q ^ a)))
 
 
 def test_carry_helpers_share_only_immutable_kernels_and_require_explicit_owner() -> (

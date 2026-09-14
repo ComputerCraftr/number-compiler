@@ -152,6 +152,7 @@ def test_cocycle_plane_checkpoint_round_trip() -> None:
 
 def test_endpoint_resume_preserves_primitive_counts(tmp_path: Path) -> None:
     import json
+
     from devtools.proofs.reverse_cocycle_endpoint_probe import probe
 
     checkpoint = tmp_path / "checkpoint.json"

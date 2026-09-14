@@ -4,8 +4,8 @@ from typing import Never
 
 import pytest
 
-from number_compiler.arithmetic.contracts.block_kernel import BaseBlockEffect
 from number_compiler.arithmetic.contracts.block_effect import BlockContextBudgetExceeded
+from number_compiler.arithmetic.contracts.block_kernel import BaseBlockEffect
 from number_compiler.arithmetic.contracts.scoped_handles import ExactSource
 from number_compiler.arithmetic.contracts.source_geometry import SourceGeometry
 from number_compiler.arithmetic.functions.semantic_functions import (

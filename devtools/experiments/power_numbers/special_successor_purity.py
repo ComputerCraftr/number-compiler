@@ -17,7 +17,6 @@ particular M11 is retained as the ring-safety counterexample.
 from __future__ import annotations
 
 from collections import deque
-from dataclasses import dataclass as dataclass
 from math import prod
 from typing import cast
 

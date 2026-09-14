@@ -1,4 +1,3 @@
-#!/usr/bin/env python3
 """Fresh-process exactness, retained-resource, and measured-work audit."""
 
 from __future__ import annotations

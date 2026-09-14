@@ -1,4 +1,3 @@
-#!/usr/bin/env python3
 """Regenerate the terminal divisor-norm research metrics."""
 
 from __future__ import annotations

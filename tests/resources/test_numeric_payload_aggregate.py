@@ -5,7 +5,7 @@ from __future__ import annotations
 from collections.abc import Generator
 from dataclasses import dataclass
 from inspect import isgenerator
-from typing import TYPE_CHECKING, cast
+from typing import cast
 
 import pytest
 
@@ -32,9 +32,6 @@ from number_compiler.resources.ledger import ResourceLedger
 from number_compiler.resources.metric_collection import collect_ledger_metrics
 from number_compiler.resources.numeric_payload import numeric_aggregate_audit
 from number_compiler.resources.stores import LedgerList
-
-if TYPE_CHECKING:
-    from number_compiler.arithmetic.contracts.scoped_handles import WordLimb
 
 
 @dataclass(frozen=True)

@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from collections.abc import Callable, Iterator, Sequence
 from itertools import product
-from typing import TYPE_CHECKING, Never
+from typing import Never
 
 import pytest
 
@@ -42,10 +42,6 @@ from number_compiler.hashlife.tiles.tiles import (
     TileLease,
 )
 from number_compiler.resources.ledger import ResourceLedger
-
-if TYPE_CHECKING:
-    from number_compiler.hashlife.tiles.tiles import TileID
-
 
 TileRuntime = tuple[
     ResourceLedger,

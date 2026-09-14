@@ -231,9 +231,11 @@ def test_original_source_authority_validates_payload_and_cannot_leak_into_querie
         geometry.span((2, 1), 10, 8)
     with pytest.raises(ValueError, match="authorized original source"):
         geometry.span((1, 2), 10, 9)
-    with OriginalSourceConstruction(original).allow(original.digits, original.blank, 8):
-        with pytest.raises(ExactTreeConstructionForbidden):
-            source_reads_only(lambda: leaf(1))()
+    with (
+        OriginalSourceConstruction(original).allow(original.digits, original.blank, 8),
+        pytest.raises(ExactTreeConstructionForbidden),
+    ):
+        source_reads_only(lambda: leaf(1))()
 
 
 def test_endpoint_capability_cannot_override_a_point_scope() -> None:
@@ -247,9 +249,11 @@ def test_endpoint_capability_cannot_override_a_point_scope() -> None:
 
     with pytest.raises(ExactTreeConstructionForbidden):
         disguised_lowering()
-    with pytest.raises(ValueError, match="capability"):
-        with endpoint_construction(ArenaToken("foreign"), capability):
-            pass
+    with (
+        pytest.raises(ValueError, match="capability"),
+        endpoint_construction(ArenaToken("foreign"), capability),
+    ):
+        pass
 
 
 def test_explicit_endpoint_and_uniform_observer_do_not_pin_global_exact_trees() -> None:

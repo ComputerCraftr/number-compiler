@@ -66,7 +66,7 @@ def test_cross_side_primitive_map_is_read_only_and_not_a_scalar_payload() -> Non
 def test_forged_map_record_cannot_change_its_actual_domain_contract(
     failure: str,
 ) -> None:
-    ledger, boundaries, arena, action, source, target, result = mapped()
+    ledger, boundaries, arena, action, _source, target, result = mapped()
     node = arena.node(result)
     primitive = arena.primitive(action)
     assert primitive is not None

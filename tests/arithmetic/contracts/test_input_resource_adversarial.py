@@ -5,6 +5,7 @@ from typing import Never, TypedDict, cast
 import pytest
 
 from number_compiler.api.number_api import NumberCompiler
+from number_compiler.arithmetic.contracts.block_effect import BoundarySide
 from number_compiler.arithmetic.contracts.block_kernel import BaseBlockEffect
 from number_compiler.arithmetic.contracts.exact_tree_context import (
     OriginalSourceConstruction,
@@ -121,7 +122,7 @@ def test_resource_metadata_cannot_alias_string_owner_names(
 ) -> None:
     ledger = ResourceLedger()
     before = ledger.snapshot()
-    arguments = dict(name="valid", role="query_memo", scope="ENGINE_OWNED")
+    arguments = {"name": "valid", "role": "query_memo", "scope": "ENGINE_OWNED"}
     arguments[field] = cast(str, value)
     with pytest.raises((TypeError, ValueError)):
         ledger.register(**cast(_OwnerArguments, arguments))
@@ -189,7 +190,7 @@ def test_public_constructor_aliases_reject_before_source_work(
     )
     monkeypatch.setattr(module + ".digits_lsd", forbidden)
     constructor = ReverseAddPoweredTerm if family == "reverse" else PoweredCollatzTerm
-    arguments = dict(max_cache_entries=value) if field == "budget" else {}
+    arguments = {"max_cache_entries": value} if field == "budget" else {}
     with pytest.raises((TypeError, ValueError)):
         constructor(
             value if field == "seed" else 1,
@@ -240,11 +241,11 @@ def test_collatz_kernel_rejects_integer_aliases_for_boundary_side(method: str) -
     effect = CollatzPhysicalBlockEffect()
     with pytest.raises(TypeError, match="exact enum"):
         if method == "initial":
-            effect.initial(True)  # type: ignore[arg-type]
+            effect.initial(cast(BoundarySide, True))
         elif method == "universe":
-            effect.boundary_universe(0)  # type: ignore[arg-type]
+            effect.boundary_universe(cast(BoundarySide, 0))
         else:
-            effect.advance(0, 0, 0)  # type: ignore[arg-type]
+            effect.advance(cast(BoundarySide, 0), 0, 0)
 
 
 @pytest.mark.parametrize("warm", (False, True))
@@ -273,8 +274,10 @@ def test_number_compiler_rejects_aliases_before_powered_construction(
     monkeypatch.setattr(
         "number_compiler.sequences.reverse_add.power.ReverseAddPoweredTerm", forbidden
     )
-    monkeypatch.setattr("number_compiler.sequences.collatz.block_power.PoweredCollatzTerm", forbidden)
-    kwargs = dict(seed=1, base=2, radix=2)
+    monkeypatch.setattr(
+        "number_compiler.sequences.collatz.block_power.PoweredCollatzTerm", forbidden
+    )
+    kwargs = {"seed": 1, "base": 2, "radix": 2}
     if field != "index":
         kwargs[field] = value
     with pytest.raises((TypeError, ValueError)):

@@ -33,7 +33,7 @@ from tests.support.recursive_field_images import _SecondDomainArena, _setup
 
 
 def test_image_arena_rejects_callable_only_domain_before_registration() -> None:
-    ledger, _, signature, _, _, images, adapter, _ = _setup()
+    ledger, _, _signature, _, _, images, adapter, _ = _setup()
     before = ledger.snapshot()
     with pytest.raises(ValueError, match="supplied together"):
         RecursiveFieldImageArena(
@@ -271,7 +271,7 @@ def test_image_phase_domain_matches_admitted_port_before_lookup() -> None:
 def test_image_publication_rejects_interface_from_another_signature() -> None:
     from number_compiler.hashlife.execution.field_images import ImageRequestKey
 
-    ledger, source, signature, geometry, action, images, adapter, executor = _setup()
+    ledger, source, signature, geometry, action, images, _adapter, executor = _setup()
     image = executor.image(action, source, geometry, signature)
     record = images.resolve(image)
     declared = images.interfaces.interface(signature)

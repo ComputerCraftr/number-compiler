@@ -18,9 +18,9 @@ finite prime mask is reported, never hidden behind the residual count.
 
 from __future__ import annotations
 
+from collections.abc import Sequence
 from dataclasses import dataclass
 from math import prod
-from typing import Sequence
 
 from number_compiler.arithmetic.fields.congruence_automaton import (
     reinterpret_binary_digits,
@@ -203,10 +203,10 @@ def binary_digit_cyclotomic_metrics(
 
 
 __all__ = [
-    "MixedRadixPrimeResidualMetrics",
-    "mixed_radix_prime_residual_metrics",
-    "ReinterpretedPrimeCyclotomicMetrics",
-    "reinterpreted_prime_cyclotomic_metrics",
     "BinaryDigitCyclotomicMetrics",
+    "MixedRadixPrimeResidualMetrics",
+    "ReinterpretedPrimeCyclotomicMetrics",
     "binary_digit_cyclotomic_metrics",
+    "mixed_radix_prime_residual_metrics",
+    "reinterpreted_prime_cyclotomic_metrics",
 ]

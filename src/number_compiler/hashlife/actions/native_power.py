@@ -14,8 +14,8 @@ There is no semantic ``S[t+1]`` object and no first-step value-set family.
 
 from __future__ import annotations
 
+from collections.abc import Sequence
 from dataclasses import dataclass
-from typing import Sequence, Tuple
 
 from number_compiler.arithmetic.fields.digit_formula import DigitSpec
 from number_compiler.arithmetic.formula.formula import (
@@ -132,7 +132,7 @@ def _native_first_inline(
     arena: FormulaArena,
     source: FormulaRoot,
     spec: RadixSpec,
-) -> tuple[Tuple[Expr, ...], int]:
+) -> tuple[tuple[Expr, ...], int]:
     """Return the internal first coefficient family ``tau`` and ``g1`` only."""
     if source.plane_count != spec.plane_count:
         raise ValueError((source.plane_count, spec.plane_count))
@@ -146,7 +146,7 @@ def _native_two_step_terms(
     arena: FormulaArena,
     source: FormulaRoot,
     spec: RadixSpec,
-) -> tuple[Tuple[Expr, ...], Expr, int, int]:
+) -> tuple[tuple[Expr, ...], Expr, int, int]:
     """Build only the eliminated internal terms ``tau,K`` and growth events.
 
     The returned Expr families are lexical temporaries.  Callers must not place
@@ -348,7 +348,7 @@ def compile_native_power(
     if isinstance(cached, NativePowerCompilation):
         return cached
 
-    family: Tuple[Expr, ...] = tuple(source.planes)
+    family: tuple[Expr, ...] = tuple(source.planes)
     widths = [source.width]
     growths: list[int] = []
     for _ in range(steps):
@@ -399,7 +399,7 @@ def native_power_digits(
     if isinstance(cached, FormulaRoot):
         return cached
 
-    family: Tuple[Expr, ...] = tuple(source.planes)
+    family: tuple[Expr, ...] = tuple(source.planes)
     final_carry: Expr | None = None
     final_growth = 0
     for step in range(1, steps + 1):
@@ -436,7 +436,7 @@ def native_two_step_value_sets(
     arena: FormulaArena,
     source: FormulaRoot,
     spec: RadixSpec,
-) -> Tuple[Expr, ...]:
+) -> tuple[Expr, ...]:
     """Return final exact sets ``Z_w={i:S^(2)_i=w}`` for ``w=0..2b-2``.
 
     No first-step ``Y_v`` set family is ever constructed.
@@ -448,18 +448,18 @@ def native_two_step_value_sets(
 
 
 __all__ = [
-    "NativeTwoStepCompilation",
     "NativeFourStepCompilation",
     "NativePowerCompilation",
-    "compile_native_two_step",
-    "native_two_step",
-    "native_two_step_digits",
+    "NativeTwoStepCompilation",
     "compile_native_four_step",
+    "compile_native_power",
+    "compile_native_two_step",
     "native_four_step",
     "native_four_step_digits",
-    "compile_native_power",
     "native_power",
     "native_power_digits",
+    "native_two_step",
+    "native_two_step_digits",
     "native_two_step_reset_sets",
     "native_two_step_value_sets",
 ]

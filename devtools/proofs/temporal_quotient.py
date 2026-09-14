@@ -6,8 +6,8 @@ certificate, not a bounded extensional action or production temporal quotient.
 
 from __future__ import annotations
 
+from collections.abc import Sequence
 from dataclasses import dataclass
-from typing import Sequence
 
 from devtools.proofs import require_exact_oracle
 from devtools.proofs.reverse_action import linear_span
@@ -124,7 +124,7 @@ class ReverseAddCarryCutState:
         rows: Sequence[DyadicSpan],
         *,
         base: int = 10,
-    ) -> "ReverseAddCarryCutState":
+    ) -> ReverseAddCarryCutState:
         require_exact_oracle()
         base = int(base)
         horizon = event_memory_horizon(base)

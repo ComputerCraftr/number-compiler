@@ -13,9 +13,6 @@ if TYPE_CHECKING:
     from number_compiler.arithmetic.contracts.scoped_handles import ActionProgramID
     from number_compiler.hashlife.actions.diamond_actions import TemporalActionArena
     from number_compiler.hashlife.interfaces.diamond_boundary import BoundaryActionArena
-    from number_compiler.hashlife.interfaces.diamond_boundary_expr import (
-        BoundaryExpressionArena,
-    )
     from number_compiler.resources.ledger import ResourceLedger
 
 

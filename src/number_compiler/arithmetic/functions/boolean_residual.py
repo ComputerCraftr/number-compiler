@@ -13,8 +13,8 @@ probabilistic equality authorizes a merge.
 
 from __future__ import annotations
 
+from collections.abc import Sequence
 from dataclasses import dataclass
-from typing import Sequence
 
 from number_compiler.arithmetic.formula.formula import FormulaArena, reachable
 from number_compiler.arithmetic.formula.types import Expr

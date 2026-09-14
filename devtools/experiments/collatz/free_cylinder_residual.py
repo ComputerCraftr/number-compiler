@@ -15,21 +15,31 @@ from __future__ import annotations
 
 from collections.abc import Callable
 
+from devtools.experiments.collatz.free_cylinder_consumers import (
+    BoundCylinderAction,
+    BoundCylinderEndpoint,
+    FreeCylinderResidualID,
+    _bounded_cylinder_nonempty,
+    _branch_key,
+    _coalesce_sibling_guards,
+    _constant_target,
+    _consume_guard,
+    _ConsumerAction,
+    _ConsumerOutput,
+    _CylinderBranch,
+    _FreeCylinderResidual,
+    _GuardTrieNode,
+)
+from devtools.experiments.collatz.physical_support import (
+    PhysicalSupport,
+    PhysicalSupportArena,
+)
 from number_compiler.arithmetic.contracts.block_effect import BlockContextBudgetExceeded
 from number_compiler.arithmetic.functions.decision import MultiTerminalDecisionArena
 from number_compiler.sequences.collatz.hensel_cylinders import (
     MAX_CYLINDER_BITS,
     HenselAffineBlock,
     HenselCylinder,
-)
-from devtools.experiments.collatz.physical_support import PhysicalSupport, PhysicalSupportArena
-
-
-from devtools.experiments.collatz.free_cylinder_consumers import (
-    BoundCylinderAction, BoundCylinderEndpoint, FreeCylinderResidualID,
-    _ConsumerAction, _ConsumerOutput, _CylinderBranch, _FreeCylinderResidual,
-    _GuardTrieNode, _bounded_cylinder_nonempty, _branch_key, _coalesce_sibling_guards,
-    _constant_target, _consume_guard,
 )
 
 
@@ -109,9 +119,7 @@ class FreeCylinderResidualArena:
     @staticmethod
     def _selectors(cylinder: HenselCylinder, precision: int) -> tuple[int, ...]:
         return tuple(
-            1 << ((cylinder.residue >> bit) & 1)
-            if bit < cylinder.bits
-            else 0b11
+            1 << ((cylinder.residue >> bit) & 1) if bit < cylinder.bits else 0b11
             for bit in range(precision)
         )
 
@@ -137,7 +145,9 @@ class FreeCylinderResidualArena:
                 # affine leaf remains exact; this is not a global 2-adic
                 # cylinder identity.
                 domain = HenselCylinder(max_source_bits, domain.residue)
-            bounded.append(_CylinderBranch(domain, _consume_guard(branch, max_source_bits)))
+            bounded.append(
+                _CylinderBranch(domain, _consume_guard(branch, max_source_bits))
+            )
         canonical = tuple(
             sorted(set(_coalesce_sibling_guards(bounded)), key=_branch_key)
         )
@@ -179,7 +189,9 @@ class FreeCylinderResidualArena:
     def primitive(self, precision: int) -> FreeCylinderResidualID:
         """Return every exact one-event valuation branch through precision ``q``."""
         if type(precision) is not int or not 3 <= precision <= self.max_precision:
-            raise ValueError("primitive cylinder precision must lie in 3..max_precision")
+            raise ValueError(
+                "primitive cylinder precision must lie in 3..max_precision"
+            )
         branches = tuple(
             _CylinderBranch(
                 HenselCylinder.from_root(k + 1, 1, 1 - (1 << k)),
@@ -435,12 +447,7 @@ class FreeCylinderResidualArena:
                 ):
                     raise AssertionError("constant power emitted a nonconstant output")
                 image = tuple(
-                    sorted(
-                        {
-                            _constant_target(action)
-                            for action in first.values()
-                        }
-                    )
+                    sorted({_constant_target(action) for action in first.values()})
                 )
                 partials[key] = first, after_ticks, image
                 pending.append((ticks, context, 2))
@@ -483,7 +490,9 @@ class FreeCylinderResidualArena:
         else:
             if before.physical_ticks is None or following.physical_ticks is None:
                 raise ValueError("cannot mix accelerated and physical residuals")
-            max_source_bits = before.max_source_bits if source_bits is None else source_bits
+            max_source_bits = (
+                before.max_source_bits if source_bits is None else source_bits
+            )
             if not 1 <= max_source_bits <= before.max_source_bits:
                 raise ValueError("physical composition source chart is invalid")
             output_bits = self._maximum_output_bits(before, max_source_bits)
@@ -580,7 +589,9 @@ class FreeCylinderResidualArena:
             raise ValueError("physical source width lies outside the arena")
         target = (physical_ticks, source_bits)
         pending: list[tuple[int, int, int]] = [(physical_ticks, source_bits, 0)]
-        first_halves: dict[tuple[int, int], tuple[FreeCylinderResidualID, int, int]] = {}
+        first_halves: dict[
+            tuple[int, int], tuple[FreeCylinderResidualID, int, int]
+        ] = {}
         while pending:
             ticks, bits, stage = pending.pop()
             key = (ticks, bits)
@@ -618,9 +629,7 @@ class FreeCylinderResidualArena:
                             branch.domain,
                             self._then_consumers(
                                 branch.action,
-                                after_constants[
-                                    _constant_target(branch.action)
-                                ],
+                                after_constants[_constant_target(branch.action)],
                             ),
                         )
                         for branch in first_node.branches
@@ -708,7 +717,9 @@ class FreeCylinderResidualArena:
             transport.support,
         )
 
-    def bind(self, residual: FreeCylinderResidualID, source: int) -> BoundCylinderEndpoint:
+    def bind(
+        self, residual: FreeCylinderResidualID, source: int
+    ) -> BoundCylinderEndpoint:
         """Convenience exact-integer seam used by differential validation."""
         node = self.resolve(residual)
         if type(source) is not int or source <= 0:
@@ -748,8 +759,13 @@ class FreeCylinderResidualArena:
             if record[0] == "T":
                 terminals += 1
                 if type(record[1]) is _ConsumerAction:
-                    weighted_ids.add((record[1].output, record[1].event_weight,
-                                      record[1].physical_ticks))
+                    weighted_ids.add(
+                        (
+                            record[1].output,
+                            record[1].event_weight,
+                            record[1].physical_ticks,
+                        )
+                    )
                     support_ids.add(record[1].support)
                     output_ids.add(record[1].output)
                 continue

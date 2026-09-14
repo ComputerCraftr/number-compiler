@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from array import array
-from typing import TYPE_CHECKING, Never
+from typing import Never, cast
 
 import pytest
 
@@ -30,14 +30,6 @@ from number_compiler.hashlife.tiles.tiles import TileArena, TileID, TileLease
 from number_compiler.projection.digit_terminal import DigitNormalizeBlockEffect
 from number_compiler.resources.ledger import ResourceLedger
 from number_compiler.sequences.collatz.block_power import CollatzPhysicalBlockEffect
-
-if TYPE_CHECKING:
-    from number_compiler.hashlife.execution.tile_kernel import (
-        PrimitiveTileKernelAdapter,
-    )
-    from number_compiler.hashlife.execution.tile_scheduler import TileScheduler
-    from number_compiler.hashlife.tiles.tiles import TileArena
-    from number_compiler.resources.ledger import ResourceLedger
 
 
 def _runtime(
@@ -578,7 +570,9 @@ def test_temporal_parent_publication_failure_releases_all_children(
 
         if type(key) is PoweredResultKey and key.action == action:
             raise RuntimeError("injected temporal publication failure")
-        return publish(key, result)  # type: ignore[arg-type]
+        from number_compiler.hashlife.tiles.tile_result_records import CompletedResult
+
+        return publish(cast(PoweredResultKey, key), cast(CompletedResult, result))
 
     monkeypatch.setattr(scheduler.results, "publish", fail_parent)
     try:

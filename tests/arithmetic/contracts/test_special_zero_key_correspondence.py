@@ -12,17 +12,15 @@ from number_compiler.arithmetic.polynomials.arithmetic_tile import (
 )
 from number_compiler.arithmetic.polynomials.primary_carry_jet import PrimaryCarryJet
 
-
 ROOT = Path(__file__).resolve().parents[3]
 
 
 def test_m11_zero_key_numeric_regression_agrees_with_arithmetic_tile() -> None:
     theory = (
-        ROOT
-        / "devtools/proofs/isabelle/etale/Mersenne_Zero_Key_Counterexample.thy"
+        ROOT / "devtools/proofs/isabelle/etale/Mersenne_Zero_Key_Counterexample.thy"
     ).read_text()
     assert '"primary_root_key False 11 m11_zero_carry =' in theory
-    assert '(False, -1, (14, 5))' in theory
+    assert "(False, -1, (14, 5))" in theory
 
     spec = ArithmeticTileSpec.mersenne(11)
     _, key = ArithmeticTile.from_value(spec, 0).step_with_primary_carry_jet()
@@ -37,12 +35,8 @@ def test_m11_zero_key_numeric_regression_agrees_with_arithmetic_tile() -> None:
 def test_one_step_fermat_zero_key_does_not_determine_primality() -> None:
     f4_spec = ArithmeticTileSpec.fermat(1 << 4)
     f5_spec = ArithmeticTileSpec.fermat(1 << 5)
-    _, f4_key = ArithmeticTile.from_value(
-        f4_spec, 0
-    ).step_with_primary_carry_jet()
-    _, f5_key = ArithmeticTile.from_value(
-        f5_spec, 0
-    ).step_with_primary_carry_jet()
+    _, f4_key = ArithmeticTile.from_value(f4_spec, 0).step_with_primary_carry_jet()
+    _, f5_key = ArithmeticTile.from_value(f5_spec, 0).step_with_primary_carry_jet()
     zero_key = (
         0,
         0,

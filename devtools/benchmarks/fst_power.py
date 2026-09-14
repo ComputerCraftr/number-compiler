@@ -1,4 +1,3 @@
-#!/usr/bin/env python3
 """Experimental exact real-time functional transducer for pair-field successor.
 
 This is research-only.  It represents the one-step map as an unambiguous

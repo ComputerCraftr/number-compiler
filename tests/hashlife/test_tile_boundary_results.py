@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from dataclasses import replace
+from typing import cast
 
 import pytest
 
@@ -21,6 +22,8 @@ from number_compiler.hashlife.tiles.tile_result_records import (
 )
 from number_compiler.hashlife.tiles.tile_result_types import (
     ReverseKey as _ReverseKey,
+)
+from number_compiler.hashlife.tiles.tile_result_types import (
     ReverseValue as _ReverseValue,
 )
 from number_compiler.hashlife.tiles.tile_results import CompletedResultArena
@@ -135,7 +138,7 @@ def test_result_lease_reports_boundary_operands_after_memo_retirement() -> None:
 
 
 def test_boundary_operands_reject_wrong_scope_and_shape_before_warm_lookup() -> None:
-    ledger, _, tiles, results, input_lease, output_lease, key, result = _setup()
+    ledger, _, _tiles, results, input_lease, output_lease, key, result = _setup()
     held = results.publish(key, result)
     before = ledger.snapshot()
     foreign = TileID(ArenaToken("foreign-boundary"), "canonical-tile", 0)
@@ -148,7 +151,7 @@ def test_boundary_operands_reject_wrong_scope_and_shape_before_warm_lookup() -> 
             results.lookup(replace(key, boundaries=boundaries))
         assert ledger.snapshot() == before
     with pytest.raises(TypeError):
-        results.lookup(replace(key, boundaries=True))  # type: ignore[arg-type]
+        results.lookup(replace(key, boundaries=cast(BoundaryTileOperands, True)))
     assert ledger.snapshot() == before
     held.close()
     output_lease.close()
@@ -182,7 +185,7 @@ def test_boundary_tile_views_validate_and_identify_exact_source_slices() -> None
     before = ledger.entries, ledger.nodes, dict(results._memo)
     for offset in (True, 1.5, -1):
         with pytest.raises((TypeError, ValueError)):
-            BoundaryTileView(parent.tile, source_offset=offset)  # type: ignore[arg-type]
+            BoundaryTileView(parent.tile, source_offset=cast(int, offset))
     with pytest.raises(ValueError, match="source offset"):
         results.lookup(
             replace(
@@ -235,9 +238,11 @@ def test_interface_boundary_tiles_are_reverse_indexed_and_retire_cleanly(
         else PoweredInterfaceKey(key.action, key.input, key.wiring, operands)
     )
     if fused:
-        results.publish_fused_interface(request, result.outgoing)  # type: ignore[arg-type]
+        results.publish_fused_interface(
+            cast(FusedInterfaceKey, request), result.outgoing
+        )
     else:
-        results.publish_interface(request, result.outgoing)  # type: ignore[arg-type]
+        results.publish_interface(cast(PoweredInterfaceKey, request), result.outgoing)
     approved, invalid = audit_tile_results(results, dict(ledger.iter_containers()))
     assert not invalid and id(request) in approved
     assert results.retained_entries == 1

@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import replace
+from typing import cast
 
 import pytest
 
@@ -11,7 +12,7 @@ from tests.support.dataclass_records import replace_record
 @pytest.mark.parametrize("base", (True, 10.0, "10"))
 def test_power_block_effect_rejects_nonexact_base_before_work(base: object) -> None:
     with pytest.raises(TypeError, match="exact integers"):
-        power_block_effect(base=base, exponent=0)  # type: ignore[arg-type]
+        power_block_effect(base=cast(int, base), exponent=0)
 
 
 @pytest.mark.parametrize("exponent", (True, 1.0, "1"))
@@ -19,20 +20,22 @@ def test_power_block_effect_rejects_nonexact_exponent_before_work(
     exponent: object,
 ) -> None:
     with pytest.raises(TypeError, match="exact integers"):
-        power_block_effect(base=10, exponent=exponent)  # type: ignore[arg-type]
+        power_block_effect(base=10, exponent=cast(int, exponent))
 
 
 @pytest.mark.parametrize("limit", (True, 1.0, "1"))
 def test_power_block_effect_rejects_nonexact_limits(limit: object) -> None:
     with pytest.raises(TypeError, match="exact integer or None"):
-        power_block_effect(base=10, exponent=0, max_cache_entries=limit)  # type: ignore[arg-type]
+        power_block_effect(
+            base=10, exponent=0, max_cache_entries=cast(int | None, limit)
+        )
 
 
 @pytest.mark.parametrize("symbol", (True, 7.0, "7"))
 def test_apply_block_power_rejects_symbol_coercions(symbol: object) -> None:
     power = power_block_effect(base=10, exponent=0)
     with pytest.raises(TypeError, match="source symbols must be exact integers"):
-        apply_block_power(power, [symbol])  # type: ignore[list-item]
+        apply_block_power(power, [cast(int, symbol)])
 
 
 def test_apply_block_power_rejects_forged_numeric_metadata() -> None:
@@ -49,7 +52,7 @@ def test_apply_block_power_rejects_forged_numeric_metadata() -> None:
 def test_apply_block_power_requires_an_explicit_sequence(source: object) -> None:
     power = power_block_effect(base=10, exponent=0)
     with pytest.raises(TypeError, match="tuple or list"):
-        apply_block_power(power, source)  # type: ignore[arg-type]
+        apply_block_power(power, cast(tuple[int, ...], source))
 
 
 @pytest.mark.parametrize("base", (True, 2.0, "2"))
@@ -57,7 +60,7 @@ def test_primitive_kernel_rejects_numeric_base_aliases(base: object) -> None:
     from number_compiler.arithmetic.contracts.block_kernel import BaseBlockEffect
 
     with pytest.raises(TypeError, match="exact integer"):
-        BaseBlockEffect(base)  # type: ignore[arg-type]
+        BaseBlockEffect(cast(int, base))
 
 
 @pytest.mark.parametrize("base", (2, 3, 5, 10, 12))

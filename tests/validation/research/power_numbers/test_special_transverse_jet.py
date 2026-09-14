@@ -108,7 +108,7 @@ def test_one_step_holonomy_is_constant_boundary_and_exposes_nonunit_when_it_leav
 
 
 def test_powering_translation_to_dyadic_sibling_reopens_entire_boundary() -> None:
-    for exponent in range(0, 9):
+    for exponent in range(9):
         span = 1 << exponent
         audit = dyadic_jet_translation_audit(span)
         assert audit.one_step_boundary_width == 1
@@ -123,7 +123,7 @@ def test_powering_translation_to_dyadic_sibling_reopens_entire_boundary() -> Non
 
 def test_balanced_binary_interval_has_log_depth_but_linear_total_work() -> None:
     spec = SpecialJetProgressionSpec.build("fermat", 5)
-    for exponent in range(0, 9):
+    for exponent in range(9):
         span = 1 << exponent
         block = build_special_jet_interval(spec, 1, span)
         assert block.span == span

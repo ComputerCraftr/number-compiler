@@ -2,15 +2,15 @@ from math import gcd
 
 import pytest
 
-from number_compiler.arithmetic.polynomials.twisted_observer import (
-    TwistedCylinderProjection,
-    first_mirror_obstruction,
-)
+from number_compiler.arithmetic.fields.tropical_divisor import TropicalDivisorState
 from number_compiler.arithmetic.polynomials.arithmetic_tile import (
     ArithmeticTile,
     ArithmeticTileSpec,
 )
-from number_compiler.arithmetic.fields.tropical_divisor import TropicalDivisorState
+from number_compiler.arithmetic.polynomials.twisted_observer import (
+    TwistedCylinderProjection,
+    first_mirror_obstruction,
+)
 
 
 def test_twisted_evaluation_commutes_only_at_compatible_moduli() -> None:

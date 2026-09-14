@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import replace
+from typing import cast
 
 import pytest
 
@@ -40,9 +41,9 @@ def test_higher_unary_summary_matches_primitive_spatial_transfer() -> None:
 def test_runtime_summary_ids_reject_foreign_aliases_before_publication() -> None:
     (
         _actions,
-        primitive,
+        _primitive,
         semantics,
-        runtime,
+        _runtime,
         _interfaces,
         _compiler,
         sources,
@@ -145,7 +146,7 @@ def test_higher_summary_rejects_foreign_and_integer_alias_handles() -> None:
     )
     for alias in aliases:
         with pytest.raises((TypeError, ValueError)):
-            runtime.summaries.resolve(alias)  # type: ignore[arg-type]
+            runtime.summaries.resolve(cast(HigherSummaryID, alias))
     after = runtime.ledger.snapshot()
     assert (after.entries, after.nodes, after.counters) == (
         before.entries,
@@ -202,7 +203,11 @@ def test_higher_summary_payload_audit_rejects_mutated_semantic_reference() -> No
         record.function.kind,
         record.function.local_id,
     )
-    runtime.summaries._nodes._data[summary.local_id] = replace(  # type: ignore[attr-defined]
+    storage_attribute = "_data"
+    nodes = cast(
+        dict[int, object], getattr(runtime.summaries._nodes, storage_attribute)
+    )
+    nodes[summary.local_id] = replace(
         record,
         function=foreign,
     )
@@ -229,6 +234,11 @@ def test_higher_summary_payload_audit_rejects_incompatible_binding_result() -> N
     key = next(
         key for key, result in runtime.summaries._bindings.items() if result == left
     )
-    runtime.summaries._bindings._data[key] = right  # type: ignore[attr-defined]
+    storage_attribute = "_data"
+    bindings = cast(
+        dict[object, HigherSummaryID],
+        getattr(runtime.summaries._bindings, storage_attribute),
+    )
+    bindings[key] = right
     damaged = audit_registered_payloads(runtime.ledger)
     assert damaged.forbidden_future_payloads > 0

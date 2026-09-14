@@ -4,6 +4,7 @@ import os
 import subprocess
 import sys
 import textwrap
+from typing import cast
 
 import pytest
 
@@ -94,6 +95,7 @@ def test_package_import_and_cold_warm_queries_work_with_proof_imports_blocked() 
         capture_output=True,
         text=True,
         timeout=120,
+        check=False,
     )
     assert result.returncode == 0, result.stdout + result.stderr
 
@@ -108,6 +110,7 @@ def test_current_compiler_audit_uses_semantic_scoped_ids_and_lazy_outputs() -> N
 
 def test_generic_admission_rejects_unadapted_proof_machine_handles() -> None:
     """A proof-state ID is never an executable generic kernel atom."""
+    from number_compiler.arithmetic.contracts.block_effect import BlockEffect
     from number_compiler.arithmetic.contracts.kernel_admission import immutable_atom
     from number_compiler.arithmetic.contracts.scoped_handles import ArenaToken
     from number_compiler.hashlife.actions.lazy_compiler import UnsupportedInterfaceError
@@ -119,4 +122,4 @@ def test_generic_admission_rejects_unadapted_proof_machine_handles() -> None:
         0,
     )
     with pytest.raises(UnsupportedInterfaceError, match="complete immutable"):
-        immutable_atom(proof_state)  # type: ignore[arg-type]
+        immutable_atom(cast(BlockEffect, proof_state))

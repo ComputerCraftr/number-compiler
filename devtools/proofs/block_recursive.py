@@ -53,16 +53,16 @@ class _RecursiveResidualAction:
     """
 
     __slots__ = (
-        "node_id",
-        "side",
-        "previous",
-        "tile",
-        "reversed",
         "anchor",
         "layers",
-        "transition_symbol",
-        "transition_result",
+        "node_id",
+        "previous",
+        "reversed",
+        "side",
+        "tile",
         "transition_more",
+        "transition_result",
+        "transition_symbol",
     )
     __hash__ = object.__hash__
 

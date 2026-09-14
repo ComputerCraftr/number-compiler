@@ -15,9 +15,9 @@ lanes again exposes prime periods; it does not claim a compact projection.
 
 from __future__ import annotations
 
+from collections.abc import Sequence
 from dataclasses import dataclass
 from math import comb, gcd, isqrt
-from typing import Sequence
 
 from number_compiler.arithmetic.polynomials.binomial_pow2 import binomial_mod_pow2
 
@@ -119,8 +119,7 @@ def project_binomial_prime_block(
         return BinomialPrimeProjection(start, 0, stride, 1, 0, 0, ())
     high = start + stride * (length - 1)
     limit = isqrt(high) if kmax is None else min(int(kmax), isqrt(high))
-    if limit < 1:
-        limit = 1
+    limit = max(limit, 1)
     covered = 0
     natural = 0
     kept: list[BinomialWitnessLane] = []
@@ -145,13 +144,13 @@ def project_binomial_prime_block(
 
 
 __all__ = [
+    "BinomialPrimeProjection",
+    "BinomialWitnessLane",
+    "binomial_composite",
+    "binomial_composite_witness",
     "pascal_row_prefix",
+    "project_binomial_prime_block",
     "translate_pascal_row_prefix",
     "translate_pascal_row_prefix_mod_pow2",
-    "binomial_composite_witness",
-    "binomial_composite",
     "witness_requires_shared_factor",
-    "BinomialWitnessLane",
-    "BinomialPrimeProjection",
-    "project_binomial_prime_block",
 ]

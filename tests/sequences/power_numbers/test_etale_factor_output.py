@@ -2,8 +2,8 @@ import pytest
 
 from number_compiler.api.sequence_compiler import CanonicalSequenceCompiler
 from number_compiler.sequences.power_numbers.etale_factor import (
-    mersenne_additive_etale_frobenius_probe,
     fermat_additive_etale_frobenius_probe,
+    mersenne_additive_etale_frobenius_probe,
 )
 
 
@@ -66,11 +66,16 @@ def test_composite_exponent_factor_survives_constraint_only_result() -> None:
 def test_unknown_factor_cache_does_not_mask_a_later_proof() -> None:
     compiler = CanonicalSequenceCompiler()
     result = compiler.resolve_special_theorem(
-        "mersenne", 11, collect_etale_factor=True, allow_classical_ceiling=False,
-        max_factor_products=0
+        "mersenne",
+        11,
+        collect_etale_factor=True,
+        allow_classical_ceiling=False,
+        max_factor_products=0,
     )
     assert not result.decided
-    assert compiler.resolve_special_theorem("mersenne", 11, collect_etale_factor=True).decided
+    assert compiler.resolve_special_theorem(
+        "mersenne", 11, collect_etale_factor=True
+    ).decided
     resolved = compiler.resolve_special_theorem(
         "mersenne", 11, collect_etale_factor=True, allow_classical_ceiling=False
     )
@@ -134,6 +139,7 @@ def test_no_split_is_cached_without_becoming_a_prime_certificate(
         pytest.fail("cached no-split result replayed the probe")
 
     monkeypatch.setattr(etale_factor, "_quadratic_power_pair", forbidden)
-    assert compiler.resolve_special_theorem(
-        "mersenne", 13, collect_etale_factor=True
-    ) is result
+    assert (
+        compiler.resolve_special_theorem("mersenne", 13, collect_etale_factor=True)
+        is result
+    )

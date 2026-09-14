@@ -2,9 +2,9 @@
 
 from __future__ import annotations
 
+from collections.abc import Iterable
 from dataclasses import dataclass
 from math import comb
-from typing import Iterable, Tuple
 
 from number_compiler.arithmetic.fields.radix import digits_lsd
 
@@ -39,7 +39,7 @@ class BulkPower:
     def no_growths(self) -> int:
         return self.steps - self.growths
 
-    def compose(self, other: "BulkPower") -> "BulkPower":
+    def compose(self, other: BulkPower) -> BulkPower:
         return BulkPower(self.steps + other.steps, self.growths + other.growths)
 
     def centered_multiplier(self, beta: int, prime: int) -> int:
@@ -50,7 +50,7 @@ class BulkPower:
         lam = (b + pow(b, -1, p)) % p
         return pow(2, self.no_growths, p) * pow(lam, self.growths, p) % p
 
-    def lucas_factors(self, prime: int) -> Tuple[Tuple[int, int], ...]:
+    def lucas_factors(self, prime: int) -> tuple[tuple[int, int], ...]:
         p = int(prime)
         return tuple(
             (2 * p**j, d) for j, d in enumerate(digits_lsd(self.growths, p)) if d
@@ -74,4 +74,4 @@ class BulkPower:
         return max(1, self.steps.bit_length()) + max(1, self.growths.bit_length())
 
 
-__all__ = ["radix_residue", "BulkPower"]
+__all__ = ["BulkPower", "radix_residue"]

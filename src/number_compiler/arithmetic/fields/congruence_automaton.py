@@ -14,10 +14,11 @@ multiplier one.  The automaton never stores a prime list or raw prime bitmap.
 
 from __future__ import annotations
 
+from collections.abc import Iterable, Sequence
 from dataclasses import dataclass
 from functools import lru_cache
 from math import gcd, isqrt, prod
-from typing import Iterable, Sequence, TypedDict
+from typing import TypedDict
 
 from number_compiler.arithmetic.automata.program_word import CanonicalWord, iter_runs
 from number_compiler.arithmetic.fields.morphism_core import AffineCocycle, binary_power
@@ -68,14 +69,14 @@ class FactoredAffineMorphism:
             raise ValueError((self.symbols, self.compositions))
 
     @classmethod
-    def identity(cls, moduli: Sequence[int]) -> "FactoredAffineMorphism":
+    def identity(cls, moduli: Sequence[int]) -> FactoredAffineMorphism:
         mods = tuple(map(int, moduli))
         return cls(mods, tuple(1 % m for m in mods), (0,) * len(mods), 0, 0)
 
     @classmethod
     def digit(
         cls, moduli: Sequence[int], radix: int, digit: int
-    ) -> "FactoredAffineMorphism":
+    ) -> FactoredAffineMorphism:
         mods = tuple(map(int, moduli))
         radix = int(radix)
         digit = int(digit)
@@ -86,7 +87,7 @@ class FactoredAffineMorphism:
         )
 
     @classmethod
-    def additive(cls, moduli: Sequence[int], delta: int) -> "FactoredAffineMorphism":
+    def additive(cls, moduli: Sequence[int], delta: int) -> FactoredAffineMorphism:
         mods = tuple(map(int, moduli))
         delta = int(delta)
         return cls(mods, tuple(1 for _ in mods), tuple(delta % m for m in mods), 1, 0)
@@ -95,7 +96,7 @@ class FactoredAffineMorphism:
     def cocycle(self) -> AffineCocycle[tuple[int, ...]]:
         return AffineCocycle(self.multipliers, self.offsets)
 
-    def _then_raw(self, other: "FactoredAffineMorphism") -> "FactoredAffineMorphism":
+    def _then_raw(self, other: FactoredAffineMorphism) -> FactoredAffineMorphism:
         if self.moduli != other.moduli:
             raise ValueError("incompatible factored modulus carriers")
 
@@ -114,7 +115,7 @@ class FactoredAffineMorphism:
             0,
         )
 
-    def then(self, other: "FactoredAffineMorphism") -> "FactoredAffineMorphism":
+    def then(self, other: FactoredAffineMorphism) -> FactoredAffineMorphism:
         out = self._then_raw(other)
         return FactoredAffineMorphism(
             out.moduli,
@@ -124,7 +125,7 @@ class FactoredAffineMorphism:
             self.compositions + other.compositions + 1,
         )
 
-    def power(self, exponent: int) -> "FactoredAffineMorphism":
+    def power(self, exponent: int) -> FactoredAffineMorphism:
         """Repeat this map through the shared binary-power kernel."""
         base = FactoredAffineMorphism(
             self.moduli, self.multipliers, self.offsets, self.symbols, 0
@@ -206,7 +207,7 @@ class FactoredPrimeAutomaton:
     wheel: PackedWheelProgram
 
     @classmethod
-    def build(cls, limit: int, *, word_bits: int = 62) -> "FactoredPrimeAutomaton":
+    def build(cls, limit: int, *, word_bits: int = 62) -> FactoredPrimeAutomaton:
         """Return the canonical immutable automaton for one bounded carrier.
 
         Sequence families previously rebuilt identical wheel/automaton objects
@@ -375,8 +376,11 @@ def compile_prime_block_factored_decision(
         pos = int(frame["pos"])
         prefix = int(frame["prefix"])
         state = frame["state"]
-        if not isinstance(state, FactoredCongruenceState):
-            raise AssertionError(state)
+        match state:
+            case FactoredCongruenceState():
+                pass
+            case _:
+                raise AssertionError(state)
         if pos < 0:
             if prefix >= length:
                 outside_leaves += 1
@@ -431,8 +435,11 @@ def compile_prime_block_factored_decision(
             _root = node_id
             break
         parent_children = frames[-1]["children"]
-        if not isinstance(parent_children, list):
-            raise AssertionError(parent_children)
+        match parent_children:
+            case list():
+                pass
+            case _:
+                raise AssertionError(parent_children)
         parent_children.append(node_id)
     if _root is None:
         raise AssertionError("mixed-radix decision produced no root")
@@ -599,19 +606,19 @@ def undo_binary_digit_reinterpretation(encoded: int, source_base: int) -> int:
 
 
 __all__ = [
-    "FactoredCongruenceState",
+    "CollatzFactoredResidueProjection",
     "FactoredAffineMorphism",
+    "FactoredCongruenceState",
     "FactoredPrimeAutomaton",
+    "FactoredPrimeDecisionCompilation",
+    "MixedRadixEncoding",
+    "binary_digit_reinterpretation_morphism",
+    "compile_collatz_slab_factored",
+    "compile_prime_block_factored_decision",
     "compile_radix_runs_morphism",
     "compile_word_morphism",
-    "FactoredPrimeDecisionCompilation",
-    "compile_prime_block_factored_decision",
-    "MixedRadixEncoding",
     "encode_periodic_mixed_radix",
     "mixed_radix_morphism",
-    "CollatzFactoredResidueProjection",
-    "compile_collatz_slab_factored",
-    "binary_digit_reinterpretation_morphism",
     "reinterpret_binary_digits",
     "undo_binary_digit_reinterpretation",
 ]

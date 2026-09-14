@@ -13,23 +13,23 @@ these recurrences yet, so scheduler composition is reported as zero.
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from number_compiler.arithmetic.polynomials.twisted_observer import (
-    TwistedCylinderProjection,
-)
 
 from number_compiler.arithmetic.carry.carry_normalization import (
     EndAroundCarryNormalization,
     RadixCarryAction,
     RadixCarryBlock,
-    normalization_digits_lsf,
     normalization_carry_boundaries,
+    normalization_digits_lsf,
     normalize_cyclic_block,
     normalize_negacyclic_block,
 )
-from number_compiler.arithmetic.fields.radix import digits_lsd
 from number_compiler.arithmetic.fields.morphism_core import (
     QuadraticPower,
     binary_power,
+)
+from number_compiler.arithmetic.fields.radix import digits_lsd
+from number_compiler.arithmetic.polynomials.cyclotomic_carry import (
+    CarryCyclotomicTransducer,
 )
 from number_compiler.arithmetic.polynomials.digit_convolution import (
     ConvolutionMetrics,
@@ -39,11 +39,10 @@ from number_compiler.arithmetic.polynomials.digit_convolution import (
 from number_compiler.arithmetic.polynomials.digit_cyclotomic import (
     CyclotomicDigitBlock,
 )
-from number_compiler.arithmetic.polynomials.cyclotomic_carry import (
-    CarryCyclotomicTransducer,
-)
 from number_compiler.arithmetic.polynomials.folded_square_packet import (
     FoldedSquareProjection,
+)
+from number_compiler.arithmetic.polynomials.folded_square_packet import (
     folded_square_packet as project_folded_square_packet,
 )
 from number_compiler.arithmetic.polynomials.primary_carry_jet import (
@@ -52,7 +51,12 @@ from number_compiler.arithmetic.polynomials.primary_carry_jet import (
 )
 from number_compiler.arithmetic.polynomials.radix64_mirror import (
     FoldedFifthProjection,
+)
+from number_compiler.arithmetic.polynomials.radix64_mirror import (
     folded_fifth_residue as project_folded_fifth_residue,
+)
+from number_compiler.arithmetic.polynomials.twisted_observer import (
+    TwistedCylinderProjection,
 )
 
 
@@ -91,11 +95,11 @@ class ArithmeticTileSpec:
             raise ValueError((self.family, self.width))
 
     @classmethod
-    def fermat(cls, width: int) -> "ArithmeticTileSpec":
+    def fermat(cls, width: int) -> ArithmeticTileSpec:
         return cls("fermat", int(width))
 
     @classmethod
-    def mersenne(cls, width: int) -> "ArithmeticTileSpec":
+    def mersenne(cls, width: int) -> ArithmeticTileSpec:
         return cls("mersenne", int(width))
 
     @property
@@ -141,7 +145,7 @@ class ArithmeticTileSpec:
 
 @dataclass(frozen=True, slots=True)
 class ArithmeticTileStep:
-    tile: "ArithmeticTile"
+    tile: ArithmeticTile
     normalization: EndAroundCarryNormalization
     convolution: ConvolutionMetrics
     naive_scalar_products: int
@@ -174,7 +178,7 @@ class ArithmeticTileMetrics:
     sign_quotient_nonzero_digits_saved: int = 0
     scheduler_compositions: int = 0
 
-    def add(self, step: ArithmeticTileStep) -> "ArithmeticTileMetrics":
+    def add(self, step: ArithmeticTileStep) -> ArithmeticTileMetrics:
         convolution = step.convolution
         return ArithmeticTileMetrics(
             self.primitive_steps + 1,
@@ -195,7 +199,7 @@ class ArithmeticTileMetrics:
 
 @dataclass(frozen=True, slots=True)
 class ArithmeticTileRun:
-    tile: "ArithmeticTile"
+    tile: ArithmeticTile
     metrics: ArithmeticTileMetrics
 
     @property
@@ -205,6 +209,9 @@ class ArithmeticTileRun:
     @property
     def primitive_steps(self) -> int:
         return self.metrics.primitive_steps
+
+
+_DEFAULT_QUADRATIC_POWER_IDENTITY_1 = QuadraticPower.identity()
 
 
 @dataclass(frozen=True, slots=True)
@@ -218,7 +225,7 @@ class SquareTileAction:
     """
 
     family: str
-    endpoint_power: QuadraticPower = QuadraticPower.identity()
+    endpoint_power: QuadraticPower = _DEFAULT_QUADRATIC_POWER_IDENTITY_1
     compositions: int = field(default=0, compare=False)
 
     def __post_init__(self) -> None:
@@ -226,18 +233,18 @@ class SquareTileAction:
             raise ValueError((self.family, self.compositions))
 
     @classmethod
-    def identity(cls, family: str) -> "SquareTileAction":
+    def identity(cls, family: str) -> SquareTileAction:
         return cls(str(family))
 
     @classmethod
-    def atom(cls, family: str) -> "SquareTileAction":
+    def atom(cls, family: str) -> SquareTileAction:
         return cls(str(family), QuadraticPower.atom())
 
     @property
     def span(self) -> int:
         return self.endpoint_power.depth
 
-    def then(self, other: "SquareTileAction") -> "SquareTileAction":
+    def then(self, other: SquareTileAction) -> SquareTileAction:
         if not isinstance(other, SquareTileAction):
             raise TypeError(type(other))
         if self.family != other.family:
@@ -248,7 +255,7 @@ class SquareTileAction:
             self.compositions + other.compositions + 1,
         )
 
-    def power_block(self, exponent: int) -> "SquareTileAction":
+    def power_block(self, exponent: int) -> SquareTileAction:
         exponent = int(exponent)
         if exponent < 0:
             raise ValueError(exponent)
@@ -313,7 +320,7 @@ class ArithmeticTile:
             raise ValueError("noncanonical arithmetic tile digit block")
 
     @classmethod
-    def from_value(cls, spec: ArithmeticTileSpec, value: int) -> "ArithmeticTile":
+    def from_value(cls, spec: ArithmeticTileSpec, value: int) -> ArithmeticTile:
         value = int(value) % spec.modulus
         return cls(spec, spec.block(_representative_digits(value, spec)))
 
@@ -519,6 +526,6 @@ __all__ = [
     "ArithmeticTileRun",
     "ArithmeticTileSpec",
     "ArithmeticTileStep",
-    "SquareTileAction",
     "SquarePrecisionMap",
+    "SquareTileAction",
 ]

@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from array import array
-from typing import TYPE_CHECKING, Never
+from typing import Never
 
 import pytest
 
@@ -25,9 +25,6 @@ from number_compiler.sequences.reverse_add.compilation import (
 )
 from number_compiler.sequences.reverse_add.power import ReverseAddPoweredTerm
 from tests.support.reverse_pair_oracle import reference_successor
-
-if TYPE_CHECKING:
-    from number_compiler.arithmetic.contracts.block_kernel import FiniteBlockEffect
 
 
 @pytest.mark.parametrize("exponent", [0, 1, 2, 3, 4, 17, 10**18])

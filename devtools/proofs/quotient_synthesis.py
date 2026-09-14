@@ -2,8 +2,8 @@
 
 from __future__ import annotations
 
+from collections.abc import Hashable, Sequence
 from dataclasses import dataclass
-from typing import Hashable, Sequence
 
 from number_compiler.arithmetic.functions.finite_unary import (
     ObserverAnalysis,
@@ -131,7 +131,7 @@ def synthesize_finite_quotient(
         result = analyze_observer(keys, next_keys, labels)
         return result, keys, _counterexample_pairs(keys, succ, labels)
 
-    analysis, keys, pairs = analyze(selected)
+    analysis, _keys, pairs = analyze(selected)
     while not analysis.closed and pairs:
         ranked: list[tuple[int, int, str, int]] = []
         for index in sorted(unused):
@@ -145,7 +145,7 @@ def synthesize_finite_quotient(
         _coverage, _neg_cost, _name, chosen = max(ranked)
         selected.append(chosen)
         unused.remove(chosen)
-        analysis, keys, pairs = analyze(selected)
+        analysis, _keys, pairs = analyze(selected)
 
     required_indices = {names.index(name) for name in required}
     if analysis.closed:
@@ -159,7 +159,7 @@ def synthesize_finite_quotient(
             if trial_analysis.closed:
                 selected = trial
                 analysis = trial_analysis
-        analysis, keys, pairs = analyze(selected)
+        analysis, _keys, pairs = analyze(selected)
 
     return FiniteQuotientSynthesis(
         tuple(cols[index].name for index in selected),
@@ -275,24 +275,24 @@ def synthesize_finite_target_observer(
 
 
 __all__ = [
-    "ObserverAnalysis",
-    "UnaryImageFiltration",
-    "UnaryMooreMinimization",
-    "ObserverFeature",
     "FiniteQuotientSynthesis",
     "FiniteTargetSynthesis",
-    "analyze_observer",
-    "unary_image_filtration",
-    "partition_equivalent",
-    "minimize_unary_moore",
-    "UnaryTransitionEffect",
-    "UnaryPowerNode",
-    "UnaryPowerArena",
-    "UnaryQuotientMachine",
+    "ObserverAnalysis",
+    "ObserverFeature",
     "UnaryBehavioralBlockReport",
-    "unary_behavioral_block_machine",
-    "unary_target_distance_machine",
+    "UnaryImageFiltration",
+    "UnaryMooreMinimization",
+    "UnaryPowerArena",
+    "UnaryPowerNode",
+    "UnaryQuotientMachine",
+    "UnaryTransitionEffect",
+    "analyze_observer",
+    "minimize_unary_moore",
+    "partition_equivalent",
     "quotient_machine_from_moore",
     "synthesize_finite_quotient",
     "synthesize_finite_target_observer",
+    "unary_behavioral_block_machine",
+    "unary_image_filtration",
+    "unary_target_distance_machine",
 ]

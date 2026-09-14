@@ -2,7 +2,8 @@
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING, Callable, cast
+from collections.abc import Callable
+from typing import TYPE_CHECKING, cast
 
 from number_compiler.hashlife.actions.field_actions import FieldCellActionID
 from number_compiler.hashlife.execution.continuations.concrete_directed_residual import (

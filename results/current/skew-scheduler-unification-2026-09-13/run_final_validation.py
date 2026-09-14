@@ -1,8 +1,8 @@
-from pathlib import Path
-from dataclasses import asdict
+import hashlib
 import json
 import sys
-import hashlib
+from dataclasses import asdict
+from pathlib import Path
 
 sys.path.insert(0, str(Path.cwd()))
 from devtools.checks.process_guard import run_guarded
@@ -185,7 +185,9 @@ elif group == "unit":
         ("final-whole-tree-ruff", [py, "-m", "ruff", "check", "."], 35, 1),
     ]
 elif group == "antihydra-growth":
-    checks = [("final-antihydra-growth", [py, str(out / "antihydra_growth_probe.py")], 35, 1)]
+    checks = [
+        ("final-antihydra-growth", [py, str(out / "antihydra_growth_probe.py")], 35, 1)
+    ]
 else:
     raise ValueError(group)
 before = source_fingerprint(Path.cwd())

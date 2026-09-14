@@ -121,23 +121,25 @@ def test_causal_payload_rejects_conflicting_observed_inputs_before_composition()
     None
 ):
     ledger, tiles, adapter, action, scheduler = _runtime(BaseBlockEffect(3))
-    with _tile(tiles, adapter, action, (0,)) as source:
-        with scheduler.complete(
+    with (
+        _tile(tiles, adapter, action, (0,)) as source,
+        scheduler.complete(
             action,
             source.tile,
             adapter.initial_ports(action),
             adapter.wiring(action),
-        ) as result:
-            value = result.result
-            semantics = ResultSemantics(
-                value.outgoing,
-                value.outgoing_ports,
-                observed_input_ports=(0, 0),
-            )
-            before = ledger.snapshot()
-            with pytest.raises(ValueError, match="disagree"):
-                CausalCompletedOutput(result.output, semantics, (1, 0))
-            assert ledger.snapshot() == before
+        ) as result,
+    ):
+        value = result.result
+        semantics = ResultSemantics(
+            value.outgoing,
+            value.outgoing_ports,
+            observed_input_ports=(0, 0),
+        )
+        before = ledger.snapshot()
+        with pytest.raises(ValueError, match="disagree"):
+            CausalCompletedOutput(result.output, semantics, (1, 0))
+        assert ledger.snapshot() == before
 
 
 @pytest.mark.parametrize("bad", (False, True, 0.0, 1.0))

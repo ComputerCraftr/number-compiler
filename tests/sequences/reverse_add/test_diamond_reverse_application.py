@@ -1,6 +1,6 @@
 """Certified reverse/add uses the shared field-transfer executor."""
 
-from typing import Never
+from typing import Never, cast
 
 import pytest
 
@@ -81,4 +81,4 @@ def test_certified_route_rejects_noninteger_metadata(
     base: object,
 ) -> None:
     with pytest.raises(TypeError):
-        ReverseAddPoweredTerm(seed, steps, base=base)  # type: ignore[arg-type]
+        ReverseAddPoweredTerm(cast(int, seed), cast(int, steps), base=cast(int, base))

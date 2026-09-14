@@ -91,7 +91,9 @@ def test_dyadic_temporal_power_uses_one_primitive_and_source_binding(
     with monkeypatch.context() as poison:
 
         def forbidden(*_args: object, **_kwargs: object) -> None:
-            raise AssertionError("temporal squaring reconstructed a primitive or midpoint")
+            raise AssertionError(
+                "temporal squaring reconstructed a primitive or midpoint"
+            )
 
         poison.setattr(FreeCylinderResidualArena, "primitive", forbidden)
         poison.setattr(HenselAffineBlock, "apply_exact", forbidden)

@@ -989,4 +989,4 @@ class HashLifeBehaviorMetrics(LedgerMetrics):
     bounded_application_residual_physical_steps: int = 0
 
 
-__all__ = ["HashLifeProjectionMetrics", "HashLifeBehaviorMetrics"]
+__all__ = ["HashLifeBehaviorMetrics", "HashLifeProjectionMetrics"]

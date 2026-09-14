@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING, Never, cast
+from typing import Never, cast
 
 import pytest
 
@@ -15,11 +15,6 @@ from number_compiler.hashlife.interfaces.diamond_quotient import LocalInterfaceI
 from number_compiler.hashlife.tiles.tiles import TileArena, TileID
 from number_compiler.resources.ledger import ResourceLedger
 from tests.arithmetic.contracts.test_tile_kernel import _runtime, _tile
-
-if TYPE_CHECKING:
-    from number_compiler.hashlife.execution.tile_causal_interfaces import (
-        CausalInterfacePayload,
-    )
 
 
 class _InterfaceEngine:
@@ -122,7 +117,7 @@ def test_causal_width_clips_activity_outside_limit() -> None:
 
 @pytest.mark.parametrize("bad", (False, True, 1.0, -1, 5))
 def test_causal_width_rejects_invalid_limits_before_tasks(
-    bad: bool | float | int,
+    bad: bool | float,
 ) -> None:
     effect = BaseBlockEffect(3)
     ledger, tiles, adapter, action, _scheduler = _runtime(effect)

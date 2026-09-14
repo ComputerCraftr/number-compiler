@@ -2,9 +2,9 @@
 
 from __future__ import annotations
 
+from collections.abc import Sequence
 from dataclasses import dataclass
-from functools import lru_cache
-from typing import Sequence
+from functools import cache
 
 from number_compiler.arithmetic.automata.symmetry_powering import (
     ActionTransform,
@@ -29,7 +29,7 @@ class CarryWordAction:
         return self.ref.transform
 
 
-@lru_cache(maxsize=None)
+@cache
 def reverse_add_carry_kernel(base: int = 10) -> FiniteKernel:
     base = int(base)
     if base < 2:
@@ -56,7 +56,7 @@ def reverse_add_carry_kernel(base: int = 10) -> FiniteKernel:
     )
 
 
-@lru_cache(maxsize=None)
+@cache
 def collatz_mul3_carry_kernel(base: int = 10) -> FiniteKernel:
     base = int(base)
     if base < 3:
@@ -126,10 +126,10 @@ def collatz_mul3_carry_word_action(
 
 __all__ = [
     "CarryWordAction",
-    "reverse_add_carry_kernel",
-    "collatz_mul3_carry_kernel",
-    "reverse_add_carry_action_arena",
     "collatz_mul3_carry_action_arena",
-    "reverse_add_carry_word_action",
+    "collatz_mul3_carry_kernel",
     "collatz_mul3_carry_word_action",
+    "reverse_add_carry_action_arena",
+    "reverse_add_carry_kernel",
+    "reverse_add_carry_word_action",
 ]

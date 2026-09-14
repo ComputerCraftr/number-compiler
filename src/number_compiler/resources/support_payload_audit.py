@@ -3,7 +3,8 @@
 from number_compiler.resources.antihydra_payload_audit import audit_antihydra_payloads
 from number_compiler.resources.ledger import ResourceLedger
 from number_compiler.resources.physical_support_payload_audit import (
-    PhysicalSupportPayloadAudit, audit_physical_support_payloads,
+    PhysicalSupportPayloadAudit,
+    audit_physical_support_payloads,
 )
 
 
@@ -13,4 +14,5 @@ def audit_support_payloads(ledger: ResourceLedger) -> PhysicalSupportPayloadAudi
         return collatz
     antihydra = audit_antihydra_payloads(ledger)
     return PhysicalSupportPayloadAudit(
-        collatz.approved | antihydra.approved, collatz.invalid | antihydra.invalid)
+        collatz.approved | antihydra.approved, collatz.invalid | antihydra.invalid
+    )

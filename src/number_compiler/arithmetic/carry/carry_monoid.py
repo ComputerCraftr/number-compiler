@@ -2,9 +2,9 @@
 
 from __future__ import annotations
 
+from collections.abc import Sequence
 from dataclasses import dataclass
 from enum import Enum
-from typing import Sequence
 
 
 class CarryFn(Enum):
@@ -133,10 +133,10 @@ def scan_carry_automaton(
 
 __all__ = [
     "CarryFn",
-    "apply_carry_fn",
-    "compose_carry_fn",
-    "carry_fn_from_outputs",
-    "value_carry_fn",
     "CarryScanAutomatonResult",
+    "apply_carry_fn",
+    "carry_fn_from_outputs",
+    "compose_carry_fn",
     "scan_carry_automaton",
+    "value_carry_fn",
 ]

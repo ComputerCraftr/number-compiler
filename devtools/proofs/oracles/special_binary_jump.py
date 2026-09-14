@@ -14,10 +14,10 @@ They must never be mistaken for the missing higher-``2^k`` character reader.
 from __future__ import annotations
 
 from dataclasses import dataclass
-from functools import lru_cache
+from functools import cache
 from hashlib import sha256
 
-from devtools.proofs.immutable_artifacts import ArtifactKey, REGISTRY
+from devtools.proofs.immutable_artifacts import REGISTRY, ArtifactKey
 from number_compiler.arithmetic.functions.finite_unary import (
     UnaryQuotientMachine,
     analyze_observer,
@@ -231,7 +231,7 @@ def _mersenne_carrier_proof(
     return proof
 
 
-@lru_cache(maxsize=None)
+@cache
 def build_mersenne_binary_jump(
     exponent: int, *, max_exponent: int = 13
 ) -> SpecialBinaryJumpProgram:
@@ -291,8 +291,7 @@ def _fermat_radix_orbit_representative_with_shifts(
         current = (current << 1) % modulus
         if current == value:
             return best, shifts
-        if current < best:
-            best = current
+        best = min(best, current)
     raise AssertionError(("bad-fermat-radix-order", n, value, current))
 
 
@@ -393,7 +392,7 @@ def _fermat_carrier_proof(index: int, *, max_width: int = 16) -> _SpecialCarrier
     return proof
 
 
-@lru_cache(maxsize=None)
+@cache
 def build_fermat_binary_jump(
     index: int, *, max_width: int = 16
 ) -> SpecialBinaryJumpProgram:
@@ -425,10 +424,10 @@ def build_fermat_binary_jump(
 __all__ = [
     "SpecialBinaryJumpApplication",
     "SpecialBinaryJumpProgram",
-    "mersenne_sign_representative",
-    "build_mersenne_binary_jump",
-    "fermat_radix_orbit_representative",
     "build_fermat_binary_jump",
     "build_fermat_carrier_proof_uncached",
+    "build_mersenne_binary_jump",
     "build_mersenne_carrier_proof_uncached",
+    "fermat_radix_orbit_representative",
+    "mersenne_sign_representative",
 ]

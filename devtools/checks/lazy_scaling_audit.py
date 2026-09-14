@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import itertools
 from collections.abc import Mapping, Sequence
 from math import log2
 from typing import NotRequired, Required, TypedDict
@@ -163,14 +164,14 @@ def assess_series(
         raise ValueError(
             "positive horizons, nonnegative values and slack >= 1 required"
         )
-    if any(b <= a for a, b in zip(steps, steps[1:], strict=False)):
+    if any(b <= a for a, b in itertools.pairwise(steps)):
         raise ValueError("horizons must increase")
     logs = [1 + log2(n) for n in steps]
     normalized = [value / size for value, size in zip(values, logs, strict=True)]
     envelope = [(values[0] + 1) * size / logs[0] * slack for size in logs]
     ratios = [
         None if before == 0 else after / before
-        for before, after in zip(values, values[1:], strict=False)
+        for before, after in itertools.pairwise(values)
     ]
     exponents = [
         None if before == 0 or after == 0 else log2(after / before) / log2(b / a)

@@ -40,12 +40,15 @@ def audit_mapping_items(value: Mapping[_K, _V]) -> tuple[tuple[_K, _V], ...]:
             )
         ):
             return cast(tuple[tuple[_K, _V], ...], tuple(store._data.items()))
-    if type(current) is LedgerDict and current.ledger.is_factory_container(current):
-        if any(
+    if (
+        type(current) is LedgerDict
+        and current.ledger.is_factory_container(current)
+        and any(
             owner == current.owner and container is current
             for owner, container in current.ledger.iter_containers()
-        ):
-            return cast(tuple[tuple[_K, _V], ...], tuple(current._data.items()))
+        )
+    ):
+        return cast(tuple[tuple[_K, _V], ...], tuple(current._data.items()))
     try:
         return cast(tuple[tuple[_K, _V], ...], tuple(current.items()))
     except (KeyError, TypeError):

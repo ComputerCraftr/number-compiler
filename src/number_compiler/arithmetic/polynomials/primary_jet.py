@@ -17,8 +17,8 @@ need one operation per represented digit merely to construct the primary jet.
 
 from __future__ import annotations
 
+from collections.abc import Iterable, Sequence
 from dataclasses import dataclass
-from typing import Iterable, Sequence
 
 from number_compiler.arithmetic.automata.program_word import CanonicalWord, iter_runs
 from number_compiler.arithmetic.fields.morphism_core import AffineCocycle, binary_power
@@ -105,12 +105,12 @@ class PrimaryJetBlock:
         )
 
     @classmethod
-    def identity(cls, degree: int, modulus: int) -> "PrimaryJetBlock":
+    def identity(cls, degree: int, modulus: int) -> PrimaryJetBlock:
         degree, modulus = int(degree), int(modulus)
         return cls(degree, modulus, 0, _one(degree), (0,) * degree, 0)
 
     @classmethod
-    def digit(cls, digit: int, *, degree: int, modulus: int) -> "PrimaryJetBlock":
+    def digit(cls, digit: int, *, degree: int, modulus: int) -> PrimaryJetBlock:
         degree, modulus = int(degree), int(modulus)
         return cls(
             degree,
@@ -121,7 +121,7 @@ class PrimaryJetBlock:
             0,
         )
 
-    def then(self, higher: "PrimaryJetBlock") -> "PrimaryJetBlock":
+    def then(self, higher: PrimaryJetBlock) -> PrimaryJetBlock:
         """Place ``higher`` immediately above this lower-position block."""
         if (self.degree, self.modulus) != (higher.degree, higher.modulus):
             raise ValueError("incompatible primary jets")
@@ -135,7 +135,7 @@ class PrimaryJetBlock:
             self.compositions + higher.compositions + 1,
         )
 
-    def _then_raw(self, higher: "PrimaryJetBlock") -> "PrimaryJetBlock":
+    def _then_raw(self, higher: PrimaryJetBlock) -> PrimaryJetBlock:
         if (self.degree, self.modulus) != (higher.degree, higher.modulus):
             raise ValueError("incompatible primary jets")
         shifted = _poly_mul(self.power, higher.jet, self.modulus)
@@ -148,7 +148,7 @@ class PrimaryJetBlock:
             0,
         )
 
-    def power_block(self, exponent: int) -> "PrimaryJetBlock":
+    def power_block(self, exponent: int) -> PrimaryJetBlock:
         """Repeat this block through the repository-wide binary power kernel."""
         base = PrimaryJetBlock(
             self.degree, self.modulus, self.length, self.power, self.jet, 0
@@ -256,7 +256,7 @@ class PrimaryJetAffineMorphism:
         )
 
     @classmethod
-    def identity(cls, degree: int, modulus: int) -> "PrimaryJetAffineMorphism":
+    def identity(cls, degree: int, modulus: int) -> PrimaryJetAffineMorphism:
         return cls(
             int(degree), int(modulus), _one(int(degree)), (0,) * int(degree), 0, 0
         )
@@ -264,7 +264,7 @@ class PrimaryJetAffineMorphism:
     @classmethod
     def reverse_add_event(
         cls, event: Sequence[int], growth: int, *, degree: int, modulus: int
-    ) -> "PrimaryJetAffineMorphism":
+    ) -> PrimaryJetAffineMorphism:
         growth = int(growth)
         degree = int(degree)
         modulus = int(modulus)
@@ -286,7 +286,7 @@ class PrimaryJetAffineMorphism:
         *,
         degree: int = 5,
         modulus: int = 32,
-    ) -> "PrimaryJetAffineMorphism":
+    ) -> PrimaryJetAffineMorphism:
         """Return the exact first-order transport ``J -> 2*X*J + B``.
 
         ``X`` and ``B`` are truncated primary germs.  Quadratic ``J**2`` is a
@@ -324,9 +324,7 @@ class PrimaryJetAffineMorphism:
         """Whether no old primary-jet source can affect this action."""
         return not any(self.kernel)
 
-    def _then_raw(
-        self, other: "PrimaryJetAffineMorphism"
-    ) -> "PrimaryJetAffineMorphism":
+    def _then_raw(self, other: PrimaryJetAffineMorphism) -> PrimaryJetAffineMorphism:
         if (self.degree, self.modulus) != (other.degree, other.modulus):
             raise ValueError("incompatible primary affine morphisms")
         cocycle = self.cocycle.then(
@@ -343,7 +341,7 @@ class PrimaryJetAffineMorphism:
             0,
         )
 
-    def then(self, other: "PrimaryJetAffineMorphism") -> "PrimaryJetAffineMorphism":
+    def then(self, other: PrimaryJetAffineMorphism) -> PrimaryJetAffineMorphism:
         out = self._then_raw(other)
         return PrimaryJetAffineMorphism(
             out.degree,
@@ -354,7 +352,7 @@ class PrimaryJetAffineMorphism:
             self.compositions + other.compositions + 1,
         )
 
-    def power(self, exponent: int) -> "PrimaryJetAffineMorphism":
+    def power(self, exponent: int) -> PrimaryJetAffineMorphism:
         base = PrimaryJetAffineMorphism(
             self.degree, self.modulus, self.kernel, self.offset, self.steps, 0
         )
@@ -386,8 +384,8 @@ class PrimaryJetAffineMorphism:
 
 
 __all__ = [
-    "PrimaryJetBlock",
     "PrimaryJetAffineMorphism",
+    "PrimaryJetBlock",
     "primary_jet_from_digits",
     "primary_jet_from_runs",
     "primary_jet_from_word",

@@ -2,7 +2,8 @@
 
 from __future__ import annotations
 
-from typing import Protocol, Sequence, TypeAlias
+from collections.abc import Sequence
+from typing import Protocol, TypeAlias
 
 from number_compiler.arithmetic.contracts.block_effect import BlockEffect
 from number_compiler.arithmetic.contracts.source_geometry import SourceGeometry

@@ -503,16 +503,16 @@ def certify_local_symmetry(
     ):
         raise ValueError("causal symmetry certificate requires the exact identity")
     # The admitted set must be a group under the two commuting involutions.
-    for first in by_transform:
-        for second in by_transform:
+    for first, first_effect in by_transform.items():
+        for second, second_effect in by_transform.items():
             combined = ActionTransform(int(first) ^ int(second))
             if combined not in by_transform:
                 raise ValueError(
                     "declared causal transforms are not composition-closed"
                 )
             _validate_composition(
-                by_transform[first],
-                by_transform[second],
+                first_effect,
+                second_effect,
                 by_transform[combined],
             )
     key = (
@@ -923,21 +923,21 @@ def _ordinal(value: int, size: int, role: str) -> None:
 
 
 __all__ = [
+    "MAX_PRIMITIVE_BEHAVIOR_TABLE_ENTRIES",
+    "PRIMITIVE_CHANNEL_CONTRACT",
+    "PRIMITIVE_CHANNEL_SCHEMA",
+    "PRIMITIVE_OCCURRENCE_SCHEMA",
     "CertifiedLocalSymmetry",
     "LocalSymmetryWitness",
     "PrimitiveBehaviorKernel",
-    "PrimitiveBehaviorWork",
-    "PRIMITIVE_CHANNEL_SCHEMA",
-    "PRIMITIVE_CHANNEL_CONTRACT",
-    "PRIMITIVE_OCCURRENCE_SCHEMA",
-    "MAX_PRIMITIVE_BEHAVIOR_TABLE_ENTRIES",
     "PrimitiveBehaviorQuotient",
     "PrimitiveBehaviorTable",
+    "PrimitiveBehaviorWork",
     "capture_primitive_behavior",
     "certify_local_symmetry",
     "identity_symmetry",
-    "validate_certified_local_symmetry",
     "minimize_primitive_behavior",
     "primitive_behavior_table_slots",
+    "validate_certified_local_symmetry",
     "validate_primitive_behavior_quotient",
 ]

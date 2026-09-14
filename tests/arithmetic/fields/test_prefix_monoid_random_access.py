@@ -142,7 +142,7 @@ def test_prefix_predicate_selects_first_failure_without_linear_point_scan() -> N
 def test_collatz_sentinel_formula_endpoint_uses_prefix_select_not_sentinel_scan(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    import number_compiler.arithmetic.fields.digit_formula as digit_formula
+    from number_compiler.arithmetic.fields import digit_formula
     from number_compiler.arithmetic.fields.digit_formula import digit_root_from_values
     from number_compiler.sequences.collatz.raw_field import (
         accelerated_collatz_sentinel_formula_step,

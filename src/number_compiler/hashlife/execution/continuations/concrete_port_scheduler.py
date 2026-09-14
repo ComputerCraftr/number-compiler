@@ -2,8 +2,8 @@
 
 from __future__ import annotations
 
-from collections.abc import MutableMapping
-from typing import Callable, Protocol, cast
+from collections.abc import Callable, MutableMapping
+from typing import Protocol, cast
 
 from number_compiler.arithmetic.contracts.scoped_handles import ArenaToken
 from number_compiler.hashlife.actions.field_actions import FieldCellActionID

@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from collections.abc import Hashable
 from dataclasses import dataclass
-from typing import TYPE_CHECKING, Never, TypeVar
+from typing import Never, TypeVar
 
 import pytest
 
@@ -46,9 +46,6 @@ from number_compiler.hashlife.tiles.tiles import (
 )
 from number_compiler.resources.ledger import ResourceLedger
 from number_compiler.resources.stores import LedgerDict
-
-if TYPE_CHECKING:
-    from number_compiler.hashlife.actions.field_actions import FieldCellActionID
 
 
 class _Actions:

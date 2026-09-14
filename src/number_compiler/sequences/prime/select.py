@@ -24,12 +24,13 @@ from number_compiler.sequences.prime.coprime_rank import (
     CoprimeRankDAG,
 )
 
-
 _PRIME_CACHE_NAMESPACE = "prime.coprime-rank"
 _PRIME_CACHE_VERSION = "positive-integers-least-survivor-v1"
 _PRIME_CACHE_ISSUER = urandom(32)
 _PRIME_CACHE_SOURCE = (
-    "positive-integers", "consecutive-prime-prefix", _PRIME_CACHE_ISSUER,
+    "positive-integers",
+    "consecutive-prime-prefix",
+    _PRIME_CACHE_ISSUER,
 )
 _PREFIX_KEY = ("admitted-prefix",)
 
@@ -70,10 +71,13 @@ def _validate_cached_prefix(payload: object) -> tuple[int, tuple[int, ...], int,
         raise RuntimeError("invalid shared prime prefix manifest")
     covered_root, raw_factors, state_count = payload
     if (
-        type(covered_root) is not int or covered_root < 2
-        or type(raw_factors) is not tuple or not raw_factors
+        type(covered_root) is not int
+        or covered_root < 2
+        or type(raw_factors) is not tuple
+        or not raw_factors
         or len(raw_factors) > MAX_SHARED_FACTOR_STAGES
-        or type(state_count) is not int or state_count < 0
+        or type(state_count) is not int
+        or state_count < 0
     ):
         raise RuntimeError("invalid shared prime prefix manifest")
     factors = cast(tuple[int, ...], raw_factors)
@@ -97,7 +101,11 @@ class PrimePrefixRank:
     """
 
     def __init__(
-        self, *, max_states: int, max_work: int, max_stages: int,
+        self,
+        *,
+        max_states: int,
+        max_work: int,
+        max_stages: int,
         shared_cache: bool = False,
     ) -> None:
         if type(max_stages) is not int or max_stages < 1:
@@ -133,7 +141,9 @@ class PrimePrefixRank:
                 raise
         try:
             self.dag = CoprimeRankDAG(
-                (2,), max_states=max_states, max_work=max_work,
+                (2,),
+                max_states=max_states,
+                max_work=max_work,
                 # If the prior query needed more states than this request
                 # admits, execute locally.  This makes a large warm query fail
                 # at the same boundary while allowing a genuinely smaller one.
@@ -163,8 +173,7 @@ class PrimePrefixRank:
             # recurrence footprint. Smaller horizons instead import a strict
             # prefix and construct their demanded Phi states locally.
             raise ValueError("prime state budget exceeded (--max-prime-states)")
-        if root > self._cached_covered_root:
-            root = self._cached_covered_root
+        root = min(root, self._cached_covered_root)
         required = 0
         previous = 1
         for factor in self._cached_factors:
@@ -178,7 +187,7 @@ class PrimePrefixRank:
             previous = factor
         if required > self.max_stages:
             raise ValueError("prime stage budget exceeded (--max-prime-stages)")
-        for factor in self._cached_factors[self.dag.factor_count:required]:
+        for factor in self._cached_factors[self.dag.factor_count : required]:
             # The cache partition includes a process-private issuer capability;
             # public/foreign partitions cannot enter this source binding.
             self.dag._append_issued_consecutive_factor(factor)
@@ -283,9 +292,7 @@ class PrimePrefixRank:
         # number of root states retained by the process cache.  A warm request
         # therefore cannot use reuse to evade its state budget.
         state_count = max(self._imported_states, len(self.dag.memo))
-        self._lease.put(
-            _PREFIX_KEY, (self.covered_root, self.dag.primes, state_count)
-        )
+        self._lease.put(_PREFIX_KEY, (self.covered_root, self.dag.primes, state_count))
 
     def shared_metrics(self) -> tuple[int, int, int, int, int, int, int]:
         if self._lease is None or self._cache_start is None:
@@ -305,8 +312,13 @@ class PrimePrefixRank:
 
 
 def nth_prime_at_or_after(
-    start: int, index: int, *, leaf_length: int = 8,
-    max_states: int = 131_072, max_work: int = 1_000_000, max_stages: int = 4096,
+    start: int,
+    index: int,
+    *,
+    leaf_length: int = 8,
+    max_states: int = 131_072,
+    max_work: int = 1_000_000,
+    max_stages: int = 4096,
     shared_cache: bool = False,
 ) -> tuple[int, PrimeRankSelectMetrics]:
     """Return zero-based prime index at/above start, with finite work budgets.
@@ -320,7 +332,9 @@ def nth_prime_at_or_after(
     if start < 0 or index < 0 or leaf_length < 8:
         raise ValueError((start, index, leaf_length))
     if any(type(v) is not int or v < 1 for v in (max_states, max_work, max_stages)):
-        raise ValueError("prime states, work and stage budgets must be positive integers")
+        raise ValueError(
+            "prime states, work and stage budgets must be positive integers"
+        )
     if type(shared_cache) is not bool:
         raise TypeError("prime shared-cache flag must be a boolean")
     remaining = index
@@ -337,9 +351,12 @@ def nth_prime_at_or_after(
     length = max(leaf_length, 4 * (remaining + 1))
     compilations = expansions = descents = max_length = 0
     context = PrimePrefixRank(
-        max_states=max_states, max_work=max_work, max_stages=max_stages,
+        max_states=max_states,
+        max_work=max_work,
+        max_stages=max_stages,
         shared_cache=shared_cache,
     )
+
     def compile_count(block_start: int, block_length: int) -> int:
         nonlocal compilations, max_length
         compilations += 1
@@ -380,24 +397,47 @@ def nth_prime_at_or_after(
         scheduler_allocations = partial.peak_scheduler_entries
         context.publish()
         (
-            shared_hits, shared_misses, shared_entries, shared_bytes,
-            shared_evictions, shared_bypasses, shared_publications,
+            shared_hits,
+            shared_misses,
+            shared_entries,
+            shared_bytes,
+            shared_evictions,
+            shared_bypasses,
+            shared_publications,
         ) = context.shared_metrics()
         return odd_start, PrimeRankSelectMetrics(
-            compilations, dag.work, max_length, 1, expansions, descents,
-            len(dag.memo), dag.cache_hits, dag.factor_count, context.discovery_queries,
+            compilations,
+            dag.work,
+            max_length,
+            1,
+            expansions,
+            descents,
+            len(dag.memo),
+            dag.cache_hits,
+            dag.factor_count,
+            context.discovery_queries,
             dag.peak_pending_frames,
             len(dag.memo) + len(dag.progression_memo) + dag.factor_count,
             dag.arithmetic_bit_work,
-            0, shared_hits, shared_misses, shared_entries, shared_bytes,
+            0,
+            shared_hits,
+            shared_misses,
+            shared_entries,
+            shared_bytes,
             len(dag.memo) + len(dag.progression_memo) + dag.factor_count,
-            shared_evictions, shared_bypasses,
-            shared_publications, context.admission_work,
-            scheduler_work, scheduler_allocations,
-            tuple(sorted(
-                (name, count) for name, count in dag.ledger.counters.items()
-                if name.startswith(("source_image_", "prime_partial_successor_"))
-            )),
+            shared_evictions,
+            shared_bypasses,
+            shared_publications,
+            context.admission_work,
+            scheduler_work,
+            scheduler_allocations,
+            tuple(
+                sorted(
+                    (name, count)
+                    for name, count in dag.ledger.counters.items()
+                    if name.startswith(("source_image_", "prime_partial_successor_"))
+                )
+            ),
         )
     finally:
         context.close()

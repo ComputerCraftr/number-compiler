@@ -23,9 +23,9 @@ representative is interpreted with the reverse *word action*, exactly as in
 from __future__ import annotations
 
 import weakref
+from collections.abc import Callable, Hashable
 from dataclasses import dataclass
 from enum import Enum
-from typing import Callable, Hashable
 
 from number_compiler.arithmetic.automata.symmetry_powering import ActionTransform
 from number_compiler.arithmetic.fields.dyadic_tile import (
@@ -64,7 +64,7 @@ class DomainCell:
 class DomainCellCodec:
     """Intern semantic cells and a proved involutive conjugacy."""
 
-    __slots__ = ("family", "_cells", "_ids", "_conjugate", "_conjugate_ids")
+    __slots__ = ("_cells", "_conjugate", "_conjugate_ids", "_ids", "family")
 
     def __init__(
         self,
@@ -144,7 +144,7 @@ class NormalizedDomainFrame:
     span: DyadicSpan
 
     @classmethod
-    def prefix(cls, active_length: int, logical_length: int) -> "NormalizedDomainFrame":
+    def prefix(cls, active_length: int, logical_length: int) -> NormalizedDomainFrame:
         active_length, logical_length = int(active_length), int(logical_length)
         return cls(
             active_length,
@@ -180,15 +180,15 @@ class CanonicalDomainArena:
     """Canonicalize dyadic domain/content tiles under causal mirror/conjugacy."""
 
     __slots__ = (
-        "codec",
-        "carry_direction",
-        "_mirror",
-        "_conjugate",
-        "_refs",
-        "_keys",
-        "_mirror_hits",
-        "_conjugate_hits",
         "_canonical_hits",
+        "_conjugate",
+        "_conjugate_hits",
+        "_keys",
+        "_mirror",
+        "_mirror_hits",
+        "_refs",
+        "carry_direction",
+        "codec",
     )
 
     def __init__(self, codec: DomainCellCodec) -> None:
@@ -451,13 +451,13 @@ def collatz_digit_codec(base: int = 4) -> DomainCellCodec:
 
 
 __all__ = [
+    "CanonicalDomainArena",
+    "CanonicalDomainRef",
     "CarryDirection",
     "DomainCell",
     "DomainCellCodec",
-    "CanonicalDomainRef",
     "NormalizedDomainFrame",
-    "CanonicalDomainArena",
-    "reverse_pair_codec",
-    "reverse_history_codec",
     "collatz_digit_codec",
+    "reverse_history_codec",
+    "reverse_pair_codec",
 ]

@@ -4,8 +4,8 @@ from __future__ import annotations
 
 from number_compiler.arithmetic.carry.reverse_port_functions import (
     ReverseLeftTransfer,
-    ReverseRightTransfer,
     ReversePortCodec,
+    ReverseRightTransfer,
 )
 from number_compiler.hashlife.behavior.reverse_bound_output import ReverseBoundOutput
 from number_compiler.hashlife.execution.reverse_morphism_transfer import (

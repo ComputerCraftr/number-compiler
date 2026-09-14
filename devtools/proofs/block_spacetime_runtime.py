@@ -6,7 +6,8 @@ IDs are diagnostics only; they are never a lifetime boundary for HashLife reuse.
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING, Callable, TypeGuard, TypeVar, cast
+from collections.abc import Callable
+from typing import TYPE_CHECKING, TypeGuard, TypeVar, cast
 
 from devtools.proofs.block_recursive import (
     _ProviderLayer,

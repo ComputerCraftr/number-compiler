@@ -39,7 +39,9 @@ def _row() -> CausalGrowthRow:
         boundary_output_failures=0,
         boundary_output_piece_normalizations=0,
     )
-    return CausalGrowthRow(**values)  # type: ignore[arg-type]
+    row = runner._parse_row(values)
+    assert row is not None
+    return row
 
 
 def test_release_runner_keeps_five_trials_and_full_horizon_manifest() -> None:

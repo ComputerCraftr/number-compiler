@@ -7,8 +7,8 @@ import pytest
 from number_compiler.arithmetic.contracts.block_kernel import BaseBlockEffect
 from number_compiler.arithmetic.contracts.scoped_handles import ExactSource
 from number_compiler.arithmetic.contracts.source_geometry import SourceGeometry
-from number_compiler.hashlife.observation.tile_projection import build_tile_projection
 from number_compiler.hashlife.execution.tile_kernel import PrimitiveTileKernelAdapter
+from number_compiler.hashlife.observation.tile_projection import build_tile_projection
 from number_compiler.hashlife.tiles.tile_boundaries import BoundaryTileOperands
 from number_compiler.hashlife.tiles.tile_result_records import (
     ReverseThresholdSummaryKey,

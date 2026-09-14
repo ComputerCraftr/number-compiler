@@ -13,17 +13,14 @@ from number_compiler.arithmetic.functions.finite_function_types import (
     FunctionSignature,
 )
 from number_compiler.arithmetic.functions.finite_port_action import PortVariable
-from number_compiler.hashlife.interfaces.semantic_bits import BitFunctionArena
+from number_compiler.hashlife.interfaces.semantic_bits import (
+    BitFunctionArena,
+)
 from number_compiler.resources.ledger import ResourceLedger
 from number_compiler.resources.metric_collection import collect_ledger_metrics
 
 if TYPE_CHECKING:
-    from number_compiler.arithmetic.functions.finite_function_types import (
-        AtomSort,
-        FinitePort,
-    )
     from number_compiler.hashlife.interfaces.semantic_bits import (
-        BitFunctionArena,
         FactoredFunctionID,
     )
 
@@ -94,7 +91,7 @@ def test_complete_composition_audit_handles_correlations_and_simultaneous_partia
 def test_memo_injection_rejects_wrong_semantics_scope_and_replacement_declarations(
     mode: str,
 ) -> None:
-    arena, ports, sort, function, x, y = fixture()
+    arena, ports, _sort, function, x, y = fixture()
     arena.substitute(function, {ports[0].variable: y})
     key, result = next(iter(arena._compositions.items()))
     if mode == "wrong-value":

@@ -53,17 +53,17 @@ class RadixCarryBlock:
             raise ValueError("empty carry block must have zero raw value")
 
     @classmethod
-    def identity(cls, base: int) -> "RadixCarryBlock":
+    def identity(cls, base: int) -> RadixCarryBlock:
         return cls(int(base), 0, 0, 0)
 
     @classmethod
-    def coefficient(cls, coefficient: int, *, base: int = 2) -> "RadixCarryBlock":
+    def coefficient(cls, coefficient: int, *, base: int = 2) -> RadixCarryBlock:
         return cls(int(base), 1, int(coefficient), 0)
 
     @classmethod
     def from_coefficients(
         cls, coefficients: Iterable[int], *, base: int = 2
-    ) -> "RadixCarryBlock":
+    ) -> RadixCarryBlock:
         base = int(base)
         out = cls.identity(base)
         # Balanced binary-counter composition keeps temporary depth logarithmic.
@@ -119,7 +119,7 @@ class RadixCarryBlock:
         """Ordinary ``length``-digit payload for a supplied boundary carry."""
         return (self.raw_value + int(incoming)) % self.scale
 
-    def then(self, other: "RadixCarryBlock") -> "RadixCarryBlock":
+    def then(self, other: RadixCarryBlock) -> RadixCarryBlock:
         """Append ``other`` as the more-significant coefficient block."""
         if self.base != other.base:
             raise ValueError("incompatible radix carry blocks")
@@ -130,7 +130,7 @@ class RadixCarryBlock:
             self.compositions + other.compositions + 1,
         )
 
-    def power(self, exponent: int) -> "RadixCarryBlock":
+    def power(self, exponent: int) -> RadixCarryBlock:
         base = RadixCarryBlock(self.base, self.length, self.raw_value, 0)
         powered = binary_power(
             base,
@@ -186,7 +186,7 @@ class RadixCarryAction:
         *,
         incoming_min: int,
         incoming_max: int,
-    ) -> "RadixCarryAction":
+    ) -> RadixCarryAction:
         lo, hi = int(incoming_min), int(incoming_max)
         if hi < lo:
             raise ValueError((lo, hi))
@@ -229,7 +229,7 @@ class RadixCarryAction:
             raise ValueError((incoming, self.incoming_min, self.incoming_max))
         return self.outgoing[incoming - self.incoming_min]
 
-    def then(self, other: "RadixCarryAction") -> "RadixCarryAction":
+    def then(self, other: RadixCarryAction) -> RadixCarryAction:
         """Append ``other`` as the more-significant spatial action."""
         if (
             self.base != other.base
@@ -258,7 +258,7 @@ class RadixCarryAction:
             self.compositions + other.compositions + 1,
         )
 
-    def power(self, exponent: int) -> "RadixCarryAction":
+    def power(self, exponent: int) -> RadixCarryAction:
         """Repeat one spatial action by the repository-wide binary power kernel."""
         identity = RadixCarryAction(
             self.base,
@@ -767,18 +767,18 @@ def end_around_normalization_defect(
 
 
 __all__ = [
-    "RadixCarryBlock",
-    "RadixCarryAction",
-    "EndAroundCarryNormalization",
     "EndAroundCarryMarker",
+    "EndAroundCarryNormalization",
     "NormalizationDefect",
-    "normalize_cyclic_block",
-    "normalize_negacyclic_block",
-    "linear_normalization_fields",
-    "normalization_defect",
-    "linear_normalization_defect",
-    "normalization_digits_lsf",
-    "normalization_carry_boundaries",
+    "RadixCarryAction",
+    "RadixCarryBlock",
     "end_around_carry_marker",
     "end_around_normalization_defect",
+    "linear_normalization_defect",
+    "linear_normalization_fields",
+    "normalization_carry_boundaries",
+    "normalization_defect",
+    "normalization_digits_lsf",
+    "normalize_cyclic_block",
+    "normalize_negacyclic_block",
 ]

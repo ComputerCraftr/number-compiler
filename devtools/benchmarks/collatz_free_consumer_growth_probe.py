@@ -5,25 +5,31 @@ from __future__ import annotations
 import argparse
 import json
 from pathlib import Path
+from typing import Protocol, cast
 
 from number_compiler.arithmetic.carry.collatz_output_quotient import (
     RADIX64_FREE_CARRY_ACTIONS,
     RADIX64_FREE_GROWTH_TABLE,
     radix64_free_directional_row,
 )
+from number_compiler.arithmetic.fields.radix import digits_lsd
 from number_compiler.arithmetic.functions.finite_function_types import FinitePort
 from number_compiler.arithmetic.functions.finite_port_action import PortVariable
-from number_compiler.arithmetic.fields.radix import digits_lsd
 from number_compiler.hashlife.interfaces.semantic_bits import BitFunctionArena
 from number_compiler.resources.ledger import ResourceLedger
 from number_compiler.sequences.collatz import radix64_transducer
-from number_compiler.sequences.collatz.pair import accelerated_odd_collatz
 from number_compiler.sequences.collatz.output_morphism import (
     CARRY,
     DIGIT,
     RESIDUAL_SHIFT,
     CollatzOutputMorphism,
 )
+from number_compiler.sequences.collatz.pair import accelerated_odd_collatz
+
+
+class _MutableRadix64TransducerModule(Protocol):
+    Radix64CollatzStage: type[radix64_transducer.Radix64CollatzStage]
+
 
 _WITNESSES = (
     (339, 2, 1929, 2249, 30, 35),
@@ -77,11 +83,12 @@ def _streaming_metrics(events: int) -> dict[str, object]:
             observe()
             return result
 
-    setattr(radix64_transducer, "Radix64CollatzStage", TrackedStage)
+    module = cast(_MutableRadix64TransducerModule, radix64_transducer)
+    module.Radix64CollatzStage = TrackedStage
     try:
         result = radix64_transducer.compose_radix64_events(digits_lsd(27, 64), events)
     finally:
-        setattr(radix64_transducer, "Radix64CollatzStage", original)
+        module.Radix64CollatzStage = original
     expected, valuation = _oracle(27, events)
     return {
         "events": events,

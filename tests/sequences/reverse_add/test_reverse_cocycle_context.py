@@ -10,8 +10,8 @@ from number_compiler.arithmetic.carry.event_memory import pair_step
 from number_compiler.arithmetic.formula.decimal_pair_coordinates import (
     decimal_cocycle_value,
 )
-from number_compiler.sequences.reverse_add.factored_carrier import DOMAINS
 from number_compiler.sequences.reverse_add.cocycle_temporal import CocycleAction
+from number_compiler.sequences.reverse_add.factored_carrier import DOMAINS
 
 
 def _check(

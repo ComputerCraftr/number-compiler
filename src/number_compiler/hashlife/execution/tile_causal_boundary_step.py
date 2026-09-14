@@ -4,8 +4,6 @@ from __future__ import annotations
 
 from typing import Any
 
-from number_compiler.resources.causal_workspace import CausalResults
-
 from number_compiler.hashlife.execution.tile_causal_results import (
     PrimitiveCausalPorts,
     causal_result_key,
@@ -18,6 +16,7 @@ from number_compiler.hashlife.tiles.tile_boundaries import (
 from number_compiler.hashlife.tiles.tile_boundary_concat_memo import (
     concat_cached_boundary_views,
 )
+from number_compiler.resources.causal_workspace import CausalResults
 
 
 def probe_boundary_result(engine: Any, frame: CausalFrame) -> BoundaryTileView | None:

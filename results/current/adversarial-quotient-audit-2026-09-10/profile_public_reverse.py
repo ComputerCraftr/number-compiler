@@ -39,7 +39,7 @@ rows = [
         "self_seconds": record[2],
         "cumulative_seconds": record[3],
     }
-    for key, record in getattr(stats, "stats").items()
+    for key, record in stats.stats.items()
 ]
 report = {
     "steps": steps,
@@ -47,7 +47,7 @@ report = {
     "profiled": True,
     "query_seconds": query_seconds,
     "metrics_seconds": metric_seconds,
-    "total_calls": getattr(stats, "total_calls"),
+    "total_calls": stats.total_calls,
     "top_self": sorted(rows, key=lambda r: r["self_seconds"], reverse=True)[:30],
     "top_cumulative": sorted(rows, key=lambda r: r["cumulative_seconds"], reverse=True)[
         :30

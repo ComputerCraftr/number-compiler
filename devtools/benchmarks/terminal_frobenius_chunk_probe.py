@@ -1,4 +1,3 @@
-#!/usr/bin/env python3
 """Reproducible metrics for the terminal r-level Frobenius chunk quotient."""
 
 from __future__ import annotations

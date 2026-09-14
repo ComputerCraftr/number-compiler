@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 from dataclasses import replace
-from typing import TYPE_CHECKING
 
 import pytest
 
@@ -15,12 +14,6 @@ from number_compiler.hashlife.interfaces.diamond_kernel import DiamondKernelAren
 from number_compiler.hashlife.observation.diamond_observers import NonblankBlockEffect
 from number_compiler.resources.metric_collection import collect_ledger_metrics
 from number_compiler.resources.stores import LedgerList
-
-if TYPE_CHECKING:
-    from number_compiler.hashlife.execution.diamond_primitive_demand import (
-        PrimitiveDemandOracle,
-    )
-    from number_compiler.hashlife.interfaces.diamond_kernel import DiamondKernelArena
 
 
 def populated() -> tuple[DiamondKernelArena, PrimitiveDemandOracle]:

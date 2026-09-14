@@ -8,9 +8,9 @@ primality execution path.
 
 from __future__ import annotations
 
+from collections.abc import Sequence
 from dataclasses import dataclass
 from math import gcd
-from typing import Sequence
 
 from number_compiler.sequences.prime.set import (
     canonical_multiplicative_lanes,
@@ -19,7 +19,7 @@ from number_compiler.sequences.prime.set import (
 
 
 class _PowerRadixMDD:
-    __slots__ = ("radix", "width", "nodes", "unique", "or_cache", "or_calls")
+    __slots__ = ("nodes", "or_cache", "or_calls", "radix", "unique", "width")
 
     def __init__(self, radix: int, width: int) -> None:
         self.radix = int(radix)
@@ -373,14 +373,14 @@ def factor_coordinate_period_metrics(
 
 
 __all__ = [
-    "PowerRadixPrimeMetrics",
-    "project_prime_power_radix_metrics",
-    "zeckendorf_weights",
-    "zeckendorf_digits",
-    "ZeckendorfDecisionMetrics",
-    "zeckendorf_bitmap_decision_metrics",
-    "signed_multiplicative_order",
-    "pisano_period",
     "FactorCoordinatePeriodMetrics",
+    "PowerRadixPrimeMetrics",
+    "ZeckendorfDecisionMetrics",
     "factor_coordinate_period_metrics",
+    "pisano_period",
+    "project_prime_power_radix_metrics",
+    "signed_multiplicative_order",
+    "zeckendorf_bitmap_decision_metrics",
+    "zeckendorf_digits",
+    "zeckendorf_weights",
 ]

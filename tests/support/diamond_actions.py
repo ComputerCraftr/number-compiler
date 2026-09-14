@@ -17,12 +17,6 @@ from number_compiler.resources.ledger import ResourceLedger
 
 if TYPE_CHECKING:
     from number_compiler.arithmetic.contracts.scoped_handles import ActionProgramID
-    from number_compiler.hashlife.actions.diamond_actions import (
-        ImageCellArena,
-        TemporalActionArena,
-    )
-    from number_compiler.hashlife.actions.lazy_compiler import LazyCompiler
-    from number_compiler.resources.ledger import ResourceLedger
 
 
 def arenas(

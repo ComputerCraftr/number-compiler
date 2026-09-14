@@ -18,9 +18,6 @@ from number_compiler.arithmetic.contracts.canonical_payload import (
 )
 from number_compiler.arithmetic.contracts.scoped_handles import ArenaToken
 from number_compiler.arithmetic.contracts.semantic_identity import SemanticIdentity
-from number_compiler.arithmetic.functions.semantic_functions import (
-    SemanticFunctionArena,
-)
 from number_compiler.hashlife.actions.diamond_actions import PortSignatureID
 from number_compiler.hashlife.actions.field_actions import CoordinateOutputMorphismID
 from number_compiler.hashlife.execution.continuations.higher_semantic import (
@@ -33,7 +30,6 @@ from number_compiler.hashlife.execution.continuations.higher_types import (
 )
 from number_compiler.hashlife.interfaces.diamond_quotient import (
     COMPONENT_ROLES,
-    DiamondQuotientArena,
     LocalInterfaceID,
 )
 from number_compiler.resources.ledger import ResourceLedger
@@ -123,12 +119,12 @@ class HigherInterfaceRecord:
     components: HigherMacroComponents
 
 
-class HigherLocalInterfaceArena(DiamondQuotientArena):
+class HigherLocalInterfaceArena:
     """A ``LocalInterfaceID`` arena whose components have recursive sorts.
 
-    Subclassing preserves the shared image-arena contract while every public
-    lookup is overridden with the stronger higher-component validation.  The
-    base semantic arenas remain empty and cannot become an eager fallback.
+    Recursive components have their own typed publication contract.  They are
+    not substitutable for finite-function interfaces and do not allocate the
+    unused finite quotient arenas.
     """
 
     _SIGNATURE_KIND = "higher-semantic-signature"
@@ -150,8 +146,9 @@ class HigherLocalInterfaceArena(DiamondQuotientArena):
         self._morphism_validate: (
             Callable[[CoordinateOutputMorphismID], object] | None
         ) = None
-        super().__init__(SemanticFunctionArena(semantics.ledger))
         self.ledger: ResourceLedger = semantics.ledger
+        self.owner = ArenaToken("higher-local-interfaces")
+        self.ledger.register_execution_root(self)
         prefix = f"higher-local-interface-{len(self.ledger.inventory())}"
         self._higher_signature_owner = self.ledger.register(
             prefix + "-signatures",
@@ -223,7 +220,7 @@ class HigherLocalInterfaceArena(DiamondQuotientArena):
         self._morphism_sort, self._morphism_validate = result, validate
         return result
 
-    def _validate_interface(  # type: ignore[override]
+    def _validate_interface(
         self,
         interface: HigherMacroInterface,
         *,
@@ -243,7 +240,7 @@ class HigherLocalInterfaceArena(DiamondQuotientArena):
             else:
                 self.semantics._validate_sort(output, readonly=readonly)
 
-    def intern_interface(  # type: ignore[override]
+    def intern_interface(
         self,
         interface: HigherMacroInterface,
     ) -> PortSignatureID:
@@ -268,7 +265,7 @@ class HigherLocalInterfaceArena(DiamondQuotientArena):
         self.ledger.bump("higher_interface_signature_evaluations")
         return result
 
-    def interface(self, reference: PortSignatureID) -> HigherMacroInterface:  # type: ignore[override]
+    def interface(self, reference: PortSignatureID) -> HigherMacroInterface:
         if type(reference) is not PortSignatureID:
             raise TypeError("expected a higher semantic signature ID")
         reference.validate(
@@ -278,7 +275,7 @@ class HigherLocalInterfaceArena(DiamondQuotientArena):
         )
         return self._higher_signatures[reference.local_id]
 
-    def _validate_components(  # type: ignore[override]
+    def _validate_components(
         self,
         signature: PortSignatureID,
         components: HigherMacroComponents,
@@ -298,7 +295,7 @@ class HigherLocalInterfaceArena(DiamondQuotientArena):
                     raise TypeError(f"higher {role} requires a coordinate morphism")
                 component.validate(output.owner, output.kind)
                 validate = self._morphism_validate
-                if not callable(validate):
+                if validate is None:
                     raise ValueError("higher morphism arena is not bound")
                 validate(component)
                 continue
@@ -312,7 +309,7 @@ class HigherLocalInterfaceArena(DiamondQuotientArena):
                 raise ValueError(f"higher {role} contains an undeclared input port")
         return interface
 
-    def intern(  # type: ignore[override]
+    def intern(
         self,
         signature: PortSignatureID,
         components: HigherMacroComponents,
@@ -339,7 +336,7 @@ class HigherLocalInterfaceArena(DiamondQuotientArena):
         self.ledger.bump("higher_interface_publications")
         return result
 
-    def resolve(self, reference: LocalInterfaceID) -> HigherInterfaceRecord:  # type: ignore[override]
+    def resolve(self, reference: LocalInterfaceID) -> HigherInterfaceRecord:
         if type(reference) is not LocalInterfaceID:
             raise TypeError("expected a higher local-interface ID")
         reference.validate(
@@ -347,7 +344,9 @@ class HigherLocalInterfaceArena(DiamondQuotientArena):
         )
         return self._higher_nodes[reference.local_id]
 
-    def normalize(self, signature: PortSignatureID, components: object) -> object:  # type: ignore[override]
+    def normalize(
+        self, signature: PortSignatureID, components: HigherMacroComponents
+    ) -> HigherMacroComponents:
         """Higher components arrive canonical; syntax recipes are rejected."""
         if type(components) is not HigherMacroComponents:
             raise TypeError("higher normalization accepts only canonical components")

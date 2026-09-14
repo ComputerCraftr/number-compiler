@@ -18,7 +18,8 @@ from number_compiler.sequences.reverse_add.power import ReverseAddPoweredTerm
 
 
 def _assert_single_scoped_point(cache: object, output_radix: int) -> None:
-    blocks = cache.blocks  # type: ignore[attr-defined]
+    assert isinstance(cache, MicroblockCache)
+    blocks = cache.blocks
     assert len(blocks) == 1
     key, value = next(iter(blocks.items()))
     assert type(key) is MicroblockKey
@@ -29,7 +30,7 @@ def _assert_single_scoped_point(cache: object, output_radix: int) -> None:
     assert type(key.source_scope) is ArenaToken
     assert type(value) is ExactMicroblock
     assert value.bit_count <= 64
-    assert cache.payload_bytes <= 8 * 1024  # type: ignore[attr-defined]
+    assert cache.payload_bytes <= 8 * 1024
 
 
 def test_reverse_point_survives_query_eviction_without_transition_replay() -> None:

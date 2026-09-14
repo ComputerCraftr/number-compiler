@@ -7,16 +7,20 @@ from dataclasses import dataclass, fields, is_dataclass
 from typing import Protocol
 
 from number_compiler.arithmetic.contracts.scoped_handles import ArenaHandle, ArenaToken
-from number_compiler.hashlife.execution.source_image_seals import PublicationSeal
-from number_compiler.hashlife.execution.source_image_seals import PublicationSeals
-from number_compiler.hashlife.execution.source_image_seals import publication_matches
-from number_compiler.hashlife.execution.source_image_seals import publication_seal
+from number_compiler.hashlife.execution.source_image_seals import (
+    PublicationSeal,
+    PublicationSeals,
+    publication_matches,
+    publication_seal,
+)
 from number_compiler.resources.ledger import ResourceLedger
 from number_compiler.resources.stores import LedgerDict, LedgerList
+
 
 @dataclass(frozen=True, slots=True)
 class SourceImageID(ArenaHandle):
     """Scheduler-scoped identity of one admitted reachable image."""
+
 
 @dataclass(frozen=True, slots=True)
 class SourceImageBinding:
@@ -197,9 +201,7 @@ class SourceBoundImageAdapter(Protocol):
 
     def identity_action(self, source: Hashable) -> Hashable: ...
 
-    def action_children(
-        self, action: Hashable
-    ) -> tuple[Hashable, Hashable] | None: ...
+    def action_children(self, action: Hashable) -> tuple[Hashable, Hashable] | None: ...
 
     def compose_actions(self, before: Hashable, after: Hashable) -> Hashable: ...
 
@@ -328,15 +330,15 @@ class SourceBoundSchedulerCore:
         self._workspace_owner = self.ledger.register(
             prefix + "-workspace", "source_image_workspace"
         )
-        self._adapters: LedgerDict[
-            tuple[str, str], SourceBoundImageAdapter
-        ] = self.ledger.make_dict(self._adapter_owner)
+        self._adapters: LedgerDict[tuple[str, str], SourceBoundImageAdapter] = (
+            self.ledger.make_dict(self._adapter_owner)
+        )
         self._nodes: LedgerList[_ImageRecord] = self.ledger.make_list(
             self._node_owner, append_only=False
         )
-        self._origins: LedgerDict[
-            tuple[tuple[str, str], Hashable], SourceImageID
-        ] = self.ledger.make_dict(self._origin_owner)
+        self._origins: LedgerDict[tuple[tuple[str, str], Hashable], SourceImageID] = (
+            self.ledger.make_dict(self._origin_owner)
+        )
         self._applications: LedgerDict[_ApplyKey, SourceImageID] = (
             self.ledger.make_dict(self._apply_owner)
         )
@@ -473,7 +475,9 @@ class SourceBoundSchedulerCore:
         record = self.resolve(image)
         return self._view_record(image, record)
 
-    def _view_record(self, image: SourceImageID, record: _ImageRecord) -> SourceImageView:
+    def _view_record(
+        self, image: SourceImageID, record: _ImageRecord
+    ) -> SourceImageView:
         adapter = self._adapters[record.adapter_key]
         adapter.validate_source(record.binding.source)
         adapter.validate_action(record.binding.action)
@@ -561,9 +565,7 @@ class SourceBoundSchedulerCore:
         adapter.validate_action(identity)
         candidate = adapter.admit_source(source)
         candidate.__post_init__()
-        self.ledger.reserve_many(
-            ((self._node_owner, 1, 1), (self._origin_owner, 1, 0))
-        )
+        self.ledger.reserve_many(((self._node_owner, 1, 1), (self._origin_owner, 1, 0)))
         image: SourceImageID | None = None
         try:
             image = self._publish(key, source, identity, candidate, reserved=True)
@@ -649,9 +651,7 @@ class SourceBoundSchedulerCore:
                             cached_source = self.view(cached.source)
                             cached_result = self.view(cached.result)
                             if (
-                                adapter.admitted_input_key(
-                                    frame.action, cached_source
-                                )
+                                adapter.admitted_input_key(frame.action, cached_source)
                                 != admitted_input
                             ):
                                 raise ValueError(
@@ -800,7 +800,9 @@ class SourceBoundSchedulerCore:
         source_failure = self.view(key.source).failure_prefix
         if source_failure is not None and candidate.failure_prefix != source_failure:
             raise ValueError("source image application discarded its first failure")
-        publish_relative = relative_key is not None and relative_key not in self._relative
+        publish_relative = (
+            relative_key is not None and relative_key not in self._relative
+        )
         reservations = [
             (self._node_owner, 1, 1),
             (self._apply_owner, 1, 0),
@@ -896,7 +898,10 @@ class SourceBoundSchedulerCore:
         try:
             self._publication_seals.put_projection(key, snapshot)
             self._projections[key] = _ProjectionRecord(
-                image, demand, projected, _IMAGE_RECORD_SEAL,
+                image,
+                demand,
+                projected,
+                _IMAGE_RECORD_SEAL,
                 snapshot,
             )
         except BaseException:
@@ -941,9 +946,7 @@ class SourceBoundImageMixin:
             self._source_images = found
         return found
 
-    def register_source_image_adapter(
-        self, adapter: SourceBoundImageAdapter
-    ) -> None:
+    def register_source_image_adapter(self, adapter: SourceBoundImageAdapter) -> None:
         self._source_image_core().register(adapter)
 
     def source_image(

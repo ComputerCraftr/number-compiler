@@ -1,10 +1,10 @@
 """Run the unchanged causal release manifest with each worker resource guarded."""
 
-from pathlib import Path
 import json
 import subprocess
 import sys
 from dataclasses import asdict
+from pathlib import Path
 from types import SimpleNamespace
 
 sys.path.insert(0, str(Path.cwd()))

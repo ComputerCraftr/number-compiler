@@ -30,11 +30,8 @@ if TYPE_CHECKING:
         DiamondRuntime,
     )
     from number_compiler.hashlife.interfaces.semantic_reachable_profile import (
-        ReachableCodec,
-        SemanticProfileArena,
         SemanticProfileID,
     )
-    from number_compiler.hashlife.interfaces.semantic_structures import StructureArena
 
 
 def setup() -> tuple[

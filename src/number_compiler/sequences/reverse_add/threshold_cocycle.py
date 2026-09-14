@@ -15,7 +15,6 @@ from number_compiler.arithmetic.carry.carry_monoid import CarryFn
 from number_compiler.arithmetic.formula.decimal_pair_coordinates import (
     decimal_pair_carry_action,
 )
-from number_compiler.resources.stores import LedgerDict
 from number_compiler.arithmetic.functions.finite_function_types import (
     BOOL,
     AtomSort,
@@ -27,10 +26,11 @@ from number_compiler.hashlife.interfaces.semantic_bits import (
     BitFunctionArena,
     FactoredFunctionID,
 )
+from number_compiler.resources.stores import LedgerDict
 from number_compiler.sequences.reverse_add.active_output import (
+    CARRY_ACTION,
     DIGIT,
     F5,
-    CARRY_ACTION,
     ReverseActiveOutputArena,
 )
 

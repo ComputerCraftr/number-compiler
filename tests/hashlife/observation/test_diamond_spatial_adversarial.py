@@ -15,8 +15,8 @@ from number_compiler.hashlife.actions.lazy_compiler import LazyCompiler
 from number_compiler.hashlife.execution.continuations.diamond_tasks import (
     SpatialSummary,
 )
-from number_compiler.hashlife.observation.tile_projection import LazyProjection
 from number_compiler.hashlife.observation.hashlife_projection import HashLifeBlockIndex
+from number_compiler.hashlife.observation.tile_projection import LazyProjection
 from number_compiler.resources.ledger import ResourceLedger
 from number_compiler.sequences.collatz.block_power import CollatzPhysicalBlockEffect
 from tests.support.diamond_runtime import build, oracle

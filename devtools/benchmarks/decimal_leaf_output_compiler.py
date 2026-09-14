@@ -26,7 +26,6 @@ from number_compiler.hashlife.interfaces.tile_decimal_functions import (
 from number_compiler.hashlife.tiles.tiles import TileArena
 from number_compiler.resources.ledger import ResourceLedger
 
-
 _COUNTERS = (
     "primitive_output_evaluations",
     "semantic_function_staged_nodes",

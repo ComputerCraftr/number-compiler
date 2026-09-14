@@ -1,7 +1,7 @@
 """One emitting owner, exact carry projections, and a temporal negative gate."""
 
 from dataclasses import fields
-from itertools import product
+from itertools import pairwise, product
 
 import pytest
 
@@ -67,10 +67,10 @@ def test_all_port_carries_resets_and_forcing_are_views_of_one_cylinder() -> None
                 assert block.cylinder.rows[incoming].jet == _jet(carry[:-1])
                 assert block.following_jet(incoming) == _jet(carry[1:])
                 assert block.reset_jet(incoming) == _jet(
-                    tuple(b - a for a, b in zip(carry, carry[1:]))
+                    tuple(b - a for a, b in pairwise(carry))
                 )
                 assert block.normalization_jet(incoming) == _jet(
-                    tuple(a - 10 * b for a, b in zip(carry, carry[1:]))
+                    tuple(a - 10 * b for a, b in pairwise(carry))
                 )
             carry = scan_carry_automaton(pair).boundaries
             assert block.forcing_jet() == _jet(forcing_event_from_carry(carry))

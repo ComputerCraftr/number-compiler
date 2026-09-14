@@ -9,10 +9,10 @@ from __future__ import annotations
 from collections.abc import Iterable, Mapping, Sequence
 from types import MappingProxyType
 
+from number_compiler.resources import semantic_metric_registry
 from number_compiler.resources.ledger import ResourceInventory
-from number_compiler.resources.semantic_metric_registry import (
-    SEMANTIC_ADAPTER_WORK_COUNTERS as SEMANTIC_ADAPTER_WORK_COUNTERS,
-)
+
+SEMANTIC_ADAPTER_WORK_COUNTERS = semantic_metric_registry.SEMANTIC_ADAPTER_WORK_COUNTERS
 
 NODE_ROLE_GROUPS: tuple[tuple[str, tuple[str, ...]], ...] = (
     ("canonical_tile_nodes", ("canonical_tile",)),

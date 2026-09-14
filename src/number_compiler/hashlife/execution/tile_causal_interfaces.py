@@ -8,7 +8,12 @@ owned by ``DiamondQuotientArena`` and spatial aliases by
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from typing import Any, cast
+from typing import TYPE_CHECKING, cast
+
+if TYPE_CHECKING:
+    from number_compiler.hashlife.execution.tile_kernel import (
+        PrimitiveTileKernelAdapter,
+    )
 
 from number_compiler.hashlife.actions.field_actions import FieldCellActionID
 from number_compiler.hashlife.behavior.reverse_bound_output import ReverseBoundOutput
@@ -22,8 +27,10 @@ from number_compiler.hashlife.interfaces.diamond_quotient import (
 )
 from number_compiler.hashlife.tiles.tile_context import TemporalCocycle
 from number_compiler.hashlife.tiles.tile_ports import ResultWiring
-from number_compiler.hashlife.tiles.tile_result_records import SpatialInterfaceKey
-from number_compiler.hashlife.tiles.tile_result_records import CompletedResult
+from number_compiler.hashlife.tiles.tile_result_records import (
+    CompletedResult,
+    SpatialInterfaceKey,
+)
 from number_compiler.hashlife.tiles.tile_results import CompletedResultArena
 from number_compiler.hashlife.tiles.tiles import TileID
 from number_compiler.sequences.collatz.physical_support import PhysicalSupport
@@ -267,10 +274,10 @@ def interface_payload_from_completed(
     )
 
 
-def _authority(results: CompletedResultArena) -> Any:
+def _authority(results: CompletedResultArena) -> PrimitiveTileKernelAdapter:
     if type(results) is not CompletedResultArena:
         raise TypeError("causal interfaces require the shared result arena")
-    return cast(Any, results.action_authority)
+    return cast("PrimitiveTileKernelAdapter", results.action_authority)
 
 
 def combine_local_interfaces(
@@ -328,9 +335,9 @@ def combine_local_interfaces(
             results.ledger,
         )
         return publish_spatial_quotient(results, key, components)
-    components = authority._parent_components(kernel, left, right)
+    parent_functions = authority._parent_components(kernel, left, right)
     macro = MacroComponents(
-        *(authority.structures.atom(component) for component in components)
+        *(authority.structures.atom(component) for component in parent_functions)
     )
     if type(kernel.effect) is DigitNormalizeBlockEffect and kernel.base == 10:
         from dataclasses import replace
@@ -517,7 +524,7 @@ __all__ = [
     "CausalInterfacePayload",
     "combine_causal_interfaces",
     "combine_local_interfaces",
-    "interface_payload_from_completed",
     "interface_payload_from_causal",
+    "interface_payload_from_completed",
     "primitive_interface_payload",
 ]

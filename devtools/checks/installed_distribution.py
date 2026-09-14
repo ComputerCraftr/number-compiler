@@ -145,9 +145,20 @@ print(json.dumps({'public_exports': len(api.__all__), 'kernel_left_states': kern
             raise ValueError("installed CLI returned another prime result")
         factor_cli = subprocess.run(
             [
-                str(python), "-I", "-m", "number_compiler",
-                "mersenne", "--nth", "11", "--no-value", "--info", "primality",
-                "--info", "factor", "--format", "json",
+                str(python),
+                "-I",
+                "-m",
+                "number_compiler",
+                "mersenne",
+                "--nth",
+                "11",
+                "--no-value",
+                "--info",
+                "primality",
+                "--info",
+                "factor",
+                "--format",
+                "json",
             ],
             cwd=work,
             env=environment,
@@ -174,28 +185,47 @@ print(json.dumps({'public_exports': len(api.__all__), 'kernel_left_states': kern
             (["collatz", "--nth", "4", "--seed", "27"], 0, "62"),
             (["fermat", "--nth", "0"], 0, "3"),
             (["mersenne", "--nth", "1"], 0, "1"),
-            (["antihydra", "--nth", "10", "--info", "ledger", "--info", "clock"], 0, "454"),
+            (
+                ["antihydra", "--nth", "10", "--info", "ledger", "--info", "clock"],
+                0,
+                "454",
+            ),
             (["fermat", "--nth", "4", "--no-value", "--info", "primality"], 3, ""),
             (["nth", "prime", "0"], 2, ""),
         ]
         for arguments, status, value in commands:
             observed = subprocess.run(
                 [str(python), "-I", "-m", "number_compiler", *arguments],
-                cwd=work, env=environment, capture_output=True, text=True, check=False,
+                cwd=work,
+                env=environment,
+                capture_output=True,
+                text=True,
+                check=False,
             )
             if observed.returncode != status or observed.stdout.strip() != value:
-                raise ValueError(f"installed CLI contract failed: {arguments}: {observed}")
+                raise ValueError(
+                    f"installed CLI contract failed: {arguments}: {observed}"
+                )
             if arguments[0] == "prime" and "--info" in arguments:
                 metrics = json.loads(observed.stderr)["metrics"]
-                if (metrics["prime_dag_states"] <= 0
-                        or metrics["prime_discovery_queries"] <= 0
-                        or metrics["prime_parent_gap_positions_materialized"] != 0):
-                    raise ValueError("installed prime CLI bypassed the descriptor owner")
+                if (
+                    metrics["prime_dag_states"] <= 0
+                    or metrics["prime_discovery_queries"] <= 0
+                    or metrics["prime_parent_gap_positions_materialized"] != 0
+                ):
+                    raise ValueError(
+                        "installed prime CLI bypassed the descriptor owner"
+                    )
             if arguments[0] == "antihydra":
                 details = json.loads(observed.stderr)
                 if details["ledger"]["value"]["ledger"] != 11:
-                    raise ValueError("installed Antihydra ledger differs from arithmetic source")
-            if arguments[0] == "nth" and "old command form removed" not in observed.stderr:
+                    raise ValueError(
+                        "installed Antihydra ledger differs from arithmetic source"
+                    )
+            if (
+                arguments[0] == "nth"
+                and "old command form removed" not in observed.stderr
+            ):
                 raise ValueError("removed command did not supply a migration hint")
         return {
             "wheel": wheel.name,

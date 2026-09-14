@@ -385,8 +385,11 @@ class SemanticExpressionCompiler:
         ports: list[FinitePort] = []
         for index, parameter in enumerate(parameters):
             sort = self.expressions.node(parameter).sort
-            if not isinstance(sort, StateSort):
-                raise ValueError("semantic input must be a state")
+            match sort:
+                case StateSort():
+                    pass
+                case _:
+                    raise ValueError("semantic input must be a state")
             ports.extend(
                 self._input_ports(
                     sort,
@@ -403,8 +406,11 @@ class SemanticExpressionCompiler:
         profile: SemanticProfileID | None = None,
     ) -> FinitePort | StateCodec | ReachableCodec:
         sort = self.expressions.node(variable).sort
-        if not isinstance(sort, StateSort):
-            raise ValueError("semantic input must be a state")
+        match sort:
+            case StateSort():
+                pass
+            case _:
+                raise ValueError("semantic input must be a state")
         profiles = self._profile(profile)
         if profiles is not None:
             if self.structures is None:

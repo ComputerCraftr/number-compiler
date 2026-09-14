@@ -418,9 +418,9 @@ if __name__ == "__main__":
 
 
 __all__ = [
-    "TwoPrimaryPhaseClockAudit",
     "TwoPrimaryDepthViewAudit",
+    "TwoPrimaryPhaseClockAudit",
     "metrics_dict",
-    "two_primary_phase_clock_audits",
     "two_primary_depth_view_audits",
+    "two_primary_phase_clock_audits",
 ]

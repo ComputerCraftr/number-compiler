@@ -45,9 +45,6 @@ if TYPE_CHECKING:
     import typing
 
     from number_compiler.arithmetic.contracts.scoped_handles import TransferSummaryID
-    from number_compiler.hashlife.execution.continuations.diamond_context_program import (
-        ContextObservation,
-    )
     from number_compiler.hashlife.execution.continuations.diamond_expression_eval import (
         LowerFinite,
         ResolveExpr,
@@ -61,22 +58,10 @@ if TYPE_CHECKING:
         HigherUnaryObserve,
         HigherUnarySummary,
     )
-    from number_compiler.hashlife.execution.continuations.diamond_tasks import (
-        Evaluate,
-        Initial,
-        Output,
-        OutputFunction,
-        PairSummary,
-        ResetTransfer,
-        SpatialSummary,
-        Substitute,
-        Transfer,
-    )
     from number_compiler.hashlife.execution.diamond_continuation_reduction import (
         CompilePrimitiveFunction,
         NormalizePrimitiveLambda,
     )
-    from number_compiler.hashlife.interfaces.diamond_boundary import BoundaryStateID
     from number_compiler.hashlife.interfaces.diamond_boundary_expr import ExprID
     from number_compiler.hashlife.interfaces.diamond_quotient import LocalInterfaceID
     from number_compiler.hashlife.interfaces.semantic_expression_tasks import (
@@ -212,7 +197,7 @@ def profile(
         calls[shape(runtime, task)] += 1
         return original(task)
 
-    setattr(runtime, "_program", program)
+    object.__setattr__(runtime, "_program", program)
     start = perf_counter()
     digit: int | None = None
     active_width: int | None = None

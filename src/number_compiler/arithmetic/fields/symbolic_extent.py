@@ -75,7 +75,7 @@ class DyadicExtent:
             return -1
         return 0
 
-    def _compare_dyadic(self, other: "DyadicExtent") -> int:
+    def _compare_dyadic(self, other: DyadicExtent) -> int:
         """Compare two algebraic dyadic extents without large materialization.
 
         Adjacent tiny powers need care because the +/-1 offsets can cross or
@@ -311,9 +311,9 @@ def extent_description_bits(value: Extent) -> int:
 
 __all__ = [
     "DyadicExtent",
-    "ReverseAddExtent",
-    "ReverseAddBitExtent",
     "Extent",
-    "extent_json_value",
+    "ReverseAddBitExtent",
+    "ReverseAddExtent",
     "extent_description_bits",
+    "extent_json_value",
 ]

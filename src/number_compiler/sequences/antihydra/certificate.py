@@ -50,8 +50,10 @@ def check_implication(premises: list[Row], target: Row, weights: object) -> None
     factors = [rational(w) for w in weights]
     if any(w < 0 for w in factors):
         raise ValueError("negative implication multiplier")
-    actual = tuple(sum((w*p[i] for w, p in zip(factors, premises)), Fraction(0))
-                   for i in range(3))
+    actual = tuple(
+        sum((w * p[i] for w, p in zip(factors, premises)), Fraction(0))
+        for i in range(3)
+    )
     if actual != target:
         raise ValueError("inequality implication does not match its target")
 
@@ -69,19 +71,31 @@ def verify(data: object) -> dict[str, object]:
     constraints: list[list[Row]] = []
     residues: list[int] = []
     for chart in charts:
-        if not isinstance(chart, dict):
-            raise ValueError("invalid chart")
-        residue = require_integer(chart.get("residue"), "chart residue", 0, modulus-1)
+        match chart:
+            case dict():
+                pass
+            case _:
+                raise ValueError("invalid chart")
+        residue = require_integer(chart.get("residue"), "chart residue", 0, modulus - 1)
         inequalities = chart.get("inequalities")
         if not isinstance(inequalities, list) or len(inequalities) > 16:
             raise ValueError("at most sixteen affine inequalities per chart")
         residues.append(residue)
-        constraints.append([row([1, 0, 0]), row([0, 1, 0]), row([modulus, 0, residue-8]),
-                            row([0, 0, 1])] + [row(v) for v in inequalities])
-    initial = require_integer(data.get("initial"), "initial chart", 0, len(charts)-1)
+        constraints.append(
+            [
+                row([1, 0, 0]),
+                row([0, 1, 0]),
+                row([modulus, 0, residue - 8]),
+                row([0, 0, 1]),
+            ]
+            + [row(v) for v in inequalities]
+        )
+    initial = require_integer(data.get("initial"), "initial chart", 0, len(charts) - 1)
     if 8 % modulus != residues[initial]:
         raise ValueError("initial chart has the wrong source residue")
-    if any(x*(8//modulus)+constant < 0 for x, _, constant in constraints[initial]):
+    if any(
+        x * (8 // modulus) + constant < 0 for x, _, constant in constraints[initial]
+    ):
         raise ValueError("initial source is outside the proposed invariant")
     checks = 0
     for index, chart in enumerate(charts):
@@ -89,19 +103,27 @@ def verify(data: object) -> dict[str, object]:
         if not isinstance(branches, list) or len(branches) != 2:
             raise ValueError("both next source-bit branches must be covered")
         for bit, branch in enumerate(branches):
-            if not isinstance(branch, dict):
-                raise ValueError("invalid successor branch")
-            destination = require_integer(branch.get("target"), "target chart", 0, len(charts)-1)
+            match branch:
+                case dict():
+                    pass
+                case _:
+                    raise ValueError("invalid successor branch")
+            destination = require_integer(
+                branch.get("target"), "target chart", 0, len(charts) - 1
+            )
             residue = residues[index]
-            bias = (3*(modulus*bit+residue) - (residue & 1))//2
+            bias = (3 * (modulus * bit + residue) - (residue & 1)) // 2
             lift, remainder = divmod(bias, modulus)
             if residues[destination] != remainder:
                 raise ValueError("target chart violates exact successor residue")
-            delta = 2-3*(residue & 1)
+            delta = 2 - 3 * (residue & 1)
             # x=2*y+bit; y>=0 follows integer source chart x>=0.
-            premises = [(2*x, a, x*bit+c) for x, a, c in constraints[index]]
+            premises = [(2 * x, a, x * bit + c) for x, a, c in constraints[index]]
             premises.append(row([1, 0, 0]))
-            targets = [(3*x, a, x*lift+a*delta+c) for x, a, c in constraints[destination]]
+            targets = [
+                (3 * x, a, x * lift + a * delta + c)
+                for x, a, c in constraints[destination]
+            ]
             witnesses = branch.get("witnesses")
             if not isinstance(witnesses, list) or len(witnesses) != len(targets):
                 raise ValueError("missing successor inequality witnesses")
@@ -110,8 +132,10 @@ def verify(data: object) -> dict[str, object]:
                 checks += 1
     return {
         "status": "ARITHMETIC_INVARIANT_VERIFIED",
-        "machine_sha256": MACHINE_SHA256, "source": "blank",
-        "charts": len(charts), "inequality_checks": checks,
+        "machine_sha256": MACHINE_SHA256,
+        "source": "blank",
+        "charts": len(charts),
+        "inequality_checks": checks,
         "nonhalting_certified": False,
         "missing_proof_bridge": "literal_TM_to_all_admitted_macro_returns",
     }

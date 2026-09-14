@@ -1,4 +1,3 @@
-#!/usr/bin/env python3
 """Reproducible audit for the saturated/cyclotomic-extension terminal route."""
 
 from __future__ import annotations

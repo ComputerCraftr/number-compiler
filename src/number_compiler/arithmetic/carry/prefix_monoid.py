@@ -12,8 +12,8 @@ carry actions and generic radix digit transducers (including Collatz).
 
 from __future__ import annotations
 
+from collections.abc import Sequence
 from dataclasses import dataclass
-from typing import Sequence
 
 from number_compiler.arithmetic.formula.formula import FormulaArena
 from number_compiler.arithmetic.formula.types import Expr
@@ -265,12 +265,12 @@ def compile_reset_prefix_monoid(
 
 
 __all__ = [
+    "PREDICATE_AND_MONOID",
+    "RESET_PREFIX_MONOID",
     "FiniteMonoid",
     "FormulaPrefixMonoidProjection",
-    "compile_formula_prefix_monoid",
-    "PREDICATE_AND_MONOID",
     "FormulaPrefixPredicateProjection",
+    "compile_formula_prefix_monoid",
     "compile_formula_prefix_predicate",
-    "RESET_PREFIX_MONOID",
     "compile_reset_prefix_monoid",
 ]

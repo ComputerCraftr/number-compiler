@@ -374,8 +374,8 @@ __all__ = [
     "PureTwoPrimaryClockShape",
     "TwoPrimaryCharacterProbe",
     "TwoPrimaryImageFiltration",
+    "higher_two_power_character",
+    "outer_source_character",
     "pure_two_primary_clock_shape",
     "pure_two_primary_image_filtration",
-    "outer_source_character",
-    "higher_two_power_character",
 ]

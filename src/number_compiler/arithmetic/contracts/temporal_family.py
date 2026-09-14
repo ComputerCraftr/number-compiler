@@ -110,8 +110,11 @@ def _verify_program(
     from number_compiler.arithmetic.contracts.block_kernel import BaseBlockEffect
     from number_compiler.hashlife.actions.lazy_compiler import ProgramComposition
     from number_compiler.projection.digit_terminal import DigitNormalizeBlockEffect
+
     if family == "collatz":
-        from number_compiler.sequences.collatz.block_power import CollatzPhysicalBlockEffect
+        from number_compiler.sequences.collatz.block_power import (
+            CollatzPhysicalBlockEffect,
+        )
 
     facts: dict[int, tuple[int, int]] = {}
     active: set[int] = set()

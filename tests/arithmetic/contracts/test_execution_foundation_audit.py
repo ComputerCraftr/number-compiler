@@ -5,7 +5,7 @@ from __future__ import annotations
 import hashlib
 from array import array
 from collections.abc import Callable, MutableMapping
-from typing import TYPE_CHECKING, cast
+from typing import cast
 
 import pytest
 
@@ -23,9 +23,6 @@ from number_compiler.projection.digit_terminal import DigitNormalizeBlockEffect
 from number_compiler.resources.ledger import OwnedMemo, ResourceLedger
 from number_compiler.resources.stores import LedgerDict, LedgerList
 from number_compiler.sequences.collatz.block_power import CollatzPhysicalBlockEffect
-
-if TYPE_CHECKING:
-    from number_compiler.arithmetic.contracts.block_kernel import FiniteBlockEffect
 
 
 def _finite(*, flip: bool = False) -> FiniteBlockEffect:

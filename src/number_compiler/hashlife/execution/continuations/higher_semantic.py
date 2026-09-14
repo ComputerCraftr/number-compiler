@@ -707,24 +707,30 @@ class HigherSemanticArena:
             if body.kind == "continuation" and children[0] == argument:
                 self.ledger.bump("higher_shallow_beta_reductions")
                 return self.continuation(argument)
-            if body.kind == "primitive-step" and body.action is not None:
-                if record.parameter.local_id in body.children:
-                    self.ledger.bump("higher_shallow_beta_reductions")
-                    return self.primitive_step(
-                        body.action,
-                        body.side,
-                        children[0],
-                        children[1],
-                    )
-            if body.kind == "primitive-emit" and body.action is not None:
-                if record.parameter.local_id in body.children:
-                    self.ledger.bump("higher_shallow_beta_reductions")
-                    return self.primitive_emit(
-                        body.action,
-                        children[0],
-                        children[1],
-                        children[2],
-                    )
+            if (
+                body.kind == "primitive-step"
+                and body.action is not None
+                and record.parameter.local_id in body.children
+            ):
+                self.ledger.bump("higher_shallow_beta_reductions")
+                return self.primitive_step(
+                    body.action,
+                    body.side,
+                    children[0],
+                    children[1],
+                )
+            if (
+                body.kind == "primitive-emit"
+                and body.action is not None
+                and record.parameter.local_id in body.children
+            ):
+                self.ledger.bump("higher_shallow_beta_reductions")
+                return self.primitive_emit(
+                    body.action,
+                    children[0],
+                    children[1],
+                    children[2],
+                )
             if not self._beta_active:
                 from number_compiler.hashlife.execution.continuations.higher_binding import (
                     reachable_size,

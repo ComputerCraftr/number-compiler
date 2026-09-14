@@ -217,12 +217,12 @@ def boolean_anf_metrics(mask: int, input_bits: int) -> BooleanANFMetrics:
 
 
 __all__ = [
-    "PrimeResidualKernelMetrics",
     "BooleanANFMetrics",
-    "PrimeCyclotomicOrderMetrics",
     "BooleanCoordinateDerivativeMetrics",
-    "prime_lsb_residual_kernel",
+    "PrimeCyclotomicOrderMetrics",
+    "PrimeResidualKernelMetrics",
     "boolean_anf_metrics",
-    "prime_cyclotomic_order_metrics",
     "boolean_coordinate_derivative_metrics",
+    "prime_cyclotomic_order_metrics",
+    "prime_lsb_residual_kernel",
 ]

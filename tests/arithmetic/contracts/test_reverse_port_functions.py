@@ -14,8 +14,8 @@ from number_compiler.arithmetic.carry.reverse_port_functions import (
     ReverseRightTransfer,
 )
 from number_compiler.arithmetic.contracts.block_effect import (
-    BoundarySide,
     BlockContextBudgetExceeded,
+    BoundarySide,
 )
 from number_compiler.arithmetic.contracts.block_kernel import (
     BaseBlockEffect,
@@ -24,12 +24,12 @@ from number_compiler.arithmetic.contracts.block_kernel import (
 )
 from number_compiler.arithmetic.functions.finite_function_types import FinitePort
 from number_compiler.arithmetic.functions.finite_port_action import PortVariable
+from number_compiler.hashlife.interfaces.closed_interface_admission import (
+    validate_reverse_channel_roles,
+)
 from number_compiler.hashlife.interfaces.tile_reverse_functions import (
     reverse_leaf_components,
     reverse_parent_components,
-)
-from number_compiler.hashlife.interfaces.closed_interface_admission import (
-    validate_reverse_channel_roles,
 )
 from number_compiler.resources.closed_interface_workspace import (
     ClosedInterfaceWorkspace,
@@ -206,7 +206,7 @@ def test_reverse_predicate_preimage_matches_every_left_state(base: int) -> None:
             )
             for first in symbols
             for second in symbols
-        )
+        ),
     }
     for transfer in transfers:
         for truth in predicates:
@@ -299,8 +299,7 @@ def test_reverse_workspace_rejects_before_construction(
 ) -> None:
     ledger = ResourceLedger(max_nodes=limit)
     workspace = ClosedInterfaceWorkspace(ledger, "reverse-budget-test")
-    with pytest.raises(BlockContextBudgetExceeded):
-        with workspace.scope(kind):
-            raise AssertionError("exhausted workspace entered construction")
+    with pytest.raises(BlockContextBudgetExceeded), workspace.scope(kind):
+        raise AssertionError("exhausted workspace entered construction")
     assert ledger.nodes == 0
     assert workspace.nodes == 0

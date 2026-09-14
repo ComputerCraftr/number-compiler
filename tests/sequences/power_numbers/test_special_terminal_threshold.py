@@ -105,9 +105,7 @@ def test_terminal_query_is_fail_closed_and_never_hides_recurrence_or_carrier_wor
         assert row.raw_specialization_squarings == 0
 
 
-def test_production_certificate_keeps_missing_terminal_extractor_unresolved() -> (
-    None
-):
+def test_production_certificate_keeps_missing_terminal_extractor_unresolved() -> None:
     f2 = fermat_depth_certificate(2)
     assert f2.status == "prime"
     assert f2.method.startswith("terminal-threshold:")
@@ -129,11 +127,11 @@ def test_production_certificate_keeps_missing_terminal_extractor_unresolved() ->
 def test_classical_ceiling_uses_shared_native_square_action(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    from number_compiler.arithmetic.polynomials.arithmetic_tile import SquareTileAction
     from devtools.proofs.oracles.classical_ceiling import (
         fermat_classical_ceiling,
         mersenne_classical_ceiling,
     )
+    from number_compiler.arithmetic.polynomials.arithmetic_tile import SquareTileAction
 
     original = SquareTileAction.apply
     calls: list[tuple[str, int]] = []

@@ -33,9 +33,6 @@ if TYPE_CHECKING:
     from number_compiler.arithmetic.functions.finite_function_types import (
         SemanticFunctionID,
     )
-    from number_compiler.arithmetic.functions.semantic_functions import (
-        SemanticFunctionArena,
-    )
 
 
 def _inner_function(

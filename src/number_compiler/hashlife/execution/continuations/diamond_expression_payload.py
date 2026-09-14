@@ -464,23 +464,22 @@ class ExpressionPayloadRegistry:
             node.kind in ("advance", "emit")
             and type(node.action) is ActionProgramID
             and self.action_valid(node.action)
-        ):
-            if node.action.owner is arena.actions.token:
-                action = arena.actions.node(node.action)
-                alphabet = SymbolSort(action.base, action.blank)
-                if action.kind == "atom":
-                    if node.kind == "advance":
-                        valid = (
-                            node.side in (0, 1)
-                            and node.sort == StateSort(node.action, node.side)
-                            and sorts == (node.sort, alphabet)
-                        )
-                    else:
-                        valid = node.sort == alphabet and sorts == (
-                            StateSort(node.action, 0),
-                            alphabet,
-                            StateSort(node.action, 1),
-                        )
+        ) and node.action.owner is arena.actions.token:
+            action = arena.actions.node(node.action)
+            alphabet = SymbolSort(action.base, action.blank)
+            if action.kind == "atom":
+                if node.kind == "advance":
+                    valid = (
+                        node.side in (0, 1)
+                        and node.sort == StateSort(node.action, node.side)
+                        and sorts == (node.sort, alphabet)
+                    )
+                else:
+                    valid = node.sort == alphabet and sorts == (
+                        StateSort(node.action, 0),
+                        alphabet,
+                        StateSort(node.action, 1),
+                    )
         scope = max(needed, default=-1) + 1
         return valid and node.scope == scope, needed
 

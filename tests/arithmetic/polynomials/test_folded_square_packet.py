@@ -68,7 +68,9 @@ def test_production_tile_observer_does_not_step_decode_or_construct_full_square(
 
 
 def test_packet_has_exactly_five_bits_without_storing_work_in_identity() -> None:
-    packets = {FoldedSquarePacket(first, second) for first in range(4) for second in range(8)}
+    packets = {
+        FoldedSquarePacket(first, second) for first in range(4) for second in range(8)
+    }
     assert len(packets) == 32
     assert sum(packet.vanishes for packet in packets) == 1
     zero = folded_square_packet((0, 0, 0, 0), sign=-1)

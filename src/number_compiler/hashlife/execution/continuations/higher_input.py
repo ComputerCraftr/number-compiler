@@ -7,7 +7,6 @@ from typing import TypeAlias
 
 from number_compiler.hashlife.execution.field_images import SourceCellID
 
-
 RuntimeInputCellID: TypeAlias = SourceCellID
 
 

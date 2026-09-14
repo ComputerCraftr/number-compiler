@@ -3,9 +3,10 @@
 from __future__ import annotations
 
 from collections import OrderedDict
+from collections.abc import Iterator
 from dataclasses import dataclass
 from math import ceil, log2
-from typing import TYPE_CHECKING, Iterator, Literal
+from typing import TYPE_CHECKING, Literal
 
 from number_compiler.arithmetic.contracts.exact_tree_context import source_reads_only
 from number_compiler.arithmetic.contracts.input_validation import require_integer
@@ -26,15 +27,22 @@ from number_compiler.sequences.power_numbers.numbers import (
 )
 
 if TYPE_CHECKING:
-    from number_compiler.sequences.antihydra.runtime import AntihydraArithmeticTerm
-    from number_compiler.sequences.collatz.character import CollatzGrowthCharacter
-    from number_compiler.sequences.collatz.block_power import CollatzPhysicalBlockMetrics
-    from number_compiler.sequences.collatz.character import CollatzRadialCharacter
-    from number_compiler.sequences.collatz.block_power import PoweredCollatzTerm
-    from number_compiler.arithmetic.functions.state_reduction import ReverseAddGrowthState
-    from number_compiler.sequences.reverse_add.power import ReverseAddPowerMetrics
-    from number_compiler.sequences.reverse_add.power import ReverseAddPoweredTerm
-    from number_compiler.sequences.antihydra.runtime import Run
+    from number_compiler.arithmetic.functions.state_reduction import (
+        ReverseAddGrowthState,
+    )
+    from number_compiler.sequences.antihydra.runtime import AntihydraArithmeticTerm, Run
+    from number_compiler.sequences.collatz.block_power import (
+        CollatzPhysicalBlockMetrics,
+        PoweredCollatzTerm,
+    )
+    from number_compiler.sequences.collatz.character import (
+        CollatzGrowthCharacter,
+        CollatzRadialCharacter,
+    )
+    from number_compiler.sequences.reverse_add.power import (
+        ReverseAddPoweredTerm,
+        ReverseAddPowerMetrics,
+    )
 
 
 NumberFamily = Literal[
@@ -243,7 +251,9 @@ class AntihydraTermPayload:
 
     def digits(self) -> tuple[int, ...]:
         value = self.term.result().h
-        return tuple((value >> index) & 1 for index in range(max(1, value.bit_length())))
+        return tuple(
+            (value >> index) & 1 for index in range(max(1, value.bit_length()))
+        )
 
     @source_reads_only
     def digit(self, index: int) -> int:
@@ -462,11 +472,15 @@ class NumberCompiler:
         self, family: str, source: int, generation: int, base: int
     ) -> ReverseAddPoweredTerm | PoweredCollatzTerm | AntihydraArithmeticTerm:
         if family == "reverse-add":
-            from number_compiler.sequences.reverse_add.power import ReverseAddPoweredTerm
+            from number_compiler.sequences.reverse_add.power import (
+                ReverseAddPoweredTerm,
+            )
         elif family == "collatz":
             from number_compiler.sequences.collatz.block_power import PoweredCollatzTerm
         elif family == "antihydra":
-            from number_compiler.sequences.antihydra.runtime import AntihydraArithmeticTerm
+            from number_compiler.sequences.antihydra.runtime import (
+                AntihydraArithmeticTerm,
+            )
         else:
             raise ValueError("unsupported powered family")
         key = (family, source, generation, base)
@@ -521,9 +535,7 @@ class NumberCompiler:
                 max_steps=source,
                 max_state_bits=base,
                 max_cache_entries=(
-                    8192
-                    if self._max_cache_entries is None
-                    else self._max_cache_entries
+                    8192 if self._max_cache_entries is None else self._max_cache_entries
                 ),
             )
         else:
@@ -571,7 +583,9 @@ class NumberCompiler:
         n = require_integer(index, "term index", 0)
 
         if name == "reverse-add":
-            from number_compiler.sequences.reverse_add.power import ReverseAddPoweredTerm
+            from number_compiler.sequences.reverse_add.power import (
+                ReverseAddPoweredTerm,
+            )
 
             if seed is None:
                 raise ValueError("reverse-add requires seed")
@@ -643,7 +657,9 @@ class NumberCompiler:
             )
 
         if name == "antihydra":
-            from number_compiler.sequences.antihydra.runtime import AntihydraArithmeticTerm
+            from number_compiler.sequences.antihydra.runtime import (
+                AntihydraArithmeticTerm,
+            )
 
             if seed is not None:
                 raise ValueError("Antihydra uses the pinned blank-tape source")
@@ -663,9 +679,7 @@ class NumberCompiler:
                 2,
                 f"antihydra_arithmetic(source=blank)[{n}]",
                 payload,
-                ProjectionMetrics(
-                    "antihydra", n, 0, 0, 1, descriptor_bits, 4 + n
-                ),
+                ProjectionMetrics("antihydra", n, 0, 0, 1, descriptor_bits, 4 + n),
             )
 
         if name == "prime":
@@ -803,7 +817,9 @@ class NumberCompiler:
         ``relation`` is its -1/0/+1 unit phase.  No carry field, successor
         formula, or output digit word is constructed.
         """
-        from number_compiler.arithmetic.functions.state_reduction import ReverseAddGrowthState
+        from number_compiler.arithmetic.functions.state_reduction import (
+            ReverseAddGrowthState,
+        )
 
         value = require_integer(seed, "seed", 0)
         base = require_integer(base, "base", 2)
@@ -825,7 +841,9 @@ class NumberCompiler:
         This deliberately bypasses orbit construction and exact valuation/root
         germ acquisition.
         """
-        from number_compiler.sequences.collatz.character import collatz_growth_character_value
+        from number_compiler.sequences.collatz.character import (
+            collatz_growth_character_value,
+        )
 
         return collatz_growth_character_value(require_integer(seed, "seed", 1))
 
@@ -840,7 +858,9 @@ class NumberCompiler:
         For compressed radix-four sources use ``collatz_radial_character_word``
         directly so the full valuation coordinate need not be retained.
         """
-        from number_compiler.sequences.collatz.character import collatz_radial_character_value
+        from number_compiler.sequences.collatz.character import (
+            collatz_radial_character_value,
+        )
 
         return collatz_radial_character_value(
             require_integer(seed, "seed", 1), require_integer(order, "order", 0)
@@ -860,16 +880,16 @@ class NumberCompiler:
 
 
 __all__ = [
-    "NumberFamily",
-    "ProjectionMetrics",
-    "PoweredReverseAddTermPayload",
-    "PoweredCollatzTermPayload",
     "AntihydraTermPayload",
-    "FormulaTermPayload",
     "FermatTermPayload",
+    "FormulaTermPayload",
     "MersenneTermPayload",
+    "NumberCompiler",
+    "NumberFamily",
+    "PoweredCollatzTermPayload",
+    "PoweredReverseAddTermPayload",
+    "ProjectedNumberTerm",
+    "ProjectionMetrics",
     "ScalarTermPayload",
     "TermPayload",
-    "ProjectedNumberTerm",
-    "NumberCompiler",
 ]

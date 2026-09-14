@@ -30,22 +30,12 @@ from tests.support.diamond_higher_context import expr, machine, point, scalar, s
 if TYPE_CHECKING:
     import typing
 
-    from number_compiler.arithmetic.contracts.scoped_handles import TransferSummaryID
     from number_compiler.hashlife.execution.continuations.diamond_context_program import (
         ContextObservation,
     )
     from number_compiler.hashlife.execution.continuations.diamond_expression_eval import (
         LowerFinite,
         ResolveExpr,
-    )
-    from number_compiler.hashlife.execution.continuations.diamond_higher_tasks import (
-        HigherEmit,
-        HigherInitial,
-        HigherObserve,
-        HigherStep,
-        HigherSummary,
-        HigherUnaryObserve,
-        HigherUnarySummary,
     )
     from number_compiler.hashlife.execution.continuations.diamond_tasks import (
         Evaluate,
@@ -181,7 +171,7 @@ def test_summary_program_and_binding_reservations_are_atomic() -> None:
 
 
 def test_summary_records_reject_numeric_payload_disguises() -> None:
-    runtime, primitive = machine()
+    _runtime, primitive = machine()
     for constructor, args in (
         (HigherUnaryRecord, (primitive, 0, 123)),
         (HigherContextRecord, (primitive, primitive, 123, 456)),

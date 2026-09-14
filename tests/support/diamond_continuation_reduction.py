@@ -23,10 +23,6 @@ from number_compiler.sequences.collatz.block_power import CollatzPhysicalBlockEf
 
 if TYPE_CHECKING:
     from number_compiler.arithmetic.contracts.scoped_handles import ActionProgramID
-    from number_compiler.hashlife.execution.continuations.diamond_runtime import (
-        DiamondRuntime,
-    )
-    from number_compiler.hashlife.interfaces.diamond_boundary_expr import ExprID
 
 
 def machine(

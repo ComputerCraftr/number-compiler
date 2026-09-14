@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 from array import array
-from typing import TYPE_CHECKING
 
 import pytest
 
@@ -18,11 +17,6 @@ from number_compiler.hashlife.interfaces.diamond_quotient import DiamondQuotient
 from number_compiler.hashlife.interfaces.primitive_behavior import LocalSymmetryWitness
 from number_compiler.hashlife.tiles.tiles import TileArena
 from number_compiler.resources.ledger import ResourceLedger
-
-if TYPE_CHECKING:
-    from number_compiler.hashlife.interfaces.primitive_behavior import (
-        LocalSymmetryWitness,
-    )
 
 
 def _symmetric_effect() -> FiniteBlockEffect:

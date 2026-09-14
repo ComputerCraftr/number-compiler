@@ -51,7 +51,9 @@ def test_special_theorem_integer_aliases_reject_before_warm_lookup() -> None:
     with pytest.raises(TypeError, match="special parameter"):
         compiler.resolve_special_theorem("fermat", True)
     with pytest.raises(TypeError, match="policies must be Booleans"):
-        compiler.resolve_special_theorem("fermat", 2, use_factor_projection=1)  # type: ignore[arg-type]
+        compiler.resolve_special_theorem(
+            "fermat", 2, use_factor_projection=cast(bool, 1)
+        )
     assert (
         compiler.resolve_special_theorem("fermat", 2).source_guard.failure_bit
         is expected.source_guard.failure_bit
@@ -63,5 +65,5 @@ def test_special_theorem_integer_aliases_reject_before_warm_lookup() -> None:
 def test_special_output_coordinates_reject_integer_aliases(alias: object) -> None:
     compiler = CanonicalSequenceCompiler()
     with pytest.raises(TypeError):
-        compiler.project_special_branch_values("fermat", 2, alias, 7)  # type: ignore[arg-type]
+        compiler.project_special_branch_values("fermat", 2, cast(int, alias), 7)
     assert compiler.special_constraint_cache_size == 0

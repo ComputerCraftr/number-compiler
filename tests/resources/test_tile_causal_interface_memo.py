@@ -49,8 +49,6 @@ if TYPE_CHECKING:
         CausalInterfacePayload,
     )
     from number_compiler.hashlife.interfaces.diamond_quotient import LocalInterfaceID
-    from number_compiler.hashlife.tiles.tile_context import TemporalCocycle
-    from number_compiler.hashlife.tiles.tile_result_records import CausalInterfaceKey
     from number_compiler.hashlife.tiles.tile_results import CompletedResultArena
     from number_compiler.hashlife.tiles.tiles import TileArena, TileLease
     from number_compiler.resources.ledger import ResourceLedger

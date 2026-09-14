@@ -1,7 +1,5 @@
 from __future__ import annotations
 
-from typing import TYPE_CHECKING
-
 import pytest
 
 from devtools.proofs.special_source_program import (
@@ -12,11 +10,6 @@ from devtools.proofs.special_source_program import (
 from number_compiler.sequences.power_numbers.frobenius_chunk import (
     SpecialFrobeniusChunkSpec,
 )
-
-if TYPE_CHECKING:
-    from number_compiler.sequences.power_numbers.frobenius_chunk import (
-        SpecialFrobeniusChunkSpec,
-    )
 
 
 def _f5_spec() -> SpecialFrobeniusChunkSpec:

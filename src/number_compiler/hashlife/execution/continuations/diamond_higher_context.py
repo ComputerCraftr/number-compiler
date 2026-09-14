@@ -221,14 +221,20 @@ class HigherContextArena:
 
     def context(self, handle: TransferSummaryID) -> HigherContextRecord:
         record = self.resolve(handle)
-        if not isinstance(record, HigherContextRecord):
-            raise ValueError("expected a bilateral higher context")
+        match record:
+            case HigherContextRecord():
+                pass
+            case _:
+                raise ValueError("expected a bilateral higher context")
         return record
 
     def unary(self, handle: TransferSummaryID) -> HigherUnaryRecord:
         record = self.resolve(handle)
-        if not isinstance(record, HigherUnaryRecord):
-            raise ValueError("expected a unary higher transfer")
+        match record:
+            case HigherUnaryRecord():
+                pass
+            case _:
+                raise ValueError("expected a unary higher transfer")
         return record
 
     def _validate(self, task: HigherTask) -> tuple[int, int]:

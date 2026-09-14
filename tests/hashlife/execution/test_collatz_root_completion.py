@@ -38,7 +38,9 @@ def _snapshot(
 ) -> tuple[object, ...]:
     value = result.result
     node = tiles.resolve(value.output)
-    output = tuple(tiles.point(value.output, coordinate) for coordinate in range(node.width))
+    output = tuple(
+        tiles.point(value.output, coordinate) for coordinate in range(node.width)
+    )
     boundaries = tuple(
         None
         if view is None
@@ -97,9 +99,7 @@ def test_initial_root_completion_matches_full_causal_result(ticks: int) -> None:
         oracle = causal_complete(oracle_scheduler, key)
         assert oracle is not None
         try:
-            expected = _snapshot(
-                oracle_tiles, oracle_adapter, oracle_primitive, oracle
-            )
+            expected = _snapshot(oracle_tiles, oracle_adapter, oracle_primitive, oracle)
         finally:
             oracle.close()
 
@@ -227,10 +227,10 @@ def test_scheduler_root_result_hits_cache_and_has_balanced_inventory() -> None:
         second = scheduler.complete(action, source.tile, ports, wiring)
         try:
             assert second.result == first.result
-            with scheduler.application(action, source.tile, ports, wiring) as application:
-                before = ledger.counters.get(
-                    "tile_collatz_initial_root_completions", 0
-                )
+            with scheduler.application(
+                action, source.tile, ports, wiring
+            ) as application:
+                before = ledger.counters.get("tile_collatz_initial_root_completions", 0)
                 first_payload = application.interface()
                 assert application.interface() == first_payload
                 assert (

@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from dataclasses import fields
 from itertools import product
-from typing import TYPE_CHECKING, Never
+from typing import TYPE_CHECKING, Never, cast
 
 import pytest
 
@@ -66,18 +66,8 @@ from number_compiler.sequences.collatz.powered_local_codec import (
 )
 
 if TYPE_CHECKING:
-    from number_compiler.hashlife.execution.field_images import (
-        SourceCellArena,
-        SourceForestID,
-    )
     from number_compiler.hashlife.execution.field_transfer import (
         FieldTransferApplication,
-    )
-    from number_compiler.sequences.collatz.local_transfer import (
-        CollatzPoweredLocalTransferAdapter,
-    )
-    from number_compiler.sequences.collatz.powered_local_codec import (
-        CollatzPoweredLocalCodec,
     )
 
 
@@ -283,7 +273,12 @@ def test_collatz_local_handles_reject_wrong_sort_foreign_and_integer_aliases() -
     foreign = other.leaf(2)
     before = codec.metrics(), codec.ledger.snapshot()
     with pytest.raises(TypeError):
-        codec.resolve(ArenaHandle(action.owner, action.kind, action.local_id))  # type: ignore[arg-type]
+        codec.resolve(
+            cast(
+                CollatzLocalActionID,
+                ArenaHandle(action.owner, action.kind, action.local_id),
+            )
+        )
     for malformed in (
         foreign,
         _forged(action, local_id=True),
@@ -295,7 +290,7 @@ def test_collatz_local_handles_reject_wrong_sort_foreign_and_integer_aliases() -
             codec.resolve(malformed)
     for state in (True, 0.0):
         with pytest.raises(ValueError):
-            codec.apply(action, state)  # type: ignore[arg-type]
+            codec.apply(action, cast(int, state))
     assert (codec.metrics(), codec.ledger.snapshot()) == before
 
 
@@ -328,11 +323,16 @@ def test_collatz_local_public_inputs_require_exact_types() -> None:
     action = codec.source_action(source)
     for symbol in (True, 1.0):
         with pytest.raises(ValueError):
-            codec.leaf(symbol)  # type: ignore[arg-type]
+            codec.leaf(cast(int, symbol))
     with pytest.raises(ValueError):
         codec.transformed(action, ActionTransform.CONJUGATE)
     with pytest.raises(TypeError):
-        codec.source_action(ArenaHandle(source.owner, source.kind, source.local_id))  # type: ignore[arg-type]
+        codec.source_action(
+            cast(
+                SourceForestID,
+                ArenaHandle(source.owner, source.kind, source.local_id),
+            )
+        )
 
 
 @pytest.mark.accounting

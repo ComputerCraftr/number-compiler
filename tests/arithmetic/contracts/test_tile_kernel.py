@@ -3,7 +3,8 @@
 from __future__ import annotations
 
 from array import array
-from typing import TYPE_CHECKING, Never, cast
+from collections.abc import Mapping
+from typing import Never, cast
 
 import pytest
 
@@ -12,6 +13,7 @@ from number_compiler.arithmetic.contracts.block_kernel import (
     BaseBlockEffect,
     FiniteBlockEffect,
 )
+from number_compiler.arithmetic.functions.finite_port_action import PortVariable
 from number_compiler.arithmetic.functions.semantic_functions import (
     SemanticFunctionArena,
 )
@@ -20,9 +22,10 @@ from number_compiler.hashlife.actions.lazy_compiler import UnsupportedInterfaceE
 from number_compiler.hashlife.execution.tile_fused_kernel import leaf_product
 from number_compiler.hashlife.execution.tile_kernel import PrimitiveTileKernelAdapter
 from number_compiler.hashlife.execution.tile_scheduler import TileScheduler
+from number_compiler.hashlife.interfaces import tile_reverse_functions
 from number_compiler.hashlife.interfaces.diamond_kernel import DiamondKernelArena
 from number_compiler.hashlife.interfaces.diamond_quotient import DiamondQuotientArena
-from number_compiler.hashlife.interfaces import tile_reverse_functions
+from number_compiler.hashlife.interfaces.semantic_bits import FactoredFunctionID
 from number_compiler.hashlife.tiles.tile_context import ChildContext
 from number_compiler.hashlife.tiles.tile_ports import ResultWiring
 from number_compiler.hashlife.tiles.tile_results import CompletedResultArena
@@ -35,15 +38,6 @@ from number_compiler.hashlife.tiles.tiles import (
 from number_compiler.projection.digit_terminal import DigitNormalizeBlockEffect
 from number_compiler.resources.ledger import ResourceLedger
 from number_compiler.sequences.collatz.block_power import CollatzPhysicalBlockEffect
-
-if TYPE_CHECKING:
-    from number_compiler.hashlife.actions.field_actions import FieldCellActionID
-    from number_compiler.hashlife.execution.tile_kernel import (
-        PrimitiveTileKernelAdapter,
-    )
-    from number_compiler.hashlife.execution.tile_scheduler import TileScheduler
-    from number_compiler.hashlife.tiles.tiles import TileArena
-    from number_compiler.resources.ledger import ResourceLedger
 
 
 def _runtime(
@@ -157,7 +151,7 @@ def test_fused_leaf_reuses_direct_kernel_symbol_before_compilation(
 
 @pytest.mark.parametrize("bad", (False, True, 0.0, 1.0, -1, 6))
 def test_leaf_product_rejects_symbol_alias_before_warm_lookup(
-    bad: bool | float | int,
+    bad: bool | float,
 ) -> None:
     ledger, _tiles, adapter, action, _scheduler = _runtime(BaseBlockEffect(3))
     wiring = adapter.wiring(action)
@@ -516,10 +510,15 @@ def test_bounded_reverse_parent_interface_composes_without_substitution(
     substitutions = 0
     substitute = adapter.bits.substitute
 
-    def counted(*args: object, **kwargs: object) -> object:
+    def counted(
+        function: FactoredFunctionID,
+        replacements: Mapping[PortVariable, FactoredFunctionID],
+        *,
+        joint: bool = True,
+    ) -> FactoredFunctionID:
         nonlocal substitutions
         substitutions += 1
-        return substitute(*args, **kwargs)  # type: ignore[arg-type]
+        return substitute(function, replacements, joint=joint)
 
     monkeypatch.setattr(adapter.bits, "substitute", counted)
     try:
@@ -546,10 +545,15 @@ def test_uncertified_reverse_base_keeps_generic_finite_compiler(
     substitutions = 0
     substitute = adapter.bits.substitute
 
-    def counted(*args: object, **kwargs: object) -> object:
+    def counted(
+        function: FactoredFunctionID,
+        replacements: Mapping[PortVariable, FactoredFunctionID],
+        *,
+        joint: bool = True,
+    ) -> FactoredFunctionID:
         nonlocal substitutions
         substitutions += 1
-        return substitute(*args, **kwargs)  # type: ignore[arg-type]
+        return substitute(function, replacements, joint=joint)
 
     monkeypatch.setattr(adapter.bits, "substitute", counted)
     try:
@@ -720,7 +724,7 @@ def test_fused_direct_api_rejects_bad_ports_sides_and_nonleaf_before_mutation() 
                     node.right,
                     producer,
                     wiring,
-                    side,  # type: ignore[arg-type]
+                    cast(int, side),
                 )
             with pytest.raises((TypeError, ValueError)):
                 adapter.fused_child_contexts(
@@ -729,7 +733,7 @@ def test_fused_direct_api_rejects_bad_ports_sides_and_nonleaf_before_mutation() 
                     producer,
                     producer,
                     wiring,
-                    side,  # type: ignore[arg-type]
+                    cast(int, side),
                 )
             assert ledger.snapshot() == before
         before = ledger.snapshot()

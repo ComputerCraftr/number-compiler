@@ -1,4 +1,3 @@
-#!/usr/bin/env python3
 """Per-resource sampled scaling assessment of capped diamond profiles.
 
 Raw profiles are immutable inputs. Failed or missing observations remain null;
@@ -9,6 +8,7 @@ from __future__ import annotations
 
 import argparse
 import hashlib
+import itertools
 import json
 from collections.abc import Mapping, Sequence
 from math import log2
@@ -60,12 +60,8 @@ def sampled(
             )
         ]
         result["observed_increment_per_log2_axis"] = increments
-        differences = [
-            right - left for left, right in zip(observed, observed[1:], strict=False)
-        ]
-        geometric = all(
-            b * axis[0] == axis[1] * a for a, b in zip(axis, axis[1:], strict=False)
-        )
+        differences = [right - left for left, right in itertools.pairwise(observed)]
+        geometric = all(b * axis[0] == axis[1] * a for a, b in itertools.pairwise(axis))
         affine = geometric and len(set(differences)) == 1
         constant = len(set(observed)) == 1
         result["exact_additive_first_differences"] = differences

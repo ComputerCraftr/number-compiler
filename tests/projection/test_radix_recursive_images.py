@@ -1,5 +1,7 @@
 """Recursive radix images keep stage identity separate from exact leaf blocks."""
 
+from typing import cast
+
 import pytest
 
 from devtools.proofs.radix_stage_images import (
@@ -89,7 +91,7 @@ def test_division_consumer_power_is_canonical_logarithmic_and_scoped() -> None:
         RadixDivisionActionID(powered.owner, "other-action", powered.local_id),
     ):
         with pytest.raises((TypeError, ValueError)):
-            arena.resolve(invalid)  # type: ignore[arg-type]
+            arena.resolve(cast(RadixDivisionActionID, invalid))
 
 
 def test_radix_provider_action_roots_are_audited_and_counted_as_field_actions() -> None:
@@ -139,7 +141,7 @@ def test_division_image_ids_reject_foreign_wrong_sort_and_numeric_aliases() -> N
         ),
     ):
         with pytest.raises((TypeError, ValueError)):
-            first.resolve(value)  # type: ignore[arg-type]
+            first.resolve(cast(RadixDivisionImageID, value))
     stale = RadixDivisionImageID(first.token, "radix-division-image", 99)
     with pytest.raises(ValueError):
         first.resolve(stale)

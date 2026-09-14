@@ -4,37 +4,46 @@ from dataclasses import replace
 
 import pytest
 
-from number_compiler.arithmetic.contracts.scoped_handles import ArenaToken
+from devtools.proofs.oracles.reverse_publisher import (
+    ReversePublisherProjection,
+    build_reverse_publisher_projection,
+)
 from number_compiler.arithmetic.contracts.block_kernel import BaseBlockEffect
-from number_compiler.arithmetic.contracts.scoped_handles import ExactSource
+from number_compiler.arithmetic.contracts.scoped_handles import ArenaToken, ExactSource
 from number_compiler.arithmetic.contracts.source_geometry import SourceGeometry
+from number_compiler.arithmetic.contracts.temporal_family import _issue_certificate
 from number_compiler.arithmetic.polynomials.twisted_observer import (
     first_mirror_obstruction,
 )
 from number_compiler.hashlife.actions.field_actions import FieldCellActionID
 from number_compiler.hashlife.actions.lazy_compiler import LazyCompiler
 from number_compiler.hashlife.observation.hashlife_projection import HashLifeBlockIndex
-from number_compiler.arithmetic.contracts.temporal_family import _issue_certificate
 from number_compiler.resources.ledger import ResourceLedger
 from number_compiler.sequences.reverse_add.compilation import compile_reverse_pair_power
 from number_compiler.sequences.reverse_add.power import ReverseAddPoweredTerm
-from devtools.proofs.oracles.reverse_publisher import (
-    ReversePublisherProjection,
-    build_reverse_publisher_projection,
-)
 from tests.support.reverse_higher_interface import _direct_step
 
 
 def _reference_publisher(term: ReverseAddPoweredTerm) -> ReversePublisherProjection:
     """Construct the retired publisher only as a bounded differential oracle."""
-    index = term._point_index()
-    certificate = index._certificate
-    if certificate is None or term.effect is None:
+    if term.effect is None:
         raise AssertionError("publisher reference requires a positive generation")
+    source_geometry = SourceGeometry(
+        term._ledger,
+        term._source_construction.source,
+        term._source_construction,
+    )
+    source_geometry.span(term.seed_pair, 2 * term.base - 1, term.maximum_width)
+    certificate = _issue_certificate(
+        term.effect,
+        "reverse-add",
+        term.generation - 1,
+        ledger=term._ledger,
+    )
     return build_reverse_publisher_projection(
         term.seed_pair,
         logical_extent=term.maximum_width,
-        source_geometry=index._source_geometry,
+        source_geometry=source_geometry,
         ledger=term._ledger,
         effect=term.effect,
         compiler=term._compiler,
@@ -53,14 +62,12 @@ def _literal(seed: int, generations: int) -> tuple[int, ...]:
 def test_source_bound_publisher_matches_literal_196(generation: int) -> None:
     term = ReverseAddPoweredTerm(196, generation)
     expected = _literal(196, generation)
-    term._point_index()
     publisher = _reference_publisher(term)
     assert type(publisher) is ReversePublisherProjection
     assert publisher.macro.source_extent == len(term.seed_pair)
     assert publisher.macro.width == term.maximum_width
-    assert tuple(term.iter_digits()) == expected
+    assert tuple(publisher.iter_active()) == expected
     assert publisher.active_width() == len(expected)
-    assert term.metrics().completed_result_entries > 0
 
 
 def test_publisher_defers_reachable_image_until_first_output_demand() -> None:
@@ -86,14 +93,20 @@ def test_publisher_defers_reachable_image_until_first_output_demand() -> None:
     )
 
 
-def test_reference_publisher_rejects_coordinated_action_substitution_without_work() -> None:
+def test_reference_publisher_rejects_coordinated_action_substitution_without_work() -> (
+    None
+):
     term = ReverseAddPoweredTerm(196, 8)
     publisher = _reference_publisher(term)
     assert type(publisher) is ReversePublisherProjection
     publisher.action = publisher.actions.identity
     publisher._binding = (
-        publisher.source, publisher.action, publisher.source_local_action,
-        publisher._source_ports, publisher.program, publisher.output_encoding,
+        publisher.source,
+        publisher.action,
+        publisher.source_local_action,
+        publisher._source_ports,
+        publisher.program,
+        publisher.output_encoding,
     )
     before = term._ledger.snapshot()
     with pytest.raises(ValueError, match="canonical action was changed"):
@@ -224,7 +237,9 @@ def test_publisher_rejects_an_alternate_same_compiler_operator() -> None:
         publisher.effect = original
 
 
-def test_direct_publisher_rejects_unissued_mismatched_and_foreign_certificates_before_allocation() -> None:
+def test_direct_publisher_rejects_unissued_mismatched_and_foreign_certificates_before_allocation() -> (
+    None
+):
     ledger = ResourceLedger()
     compiler = LazyCompiler(ledger)
     effect = compile_reverse_pair_power(compiler, 10, 3).root
@@ -354,9 +369,10 @@ def test_recursive_fold_matches_independent_literal_sheets(
     assert publisher.macro.width == term.maximum_width
     assert publisher.macro.source_extent == len(term.seed_pair)
     assert publisher.mirror_obstruction() == reference
-    assert publisher.ledger.counters.get(
-        "reverse_publisher_cylinder_node_evaluations", 0
-    ) > 0
+    assert (
+        publisher.ledger.counters.get("reverse_publisher_cylinder_node_evaluations", 0)
+        > 0
+    )
 
 
 def test_reference_publisher_does_not_exempt_higher_continuation_work() -> None:

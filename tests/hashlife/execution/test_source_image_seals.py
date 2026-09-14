@@ -82,9 +82,7 @@ def test_seal_registry_uses_ledger_created_visible_stores() -> None:
     assert any(container is registry.images for container in containers.values())
     assert any(container is registry.projections for container in containers.values())
     rows = [
-        row
-        for row in ledger.inventory()
-        if row.role == "source_image_publication_seal"
+        row for row in ledger.inventory() if row.role == "source_image_publication_seal"
     ]
     assert len(rows) == 2
     assert all(row.entries == 1 and row.nodes > 0 for row in rows)

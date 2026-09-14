@@ -10,8 +10,8 @@ different execution contract.
 
 from __future__ import annotations
 
+from collections.abc import Sequence
 from dataclasses import dataclass
-from typing import Sequence
 
 from number_compiler.arithmetic.fields.morphism_core import (
     BinaryPowerResult,
@@ -225,15 +225,15 @@ def trace_square_polynomial(coefficients: Sequence[int]) -> tuple[int, ...]:
 
 
 __all__ = [
-    "trim_polynomial",
-    "polynomial_add_constant",
-    "polynomial_multiply",
-    "polynomial_affine",
     "MonicPolynomialRing",
-    "polynomial_square",
+    "evaluate_polynomial",
+    "polynomial_add_constant",
+    "polynomial_affine",
+    "polynomial_divide_exact",
+    "polynomial_multiply",
     "polynomial_power",
     "polynomial_remainder_monic",
-    "polynomial_divide_exact",
-    "evaluate_polynomial",
+    "polynomial_square",
     "trace_square_polynomial",
+    "trim_polynomial",
 ]

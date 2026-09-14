@@ -260,7 +260,7 @@ class FoldedSupportProgram:
         )
 
     @classmethod
-    def atom(cls, name: str) -> "FoldedSupportProgram":
+    def atom(cls, name: str) -> FoldedSupportProgram:
         return cls((FoldedSupportInstruction("atom", str(name)),))
 
 
@@ -288,7 +288,7 @@ class SpecialSourceCertificateCandidate:
         program: FoldedSupportProgram,
         *,
         method: str = "unproved-folded-support-program",
-    ) -> "SpecialSourceCertificateCandidate":
+    ) -> SpecialSourceCertificateCandidate:
         evaluation = program.evaluate(spec)
         return cls(
             spec,
@@ -314,8 +314,8 @@ class SpecialSourceCertificateCandidate:
 
 
 __all__ = [
-    "FoldedSupportInstruction",
     "FoldedSupportEvaluation",
+    "FoldedSupportInstruction",
     "FoldedSupportProgram",
     "SpecialSourceCertificateCandidate",
 ]

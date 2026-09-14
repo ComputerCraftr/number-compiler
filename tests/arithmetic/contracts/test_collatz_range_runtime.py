@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, cast
 
 import pytest
 
@@ -11,13 +11,13 @@ from number_compiler.arithmetic.contracts.scoped_handles import ArenaToken, Exac
 from number_compiler.arithmetic.contracts.source_geometry import SourceGeometry
 from number_compiler.hashlife.execution.field_images import SourceCellArena
 from number_compiler.resources.ledger import ResourceLedger
-from number_compiler.sequences.collatz.range_runtime import CollatzRadix4RangeArena
+from number_compiler.sequences.collatz.range_runtime import (
+    CollatzRadix4RangeArena,
+    CollatzRadix4RangeID,
+)
 
 if TYPE_CHECKING:
-    from number_compiler.hashlife.execution.field_images import (
-        SourceCellArena,
-        SourceCellID,
-    )
+    from number_compiler.hashlife.execution.field_images import SourceCellID
 
 
 def _sources(bits: tuple[int, ...]) -> tuple[SourceCellArena, SourceCellID]:
@@ -69,7 +69,7 @@ def test_collatz_range_rejects_integer_aliases_before_mutation() -> None:
         action.__class__(action.owner, action.kind, action.local_id + 1),
     ):
         with pytest.raises((TypeError, ValueError, IndexError)):
-            arena.resolve(invalid)  # type: ignore[arg-type]
+            arena.resolve(cast(CollatzRadix4RangeID, invalid))
     after = sources.ledger.snapshot()
     assert after.entries == before.entries
     assert after.nodes == before.nodes

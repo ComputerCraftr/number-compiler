@@ -12,10 +12,10 @@ import os
 import resource
 import subprocess
 import sys
-from collections.abc import Mapping, Sequence
+from collections.abc import Callable, Mapping, Sequence
 from pathlib import Path
 from time import perf_counter
-from typing import Any, Callable, TypedDict
+from typing import Any, TypedDict
 from unittest.mock import patch
 
 from devtools.checks.test_run_evidence import source_fingerprint

@@ -23,7 +23,7 @@ def test_polynomial_germ_is_exact_deck_quotient() -> None:
 
 
 def test_binary_powered_germ_remains_universal_squaring_conjugacy() -> None:
-    for steps in range(0, 9):
+    for steps in range(9):
         audit = iterated_germ_conjugacy_audit(3, steps)
         assert audit.exact
         assert audit.deck_same_after_iteration == (steps >= 1)

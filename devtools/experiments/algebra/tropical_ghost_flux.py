@@ -48,7 +48,7 @@ from devtools.experiments.power_numbers.special_transverse_jet import (
 from number_compiler.arithmetic.fields.adic_morphism import ValuationSensitivityMorphism
 from number_compiler.arithmetic.fields.radix import bit_width
 from number_compiler.arithmetic.fields.tropical_divisor import (
-    TropicalDivisorState as TropicalDivisorState,
+    TropicalDivisorState,
 )
 
 

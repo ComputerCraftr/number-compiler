@@ -11,13 +11,12 @@ from __future__ import annotations
 import sys
 from dataclasses import dataclass
 from threading import RLock
-from typing import Final
+from typing import Final, Self, cast
 
 from number_compiler.arithmetic.contracts.block_effect import (
     BlockContextBudgetExceeded,
 )
 from number_compiler.resources.ledger import OwnedMemo, ResourceLedger
-
 
 DEFAULT_PROCESS_CACHE_ENTRIES: Final = 131_072
 DEFAULT_PROCESS_CACHE_BYTES: Final = 32 * 1024 * 1024
@@ -78,7 +77,8 @@ def _validate_immutable(value: object, name: str) -> ImmutableValue:
             raise TypeError(
                 f"{name} must contain only tuple/int/str/bytes/bool/None values"
             )
-    return value  # type: ignore[return-value]
+    # Every nested member has passed the exact immutable wire-domain check.
+    return cast(ImmutableValue, value)
 
 
 def _deep_size(value: ImmutableValue) -> int:
@@ -171,7 +171,7 @@ class CacheLease:
             id(self), self._token, self._partition, self._generation
         )
 
-    def __enter__(self) -> CacheLease:
+    def __enter__(self) -> Self:
         self._check_live()
         return self
 
@@ -217,9 +217,9 @@ class ProcessCache:
         self._pins: OwnedMemo[PartitionKey, tuple[int, int]] = OwnedMemo(
             self.ledger, pin_owner, nodes_per_entry=1
         )
-        self._authorities: OwnedMemo[
-            int, tuple[int, PartitionKey, int, int]
-        ] = OwnedMemo(self.ledger, authority_owner, nodes_per_entry=1)
+        self._authorities: OwnedMemo[int, tuple[int, PartitionKey, int, int]] = (
+            OwnedMemo(self.ledger, authority_owner, nodes_per_entry=1)
+        )
         self._lock = RLock()
         self._generation = 0
         self._tick = 0
@@ -507,9 +507,7 @@ class ProcessCache:
             self._pins.clear()
             self._authorities.clear()
             if entry_bytes + lease_bytes:
-                self.ledger.release(
-                    self._byte_owner, nodes=entry_bytes + lease_bytes
-                )
+                self.ledger.release(self._byte_owner, nodes=entry_bytes + lease_bytes)
             self._entry_bytes = self._lease_bytes = 0
             self._active_leases = 0
             self._generation += 1

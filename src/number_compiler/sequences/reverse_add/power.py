@@ -14,9 +14,9 @@ node counts alone do not establish HashLife execution scaling.
 
 from __future__ import annotations
 
+from collections.abc import Iterator
 from math import ceil, log2
-from typing import TYPE_CHECKING, Any, Iterator
-from number_compiler.arithmetic.polynomials.twisted_observer import TwistedCylinderProjection
+from typing import TYPE_CHECKING, Any
 
 from number_compiler.arithmetic.contracts.block_effect import BlockEffect
 from number_compiler.arithmetic.contracts.exact_tree_context import (
@@ -31,12 +31,14 @@ from number_compiler.arithmetic.fields.radix import (
     digits_lsd,
     value_from_lsd_digits,
 )
+from number_compiler.arithmetic.polynomials.twisted_observer import (
+    TwistedCylinderProjection,
+)
 from number_compiler.hashlife.actions.lazy_compiler import LazyCompiler
 from number_compiler.hashlife.observation.hashlife_projection import HashLifeBlockIndex
 from number_compiler.projection.digit_terminal import DigitNormalizeBlockEffect
 from number_compiler.resources.ledger import ResourceLedger
 from number_compiler.sequences.reverse_add.compilation import compile_reverse_pair_power
-
 
 if TYPE_CHECKING:
     from number_compiler.resources.metric_records import HashLifeBehaviorMetrics
@@ -50,29 +52,27 @@ def pair_field_from_integer(value: int, base: int) -> tuple[int, ...]:
     return tuple(digits[i] + digits[-1 - i] for i in range(len(digits)))
 
 
-
-
 class ReverseAddPoweredTerm:
     """Exact source-specialized ``reverse_add(seed)[generation]`` descriptor."""
 
     __slots__ = (
         "__weakref__",
-        "seed",
-        "base",
-        "generation",
-        "seed_digits",
-        "seed_pair",
-        "_source_construction",
-        "pair_power",
-        "effect",
+        "_active_width",
+        "_compiler",
+        "_hashlife_max_cache_entries",
+        "_hashlife_max_tile_nodes",
         "_index",
         "_ledger",
-        "_compiler",
+        "_source_construction",
+        "base",
         "compose_operations",
+        "effect",
+        "generation",
+        "pair_power",
+        "seed",
+        "seed_digits",
+        "seed_pair",
         "syntax_depth_bound",
-        "_hashlife_max_tile_nodes",
-        "_hashlife_max_cache_entries",
-        "_active_width",
     )
 
     def __init__(
@@ -188,7 +188,10 @@ class ReverseAddPoweredTerm:
         if position >= self.maximum_width:
             raise IndexError(position)
         value = self._point_index().direct_powered_point(position)
-        if value == int(self.effect.blank):  # type: ignore[union-attr]
+        effect = self.effect
+        if effect is None:
+            raise AssertionError("positive reverse generation has no admitted effect")
+        if value == int(effect.blank):
             raise IndexError(position)
         if not 0 <= value < self.base:
             raise AssertionError((value, self.base, self.generation, position))
@@ -238,12 +241,18 @@ class ReverseAddPoweredTerm:
 
         return mirror_palindrome(self.width(), self.digit)
 
-    def mirror_obstruction(self, *, first_width: int = 1) -> TwistedCylinderProjection | None:
+    def mirror_obstruction(
+        self, *, first_width: int = 1
+    ) -> TwistedCylinderProjection | None:
         """Demand a cyclic/negacyclic certificate for this powered target."""
-        from number_compiler.arithmetic.polynomials.twisted_observer import first_mirror_obstruction
+        from number_compiler.arithmetic.polynomials.twisted_observer import (
+            first_mirror_obstruction,
+        )
 
         if self.generation == 0:
-            return first_mirror_obstruction(self.width(), self.digit, first_width=first_width)
+            return first_mirror_obstruction(
+                self.width(), self.digit, first_width=first_width
+            )
         return self._point_index().direct_mirror_obstruction(first_width=first_width)
 
     def materialize(self, *, max_bits: int) -> int:
@@ -262,9 +271,13 @@ class ReverseAddPoweredTerm:
         return self._point_index().behavior_metrics()
 
     def metrics(self) -> ReverseAddPowerMetrics:
-        from number_compiler.resources.reverse_power_metrics import ReverseAddPowerMetrics
-        from number_compiler.resources.metric_collection import collect_unindexed_metrics
+        from number_compiler.resources.metric_collection import (
+            collect_unindexed_metrics,
+        )
         from number_compiler.resources.powered_metrics import project_powered_metrics
+        from number_compiler.resources.reverse_power_metrics import (
+            ReverseAddPowerMetrics,
+        )
 
         if self._index is None:
             point = collect_unindexed_metrics(self._ledger)
@@ -285,13 +298,17 @@ class ReverseAddPoweredTerm:
 
 
 __all__ = [
-    "pair_field_from_integer",
     "ReverseAddPowerMetrics",
     "ReverseAddPoweredTerm",
+    "pair_field_from_integer",
 ]
 
 
 def __getattr__(name: str) -> Any:
     from number_compiler.api.lazy_exports import resolve_export
 
-    return resolve_export(name, {"ReverseAddPowerMetrics": "number_compiler.resources.reverse_power_metrics"}, globals())
+    return resolve_export(
+        name,
+        {"ReverseAddPowerMetrics": "number_compiler.resources.reverse_power_metrics"},
+        globals(),
+    )

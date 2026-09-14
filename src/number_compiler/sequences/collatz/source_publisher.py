@@ -58,16 +58,16 @@ class CollatzSourcePublisher:
 
     __slots__ = (
         "__weakref__",
-        "seed",
-        "requested_events",
-        "max_events",
-        "max_digits",
-        "ledger",
+        "_issued_snapshot",
+        "_published",
         "events",
+        "ledger",
+        "max_digits",
+        "max_events",
+        "requested_events",
+        "seed",
         "supports",
         "transitions",
-        "_published",
-        "_issued_snapshot",
     )
 
     def __init__(
@@ -91,9 +91,7 @@ class CollatzSourcePublisher:
         # Each discovered event retains one event atom/join and at most a
         # logarithmic number of run/normalization nodes in the physical word.
         # This is a capacity bound, not an allocation or a powered-work claim.
-        support_nodes = 3 + requested_events * (
-            8 + 4 * max(1, max_digits.bit_length())
-        )
+        support_nodes = 3 + requested_events * (8 + 4 * max(1, max_digits.bit_length()))
         event_nodes = 1 + requested_events * (
             4 + 2 * max(1, requested_events.bit_length())
         )
@@ -163,9 +161,7 @@ class CollatzSourcePublisher:
         return cls._word_leq_integer(germ.suffix, quotient)
 
     @classmethod
-    def _germ_radix4_width(
-        cls, germ: CollatzAffineSuffixGerm
-    ) -> tuple[int, int]:
+    def _germ_radix4_width(cls, germ: CollatzAffineSuffixGerm) -> tuple[int, int]:
         """Return exact endpoint width using at most three boundary queries."""
         if germ.multiplier == 0:
             return max(1, (germ.offset.bit_length() + 1) // 2), 0
@@ -199,9 +195,7 @@ class CollatzSourcePublisher:
         while discovered < self.requested_events and not reached_one:
             source_width, comparisons = self._germ_radix4_width(germ)
             admission_comparisons += comparisons
-            self.ledger.bump(
-                "collatz_source_admission_digit_comparisons", comparisons
-            )
+            self.ledger.bump("collatz_source_admission_digit_comparisons", comparisons)
             if source_width > self.max_digits:
                 raise ValueError("source observation digit budget exceeded")
             advance = self.transitions.advance(germ)
@@ -276,7 +270,9 @@ class CollatzSourcePublisher:
             self._issued_snapshot is None
             or self._publication_snapshot(published) != self._issued_snapshot
         ):
-            raise ValueError("Collatz published prefix lost its issued source authority")
+            raise ValueError(
+                "Collatz published prefix lost its issued source authority"
+            )
         if (
             published.source_seed != self.seed
             or published.requested_events != self.requested_events

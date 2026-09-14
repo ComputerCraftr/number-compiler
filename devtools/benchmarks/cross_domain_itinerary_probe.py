@@ -1,4 +1,3 @@
-#!/usr/bin/env python3
 """Cross-domain itinerary/residue/pair-field probe for v0.16."""
 
 from __future__ import annotations

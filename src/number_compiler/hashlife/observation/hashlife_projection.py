@@ -44,13 +44,13 @@ from number_compiler.projection.point_response import PointResponseRegister
 from number_compiler.resources.ledger import ResourceLedger
 
 if TYPE_CHECKING:
+    from number_compiler.arithmetic.polynomials.twisted_observer import (
+        TwistedCylinderProjection,
+    )
+    from number_compiler.hashlife.tiles.tile_context import TemporalCocycle
     from number_compiler.resources.metric_records import (
         HashLifeBehaviorMetrics,
         HashLifeProjectionMetrics,
-    )
-    from number_compiler.hashlife.tiles.tile_context import TemporalCocycle
-    from number_compiler.arithmetic.polynomials.twisted_observer import (
-        TwistedCylinderProjection,
     )
     from number_compiler.sequences.collatz.physical_support import PhysicalSupport
 
@@ -302,13 +302,17 @@ class HashLifeBlockIndex:
         return collect_projection_metrics(self)
 
 
-__all__ = ["HashLifeProjectionMetrics", "HashLifeBehaviorMetrics", "HashLifeBlockIndex"]
+__all__ = ["HashLifeBehaviorMetrics", "HashLifeBlockIndex", "HashLifeProjectionMetrics"]
 
 
 def __getattr__(name: str) -> Any:
     from number_compiler.api.lazy_exports import resolve_export
 
-    return resolve_export(name, {
-        "HashLifeProjectionMetrics": "number_compiler.resources.metric_records",
-        "HashLifeBehaviorMetrics": "number_compiler.resources.metric_records",
-    }, globals())
+    return resolve_export(
+        name,
+        {
+            "HashLifeProjectionMetrics": "number_compiler.resources.metric_records",
+            "HashLifeBehaviorMetrics": "number_compiler.resources.metric_records",
+        },
+        globals(),
+    )

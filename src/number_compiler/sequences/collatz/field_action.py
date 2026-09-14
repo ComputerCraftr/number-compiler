@@ -833,8 +833,8 @@ def bounded_3adic_innovation(
 
 __all__ = [
     "CollatzActionGeometry",
-    "CollatzCocyclePrograms",
     "CollatzCharacterAction",
+    "CollatzCocyclePrograms",
     "CollatzDefectArena",
     "CollatzDefectClassID",
     "CollatzFieldAction",

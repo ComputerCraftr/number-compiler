@@ -1,4 +1,3 @@
-#!/usr/bin/env python3
 """Measure the small Collatz/prime powered-algebra side experiments."""
 
 from __future__ import annotations

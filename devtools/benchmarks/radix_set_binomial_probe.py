@@ -1,4 +1,3 @@
-#!/usr/bin/env python3
 """Cross-domain radix/set/binomial compression probe for Collatz and primes."""
 
 from __future__ import annotations

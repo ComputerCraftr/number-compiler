@@ -1,20 +1,21 @@
 """Proof audits distinguish transfer aliases from temporal behavior."""
 
 from dataclasses import replace
+from typing import cast
 
 import pytest
 
-from number_compiler.arithmetic.contracts.block_kernel import BaseBlockEffect
-from number_compiler.arithmetic.contracts.semantic_identity import SemanticIdentity
 from devtools.proofs.active_behavior_profiles import (
     BehaviorAuditWork,
-    FiniteBehaviorProposal,
     BehaviorGenerator,
     BehaviorGeneratorSort,
+    FiniteBehaviorProposal,
     audit_finite_behavior_profile,
     certify_reverse_leaf_carry_consumer,
     reverse_leaf_carry_consumer_system,
 )
+from number_compiler.arithmetic.contracts.block_kernel import BaseBlockEffect
+from number_compiler.arithmetic.contracts.semantic_identity import SemanticIdentity
 from number_compiler.hashlife.behavior.future_behavior import (
     UnsupportedFutureBehaviorProfile,
 )
@@ -172,4 +173,4 @@ def test_active_certificate_detects_mutated_proof_payload() -> None:
 def test_active_profile_rejects_numeric_aliases(alias: object) -> None:
     system = _aliased_system()
     with pytest.raises((TypeError, ValueError)):
-        replace(system, version=alias)  # type: ignore[arg-type]
+        replace(system, version=cast(int, alias))

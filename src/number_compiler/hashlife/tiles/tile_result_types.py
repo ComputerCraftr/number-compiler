@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from typing import TypeAlias
+from typing import TypeAlias, TypeGuard
 
 from number_compiler.arithmetic.formula.summary import BlockSummary
 from number_compiler.hashlife.behavior.reverse_bound_output import ReverseBoundOutput
@@ -61,4 +61,27 @@ ExecutionValue: TypeAlias = (
 ReverseValue: TypeAlias = ExecutionKey | _ReverseLinks
 
 
-__all__ = ["ExecutionKey", "ExecutionValue", "MemoKey", "ReverseKey", "ReverseValue"]
+def is_execution_key(value: object) -> TypeGuard[ExecutionKey]:
+    return type(value) in (
+        PoweredResultKey,
+        PoweredInterfaceKey,
+        FusedInterfaceKey,
+        CausalInterfaceKey,
+        DirectedTransferKey,
+        ReverseThresholdSummaryKey,
+        ReverseBoundOutputKey,
+        SourceRootMatchKey,
+        BehaviorBindingKey,
+        NormalizedRegionKey,
+        BoundaryConcatKey,
+    )
+
+
+__all__ = [
+    "ExecutionKey",
+    "ExecutionValue",
+    "MemoKey",
+    "ReverseKey",
+    "ReverseValue",
+    "is_execution_key",
+]

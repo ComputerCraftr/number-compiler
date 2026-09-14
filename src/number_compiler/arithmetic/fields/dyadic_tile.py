@@ -16,9 +16,9 @@ in the canonical tile key.
 
 from __future__ import annotations
 
+from collections.abc import Iterator, Sequence
 from dataclasses import dataclass
 from itertools import count
-from typing import Iterator, Sequence
 from weakref import ReferenceType, WeakKeyDictionary, WeakValueDictionary, ref
 
 from number_compiler.arithmetic.contracts.exact_tree_context import (
@@ -34,8 +34,8 @@ class DyadicTile:
     node_id: int
     level: int
     symbol: int | None = None
-    left: "DyadicTile | None" = None
-    right: "DyadicTile | None" = None
+    left: DyadicTile | None = None
+    right: DyadicTile | None = None
 
     def __post_init__(self) -> None:
         require_exact_construction()
@@ -706,31 +706,31 @@ def tile_metrics(span: DyadicSpan) -> dict[str, int]:
 
 
 __all__ = [
-    "DyadicTile",
     "DyadicChunk",
     "DyadicSpan",
-    "leaf",
-    "join",
-    "uniform",
-    "source_span",
-    "uniform_span",
-    "prefix_domain_span",
-    "rebase",
-    "concat",
-    "append_symbol",
-    "slice_span",
-    "first_symbol",
-    "last_symbol",
-    "mirror_tile",
+    "DyadicTile",
     "align_span",
+    "append_symbol",
+    "concat",
+    "empty_span",
+    "first_symbol",
+    "iter_symbols",
+    "join",
+    "last_symbol",
+    "leaf",
     "mirror_span",
+    "mirror_tile",
+    "one_symbol",
+    "prefix_domain_span",
+    "prepend_symbol",
+    "rebase",
+    "retile_like",
+    "slice_span",
+    "source_span",
+    "split",
     "symbol_at",
     "tile_at",
-    "retile_like",
-    "prepend_symbol",
-    "empty_span",
-    "split",
-    "one_symbol",
-    "iter_symbols",
     "tile_metrics",
+    "uniform",
+    "uniform_span",
 ]

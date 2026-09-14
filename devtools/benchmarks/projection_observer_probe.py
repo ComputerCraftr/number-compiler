@@ -1,4 +1,3 @@
-#!/usr/bin/env python3
 """Measure exact projection observers and their extraction barriers."""
 
 from __future__ import annotations

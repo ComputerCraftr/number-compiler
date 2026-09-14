@@ -33,7 +33,7 @@ def test_unknown_parity_itinerary_has_exact_linear_information_bound() -> None:
         collatz_parity_information_bound,
     )
 
-    for width in range(0, 17):
+    for width in range(17):
         bound = collatz_parity_information_bound(width)
         assert bound.semantic_cases == 1 << width
         assert bound.minimum_itinerary_bits == width

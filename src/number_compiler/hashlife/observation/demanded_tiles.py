@@ -6,7 +6,10 @@ from typing import TYPE_CHECKING
 
 from number_compiler.hashlife.actions.field_actions import FieldCellActionID
 from number_compiler.hashlife.execution.tile_clock_dispatch import complete_clock
-from number_compiler.hashlife.tiles.tile_boundaries import BoundaryTileOperands
+from number_compiler.hashlife.tiles.tile_boundaries import (
+    EMPTY_BOUNDARY_TILES,
+    BoundaryTileOperands,
+)
 from number_compiler.hashlife.tiles.tile_context import (
     ChildContext,
     after_context,
@@ -34,7 +37,7 @@ def point(
     coordinate: int,
     *,
     _application: int | None = None,
-    boundaries: BoundaryTileOperands = BoundaryTileOperands(),
+    boundaries: BoundaryTileOperands = EMPTY_BOUNDARY_TILES,
     fusion: FusedBoundaryContract | None = None,
 ) -> int:
     if type(coordinate) is not int:
@@ -152,7 +155,7 @@ def width(
     *,
     limit: int | None = None,
     _application: int | None = None,
-    boundaries: BoundaryTileOperands = BoundaryTileOperands(),
+    boundaries: BoundaryTileOperands = EMPTY_BOUNDARY_TILES,
     fusion: FusedBoundaryContract | None = None,
 ) -> int:
     root = self.tiles.resolve(source)
@@ -336,7 +339,7 @@ def _prefix_active(
     ports: tuple[int, ...],
     wiring: ResultWiring,
     limit: int,
-    boundaries: BoundaryTileOperands = BoundaryTileOperands(),
+    boundaries: BoundaryTileOperands = EMPTY_BOUNDARY_TILES,
 ) -> bool:
     """Observe covered parent effects with one iterative clipped-range loop."""
     if not 0 <= limit <= self.tiles.resolve(source).width:

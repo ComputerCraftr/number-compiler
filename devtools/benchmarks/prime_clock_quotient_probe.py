@@ -1,4 +1,3 @@
-#!/usr/bin/env python3
 """Deterministic recursive prime-clock wheel quotient probe."""
 
 from __future__ import annotations

@@ -293,7 +293,11 @@ class ProgressionProductArena:
                 self.canonicalize(current)
                 cached = self._cache.peek(key)
                 if cached is not None:
-                    self._cache.get_or_lower(key, lambda: cached)
+
+                    def cached_factory(cached: Polynomial = cached) -> Polynomial:
+                        return cached
+
+                    self._cache.get_or_lower(key, cached_factory)
                     continue
                 if current.count > 1:
                     left, right = self.split(current)
@@ -310,7 +314,11 @@ class ProgressionProductArena:
                 assert left_output is not None and right_output is not None
                 output = multiply(left_output, right_output)
             self.materialized_coefficient_slots += len(output)
-            self._cache.get_or_lower(key, lambda: output)
+
+            def output_factory(output: Polynomial = output) -> Polynomial:
+                return output
+
+            self._cache.get_or_lower(key, output_factory)
         result = self._cache.peek(morphism.canonical_key)
         assert result is not None
         return result

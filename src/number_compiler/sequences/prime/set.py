@@ -8,9 +8,9 @@ we do not hide that work behind the summary algebra.
 
 from __future__ import annotations
 
+from collections.abc import Iterable
 from dataclasses import dataclass
 from math import gcd, isqrt
-from typing import Iterable
 
 
 @dataclass(frozen=True, slots=True)
@@ -32,7 +32,7 @@ class AdditiveTranslation:
             raise ValueError("pow2_exponents must be canonical and unique")
 
     @classmethod
-    def from_int(cls, value: int) -> "AdditiveTranslation":
+    def from_int(cls, value: int) -> AdditiveTranslation:
         value = int(value)
         if value < 0:
             raise ValueError("symbolic translation is a nonnegative monoid")
@@ -46,7 +46,7 @@ class AdditiveTranslation:
         return cls(tuple(exps))
 
     @classmethod
-    def power_of_two(cls, exponent: int) -> "AdditiveTranslation":
+    def power_of_two(cls, exponent: int) -> AdditiveTranslation:
         exponent = int(exponent)
         if exponent < 0:
             raise ValueError(exponent)
@@ -73,7 +73,7 @@ class AdditiveTranslation:
             e += 1
         return tuple(k for k in sorted(counts) if counts[k] & 1)
 
-    def then(self, other: "AdditiveTranslation") -> "AdditiveTranslation":
+    def then(self, other: AdditiveTranslation) -> AdditiveTranslation:
         return AdditiveTranslation(
             self._normalize_exponents(self.pow2_exponents + other.pow2_exponents)
         )
@@ -95,12 +95,10 @@ class MultiplicativeSetOperator:
     shift: AdditiveTranslation = AdditiveTranslation()
 
     @classmethod
-    def at(cls, origin: int) -> "MultiplicativeSetOperator":
+    def at(cls, origin: int) -> MultiplicativeSetOperator:
         return cls(int(origin), AdditiveTranslation())
 
-    def translate(
-        self, amount: int | AdditiveTranslation
-    ) -> "MultiplicativeSetOperator":
+    def translate(self, amount: int | AdditiveTranslation) -> MultiplicativeSetOperator:
         if not isinstance(amount, AdditiveTranslation):
             amount = AdditiveTranslation.from_int(int(amount))
         return MultiplicativeSetOperator(self.origin, self.shift.then(amount))
@@ -242,14 +240,14 @@ class PrimeBlockSummary:
             raise ValueError(self)
 
     @classmethod
-    def empty(cls) -> "PrimeBlockSummary":
+    def empty(cls) -> PrimeBlockSummary:
         return cls(0, 0, None)
 
     @classmethod
-    def bit(cls, is_prime: bool) -> "PrimeBlockSummary":
+    def bit(cls, is_prime: bool) -> PrimeBlockSummary:
         return cls(1, int(bool(is_prime)), 0 if is_prime else None)
 
-    def then(self, other: "PrimeBlockSummary") -> "PrimeBlockSummary":
+    def then(self, other: PrimeBlockSummary) -> PrimeBlockSummary:
         first = self.first
         if first is None and other.first is not None:
             first = self.length + other.first
@@ -472,19 +470,19 @@ def summarize_prime_bits(bits: Iterable[bool]) -> PrimeBlockSummary:
 
 __all__ = [
     "AdditiveTranslation",
-    "MultiplicativeSetOperator",
-    "composite_convolution",
-    "PrimeBlockSummary",
     "MultiplicativeLane",
     "MultiplicativeLaneBasis",
-    "packed_generator_step",
-    "smallest_factor",
-    "jacobi_symbol",
-    "is_prime_u64",
+    "MultiplicativeSetOperator",
+    "PrimeBlockSummary",
+    "PrimeProjection",
     "canonical_multiplicative_lane_basis",
     "canonical_multiplicative_lanes",
-    "PrimeProjection",
-    "project_odd_prime_block",
+    "composite_convolution",
     "finite_cover_lanes",
+    "is_prime_u64",
+    "jacobi_symbol",
+    "packed_generator_step",
+    "project_odd_prime_block",
+    "smallest_factor",
     "summarize_prime_bits",
 ]

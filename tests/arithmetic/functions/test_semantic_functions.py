@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from itertools import product
-from typing import TYPE_CHECKING, Literal, cast
+from typing import Literal, cast
 
 import pytest
 
@@ -27,15 +27,6 @@ from number_compiler.arithmetic.functions.semantic_functions import (
     SemanticFunctionArena,
 )
 from number_compiler.resources.ledger import ResourceLedger
-
-if TYPE_CHECKING:
-    from number_compiler.arithmetic.functions.finite_function_types import (
-        FinitePort,
-        SemanticFunctionID,
-    )
-    from number_compiler.arithmetic.functions.semantic_functions import (
-        SemanticFunctionArena,
-    )
 
 
 def fixture() -> tuple[
@@ -135,7 +126,7 @@ def test_non_power_of_two_admissibility_and_curried_invalid_codes() -> None:
 def test_warm_operations_skip_child_rewrites_and_eviction_preserves_ids(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    arena, x, y, vx, vy = fixture()
+    arena, _x, _y, vx, vy = fixture()
     cached = arena.product((vx, vy))
     nodes = len(arena.nodes)
     monkeypatch.setattr(
@@ -162,7 +153,7 @@ def test_warm_operations_skip_child_rewrites_and_eviction_preserves_ids(
     ],
 )
 def test_forged_handles_reject_before_warm_operation_or_scalar_lookup(
-    field: str, value: ArenaToken | Literal["other"] | bool | float | int
+    field: str, value: ArenaToken | Literal["other"] | bool | float
 ) -> None:
     arena, x, y, vx, vy = fixture()
     arena.product((vx, vy))
@@ -319,6 +310,43 @@ def test_deep_independent_sort_dags_hash_and_compare_without_recursion() -> None
     assert one != arena.invalid(FunctionSignature((), different))
 
 
+def test_shared_sort_hash_validates_once_and_rejects_a_forged_cycle(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    import number_compiler.arithmetic.functions.finite_function_types as semantic
+
+    port = FinitePort(PortVariable(0, 0, "shared-hash", 0), 3)
+    shared = FunctionSort((port,), BOOL)
+    root = ProductSort((shared, shared))
+    calls: list[tuple[FinitePort, ...]] = []
+    original_ports = semantic._ports
+
+    def counted_ports(ports: tuple[FinitePort, ...]) -> None:
+        calls.append(ports)
+        original_ports(ports)
+
+    monkeypatch.setattr(semantic, "_ports", counted_ports)
+    atom_hash = hash(("atom", BOOL.name, BOOL.cardinality))
+    function_hash = hash(("function", (port,), atom_hash))
+    root_hash = hash(("product", (function_hash, function_hash)))
+    assert hash(root) == root_hash
+    assert calls == [(port,)]
+
+    calls.clear()
+    signature = FunctionSignature((), root)
+    assert hash(signature) == hash(((), root_hash))
+    assert calls == [(), (port,)]
+
+    object.__setattr__(shared, "output", shared)
+    try:
+        with pytest.raises(ValueError, match="cyclic"):
+            hash(root)
+        with pytest.raises(ValueError, match="cyclic"):
+            FunctionSignature((), root)
+    finally:
+        object.__setattr__(shared, "output", BOOL)
+
+
 def test_sort_hash_collision_still_compares_exact_deep_structure(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -342,4 +370,4 @@ def test_direct_sort_hash_and_equality_reject_forged_cycles() -> None:
     with pytest.raises(ValueError, match="cyclic"):
         hash(cyclic)
     with pytest.raises(ValueError, match="cyclic"):
-        cyclic == FunctionSort((), BOOL)
+        _ = cyclic == FunctionSort((), BOOL)

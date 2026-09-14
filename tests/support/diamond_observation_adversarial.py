@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 from array import array
-from typing import TYPE_CHECKING
 
 from number_compiler.arithmetic.contracts.block_kernel import FiniteBlockEffect
 from number_compiler.hashlife.interfaces.diamond_boundary_expr import (
@@ -11,9 +10,6 @@ from number_compiler.hashlife.interfaces.diamond_boundary_expr import (
     ExprID,
 )
 from number_compiler.resources.ledger import ResourceLedger
-
-if TYPE_CHECKING:
-    from number_compiler.arithmetic.contracts.block_kernel import FiniteBlockEffect
 
 
 def neighbor_xor() -> FiniteBlockEffect:

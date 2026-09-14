@@ -14,10 +14,10 @@ from number_compiler.arithmetic.functions.finite_function_types import (
 )
 from number_compiler.hashlife.execution.tile_kernel import PrimitiveTileKernelAdapter
 from number_compiler.hashlife.execution.tile_scheduler import TileApplication
-from number_compiler.hashlife.observation.tile_projection import LazyProjection
-from number_compiler.sequences.collatz.physical_support import PhysicalSupport
 from number_compiler.hashlife.interfaces.semantic_bits import FactoredFunctionID
+from number_compiler.hashlife.observation.tile_projection import LazyProjection
 from number_compiler.sequences.collatz.block_power import PoweredCollatzTerm
+from number_compiler.sequences.collatz.physical_support import PhysicalSupport
 from number_compiler.sequences.collatz.power import CollatzEventArena
 
 

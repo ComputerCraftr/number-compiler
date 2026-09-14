@@ -15,7 +15,9 @@ from number_compiler.sequences.antihydra.runtime import run
 pytestmark = pytest.mark.validation
 
 
-def test_source7_has_installed_cli_nonhalting_certificate(capsys: pytest.CaptureFixture[str]) -> None:
+def test_source7_has_installed_cli_nonhalting_certificate(
+    capsys: pytest.CaptureFixture[str],
+) -> None:
     root = Path(__file__).resolve().parents[3]
     certificate = root / "results" / "certificates" / "antihydra-source7.json"
     assert certificate.is_file(), "P0: no accepted source-7 non-halting certificate"

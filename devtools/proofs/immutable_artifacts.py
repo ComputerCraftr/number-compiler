@@ -12,12 +12,16 @@ from collections.abc import Callable, Mapping
 from dataclasses import dataclass, fields, is_dataclass
 from sys import getsizeof
 from threading import RLock
-from typing import TypeVar, cast
+from typing import Protocol, TypeVar, cast
 
 from number_compiler.arithmetic.contracts.scoped_handles import ArenaHandle, ArenaToken
 
 _SCHEMA_VERSION = "proof-artifact-v1"
 T = TypeVar("T")
+
+
+class _DataclassParams(Protocol):
+    frozen: bool
 
 
 @dataclass(frozen=True, slots=True)
@@ -93,7 +97,9 @@ def _immutable(value: object) -> bool:
             continue
         if (
             is_dataclass(item)
-            and getattr(type(item), "__dataclass_params__").frozen
+            and cast(
+                _DataclassParams, vars(type(item)).get("__dataclass_params__")
+            ).frozen
             and not hasattr(item, "__dict__")
         ):
             declared_fields = {field.name for field in fields(item)}
@@ -222,9 +228,9 @@ REGISTRY = ImmutableArtifactRegistry()
 
 
 __all__ = [
+    "REGISTRY",
     "ArtifactKey",
     "ArtifactStats",
     "ImmutableArtifactRegistry",
-    "REGISTRY",
     "UncachedBuild",
 ]

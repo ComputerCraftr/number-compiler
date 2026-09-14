@@ -6,6 +6,8 @@ They retain no request, tile, digit, or source payload.
 
 from __future__ import annotations
 
+from contextlib import suppress
+
 from number_compiler.arithmetic.contracts.block_effect import BlockContextBudgetExceeded
 from number_compiler.resources.ledger import ResourceLedger
 from number_compiler.resources.stores import LedgerDict
@@ -75,10 +77,12 @@ class CacheEventMetrics:
         except BlockContextBudgetExceeded:
             self.ledger.bump("cache_event_histogram_dropped")
             return
-        try:
+        completed = False
+        with suppress(Exception):
             for key in keys:
                 self.buckets[key] = self.buckets.get(key, 0) + 1
-        except Exception:
+            completed = True
+        if not completed:
             for key, value in old.items():
                 if value is None:
                     self.buckets.pop(key, None)
@@ -106,10 +110,12 @@ class CacheEventMetrics:
         except BlockContextBudgetExceeded:
             self.ledger.bump("cache_event_histogram_dropped")
             return
-        try:
+        completed = False
+        with suppress(Exception):
             for key in missing:
                 self.buckets[key] = 0
-        except Exception:
+            completed = True
+        if not completed:
             for key in missing:
                 self.buckets.pop(key, None)
             self.ledger.release(self.owner, entries=len(missing))
@@ -252,12 +258,12 @@ def cache_event_owner_audit(
 
 
 __all__ = [
+    "MAX_CACHE_EVENT_BUCKETS",
     "CacheEventMetrics",
     "cache_event_histograms",
     "cache_event_owner_audit",
-    "record_cache_event",
-    "MAX_CACHE_EVENT_BUCKETS",
     "prepare_execution_cache_event",
+    "record_cache_event",
     "record_execution_cache_event",
     "temporal_span",
 ]

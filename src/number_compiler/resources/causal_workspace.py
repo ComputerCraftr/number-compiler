@@ -15,7 +15,7 @@ from number_compiler.resources.stores import LedgerDict, LedgerList
 
 
 class SpatialReferenceBuffer:
-    __slots__ = ("workspace", "identity", "capacity", "used", "closed", "backing_bytes")
+    __slots__ = ("backing_bytes", "capacity", "closed", "identity", "used", "workspace")
 
     def __init__(
         self, workspace: CausalSpatialWorkspace, identity: int, capacity: int

@@ -1,7 +1,5 @@
 from __future__ import annotations
 
-from typing import TYPE_CHECKING
-
 from devtools.experiments.power_numbers.special_source_certificate import (
     candidate_certificate_differential,
     control_summary,
@@ -12,11 +10,6 @@ from devtools.proofs.special_source_program import (
     FoldedSupportInstruction,
     FoldedSupportProgram,
 )
-
-if TYPE_CHECKING:
-    from devtools.proofs.special_source_program import (
-        FoldedSupportProgram,
-    )
 
 
 def _old_fermat_overfit_program() -> FoldedSupportProgram:

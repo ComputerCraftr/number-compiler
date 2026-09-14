@@ -151,8 +151,8 @@ class ReverseAddForcingMorphismArena:
 
     __slots__ = (
         "_classes",
-        "_owner",
         "_occurrences",
+        "_owner",
         "_payloads",
         "_sources",
         "action_aliases",

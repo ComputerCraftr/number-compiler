@@ -14,6 +14,7 @@ carry in ``{0, 1, 2}``.
 from __future__ import annotations
 
 from dataclasses import dataclass
+
 from devtools.proofs.reverse_threshold_geometry import (
     ThresholdGeometry,
     ThresholdGeometryID,
@@ -29,7 +30,6 @@ from number_compiler.arithmetic.carry.collatz_output_quotient import (
     DOMAIN_ACTIONS,
     radix64_domain,
 )
-
 
 _CARRY_FUNCTIONS = tuple(CarryFn)
 

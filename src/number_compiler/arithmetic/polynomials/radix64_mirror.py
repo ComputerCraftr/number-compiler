@@ -67,9 +67,7 @@ def compose_mirror_pairs(pairs: Iterable[tuple[int, int]]) -> MirrorCorrActionID
     return action
 
 
-def folded_mirror_residue(
-    low: int, mirror: MirrorCorrActionID, *, sign: int
-) -> int:
+def folded_mirror_residue(low: int, mirror: MirrorCorrActionID, *, sign: int) -> int:
     """Consume the fold geometry and low boundary port after mirror reduction."""
     if type(low) is not int or not 0 <= low < 16:
         raise ValueError("the low coefficient port must be reduced modulo sixteen")
@@ -142,6 +140,10 @@ def folded_fifth_residue(
 
 
 __all__ = [
-    "FoldedFifthProjection", "MirrorCorrActionID", "compose_mirror_pairs",
-    "folded_fifth_residue", "folded_mirror_residue", "mirror_leaf_action",
+    "FoldedFifthProjection",
+    "MirrorCorrActionID",
+    "compose_mirror_pairs",
+    "folded_fifth_residue",
+    "folded_mirror_residue",
+    "mirror_leaf_action",
 ]

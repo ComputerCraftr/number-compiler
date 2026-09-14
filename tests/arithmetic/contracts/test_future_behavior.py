@@ -2,11 +2,11 @@
 
 from dataclasses import replace
 from hashlib import sha256
-from typing import Never
+from typing import Never, cast
 
 import pytest
 
-from devtools.proofs.immutable_artifacts import ArtifactKey, REGISTRY
+from devtools.proofs.immutable_artifacts import REGISTRY, ArtifactKey
 from number_compiler.arithmetic.contracts.block_effect import (
     BlockContextBudgetExceeded,
     BoundarySide,
@@ -130,11 +130,11 @@ def test_future_behavior_numeric_aliases_reject_before_lookup(alias: object) -> 
     profile, behavior = arena.admit_quiescent_blank(quotient)
     with pytest.raises((TypeError, ValueError)):
         arena.resolve_future_profile(
-            FutureBehaviorProfileID(profile.owner, profile.kind, alias)  # type: ignore[arg-type]
+            FutureBehaviorProfileID(profile.owner, profile.kind, cast(int, alias))
         )
     with pytest.raises((TypeError, ValueError)):
         arena.resolve_future_behavior(
-            FutureBehaviorClassID(behavior.owner, behavior.kind, alias)  # type: ignore[arg-type]
+            FutureBehaviorClassID(behavior.owner, behavior.kind, cast(int, alias))
         )
 
 

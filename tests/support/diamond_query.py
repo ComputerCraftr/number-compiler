@@ -2,8 +2,6 @@
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING
-
 from number_compiler.arithmetic.contracts.block_effect import BlockEffect, BoundarySide
 from number_compiler.arithmetic.contracts.scoped_handles import ExactSource
 from number_compiler.arithmetic.contracts.source_geometry import SourceGeometry
@@ -13,9 +11,6 @@ from number_compiler.hashlife.execution.continuations.diamond_runtime import (
 )
 from number_compiler.hashlife.observation.diamond_query import DiamondApplication
 from number_compiler.resources.ledger import ResourceLedger
-
-if TYPE_CHECKING:
-    from number_compiler.hashlife.observation.diamond_query import DiamondApplication
 
 
 def build(

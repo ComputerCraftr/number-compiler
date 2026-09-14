@@ -8,7 +8,6 @@ from devtools.experiments.power_numbers.radix64_mirror_refinement import (
     temporal_mirror_audit,
 )
 
-
 pytestmark = pytest.mark.validation
 
 
@@ -47,8 +46,7 @@ def test_radix64_fifth_residue_refines_the_72_row_corpus() -> None:
     m53_false_positive = next(
         row
         for row in audit.rows
-        if row.source.sheet.parameter == 53
-        and row.source.orientations == (1, 1, -1)
+        if row.source.sheet.parameter == 53 and row.source.orientations == (1, 1, -1)
     )
     assert m53_false_positive.source.projection.vanishes
     assert m53_false_positive.dense_fifth == 13
@@ -64,9 +62,7 @@ def test_fifth_mod16_is_the_unique_minimum_single_coefficient_witness() -> None:
     assert tuple(
         (row.position, row.modulus_bits) for row in audit.minimum_witnesses
     ) == ((5, 4),)
-    assert (8, 5) in {
-        (row.position, row.modulus_bits) for row in audit.all_witnesses
-    }
+    assert (8, 5) in {(row.position, row.modulus_bits) for row in audit.all_witnesses}
 
 
 @pytest.mark.parametrize(
@@ -98,6 +94,11 @@ def test_temporal_rows_use_common_depth_orientations_through_the_audit_horizon(
             1 if depth >= level else -1 for depth in depths
         )
         assert row.fifth.vanishes == (level <= min(depths))
-    assert next(
-        level for level, row in enumerate(audit.rows, start=1) if not row.fifth.vanishes
-    ) == min(depths) + 1
+    assert (
+        next(
+            level
+            for level, row in enumerate(audit.rows, start=1)
+            if not row.fifth.vanishes
+        )
+        == min(depths) + 1
+    )

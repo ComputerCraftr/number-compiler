@@ -25,13 +25,13 @@ from number_compiler.resources.metric_registry import (
     schema6_work_values,
 )
 from number_compiler.resources.metric_replace import replace_metric
-from number_compiler.resources.semantic_metric_registry import (
-    SEMANTIC_OUTCOME_COUNTERS,
-)
 from number_compiler.resources.ownership import audit_execution_ownership
 from number_compiler.resources.payload_audit import audit_registered_payloads
 from number_compiler.resources.payload_containers import audit_mapping_items
 from number_compiler.resources.payload_policy import _role
+from number_compiler.resources.semantic_metric_registry import (
+    SEMANTIC_OUTCOME_COUNTERS,
+)
 
 
 def collect_ledger_metrics(ledger: ResourceLedger) -> LedgerMetrics:
@@ -41,13 +41,13 @@ def collect_ledger_metrics(ledger: ResourceLedger) -> LedgerMetrics:
     from number_compiler.arithmetic.carry.reverse_sector_transfer import (
         ReverseCarrySectorTransfer,
     )
-    from number_compiler.hashlife.execution.tile_scheduler import TileApplication
     from number_compiler.hashlife.actions.tile_action_algebra import (
         retained_action_nodes,
     )
     from number_compiler.hashlife.execution.tile_kernel import (
         PrimitiveTileKernelAdapter,
     )
+    from number_compiler.hashlife.execution.tile_scheduler import TileApplication
     from number_compiler.hashlife.interfaces.diamond_kernel import (
         DiamondKernelArena,
         FiniteExpression,

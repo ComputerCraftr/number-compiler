@@ -19,9 +19,6 @@ if TYPE_CHECKING:
     from number_compiler.hashlife.execution.continuations.diamond_runtime import (
         DiamondRuntime,
     )
-    from number_compiler.hashlife.execution.continuations.diamond_tasks import (
-        MacroTransferKey,
-    )
 
 
 def setup() -> tuple[DiamondRuntime, MacroTransferKey]:

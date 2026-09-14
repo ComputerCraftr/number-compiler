@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import ast
+import itertools
 from collections.abc import Callable
 from pathlib import Path
 from typing import Never, cast
@@ -136,7 +137,7 @@ def test_reverse_add_seed_base_matrix_compiles_exact_radix_values(
     assert all(term.radix == base for term in got.terms)
     assert tuple(got.growths) == tuple(
         len(digits_lsd(b, base)) - len(digits_lsd(a, base))
-        for a, b in zip(want, want[1:])
+        for a, b in itertools.pairwise(want)
     )
 
 
@@ -274,9 +275,7 @@ def test_prime_compiler_exposes_work_optimized_residual_divisor_quotient() -> No
     )
 
 
-def test_special_theorem_query_leaves_unproved_special_cases_unknown() -> (
-    None
-):
+def test_special_theorem_query_leaves_unproved_special_cases_unknown() -> None:
     compiler = CanonicalSequenceCompiler()
     fermat = compiler.compile_diagnostic(
         FermatSequenceSpec((5,), test_through=5)
@@ -337,10 +336,10 @@ def test_unused_factor_limit_is_not_part_of_default_theorem_cache_identity() -> 
 def test_special_source_compile_never_calls_factor_or_certificate_hot_paths(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    import number_compiler.api.sequence_terms as sequence_terms
-    import number_compiler.arithmetic.fields.congruence_automaton as congruence_automaton
     import number_compiler.sequences.power_numbers.certificate as special_certificate
     import number_compiler.sequences.power_numbers.numbers as special_numbers
+    from number_compiler.api import sequence_terms
+    from number_compiler.arithmetic.fields import congruence_automaton
 
     def forbidden(*args: object, **kwargs: object) -> Never:
         raise AssertionError("theorem work reached raw special-source compiler")
@@ -647,7 +646,7 @@ def test_collatz_compilation_exposes_one_self_branching_successor_not_an_itinera
 def test_default_special_theorem_fails_closed_without_factor_or_recurrence(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    import number_compiler.arithmetic.fields.congruence_automaton as congruence_automaton
+    from number_compiler.arithmetic.fields import congruence_automaton
 
     def forbidden(*args: object, **kwargs: object) -> Never:
         raise AssertionError(

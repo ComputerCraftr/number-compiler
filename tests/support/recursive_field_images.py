@@ -72,33 +72,18 @@ from number_compiler.resources.ledger import ResourceLedger
 if TYPE_CHECKING:
     from number_compiler.hashlife.actions.diamond_actions import PortSignatureID
     from number_compiler.hashlife.actions.field_actions import (
-        FieldCellActionID,
         FieldGeometryID,
     )
     from number_compiler.hashlife.execution.continuations.provider_absorption import (
-        ProviderAbsorptionArena,
         ProviderActionID,
         ProviderBindingKey,
     )
     from number_compiler.hashlife.execution.continuations.provider_image_input import (
-        ProviderImageInputArena,
         ProviderImageInputID,
     )
-    from number_compiler.hashlife.execution.field_executor import (
-        FieldImageCandidate,
-        RecursiveFieldImageExecutor,
-    )
     from number_compiler.hashlife.execution.field_images import (
-        RecursiveFieldImageArena,
-        SourceCellID,
         SourceForestID,
     )
-    from number_compiler.hashlife.execution.field_transfer import (
-        FieldTransferCandidate,
-        FieldTransferExecutor,
-    )
-    from number_compiler.hashlife.execution.field_transfers import FieldTransferArena
-    from number_compiler.resources.ledger import ResourceLedger
 
 
 class _Adapter:
@@ -387,7 +372,7 @@ def _setup(
 def _provider_setup() -> tuple[
     ResourceLedger, ProviderAbsorptionArena, ProviderActionID, ProviderBindingKey
 ]:
-    ledger, source, signature, _, action, images, adapter, _ = _setup((0, 1))
+    ledger, source, _signature, _, action, images, adapter, _ = _setup((0, 1))
 
     def validate_boundary(value: object) -> None:
         if type(value) is not int or value not in (0, 1):

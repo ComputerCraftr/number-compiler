@@ -2,34 +2,34 @@
 
 from __future__ import annotations
 
+from number_compiler.arithmetic.carry.carry_monoid import apply_carry_fn
 from number_compiler.arithmetic.carry.reverse_sector_transfer import (
     ReverseCarrySectorTransfer,
     ReverseForcingResidues,
 )
-from number_compiler.arithmetic.carry.carry_monoid import apply_carry_fn
 from number_compiler.arithmetic.contracts.block_kernel import BaseBlockEffect
 from number_compiler.hashlife.actions.field_actions import FieldCellActionID
 from number_compiler.hashlife.execution.tile_application_authority import (
     application_source,
 )
-from number_compiler.hashlife.execution.tile_kernel import PrimitiveTileKernelAdapter
 from number_compiler.hashlife.execution.tile_causal_interfaces import (
     CausalInterfacePayload,
     primitive_interface_payload,
 )
 from number_compiler.hashlife.execution.tile_causal_results import PrimitiveCausalPorts
+from number_compiler.hashlife.execution.tile_kernel import PrimitiveTileKernelAdapter
 from number_compiler.hashlife.execution.tile_scheduler import TileApplication
 from number_compiler.hashlife.interfaces.diamond_quotient import LocalInterfaceID
 from number_compiler.hashlife.interfaces.tile_reverse_sector_functions import (
     _aligned_reverse_interval_forcing,
 )
-from number_compiler.hashlife.tiles.tile_boundaries import BoundaryTileView
-from number_compiler.hashlife.tiles.tile_region_memo import normalize_cached_region
 from number_compiler.hashlife.tiles.reverse_threshold_summary import (
     reverse_current_growth,
 )
-from number_compiler.hashlife.tiles.tiles import TileID, TileLease
+from number_compiler.hashlife.tiles.tile_boundaries import BoundaryTileView
 from number_compiler.hashlife.tiles.tile_context import TemporalCocycle
+from number_compiler.hashlife.tiles.tile_region_memo import normalize_cached_region
+from number_compiler.hashlife.tiles.tiles import TileID, TileLease
 from number_compiler.sequences.reverse_add.frobenius_sectors import (
     ReverseFrobeniusSectorProduct,
 )

@@ -9,8 +9,8 @@ quotient-ring multiplication kernels.
 
 from __future__ import annotations
 
+from collections.abc import Sequence
 from dataclasses import dataclass, field
-from typing import Sequence
 
 from number_compiler.arithmetic.fields.morphism_core import BinaryPowerResult
 from number_compiler.arithmetic.polynomials.cyclotomic import (
@@ -38,9 +38,10 @@ class CyclotomicRing:
         )
         if order <= 0 or modulus <= 1 or power <= 0:
             raise ValueError(self)
-        if factor is not None:
-            if power != 1 or len(factor) <= 1 or factor[-1] % modulus != 1:
-                raise ValueError((order, modulus, power, factor))
+        if factor is not None and (
+            power != 1 or len(factor) <= 1 or factor[-1] % modulus != 1
+        ):
+            raise ValueError((order, modulus, power, factor))
         divisor = factor or cyclotomic_power_coefficients(order, power)
         if len(divisor) <= 1 or divisor[-1] != 1:
             raise ValueError((order, modulus, power, factor, divisor))

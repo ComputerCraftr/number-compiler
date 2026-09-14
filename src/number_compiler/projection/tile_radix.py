@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from array import array
 from collections.abc import MutableMapping
+from typing import Self
 
 from number_compiler.arithmetic.contracts.block_kernel import FiniteBlockEffect
 from number_compiler.arithmetic.contracts.exact_tree_context import source_reads_only
@@ -16,8 +17,8 @@ from number_compiler.hashlife.execution.tile_scheduler import (
     TileApplication,
     TileScheduler,
 )
-from number_compiler.hashlife.tiles.tile_context import TemporalCocycle
 from number_compiler.hashlife.observation.tile_projection import LazyProjection
+from number_compiler.hashlife.tiles.tile_context import TemporalCocycle
 from number_compiler.hashlife.tiles.tiles import TileID
 from number_compiler.resources.ledger import ResourceLedger
 
@@ -105,16 +106,16 @@ class TileRadixProjection:
     """
 
     __slots__ = (
-        "scheduler",
-        "adapter",
-        "ledger",
-        "radix",
-        "action",
+        "__weakref__",
+        "_closed",
         "_source",
         "_stage_owner",
         "_stages",
-        "_closed",
-        "__weakref__",
+        "action",
+        "adapter",
+        "ledger",
+        "radix",
+        "scheduler",
     )
     ledger: ResourceLedger
 
@@ -313,7 +314,7 @@ class TileRadixProjection:
             self._source.close()
             self._closed = True
 
-    def __enter__(self) -> TileRadixProjection:
+    def __enter__(self) -> Self:
         self._open()
         return self
 
@@ -325,15 +326,15 @@ class TileRadixObservation:
     """Demand radix remainders from a powered tile application without endpoints."""
 
     __slots__ = (
-        "projection",
-        "scheduler",
-        "adapter",
-        "radix",
-        "division",
-        "_owner",
+        "__weakref__",
         "_apps",
         "_closed",
-        "__weakref__",
+        "_owner",
+        "adapter",
+        "division",
+        "projection",
+        "radix",
+        "scheduler",
     )
 
     def __init__(self, projection: LazyProjection, radix: int) -> None:
@@ -371,7 +372,7 @@ class TileRadixObservation:
         )
         self._closed = False
         scheduler.ledger.register_execution_root(self)
-        application.source
+        _ = application.source
 
     def _application(self, index: int) -> TileApplication:
         if type(self._closed) is not bool or self._closed:

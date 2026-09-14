@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from typing import TYPE_CHECKING
+from typing import cast
 
 import pytest
 
@@ -16,15 +16,6 @@ from number_compiler.projection.microblock_cache import (
     MicroblockKey,
 )
 from number_compiler.resources.ledger import ResourceLedger
-
-if TYPE_CHECKING:
-    from number_compiler.arithmetic.contracts.scoped_handles import ActionProgramID
-    from number_compiler.hashlife.actions.lazy_compiler import LazyCompiler
-    from number_compiler.projection.microblock_cache import (
-        MicroblockCache,
-        MicroblockKey,
-    )
-    from number_compiler.resources.ledger import ResourceLedger
 
 
 def _fixture() -> tuple[
@@ -78,7 +69,7 @@ def test_microblock_rejects_invalid_program_before_warm_probe_or_mutation(
 @pytest.mark.parametrize("program", (True, 0, 1.0))
 def test_microblock_key_rejects_raw_integer_aliases(program: object) -> None:
     with pytest.raises(ValueError, match="invalid exact microblock key"):
-        MicroblockKey(program, 10, 0, 0, "output")  # type: ignore[arg-type]
+        MicroblockKey(cast(ActionProgramID, program), 10, 0, 0, "output")
 
 
 @pytest.mark.parametrize("source_scope", (True, 1.0))
@@ -93,7 +84,7 @@ def test_microblock_key_rejects_numeric_source_scope_aliases(
             0,
             0,
             "output",
-            source_scope=source_scope,  # type: ignore[arg-type]
+            source_scope=cast(ArenaToken | None, source_scope),
         )
 
 

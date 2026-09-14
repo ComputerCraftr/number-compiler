@@ -8,8 +8,8 @@ stable public facade.
 
 from __future__ import annotations
 
+from collections.abc import Iterable, Sequence
 from dataclasses import dataclass
-from typing import Dict, Iterable, Sequence, Tuple
 
 from number_compiler.arithmetic.formula.construction import FormulaBuildMixin
 from number_compiler.arithmetic.formula.evaluation import FormulaEvalMixin
@@ -35,7 +35,7 @@ class FormulaArena(FormulaBuildMixin, FormulaEvalMixin):
 class FormulaRoot:
     """Entire persistent state: exact positional coefficient planes only."""
 
-    planes: Tuple[Expr, ...]
+    planes: tuple[Expr, ...]
 
     def __post_init__(self) -> None:
         if not self.planes:
@@ -103,8 +103,8 @@ def variable_root(width: int, arena: FormulaArena, spec: RadixSpec) -> FormulaRo
     )
 
 
-def reachable(roots: Iterable[Expr]) -> Dict[int, Expr]:
-    seen: Dict[int, Expr] = {}
+def reachable(roots: Iterable[Expr]) -> dict[int, Expr]:
+    seen: dict[int, Expr] = {}
     stack = list(roots)
     while stack:
         node = stack.pop()
@@ -121,7 +121,7 @@ def formula_metrics(root: FormulaRoot) -> dict[str, int]:
     id_bits = _bits(max(1, len(seen)))
     param_bits = sum(n.local_param_bits for n in seen.values())
     # Long-lived formulas can be deep.  Compute depth iteratively.
-    depth: Dict[int, int] = {}
+    depth: dict[int, int] = {}
     pending = list(root.planes)
     while pending:
         node = pending[-1]
@@ -146,13 +146,13 @@ def formula_metrics(root: FormulaRoot) -> dict[str, int]:
 
 
 __all__ = [
-    "RadixSpec",
     "Expr",
     "FormulaArena",
     "FormulaRoot",
+    "RadixSpec",
     "canonical_root_key",
+    "formula_metrics",
+    "reachable",
     "root_from_values",
     "variable_root",
-    "reachable",
-    "formula_metrics",
 ]

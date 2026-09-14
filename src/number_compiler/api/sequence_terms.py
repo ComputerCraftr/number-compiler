@@ -35,7 +35,7 @@ if TYPE_CHECKING:
 
 
 def factored_word_projection(
-    word: CanonicalWord, radix: int, automaton: "FactoredPrimeAutomaton"
+    word: CanonicalWord, radix: int, automaton: FactoredPrimeAutomaton
 ) -> FactoredRadixProjection:
     # Keep packed prime machinery off the ordinary symbolic-word import path.
     # The factor projection is an explicitly requested theorem/diagnostic view.
@@ -138,7 +138,7 @@ def symbolic_word_term(
     radix: int,
     word: CanonicalWord,
     *,
-    factored_automaton: "FactoredPrimeAutomaton | None" = None,
+    factored_automaton: FactoredPrimeAutomaton | None = None,
     diagnostics: bool = False,
 ) -> RadixTermMetrics:
     wm = word_metrics(word)
@@ -208,8 +208,8 @@ def symbolic_sparse_term(
 
 __all__ = [
     "factored_word_projection",
-    "radix_term",
     "formula_term",
-    "symbolic_word_term",
+    "radix_term",
     "symbolic_sparse_term",
+    "symbolic_word_term",
 ]

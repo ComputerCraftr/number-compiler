@@ -105,9 +105,7 @@ def substitute(
                 pending.append((local_id, True))
                 pending.extend((child, False) for child in reversed(dependencies))
                 continue
-            children = tuple(
-                child if child not in built else built[child] for child in node.children
-            )
+            children = tuple(built.get(child, child) for child in node.children)
             rewritten_function = node.function
             if node.function is not None and function_body is not None:
                 function_record = self.function_record(node.function)

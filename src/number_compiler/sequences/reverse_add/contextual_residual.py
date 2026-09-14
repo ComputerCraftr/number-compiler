@@ -23,8 +23,8 @@ from number_compiler.hashlife.interfaces.semantic_bits import (
 )
 from number_compiler.resources.ledger import OwnedMemo
 from number_compiler.sequences.reverse_add.active_output import (
-    PAIR,
     CARRY_ACTION,
+    PAIR,
     ReverseActiveOutputArena,
 )
 

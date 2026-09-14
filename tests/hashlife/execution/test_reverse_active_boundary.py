@@ -36,11 +36,11 @@ from number_compiler.hashlife.tiles.tile_result_records import (
     PoweredResultKey,
     ReverseBoundOutputKey,
 )
+from number_compiler.hashlife.tiles.tile_results import ResultLease
 from number_compiler.hashlife.tiles.tile_reverse_bound_output_memo import (
     publish_reverse_bound_output_leaf,
     publish_reverse_bound_output_parent,
 )
-from number_compiler.hashlife.tiles.tile_results import ResultLease
 from number_compiler.hashlife.tiles.tiles import TileLease
 from number_compiler.resources.causal_workspace import CausalResults
 from number_compiler.resources.result_cache_kinds import (

@@ -13,7 +13,9 @@ from number_compiler.arithmetic.contracts.block_kernel import (
     _load_base10_t2_kernel,
 )
 from number_compiler.arithmetic.functions.finite_port_action import PortVariable
-from number_compiler.hashlife.interfaces.diamond_kernel import DiamondKernelArena
+from number_compiler.hashlife.interfaces.diamond_kernel import (
+    DiamondKernelArena,
+)
 from number_compiler.hashlife.interfaces.diamond_truth_function import (
     compile_truth_function,
 )
@@ -22,7 +24,6 @@ from number_compiler.sequences.collatz.block_power import CollatzPhysicalBlockEf
 if TYPE_CHECKING:
     from number_compiler.arithmetic.contracts.scoped_handles import TransferSummaryID
     from number_compiler.hashlife.interfaces.diamond_kernel import (
-        DiamondKernelArena,
         FiniteExpression,
         PrimitiveKernel,
     )

@@ -52,9 +52,13 @@ def test_projection_and_source_digit_cyclotomic_blocks_have_one_canonical_class(
 def test_carry_cyclotomic_transducer_composes_without_retaining_carry_vector() -> None:
     coefficients = (3, 5, -1, 7, 2, -3, 4)
     left, right = coefficients[:4], coefficients[4:]
-    kwargs: _CarryArguments = dict(
-        base=3, incoming_min=-3, incoming_max=5, order=4, modulus=8
-    )
+    kwargs: _CarryArguments = {
+        "base": 3,
+        "incoming_min": -3,
+        "incoming_max": 5,
+        "order": 4,
+        "modulus": 8,
+    }
     a = CarryCyclotomicTransducer.from_coefficients(left, **kwargs)
     b = CarryCyclotomicTransducer.from_coefficients(right, **kwargs)
     composed = a.then(b)
@@ -70,9 +74,13 @@ def test_carry_cyclotomic_transducer_composes_without_retaining_carry_vector() -
 
 def test_carry_cyclotomic_transducer_binary_power_is_exact() -> None:
     coefficients = (1, 0, 0)
-    kwargs: _CarryArguments = dict(
-        base=2, incoming_min=0, incoming_max=1, order=4, modulus=8
-    )
+    kwargs: _CarryArguments = {
+        "base": 2,
+        "incoming_min": 0,
+        "incoming_max": 1,
+        "order": 4,
+        "modulus": 8,
+    }
     one = CarryCyclotomicTransducer.from_coefficients(coefficients, **kwargs)
     powered = one.power_block(7)
     direct = CarryCyclotomicTransducer.from_coefficients(coefficients * 7, **kwargs)

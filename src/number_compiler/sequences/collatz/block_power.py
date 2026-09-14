@@ -22,8 +22,8 @@ whole-state successor chain is discovered while constructing ``C**n``.
 
 from __future__ import annotations
 
-from collections.abc import MutableMapping
-from typing import TYPE_CHECKING, Any, Iterator
+from collections.abc import Iterator, MutableMapping
+from typing import TYPE_CHECKING, Any
 
 from number_compiler.arithmetic.contracts.block_effect import (
     _OPERATOR_IDS,
@@ -48,10 +48,12 @@ from number_compiler.hashlife.observation.hashlife_projection import HashLifeBlo
 from number_compiler.resources.ledger import ResourceLedger
 
 if TYPE_CHECKING:
-    from number_compiler.resources.metric_records import HashLifeBehaviorMetrics
-    from number_compiler.resources.collatz_power_metrics import CollatzPhysicalBlockMetrics
-    from number_compiler.sequences.collatz.clock_observers import SArithmeticClock
     from number_compiler.projection.lazy_radix import RadixProjection
+    from number_compiler.resources.collatz_power_metrics import (
+        CollatzPhysicalBlockMetrics,
+    )
+    from number_compiler.resources.metric_records import HashLifeBehaviorMetrics
+    from number_compiler.sequences.collatz.clock_observers import SArithmeticClock
 
 
 # Left boundary states.  START means no active source digit has been consumed.
@@ -76,8 +78,6 @@ def _odd_parts(state: int) -> tuple[int, int]:
     return (value >> 1) & 1, value & 1
 
 
-
-
 class CollatzPhysicalBlockEffect:
     """One exact physical Collatz step on a padded LSD-first binary tape."""
 
@@ -85,13 +85,13 @@ class CollatzPhysicalBlockEffect:
         "_sealed",
         "base",
         "blank",
-        "exponent",
-        "node_id",
         "blank_left_tail",
         "blank_right_tail",
+        "eager_boundary_quotient",
+        "exponent",
+        "node_id",
         "stable_blank_output",
         "supports_predecessor_trace",
-        "eager_boundary_quotient",
     )
 
     def __setattr__(self, name: str, value: object) -> None:
@@ -263,22 +263,22 @@ class PoweredCollatzTerm:
 
     __slots__ = (
         "__weakref__",
-        "seed",
-        "steps",
-        "seed_digits",
-        "_source_construction",
-        "power",
-        "effect",
-        "compose_operations",
-        "syntax_depth_bound",
-        "_index",
-        "_radix_projections",
-        "_ledger",
-        "_compiler",
-        "_max_context_nodes",
-        "_max_cache_entries",
         "_active_width",
+        "_compiler",
+        "_index",
+        "_ledger",
+        "_max_cache_entries",
+        "_max_context_nodes",
         "_microblocks",
+        "_radix_projections",
+        "_source_construction",
+        "compose_operations",
+        "effect",
+        "power",
+        "seed",
+        "seed_digits",
+        "steps",
+        "syntax_depth_bound",
     )
 
     def __init__(
@@ -466,8 +466,12 @@ class PoweredCollatzTerm:
         return self._point_index().behavior_metrics()
 
     def metrics(self) -> CollatzPhysicalBlockMetrics:
-        from number_compiler.resources.collatz_power_metrics import CollatzPhysicalBlockMetrics
-        from number_compiler.resources.metric_collection import collect_unindexed_metrics
+        from number_compiler.resources.collatz_power_metrics import (
+            CollatzPhysicalBlockMetrics,
+        )
+        from number_compiler.resources.metric_collection import (
+            collect_unindexed_metrics,
+        )
         from number_compiler.resources.powered_metrics import project_powered_metrics
 
         if self._index is None:
@@ -495,12 +499,18 @@ class PoweredCollatzTerm:
 __all__ = [
     "CollatzPhysicalBlockEffect",
     "CollatzPhysicalBlockMetrics",
-    "power_collatz_physical_effect",
     "PoweredCollatzTerm",
+    "power_collatz_physical_effect",
 ]
 
 
 def __getattr__(name: str) -> Any:
     from number_compiler.api.lazy_exports import resolve_export
 
-    return resolve_export(name, {"CollatzPhysicalBlockMetrics": "number_compiler.resources.collatz_power_metrics"}, globals())
+    return resolve_export(
+        name,
+        {
+            "CollatzPhysicalBlockMetrics": "number_compiler.resources.collatz_power_metrics"
+        },
+        globals(),
+    )

@@ -25,7 +25,6 @@ if TYPE_CHECKING:
     from number_compiler.hashlife.execution.tile_kernel import (
         PrimitiveTileKernelAdapter,
     )
-    from number_compiler.hashlife.tiles.tile_result_records import BehaviorBindingKey
     from number_compiler.hashlife.tiles.tile_results import CompletedResultArena
     from number_compiler.hashlife.tiles.tiles import TileLease
     from number_compiler.resources.ledger import ResourceLedger
@@ -146,7 +145,7 @@ def test_behavior_binding_publication_is_atomic_at_exhausted_budget() -> None:
 
 
 def test_behavior_binding_rejects_foreign_profile_before_mutation() -> None:
-    ledger, _adapter, results, source, key, behavior = _binding()
+    ledger, _adapter, results, source, key, _behavior = _binding()
     _ledger2, _tiles2, adapter2, primitive2, _scheduler2 = _runtime(BaseBlockEffect(3))
     quotient2 = adapter2.kernels.behavioral_quotient(
         adapter2._action(primitive2).kernel,

@@ -10,12 +10,12 @@ from weakref import ref
 
 import pytest
 
-from number_compiler.resources.payload_audit import audit_registered_payloads
 from number_compiler.hashlife.execution.source_bound_images import (
     SourceBoundSchedulerCore,
     SourceImageCandidate,
     SourceImageView,
 )
+from number_compiler.resources.payload_audit import audit_registered_payloads
 from number_compiler.sequences.antihydra.observers import SpaceTimeProjection
 from number_compiler.sequences.antihydra.projection_core import (
     AntihydraFragmentID,
@@ -26,12 +26,17 @@ from number_compiler.sequences.antihydra.runtime import CylinderEngine, run
 
 def test_empty_fragment_cache_does_not_import_observation_executor() -> None:
     subprocess.run(
-        [sys.executable, "-I", "-c", (
-            "import sys\n"
-            "import number_compiler.sequences.antihydra.projection_fragments\n"
-            "assert 'number_compiler.hashlife.execution.source_bound_images' "
-            "not in sys.modules\n"
-        )],
+        [
+            sys.executable,
+            "-I",
+            "-c",
+            (
+                "import sys\n"
+                "import number_compiler.sequences.antihydra.projection_fragments\n"
+                "assert 'number_compiler.hashlife.execution.source_bound_images' "
+                "not in sys.modules\n"
+            ),
+        ],
         check=True,
         capture_output=True,
         text=True,
@@ -39,19 +44,30 @@ def test_empty_fragment_cache_does_not_import_observation_executor() -> None:
     )
 
 
-@pytest.mark.parametrize("width,time_width,sign,time_sign,modulus", (
-    (2, 2, -1, 1, 3), (3, 4, -1, -1, 7), (2, 3, 1, -1, 4), (1, 1, -1, -1, 2),
-))
+@pytest.mark.parametrize(
+    "width,time_width,sign,time_sign,modulus",
+    (
+        (2, 2, -1, 1, 3),
+        (3, 4, -1, -1, 7),
+        (2, 3, 1, -1, 4),
+        (1, 1, -1, -1, 2),
+    ),
+)
 def test_image_period_reduction_preserves_all_typed_ports(
-    width: int, time_width: int, sign: int, time_sign: int, modulus: int,
+    width: int,
+    time_width: int,
+    sign: int,
+    time_sign: int,
+    modulus: int,
 ) -> None:
     result = run(0)
     rng = Random(912)
     cases = [(a, b) for a in (0, 1, 12) for b in (3, 4, 75, 1000)]
     cases += [(rng.randrange(10000), rng.randrange(3, 100000)) for _ in range(12)]
     for a, b in cases:
-        projection = SpaceTimeProjection(result, width, time_width, sign, time_sign,
-                                         modulus, 1000000)
+        projection = SpaceTimeProjection(
+            result, width, time_width, sign, time_sign, modulus, 1000000
+        )
         original = projection._section(a, b)[0]
         reduced = projection._section(*projection._section_key(a, b))[0]
         assert original == reduced
@@ -59,11 +75,13 @@ def test_image_period_reduction_preserves_all_typed_ports(
 
 def test_cached_images_are_exact_and_released_after_demand() -> None:
     cached, uncached = run(512), run(512)
-    baseline = SpaceTimeProjection(uncached, 2, 2, -1, 1, 3, 1000000,
-                                   cache_entries=0).evaluate()
+    baseline = SpaceTimeProjection(
+        uncached, 2, 2, -1, 1, 3, 1000000, cache_entries=0
+    ).evaluate()
     observed = SpaceTimeProjection(cached, 2, 2, -1, 1, 3, 1000000).evaluate()
     assert {k: v for k, v in observed.items() if k != "sampled_sweep_classes"} == {
-        k: v for k, v in baseline.items() if k != "sampled_sweep_classes"}
+        k: v for k, v in baseline.items() if k != "sampled_sweep_classes"
+    }
     assert cached.ledger.counters["spacetime_projection_fragment_publications"] == 8
     assert cached.ledger.counters["spacetime_projection_fragment_evaluations"] == 8
     assert cached.ledger.counters["source_image_primitive_applications"] == 64
@@ -82,7 +100,11 @@ def test_cached_images_are_exact_and_released_after_demand() -> None:
     # and its separate two-leaf workspace are never constructed.
     assert leaf_rows == []
     for row in cached.ledger.inventory():
-        if row.name.startswith("antihydra.spacetime") and ".fragments." not in row.name and ".fragment-seals." not in row.name:
+        if (
+            row.name.startswith("antihydra.spacetime")
+            and ".fragments." not in row.name
+            and ".fragment-seals." not in row.name
+        ):
             assert row.entries == row.nodes == 0
     assert audit_registered_payloads(cached.ledger).forbidden_future_payloads == 0
 
@@ -90,15 +112,19 @@ def test_cached_images_are_exact_and_released_after_demand() -> None:
     repeated = SpaceTimeProjection(cached, 2, 2, -1, 1, 3, 1000000).evaluate()
     assert repeated == observed
     after = cached.ledger.counters
-    assert after["spacetime_projection_fragment_hits"] - before.get(
-        "spacetime_projection_fragment_hits", 0
-    ) == 8
-    assert after["spacetime_projection_fragment_leaf_returns"] == before[
-        "spacetime_projection_fragment_leaf_returns"
-    ]
-    assert after["source_image_primitive_applications"] == before[
-        "source_image_primitive_applications"
-    ]
+    assert (
+        after["spacetime_projection_fragment_hits"]
+        - before.get("spacetime_projection_fragment_hits", 0)
+        == 8
+    )
+    assert (
+        after["spacetime_projection_fragment_leaf_returns"]
+        == before["spacetime_projection_fragment_leaf_returns"]
+    )
+    assert (
+        after["source_image_primitive_applications"]
+        == before["source_image_primitive_applications"]
+    )
 
 
 def test_equal_translated_section_images_are_combined_in_the_coefficient_ring() -> None:
@@ -122,18 +148,22 @@ def test_equal_translated_section_images_are_combined_in_the_coefficient_ring() 
     workspace.start(area)
     try:
         key = projection._section_key(1, 3)
-        projection._flush_section_classes(
-            actual, {(key, 1, 1): 2}, workspace, 0
-        )
+        projection._flush_section_classes(actual, {(key, 1, 1): 2}, workspace, 0)
     finally:
         workspace.clear()
     assert actual == expected
 
 
-@pytest.mark.parametrize("field,value", (
-    ("constant", 1 << 10000), ("width", True), ("output", -1),
-    ("minimum", 10), ("ledger_coefficient", 9),
-))
+@pytest.mark.parametrize(
+    "field,value",
+    (
+        ("constant", 1 << 10000),
+        ("width", True),
+        ("output", -1),
+        ("minimum", 10),
+        ("ledger_coefficient", 9),
+    ),
+)
 def test_shared_audit_rejects_forged_cylinder_fields(field: str, value: int) -> None:
     engine = CylinderEngine()
     result = engine.execute(64)
@@ -165,11 +195,14 @@ def test_shared_audit_rejects_wrong_key_and_live_unaccounted_stack() -> None:
 def test_audit_recomputation_work_is_visible() -> None:
     result = run(64)
     audit = audit_registered_payloads(result.ledger)
-    assert (audit.forbidden_future_payloads, audit.unbounded_future_integers,
-            audit.unknown_payloads) == (0, 0, 0)
-    assert result.ledger.counters[
-        "antihydra_payload_audit_arithmetic_branch_steps"
-    ] == 320
+    assert (
+        audit.forbidden_future_payloads,
+        audit.unbounded_future_integers,
+        audit.unknown_payloads,
+    ) == (0, 0, 0)
+    assert (
+        result.ledger.counters["antihydra_payload_audit_arithmetic_branch_steps"] == 320
+    )
     assert result.ledger.counters["antihydra_payload_audit_physical_steps"] == 64
 
 
@@ -318,17 +351,20 @@ def test_fragment_authority_includes_both_twists_and_lane_sizes() -> None:
         ).evaluate()
     keys = tuple(result._engine.projection_fragments.fragments)
     assert len(keys) == 4
-    assert len(
-        {
-            (
-                key.spatial_width,
-                key.temporal_width,
-                key.spatial_sign,
-                key.temporal_sign,
-            )
-            for key in keys
-        }
-    ) == 4
+    assert (
+        len(
+            {
+                (
+                    key.spatial_width,
+                    key.temporal_width,
+                    key.spatial_sign,
+                    key.temporal_sign,
+                )
+                for key in keys
+            }
+        )
+        == 4
+    )
 
 
 def test_shared_fragment_driver_reuses_owners_and_releases_request_context() -> None:
@@ -390,9 +426,7 @@ def test_shared_fragment_failure_clears_images_and_active_source(
             raise ValueError("injected primitive failure")
         return original(adapter, action, source)
 
-    monkeypatch.setattr(
-        _AntihydraFragmentAdapter, "apply_primitive", fail_second_leaf
-    )
+    monkeypatch.setattr(_AntihydraFragmentAdapter, "apply_primitive", fail_second_leaf)
     with pytest.raises(ValueError, match="injected primitive failure"):
         SpaceTimeProjection(result, 2, 2, -1, 1, 3, 1_000_000).evaluate()
     driver = result._engine.projection_fragment_driver
@@ -444,9 +478,7 @@ def test_fragment_prefix_seal_rejects_in_place_field_change() -> None:
     core = SourceBoundSchedulerCore(result.ledger)
     adapter.configure(projection, key, segment.cylinder, 8, 0, 0)
     core.register(adapter)
-    image = core.apply(
-        adapter, adapter.source(), AntihydraFragmentAction(0, 8)
-    )
+    image = core.apply(adapter, adapter.source(), AntihydraFragmentAction(0, 8))
     handle = core.view(image).payload
     assert type(handle) is AntihydraFragmentID
     record = adapter.resolve(handle)

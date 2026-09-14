@@ -806,11 +806,11 @@ def existing_squaring_morphism_reuse_audit(
     enabled in research tests to compare against the direct Lucas recurrence,
     but that validation result is never used to fill ``semantic_source_code``.
     """
-    from number_compiler.arithmetic.functions.finite_unary import (
-        unary_target_distance_machine,
-    )
     from devtools.proofs.special_power_monoid import (
         build_special_power_program,
+    )
+    from number_compiler.arithmetic.functions.finite_unary import (
+        unary_target_distance_machine,
     )
 
     fam = str(family)

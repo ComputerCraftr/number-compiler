@@ -1,7 +1,7 @@
 """A completed required dyadic boundary is consumed before producer scans."""
 
 from dataclasses import replace
-from typing import Never
+from typing import Never, cast
 
 import pytest
 
@@ -116,7 +116,7 @@ def test_direct_parent_rejects_numeric_state_alias_before_warm_hit(
         primitive_advance(adapter, action, 0, 0, view)
         before = ledger.snapshot()
         with pytest.raises((TypeError, ValueError)):
-            primitive_advance(adapter, action, 0, invalid, view)  # type: ignore[arg-type]
+            primitive_advance(adapter, action, 0, cast(int, invalid), view)
         after = ledger.snapshot()
         assert (after.entries, after.nodes) == (before.entries, before.nodes)
 

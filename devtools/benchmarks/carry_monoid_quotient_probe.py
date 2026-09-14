@@ -1,4 +1,3 @@
-#!/usr/bin/env python3
 """v0.20 cross-family monoid/quotient search metrics."""
 
 from __future__ import annotations

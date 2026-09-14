@@ -32,7 +32,6 @@ from number_compiler.sequences.reverse_add.cocycle_carrier import (
     CocycleReverseCarrier,
 )
 
-
 MILESTONES = frozenset((16, 32, 64, 128, 256, 512, 1024))
 
 

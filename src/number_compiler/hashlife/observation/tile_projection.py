@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from collections.abc import Generator
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Self
 
 from number_compiler.arithmetic.contracts.block_effect import BlockEffect
 from number_compiler.arithmetic.contracts.exact_tree_context import (
@@ -28,12 +28,12 @@ from number_compiler.resources.ledger import ResourceLedger
 from number_compiler.resources.stores import LedgerDict, LedgerList
 
 if TYPE_CHECKING:
-    from number_compiler.hashlife.tiles.tile_context import TemporalCocycle
-    from number_compiler.hashlife.observation.tile_cylinder import TileCylinderWorkspace
     from number_compiler.arithmetic.polynomials.twisted_observer import (
         TwistedCylinderProjection,
     )
     from number_compiler.hashlife.actions.lazy_compiler import LazyCompiler
+    from number_compiler.hashlife.observation.tile_cylinder import TileCylinderWorkspace
+    from number_compiler.hashlife.tiles.tile_context import TemporalCocycle
     from number_compiler.sequences.collatz.physical_support import PhysicalSupport
 
 
@@ -159,13 +159,13 @@ class LazyProjection:
     """Point-lazy public facade over one canonical tile application."""
 
     __slots__ = (
-        "scheduler",
-        "ledger",
-        "_application",
-        "_logical_extent",
-        "_cylinder_workspace",
-        "_closed",
         "__weakref__",
+        "_application",
+        "_closed",
+        "_cylinder_workspace",
+        "_logical_extent",
+        "ledger",
+        "scheduler",
     )
     ledger: ResourceLedger
 
@@ -210,7 +210,7 @@ class LazyProjection:
             or self.scheduler.ledger is not self.ledger
         ):
             raise ValueError("tile projection belongs to another scheduler")
-        self._application.source
+        _ = self._application.source
         return self._application
 
     @source_reads_only
@@ -322,7 +322,7 @@ class LazyProjection:
                     self._cylinder_workspace.dispose()
             self._closed = True
 
-    def __enter__(self) -> LazyProjection:
+    def __enter__(self) -> Self:
         self._open()
         return self
 
@@ -456,15 +456,10 @@ def _build_tile_projection(
         BaseBlockEffect,
         FiniteBlockEffect,
     )
-    from number_compiler.projection.digit_terminal import DigitNormalizeBlockEffect
-    from number_compiler.hashlife.observation.diamond_observers import (
-        NonblankBlockEffect,
-    )
-    from number_compiler.sequences.collatz.block_power import CollatzPhysicalBlockEffect
-    from number_compiler.hashlife.actions.lazy_compiler import ProgramComposition
     from number_compiler.arithmetic.functions.semantic_functions import (
         SemanticFunctionArena,
     )
+    from number_compiler.hashlife.actions.lazy_compiler import ProgramComposition
     from number_compiler.hashlife.execution.tile_kernel import (
         PrimitiveTileKernelAdapter,
     )
@@ -472,7 +467,12 @@ def _build_tile_projection(
     from number_compiler.hashlife.interfaces.diamond_quotient import (
         DiamondQuotientArena,
     )
+    from number_compiler.hashlife.observation.diamond_observers import (
+        NonblankBlockEffect,
+    )
     from number_compiler.hashlife.tiles.tile_results import CompletedResultArena
+    from number_compiler.projection.digit_terminal import DigitNormalizeBlockEffect
+    from number_compiler.sequences.collatz.block_power import CollatzPhysicalBlockEffect
 
     if type(effect) not in (
         ProgramComposition,
@@ -573,9 +573,9 @@ def _build_tile_projection(
 
 __all__ = [
     "LazyProjection",
-    "import_exact_source",
     "build_primitive_projection",
     "build_tile_projection",
+    "import_exact_source",
     "lower_fixed_tile_compatibility",
     "primitive_tile_power",
     "validate_fixed_tile_compatibility",

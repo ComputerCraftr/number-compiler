@@ -16,15 +16,21 @@ def test_public_196_point_reuses_authenticated_scalar_without_replaying_image() 
     assert term.digit(position) == expected
     after = term._ledger.counters
 
-    assert after.get("point_response_requests", 0) - before.get(
-        "point_response_requests", 0
-    ) == 1
-    assert after.get("point_response_cache_hits", 0) - before.get(
-        "point_response_cache_hits", 0
-    ) == 1
-    assert after.get("point_response_evaluations", 0) - before.get(
-        "point_response_evaluations", 0
-    ) == 0
+    assert (
+        after.get("point_response_requests", 0)
+        - before.get("point_response_requests", 0)
+        == 1
+    )
+    assert (
+        after.get("point_response_cache_hits", 0)
+        - before.get("point_response_cache_hits", 0)
+        == 1
+    )
+    assert (
+        after.get("point_response_evaluations", 0)
+        - before.get("point_response_evaluations", 0)
+        == 0
+    )
     for counter in (
         "higher_action_continuation_requests",
         "higher_concrete_operation_evaluations",

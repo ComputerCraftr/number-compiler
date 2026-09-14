@@ -1,6 +1,7 @@
 from __future__ import annotations
 
-from typing import Any, Dict, Iterable, Sequence
+from collections.abc import Iterable, Sequence
+from typing import Any
 
 from number_compiler.arithmetic.formula.types import Expr, FormulaStorage, _bits, _mask
 
@@ -12,12 +13,12 @@ class FormulaBuildMixin(FormulaStorage):
 
     def __init__(self) -> None:
         self._next_id = 1
-        self._nodes: Dict[tuple[object, ...], Expr] = {}
-        self._closed_known: Dict[int, int] = {}
-        self._closed_values: Dict[int, int] = {}
+        self._nodes: dict[tuple[object, ...], Expr] = {}
+        self._closed_known: dict[int, int] = {}
+        self._closed_values: dict[int, int] = {}
         self._closed_bit_count = 0
-        self._derived: Dict[tuple[object, ...], Expr] = {}
-        self._metadata: Dict[tuple[object, ...], Any] = {}
+        self._derived: dict[tuple[object, ...], Expr] = {}
+        self._metadata: dict[tuple[object, ...], Any] = {}
 
     def _raw(
         self,
@@ -154,7 +155,7 @@ class FormulaBuildMixin(FormulaStorage):
         # nodes have different child tuples.  Factoring before interning keeps
         # the common dependency once.
         if len(flat) >= 2 and all(x.kind == "OR" for x in flat):
-            common_ids = set(a.id for a in flat[0].args)
+            common_ids = {a.id for a in flat[0].args}
             for term in flat[1:]:
                 common_ids.intersection_update(a.id for a in term.args)
             if common_ids:
@@ -197,7 +198,7 @@ class FormulaBuildMixin(FormulaStorage):
             return flat[0]
         # Dual reconvergence factoring: (a&b)|(a&c) -> a&(b|c).
         if len(flat) >= 2 and all(x.kind == "AND" for x in flat):
-            common_ids = set(a.id for a in flat[0].args)
+            common_ids = {a.id for a in flat[0].args}
             for term in flat[1:]:
                 common_ids.intersection_update(a.id for a in term.args)
             if common_ids:
@@ -218,7 +219,7 @@ class FormulaBuildMixin(FormulaStorage):
         flat = self._flatten("XOR", items)
         if any(x.width != width for x in flat):
             raise ValueError("width mismatch")
-        parity: Dict[int, Expr] = {}
+        parity: dict[int, Expr] = {}
         invert = False
         for x in flat:
             if x.kind == "ZERO":
@@ -236,7 +237,7 @@ class FormulaBuildMixin(FormulaStorage):
         elif len(args) == 1:
             out = args[0]
         elif all(x.kind == "AND" for x in args):
-            common_ids = set(a.id for a in args[0].args)
+            common_ids = {a.id for a in args[0].args}
             for term in args[1:]:
                 common_ids.intersection_update(a.id for a in term.args)
             if common_ids:

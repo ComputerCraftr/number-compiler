@@ -1,9 +1,9 @@
-#!/usr/bin/env python3
 """Release probe for source-independent physical-Collatz block powering."""
 
 from __future__ import annotations
 
 import ast
+import itertools
 import json
 from time import perf_counter
 
@@ -95,9 +95,7 @@ def _projection_rows() -> list[dict[str, object]]:
         rows.append(
             {
                 **scheduler_work,
-                **retained_result_profile(
-                    projection.scheduler.results
-                ),
+                **retained_result_profile(projection.scheduler.results),
                 "steps": steps,
                 "index_bits": max(1, steps.bit_length()),
                 "schema_version": metrics.metrics_schema_version,
@@ -276,13 +274,13 @@ def run_probe() -> dict[str, object]:
         work_envelope = all(
             _metric_int(current["total_internal_action_work"])
             <= 2 * _metric_int(previous["total_internal_action_work"]) + bootstrap
-            for previous, current in zip(projection, projection[1:])
+            for previous, current in itertools.pairwise(projection)
         )
     retention_envelope = len(projection) > 1 and all(
         _metric_int(current["completed_result_entries"])
         <= 2 * _metric_int(previous["completed_result_entries"])
         + _metric_int(projection[0]["completed_result_entries"])
-        for previous, current in zip(projection, projection[1:])
+        for previous, current in itertools.pairwise(projection)
     )
     blockers: list[str] = []
     if not projection:
@@ -313,7 +311,7 @@ def run_probe() -> dict[str, object]:
     if any(
         _metric_int(current["higher_concrete_operation_evaluations"])
         > 2 * _metric_int(previous["higher_concrete_operation_evaluations"]) + 64
-        for previous, current in zip(projection, projection[1:])
+        for previous, current in itertools.pairwise(projection)
     ):
         blockers.append("higher_interface_work_exceeds_doubling_envelope")
     return {

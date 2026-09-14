@@ -13,8 +13,8 @@ uses the generic :mod:`number_compiler.arithmetic.fields.adic_morphism` implemen
 
 from __future__ import annotations
 
+from collections.abc import Sequence
 from dataclasses import dataclass
-from typing import Sequence
 
 from number_compiler.arithmetic.fields.morphism_core import binary_power
 from number_compiler.arithmetic.fields.radix import bit_width
@@ -85,9 +85,7 @@ class ReverseAddCyclotomicInnovationBlock:
         return CyclotomicDigitBlock.identity(self.order, self.modulus)
 
     @classmethod
-    def identity(
-        cls, *, order: int, bits: int
-    ) -> "ReverseAddCyclotomicInnovationBlock":
+    def identity(cls, *, order: int, bits: int) -> ReverseAddCyclotomicInnovationBlock:
         template = CyclotomicDigitBlock.identity(int(order), 1 << int(bits))
         return cls(int(order), int(bits), 0, 0, (0,) * template.degree, 0)
 
@@ -99,7 +97,7 @@ class ReverseAddCyclotomicInnovationBlock:
         *,
         order: int,
         bits: int,
-    ) -> "ReverseAddCyclotomicInnovationBlock":
+    ) -> ReverseAddCyclotomicInnovationBlock:
         g = int(growth)
         if g not in (0, 1):
             raise ValueError(g)
@@ -118,7 +116,7 @@ class ReverseAddCyclotomicInnovationBlock:
         *,
         order: int,
         bits: int,
-    ) -> "ReverseAddCyclotomicInnovationBlock":
+    ) -> ReverseAddCyclotomicInnovationBlock:
         rows = tuple(tuple(map(int, row)) for row in events)
         gs = tuple(map(int, growths))
         if len(rows) != len(gs):
@@ -159,8 +157,8 @@ class ReverseAddCyclotomicInnovationBlock:
         )
 
     def then(
-        self, other: "ReverseAddCyclotomicInnovationBlock"
-    ) -> "ReverseAddCyclotomicInnovationBlock":
+        self, other: ReverseAddCyclotomicInnovationBlock
+    ) -> ReverseAddCyclotomicInnovationBlock:
         if (self.order, self.bits) != (other.order, other.bits):
             raise ValueError(((self.order, self.bits), (other.order, other.bits)))
         composed = self.affine_morphism().then(other.affine_morphism())
@@ -176,7 +174,7 @@ class ReverseAddCyclotomicInnovationBlock:
             raise AssertionError("radial counts disagree with affine composition")
         return total
 
-    def power_block(self, exponent: int) -> "ReverseAddCyclotomicInnovationBlock":
+    def power_block(self, exponent: int) -> ReverseAddCyclotomicInnovationBlock:
         identity = ReverseAddCyclotomicInnovationBlock.identity(
             order=self.order, bits=self.bits
         )

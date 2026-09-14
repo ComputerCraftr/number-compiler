@@ -310,9 +310,8 @@ class HigherPayloadRegistry:
                         HigherObserve,
                         HigherUnaryObserve,
                     ),
-                ):
-                    if self._task(arena, value):
-                        return True
+                ) and self._task(arena, value):
+                    return True
             except (TypeError, ValueError, AttributeError, IndexError, KeyError):
                 continue
         return False

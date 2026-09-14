@@ -41,9 +41,9 @@ def test_factorized_section_emits_exact_kernel_values_and_is_immutable() -> None
         assert factor.emit(left, symbol, right) == kernel.emit(left, symbol, right)
     assert load_decimal_t2_factorization() is factor
     with pytest.raises(FrozenInstanceError):
-        setattr(factor, "left", ())
+        factor.__setattr__("left", ())
     with pytest.raises(FrozenInstanceError):
-        setattr(factor.left[0], "anchor", 1)
+        factor.left[0].__setattr__("anchor", 1)
     for arguments in ((-1, 0, 0), (757, 0, 0), (0, 20, 0), (0, 0, 179), (True, 0, 0)):
         with pytest.raises(ValueError):
             factor.emit(*arguments)

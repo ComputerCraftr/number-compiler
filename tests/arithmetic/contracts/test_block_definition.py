@@ -6,8 +6,8 @@ from dataclasses import fields
 
 import pytest
 
-import number_compiler.arithmetic.contracts.block_definition as block_definition
 from devtools.proofs.block_composed import ComposedBlockEffect
+from number_compiler.arithmetic.contracts import block_definition
 from number_compiler.arithmetic.contracts.block_definition import (
     BlockDefinition,
     ComposedBlockDefinition,
@@ -55,7 +55,7 @@ def test_shared_definition_has_independent_runtime_contexts_and_readonly_semanti
         with pytest.raises(AttributeError):
             setattr(first, name, replacement)
     with pytest.raises(AttributeError):
-        setattr(definition, "first", first)
+        definition.__setattr__("first", first)
 
 
 def test_nested_definitions_strip_runtime_children_and_recreate_their_owners() -> None:

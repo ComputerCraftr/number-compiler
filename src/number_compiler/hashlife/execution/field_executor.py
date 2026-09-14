@@ -584,15 +584,15 @@ class FieldImageApplication:
     """Point-lazy occurrence view backed by one verified recursive executor."""
 
     __slots__ = (
-        "executor",
+        "__weakref__",
+        "_seal",
         "action",
-        "source",
+        "executor",
         "geometry",
-        "signature",
         "incoming",
         "ledger",
-        "_seal",
-        "__weakref__",
+        "signature",
+        "source",
     )
 
     is_algebraic_field_action_executor = True

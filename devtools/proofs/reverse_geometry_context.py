@@ -9,13 +9,13 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 
+from devtools.proofs.growth_coboundary import GROWTH_SYMBOLS
 from devtools.proofs.reverse_threshold_geometry import (
     DOMAIN_TABLE,
     ThresholdGeometry,
     ThresholdGeometryID,
 )
 from devtools.proofs.threshold_expressions import Expr, ThresholdExpressions
-from devtools.proofs.growth_coboundary import GROWTH_SYMBOLS
 from number_compiler.arithmetic.automata import program_word as words
 from number_compiler.arithmetic.formula.decimal_pair_coordinates import (
     decimal_cocycle_coordinates,

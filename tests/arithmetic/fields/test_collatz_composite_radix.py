@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import itertools
+
 from number_compiler.arithmetic.fields.digit_formula import (
     DigitSpec,
     digit_root_from_int,
@@ -19,14 +21,14 @@ def _step(n: int) -> int:
 def test_local_composite_radix_collatz_exact_in_base6_and12() -> None:
     for base in (6, 12):
         for seed in (1, 3, 7, 27, 97):
-            arena, rows = collatz_orbit_formulas_local_composite_radix(
+            _arena, rows = collatz_orbit_formulas_local_composite_radix(
                 seed, radix=base, max_steps=160, materialize_values=True
             )
             values = []
             for row in rows:
                 assert row.value is not None
                 values.append(row.value)
-            for a, b in zip(values, values[1:]):
+            for a, b in itertools.pairwise(values):
                 assert b == _step(a)
             assert values[-1] == 1
 

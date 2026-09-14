@@ -96,19 +96,19 @@ class CollatzGermTransitionCache:
 
     __slots__ = (
         "__weakref__",
+        "_allow_power",
+        "_engine_owner",
         "_event_power_engines",
+        "_ledger",
         "_power_engine",
         "_raw_keys",
+        "_raw_owner",
+        "_value_owner",
         "_values",
         "hits",
         "lookups",
         "misses",
         "normalized_quarters",
-        "_ledger",
-        "_allow_power",
-        "_raw_owner",
-        "_value_owner",
-        "_engine_owner",
     )
 
     def __init__(
@@ -138,9 +138,7 @@ class CollatzGermTransitionCache:
         self._values: MutableMapping[
             tuple[object, ...], _CanonicalCollatzTransition
         ] = OwnedMemo(ledger, self._value_owner)
-        self._raw_keys: _OwnedKeySet = _OwnedKeySet(
-            OwnedMemo(ledger, self._raw_owner)
-        )
+        self._raw_keys: _OwnedKeySet = _OwnedKeySet(OwnedMemo(ledger, self._raw_owner))
         self.lookups = 0
         self.hits = 0
         self.misses = 0

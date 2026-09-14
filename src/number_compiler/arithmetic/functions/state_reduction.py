@@ -16,8 +16,8 @@ a semantic successor state without a closure theorem.
 
 from __future__ import annotations
 
+from collections.abc import Sequence
 from dataclasses import dataclass
-from typing import Sequence
 
 from number_compiler.arithmetic.fields.radix import bit_width
 from number_compiler.arithmetic.fields.two_adic import v2_positive as v2
@@ -69,9 +69,7 @@ class ReverseAddGrowthState:
         object.__setattr__(self, "boundary_relation", relation)
 
     @classmethod
-    def from_summary(
-        cls, summary: BlockSummary, *, base: int
-    ) -> "ReverseAddGrowthState":
+    def from_summary(cls, summary: BlockSummary, *, base: int) -> ReverseAddGrowthState:
         """Project the already-canonical pair summary without scanning digits."""
         if summary.all_threshold:
             return cls(int(base), summary.length, summary.length, 0)
@@ -85,7 +83,7 @@ class ReverseAddGrowthState:
         )
 
     @classmethod
-    def from_pair(cls, pair: Sequence[int], *, base: int) -> "ReverseAddGrowthState":
+    def from_pair(cls, pair: Sequence[int], *, base: int) -> ReverseAddGrowthState:
         """Project the radial boundary order/sign without building carry state.
 
         Reverse-add pair fields are symmetric.  The first non-neutral symbol on
@@ -165,7 +163,7 @@ class CollatzValuationState:
         object.__setattr__(self, "valuation", value)
 
     @classmethod
-    def from_odd_value(cls, value: int) -> "CollatzValuationState":
+    def from_odd_value(cls, value: int) -> CollatzValuationState:
         value = int(value)
         if value <= 0 or not (value & 1):
             raise ValueError(value)
@@ -209,6 +207,6 @@ class CollatzValuationState:
 
 
 __all__ = [
-    "ReverseAddGrowthState",
     "CollatzValuationState",
+    "ReverseAddGrowthState",
 ]

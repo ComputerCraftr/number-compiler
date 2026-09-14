@@ -11,7 +11,9 @@ from number_compiler.sequences.antihydra.runtime import run
 
 
 def semantic(packet: dict[str, object]) -> dict[str, object]:
-    return {name: value for name, value in packet.items() if name != "sampled_sweep_classes"}
+    return {
+        name: value for name, value in packet.items() if name != "sampled_sweep_classes"
+    }
 
 
 def measure(horizon: int, trial: int) -> dict[str, Any]:
@@ -80,18 +82,25 @@ def measure(horizon: int, trial: int) -> dict[str, Any]:
 
 
 def main() -> None:
-    rows = [measure(horizon, trial) for horizon in (16, 32, 64, 128, 256, 512, 1024)
-            for trial in range(1, 6)]
+    rows = [
+        measure(horizon, trial)
+        for horizon in (16, 32, 64, 128, 256, 512, 1024)
+        for trial in range(1, 6)
+    ]
     if any(not row["accounting_reconciled"] for row in rows):
         raise AssertionError("observation retention is not reconciled")
-    print(json.dumps({
-        "scope": "API observation controls; same-run reuse is not new-query CLI reuse",
-        "horizons": [16, 32, 64, 128, 256, 512, 1024],
-        "trials_per_horizon": 5,
-        "samples": rows,
-        "semantic_match": True,
-        "arbitrary_powered_construction_claim": False,
-    }))
+    print(
+        json.dumps(
+            {
+                "scope": "API observation controls; same-run reuse is not new-query CLI reuse",
+                "horizons": [16, 32, 64, 128, 256, 512, 1024],
+                "trials_per_horizon": 5,
+                "samples": rows,
+                "semantic_match": True,
+                "arbitrary_powered_construction_claim": False,
+            }
+        )
+    )
 
 
 if __name__ == "__main__":

@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from dataclasses import replace
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, cast
 
 import pytest
 
@@ -34,9 +34,9 @@ def test_identity_schema_validates_side_before_shortcut(side: object) -> None:
 
     before = app.ledger.snapshot()
     with pytest.raises((TypeError, ValueError)):
-        schema.state_count(identity, side)  # type: ignore[arg-type]
+        schema.state_count(identity, cast(int, side))
     with pytest.raises((TypeError, ValueError)):
-        schema.initial(identity, side)  # type: ignore[arg-type]
+        schema.initial(identity, cast(int, side))
     assert app.ledger.snapshot() == before
 
 

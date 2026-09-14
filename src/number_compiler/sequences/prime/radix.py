@@ -22,7 +22,7 @@ from number_compiler.sequences.prime.set import (
 
 
 class _BDD:
-    __slots__ = ("width", "nodes", "unique", "or_cache", "or_calls")
+    __slots__ = ("nodes", "or_cache", "or_calls", "unique", "width")
 
     def __init__(self, width: int) -> None:
         self.width = int(width)

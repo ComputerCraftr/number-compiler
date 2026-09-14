@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from itertools import product
-from typing import TYPE_CHECKING, Literal, Never, cast
+from typing import Literal, Never, cast
 
 import pytest
 
@@ -17,9 +17,6 @@ from number_compiler.arithmetic.functions.finite_port_action import (
 )
 from number_compiler.resources.ledger import ResourceLedger
 from number_compiler.resources.metric_collection import collect_ledger_metrics
-
-if TYPE_CHECKING:
-    from number_compiler.arithmetic.contracts.scoped_handles import TransferSummaryID
 
 
 def test_reset_identity_functions_are_extensional_aliases_and_compose() -> None:
@@ -261,7 +258,7 @@ def test_private_node_interner_probes_integer_ids_without_handle_allocation(
     ("field", "value"), (("time", True), ("side", 0.0), ("bit", False), ("role", ""))
 )
 def test_private_node_interner_revalidates_forged_port_coordinates(
-    field: Literal["bit"] | Literal["role"] | Literal["side"] | Literal["time"],
+    field: Literal["bit", "role", "side", "time"],
     value: Literal[""] | bool | float,
 ) -> None:
     arena = FinitePortActionArena()

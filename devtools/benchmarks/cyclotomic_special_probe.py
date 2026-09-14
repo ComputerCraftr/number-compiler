@@ -1,4 +1,3 @@
-#!/usr/bin/env python3
 """Cyclotomic / Fermat / Mersenne / binary-prime automaton probe for v0.17."""
 
 from __future__ import annotations

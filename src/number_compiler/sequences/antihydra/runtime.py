@@ -18,9 +18,11 @@ from number_compiler.sequences.antihydra.blocks import (
     terminal_effect,
 )
 from number_compiler.sequences.antihydra.machine import MACHINE_SHA256
-from number_compiler.sequences.antihydra.projection_workspace import SectionImageWorkspace
 from number_compiler.sequences.antihydra.projection_fragments import (
     ProjectionFragmentCache,
+)
+from number_compiler.sequences.antihydra.projection_workspace import (
+    SectionImageWorkspace,
 )
 
 _SOURCE = object()
@@ -169,9 +171,7 @@ class AntihydraArithmeticTerm:
         self.requested = require_integer(returns, "macro returns", 0)
         self.max_steps = require_integer(max_steps, "macro return budget", 0)
         self.max_state_bits = require_integer(max_state_bits, "integer bit budget", 4)
-        self.max_cache_entries = require_integer(
-            max_cache_entries, "cache budget", 32
-        )
+        self.max_cache_entries = require_integer(max_cache_entries, "cache budget", 32)
         if self.requested > self.max_steps or 4 + self.requested > self.max_state_bits:
             raise ValueError("Antihydra source execution budget exceeded")
         if _engine is not None and (
@@ -287,22 +287,20 @@ class AntihydraArithmeticTerm:
         except BaseException:
             retained = len(self.segments)
             self.segments.clear()
-            self.ledger.release(
-                self.segment_owner, entries=retained, nodes=retained
-            )
+            self.ledger.release(self.segment_owner, entries=retained, nodes=retained)
             self.engine.count("arithmetic_publication_rollbacks")
             raise
         result = object.__new__(ArithmeticResult)
-        values = dict(
-            requested=self.requested,
-            h=h,
-            balance=balance,
-            minimum=minimum,
-            first_failure_index=first_failure,
-            ledger=self.ledger,
-            _term=self,
-            _source=_SOURCE,
-        )
+        values = {
+            "requested": self.requested,
+            "h": h,
+            "balance": balance,
+            "minimum": minimum,
+            "first_failure_index": first_failure,
+            "ledger": self.ledger,
+            "_term": self,
+            "_source": _SOURCE,
+        }
         for name, value in values.items():
             object.__setattr__(result, name, value)
         self._result = result
@@ -325,15 +323,10 @@ class AntihydraArithmeticTerm:
                     "retained Antihydra arithmetic support was changed"
                 ) from error
             canonical = admitted_arithmetic_cylinder(block.residue, block.width)
-            self.engine.count(
-                "arithmetic_result_validation_branch_steps", block.width
-            )
+            self.engine.count("arithmetic_result_validation_branch_steps", block.width)
             if canonical != block:
                 raise ValueError("retained Antihydra arithmetic support was changed")
-            if (
-                segment.start != completed
-                or block.residue != h % (1 << block.width)
-            ):
+            if segment.start != completed or block.residue != h % (1 << block.width):
                 raise ValueError("retained Antihydra arithmetic support was changed")
             if first_failure is None and balance + block.minimum < 0:
                 first_failure = self._first_failure(block, h, balance, completed)
@@ -452,20 +445,20 @@ class AntihydraArithmeticTerm:
                 minimum = -1
                 break
         run_result = object.__new__(Run)
-        values = dict(
-            requested=result.requested,
-            returns=completed,
-            h=h,
-            balance=balance,
-            minimum=minimum,
-            left=left,
-            right=right,
-            halted=halted,
-            ledger=self.ledger,
-            _engine=self.engine,
-            _term=self,
-            _source=_SOURCE,
-        )
+        values = {
+            "requested": result.requested,
+            "returns": completed,
+            "h": h,
+            "balance": balance,
+            "minimum": minimum,
+            "left": left,
+            "right": right,
+            "halted": halted,
+            "ledger": self.ledger,
+            "_engine": self.engine,
+            "_term": self,
+            "_source": _SOURCE,
+        }
         for name, value in values.items():
             object.__setattr__(run_result, name, value)
         publication = _PhysicalPublication(
@@ -503,8 +496,9 @@ class CylinderEngine:
 
     def __init__(self, *, max_cache_entries: int = 8192) -> None:
         require_integer(max_cache_entries, "cache budget", 32)
-        self.ledger = ResourceLedger(max_nodes=max_cache_entries + 32,
-                                     max_cache_entries=max_cache_entries)
+        self.ledger = ResourceLedger(
+            max_nodes=max_cache_entries + 32, max_cache_entries=max_cache_entries
+        )
         owner = self.ledger.register("antihydra.cylinders", "arithmetic_cylinder")
         self.memo: OwnedMemo[tuple[int, int], Cylinder] = OwnedMemo(
             self.ledger, owner, nodes_per_entry=1
@@ -547,7 +541,7 @@ class CylinderEngine:
             stack = self.stack
             stack.append((width, residue, False))
             while stack:
-                size, source, expanded = stack.pop()
+                size, source, _expanded = stack.pop()
                 current = size, source
                 if current in self.memo:
                     continue

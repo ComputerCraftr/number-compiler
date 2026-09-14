@@ -93,7 +93,7 @@ def test_composed_map_descriptor_is_small_but_generic_evaluation_depth_is_not() 
 
 
 def test_passing_theorem_observer_impulse_has_exact_linear_hankel_rank() -> None:
-    for distance in range(0, 17):
+    for distance in range(17):
         assert delta_hankel_rank_differential(distance) == distance + 1
 
 

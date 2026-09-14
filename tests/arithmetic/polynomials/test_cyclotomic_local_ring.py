@@ -31,7 +31,7 @@ def test_hensel_lift_phi7_binary_factors_to_mod8_exactly() -> None:
     source = cyclotomic_coefficients(7)
     length = max(len(product), len(source))
     assert tuple([c % q for c in product] + [0] * (length - len(product))) == tuple(
-        (list(c % q for c in source) + [0] * (length - len(source)))
+        [c % q for c in source] + [0] * (length - len(source))
     )
 
 

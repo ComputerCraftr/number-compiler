@@ -1,5 +1,6 @@
-from devtools.benchmarks.successor_congruence_probe import run_probe
 import pytest
+
+from devtools.benchmarks.successor_congruence_probe import run_probe
 
 
 @pytest.mark.validation  # Full reverse N=256 / accelerated Collatz proof probe.

@@ -8,8 +8,8 @@ hash-consed Boolean formulas from the source planes.
 
 from __future__ import annotations
 
+from collections.abc import Sequence
 from dataclasses import dataclass
-from typing import Sequence
 
 from number_compiler.arithmetic.automata.guard import forbid_in_powered_jump
 from number_compiler.arithmetic.carry.event_memory import forcing_event_alphabet
@@ -233,8 +233,8 @@ def carry_event_formula_view(
 
 __all__ = [
     "CarryEventFormulaView",
-    "value_position_sets",
     "carry_event_formula_from_planes",
-    "carry_event_formula_view",
     "carry_event_formula_metrics",
+    "carry_event_formula_view",
+    "value_position_sets",
 ]

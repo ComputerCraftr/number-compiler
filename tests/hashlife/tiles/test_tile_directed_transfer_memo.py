@@ -29,7 +29,6 @@ if TYPE_CHECKING:
     from number_compiler.hashlife.execution.tile_kernel import (
         PrimitiveTileKernelAdapter,
     )
-    from number_compiler.hashlife.tiles.tile_result_records import DirectedTransferKey
     from number_compiler.hashlife.tiles.tile_results import CompletedResultArena
     from number_compiler.hashlife.tiles.tiles import TileLease
     from number_compiler.resources.ledger import ResourceLedger

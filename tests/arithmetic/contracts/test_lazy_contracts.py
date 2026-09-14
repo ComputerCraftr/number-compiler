@@ -107,7 +107,7 @@ def test_arena_token_subclasses_cannot_spoof_owner_identity() -> None:
 
 @pytest.mark.parametrize("label", [True, 1, 1.0, None])
 def test_arena_token_label_rejects_scalar_aliases(
-    label: None | bool | float | int,
+    label: None | bool | float,
 ) -> None:
     with pytest.raises(TypeError, match="label"):
         ArenaToken(cast("str", label))

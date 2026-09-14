@@ -8,6 +8,8 @@ from devtools.proofs.collatz_semantic_action import (
     CollatzBlockAction,
     CollatzBlockActionArena,
 )
+from number_compiler.arithmetic.fields.directed_field import DirectedTileTransducerArena
+from number_compiler.arithmetic.fields.dyadic_tile import DyadicSpan
 
 
 @pytest.mark.parametrize("field", ("action_id", "local_shift"))
@@ -31,8 +33,8 @@ def test_action_arena_rejects_duck_span_before_work() -> None:
         length = 1
         chunks = ()
 
-    arena = CollatzBlockActionArena(Mul3())  # type: ignore[arg-type]
+    arena = CollatzBlockActionArena(cast(DirectedTileTransducerArena, Mul3()))
     before = arena.metrics()
     with pytest.raises(TypeError, match="exact dyadic span"):
-        arena.intern(Span(), 0)  # type: ignore[arg-type]
+        arena.intern(cast(DyadicSpan, Span()), 0)
     assert arena.metrics() == before

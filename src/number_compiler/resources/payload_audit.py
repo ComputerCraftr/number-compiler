@@ -32,8 +32,10 @@ from number_compiler.resources.payload_schema import valid_semantic_record
 from number_compiler.resources.proof_payload_admission import (
     audit_registered_proof_payloads,
     proof_geometry_fields,
-    proof_objects as _proof_objects,
     proof_opaque_types,
+)
+from number_compiler.resources.proof_payload_admission import (
+    proof_objects as _proof_objects,
 )
 
 if TYPE_CHECKING:
@@ -49,11 +51,9 @@ def audit_registered_payloads(
     snapshot: LedgerSnapshot | None = None,
     fresh: bool = True,
 ) -> PayloadAudit:
-    """Inspect actual retained objects, not slot-name presence on one class.
-    Geometry and arena IDs may be arbitrarily large. Arithmetic data must fit
-    bounded local words. Original sources and explicitly lowered endpoints are
-    separate roles; their exact payloads are not classified as lazy summaries.
-    Unknown object representations remain visible rather than proving safety.
+    """Inspect retained objects rather than slot names. IDs may be arbitrarily large.
+    Arithmetic data must fit local words. Sources and lowered endpoints have separate
+    roles and are not lazy summaries. Unknown representations remain visible.
     """
     from number_compiler.resources.payload_policy import (
         _DIGIT_FIELDS,
@@ -79,7 +79,6 @@ def audit_registered_payloads(
         _BaseLeftState,
         _BaseRightState,
     )
-    from number_compiler.arithmetic.radix_division import SymbolicBinaryDivisionEffect
     from number_compiler.arithmetic.contracts.source_geometry import SourceGeometry
     from number_compiler.arithmetic.functions.finite_port_action import (
         PortComponent,
@@ -91,6 +90,7 @@ def audit_registered_payloads(
         _PortIndexComponent,
         _SubstitutionIndexKey,
     )
+    from number_compiler.arithmetic.radix_division import SymbolicBinaryDivisionEffect
     from number_compiler.hashlife.actions.lazy_compiler import ProgramComposition
     from number_compiler.hashlife.behavior.future_behavior import (
         FutureBehaviorClass,
@@ -114,9 +114,6 @@ def audit_registered_payloads(
     )
     from number_compiler.hashlife.execution.field_images import RecursiveFieldImageArena
     from number_compiler.hashlife.execution.field_transfers import FieldTransferArena
-    from number_compiler.hashlife.execution.recursive_outputs import (
-        RecursiveCoordinateMorphismArena,
-    )
     from number_compiler.hashlife.execution.tile_scheduler import TileScheduler
     from number_compiler.hashlife.interfaces.diamond_boundary_expr import ExprID
     from number_compiler.hashlife.interfaces.diamond_kernel import (
@@ -132,9 +129,6 @@ def audit_registered_payloads(
         PrimitiveBehaviorQuotient,
         validate_certified_local_symmetry,
         validate_primitive_behavior_quotient,
-    )
-    from number_compiler.hashlife.interfaces.semantic_interfaces import (
-        SemanticCoordinateOutputArena,
     )
     from number_compiler.hashlife.observation.diamond_observers import (
         NonblankBlockEffect,
@@ -169,9 +163,6 @@ def audit_registered_payloads(
     )
     from number_compiler.resources.finite_port_payload_audit import audit_finite_ports
     from number_compiler.resources.higher_payload_audit import audit_higher_payloads
-    from number_compiler.resources.support_payload_audit import (
-        audit_support_payloads,
-    )
     from number_compiler.resources.higher_primitive_payload import (
         valid_higher_primitive_table,
     )
@@ -179,17 +170,13 @@ def audit_registered_payloads(
         audit_radix_provider_payloads,
     )
     from number_compiler.resources.semantic_payload import SemanticPayloadRegistry
+    from number_compiler.resources.support_payload_audit import (
+        audit_support_payloads,
+    )
     from number_compiler.resources.tile_dependency_leases import (
         audit_tile_dependency_leases,
     )
     from number_compiler.sequences.collatz.block_power import CollatzPhysicalBlockEffect
-    from number_compiler.sequences.collatz.field_action import CollatzFieldActionArena
-    from number_compiler.sequences.reverse_add.coordinate_program import (
-        ReverseCoordinateProgramArena,
-    )
-    from number_compiler.sequences.reverse_add.field_action import (
-        ReverseFieldActionArena,
-    )
 
     def physical_four(value: object) -> TypeGuard[PhysicalCollatzFourBlockEffect]:
         if type(value).__name__ != "PhysicalCollatzFourBlockEffect":
@@ -225,6 +212,8 @@ def audit_registered_payloads(
     field_images = audit_field_image_payloads(ledger)
     radix_providers = audit_radix_provider_payloads(ledger)
     higher_payloads = audit_higher_payloads(ledger)
+    from number_compiler.resources.payload_owner_scopes import field_owner_scopes
+
     support_payloads = audit_support_payloads(ledger)
     forbidden.update(field_actions.invalid)
     forbidden.update(field_images.invalid)
@@ -244,23 +233,7 @@ def audit_registered_payloads(
         for root in execution_roots
         if type(root) is DiamondQuotientArena and root.ledger is ledger
     }
-    action_owners: set[ArenaToken] = set()
-    output_owners: set[ArenaToken] = set()
-    for root in execution_roots:
-        if type(root) is ReverseFieldActionArena:
-            reverse_actions = root
-            action_owners.add(reverse_actions.owner)
-            output_owners.add(reverse_actions.output_owner)
-        elif type(root) is CollatzFieldActionArena:
-            collatz_actions = root
-            action_owners.add(collatz_actions.owner)
-            output_owners.add(collatz_actions.output_owner)
-        elif type(root) is ReverseCoordinateProgramArena:
-            output_owners.add(root.owner)
-        elif type(root) is RecursiveCoordinateMorphismArena:
-            output_owners.add(root.owner)
-        elif type(root) is SemanticCoordinateOutputArena:
-            output_owners.add(root.owner)
+    action_owners, output_owners = field_owner_scopes(execution_roots)
     for root in execution_roots:
         if type(root) is RecursiveFieldImageArena:
             image_carrier = root

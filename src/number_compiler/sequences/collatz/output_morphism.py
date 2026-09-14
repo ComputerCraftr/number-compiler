@@ -8,6 +8,8 @@ valuations. These arrows do not certify a whole powered Collatz controller.
 from __future__ import annotations
 
 from number_compiler.arithmetic.carry.collatz_output_quotient import (
+    CORRECTIONS,
+    DOMAIN_ACTIONS,
     RADIX64_DIRECTIONAL_DOMAIN_COUNTS,
     RADIX64_DIRECTIONAL_DOMAIN_TABLES,
     RADIX64_FREE_CARRY_ACTIONS,
@@ -16,14 +18,12 @@ from number_compiler.arithmetic.carry.collatz_output_quotient import (
     RADIX64_RIGHT_VIEW_CLASSES,
     radix64_correction,
     radix64_domain,
-    radix64_growth_edge,
     radix64_free_directional_row,
+    radix64_growth_edge,
     radix64_join_shift_views,
     radix64_raw_class,
     radix64_shift,
     radix64_shift_views,
-    CORRECTIONS,
-    DOMAIN_ACTIONS,
 )
 from number_compiler.arithmetic.functions.finite_function_types import BOOL, AtomSort
 from number_compiler.hashlife.interfaces.semantic_bits import (

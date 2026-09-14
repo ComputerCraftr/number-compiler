@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from typing import cast
+
 import pytest
 
 from number_compiler.arithmetic.polynomials.cyclotomic_transport import (
@@ -129,7 +131,7 @@ def test_plan_rejects_numeric_aliases_before_construction(invalid: object) -> No
         ReverseFrobeniusPlan.for_steps(
             maximum_classes=8,
             bits=5,
-            steps=invalid,  # type: ignore[arg-type]
+            steps=cast(int, invalid),
         )
 
 

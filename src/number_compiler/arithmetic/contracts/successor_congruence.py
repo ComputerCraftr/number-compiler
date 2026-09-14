@@ -19,8 +19,8 @@ mechanism: observing no conflict is never treated as a global proof.
 
 from __future__ import annotations
 
+from collections.abc import Hashable
 from dataclasses import dataclass
-from typing import Hashable
 
 
 class SuccessorCongruenceViolation(ValueError):
@@ -56,15 +56,15 @@ class SuccessorCongruenceAudit:
     """
 
     __slots__ = (
-        "_semantic_target",
+        "_exact_conflict_keys",
         "_exact_target",
+        "_semantic_conflict_keys",
+        "_semantic_target",
         "_sources",
+        "exact_target_conflicts",
         "observations",
         "semantic_aliases",
         "successor_conflicts",
-        "exact_target_conflicts",
-        "_semantic_conflict_keys",
-        "_exact_conflict_keys",
     )
 
     def __init__(self) -> None:
@@ -91,18 +91,22 @@ class SuccessorCongruenceAudit:
         prior_semantic = self._semantic_target.get(key)
         if prior_semantic is None:
             self._semantic_target[key] = observation.target_semantic_key
-        elif prior_semantic != observation.target_semantic_key:
-            if key not in self._semantic_conflict_keys:
-                self.successor_conflicts += 1
-                self._semantic_conflict_keys.add(key)
+        elif (
+            prior_semantic != observation.target_semantic_key
+            and key not in self._semantic_conflict_keys
+        ):
+            self.successor_conflicts += 1
+            self._semantic_conflict_keys.add(key)
 
         prior_exact = self._exact_target.get(key)
         if prior_exact is None:
             self._exact_target[key] = observation.target_occurrence_key
-        elif prior_exact != observation.target_occurrence_key:
-            if key not in self._exact_conflict_keys:
-                self.exact_target_conflicts += 1
-                self._exact_conflict_keys.add(key)
+        elif (
+            prior_exact != observation.target_occurrence_key
+            and key not in self._exact_conflict_keys
+        ):
+            self.exact_target_conflicts += 1
+            self._exact_conflict_keys.add(key)
 
     def semantic_successor_closed(self, semantic_key: Hashable) -> bool:
         """Whether no semantic successor conflict has been observed for ``key``."""
@@ -177,9 +181,9 @@ class ExactTargetCacheIdentity:
 
 
 __all__ = [
+    "ExactTargetCacheIdentity",
+    "SuccessorCongruenceAudit",
+    "SuccessorCongruenceMetrics",
     "SuccessorCongruenceViolation",
     "SuccessorObservation",
-    "SuccessorCongruenceMetrics",
-    "SuccessorCongruenceAudit",
-    "ExactTargetCacheIdentity",
 ]

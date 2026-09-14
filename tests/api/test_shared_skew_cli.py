@@ -1,7 +1,7 @@
 """Production connectivity of the shared source-bound execution owner."""
 
-from collections.abc import Hashable
 import json
+from collections.abc import Hashable
 
 import pytest
 
@@ -19,7 +19,8 @@ from number_compiler.sequences.prime.select import PrimePrefixRank
 
 
 def test_prime_cli_consumes_shared_source_images(
-    monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str],
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
 ) -> None:
     original = SourceBoundSchedulerCore.apply
     families: list[str] = []
@@ -27,10 +28,13 @@ def test_prime_cli_consumes_shared_source_images(
     original_filter = PrimePartialSuccessorAdapter.apply_primitive
 
     def filtered(
-        self: PrimePartialSuccessorAdapter, action: Hashable,
+        self: PrimePartialSuccessorAdapter,
+        action: Hashable,
         source: object,
     ) -> object:
-        from number_compiler.hashlife.execution.source_bound_images import SourceImageView
+        from number_compiler.hashlife.execution.source_bound_images import (
+            SourceImageView,
+        )
 
         assert isinstance(source, SourceImageView)
         result = original_filter(self, action, source)
@@ -41,8 +45,10 @@ def test_prime_cli_consumes_shared_source_images(
         raise AssertionError("prime CLI delegated to retired rank wrapper")
 
     def traced(
-        self: SourceBoundSchedulerCore, adapter: SourceBoundImageAdapter,
-        source: Hashable, action: Hashable,
+        self: SourceBoundSchedulerCore,
+        adapter: SourceBoundImageAdapter,
+        source: Hashable,
+        action: Hashable,
     ) -> SourceImageID:
         result = original(self, adapter, source, action)
         families.append(adapter.family)
@@ -52,9 +58,20 @@ def test_prime_cli_consumes_shared_source_images(
     monkeypatch.setattr(SourceBoundSchedulerCore, "apply", traced)
     monkeypatch.setattr(PrimePartialSuccessorAdapter, "apply_primitive", filtered)
     monkeypatch.setattr(PrimePrefixRank, "count_leq", retired)
-    assert cli.main([
-        "prime", "--nth", "100", "--info", "metrics", "--format", "json",
-    ]) == 0
+    assert (
+        cli.main(
+            [
+                "prime",
+                "--nth",
+                "100",
+                "--info",
+                "metrics",
+                "--format",
+                "json",
+            ]
+        )
+        == 0
+    )
     captured = capsys.readouterr()
     packet = json.loads(captured.out)
     assert packet["value"] == "547"
@@ -75,7 +92,8 @@ def test_prime_cli_consumes_shared_source_images(
 
 
 def test_special_digits_leave_classification_unrequested(
-    monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str],
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
 ) -> None:
     from number_compiler.api.sequence_compiler import CanonicalSequenceCompiler
 
@@ -83,7 +101,9 @@ def test_special_digits_leave_classification_unrequested(
         raise AssertionError("term-only query requested special classification")
 
     monkeypatch.setattr(
-        CanonicalSequenceCompiler, "resolve_special_theorem", forbidden,
+        CanonicalSequenceCompiler,
+        "resolve_special_theorem",
+        forbidden,
     )
     assert cli.main(["fermat", "--nth", "4"]) == 0
     assert capsys.readouterr().out.strip() == "65537"

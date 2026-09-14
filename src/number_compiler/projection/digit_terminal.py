@@ -41,10 +41,10 @@ class DigitNormalizeBlockEffect:
         "_sealed",
         "base",
         "blank",
-        "exponent",
-        "node_id",
         "blank_left_tail",
         "blank_right_tail",
+        "exponent",
+        "node_id",
         "stable_blank_output",
         "supports_predecessor_trace",
     )
@@ -126,7 +126,6 @@ class DigitNormalizeBlockEffect:
 
     def predecessor(self, side: BoundarySide, state: BoundaryState) -> None:
         del side, state
-        return None
 
     def operator_nodes(self) -> int:
         return 1

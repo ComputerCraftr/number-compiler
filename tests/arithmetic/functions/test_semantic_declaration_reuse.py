@@ -26,12 +26,9 @@ from number_compiler.hashlife.interfaces.semantic_structures import (
 from number_compiler.resources.ledger import ResourceLedger
 
 if TYPE_CHECKING:
-    from number_compiler.arithmetic.functions.finite_function_types import FinitePort
     from number_compiler.hashlife.interfaces.semantic_structures import (
-        StructureArena,
         StructureID,
     )
-    from number_compiler.resources.ledger import ResourceLedger
 
 
 def setup() -> tuple[ResourceLedger, StructureArena, FinitePort, StructureID]:

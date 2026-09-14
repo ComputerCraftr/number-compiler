@@ -9,9 +9,9 @@ from __future__ import annotations
 from collections import Counter
 
 from devtools.proofs.oracles.special_binary_jump import (
-    _SpecialCarrierProof,
     _fermat_carrier_proof,
     _mersenne_carrier_proof,
+    _SpecialCarrierProof,
 )
 from number_compiler.arithmetic.functions.finite_unary import (
     minimize_unary_moore,

@@ -2,8 +2,9 @@
 
 from __future__ import annotations
 
+from collections.abc import Callable
 from dataclasses import fields, replace
-from typing import Callable, TypeVar, cast
+from typing import TypeVar, cast
 
 from number_compiler.resources.metric_records import LedgerMetrics
 

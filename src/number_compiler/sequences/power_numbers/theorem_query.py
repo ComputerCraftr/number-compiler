@@ -36,11 +36,11 @@ class SpecialTheoremResolution:
     family: str
     parameter: int
     source_guard: SpecialSourceGuard
-    primality: "SpecialDepthCertificateSummary | None" = None
+    primality: SpecialDepthCertificateSummary | None = None
     projection_method: str = "deferred"
     factor_witness: int | None = None
     composite_exponent_factor: MersenneNumberSpec | None = None
-    factored_projection: "FactoredRadixProjection | None" = None
+    factored_projection: FactoredRadixProjection | None = None
     etale_ring_multiplications: int = 0
     factor_query_status: str = "not-requested"
 
@@ -53,7 +53,7 @@ def _factored_projection(
     family: str,
     parameter: int,
     factor_limit: int,
-) -> "FactoredRadixProjection | None":
+) -> FactoredRadixProjection | None:
     factor_limit = int(factor_limit)
     if factor_limit < 2:
         return None
@@ -265,8 +265,8 @@ def with_etale_factor(
         return replace(result, factor_query_status="available")
     if result.family == "mersenne":
         from number_compiler.sequences.power_numbers.numbers import (
-            mersenne_exponent_is_prime,
             mersenne_composite_exponent_factor,
+            mersenne_exponent_is_prime,
         )
 
         if result.parameter >= 1 << 64 or not mersenne_exponent_is_prime(

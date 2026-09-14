@@ -69,7 +69,7 @@ def test_actual_admission_bindings_do_not_attest_spoofed_modes_or_foreign_roots(
     mode: str,
 ) -> None:
     runtime, compiler, expression = fixture(True)
-    key = ExpressionAdmissionKey(expression, False if mode == "scalar-paired" else True)
+    key = ExpressionAdmissionKey(expression, mode != "scalar-paired")
     proof: ExpressionDomainProof | ExprID = ExpressionDomainProof(key)
     if mode == "wrong-proof-key":
         proof = ExpressionDomainProof(ExpressionAdmissionKey(expression, False))

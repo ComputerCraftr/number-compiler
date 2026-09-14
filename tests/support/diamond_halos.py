@@ -3,12 +3,8 @@
 from __future__ import annotations
 
 from array import array
-from typing import TYPE_CHECKING
 
 from number_compiler.arithmetic.contracts.block_kernel import FiniteBlockEffect
-
-if TYPE_CHECKING:
-    from number_compiler.arithmetic.contracts.block_kernel import FiniteBlockEffect
 
 
 def suffix_parity() -> FiniteBlockEffect:

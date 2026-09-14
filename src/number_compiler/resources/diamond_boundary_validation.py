@@ -414,9 +414,7 @@ def _cell(self: DiamondPayloadRegistry, value: CellNode | _CellKey) -> bool:
             and value.right == value.action == -1
             and value.level == before.level
             and value.offset == 0
-        ):
-            return True
-        elif (
+        ) or (
             value.kind == "slice"
             and value.right == value.action == -1
             and value.level < before.level

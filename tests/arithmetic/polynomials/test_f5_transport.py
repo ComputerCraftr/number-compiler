@@ -1,6 +1,7 @@
 """Exact checks for compact source-independent F5 spatial transport."""
 
 from math import comb
+from typing import cast
 
 import pytest
 
@@ -121,11 +122,11 @@ def test_affine_composition_transports_earlier_output_forcing() -> None:
 
 def test_affine_transport_rejects_another_linear_sort() -> None:
     with pytest.raises(TypeError):
-        F5AffineTransport(object(), (0,))  # type: ignore[arg-type]
+        F5AffineTransport(cast(F5SpatialTransport, object()), (0,))
     valid = F5AffineTransport[tuple[int, ...]](F5SpatialTransport(), (0,))
     with pytest.raises(TypeError):
         valid.then(
-            object(),  # type: ignore[arg-type]
+            cast(F5AffineTransport[tuple[int, ...]], object()),
             shift=_shift,
             add=_add,
             scale=_scale,
@@ -135,9 +136,9 @@ def test_affine_transport_rejects_another_linear_sort() -> None:
 def test_exact_input_contracts_fail_closed() -> None:
     for bad in (True, -1, 1.0):
         with pytest.raises(ValueError):
-            F5SpatialTransport(bad, 0)  # type: ignore[arg-type]
+            F5SpatialTransport(cast(int, bad), 0)
     bad_shift: object = True
     with pytest.raises(TypeError):
-        F5SpatialTransport().coefficient(bad_shift)  # type: ignore[arg-type]
+        F5SpatialTransport().coefficient(cast(int, bad_shift))
     with pytest.raises(TypeError):
-        F5SpatialTransport().then(object())  # type: ignore[arg-type]
+        F5SpatialTransport().then(cast(F5SpatialTransport, object()))

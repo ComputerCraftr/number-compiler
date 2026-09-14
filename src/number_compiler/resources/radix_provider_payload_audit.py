@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+
 from number_compiler.resources.ledger import ResourceLedger
 
 
@@ -166,14 +167,13 @@ def audit_radix_provider_payloads(
                 approved.update(id(store) for _, store in provider_stores)
 
     for root in ledger.iter_execution_roots():
-        if type(root) is RadixProviderAdapter:
-            if (
-                root.ledger is not ledger
-                or root.sources.ledger is not ledger
-                or id(root.divisions) not in division_arenas
-                or id(root.actions) not in provider_arenas
-            ):
-                invalid.add((root.actions._node_owner, id(root)))
+        if type(root) is RadixProviderAdapter and (
+            root.ledger is not ledger
+            or root.sources.ledger is not ledger
+            or id(root.divisions) not in division_arenas
+            or id(root.actions) not in provider_arenas
+        ):
+            invalid.add((root.actions._node_owner, id(root)))
     return RadixProviderPayloadAudit(frozenset(approved), frozenset(invalid))
 
 

@@ -14,7 +14,6 @@ from devtools.experiments.power_numbers.five_bit_support import (
     unrestricted_m53_counterexample,
 )
 
-
 pytestmark = pytest.mark.validation
 
 

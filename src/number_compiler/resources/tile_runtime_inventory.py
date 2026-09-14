@@ -27,8 +27,6 @@ from number_compiler.hashlife.actions.tile_action_algebra import (
     PrimitiveTileAction as _Action,
 )
 from number_compiler.hashlife.behavior.reverse_bound_output import ReverseBoundOutput
-from number_compiler.resources.reverse_morphism_inventory import audit_reverse_morphisms
-from number_compiler.resources.reverse_residual_inventory import audit_reverse_residuals
 from number_compiler.hashlife.execution.tile_application_authority import (
     audit_tile_application_registry,
 )
@@ -89,6 +87,11 @@ from number_compiler.resources.causal_workspace import (
 from number_compiler.resources.fused_traversal_inventory import (
     audit_fused_traversal_workspace,
 )
+from number_compiler.resources.reverse_morphism_inventory import audit_reverse_morphisms
+from number_compiler.resources.reverse_residual_inventory import audit_reverse_residuals
+from number_compiler.resources.tile_reverse_output_inventory import (
+    valid_reverse_bound_output,
+)
 from number_compiler.resources.tile_runtime_validation import (
     valid_boundaries,
     valid_causal_interface_record,
@@ -96,9 +99,13 @@ from number_compiler.resources.tile_runtime_validation import (
     valid_request,
     valid_source_root_match_record,
 )
-from number_compiler.resources.tile_reverse_output_inventory import (
-    valid_reverse_bound_output,
-)
+
+
+def _matches_alphabet(
+    adapter: PrimitiveTileKernelAdapter, expected: TileAlphabet, tile: TileID
+) -> bool:
+    record = adapter.tiles.resolve(tile)
+    return adapter.tiles.alphabet(record.alphabet) == expected
 
 
 def audit_tile_runtime(
@@ -525,13 +532,9 @@ def audit_tile_runtime(
                         "canonical-tile-alphabet-v1",
                     )
 
-                    def matches(tile: TileID) -> bool:
-                        record = adapter.tiles.resolve(tile)
-                        return adapter.tiles.alphabet(record.alphabet) == expected
-
-                    valid &= matches(execution_key.input)
+                    valid &= _matches_alphabet(adapter, expected, execution_key.input)
                     if type(result) is CompletedResult:
-                        valid &= matches(result.output)
+                        valid &= _matches_alphabet(adapter, expected, result.output)
                     elif type(execution_key) is CausalInterfaceKey:
                         valid &= type(result) is CompletedInterfaceResult and (
                             valid_causal_interface_record(

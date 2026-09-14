@@ -14,9 +14,9 @@ regions and reduced directly to a canonical MTDD.  There is no
 from __future__ import annotations
 
 from collections import defaultdict, deque
+from collections.abc import Callable, Iterable, Sequence
 from dataclasses import dataclass
 from time import perf_counter
-from typing import Callable, Dict, Iterable, Sequence, Tuple
 
 from number_compiler.arithmetic.automata.transducer import (
     DFA,
@@ -67,7 +67,7 @@ def _determinize(
     alphabet: Sequence[int], startset: Iterable[int], nfa: _NFA, *, right: bool
 ) -> tuple[DFA, tuple[frozenset[int], ...]]:
     subsets: list[frozenset[int]] = []
-    sid: Dict[frozenset[int], int] = {}
+    sid: dict[frozenset[int], int] = {}
 
     def intern(states: Iterable[int]) -> int:
         fs = frozenset(states)
@@ -80,7 +80,7 @@ def _determinize(
         return q
 
     start = intern(startset)
-    trans: Dict[tuple[int, int], int] = {}
+    trans: dict[tuple[int, int], int] = {}
     todo = deque([start])
     seen = set()
     while todo:
@@ -131,8 +131,8 @@ def _fragment(
 
 
 def _same_partition(old: Sequence[int], new: Sequence[int]) -> bool:
-    forward: Dict[int, int] = {}
-    reverse: Dict[int, int] = {}
+    forward: dict[int, int] = {}
+    reverse: dict[int, int] = {}
     for a, b in zip(old, new):
         x = forward.get(a)
         if x is not None and x != b:
@@ -149,8 +149,8 @@ class _WordInterner:
     __slots__ = ("ids", "words")
 
     def __init__(self) -> None:
-        self.ids: Dict[Tuple[int, ...], int] = {}
-        self.words: list[Tuple[int, ...]] = []
+        self.ids: dict[tuple[int, ...], int] = {}
+        self.words: list[tuple[int, ...]] = []
 
     def intern(self, word: Sequence[int]) -> int:
         value = tuple(map(int, word))
@@ -170,7 +170,7 @@ def _build_primitive_left(
     check_limit: Callable[[int], None],
 ) -> tuple[_PrimitiveTriples, set[int], _NFA]:
     triples: list[tuple[int, int, int]] = []
-    ids: Dict[tuple[int, int, int], int] = {}
+    ids: dict[tuple[int, int, int], int] = {}
 
     def intern(value: tuple[int, int, int]) -> int:
         old = ids.get(value)
@@ -194,7 +194,7 @@ def _build_primitive_left(
             if right_before is not None:
                 predecessor_right[symbol][right_before].append(right_after)
 
-    nfa: Dict[tuple[int, int], set[int]] = {}
+    nfa: dict[tuple[int, int], set[int]] = {}
     todo = deque(start)
     seen = set()
     while todo:
@@ -230,7 +230,7 @@ def _build_primitive_right(
     left_count: int,
 ) -> tuple[_PrimitiveTriples, set[int], _NFA]:
     triples: list[tuple[int, int, int]] = []
-    ids: Dict[tuple[int, int, int], int] = {}
+    ids: dict[tuple[int, int, int], int] = {}
 
     def intern(value: tuple[int, int, int]) -> int:
         old = ids.get(value)
@@ -255,7 +255,7 @@ def _build_primitive_right(
             if left_after is not None:
                 predecessor_left[symbol][left_after].append(left_before)
 
-    nfa: Dict[tuple[int, int], set[int]] = {}
+    nfa: dict[tuple[int, int], set[int]] = {}
     todo = deque(start)
     seen = set()
     while todo:
@@ -292,7 +292,7 @@ def _primitive_output_relation(
     check_limit: Callable[[int], None],
 ) -> tuple[_OutputEdges, _OutputEdges, _WordInterner, int]:
     """Exact bipartite primitive witness/output relation, indexed before subsets."""
-    right_index: Dict[tuple[int, int, int], list[tuple[int, int, int]]] = defaultdict(
+    right_index: dict[tuple[int, int, int], list[tuple[int, int, int]]] = defaultdict(
         list
     )
     for yid, (left_after, right_after, second_right_after) in enumerate(triples_r):
@@ -353,7 +353,7 @@ def _primitive_semantic_partition(
     rounds = 0
     while True:
         rounds += 1
-        left_ids: Dict[tuple[object, ...], int] = {}
+        left_ids: dict[tuple[object, ...], int] = {}
         new_left: list[int] = []
         for q in range(len(left_output)):
             transition = tuple(
@@ -367,7 +367,7 @@ def _primitive_semantic_partition(
             signature = transition, outputs
             new_left.append(left_ids.setdefault(signature, len(left_ids)))
 
-        right_ids: Dict[tuple[object, ...], int] = {}
+        right_ids: dict[tuple[object, ...], int] = {}
         new_right: list[int] = []
         for q in range(len(right_output)):
             transition = tuple(
@@ -407,7 +407,7 @@ def _quotient_nfa(
     for q, cls in enumerate(part):
         if representative[cls] is None:
             representative[cls] = q
-    trans: Dict[tuple[int, int], set[int]] = {}
+    trans: dict[tuple[int, int], set[int]] = {}
     for cls, rep in enumerate(representative):
         assert rep is not None
         for symbol in alphabet:
@@ -430,7 +430,7 @@ def _class_output_map(
     right_part: Sequence[int],
     words: _WordInterner,
 ) -> _OutputClasses:
-    result: Dict[tuple[int, int, int], int] = {}
+    result: dict[tuple[int, int, int], int] = {}
     for left_primitive, by_symbol in enumerate(left_output):
         lc = left_part[left_primitive]
         for ai, entries in enumerate(by_symbol):
@@ -472,8 +472,8 @@ def _deterministic_observations(
     """
     left_membership = _class_membership(left_subsets, nleft_classes)
     right_membership = _class_membership(right_subsets, nright_classes)
-    by_left: Dict[tuple[int, int], list[tuple[int, int]]] = defaultdict(list)
-    by_right: Dict[tuple[int, int], list[tuple[int, int]]] = defaultdict(list)
+    by_left: dict[tuple[int, int], list[tuple[int, int]]] = defaultdict(list)
+    by_right: dict[tuple[int, int], list[tuple[int, int]]] = defaultdict(list)
     for (lc, ai, rc), wid in class_output.items():
         by_left[lc, ai].append((rc, wid))
         by_right[rc, ai].append((lc, wid))
@@ -481,7 +481,7 @@ def _deterministic_observations(
     def canonical_groups(
         entries: Sequence[tuple[int, int]], opposite_membership: Sequence[int]
     ) -> _Observation:
-        groups: Dict[int, int] = {}
+        groups: dict[int, int] = {}
         for opposite_class, wid in entries:
             mask = opposite_membership[opposite_class]
             if not mask:
@@ -519,16 +519,16 @@ def _deterministic_partition(
     dfa: DFA, observation: _Observations
 ) -> tuple[dict[int, int], int]:
     states, alphabet = dfa.states, dfa.alphabet
-    seed_ids: Dict[tuple[object, ...], int] = {}
-    part: Dict[int, int] = {}
+    seed_ids: dict[tuple[object, ...], int] = {}
+    part: dict[int, int] = {}
     for q in states:
         row = tuple(observation[q, a] for a in alphabet)
         part[q] = seed_ids.setdefault(row, len(seed_ids))
     rounds = 0
     while True:
         rounds += 1
-        ids: Dict[tuple[object, ...], int] = {}
-        new: Dict[int, int] = {}
+        ids: dict[tuple[object, ...], int] = {}
+        new: dict[int, int] = {}
         for q in states:
             signature = tuple(
                 (
@@ -549,7 +549,7 @@ def _deterministic_partition(
         part = new
 
 
-def _quotient_dfa_exact(dfa: DFA, part: Dict[int, int]) -> tuple[DFA, dict[int, int]]:
+def _quotient_dfa_exact(dfa: DFA, part: dict[int, int]) -> tuple[DFA, dict[int, int]]:
     classes = sorted(set(part.values()))
     reps = {cls: min(q for q in dfa.states if part[q] == cls) for cls in classes}
     cmap = {cls: i for i, cls in enumerate(classes)}
@@ -833,10 +833,10 @@ class ResidualPowerTable:
 
 
 __all__ = [
-    "PowerConstructionLimit",
-    "CompositionMetrics",
     "ComposedBimachine",
-    "compose_bimachines",
+    "CompositionMetrics",
+    "PowerConstructionLimit",
     "PowerLevelMetrics",
     "ResidualPowerTable",
+    "compose_bimachines",
 ]

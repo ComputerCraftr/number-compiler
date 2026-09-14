@@ -15,7 +15,9 @@ def _forbidden(*args: object, **kwargs: object) -> Never:
     "family,parameter", [("fermat", 10**100), ("mersenne", 1_000_001)]
 )
 def test_candidate_budget_precedes_constraint_state(
-    family: str, parameter: int, monkeypatch: pytest.MonkeyPatch,
+    family: str,
+    parameter: int,
+    monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     monkeypatch.setattr(
         CanonicalSequenceCompiler, "_special_constraint_state", _forbidden
@@ -35,7 +37,9 @@ def test_candidate_budget_is_checked_even_for_cached_answer() -> None:
 def test_explicit_budget_preserves_bounded_large_exponent_gate() -> None:
     exponent = (1 << 64) + 13
     result = CanonicalSequenceCompiler().resolve_special_theorem(
-        "mersenne", exponent, max_candidate_bits=exponent,
+        "mersenne",
+        exponent,
+        max_candidate_bits=exponent,
     )
     assert not result.decided
     assert result.projection_method == "exponent-gate-budget"

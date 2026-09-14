@@ -102,9 +102,11 @@ def test_group_retirement_kills_descendant_after_leader_exit(tmp_path: Path) -> 
         [
             sys.executable,
             "-c",
-            "import subprocess,sys; "
-            "p=subprocess.Popen([sys.executable,'-c','import time; time.sleep(30)'], "
-            "stdout=subprocess.DEVNULL); print(p.pid, flush=True)",
+            (
+                "import subprocess,sys; "
+                "p=subprocess.Popen([sys.executable,'-c','import time; time.sleep(30)'], "
+                "stdout=subprocess.DEVNULL); print(p.pid, flush=True)"
+            ),
         ],
         stdout=subprocess.PIPE,
         start_new_session=True,
@@ -147,9 +149,11 @@ def test_leader_success_with_background_worker_is_not_completion(
         (
             sys.executable,
             "-c",
-            "import subprocess,sys; "
-            "p=subprocess.Popen([sys.executable,'-c','import time; time.sleep(30)']); "
-            "print(p.pid, flush=True)",
+            (
+                "import subprocess,sys; "
+                "p=subprocess.Popen([sys.executable,'-c','import time; time.sleep(30)']); "
+                "print(p.pid, flush=True)"
+            ),
         ),
         output=tmp_path / "worker.log",
         lock_path=tmp_path / "lock",

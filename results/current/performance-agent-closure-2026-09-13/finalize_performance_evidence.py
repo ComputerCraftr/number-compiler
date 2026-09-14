@@ -1,7 +1,7 @@
-from pathlib import Path
 import json
 import sys
 from collections import Counter
+from pathlib import Path
 
 sys.path.insert(0, str(Path.cwd()))
 from devtools.checks.test_run_evidence import source_fingerprint

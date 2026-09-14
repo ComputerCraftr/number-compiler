@@ -3,7 +3,9 @@
 from __future__ import annotations
 
 from array import array
+from collections.abc import MutableSequence
 from dataclasses import dataclass, replace
+from typing import cast
 
 import pytest
 
@@ -341,9 +343,9 @@ def test_behavioral_certificate_is_deeply_immutable_and_budgeted_before_capture(
     handle = arena.intern(BaseBlockEffect(2))
     quotient = arena.behavioral_quotient(handle)
     with pytest.raises((AttributeError, TypeError)):
-        quotient.left_classes[0] = 1  # type: ignore[index]
+        cast(MutableSequence[int], quotient.left_classes)[0] = 1
     with pytest.raises((AttributeError, TypeError)):
-        quotient.left_transitions[0][0] = 1  # type: ignore[index]
+        cast(MutableSequence[MutableSequence[int]], quotient.left_transitions)[0][0] = 1
 
     exhausted = DiamondKernelArena(ResourceLedger())
     before = exhausted.ledger.snapshot()
@@ -490,7 +492,7 @@ def test_symmetry_maps_must_form_the_declared_group() -> None:
 
 @pytest.mark.parametrize("alias", (True, 1.0, -1))
 def test_primitive_behavior_rejects_numeric_alias_domains(alias: object) -> None:
-    kernel = _TinyKernel(alias, 1, 1)  # type: ignore[arg-type]
+    kernel = _TinyKernel(cast(int, alias), 1, 1)
     with pytest.raises(ValueError):
         capture_primitive_behavior(kernel, _identity("aliases"))
 

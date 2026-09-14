@@ -43,10 +43,6 @@ if TYPE_CHECKING:
     from number_compiler.arithmetic.functions.finite_function_types import (
         SemanticFunctionID,
     )
-    from number_compiler.hashlife.interfaces.semantic_structures import (
-        StructureArena,
-        StructureID,
-    )
 
 
 def converted(

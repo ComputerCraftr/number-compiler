@@ -5,22 +5,28 @@ from __future__ import annotations
 from dataclasses import asdict
 from typing import TYPE_CHECKING, Any
 
-from number_compiler.api.cli_requests import QueryRequest
 from number_compiler.api.cli_render import _metrics_json
+from number_compiler.api.cli_requests import QueryRequest
 from number_compiler.api.number_api import (
-    AntihydraTermPayload, NumberCompiler, PoweredCollatzTermPayload,
-    PoweredReverseAddTermPayload, ProjectedNumberTerm,
+    AntihydraTermPayload,
+    NumberCompiler,
+    PoweredCollatzTermPayload,
+    PoweredReverseAddTermPayload,
+    ProjectedNumberTerm,
 )
+
 if TYPE_CHECKING:
     from number_compiler.api.cylinder_observation import CollatzObservationContext
 
 
-def _events_context(seed: int, events: int, *, max_events: int,
-                    max_digits: int) -> CollatzObservationContext:
+def _events_context(
+    seed: int, events: int, *, max_events: int, max_digits: int
+) -> CollatzObservationContext:
     from number_compiler.api.cylinder_observation import CollatzObservationContext
 
-    return CollatzObservationContext(seed, events, max_events=max_events, max_digits=max_digits)
-
+    return CollatzObservationContext(
+        seed, events, max_events=max_events, max_digits=max_digits
+    )
 
 
 class QueryContext:
@@ -49,12 +55,18 @@ class QueryContext:
     @property
     def term(self) -> ProjectedNumberTerm:
         if self.request.selector != "nth":
-            raise ValueError("event/certificate requests do not select an ordinary term")
+            raise ValueError(
+                "event/certificate requests do not select an ordinary term"
+            )
         if self._term is None:
             q = self.request
             if q.family == "antihydra":
                 self._term = self.compiler.project_nth(
-                    q.family, q.index, max_steps=q.max_steps, max_state_bits=q.max_state_bits)
+                    q.family,
+                    q.index,
+                    max_steps=q.max_steps,
+                    max_state_bits=q.max_state_bits,
+                )
             elif q.family == "prime":
                 self._term = self.compiler.project_nth(
                     q.family,
@@ -66,16 +78,29 @@ class QueryContext:
                 )
             else:
                 self._term = self.compiler.project_nth(
-                    q.family, q.index, seed=q.seed, base=q.base, radix=q.radix, start=q.start)
+                    q.family,
+                    q.index,
+                    seed=q.seed,
+                    base=q.base,
+                    radix=q.radix,
+                    start=q.start,
+                )
         return self._term
 
     def information(self) -> dict[str, Any]:
         # Metrics observe the finished query, regardless of --info ordering.
         for name in self.request.info:
             if name != "metrics" and name not in self._info:
-                alias = ({"tape": "twisted", "twisted": "tape",
-                          "mahler": "hensel", "hensel": "mahler"}.get(name)
-                         if self.request.family == "antihydra" else None)
+                alias = (
+                    {
+                        "tape": "twisted",
+                        "twisted": "tape",
+                        "mahler": "hensel",
+                        "hensel": "mahler",
+                    }.get(name)
+                    if self.request.family == "antihydra"
+                    else None
+                )
                 if alias is not None and alias in self._info:
                     # These names select exactly the same demanded observation
                     # with the same parameters in this query. Reuse only the
@@ -104,35 +129,58 @@ class QueryContext:
             assert q.seed is not None
             if self._events is None:
                 self._events = _events_context(
-                    q.seed, q.index, max_events=q.max_events, max_digits=q.max_digits)
+                    q.seed, q.index, max_events=q.max_events, max_digits=q.max_digits
+                )
             return observe_collatz(
-                q.seed, q.index, kind=name, modulus=q.modulus, width=q.width,
-                sign=q.sign, precision=q.precision, target=q.target, s_weight=q.s_weight,
-                z_weight=q.z_weight, max_events=q.max_events, max_digits=q.max_digits,
-                _context=self._events)
+                q.seed,
+                q.index,
+                kind=name,
+                modulus=q.modulus,
+                width=q.width,
+                sign=q.sign,
+                precision=q.precision,
+                target=q.target,
+                s_weight=q.s_weight,
+                z_weight=q.z_weight,
+                max_events=q.max_events,
+                max_digits=q.max_digits,
+                _context=self._events,
+            )
         if name == "clock" and q.family == "collatz":
             from number_compiler.api.cylinder_observation import observe_physical_clock
 
             payload = self.term.payload
             assert isinstance(payload, PoweredCollatzTermPayload)
             assert q.seed is not None
-            return observe_physical_clock(q.seed, q.index, max_ticks=q.max_events,
-                                          max_digits=q.max_digits, _term=payload.term)
+            return observe_physical_clock(
+                q.seed,
+                q.index,
+                max_ticks=q.max_events,
+                max_digits=q.max_digits,
+                _term=payload.term,
+            )
         if name == "mirror":
             from number_compiler.api.cylinder_observation import observe_mirror
 
             reverse = self.term.payload
             assert isinstance(reverse, PoweredReverseAddTermPayload)
-            result = observe_mirror(reverse.term.seed, q.index, base=q.base,
-                                    first_width=q.width, max_digits=q.max_digits,
-                                    _term=reverse.term)
+            result = observe_mirror(
+                reverse.term.seed,
+                q.index,
+                base=q.base,
+                first_width=q.width,
+                max_digits=q.max_digits,
+                _term=reverse.term,
+            )
             result["family"] = q.family
             return result
         if name == "root":
             from number_compiler.api.cylinder_observation import observe_etale_root
 
             assert q.defect is not None
-            return observe_etale_root(q.family, q.index, q.defect, max_digits=q.max_digits)
+            return observe_etale_root(
+                q.family, q.index, q.defect, max_digits=q.max_digits
+            )
         if name in {"primality", "factor"}:
             return self._special_observation(name)
         raise ValueError("observation has no admitted family handler")
@@ -143,29 +191,50 @@ class QueryContext:
             from number_compiler.api.sequence_compiler import CanonicalSequenceCompiler
 
             resolution = CanonicalSequenceCompiler().resolve_special_theorem(
-                q.family, q.index, collect_etale_factor="factor" in q.info,
-                max_factor_products=q.max_factor_products, max_candidate_bits=q.max_candidate_bits)
+                q.family,
+                q.index,
+                collect_etale_factor="factor" in q.info,
+                max_factor_products=q.max_factor_products,
+                max_candidate_bits=q.max_candidate_bits,
+            )
             failure = resolution.source_guard.failure_bit
-            status = "unknown" if failure is None else "composite" if failure else "prime"
+            status = (
+                "unknown" if failure is None else "composite" if failure else "prime"
+            )
             self._special = {
-                "family": q.family, "index": q.index, "status": status,
-                "decided": resolution.decided, "method": resolution.projection_method,
+                "family": q.family,
+                "index": q.index,
+                "status": status,
+                "decided": resolution.decided,
+                "method": resolution.projection_method,
                 "factor_query_status": resolution.factor_query_status,
-                "certificate": None if resolution.primality is None else asdict(resolution.primality),
+                "certificate": None
+                if resolution.primality is None
+                else asdict(resolution.primality),
                 "factor_witness": resolution.factor_witness,
                 "factor_target": {"family": q.family, "parameter": q.index},
-                "factor_proof": "proper-coefficient-gcd" if resolution.factor_witness is not None else None,
-                "factor_expression": None if resolution.composite_exponent_factor is None else
-                    f"2^{resolution.composite_exponent_factor.exponent}-1",
+                "factor_proof": "proper-coefficient-gcd"
+                if resolution.factor_witness is not None
+                else None,
+                "factor_expression": None
+                if resolution.composite_exponent_factor is None
+                else f"2^{resolution.composite_exponent_factor.exponent}-1",
                 "etale_ring_multiplications": resolution.etale_ring_multiplications,
             }
         if name == "primality":
             return dict(self._special)
         packet = dict(self._special)
         packet["status"] = (
-            "available" if packet["factor_witness"] is not None or packet["factor_expression"] is not None
-            else "not_applicable" if packet["status"] == "prime" else "not_found")
-        packet["scope"] = "conditional checked factor output; no factor found does not establish primality"
+            "available"
+            if packet["factor_witness"] is not None
+            or packet["factor_expression"] is not None
+            else "not_applicable"
+            if packet["status"] == "prime"
+            else "not_found"
+        )
+        packet["scope"] = (
+            "conditional checked factor output; no factor found does not establish primality"
+        )
         return packet
 
     def _antihydra(self, name: str) -> dict[str, Any]:
@@ -175,23 +244,45 @@ class QueryContext:
         if name in {"ledger", "modular"}:
             result = payload.term.result()
             centered_odd = (result.returns + result.balance) // 3
-            value = ({"h": result.h, "ledger": result.balance, "minimum_ledger": result.minimum,
-                      "first_failure_index": result.first_failure_index,
-                      "centered_odd_events": centered_odd,
-                      "odd_a_steps": result.returns-centered_odd} if name == "ledger" else
-                     {"h": result.h % q.modulus, "modulus": q.modulus})
-            return {"family": "antihydra", "kind": name, "value": value,
-                    "scope": "total arithmetic iteration", "requested_returns": q.index,
-                    "completed_returns": result.returns, "nonhalting_certified": False,
-                    **payload.power_metrics()}
+            value = (
+                {
+                    "h": result.h,
+                    "ledger": result.balance,
+                    "minimum_ledger": result.minimum,
+                    "first_failure_index": result.first_failure_index,
+                    "centered_odd_events": centered_odd,
+                    "odd_a_steps": result.returns - centered_odd,
+                }
+                if name == "ledger"
+                else {"h": result.h % q.modulus, "modulus": q.modulus}
+            )
+            return {
+                "family": "antihydra",
+                "kind": name,
+                "value": value,
+                "scope": "total arithmetic iteration",
+                "requested_returns": q.index,
+                "completed_returns": result.returns,
+                "nonhalting_certified": False,
+                **payload.power_metrics(),
+            }
         from number_compiler.api.antihydra_observation import observe_run
 
         return observe_run(
-            payload.term.physical_run(), kind=name, modulus=q.modulus, width=q.width,
-            sign=q.sign, precision=q.precision, time_width=q.time_width,
-            time_sign=q.time_sign, max_observer_terms=q.max_observer_terms)
+            payload.term.physical_run(),
+            kind=name,
+            modulus=q.modulus,
+            width=q.width,
+            sign=q.sign,
+            precision=q.precision,
+            time_width=q.time_width,
+            time_sign=q.time_sign,
+            max_observer_terms=q.max_observer_terms,
+        )
 
 
 def information_unresolved(info: dict[str, Any]) -> bool:
-    return any(isinstance(packet, dict) and packet.get("status") in {"unknown", "unavailable"}
-               for packet in info.values())
+    return any(
+        isinstance(packet, dict) and packet.get("status") in {"unknown", "unavailable"}
+        for packet in info.values()
+    )

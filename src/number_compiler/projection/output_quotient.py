@@ -11,9 +11,9 @@ audit.
 
 from __future__ import annotations
 
+from collections.abc import Iterable, Sequence
 from dataclasses import dataclass
 from enum import Enum
-from typing import Iterable, Sequence
 
 from number_compiler.arithmetic.fields.symbolic_extent import DyadicExtent, Extent
 
@@ -192,7 +192,7 @@ class SpecialBranchMask:
         object.__setattr__(self, "bits", bits)
 
     @classmethod
-    def from_checks(cls, pass_ok: bool, fail_ok: bool) -> "SpecialBranchMask":
+    def from_checks(cls, pass_ok: bool, fail_ok: bool) -> SpecialBranchMask:
         if not isinstance(pass_ok, bool) or not isinstance(fail_ok, bool):
             raise TypeError("branch checks must be literal bool values")
         return cls((1 if pass_ok else 0) | (2 if fail_ok else 0))
@@ -221,12 +221,12 @@ class SpecialBranchMask:
             return True
         return None
 
-    def intersect(self, other: "SpecialBranchMask") -> "SpecialBranchMask":
+    def intersect(self, other: SpecialBranchMask) -> SpecialBranchMask:
         if not isinstance(other, SpecialBranchMask):
             raise TypeError(type(other))
         return SpecialBranchMask(self.bits & other.bits)
 
-    def require_possible(self) -> "SpecialBranchMask":
+    def require_possible(self) -> SpecialBranchMask:
         if self.impossible:
             raise ValueError(
                 "all special-source branches violate the source constraints"
@@ -390,7 +390,7 @@ class SpecialSourceGuard:
         parameter: int,
         status: str,
         method: str,
-    ) -> "SpecialSourceGuard":
+    ) -> SpecialSourceGuard:
         status = str(status)
         if status == "prime":
             bit = False
@@ -414,7 +414,7 @@ class SpecialSourceGuard:
     def resolved(self) -> bool:
         return self.failure_bit is not None
 
-    def project(self, audit: BinarySourceFactorAudit) -> "BinaryOutputCoordinate":
+    def project(self, audit: BinarySourceFactorAudit) -> BinaryOutputCoordinate:
         """Apply a proved output-relative quotient to this source coordinate."""
         return BinaryOutputCoordinate.from_factor_audit(
             audit,
@@ -425,7 +425,7 @@ class SpecialSourceGuard:
         self,
         pass_value: int,
         fail_value: int,
-    ) -> "BinaryOutputCoordinate":
+    ) -> BinaryOutputCoordinate:
         """Minimal one-coordinate quotient for exact PASS/FAIL branch outputs."""
         audit = audit_binary_source_factor(
             (False, True),
@@ -438,7 +438,7 @@ class SpecialSourceGuard:
         pass_value: int,
         fail_value: int,
         index: int,
-    ) -> "BinaryOutputCoordinate":
+    ) -> BinaryOutputCoordinate:
         """Digit quotient: dependency is the selected bit of ``pass XOR fail``."""
         index = int(index)
         if index < 0 or min(int(pass_value), int(fail_value)) < 0:
@@ -452,7 +452,7 @@ class SpecialSourceGuard:
         self,
         pass_value: int,
         fail_value: int,
-    ) -> "BinaryOutputCoordinate":
+    ) -> BinaryOutputCoordinate:
         """Canonical binary-length quotient for exact PASS/FAIL branch values."""
         a, b = int(pass_value), int(fail_value)
         if min(a, b) < 0:
@@ -465,7 +465,7 @@ class SpecialSourceGuard:
         self,
         pass_carry: int,
         fail_carry: int,
-    ) -> "BinaryOutputCoordinate":
+    ) -> BinaryOutputCoordinate:
         """Boundary-carry quotient; equal carries collapse immediately."""
         return self.project_branch_values(int(pass_carry), int(fail_carry))
 
@@ -490,7 +490,7 @@ class BinaryOutputCoordinate:
         audit: BinarySourceFactorAudit,
         *,
         resolved_bit: bool | None = None,
-    ) -> "BinaryOutputCoordinate":
+    ) -> BinaryOutputCoordinate:
         if not isinstance(audit, BinarySourceFactorAudit):
             raise TypeError(type(audit))
         if not audit.coordinate_available:
@@ -527,7 +527,7 @@ class BinaryOutputCoordinate:
             return self.false_value
         return self.true_value if self.resolved_bit else self.false_value
 
-    def resolve(self, source_bit: bool) -> "BinaryOutputCoordinate":
+    def resolve(self, source_bit: bool) -> BinaryOutputCoordinate:
         if not isinstance(source_bit, bool):
             raise TypeError("source_bit must be bool")
         return BinaryOutputCoordinate(
@@ -536,7 +536,7 @@ class BinaryOutputCoordinate:
             source_bit,
         )
 
-    def restrict(self, mask: SpecialBranchMask) -> "BinaryOutputCoordinate":
+    def restrict(self, mask: SpecialBranchMask) -> BinaryOutputCoordinate:
         """Specialize this coordinate when cheap source constraints kill a sheet."""
         if not isinstance(mask, SpecialBranchMask):
             raise TypeError(type(mask))
@@ -563,15 +563,15 @@ class BinaryOutputCoordinate:
 
 
 __all__ = [
-    "OutputFiberQuotient",
-    "output_fiber_quotient",
-    "ProjectionMachineQuotient",
-    "minimize_projection_machine",
-    "BinarySourceFactorAudit",
-    "audit_binary_source_factor",
-    "SpecialOutputMode",
-    "SpecialBranchMask",
-    "SpecialSourceShape",
-    "SpecialSourceGuard",
     "BinaryOutputCoordinate",
+    "BinarySourceFactorAudit",
+    "OutputFiberQuotient",
+    "ProjectionMachineQuotient",
+    "SpecialBranchMask",
+    "SpecialOutputMode",
+    "SpecialSourceGuard",
+    "SpecialSourceShape",
+    "audit_binary_source_factor",
+    "minimize_projection_machine",
+    "output_fiber_quotient",
 ]

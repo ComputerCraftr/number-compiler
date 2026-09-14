@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from collections.abc import MutableMapping
 from dataclasses import replace
-from typing import TYPE_CHECKING, Never, cast
+from typing import Never, cast
 
 import pytest
 
@@ -37,6 +37,7 @@ from number_compiler.hashlife.observation.tile_projection import (
     LazyProjection,
     import_exact_source,
 )
+from number_compiler.hashlife.tiles.source_root_match_memo import source_root_match
 from number_compiler.hashlife.tiles.tile_result_records import (
     CausalInterfaceKey,
     CompletedInterfaceResult,
@@ -45,29 +46,20 @@ from number_compiler.hashlife.tiles.tile_result_records import (
     PoweredResultKey,
     SourceRootMatchKey,
 )
-from number_compiler.hashlife.tiles.source_root_match_memo import source_root_match
 from number_compiler.hashlife.tiles.tile_results import (
     CompletedResultArena,
     ResultLease,
 )
 from number_compiler.hashlife.tiles.tiles import TileAlphabet, TileArena
+from number_compiler.projection.lazy_radix import collatz_radix_digit
+from number_compiler.projection.tile_radix import TileRadixObservation
 from number_compiler.resources.field_image_payload_audit import (
     audit_field_image_payloads,
 )
 from number_compiler.resources.ledger import ResourceLedger
 from number_compiler.resources.metric_collection import collect_ledger_metrics
 from number_compiler.resources.payload_audit import audit_registered_payloads
-from number_compiler.projection.lazy_radix import collatz_radix_digit
-from number_compiler.projection.tile_radix import TileRadixObservation
 from number_compiler.sequences.collatz.block_power import PoweredCollatzTerm
-
-if TYPE_CHECKING:
-    from number_compiler.hashlife.execution.tile_kernel import (
-        PrimitiveTileKernelAdapter,
-    )
-    from number_compiler.hashlife.execution.tile_scheduler import TileScheduler
-    from number_compiler.hashlife.observation.tile_projection import LazyProjection
-    from number_compiler.resources.ledger import ResourceLedger
 
 
 def _runtime(
@@ -607,7 +599,7 @@ def test_primitive_action_warm_interner_rejects_integer_alias_or_stale_id(
         action = projection._application.action
         kernel = adapter._action(action).kernel
         record = adapter._action(action)
-        adapter._action_keys[("power", kernel, 1, record.cocycle)] = forged  # type: ignore[assignment]
+        adapter._action_keys[("power", kernel, 1, record.cocycle)] = cast(int, forged)
         before = ledger.entries, ledger.nodes, ledger.inventory()
         with pytest.raises((TypeError, ValueError)):
             adapter.admit(BaseBlockEffect(2))
@@ -626,7 +618,7 @@ def test_temporal_action_warm_interner_rejects_wrong_record_or_integer_alias(
         composed = adapter.compose(primitive, primitive)
         key = primitive, primitive
         assert adapter._compositions[key] == composed.local_id
-        adapter._compositions[key] = forged  # type: ignore[assignment]
+        adapter._compositions[key] = cast(int, forged)
         before = ledger.snapshot()
         with pytest.raises((TypeError, ValueError)):
             adapter.compose(primitive, primitive)

@@ -1,4 +1,3 @@
-#!/usr/bin/env python3
 """Per-temporal-layer audit for the powered HashLife/block runtime.
 
 This intentionally reports cache *ownership* and carrier cutovers separately.

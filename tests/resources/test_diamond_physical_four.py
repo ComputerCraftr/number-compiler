@@ -37,7 +37,7 @@ def test_complete_fixed_kernel_matches_all_old_bimachine_states_transitions_and_
     assert actual == expected
     assert hashlib.sha256(actual).hexdigest() == _RAW_SHA256
     with pytest.raises(FrozenInstanceError):
-        setattr(effect, "base", 3)
+        effect.__setattr__("base", 3)
 
 
 def test_fixed_kernel_metadata_and_tables_cannot_forge_family_issuance() -> None:
@@ -126,15 +126,17 @@ def test_macro_physical_compiler_consumes_binary_dag_and_certifies_halo_and_cycl
     ],
 )
 def test_equal_but_wrong_type_metadata_is_rejected_before_warm_compiler_admission(
-    attribute: Literal["eager_boundary_quotient"]
-    | Literal["exponent"]
-    | Literal["kernel_name"]
-    | Literal["right_count"]
-    | Literal["stable_blank_output"]
-    | Literal["storage_bytes"]
-    | Literal["supports_predecessor_trace"]
-    | Literal["uncompressed_bytes"],
-    value: Literal["forged"] | bool | float | int,
+    attribute: Literal[
+        "eager_boundary_quotient",
+        "exponent",
+        "kernel_name",
+        "right_count",
+        "stable_blank_output",
+        "storage_bytes",
+        "supports_predecessor_trace",
+        "uncompressed_bytes",
+    ],
+    value: Literal["forged"] | bool | float,
 ) -> None:
     from number_compiler.hashlife.actions.lazy_compiler import LazyCompiler
 

@@ -11,8 +11,8 @@ itself remains in physical LSD->MSD order.
 from __future__ import annotations
 
 import weakref
+from collections.abc import Callable
 from dataclasses import dataclass
-from typing import Callable
 
 from number_compiler.arithmetic.automata.symmetry_powering import (
     FiniteKernel,
@@ -52,16 +52,16 @@ class DirectedTileTransducerArena:
     """Exact canonical tile transducer with finite LSD->MSD state."""
 
     __slots__ = (
-        "kernel",
-        "emit",
-        "output_alphabet_size",
-        "actions",
         "_action_refs",
         "_project",
-        "projection_requests",
-        "projection_hits",
-        "action_requests",
         "action_hits",
+        "action_requests",
+        "actions",
+        "emit",
+        "kernel",
+        "output_alphabet_size",
+        "projection_hits",
+        "projection_requests",
     )
 
     def __init__(
@@ -308,7 +308,7 @@ class DirectedTileTransducerArena:
 
 
 __all__ = [
-    "DirectedProjection",
     "DirectedFieldMetrics",
+    "DirectedProjection",
     "DirectedTileTransducerArena",
 ]

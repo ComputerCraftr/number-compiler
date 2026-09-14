@@ -21,10 +21,10 @@ packed automaton when it is cheaper.
 from __future__ import annotations
 
 from bisect import bisect_left
+from collections.abc import Sequence
 from dataclasses import dataclass
 from functools import lru_cache
 from math import gcd, prod
-from typing import Sequence
 
 from number_compiler.arithmetic.fields.morphism_core import binary_power, modular_power
 from number_compiler.arithmetic.fields.radix import bit_width
@@ -62,7 +62,7 @@ class PrimeWheelCircularQuotient:
             raise ValueError(("negative-histogram-lift", self))
 
     @classmethod
-    def from_histogram(cls, histogram: Sequence[int]) -> "PrimeWheelCircularQuotient":
+    def from_histogram(cls, histogram: Sequence[int]) -> PrimeWheelCircularQuotient:
         h = tuple(map(int, histogram))
         if len(h) < 2 or any(value < 0 for value in h):
             raise ValueError(h)
@@ -83,7 +83,7 @@ class PrimeWheelCircularQuotient:
         base = self.baseline
         return tuple(base + value for value in self.residue) + (base,)
 
-    def rotate(self, shift: int) -> "PrimeWheelCircularQuotient":
+    def rotate(self, shift: int) -> PrimeWheelCircularQuotient:
         q = self.prime
         shift = int(shift) % q
         h = self.histogram()
@@ -91,7 +91,7 @@ class PrimeWheelCircularQuotient:
             h = tuple(h[(index - shift) % q] for index in range(q))
         return PrimeWheelCircularQuotient.from_histogram(h)
 
-    def add(self, other: "PrimeWheelCircularQuotient") -> "PrimeWheelCircularQuotient":
+    def add(self, other: PrimeWheelCircularQuotient) -> PrimeWheelCircularQuotient:
         if self.prime != other.prime:
             raise ValueError((self.prime, other.prime))
         return PrimeWheelCircularQuotient.from_histogram(
@@ -156,7 +156,7 @@ class PrimeWheelPhaseBlock:
         object.__setattr__(self, "compositions", int(self.compositions))
 
     @classmethod
-    def identity(cls, prime: int, alpha: int) -> "PrimeWheelPhaseBlock":
+    def identity(cls, prime: int, alpha: int) -> PrimeWheelPhaseBlock:
         q = int(prime)
         return cls(
             q,
@@ -168,7 +168,7 @@ class PrimeWheelPhaseBlock:
         )
 
     @classmethod
-    def gap(cls, gap: int, *, prime: int, alpha: int) -> "PrimeWheelPhaseBlock":
+    def gap(cls, gap: int, *, prime: int, alpha: int) -> PrimeWheelPhaseBlock:
         q = int(prime)
         a = int(alpha) % q
         h = [0] * q
@@ -180,7 +180,7 @@ class PrimeWheelPhaseBlock:
     @classmethod
     def from_gaps(
         cls, gaps: Sequence[int], *, prime: int, alpha: int
-    ) -> "PrimeWheelPhaseBlock":
+    ) -> PrimeWheelPhaseBlock:
         """Build one phase block in O(len(gaps)+q), not O(len(gaps)*q)."""
         q = int(prime)
         a = int(alpha) % q
@@ -207,7 +207,7 @@ class PrimeWheelPhaseBlock:
         *,
         prime: int,
         alpha: int,
-    ) -> "PrimeWheelPhaseBlock":
+    ) -> PrimeWheelPhaseBlock:
         """Build from the endpoint-difference field without storing endpoints.
 
         ``differences`` contains ``g[i+1]-g[i]`` for a linear block.  The
@@ -226,7 +226,7 @@ class PrimeWheelPhaseBlock:
             gaps.append(gap)
         return cls.from_gaps(gaps, prime=prime, alpha=alpha)
 
-    def then(self, other: "PrimeWheelPhaseBlock") -> "PrimeWheelPhaseBlock":
+    def then(self, other: PrimeWheelPhaseBlock) -> PrimeWheelPhaseBlock:
         if (self.prime, self.alpha) != (other.prime, other.alpha):
             raise ValueError(((self.prime, self.alpha), (other.prime, other.alpha)))
         shifted = other.circular.rotate(self.phase_shift)
@@ -239,7 +239,7 @@ class PrimeWheelPhaseBlock:
             self.compositions + other.compositions + 1,
         )
 
-    def power_block(self, exponent: int) -> "PrimeWheelPhaseBlock":
+    def power_block(self, exponent: int) -> PrimeWheelPhaseBlock:
         base = PrimeWheelPhaseBlock(
             self.prime, self.alpha, self.length, self.phase_shift, self.circular, 0
         )
@@ -321,7 +321,7 @@ class PrimeWheelExtensionMorphism:
         *,
         old_modulus: int,
         new_prime: int,
-    ) -> "PrimeWheelExtensionMorphism":
+    ) -> PrimeWheelExtensionMorphism:
         gaps = tuple(map(int, old_gaps))
         M = int(old_modulus)
         q = int(new_prime)
@@ -403,7 +403,7 @@ class PrimeWheelExtensionIndex:
         *,
         old_modulus: int,
         new_prime: int,
-    ) -> "PrimeWheelExtensionIndex":
+    ) -> PrimeWheelExtensionIndex:
         gaps = tuple(map(int, old_gaps))
         M = int(old_modulus)
         q = int(new_prime)
@@ -545,7 +545,7 @@ def _wheel_count_leq(
     """
     from number_compiler.sequences.prime.coprime_rank import CoprimeRankDAG
 
-    dag = CoprimeRankDAG(primes[:max(0, int(depth))], retain_queries=False)
+    dag = CoprimeRankDAG(primes[: max(0, int(depth))], retain_queries=False)
     try:
         return dag.count(int(limit))
     finally:
@@ -572,7 +572,7 @@ class PrimeRecursiveWheelIndex:
     length: int
 
     @classmethod
-    def from_primes(cls, primes: Sequence[int]) -> "PrimeRecursiveWheelIndex":
+    def from_primes(cls, primes: Sequence[int]) -> PrimeRecursiveWheelIndex:
         ps = tuple(map(int, primes))
         if not ps or ps != tuple(sorted(set(ps))):
             raise ValueError("wheel primes must be nonempty, distinct, and increasing")
@@ -582,7 +582,7 @@ class PrimeRecursiveWheelIndex:
         length = prod(p - 1 for p in ps)
         return cls(ps, modulus, length)
 
-    def with_prime(self, prime: int) -> "PrimeRecursiveWheelIndex":
+    def with_prime(self, prime: int) -> PrimeRecursiveWheelIndex:
         q = int(prime)
         if q <= self.primes[-1] or not is_prime_u64(q):
             raise ValueError(q)
@@ -824,13 +824,11 @@ def _field_prime(
     m, bits, cap = int(period_product), int(word_bits), int(max_multiplier)
     if m <= 1 or bits < 3 or cap < 2:
         raise ValueError((m, bits, cap))
-    tested = 0
     # m is odd, so k must be even for k*m+1 to be an odd prime > 2.
-    for k in range(2, cap + 1, 2):
+    for tested, k in enumerate(range(2, cap + 1, 2), start=1):
         p = k * m + 1
         if p.bit_length() > bits:
             break
-        tested += 1
         if is_prime_u64(p):
             return p, k, tested
     return None
@@ -937,16 +935,16 @@ def build_prime_wheel_cyclotomic_automaton(
 
 
 __all__ = [
-    "PrimeWheelCircularQuotient",
-    "PrimeWheelPhaseBlock",
-    "PrimeWheelExtensionMorphism",
-    "PrimeWheelExtensionIndex",
     "PrimeRecursiveWheelIndex",
-    "recursive_prime_wheel_index",
-    "index_prime_wheel_extension",
-    "extend_prime_wheel_gaps",
+    "PrimeWheelCircularQuotient",
+    "PrimeWheelCyclotomicAutomaton",
     "PrimeWheelCyclotomicGroup",
     "PrimeWheelCyclotomicState",
-    "PrimeWheelCyclotomicAutomaton",
+    "PrimeWheelExtensionIndex",
+    "PrimeWheelExtensionMorphism",
+    "PrimeWheelPhaseBlock",
     "build_prime_wheel_cyclotomic_automaton",
+    "extend_prime_wheel_gaps",
+    "index_prime_wheel_extension",
+    "recursive_prime_wheel_index",
 ]

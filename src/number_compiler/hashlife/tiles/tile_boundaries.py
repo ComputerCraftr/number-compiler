@@ -376,11 +376,11 @@ def concat_boundary_views(
 
 
 __all__ = [
+    "EMPTY_BOUNDARY_TILES",
     "BoundaryTileOperands",
     "BoundaryTileView",
-    "EMPTY_BOUNDARY_TILES",
-    "validate_boundary_shape",
-    "concat_boundary_views",
     "boundary_dyadic_pieces",
+    "concat_boundary_views",
     "normalize_boundary_view",
+    "validate_boundary_shape",
 ]

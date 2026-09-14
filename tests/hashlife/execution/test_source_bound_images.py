@@ -12,8 +12,8 @@ from number_compiler.hashlife.execution.source_bound_images import (
     SourceImageProjection,
     SourceImageView,
 )
-from number_compiler.resources.ledger import ResourceLedger
 from number_compiler.hashlife.execution.source_image_seals import publication_seal
+from number_compiler.resources.ledger import ResourceLedger
 
 
 @dataclass(frozen=True, slots=True)
@@ -47,9 +47,7 @@ class _DecimalAdapter:
     def identity_action(self, _source: object) -> _Action:
         return _Action(())
 
-    def action_children(
-        self, action: object
-    ) -> tuple[_Action, _Action] | None:
+    def action_children(self, action: object) -> tuple[_Action, _Action] | None:
         self.validate_action(action)
         assert isinstance(action, _Action)
         if len(action.digits) <= 1:
@@ -279,13 +277,15 @@ def test_projection_cannot_replace_its_value_and_self_carried_seal() -> None:
         core.projection(adapter, image, demand)
 
 
-def test_failure_descent_requires_a_recorded_minimum_prefix() -> None:
+def test_failure_descent_requires_a_recorded_minimum_prefix(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
     _, core, adapter = _runtime()
     failed = core.apply(adapter, 0, _Action((1, 2, 3)))
     assert core.first_failure(adapter, failed) == (2, 123)
     healthy = core.apply(adapter, 0, _Action((4,)))
     assert core.first_failure(adapter, healthy) is None
-    adapter.first_failure = lambda _image: (0, 4)  # type: ignore[assignment]
+    monkeypatch.setattr(adapter, "first_failure", lambda _image: (0, 4))
     with pytest.raises(ValueError, match="fabricated failure"):
         core.first_failure(adapter, healthy)
 
@@ -317,7 +317,9 @@ def test_first_failure_survives_a_later_successful_primitive() -> None:
     assert core.first_failure(adapter, failed) == (2, 1234)
 
 
-def test_indirect_action_cycle_is_rejected_and_workspace_is_released() -> None:
+def test_indirect_action_cycle_is_rejected_and_workspace_is_released(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
     ledger, core, adapter = _runtime()
     first, second = _Action((1, 2)), _Action((3, 4))
 
@@ -328,12 +330,13 @@ def test_indirect_action_cycle_is_rejected_and_workspace_is_released() -> None:
             return first, _Action(())
         return None
 
-    adapter.action_children = cyclic  # type: ignore[method-assign]
+    monkeypatch.setattr(adapter, "action_children", cyclic)
+
     def cyclic_compose(before: object, _after: object) -> _Action:
         assert isinstance(before, _Action)
         return first if before == second else second
 
-    adapter.compose_actions = cyclic_compose  # type: ignore[assignment]
+    monkeypatch.setattr(adapter, "compose_actions", cyclic_compose)
     with pytest.raises(ValueError, match="cycle"):
         core.apply(adapter, 0, first)
     workspace = next(
@@ -398,9 +401,7 @@ def test_clear_invalidates_handles_and_dispose_releases_adapter() -> None:
     image = core.apply(adapter, 0, _Action((1, 2)))
     core.projection(adapter, image, SourceImageDemand("value"))
     seal_row = next(
-        row
-        for row in ledger.inventory()
-        if row.role == "source_image_publication_seal"
+        row for row in ledger.inventory() if row.role == "source_image_publication_seal"
     )
     assert seal_row.entries > 0 and seal_row.nodes > 0
     assert seal_row.accounting_delta == 0

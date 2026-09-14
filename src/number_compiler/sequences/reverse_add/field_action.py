@@ -94,7 +94,7 @@ class ReverseGeometry:
         if self.halo_left < 0 or self.halo_right < 0:
             raise ValueError("reverse halos must be nonnegative")
 
-    def then(self, after: "ReverseGeometry") -> "ReverseGeometry":
+    def then(self, after: ReverseGeometry) -> ReverseGeometry:
         """Compose oriented geometry as a semidirect-product action."""
         if (
             self.spatial_level != after.spatial_level
@@ -113,7 +113,7 @@ class ReverseGeometry:
             self.halo_right + pulled_right,
         )
 
-    def mirrored(self) -> "ReverseGeometry":
+    def mirrored(self) -> ReverseGeometry:
         return ReverseGeometry(
             self.spatial_level,
             self.orientation ^ 1,
@@ -141,7 +141,7 @@ class ReverseActionAutomorphisms:
     conjugate_innovation: InnovationTransform
 
     @classmethod
-    def trivial(cls) -> "ReverseActionAutomorphisms":
+    def trivial(cls) -> ReverseActionAutomorphisms:
         def semantic_identity(value: SemanticKey) -> SemanticKey:
             return value
 
@@ -190,6 +190,9 @@ class ReverseFieldActionMetrics:
     transform_hits: int
 
 
+_DEFAULT_REVERSE_GEOMETRY_1 = ReverseGeometry(0)
+
+
 class ReverseFieldActionArena:
     """Index-owned canonical arena for algebraic reverse/add actions."""
 
@@ -225,7 +228,7 @@ class ReverseFieldActionArena:
         residual_compose: BinarySemanticOp,
         output_compose: BinarySemanticOp,
         automorphisms: ReverseActionAutomorphisms,
-        geometry: ReverseGeometry = ReverseGeometry(0),
+        geometry: ReverseGeometry = _DEFAULT_REVERSE_GEOMETRY_1,
         ledger: ResourceLedger | None = None,
         max_residual_classes: int = MAX_RESIDUAL_CLASSES,
         coordinate_programs: ReverseCoordinateProgramArena | None = None,
@@ -765,12 +768,12 @@ class ReverseFieldActionArena:
 
 
 __all__ = [
-    "CoordinateOutputMorphismID",
-    "FieldCellActionID",
-    "ProofMachineStateID",
     "MAX_INNOVATION_ORDER",
     "MAX_RESIDUAL_CLASSES",
     "MAX_SEMANTIC_KEY_UNITS",
+    "CoordinateOutputMorphismID",
+    "FieldCellActionID",
+    "ProofMachineStateID",
     "ReverseActionAutomorphisms",
     "ReverseDefectClassID",
     "ReverseFieldAction",

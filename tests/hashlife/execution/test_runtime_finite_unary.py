@@ -3,16 +3,18 @@
 from __future__ import annotations
 
 import importlib.util
-from typing import Never
+from typing import Never, cast
 
 import pytest
 
 from number_compiler.arithmetic.contracts.block_effect import BlockContextBudgetExceeded
+from number_compiler.hashlife.actions.field_actions import FieldCellActionID
 from number_compiler.hashlife.execution.continuations.higher_operations import (
     evaluate_operation,
     force_value,
 )
 from number_compiler.hashlife.execution.continuations.higher_summaries import (
+    HigherSummaryID,
     RuntimeUnarySummary,
     UnaryFinite,
     UnarySpatial,
@@ -220,7 +222,9 @@ def test_runtime_unary_rejects_numeric_foreign_and_wrong_side_aliases_atomically
     with pytest.raises(ValueError):
         runtime.summaries.runtime_unary(primitive, sources.intern(0, 0), True)
     with pytest.raises((TypeError, ValueError)):
-        runtime.summaries.combine_runtime_unary((left.local_id, left))  # type: ignore[arg-type]
+        runtime.summaries.combine_runtime_unary(
+            cast(tuple[HigherSummaryID, ...], (left.local_id, left))
+        )
     with pytest.raises(ValueError):
         runtime.summaries.combine_runtime_unary((left, foreign))
     with pytest.raises(ValueError):
@@ -294,7 +298,12 @@ def test_primitive_tables_validate_exact_inputs_before_warm_lookup() -> None:
         (0, 0, blank + 1),
     ):
         with pytest.raises((TypeError, ValueError)):
-            tables.step(primitive, side, state, symbol)  # type: ignore[arg-type]
+            tables.step(
+                primitive,
+                cast(int, side),
+                cast(int, state),
+                cast(int, symbol),
+            )
     for left, symbol, right in (
         (True, 0, 0),
         (0, True, 0),
@@ -307,13 +316,18 @@ def test_primitive_tables_validate_exact_inputs_before_warm_lookup() -> None:
         (0, 0, right_count),
     ):
         with pytest.raises((TypeError, ValueError)):
-            tables.emit(primitive, left, symbol, right)  # type: ignore[arg-type]
+            tables.emit(
+                primitive,
+                cast(int, left),
+                cast(int, symbol),
+                cast(int, right),
+            )
 
     for action in (composed, foreign, primitive.local_id):
         with pytest.raises((TypeError, ValueError)):
-            tables.step(action, 0, 0, 0)  # type: ignore[arg-type]
+            tables.step(cast(FieldCellActionID, action), 0, 0, 0)
         with pytest.raises((TypeError, ValueError)):
-            tables.emit(action, 0, 0, 0)  # type: ignore[arg-type]
+            tables.emit(cast(FieldCellActionID, action), 0, 0, 0)
     after = semantics.ledger.snapshot()
     assert (after.entries, after.nodes) == (before.entries, before.nodes)
 
@@ -358,7 +372,7 @@ def test_finite_unary_payload_rejects_boolean_wide_and_mutable_aliases(
     outputs: object,
 ) -> None:
     with pytest.raises(ValueError):
-        UnaryFinite(outputs)  # type: ignore[arg-type]
+        UnaryFinite(cast(tuple[int, ...], outputs))
 
 
 def test_production_collatz_shares_one_tile_execution_authority() -> None:

@@ -25,15 +25,17 @@ from number_compiler.hashlife.execution.tile_causal_tasks import (
     result_payload,
 )
 from number_compiler.hashlife.tiles.tile_boundaries import BoundaryTileView
-from number_compiler.hashlife.tiles.tile_context import TemporalCocycle
 from number_compiler.hashlife.tiles.tile_causal_interface_memo import (
     _bind_reverse_output_request,
     causal_interface_key,
     lookup_causal_interface,
     publish_causal_interface,
 )
-from number_compiler.hashlife.tiles.tile_result_records import CausalInterfaceKey
-from number_compiler.hashlife.tiles.tile_result_records import ReverseBoundOutputKey
+from number_compiler.hashlife.tiles.tile_context import TemporalCocycle
+from number_compiler.hashlife.tiles.tile_result_records import (
+    CausalInterfaceKey,
+    ReverseBoundOutputKey,
+)
 from number_compiler.hashlife.tiles.tile_reverse_bound_output_memo import (
     lookup_reverse_bound_output,
     publish_reverse_bound_output_leaf,
@@ -527,8 +529,11 @@ def interface_step(
         values.append(_leaf(engine, action, left, symbol, right, require_output))
         return True
     before, after = children
-    if not isinstance(left, CausalPrefix) or not isinstance(right, CausalPrefix):
-        raise ValueError("composite interface emission requires causal prefixes")
+    match (left, right):
+        case (CausalPrefix(), CausalPrefix()):
+            pass
+        case _:
+            raise ValueError("composite interface emission requires causal prefixes")
     if frame.stage == 4:
         second, first = values.pop(), frame.saved[0]
         from number_compiler.hashlife.execution.tile_physical_support import (

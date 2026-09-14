@@ -2,8 +2,8 @@
 
 from __future__ import annotations
 
+from collections.abc import Iterable
 from dataclasses import dataclass
-from typing import Dict, Iterable, Tuple
 
 from number_compiler.arithmetic.automata.guard import forbid_in_powered_jump
 from number_compiler.arithmetic.fields.digit_formula import DigitSpec, closed_digit_at
@@ -45,7 +45,7 @@ def residue_bundle(
     root: FormulaRoot,
     spec: DigitSpec,
     channels: Iterable[ResidueChannel],
-) -> Dict[Tuple[int, int], int]:
+) -> dict[tuple[int, int], int]:
     return {
         (c.evaluation_radix, c.modulus): formula_radix_residue(
             arena, root, spec, c.evaluation_radix, c.modulus
@@ -54,7 +54,7 @@ def residue_bundle(
     }
 
 
-def prime_power_moduli(primes: Iterable[int], max_power: int = 3) -> Tuple[int, ...]:
+def prime_power_moduli(primes: Iterable[int], max_power: int = 3) -> tuple[int, ...]:
     out = []
     for p in primes:
         p = int(p)
@@ -67,7 +67,7 @@ def prime_power_moduli(primes: Iterable[int], max_power: int = 3) -> Tuple[int, 
     return tuple(out)
 
 
-def default_radix_residue_channels(base: int) -> Tuple[ResidueChannel, ...]:
+def default_radix_residue_channels(base: int) -> tuple[ResidueChannel, ...]:
     """Compact multi-view bundle: arithmetic radix, +/-1, and small prime powers."""
     b = int(base)
     mods = sorted(set(prime_power_moduli((2, 3, 5, 7, 11), 3)))
@@ -77,8 +77,8 @@ def default_radix_residue_channels(base: int) -> Tuple[ResidueChannel, ...]:
 
 __all__ = [
     "ResidueChannel",
-    "formula_radix_residue",
-    "residue_bundle",
-    "prime_power_moduli",
     "default_radix_residue_channels",
+    "formula_radix_residue",
+    "prime_power_moduli",
+    "residue_bundle",
 ]

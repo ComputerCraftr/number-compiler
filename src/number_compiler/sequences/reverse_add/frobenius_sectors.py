@@ -18,12 +18,12 @@ from number_compiler.arithmetic.carry.reverse_sector_transfer import (
 from number_compiler.arithmetic.fields.radial_innovation import (
     ReverseAddCyclotomicInnovationBlock,
 )
-from number_compiler.arithmetic.polynomials.frobenius_sector import (
-    ReverseFrobeniusPlan,
-)
 from number_compiler.arithmetic.polynomials.cyclotomic_ring import CyclotomicRing
 from number_compiler.arithmetic.polynomials.cyclotomic_transport import (
     power_two_cyclotomic_radial_quotient,
+)
+from number_compiler.arithmetic.polynomials.frobenius_sector import (
+    ReverseFrobeniusPlan,
 )
 
 

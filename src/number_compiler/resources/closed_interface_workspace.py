@@ -8,7 +8,6 @@ from typing import Literal
 
 from number_compiler.resources.ledger import ResourceLedger
 
-
 # Leaf construction retains at most 24 closed-function slots, a 76-slot sector
 # summary, two MacroComponents records, and bounded codec/signature scratch.
 _LEAF_NODES = 128
@@ -21,7 +20,7 @@ _PARENT_NODES = 512
 class ClosedInterfaceWorkspace:
     """Track the live allocation bound while closed records become retained."""
 
-    __slots__ = ("ledger", "owner", "nodes")
+    __slots__ = ("ledger", "nodes", "owner")
 
     def __init__(self, ledger: ResourceLedger, prefix: str) -> None:
         self.ledger = ledger

@@ -36,26 +36,28 @@ def test_causal_macro_recurrence_p4_p8_without_temporal_midpoint(
             (8, (2, 4, 0, 2)),
         ):
             action = adapter.power(primitive, exponent)
-            with scheduler.application(
-                action,
-                source.tile,
-                adapter.initial_ports(action),
-                adapter.wiring(action),
-            ) as application:
-                with monkeypatch.context() as point_poison:
-                    point_poison.setattr(engine, "output", forbidden)
-                    assert (
-                        tuple(
-                            engine.point(
-                                action,
-                                source.tile,
-                                i,
-                                application=application.identity,
-                            )
-                            for i in range(4)
+            with (
+                scheduler.application(
+                    action,
+                    source.tile,
+                    adapter.initial_ports(action),
+                    adapter.wiring(action),
+                ) as application,
+                monkeypatch.context() as point_poison,
+            ):
+                point_poison.setattr(engine, "output", forbidden)
+                assert (
+                    tuple(
+                        engine.point(
+                            action,
+                            source.tile,
+                            i,
+                            application=application.identity,
                         )
-                        == expected
+                        for i in range(4)
                     )
+                    == expected
+                )
             with engine.output(action, source.tile) as output:
                 assert _symbols(tiles, output.tile) == expected
         assert ledger.counters.get("tile_causal_frames", 0) > 0

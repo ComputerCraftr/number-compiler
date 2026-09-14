@@ -1,5 +1,6 @@
 """Legacy execution boundaries validate scoped handles before cache shortcuts."""
 
+from collections.abc import MutableSequence
 from typing import cast
 
 import pytest
@@ -128,12 +129,12 @@ def test_canonical_collatz_handles_survive_memo_eviction_and_inspection_is_immut
     original_node = arena.node(original)
     snapshot = arena.nodes
     with pytest.raises(AttributeError):
-        getattr(snapshot, "clear")()
+        cast(MutableSequence[object], snapshot).clear()
     with pytest.raises(AttributeError):
-        setattr(arena, "nodes", [])
+        arena.__setattr__("nodes", [])
     powers = ActionPowerArena(arena.identity, arena.compose, validate=arena.validate)
     with pytest.raises(AttributeError):
-        setattr(powers, "identity", original)
+        powers.__setattr__("identity", original)
     squared = powers.power(original, 2)
     powers._powers.clear()
     powers._compositions.clear()

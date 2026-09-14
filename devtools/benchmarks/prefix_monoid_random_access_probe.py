@@ -1,4 +1,3 @@
-#!/usr/bin/env python3
 """Deterministic v0.53.8 spatial-prefix / slab-removal probe."""
 
 from __future__ import annotations

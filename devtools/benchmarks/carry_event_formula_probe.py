@@ -1,4 +1,3 @@
-#!/usr/bin/env python3
 """Release probe for the restored fixed-height carry/event compiler IR."""
 
 from __future__ import annotations

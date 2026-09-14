@@ -108,7 +108,7 @@ def test_cross_port_composition_normalizes_invalid_original_codes() -> None:
 
 
 def test_foreign_map_argument_and_port_reject_before_warm_lookup_or_mutation() -> None:
-    ledger, _, boundaries, arena, action, _ = context()
+    ledger, _, _boundaries, arena, action, _ = context()
     _, _, foreign_boundary, foreign, foreign_action, _ = context()
     source, target = StateSort(action, 1), StateSort(action, 0)
     x = arena.variable(source, "x")

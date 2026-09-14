@@ -10,16 +10,11 @@ integer root comparison rather than a materialized Cartesian row/column vector.
 
 from __future__ import annotations
 
+import itertools
+from collections.abc import Callable, Iterable, Iterator, Mapping, Sequence
 from dataclasses import dataclass, field
 from typing import (
-    Callable,
-    Dict,
-    Iterable,
-    Iterator,
     Literal,
-    Mapping,
-    Sequence,
-    Tuple,
     cast,
 )
 
@@ -57,7 +52,7 @@ def _selector_bits(mask: int) -> int:
         x ^= b
     if not vals:
         return 0
-    runs = 1 + sum(b != a + 1 for a, b in zip(vals, vals[1:]))
+    runs = 1 + sum(b != a + 1 for a, b in itertools.pairwise(vals))
     width = _bits(vals[-1])
     return min(len(vals) * width, vals[-1] + 1, 2 * runs * width)
 
@@ -78,22 +73,22 @@ class MultiTerminalDecisionArena:
     """Canonical reduced ordered finite-domain decision DAG."""
 
     __slots__ = (
-        "domains",
-        "arity",
-        "order",
-        "_full",
-        "_nodes",
-        "_intern",
-        "_term",
-        "_groups",
-        "_selector_bits",
-        "_probes",
         "_cofactor_cache",
-        "_minlen_cache",
+        "_full",
+        "_generator_boxes",
+        "_groups",
+        "_intern",
         "_length_shape_cache",
         "_length_shape_intern",
-        "_generator_boxes",
+        "_minlen_cache",
+        "_nodes",
         "_normalized_boxes",
+        "_probes",
+        "_selector_bits",
+        "_term",
+        "arity",
+        "domains",
+        "order",
     )
 
     def __init__(self, domains: Sequence[int], order: Sequence[int] | None = None):
@@ -111,17 +106,17 @@ class MultiTerminalDecisionArena:
         self._full = tuple((1 << domains[i]) - 1 for i in order)
         # node = ('T', terminal_value) or ('N', ordered_level, ((child,mask),...))
         self._nodes: list[_DecisionNode] = []
-        self._intern: Dict[tuple[object, ...], int] = {}
-        self._term: Dict[object, int] = {}
+        self._intern: dict[tuple[object, ...], int] = {}
+        self._term: dict[object, int] = {}
         self._groups = 0
         self._selector_bits = 0
         self._probes = 0
         self._generator_boxes = 0
         self._normalized_boxes = 0
-        self._cofactor_cache: Dict[tuple[int, tuple[tuple[int, int], ...]], int] = {}
-        self._minlen_cache: Dict[int, int | None] = {}
-        self._length_shape_cache: Dict[int, int] = {}
-        self._length_shape_intern: Dict[tuple[object, ...], int] = {}
+        self._cofactor_cache: dict[tuple[int, tuple[tuple[int, int], ...]], int] = {}
+        self._minlen_cache: dict[int, int | None] = {}
+        self._length_shape_cache: dict[int, int] = {}
+        self._length_shape_intern: dict[tuple[object, ...], int] = {}
 
     def terminal(self, value: object) -> int:
         # output words are tuples/None and therefore hashable
@@ -136,7 +131,7 @@ class MultiTerminalDecisionArena:
         return q
 
     def _node(self, level: int, child_masks: Mapping[int, int]) -> int:
-        merged: Dict[int, int] = {}
+        merged: dict[int, int] = {}
         for child, mask in child_masks.items():
             if mask:
                 merged[int(child)] = merged.get(int(child), 0) | int(mask)
@@ -165,7 +160,7 @@ class MultiTerminalDecisionArena:
         self._selector_bits += sum(_selector_bits(mask) for _, mask in entries)
         return q
 
-    def build(self, resolver: Callable[[Tuple[int, ...]], object]) -> int:
+    def build(self, resolver: Callable[[tuple[int, ...]], object]) -> int:
         """Build the exact function without retaining a Cartesian leaf table."""
         assignment = [0] * self.arity
         # Each frame is [level, next_value, by_child, incoming_value].  This is
@@ -232,7 +227,7 @@ class MultiTerminalDecisionArena:
         while changed and len(work) > 1:
             changed = False
             for coordinate in range(arity):
-                groups: Dict[tuple[object, ...], int] = {}
+                groups: dict[tuple[object, ...], int] = {}
                 for item in work:
                     terminal, selectors = item[0], cast(tuple[int, ...], item[1:])
                     key = (
@@ -351,8 +346,8 @@ class MultiTerminalDecisionArena:
             coverage.append(by_value)
         labels = tuple(terminal for terminal, _ in ordered)
         all_active = (1 << len(ordered)) - 1
-        memo: Dict[tuple[int, int], int] = {}
-        leaf_cache: Dict[int, int] = {0: default_terminal}
+        memo: dict[tuple[int, int], int] = {}
+        leaf_cache: dict[int, int] = {0: default_terminal}
 
         def leaf(active: int) -> int:
             old = leaf_cache.get(active)
@@ -389,7 +384,7 @@ class MultiTerminalDecisionArena:
                     if sub and (level + 1, sub) not in memo:
                         stack.append((level + 1, sub, False))
                 continue
-            by_child: Dict[int, int] = {}
+            by_child: dict[int, int] = {}
             for value, covered in enumerate(coverage[level]):
                 sub = active & covered
                 child = memo[(level + 1, sub)] if sub else default_terminal
@@ -415,7 +410,7 @@ class MultiTerminalDecisionArena:
         out = MultiTerminalDecisionArena(
             tuple(len(xs) for xs in selections), self.order
         )
-        memo: Dict[tuple[int, int], int] = {}
+        memo: dict[tuple[int, int], int] = {}
 
         def remap_mask(original: int, old_mask: int) -> int:
             mask = 0
@@ -460,7 +455,7 @@ class MultiTerminalDecisionArena:
                 memo[key] = memo[(node, level + 1)]
                 continue
             original = self.order[level]
-            by_child: Dict[int, int] = {}
+            by_child: dict[int, int] = {}
             for child, old_mask in entries:
                 new_mask = remap_mask(original, old_mask)
                 if not new_mask:
@@ -499,7 +494,7 @@ class MultiTerminalDecisionArena:
         if old is not None:
             return old
         amap = dict(items)
-        memo: Dict[tuple[int, int], int] = {}
+        memo: dict[tuple[int, int], int] = {}
         start = (int(root), 0)
         stack: list[tuple[int, int, bool]] = [(start[0], start[1], False)]
         while stack:
@@ -531,7 +526,7 @@ class MultiTerminalDecisionArena:
                 selected = self._select(node, level, amap[original])
                 memo[mk] = memo[(selected, level + 1)]
             else:
-                by_child: Dict[int, int] = {}
+                by_child: dict[int, int] = {}
                 for child, mask in n[2]:
                     c = memo[(child, level + 1)]
                     by_child[c] = by_child.get(c, 0) | mask
@@ -624,7 +619,7 @@ class MultiTerminalDecisionArena:
             return old
         root = int(root)
         base = self.min_output_length(root)
-        built: Dict[int, int] = {}
+        built: dict[int, int] = {}
         stack: list[tuple[int, bool]] = [(root, False)]
         while stack:
             node, ready = stack.pop()
@@ -696,18 +691,18 @@ class CanonicalOutputRelation:
 
     arena: MultiTerminalDecisionArena
     root: int
-    left_states: Tuple[int, ...]
-    alphabet: Tuple[int, ...]
-    right_states: Tuple[int, ...]
+    left_states: tuple[int, ...]
+    alphabet: tuple[int, ...]
+    right_states: tuple[int, ...]
 
     def __post_init__(self) -> None:
         self._left = {q: i for i, q in enumerate(self.left_states)}
         self._symbol = {a: i for i, a in enumerate(self.alphabet)}
         self._right = {q: i for i, q in enumerate(self.right_states)}
 
-    _left: Dict[int, int] = field(init=False)
-    _symbol: Dict[int, int] = field(init=False)
-    _right: Dict[int, int] = field(init=False)
+    _left: dict[int, int] = field(init=False)
+    _symbol: dict[int, int] = field(init=False)
+    _right: dict[int, int] = field(init=False)
 
     def emit(self, left: int, symbol: int, right: int) -> tuple[int, ...] | None:
         return _output_word(
@@ -788,4 +783,4 @@ class CanonicalOutputRelation:
         )
 
 
-__all__ = ["DecisionMetrics", "MultiTerminalDecisionArena", "CanonicalOutputRelation"]
+__all__ = ["CanonicalOutputRelation", "DecisionMetrics", "MultiTerminalDecisionArena"]

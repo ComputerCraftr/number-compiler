@@ -31,11 +31,14 @@ class CollatzRuntimeActionBundle:
     powered: CollatzFieldActionID
 
 
+_DEFAULT_COLLATZ_ACTION_GEOMETRY_1 = CollatzActionGeometry()
+
+
 def build_collatz_runtime_action(
     steps: int,
     ledger: ResourceLedger,
     *,
-    geometry: CollatzActionGeometry = CollatzActionGeometry(),
+    geometry: CollatzActionGeometry = _DEFAULT_COLLATZ_ACTION_GEOMETRY_1,
 ) -> CollatzRuntimeActionBundle:
     """Build ``C**steps`` with logarithmic binary component composition.
 

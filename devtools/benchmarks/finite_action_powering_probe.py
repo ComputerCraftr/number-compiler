@@ -1,4 +1,3 @@
-#!/usr/bin/env python3
 """Release probe for canonical causal cells and shared powering machinery.
 
 This probe is a reference-oracle/representation audit, not the canonical nth-state

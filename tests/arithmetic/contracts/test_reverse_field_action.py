@@ -166,7 +166,7 @@ def test_reverse_field_power_is_binary_and_validates_exact_exponents() -> None:
     assert arena.power(action, 0) == arena.identity
     for invalid in (True, 1.5):
         with pytest.raises(TypeError):
-            arena.power(action, invalid)  # type: ignore[arg-type]
+            arena.power(action, cast(int, invalid))
     with pytest.raises(ValueError):
         arena.power(action, -1)
 
@@ -284,7 +284,7 @@ def test_proof_states_foreign_handles_and_scalar_aliases_reject_before_cache_hit
     forged_kind = replace(action, kind="proof-machine-state")
     for invalid in (proof, foreign, forged_kind, action.local_id, True):
         with pytest.raises((TypeError, ValueError)):
-            arena.compose(invalid, action)  # type: ignore[arg-type]
+            arena.compose(cast(FieldCellActionID, invalid), action)
     after = arena.metrics()
     assert after.compose_requests == before.compose_requests
     assert after.compose_early_hits == before.compose_early_hits

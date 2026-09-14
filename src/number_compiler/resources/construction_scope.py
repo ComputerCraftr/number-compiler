@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from types import TracebackType
+from typing import Self
 
 from number_compiler.resources.ledger import ResourceLedger
 from number_compiler.resources.stores import LedgerDict, LedgerList
@@ -24,7 +25,7 @@ class RuntimeConstruction:
         self._roots = frozenset(ledger._execution_roots)
         self._entered = False
 
-    def __enter__(self) -> RuntimeConstruction:
+    def __enter__(self) -> Self:
         if self._entered:
             raise RuntimeError("runtime construction cannot be entered twice")
         self._entered = True

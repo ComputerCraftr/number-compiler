@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from itertools import product
-from typing import TYPE_CHECKING, Never
+from typing import TYPE_CHECKING, Never, cast
 
 import pytest
 
@@ -33,7 +33,6 @@ if TYPE_CHECKING:
         ContextObservation,
     )
     from number_compiler.hashlife.execution.continuations.diamond_expression_eval import (
-        LowerFinite,
         ResolveExpr,
     )
     from number_compiler.hashlife.execution.continuations.diamond_higher_tasks import (
@@ -269,11 +268,11 @@ def test_proof_registry_rejects_scoped_handles_and_records_uncached_reason() -> 
         )
     assert registry.stats()["failed-summary"].failed_builds == 1
     with pytest.raises(ValueError):
-        ArtifactKey(True, "aliased-kind")  # type: ignore[arg-type]
+        ArtifactKey(cast(str, True), "aliased-kind")
 
     @dataclass(frozen=True, init=False)
     class HiddenSlot:
-        __slots__ = ("value", "hidden")
+        __slots__ = ("hidden", "value")
         value: int
 
         def __init__(self) -> None:
@@ -392,7 +391,11 @@ def test_malformed_artifact_parameters_reject_before_target_binding(
     monkeypatch.setattr(module, "_bind", forbidden)
     registry = ImmutableArtifactRegistry()
     for altered in malformed:
-        monkeypatch.setattr(registry, "obtain", lambda *_args, **_kw: (altered, True))
+        monkeypatch.setattr(
+            registry,
+            "obtain",
+            lambda *_args, altered=altered, **_kw: (altered, True),
+        )
         before = runtime.ledger.snapshot()
         with pytest.raises(ValueError, match="parameter"):
             module.c4_fourth_right_summary(

@@ -9,10 +9,10 @@ helpers.
 from __future__ import annotations
 
 from collections import Counter
+from collections.abc import Iterator, Mapping
 from contextlib import contextmanager
 from contextvars import ContextVar
 from dataclasses import dataclass, field
-from typing import Iterator, Mapping
 
 
 class JumpGuardViolation(RuntimeError):
@@ -42,7 +42,7 @@ class JumpAudit:
     slp_sections: int = 0
     tropical_ops: int = 0
 
-    def snapshot(self) -> "JumpAuditSnapshot":
+    def snapshot(self) -> JumpAuditSnapshot:
         return JumpAuditSnapshot(
             jump_calls=self.jump_calls,
             forbidden_attempts=dict(self.forbidden_attempts),
@@ -194,16 +194,16 @@ def record_symbolic_op(name: str, count: int = 1) -> None:
 
 
 __all__ = [
-    "JumpGuardViolation",
     "JumpAudit",
     "JumpAuditSnapshot",
+    "JumpGuardViolation",
+    "forbid_in_powered_jump",
     "in_powered_jump",
     "powered_jump_scope",
-    "forbid_in_powered_jump",
-    "record_summary_query",
     "record_cascade_metrics",
     "record_residual_metrics",
     "record_slp_metrics",
-    "record_tropical_op",
+    "record_summary_query",
     "record_symbolic_op",
+    "record_tropical_op",
 ]

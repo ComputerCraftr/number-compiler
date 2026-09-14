@@ -209,10 +209,10 @@ def power_two_cyclotomic_modulus(radix: int, classes: int) -> int:
 
 
 __all__ = [
-    "PowerTwoCyclotomicTransport",
     "PowerTwoCyclotomicRadialQuotient",
-    "power_two_cyclotomic_transport",
-    "power_two_cyclotomic_radial_quotient",
+    "PowerTwoCyclotomicTransport",
     "power_two_cyclotomic_annihilated",
     "power_two_cyclotomic_modulus",
+    "power_two_cyclotomic_radial_quotient",
+    "power_two_cyclotomic_transport",
 ]

@@ -7,7 +7,6 @@ from collections.abc import Callable
 from number_compiler.arithmetic.carry.carry_monoid import CarryFn
 from number_compiler.arithmetic.carry.reverse_port_functions import ReversePortCodec
 from number_compiler.arithmetic.contracts.block_kernel import BaseBlockEffect
-from number_compiler.hashlife.interfaces.diamond_kernel import PrimitiveKernel
 from number_compiler.arithmetic.functions.finite_function_types import (
     BOOL,
     AtomSort,
@@ -15,6 +14,7 @@ from number_compiler.arithmetic.functions.finite_function_types import (
     FunctionSignature,
 )
 from number_compiler.arithmetic.functions.finite_port_action import PortVariable
+from number_compiler.hashlife.interfaces.diamond_kernel import PrimitiveKernel
 from number_compiler.hashlife.interfaces.semantic_bits import (
     BitFunctionArena,
     FactoredFunctionID,

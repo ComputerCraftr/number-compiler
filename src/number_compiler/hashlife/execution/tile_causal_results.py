@@ -8,7 +8,12 @@ the recurrence to provide complete outgoing semantics before publication.
 from __future__ import annotations
 
 from dataclasses import dataclass, replace
-from typing import Any, TypeAlias, cast
+from typing import TYPE_CHECKING, TypeAlias, cast
+
+if TYPE_CHECKING:
+    from number_compiler.hashlife.execution.tile_kernel import (
+        PrimitiveTileKernelAdapter,
+    )
 
 from number_compiler.hashlife.actions.field_actions import FieldCellActionID
 from number_compiler.hashlife.tiles.tile_boundaries import (
@@ -116,7 +121,7 @@ def cached_causal_output(
     if type(result) is not ResultLease:
         raise TypeError("cached causal output requires a completed-result lease")
     value = result.result
-    authority = cast(Any, result._issuer.action_authority)
+    authority = cast("PrimitiveTileKernelAdapter", result._issuer.action_authority)
     children = authority.action_children(result._key.action)
     observed = value.observed_input_ports
     if children is None:
@@ -224,7 +229,7 @@ def primitive_causal_semantics(
     if type(occurrence) is not TemporalCocycle:
         raise TypeError("primitive causal semantics require an occurrence cocycle")
     key = causal_result_key(results, action, input_tile, ports, wiring)
-    authority = cast(Any, results.action_authority)
+    authority = cast("PrimitiveTileKernelAdapter", results.action_authority)
     compiler = getattr(authority, "_compile_interface", None)
     observer = getattr(authority, "_observe", None)
     cocycle_hook = getattr(authority, "action_cocycle", None)
@@ -435,7 +440,7 @@ def combine_causal_outputs(
         results._validate_bound_port_allocations(consumer)
         fusion = FusedBoundaryContract(producer, consumer)
 
-    authority = cast(Any, results.action_authority)
+    authority = cast("PrimitiveTileKernelAdapter", results.action_authority)
     record = authority._action(action)
     from number_compiler.hashlife.execution.tile_causal_interfaces import (
         combine_local_interfaces,
@@ -479,15 +484,15 @@ def combine_causal_outputs(
 
 
 __all__ = [
-    "CausalInputState",
     "CausalCompletedOutput",
+    "CausalInputState",
     "CompositeCausalPrefixes",
     "PrimitiveCausalPorts",
-    "causal_result_key",
     "cached_causal_output",
+    "causal_result_key",
     "combine_causal_outputs",
     "lookup_causal_result",
     "primitive_causal_semantics",
-    "publish_causal_result",
     "publish_causal_completed",
+    "publish_causal_result",
 ]

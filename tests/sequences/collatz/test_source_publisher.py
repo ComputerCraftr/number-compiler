@@ -54,9 +54,7 @@ def _accelerated_reference(seed: int, events: int) -> tuple[int, tuple[int, ...]
 def test_published_event_and_physical_roots_are_one_source_action(
     seed: int, events: int
 ) -> None:
-    publisher = CollatzSourcePublisher(
-        seed, events, max_events=8, max_digits=64
-    )
+    publisher = CollatzSourcePublisher(seed, events, max_events=8, max_digits=64)
     published = publisher.publish()
     target, valuations = _accelerated_reference(seed, events)
     assert publisher.publish() is published
@@ -69,10 +67,13 @@ def test_published_event_and_physical_roots_are_one_source_action(
         for parity in (True, *(False for _ in range(valuation)))
     )
     assert published.physical_support.ticks == len(expected_word)
-    assert tuple(
-        published.physical_support.tick(index)
-        for index in range(published.physical_support.ticks)
-    ) == expected_word
+    assert (
+        tuple(
+            published.physical_support.tick(index)
+            for index in range(published.physical_support.ticks)
+        )
+        == expected_word
+    )
     observer = CollatzClockObservers(publisher.events)
     assert observer.clock(published.event_root).physical_ticks == len(expected_word)
     transfer = observer.modular(published.event_root, 257)
@@ -130,7 +131,9 @@ def test_issued_snapshot_rejects_same_arena_substitutions_and_field_mutation() -
     object.__setattr__(published, "event_root", original_root)
 
     original_target = published.target
-    object.__setattr__(published, "target", publisher.transitions.advance(original_target).target)
+    object.__setattr__(
+        published, "target", publisher.transitions.advance(original_target).target
+    )
     with pytest.raises(ValueError, match="issued source authority"):
         published.validate()
     object.__setattr__(published, "target", original_target)
@@ -161,8 +164,7 @@ def test_event_and_transition_retention_share_request_caps() -> None:
         for row in inventory
     )
     assert any(
-        row.name.startswith("collatz-germ-")
-        and row.name.endswith("-canonical-states")
+        row.name.startswith("collatz-germ-") and row.name.endswith("-canonical-states")
         for row in inventory
     )
     publisher.ledger.tighten_limits(publisher.ledger.nodes, publisher.ledger.entries)
@@ -198,10 +200,10 @@ def test_publisher_does_not_call_the_retired_digit_successor(
     def forbidden(*_args: object, **_kwargs: object) -> Never:
         raise AssertionError("publisher replayed successor digit words")
 
-    monkeypatch.setattr(raw_field, "accelerated_collatz_sentinel_step_digits", forbidden)
-    published = CollatzSourcePublisher(
-        27, 8, max_events=8, max_digits=64
-    ).publish()
+    monkeypatch.setattr(
+        raw_field, "accelerated_collatz_sentinel_step_digits", forbidden
+    )
+    published = CollatzSourcePublisher(27, 8, max_events=8, max_digits=64).publish()
     assert published.discovered_events == 8
     assert published.discovery_digit_work > 0
     retained = published.owner.separately_retained

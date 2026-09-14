@@ -47,4 +47,3 @@ def validate_execution_context(self: TileScheduler, key: PoweredResultKey) -> No
     validator = getattr(self.adapter, "validate_wiring", None)
     if validator is not None:
         validator(key.action, key.wiring)
-

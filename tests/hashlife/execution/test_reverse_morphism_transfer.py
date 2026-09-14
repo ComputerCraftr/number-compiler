@@ -4,11 +4,16 @@ from itertools import product
 
 import pytest
 
-from number_compiler.arithmetic.contracts.block_effect import BoundarySide
+from number_compiler.arithmetic.contracts.block_effect import (
+    BlockContextBudgetExceeded,
+    BoundarySide,
+)
 from number_compiler.arithmetic.contracts.block_kernel import BaseBlockEffect
-from number_compiler.arithmetic.contracts.block_effect import BlockContextBudgetExceeded
-from number_compiler.hashlife.execution.tile_causal import CausalTileEngine
 from number_compiler.hashlife.behavior.reverse_bound_output import ReverseBoundOutput
+from number_compiler.hashlife.execution.reverse_morphism_transfer import (
+    ReverseMorphismTransferArena,
+)
+from number_compiler.hashlife.execution.tile_causal import CausalTileEngine
 from number_compiler.hashlife.execution.tile_causal_tasks import (
     CausalFrame,
     CausalPrefix,
@@ -16,9 +21,6 @@ from number_compiler.hashlife.execution.tile_causal_tasks import (
 from number_compiler.hashlife.tiles.tile_boundaries import BoundaryTileView
 from number_compiler.resources.ownership import audit_execution_ownership
 from number_compiler.resources.payload_audit import audit_registered_payloads
-from number_compiler.hashlife.execution.reverse_morphism_transfer import (
-    ReverseMorphismTransferArena,
-)
 from number_compiler.sequences.reverse_add.primitive_output_morphism import (
     LEFT,
     RIGHT,

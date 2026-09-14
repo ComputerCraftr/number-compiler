@@ -56,21 +56,21 @@ class ProgramComposition:
     """Output-complete syntax. Boundary interpretation requires lazy views."""
 
     __slots__ = (
-        "first",
-        "second",
-        "handle",
+        "__weakref__",
+        "_sealed",
         "base",
         "blank",
-        "exponent",
-        "node_id",
-        "canonical_key",
         "blank_left_tail",
         "blank_right_tail",
+        "canonical_key",
+        "depth",
+        "exponent",
+        "first",
+        "handle",
+        "node_id",
+        "second",
         "stable_blank_output",
         "supports_predecessor_trace",
-        "depth",
-        "_sealed",
-        "__weakref__",
     )
 
     def __init__(

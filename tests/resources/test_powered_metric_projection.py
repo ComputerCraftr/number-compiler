@@ -33,13 +33,13 @@ def test_every_shared_metric_is_forwarded_without_positional_zeros(
             },
         },
     )
-    metadata: dict[str, object] = dict(
-        seed=196,
-        operator_nodes=7,
-        compose_operations=4,
-        syntax_depth_bound=3,
-        descriptor_bits=19,
-    )
+    metadata: dict[str, object] = {
+        "seed": 196,
+        "operator_nodes": 7,
+        "compose_operations": 4,
+        "syntax_depth_bound": 3,
+        "descriptor_bits": 19,
+    }
     if kind is ReverseAddPowerMetrics:
         metadata.update(base=10, generation=16, spacetime_carry_direction="lsd-to-msd")
     else:

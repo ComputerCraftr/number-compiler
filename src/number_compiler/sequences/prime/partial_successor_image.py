@@ -133,9 +133,7 @@ class PrimePartialSuccessorAdapter(SourceBoundImageAdapter):
         self._check_capacity(2)
         factors = self.rank.primes[:depth]
         record = _PrimePartialStage(depth, factors[-1], factors)
-        self.ledger.reserve_many(
-            ((self._stage_owner, 1, 1), (self._index_owner, 1, 0))
-        )
+        self.ledger.reserve_many(((self._stage_owner, 1, 1), (self._index_owner, 1, 0)))
         try:
             local_id = len(self._stages)
             handle = PrimePartialStageID(
@@ -206,15 +204,11 @@ class PrimePartialSuccessorAdapter(SourceBoundImageAdapter):
         self.validate_source(source)
         return PrimePartialAction(cast(PrimePartialSource, source).stage, False)
 
-    def action_children(
-        self, action: Hashable
-    ) -> tuple[Hashable, Hashable] | None:
+    def action_children(self, action: Hashable) -> tuple[Hashable, Hashable] | None:
         self.validate_action(action)
         return None
 
-    def compose_actions(
-        self, before: Hashable, after: Hashable
-    ) -> PrimePartialAction:
+    def compose_actions(self, before: Hashable, after: Hashable) -> PrimePartialAction:
         self.validate_action(before)
         self.validate_action(after)
         left, right = cast(PrimePartialAction, before), cast(PrimePartialAction, after)
@@ -287,12 +281,9 @@ class PrimePartialSuccessorAdapter(SourceBoundImageAdapter):
             (payload.stage, payload.lower, payload.upper),
         )
 
-    def admitted_input_key(
-        self, action: Hashable, source: SourceImageView
-    ) -> None:
+    def admitted_input_key(self, action: Hashable, source: SourceImageView) -> None:
         self.validate_action(action)
         self.validate_payload(source.payload)
-        return None
 
     def transport_reuse(
         self,
@@ -358,7 +349,6 @@ class PrimePartialSuccessorAdapter(SourceBoundImageAdapter):
 
     def first_failure(self, image: SourceImageView) -> None:
         self.validate_payload(image.payload)
-        return None
 
     def close(self) -> None:
         if self._closed:

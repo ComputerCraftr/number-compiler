@@ -1,8 +1,8 @@
 import pytest
 
+from number_compiler.arithmetic.fields.radix import digits_lsd
 from number_compiler.arithmetic.formula.formula import FormulaArena
 from number_compiler.arithmetic.formula.types import RadixSpec
-from number_compiler.arithmetic.fields.radix import digits_lsd
 from number_compiler.sequences.reverse_add.digits import pair_root_from_integer
 from number_compiler.sequences.reverse_add.palindrome import (
     mirror_palindrome,

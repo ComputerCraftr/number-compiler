@@ -368,4 +368,4 @@ class FusedRadixArena:
         return result
 
 
-__all__ = ["FusedRadixBindingKey", "FusedDivisionAction", "FusedRadixArena"]
+__all__ = ["FusedDivisionAction", "FusedRadixArena", "FusedRadixBindingKey"]

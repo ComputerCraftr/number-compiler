@@ -1,8 +1,7 @@
 """Reproduce the seven harmonic output conflicts, without claiming closure."""
 
 from collections import Counter, defaultdict
-from collections.abc import Iterator
-from typing import Hashable
+from collections.abc import Hashable, Iterator
 
 import pytest
 

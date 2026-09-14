@@ -16,7 +16,6 @@ particular M11 is retained as the ring-safety counterexample.
 
 from __future__ import annotations
 
-from dataclasses import dataclass as dataclass
 from functools import lru_cache, partial
 from hashlib import sha256
 
@@ -28,7 +27,7 @@ from devtools.experiments.power_numbers.special_successor_models import (
     CarryTemporalAutomatonAudit,
     CarryTransferAutomatonAudit,
 )
-from devtools.proofs.immutable_artifacts import ArtifactKey, REGISTRY
+from devtools.proofs.immutable_artifacts import REGISTRY, ArtifactKey
 from devtools.proofs.oracles.special_binary_jump import (
     _fermat_carrier_proof,
     _mersenne_carrier_proof,
@@ -50,12 +49,12 @@ from number_compiler.arithmetic.functions.finite_unary import (
     quotient_machine_from_moore,
     unary_image_filtration,
 )
-from number_compiler.arithmetic.polynomials.cyclotomic_carry import (
-    CarryCyclotomicTransducer,
-)
 from number_compiler.arithmetic.polynomials.arithmetic_tile import (
     ArithmeticTile,
     ArithmeticTileSpec,
+)
+from number_compiler.arithmetic.polynomials.cyclotomic_carry import (
+    CarryCyclotomicTransducer,
 )
 from number_compiler.arithmetic.polynomials.digit_convolution import (
     cyclic_binary_square_add_projection,

@@ -5,8 +5,8 @@ from __future__ import annotations
 from collections.abc import Callable
 from typing import TYPE_CHECKING, cast
 
-from number_compiler.hashlife.actions.field_actions import FieldCellActionID
 from number_compiler.arithmetic.radix_transfer import RadixRemainderTransfer
+from number_compiler.hashlife.actions.field_actions import FieldCellActionID
 
 if TYPE_CHECKING:
     from number_compiler.hashlife.execution.continuations.higher_summaries import (

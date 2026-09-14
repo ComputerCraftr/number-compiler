@@ -3,9 +3,14 @@
 from __future__ import annotations
 
 from collections.abc import Callable
-from typing import cast
+from typing import TYPE_CHECKING, cast
 
 from number_compiler.hashlife.actions.field_actions import FieldCellActionID
+
+if TYPE_CHECKING:
+    from number_compiler.hashlife.execution.continuations.concrete_port_scheduler import (
+        ConcretePortAdapter,
+    )
 
 
 def validate_virtual_transfer(
@@ -17,10 +22,7 @@ def validate_virtual_transfer(
     if type(transfer) is tuple:
         count = cast(
             Callable[[FieldCellActionID, int], int],
-            getattr(
-                adapter,
-                "primitive_state_count",
-            ),
+            cast("ConcretePortAdapter", adapter).primitive_state_count,
         )(action, side)
         if len(transfer) != count or any(
             type(value) is not int or not 0 <= value < count for value in transfer
@@ -53,14 +55,11 @@ def virtual_transfer_leaf(
             return result
     count = cast(
         Callable[[FieldCellActionID, int], int],
-        getattr(
-            adapter,
-            "primitive_state_count",
-        ),
+        cast("ConcretePortAdapter", adapter).primitive_state_count,
     )(action, side)
     advance = cast(
         Callable[[FieldCellActionID, int, int, int], int],
-        getattr(adapter, "primitive_advance"),
+        cast("ConcretePortAdapter", adapter).primitive_advance,
     )
     result = tuple(advance(action, side, state, symbol) for state in range(count))
     validate_virtual_transfer(adapter, action, side, result)

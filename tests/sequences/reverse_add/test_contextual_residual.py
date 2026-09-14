@@ -24,8 +24,8 @@ from number_compiler.resources.payload_audit import audit_registered_payloads
 from number_compiler.resources.reverse_residual_inventory import audit_reverse_residuals
 from number_compiler.sequences.reverse_add.active_output import PAIR
 from number_compiler.sequences.reverse_add.contextual_residual import (
-    ReverseContextualResidualArena,
     ResidualSuccessorConflict,
+    ReverseContextualResidualArena,
 )
 
 
@@ -120,7 +120,7 @@ def test_growth_refines_only_observable_contextual_distinctions() -> None:
 
 
 def test_updated_context_must_factor_even_when_carry_observation_is_constant() -> None:
-    arena, ports, (s, t) = _runtime()
+    arena, ports, (s, _t) = _runtime()
     zero = arena.bits.constant(FunctionSignature(ports, PAIR), 0)
     allowed = arena.bits.constant(FunctionSignature(ports, BOOL), 1)
     before = arena.profile(arena.domain(zero), (), allowed, frame="same-coordinate")

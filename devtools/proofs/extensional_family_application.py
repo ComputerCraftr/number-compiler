@@ -16,8 +16,8 @@ successor-loop fallback here.
 
 from __future__ import annotations
 
+from collections.abc import Sequence
 from dataclasses import dataclass
-from typing import Sequence
 
 from number_compiler.arithmetic.contracts.block_effect import (
     BlockContextBudgetExceeded,
@@ -70,7 +70,7 @@ class _TransientMicroWord:
     the number of logically active symbols.
     """
 
-    __slots__ = ("blank", "width", "bits", "per_block", "mask", "blocks")
+    __slots__ = ("bits", "blank", "blocks", "mask", "per_block", "width")
 
     def __init__(self, source: Sequence[int], *, blank: int, width: int) -> None:
         if (
@@ -129,25 +129,25 @@ class ExtensionalFamilyApplication:
     """Linear checkpoint executor over verified minimized finite machine rungs."""
 
     __slots__ = (
-        "ledger",
-        "compiler",
-        "program",
-        "certificate",
-        "logical_length",
-        "source_geometry",
-        "microblocks",
-        "base",
-        "blank",
-        "_width",
-        "_queries",
+        "__weakref__",
+        "_bits",
+        "_final_fills",
         "_machine_applications",
         "_machine_symbol_visits",
+        "_queries",
         "_residual_steps",
-        "_final_fills",
-        "_bits",
         "_symbols_per_block",
+        "_width",
+        "base",
+        "blank",
+        "certificate",
+        "compiler",
         "is_bisimulation_checkpoint_executor",
-        "__weakref__",
+        "ledger",
+        "logical_length",
+        "microblocks",
+        "program",
+        "source_geometry",
     )
 
     def __init__(

@@ -1,4 +1,3 @@
-#!/usr/bin/env python3
 """Lazy-output direct bimachine powering experiment.
 
 Avoids materializing the cartesian output table of composed bimachines.  This is

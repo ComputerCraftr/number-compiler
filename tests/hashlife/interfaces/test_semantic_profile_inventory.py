@@ -33,11 +33,8 @@ from tests.support.diamond_query import build
 
 if TYPE_CHECKING:
     from number_compiler.hashlife.interfaces.semantic_reachable_profile import (
-        ReachableCodec,
-        SemanticProfileArena,
         SemanticProfileID,
     )
-    from number_compiler.hashlife.interfaces.semantic_structures import StructureArena
     from number_compiler.hashlife.observation.diamond_query import DiamondApplication
 
 
@@ -185,7 +182,7 @@ def test_same_signature_wrong_decoder_is_rejected_without_observation() -> None:
 def test_admission_proof_profile_is_bound_to_exact_compiler_and_domain(
     fault: None | str,
 ) -> None:
-    app, arena, profile, _, codec = setup()
+    app, _arena, profile, _, codec = setup()
     runtime = app.runtime
     expressions = runtime.higher.expressions
     side = 1 if fault == "wrong-side" else 0

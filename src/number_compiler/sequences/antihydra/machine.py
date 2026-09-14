@@ -86,6 +86,9 @@ class LiteralMachine:
         if type(a) is not int or type(b) is not int or a < 0 or b < 2:
             raise ValueError("section requires a>=0 and b>=2")
         return cls(
-            state=4, initial_head=b + 1, visited_min=-a, visited_max=b + 1,
+            state=4,
+            initial_head=b + 1,
+            visited_min=-a,
+            visited_max=b + 1,
             ones=set(range(-a, 0)) | set(range(1, b + 1)),
         )

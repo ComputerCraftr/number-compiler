@@ -29,15 +29,19 @@ def candidate_failure(bits: int, depth: int, max_nodes: int) -> dict[str, object
         if steps == depth:
             continue
         for bit in (0, 1):
-            target = ((3*(residue+modulus*bit)-(residue & 1))//2) % modulus
-            next_balance = balance+2-3*(residue & 1)
+            target = ((3 * (residue + modulus * bit) - (residue & 1)) // 2) % modulus
+            next_balance = balance + 2 - 3 * (residue & 1)
             if (target, next_balance) in seen:
                 continue
             if len(nodes) == max_nodes:
-                return {"status": "BUDGET_EXHAUSTED", "precision": bits, "nodes": len(nodes)}
+                return {
+                    "status": "BUDGET_EXHAUSTED",
+                    "precision": bits,
+                    "nodes": len(nodes),
+                }
             seen.add((target, next_balance))
-            nodes.append((target, next_balance, index, bit, steps+1))
-            child = len(nodes)-1
+            nodes.append((target, next_balance, index, bit, steps + 1))
+            child = len(nodes) - 1
             if next_balance >= 0:
                 pending.append(child)
                 continue
@@ -50,30 +54,50 @@ def candidate_failure(bits: int, depth: int, max_nodes: int) -> dict[str, object
             path.reverse()
             innovation = 0
             for i, parity in enumerate(path):
-                innovation = 3*innovation-parity*(1 << i)
+                innovation = 3 * innovation - parity * (1 << i)
             n = len(path)
-            source_modulus = 1 << (bits+n)
-            source_residue = ((target << n)-innovation)*pow(3**n, -1, source_modulus) % source_modulus
+            source_modulus = 1 << (bits + n)
+            source_residue = (
+                ((target << n) - innovation)
+                * pow(3**n, -1, source_modulus)
+                % source_modulus
+            )
             witness = source_residue
             if witness < 8:
-                witness += ((8-witness+source_modulus-1)//source_modulus)*source_modulus
+                witness += (
+                    (8 - witness + source_modulus - 1) // source_modulus
+                ) * source_modulus
             h, ledger = witness, 0
             for i, parity in enumerate(path):
                 if h & 1 != parity:
                     raise ArithmeticError("abstract path has no claimed source lift")
-                if i == n-1:
+                if i == n - 1:
                     if ledger != 0 or parity != 1:
-                        raise ArithmeticError("claimed witness does not reach F0 section")
+                        raise ArithmeticError(
+                            "claimed witness does not reach F0 section"
+                        )
                 else:
                     h, ledger, _, _ = kernel(parity, 1).apply(h, ledger)
-            actual_source = (8-source_residue) % source_modulus == 0
-            return {"status": "SOURCE_COUNTEREXAMPLE" if actual_source else "SPURIOUS_SOURCE_PATH",
-                    "precision": bits, "nodes": len(nodes), "failure_depth": n,
-                    "parities": path, "entry_residue": source_residue,
-                    "entry_modulus": source_modulus, "other_source_witness": witness,
-                    "source_8_admitted": actual_source}
-    return {"status": "NO_FAILURE_WITHIN_BOUND", "precision": bits, "nodes": len(nodes),
-            "depth_bound": depth}
+            actual_source = (8 - source_residue) % source_modulus == 0
+            return {
+                "status": "SOURCE_COUNTEREXAMPLE"
+                if actual_source
+                else "SPURIOUS_SOURCE_PATH",
+                "precision": bits,
+                "nodes": len(nodes),
+                "failure_depth": n,
+                "parities": path,
+                "entry_residue": source_residue,
+                "entry_modulus": source_modulus,
+                "other_source_witness": witness,
+                "source_8_admitted": actual_source,
+            }
+    return {
+        "status": "NO_FAILURE_WITHIN_BOUND",
+        "precision": bits,
+        "nodes": len(nodes),
+        "depth_bound": depth,
+    }
 
 
 def main() -> None:
@@ -86,13 +110,22 @@ def main() -> None:
     if not 1 <= args.rounds <= 8:
         parser.error("rounds must be 1..8")
     records = []
-    for bits in range(args.precision, args.precision+2*args.rounds, 2):
+    for bits in range(args.precision, args.precision + 2 * args.rounds, 2):
         record = candidate_failure(bits, args.depth, args.max_nodes)
         records.append(record)
         if record["status"] != "SPURIOUS_SOURCE_PATH":
             break
-    print(json.dumps({"machine_sha256": MACHINE_SHA256, "records": records,
-                      "nonhalting_certified": False, "certificate_synthesis_complete": False}, sort_keys=True))
+    print(
+        json.dumps(
+            {
+                "machine_sha256": MACHINE_SHA256,
+                "records": records,
+                "nonhalting_certified": False,
+                "certificate_synthesis_complete": False,
+            },
+            sort_keys=True,
+        )
+    )
 
 
 if __name__ == "__main__":

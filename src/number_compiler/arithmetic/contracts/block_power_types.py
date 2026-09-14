@@ -34,4 +34,4 @@ class BlockApplication:
     runtime_stats: dict[str, int]
 
 
-__all__ = ["BlockPower", "BlockApplication"]
+__all__ = ["BlockApplication", "BlockPower"]

@@ -38,6 +38,8 @@ from number_compiler.hashlife.tiles.tile_result_records import (
 )
 from number_compiler.hashlife.tiles.tile_result_types import (
     ReverseKey as _ReverseKey,
+)
+from number_compiler.hashlife.tiles.tile_result_types import (
     ReverseValue as _ReverseValue,
 )
 from number_compiler.hashlife.tiles.tile_results import CompletedResultArena
@@ -195,7 +197,9 @@ def test_spatial_interface_pair_validates_scoped_children_before_warm_hit() -> N
     with pytest.raises(ValueError):
         results.lookup_spatial_interface(replace(spatial, left=foreign))
     with pytest.raises(TypeError):
-        results.lookup_spatial_interface(replace(spatial, left=True))  # type: ignore[arg-type]
+        results.lookup_spatial_interface(
+            replace(spatial, left=cast(LocalInterfaceID, True))
+        )
     assert ledger.snapshot() == before
     output_lease.close()
     input_lease.close()
@@ -234,7 +238,7 @@ def test_fused_interface_shares_memo_and_retires_with_input() -> None:
 
 
 def test_fused_interface_keeps_producer_and_result_wirings_distinct() -> None:
-    ledger, actions, tiles, results, input_lease, output_lease, key, result = _setup()
+    ledger, actions, _tiles, results, input_lease, output_lease, key, result = _setup()
     functions = results.interfaces.functions
     producer_port = FinitePort(PortVariable(0, 0, "producer", 0), 2)
     producer_signature = FunctionSignature((producer_port,), BOOL)

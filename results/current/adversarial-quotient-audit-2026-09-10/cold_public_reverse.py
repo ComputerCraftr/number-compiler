@@ -3,6 +3,7 @@
 import json
 import sys
 from time import perf_counter
+
 from number_compiler.sequences.reverse_add.power import ReverseAddPoweredTerm
 
 steps = int(sys.argv[1])

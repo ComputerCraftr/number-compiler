@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import replace
-from typing import TYPE_CHECKING, Literal, Never, cast
+from typing import Literal, Never, cast
 
 import pytest
 
@@ -26,9 +26,6 @@ from number_compiler.hashlife.actions.diamond_actions import (
 from number_compiler.hashlife.actions.lazy_compiler import LazyCompiler
 from number_compiler.resources.ledger import ResourceLedger
 from tests.support.diamond_actions import arenas
-
-if TYPE_CHECKING:
-    from number_compiler.hashlife.actions.diamond_actions import CellID
 
 
 def test_temporal_adapter_imports_binary_dag_and_keeps_real_identity() -> None:

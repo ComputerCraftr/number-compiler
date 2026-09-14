@@ -100,6 +100,6 @@ __all__ = [
     "REVERSE_BOUND_OUTPUT_RETAINED_NODES",
     "record_cache_removal",
     "record_unattributed_post_eviction_miss",
-    "retained_result_memo_nodes",
     "result_cache_kind",
+    "retained_result_memo_nodes",
 ]

@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-from dataclasses import dataclass as dataclass
 from math import gcd
 
 from devtools.experiments.power_numbers.special_successor_factor import (

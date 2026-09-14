@@ -82,8 +82,8 @@ class FunctionSignature:
 
     def __post_init__(self) -> None:
         _ports(self.inputs)
-        _sort(self.output)
-        object.__setattr__(self, "_hash", hash((self.inputs, _sort_hash(self.output))))
+        output_hash = _sort_hash(self.output)
+        object.__setattr__(self, "_hash", hash((self.inputs, output_hash)))
 
     def __hash__(self) -> int:
         # Many decision nodes share this immutable declaration. Equality still
@@ -149,34 +149,51 @@ def _sort(sort: SemanticSort) -> None:
 
 
 def _sort_hash(sort: SemanticSort) -> int:
-    """Hash immutable sort DAGs without recursively hashing their children."""
-    _sort(sort)
+    """Validate and hash an immutable sort DAG in one iterative traversal."""
     pending = [(sort, False)]
+    active: set[int] = set()
     hashes: dict[int, int] = {}
     while pending:
         item, ready = pending.pop()
         identity = id(item)
         if identity in hashes:
             continue
-        if type(item) is AtomSort:
-            hashes[identity] = hash(("atom", item.name, item.cardinality))
-        elif type(item) is ProductSort:
-            if ready:
+        if ready:
+            active.remove(identity)
+            if type(item) is ProductSort:
                 hashes[identity] = hash(
                     ("product", tuple(hashes[id(child)] for child in item.items))
                 )
-            else:
-                pending.append((item, True))
-                pending.extend((child, False) for child in item.items)
-        elif type(item) is FunctionSort:
-            if ready:
+            elif type(item) is FunctionSort:
                 hashes[identity] = hash(
                     ("function", item.inputs, hashes[id(item.output)])
                 )
             else:
-                pending.extend(((item, True), (item.output, False)))
+                raise AssertionError("validated semantic sort has unknown type")
+            continue
+        if identity in active:
+            raise ValueError("cyclic finite semantic sort")
+        active.add(identity)
+        if type(item) is AtomSort:
+            if (
+                type(item.name) is not str
+                or not item.name
+                or type(item.cardinality) is not int
+                or not 1 <= item.cardinality <= 1 << 64
+            ):
+                raise ValueError("invalid bounded semantic atom sort")
+            hashes[identity] = hash(("atom", item.name, item.cardinality))
+            active.remove(identity)
+        elif type(item) is ProductSort:
+            if type(item.items) is not tuple or not item.items:
+                raise ValueError("product sorts require immutable nonempty components")
+            pending.append((item, True))
+            pending.extend((child, False) for child in item.items)
+        elif type(item) is FunctionSort:
+            _ports(item.inputs)
+            pending.extend(((item, True), (item.output, False)))
         else:
-            raise AssertionError("validated semantic sort has unknown type")
+            raise TypeError("unknown finite semantic sort")
     return hashes[id(sort)]
 
 
@@ -212,9 +229,9 @@ def _signature(signature: FunctionSignature) -> None:
     if type(signature) is not FunctionSignature:
         raise TypeError("functions require an explicit semantic signature")
     _ports(signature.inputs)
-    _sort(signature.output)
+    output_hash = _sort_hash(signature.output)
     if type(signature._hash) is not int or signature._hash != hash(
-        (signature.inputs, _sort_hash(signature.output))
+        (signature.inputs, output_hash)
     ):
         raise ValueError("semantic signature has a forged or stale cached hash")
 

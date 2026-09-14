@@ -12,10 +12,10 @@ semantic reverse/add state.
 
 from __future__ import annotations
 
+from collections.abc import Iterable, Iterator, Sequence
 from dataclasses import dataclass
-from itertools import permutations
+from itertools import pairwise, permutations
 from math import prod
-from typing import Dict, Iterable, Iterator, Sequence, Tuple
 
 from number_compiler.arithmetic.fields.radix import bit_width
 
@@ -67,7 +67,7 @@ def _selector_metrics_mask(mask: int) -> SelectorMetrics:
     vals = tuple(_mask_values(mask))
     if not vals:
         return SelectorMetrics(0, 0, 0)
-    runs = 1 + sum(b != a + 1 for a, b in zip(vals, vals[1:]))
+    runs = 1 + sum(b != a + 1 for a, b in pairwise(vals))
     width = _bits(vals[-1])
     # Exact selector can be serialized as an explicit list, dense bitset, or
     # inclusive run endpoints.  Charge the cheapest representation.
@@ -92,7 +92,7 @@ class DependencyCascadeArena:
     normally prefer :class:`GroupedDependencyCascadeArena`.
     """
 
-    __slots__ = ("arity", "_intern", "_nodes", "_relation_roots", "_edge_count")
+    __slots__ = ("_edge_count", "_intern", "_nodes", "_relation_roots", "arity")
     EMPTY = 0
     FULL = 1
 
@@ -101,7 +101,7 @@ class DependencyCascadeArena:
         if arity <= 0:
             raise ValueError(arity)
         self.arity = arity
-        self._intern: Dict[tuple[object, ...], int] = {("EMPTY",): 0, ("FULL",): 1}
+        self._intern: dict[tuple[object, ...], int] = {("EMPTY",): 0, ("FULL",): 1}
         self._nodes: list[tuple[int, tuple[tuple[int, int], ...]]] = [
             (-1, ()),
             (-2, ()),
@@ -134,7 +134,7 @@ class DependencyCascadeArena:
             self._relation_roots.add(self.EMPTY)
             return CascadeRelation(self.arity, self.EMPTY, 0)
 
-        built: Dict[tuple[int, frozenset[tuple[int, ...]]], int] = {}
+        built: dict[tuple[int, frozenset[tuple[int, ...]]], int] = {}
         start = (0, frozenset(rows))
         stack: list[tuple[int, frozenset[tuple[int, ...]], bool]] = [
             (0, start[1], False)
@@ -147,8 +147,8 @@ class DependencyCascadeArena:
             if level == self.arity:
                 built[key] = self.FULL
                 continue
-            groups: Dict[int, frozenset[tuple[int, ...]]] = {}
-            mutable: Dict[int, set[tuple[int, ...]]] = {}
+            groups: dict[int, frozenset[tuple[int, ...]]] = {}
+            mutable: dict[int, set[tuple[int, ...]]] = {}
             for row in subset:
                 mutable.setdefault(row[level], set()).add(row)
             groups = {value: frozenset(group) for value, group in mutable.items()}
@@ -170,7 +170,7 @@ class DependencyCascadeArena:
         record_cascade_metrics(sections=1, dependency_groups=self._edge_count - before)
         return CascadeRelation(self.arity, root, len(rows))
 
-    def iter_tuples(self, relation: CascadeRelation) -> Iterator[Tuple[int, ...]]:
+    def iter_tuples(self, relation: CascadeRelation) -> Iterator[tuple[int, ...]]:
         if relation.arity != self.arity:
             raise ValueError("relation belongs to a different arena")
         stack: list[tuple[int, int, tuple[int, ...]]] = [(relation.root, 0, ())]
@@ -232,16 +232,16 @@ class GroupedDependencyCascadeArena:
     """
 
     __slots__ = (
-        "arity",
-        "domains",
-        "order",
+        "_card_cache",
         "_full",
+        "_groups",
         "_intern",
         "_nodes",
         "_roots",
-        "_groups",
         "_selector_bits",
-        "_card_cache",
+        "arity",
+        "domains",
+        "order",
     )
     EMPTY = 0
     FULL = 1
@@ -271,7 +271,7 @@ class GroupedDependencyCascadeArena:
         self._full = (
             None if domains is None else tuple((1 << domains[i]) - 1 for i in order)
         )
-        self._intern: Dict[tuple[object, ...], int] = {("EMPTY",): 0, ("FULL",): 1}
+        self._intern: dict[tuple[object, ...], int] = {("EMPTY",): 0, ("FULL",): 1}
         # nonterminal node: (level, ((child, selector_mask), ...))
         self._nodes: list[tuple[int, tuple[tuple[int, int], ...]]] = [
             (-1, ()),
@@ -280,10 +280,10 @@ class GroupedDependencyCascadeArena:
         self._roots: set[int] = set()
         self._groups = 0
         self._selector_bits = 0
-        self._card_cache: Dict[tuple[int, int], int] = {}
+        self._card_cache: dict[tuple[int, int], int] = {}
 
-    def _node(self, level: int, child_masks: Dict[int, int]) -> int:
-        merged: Dict[int, int] = {}
+    def _node(self, level: int, child_masks: dict[int, int]) -> int:
+        merged: dict[int, int] = {}
         for child, mask in child_masks.items():
             child, mask = int(child), int(mask)
             if child != self.EMPTY and mask:
@@ -328,7 +328,7 @@ class GroupedDependencyCascadeArena:
                 tuple(mask & self._full[i] for i, mask in enumerate(box))
                 for box in frozen
             ]
-        work = sorted(set(box for box in frozen if all(box)))
+        work = sorted({box for box in frozen if all(box)})
         if not work:
             return ()
 
@@ -347,7 +347,7 @@ class GroupedDependencyCascadeArena:
         while changed and len(work) > 1:
             changed = False
             for level in range(self.arity):
-                groups: Dict[tuple[int, ...], int] = {}
+                groups: dict[tuple[int, ...], int] = {}
                 for box in work:
                     key = box[:level] + box[level + 1 :]
                     groups[key] = groups.get(key, 0) | box[level]
@@ -363,13 +363,13 @@ class GroupedDependencyCascadeArena:
     @staticmethod
     def _membership_partition(
         active: int, boxes: tuple[tuple[int, ...], ...], level: int
-    ) -> Dict[int, int]:
+    ) -> dict[int, int]:
         """Return {active-box-subset-bitset: selector-mask} without tuple expansion.
 
         Dense selectors are split as bitsets.  The number of resulting atoms is
         bounded by the coordinate-domain size, not the Cartesian relation size.
         """
-        parts: Dict[int, int] = {}
+        parts: dict[int, int] = {}
         bitset = int(active)
         while bitset:
             jbit = bitset & -bitset
@@ -379,7 +379,7 @@ class GroupedDependencyCascadeArena:
             if not parts:
                 parts[jbit] = sel
                 continue
-            new: Dict[int, int] = {}
+            new: dict[int, int] = {}
             covered = 0
             for sig, mask in parts.items():
                 inter = mask & sel
@@ -402,7 +402,7 @@ class GroupedDependencyCascadeArena:
             self._roots.add(self.EMPTY)
             return CascadeRelation(self.arity, self.EMPTY, 0)
         all_active = (1 << len(boxes)) - 1
-        memo: Dict[tuple[int, int], int] = {}
+        memo: dict[tuple[int, int], int] = {}
 
         pending: list[tuple[int, int, bool]] = [(0, all_active, False)]
         while pending:
@@ -424,7 +424,7 @@ class GroupedDependencyCascadeArena:
                     if child_key not in memo:
                         pending.append((level + 1, subactive, False))
                 continue
-            by_child: Dict[int, int] = {}
+            by_child: dict[int, int] = {}
             for subactive, selector in parts.items():
                 child = memo[(level + 1, subactive)]
                 if child != self.EMPTY:
@@ -510,7 +510,7 @@ class GroupedDependencyCascadeArena:
             )
         return self._card_cache[root_key]
 
-    def iter_boxes(self, relation: CascadeRelation) -> Iterator[Tuple[int, ...]]:
+    def iter_boxes(self, relation: CascadeRelation) -> Iterator[tuple[int, ...]]:
         if relation.arity != self.arity:
             raise ValueError("relation belongs to a different arena")
         stack: list[tuple[int, int, tuple[int, ...]]] = [(relation.root, 0, ())]
@@ -541,7 +541,7 @@ class GroupedDependencyCascadeArena:
                 original[original_idx] = ordered[level]
             yield tuple(original)
 
-    def iter_tuples(self, relation: CascadeRelation) -> Iterator[Tuple[int, ...]]:
+    def iter_tuples(self, relation: CascadeRelation) -> Iterator[tuple[int, ...]]:
         for box in self.iter_boxes(relation):
             vals = [tuple(_mask_values(mask)) for mask in box]
             # Small/reference expansion only; powered construction never calls it.
@@ -610,9 +610,9 @@ class GroupedDependencyCascadeArena:
 
 
 __all__ = [
-    "CascadeRelation",
     "CascadeMetrics",
-    "SelectorMetrics",
+    "CascadeRelation",
     "DependencyCascadeArena",
     "GroupedDependencyCascadeArena",
+    "SelectorMetrics",
 ]

@@ -22,9 +22,7 @@ from number_compiler.resources.ledger import ResourceLedger
 from number_compiler.resources.metric_collection import collect_ledger_metrics
 
 if TYPE_CHECKING:
-    from number_compiler.arithmetic.functions.finite_function_types import FinitePort
     from number_compiler.hashlife.interfaces.semantic_structures import (
-        StructureArena,
         StructureID,
     )
 

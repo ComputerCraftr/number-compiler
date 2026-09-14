@@ -4,7 +4,6 @@ import gc
 import random
 import weakref
 from array import array
-from typing import TYPE_CHECKING
 
 import pytest
 
@@ -21,15 +20,12 @@ from number_compiler.arithmetic.contracts.block_kernel import (
     FiniteBlockEffect,
 )
 from number_compiler.arithmetic.fields.dyadic_tile import join, leaf, tile_arena_metrics
-from number_compiler.hashlife.observation.tile_projection import LazyProjection
 from number_compiler.hashlife.observation.hashlife_projection import HashLifeBlockIndex
+from number_compiler.hashlife.observation.tile_projection import LazyProjection
 from number_compiler.projection.digit_terminal import DigitNormalizeBlockEffect
 from number_compiler.resources.ledger import ResourceLedger
 from number_compiler.sequences.collatz.block_power import PoweredCollatzTerm
 from number_compiler.sequences.reverse_add.power import ReverseAddPoweredTerm
-
-if TYPE_CHECKING:
-    from number_compiler.arithmetic.contracts.block_kernel import FiniteBlockEffect
 
 
 def finite(

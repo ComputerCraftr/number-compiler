@@ -12,6 +12,7 @@ from collections.abc import MutableMapping, MutableSequence
 from dataclasses import dataclass, field
 
 from number_compiler.arithmetic.contracts.scoped_handles import ArenaHandle, ArenaToken
+from number_compiler.arithmetic.radix_transfer import RadixRemainderTransfer
 from number_compiler.hashlife.actions.field_actions import FieldCellActionID
 from number_compiler.hashlife.execution.continuations.higher_input import (
     InputCellGeometry,
@@ -33,7 +34,6 @@ from number_compiler.hashlife.execution.field_images import (
     SourceCellArena,
     SourceCellID,
 )
-from number_compiler.arithmetic.radix_transfer import RadixRemainderTransfer
 from number_compiler.resources.ledger import ResourceLedger
 
 

@@ -6,13 +6,13 @@ never a temporal successor identity or an admitted primality certificate.
 
 from __future__ import annotations
 
-from dataclasses import dataclass
 from collections.abc import Sequence
+from dataclasses import dataclass
 
-from number_compiler.arithmetic.polynomials.primary_jet import PrimaryJetBlock
 from number_compiler.arithmetic.polynomials.cyclotomic_carry import (
     CarryCyclotomicTransducer,
 )
+from number_compiler.arithmetic.polynomials.primary_jet import PrimaryJetBlock
 
 
 @dataclass(frozen=True, slots=True)

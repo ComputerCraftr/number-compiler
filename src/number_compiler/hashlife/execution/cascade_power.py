@@ -13,16 +13,10 @@ jump backend.
 from __future__ import annotations
 
 from collections import defaultdict, deque
+from collections.abc import Callable, Iterable, Iterator, Sequence
 from dataclasses import dataclass
 from time import perf_counter
 from typing import (
-    Callable,
-    Dict,
-    Iterable,
-    Iterator,
-    Optional,
-    Sequence,
-    Tuple,
     TypeVar,
     cast,
 )
@@ -61,11 +55,11 @@ class CascadeContextMetrics:
 
 @dataclass(slots=True)
 class CascadeContextDFA:
-    alphabet: Tuple[int, ...]
+    alphabet: tuple[int, ...]
     start: int
-    trans: Dict[Tuple[int, int], int]
-    states: Tuple[int, ...]
-    relations: Tuple[CascadeRelation, ...]
+    trans: dict[tuple[int, int], int]
+    states: tuple[int, ...]
+    relations: tuple[CascadeRelation, ...]
     arena: GroupedDependencyCascadeArena
     right: bool
     complete: bool
@@ -105,7 +99,7 @@ class _RelationStates:
 
     def __init__(self, domains: Sequence[int], order: Sequence[int]) -> None:
         self.arena = GroupedDependencyCascadeArena(3, domains, order)
-        self.by_root: Dict[int, int] = {}
+        self.by_root: dict[int, int] = {}
         self.relations: list[CascadeRelation] = []
 
     def intern(self, boxes: Iterable[Sequence[int]]) -> int:
@@ -124,18 +118,18 @@ class _RelationStates:
 
 class _Behavior:
     __slots__ = (
-        "first",
-        "second",
         "emit",
+        "first",
         "left_classes",
         "left_image",
-        "right_image",
-        "pred_right",
         "left_preimage",
-        "right_emit_classes",
-        "output_regions",
         "left_symbol_image",
+        "output_regions",
+        "pred_right",
+        "right_emit_classes",
+        "right_image",
         "right_symbol_image",
+        "second",
     )
 
     def __init__(self, first: LazyBimachine, second: LazyBimachine) -> None:
@@ -149,7 +143,7 @@ class _Behavior:
         self.right_image: dict[tuple[int, _Word], int] = {}
         self.pred_right: dict[tuple[int, int], int] = {}
         # Preimage masks for the deterministic left transition of the first machine.
-        self.left_preimage: Dict[int, tuple[int, ...]] = {}
+        self.left_preimage: dict[int, tuple[int, ...]] = {}
         for a in first.alphabet:
             inv = [0] * len(first.left.states)
             for left_state in first.left.states:
@@ -160,14 +154,14 @@ class _Behavior:
         # For fixed (symbol,right-after), output word partitions the source-left
         # states.  Filtering an arbitrary target-left selector then becomes one
         # DFA preimage plus bitset intersections, not a scan cached by giant mask.
-        self.right_emit_classes: Dict[
-            tuple[int, int], tuple[tuple[Tuple[int, ...], int], ...]
+        self.right_emit_classes: dict[
+            tuple[int, int], tuple[tuple[tuple[int, ...], int], ...]
         ] = {}
-        self.output_regions: Dict[
-            int, tuple[tuple[Tuple[int, ...], int, int], ...]
+        self.output_regions: dict[
+            int, tuple[tuple[tuple[int, ...], int, int], ...]
         ] = {}
-        self.left_symbol_image: Dict[tuple[int, int], int] = {}
-        self.right_symbol_image: Dict[tuple[int, int], int] = {}
+        self.left_symbol_image: dict[tuple[int, int], int] = {}
+        self.right_symbol_image: dict[tuple[int, int], int] = {}
 
     def E(self, left_state: int, a: int, r: int) -> _Word | None:
         k = (int(left_state), int(a), int(r))
@@ -511,7 +505,7 @@ def build_right_context(
 
 
 class _CascadeOutput:
-    __slots__ = ("first", "second", "left", "right", "cache", "cache_enabled")
+    __slots__ = ("cache", "cache_enabled", "first", "left", "right", "second")
 
     def __init__(
         self,
@@ -528,11 +522,10 @@ class _CascadeOutput:
         self.cache: dict[tuple[int, int, int], _Word | None] = {}
         self.cache_enabled = bool(cache_enabled)
 
-    def __call__(self, ls: int, a: int, rs: int) -> Optional[Tuple[int, ...]]:
+    def __call__(self, ls: int, a: int, rs: int) -> tuple[int, ...] | None:
         key = (int(ls), int(a), int(rs))
-        if self.cache_enabled:
-            if key in self.cache:
-                return self.cache[key]
+        if self.cache_enabled and key in self.cache:
+            return self.cache[key]
         # Find one compatible witness. Functional bimachine composition proves
         # every compatible witness has the same output; randomized/exhaustive
         # tests on small powers protect the implementation of the relation joins.
@@ -608,10 +601,10 @@ def compose_bimachines_cascade(
 
 
 __all__ = [
-    "CascadeContextMetrics",
+    "CascadeComposition",
     "CascadeContextDFA",
+    "CascadeContextMetrics",
     "build_left_context",
     "build_right_context",
-    "CascadeComposition",
     "compose_bimachines_cascade",
 ]

@@ -6,7 +6,7 @@ sequence transition and therefore cannot become a parallel semantic state.
 
 from __future__ import annotations
 
-from typing import Iterable, Sequence
+from collections.abc import Iterable, Sequence
 
 
 def bit_width(value: int) -> int:
@@ -116,9 +116,9 @@ def value_from_lsd_digits(digits: Sequence[int] | Iterable[int], base: int) -> i
 __all__ = [
     "bit_width",
     "digits_lsd",
-    "reverse_radix_integer",
-    "reverse_pair_sums",
-    "symbol_runs",
     "periodic_position_bases",
+    "reverse_pair_sums",
+    "reverse_radix_integer",
+    "symbol_runs",
     "value_from_lsd_digits",
 ]

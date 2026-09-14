@@ -2,6 +2,7 @@
 
 from collections import Counter
 from itertools import product
+from typing import cast
 
 import pytest
 
@@ -104,4 +105,4 @@ def test_pullback_composes_and_keeps_integrality_for_universal_target() -> None:
         assert target.contains(x) == ((9 * x + 5) % 8 == 0)
     for bad in (True, -1, 1.5):
         with pytest.raises((ValueError, TypeError)):
-            three_unit_phase(bad, 6)  # type: ignore[arg-type]
+            three_unit_phase(cast(int, bad), 6)

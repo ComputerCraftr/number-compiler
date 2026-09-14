@@ -10,8 +10,6 @@ from number_compiler.sequences.reverse_add.power import ReverseAddPoweredTerm
 
 if TYPE_CHECKING:
     from number_compiler.resources.metric_records import HashLifeBehaviorMetrics
-    from number_compiler.sequences.collatz.block_power import PoweredCollatzTerm
-    from number_compiler.sequences.reverse_add.power import ReverseAddPoweredTerm
 
 
 def _exercise(

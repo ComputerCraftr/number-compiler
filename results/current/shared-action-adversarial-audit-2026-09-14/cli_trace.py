@@ -2,15 +2,17 @@
 
 from __future__ import annotations
 
-from collections import Counter
-from contextlib import redirect_stderr, redirect_stdout
 import io
 import json
+from collections import Counter
+from contextlib import redirect_stderr, redirect_stdout
 from unittest.mock import patch
 
 from number_compiler.api import cli
 from number_compiler.api.number_api import NumberCompiler
-from number_compiler.hashlife.execution.source_bound_images import SourceBoundSchedulerCore
+from number_compiler.hashlife.execution.source_bound_images import (
+    SourceBoundSchedulerCore,
+)
 from number_compiler.sequences.antihydra.runtime import AntihydraArithmeticTerm
 
 
@@ -81,10 +83,14 @@ def main() -> None:
             if names == ("spacetime",):
                 requests.append(arguments + ["--modulus", "3"])
     rows = [trace(arguments) for arguments in requests]
-    print(json.dumps({
-        "scope": "instrumented bounded CLI calls, not performance acceptance",
-        "requests": rows,
-    }))
+    print(
+        json.dumps(
+            {
+                "scope": "instrumented bounded CLI calls, not performance acceptance",
+                "requests": rows,
+            }
+        )
+    )
 
 
 if __name__ == "__main__":

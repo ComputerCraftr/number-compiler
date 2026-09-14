@@ -8,7 +8,7 @@ from __future__ import annotations
 
 from collections.abc import Generator
 from dataclasses import dataclass
-from typing import overload
+from typing import TYPE_CHECKING, overload
 
 from number_compiler.arithmetic.contracts.block_effect import BoundarySide
 from number_compiler.arithmetic.contracts.exact_tree_context import source_reads_only
@@ -139,7 +139,15 @@ class _Frame:
     program: Generator[Task, Result, Result]
 
 
+if TYPE_CHECKING:
+    from number_compiler.hashlife.execution.continuations.generic_higher import (
+        GenericHigherRuntime,
+    )
+
+
 class DiamondRuntime:
+    _generic_higher_runtime: GenericHigherRuntime
+
     def __init__(self, compiler: LazyCompiler, source: SourceGeometry) -> None:
         self.ledger = compiler.ledger
         self.ledger.register_execution_root(self)

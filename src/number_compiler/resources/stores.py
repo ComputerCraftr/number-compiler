@@ -62,9 +62,7 @@ class _TrackedDict(dict[K, V]):
         values: dict[K, V] = {}
         if args:
             source = args[0]
-            if isinstance(source, Mapping):
-                values.update(source)
-            elif isinstance(source, Iterable):
+            if isinstance(source, (Mapping, Iterable)):
                 values.update(source)
             else:
                 raise TypeError("update requires a mapping or key-value pairs")
@@ -92,8 +90,17 @@ class _TrackedList(list[T]):
             super().extend(pending)
             self._ledger.note_store_mutation()
 
+    @overload
+    def __setitem__(self, key: SupportsIndex, value: T) -> None: ...
+
+    @overload
+    def __setitem__(self, key: slice, value: Iterable[T]) -> None: ...
+
     def __setitem__(self, key: SupportsIndex | slice, value: T | Iterable[T]) -> None:
-        super().__setitem__(key, value)  # type: ignore[index,assignment]
+        if isinstance(key, slice):
+            super().__setitem__(key, cast(Iterable[T], value))
+        else:
+            super().__setitem__(key, cast(T, value))
         self._ledger.note_store_mutation()
 
     def __delitem__(self, key: SupportsIndex | slice) -> None:
@@ -137,7 +144,7 @@ class _StoreSerializationBoundary:
 
 
 class LedgerDict(_StoreSerializationBoundary, MutableMapping[K, V]):
-    __slots__ = ("ledger", "owner", "nodes_per_entry", "_sealed", "_data")
+    __slots__ = ("_data", "_sealed", "ledger", "nodes_per_entry", "owner")
 
     def __setattr__(self, name: str, value: object) -> None:
         if getattr(self, "_sealed", False):
@@ -210,9 +217,7 @@ class LedgerDict(_StoreSerializationBoundary, MutableMapping[K, V]):
         values: dict[K, V] = {}
         if args:
             source = args[0]
-            if isinstance(source, Mapping):
-                values.update(source)
-            elif isinstance(source, Iterable):
+            if isinstance(source, (Mapping, Iterable)):
                 values.update(source)
             else:
                 raise TypeError("update requires a mapping or key-value pairs")
@@ -228,12 +233,12 @@ class LedgerDict(_StoreSerializationBoundary, MutableMapping[K, V]):
 
 class LedgerList(_StoreSerializationBoundary, MutableSequence[T]):
     __slots__ = (
-        "ledger",
-        "owner",
-        "nodes_per_entry",
-        "append_only",
-        "_sealed",
         "_data",
+        "_sealed",
+        "append_only",
+        "ledger",
+        "nodes_per_entry",
+        "owner",
     )
 
     def __setattr__(self, name: str, value: object) -> None:

@@ -47,7 +47,10 @@ from number_compiler.hashlife.execution.field_transfers import (
     FieldTransferRequestKey,
 )
 from number_compiler.hashlife.interfaces.diamond_quotient import LocalInterfaceID
-from number_compiler.projection.microblock_cache import ExactMicroblock, MicroblockKey
+from number_compiler.projection.microblock_cache import (
+    ExactMicroblock,
+    MicroblockKey,
+)
 from number_compiler.projection.point_response import PointResponse
 from number_compiler.resources.ledger import ResourceLedger
 from number_compiler.resources.metric_collection import collect_ledger_metrics
@@ -55,10 +58,6 @@ from number_compiler.resources.stores import LedgerList
 from tests.support.dataclass_records import replace_record
 
 if TYPE_CHECKING:
-    from devtools.proofs.carry_interval_effects import (
-        CarryIntervalCompositionKey,
-        CarryIntervalEffect,
-    )
     from devtools.proofs.lazy_collatz import (
         CarryRangeSummary,
         CarryRangeTransfer,
@@ -87,14 +86,6 @@ if TYPE_CHECKING:
         _BaseLeftState,
         _BaseRightState,
     )
-    from number_compiler.arithmetic.contracts.scoped_handles import (
-        ActionProgramID,
-        ArenaHandle,
-        ArenaToken,
-        FrameTransform,
-        LoweringCapability,
-        TransferSummaryID,
-    )
     from number_compiler.arithmetic.functions.finite_port_action import (
         ChoiceKey,
         DecisionKey,
@@ -104,20 +95,7 @@ if TYPE_CHECKING:
         PortVariable,
         _Decision,
     )
-    from number_compiler.arithmetic.functions.finite_port_substitution import (
-        SubstitutionKey,
-    )
-    from number_compiler.hashlife.actions.lazy_compiler import CompilerCompositionKey
-    from number_compiler.hashlife.execution.field_transfers import (
-        FieldTransferRecord,
-        FieldTransferRequestKey,
-    )
     from number_compiler.projection.digit_terminal import _DigitLeftState
-    from number_compiler.projection.microblock_cache import (
-        ExactMicroblock,
-        MicroblockKey,
-    )
-    from number_compiler.projection.point_response import PointResponse
 
 
 def templates() -> tuple[
@@ -313,10 +291,10 @@ def test_unknown_operation_strings_are_not_semantic_programs(record: object) -> 
 def test_metric_snapshot_resolves_each_record_type_annotation_once(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    import number_compiler.resources.payload_schema as payload_schema
     from number_compiler.hashlife.execution.continuations.diamond_tasks import (
         SpatialSummary,
     )
+    from number_compiler.resources import payload_schema
     from number_compiler.sequences.collatz.block_power import CollatzPhysicalBlockEffect
     from tests.support.diamond_runtime import build
 

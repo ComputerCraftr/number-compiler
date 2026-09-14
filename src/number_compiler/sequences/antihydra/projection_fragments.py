@@ -7,7 +7,6 @@ from dataclasses import dataclass
 
 from number_compiler.resources.ledger import ResourceLedger
 
-
 ProjectionFragmentSeal = tuple[
     tuple[int | tuple[int, int, int, int, int, int], ...],
     tuple[tuple[int, ...], ...],
@@ -15,9 +14,9 @@ ProjectionFragmentSeal = tuple[
 ]
 
 
-def _key_snapshot(key: ProjectionFragmentKey) -> tuple[
-    int | tuple[int, int, int, int, int, int], ...
-]:
+def _key_snapshot(
+    key: ProjectionFragmentKey,
+) -> tuple[int | tuple[int, int, int, int, int, int], ...]:
     return (
         key.source_owner,
         key.requested,
@@ -68,7 +67,10 @@ class ProjectionFragment:
             type(key) is not ProjectionFragmentKey
             or type(self.typed_ports) is not tuple
             or len(self.typed_ports) != 12
-            or any(type(row) is not tuple or len(row) != key.area for row in self.typed_ports)
+            or any(
+                type(row) is not tuple or len(row) != key.area
+                for row in self.typed_ports
+            )
             or any(
                 type(value) is not int or not 0 <= value < key.modulus
                 for row in self.typed_ports
@@ -140,7 +142,9 @@ class ProjectionFragmentCache:
             type(issuer) is not AntihydraProjectionDriver
             or type(image) is not SourceImageID
         ):
-            raise ValueError("Antihydra fragment requires an active source-image publication")
+            raise ValueError(
+                "Antihydra fragment requires an active source-image publication"
+            )
         if type(capacity) is not int or not 1 <= capacity <= 32:
             raise ValueError("projection fragment capacity must be 1..32")
         fragment = issuer.project_fragment(self, image)

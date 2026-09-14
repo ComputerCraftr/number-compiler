@@ -25,7 +25,7 @@ evaluation alone discards leading zero digits.
 
 from __future__ import annotations
 
-from functools import lru_cache
+from functools import cache
 
 from number_compiler.arithmetic.polynomials.polynomial import (
     evaluate_polynomial,
@@ -54,7 +54,7 @@ def _prime_power_base(value: int) -> int | None:
     return p if n == 1 else None
 
 
-@lru_cache(maxsize=None)
+@cache
 def cyclotomic_coefficients(order: int) -> tuple[int, ...]:
     """Return LSF integer coefficients of the exact cyclotomic polynomial."""
     n = int(order)
@@ -77,7 +77,7 @@ def cyclotomic_coefficients(order: int) -> tuple[int, ...]:
     return built[n]
 
 
-@lru_cache(maxsize=None)
+@cache
 def cyclotomic_power_coefficients(order: int, power: int) -> tuple[int, ...]:
     """Return exact LSF coefficients of ``Phi_order(z)**power``."""
     order, power = int(order), int(power)
@@ -139,11 +139,11 @@ def cyclotomic_two_adic_growth_channel(order: int) -> str:
 
 
 __all__ = [
-    "is_power_of_two",
     "cyclotomic_coefficients",
-    "cyclotomic_power_coefficients",
-    "polynomial_divisible_by_cyclotomic",
-    "cyclotomic_value",
     "cyclotomic_one_plus_norm",
+    "cyclotomic_power_coefficients",
     "cyclotomic_two_adic_growth_channel",
+    "cyclotomic_value",
+    "is_power_of_two",
+    "polynomial_divisible_by_cyclotomic",
 ]

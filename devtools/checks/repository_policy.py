@@ -7,6 +7,7 @@ Python recursion applies to the checker itself as well as production code.
 from __future__ import annotations
 
 import ast
+from collections.abc import Mapping
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -57,6 +58,14 @@ def _iter_python_files(root: Path) -> tuple[Path, ...]:
     return tuple(sorted(files))
 
 
+def _parsed_python_sources(root: Path) -> dict[Path, ast.Module]:
+    """Parse a fresh repository snapshot for one aggregate policy report."""
+    return {
+        path: ast.parse(path.read_text(encoding="utf-8"), filename=str(path))
+        for path in _iter_python_files(root)
+    }
+
+
 def physical_line_count(path: Path) -> int:
     """Count physical lines without inventing a line after a final newline.
 
@@ -87,6 +96,7 @@ def source_line_violations(
 
 def _function_catalog(
     root: Path,
+    parsed_sources: Mapping[Path, ast.Module] | None = None,
 ) -> tuple[
     dict[str, FunctionInfo],
     dict[str, dict[str, str]],
@@ -100,9 +110,11 @@ def _function_catalog(
     class_defs: dict[tuple[str, str], dict[str, str]] = {}
     imports: dict[str, dict[str, tuple[str, str | None]]] = {}
 
-    for path in _iter_python_files(root):
+    sources = (
+        parsed_sources if parsed_sources is not None else _parsed_python_sources(root)
+    )
+    for path, tree in sorted(sources.items()):
         module = _module_name(root, path)
-        tree = ast.parse(path.read_text(encoding="utf-8"), filename=str(path))
         module_defs.setdefault(module, {})
         imports.setdefault(module, {})
         # Stack items carry lexical parent and enclosing class names.  Function
@@ -208,9 +220,15 @@ def _resolve_name(
     return None
 
 
-def recursion_cycles(root: Path) -> tuple[tuple[str, ...], ...]:
+def recursion_cycles(
+    root: Path,
+    *,
+    parsed_sources: Mapping[Path, ast.Module] | None = None,
+) -> tuple[tuple[str, ...], ...]:
     """Return exact statically-resolved direct/mutual recursion SCCs."""
-    functions, module_defs, scope_defs, class_defs, imports = _function_catalog(root)
+    functions, module_defs, scope_defs, class_defs, imports = _function_catalog(
+        root, parsed_sources
+    )
     graph: dict[str, set[str]] = {key: set() for key in functions}
     for key, info in functions.items():
         for call in _body_calls(info):
@@ -287,11 +305,12 @@ def repository_policy_report(root: Path) -> dict[str, object]:
     from devtools.checks.package_contracts import package_violations
 
     root = Path(root).resolve()
+    parsed_sources = _parsed_python_sources(root)
     return {
         "max_source_lines": MAX_SOURCE_LINES,
         "source_line_violations": source_line_violations(root),
-        "recursion_cycles": recursion_cycles(root),
-        "package_violations": package_violations(root),
+        "recursion_cycles": recursion_cycles(root, parsed_sources=parsed_sources),
+        "package_violations": package_violations(root, parsed_sources=parsed_sources),
     }
 
 

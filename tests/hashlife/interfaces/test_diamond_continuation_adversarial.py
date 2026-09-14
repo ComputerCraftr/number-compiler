@@ -32,7 +32,6 @@ from tests.support.diamond_query import build, oracle
 if TYPE_CHECKING:
     from number_compiler.arithmetic.contracts.scoped_handles import TransferSummaryID
     from number_compiler.hashlife.interfaces.diamond_boundary import BoundaryStateID
-    from number_compiler.hashlife.interfaces.diamond_boundary_expr import ExprID
     from number_compiler.hashlife.interfaces.diamond_quotient import LocalInterfaceID
     from number_compiler.hashlife.interfaces.semantic_structures import StructureID
 

@@ -93,7 +93,7 @@ class SpecialGermConstraintState:
         object.__setattr__(self, "support_gcd", support)
 
     @classmethod
-    def identity(cls) -> "SpecialGermConstraintState":
+    def identity(cls) -> SpecialGermConstraintState:
         return cls()
 
     @classmethod
@@ -103,7 +103,7 @@ class SpecialGermConstraintState:
         *,
         method: str,
         candidate_derived: bool = True,
-    ) -> "SpecialGermConstraintState":
+    ) -> SpecialGermConstraintState:
         if not isinstance(mask, SpecialBranchMask):
             raise TypeError(type(mask))
         mask.require_possible()
@@ -122,7 +122,7 @@ class SpecialGermConstraintState:
         *,
         method: str,
         candidate_derived: bool = True,
-    ) -> "SpecialGermConstraintState":
+    ) -> SpecialGermConstraintState:
         modulus = int(modulus)
         if modulus <= 1 or not (modulus & 1):
             raise ValueError(modulus)
@@ -136,8 +136,8 @@ class SpecialGermConstraintState:
         )
 
     def then(
-        self, downstream: "SpecialGermConstraintState"
-    ) -> "SpecialGermConstraintState":
+        self, downstream: SpecialGermConstraintState
+    ) -> SpecialGermConstraintState:
         """Pull downstream evidence back and intersect it with this block.
 
         The unresolved theorem coordinate does not change under the dyadic
@@ -179,6 +179,19 @@ class SpecialGermConstraintState:
             method=method,
             candidate_derived=self.candidate_derived and downstream.candidate_derived,
         )
+
+    @property
+    def constraint_failure_bit(self) -> bool | None:
+        """Classify a constant-rank pulled-back constraint state, if possible."""
+        bit = self.mask.failure_bit
+        support_bit = None
+        if self.support_gcd is not None:
+            support_bit = self.support_gcd != self.support_modulus
+        if bit is not None and support_bit is not None and bit != support_bit:
+            raise ValueError(
+                "theorem-sheet mask contradicts pulled-back support evidence"
+            )
+        return bit if bit is not None else support_bit
 
     @property
     def decided(self) -> bool:
@@ -318,7 +331,7 @@ class SpecialGermPlan:
         *,
         method: str,
         candidate_derived: bool = True,
-    ) -> "SpecialGermPlan":
+    ) -> SpecialGermPlan:
         evidence = SpecialGermConstraintState.from_mask(
             mask,
             method=method,
@@ -337,7 +350,7 @@ class SpecialGermPlan:
         *,
         method: str,
         candidate_derived: bool = True,
-    ) -> "SpecialGermPlan":
+    ) -> SpecialGermPlan:
         evidence = SpecialGermConstraintState.from_defect(
             modulus,
             defect,
@@ -350,7 +363,7 @@ class SpecialGermPlan:
             self.constraints.then(evidence),
         )
 
-    def then(self, downstream: "SpecialGermPlan") -> "SpecialGermPlan":
+    def then(self, downstream: SpecialGermPlan) -> SpecialGermPlan:
         """Compose adjacent constrained blocks with exact evidence pullback."""
         if not isinstance(downstream, SpecialGermPlan):
             raise TypeError(type(downstream))
@@ -450,8 +463,8 @@ def compose_support_packets(
 
 __all__ = [
     "SpecialGermConstraintState",
-    "SpecialGermTransfer",
     "SpecialGermPlan",
+    "SpecialGermTransfer",
     "build_special_germ_plan",
     "compose_support_packets",
 ]

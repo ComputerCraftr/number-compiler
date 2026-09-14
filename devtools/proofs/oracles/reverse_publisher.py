@@ -15,10 +15,19 @@ from collections.abc import Iterator, MutableMapping, MutableSequence, Sequence
 from dataclasses import dataclass
 
 from number_compiler.arithmetic.carry.carry_monoid import CarryFn
-from number_compiler.arithmetic.contracts.block_effect import BoundarySide
+from number_compiler.arithmetic.contracts.block_effect import BlockEffect, BoundarySide
+from number_compiler.arithmetic.contracts.scoped_handles import ActionProgramID
+from number_compiler.arithmetic.contracts.temporal_family import (
+    TemporalFamilyCertificate,
+)
 from number_compiler.arithmetic.fields.radial_innovation import (
     ReverseAddCyclotomicInnovationBlock,
 )
+from number_compiler.arithmetic.polynomials.twisted_observer import (
+    TwistedCylinderProjection,
+)
+from number_compiler.hashlife.actions.field_actions import CoordinateOutputMorphismID
+from number_compiler.hashlife.actions.lazy_compiler import LazyCompiler
 from number_compiler.hashlife.execution.continuations.higher_bimachine import (
     HigherBimachineRuntime,
 )
@@ -36,20 +45,12 @@ from number_compiler.hashlife.execution.field_images import (
     SourceCellArena,
     SourceForestID,
 )
-from number_compiler.hashlife.actions.lazy_compiler import LazyCompiler
-from number_compiler.arithmetic.contracts.block_effect import BlockEffect
-from number_compiler.arithmetic.contracts.scoped_handles import ActionProgramID
-from number_compiler.arithmetic.contracts.temporal_family import (
-    TemporalFamilyCertificate,
-)
 from number_compiler.hashlife.execution.recursive_outputs import (
     RecursiveCoordinateMorphismArena,
     RecursiveOutputBranch,
     RecursiveOutputLeaf,
 )
-from number_compiler.arithmetic.polynomials.twisted_observer import (
-    TwistedCylinderProjection,
-)
+from number_compiler.hashlife.interfaces.diamond_quotient import LocalInterfaceID
 from number_compiler.resources.ledger import ResourceLedger
 from number_compiler.sequences.reverse_add.coordinate_program import (
     ReverseCoordinateProgramArena,
@@ -84,7 +85,7 @@ class _FoldedWord:
 
 @dataclass(frozen=True, slots=True)
 class _FoldFrame:
-    output: object
+    output: CoordinateOutputMorphismID
     span: int
     take: int
     left: object
@@ -101,50 +102,50 @@ class ReversePublisherProjection:
     """
 
     __slots__ = (
-        "ledger",
-        "base",
-        "logical_extent",
-        "sources",
-        "source",
-        "actions",
-        "action",
-        "semantics",
-        "runtime",
-        "interfaces",
-        "outputs",
-        "_macro",
+        "__weakref__",
+        "_binding",
+        "_closed",
+        "_coordinate_programs",
+        "_fold_frame_owner",
+        "_fold_frames",
+        "_fold_owner",
+        "_fold_values",
         "_image_binding",
         "_image_building",
         "_image_failure",
-        "_primitive",
-        "_terminal",
-        "_schema",
-        "_coordinate_programs",
         "_issued_action",
         "_issued_action_identity",
-        "_issued_schema",
-        "_issued_primitive",
-        "_issued_terminal",
-        "_issued_primitive_initials",
-        "local_codec",
-        "source_local_action",
-        "effect",
-        "compiler",
-        "program",
-        "certificate",
         "_issued_certificate",
-        "output_encoding",
-        "_binding",
-        "_primitive_initials",
-        "_source_ports",
+        "_issued_primitive",
+        "_issued_primitive_initials",
+        "_issued_schema",
+        "_issued_terminal",
         "_left",
+        "_macro",
+        "_primitive",
+        "_primitive_initials",
         "_right",
-        "_closed",
-        "_fold_owner",
-        "_fold_frame_owner",
-        "_fold_values",
-        "_fold_frames",
-        "__weakref__",
+        "_schema",
+        "_source_ports",
+        "_terminal",
+        "action",
+        "actions",
+        "base",
+        "certificate",
+        "compiler",
+        "effect",
+        "interfaces",
+        "ledger",
+        "local_codec",
+        "logical_extent",
+        "output_encoding",
+        "outputs",
+        "program",
+        "runtime",
+        "semantics",
+        "source",
+        "source_local_action",
+        "sources",
     )
 
     is_source_bound_publisher = True
@@ -168,7 +169,9 @@ class ReversePublisherProjection:
         if certificate.family != "reverse-add":
             raise ValueError("reverse publisher requires a reverse-add certificate")
         if certificate.output_encoding not in ("digits", "pair"):
-            raise ValueError("reverse publisher certificate has another output encoding")
+            raise ValueError(
+                "reverse publisher certificate has another output encoding"
+            )
         base = certificate.base
         pair_steps = certificate.steps
         output_encoding = certificate.output_encoding
@@ -195,7 +198,9 @@ class ReversePublisherProjection:
         self.sources = SourceCellArena(source_geometry)
         self.source: SourceForestID = self.sources.forest(0, logical_extent)
 
-        programs = self._coordinate_programs = ReverseCoordinateProgramArena(base, ledger)
+        programs = self._coordinate_programs = ReverseCoordinateProgramArena(
+            base, ledger
+        )
         self.actions = ReverseFieldActionArena(
             base=base,
             order=8,
@@ -440,22 +445,20 @@ class ReversePublisherProjection:
         if (
             coordinate_program.base != self.base
             or coordinate_program.pair_steps != self.certificate.steps
-            or coordinate_program.normalized
-            != (self.output_encoding == "digits")
+            or coordinate_program.normalized != (self.output_encoding == "digits")
             or not coordinate_program.executable
         ):
-            raise ValueError("reverse publisher action differs from certificate program")
-        if (
-            tuple(
-                self._schema.initial(self._primitive, side)
-                for side in (0, 1)
+            raise ValueError(
+                "reverse publisher action differs from certificate program"
             )
+        if (
+            tuple(self._schema.initial(self._primitive, side) for side in (0, 1))
             != self._issued_primitive_initials
             or self._primitive_initials != self._issued_primitive_initials
         ):
             raise ValueError("reverse publisher primitive initial states changed")
 
-    def _open(self) -> "ReversePublisherProjection":
+    def _open(self) -> ReversePublisherProjection:
         issued = self.ledger._execution_roots.get(id(self))
         if issued is None or issued() is not self:
             raise ValueError("reverse publisher was not issued by its ledger")
@@ -550,12 +553,12 @@ class ReversePublisherProjection:
 
     def _bound_component(
         self,
-        interface: object,
+        interface: LocalInterfaceID,
         role: str,
         left: object,
         right: object,
     ) -> object:
-        record = self.interfaces.resolve(interface)  # type: ignore[arg-type]
+        record = self.interfaces.resolve(interface)
         signature = self.interfaces.interface(record.signature)
         ports = {port.role: port.variable for port in signature.inputs}
         if set(ports) != {"left-boundary", "right-boundary"}:
@@ -616,12 +619,12 @@ class ReversePublisherProjection:
                 if key in values:
                     self.ledger.bump("reverse_publisher_cylinder_cache_hits")
                     continue
-                node = self.outputs.resolve(frame.output)  # type: ignore[arg-type]
+                node = self.outputs.resolve(frame.output)
                 if type(node) is RecursiveOutputLeaf:
                     if frame.span != 1 or frame.take != 1:
                         raise ValueError("reverse publisher leaf has another span")
                     digit = self.outputs.observe(
-                        frame.output, 0, frame.left, frame.right  # type: ignore[arg-type]
+                        frame.output, 0, frame.left, frame.right
                     )
                     if not 0 <= digit < self.base:
                         raise ValueError("cylinder requires normalized reverse digits")
@@ -702,12 +705,8 @@ class ReversePublisherProjection:
                             key,
                             _FoldedWord(
                                 first.span + after.span,
-                                first.forward.append(
-                                    after.forward, span=first.span
-                                ),
-                                after.reverse.append(
-                                    first.reverse, span=after.span
-                                ),
+                                first.forward.append(after.forward, span=first.span),
+                                after.reverse.append(first.reverse, span=after.span),
                             ),
                         )
                         self.ledger.bump(
@@ -744,9 +743,7 @@ class ReversePublisherProjection:
                     nodes=frame_count,
                 )
             value_count = len(values)
-            value_nodes = sum(
-                2 * word.forward.width + 3 for word in values.values()
-            )
+            value_nodes = sum(2 * word.forward.width + 3 for word in values.values())
             values.clear()
             self.ledger.release(
                 self._fold_owner, entries=value_count, nodes=value_nodes

@@ -16,6 +16,8 @@ from number_compiler.hashlife.tiles.tile_result_records import (
 )
 from number_compiler.hashlife.tiles.tile_result_types import (
     ReverseKey as _ReverseKey,
+)
+from number_compiler.hashlife.tiles.tile_result_types import (
     ReverseValue as _ReverseValue,
 )
 from number_compiler.hashlife.tiles.tile_results import (
@@ -148,7 +150,7 @@ def test_result_close_rejects_swapped_tile_and_foreign_issuer_before_release() -
         assert lease._closed is False
         lease._tile = original_tile
 
-        lease._issuer = object()  # type: ignore[assignment]
+        lease._issuer = cast(CompletedResultArena, object())
         before = ledger.entries, ledger.nodes, ledger.inventory()
         with pytest.raises(ValueError, match="issuer"):
             lease.close()
@@ -387,7 +389,7 @@ def test_independent_result_inventory_detects_reverse_link_corruption() -> None:
         if type(reverse_key).__name__ == "_ReverseMember"
     )
     original = results._reverse[member]
-    results._reverse[member] = None  # type: ignore[assignment]
+    results._reverse[member] = cast(_ReverseValue, None)
     _, damaged = audit_tile_results(results, containers)
     assert damaged
     results._reverse[member] = original
@@ -486,7 +488,7 @@ def test_whole_causal_region_normalizes_to_existing_complete_result() -> None:
 def test_causal_region_rejects_before_lookup_or_ledger_mutation(
     region: tuple[bool, int] | tuple[int, float] | tuple[int, int],
 ) -> None:
-    ledger, _, tiles, results, source, output, key, result = _setup()
+    ledger, _, tiles, results, source, output, key, _result = _setup()
     parent = tiles.join(source.tile, output.tile)
     request = replace(key, input=parent.tile, region=cast("tuple[int, int]", region))
     before = ledger.snapshot()

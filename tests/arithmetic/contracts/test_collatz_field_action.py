@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import fields
-from typing import TYPE_CHECKING, Never
+from typing import Never, cast
 
 import pytest
 
@@ -25,12 +25,6 @@ from number_compiler.sequences.collatz.field_action import (
     ProgramRole,
     bounded_3adic_innovation,
 )
-
-if TYPE_CHECKING:
-    from number_compiler.sequences.collatz.field_action import (
-        CollatzDefectArena,
-        CollatzFieldActionArena,
-    )
 
 
 class _FinitePrograms:
@@ -426,9 +420,9 @@ def test_foreign_wrong_sort_and_integer_aliases_reject_before_mutation() -> None
     before = (arena.action_count, arena.retained_entries, arena.ledger.snapshot())
 
     with pytest.raises(TypeError):
-        arena.resolve(good.local_id)  # type: ignore[arg-type]
+        arena.resolve(cast(CollatzFieldActionID, good.local_id))
     with pytest.raises(TypeError):
-        arena.resolve(True)  # type: ignore[arg-type]
+        arena.resolve(cast(CollatzFieldActionID, True))
     with pytest.raises(ValueError):
         arena.resolve(
             CollatzFieldActionID(ArenaToken("foreign"), good.kind, good.local_id)
@@ -439,7 +433,10 @@ def test_foreign_wrong_sort_and_integer_aliases_reject_before_mutation() -> None
         arena.intern(
             CollatzFieldAction(
                 arena.resolve(good).character,
-                CollatzDefectClassID(defects.owner, "proof-c4-state", 0),  # type: ignore[arg-type]
+                cast(
+                    ActionProgramID,
+                    CollatzDefectClassID(defects.owner, "proof-c4-state", 0),
+                ),
                 arena.resolve(good).affine_action,
                 arena.resolve(good).innovation,
                 defects.identity,

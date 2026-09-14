@@ -12,32 +12,35 @@ Pepin/Lucas--Lehmer.
 from __future__ import annotations
 
 from dataclasses import dataclass
-from number_compiler.sequences.power_numbers.etale_factor import (
-    MersenneAdditiveEtaleFrobeniusProbe as MersenneAdditiveEtaleFrobeniusProbe,
-    FermatAdditiveEtaleFrobeniusProbe as FermatAdditiveEtaleFrobeniusProbe,
-    mersenne_additive_etale_frobenius_probe as mersenne_additive_etale_frobenius_probe,
-    fermat_additive_etale_frobenius_probe as fermat_additive_etale_frobenius_probe,
-)
-
 from math import prod
 
 from devtools.experiments.algebra.dyadic_difference_germ_core import (
     ambient_capacity_truth,
     formal_phase_frobenius_audit,
 )
-from number_compiler.sequences.power_numbers.numbers import (
-    fermat_number,
-    mersenne_number,
-)
 from number_compiler.projection.output_quotient import SpecialSourceShape
+from number_compiler.sequences.power_numbers import etale_factor as _etale_factor
 from number_compiler.sequences.power_numbers.germ import (
     SpecialGermTransfer,
     build_special_germ_plan,
+)
+from number_compiler.sequences.power_numbers.numbers import (
+    fermat_number,
+    mersenne_number,
 )
 from number_compiler.sequences.power_numbers.terminal_threshold import (
     prime_decision_chunk_spec,
     terminal_threshold_probe,
     terminal_threshold_spec,
+)
+
+FermatAdditiveEtaleFrobeniusProbe = _etale_factor.FermatAdditiveEtaleFrobeniusProbe
+MersenneAdditiveEtaleFrobeniusProbe = _etale_factor.MersenneAdditiveEtaleFrobeniusProbe
+fermat_additive_etale_frobenius_probe = (
+    _etale_factor.fermat_additive_etale_frobenius_probe
+)
+mersenne_additive_etale_frobenius_probe = (
+    _etale_factor.mersenne_additive_etale_frobenius_probe
 )
 
 

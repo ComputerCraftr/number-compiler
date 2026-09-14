@@ -34,7 +34,7 @@ def test_fixed_point_frame_rejects_aliased_or_unbounded_precision(
 ) -> None:
     error = TypeError if type(precision) is not int else ValueError
     with pytest.raises(error):
-        CollatzFixedPointPadicFrame(precision, 0, 0)  # type: ignore[arg-type]
+        CollatzFixedPointPadicFrame(cast(int, precision), 0, 0)
 
 
 @pytest.mark.parametrize("value", (True, 3.0))
@@ -62,7 +62,7 @@ def test_rational_root_rejects_numeric_aliases_and_unbounded_limbs(
     error: type[Exception],
 ) -> None:
     with pytest.raises(error):
-        RationalPadicRootGerm(power, constant)  # type: ignore[arg-type]
+        RationalPadicRootGerm(cast(int, power), cast(int, constant))
 
 
 @pytest.mark.parametrize("bits", (True, 1.0, 0, 65))
@@ -72,19 +72,19 @@ def test_rational_root_residue_rejects_aliased_or_unbounded_precision(
     root = RationalPadicRootGerm(2, 4)
     error = TypeError if type(bits) is not int else ValueError
     with pytest.raises(error):
-        root.root_residue(bits)  # type: ignore[arg-type]
+        root.root_residue(cast(int, bits))
 
 
 @pytest.mark.parametrize("alias", (True, 1.0))
 def test_collatz_frame_helpers_reject_numeric_aliases(alias: object) -> None:
     with pytest.raises(TypeError):
-        collatz_radix4_frame_factorization(alias)  # type: ignore[arg-type]
+        collatz_radix4_frame_factorization(cast(int, alias))
     with pytest.raises(TypeError):
-        CollatzFutureValuationRoot(alias)  # type: ignore[arg-type]
+        CollatzFutureValuationRoot(cast(int, alias))
     with pytest.raises(TypeError):
-        CollatzFutureValuationRoot(0).root_residue(alias)  # type: ignore[arg-type]
+        CollatzFutureValuationRoot(0).root_residue(cast(int, alias))
     with pytest.raises(TypeError):
-        collatz_two_valuation_frame_value(alias)  # type: ignore[arg-type]
+        collatz_two_valuation_frame_value(cast(int, alias))
     with pytest.raises(TypeError):
         collatz_affine_suffix_valuations_value(
             cast("int", alias),
@@ -116,13 +116,13 @@ def test_radix4_fixed_point_frames_are_exact_and_do_not_affect_successor() -> No
 
 
 def test_radix4_frame_prefix_is_pure_gauge_for_accelerated_target() -> None:
-    for tail in range(0, 128):
+    for tail in range(128):
         if tail and (tail & 3) == 1:
             continue
         local = _v2(3 * tail + 1)
         assert local in (0, 1)
         target = (3 * tail + 1) >> local
-        for q in range(0, 8):
+        for q in range(8):
             n = (4**q - 1) // 3 + 4**q * tail
             if n <= 0 or not (n & 1):
                 continue
@@ -152,7 +152,7 @@ def test_rational_root_germ_matches_direct_valuation_across_growing_denominators
         p = 3**h
         for constant in (1, max(1, p // 3), p // 2, p - 1):
             root = RationalPadicRootGerm(h, constant)
-            for value in range(0, 300):
+            for value in range(300):
                 numerator = p * value + constant
                 assert root.valuation_from_integer(value) == _v2(numerator)
                 assert root.valuation_from_digits(digits_lsd(value, 4)) == _v2(
@@ -179,7 +179,7 @@ def test_padic_angular_boundary_rewrites_normalized_discrepancy_as_affine_suffix
     None
 ):
     root = RationalPadicRootGerm(2, 4)  # -4/9
-    for value in range(0, 2000):
+    for value in range(2000):
         word = from_values(digits_lsd(value, 4))
         mismatch, suffix = root.first_mismatch_word(word)
         angular = PadicAngularBoundaryGerm.from_mismatch(root, mismatch)

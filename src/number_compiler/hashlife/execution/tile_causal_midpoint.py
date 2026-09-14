@@ -4,8 +4,6 @@ from __future__ import annotations
 
 from typing import Any
 
-from number_compiler.resources.causal_workspace import CausalResults
-
 from number_compiler.hashlife.actions.field_actions import FieldCellActionID
 from number_compiler.hashlife.execution.tile_causal_results import (
     CausalCompletedOutput,
@@ -23,6 +21,7 @@ from number_compiler.hashlife.execution.tile_causal_tasks import (
 from number_compiler.hashlife.tiles.tile_boundaries import BoundaryTileView
 from number_compiler.hashlife.tiles.tile_result_records import PoweredResultKey
 from number_compiler.hashlife.tiles.tiles import TileID
+from number_compiler.resources.causal_workspace import CausalResults
 
 
 def cached_midpoint_step(

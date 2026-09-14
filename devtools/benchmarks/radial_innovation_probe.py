@@ -1,4 +1,3 @@
-#!/usr/bin/env python3
 """Deterministic radial-mode / innovation quotient probe."""
 
 from __future__ import annotations

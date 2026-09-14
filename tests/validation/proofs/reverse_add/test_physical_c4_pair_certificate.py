@@ -37,10 +37,6 @@ from number_compiler.arithmetic.contracts.physical_collatz_pair_certificate impo
 if TYPE_CHECKING:
     import types
 
-    from number_compiler.arithmetic.contracts.physical_collatz_pair_certificate import (
-        C4PairLeftCertificate,
-    )
-
 
 def signed(
     certificate: C4PairLeftCertificate,
@@ -136,7 +132,7 @@ def test_self_resigned_corruption_fails_equations_or_identity(field: str) -> Non
 
 @pytest.mark.parametrize("bad", [True, 0.0, -1, "0"])
 def test_integer_aliases_reject_before_kernel_work(
-    bad: bool | float | int | str, monkeypatch: pytest.MonkeyPatch
+    bad: bool | float | str, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     original = load_verified_c4_pair_left()
     changed = replace(

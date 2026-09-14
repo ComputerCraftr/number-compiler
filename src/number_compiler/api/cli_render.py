@@ -7,12 +7,21 @@ from collections.abc import Iterable
 from dataclasses import asdict
 
 from number_compiler.api.number_api import (
-    AntihydraTermPayload, FermatTermPayload, FormulaTermPayload, MersenneTermPayload,
-    PoweredCollatzTermPayload, PoweredReverseAddTermPayload, ProjectedNumberTerm,
+    AntihydraTermPayload,
+    FermatTermPayload,
+    FormulaTermPayload,
+    MersenneTermPayload,
+    PoweredCollatzTermPayload,
+    PoweredReverseAddTermPayload,
+    ProjectedNumberTerm,
 )
-from number_compiler.arithmetic.contracts.input_validation import require_integer as _integer
+from number_compiler.arithmetic.contracts.input_validation import (
+    require_integer as _integer,
+)
 from number_compiler.arithmetic.fields.symbolic_extent import (
-    Extent, ReverseAddExtent, extent_json_value,
+    Extent,
+    ReverseAddExtent,
+    extent_json_value,
 )
 
 _DIGITS = "0123456789abcdefghijklmnopqrstuvwxyz"
@@ -24,7 +33,9 @@ def _metrics_json(term: ProjectedNumberTerm) -> dict[str, object]:
     payload["width"] = extent_json_value(term.metrics.width)
     payload["metrics_scope"] = "construction_and_projection_descriptors"
     if term.family == "prime":
-        payload["prime_scheduler_counters"] = dict(term.metrics.prime_scheduler_counters)
+        payload["prime_scheduler_counters"] = dict(
+            term.metrics.prime_scheduler_counters
+        )
         payload["prime_scheduler_metrics_scope"] = "query_before_disposal"
     if isinstance(
         term.payload, (PoweredReverseAddTermPayload, PoweredCollatzTermPayload)

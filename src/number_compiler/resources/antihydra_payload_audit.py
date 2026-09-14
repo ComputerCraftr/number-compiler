@@ -11,7 +11,9 @@ from __future__ import annotations
 from dataclasses import fields
 
 from number_compiler.resources.ledger import ResourceLedger
-from number_compiler.resources.physical_support_payload_audit import PhysicalSupportPayloadAudit
+from number_compiler.resources.physical_support_payload_audit import (
+    PhysicalSupportPayloadAudit,
+)
 
 
 def canonical_cylinder(value: object, ledger: ResourceLedger) -> bool:
@@ -25,9 +27,11 @@ def canonical_cylinder(value: object, ledger: ResourceLedger) -> bool:
     if type(r) is not int or not 0 <= r < 1 << w:
         return False
     # Bound malicious inputs before comparing or doing arithmetic on them.
-    if any(type(getattr(value, f.name)) is not int
-           or abs(getattr(value, f.name)).bit_length() > 4*w+10
-           for f in fields(value)):
+    if any(
+        type(getattr(value, f.name)) is not int
+        or abs(getattr(value, f.name)).bit_length() > 4 * w + 10
+        for f in fields(value)
+    ):
         return False
     source, remaining = r, w
     result: Cylinder | None = None
@@ -77,11 +81,26 @@ def canonical_arithmetic_cylinder(value: object, ledger: ResourceLedger) -> bool
 
 
 def audit_antihydra_payloads(ledger: ResourceLedger) -> PhysicalSupportPayloadAudit:
+    from number_compiler.hashlife.execution.source_bound_images import (
+        SourceBoundSchedulerCore,
+    )
     from number_compiler.sequences.antihydra.blocks import (
         arithmetic_kernel,
         kernel,
         physical_roof,
         terminal_effect,
+    )
+    from number_compiler.sequences.antihydra.projection_core import (
+        AntihydraProjectionDriver,
+        _AntihydraFragmentAdapter,
+    )
+    from number_compiler.sequences.antihydra.projection_fragments import (
+        ProjectionFragment,
+        ProjectionFragmentCache,
+        ProjectionFragmentKey,
+    )
+    from number_compiler.sequences.antihydra.projection_workspace import (
+        SectionImageWorkspace,
     )
     from number_compiler.sequences.antihydra.runtime import (
         AntihydraArithmeticTerm,
@@ -90,19 +109,6 @@ def audit_antihydra_payloads(ledger: ResourceLedger) -> PhysicalSupportPayloadAu
         CylinderEngine,
         Run,
         _PhysicalPublication,
-    )
-    from number_compiler.sequences.antihydra.projection_workspace import SectionImageWorkspace
-    from number_compiler.sequences.antihydra.projection_fragments import (
-        ProjectionFragment,
-        ProjectionFragmentCache,
-        ProjectionFragmentKey,
-    )
-    from number_compiler.sequences.antihydra.projection_core import (
-        AntihydraProjectionDriver,
-        _AntihydraFragmentAdapter,
-    )
-    from number_compiler.hashlife.execution.source_bound_images import (
-        SourceBoundSchedulerCore,
     )
 
     approved: set[int] = set()
@@ -175,10 +181,8 @@ def audit_antihydra_payloads(ledger: ResourceLedger) -> PhysicalSupportPayloadAu
                         and term._physical is not None
                         and not term._physical.halted
                         and entering_balance + segment.cylinder.minimum >= 0
-                        and fragment_key.head_phase
-                        == entering_head % spatial_phase
-                        and fragment_key.time_phase
-                        == entering_time % temporal_phase
+                        and fragment_key.head_phase == entering_head % spatial_phase
+                        and fragment_key.time_phase == entering_time % temporal_phase
                         and fragment_key.cylinder
                         == (
                             segment.cylinder.width,
@@ -208,9 +212,7 @@ def audit_antihydra_payloads(ledger: ResourceLedger) -> PhysicalSupportPayloadAu
                             ((owner, id(fragment_key)), (owner, id(fragment)))
                         )
                 if valid:
-                    approved.update(
-                        (id(root), id(root.fragments), id(root.seals))
-                    )
+                    approved.update((id(root), id(root.fragments), id(root.seals)))
                 else:
                     invalid.add((owner, id(root)))
             except (AttributeError, TypeError, ValueError, KeyError):
@@ -234,8 +236,7 @@ def audit_antihydra_payloads(ledger: ResourceLedger) -> PhysicalSupportPayloadAu
                         "physical_publications",
                         "_result",
                     }
-                    and
-                    root.ledger is ledger
+                    and root.ledger is ledger
                     and root.engine.ledger is ledger
                     and type(root.requested) is int
                     and type(root.max_steps) is int
@@ -381,15 +382,27 @@ def audit_antihydra_payloads(ledger: ResourceLedger) -> PhysicalSupportPayloadAu
             owner = -1
         try:
             valid = (
-                set(vars(root)) == {"ledger", "memo", "arithmetic_memo", "workspace",
-                                    "stack", "capacity", "term_serial",
-                                    "projection_workspace", "projection_fragments",
-                                    "projection_fragment_driver"}
-                and root.ledger is ledger and root.memo.ledger is ledger
+                set(vars(root))
+                == {
+                    "ledger",
+                    "memo",
+                    "arithmetic_memo",
+                    "workspace",
+                    "stack",
+                    "capacity",
+                    "term_serial",
+                    "projection_workspace",
+                    "projection_fragments",
+                    "projection_fragment_driver",
+                }
+                and root.ledger is ledger
+                and root.memo.ledger is ledger
                 and type(root.projection_fragments) is ProjectionFragmentCache
                 and root.projection_fragments.ledger is ledger
-                and type(root.capacity) is int and root.capacity >= 32
-                and type(root.term_serial) is int and root.term_serial >= 0
+                and type(root.capacity) is int
+                and root.capacity >= 32
+                and type(root.term_serial) is int
+                and root.term_serial >= 0
                 and root.memo.nodes_per_entry == 1
                 and containers.get(owner) is root.memo._data
                 and inventory[owner].role == "arithmetic_cylinder"
@@ -402,11 +415,15 @@ def audit_antihydra_payloads(ledger: ResourceLedger) -> PhysicalSupportPayloadAu
             )
             projection = root.projection_workspace
             if projection is not None:
-                valid &= (type(projection) is SectionImageWorkspace
-                          and projection.ledger is ledger and not projection.active
-                          and not projection.images and projection.area == 0
-                          and containers.get(projection.owner) is projection.images
-                          and inventory[projection.owner].accounting_delta == 0)
+                valid &= (
+                    type(projection) is SectionImageWorkspace
+                    and projection.ledger is ledger
+                    and not projection.active
+                    and not projection.images
+                    and projection.area == 0
+                    and containers.get(projection.owner) is projection.images
+                    and inventory[projection.owner].accounting_delta == 0
+                )
             driver = root.projection_fragment_driver
             if driver is not None:
                 adapter = getattr(driver, "adapter", None)
@@ -454,10 +471,13 @@ def audit_antihydra_payloads(ledger: ResourceLedger) -> PhysicalSupportPayloadAu
                         )
                     )
             for key, value in root.memo.items():
-                bound = (type(key) is tuple and len(key) == 2
-                         and all(type(x) is int for x in key)
-                         and canonical_cylinder(value, ledger)
-                         and key == (value.width, value.residue))
+                bound = (
+                    type(key) is tuple
+                    and len(key) == 2
+                    and all(type(x) is int for x in key)
+                    and canonical_cylinder(value, ledger)
+                    and key == (value.width, value.residue)
+                )
                 if bound:
                     approved.update((id(key), id(value)))
                 else:

@@ -2,12 +2,7 @@
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING
-
 from devtools.proofs.lazy_collatz import CollatzLazyView, LazyCollatzApplication
-
-if TYPE_CHECKING:
-    from devtools.proofs.lazy_collatz import CollatzLazyView, LazyCollatzApplication
 
 
 def application() -> tuple[LazyCollatzApplication, CollatzLazyView, int]:

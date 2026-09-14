@@ -1,6 +1,7 @@
 """Independent finite checks for the supplied mixed-radix research laws."""
 
 from itertools import product
+from typing import cast
 
 import pytest
 
@@ -154,10 +155,10 @@ def test_decimal_pair_conjugacy_and_reset_composition() -> None:
 def test_decimal_factoring_rejects_numeric_aliases_and_invalid_coordinates() -> None:
     for value in (True, 1.0, -1, 19):
         with pytest.raises((TypeError, ValueError)):
-            decimal_pair_coordinates(value)  # type: ignore[arg-type]
+            decimal_pair_coordinates(cast(int, value))
     for carry in (True, 0.0, -1, 2):
         with pytest.raises((TypeError, ValueError)):
-            decimal_normalized_coordinates(9, carry)  # type: ignore[arg-type]
+            decimal_normalized_coordinates(9, cast(int, carry))
     bad_coordinates: tuple[tuple[int, int, int], ...] = (
         (4, 1, 1),
         (5, 0, 0),

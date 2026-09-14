@@ -23,7 +23,7 @@ def cold_process_cache() -> Iterator[None]:
 @pytest.mark.parametrize("invalid", (0, 1, None, "yes"))
 def test_shared_cache_switch_requires_exact_bool(invalid: object) -> None:
     with pytest.raises(TypeError, match="shared_cache"):
-        NumberCompiler(shared_cache=invalid)  # type: ignore[arg-type]
+        NumberCompiler(shared_cache=cast(bool, invalid))
 
 
 def _forbidden(*args: object, **kwargs: object) -> None:
@@ -89,7 +89,7 @@ def test_prime_query_context_forwards_only_prime_budgets(
         max_prime_work=22,
         max_prime_stages=33,
     )
-    QueryContext(request, NumberCompiler()).term
+    _ = QueryContext(request, NumberCompiler()).term
     assert calls == [
         {
             "family": "prime",
@@ -122,7 +122,9 @@ def test_prime_rank_query_fails_closed_at_each_resource_boundary(
 def test_prime_cli_reports_real_descriptor_work_without_parent_gaps(
     capsys: pytest.CaptureFixture[str],
 ) -> None:
-    assert cli.main(["prime", "--nth", "10", "--info", "metrics", "--format", "json"]) == 0
+    assert (
+        cli.main(["prime", "--nth", "10", "--info", "metrics", "--format", "json"]) == 0
+    )
     row = json.loads(capsys.readouterr().out)
     metrics = row["info"]["metrics"]
     assert row["value"] == "31"
@@ -186,14 +188,18 @@ def test_prime_api_surfaces_rank_workspace_metrics(
     monkeypatch.setattr(
         "number_compiler.sequences.prime.select.nth_prime_at_or_after", select
     )
-    metrics = NumberCompiler().project_nth(
-        "prime",
-        3,
-        start=100,
-        max_prime_states=987,
-        max_prime_work=876,
-        max_prime_stages=765,
-    ).metrics
+    metrics = (
+        NumberCompiler()
+        .project_nth(
+            "prime",
+            3,
+            start=100,
+            max_prime_states=987,
+            max_prime_work=876,
+            max_prime_stages=765,
+        )
+        .metrics
+    )
     assert metrics.projection_work == 89
     assert metrics.prime_dag_states == 34
     assert metrics.prime_cache_hits == 55
@@ -214,4 +220,6 @@ def test_prime_api_surfaces_rank_workspace_metrics(
     assert metrics.prime_request_allocations == 5
     assert metrics.prime_scheduler_work == 17
     assert metrics.prime_scheduler_peak_entries == 23
-    assert metrics.prime_scheduler_counters == (("source_image_primitive_applications", 3),)
+    assert metrics.prime_scheduler_counters == (
+        ("source_image_primitive_applications", 3),
+    )

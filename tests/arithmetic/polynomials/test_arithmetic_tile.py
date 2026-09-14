@@ -1,18 +1,20 @@
+from typing import cast
+
 import pytest
 
+from number_compiler.arithmetic.fields.morphism_core import (
+    binary_power_composition_count,
+)
 from number_compiler.arithmetic.polynomials.arithmetic_tile import (
     ArithmeticTile,
     ArithmeticTileSpec,
-    SquareTileAction,
     SquarePrecisionMap,
+    SquareTileAction,
 )
 from number_compiler.arithmetic.polynomials.digit_convolution import (
     binary_square_sign_representative,
     cyclic_binary_square_add_projection,
     negacyclic_binary_square_projection,
-)
-from number_compiler.arithmetic.fields.morphism_core import (
-    binary_power_composition_count,
 )
 
 
@@ -86,7 +88,7 @@ def test_square_precision_is_minimal_and_rejects_collatz_inverse_style_parameter
 ):
     for invalid in (0, -1, 1.5):
         with pytest.raises(ValueError):
-            SquarePrecisionMap(invalid)  # type: ignore[arg-type]
+            SquarePrecisionMap(cast(int, invalid))
     for spec in (ArithmeticTileSpec.fermat(64), ArithmeticTileSpec.mersenne(64)):
         bound = 2 * (spec.width + abs(spec.addend) + 1)
         assert spec.precision.modulus > bound

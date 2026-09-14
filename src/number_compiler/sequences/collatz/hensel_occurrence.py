@@ -23,15 +23,15 @@ from number_compiler.arithmetic.automata.program_word import (
     from_values,
     iter_runs,
 )
-from number_compiler.arithmetic.fields.radix import digits_lsd
-from number_compiler.arithmetic.fields.two_adic import v2_positive
+from number_compiler.arithmetic.contracts.block_effect import BlockContextBudgetExceeded
 from number_compiler.arithmetic.contracts.exact_tree_context import (
     require_endpoint_construction,
 )
-from number_compiler.arithmetic.contracts.block_effect import BlockContextBudgetExceeded
+from number_compiler.arithmetic.fields.radix import digits_lsd
+from number_compiler.arithmetic.fields.two_adic import v2_positive
 from number_compiler.sequences.collatz.frame import (
-    CollatzAffineSuffixGerm,
     CollatzAffineSuffixAdvance,
+    CollatzAffineSuffixGerm,
     normalize_collatz_frame_word,
 )
 from number_compiler.sequences.collatz.root_germs import (
@@ -332,7 +332,7 @@ def advance_hensel_occurrence(occurrence: CollatzHenselOccurrence) -> CollatzHen
 class CollatzHenselOccurrenceCarrier:
     """Intern exact occurrences while sharing action identities."""
 
-    __slots__ = ("_actions", "_occurrences", "requests", "hits")
+    __slots__ = ("_actions", "_occurrences", "hits", "requests")
 
     def __init__(self) -> None:
         require_endpoint_construction()
@@ -483,7 +483,7 @@ __all__ = [
     "CollatzHenselOccurrence",
     "CollatzHenselOccurrenceCarrier",
     "CollatzHenselStep",
+    "advance_hensel_occurrence",
     "canonicalize_hensel_occurrence",
     "hensel_second_image",
-    "advance_hensel_occurrence",
 ]

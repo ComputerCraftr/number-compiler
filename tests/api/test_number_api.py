@@ -77,7 +77,9 @@ def test_cli_value_symbolic_json_and_family_alias(
     assert cli_main(["fermat", "--nth", "20", "--format", "symbolic"]) == 0
     assert capsys.readouterr().out.strip() == "2^(2^20)+1"
 
-    assert cli_main(["prime", "--nth", "10", "--format", "json", "--info", "metrics"]) == 0
+    assert (
+        cli_main(["prime", "--nth", "10", "--format", "json", "--info", "metrics"]) == 0
+    )
     obj = json.loads(capsys.readouterr().out)
     assert obj["value"] == "31"
     assert obj["info"]["metrics"]["projection_work"] > 0

@@ -1,4 +1,3 @@
-#!/usr/bin/env python3
 """Cross-family compilation with explicitly scoped reverse carry-history proofs."""
 
 from __future__ import annotations
@@ -186,9 +185,9 @@ def _run_worker(name: str) -> WorkerReport:
 
 def _number(row: dict[str, object], field: str) -> int | float:
     value = row[field]
-    if not isinstance(value, (int, float)):
+    if type(value) not in (int, float):
         raise ValueError(f"non-numeric report field: {field}")
-    return value
+    return cast(int | float, value)
 
 
 def main() -> None:

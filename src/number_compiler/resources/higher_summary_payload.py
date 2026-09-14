@@ -27,13 +27,15 @@ from number_compiler.resources.ledger import ResourceLedger
 
 
 def _identity_index(mapping: object, record: object, index: int) -> bool:
+    if not isinstance(mapping, Mapping):
+        return False
     try:
-        found = mapping.get(record)  # type: ignore[attr-defined]
+        found = mapping.get(record)
         return type(found) is int and found == index
     except (KeyError, TypeError, AttributeError):
         return any(
             key is record and type(value) is int and value == index
-            for key, value in mapping.items()  # type: ignore[attr-defined]
+            for key, value in mapping.items()
         )
 
 

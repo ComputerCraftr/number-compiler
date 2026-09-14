@@ -2,14 +2,13 @@
 
 from __future__ import annotations
 
-from dataclasses import fields, is_dataclass
 from collections.abc import Hashable
+from dataclasses import fields, is_dataclass
 from typing import NamedTuple, cast
 
 from number_compiler.arithmetic.contracts.scoped_handles import ArenaHandle
 from number_compiler.resources.ledger import ResourceLedger
 from number_compiler.resources.stores import LedgerDict, LedgerList
-
 
 _FieldAnchor = tuple[str, object, object | None]
 _Guard = tuple[object, type[object], tuple[str, ...], tuple[_FieldAnchor, ...]]
@@ -36,7 +35,10 @@ def _anchor_matches(value: object, expected: _FieldAnchor) -> bool:
 
 def _root_anchor(value: object) -> object:
     if type(value) is tuple:
-        return ("tuple", tuple(_anchor(item) for item in cast(tuple[object, ...], value)))
+        return (
+            "tuple",
+            tuple(_anchor(item) for item in cast(tuple[object, ...], value)),
+        )
     if type(value) is frozenset:
         return ("frozenset", value)
     return _anchor(value)
@@ -48,8 +50,13 @@ def _root_matches(value: object, expected: object) -> bool:
             return False
         children = cast(tuple[object, ...], value)
         anchors = expected[1]
-        return type(anchors) is tuple and len(children) == len(anchors) and all(
-            _anchor_matches(child, anchor) for child, anchor in zip(children, anchors)
+        return (
+            type(anchors) is tuple
+            and len(children) == len(anchors)
+            and all(
+                _anchor_matches(child, anchor)
+                for child, anchor in zip(children, anchors)
+            )
         )
     if type(value) is frozenset:
         return (
@@ -97,20 +104,18 @@ class PublicationSeals:
         ledger.register_container(
             self._projection_owner,
             self.projections,
-            node_count=lambda: sum(item.retained_nodes for item in self.projections.values()),
+            node_count=lambda: sum(
+                item.retained_nodes for item in self.projections.values()
+            ),
             payloads=self.projections.items,
         )
 
     def append_image(self, seal: PublicationSeal) -> None:
-        self.ledger.reserve(
-            self._image_owner, entries=1, nodes=seal.retained_nodes
-        )
+        self.ledger.reserve(self._image_owner, entries=1, nodes=seal.retained_nodes)
         try:
             self.images.append(seal)
         except BaseException:
-            self.ledger.release(
-                self._image_owner, entries=1, nodes=seal.retained_nodes
-            )
+            self.ledger.release(self._image_owner, entries=1, nodes=seal.retained_nodes)
             raise
 
     def pop_image(self) -> PublicationSeal:
@@ -146,9 +151,7 @@ class PublicationSeals:
         image_count, projection_count = len(self.images), len(self.projections)
         self.images.clear()
         self.projections.clear()
-        self.ledger.release(
-            self._image_owner, entries=image_count, nodes=image_nodes
-        )
+        self.ledger.release(self._image_owner, entries=image_count, nodes=image_nodes)
         self.ledger.release(
             self._projection_owner,
             entries=projection_count,

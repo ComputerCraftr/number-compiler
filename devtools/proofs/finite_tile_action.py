@@ -37,13 +37,13 @@ class FiniteTileActionMetrics:
 
 class _SideArena:
     __slots__ = (
-        "effect",
-        "side",
-        "state_count",
-        "alphabet_size",
         "_arena",
         "_tile_actions",
+        "alphabet_size",
+        "effect",
         "requests",
+        "side",
+        "state_count",
         "tile_hits",
     )
 
@@ -199,4 +199,4 @@ class FiniteTileActionArena:
         return self.left.metrics(), self.right.metrics()
 
 
-__all__ = ["FiniteTileActionMetrics", "FiniteTileActionArena"]
+__all__ = ["FiniteTileActionArena", "FiniteTileActionMetrics"]

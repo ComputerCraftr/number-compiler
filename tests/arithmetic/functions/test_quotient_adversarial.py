@@ -42,26 +42,17 @@ from number_compiler.resources.ledger import ResourceLedger
 
 if TYPE_CHECKING:
     from number_compiler.arithmetic.functions.finite_function_types import (
-        SemanticFunctionID,
         SemanticNode,
         SemanticRequest,
     )
-    from number_compiler.arithmetic.functions.semantic_functions import (
-        SemanticFunctionArena,
-    )
     from number_compiler.hashlife.actions.diamond_actions import (
-        ImageCellArena,
         PortSignatureID,
     )
     from number_compiler.hashlife.interfaces.diamond_quotient import (
-        DiamondKey,
-        DiamondQuotientArena,
         LocalInterfaceID,
-        MacroComponents,
-        MacroInterface,
         QuotientRecord,
     )
-    from number_compiler.resources.ledger import ResourceInventory, ResourceLedger
+    from number_compiler.resources.ledger import ResourceInventory
 
 
 def _fixture() -> tuple[

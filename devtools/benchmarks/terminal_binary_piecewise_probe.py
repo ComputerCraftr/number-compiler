@@ -1,4 +1,3 @@
-#!/usr/bin/env python3
 """Reproducible shared binary-handler / Frobenius source-projection audit."""
 
 from __future__ import annotations
@@ -6,13 +5,13 @@ from __future__ import annotations
 import json
 
 from devtools.benchmarks.report_schema import record, records
+from devtools.experiments.power_numbers.terminal_etale_square import (
+    special_etale_tile_applicability_audit,
+)
 from devtools.experiments.power_numbers.terminal_projective_wreath import (
     ODOMETER_BINARY_HANDLER,
     candidate_frobenius_section_probe,
     odometer_section_step,
-)
-from devtools.experiments.power_numbers.terminal_etale_square import (
-    special_etale_tile_applicability_audit,
 )
 from devtools.paths import report_output, repository_root
 from number_compiler.arithmetic.fields.binary_piecewise import (

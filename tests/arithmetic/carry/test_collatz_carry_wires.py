@@ -3,14 +3,15 @@
 from __future__ import annotations
 
 from itertools import product
+from typing import cast
 
 import pytest
 
+from number_compiler.arithmetic.carry.carry_monoid import CarryFn
 from number_compiler.arithmetic.carry.collatz_carry_wires import (
     CollatzCarryWires,
     collatz_digit_carry_wires,
 )
-from number_compiler.arithmetic.carry.carry_monoid import CarryFn
 from number_compiler.sequences.collatz.pair import mul3_carry_monoid
 
 
@@ -64,11 +65,11 @@ def test_empty_identity_is_distinct_from_every_nonempty_digit_action() -> None:
 @pytest.mark.parametrize("invalid", (True, 1.0))
 def test_two_wire_digit_law_rejects_numeric_aliases(invalid: object) -> None:
     with pytest.raises(TypeError):
-        collatz_digit_carry_wires(invalid)  # type: ignore[arg-type]
+        collatz_digit_carry_wires(cast(int, invalid))
     with pytest.raises(TypeError):
-        collatz_digit_carry_wires(1, base=invalid)  # type: ignore[arg-type]
+        collatz_digit_carry_wires(1, base=cast(int, invalid))
     with pytest.raises(TypeError):
-        mul3_carry_monoid(invalid)  # type: ignore[arg-type]
+        mul3_carry_monoid(cast(int, invalid))
 
 
 def test_two_wire_law_declines_radices_without_independent_thresholds() -> None:

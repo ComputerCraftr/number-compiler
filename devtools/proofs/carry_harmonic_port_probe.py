@@ -5,11 +5,13 @@ from __future__ import annotations
 import argparse
 import json
 from collections import defaultdict
-from itertools import product
+from itertools import pairwise, product
 
 from devtools.proofs import exact_oracle
 from devtools.proofs.carry_harmonic_ports import (
     CarryHarmonicPortAction as Action,
+)
+from devtools.proofs.carry_harmonic_ports import (
     PortRows,
     compose_rows,
     harmonic_sum,
@@ -33,9 +35,7 @@ def direct_rows(word: tuple[int, ...], *, border: bool = False) -> PortRows:
     rows = []
     for incoming in (0, 1):
         carry = scan_carry_automaton(word, incoming=incoming).boundaries
-        values = (
-            tuple(b - a for a, b in zip(carry, carry[1:])) if border else carry[:-1]
-        )
+        values = tuple(b - a for a, b in pairwise(carry)) if border else carry[:-1]
         rows.append((carry[-1], *harmonic_sum(values)))
     return rows[0], rows[1]
 

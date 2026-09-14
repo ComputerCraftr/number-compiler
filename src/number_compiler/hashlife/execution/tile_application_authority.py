@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import logging
 from collections.abc import Mapping
 from dataclasses import dataclass, replace
 from sys import is_finalizing
@@ -161,7 +162,7 @@ class TileApplicationRegistry:
         if cleanup.root is not None:
             if cleanup.root._issuer is not application.scheduler.results:
                 raise ValueError("tile application has a foreign completed root")
-            cleanup.root.result
+            _ = cleanup.root.result
         validate_admitted_binding(application, cleanup.admitted, source)
         return application
 
@@ -180,7 +181,7 @@ class TileApplicationRegistry:
             or root._issuer is not application.scheduler.results
         ):
             raise ValueError("tile application has a foreign completed root")
-        root.result
+        _ = root.result
         previous = self.records[application.identity]
         if previous.root is not None:
             raise ValueError("tile application already owns a completed root")
@@ -206,6 +207,7 @@ class TileApplicationRegistry:
                 if lease is not None:
                     lease.close()
             except BaseException as caught:
+                logging.getLogger(__name__).debug("Lease cleanup failed", exc_info=True)
                 if error is None:
                     error = caught
         self.ledger.release(self.owner, entries=1, nodes=8)
@@ -282,7 +284,7 @@ def audit_tile_application_registry(
             source = application._input.tile
             if cleanup.root is not None:
                 valid &= cleanup.root._issuer is application.scheduler.results
-                cleanup.root.result
+                _ = cleanup.root.result
             validate_application_issuer(application)
             validate_admitted_binding(application, cleanup.admitted, source)
         except (AttributeError, KeyError, TypeError, ValueError):
@@ -375,9 +377,9 @@ def validate_application_dependencies(
 
 __all__ = [
     "TileApplicationRegistry",
-    "audit_tile_application_registry",
     "application_by_id",
     "application_source",
+    "audit_tile_application_registry",
     "validate_application_dependencies",
     "validate_application_issuer",
 ]

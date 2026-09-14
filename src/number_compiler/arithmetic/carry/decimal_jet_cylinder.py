@@ -7,8 +7,8 @@ This finite observation intentionally does not own exact value successors.
 
 from __future__ import annotations
 
+from collections.abc import Iterable
 from dataclasses import dataclass
-from typing import Iterable
 
 from number_compiler.arithmetic.carry.carry_monoid import (
     CarryFn,

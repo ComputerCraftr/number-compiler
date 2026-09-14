@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from typing import TYPE_CHECKING, Never, cast
+from typing import Never, cast
 
 import pytest
 
@@ -25,9 +25,6 @@ from number_compiler.sequences.collatz.raw_field import (
     CollatzSentinelBoundarySummary,
     summarize_collatz_sentinel_boundaries,
 )
-
-if TYPE_CHECKING:
-    from number_compiler.sequences.collatz.character import CollatzRadialCharacter
 
 
 @pytest.mark.validation  # Exhaustive growth-character check across 5,000 odd sources.
@@ -131,7 +128,7 @@ def test_character_types_reject_nonsemantic_inputs() -> None:
 def test_number_api_character_queries_bypass_orbit_and_root_germ(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    import number_compiler.api.number_api as number_api
+    from number_compiler.api import number_api
 
     def forbidden(*_args: object, **_kwargs: object) -> Never:
         raise AssertionError(

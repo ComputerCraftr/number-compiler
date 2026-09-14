@@ -1,3 +1,5 @@
+import itertools
+
 from devtools.proofs.oracles.special_primality import lucas_lehmer_test, pepin_test
 from number_compiler.arithmetic.carry.carry_itinerary import negacyclic_transport_kernel
 from number_compiler.arithmetic.polynomials.cyclotomic import (
@@ -66,8 +68,8 @@ def test_power_two_cyclotomic_closed_valuation_matches_expanded_negacyclic_kerne
     modulus = 1 << bits
     for classes in (2, 4, 8):
         assert power_two_cyclotomic_modulus(10, classes) == 10**classes + 1
-        for q in range(0, 6):
-            for r in range(0, 3 * classes + 2):
+        for q in range(6):
+            for r in range(3 * classes + 2):
                 closed = power_two_cyclotomic_transport(classes, q, r)
                 kernel = negacyclic_transport_kernel(classes, q, r, modulus=modulus)
                 got_annihilated = not any(kernel)
@@ -104,7 +106,7 @@ def test_fermat_generation_is_squaring_after_subtracting_one_and_product_identit
     None
 ):
     values = [fermat_number(n) for n in range(6)]
-    for a, b in zip(values, values[1:]):
+    for a, b in itertools.pairwise(values):
         assert fermat_successor(a) == b
     product = 1
     for n, value in enumerate(values):
@@ -115,7 +117,7 @@ def test_fermat_generation_is_squaring_after_subtracting_one_and_product_identit
 
 def test_mersenne_generation_is_affine_after_adding_one() -> None:
     values = [mersenne_number(p) for p in range(1, 12)]
-    for a, b in zip(values, values[1:]):
+    for a, b in itertools.pairwise(values):
         assert mersenne_successor(a) == b
 
 

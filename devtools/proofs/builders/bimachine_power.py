@@ -1,4 +1,3 @@
-#!/usr/bin/env python3
 """Direct classical-bimachine powering experiment for reverse/add pair halves.
 
 Implements the direct composition construction of Mihov/Schulz §6.4 for a

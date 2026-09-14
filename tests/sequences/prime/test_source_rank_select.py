@@ -1,21 +1,24 @@
 """Production prime rank/select must discover its own complete factor prefix."""
 
 from math import gcd, isqrt
+from typing import cast
 
 import pytest
 
-from number_compiler.sequences.prime.coprime_rank import CoprimeRankDAG
-from number_compiler.sequences.prime.select import PrimePrefixRank, nth_prime_at_or_after
 from number_compiler.resources.process_cache import (
     ProcessCache,
     clear_process_cache,
     get_process_cache,
 )
+from number_compiler.sequences.prime.coprime_rank import CoprimeRankDAG
+from number_compiler.sequences.prime.select import (
+    PrimePrefixRank,
+    nth_prime_at_or_after,
+)
 
 
 def reference_primes(high: int) -> list[int]:
-    return [n for n in range(2, high + 1)
-            if all(n % d for d in range(2, isqrt(n) + 1))]
+    return [n for n in range(2, high + 1) if all(n % d for d in range(2, isqrt(n) + 1))]
 
 
 def test_counts_include_square_boundary_and_extend_past_eleven_stages() -> None:
@@ -46,7 +49,9 @@ def test_source_selection_matches_independent_prime_reference(start: int) -> Non
             assert metrics.dag_states > 0
             assert metrics.cache_hits > 0
             assert metrics.projection_work >= metrics.dag_states
-            assert metrics.retained_entries == metrics.dag_states + metrics.factor_stages
+            assert (
+                metrics.retained_entries == metrics.dag_states + metrics.factor_stages
+            )
             assert metrics.leaf_length == 1
 
 
@@ -73,23 +78,37 @@ def test_source_image_work_cannot_escape_prime_work_budget() -> None:
     # units. The actual source-image validation and filter must share the cap.
     with pytest.raises(ValueError, match="work budget"):
         nth_prime_at_or_after(
-            2, 10, max_work=154, max_states=10000, shared_cache=False,
+            2,
+            10,
+            max_work=154,
+            max_states=10000,
+            shared_cache=False,
         )
     value, metrics = nth_prime_at_or_after(
-        2, 10, max_work=1000, max_states=10000, shared_cache=False,
+        2,
+        10,
+        max_work=1000,
+        max_states=10000,
+        shared_cache=False,
     )
     assert value == 31
     assert 0 < metrics.scheduler_work <= metrics.projection_work <= 1000
 
 
-@pytest.mark.parametrize("limits, message", [
-    ({"max_states": 1, "max_work": 100000, "max_stages": 100}, "state budget"),
-    ({"max_states": 10000, "max_work": 3, "max_stages": 100}, "work budget"),
-    ({"max_states": 10000, "max_work": 100000, "max_stages": 1}, "stage budget"),
-])
-def test_budget_refusal_releases_frames_and_owned_storage(limits: dict[str, int], message: str) -> None:
+@pytest.mark.parametrize(
+    "limits, message",
+    [
+        ({"max_states": 1, "max_work": 100000, "max_stages": 100}, "state budget"),
+        ({"max_states": 10000, "max_work": 3, "max_stages": 100}, "work budget"),
+        ({"max_states": 10000, "max_work": 100000, "max_stages": 1}, "stage budget"),
+    ],
+)
+def test_budget_refusal_releases_frames_and_owned_storage(
+    limits: dict[str, int], message: str
+) -> None:
     owner = PrimePrefixRank(
-        max_states=limits["max_states"], max_work=limits["max_work"],
+        max_states=limits["max_states"],
+        max_work=limits["max_work"],
         max_stages=limits["max_stages"],
     )
     try:
@@ -104,11 +123,16 @@ def test_budget_refusal_releases_frames_and_owned_storage(limits: dict[str, int]
     assert owner.dag.ledger.entries == owner.dag.ledger.nodes == 0
 
 
-def test_selector_cannot_reenter_legacy_lane_or_primality_oracles(monkeypatch: pytest.MonkeyPatch) -> None:
-    from number_compiler.sequences.prime import lane_quotient, set as prime_set, wheel_cyclotomic
+def test_selector_cannot_reenter_legacy_lane_or_primality_oracles(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from number_compiler.sequences.prime import lane_quotient, wheel_cyclotomic
+    from number_compiler.sequences.prime import set as prime_set
 
     def forbidden(*args: object, **kwargs: object) -> None:
-        raise AssertionError("selector reentered legacy lane, bitmap or supplied prime oracle")
+        raise AssertionError(
+            "selector reentered legacy lane, bitmap or supplied prime oracle"
+        )
 
     monkeypatch.setattr(lane_quotient, "compile_prime_block_lane_quotient", forbidden)
     monkeypatch.setattr(prime_set, "project_odd_prime_block", forbidden)
@@ -122,10 +146,12 @@ def test_selector_cannot_reenter_legacy_lane_or_primality_oracles(monkeypatch: p
 @pytest.mark.parametrize("bad", [True, 3.9, "3"])
 def test_direct_selector_rejects_non_integer_indices(bad: object) -> None:
     with pytest.raises(TypeError):
-        nth_prime_at_or_after(2, bad)  # type: ignore[arg-type]
+        nth_prime_at_or_after(2, cast(int, bad))
 
 
-def test_wheel_and_production_share_the_same_count_owner(monkeypatch: pytest.MonkeyPatch) -> None:
+def test_wheel_and_production_share_the_same_count_owner(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
     from number_compiler.sequences.prime.wheel_cyclotomic import _wheel_count_leq
 
     original = CoprimeRankDAG.count
@@ -150,7 +176,9 @@ def test_wheel_and_production_share_the_same_count_owner(monkeypatch: pytest.Mon
 
 
 @pytest.mark.parametrize("retain_queries", [False, True])
-def test_closed_workspaces_cannot_be_reused_as_an_empty_descriptor(retain_queries: bool) -> None:
+def test_closed_workspaces_cannot_be_reused_as_an_empty_descriptor(
+    retain_queries: bool,
+) -> None:
     from number_compiler.resources.ownership import audit_execution_ownership
 
     dag = CoprimeRankDAG((2, 3), retain_queries=retain_queries)
@@ -192,12 +220,16 @@ def test_warm_reuse_cannot_bypass_request_state_or_stage_limits() -> None:
         _, cold = nth_prime_at_or_after(10_000, 0, shared_cache=True)
         with pytest.raises(ValueError, match="state budget"):
             nth_prime_at_or_after(
-                10_000, 0, shared_cache=True,
+                10_000,
+                0,
+                shared_cache=True,
                 max_states=max(1, cold.dag_states - 1),
             )
         with pytest.raises(ValueError, match="stage budget"):
             nth_prime_at_or_after(
-                10_000, 0, shared_cache=True,
+                10_000,
+                0,
+                shared_cache=True,
                 max_stages=max(1, cold.factor_stages - 1),
             )
     finally:
@@ -209,7 +241,11 @@ def test_larger_cached_prefix_is_admitted_for_a_smaller_query() -> None:
     try:
         nth_prime_at_or_after(100_000, 0, shared_cache=True)
         value, metrics = nth_prime_at_or_after(
-            100, 3, shared_cache=True, max_states=1_000, max_stages=10,
+            100,
+            3,
+            shared_cache=True,
+            max_states=1_000,
+            max_stages=10,
         )
         assert value == 109
         assert metrics.discovery_queries == 0
@@ -239,7 +275,8 @@ def test_foreign_public_partition_cannot_seed_the_private_prime_owner() -> None:
     cache = get_process_cache()
     try:
         with cache.acquire(
-            "prime.coprime-rank", "positive-integers-least-survivor-v1",
+            "prime.coprime-rank",
+            "positive-integers-least-survivor-v1",
             ("positive-integers", "consecutive-prime-prefix"),
         ) as lease:
             assert lease.put(("admitted-prefix",), (10, (2, 5), 0))

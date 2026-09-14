@@ -24,7 +24,6 @@ from number_compiler.resources.stores import LedgerDict, LedgerList
 from number_compiler.sequences.collatz.block_power import PoweredCollatzTerm
 
 if TYPE_CHECKING:
-    from devtools.proofs.lazy_collatz import CollatzLazyView, LazyCollatzApplication
     from number_compiler.resources.ledger import ResourceLedger
 
 

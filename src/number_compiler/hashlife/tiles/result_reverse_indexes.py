@@ -2,13 +2,14 @@
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, cast
 
 from number_compiler.hashlife.tiles.tile_result_records import (
     _ReverseHead,
     _ReverseLinks,
     _ReverseMember,
 )
+from number_compiler.hashlife.tiles.tile_result_types import is_execution_key
 from number_compiler.hashlife.tiles.tile_results import (
     _MISSING,
 )
@@ -17,7 +18,12 @@ from number_compiler.hashlife.tiles.tiles import TileID
 if TYPE_CHECKING:
     from number_compiler.hashlife.tiles.tile_result_types import (
         ExecutionKey as _ExecutionKey,
+    )
+    from number_compiler.hashlife.tiles.tile_result_types import (
         ReverseKey as _ReverseKey,
+    )
+    from number_compiler.hashlife.tiles.tile_result_types import (
+        ReverseValue,
     )
     from number_compiler.hashlife.tiles.tile_results import CompletedResultArena
 
@@ -31,17 +37,15 @@ def _index_entries(self: CompletedResultArena, tiles: tuple[TileID, ...]) -> int
 def _add_membership(
     self: CompletedResultArena, tile: TileID, key: _ExecutionKey
 ) -> None:
-    from number_compiler.hashlife.tiles.tile_results import _is_execution_key
-
     head_key = _ReverseHead(tile)
     previous = self._reverse.get(head_key)
-    if previous is not None and not _is_execution_key(previous):
+    if previous is not None and not is_execution_key(previous):
         raise ValueError("completed-result reverse head is corrupt")
     member_key = _ReverseMember(tile, key)
     if member_key in self._reverse:
         raise ValueError("completed-result reverse membership is duplicated")
     self._write_reverse(member_key, _ReverseLinks(None, previous))
-    if _is_execution_key(previous):
+    if is_execution_key(previous):
         old_key = _ReverseMember(tile, previous)
         links = self._reverse.get(old_key)
         if type(links) is not _ReverseLinks:
@@ -55,19 +59,16 @@ def _reverse_snapshot(
     tiles: tuple[TileID, ...],
     key: _ExecutionKey,
 ) -> tuple[tuple[_ReverseKey, object], ...]:
-    from number_compiler.hashlife.tiles.tile_results import _is_execution_key
-
     touched: list[_ReverseKey] = []
     for tile in tiles:
         head_key = _ReverseHead(tile)
         member_key = _ReverseMember(tile, key)
         touched.extend((head_key, member_key))
         previous = self._reverse.get(head_key)
-        if _is_execution_key(previous):
+        if is_execution_key(previous):
             touched.append(_ReverseMember(tile, previous))
     return tuple(
-        (item, self._reverse[item] if item in self._reverse else _MISSING)
-        for item in dict.fromkeys(touched)
+        (item, self._reverse.get(item, _MISSING)) for item in dict.fromkeys(touched)
     )
 
 
@@ -79,7 +80,9 @@ def _restore_reverse(
         if value is _MISSING:
             self._reverse.pop(key, None)
         else:
-            self._reverse[key] = value  # type: ignore[assignment]
+            # Snapshot entries came from this typed store; only the absence
+            # sentinel widened their annotation while the mutation was pending.
+            self._reverse[key] = cast("ReverseValue", value)
 
 
 def _remove_membership(

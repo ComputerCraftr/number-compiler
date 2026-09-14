@@ -21,8 +21,7 @@ from number_compiler.resources.ledger import ResourceLedger
 from number_compiler.resources.stores import LedgerDict
 
 if TYPE_CHECKING:
-    from number_compiler.hashlife.tiles.tiles import TileAlphabetID, TileArena
-    from number_compiler.resources.ledger import ResourceLedger
+    from number_compiler.hashlife.tiles.tiles import TileAlphabetID
 
 
 def _arena() -> tuple[ResourceLedger, TileArena, TileAlphabetID]:
@@ -44,19 +43,22 @@ def _reconciled(ledger: ResourceLedger) -> None:
 
 def test_sources_and_future_content_share_live_tiles_and_derived_summaries() -> None:
     ledger, arena, alphabet = _arena()
-    with arena.leaf(alphabet, 0) as zero, arena.leaf(alphabet, 1) as one:
-        with arena.join(zero.tile, one.tile) as source:
-            with arena.join(zero.tile, one.tile) as future:
-                assert source.tile == future.tile
-                record = arena.resolve(future.tile)
-                assert (
-                    record.level,
-                    record.first_active,
-                    record.last_active,
-                    record.extent,
-                ) == (1, 0, 1, 2)
-                assert [arena.point(future.tile, i) for i in (0, 1)] == [0, 1]
-                assert ledger.counters["tile_intern_early_hits"] == 1
+    with (
+        arena.leaf(alphabet, 0) as zero,
+        arena.leaf(alphabet, 1) as one,
+        arena.join(zero.tile, one.tile) as source,
+        arena.join(zero.tile, one.tile) as future,
+    ):
+        assert source.tile == future.tile
+        record = arena.resolve(future.tile)
+        assert (
+            record.level,
+            record.first_active,
+            record.last_active,
+            record.extent,
+        ) == (1, 0, 1, 2)
+        assert [arena.point(future.tile, i) for i in (0, 1)] == [0, 1]
+        assert ledger.counters["tile_intern_early_hits"] == 1
     assert not arena._nodes and not arena._keys and not arena._edges
     _reconciled(ledger)
 
@@ -206,7 +208,7 @@ def test_zero_budget_rejects_first_required_allocation() -> None:
 
 @pytest.mark.parametrize("alias", (True, 1.0, -1, 100))
 def test_corrupt_alphabet_interner_rejects_before_warm_return(
-    alias: bool | float | int,
+    alias: bool | float,
 ) -> None:
     ledger, arena, alphabet = _arena()
     definition = arena.alphabet(alphabet)
@@ -282,24 +284,25 @@ def test_independent_tile_audit_detects_corrupted_content_and_ownership(
 
 def test_clipped_extent_does_not_invent_activity_in_padding_or_gaps() -> None:
     ledger, tiles, alphabet = _arena()
-    with tiles.leaf(alphabet, 1) as one, tiles.leaf(alphabet, 2) as blank:
-        with (
-            tiles.join(one.tile, blank.tile) as low,
-            tiles.join(blank.tile, one.tile) as high,
-        ):
-            with tiles.join(low.tile, high.tile) as root:
-                assert [tiles.active_width(root.tile, stop) for stop in range(5)] == [
-                    0,
-                    1,
-                    1,
-                    1,
-                    4,
-                ]
-                before = ledger.snapshot()
-                for bad in (True, 1.0, -1, 5):
-                    with pytest.raises((ValueError, TypeError)):
-                        tiles.active_width(root.tile, cast("int | None", bad))
-                    assert ledger.snapshot() == before
+    with (
+        tiles.leaf(alphabet, 1) as one,
+        tiles.leaf(alphabet, 2) as blank,
+        tiles.join(one.tile, blank.tile) as low,
+        tiles.join(blank.tile, one.tile) as high,
+        tiles.join(low.tile, high.tile) as root,
+    ):
+        assert [tiles.active_width(root.tile, stop) for stop in range(5)] == [
+            0,
+            1,
+            1,
+            1,
+            4,
+        ]
+        before = ledger.snapshot()
+        for bad in (True, 1.0, -1, 5):
+            with pytest.raises((ValueError, TypeError)):
+                tiles.active_width(root.tile, cast("int | None", bad))
+            assert ledger.snapshot() == before
 
 
 def test_tile_retirement_cannot_install_an_arbitrary_callback_owner() -> None:
@@ -322,34 +325,32 @@ def test_exact_tile_mirror_is_iterative_involutive_and_warm(
     from number_compiler.resources.metric_collection import collect_ledger_metrics
 
     ledger, arena, alphabet = _arena()
-    with arena.leaf(alphabet, 0) as zero, arena.leaf(alphabet, 1) as one:
-        with arena.leaf(alphabet, 2) as blank:
-            with arena.join(zero.tile, one.tile) as low:
-                with arena.join(blank.tile, zero.tile) as high:
-                    with arena.join(low.tile, high.tile) as source:
-                        mirrored = arena.mirror(source.tile)
-                        assert [arena.point(mirrored.tile, i) for i in range(4)] == [
-                            0,
-                            2,
-                            1,
-                            0,
-                        ]
-                        with arena.mirror(mirrored.tile) as restored:
-                            assert restored.tile == source.tile
-                        before = ledger.snapshot()
+    with (
+        arena.leaf(alphabet, 0) as zero,
+        arena.leaf(alphabet, 1) as one,
+        arena.leaf(alphabet, 2) as blank,
+        arena.join(zero.tile, one.tile) as low,
+        arena.join(blank.tile, zero.tile) as high,
+        arena.join(low.tile, high.tile) as source,
+    ):
+        mirrored = arena.mirror(source.tile)
+        assert [arena.point(mirrored.tile, i) for i in range(4)] == [0, 2, 1, 0]
+        with arena.mirror(mirrored.tile) as restored:
+            assert restored.tile == source.tile
+        before = ledger.snapshot()
 
-                        def forbidden(*_args: object, **_kwargs: object) -> Never:
-                            raise AssertionError("warm mirror rebuilt exact children")
+        def forbidden(*_args: object, **_kwargs: object) -> Never:
+            raise AssertionError("warm mirror rebuilt exact children")
 
-                        monkeypatch.setattr(TileArena, "join", forbidden)
-                        monkeypatch.setattr(TileArena, "_publish_mirror", forbidden)
-                        with arena.mirror(source.tile) as warm:
-                            assert warm.tile == mirrored.tile
-                        assert ledger.counters["tile_mirror_early_hits"] >= 2
-                        metrics = collect_ledger_metrics(ledger)
-                        assert metrics.tile_mirror_relation_entries > 0
-                        assert ledger.entries == before.entries
-                        mirrored.close()
+        monkeypatch.setattr(TileArena, "join", forbidden)
+        monkeypatch.setattr(TileArena, "_publish_mirror", forbidden)
+        with arena.mirror(source.tile) as warm:
+            assert warm.tile == mirrored.tile
+        assert ledger.counters["tile_mirror_early_hits"] >= 2
+        metrics = collect_ledger_metrics(ledger)
+        assert metrics.tile_mirror_relation_entries > 0
+        assert ledger.entries == before.entries
+        mirrored.close()
     assert not arena._nodes and not arena._keys
     _reconciled(ledger)
 
@@ -379,33 +380,35 @@ def test_two_way_mirror_index_rolls_back_if_second_write_fails(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     ledger, arena, alphabet = _arena()
-    with arena.leaf(alphabet, 0) as zero, arena.leaf(alphabet, 1) as one:
-        with arena.mirror(zero.tile), arena.mirror(one.tile):
-            with arena.join(zero.tile, one.tile) as source:
-                with arena.join(one.tile, zero.tile) as reflected:
-                    before = ledger.snapshot()
-                    writes = 0
-                    original = TileArena._write_mirror
+    with (
+        arena.leaf(alphabet, 0) as zero,
+        arena.leaf(alphabet, 1) as one,
+        arena.mirror(zero.tile),
+        arena.mirror(one.tile),
+        arena.join(zero.tile, one.tile) as source,
+        arena.join(one.tile, zero.tile) as reflected,
+    ):
+        before = ledger.snapshot()
+        writes = 0
+        original = TileArena._write_mirror
 
-                    def fail_second(
-                        self: TileArena, key: _TileKey, local_id: int
-                    ) -> None:
-                        nonlocal writes
-                        writes += 1
-                        if writes == 2:
-                            raise RuntimeError("injected mirror reverse-index failure")
-                        original(self, key, local_id)
+        def fail_second(self: TileArena, key: _TileKey, local_id: int) -> None:
+            nonlocal writes
+            writes += 1
+            if writes == 2:
+                raise RuntimeError("injected mirror reverse-index failure")
+            original(self, key, local_id)
 
-                    monkeypatch.setattr(TileArena, "_write_mirror", fail_second)
-                    with pytest.raises(RuntimeError, match="reverse-index"):
-                        arena._publish_mirror(source.tile, reflected.tile)
-                    assert (ledger.entries, ledger.nodes, ledger.inventory()) == (
-                        before.entries,
-                        before.nodes,
-                        before.inventory,
-                    )
-                    assert arena._mirror_target(source.tile) is None
-                    assert arena._mirror_target(reflected.tile) is None
+        monkeypatch.setattr(TileArena, "_write_mirror", fail_second)
+        with pytest.raises(RuntimeError, match="reverse-index"):
+            arena._publish_mirror(source.tile, reflected.tile)
+        assert (ledger.entries, ledger.nodes, ledger.inventory()) == (
+            before.entries,
+            before.nodes,
+            before.inventory,
+        )
+        assert arena._mirror_target(source.tile) is None
+        assert arena._mirror_target(reflected.tile) is None
 
 
 def test_tile_mirror_budget_failure_precedes_relation_mutation() -> None:

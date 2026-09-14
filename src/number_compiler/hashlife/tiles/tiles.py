@@ -9,7 +9,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from gc import get_stats
 from time import perf_counter_ns
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Self
 
 from number_compiler.arithmetic.contracts.scoped_handles import ArenaHandle, ArenaToken
 from number_compiler.resources.cache_gc_metrics import CacheEventMetrics
@@ -95,7 +95,7 @@ _MIRROR_SENTINEL = -2
 class TileLease:
     """An explicit root reference; close it when the owner releases its result."""
 
-    __slots__ = ("_arena", "_id", "_closed")
+    __slots__ = ("_arena", "_closed", "_id")
 
     def __init__(self, arena: TileArena, lease_id: int, seal: object) -> None:
         if seal is not _LEASE_SEAL:
@@ -119,8 +119,8 @@ class TileLease:
             self._arena._release_lease(self._id)
             self._closed = True
 
-    def __enter__(self) -> TileLease:
-        self.tile
+    def __enter__(self) -> Self:
+        _ = self.tile
         return self
 
     def __exit__(self, *_exception: object) -> None:
@@ -667,10 +667,10 @@ class TileArena:
 
 
 __all__ = [
-    "TileAlphabetID",
-    "TileID",
     "TileAlphabet",
-    "TileRecord",
-    "TileLease",
+    "TileAlphabetID",
     "TileArena",
+    "TileID",
+    "TileLease",
+    "TileRecord",
 ]

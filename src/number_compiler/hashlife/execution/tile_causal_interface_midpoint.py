@@ -5,8 +5,6 @@ from __future__ import annotations
 from dataclasses import replace
 from typing import Any
 
-from number_compiler.resources.causal_workspace import CausalResults
-
 from number_compiler.hashlife.actions.field_actions import FieldCellActionID
 from number_compiler.hashlife.execution.tile_causal_interfaces import (
     CausalInterfacePayload,
@@ -17,14 +15,17 @@ from number_compiler.hashlife.execution.tile_causal_results import (
     causal_result_key,
     lookup_causal_result,
 )
-from number_compiler.hashlife.execution.tile_causal_tasks import CausalFrame
-from number_compiler.hashlife.execution.tile_causal_tasks import result_payload
+from number_compiler.hashlife.execution.tile_causal_tasks import (
+    CausalFrame,
+    result_payload,
+)
 from number_compiler.hashlife.tiles.tile_boundaries import BoundaryTileView
 from number_compiler.hashlife.tiles.tile_causal_interface_memo import (
     publish_causal_interface,
 )
 from number_compiler.hashlife.tiles.tile_result_records import CausalInterfaceKey
 from number_compiler.hashlife.tiles.tiles import TileID
+from number_compiler.resources.causal_workspace import CausalResults
 
 
 def cached_midpoint_interface_step(
@@ -146,11 +147,11 @@ def cached_midpoint_interface_step(
         return False
     second = values.pop()
     first, saved_key = frame.saved
-    if not isinstance(first, CausalCompletedOutput) or not isinstance(
-        second,
-        CausalInterfacePayload,
-    ):
-        raise AssertionError("cached interface edge returned another result sort")
+    match (first, second):
+        case (CausalCompletedOutput(), CausalInterfacePayload()):
+            pass
+        case _:
+            raise AssertionError("cached interface edge returned another result sort")
     from number_compiler.hashlife.execution.tile_physical_support import (
         temporal_physical_support,
     )

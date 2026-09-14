@@ -1,4 +1,3 @@
-#!/usr/bin/env python3
 """Reproducible report for the final Frobenius section-constructor frontier."""
 
 from __future__ import annotations

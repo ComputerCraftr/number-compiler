@@ -16,9 +16,6 @@ from number_compiler.resources.ledger import ResourceLedger
 
 if TYPE_CHECKING:
     from number_compiler.arithmetic.contracts.scoped_handles import ActionProgramID
-    from number_compiler.hashlife.execution.continuations.diamond_runtime import (
-        DiamondRuntime,
-    )
 
 
 def tiny() -> tuple[DiamondRuntime, ActionProgramID]:

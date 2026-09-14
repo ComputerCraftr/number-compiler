@@ -103,7 +103,6 @@ class NonblankBlockEffect:
 
     def predecessor(self, side: BoundarySide, state: BoundaryState) -> None:
         self._side(side)
-        return None
 
     def operator_nodes(self) -> int:
         return 1

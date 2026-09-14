@@ -106,7 +106,7 @@ def test_shared_macro_inventory_and_warm_reuse_do_not_execute_the_producer(
 def test_macro_binding_requires_actual_source_kernel_quotient_and_extent(
     fault: str,
 ) -> None:
-    runtime, arena, kernel, source, quotient = setup()
+    runtime, arena, kernel, source, _quotient = setup()
     key = PrimitiveMacroKey(kernel, source)
     binding = arena.bindings[key]
     if fault == "extent":
@@ -132,7 +132,7 @@ def test_macro_binding_requires_actual_source_kernel_quotient_and_extent(
 
 
 def test_observation_request_result_pair_cannot_enter_a_retained_macro_store() -> None:
-    runtime, arena, _, _, quotient = setup()
+    runtime, _arena, _, _, quotient = setup()
     owner = runtime.ledger.register("forged-primitive-output-cache", "query_memo")
     records: LedgerDict[object, object]
     records = runtime.ledger.make_dict(owner)

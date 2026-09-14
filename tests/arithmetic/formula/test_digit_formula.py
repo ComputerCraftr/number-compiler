@@ -192,7 +192,7 @@ def test_next_reverse_add_digits_get_growth_from_summary_not_terminal_carry_eval
 def test_growth_bit_compatibility_api_does_not_build_carry_scan(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    import number_compiler.arithmetic.formula.derived as derived
+    from number_compiler.arithmetic.formula import derived
     from number_compiler.sequences.reverse_add.digits import pair_root_from_integer
 
     arena = FormulaArena()

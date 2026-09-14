@@ -10,8 +10,6 @@ from __future__ import annotations
 
 from typing import Any
 
-from number_compiler.resources.causal_workspace import CausalResults
-
 from number_compiler.hashlife.execution.tile_causal_results import (
     combine_causal_outputs,
     lookup_causal_result,
@@ -23,6 +21,7 @@ from number_compiler.hashlife.execution.tile_causal_tasks import (
     producer_parent,
     result_payload,
 )
+from number_compiler.resources.causal_workspace import CausalResults
 
 
 def promotion_step(
@@ -45,8 +44,11 @@ def promotion_step(
     if engine._children(before) is None:
         values.append(False)
         return True
-    if not isinstance(left, CausalPrefix) or not isinstance(right, CausalPrefix):
-        raise ValueError("midpoint promotion requires exact causal prefixes")
+    match (left, right):
+        case (CausalPrefix(), CausalPrefix()):
+            pass
+        case _:
+            raise ValueError("midpoint promotion requires exact causal prefixes")
     if frame.stage == 0:
         frame.stage = 1
         frames.extend(

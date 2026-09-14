@@ -19,10 +19,10 @@ from number_compiler.hashlife.execution.tile_causal_tasks import (
     primitive_advance,
 )
 from number_compiler.hashlife.execution.tile_fused_kernel import fused_interface
-from number_compiler.hashlife.tiles.tile_boundaries import BoundaryTileView
 from number_compiler.hashlife.tiles.interface_publication import (
     lookup_execution_fused_interface,
 )
+from number_compiler.hashlife.tiles.tile_boundaries import BoundaryTileView
 from number_compiler.hashlife.tiles.tile_result_records import FusedInterfaceKey
 
 if TYPE_CHECKING:

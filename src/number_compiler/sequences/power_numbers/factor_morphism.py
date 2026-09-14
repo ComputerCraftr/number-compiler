@@ -334,9 +334,9 @@ def mersenne_factor_witness(
 
 
 __all__ = [
-    "ModularPowerWitness",
     "BatchedSpecialFactorWitness",
+    "ModularPowerWitness",
+    "batched_special_factor_witness",
     "fermat_factor_witness",
     "mersenne_factor_witness",
-    "batched_special_factor_witness",
 ]

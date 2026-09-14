@@ -90,4 +90,4 @@ def lucas_lehmer_test(exponent: int) -> LucasLehmerResult:
     )
 
 
-__all__ = ["PepinResult", "pepin_test", "LucasLehmerResult", "lucas_lehmer_test"]
+__all__ = ["LucasLehmerResult", "PepinResult", "lucas_lehmer_test", "pepin_test"]

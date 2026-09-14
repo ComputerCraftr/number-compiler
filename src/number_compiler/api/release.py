@@ -2,8 +2,10 @@
 
 from __future__ import annotations
 
+import logging
+from collections.abc import Callable, Iterable
 from dataclasses import dataclass
-from typing import Any, Callable, Iterable
+from typing import Any
 
 from number_compiler.arithmetic.automata.guard import JumpGuardViolation
 from number_compiler.arithmetic.formula.formula import FormulaRoot, formula_metrics
@@ -96,14 +98,19 @@ def _full_state_contract_error(backend: Any) -> str | None:
     try:
         seed = backend.seed_root()
     except Exception as exc:  # pragma: no cover - defensive release path
+        logging.getLogger(__name__).debug("Backend seed failed", exc_info=True)
         return f"seed_root failed: {exc}"
     if not isinstance(seed, FormulaRoot):
         return "full-state backend seed is not FormulaRoot"
     try:
         get_summary(backend.arena, seed, backend.spec, required=True)
     except Exception as exc:
+        logging.getLogger(__name__).debug("Backend summary failed", exc_info=True)
         return f"seed compiler summary unavailable: {exc}"
     return None
+
+
+_DEFAULT_RELEASE_COMPLEXITY_POLICY_1 = ReleaseComplexityPolicy()
 
 
 def certify_full_jump_backend(
@@ -111,7 +118,7 @@ def certify_full_jump_backend(
     *,
     probes: Iterable[int] = (0, 1, 2, 3, 7, 31, 63),
     exact_checker: Callable[[int, FormulaRoot], bool] | None = None,
-    complexity: ReleaseComplexityPolicy | None = ReleaseComplexityPolicy(),
+    complexity: ReleaseComplexityPolicy | None = _DEFAULT_RELEASE_COMPLEXITY_POLICY_1,
 ) -> FullJumpReleaseReport:
     error = _full_state_contract_error(backend)
     if error:
@@ -304,9 +311,9 @@ def require_full_jump_release(backend: Any, **kwargs: Any) -> FullJumpReleaseRep
 
 __all__ = [
     "FullJumpReleaseBlocked",
+    "FullJumpReleaseReport",
     "ReleaseComplexityPolicy",
     "ReleaseProbeResult",
-    "FullJumpReleaseReport",
     "certify_full_jump_backend",
     "require_full_jump_release",
 ]

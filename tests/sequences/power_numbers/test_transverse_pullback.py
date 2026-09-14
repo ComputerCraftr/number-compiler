@@ -1,5 +1,6 @@
 from math import gcd, isqrt
 from pathlib import Path
+from typing import Protocol, cast
 
 import pytest
 
@@ -19,6 +20,18 @@ from number_compiler.sequences.power_numbers.transverse_pullback import (
 )
 
 
+class _PullbackConstructorWithUnit(Protocol):
+    def __call__(
+        self,
+        family: str,
+        parameter: int,
+        odd_part: int,
+        window: SpecialTransverseWindow,
+        *,
+        unit: bool,
+    ) -> CompactTransverseHolonomyPullback: ...
+
+
 @pytest.mark.parametrize(
     ("family", "parameter", "slots"),
     (
@@ -36,9 +49,7 @@ def test_compact_transverse_window_matches_exact_sqrt_frontier(
     assert pullback.window.materialize(maximum_slots=slots) == slots
     assert not pullback.window.contains(slots + 1)
     modulus = (
-        (1 << (1 << parameter)) + 1
-        if family == "fermat"
-        else (1 << parameter) - 1
+        (1 << (1 << parameter)) + 1 if family == "fermat" else (1 << parameter) - 1
     )
     assert slots == (isqrt(modulus) - 1) // pullback.window.stride
 
@@ -89,7 +100,7 @@ def test_terminal_probe_admits_candidate_before_building_large_metadata(
 
 def test_compact_builder_rejects_non_exact_candidate_parameters() -> None:
     with pytest.raises(ValueError, match="special parameter"):
-        build_compact_transverse_pullback("fermat", 4.0)  # type: ignore[arg-type]
+        build_compact_transverse_pullback("fermat", cast(int, 4.0))
 
 
 def test_transverse_window_rejects_forged_progressions() -> None:
@@ -106,7 +117,7 @@ def test_transverse_window_rejects_forged_progressions() -> None:
 def test_compact_descriptor_cannot_accept_a_caller_decision() -> None:
     window = SpecialTransverseWindow("mersenne", 11, 22)
     with pytest.raises(TypeError, match="unexpected keyword argument 'unit'"):
-        CompactTransverseHolonomyPullback(  # type: ignore[call-arg]
+        cast(_PullbackConstructorWithUnit, CompactTransverseHolonomyPullback)(
             "mersenne", 11, 11, window, unit=True
         )
 
@@ -165,8 +176,7 @@ def test_m11_transverse_connection_reaches_exact_annihilator_without_factor_orac
     monkeypatch.setattr(oracle, "batched_special_factor_witness", forbidden)
     modulus = 2047
     assert all(
-        transverse_jet_coefficient_mod(modulus, order) == 0
-        for order in range(1, 23)
+        transverse_jet_coefficient_mod(modulus, order) == 0 for order in range(1, 23)
     )
     coefficient = transverse_jet_coefficient_mod(modulus, 23)
     assert coefficient == 89

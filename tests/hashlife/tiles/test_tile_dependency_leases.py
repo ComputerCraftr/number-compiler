@@ -8,7 +8,7 @@ import sys
 import weakref
 from collections.abc import Hashable
 from pathlib import Path
-from typing import TYPE_CHECKING, Never, TypeVar
+from typing import TYPE_CHECKING, Never, TypeVar, cast
 
 import pytest
 
@@ -16,12 +16,12 @@ from number_compiler.arithmetic.contracts.block_kernel import BaseBlockEffect
 from number_compiler.hashlife.execution.tile_application_authority import (
     audit_tile_application_registry,
 )
-from number_compiler.hashlife.tiles.tile_boundary_concat_memo import (
-    concat_cached_boundary_views,
-)
 from number_compiler.hashlife.tiles.tile_boundaries import (
     BoundaryTileOperands,
     BoundaryTileView,
+)
+from number_compiler.hashlife.tiles.tile_boundary_concat_memo import (
+    concat_cached_boundary_views,
 )
 from number_compiler.hashlife.tiles.tile_result_records import PoweredResultKey
 from number_compiler.resources.payload_audit import audit_registered_payloads
@@ -36,7 +36,6 @@ if TYPE_CHECKING:
         TileApplication,
         TileScheduler,
     )
-    from number_compiler.hashlife.tiles.tile_result_records import PoweredResultKey
     from number_compiler.hashlife.tiles.tile_results import ResultLease
     from number_compiler.hashlife.tiles.tiles import TileArena, TileLease
     from number_compiler.resources.ledger import ResourceLedger
@@ -302,7 +301,7 @@ def test_application_registry_rejects_numeric_aliases_without_lookup() -> None:
     result.close()
     for alias in (True, False, 0.0, -1):
         with pytest.raises(ValueError, match="invalid scoped identity"):
-            scheduler._applications.application(alias)  # type: ignore[arg-type]
+            scheduler._applications.application(cast(int, alias))
     application.close()
     boundary.close()
     dependency.close()
@@ -416,28 +415,30 @@ def test_application_registry_failed_publication_rolls_back(
 
 def test_application_registry_inventory_rejects_alias_and_stale_reference() -> None:
     ledger, tiles, adapter, action, scheduler = _runtime(BaseBlockEffect(3))
-    with _tile(tiles, adapter, action, (0, 0, 0, 1)) as source:
-        with scheduler.application(
+    with (
+        _tile(tiles, adapter, action, (0, 0, 0, 1)) as source,
+        scheduler.application(
             action,
             source.tile,
             adapter.initial_ports(action),
             adapter.wiring(action),
-        ) as application:
-            approved, invalid = audit_tile_application_registry(
-                scheduler._applications,
-                dict(ledger.iter_containers()),
-            )
-            assert not invalid
-            assert id(scheduler._applications.records) in approved
-            reference = scheduler._applications.records.pop(application.identity)
-            scheduler._applications.records[True] = reference
-            _, invalid = audit_tile_application_registry(
-                scheduler._applications,
-                dict(ledger.iter_containers()),
-            )
-            assert invalid
-            scheduler._applications.records.pop(True)
-            scheduler._applications.records[application.identity] = reference
+        ) as application,
+    ):
+        approved, invalid = audit_tile_application_registry(
+            scheduler._applications,
+            dict(ledger.iter_containers()),
+        )
+        assert not invalid
+        assert id(scheduler._applications.records) in approved
+        reference = scheduler._applications.records.pop(application.identity)
+        scheduler._applications.records[True] = reference
+        _, invalid = audit_tile_application_registry(
+            scheduler._applications,
+            dict(ledger.iter_containers()),
+        )
+        assert invalid
+        scheduler._applications.records.pop(True)
+        scheduler._applications.records[application.identity] = reference
 
 
 def test_application_cleanup_delete_failure_is_retryable(

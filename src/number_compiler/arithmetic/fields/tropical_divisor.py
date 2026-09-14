@@ -9,6 +9,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from math import gcd, lcm
+
 from number_compiler.arithmetic.fields.radix import bit_width
 
 

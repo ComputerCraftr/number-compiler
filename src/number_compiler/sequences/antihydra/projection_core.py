@@ -96,16 +96,14 @@ class _AntihydraFragmentAdapter(SourceBoundImageAdapter):
             f"antihydra.spacetime.core-source-seals.{len(self.ledger.inventory())}",
             "projection_binding",
         )
-        self._source_seals: MutableSequence[tuple[object, ...]] = (
-            self.ledger.make_list(self._source_seal_owner, append_only=False)
+        self._source_seals: MutableSequence[tuple[object, ...]] = self.ledger.make_list(
+            self._source_seal_owner, append_only=False
         )
         self.ledger.register_container(
             self._owner,
             self._records,
             node_count=lambda: sum(
-                1
-                + (record.leaf is not None)
-                + (record.prefix is not None)
+                1 + (record.leaf is not None) + (record.prefix is not None)
                 for record in self._records
             ),
             payloads=self._records.__iter__,
@@ -179,9 +177,7 @@ class _AntihydraFragmentAdapter(SourceBoundImageAdapter):
         self._context()
         if self._source_token is None:
             raise RuntimeError("Antihydra fragment source authority is inactive")
-        return AntihydraFragmentSourceID(
-            self._source_token, self._source_kind, 0
-        )
+        return AntihydraFragmentSourceID(self._source_token, self._source_kind, 0)
 
     def _context(
         self,
@@ -226,11 +222,7 @@ class _AntihydraFragmentAdapter(SourceBoundImageAdapter):
 
     def _handle(self, record: _FragmentRecord) -> AntihydraFragmentID:
         _projection, _key, _block = self._context()
-        nodes = (
-            1
-            + (record.leaf is not None)
-            + (record.prefix is not None)
-        )
+        nodes = 1 + (record.leaf is not None) + (record.prefix is not None)
         seal_nodes = 1 + (record.leaf is not None) + (record.prefix is not None)
         self.ledger.reserve_many(
             ((self._owner, 1, nodes), (self._seal_owner, 1, seal_nodes))
@@ -245,9 +237,7 @@ class _AntihydraFragmentAdapter(SourceBoundImageAdapter):
             if len(self._seals) > local_id:
                 self._seals.pop()
             self.ledger.release(self._owner, entries=1, nodes=nodes)
-            self.ledger.release(
-                self._seal_owner, entries=1, nodes=seal_nodes
-            )
+            self.ledger.release(self._seal_owner, entries=1, nodes=seal_nodes)
             raise
         return AntihydraFragmentID(self._token, self._kind, local_id)
 
@@ -272,10 +262,7 @@ class _AntihydraFragmentAdapter(SourceBoundImageAdapter):
 
     def validate_source(self, source: Hashable) -> None:
         _projection, key, _block = self._context()
-        if (
-            type(source) is not AntihydraFragmentSourceID
-            or self._source_token is None
-        ):
+        if type(source) is not AntihydraFragmentSourceID or self._source_token is None:
             raise ValueError("Antihydra fragment has another source authority")
         source.validate(self._source_token, self._source_kind, size=1)
         if len(self._source_seals) != 1 or self._source_seals[0] != self._key_seal(key):
@@ -285,7 +272,11 @@ class _AntihydraFragmentAdapter(SourceBoundImageAdapter):
         _projection, _key, block = self._context()
         if type(action) is not AntihydraFragmentAction:
             raise TypeError("Antihydra fragment requires its interval action")
-        if action.offset < 0 or action.width < 0 or action.offset + action.width > block.width:
+        if (
+            action.offset < 0
+            or action.width < 0
+            or action.offset + action.width > block.width
+        ):
             raise ValueError("Antihydra fragment action leaves its source cylinder")
 
     def validate_payload(self, payload: Hashable) -> None:
@@ -306,10 +297,15 @@ class _AntihydraFragmentAdapter(SourceBoundImageAdapter):
             AntihydraFragmentAction(exact.offset + first, exact.width - first),
         )
 
-    def compose_actions(self, before: Hashable, after: Hashable) -> AntihydraFragmentAction:
+    def compose_actions(
+        self, before: Hashable, after: Hashable
+    ) -> AntihydraFragmentAction:
         self.validate_action(before)
         self.validate_action(after)
-        left, right = cast(AntihydraFragmentAction, before), cast(AntihydraFragmentAction, after)
+        left, right = (
+            cast(AntihydraFragmentAction, before),
+            cast(AntihydraFragmentAction, after),
+        )
         if left.width == 0:
             return right
         if right.width == 0:
@@ -324,14 +320,20 @@ class _AntihydraFragmentAdapter(SourceBoundImageAdapter):
         payload = self._handle(_FragmentRecord(None, None, 0, 0, 0, 0, 0, None))
         return SourceImageCandidate(payload, 0, (key.source_owner, key.start))
 
-    def apply_primitive(self, action: Hashable, source: SourceImageView) -> SourceImageCandidate:
+    def apply_primitive(
+        self, action: Hashable, source: SourceImageView
+    ) -> SourceImageCandidate:
         self.validate_action(action)
         exact = cast(AntihydraFragmentAction, action)
         prior = self.resolve(cast(AntihydraFragmentID, source.payload))
         if exact.width == 0:
-            return SourceImageCandidate(source.payload, prior.consumed, source.binding.boundary_ports)
+            return SourceImageCandidate(
+                source.payload, prior.consumed, source.binding.boundary_ports
+            )
         if prior.consumed != exact.offset or exact.width > 8:
-            raise ValueError("Antihydra primitive does not consume the next support interval")
+            raise ValueError(
+                "Antihydra primitive does not consume the next support interval"
+            )
         _projection, _key, block = self._context()
         word = (block.parity_word >> exact.offset) & ((1 << exact.width) - 1)
         input_h, input_balance = self._input_after(prior)
@@ -340,12 +342,8 @@ class _AntihydraFragmentAdapter(SourceBoundImageAdapter):
         )
         prefix = leaf_block if prior.prefix is None else prior.prefix.then(leaf_block)
         roof = physical_roof(leaf_block)
-        output_h, output_balance, left, right = roof.apply(
-            input_h, input_balance
-        )
-        if (output_h, output_balance) != leaf_block.advance(
-            input_h, input_balance
-        ):
+        output_h, output_balance, left, right = roof.apply(input_h, input_balance)
+        if (output_h, output_balance) != leaf_block.advance(input_h, input_balance):
             raise ArithmeticError("Antihydra leaf roof lost its arithmetic action")
         payload = self._handle(
             _FragmentRecord(
@@ -377,7 +375,10 @@ class _AntihydraFragmentAdapter(SourceBoundImageAdapter):
         before_record = self.resolve(cast(AntihydraFragmentID, before.payload))
         after_record = self.resolve(cast(AntihydraFragmentID, after.payload))
         exact = cast(AntihydraFragmentAction, action)
-        if before_record.consumed > after_record.consumed or after_record.consumed != exact.offset + exact.width:
+        if (
+            before_record.consumed > after_record.consumed
+            or after_record.consumed != exact.offset + exact.width
+        ):
             raise ValueError("Antihydra fragment composition lost chronology")
         return SourceImageCandidate(
             after.payload, after_record.consumed, source.binding.boundary_ports
@@ -386,10 +387,18 @@ class _AntihydraFragmentAdapter(SourceBoundImageAdapter):
     def admitted_input_key(self, action: Hashable, source: SourceImageView) -> None:
         return None
 
-    def transport_reuse(self, action: Hashable, cached_source: SourceImageView, cached_result: SourceImageView, source: SourceImageView) -> SourceImageCandidate:
+    def transport_reuse(
+        self,
+        action: Hashable,
+        cached_source: SourceImageView,
+        cached_result: SourceImageView,
+        source: SourceImageView,
+    ) -> SourceImageCandidate:
         raise ValueError("Antihydra fragment transport is not proved")
 
-    def project(self, image: SourceImageView, demand: SourceImageDemand) -> SourceImageProjection:
+    def project(
+        self, image: SourceImageView, demand: SourceImageDemand
+    ) -> SourceImageProjection:
         if demand != SourceImageDemand("typed-fragment"):
             raise ValueError("unsupported Antihydra fragment demand")
         self.validate_payload(image.payload)
@@ -402,9 +411,7 @@ class _AntihydraFragmentAdapter(SourceBoundImageAdapter):
         record = self.resolve(payload)
         projection, key, block = self._context()
         roof = physical_roof(block)
-        _h, _balance, left, right = roof.apply(
-            self._source_h, self._source_balance
-        )
+        _h, _balance, left, right = roof.apply(self._source_h, self._source_balance)
         if (
             record.consumed,
             record.head_delta,
@@ -417,12 +424,8 @@ class _AntihydraFragmentAdapter(SourceBoundImageAdapter):
         current = payload
         seen = 0
         classes: dict[tuple[tuple[int, int], int, int], int] = {}
-        spatial_phase = key.spatial_width * (
-            2 if key.spatial_sign == -1 else 1
-        )
-        temporal_phase = key.temporal_width * (
-            2 if key.temporal_sign == -1 else 1
-        )
+        spatial_phase = key.spatial_width * (2 if key.spatial_sign == -1 else 1)
+        temporal_phase = key.temporal_width * (2 if key.temporal_sign == -1 else 1)
         workspace = projection.result._engine.projection_workspace
         if workspace is None:
             raise RuntimeError("Antihydra section workspace was not started")
@@ -454,9 +457,7 @@ class _AntihydraFragmentAdapter(SourceBoundImageAdapter):
                     (part.leaf_head + head) % spatial_phase,
                     (part.leaf_time + time) % temporal_phase,
                 )
-                classes[translated] = (
-                    classes.get(translated, 0) + 1
-                ) % key.modulus
+                classes[translated] = (classes.get(translated, 0) + 1) % key.modulus
                 if len(classes) == 32:
                     samples += projection._flush_section_classes(
                         ports, classes, workspace, self._section_capacity
@@ -464,12 +465,8 @@ class _AntihydraFragmentAdapter(SourceBoundImageAdapter):
                 h, balance, left, right = one_roofs[odd].apply(h, balance)
                 head += right - left
                 time += right + left
-                self.ledger.bump(
-                    "spacetime_projection_fragment_leaf_returns"
-                )
-            if (h, balance) != part.leaf.advance(
-                source_h, source_balance
-            ):
+                self.ledger.bump("spacetime_projection_fragment_leaf_returns")
+            if (h, balance) != part.leaf.advance(source_h, source_balance):
                 raise ArithmeticError(
                     "projection leaf disagrees with arithmetic cylinder"
                 )
@@ -481,30 +478,23 @@ class _AntihydraFragmentAdapter(SourceBoundImageAdapter):
             samples += projection._flush_section_classes(
                 ports, classes, workspace, self._section_capacity
             )
-        return ProjectionFragment(
-            key, tuple(tuple(row) for row in ports), samples
-        )
+        return ProjectionFragment(key, tuple(tuple(row) for row in ports), samples)
 
     def clear_context(self) -> None:
         count = len(self._records)
         nodes = sum(
-            1
-            + (record.leaf is not None)
-            + (record.prefix is not None)
+            1 + (record.leaf is not None) + (record.prefix is not None)
             for record in self._records
         )
         seal_nodes = sum(
-            1 + (seal[0] is not None) + (seal[-1] is not None)
-            for seal in self._seals
+            1 + (seal[0] is not None) + (seal[-1] is not None) for seal in self._seals
         )
         self._records.clear()
         self._seals.clear()
         source_count = len(self._source_seals)
         self._source_seals.clear()
         self.ledger.release(self._owner, entries=count, nodes=nodes)
-        self.ledger.release(
-            self._seal_owner, entries=count, nodes=seal_nodes
-        )
+        self.ledger.release(self._seal_owner, entries=count, nodes=seal_nodes)
         self.ledger.release(
             self._source_seal_owner,
             entries=source_count,
@@ -537,7 +527,9 @@ class AntihydraProjectionDriver:
             or projection.result._engine.projection_fragments is not cache
             or projection.result._engine.projection_fragment_driver is not self
         ):
-            raise ValueError("Antihydra fragment requires an active source-image publication")
+            raise ValueError(
+                "Antihydra fragment requires an active source-image publication"
+            )
         payload = self.core.projection(
             self.adapter, image, SourceImageDemand("typed-fragment")
         ).value
@@ -555,9 +547,7 @@ class AntihydraProjectionDriver:
         balance: int,
         section_capacity: int,
     ) -> ProjectionFragment:
-        self.adapter.configure(
-            projection, key, block, h, balance, section_capacity
-        )
+        self.adapter.configure(projection, key, block, h, balance, section_capacity)
         try:
             self.core.register(self.adapter)
             image = self.core.apply(
@@ -590,9 +580,7 @@ def build_projection_fragment(
         engine.projection_fragment_driver = driver
     if type(driver) is not AntihydraProjectionDriver:
         raise ValueError("Antihydra projection driver owner was changed")
-    return driver.build(
-        projection, key, block, h, balance, section_capacity
-    )
+    return driver.build(projection, key, block, h, balance, section_capacity)
 
 
 __all__ = ["AntihydraProjectionDriver", "build_projection_fragment"]

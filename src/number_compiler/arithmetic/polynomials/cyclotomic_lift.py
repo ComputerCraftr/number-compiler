@@ -2,8 +2,8 @@
 
 from __future__ import annotations
 
+from collections.abc import Sequence
 from dataclasses import dataclass
-from typing import Sequence
 
 from number_compiler.arithmetic.fields.radix import bit_width
 from number_compiler.arithmetic.polynomials.digit_cyclotomic import CyclotomicDigitBlock

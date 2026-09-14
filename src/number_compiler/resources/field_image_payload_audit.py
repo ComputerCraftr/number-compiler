@@ -367,25 +367,27 @@ def audit_field_image_payloads(ledger: ResourceLedger) -> FieldImagePayloadAudit
                     invalid.add((root._residual_key_owner, id(residual_record)))
                     valid_root = False
 
-            def validate_task_item(item: object) -> None:
+            def validate_task_item(
+                item: object, *, current_root: ConcretePortScheduler = root
+            ) -> None:
                 if item is None or type(item) in (str, int, bool):
                     return
                 if type(item) is SourceCellID:
-                    root.sources.resolve(item)
+                    current_root.sources.resolve(item)
                     return
                 if type(item) is PortStateID:
-                    root.resolve_port(item)
+                    current_root.resolve_port(item)
                     return
                 if type(item) is ResidualBindingID:
-                    root.resolve_residual(item)
+                    current_root.resolve_residual(item)
                     return
                 if type(item) is ProviderLayerID:
-                    root.layers.resolve(item)
+                    current_root.layers.resolve(item)
                     return
                 if type(item) is RuntimeValueID:
-                    root._validate_atom(item)
+                    current_root._validate_atom(item)
                     return
-                root.adapter.validate_action(cast(FieldCellActionID, item))
+                current_root.adapter.validate_action(cast(FieldCellActionID, item))
 
             for task_key, task_value in root._memo.items():
                 valid = valid_root and type(task_key) is tuple and bool(task_key)
@@ -796,17 +798,23 @@ def audit_field_image_payloads(ledger: ResourceLedger) -> FieldImagePayloadAudit
                 containers.get(owner) is store for owner, store in fused_stores
             )
 
-            def valid_fused_binding(binding: object) -> bool:
+            def valid_fused_binding(
+                binding: object, *, current_root: ProviderFusedTransfer = root
+            ) -> bool:
                 if type(binding) is not FusedProviderBinding:
                     return False
                 occurrence = binding.occurrence
                 try:
-                    provider_record = root.providers.resolve(occurrence.provider)
-                    root.sources.binding_extent(occurrence.source)
-                    root.providers._validate_bound_output(occurrence.output)
-                    root.providers._validate_bound_interface(occurrence.interface)
+                    provider_record = current_root.providers.resolve(
+                        occurrence.provider
+                    )
+                    current_root.sources.binding_extent(occurrence.source)
+                    current_root.providers._validate_bound_output(occurrence.output)
+                    current_root.providers._validate_bound_interface(
+                        occurrence.interface
+                    )
                     if occurrence.image is not None:
-                        root.providers._validate_image_binding(
+                        current_root.providers._validate_image_binding(
                             occurrence.image,
                             occurrence.source,
                             provider_record.action,
@@ -815,7 +823,7 @@ def audit_field_image_payloads(ledger: ResourceLedger) -> FieldImagePayloadAudit
                         )
                 except (TypeError, ValueError, IndexError, KeyError, AttributeError):
                     return False
-                return occurrence in root.providers._bindings
+                return occurrence in current_root.providers._bindings
 
             for fused_binding, marker in root._bindings.items():
                 valid = (

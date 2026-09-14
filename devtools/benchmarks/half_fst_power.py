@@ -1,4 +1,3 @@
-#!/usr/bin/env python3
 """Exact tagged pair-half transducer and direct power experiment.
 
 Input word:  (PARITY_TAG, s0, ..., s_(h-1))

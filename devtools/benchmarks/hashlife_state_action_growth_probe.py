@@ -1,4 +1,3 @@
-#!/usr/bin/env python3
 """Measure bounded temporal semantics separately from spatial application growth.
 
 The HashLife root is the literal seed.  The powered operator is reusable temporal

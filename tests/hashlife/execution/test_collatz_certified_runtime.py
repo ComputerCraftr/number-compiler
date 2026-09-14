@@ -7,12 +7,12 @@ from typing import Never
 
 import pytest
 
+from number_compiler.arithmetic.contracts.block_effect import BoundarySide
 from number_compiler.arithmetic.functions.finite_function_types import (
     AtomSort,
     FinitePort,
 )
 from number_compiler.arithmetic.functions.finite_port_action import PortVariable
-from number_compiler.arithmetic.contracts.block_effect import BoundarySide
 from number_compiler.hashlife.actions.field_actions import FieldCellActionID
 from number_compiler.hashlife.execution.tile_kernel import PrimitiveTileKernelAdapter
 from number_compiler.hashlife.execution.tile_scheduler import (
@@ -366,6 +366,7 @@ def test_temporal_prefix_evaluation_does_not_reenter_output_observer(
 ) -> None:
     original = TileScheduler.point
     active = peak = 0
+    empty_boundaries = BoundaryTileOperands()
 
     def checked(
         self: TileScheduler,
@@ -376,7 +377,7 @@ def test_temporal_prefix_evaluation_does_not_reenter_output_observer(
         coordinate: int,
         *,
         _application: int | None = None,
-        boundaries: BoundaryTileOperands = BoundaryTileOperands(),
+        boundaries: BoundaryTileOperands = empty_boundaries,
         fusion: FusedBoundaryContract | None = None,
     ) -> int:
         nonlocal active, peak

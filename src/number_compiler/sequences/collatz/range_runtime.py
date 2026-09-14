@@ -46,7 +46,8 @@ class CollatzRadix4Range:
             if (row.first_nonzero is None) != (row.last_nonzero is None):
                 raise ValueError("Collatz carry witnesses disagree on emptiness")
             if row.first_nonzero is not None and not (
-                0 <= row.first_nonzero <= row.last_nonzero < self.length  # type: ignore[operator]
+                row.last_nonzero is not None
+                and 0 <= row.first_nonzero <= row.last_nonzero < self.length
             ):
                 raise ValueError("Collatz carry witness lies outside the range")
         if (self.first_root_mismatch is None) != (self.mismatch_symbol is None):

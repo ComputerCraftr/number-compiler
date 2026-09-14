@@ -8,8 +8,8 @@ that a supplied graph models an arithmetic execution.
 
 from __future__ import annotations
 
+from collections.abc import Hashable, Sequence
 from dataclasses import dataclass
-from typing import Hashable, Sequence
 
 
 def partition_equivalent(first: Sequence[Hashable], second: Sequence[Hashable]) -> bool:

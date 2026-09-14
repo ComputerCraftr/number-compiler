@@ -7,15 +7,11 @@ independent of the represented digit width.
 
 from __future__ import annotations
 
+from collections.abc import Callable, Sequence
 from dataclasses import dataclass, field
 from typing import (
     TYPE_CHECKING,
-    Callable,
-    Dict,
     Generic,
-    Optional,
-    Sequence,
-    Tuple,
     TypeVar,
 )
 
@@ -55,10 +51,10 @@ def end_tag(base: int) -> int:
 
 @dataclass(frozen=True, slots=True)
 class DFA:
-    alphabet: Tuple[int, ...]
+    alphabet: tuple[int, ...]
     start: int
-    trans: Dict[Tuple[int, int], int]
-    states: Tuple[int, ...]
+    trans: dict[tuple[int, int], int]
+    states: tuple[int, ...]
     right: bool = False
 
     def step(self, state: int, symbol: int) -> int | None:
@@ -78,23 +74,23 @@ class DFA:
 @dataclass(slots=True)
 class LazyBimachine:
     base: int
-    alphabet: Tuple[int, ...]
+    alphabet: tuple[int, ...]
     left: DFA
     right: DFA
-    resolver: Callable[[int, int, int], Optional[Tuple[int, ...]]]
+    resolver: Callable[[int, int, int], tuple[int, ...] | None]
     cache_enabled: bool = True
     canonical_output: CanonicalOutputRelation | None = None
 
     def __post_init__(self) -> None:
-        self._cache: Dict[Tuple[int, int, int], Optional[Tuple[int, ...]]] = {}
+        self._cache: dict[tuple[int, int, int], tuple[int, ...] | None] = {}
 
     # dataclass(slots=True) does not include post-init dynamic fields, so declare
     # it as a class annotation to make the slot.
-    _cache: Dict[Tuple[int, int, int], Optional[Tuple[int, ...]]] = field(
+    _cache: dict[tuple[int, int, int], tuple[int, ...] | None] = field(
         default_factory=dict, init=False
     )
 
-    def emit(self, left: int, symbol: int, right: int) -> Optional[Tuple[int, ...]]:
+    def emit(self, left: int, symbol: int, right: int) -> tuple[int, ...] | None:
         key = (int(left), int(symbol), int(right))
         relation = self.canonical_output
         if relation is not None:
@@ -126,7 +122,7 @@ class LazyBimachine:
     def cached_outputs(self) -> int:
         return len(self._cache)
 
-    def output(self, word: Sequence[int]) -> Tuple[int, ...]:
+    def output(self, word: Sequence[int]) -> tuple[int, ...]:
         w = tuple(map(int, word))
         n = len(w)
         left = [self.left.start]
@@ -155,7 +151,7 @@ class LazyBimachine:
 class BimachineTransformResult(Generic[_MetricsT]):
     """Shared result wrapper for one bimachine transformation pass."""
 
-    machine: "LazyBimachine"
+    machine: LazyBimachine
     metrics: _MetricsT
 
 
@@ -203,7 +199,7 @@ class _BimachineBuilder:
                     lt[q, tag] = z
                     todo.append(z)
             elif data[0] == "V":
-                _, parity, first, last, prev = data
+                _, parity, first, last, _prev = data
                 for s in vals:
                     m = _lab(s, b)
                     nf = first if first != I else m
@@ -253,7 +249,7 @@ class _BimachineBuilder:
             rt[q, p1] = done_r
         right = DFA(alphabet, start_r, rt, tuple(range(len(rdata))), True)
 
-        def emit(left_state: int, a: int, r: int) -> Optional[Tuple[int, ...]]:
+        def emit(left_state: int, a: int, r: int) -> tuple[int, ...] | None:
             ld = ldata[left_state]
             rd = rdata[r]
             if left_state == start_l and a in (p0, p1) and rd[0] == "A" and rd[1]:
@@ -326,13 +322,13 @@ def build_pair_step_bimachine(base: int = 10) -> LazyBimachine:
 
 def encode_pair_half(
     parity: int, half: Sequence[int], base: int = 10
-) -> Tuple[int, ...]:
+) -> tuple[int, ...]:
     return (parity_tag(parity, base),) + tuple(map(int, half)) + (end_tag(base),)
 
 
 def decode_pair_half(
     word: Sequence[int], base: int = 10
-) -> tuple[int, Tuple[int, ...]]:
+) -> tuple[int, tuple[int, ...]]:
     w = tuple(map(int, word))
     if not w or w[-1] != end_tag(base):
         raise ValueError("invalid pair-half encoding")
@@ -344,11 +340,11 @@ def decode_pair_half(
 
 __all__ = [
     "DFA",
-    "LazyBimachine",
     "BimachineTransformResult",
+    "LazyBimachine",
     "build_pair_step_bimachine",
-    "encode_pair_half",
     "decode_pair_half",
-    "parity_tag",
+    "encode_pair_half",
     "end_tag",
+    "parity_tag",
 ]

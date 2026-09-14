@@ -16,7 +16,6 @@ particular M11 is retained as the ring-safety counterexample.
 
 from __future__ import annotations
 
-from dataclasses import dataclass as dataclass
 from typing import TYPE_CHECKING
 
 from devtools.experiments.algebra.math_support import ceil_sqrt

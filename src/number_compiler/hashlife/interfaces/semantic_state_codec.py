@@ -86,6 +86,9 @@ class _Admitted:
     target_count: int
 
 
+_DEFAULT_PORT_VARIABLE_1 = PortVariable(0, 0, "parameter", 0)
+
+
 class StateCodecArena:
     def __init__(self, runtime: DiamondRuntime, structures: StructureArena) -> None:
         if (
@@ -111,7 +114,7 @@ class StateCodecArena:
         self,
         action: ActionProgramID,
         side: int,
-        namespace: PortVariable = PortVariable(0, 0, "parameter", 0),
+        namespace: PortVariable = _DEFAULT_PORT_VARIABLE_1,
     ) -> StateCodec:
         request = CodecRequest(action, side, namespace)
         admitted = self._admit(request)
@@ -418,7 +421,7 @@ def describe_state(
     runtime: DiamondRuntime,
     action: ActionProgramID,
     side: int,
-    namespace: PortVariable = PortVariable(0, 0, "parameter", 0),
+    namespace: PortVariable = _DEFAULT_PORT_VARIABLE_1,
 ) -> StateCodecSpec:
     """Read-only admission and flat encoding declaration, without arena creation."""
     request = CodecRequest(action, side, namespace)

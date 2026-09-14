@@ -7,11 +7,21 @@ Use the environment's tools from the repository root:
 ruff format .
 ruff format --check .
 ruff check .
-mypy --strict .
-mypy --strict --no-incremental .
+mypy
+mypy --no-incremental
 python -m devtools.checks.repository_policy
 pytest
 ```
+
+Strict mypy checks the configured maintained roots `src`, `tests`, and `devtools`.
+Historical reproduction scripts under `results` are run artifacts, not one Python
+package (several share module names); they remain included in repository-wide
+Ruff checks. There are no mypy error exclusions or inline mypy/Ruff suppressions
+in the maintained roots.
+
+Development minimums are pytest 9.1.1, mypy 2.3.1, Ruff 0.16.7 and setuptools
+84.0.0, checked against PyPI on September 14, 2026. Runtime installation remains
+dependency-free and supports Python 3.11 and newer.
 
 ## Unit and exhaustive validation suites
 

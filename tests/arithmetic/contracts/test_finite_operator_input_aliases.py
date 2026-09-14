@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from array import array
 from collections.abc import Callable
-from typing import TYPE_CHECKING, TypedDict, cast
+from typing import TypedDict, cast
 
 import pytest
 
@@ -16,9 +16,6 @@ from number_compiler.arithmetic.contracts.block_kernel import (
     BaseBlockEffect,
     FiniteBlockEffect,
 )
-
-if TYPE_CHECKING:
-    from number_compiler.arithmetic.contracts.block_kernel import FiniteBlockEffect
 
 
 class FiniteKernelArguments(TypedDict):
@@ -50,24 +47,24 @@ class BudgetArguments(TypedDict, total=False):
 def finite(
     **changes: object,
 ) -> FiniteBlockEffect:
-    arguments: dict[str, object] = dict(
-        base=2,
-        exponent=1,
-        left_count=1,
-        right_count=1,
-        alphabet_size=4,
-        initial_left=0,
-        initial_right=0,
-        left_transitions=array("I", [0] * 4),
-        right_transitions=array("I", [0] * 4),
-        outputs=bytes(range(4)),
-        kernel_name="identity",
-        storage_bytes=0,
-        uncompressed_bytes=0,
-        blank_left_tail=0,
-        blank_right_tail=0,
-        stable_blank_output=True,
-    )
+    arguments: dict[str, object] = {
+        "base": 2,
+        "exponent": 1,
+        "left_count": 1,
+        "right_count": 1,
+        "alphabet_size": 4,
+        "initial_left": 0,
+        "initial_right": 0,
+        "left_transitions": array("I", [0] * 4),
+        "right_transitions": array("I", [0] * 4),
+        "outputs": bytes(range(4)),
+        "kernel_name": "identity",
+        "storage_bytes": 0,
+        "uncompressed_bytes": 0,
+        "blank_left_tail": 0,
+        "blank_right_tail": 0,
+        "stable_blank_output": True,
+    }
     arguments.update(changes)
     return FiniteBlockEffect(**cast("FiniteKernelArguments", arguments))
 
@@ -102,7 +99,7 @@ def test_finite_constructor_rejects_numeric_aliases_before_payload_copy(
     ("advance-state", "advance-symbol", "emit-left", "emit-right", "emit-symbol"),
 )
 def test_finite_observations_reject_invalid_payload_before_table_lookup(
-    value: bool | float | int | str, method: str
+    value: bool | float | str, method: str
 ) -> None:
     effect = finite()
     effect.advance(BoundarySide.LEFT, 0, 0)
@@ -124,7 +121,7 @@ def test_finite_observations_reject_invalid_payload_before_table_lookup(
 @pytest.mark.parametrize("side", (True, 0, 0.0, "0"))
 def test_kernel_sides_have_an_exact_enum_sort(
     factory: Callable[[], FiniteBlockEffect | BaseBlockEffect],
-    side: bool | float | int | str,
+    side: bool | float | str,
 ) -> None:
     effect = factory()
     with pytest.raises(TypeError):
@@ -140,7 +137,7 @@ def test_kernel_sides_have_an_exact_enum_sort(
 )
 @pytest.mark.parametrize("value", (True, 2.0, "2", -1))
 def test_budget_construction_and_mutation_reject_invalid_values(
-    field: str, value: bool | float | int | str
+    field: str, value: bool | float | str
 ) -> None:
     with pytest.raises((TypeError, ValueError)):
         BlockContextBudget(**cast("BudgetArguments", {field: value}))
@@ -156,7 +153,7 @@ def test_budget_construction_and_mutation_reject_invalid_values(
 )
 @pytest.mark.parametrize("value", (True, 2.0, "2", -1))
 def test_budget_consumption_rejects_aliases_without_mutation(
-    method: str, value: bool | float | int | str
+    method: str, value: bool | float | str
 ) -> None:
     budget = BlockContextBudget(5, 5)
     before = vars(budget).copy()

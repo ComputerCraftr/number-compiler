@@ -3,25 +3,31 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Protocol
+from typing import Self
 
 from number_compiler.arithmetic.contracts.exact_tree_context import source_reads_only
 from number_compiler.hashlife.actions.field_actions import FieldCellActionID
+from number_compiler.hashlife.execution.source_bound_images import (
+    SourceBoundImageMixin,
+)
 from number_compiler.hashlife.execution.tile_application_authority import (
     TileApplicationRegistry,
     application_by_id,
     application_source,
 )
-from number_compiler.hashlife.execution.tile_clock_dispatch import complete_clock
-from number_compiler.hashlife.execution.source_bound_images import (
-    SourceBoundImageMixin,
-)
 from number_compiler.hashlife.execution.tile_causal_interfaces import (
     CausalInterfacePayload,
     interface_payload_from_completed,
 )
+from number_compiler.hashlife.execution.tile_clock_dispatch import complete_clock
+from number_compiler.hashlife.execution.tile_execution_adapter import (
+    TileExecutionAdapter,
+)
 from number_compiler.hashlife.interfaces.diamond_quotient import LocalInterfaceID
-from number_compiler.hashlife.tiles.tile_boundaries import BoundaryTileOperands
+from number_compiler.hashlife.tiles.tile_boundaries import (
+    EMPTY_BOUNDARY_TILES,
+    BoundaryTileOperands,
+)
 from number_compiler.hashlife.tiles.tile_context import (
     ChildContext,
     PrimitiveTileResult,
@@ -57,103 +63,6 @@ from number_compiler.resources.causal_workspace import (
 from number_compiler.resources.stores import LedgerDict
 from number_compiler.resources.tile_dependency_leases import TileDependencyLeases
 from number_compiler.sequences.collatz.physical_support import PhysicalSupportArena
-
-
-class TileExecutionAdapter(Protocol):
-    """Fixed-interface family law consumed by the shared scheduler."""
-
-    complete_via_midpoint_tiles: bool
-
-    def validate_action(self, action: FieldCellActionID) -> None: ...
-
-    def validate_wiring(
-        self,
-        action: FieldCellActionID,
-        wiring: ResultWiring,
-    ) -> None: ...
-
-    def action_children(
-        self,
-        action: FieldCellActionID,
-    ) -> tuple[FieldCellActionID, FieldCellActionID] | None: ...
-
-    def action_cocycle(self, action: FieldCellActionID) -> TemporalCocycle: ...
-
-    def leaf_observation(
-        self,
-        action: FieldCellActionID,
-        source: TileID,
-        interface: LocalInterfaceID,
-        ports: tuple[int, ...],
-    ) -> TemporalCocycle: ...
-
-    def leaf_interface(
-        self,
-        action: FieldCellActionID,
-        source: TileID,
-        wiring: ResultWiring,
-    ) -> LocalInterfaceID: ...
-
-    def apply_leaf(
-        self,
-        interface: LocalInterfaceID,
-        ports: tuple[int, ...],
-    ) -> PrimitiveTileResult: ...
-
-    def child_context(
-        self,
-        action: FieldCellActionID,
-        parent: TileID,
-        left: TileID,
-        right: TileID,
-        ports: tuple[int, ...],
-        wiring: ResultWiring,
-        side: int,
-    ) -> ChildContext: ...
-
-    def join_semantics(
-        self,
-        action: FieldCellActionID,
-        parent: TileID,
-        ports: tuple[int, ...],
-        wiring: ResultWiring,
-        left: CompletedResult,
-        right: CompletedResult,
-    ) -> ResultSemantics: ...
-
-    def temporal_before_context(
-        self,
-        action: FieldCellActionID,
-        before: FieldCellActionID,
-        original_ports: tuple[int, ...],
-        wiring: ResultWiring,
-    ) -> ChildContext: ...
-
-    def temporal_after_context(
-        self,
-        action: FieldCellActionID,
-        after: FieldCellActionID,
-        before_result: CompletedResult,
-        original_ports: tuple[int, ...],
-        wiring: ResultWiring,
-    ) -> ChildContext: ...
-
-    def temporal_semantics(
-        self,
-        action: FieldCellActionID,
-        before: CompletedResult,
-        after: CompletedResult,
-        original_ports: tuple[int, ...],
-        wiring: ResultWiring,
-    ) -> ResultSemantics: ...
-
-    def output_active(
-        self,
-        action: FieldCellActionID,
-        source: TileID,
-        ports: tuple[int, ...],
-        wiring: ResultWiring,
-    ) -> bool: ...
 
 
 @dataclass(slots=True)
@@ -244,7 +153,7 @@ class TileScheduler(SourceBoundImageMixin):
         ports: tuple[int, ...],
         wiring: ResultWiring,
         side: int,
-        boundaries: BoundaryTileOperands = BoundaryTileOperands(),
+        boundaries: BoundaryTileOperands = EMPTY_BOUNDARY_TILES,
     ) -> ChildContext:
         bound = bind_context(self, action, BoundPorts(ports, wiring, boundaries))
         self.ledger.bump("tile_scheduler_sibling_transfer_requests")
@@ -289,7 +198,7 @@ class TileScheduler(SourceBoundImageMixin):
         key = normalize_output_region(self.tiles, key)
         if lease._issuer is not self.results or lease._key != key:
             raise ValueError("causal pin result belongs to another request")
-        lease.result
+        _ = lease.result
         application_source = application_by_id(self, application).source
         boundaries = [key.boundaries]
         if key.fusion is not None:
@@ -315,7 +224,7 @@ class TileScheduler(SourceBoundImageMixin):
         if found is not None:
             if type(found) is not ResultLease or found._issuer is not self.results:
                 raise ValueError("causal result pin contains a foreign lease")
-            found.result
+            _ = found.result
             expected = {(application, tile) for tile in dependencies}
             self.ledger.bump("tile_causal_pin_dependency_checks", len(expected))
             if not all(item in self._causal_dependencies.records for item in expected):
@@ -355,7 +264,7 @@ class TileScheduler(SourceBoundImageMixin):
         source: TileID,
         ports: tuple[int, ...],
         wiring: ResultWiring,
-        boundaries: BoundaryTileOperands = BoundaryTileOperands(),
+        boundaries: BoundaryTileOperands = EMPTY_BOUNDARY_TILES,
         fusion: FusedBoundaryContract | None = None,
     ) -> PoweredResultKey:
         return PoweredResultKey(action, source, ports, wiring, boundaries, fusion)
@@ -610,7 +519,7 @@ class TileScheduler(SourceBoundImageMixin):
         ports: tuple[int, ...],
         wiring: ResultWiring,
         *,
-        boundaries: BoundaryTileOperands = BoundaryTileOperands(),
+        boundaries: BoundaryTileOperands = EMPTY_BOUNDARY_TILES,
         fusion: FusedBoundaryContract | None = None,
     ) -> ResultLease:
         # Reject unsupported public wiring before consulting the result store.
@@ -697,7 +606,7 @@ class TileScheduler(SourceBoundImageMixin):
         coordinate: int,
         *,
         _application: int | None = None,
-        boundaries: BoundaryTileOperands = BoundaryTileOperands(),
+        boundaries: BoundaryTileOperands = EMPTY_BOUNDARY_TILES,
         fusion: FusedBoundaryContract | None = None,
     ) -> int:
         from number_compiler.hashlife.observation.demanded_tiles import point
@@ -723,7 +632,7 @@ class TileScheduler(SourceBoundImageMixin):
         *,
         limit: int | None = None,
         _application: int | None = None,
-        boundaries: BoundaryTileOperands = BoundaryTileOperands(),
+        boundaries: BoundaryTileOperands = EMPTY_BOUNDARY_TILES,
         fusion: FusedBoundaryContract | None = None,
     ) -> int:
         from number_compiler.hashlife.observation.demanded_tiles import width
@@ -758,7 +667,7 @@ class TileScheduler(SourceBoundImageMixin):
         ports: tuple[int, ...],
         wiring: ResultWiring,
         limit: int,
-        boundaries: BoundaryTileOperands = BoundaryTileOperands(),
+        boundaries: BoundaryTileOperands = EMPTY_BOUNDARY_TILES,
     ) -> bool:
         from number_compiler.hashlife.observation.demanded_tiles import _prefix_active
 
@@ -793,8 +702,16 @@ class TileScheduler(SourceBoundImageMixin):
 
 
 class TileApplication:
-    __slots__ = tuple(
-        "scheduler identity action ports wiring _input _root _closed __weakref__".split()
+    __slots__ = (
+        "__weakref__",
+        "_closed",
+        "_input",
+        "_root",
+        "action",
+        "identity",
+        "ports",
+        "scheduler",
+        "wiring",
     )
 
     def __setattr__(self, name: str, value: object) -> None:
@@ -832,7 +749,7 @@ class TileApplication:
         if root is not None:
             if type(root) is not ResultLease or root._issuer is not scheduler.results:
                 raise ValueError("tile application has a foreign completed root")
-            root.result
+            _ = root.result
             if root._key != key:
                 raise ValueError("tile application root belongs to another request")
         self.scheduler, self.identity, self.action, self.ports, self.wiring = (
@@ -889,7 +806,7 @@ class TileApplication:
             raise ValueError("tile application has a foreign completed root")
         if root._key != key:
             raise ValueError("tile application root belongs to another request")
-        root.result
+        _ = root.result
         return root
 
     def complete(self) -> CompletedResult:
@@ -973,15 +890,15 @@ class TileApplication:
         if type(self._closed) is not bool:
             raise ValueError("malformed tile application")
         if not self._closed:
-            self.source
+            _ = self.source
             key = PoweredResultKey(self.action, self.source, self.ports, self.wiring)
             if self._root is not None:
                 self._validate_root(key)
             self.scheduler._applications.unregister(self)
             self._closed = True
 
-    def __enter__(self) -> TileApplication:
-        self.source
+    def __enter__(self) -> Self:
+        _ = self.source
         return self
 
     def __exit__(self, *_exception: object) -> None:

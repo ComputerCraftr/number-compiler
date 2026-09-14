@@ -1,7 +1,7 @@
 """Demanded pullback, branch deadness, and failed-publication accounting."""
 
-from unittest.mock import patch
 from typing import cast
+from unittest.mock import patch
 
 import pytest
 

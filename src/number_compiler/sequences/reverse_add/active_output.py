@@ -11,13 +11,13 @@ from __future__ import annotations
 
 from collections.abc import Callable, Mapping
 
+from number_compiler.arithmetic.carry.carry_monoid import CarryFn
 from number_compiler.arithmetic.contracts.scoped_handles import ArenaToken
 from number_compiler.arithmetic.formula.decimal_pair_coordinates import (
     decimal_normalized_coordinates,
     decimal_pair_carry_action,
     decimal_pair_coordinates,
 )
-from number_compiler.arithmetic.carry.carry_monoid import CarryFn
 from number_compiler.arithmetic.functions.finite_function_types import (
     BOOL,
     AtomSort,

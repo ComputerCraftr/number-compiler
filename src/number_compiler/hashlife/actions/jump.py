@@ -88,7 +88,7 @@ class MissingJumpBackend(Generic[RootT]):
 __all__ = [
     "ExactJumpBackend",
     "IndexedRoot",
-    "StrictBinaryRootBuilder",
     "MissingJumpBackend",
     "NoExactJumpBackend",
+    "StrictBinaryRootBuilder",
 ]

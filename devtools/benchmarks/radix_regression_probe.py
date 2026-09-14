@@ -1,4 +1,3 @@
-#!/usr/bin/env python3
 """Five isolated trials of the fixed original-source ternary regression.
 
 Run: python -m devtools.benchmarks.radix_regression_probe --output NEW.json
@@ -12,6 +11,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import logging
 import os
 import resource
 import signal
@@ -20,7 +20,7 @@ import subprocess
 import sys
 from collections.abc import Callable
 from dataclasses import fields
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from pathlib import Path
 from time import perf_counter, process_time
 from typing import Any
@@ -37,6 +37,7 @@ TRIALS = 5
 COLD_LIMIT = 0.25
 REPEAT_LIMIT = 0.01
 DEFAULT_OUTPUT = ROOT / "results/radix_regression_probe_v1.json"
+_LOGGER = logging.getLogger(__name__)
 
 
 class PhaseTimeout(TimeoutError):
@@ -57,6 +58,7 @@ def measured(
         value = operation()
         status, error = "ok", None
     except Exception as exc:
+        _LOGGER.debug("radix regression trial failed", exc_info=True)
         value = None
         status = "timeout" if isinstance(exc, PhaseTimeout) else "error"
         error = f"{type(exc).__name__}: {exc}"
@@ -271,7 +273,7 @@ def run_trials() -> dict[str, Any]:
         "scope": "fixed regression only; original-source ternary law for odd physical C1",
         "full_hashlife_cutover_evidence": False,
         "historical_evidence": "results/radix_original_source_v1.json",
-        "created_utc": datetime.now(timezone.utc).isoformat(),
+        "created_utc": datetime.now(UTC).isoformat(),
         "fixture": {
             "seed_expression": "(1<<95)+0x123456789ABCDEF12345",
             "seed": str(SEED),

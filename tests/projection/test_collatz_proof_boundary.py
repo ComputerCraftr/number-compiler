@@ -27,11 +27,14 @@ def test_sequential_collatz_orbit_builders_have_one_explicit_output_owner() -> N
     for path in PACKAGE.rglob("*.py"):
         tree = ast.parse(path.read_text(), filename=str(path))
         for node in tree.body:
-            if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
-                if node.name in loop_owners and any(
+            if (
+                isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef))
+                and node.name in loop_owners
+                and any(
                     isinstance(child, (ast.For, ast.While)) for child in ast.walk(node)
-                ):
-                    loop_owners[node.name].append(path.relative_to(PACKAGE).as_posix())
+                )
+            ):
+                loop_owners[node.name].append(path.relative_to(PACKAGE).as_posix())
     assert loop_owners == {name: [owner] for name, owner in owners.items()}
 
 
@@ -41,8 +44,8 @@ def test_powered_collatz_queries_cannot_select_orbit_helpers(
     import number_compiler.projection.collatz_orbits.binary as binary_proof
     import number_compiler.projection.collatz_orbits.radix as radix_proof
     import number_compiler.projection.collatz_orbits.sentinel as raw_proof
-    import number_compiler.sequences.collatz.radix as radix
     import number_compiler.sequences.collatz.raw_field as raw
+    from number_compiler.sequences.collatz import radix
 
     def forbidden(*_args: object, **_kwargs: object) -> Never:
         raise AssertionError("sequential Collatz proof orbit entered powered query")

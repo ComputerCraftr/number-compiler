@@ -2,13 +2,13 @@ from math import comb
 
 import pytest
 
-from number_compiler.sequences.collatz.clock_observers import CollatzClockObservers
-from number_compiler.sequences.collatz.power import CollatzEventArena
-from number_compiler.sequences.collatz.hensel_cylinders import (
-    HenselCylinder,
-    HenselAffineBlock,
-)
 from number_compiler.arithmetic.contracts.block_effect import BlockContextBudgetExceeded
+from number_compiler.sequences.collatz.clock_observers import CollatzClockObservers
+from number_compiler.sequences.collatz.hensel_cylinders import (
+    HenselAffineBlock,
+    HenselCylinder,
+)
+from number_compiler.sequences.collatz.power import CollatzEventArena
 
 
 def test_all_views_are_specializations_of_one_clock_polynomial() -> None:

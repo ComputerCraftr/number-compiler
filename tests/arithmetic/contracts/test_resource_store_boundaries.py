@@ -2,6 +2,7 @@
 
 from array import array
 from collections.abc import Callable
+from functools import partial
 from typing import cast
 
 import pytest
@@ -59,7 +60,7 @@ def test_canonical_wrappers_preserve_ids_and_ownership_after_failed_mutation() -
         lambda: nodes.reverse(),
         lambda: nodes.__setitem__(0, "replacement"),
         lambda: list.__setitem__(cast("list[str]", nodes), 0, "replacement"),
-        lambda: getattr(nodes, "__init__")(ledger, owner, 1, True),
+        lambda: LedgerList.__init__(nodes, ledger, owner, 1, True),
         lambda: delattr(nodes, "_sealed"),
         lambda: setattr(nodes, "append_only", False),
     )
@@ -141,9 +142,9 @@ def test_public_serialization_hooks_never_expose_live_store_backing(
     for store in (nodes, keys):
         serializers: tuple[Callable[[], object], ...] = (
             store.__reduce__,
-            lambda: store.__reduce_ex__(4),
+            partial(store.__reduce_ex__, 4),
             store.__getstate__,
-            lambda: object.__reduce_ex__(store, 4),
+            partial(object.__reduce_ex__, store, 4),
         )
         for serialize in serializers:
             with pytest.raises(TypeError, match="not serializable"):
@@ -195,7 +196,7 @@ def test_frozen_kernel_and_program_seals_cannot_be_deleted_and_states_have_no_di
         with pytest.raises(AttributeError):
             delattr(definition, "_sealed")
         with pytest.raises(AttributeError):
-            setattr(definition, "base", 17)
+            definition.base = 17
         assert definition.canonical_key == before
         assert not hasattr(definition, "__dict__")
     assert not hasattr(atom.initial(BoundarySide.LEFT), "__dict__")

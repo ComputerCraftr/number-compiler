@@ -424,12 +424,12 @@ class CollatzCausalSpacetimeEngine:
     """
 
     __slots__ = (
-        "_action_endpoints",
-        "_endpoint_cache_limit",
         "_action_applications",
+        "_action_endpoints",
         "_advances",
-        "_physical_advances",
+        "_endpoint_cache_limit",
         "_lazy_applications",
+        "_physical_advances",
         "action_power",
         "codec",
         "domains",

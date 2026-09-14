@@ -14,11 +14,11 @@ from number_compiler.arithmetic.functions.finite_function_types import (
 from number_compiler.arithmetic.radix_division import SymbolicBinaryDivisionEffect
 from number_compiler.arithmetic.radix_port_functions import DivisionCarry
 from number_compiler.arithmetic.radix_transfer import RadixRemainderTransfer
-from number_compiler.hashlife.observation.tile_projection import build_tile_projection
 from number_compiler.hashlife.execution.tile_kernel import PrimitiveTileKernelAdapter
+from number_compiler.hashlife.observation.tile_projection import build_tile_projection
 from number_compiler.hashlife.tiles.tile_context import TemporalCocycle
-from number_compiler.sequences.collatz.block_power import CollatzPhysicalBlockEffect
 from number_compiler.resources.ledger import ResourceLedger
+from number_compiler.sequences.collatz.block_power import CollatzPhysicalBlockEffect
 
 
 @pytest.mark.parametrize("radix", (257, (1 << 63) - 25))

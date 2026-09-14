@@ -6,8 +6,6 @@ from itertools import product
 import pytest
 
 from devtools.proofs.collatz_harmonic_ports import (
-    Radix64WireHarmonicAction as Action,
-    Radix64OutputHarmonicAction as OutputAction,
     ZERO,
     Y,
     admitted_cylinder_symbols,
@@ -15,6 +13,12 @@ from devtools.proofs.collatz_harmonic_ports import (
     binary_jet,
     binary_output_response,
     binary_temporal_action,
+)
+from devtools.proofs.collatz_harmonic_ports import (
+    Radix64OutputHarmonicAction as OutputAction,
+)
+from devtools.proofs.collatz_harmonic_ports import (
+    Radix64WireHarmonicAction as Action,
 )
 from number_compiler.arithmetic.fields.two_adic import v2_positive
 from number_compiler.arithmetic.polynomials.primary_jet import (

@@ -18,8 +18,8 @@ merge.
 
 from __future__ import annotations
 
+from collections.abc import Callable, Sequence
 from dataclasses import dataclass
-from typing import Callable, Dict, Sequence
 
 from number_compiler.arithmetic.automata.transducer import (
     DFA,
@@ -36,7 +36,7 @@ class _Interner:
     __slots__ = ("ids",)
 
     def __init__(self) -> None:
-        self.ids: Dict[object, int] = {}
+        self.ids: dict[object, int] = {}
 
     def intern(self, value: object) -> int:
         old = self.ids.get(value)
@@ -73,8 +73,8 @@ def _refine(
     states: Sequence[int],
     alphabet: Sequence[int],
     step: Callable[[int, int], int | None],
-    observation: Dict[tuple[int, int], int],
-) -> tuple[Dict[int, int], int]:
+    observation: dict[tuple[int, int], int],
+) -> tuple[dict[int, int], int]:
     """Exact deterministic Nerode refinement from canonical output residuals.
 
     The initial partition is the exact observation row itself rather than one
@@ -88,7 +88,7 @@ def _refine(
     while True:
         rounds += 1
         interner = _Interner()
-        new: Dict[int, int] = {}
+        new: dict[int, int] = {}
         for q in states:
             sig = tuple(
                 (
@@ -99,8 +99,8 @@ def _refine(
             )
             new[q] = interner.intern(sig)
         # Partition ids themselves are arbitrary; compare equivalence classes.
-        mapped: Dict[int, int] = {}
-        reverse: Dict[int, int] = {}
+        mapped: dict[int, int] = {}
+        reverse: dict[int, int] = {}
         stable = True
         for q in states:
             old, nxt = part[q], new[q]
@@ -117,7 +117,7 @@ def _refine(
         part = new
 
 
-def _quotient_dfa(dfa: DFA, part: Dict[int, int]) -> tuple[DFA, Dict[int, int]]:
+def _quotient_dfa(dfa: DFA, part: dict[int, int]) -> tuple[DFA, dict[int, int]]:
     classes = sorted(set(part.values()))
     rep_old = {c: min(q for q in dfa.states if part[q] == c) for c in classes}
     cmap = {c: i for i, c in enumerate(classes)}
@@ -183,7 +183,7 @@ def minimize_bimachine(
     decision = output.arena
 
     # Exact left residuals: functions right_state -> output word.
-    lobs: Dict[tuple[int, int], int] = {}
+    lobs: dict[tuple[int, int], int] = {}
     lclasses = _Interner()
     for li, left_state in enumerate(machine.left.states):
         for ai, a in enumerate(A):
@@ -193,7 +193,7 @@ def minimize_bimachine(
     lpart, lr = _refine(machine.left.states, A, machine.left.step, lobs)
 
     # Exact right residuals: functions left_state -> output word.
-    robs: Dict[tuple[int, int], int] = {}
+    robs: dict[tuple[int, int], int] = {}
     rclasses = _Interner()
     for ri, r in enumerate(machine.right.states):
         for ai, a in enumerate(A):
@@ -259,4 +259,4 @@ def minimize_bimachine(
     )
 
 
-__all__ = ["ResidualMetrics", "QuotientBimachine", "minimize_bimachine"]
+__all__ = ["QuotientBimachine", "ResidualMetrics", "minimize_bimachine"]

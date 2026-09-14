@@ -95,7 +95,7 @@ class PrimitiveUnaryFunctions:
         }
         functions = self.kernels.functions
         checked: set[TransferSummaryID] = set()
-        pending = list((*a.bits, *b.bits))
+        pending = [*a.bits, *b.bits]
         visits = 0
         pending_peak = len(pending)
         workspace_peak = len(pending) + len(variables)

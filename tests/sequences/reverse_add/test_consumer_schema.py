@@ -13,7 +13,7 @@ def test_shared_schema_preserves_distinct_bindings_and_exact_composition() -> No
     x, y = e.variable(10, 0), e.variable(10, 1)
     table = tuple(int(v >= 5) for v in range(10))
     left = e.table(x, 2, table)
-    right = e.table(y, 2, tuple(list(table)))
+    right = e.table(y, 2, tuple(table))
     assert left != right
     assert e.consumer_schema_id(left) == e.consumer_schema_id(right)
     assert e.consumer_program(left)[2] is e.consumer_program(right)[2]

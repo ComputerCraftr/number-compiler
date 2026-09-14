@@ -12,7 +12,11 @@ def json_integers(payload: dict[str, Any]) -> dict[str, Any]:
         for key in keys:
             value = container[key]
             if type(value) is int and value.bit_length() > 12000:
-                container[key] = {"encoding": "hex", "value": hex(value), "bits": value.bit_length()}
+                container[key] = {
+                    "encoding": "hex",
+                    "value": hex(value),
+                    "bits": value.bit_length(),
+                }
             elif isinstance(value, tuple):
                 container[key] = list(value)
                 pending.append(container[key])

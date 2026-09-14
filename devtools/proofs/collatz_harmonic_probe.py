@@ -8,16 +8,18 @@ from itertools import product
 
 from devtools.proofs import exact_oracle
 from devtools.proofs.collatz_harmonic_ports import (
-    Radix64OutputHarmonicAction,
-    Radix64WireHarmonicAction as Action,
-    WireResponse,
     ZERO,
+    Radix64OutputHarmonicAction,
+    WireResponse,
     binary_carry_birth,
     binary_jet,
     binary_temporal_action,
 )
-from number_compiler.arithmetic.carry.collatz_output_quotient import DOMAIN_ACTIONS
+from devtools.proofs.collatz_harmonic_ports import (
+    Radix64WireHarmonicAction as Action,
+)
 from number_compiler.arithmetic.carry.collatz_carry_wires import CollatzCarryWires
+from number_compiler.arithmetic.carry.collatz_output_quotient import DOMAIN_ACTIONS
 from number_compiler.arithmetic.fields.radix import digits_lsd, value_from_lsd_digits
 from number_compiler.arithmetic.fields.two_adic import v2_positive
 from number_compiler.arithmetic.polynomials.primary_jet import (

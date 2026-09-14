@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from itertools import product
-from typing import Never
+from typing import Never, cast
 
 import pytest
 
@@ -60,37 +60,37 @@ def test_carry_composition_uses_reset_law_without_observing_inputs(
 @pytest.mark.parametrize("alias", ("id", 1, True, None))
 def test_composition_rejects_non_carry_function_aliases(alias: object) -> None:
     with pytest.raises(TypeError, match="CarryFn"):
-        compose_carry_fn(alias, CarryFn.ID)  # type: ignore[arg-type]
+        compose_carry_fn(cast(CarryFn, alias), CarryFn.ID)
     with pytest.raises(TypeError, match="CarryFn"):
-        compose_carry_fn(CarryFn.ID, alias)  # type: ignore[arg-type]
+        compose_carry_fn(CarryFn.ID, cast(CarryFn, alias))
 
 
 @pytest.mark.parametrize("alias", (False, True, 0.0, 1.0, "1", None))
 def test_apply_rejects_numeric_alias_carry_bits(alias: object) -> None:
     with pytest.raises(TypeError, match="exact integer"):
-        apply_carry_fn(CarryFn.ID, alias)  # type: ignore[arg-type]
+        apply_carry_fn(CarryFn.ID, cast(int, alias))
 
 
 @pytest.mark.parametrize("alias", (False, True, 3.0, "3", None))
 def test_value_classification_rejects_numeric_aliases(alias: object) -> None:
     with pytest.raises(TypeError, match="exact integer"):
-        value_carry_fn(alias, 10)  # type: ignore[arg-type]
+        value_carry_fn(cast(int, alias), 10)
     with pytest.raises(TypeError, match="exact integer"):
-        value_carry_fn(3, alias)  # type: ignore[arg-type]
+        value_carry_fn(3, cast(int, alias))
 
 
 @pytest.mark.parametrize("alias", (False, True, 0.0, 1.0, "0", None))
 def test_scan_rejects_aliased_input_carry_and_symbols(alias: object) -> None:
     with pytest.raises(TypeError, match="exact integer"):
-        scan_carry_automaton((0, 1), incoming=alias)  # type: ignore[arg-type]
+        scan_carry_automaton((0, 1), incoming=cast(int, alias))
     with pytest.raises(TypeError, match="exact integer"):
-        scan_carry_automaton((0, alias))  # type: ignore[arg-type]
+        scan_carry_automaton((0, cast(int, alias)))
 
 
 @pytest.mark.parametrize("alias", (False, True, 10.0, "10", None))
 def test_scan_rejects_aliased_radices(alias: object) -> None:
     with pytest.raises(TypeError, match="exact integer"):
-        scan_carry_automaton((0, 1), base=alias)  # type: ignore[arg-type]
+        scan_carry_automaton((0, 1), base=cast(int, alias))
 
 
 def test_scan_composes_the_same_extensional_functions() -> None:

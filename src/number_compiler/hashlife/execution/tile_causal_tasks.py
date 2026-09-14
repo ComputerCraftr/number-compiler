@@ -458,8 +458,8 @@ __all__ = [
     "composite_result_key",
     "covered_chunks",
     "edge_state",
-    "producer_parent",
     "primitive_advance",
+    "producer_parent",
     "result_payload",
     "temporal_payload",
 ]

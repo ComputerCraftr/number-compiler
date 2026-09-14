@@ -37,20 +37,11 @@ from number_compiler.hashlife.interfaces.semantic_primitive_macro import (
 from number_compiler.resources.ledger import ResourceLedger
 
 if TYPE_CHECKING:
-    from number_compiler.arithmetic.contracts.block_kernel import FiniteBlockEffect
     from number_compiler.arithmetic.contracts.scoped_handles import (
-        ActionProgramID,
         TransferSummaryID,
-    )
-    from number_compiler.hashlife.execution.continuations.diamond_runtime import (
-        DiamondRuntime,
     )
     from number_compiler.hashlife.interfaces.diamond_boundary import BoundaryStateID
     from number_compiler.hashlife.interfaces.diamond_boundary_expr import ExprID
-    from number_compiler.hashlife.interfaces.diamond_quotient import LocalInterfaceID
-    from number_compiler.hashlife.interfaces.semantic_primitive_macro import (
-        PrimitiveMacroArena,
-    )
     from number_compiler.hashlife.interfaces.semantic_structures import StructureID
 
 
@@ -512,7 +503,7 @@ def test_wrong_or_foreign_quotient_publication_is_rejected_before_mutation() -> 
         PrimitiveMacroKey,
     )
 
-    runtime, arena, kernel = setup(primitive(), (0, 1))
+    runtime, _arena, kernel = setup(primitive(), (0, 1))
     cell = runtime.cells.source(0, 1)
     runtime.compile_primitive_macro(kernel, cell)
     other, _, foreign_kernel = setup(primitive(), (0, 1))

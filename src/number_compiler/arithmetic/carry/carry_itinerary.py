@@ -18,9 +18,10 @@ epimorphism before temporal caching.
 
 from __future__ import annotations
 
+import itertools
+from collections.abc import Sequence
 from dataclasses import dataclass
 from math import comb, gcd
-from typing import Sequence
 
 from number_compiler.arithmetic.carry.event_memory import (
     carry_field,
@@ -434,7 +435,7 @@ def live_event_suffix_start(events: Sequence[Sequence[int]], *, base: int = 10) 
     if not rows or any(not row for row in rows):
         raise ValueError("nonempty event rows required")
     widths = tuple(len(row) for row in rows)
-    later_growths = tuple(b - a for a, b in zip(widths, widths[1:]))
+    later_growths = tuple(b - a for a, b in itertools.pairwise(widths))
     if any(g not in (0, 1) for g in later_growths):
         raise ValueError("event widths do not encode a valid growth itinerary")
     bits = pair_plane_bits(base)
@@ -471,7 +472,7 @@ def reconstruct_pair_from_live_event_suffix(
     if not rows or any(not row for row in rows):
         raise ValueError("nonempty certified event suffix required")
     widths = tuple(len(row) for row in rows)
-    growths = tuple(b - a for a, b in zip(widths, widths[1:]))
+    growths = tuple(b - a for a, b in itertools.pairwise(widths))
     if any(g not in (0, 1) for g in growths):
         raise ValueError("invalid event-width schedule")
     modulus = 1 << pair_plane_bits(base)
@@ -519,7 +520,7 @@ class LiveCarryItinerary:
     @classmethod
     def seed(
         cls, carries: Sequence[Sequence[int]], *, base: int = 10
-    ) -> "LiveCarryItinerary":
+    ) -> LiveCarryItinerary:
         rows = tuple(tuple(map(int, row)) for row in carries)
         horizon = event_memory_horizon(base)
         if len(rows) != horizon:
@@ -551,7 +552,7 @@ class LiveCarryItinerary:
     def charged_carry_bits(self) -> int:
         return sum(len(row) for row in self.carries)
 
-    def advance(self) -> "LiveCarryItinerary":
+    def advance(self) -> LiveCarryItinerary:
         next_carry = carry_field(self.pair, base=self.base)
         rows = self.carries + (next_carry,)
         events = tuple(forcing_event_from_carry(row, base=self.base) for row in rows)
@@ -574,9 +575,7 @@ class PairParityChannels:
         object.__setattr__(self, "odd", int(self.odd) % self.modulus)
 
     @classmethod
-    def from_values(
-        cls, values: Sequence[int], *, modulus: int
-    ) -> "PairParityChannels":
+    def from_values(cls, values: Sequence[int], *, modulus: int) -> PairParityChannels:
         even, odd = cyclic_class_sums(values, 2, modulus)
         return cls(int(modulus), even, odd)
 
@@ -588,7 +587,7 @@ class PairParityChannels:
     def alternating(self) -> int:
         return (self.even - self.odd) % self.modulus
 
-    def advance(self, event: Sequence[int], growth: int) -> "PairParityChannels":
+    def advance(self, event: Sequence[int], growth: int) -> PairParityChannels:
         e, o = cyclic_pair_advance(
             (self.even, self.odd), event, growth, modulus=self.modulus
         )
@@ -671,7 +670,7 @@ def _rank_mod_prime(matrix: Sequence[Sequence[int]], prime: int) -> int:
     p = int(prime)
     if p < 2:
         raise ValueError(p)
-    a = [list(int(x) % p for x in row) for row in matrix]
+    a = [[int(x) % p for x in row] for row in matrix]
     rows = len(a)
     cols = len(a[0]) if rows else 0
     rank = 0
@@ -741,40 +740,40 @@ def even_width_palindrome_has_z_plus_one_factor(values: Sequence[int]) -> bool:
 
 
 __all__ = [
+    "HIGH",
     "LOW",
     "NEUTRAL",
-    "HIGH",
-    "carry_threshold_itinerary",
-    "carry_from_threshold_itinerary",
-    "threshold_reset_count",
-    "digit_pair_sum_fiber_size",
-    "outer_digit_pair_sum_fiber_size",
-    "pair_field_preimage_count",
-    "cyclic_class_sums",
-    "cyclic_pair_advance",
-    "cyclic_transport_kernel",
-    "cyclic_transport_annihilated",
+    "LiveCarryItinerary",
+    "PairParityChannels",
     "adaptive_cyclic_memory_horizon",
+    "adaptive_negacyclic_memory_horizon",
+    "adaptive_zplus1_memory_horizon",
+    "carry_from_threshold_itinerary",
+    "carry_threshold_itinerary",
+    "crt_coprime",
+    "cyclic_class_sums",
+    "cyclic_growth_operator_rank",
+    "cyclic_pair_advance",
+    "cyclic_transport_annihilated",
+    "cyclic_transport_kernel",
+    "digit_pair_sum_fiber_size",
+    "even_width_palindrome_has_z_plus_one_factor",
+    "growth_run_itinerary",
+    "live_event_suffix_length",
+    "live_event_suffix_start",
     "negacyclic_class_sums",
     "negacyclic_pair_advance",
-    "negacyclic_transport_kernel",
     "negacyclic_transport_annihilated",
-    "adaptive_negacyclic_memory_horizon",
+    "negacyclic_transport_kernel",
+    "outer_digit_pair_sum_fiber_size",
+    "pair_field_preimage_count",
+    "polynomial_growth_operator_rank",
+    "reconstruct_pair_from_live_event_suffix",
+    "reverse_add_base_pm_advance",
+    "reverse_add_base_pm_residues",
+    "reverse_add_base_squared_minus_one_residue",
+    "threshold_reset_count",
     "zplus1_jet",
     "zplus1_jet_advance",
     "zplus1_transport_annihilated",
-    "adaptive_zplus1_memory_horizon",
-    "growth_run_itinerary",
-    "live_event_suffix_start",
-    "live_event_suffix_length",
-    "reconstruct_pair_from_live_event_suffix",
-    "LiveCarryItinerary",
-    "PairParityChannels",
-    "reverse_add_base_pm_residues",
-    "reverse_add_base_pm_advance",
-    "reverse_add_base_squared_minus_one_residue",
-    "crt_coprime",
-    "cyclic_growth_operator_rank",
-    "polynomial_growth_operator_rank",
-    "even_width_palindrome_has_z_plus_one_factor",
 ]

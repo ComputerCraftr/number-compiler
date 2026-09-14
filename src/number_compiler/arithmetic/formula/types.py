@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Any, Tuple
+from typing import Any
 
 from number_compiler.arithmetic.fields.radix import bit_width
 
@@ -38,8 +38,8 @@ class Expr:
     id: int
     kind: str
     width: int
-    args: Tuple["Expr", ...]
-    param: Tuple[int | str, ...]
+    args: tuple[Expr, ...]
+    param: tuple[int | str, ...]
     local_param_bits: int
 
 
@@ -47,13 +47,13 @@ class FormulaStorage:
     """Shared storage contract for construction and evaluation mixins."""
 
     __slots__ = (
-        "_next_id",
-        "_nodes",
+        "_closed_bit_count",
         "_closed_known",
         "_closed_values",
-        "_closed_bit_count",
         "_derived",
         "_metadata",
+        "_next_id",
+        "_nodes",
     )
     _next_id: int
     _nodes: dict[tuple[object, ...], Expr]
@@ -64,4 +64,4 @@ class FormulaStorage:
     _metadata: dict[tuple[object, ...], Any]
 
 
-__all__ = ["RadixSpec", "Expr"]
+__all__ = ["Expr", "RadixSpec"]

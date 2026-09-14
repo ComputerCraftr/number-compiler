@@ -422,10 +422,10 @@ def decimal_reverse_plan(steps: int) -> ReverseFrobeniusPlan:
 
 
 __all__ = [
-    "FrobeniusSectorSourceBound",
     "DECIMAL_REVERSE_GROWTH_CERTIFICATE",
     "MAX_REVERSE_FROBENIUS_BITS",
     "MAX_REVERSE_FROBENIUS_CLASSES",
+    "FrobeniusSectorSourceBound",
     "ReverseFrobeniusPlan",
     "ReverseGrowthRunCertificate",
     "decimal_reverse_plan",

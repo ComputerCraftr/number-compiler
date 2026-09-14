@@ -60,7 +60,7 @@ if TYPE_CHECKING:
 class CanonicalSequenceCompiler:
     """One semantic cache for every supported concrete sequence family."""
 
-    __slots__ = ("_cache", "_theorem_cache", "_special_constraint_cache")
+    __slots__ = ("_cache", "_special_constraint_cache", "_theorem_cache")
 
     def __init__(self) -> None:
         self._cache: dict[tuple[object, ...], SequenceCompilation] = {}
@@ -105,8 +105,10 @@ class CanonicalSequenceCompiler:
         the same semantic result.  The mode is part of the cache identity so a
         diagnostic object can never alias the cheaper semantic compilation.
         """
-        from number_compiler.sequences.prime.lane_quotient import canonical_prime_base_period
-        from number_compiler.sequences.prime.lane_quotient import compile_prime_block_lane_quotient
+        from number_compiler.sequences.prime.lane_quotient import (
+            canonical_prime_base_period,
+            compile_prime_block_lane_quotient,
+        )
 
         if type(diagnostics) is not bool:
             raise TypeError("diagnostics must be a Boolean")
@@ -290,16 +292,7 @@ class CanonicalSequenceCompiler:
     def _special_constraint_failure_bit(
         state: SpecialGermConstraintState,
     ) -> bool | None:
-        """Classify a constant-rank pulled-back constraint state, if possible."""
-        bit = state.mask.failure_bit
-        support_bit = None
-        if state.support_gcd is not None:
-            support_bit = state.support_gcd != state.support_modulus
-        if bit is not None and support_bit is not None and bit != support_bit:
-            raise ValueError(
-                "theorem-sheet mask contradicts pulled-back support evidence"
-            )
-        return bit if bit is not None else support_bit
+        return state.constraint_failure_bit
 
     def _refine_special_constraint_state(
         self, family: str, parameter: int, constraint: SpecialGermConstraintState
@@ -385,9 +378,13 @@ class CanonicalSequenceCompiler:
     def _compile_reverse_add(
         spec: ReverseAddSequenceSpec, *, diagnostics: bool
     ) -> ReverseAddCompilation:
-        from number_compiler.arithmetic.functions.state_reduction import ReverseAddGrowthState
         from number_compiler.api.sequence_terms import formula_term
-        from number_compiler.sequences.reverse_add.digits import reverse_add_orbit_formulas
+        from number_compiler.arithmetic.functions.state_reduction import (
+            ReverseAddGrowthState,
+        )
+        from number_compiler.sequences.reverse_add.digits import (
+            reverse_add_orbit_formulas,
+        )
 
         arena, digit_roots, pair_roots = reverse_add_orbit_formulas(
             spec.seed, spec.steps, base=spec.base
@@ -542,7 +539,10 @@ class CanonicalSequenceCompiler:
             raise TypeError("special theorem policies must be Booleans")
         if allow_classical_ceiling:
             raise ValueError("classical primality recurrences are not production paths")
-        from number_compiler.sequences.power_numbers.admission import require_special_candidate_budget
+        from number_compiler.sequences.power_numbers.admission import (
+            require_special_candidate_budget,
+        )
+
         require_special_candidate_budget(family, parameter, max_candidate_bits)
         factor_witness_key = ("etale-factor-witness", family, parameter)
         if collect_etale_factor:
@@ -983,14 +983,14 @@ class CanonicalSequenceCompiler:
 
 __all__ = [
     "CanonicalSequenceCompiler",
-    "ReverseAddSequenceSpec",
-    "CollatzSequenceSpec",
-    "PrimeBlockSequenceSpec",
-    "FermatSequenceSpec",
-    "MersenneSequenceSpec",
-    "ReverseAddCompilation",
     "CollatzCompilation",
-    "PrimeBlockCompilation",
+    "CollatzSequenceSpec",
     "FermatCompilation",
+    "FermatSequenceSpec",
     "MersenneCompilation",
+    "MersenneSequenceSpec",
+    "PrimeBlockCompilation",
+    "PrimeBlockSequenceSpec",
+    "ReverseAddCompilation",
+    "ReverseAddSequenceSpec",
 ]

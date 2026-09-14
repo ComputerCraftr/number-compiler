@@ -33,7 +33,6 @@ from tests.support.diamond_query import build, oracle
 if TYPE_CHECKING:
     from number_compiler.arithmetic.contracts.scoped_handles import TransferSummaryID
     from number_compiler.hashlife.interfaces.diamond_boundary import BoundaryStateID
-    from number_compiler.hashlife.interfaces.diamond_boundary_expr import ExprID
     from number_compiler.hashlife.interfaces.diamond_quotient import LocalInterfaceID
     from number_compiler.hashlife.interfaces.semantic_structures import StructureID
 
@@ -230,12 +229,10 @@ def test_all_retained_response_stores_obey_bound_realized_result_boundary(
         node = arena.node(expression)
         if node.free_ports or node.kind in ("literal", "symbol"):
             return False
-        if (
+        return not (
             node.kind == "finite_apply"
             and arena.nodes[node.children[0]].kind == "literal"
-        ):
-            return False
-        return True
+        )
 
     for key, value in arena.memo.items():
         assert not (

@@ -2,8 +2,8 @@
 
 from __future__ import annotations
 
+from collections.abc import Sequence
 from dataclasses import dataclass
-from typing import Sequence
 
 from number_compiler.arithmetic.fields.morphism_core import AffineCocycle, binary_power
 from number_compiler.arithmetic.polynomials.cyclotomic_ring import CyclotomicRing
@@ -53,7 +53,7 @@ class CyclotomicAffineMorphism:
         return self.ring.module_key
 
     @classmethod
-    def identity_for(cls, template: CyclotomicDigitBlock) -> "CyclotomicAffineMorphism":
+    def identity_for(cls, template: CyclotomicDigitBlock) -> CyclotomicAffineMorphism:
         return cls(
             template.order,
             template.modulus,
@@ -70,7 +70,7 @@ class CyclotomicAffineMorphism:
         template: CyclotomicDigitBlock,
         multiplier: Sequence[int],
         addend: Sequence[int],
-    ) -> "CyclotomicAffineMorphism":
+    ) -> CyclotomicAffineMorphism:
         if len(multiplier) != template.degree or len(addend) != template.degree:
             raise ValueError((len(multiplier), len(addend), template.degree))
         return cls(
@@ -89,7 +89,7 @@ class CyclotomicAffineMorphism:
         template: CyclotomicDigitBlock,
         multiplier: Sequence[int],
         addend: Sequence[int],
-    ) -> "CyclotomicAffineMorphism":
+    ) -> CyclotomicAffineMorphism:
         m = template.ring.reduce(multiplier)
         a = template.ring.reduce(addend)
         return cls.from_residues(template, m, a)
@@ -97,7 +97,7 @@ class CyclotomicAffineMorphism:
     @classmethod
     def scale(
         cls, template: CyclotomicDigitBlock, scalar: int
-    ) -> "CyclotomicAffineMorphism":
+    ) -> CyclotomicAffineMorphism:
         return cls.from_polynomials(template, (int(scalar),), (0,))
 
     def _template(self) -> CyclotomicDigitBlock:
@@ -112,9 +112,7 @@ class CyclotomicAffineMorphism:
     def cocycle(self) -> AffineCocycle[tuple[int, ...]]:
         return AffineCocycle(self.multiplier, self.addend)
 
-    def _then_raw(
-        self, other: "CyclotomicAffineMorphism"
-    ) -> "CyclotomicAffineMorphism":
+    def _then_raw(self, other: CyclotomicAffineMorphism) -> CyclotomicAffineMorphism:
         if self.module_key != other.module_key:
             raise ValueError((self.module_key, other.module_key))
         ring = self.ring
@@ -133,7 +131,7 @@ class CyclotomicAffineMorphism:
             0,
         )
 
-    def then(self, other: "CyclotomicAffineMorphism") -> "CyclotomicAffineMorphism":
+    def then(self, other: CyclotomicAffineMorphism) -> CyclotomicAffineMorphism:
         out = self._then_raw(other)
         return CyclotomicAffineMorphism(
             out.order,
@@ -145,7 +143,7 @@ class CyclotomicAffineMorphism:
             self.compositions + other.compositions + 1,
         )
 
-    def power_map(self, exponent: int) -> "CyclotomicAffineMorphism":
+    def power_map(self, exponent: int) -> CyclotomicAffineMorphism:
         base = CyclotomicAffineMorphism(
             self.order,
             self.modulus,

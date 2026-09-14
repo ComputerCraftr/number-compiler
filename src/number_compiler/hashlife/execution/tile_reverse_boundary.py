@@ -6,15 +6,15 @@ from typing import TYPE_CHECKING
 
 from number_compiler.arithmetic.contracts.block_kernel import BaseBlockEffect
 from number_compiler.hashlife.behavior.reverse_bound_output import ReverseBoundOutput
-from number_compiler.hashlife.execution.tile_causal_tasks import CausalFrame
 from number_compiler.hashlife.execution.tile_causal_results import lookup_causal_result
+from number_compiler.hashlife.execution.tile_causal_tasks import CausalFrame
 from number_compiler.hashlife.tiles.tile_boundaries import BoundaryTileView
 from number_compiler.hashlife.tiles.tile_causal_interface_memo import (
     causal_interface_key,
     lookup_causal_interface,
 )
-from number_compiler.resources.causal_workspace import CausalResults
 from number_compiler.projection.digit_terminal import DigitNormalizeBlockEffect
+from number_compiler.resources.causal_workspace import CausalResults
 
 if TYPE_CHECKING:
     from number_compiler.hashlife.actions.field_actions import FieldCellActionID

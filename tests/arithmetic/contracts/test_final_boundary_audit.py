@@ -37,7 +37,7 @@ def test_source_tile_rejects_oversized_level_without_expanding_its_power() -> No
 
 @pytest.mark.parametrize("start,level", [(True, 0), (0, True), (0.0, 0), (0, "1")])
 def test_source_tile_rejects_noninteger_geometry_before_lookup(
-    start: bool | float | int, level: bool | int | str
+    start: bool | float, level: bool | int | str
 ) -> None:
     ledger = ResourceLedger()
     geometry = SourceGeometry(ledger, ExactSource((1,), 2, "collatz", 2, 1))

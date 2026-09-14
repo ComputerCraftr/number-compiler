@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from itertools import product
-from typing import TYPE_CHECKING, Literal
+from typing import Literal
 
 import pytest
 
@@ -20,9 +20,6 @@ from number_compiler.hashlife.interfaces.semantic_bits import (
     FactoredFunctionID,
 )
 from number_compiler.resources.ledger import ResourceLedger
-
-if TYPE_CHECKING:
-    from number_compiler.arithmetic.functions.finite_function_types import FinitePort
 
 
 def ports(
@@ -162,7 +159,7 @@ def test_failed_factored_publication_is_atomic_across_boolean_and_numeric_arenas
     ],
 )
 def test_foreign_or_forged_factored_handles_reject_before_any_circuit_work(
-    field: str, value: ArenaToken | Literal["semantic-function"] | bool | float | int
+    field: str, value: ArenaToken | Literal["semantic-function"] | bool | float
 ) -> None:
     arena = BitFunctionArena(ResourceLedger())
     carry, symbol = ports(3)

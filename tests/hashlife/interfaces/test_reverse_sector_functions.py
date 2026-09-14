@@ -3,12 +3,11 @@
 from __future__ import annotations
 
 from dataclasses import replace
-from typing import Never
+from typing import Never, cast
 
 import pytest
 
 import number_compiler.hashlife.execution.tile_causal_api as causal_api
-
 from number_compiler.arithmetic.carry.event_memory import carry_field, pair_step
 from number_compiler.arithmetic.carry.reverse_sector_transfer import (
     ReverseCarrySectorTransfer,
@@ -21,15 +20,15 @@ from number_compiler.arithmetic.contracts.scoped_handles import ExactSource
 from number_compiler.arithmetic.contracts.source_geometry import SourceGeometry
 from number_compiler.hashlife.execution.tile_kernel import PrimitiveTileKernelAdapter
 from number_compiler.hashlife.execution.tile_scheduler import TileApplication
-from number_compiler.hashlife.interfaces.tile_reverse_sector_functions import (
-    _aligned_reverse_interval_forcing,
-    reverse_sector_width_from_interface,
+from number_compiler.hashlife.interfaces.diamond_quotient import (
+    QuotientRecord,
 )
 from number_compiler.hashlife.interfaces.tile_reverse_functions import (
     reverse_parent_components,
 )
-from number_compiler.hashlife.interfaces.diamond_quotient import (
-    QuotientRecord,
+from number_compiler.hashlife.interfaces.tile_reverse_sector_functions import (
+    _aligned_reverse_interval_forcing,
+    reverse_sector_width_from_interface,
 )
 from number_compiler.hashlife.observation.tile_projection import build_tile_projection
 from number_compiler.hashlife.tiles.interface_publication import (
@@ -179,12 +178,14 @@ def test_sector_observation_rejects_noninitial_and_asymmetric_applications() -> 
         finally:
             noninitial.close()
 
-    with build_tile_projection(
-        BaseBlockEffect(10),
-        _source(ResourceLedger(), (7, 18, 6)),
-    ) as projection:
-        with pytest.raises(ValueError, match="symmetric pair field"):
-            observe_reverse_sector_product(projection._application)
+    with (
+        build_tile_projection(
+            BaseBlockEffect(10),
+            _source(ResourceLedger(), (7, 18, 6)),
+        ) as projection,
+        pytest.raises(ValueError, match="symmetric pair field"),
+    ):
+        observe_reverse_sector_product(projection._application)
 
 
 def test_annihilated_source_observation_skips_source_sector_compilation(
@@ -330,7 +331,7 @@ def test_authenticated_local_interval_forcing_covers_growth_interior() -> None:
 
 def test_sector_observation_rejects_malformed_and_foreign_action() -> None:
     with pytest.raises(TypeError, match="tile application"):
-        observe_reverse_sector_product(object())  # type: ignore[arg-type]
+        observe_reverse_sector_product(cast(TileApplication, object()))
 
     first_ledger, second_ledger = ResourceLedger(), ResourceLedger()
     with (

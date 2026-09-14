@@ -31,9 +31,9 @@ closed orbit state unless a caller separately proves successor closure.
 
 from __future__ import annotations
 
+from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
-from functools import lru_cache
-from typing import Mapping, Sequence
+from functools import cache
 
 from number_compiler.arithmetic.fields.morphism_core import QuadraticPower, binary_power
 from number_compiler.arithmetic.fields.radix import bit_width
@@ -154,7 +154,7 @@ class ReverseAddSymmetryProjection:
         *,
         order: int,
         bits: int,
-    ) -> "ReverseAddSymmetryProjection":
+    ) -> ReverseAddSymmetryProjection:
         values = tuple(map(int, coefficients))
         core = _palindromic_core(values)
         center = (len(core) - 1) // 2
@@ -222,7 +222,7 @@ class ReverseAddSymmetryProjection:
         )
 
 
-@lru_cache(maxsize=None)
+@cache
 def _fixed_real_basis(order: int, bits: int) -> tuple[tuple[int, ...], ...]:
     """Triangular ``x=z+2+z^-1`` basis in one 2-power cyclotomic ring.
 
@@ -355,7 +355,7 @@ class FixedRealCyclotomicGerm:
         views: Mapping[int, Sequence[int]],
         *,
         bits: int,
-    ) -> "FixedRealCyclotomicGerm":
+    ) -> FixedRealCyclotomicGerm:
         bits = int(bits)
         missing = {2, 4, 8}.difference(views)
         if missing:
@@ -540,8 +540,8 @@ class ReverseAddSymmetryLinearAction:
         return morphism.apply(source, result_length=0).residue
 
     def then(
-        self, other: "ReverseAddSymmetryLinearAction"
-    ) -> "ReverseAddSymmetryLinearAction":
+        self, other: ReverseAddSymmetryLinearAction
+    ) -> ReverseAddSymmetryLinearAction:
         if (self.order, self.bits) != (other.order, other.bits):
             raise ValueError(((self.order, self.bits), (other.order, other.bits)))
         return ReverseAddSymmetryLinearAction(
@@ -552,7 +552,7 @@ class ReverseAddSymmetryLinearAction:
             self.compositions + other.compositions + 1,
         )
 
-    def power(self, exponent: int) -> "ReverseAddSymmetryLinearAction":
+    def power(self, exponent: int) -> ReverseAddSymmetryLinearAction:
         base = ReverseAddSymmetryLinearAction(
             self.order, self.bits, self.no_growth, self.growth, 0
         )
@@ -678,7 +678,7 @@ class ReverseAddSymmetryInnovationBlock:
         start_parity: int,
         order: int,
         bits: int,
-    ) -> "ReverseAddSymmetryInnovationBlock":
+    ) -> ReverseAddSymmetryInnovationBlock:
         template = CyclotomicDigitBlock.identity(int(order), 1 << int(bits))
         return cls(
             int(order),
@@ -699,7 +699,7 @@ class ReverseAddSymmetryInnovationBlock:
         source_width: int,
         order: int,
         bits: int,
-    ) -> "ReverseAddSymmetryInnovationBlock":
+    ) -> ReverseAddSymmetryInnovationBlock:
         g, width = int(growth), int(source_width)
         row = tuple(map(int, event))
         if g not in (0, 1) or width <= 0 or len(row) != width + g:
@@ -728,7 +728,7 @@ class ReverseAddSymmetryInnovationBlock:
         order: int,
         bits: int,
         start_width: int | None = None,
-    ) -> "ReverseAddSymmetryInnovationBlock":
+    ) -> ReverseAddSymmetryInnovationBlock:
         rows = tuple(tuple(map(int, row)) for row in events)
         gs = tuple(map(int, growths))
         if len(rows) != len(gs):
@@ -759,8 +759,8 @@ class ReverseAddSymmetryInnovationBlock:
         return out
 
     def then(
-        self, other: "ReverseAddSymmetryInnovationBlock"
-    ) -> "ReverseAddSymmetryInnovationBlock":
+        self, other: ReverseAddSymmetryInnovationBlock
+    ) -> ReverseAddSymmetryInnovationBlock:
         if (self.order, self.bits) != (other.order, other.bits):
             raise ValueError(((self.order, self.bits), (other.order, other.bits)))
         if self.end_parity != other.start_parity:
@@ -781,7 +781,7 @@ class ReverseAddSymmetryInnovationBlock:
             )
         return total
 
-    def power_block(self, exponent: int) -> "ReverseAddSymmetryInnovationBlock":
+    def power_block(self, exponent: int) -> ReverseAddSymmetryInnovationBlock:
         """Binary-power a frame-preserving affine block.
 
         A block with odd growth flips the parity sector.  One sector-specific
@@ -851,8 +851,8 @@ class ReverseAddSymmetryInnovationBlock:
 
 
 __all__ = [
-    "ReverseAddSymmetryProjection",
     "FixedRealCyclotomicGerm",
-    "ReverseAddSymmetryLinearAction",
     "ReverseAddSymmetryInnovationBlock",
+    "ReverseAddSymmetryLinearAction",
+    "ReverseAddSymmetryProjection",
 ]

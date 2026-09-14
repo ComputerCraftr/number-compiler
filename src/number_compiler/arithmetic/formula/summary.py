@@ -8,8 +8,9 @@ jump guard is active.
 
 from __future__ import annotations
 
+from collections.abc import Sequence
 from dataclasses import dataclass
-from typing import Literal, Sequence, overload
+from typing import Literal, overload
 
 from number_compiler.arithmetic.automata.guard import (
     JumpGuardViolation,
@@ -158,14 +159,14 @@ def compose_summaries(left: BlockSummary, right: BlockSummary) -> BlockSummary:
 
 
 __all__ = [
-    "I",
     "R0",
     "R1",
     "BlockSummary",
-    "summary_from_values",
-    "register_summary",
-    "get_summary",
+    "I",
     "compose_summaries",
+    "get_summary",
+    "register_summary",
+    "summary_from_values",
     "synthesize_symmetric_summary",
 ]
 

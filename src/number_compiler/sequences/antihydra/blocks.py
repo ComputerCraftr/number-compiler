@@ -98,7 +98,8 @@ class Cylinder:
         x = h >> self.width
         numerator = (
             (self.quadratic * x + self.linear) * x
-            + self.ledger_coefficient * ledger + self.constant
+            + self.ledger_coefficient * ledger
+            + self.constant
         )
         if numerator % 4:
             raise ArithmeticError("nonintegral physical clock roof")
@@ -106,9 +107,12 @@ class Cylinder:
         displacement = h_next - h - self.width
         if (ticks - displacement) % 2 or ticks < abs(displacement):
             raise ArithmeticError("invalid directional clock roof")
-        return h_next, ledger_next, (ticks - displacement) // 2, (
-            ticks + displacement
-        ) // 2
+        return (
+            h_next,
+            ledger_next,
+            (ticks - displacement) // 2,
+            (ticks + displacement) // 2,
+        )
 
     def advance(self, h: int, ledger: int) -> tuple[int, int]:
         """Apply the total arithmetic skew without asserting TM admission."""
@@ -129,22 +133,29 @@ class Cylinder:
         translated = (p3 * lift + self.output - after.residue) // modulus
         a, b = 1 << ell, p3
         q = self.quadratic * a * a + after.quadratic * b * b
-        linear = (
-            (2 * self.quadratic * lift + self.linear) * a
-            + (2 * after.quadratic * translated + after.linear) * b
-        )
+        linear = (2 * self.quadratic * lift + self.linear) * a + (
+            2 * after.quadratic * translated + after.linear
+        ) * b
         constant = (
-            (self.quadratic * lift + self.linear) * lift + self.constant
+            (self.quadratic * lift + self.linear) * lift
+            + self.constant
             + (after.quadratic * translated + after.linear) * translated
-            + after.constant + after.ledger_coefficient * self.delta
+            + after.constant
+            + after.ledger_coefficient * self.delta
         )
         residue = self.residue + (lift << k)
         transfer = self.skew.then(after.skew, multiply=mul, add=add)
         output = (transfer.upper * residue + transfer.offset) // transfer.lower
         return Cylinder(
-            k + ell, residue, output, self.delta + after.delta,
-            min(self.minimum, self.delta + after.minimum), q, linear,
-            self.ledger_coefficient + after.ledger_coefficient, constant,
+            k + ell,
+            residue,
+            output,
+            self.delta + after.delta,
+            min(self.minimum, self.delta + after.minimum),
+            q,
+            linear,
+            self.ledger_coefficient + after.ledger_coefficient,
+            constant,
         )
 
 

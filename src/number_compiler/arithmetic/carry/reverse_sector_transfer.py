@@ -230,11 +230,11 @@ class ReverseCarrySectorTransfer:
                     if (
                         sector.before[incoming][0] % 2
                         != incoming * self.active_width % 2
+                        and self.active_width == self.width == 1
                     ):
                         # The z=-1 sector does not expose ordinary parity for a
                         # parent, so only its leaf boundary values are checked.
-                        if self.active_width == self.width == 1:
-                            raise ValueError("leaf incoming carry projection is forged")
+                        raise ValueError("leaf incoming carry projection is forged")
                     if (
                         self.active_width == self.width == 1
                         and sector.after[incoming][0] != outgoing

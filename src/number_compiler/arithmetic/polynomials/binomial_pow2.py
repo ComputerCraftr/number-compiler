@@ -21,7 +21,7 @@ The transport helper exploits the extra factor ``2**q`` directly:
 
 from __future__ import annotations
 
-from functools import lru_cache
+from functools import cache
 
 
 def v2_factorial(n: int) -> int:
@@ -40,7 +40,7 @@ def v2_binomial(n: int, k: int) -> int:
     return v2_factorial(n) - v2_factorial(k) - v2_factorial(n - k)
 
 
-@lru_cache(maxsize=None)
+@cache
 def _odd_prefix_table(bits: int) -> tuple[tuple[int, ...], int]:
     bits = int(bits)
     if bits <= 0:
@@ -115,10 +115,10 @@ def transport_kernel_mod_pow2(r: int, q: int, bits: int) -> tuple[int, ...]:
 
 
 __all__ = [
-    "v2_factorial",
-    "v2_binomial",
-    "odd_factorial_mod_pow2",
     "binomial_mod_pow2",
+    "odd_factorial_mod_pow2",
     "scaled_binomial_mod_pow2",
     "transport_kernel_mod_pow2",
+    "v2_binomial",
+    "v2_factorial",
 ]

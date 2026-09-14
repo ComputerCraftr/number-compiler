@@ -77,7 +77,7 @@ class SpecialFrobeniusChunkSpec:
             self.modulus_bits,
         )
 
-    def adjacent(self, span: int) -> "SpecialFrobeniusChunkSpec":
+    def adjacent(self, span: int) -> SpecialFrobeniusChunkSpec:
         span = int(span)
         if span < 1:
             raise ValueError(span)
@@ -158,8 +158,8 @@ class SpecialFrobeniusChunkResult:
         return self.status in ("ALL_FAIL", "SPLIT")
 
     def compose(
-        self, downstream: "SpecialFrobeniusChunkResult"
-    ) -> "SpecialFrobeniusChunkResult":
+        self, downstream: SpecialFrobeniusChunkResult
+    ) -> SpecialFrobeniusChunkResult:
         """Compose adjacent conditional chunks without reopening individual levels.
 
         A downstream chunk is meaningful only after every level in this chunk
@@ -362,12 +362,12 @@ def special_frobenius_chunk_probe(
 
 
 __all__ = [
-    "SpecialFrobeniusChunkSpec",
     "SpecialFrobeniusChunkResult",
-    "folded_x_coefficient_from_stride_residue",
-    "folded_x_defect_from_stride_residue",
-    "stride_zero_class",
+    "SpecialFrobeniusChunkSpec",
     "SpecialFrobeniusDefectPacket",
     "classify_frobenius_chunk_defect",
+    "folded_x_coefficient_from_stride_residue",
+    "folded_x_defect_from_stride_residue",
     "special_frobenius_chunk_probe",
+    "stride_zero_class",
 ]

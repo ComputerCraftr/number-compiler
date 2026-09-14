@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING, Never
+from typing import Never
 
 import pytest
 
@@ -23,9 +23,6 @@ from tests.support.diamond_halos import suffix_parity
 from tests.support.diamond_observation_adversarial import neighbor_xor
 from tests.support.diamond_primitive_step_reset import machine
 from tests.support.diamond_query import build, oracle
-
-if TYPE_CHECKING:
-    from number_compiler.hashlife.interfaces.diamond_boundary_expr import ExprID
 
 
 def test_certified_step_matches_every_primitive_incoming_state_and_symbol() -> None:

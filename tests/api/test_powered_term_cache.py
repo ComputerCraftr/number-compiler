@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from typing import Never
+from typing import Never, cast
 
 import pytest
 
@@ -101,7 +101,7 @@ def test_disabled_cache_and_invalid_requests_do_not_reuse_an_owner() -> None:
     before = compiler.powered_cache_info()
     for bad in (True, 1.0, "1"):
         with pytest.raises((TypeError, ValueError)):
-            compiler.project_nth("196", bad)  # type: ignore[arg-type]
+            compiler.project_nth("196", cast(int, bad))
     with pytest.raises(ValueError):
         compiler.project_nth("collatz", 0, seed=27, radix=5)
     assert compiler.powered_cache_info() == before

@@ -275,11 +275,11 @@ def prime_block_summary_hyperbolic_packed(
 
 
 __all__ = [
-    "PrimePairField",
-    "prime_pair_field",
     "HyperbolicPackedPrimeSummary",
-    "prime_block_summary_hyperbolic_packed",
     "LeastFactorLane",
     "LeastFactorProjection",
+    "PrimePairField",
+    "prime_block_summary_hyperbolic_packed",
+    "prime_pair_field",
     "project_least_factor_field",
 ]

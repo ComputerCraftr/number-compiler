@@ -27,13 +27,13 @@ def pin_result(
     scheduler.results._validate_key(key)
     if lease._issuer is not scheduler.results or lease._key != key:
         raise ValueError("application pin belongs to another result request")
-    lease.result
+    _ = lease.result
     binding = application, key
     found = scheduler._pins.get(binding)
     if found is not None:
         if type(found) is not ResultLease or found._key != key:
             raise ValueError("application pin contains another result request")
-        found.result
+        _ = found.result
         if found is not lease:
             lease.close()
         scheduler.ledger.bump("tile_result_pin_early_hits")

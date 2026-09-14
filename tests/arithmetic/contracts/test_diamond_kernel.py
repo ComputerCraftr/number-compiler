@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from array import array
 from itertools import product
-from typing import TYPE_CHECKING, Never, cast
+from typing import Never, cast
 
 import pytest
 
@@ -29,11 +29,6 @@ from number_compiler.hashlife.interfaces.diamond_kernel import (
 from number_compiler.projection.digit_terminal import DigitNormalizeBlockEffect
 from number_compiler.resources.ledger import ResourceLedger
 from number_compiler.sequences.collatz.block_power import CollatzPhysicalBlockEffect
-
-if TYPE_CHECKING:
-    from number_compiler.arithmetic.contracts.block_kernel import FiniteBlockEffect
-    from number_compiler.arithmetic.contracts.scoped_handles import TransferSummaryID
-    from number_compiler.arithmetic.functions.finite_port_action import PortVariable
 
 
 def finite_identity() -> FiniteBlockEffect:
@@ -254,7 +249,7 @@ def test_nonblank_observer_is_complete_for_physical_and_pair_alphabets(
         assert inactive == state_function
         assert active == arena.constant(2, 1)
         with pytest.raises((AttributeError, TypeError)):
-            setattr(effect, "blank", 0)
+            effect.__setattr__("blank", 0)
 
 
 def test_absorber_classification_matches_complete_primitive_alphabet() -> None:

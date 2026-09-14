@@ -1,4 +1,3 @@
-#!/usr/bin/env python3
 """Deterministic v0.53.7 digit-generation / support-extraction probe."""
 
 from __future__ import annotations

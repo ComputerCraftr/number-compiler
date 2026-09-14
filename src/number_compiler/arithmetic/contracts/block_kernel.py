@@ -131,14 +131,14 @@ class BaseBlockEffect:
     """One exact padded pair-to-pair reverse-add transition."""
 
     __slots__ = (
+        "_initial",
         "_sealed",
         "base",
         "blank",
-        "exponent",
-        "node_id",
-        "_initial",
         "blank_left_tail",
         "blank_right_tail",
+        "exponent",
+        "node_id",
         "stable_blank_output",
         "supports_predecessor_trace",
     )
@@ -188,12 +188,13 @@ class BaseBlockEffect:
         if type(side) is not BoundarySide:
             raise TypeError("kernel side must be BoundarySide")
         require_integer(symbol, "kernel symbol", 0, self.blank)
-        expected = _BaseLeftState if side is BoundarySide.LEFT else _BaseRightState
-        if type(state) is not expected:
-            raise TypeError("kernel state has another boundary sort")
         if side is BoundarySide.LEFT:
-            return self._advance_left(state, symbol)  # type: ignore[arg-type]
-        return self._advance_right(state, symbol)  # type: ignore[arg-type]
+            if type(state) is not _BaseLeftState:
+                raise TypeError("kernel state has another boundary sort")
+            return self._advance_left(state, symbol)
+        if type(state) is not _BaseRightState:
+            raise TypeError("kernel state has another boundary sort")
+        return self._advance_right(state, symbol)
 
     def _advance_left(self, state: _BaseLeftState, symbol: int) -> _BaseLeftState:
         if state.sink:
@@ -323,27 +324,27 @@ class FiniteBlockEffect:
     """
 
     __slots__ = (
+        "_initial",
         "_sealed",
+        "_semantic_identity",
+        "alphabet_size",
         "base",
         "blank",
-        "exponent",
-        "node_id",
-        "_initial",
-        "left_count",
-        "right_count",
-        "alphabet_size",
-        "left_transitions",
-        "right_transitions",
-        "outputs",
-        "kernel_name",
-        "storage_bytes",
-        "uncompressed_bytes",
-        "semantic_digest",
-        "_semantic_identity",
         "blank_left_tail",
         "blank_right_tail",
+        "exponent",
+        "kernel_name",
+        "left_count",
+        "left_transitions",
+        "node_id",
+        "outputs",
+        "right_count",
+        "right_transitions",
+        "semantic_digest",
         "stable_blank_output",
+        "storage_bytes",
         "supports_predecessor_trace",
+        "uncompressed_bytes",
     )
 
     def __setattr__(self, name: str, value: object) -> None:
@@ -496,7 +497,6 @@ class FiniteBlockEffect:
         self._validate_side(side)
         count = self.left_count if side is BoundarySide.LEFT else self.right_count
         require_integer(state, "finite boundary state", 0, count - 1)
-        return None
 
     def boundary_universe(
         self, side: BoundarySide, *, max_states: int | None = None

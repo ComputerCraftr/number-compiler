@@ -11,16 +11,16 @@ from collections.abc import Callable
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, TypeVar, cast
 
+from number_compiler.arithmetic.contracts.block_effect import BlockContextBudgetExceeded
 from number_compiler.arithmetic.fields.morphism_core import modular_power
 from number_compiler.arithmetic.fields.skew_transfer import SkewTransfer
 from number_compiler.arithmetic.fields.tropical import TropicalMatrix
 from number_compiler.arithmetic.fields.tropical_divisor import TropicalDivisorState
 from number_compiler.arithmetic.polynomials.cyclotomic_ring import CyclotomicRing
 from number_compiler.sequences.collatz.hensel_cylinders import (
-    HenselCylinder,
     MAX_CYLINDER_BITS,
+    HenselCylinder,
 )
-from number_compiler.arithmetic.contracts.block_effect import BlockContextBudgetExceeded
 
 if TYPE_CHECKING:
     from number_compiler.sequences.collatz.power import (

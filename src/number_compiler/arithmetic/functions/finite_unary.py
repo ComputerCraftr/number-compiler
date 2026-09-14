@@ -6,8 +6,8 @@ and counterexample-guided refinement remain in proof. No trajectory is inferred.
 
 from __future__ import annotations
 
+from collections.abc import Hashable, Sequence
 from dataclasses import dataclass
-from typing import Hashable, Sequence
 
 from number_compiler.arithmetic.fields.morphism_core import (
     InternedEffectNode,
@@ -16,7 +16,7 @@ from number_compiler.arithmetic.fields.morphism_core import (
 from number_compiler.arithmetic.fields.radix import bit_width
 from number_compiler.arithmetic.functions.finite_observer import (
     minimize_finite_observer,
-    partition_equivalent as partition_equivalent,
+    partition_equivalent,
 )
 
 
@@ -177,13 +177,13 @@ class UnaryTransitionEffect:
         return self.classes * max(1, bit_width(self.classes - 1))
 
     @classmethod
-    def identity(cls, classes: int) -> "UnaryTransitionEffect":
+    def identity(cls, classes: int) -> UnaryTransitionEffect:
         classes = int(classes)
         if classes <= 0:
             raise ValueError(classes)
         return cls(tuple(range(classes)))
 
-    def then(self, other: "UnaryTransitionEffect") -> "UnaryTransitionEffect":
+    def then(self, other: UnaryTransitionEffect) -> UnaryTransitionEffect:
         """Return ``other o self``."""
         if self.classes != other.classes:
             raise ValueError((self.classes, other.classes))
@@ -205,10 +205,10 @@ class UnaryPowerArena:
     """Early-canonical interner for extensional finite transition maps."""
 
     __slots__ = (
-        "_nodes",
+        "_atom",
         "_by_key",
         "_identity",
-        "_atom",
+        "_nodes",
         "composition_operations",
         "intern_hits",
         "intern_misses",
@@ -444,18 +444,18 @@ def quotient_machine_from_moore(
 
 __all__ = [
     "ObserverAnalysis",
+    "UnaryBehavioralBlockReport",
     "UnaryImageFiltration",
     "UnaryMooreMinimization",
-    "analyze_observer",
-    "unary_image_filtration",
-    "partition_equivalent",
-    "minimize_unary_moore",
-    "UnaryTransitionEffect",
-    "UnaryPowerNode",
     "UnaryPowerArena",
+    "UnaryPowerNode",
     "UnaryQuotientMachine",
-    "UnaryBehavioralBlockReport",
-    "unary_behavioral_block_machine",
-    "unary_target_distance_machine",
+    "UnaryTransitionEffect",
+    "analyze_observer",
+    "minimize_unary_moore",
+    "partition_equivalent",
     "quotient_machine_from_moore",
+    "unary_behavioral_block_machine",
+    "unary_image_filtration",
+    "unary_target_distance_machine",
 ]

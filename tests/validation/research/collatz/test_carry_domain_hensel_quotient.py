@@ -6,10 +6,9 @@ the negative controls forbid interpreting their finite keys as closed state.
 """
 
 from collections import Counter, defaultdict
-from collections.abc import Iterator
+from collections.abc import Hashable, Iterator
 from dataclasses import dataclass
-from itertools import product
-from typing import Hashable
+from itertools import pairwise, product
 
 import pytest
 
@@ -93,7 +92,7 @@ def _directional_next_domains(source: tuple[int, ...]) -> tuple[int, ...]:
             radix64_right_domain_view(adjacent, shift),
             shift,
         )
-        for raw, adjacent in zip(raws, raws[1:])
+        for raw, adjacent in pairwise(raws)
     ]
     quotient, _ = radix64_shift_views(raws[-1], shift)
     _, remainder = radix64_shift_views(carry, shift)

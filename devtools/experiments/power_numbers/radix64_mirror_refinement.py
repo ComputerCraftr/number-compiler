@@ -265,9 +265,7 @@ def temporal_mirror_audit(family: str, parameter: int) -> TemporalMirrorAudit:
         )
         for level in range(1, last_level + 1)
     )
-    return TemporalMirrorAudit(
-        family, parameter, depths, last_level, partial, rows
-    )
+    return TemporalMirrorAudit(family, parameter, depths, last_level, partial, rows)
 
 
 __all__ = [

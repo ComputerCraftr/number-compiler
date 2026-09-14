@@ -49,10 +49,6 @@ from tests.support.recursive_field_images import (
     _transfer_setup,
 )
 
-if TYPE_CHECKING:
-    from number_compiler.hashlife.actions.field_actions import FieldCellActionID
-    from number_compiler.hashlife.execution.field_executor import ParentObservation
-
 
 class _ArenaArguments(TypedDict):
     action_owner: ArenaToken
@@ -151,11 +147,8 @@ def test_parent_observation_metrics_follow_the_observer_memo_probe() -> None:
     ),
 )
 def test_image_arena_rejects_owner_and_sort_aliases_atomically(
-    field: Literal["action_kind"]
-    | Literal["action_owner"]
-    | Literal["output_kind"]
-    | Literal["output_owner"],
-    value: Literal[""] | bool | float | int,
+    field: Literal["action_kind", "action_owner", "output_kind", "output_owner"],
+    value: Literal[""] | bool | float,
     error: type[Exception],
 ) -> None:
     ledger, _, signature, _, _, images, _, _ = _setup()
@@ -183,7 +176,7 @@ def test_image_arena_rejects_owner_and_sort_aliases_atomically(
 
 
 def test_image_arena_rejects_partial_authority_before_registration() -> None:
-    ledger, _, signature, _, _, images, adapter, _ = _setup()
+    ledger, _, _signature, _, _, images, adapter, _ = _setup()
     before = ledger.snapshot()
     with pytest.raises(ValueError, match="supplied together"):
         RecursiveFieldImageArena(
@@ -282,7 +275,9 @@ def test_non_power_of_two_forest_publishes_balanced_recursive_image() -> None:
     assert not audit_field_image_payloads(ledger).invalid
 
 
-def test_warm_forest_parent_hits_before_children_and_composition() -> None:
+def test_warm_forest_parent_hits_before_children_and_composition(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
     ledger, source, signature, geometry, action, _, adapter, executor = _setup(
         (0, 1, 0, 1, 0, 1),
     )
@@ -292,9 +287,9 @@ def test_warm_forest_parent_hits_before_children_and_composition() -> None:
     def poisoned(*_args: object, **_kwargs: object) -> Never:
         raise AssertionError("warm forest parent descended into construction")
 
-    setattr(adapter, "leaf", poisoned)
-    setattr(adapter, "join", poisoned)
-    setattr(adapter, "forest", poisoned)
+    monkeypatch.setattr(adapter, "leaf", poisoned)
+    monkeypatch.setattr(adapter, "join", poisoned)
+    monkeypatch.setattr(adapter, "forest", poisoned)
     before = ledger.counters.get("source_leaf_visits", 0)
     assert executor.image(action, source, geometry, signature) == first
     assert calls[2] > 0
@@ -313,7 +308,7 @@ def test_runtime_issued_application_is_lazy_and_marker_cannot_forge_it() -> None
 
 
 def test_image_application_rejects_foreign_port_before_warm_image_probe() -> None:
-    ledger, source, signature, geometry, action, images, adapter, executor = _setup()
+    ledger, source, signature, geometry, action, _images, adapter, executor = _setup()
     incoming = ArenaHandle(adapter.port_owner, "test-image-port", 0)
     application = executor.application(action, source, geometry, signature, incoming)
     assert application.point(0) == 0
@@ -847,13 +842,10 @@ def test_foreign_source_rejects_before_other_request_range_lookups() -> None:
     ),
 )
 def test_field_image_summary_rejects_numeric_aliases(
-    field: Literal["activity"]
-    | Literal["extent"]
-    | Literal["first_active"]
-    | Literal["growth"]
-    | Literal["last_active"]
-    | Literal["terminated"],
-    value: bool | float | int,
+    field: Literal[
+        "activity", "extent", "first_active", "growth", "last_active", "terminated"
+    ],
+    value: bool | float,
 ) -> None:
 
     values: dict[str, object] = {

@@ -99,7 +99,11 @@ def _program_block(
                 )
                 continue
 
-            def input_bit(position: int) -> int:
+            def input_bit(
+                position: int,
+                exact_before_width: int | None = exact_before_width,
+                before: ActionProgramID = before,
+            ) -> int:
                 if exact_before_width is not None and position >= exact_before_width:
                     return 0
                 provider_block = position // 64

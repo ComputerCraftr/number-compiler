@@ -1,4 +1,3 @@
-#!/usr/bin/env python3
 """Fresh-process orchestration for causal tile growth evidence."""
 
 from __future__ import annotations
@@ -217,7 +216,7 @@ def _one_trial(
     fingerprint: str,
     timeout: int,
 ) -> TrialRecord:
-    scenario, temporal_steps, spatial_width, coordinate = request
+    _scenario, _temporal_steps, _spatial_width, _coordinate = request
     command = _command(*request)
     environment = dict(os.environ)
     try:

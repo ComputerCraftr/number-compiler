@@ -12,7 +12,6 @@ from dataclasses import dataclass
 from number_compiler.arithmetic.automata.program_word import (
     prune_stale_program_word_memos,
 )
-
 from number_compiler.arithmetic.carry.carry_monoid import CarryFn
 from number_compiler.arithmetic.contracts.exact_tree_context import (
     require_endpoint_construction,

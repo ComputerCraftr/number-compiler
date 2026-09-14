@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from typing import cast
+
 import pytest
 
 from number_compiler.hashlife.execution.tile_causal import CausalTileEngine
@@ -32,7 +34,6 @@ def test_initial_root_run_uses_only_primitive_observation(
     def primitive_only(self: CausalTileEngine, action: object) -> None:
         assert action == primitive, "valuation shortcut replayed a temporal action"
         assert original(self, primitive) is None
-        return None
 
     with _tile(tiles, adapter, primitive, digits) as source:
         action = adapter.power(primitive, valuation + int(complete_event))
@@ -89,9 +90,9 @@ def test_root_shortcut_rejects_numeric_alias_before_summary_work(
         )
         before = ledger.snapshot()
         with pytest.raises(TypeError):
-            causal_point(scheduler, key, invalid)  # type: ignore[arg-type]
+            causal_point(scheduler, key, cast(int, invalid))
         with pytest.raises(TypeError):
-            causal_width_query(scheduler, key, invalid)  # type: ignore[arg-type]
+            causal_width_query(scheduler, key, cast(int, invalid))
         assert ledger.snapshot() == before
 
 

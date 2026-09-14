@@ -3,12 +3,17 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Any, cast
+from typing import TYPE_CHECKING, cast
+
+if TYPE_CHECKING:
+    from number_compiler.hashlife.execution.tile_kernel import (
+        PrimitiveTileKernelAdapter,
+    )
 
 from number_compiler.arithmetic.contracts.block_effect import BoundarySide
 from number_compiler.arithmetic.contracts.scoped_handles import ArenaToken
-from number_compiler.arithmetic.functions.finite_port_action import PortVariable
 from number_compiler.arithmetic.functions.finite_function_types import SemanticNode
+from number_compiler.arithmetic.functions.finite_port_action import PortVariable
 from number_compiler.hashlife.actions.diamond_actions import PortSignatureID
 from number_compiler.hashlife.actions.field_actions import FieldCellActionID
 from number_compiler.hashlife.interfaces.diamond_kernel import PrimitiveKernel
@@ -149,10 +154,10 @@ class _DirectedTransferAdmission:
             raise ValueError("directed transfer admission metadata changed")
 
 
-def _authority(results: CompletedResultArena) -> Any:
+def _authority(results: CompletedResultArena) -> PrimitiveTileKernelAdapter:
     if type(results) is not CompletedResultArena:
         raise TypeError("directed transfers require the shared result arena")
-    return cast(Any, results.action_authority)
+    return cast("PrimitiveTileKernelAdapter", results.action_authority)
 
 
 def _admission_snapshot(

@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from collections.abc import Callable
 from dataclasses import dataclass
-from typing import TYPE_CHECKING, TypeVar, cast
+from typing import TypeVar, cast
 
 import pytest
 
@@ -40,14 +40,6 @@ from number_compiler.hashlife.execution.field_images import (
 )
 from number_compiler.resources.ledger import ResourceLedger
 from number_compiler.resources.payload_audit import audit_registered_payloads
-
-if TYPE_CHECKING:
-    from number_compiler.hashlife.actions.field_actions import FieldCellActionID
-    from number_compiler.hashlife.execution.continuations.concrete_port_scheduler import (
-        ConcretePortScheduler,
-    )
-    from number_compiler.hashlife.execution.field_images import SourceCellID
-    from number_compiler.resources.ledger import ResourceLedger
 
 
 @dataclass
@@ -173,14 +165,14 @@ def test_public_operations_validate_scoped_inputs_before_warm_memo_lookup() -> N
     )
     for invalid in invalid_actions:
         with pytest.raises((TypeError, ValueError, IndexError)):
-            scheduler.advance(invalid, 0, 0, cell)  # type: ignore[arg-type]
+            scheduler.advance(cast(FieldCellActionID, invalid), 0, 0, cell)
     foreign_cell = SourceCellID(ArenaToken("foreign"), cell.kind, cell.local_id)
     with pytest.raises(ValueError):
         scheduler.advance(primitive, 0, 0, foreign_cell)
     with pytest.raises(TypeError):
         scheduler.advance(primitive, True, 0, cell)
     with pytest.raises(TypeError):
-        scheduler.advance(primitive, 0, 0, cell, reverse=1)  # type: ignore[arg-type]
+        scheduler.advance(primitive, 0, 0, cell, reverse=cast(bool, 1))
     with pytest.raises(TypeError):
         scheduler.emit(primitive, True, cell, 1)
     with pytest.raises(ValueError, match="outside its port"):
@@ -316,7 +308,7 @@ def test_virtual_interface_ids_reject_aliases_before_warm_lookup() -> None:
     )
     for value in invalid:
         with pytest.raises((TypeError, ValueError)):
-            scheduler.resolve_virtual(value)  # type: ignore[arg-type]
+            scheduler.resolve_virtual(cast(VirtualInterfaceID, value))
     after = ledger.snapshot()
     assert (after.entries, after.nodes) == (before.entries, before.nodes)
     payloads = audit_registered_payloads(ledger)
@@ -372,7 +364,7 @@ def test_provider_layers_are_scoped_constant_size_linked_nodes() -> None:
     )
     for value in invalid:
         with pytest.raises((TypeError, ValueError)):
-            scheduler.layers.resolve(value)  # type: ignore[arg-type]
+            scheduler.layers.resolve(cast(ProviderLayerID, value))
     after = ledger.snapshot()
     assert (after.entries, after.nodes) == (before.entries, before.nodes)
 

@@ -53,7 +53,7 @@ def test_affine_equivalence_and_composition_order() -> None:
 
 
 @pytest.mark.parametrize("value", (True, 1.0, -1, 3))
-def test_invalid_state_rejects_before_arithmetic(value: bool | float | int) -> None:
+def test_invalid_state_rejects_before_arithmetic(value: bool | float) -> None:
     ledger = ResourceLedger()
     transfer = RadixRemainderTransfer(3, 2, 1)
     before = ledger.counters.copy()

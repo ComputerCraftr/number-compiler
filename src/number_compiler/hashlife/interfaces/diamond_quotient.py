@@ -13,6 +13,10 @@ from dataclasses import dataclass, field, fields
 from types import MappingProxyType
 from typing import TypeAlias
 
+from number_compiler.arithmetic.carry.reverse_port_functions import ReversePortFunction
+from number_compiler.arithmetic.carry.reverse_sector_transfer import (
+    ReverseCarrySectorTransfer,
+)
 from number_compiler.arithmetic.contracts.scoped_handles import ArenaHandle, ArenaToken
 from number_compiler.arithmetic.contracts.semantic_identity import SemanticIdentity
 from number_compiler.arithmetic.functions.finite_function_types import (
@@ -26,6 +30,7 @@ from number_compiler.arithmetic.functions.finite_function_types import (
 from number_compiler.arithmetic.functions.semantic_functions import (
     SemanticFunctionArena,
 )
+from number_compiler.arithmetic.radix_port_functions import RadixPortFunction
 from number_compiler.hashlife.actions.diamond_actions import (
     CellID,
     ImageCellArena,
@@ -38,8 +43,15 @@ from number_compiler.hashlife.behavior.future_behavior import (
     FutureBehaviorProfileID,
     QuiescentBlankCertificate,
 )
+from number_compiler.hashlife.interfaces.closed_interface_admission import (
+    has_closed_components,
+    validate_closed_components,
+)
 from number_compiler.hashlife.interfaces.primitive_behavior import (
     PrimitiveBehaviorQuotient,
+)
+from number_compiler.hashlife.interfaces.quotient_publication import (
+    retained_record_nodes,
 )
 from number_compiler.hashlife.interfaces.semantic_bits import BitFunctionArena
 from number_compiler.hashlife.interfaces.semantic_structure_conversion import (
@@ -58,22 +70,10 @@ from number_compiler.hashlife.interfaces.semantic_structures import (
     _Builder,
     _Rewrite,
 )
-from number_compiler.resources.ledger import ResourceLedger
 from number_compiler.resources.closed_interface_workspace import (
     ClosedInterfaceWorkspace,
 )
-from number_compiler.arithmetic.radix_port_functions import RadixPortFunction
-from number_compiler.arithmetic.carry.reverse_port_functions import ReversePortFunction
-from number_compiler.arithmetic.carry.reverse_sector_transfer import (
-    ReverseCarrySectorTransfer,
-)
-from number_compiler.hashlife.interfaces.closed_interface_admission import (
-    has_closed_components,
-    validate_closed_components,
-)
-from number_compiler.hashlife.interfaces.quotient_publication import (
-    retained_record_nodes,
-)
+from number_compiler.resources.ledger import ResourceLedger
 
 
 @dataclass(frozen=True, slots=True)

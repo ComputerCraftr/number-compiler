@@ -22,9 +22,6 @@ if TYPE_CHECKING:
     from number_compiler.hashlife.execution.continuations.diamond_runtime import (
         DiamondRuntime,
     )
-    from number_compiler.hashlife.interfaces.semantic_expression_tasks import (
-        CompileStructuredExpression,
-    )
 
 
 def request() -> tuple[DiamondRuntime, ActionProgramID, CompileStructuredExpression]:
@@ -63,7 +60,7 @@ def test_warm_parent_domain_proof_skips_descendants_and_domain_evaluators(
     [("local_id", True), ("local_id", 0.0), ("local_id", -1), ("kind", "other")],
 )
 def test_forged_root_is_rejected_before_admission_proof_lookup(
-    monkeypatch: pytest.MonkeyPatch, field: str, value: bool | float | int | str
+    monkeypatch: pytest.MonkeyPatch, field: str, value: bool | float | str
 ) -> None:
     runtime, _, task = request()
     compiler = runtime.semantic_compiler

@@ -62,11 +62,11 @@ class IdempotentModElement:
         object.__setattr__(self, "coefficient", int(self.coefficient) % modulus)
 
     @classmethod
-    def scalar(cls, modulus: int, value: int) -> "IdempotentModElement":
+    def scalar(cls, modulus: int, value: int) -> IdempotentModElement:
         return cls(int(modulus), int(value), 0)
 
     @classmethod
-    def generator(cls, modulus: int) -> "IdempotentModElement":
+    def generator(cls, modulus: int) -> IdempotentModElement:
         return cls(int(modulus), 0, 1)
 
     @classmethod
@@ -75,7 +75,7 @@ class IdempotentModElement:
         modulus: int,
         zero_sheet: int,
         one_sheet: int,
-    ) -> "IdempotentModElement":
+    ) -> IdempotentModElement:
         modulus = int(modulus)
         zero = int(zero_sheet) % modulus
         one = int(one_sheet) % modulus
@@ -107,14 +107,14 @@ class IdempotentModElement:
             self.coefficient,
         )
 
-    def _coerce(self, other: "IdempotentModElement | int") -> "IdempotentModElement":
+    def _coerce(self, other: IdempotentModElement | int) -> IdempotentModElement:
         if isinstance(other, IdempotentModElement):
             if other.modulus != self.modulus:
                 raise ValueError((self.modulus, other.modulus))
             return other
         return IdempotentModElement.scalar(self.modulus, int(other))
 
-    def add(self, other: "IdempotentModElement | int") -> "IdempotentModElement":
+    def add(self, other: IdempotentModElement | int) -> IdempotentModElement:
         right = self._coerce(other)
         return IdempotentModElement(
             self.modulus,
@@ -122,7 +122,7 @@ class IdempotentModElement:
             self.coefficient + right.coefficient,
         )
 
-    def subtract(self, other: "IdempotentModElement | int") -> "IdempotentModElement":
+    def subtract(self, other: IdempotentModElement | int) -> IdempotentModElement:
         right = self._coerce(other)
         return IdempotentModElement(
             self.modulus,
@@ -130,14 +130,14 @@ class IdempotentModElement:
             self.coefficient - right.coefficient,
         )
 
-    def negate(self) -> "IdempotentModElement":
+    def negate(self) -> IdempotentModElement:
         return IdempotentModElement(
             self.modulus,
             -self.constant,
             -self.coefficient,
         )
 
-    def multiply(self, other: "IdempotentModElement | int") -> "IdempotentModElement":
+    def multiply(self, other: IdempotentModElement | int) -> IdempotentModElement:
         """Closed product ``AC + (AD+BC+BD)E``."""
         right = self._coerce(other)
         a, b = self.constant, self.coefficient
@@ -148,7 +148,7 @@ class IdempotentModElement:
             a * d + b * c + b * d,
         )
 
-    def square(self) -> "IdempotentModElement":
+    def square(self) -> IdempotentModElement:
         """Closed square ``A**2 + (2AB+B**2)E``."""
         a, b = self.constant, self.coefficient
         return IdempotentModElement(
@@ -206,15 +206,15 @@ class IdempotentCyclotomicDigitBlock:
             and self.endpoint_residues_equal
         )
 
-    def _check(self, other: "IdempotentCyclotomicDigitBlock") -> None:
+    def _check(self, other: IdempotentCyclotomicDigitBlock) -> None:
         if not isinstance(other, IdempotentCyclotomicDigitBlock):
             raise TypeError(type(other))
         if self.module_key != other.module_key:
             raise ValueError((self.module_key, other.module_key))
 
     def add(
-        self, other: "IdempotentCyclotomicDigitBlock"
-    ) -> "IdempotentCyclotomicDigitBlock":
+        self, other: IdempotentCyclotomicDigitBlock
+    ) -> IdempotentCyclotomicDigitBlock:
         self._check(other)
         return IdempotentCyclotomicDigitBlock(
             self.zero_sheet.add(other.zero_sheet),
@@ -222,8 +222,8 @@ class IdempotentCyclotomicDigitBlock:
         )
 
     def subtract(
-        self, other: "IdempotentCyclotomicDigitBlock"
-    ) -> "IdempotentCyclotomicDigitBlock":
+        self, other: IdempotentCyclotomicDigitBlock
+    ) -> IdempotentCyclotomicDigitBlock:
         self._check(other)
         return IdempotentCyclotomicDigitBlock(
             self.zero_sheet.subtract(other.zero_sheet),
@@ -231,29 +231,29 @@ class IdempotentCyclotomicDigitBlock:
         )
 
     def multiply(
-        self, other: "IdempotentCyclotomicDigitBlock"
-    ) -> "IdempotentCyclotomicDigitBlock":
+        self, other: IdempotentCyclotomicDigitBlock
+    ) -> IdempotentCyclotomicDigitBlock:
         self._check(other)
         return IdempotentCyclotomicDigitBlock(
             self.zero_sheet.multiply(other.zero_sheet),
             self.one_sheet.multiply(other.one_sheet),
         )
 
-    def square(self) -> "IdempotentCyclotomicDigitBlock":
+    def square(self) -> IdempotentCyclotomicDigitBlock:
         return IdempotentCyclotomicDigitBlock(
             self.zero_sheet.square(),
             self.one_sheet.square(),
         )
 
-    def add_constant(self, value: int) -> "IdempotentCyclotomicDigitBlock":
+    def add_constant(self, value: int) -> IdempotentCyclotomicDigitBlock:
         return IdempotentCyclotomicDigitBlock(
             self.zero_sheet.add_constant(value),
             self.one_sheet.add_constant(value),
         )
 
     def then(
-        self, other: "IdempotentCyclotomicDigitBlock"
-    ) -> "IdempotentCyclotomicDigitBlock":
+        self, other: IdempotentCyclotomicDigitBlock
+    ) -> IdempotentCyclotomicDigitBlock:
         self._check(other)
         return IdempotentCyclotomicDigitBlock(
             self.zero_sheet.then(other.zero_sheet),
@@ -265,13 +265,13 @@ class IdempotentCyclotomicDigitBlock:
         offset: int,
         *,
         result_length: int | None = None,
-    ) -> "IdempotentCyclotomicDigitBlock":
+    ) -> IdempotentCyclotomicDigitBlock:
         return IdempotentCyclotomicDigitBlock(
             self.zero_sheet.shift_positions(offset, result_length=result_length),
             self.one_sheet.shift_positions(offset, result_length=result_length),
         )
 
-    def reverse(self, *, width: int | None = None) -> "IdempotentCyclotomicDigitBlock":
+    def reverse(self, *, width: int | None = None) -> IdempotentCyclotomicDigitBlock:
         return IdempotentCyclotomicDigitBlock(
             self.zero_sheet.reverse(width=width),
             self.one_sheet.reverse(width=width),
@@ -390,18 +390,18 @@ class IdempotentSpecialDigitBlock:
 
 
 __all__ = [
-    "IdempotentModElement",
-    "IdempotentCyclotomicDigitBlock",
-    "OutputFiberQuotient",
-    "output_fiber_quotient",
-    "ProjectionMachineQuotient",
-    "minimize_projection_machine",
-    "BinarySourceFactorAudit",
-    "audit_binary_source_factor",
-    "SpecialOutputMode",
-    "SpecialBranchMask",
-    "SpecialSourceShape",
-    "SpecialSourceGuard",
     "BinaryOutputCoordinate",
+    "BinarySourceFactorAudit",
+    "IdempotentCyclotomicDigitBlock",
+    "IdempotentModElement",
     "IdempotentSpecialDigitBlock",
+    "OutputFiberQuotient",
+    "ProjectionMachineQuotient",
+    "SpecialBranchMask",
+    "SpecialOutputMode",
+    "SpecialSourceGuard",
+    "SpecialSourceShape",
+    "audit_binary_source_factor",
+    "minimize_projection_machine",
+    "output_fiber_quotient",
 ]

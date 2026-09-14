@@ -23,10 +23,8 @@ from number_compiler.sequences.reverse_add.field_action import (
 
 if TYPE_CHECKING:
     from number_compiler.hashlife.execution.field_images import (
-        SourceCellArena,
         SourceCellID,
     )
-    from number_compiler.resources.ledger import ResourceLedger
 
 
 def _source_cells(
@@ -64,6 +62,9 @@ def _arena(*, ledger: ResourceLedger | None = None) -> ReverseFieldActionArena:
     )
 
 
+_DEFAULT_REVERSE_GEOMETRY = ReverseGeometry(0)
+
+
 def _atom(
     arena: ReverseFieldActionArena,
     name: str,
@@ -71,7 +72,7 @@ def _atom(
     growth: int,
     forward: CarryFn,
     backward: CarryFn,
-    geometry: ReverseGeometry = ReverseGeometry(0),
+    geometry: ReverseGeometry = _DEFAULT_REVERSE_GEOMETRY,
 ) -> FieldCellActionID:
     return arena.intern(
         base=10,

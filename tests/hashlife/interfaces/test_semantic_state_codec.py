@@ -34,7 +34,6 @@ if TYPE_CHECKING:
     from number_compiler.hashlife.execution.continuations.diamond_runtime import (
         DiamondRuntime,
     )
-    from number_compiler.hashlife.interfaces.semantic_state_codec import StateCodecArena
 
 
 def codec_arena(
@@ -156,8 +155,8 @@ def test_warm_codec_never_constructs_new_semantic_nodes(
     ],
 )
 def test_foreign_forged_actions_reject_before_warm_mutation(
-    field: Literal["kind"] | Literal["local_id"] | Literal["owner"],
-    value: ArenaToken | Literal["other"] | bool | float | int,
+    field: Literal["kind", "local_id", "owner"],
+    value: ArenaToken | Literal["other"] | bool | float,
 ) -> None:
     runtime, action = tiny()
     arena = codec_arena(runtime)

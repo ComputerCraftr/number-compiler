@@ -5,13 +5,13 @@ description = "Canonical cross-family radix compiler for reverse-add, Collatz, p
 requires-python = ">=3.11"
 
 [project.optional-dependencies]
-dev = ["pytest>=8", "mypy>=1.15", "ruff>=0.15.22"]
+dev = ["pytest>=9.1.1", "mypy>=2.3.1", "ruff>=0.16.7"]
 
 [project.scripts]
 number-compiler = "number_compiler.api.cli:main"
 
 [build-system]
-requires = ["setuptools>=68"]
+requires = ["setuptools>=84.0.0"]
 build-backend = "setuptools.build_meta"
 
 [tool.setuptools]
@@ -37,12 +37,9 @@ markers = [
 
 [tool.mypy]
 strict = true
-files = ["."]
+files = ["src", "tests", "devtools"]
 mypy_path = "$MYPY_CONFIG_FILE_DIR/src"
 explicit_package_bases = true
-# Wheel build products are generated copies, not authored Python.
-exclude = ["^build/", "^dist/"]
 
 [tool.ruff.lint]
-# Preserve the existing Ruff 0.15 default gate across tool-version upgrades.
-select = ["E4", "E7", "E9", "F"]
+extend-select = ["RUF100"]

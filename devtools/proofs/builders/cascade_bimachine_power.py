@@ -1,4 +1,3 @@
-#!/usr/bin/env python3
 """Direct dependency-cascade determinization for bimachine composition.
 
 Unlike the classical construction, a determinized context state is never stored

@@ -2,6 +2,7 @@
 
 from collections.abc import Callable
 from dataclasses import replace
+from typing import cast
 
 import pytest
 
@@ -30,7 +31,7 @@ def test_padic_affine_rejects_numeric_aliases(field: str, alias: object) -> None
     }
     values[field] = alias
     with pytest.raises(TypeError, match="exact integers"):
-        PadicAffineMorphism(**values)  # type: ignore[arg-type]
+        PadicAffineMorphism(**cast(dict[str, int], values))
 
 
 @pytest.mark.parametrize(
@@ -49,7 +50,7 @@ def test_padic_radial_rejects_numeric_aliases(field: str, alias: object) -> None
     }
     values[field] = alias
     with pytest.raises(TypeError, match="exact integers"):
-        PadicRadialQuotient(**values)  # type: ignore[arg-type]
+        PadicRadialQuotient(**cast(dict[str, int], values))
 
 
 @pytest.mark.parametrize(
@@ -68,7 +69,7 @@ def test_valuation_morphism_rejects_numeric_aliases(field: str, alias: object) -
     }
     values[field] = alias
     with pytest.raises(TypeError, match="exact integers"):
-        ValuationSensitivityMorphism(**values)  # type: ignore[arg-type]
+        ValuationSensitivityMorphism(**cast(dict[str, int], values))
 
 
 def test_affine_observations_and_helpers_reject_numeric_aliases() -> None:
@@ -76,13 +77,13 @@ def test_affine_observations_and_helpers_reject_numeric_aliases() -> None:
     sensitivity = ValuationSensitivityMorphism(2, 4, 1, 1)
     for alias in (True, 1.0):
         with pytest.raises(TypeError, match="exact integer"):
-            affine.apply(alias)  # type: ignore[arg-type]
+            affine.apply(cast(int, alias))
         with pytest.raises(TypeError, match="exact integer"):
-            sensitivity.apply(alias)  # type: ignore[arg-type]
+            sensitivity.apply(cast(int, alias))
         with pytest.raises(TypeError, match="exact integer"):
-            mersenne_successor_padic2(alias)  # type: ignore[arg-type]
+            mersenne_successor_padic2(cast(int, alias))
         with pytest.raises(TypeError, match="exact integer"):
-            prime_translation_sensitivity(alias, 4)  # type: ignore[arg-type]
+            prime_translation_sensitivity(cast(int, alias), 4)
 
 
 def test_shared_powering_rejects_boolean_float_integer_aliases() -> None:
@@ -91,9 +92,9 @@ def test_shared_powering_rejects_boolean_float_integer_aliases() -> None:
 
     for alias in (True, False, 1.0):
         with pytest.raises(TypeError, match="exact integer"):
-            binary_power(2, alias, identity=0, compose=compose)  # type: ignore[arg-type]
+            binary_power(2, cast(int, alias), identity=0, compose=compose)
         with pytest.raises(TypeError, match="exact integers"):
-            modular_power(2, alias, 5)  # type: ignore[arg-type]
+            modular_power(2, cast(int, alias), 5)
 
 
 def test_forged_affine_dataclass_is_revalidated_by_replace() -> None:

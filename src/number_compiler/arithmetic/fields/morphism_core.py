@@ -16,8 +16,9 @@ orbit or claims that a branch observer is closed.
 
 from __future__ import annotations
 
+from collections.abc import Callable, Hashable
 from dataclasses import dataclass
-from typing import Callable, Generic, Hashable, TypeVar
+from typing import Generic, TypeVar
 
 T = TypeVar("T")
 K = TypeVar("K", bound=Hashable)
@@ -158,11 +159,11 @@ class AffineCocycle(Generic[T]):
 
     def then(
         self,
-        other: "AffineCocycle[T]",
+        other: AffineCocycle[T],
         *,
         multiply: Callable[[T, T], T],
         add: Callable[[T, T], T],
-    ) -> "AffineCocycle[T]":
+    ) -> AffineCocycle[T]:
         # self first, then other: (B,d)o(A,c)=(BA,Bc+d).
         return AffineCocycle(
             multiply(other.multiplier, self.multiplier),
@@ -200,10 +201,10 @@ class DyadicAffineCocycle:
         object.__setattr__(self, "shift", int(self.shift))
 
     @classmethod
-    def identity(cls) -> "DyadicAffineCocycle":
+    def identity(cls) -> DyadicAffineCocycle:
         return cls(1, 0, 0)
 
-    def then(self, other: "DyadicAffineCocycle") -> "DyadicAffineCocycle":
+    def then(self, other: DyadicAffineCocycle) -> DyadicAffineCocycle:
         # other((a*x+b)/2^s) = (c*a*x + c*b + d*2^s)/2^(s+t)
         return DyadicAffineCocycle(
             other.multiplier * self.multiplier,
@@ -211,7 +212,7 @@ class DyadicAffineCocycle:
             self.shift + other.shift,
         )
 
-    def square(self) -> "DyadicAffineCocycle":
+    def square(self) -> DyadicAffineCocycle:
         """Self-compose using the closed affine square law."""
         return DyadicAffineCocycle(
             self.multiplier * self.multiplier,
@@ -219,7 +220,7 @@ class DyadicAffineCocycle:
             self.shift * 2,
         )
 
-    def power(self, exponent: int) -> BinaryPowerResult["DyadicAffineCocycle"]:
+    def power(self, exponent: int) -> BinaryPowerResult[DyadicAffineCocycle]:
         return binary_power(
             self,
             exponent,
@@ -255,17 +256,17 @@ class QuadraticPower:
         object.__setattr__(self, "depth", int(self.depth))
 
     @classmethod
-    def identity(cls) -> "QuadraticPower":
+    def identity(cls) -> QuadraticPower:
         return cls(0)
 
     @classmethod
-    def atom(cls) -> "QuadraticPower":
+    def atom(cls) -> QuadraticPower:
         return cls(1)
 
-    def then(self, other: "QuadraticPower") -> "QuadraticPower":
+    def then(self, other: QuadraticPower) -> QuadraticPower:
         return QuadraticPower(self.depth + other.depth)
 
-    def power(self, exponent: int) -> BinaryPowerResult["QuadraticPower"]:
+    def power(self, exponent: int) -> BinaryPowerResult[QuadraticPower]:
         return binary_power(
             self,
             exponent,
@@ -314,15 +315,15 @@ def trace_square(value: int, modulus: int | None = None) -> int:
 
 
 __all__ = [
+    "AffineCocycle",
+    "BinaryPowerResult",
+    "DyadicAffineCocycle",
     "InternedEffectNode",
     "LazyLoweringCache",
-    "BinaryPowerResult",
+    "QuadraticPower",
     "binary_power",
     "binary_power_composition_count",
     "modular_power",
-    "AffineCocycle",
-    "DyadicAffineCocycle",
-    "QuadraticPower",
     "multiplicative_square",
     "trace_square",
 ]

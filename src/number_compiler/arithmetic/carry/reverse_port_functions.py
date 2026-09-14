@@ -253,13 +253,9 @@ class ReverseLeftTransfer:
             raise ValueError("reverse predicate exceeds its left-state domain")
         base = self.base
         nonblank_zero = (1 << (base + 1)) - 1
-        nonblank_one = (
-            ((1 << (base - 1)) - 1) << (base + 1)
-        ) | (1 << (3 * base + 1))
+        nonblank_one = (((1 << (base - 1)) - 1) << (base + 1)) | (1 << (3 * base + 1))
         blank_zero = ((1 << (base + 1)) - 1) << (2 * base)
-        blank_one = (
-            ((1 << (base - 1)) - 1) << (3 * base + 2)
-        ) | (1 << (4 * base + 2))
+        blank_one = (((1 << (base - 1)) - 1) << (3 * base + 2)) | (1 << (4 * base + 2))
         sink = 1 << (4 * base + 1)
         sink_live = bool(truth_bits & sink)
         if self.sinks:

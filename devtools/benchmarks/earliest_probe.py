@@ -2,12 +2,8 @@ from __future__ import annotations
 
 from array import array
 from collections import deque
-from typing import TYPE_CHECKING
 
 from number_compiler.arithmetic.automata.transducer import LazyBimachine
-
-if TYPE_CHECKING:
-    from number_compiler.arithmetic.automata.transducer import LazyBimachine
 
 
 def lcp2(a: tuple[int, ...], b: tuple[int, ...]) -> tuple[int, ...]:

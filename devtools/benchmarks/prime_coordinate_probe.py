@@ -1,4 +1,3 @@
-#!/usr/bin/env python3
 """Cross-coordinate prime projection experiment for v0.15.0."""
 
 from __future__ import annotations

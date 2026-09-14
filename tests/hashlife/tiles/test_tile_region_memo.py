@@ -12,11 +12,11 @@ from number_compiler.hashlife.execution.tile_causal_tasks import (
     CausalPrefix,
     append_prefix,
 )
+from number_compiler.hashlife.tiles.tile_boundaries import BoundaryTileView
 from number_compiler.hashlife.tiles.tile_boundary_concat_memo import (
     concat_cached_boundary_views,
     lookup_boundary_concat,
 )
-from number_compiler.hashlife.tiles.tile_boundaries import BoundaryTileView
 from number_compiler.hashlife.tiles.tile_region_memo import (
     lookup_normalized_region,
     normalize_cached_region,
@@ -361,7 +361,7 @@ def test_different_backings_share_content_but_keep_occurrence_bindings() -> None
 
 
 def test_foreign_region_rejects_before_memo_lookup_or_mutation() -> None:
-    _, tiles, adapter, primitive, scheduler = _runtime(BaseBlockEffect(3))
+    _, tiles, _adapter, _primitive, scheduler = _runtime(BaseBlockEffect(3))
     _, foreign_tiles, foreign_adapter, foreign_primitive, _ = _runtime(
         BaseBlockEffect(3),
     )

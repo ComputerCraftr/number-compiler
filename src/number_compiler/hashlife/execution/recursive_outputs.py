@@ -488,8 +488,8 @@ class RecursiveCoordinateMorphismArena:
 
 __all__ = [
     "RecursiveCoordinateMorphismArena",
-    "RecursiveOutputBranch",
     "RecursiveOutputBindingSource",
+    "RecursiveOutputBranch",
     "RecursiveOutputLeaf",
     "RecursiveOutputRecord",
     "RecursiveOutputSource",

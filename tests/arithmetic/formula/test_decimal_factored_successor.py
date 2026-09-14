@@ -1,6 +1,7 @@
 """Finite proof checks for the exact decimal successor channel laws."""
 
 from itertools import product
+from typing import cast
 
 import pytest
 
@@ -79,7 +80,7 @@ def test_factored_domain_rejects_noncanonical_coordinates() -> None:
 def test_factored_laws_reject_numeric_aliases() -> None:
     for value in (True, 0.0, -1, 5):
         with pytest.raises((TypeError, ValueError)):
-            decimal_normalize_factored(value, 0, 0)  # type: ignore[arg-type]
+            decimal_normalize_factored(cast(int, value), 0, 0)
     for value in (True, 0, 1, 2):
         with pytest.raises(TypeError):
-            decimal_factored_value(value, 0, 0)  # type: ignore[arg-type]
+            decimal_factored_value(cast(CarryFn, value), 0, 0)

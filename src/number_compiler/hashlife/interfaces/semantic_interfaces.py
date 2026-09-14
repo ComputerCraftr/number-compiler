@@ -843,8 +843,8 @@ class PrimitiveSemanticTransferAdapter:
 
 
 __all__ = [
-    "PrimitiveSemanticTransferAdapter",
     "SEMANTIC_INTERFACE_CONTRACT",
+    "PrimitiveSemanticTransferAdapter",
     "SemanticBoundaryArena",
     "SemanticBoundaryID",
     "SemanticCoordinateOutputArena",

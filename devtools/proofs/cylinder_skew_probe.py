@@ -5,8 +5,8 @@ from __future__ import annotations
 import json
 
 from number_compiler.api.cylinder_observation import observe_collatz
-from number_compiler.sequences.collatz.power import CollatzEventArena
 from number_compiler.sequences.collatz.clock_observers import CollatzClockObservers
+from number_compiler.sequences.collatz.power import CollatzEventArena
 
 
 def run_probe() -> dict[str, object]:

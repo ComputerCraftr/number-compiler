@@ -25,4 +25,4 @@ def v2_nonzero(value: int) -> int:
     return (value & -value).bit_length() - 1
 
 
-__all__ = ["v2_positive", "v2_nonzero"]
+__all__ = ["v2_nonzero", "v2_positive"]

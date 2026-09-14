@@ -12,20 +12,17 @@ from contextlib import contextmanager
 from dataclasses import dataclass
 from itertools import product
 
-from devtools.proofs.skew_residue_laws import skew_normalized_digit
-
 from devtools.proofs.growth_coboundary import (
     growth_pair_value,
     growth_symbol_value,
 )
-
+from devtools.proofs.skew_residue_laws import skew_normalized_digit
 from number_compiler.arithmetic.carry.carry_monoid import (
     CarryFn,
     apply_carry_fn,
     compose_carry_fn,
     value_carry_fn,
 )
-
 from number_compiler.arithmetic.contracts.block_effect import BlockContextBudgetExceeded
 from number_compiler.arithmetic.contracts.exact_tree_context import (
     require_endpoint_construction,
@@ -33,7 +30,6 @@ from number_compiler.arithmetic.contracts.exact_tree_context import (
 from number_compiler.arithmetic.formula.decimal_pair_coordinates import (
     decimal_normalized_pair_sum,
 )
-
 
 # Specialize the existing exact local-law owner on two equal residues. The
 # incoming bits matter only through their sum; no geometry coordinate enters

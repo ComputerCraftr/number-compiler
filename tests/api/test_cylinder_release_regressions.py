@@ -16,10 +16,10 @@ from number_compiler.arithmetic.polynomials.arithmetic_tile import (
 from number_compiler.arithmetic.polynomials.twisted_observer import (
     first_mirror_obstruction,
 )
+from number_compiler.hashlife.observation.tile_projection import LazyProjection
 from number_compiler.sequences.collatz.block_power import PoweredCollatzTerm
 from number_compiler.sequences.collatz.clock_observers import CollatzClockObservers
 from number_compiler.sequences.collatz.power import CollatzEventArena
-from number_compiler.hashlife.observation.tile_projection import LazyProjection
 
 
 def forbidden(*args: object, **kwargs: object) -> Never:
@@ -32,9 +32,24 @@ def test_no_factor_cli_does_not_collect_classical_gcd(
     from devtools.proofs.oracles import special_classical_ceiling as classical_ceiling
 
     monkeypatch.setattr(classical_ceiling, "_proper_gcd_packet", forbidden)
-    assert main(["mersenne", "--nth", "11", "--no-value", "--info", "primality",
-                 "--format", "json"]) == 3
-    assert json.loads(capsys.readouterr().out)["info"]["primality"]["status"] == "unknown"
+    assert (
+        main(
+            [
+                "mersenne",
+                "--nth",
+                "11",
+                "--no-value",
+                "--info",
+                "primality",
+                "--format",
+                "json",
+            ]
+        )
+        == 3
+    )
+    assert (
+        json.loads(capsys.readouterr().out)["info"]["primality"]["status"] == "unknown"
+    )
 
 
 def test_factor_budget_prevents_power_and_cache_can_retry(
@@ -50,7 +65,8 @@ def test_factor_budget_prevents_power_and_cache_can_retry(
             "mersenne", 131, collect_etale_factor=True, max_factor_products=0
         )
         assert (
-            not result.decided and result.factor_query_status == "product-budget-exceeded"
+            not result.decided
+            and result.factor_query_status == "product-budget-exceeded"
         )
         assert result.etale_ring_multiplications == 0
     result = compiler.resolve_special_theorem(
@@ -67,10 +83,26 @@ def test_large_exponent_gate_is_bounded(
     monkeypatch.setattr(numbers, "smallest_factor", forbidden)
     p = str((1 << 64) + 13)
     assert (
-        main(["mersenne", "--nth", p, "--no-value", "--info", "primality", "--max-candidate-bits", p, "--format", "json"])
+        main(
+            [
+                "mersenne",
+                "--nth",
+                p,
+                "--no-value",
+                "--info",
+                "primality",
+                "--max-candidate-bits",
+                p,
+                "--format",
+                "json",
+            ]
+        )
         == 3
     )
-    assert json.loads(capsys.readouterr().out)["info"]["primality"]["method"] == "exponent-gate-budget"
+    assert (
+        json.loads(capsys.readouterr().out)["info"]["primality"]["method"]
+        == "exponent-gate-budget"
+    )
 
 
 def test_large_unresolved_candidate_has_no_classical_fallback(
@@ -105,7 +137,22 @@ def test_large_unresolved_candidate_has_no_classical_fallback(
 def test_source_derived_observer_cli(
     kind: str, capsys: pytest.CaptureFixture[str]
 ) -> None:
-    assert main(["collatz", "--events", "3", "--seed", "27", "--info", kind, "--format", "json"]) == 0
+    assert (
+        main(
+            [
+                "collatz",
+                "--events",
+                "3",
+                "--seed",
+                "27",
+                "--info",
+                kind,
+                "--format",
+                "json",
+            ]
+        )
+        == 0
+    )
     row = json.loads(capsys.readouterr().out)["info"][kind]
     assert row["discovered_events"] == 3 and row["discovery_digit_work"] > 0
     if kind == "modular":
@@ -122,7 +169,12 @@ def test_observer_cli_consumes_dispatch(monkeypatch: pytest.MonkeyPatch) -> None
 
 
 def test_mirror_and_supplied_root_cli(capsys: pytest.CaptureFixture[str]) -> None:
-    assert main(["196", "--nth", "3", "--no-value", "--info", "mirror", "--format", "json"]) == 0
+    assert (
+        main(
+            ["196", "--nth", "3", "--no-value", "--info", "mirror", "--format", "json"]
+        )
+        == 0
+    )
     row = json.loads(capsys.readouterr().out)["info"]["mirror"]
     assert row["palindrome"] is False and any(row["value"]["coefficients"])
     assert row["work_counters"]["tile_cylinder_node_evaluations"] > 0
@@ -130,10 +182,40 @@ def test_mirror_and_supplied_root_cli(capsys: pytest.CaptureFixture[str]) -> Non
     assert row["work_counters"]["tile_cylinder_leaf_reads"] > 0
     assert row["work_counters"].get("point_response_requests", 0) == 0
     assert row["peak_nodes"] >= row["retained_nodes"] > 0
-    assert main(["mersenne", "--nth", "11", "--no-value", "--info", "root", "--defect", "621", "--format", "json"]) == 0
+    assert (
+        main(
+            [
+                "mersenne",
+                "--nth",
+                "11",
+                "--no-value",
+                "--info",
+                "root",
+                "--defect",
+                "621",
+                "--format",
+                "json",
+            ]
+        )
+        == 0
+    )
     row = json.loads(capsys.readouterr().out)["info"]["root"]
     assert row["factor"] == 23 and "supplied" in row["scope"]
-    assert main(["mersenne", "--nth", "11", "--no-value", "--info", "root", "--defect", "391"]) == 2
+    assert (
+        main(
+            [
+                "mersenne",
+                "--nth",
+                "11",
+                "--no-value",
+                "--info",
+                "root",
+                "--defect",
+                "391",
+            ]
+        )
+        == 2
+    )
     capsys.readouterr()
 
 
@@ -237,14 +319,43 @@ def test_hard_composite_exponent_needs_no_full_factor_search(
 def test_mirror_sheet_budget_precedes_allocation(
     capsys: pytest.CaptureFixture[str],
 ) -> None:
-    assert main(["196", "--nth", "3", "--no-value", "--info", "mirror", "--width", "1000000000000"]) == 2
+    assert (
+        main(
+            [
+                "196",
+                "--nth",
+                "3",
+                "--no-value",
+                "--info",
+                "mirror",
+                "--width",
+                "1000000000000",
+            ]
+        )
+        == 2
+    )
     assert "sheet exceeds digit budget" in capsys.readouterr().err
 
 
 def test_prefix_does_not_claim_arrival_at_one(
     capsys: pytest.CaptureFixture[str],
 ) -> None:
-    assert main(["collatz", "--events", "1", "--seed", "27", "--info", "clock", "--format", "json"]) == 0
+    assert (
+        main(
+            [
+                "collatz",
+                "--events",
+                "1",
+                "--seed",
+                "27",
+                "--info",
+                "clock",
+                "--format",
+                "json",
+            ]
+        )
+        == 0
+    )
     assert json.loads(capsys.readouterr().out)["info"]["clock"]["reached_one"] is False
 
 

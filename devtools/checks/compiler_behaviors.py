@@ -8,14 +8,14 @@ from devtools.proofs import exact_oracle
 from devtools.proofs.carry_action_quotient import (
     CarryThresholdSignature,
 )
+from devtools.proofs.oracles.digit_power import (
+    lucas_lehmer_digit_field,
+    pepin_digit_field,
+)
 from devtools.proofs.oracles.special_binary_jump import (
     SpecialBinaryJumpProgram,
     build_fermat_binary_jump,
     build_mersenne_binary_jump,
-)
-from devtools.proofs.oracles.digit_power import (
-    lucas_lehmer_digit_field,
-    pepin_digit_field,
 )
 from devtools.proofs.quotient_synthesis import (
     ObserverFeature,

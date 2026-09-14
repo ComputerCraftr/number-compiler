@@ -13,12 +13,12 @@ from number_compiler.arithmetic.functions.finite_function_types import (
 from number_compiler.arithmetic.functions.finite_port_action import PortVariable
 from number_compiler.hashlife.interfaces.semantic_bits import BitFunctionArena
 from number_compiler.resources.ledger import ResourceLedger
+from number_compiler.sequences.collatz.inverse_three_clock import InverseThreeClock
+from number_compiler.sequences.collatz.pair import accelerated_odd_collatz
 from number_compiler.sequences.reverse_add.active_output import PAIR
 from number_compiler.sequences.reverse_add.contextual_residual import (
     ReverseContextualResidualArena,
 )
-from number_compiler.sequences.collatz.inverse_three_clock import InverseThreeClock
-from number_compiler.sequences.collatz.pair import accelerated_odd_collatz
 
 pytestmark = pytest.mark.validation
 

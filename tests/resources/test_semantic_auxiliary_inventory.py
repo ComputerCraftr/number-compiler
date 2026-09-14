@@ -36,10 +36,7 @@ from tests.support.diamond_continuation_reduction import machine
 if TYPE_CHECKING:
     from number_compiler.hashlife.interfaces.semantic_state_codec import (
         StateCodec,
-        StateCodecArena,
     )
-    from number_compiler.resources.ledger import ResourceLedger
-    from number_compiler.resources.semantic_payload import SemanticPayloadRegistry
 
 
 def registry(
@@ -236,7 +233,7 @@ def test_original_reencoding_is_valid_under_point_scope_without_exact_tree_calls
     def forbidden(*args: object, **kwargs: object) -> Never:
         raise AssertionError("original reencoding attempted an exact tree constructor")
 
-    import number_compiler.arithmetic.fields.dyadic_tile as dyadic_tile
+    from number_compiler.arithmetic.fields import dyadic_tile
 
     monkeypatch.setattr(dyadic_tile, "leaf", forbidden)
     monkeypatch.setattr(dyadic_tile, "join", forbidden)

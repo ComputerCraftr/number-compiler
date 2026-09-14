@@ -7,7 +7,7 @@ import gc
 import weakref
 from collections.abc import Callable, Iterator, Mapping, MutableSequence
 from types import MappingProxyType, SimpleNamespace
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, ClassVar
 
 import pytest
 
@@ -95,7 +95,7 @@ def test_cached_callable_and_class_level_store_are_not_ownership_exceptions() ->
     from functools import lru_cache
 
     class Owner:
-        hidden: dict[object, object] = {}
+        hidden: ClassVar[dict[object, object]] = {}
         method: object
         function: object
 
@@ -166,7 +166,7 @@ def test_actual_public_graph_is_factory_owned_before_and_after_compilation(
     assert after.observed_mutable_containers > before.observed_mutable_containers
     assert not after.violations
     # This store is deliberately absent from all ledger payload callbacks.
-    setattr(term._point_index(), "hidden_late_cache", {"unaccounted": 1})
+    term._point_index().__setattr__("hidden_late_cache", {"unaccounted": 1})
     assert audit_execution_ownership(term._ledger).unregistered_containers == 1
 
 
@@ -394,7 +394,7 @@ def test_private_data_name_is_not_a_general_ownership_exemption() -> None:
 
 def test_ledger_unknown_attributes_and_callback_only_caches_are_audited() -> None:
     ledger = ResourceLedger()
-    setattr(ledger, "hidden_cache", {})
+    ledger.__setattr__("hidden_cache", {})
     assert audit_execution_ownership(ledger).unregistered_containers == 1
     delattr(ledger, "hidden_cache")
     owner = ledger.register("callback", "query_memo")

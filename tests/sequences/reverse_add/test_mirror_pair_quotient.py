@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from itertools import product
+from typing import cast
 
 import pytest
 
@@ -15,12 +16,12 @@ from devtools.proofs.threshold_expressions import (
 )
 from number_compiler.arithmetic.carry.carry_monoid import CarryFn, value_carry_fn
 from number_compiler.arithmetic.carry.event_memory import pair_step
+from number_compiler.arithmetic.contracts.block_effect import BlockContextBudgetExceeded
 from number_compiler.arithmetic.formula.decimal_pair_coordinates import (
     decimal_cocycle_coordinates,
     decimal_normalize_cocycle,
     decimal_normalized_pair_sum,
 )
-from number_compiler.arithmetic.contracts.block_effect import BlockContextBudgetExceeded
 
 
 def test_mirror_pair_and_domain_chart_are_exact_for_all_ports() -> None:
@@ -190,7 +191,7 @@ def test_native_mirror_and_decimal_sum_reject_bad_sorts_and_budgets() -> None:
         expressions.mirror_pair(
             expressions.constant(10, 0),
             expressions.constant(3, 0),
-            domain_only=1,  # type: ignore[arg-type]
+            domain_only=cast(bool, 1),
         )
     with pytest.raises(ValueError):
         expressions.decimal_sum_domain(

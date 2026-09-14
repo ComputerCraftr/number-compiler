@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from collections.abc import Callable
-from typing import TYPE_CHECKING, NoReturn, TypeGuard, cast
+from typing import TYPE_CHECKING, NoReturn, Self, cast
 
 from number_compiler.arithmetic.formula.summary import BlockSummary
 from number_compiler.hashlife.actions.diamond_actions import PortSignatureID
@@ -12,6 +12,7 @@ from number_compiler.hashlife.interfaces.diamond_quotient import (
     DiamondQuotientArena,
     LocalInterfaceID,
 )
+from number_compiler.hashlife.tiles import tile_result_records as _tile_result_records
 from number_compiler.hashlife.tiles.tile_boundaries import (
     BoundaryTileOperands,
     BoundaryTileView,
@@ -25,19 +26,13 @@ from number_compiler.hashlife.tiles.tile_result_lease_inventory import (
     BoundaryOperandLeaseInventory,
 )
 from number_compiler.hashlife.tiles.tile_result_records import (
-    BehaviorBindingKey,
-    BoundaryConcatKey,
     CausalInterfaceKey,
     CompletedInterfaceResult,
     CompletedResult,
     DirectedTransferKey,
     FusedInterfaceKey,
-    NormalizedRegionKey,
     PoweredInterfaceKey,
     PoweredResultKey,
-    ReverseBoundOutputKey,
-    ReverseThresholdSummaryKey,
-    SourceRootMatchKey,
     SpatialInterfaceKey,
     _FusedVariantKey,
     _ResultVariantKey,
@@ -45,19 +40,30 @@ from number_compiler.hashlife.tiles.tile_result_records import (
     _ReverseLinks,
     _ReverseMember,
 )
+from number_compiler.hashlife.tiles.tile_result_types import (
+    ExecutionKey as _ExecutionKey,
+)
+from number_compiler.hashlife.tiles.tile_result_types import (
+    ExecutionValue as _ExecutionValue,
+)
+from number_compiler.hashlife.tiles.tile_result_types import (
+    MemoKey as _MemoKey,
+)
+from number_compiler.hashlife.tiles.tile_result_types import (
+    ReverseKey as _ReverseKey,
+)
+from number_compiler.hashlife.tiles.tile_result_types import (
+    ReverseValue as _ReverseValue,
+)
+from number_compiler.hashlife.tiles.tile_result_types import (
+    is_execution_key,
+)
 from number_compiler.hashlife.tiles.tile_result_validation import (
     normalize_output_region,
     validate_boundary_operands,
     validate_fused_request,
     validate_output_region,
     validate_ports_readonly,
-)
-from number_compiler.hashlife.tiles.tile_result_types import (
-    ExecutionKey as _ExecutionKey,
-    ExecutionValue as _ExecutionValue,
-    MemoKey as _MemoKey,
-    ReverseKey as _ReverseKey,
-    ReverseValue as _ReverseValue,
 )
 from number_compiler.hashlife.tiles.tiles import TileArena, TileID, TileLease
 from number_compiler.resources.cache_gc_metrics import (
@@ -71,6 +77,13 @@ from number_compiler.resources.result_cache_kinds import (
 )
 from number_compiler.resources.stores import LedgerDict
 
+BehaviorBindingKey = _tile_result_records.BehaviorBindingKey
+BoundaryConcatKey = _tile_result_records.BoundaryConcatKey
+NormalizedRegionKey = _tile_result_records.NormalizedRegionKey
+ReverseBoundOutputKey = _tile_result_records.ReverseBoundOutputKey
+ReverseThresholdSummaryKey = _tile_result_records.ReverseThresholdSummaryKey
+SourceRootMatchKey = _tile_result_records.SourceRootMatchKey
+
 if TYPE_CHECKING:
     from number_compiler.resources.causal_workspace import CausalTaskWorkspace
 
@@ -79,33 +92,17 @@ _RESULT_LEASE_SEAL = object()
 _MISSING = object()
 
 
-def _is_execution_key(value: object) -> TypeGuard[_ExecutionKey]:
-    return type(value) in (
-        PoweredResultKey,
-        PoweredInterfaceKey,
-        FusedInterfaceKey,
-        CausalInterfaceKey,
-        DirectedTransferKey,
-        ReverseThresholdSummaryKey,
-        ReverseBoundOutputKey,
-        SourceRootMatchKey,
-        BehaviorBindingKey,
-        NormalizedRegionKey,
-        BoundaryConcatKey,
-    )
-
-
 class ResultLease:
     """A completed result whose output tile remains live until close()."""
 
     __slots__ = (
+        "_boundary_tiles",
+        "_closed",
         "_issuer",
         "_key",
+        "_operand_views",
         "_result",
         "_tile",
-        "_boundary_tiles",
-        "_operand_views",
-        "_closed",
     )
 
     def __init__(
@@ -158,7 +155,7 @@ class ResultLease:
     @property
     def result(self) -> CompletedResult:
         self._require_open()
-        self._tile.tile
+        _ = self._tile.tile
         return self._result
 
     @property
@@ -189,8 +186,8 @@ class ResultLease:
     def __reduce__(self) -> NoReturn:
         raise TypeError("result leases cannot be serialized")
 
-    def __enter__(self) -> ResultLease:
-        self.result
+    def __enter__(self) -> Self:
+        _ = self.result
         return self
 
     def __exit__(self, *_exception: object) -> None:
@@ -930,7 +927,7 @@ class CompletedResultArena:
         tile.validate(self.tiles.owner, "canonical-tile", size=self.tiles._next_tile)
         before = len(self._memo)
         head = self._reverse.get(_ReverseHead(tile))
-        while _is_execution_key(head):
+        while is_execution_key(head):
             self.ledger.bump("completed_result_retirement_traversal_steps")
             member = self._reverse.get(_ReverseMember(tile, head))
             following = member.following if type(member) is _ReverseLinks else None

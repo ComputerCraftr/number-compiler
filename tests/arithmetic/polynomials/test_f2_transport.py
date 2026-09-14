@@ -1,6 +1,7 @@
 """Exact checks for compact source-independent F2 spatial transport."""
 
 from math import comb
+from typing import cast
 
 import pytest
 
@@ -108,11 +109,11 @@ def test_annihilating_after_action_leaves_only_its_forcing() -> None:
 def test_exact_input_contracts_fail_closed() -> None:
     for bad in (True, -1, 1.0):
         with pytest.raises(ValueError):
-            F2SpatialTransport(bad, 0)  # type: ignore[arg-type]
+            F2SpatialTransport(cast(int, bad), 0)
     bad_shift: object = True
     with pytest.raises(TypeError):
-        F2SpatialTransport().coefficient(bad_shift)  # type: ignore[arg-type]
+        F2SpatialTransport().coefficient(cast(int, bad_shift))
     with pytest.raises(TypeError):
-        F2SpatialTransport().then(object())  # type: ignore[arg-type]
+        F2SpatialTransport().then(cast(F2SpatialTransport, object()))
     with pytest.raises(TypeError):
-        F2AffineTransport(object(), (0,))  # type: ignore[arg-type]
+        F2AffineTransport(cast(F2SpatialTransport, object()), (0,))

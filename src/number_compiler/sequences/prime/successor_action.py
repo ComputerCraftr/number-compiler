@@ -281,9 +281,7 @@ class PrimeSuccessorActionArena:
         deleted = 0
         for forbidden in self.descriptor.forbidden_residues:
             residue = (forbidden - entering_phase) % q
-            deleted += self.rank.count_progression_interval(
-                1, W + 1, q, residue, depth
-            )
+            deleted += self.rank.count_progression_interval(1, W + 1, q, residue, depth)
         return PrimeSuccessorPortEffect(
             entering_phase,
             (entering_phase + W) % q,
@@ -308,7 +306,7 @@ class PrimeSuccessorActionArena:
             pass
         stack = [(action, phase, False)]
         while stack:
-            action_id, incoming, ready = stack.pop()
+            action_id, incoming, _ready = stack.pop()
             self.rank.charge()
             key = (action_id, incoming)
             if key in self._ports:
@@ -472,7 +470,8 @@ class PrimeSuccessorImageAdapter(SourceBoundImageAdapter):
                 payload.parent_survivors,
                 payload.deleted_survivors,
                 payload.surviving_values,
-            ) < 0
+            )
+            < 0
             or payload.deleted_survivors + payload.surviving_values
             != payload.parent_survivors
         ):
@@ -653,18 +652,17 @@ class PrimeSuccessorImageAdapter(SourceBoundImageAdapter):
 
     def first_failure(self, image: SourceImageView) -> None:
         self.validate_payload(image.payload)
-        return None
 
 
 __all__ = [
     "PrimeSuccessorActionArena",
     "PrimeSuccessorActionDescriptor",
-    "PrimeSuccessorDescriptorID",
     "PrimeSuccessorActionID",
     "PrimeSuccessorActionMetrics",
     "PrimeSuccessorActionNode",
-    "PrimeSuccessorPortEffect",
+    "PrimeSuccessorDescriptorID",
     "PrimeSuccessorImageAdapter",
     "PrimeSuccessorImagePayload",
+    "PrimeSuccessorPortEffect",
     "PrimeSuccessorSource",
 ]

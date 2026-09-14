@@ -26,8 +26,9 @@ reverse/add has an exact order-20 nonlinear recurrence on binary carry fields.
 
 from __future__ import annotations
 
+import itertools
+from collections.abc import Sequence
 from math import comb
-from typing import Sequence
 
 
 def pair_plane_bits(base: int) -> int:
@@ -179,7 +180,7 @@ def growths_from_event_widths(events: Sequence[Sequence[int]]) -> tuple[int, ...
     widths = tuple(len(row) for row in events)
     if any(width <= 0 for width in widths):
         raise ValueError("event fields must be nonempty")
-    growths = tuple(b - a for a, b in zip(widths, widths[1:]))
+    growths = tuple(b - a for a, b in itertools.pairwise(widths))
     if any(g not in (0, 1) for g in growths):
         raise ValueError(
             "event widths do not encode a valid reverse/add growth schedule"
@@ -272,17 +273,17 @@ def next_carry_from_window(
 
 
 __all__ = [
-    "pair_plane_bits",
-    "event_memory_horizon",
-    "forcing_event_alphabet",
-    "pair_step",
     "carry_field",
+    "endpoint_width_from_event_window",
+    "event_memory_horizon",
     "forcing_event",
+    "forcing_event_alphabet",
     "forcing_event_from_carry",
     "growths_from_event_widths",
-    "endpoint_width_from_event_window",
-    "reconstruct_pair_from_event_window",
-    "next_event_from_window",
-    "reconstruct_pair_from_carry_window",
     "next_carry_from_window",
+    "next_event_from_window",
+    "pair_plane_bits",
+    "pair_step",
+    "reconstruct_pair_from_carry_window",
+    "reconstruct_pair_from_event_window",
 ]

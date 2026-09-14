@@ -18,10 +18,11 @@ import subprocess
 import sys
 import tempfile
 import time
+from collections.abc import Callable
 from dataclasses import asdict, dataclass
 from pathlib import Path
 from types import FrameType
-from typing import BinaryIO, Callable
+from typing import BinaryIO
 
 
 class _DarwinUsage(ctypes.Structure):

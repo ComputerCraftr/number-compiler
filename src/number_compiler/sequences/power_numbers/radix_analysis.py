@@ -138,8 +138,8 @@ def materialize_fermat_power_radix_digits(
 
 __all__ = [
     "PowerRadixWordMetrics",
-    "mersenne_power_radix_metrics",
     "fermat_power_radix_metrics",
-    "materialize_mersenne_power_radix_digits",
     "materialize_fermat_power_radix_digits",
+    "materialize_mersenne_power_radix_digits",
+    "mersenne_power_radix_metrics",
 ]

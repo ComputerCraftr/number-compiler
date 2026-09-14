@@ -14,10 +14,6 @@ from number_compiler.arithmetic.functions.finite_port_action import (
 
 if TYPE_CHECKING:
     import number_compiler.arithmetic.contracts.scoped_handles
-    from number_compiler.arithmetic.contracts.scoped_handles import TransferSummaryID
-    from number_compiler.arithmetic.functions.finite_port_action import (
-        FinitePortActionArena,
-    )
 
 
 def _functions(

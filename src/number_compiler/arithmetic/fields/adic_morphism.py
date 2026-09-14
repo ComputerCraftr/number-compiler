@@ -96,7 +96,7 @@ class PadicAffineMorphism:
         return _bounded_prime_power(self.prime, self.precision)
 
     @classmethod
-    def identity(cls, prime: int, precision: int) -> "PadicAffineMorphism":
+    def identity(cls, prime: int, precision: int) -> PadicAffineMorphism:
         return cls(prime, precision, 1, 0, 0, 0)
 
     @property
@@ -144,7 +144,7 @@ class PadicAffineMorphism:
     def cocycle(self) -> AffineCocycle[int]:
         return AffineCocycle(self.multiplier, self.offset)
 
-    def _then_raw(self, other: "PadicAffineMorphism") -> "PadicAffineMorphism":
+    def _then_raw(self, other: PadicAffineMorphism) -> PadicAffineMorphism:
         if (self.prime, self.precision) != (other.prime, other.precision):
             raise ValueError("incompatible p-adic affine morphisms")
         m = self.modulus
@@ -162,7 +162,7 @@ class PadicAffineMorphism:
             0,
         )
 
-    def then(self, other: "PadicAffineMorphism") -> "PadicAffineMorphism":
+    def then(self, other: PadicAffineMorphism) -> PadicAffineMorphism:
         out = self._then_raw(other)
         return PadicAffineMorphism(
             out.prime,
@@ -173,7 +173,7 @@ class PadicAffineMorphism:
             self.compositions + other.compositions + 1,
         )
 
-    def power(self, exponent: int) -> "PadicAffineMorphism":
+    def power(self, exponent: int) -> PadicAffineMorphism:
         base = PadicAffineMorphism(
             self.prime, self.precision, self.multiplier, self.offset, self.steps, 0
         )
@@ -194,7 +194,7 @@ class PadicAffineMorphism:
         )
 
     @property
-    def radial_quotient(self) -> "PadicRadialQuotient":
+    def radial_quotient(self) -> PadicRadialQuotient:
         """Factor the predictable p-adic scale from the affine source term.
 
         ``multiplier = p**valuation * unit`` at the surviving precision.  The
@@ -344,7 +344,7 @@ class ValuationSensitivityMorphism:
         object.__setattr__(self, "increment", min(self.precision, self.increment))
 
     @classmethod
-    def identity(cls, prime: int, precision: int) -> "ValuationSensitivityMorphism":
+    def identity(cls, prime: int, precision: int) -> ValuationSensitivityMorphism:
         return cls(prime, precision, 1, 0, 0, 0)
 
     @property
@@ -377,9 +377,7 @@ class ValuationSensitivityMorphism:
             raise ValueError((valuation, self.precision))
         return min(self.precision, self.scale * valuation + self.increment)
 
-    def then(
-        self, other: "ValuationSensitivityMorphism"
-    ) -> "ValuationSensitivityMorphism":
+    def then(self, other: ValuationSensitivityMorphism) -> ValuationSensitivityMorphism:
         if (self.prime, self.precision) != (other.prime, other.precision):
             raise ValueError("incompatible valuation theorem channels")
         return ValuationSensitivityMorphism(
@@ -392,8 +390,8 @@ class ValuationSensitivityMorphism:
         )
 
     def _then_raw(
-        self, other: "ValuationSensitivityMorphism"
-    ) -> "ValuationSensitivityMorphism":
+        self, other: ValuationSensitivityMorphism
+    ) -> ValuationSensitivityMorphism:
         if (self.prime, self.precision) != (other.prime, other.precision):
             raise ValueError("incompatible valuation theorem channels")
         return ValuationSensitivityMorphism(
@@ -405,7 +403,7 @@ class ValuationSensitivityMorphism:
             0,
         )
 
-    def power(self, exponent: int) -> "ValuationSensitivityMorphism":
+    def power(self, exponent: int) -> ValuationSensitivityMorphism:
         base = ValuationSensitivityMorphism(
             self.prime,
             self.precision,
@@ -485,8 +483,8 @@ __all__ = [
     "PadicRadialQuotient",
     "ValuationSensitivityMorphism",
     "collatz_slab_padic3",
-    "mersenne_successor_padic2",
-    "mersenne_successor_2adic_sensitivity",
     "fermat_shifted_square_sensitivity",
+    "mersenne_successor_2adic_sensitivity",
+    "mersenne_successor_padic2",
     "prime_translation_sensitivity",
 ]

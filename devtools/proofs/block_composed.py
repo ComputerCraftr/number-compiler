@@ -50,78 +50,77 @@ class ComposedBlockEffect(
     """
 
     __slots__ = (
-        "_definition",
-        "_first_context",
-        "_second_context",
-        "_node_id",
-        "budget",
-        "_partition_domain_liftable",
-        "_initial",
-        "_transition_entries",
-        "_states",
-        "_map_eval_hits",
-        "_map_eval_misses",
-        "_output_slots",
-        "_output_cache_hits",
-        "_output_cache_misses",
-        "_output_uncached_probes",
-        "_sparse_emit_delegations",
-        "_sparse_emit_admission_bits",
-        "_sparse_emit_first_seen",
-        "_sparse_emit_admissions",
         "_blank_saturation_cap",
         "_blank_saturation_hits",
-        "_functional_enabled",
-        "_functional_domains",
+        "_boundary_anchor_masks",
+        "_boundary_universe",
+        "_boundary_value_index_builds",
+        "_boundary_value_masks",
+        "_definition",
+        "_first_context",
         "_functional_domain_index",
+        "_functional_domains",
+        "_functional_enabled",
         "_functional_intern",
         "_functional_intern_hits",
         "_functional_intern_misses",
-        "_partition_enabled",
-        "_partition_domains",
+        "_initial",
+        "_ledger",
+        "_macro_boundary_advance_hits",
+        "_macro_boundary_advance_misses",
+        "_macro_boundary_output_hits",
+        "_macro_boundary_output_misses",
+        "_macro_output_hits",
+        "_macro_output_misses",
+        "_macro_tile_advance_cache",
+        "_macro_tile_advance_hits",
+        "_macro_tile_advance_misses",
+        "_macro_tile_output_cache",
+        "_macro_tile_output_hits",
+        "_macro_tile_output_misses",
+        "_map_eval_hits",
+        "_map_eval_misses",
+        "_node_id",
+        "_output_cache_hits",
+        "_output_cache_misses",
+        "_output_slots",
+        "_output_uncached_probes",
+        "_owned_store_serial",
         "_partition_domain_index",
+        "_partition_domains",
+        "_partition_emit_masks",
+        "_partition_enabled",
         "_partition_full_masks",
         "_partition_intern",
         "_partition_intern_hits",
         "_partition_intern_misses",
-        "_partition_preimage_maps",
         "_partition_preimage_cache",
         "_partition_preimage_hits",
+        "_partition_preimage_maps",
         "_partition_preimage_misses",
-        "_partition_emit_masks",
-        "_symbolic_output_rows",
-        "_boundary_anchor_masks",
-        "_boundary_value_masks",
-        "_symbolic_output_row_hits",
-        "_symbolic_output_row_misses",
-        "_symbolic_output_group_evals",
-        "_boundary_value_index_builds",
-        "_boundary_universe",
-        "_recursive_enabled",
-        "_recursive_residual_intern",
-        "_recursive_constant",
-        "_recursive_value_cache",
-        "_recursive_residual_intern_hits",
-        "_recursive_residual_intern_misses",
-        "_recursive_value_cache_hits",
-        "_recursive_value_cache_misses",
-        "_macro_tile_advance_cache",
-        "_macro_tile_output_cache",
-        "_macro_output_hits",
-        "_macro_output_misses",
-        "_macro_tile_advance_hits",
-        "_macro_tile_advance_misses",
-        "_macro_boundary_advance_hits",
-        "_macro_boundary_advance_misses",
-        "_macro_tile_output_hits",
-        "_macro_tile_output_misses",
-        "_macro_boundary_output_hits",
-        "_macro_boundary_output_misses",
         "_provider_task_cache",
         "_provider_task_hits",
         "_provider_task_misses",
-        "_ledger",
-        "_owned_store_serial",
+        "_recursive_constant",
+        "_recursive_enabled",
+        "_recursive_residual_intern",
+        "_recursive_residual_intern_hits",
+        "_recursive_residual_intern_misses",
+        "_recursive_value_cache",
+        "_recursive_value_cache_hits",
+        "_recursive_value_cache_misses",
+        "_second_context",
+        "_sparse_emit_admission_bits",
+        "_sparse_emit_admissions",
+        "_sparse_emit_delegations",
+        "_sparse_emit_first_seen",
+        "_states",
+        "_symbolic_output_group_evals",
+        "_symbolic_output_row_hits",
+        "_symbolic_output_row_misses",
+        "_symbolic_output_rows",
+        "_transition_entries",
+        "budget",
     )
 
     def __init__(
@@ -152,12 +151,6 @@ class ComposedBlockEffect(
         self.budget = budget
         self._ledger = _ledger
         self._owned_store_serial = 0
-        # True only for a partition carrier whose domain came directly from a
-        # complete extensional/function carrier.  A parent may consume this
-        # capability once to build one higher exact partition bimachine.  The
-        # resulting partition does not propagate the capability again, avoiding
-        # the old eager-universe cliff without an exponent or state-count gate.
-        self._partition_domain_liftable = False
         # Exact extensional canonicalization is installed at the bottom T^2
         # composition, where the complete first-effect domains are tiny and
         # fixed (base boundary automata).  Higher compositions consume these
@@ -232,37 +225,6 @@ class ComposedBlockEffect(
         if not _force_recursive and isinstance(first, FiniteBlockEffect):
             partition_domains[0] = first.boundary_universe(BoundarySide.RIGHT)
             partition_domains[1] = first.boundary_universe(BoundarySide.LEFT)
-            partition_enabled = [True, True]
-        elif (
-            False
-            and isinstance(first, ComposedRuntimeMixin)
-            and bool(getattr(first, "eager_boundary_quotient", False))
-            and all(first._functional_enabled)
-            and not any(first._partition_enabled)
-            and not any(first._recursive_enabled)
-        ):
-            # First exact symbolic lift: the child is an extensional function
-            # carrier over the source family's certified finite atom domain.
-            partition_domains[0] = first.boundary_universe(BoundarySide.RIGHT)
-            partition_domains[1] = first.boundary_universe(BoundarySide.LEFT)
-            partition_enabled = [True, True]
-            self._partition_domain_liftable = True
-        elif (
-            isinstance(first, ComposedRuntimeMixin)
-            and bool(getattr(first, "_partition_domain_liftable", False))
-            and all(first._partition_enabled)
-            and not any(first._recursive_enabled)
-        ):
-            # Second exact symbolic lift: consume the child capability once.
-            # Physical Collatz T^4 closes at 50/90 boundary states, so T^8 can
-            # stay in the exact partition bimachine instead of manufacturing
-            # thousands of recursive prefix occurrences.  This resulting T^8
-            # carrier deliberately does not advertise another lift; higher
-            # powers use the recursive quadtree rather than enumerating T^8.
-            partition_domains[0] = first.boundary_universe(BoundarySide.RIGHT)
-            partition_domains[1] = first.boundary_universe(BoundarySide.LEFT)
-            if partition_domains[0] is None or partition_domains[1] is None:
-                raise AssertionError("liftable partition child did not close")
             partition_enabled = [True, True]
         # IMPORTANT: once ``first`` is a partition or recursive composed effect,
         # do not enumerate its reachable boundary universe.  That was the eager-

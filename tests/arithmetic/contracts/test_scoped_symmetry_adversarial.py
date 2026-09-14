@@ -256,7 +256,7 @@ def test_binary_power_rejects_numeric_exponent_alias_before_warm_hit(
 
 @pytest.mark.parametrize("value", (True, 0.5, 1.0, -1))
 def test_finite_port_ordinals_do_not_coerce_to_warm_symbols_or_states(
-    value: bool | float | int,
+    value: bool | float,
 ) -> None:
     invalid = cast("int", value)
     arena = reverse_add_carry_action_arena()

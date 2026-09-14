@@ -7,8 +7,8 @@ reported. The latter cannot license pruning a branch on an unbound interface.
 from __future__ import annotations
 
 import argparse
-from collections import Counter
 import json
+from collections import Counter
 from unittest.mock import patch
 
 from devtools.proofs import exact_oracle

@@ -6,15 +6,14 @@ from dataclasses import replace
 
 import pytest
 
-from number_compiler.hashlife.execution import tile_causal_entry
-from number_compiler.hashlife.execution import tile_scheduler
+from number_compiler.hashlife.execution import tile_causal_entry, tile_scheduler
+from number_compiler.hashlife.execution.tile_scheduler import TileScheduler
 from number_compiler.hashlife.observation import demanded_tiles
+from number_compiler.hashlife.observation.tile_projection import LazyProjection
 from number_compiler.hashlife.tiles.tile_result_records import PoweredResultKey
 from number_compiler.hashlife.tiles.tile_results import ResultLease
-from number_compiler.hashlife.execution.tile_scheduler import TileScheduler
 from number_compiler.resources.payload_audit import audit_registered_payloads
 from number_compiler.sequences.collatz.block_power import PoweredCollatzTerm
-from number_compiler.hashlife.observation.tile_projection import LazyProjection
 
 
 @pytest.mark.parametrize("operation", ("point", "width", "complete", "interface"))
@@ -41,7 +40,12 @@ def test_clock_dispatch_precedes_deep_causal_execution(
     monkeypatch.setattr(tile_causal_entry, "causal_complete", no_deep_completion)
     monkeypatch.setattr(tile_causal_entry, "causal_point", forbidden)
     monkeypatch.setattr(tile_causal_entry, "causal_width_query", forbidden)
-    args = (application.action, application.source, application.ports, application.wiring)
+    args = (
+        application.action,
+        application.source,
+        application.ports,
+        application.wiring,
+    )
     try:
         # Call the scheduler directly to bypass the application's root memo.
         if operation == "point":
@@ -116,7 +120,10 @@ def test_clock_leaves_do_not_recursively_reenter_scheduler(
     monkeypatch.setattr(TileScheduler, "complete", forbidden)
     try:
         with complete(
-            application.action, application.source, application.ports, application.wiring
+            application.action,
+            application.source,
+            application.ports,
+            application.wiring,
         ) as result:
             assert result.result.physical_ticks == ticks
             assert scheduler.tiles.active_width(result.output) == 3

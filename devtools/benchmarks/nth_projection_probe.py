@@ -14,8 +14,6 @@ from devtools.paths import repository_root
 from number_compiler.api.number_api import NumberCompiler
 from number_compiler.arithmetic.fields.symbolic_extent import extent_json_value
 
-#!/usr/bin/env python3
-
 
 class ProjectionRow(TypedDict):
     index: int

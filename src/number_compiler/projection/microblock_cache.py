@@ -82,7 +82,7 @@ class MicroblockCache:
         ledger: ResourceLedger,
         program_owner: ArenaToken | None = None,
         validate_program: Callable[[ActionProgramID], object] | None = None,
-    ) -> "MicroblockCache":
+    ) -> MicroblockCache:
         """Return the one live cache owned by this execution ledger."""
         for root in ledger.iter_execution_roots():
             if type(root) is cls and root.ledger is ledger:

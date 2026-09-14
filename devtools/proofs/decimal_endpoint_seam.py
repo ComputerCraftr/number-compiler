@@ -3,8 +3,8 @@
 from __future__ import annotations
 
 import argparse
-from collections.abc import Iterator
 import json
+from collections.abc import Iterator
 
 from devtools.proofs.endpoint_seam_audit import (
     BoundedEndpointPowerArena,
