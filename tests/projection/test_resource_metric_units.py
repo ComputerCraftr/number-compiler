@@ -423,7 +423,7 @@ def test_higher_interpreter_counts_frames_instead_of_one_call_as_one_unit() -> N
     assert report.total_internal_action_work == 318
 
 
-def test_composed_tile_work_is_visible_without_continuation_execution() -> None:
+def test_composed_reverse_work_uses_the_canonical_tile_scheduler() -> None:
     term = ReverseAddPoweredTerm(196, 16)
     term.digit(term.maximum_width // 3)
     report = term.metrics()
@@ -431,6 +431,7 @@ def test_composed_tile_work_is_visible_without_continuation_execution() -> None:
     causal_frames = report.resource_work_counters["tile_causal_frames"]
     assert causal_frames > 0
     assert report.higher_action_continuation_requests == 0
+    assert report.higher_concrete_operation_evaluations == 0
     assert causal_frames == term._ledger.counters["tile_causal_frames"]
 
 

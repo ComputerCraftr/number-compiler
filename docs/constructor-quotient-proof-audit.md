@@ -559,7 +559,7 @@ oracle-import poison workload through reverse N=64 passed in 22.22 seconds.
 No limits or assertions were weakened and deselected validation tests were run
 explicitly rather than counted as passes.
 
-The actual CLI invocation `number-compiler nth collatz 13 --seed 9557` prints
+The actual CLI invocation `number-compiler collatz --nth 13 --seed 9557` prints
 `7`. Strict mypy passes all 1,219 files under `src`, `tests` and `devtools`.
 Changed-file Ruff and `git diff --check` pass. Isabelle sources are unchanged
 from the preceding verified session. Generated logs and guard reports remain

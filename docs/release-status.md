@@ -1,5 +1,124 @@
 # Repository cleanup and current release status
 
+The [September 14 digit CLI priority](digit-cli-cutover-priority-2026-09-14.md)
+puts removal of legacy execution and exact ordinary digit output first.
+Classification, factor reporting and non-halting certification are additional
+requests. Their research gaps do not block computing a finite term's digits.
+The immediate 196 publisher-route repair now passes all eight architectural
+cutover checks through the canonical tile scheduler. The retired publisher is
+outside the production package. The checked decimal terminal lemma is available,
+while full executable construction refinement and broader performance gates
+remain open. See the [repair evidence](../results/current/reverse-executor-cutover-2026-09-14/README.md).
+The repaired path passes ten focused cutover/consumer checks and 14 nonzero
+installed-wheel digit cases. The new full-unit attempt times out at 300 seconds.
+The combined P0 job also times out; separately completed P0 groups give 12 passes
+and ten remaining classification/certificate failures. This is a scoped repair,
+not full release closure. Fine latency differences are secondary diagnostics.
+Historical evidence and existing benchmark assertions below are preserved.
+
+The [assigned shared-action cleanup](shared-action-cleanup-2026-09-14.md) now has
+owners for all audited families and proof gaps. Its first applied checkpoint
+adds exact Antihydra observation reuse and a shared Isabelle skew theory with
+checked Antihydra/Collatz representation maps. Focused tests and affected builds
+pass. Runtime cache-authority replacements and the remaining constructors are
+still open; this checkpoint does not close the release hold.
+
+The [September 14 shared-action adversarial audit](shared-action-adversarial-audit-2026-09-14.md)
+confirms remaining fragmented CLI owners, a primitive-only live prime adapter,
+repeated full Antihydra source validation and missing executable Isabelle
+refinement maps. Three independent agents and bounded CLI/cache/poison controls
+audited the same frozen source. The report distinguishes checked algebra and
+one-step results from unimplemented temporal constructors, and records rejected
+overclaims about point replay and zero-root counterexamples. **Release remains
+blocked; this audit does not claim repairs.**
+
+The [source-bound skew scheduler integration](skew-scheduler-unification-2026-09-13.md)
+adds real prime interval consumers and bounded Antihydra section construction to
+the shared execution core. The new prime arithmetic and finite deletion proofs
+build in Isabelle. All-family migration, complete executable refinement and the
+required performance evidence are still incomplete; **release remains blocked**.
+The September 14 frozen validation has **5,205 unit passes and four failures**,
+and **seven explicit P0 passes with 15 failures**. Focused tests, authored-tree
+checks and installed-wheel checks pass. Cold prime comparisons and Antihydra
+spacetime latency still miss required tolerances; the cold Collatz comparison
+times out. All 105 growth trials were attempted: 80 completed and 25 timed out;
+the completed spatial series also fails work/retention envelopes. The additional
+35 Antihydra API controls verify same-run reuse, while exposing linear cold work.
+Checked arithmetic lemmas do not close the missing executable
+construction and consumer proofs. The linked report and evidence distinguish
+these results from the earlier frozen checkpoints below. Their passing
+measurements do not automatically apply to the changed tree.
+
+
+The earlier [agent performance implementation and audit](performance-agent-closure-2026-09-13.md)
+adds bounded, source-qualified prime process reuse, ledger-owned Collatz event
+and physical-support publication, and bounded Antihydra spacetime batching.
+The frozen installed wheel passes the paired prime latency gates against both
+current and historical baselines, including cache-bypassed controls. Already-covered
+warm prime requests perform no repeated discovery. Numerical Phi, rank/select and
+finite local Enter/Finish execution lemmas build in Isabelle; full Python
+cache/lifecycle refinement remains open.
+
+The preceding frozen full unit run had **5,127 passes and the same four failures**, in
+268.49 seconds under the unchanged 300-second/1-GiB limit. The unchanged explicit
+P0 selection remains **15 failures and seven passes**. The missing 196 composed
+image, common Collatz support consumers, Antihydra composed observer images,
+compact Fermat/Mersenne terminal construction and complete executable refinements
+remain required. Antihydra's source-7 barrier is a separate mathematical P0.
+**Release remains blocked.** The linked evidence records the source fingerprint,
+measurements, missing samples, timeouts and independent audit scope.
+
+
+The [prime source rank/select bridge](prime-source-rank-release-2026-09-13.md)
+connects `prime --nth` to one query-owned Legendre count DAG. Factor stages are
+discovered from the source, parent gap and leaf-bitmap construction are absent,
+and CLI state/work/stage limits fail closed. Fixed-wheel rank/select remains
+established by the [owner check](prime-clock-owner-audit-2026-09-13.md).
+The [final evidence](../results/current/prime-source-rank-2026-09-13/README.md)
+records **5,067 unit passes and the same four existing failures**, finishing in
+250.87 seconds under the unchanged five-minute limit. Installed-wheel checks
+and scoped Isabelle source lemmas pass. At that earlier checkpoint, formal executable refinement, unbounded
+stage-growth bounds and warm high-start reuse remained open; this scoped production
+fix does not close the cross-family P0 gates.
+
+The earlier [adversarial release audit](adversarial-release-audit-2026-09-13.md)
+repairs mutated Antihydra support admission and a demonstrated wrong-digit
+196 action-substitution exploit. The 196 image is constructed only when output
+is demanded, and execution and reporting share action/certificate checks.
+The unchanged P0 selection still has **15 failures and seven passes**.
+That audit's ordinary-unit run finished in 290.64 seconds with **5,032 passes and
+the same four release failures** under the unchanged five-minute limit.
+The source-derived image, compact terminal evaluator, complete projection
+refinements and Antihydra source-7 certificate remain **BLOCKED**.
+
+The earlier [CLI performance audit](cli-performance-release-audit-2026-09-12.md)
+defers unrequested imports and metrics, reuses Antihydra's retained branch
+support, and caches validated 196 composition edges. Installed CLI timings
+improve, and the Antihydra macro-rediscovery gate is closed. The general powered
+construction and mathematical gates remain **BLOCKED**; see the linked evidence
+for the unchanged release assertions and the remaining work.
+
+The [family-first CLI migration](family-first-cli.md) replaces the old command
+forms with `FAMILY --nth N`, explicit `--info` requests and Collatz `--events`.
+Antihydra has a total arithmetic endpoint and a shared, guarded physical owner.
+The [migration evidence](../results/current/family-first-cli-2026-09-12/README.md)
+records validation and the scoped Isabelle arithmetic proof. This interface
+change does not discharge the mathematical or performance P0 gates below.
+
+Current follow-up: the [reverse/add publisher and Antihydra integration](publisher-antihydra-p0-followup-2026-09-12.md)
+is connected to the CLI, with checked bounded Antihydra cache admission and
+faster spacetime observation. Higher-continuation cutover, the compact special-number
+terminal evaluator and the remaining proof obligations still block release.
+
+## Antihydra integration — September 12
+
+The [Antihydra Python CLI and proof integration](antihydra-production-and-proof-2026-09-12.md)
+adds finite source-bound execution and compressed tape/event observations.
+The separate Isabelle session establishes component semantics, not the missing
+all-time barrier. Full literal macro refinement, production consumer/payload
+refinement and the source-7 certificate remain P0. Existing four-family release
+blockers are unchanged; the release is still **BLOCKED**.
+
 ## Restored transverse-germ target — September 12
 
 The latest retest identifies the actual Fermat/Mersenne semantic criterion:

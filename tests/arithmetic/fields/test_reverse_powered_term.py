@@ -61,7 +61,10 @@ def test_number_api_keeps_reverse_add_width_exact_and_lazy() -> None:
     assert isinstance(term.metrics.width, ReverseAddExtent)
     assert term.metrics.projection_work == 0
     assert term.metrics.construction_steps < 2 * (10**12).bit_length()
-    payload_metrics = term.payload.power_metrics()  # type: ignore[union-attr]
+    from number_compiler.api.number_api import PoweredReverseAddTermPayload
+
+    assert isinstance(term.payload, PoweredReverseAddTermPayload)
+    payload_metrics = term.payload.power_metrics()
     assert payload_metrics.point_queries == 0
 
 

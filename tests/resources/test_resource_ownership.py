@@ -123,6 +123,9 @@ def test_collatz_tile_runtime_graph_is_collectable_after_term_lifetime() -> None
     index = term._point_index()
     ledger = term._ledger
     projection = index._lazy_application
+    from number_compiler.hashlife.observation.tile_projection import LazyProjection
+
+    assert type(projection) is LazyProjection
     application = projection._application
     scheduler = projection.scheduler
     results = scheduler.results

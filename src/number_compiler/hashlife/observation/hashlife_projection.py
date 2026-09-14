@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from collections.abc import Iterator, Sequence
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
 from number_compiler.arithmetic.contracts.block_effect import BlockEffect
 from number_compiler.arithmetic.contracts.exact_tree_context import (
@@ -42,12 +42,12 @@ from number_compiler.projection.microblock_cache import (
 )
 from number_compiler.projection.point_response import PointResponseRegister
 from number_compiler.resources.ledger import ResourceLedger
-from number_compiler.resources.metric_records import (
-    HashLifeBehaviorMetrics,
-    HashLifeProjectionMetrics,
-)
 
 if TYPE_CHECKING:
+    from number_compiler.resources.metric_records import (
+        HashLifeBehaviorMetrics,
+        HashLifeProjectionMetrics,
+    )
     from number_compiler.hashlife.tiles.tile_context import TemporalCocycle
     from number_compiler.arithmetic.polynomials.twisted_observer import (
         TwistedCylinderProjection,
@@ -57,6 +57,8 @@ if TYPE_CHECKING:
 
 class HashLifeBlockIndex:
     """One compiler, source, lazy application and resource ownership scope."""
+
+    _lazy_application: LazyProjection
 
     def __init__(
         self,
@@ -173,6 +175,8 @@ class HashLifeBlockIndex:
             PrimitiveTileKernelAdapter,
         )
 
+        self._output_symbol_count: int
+        self._canonical_tiles_at_build: int
         application = self._lazy_application._open()
         adapter = application.scheduler.adapter
         if type(adapter) is not PrimitiveTileKernelAdapter:
@@ -217,8 +221,6 @@ class HashLifeBlockIndex:
             raise IndexError(position)
         # Authenticate the issued application before either scalar cache can
         # answer.  Program ownership alone does not confer source authority.
-        if type(self._lazy_application) is not LazyProjection:
-            raise ValueError("point observation requires its tile application")
         self._lazy_application._open().validate_execution()
         self._point_queries += 1
         self._direct_powered_point_queries += 1
@@ -241,7 +243,7 @@ class HashLifeBlockIndex:
         self, *, first_width: int = 1
     ) -> TwistedCylinderProjection | None:
         if type(self._lazy_application) is not LazyProjection:
-            raise ValueError("mirror observation requires its tile application")
+            raise ValueError("mirror observation requires its published application")
         return self._lazy_application.mirror_obstruction(first_width=first_width)
 
     def _point(self, position: int) -> int:
@@ -301,3 +303,12 @@ class HashLifeBlockIndex:
 
 
 __all__ = ["HashLifeProjectionMetrics", "HashLifeBehaviorMetrics", "HashLifeBlockIndex"]
+
+
+def __getattr__(name: str) -> Any:
+    from number_compiler.api.lazy_exports import resolve_export
+
+    return resolve_export(name, {
+        "HashLifeProjectionMetrics": "number_compiler.resources.metric_records",
+        "HashLifeBehaviorMetrics": "number_compiler.resources.metric_records",
+    }, globals())

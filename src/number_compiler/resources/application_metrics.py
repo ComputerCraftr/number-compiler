@@ -20,6 +20,11 @@ def tile_application_compatibility_values(
     compiler_entries: int,
 ) -> dict[str, int]:
     """Forward actual canonical-tile execution from the same ledger snapshot."""
+    from number_compiler.hashlife.observation.tile_projection import LazyProjection
+
+    application = index._lazy_application
+    if type(application) is not LazyProjection:
+        raise TypeError("tile compatibility metrics require a tile application")
     work = ledger.resource_work_counters
     completed_misses = (
         ledger.completed_result_requests - ledger.completed_result_early_hits
@@ -28,7 +33,7 @@ def tile_application_compatibility_values(
     mirror_misses = ledger.tile_mirror_requests - ledger.tile_mirror_early_hits
     boundary_requests = work.get("tile_causal_boundary_output_requests", 0)
     boundary_hits = work.get("tile_causal_boundary_output_hits", 0)
-    tile_records = index._lazy_application.scheduler.tiles._nodes.values()
+    tile_records = application.scheduler.tiles._nodes.values()
     maximum_tile_level = max((record.level for record in tile_records), default=0)
     return {
         "bounded_application_enabled": 1,

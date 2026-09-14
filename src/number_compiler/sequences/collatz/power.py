@@ -17,7 +17,7 @@ possible parity domains of a source-independent ``T**N`` have disappeared.
 
 from __future__ import annotations
 
-from collections.abc import Callable, Iterable
+from collections.abc import Callable, Iterable, MutableMapping, MutableSequence
 from dataclasses import dataclass
 from typing import Literal, TypeVar, cast
 
@@ -29,6 +29,7 @@ from number_compiler.arithmetic.fields.morphism_core import (
 )
 
 from number_compiler.arithmetic.functions.word_concatenation import concatenate_words
+from number_compiler.resources.ledger import OwnedMemo, ResourceLedger
 
 Branch = Literal["E", "O"]
 
@@ -411,6 +412,7 @@ class CollatzEventArena:
     """
 
     __slots__ = (
+        "__weakref__",
         "_by_key",
         "_cocycle_cache",
         "_concat_cache",
@@ -421,16 +423,55 @@ class CollatzEventArena:
         "composition_operations",
         "intern_hits",
         "intern_misses",
+        "_ledger",
+        "_node_owner",
+        "_key_owner",
+        "_event_owner",
+        "_concat_owner",
+        "_uniform_owner",
+        "_cocycle_owner",
     )
 
-    def __init__(self) -> None:
-        self._nodes: list[CollatzEventNode] = []
-        self._by_key: dict[tuple[object, ...], CollatzEventNode] = {}
-        self._events: dict[int, CollatzEventNode] = {}
-        self._concat_cache: dict[tuple[int, int], CollatzEventNode] = {}
-        self._uniform: dict[int, int | None] = {}
+    def __init__(self, *, ledger: ResourceLedger | None = None) -> None:
+        ledger = ledger if ledger is not None else ResourceLedger()
+        self._ledger = ledger
+        prefix = f"collatz-event-{len(ledger.inventory())}"
+        self._node_owner = ledger.register(prefix + "-nodes", "action_program")
+        self._key_owner = ledger.register(
+            prefix + "-keys", "field_transfer_interner"
+        )
+        self._event_owner = ledger.register(
+            prefix + "-atoms", "runtime_query_state_memo"
+        )
+        self._concat_owner = ledger.register(
+            prefix + "-concats", "runtime_query_state_memo"
+        )
+        self._uniform_owner = ledger.register(
+            prefix + "-uniform", "runtime_query_state_memo"
+        )
+        self._cocycle_owner = ledger.register(
+            prefix + "-cocycles", "observation_memo"
+        )
+        self._nodes: MutableSequence[CollatzEventNode] = ledger.make_list(
+            self._node_owner
+        )
+        self._by_key: MutableMapping[tuple[object, ...], CollatzEventNode] = (
+            ledger.make_dict(self._key_owner)
+        )
+        self._events: MutableMapping[int, CollatzEventNode] = ledger.make_dict(
+            self._event_owner
+        )
+        self._concat_cache: MutableMapping[tuple[int, int], CollatzEventNode] = (
+            ledger.make_dict(self._concat_owner)
+        )
+        self._uniform: MutableMapping[int, int | None] = ledger.make_dict(
+            self._uniform_owner
+        )
         self._cocycle_cache: LazyLoweringCache[int, DyadicAffineCocycle] = (
             LazyLoweringCache()
+        )
+        self._cocycle_cache._values = cast(
+            dict[int, DyadicAffineCocycle], OwnedMemo(ledger, self._cocycle_owner)
         )
         self.composition_operations = 0
         self.intern_hits = 0
@@ -440,6 +481,7 @@ class CollatzEventArena:
             CollatzEventTransport.identity(),
             "identity",
         )
+        ledger.register_execution_root(self)
 
     def _intern(
         self,
@@ -450,11 +492,17 @@ class CollatzEventArena:
         valuation: int | None = None,
         left: CollatzEventNode | None = None,
         right: CollatzEventNode | None = None,
+        reserved: bool = False,
     ) -> CollatzEventNode:
         old = self._by_key.get(key)
         if old is not None:
             self.intern_hits += 1
             return old
+        if self._ledger is not None and not reserved:
+            assert self._node_owner is not None and self._key_owner is not None
+            self._ledger.reserve_many(
+                ((self._node_owner, 1, 1), (self._key_owner, 1, 0))
+            )
         node = CollatzEventNode(
             len(self._nodes) + 1,
             effect,
@@ -480,6 +528,29 @@ class CollatzEventArena:
             or self._nodes[node.node_id - 1] is not node
         ):
             raise ValueError("event node belongs to another arena")
+        node.__post_init__()
+        if node.kind == "identity":
+            key: tuple[object, ...] = ("identity",)
+            expected = CollatzEventTransport.identity()
+        elif node.kind == "event":
+            assert node.valuation is not None
+            key = ("event", node.valuation)
+            expected = CollatzEventTransport.valuation_atom(node.valuation)
+            if self._events.get(node.valuation) is not node:
+                raise ValueError("event atom lost its canonical arena binding")
+        else:
+            assert node.left is not None and node.right is not None
+            for child in (node.left, node.right):
+                if (
+                    type(child) is not CollatzEventNode
+                    or not 0 < child.node_id < node.node_id
+                    or self._nodes[child.node_id - 1] is not child
+                ):
+                    raise ValueError("event child belongs to another arena")
+            key = ("concat", node.left.node_id, node.right.node_id)
+            expected = node.left.effect.then(node.right.effect)
+        if self._by_key.get(key) is not node or node.effect != expected:
+            raise ValueError("event node has forged canonical semantics")
 
     def event(self, valuation: int) -> CollatzEventNode:
         k = int(valuation)
@@ -489,11 +560,29 @@ class CollatzEventArena:
         if old is not None:
             self.intern_hits += 1
             return old
+        reserved = self._ledger is not None
+        if reserved:
+            assert self._ledger is not None
+            assert None not in (
+                self._node_owner,
+                self._key_owner,
+                self._event_owner,
+                self._uniform_owner,
+            )
+            self._ledger.reserve_many(
+                (
+                    (self._node_owner, 1, 1),
+                    (self._key_owner, 1, 0),
+                    (self._event_owner, 1, 0),
+                    (self._uniform_owner, 1, 0),
+                )
+            )
         node = self._intern(
             ("event", k),
             CollatzEventTransport.valuation_atom(k),
             "event",
             valuation=k,
+            reserved=reserved,
         )
         self._uniform[node.node_id] = k
         self._events[k] = node
@@ -503,12 +592,25 @@ class CollatzEventArena:
         self, first: CollatzEventNode, second: CollatzEventNode
     ) -> CollatzEventNode:
         self.composition_operations += 1
+        key = ("concat", first.node_id, second.node_id)
+        reserved = self._ledger is not None and key not in self._by_key
+        if reserved:
+            assert self._ledger is not None
+            assert None not in (self._node_owner, self._key_owner, self._uniform_owner)
+            self._ledger.reserve_many(
+                (
+                    (self._node_owner, 1, 1),
+                    (self._key_owner, 1, 0),
+                    (self._uniform_owner, 1, 0),
+                )
+            )
         node = self._intern(
-            ("concat", first.node_id, second.node_id),
+            key,
             first.effect.then(second.effect),
             "concat",
             left=first,
             right=second,
+            reserved=reserved,
         )
         a, b = self._uniform.get(first.node_id), self._uniform.get(second.node_id)
         self._uniform[node.node_id] = a if a == b else None
@@ -542,18 +644,34 @@ class CollatzEventArena:
         """
         self.validate_node(first)
         self.validate_node(second)
-        return concatenate_words(
-            first, second,
-            key_of=lambda node: node.node_id,
-            length=lambda node: node.effect.events,
-            children=lambda node: (cast(CollatzEventNode, node.left),
-                                   cast(CollatzEventNode, node.right)),
-            uniform=lambda node: self._uniform.get(node.node_id),
-            run=self._uniform_word,
-            join=self._join,
-            cache=self._concat_cache,
-            reserve=lambda: None,
-        )
+        reservations = 0
+        previous = len(self._concat_cache)
+
+        def reserve() -> None:
+            nonlocal reservations
+            if self._ledger is not None:
+                assert self._concat_owner is not None
+                self._ledger.reserve(self._concat_owner, entries=1)
+                reservations += 1
+
+        try:
+            return concatenate_words(
+                first, second,
+                key_of=lambda node: node.node_id,
+                length=lambda node: node.effect.events,
+                children=lambda node: (cast(CollatzEventNode, node.left),
+                                       cast(CollatzEventNode, node.right)),
+                uniform=lambda node: self._uniform.get(node.node_id),
+                run=self._uniform_word,
+                join=self._join,
+                cache=self._concat_cache,
+                reserve=reserve,
+            )
+        finally:
+            excess = reservations - (len(self._concat_cache) - previous)
+            if self._ledger is not None and excess:
+                assert self._ledger is not None and self._concat_owner is not None
+                self._ledger.release(self._concat_owner, entries=excess)
 
     def from_valuations(self, valuations: Iterable[int]) -> CollatzEventNode:
         return _balanced_accumulate(

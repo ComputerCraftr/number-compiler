@@ -1,3 +1,8 @@
+session Shared_S_Arithmetic in shared = HOL +
+  options [document = false, quick_and_dirty = false, threads = 1]
+  theories
+    S_Arithmetic_Skew
+
 session Reverse_Residuals = HOL +
   options [document = false, quick_and_dirty = false, threads = 1]
   theories
@@ -9,6 +14,9 @@ session Reverse_Residuals = HOL +
     Reverse_Factored_Channels
     Reverse_Threshold_Cocycle
     Mirror_Pair_Step
+    Reverse_196_Two_Port_Refinement
+    Reverse_196_Universal_Emit
+    Reverse_196_Publisher_Refinement
     Reverse_Growth_Coboundary
     Reverse_Mod9_Skew
     Reverse_Threshold_Geometry
@@ -18,8 +26,14 @@ session Reverse_Residuals = HOL +
     Hensel_Cylinders
     Reverse_Contextual_Fixed_Point
 
+session Reverse_Digit_Terminal in reverse_terminal = Reverse_Residuals +
+  options [document = false, quick_and_dirty = false, threads = 1]
+  theories
+    Reverse_Digit_Terminal_Refinement
+
 session Temporal_Clock_Jumps in temporal_clocks = Reverse_Residuals +
   options [document = false, quick_and_dirty = false, threads = 1]
+  sessions Shared_S_Arithmetic
   theories
     Temporal_Clock_Jumps
     Decimal_Clock_Jumps
@@ -33,6 +47,7 @@ session Temporal_Clock_Jumps in temporal_clocks = Reverse_Residuals +
 
 session Etale_Primary_Carry in etale = "HOL-Number_Theory" +
   options [document = false, quick_and_dirty = false, threads = 1]
+  sessions Shared_S_Arithmetic
   theories
     Primary_Carry_Jet
     Etale_Primality_Bridge
@@ -48,3 +63,21 @@ session Etale_Primary_Carry in etale = "HOL-Number_Theory" +
     Twisted_Support_Observers
     Runtime_Cylinder_Refinement
     Cylinder_Vector_Refinement
+
+session Antihydra in antihydra = HOL +
+  options [document = false, quick_and_dirty = false, threads = 1]
+  sessions Shared_S_Arithmetic
+  theories
+    Antihydra_Literal_TM
+    Antihydra_Mahler_Skew
+    Antihydra_Source_Barrier
+    Antihydra_Family_Iteration
+    Antihydra_Affine_Certificate
+    Antihydra_Macro_Grammar
+
+session Prime_Wheel_Bridge in prime_wheel = "HOL-Number_Theory" +
+  options [document = false, quick_and_dirty = false, threads = 1]
+  theories
+    Prime_Wheel_Bridge
+    Prime_Wheel_Executor
+    Prime_Wheel_Skew_Actions

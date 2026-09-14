@@ -83,13 +83,13 @@ powered construction, refinement and performance obligations remain P0.
 ## CLI examples
 
 ```sh
-number-compiler observe collatz 3 --seed 27 --kind modular
-number-compiler observe collatz 3 --seed 27 --kind hensel --precision 8 --target 47
-number-compiler observe collatz 3 --seed 27 --kind tropical --s-weight 1 --z-weight -1
-number-compiler observe 196 3
-number-compiler observe mersenne 11 --defect 621
-number-compiler classify mersenne 131 --factor --allow-classical-ceiling
-number-compiler classify fermat 12 --factor --allow-classical-ceiling --max-factor-products 4098
+number-compiler collatz --events 3 --seed 27 --info modular
+number-compiler collatz --events 3 --seed 27 --info hensel --precision 8 --target 47
+number-compiler collatz --events 3 --seed 27 --info tropical --s-weight 1 --z-weight -1
+number-compiler 196 --nth 3 --no-value --info mirror
+number-compiler mersenne --nth 11 --no-value --info root --defect 621
+number-compiler mersenne --nth 131 --no-value --info primality --info factor
+number-compiler fermat --nth 12 --no-value --info primality --info factor --max-factor-products 4098
 ```
 
 The three-event Collatz output is `(upper, offset, lower)=(27,23,16)`;

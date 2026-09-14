@@ -5,7 +5,6 @@ from typing import Never
 
 import pytest
 
-import number_compiler.api.number_api as number_api
 import number_compiler.sequences.reverse_add.digits as reverse_digits
 from number_compiler.api.cli import main as cli_main
 from number_compiler.api.number_api import NumberCompiler
@@ -33,7 +32,9 @@ def test_projection_phase_does_not_materialize_formula_terms(
     def forbidden(*_args: object, **_kwargs: object) -> Never:
         raise AssertionError("materialization entered projection phase")
 
-    monkeypatch.setattr(number_api, "materialize_values", forbidden)
+    monkeypatch.setattr(
+        "number_compiler.hashlife.execution.evaluator.materialize_values", forbidden
+    )
     c = NumberCompiler()
     r = c.project_nth("reverse-add", 16, seed=196, base=10)
     z = c.project_nth("collatz", 32, seed=27, radix=2)
@@ -70,21 +71,21 @@ def test_output_cap_applies_only_when_materializing() -> None:
 def test_cli_value_symbolic_json_and_family_alias(
     capsys: pytest.CaptureFixture[str],
 ) -> None:
-    assert cli_main(["nth", "196", "5"]) == 0
+    assert cli_main(["196", "--nth", "5"]) == 0
     assert capsys.readouterr().out.strip() == "52514"
 
-    assert cli_main(["nth", "fermat", "20", "--format", "symbolic"]) == 0
+    assert cli_main(["fermat", "--nth", "20", "--format", "symbolic"]) == 0
     assert capsys.readouterr().out.strip() == "2^(2^20)+1"
 
-    assert cli_main(["nth", "prime", "10", "--format", "json"]) == 0
+    assert cli_main(["prime", "--nth", "10", "--format", "json", "--info", "metrics"]) == 0
     obj = json.loads(capsys.readouterr().out)
     assert obj["value"] == "31"
-    assert obj["projection_metrics"]["projection_work"] > 0
+    assert obj["info"]["metrics"]["projection_work"] > 0
 
 
 def test_cli_rejects_missing_seed(capsys: pytest.CaptureFixture[str]) -> None:
-    assert cli_main(["nth", "collatz", "4"]) == 2
-    assert "requires seed" in capsys.readouterr().err
+    assert cli_main(["collatz", "--nth", "4"]) == 2
+    assert "requires --seed" in capsys.readouterr().err
 
 
 def test_reverse_add_growth_projection_uses_boundary_phase_only(
@@ -111,7 +112,9 @@ def test_single_digit_projection_never_materializes_the_full_word(
             "full digit materialization entered single-digit projection"
         )
 
-    monkeypatch.setattr(number_api, "materialize_values", forbidden)
+    monkeypatch.setattr(
+        "number_compiler.hashlife.execution.evaluator.materialize_values", forbidden
+    )
     c = NumberCompiler()
 
     # Sparse special sources answer arbitrary positions directly from their

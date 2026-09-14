@@ -271,9 +271,9 @@ def test_number_compiler_rejects_aliases_before_powered_construction(
 ) -> None:
     value = cast(int, value)
     monkeypatch.setattr(
-        "number_compiler.api.number_api.ReverseAddPoweredTerm", forbidden
+        "number_compiler.sequences.reverse_add.power.ReverseAddPoweredTerm", forbidden
     )
-    monkeypatch.setattr("number_compiler.api.number_api.PoweredCollatzTerm", forbidden)
+    monkeypatch.setattr("number_compiler.sequences.collatz.block_power.PoweredCollatzTerm", forbidden)
     kwargs = dict(seed=1, base=2, radix=2)
     if field != "index":
         kwargs[field] = value

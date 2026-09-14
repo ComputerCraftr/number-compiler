@@ -48,11 +48,21 @@ def test_cli_consumes_candidate_shadow_bit(
     family: str, parameter: int, status: str,
     capsys: pytest.CaptureFixture[str],
 ) -> None:
-    exit_code = main(["classify", family, str(parameter), "--format", "json"])
+    exit_code = main([
+        family,
+        "--nth",
+        str(parameter),
+        "--no-value",
+        "--info",
+        "primality",
+        "--format",
+        "json",
+    ])
     row = json.loads(capsys.readouterr().out)
+    primality = row["info"]["primality"]
     assert exit_code == 0, "P0: production CLI cannot recover the candidate prime bit"
-    assert row["decided"] and row["status"] == status
-    assert row["certificate"]["scalable_construction"]
-    assert row["certificate"]["specialization_raw_squarings"] == 0
-    assert row["certificate"]["carrier_states_enumerated"] == 0
-    assert row["etale_ring_multiplications"] == 0
+    assert primality["decided"] and primality["status"] == status
+    assert primality["certificate"]["scalable_construction"]
+    assert primality["certificate"]["specialization_raw_squarings"] == 0
+    assert primality["certificate"]["carrier_states_enumerated"] == 0
+    assert primality["etale_ring_multiplications"] == 0

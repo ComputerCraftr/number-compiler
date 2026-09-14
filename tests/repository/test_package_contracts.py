@@ -6,6 +6,8 @@ import importlib.util
 import tomllib
 from pathlib import Path
 
+import pytest
+
 from devtools.checks.package_contracts import module_inventory, package_violations
 from devtools.paths import repository_root
 
@@ -34,13 +36,36 @@ def test_public_api_is_deliberate_and_has_no_dynamic_compatibility_dispatch() ->
         "HigherSemanticArena",
         "ReverseAddCarrySlab",
     } & set(number_compiler.__all__)
+    # Deferred loading may resolve only the same deliberate public exports;
+    # it must never synthesize legacy aliases or dispatch arbitrary names.
     tree = ast.parse((ROOT / "src/number_compiler/__init__.py").read_text())
-    assert not any(
-        isinstance(node, ast.FunctionDef) and node.name == "__getattr__"
-        for node in tree.body
+    table = next(
+        node.value for node in tree.body
+        if isinstance(node, ast.Assign)
+        and any(isinstance(target, ast.Name) and target.id == "_EXPORT_MODULES"
+                for target in node.targets)
+    )
+    owners = ast.literal_eval(table)
+    assert set(owners) == set(number_compiler.__all__)
+    resolver = next(node for node in tree.body
+                    if isinstance(node, ast.FunctionDef) and node.name == "__getattr__")
+    assert len(resolver.body) == 1
+    assert ast.unparse(resolver.body[0]) == (
+        "return _resolve_export(name, _EXPORT_MODULES, globals())"
     )
     for name in number_compiler.__all__:
-        assert getattr(number_compiler, name) is not None
+        assert owners[name].startswith("number_compiler.")
+        assert owners[name] not in {"number_compiler", "number_compiler.api"}
+        assert getattr(number_compiler, name) is getattr(
+            importlib.import_module(owners[name]), name
+        )
+    for name in ("ComposedBlockEffect", "TileArena", "HigherSemanticArena",
+                 "ReverseAddCarrySlab", "reverse_power", "not_a_public_export"):
+        with pytest.raises(AttributeError):
+            getattr(number_compiler, name)
+    for facade in (number_compiler, importlib.import_module("number_compiler.api")):
+        with pytest.raises(AttributeError):
+            getattr(facade, "resolve_export")
 
 
 def test_cli_entry_point_has_one_canonical_owner() -> None:

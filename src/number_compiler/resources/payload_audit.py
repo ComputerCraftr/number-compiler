@@ -169,8 +169,8 @@ def audit_registered_payloads(
     )
     from number_compiler.resources.finite_port_payload_audit import audit_finite_ports
     from number_compiler.resources.higher_payload_audit import audit_higher_payloads
-    from number_compiler.resources.physical_support_payload_audit import (
-        audit_physical_support_payloads,
+    from number_compiler.resources.support_payload_audit import (
+        audit_support_payloads,
     )
     from number_compiler.resources.higher_primitive_payload import (
         valid_higher_primitive_table,
@@ -225,12 +225,12 @@ def audit_registered_payloads(
     field_images = audit_field_image_payloads(ledger)
     radix_providers = audit_radix_provider_payloads(ledger)
     higher_payloads = audit_higher_payloads(ledger)
-    physical_supports = audit_physical_support_payloads(ledger)
+    support_payloads = audit_support_payloads(ledger)
     forbidden.update(field_actions.invalid)
     forbidden.update(field_images.invalid)
     forbidden.update(radix_providers.invalid)
     forbidden.update(higher_payloads.invalid)
-    forbidden.update(physical_supports.invalid)
+    forbidden.update(support_payloads.invalid)
     forbidden.update(audit_registered_proof_payloads(ledger))
     forbidden.update(audit_callback_future_payloads(ledger))
     concrete_private_index_owners = {
@@ -545,7 +545,7 @@ def audit_registered_payloads(
             return True
         if id(value) in higher_payloads.approved:
             return True
-        if id(value) in physical_supports.approved:
+        if id(value) in support_payloads.approved:
             return True
         if id(value) in field_actions.approved:
             return True
@@ -710,7 +710,7 @@ def audit_registered_payloads(
         if (
             id(container) not in field_images.approved
             and id(container) not in radix_providers.approved
-            and id(container) not in physical_supports.approved
+            and id(container) not in support_payloads.approved
             and owner not in finite_index_owners
             and owner not in cache_event_owners
             and roles[owner]
@@ -759,7 +759,7 @@ def audit_registered_payloads(
             continue
         if id(value) in higher_payloads.approved:
             continue
-        if id(value) in physical_supports.approved:
+        if id(value) in support_payloads.approved:
             continue
         if type(value) is PrimitiveBehaviorQuotient:
             if not semantic_component(value):

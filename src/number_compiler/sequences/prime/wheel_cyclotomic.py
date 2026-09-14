@@ -543,34 +543,13 @@ def _wheel_count_leq(
     ``depth`` wheel primes.  The recurrence works on the compact prime
     descriptor; it never constructs residues, gaps, or a wheel bitmap.
     """
-    limit = int(limit)
-    depth = int(depth)
-    root = (depth, limit)
-    memo: dict[tuple[int, int], int] = {}
-    stack: list[tuple[int, int, bool]] = [(depth, limit, False)]
-    while stack:
-        current_depth, current_limit, ready = stack.pop()
-        key = (current_depth, current_limit)
-        if key in memo:
-            continue
-        if current_limit <= 0:
-            memo[key] = 0
-            continue
-        if current_depth <= 0:
-            memo[key] = current_limit
-            continue
-        prime = primes[current_depth - 1]
-        left = (current_depth - 1, current_limit)
-        right = (current_depth - 1, current_limit // prime)
-        if not ready:
-            stack.append((current_depth, current_limit, True))
-            if right not in memo:
-                stack.append((right[0], right[1], False))
-            if left not in memo:
-                stack.append((left[0], left[1], False))
-            continue
-        memo[key] = memo[left] - memo[right]
-    return memo[root]
+    from number_compiler.sequences.prime.coprime_rank import CoprimeRankDAG
+
+    dag = CoprimeRankDAG(primes[:max(0, int(depth))], retain_queries=False)
+    try:
+        return dag.count(int(limit))
+    finally:
+        dag.close()
 
 
 @dataclass(frozen=True, slots=True)

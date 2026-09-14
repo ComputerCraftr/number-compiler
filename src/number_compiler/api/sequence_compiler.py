@@ -10,11 +10,6 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING, overload
 
-from number_compiler.api.sequence_terms import (
-    formula_term,
-    symbolic_sparse_term,
-    symbolic_word_term,
-)
 from number_compiler.api.sequence_types import (
     CollatzCompilation,
     CollatzSequenceSpec,
@@ -37,9 +32,6 @@ from number_compiler.arithmetic.contracts.input_validation import require_intege
 from number_compiler.arithmetic.fields.digit_formula import DigitSpec
 from number_compiler.arithmetic.formula.summary import get_summary
 from number_compiler.arithmetic.formula.types import RadixSpec
-from number_compiler.arithmetic.functions.state_reduction import (
-    ReverseAddGrowthState,
-)
 from number_compiler.sequences.power_numbers.numbers import (
     FermatNumberSpec,
     MersenneNumberSpec,
@@ -47,11 +39,6 @@ from number_compiler.sequences.power_numbers.numbers import (
     mersenne_radix_reinterpretation,
     special_modulus_matches,
 )
-from number_compiler.sequences.prime.lane_quotient import (
-    canonical_prime_base_period,
-    compile_prime_block_lane_quotient,
-)
-from number_compiler.sequences.reverse_add.digits import reverse_add_orbit_formulas
 
 if TYPE_CHECKING:
     from number_compiler.arithmetic.formula.symmetry_frame import (
@@ -118,6 +105,9 @@ class CanonicalSequenceCompiler:
         the same semantic result.  The mode is part of the cache identity so a
         diagnostic object can never alias the cheaper semantic compilation.
         """
+        from number_compiler.sequences.prime.lane_quotient import canonical_prime_base_period
+        from number_compiler.sequences.prime.lane_quotient import compile_prime_block_lane_quotient
+
         if type(diagnostics) is not bool:
             raise TypeError("diagnostics must be a Boolean")
         spec_types = (
@@ -395,6 +385,10 @@ class CanonicalSequenceCompiler:
     def _compile_reverse_add(
         spec: ReverseAddSequenceSpec, *, diagnostics: bool
     ) -> ReverseAddCompilation:
+        from number_compiler.arithmetic.functions.state_reduction import ReverseAddGrowthState
+        from number_compiler.api.sequence_terms import formula_term
+        from number_compiler.sequences.reverse_add.digits import reverse_add_orbit_formulas
+
         arena, digit_roots, pair_roots = reverse_add_orbit_formulas(
             spec.seed, spec.steps, base=spec.base
         )
@@ -841,6 +835,8 @@ class CanonicalSequenceCompiler:
     def _compile_fermat(
         spec: FermatSequenceSpec, *, diagnostics: bool
     ) -> FermatCompilation:
+        from number_compiler.api.sequence_terms import symbolic_sparse_term
+
         if diagnostics:
             from number_compiler.arithmetic.fields.adic_morphism import (
                 fermat_shifted_square_sensitivity,
@@ -931,6 +927,8 @@ class CanonicalSequenceCompiler:
     def _compile_mersenne(
         spec: MersenneSequenceSpec, *, diagnostics: bool
     ) -> MersenneCompilation:
+        from number_compiler.api.sequence_terms import symbolic_word_term
+
         if diagnostics:
             from number_compiler.arithmetic.fields.adic_morphism import (
                 mersenne_successor_2adic_sensitivity,

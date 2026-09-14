@@ -92,11 +92,10 @@ def test_identical_warm_point_bypasses_evaluator_and_retains_one_response(
     }
     assert changes == {"point_response_requests": 1, "point_response_cache_hits": 1}
     assert len(index._point_response._value) == 1
-    # Certified applications bind a canonical field action directly.  They
-    # deliberately do not retain the compiler's syntax program as a parent
-    # identity.
     assert not hasattr(index, "_diamond_runtime")
-    assert not hasattr(index._bounded_application, "program")
+    application = index._bounded_application
+    # Tile applications bind a canonical field action directly.
+    assert not hasattr(application, "program")
     assert index._compiler.resolve(index.program) is index.effect
 
 

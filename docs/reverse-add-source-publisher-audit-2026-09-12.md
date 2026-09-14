@@ -1,5 +1,14 @@
 # Reverse/add source-publisher production audit — 2026-09-12
 
+**Historical checkpoint, superseded by the September 13
+[adversarial follow-up](adversarial-release-audit-2026-09-13.md).** The production
+router now constructs `ReversePublisherProjection`, which uses the higher
+publisher and recursive coordinate outputs. The disconnection described below
+was repaired. Higher-continuation image construction and its powered refinement
+still block cutover; the old measurements below are not current CLI timings.
+
+## Earlier disconnected implementation
+
 The 196 powered constructor remains a P0 release blocker.  The live public
 path is source-authenticated and exact, but it does not consume the repository's
 source-bound publisher objects.  Its cold completed-result population fails the

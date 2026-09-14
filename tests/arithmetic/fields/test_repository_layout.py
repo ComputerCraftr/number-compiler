@@ -355,12 +355,18 @@ def test_number_compiler_cli_and_projection_api_are_physically_separated() -> No
     compiler = (src / "api/sequence_compiler.py").read_text()
     api = (src / "api/number_api.py").read_text()
     cli = (src / "api/cli.py").read_text()
+    requests = (src / "api/cli_requests.py").read_text()
+    rendering = (src / "api/cli_render.py").read_text()
     assert "argparse" not in compiler
     assert "argparse" not in api
     assert "NumberCompiler" not in compiler
     assert "materialize" in api
     assert "project_nth" in api
-    assert "argparse" in cli
+    assert "argparse" not in cli
+    assert "argparse" in requests
+    assert "parse_request" in cli
+    assert "def _render_value" in rendering
+    assert "def _render_value" not in cli
 
 
 def test_duplicate_helper_and_carrier_cleanup_stays_canonical() -> None:

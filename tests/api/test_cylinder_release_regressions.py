@@ -19,6 +19,7 @@ from number_compiler.arithmetic.polynomials.twisted_observer import (
 from number_compiler.sequences.collatz.block_power import PoweredCollatzTerm
 from number_compiler.sequences.collatz.clock_observers import CollatzClockObservers
 from number_compiler.sequences.collatz.power import CollatzEventArena
+from number_compiler.hashlife.observation.tile_projection import LazyProjection
 
 
 def forbidden(*args: object, **kwargs: object) -> Never:
@@ -31,8 +32,9 @@ def test_no_factor_cli_does_not_collect_classical_gcd(
     from devtools.proofs.oracles import special_classical_ceiling as classical_ceiling
 
     monkeypatch.setattr(classical_ceiling, "_proper_gcd_packet", forbidden)
-    assert main(["classify", "mersenne", "11"]) == 3
-    assert capsys.readouterr().out == "unknown\n"
+    assert main(["mersenne", "--nth", "11", "--no-value", "--info", "primality",
+                 "--format", "json"]) == 3
+    assert json.loads(capsys.readouterr().out)["info"]["primality"]["status"] == "unknown"
 
 
 def test_factor_budget_prevents_power_and_cache_can_retry(
@@ -65,10 +67,10 @@ def test_large_exponent_gate_is_bounded(
     monkeypatch.setattr(numbers, "smallest_factor", forbidden)
     p = str((1 << 64) + 13)
     assert (
-        main(["classify", "mersenne", p, "--max-candidate-bits", p, "--format", "json"])
+        main(["mersenne", "--nth", p, "--no-value", "--info", "primality", "--max-candidate-bits", p, "--format", "json"])
         == 3
     )
-    assert json.loads(capsys.readouterr().out)["method"] == "exponent-gate-budget"
+    assert json.loads(capsys.readouterr().out)["info"]["primality"]["method"] == "exponent-gate-budget"
 
 
 def test_large_unresolved_candidate_has_no_classical_fallback(
@@ -80,16 +82,19 @@ def test_large_unresolved_candidate_has_no_classical_fallback(
     assert (
         main(
             [
-                "classify",
                 "mersenne",
+                "--nth",
                 "20011",
+                "--no-value",
+                "--info",
+                "primality",
                 "--format",
                 "json",
             ]
         )
         == 3
     )
-    row = json.loads(capsys.readouterr().out)
+    row = json.loads(capsys.readouterr().out)["info"]["primality"]
     assert row["status"] == "unknown"
     assert "classical_budget_exceeded" not in row
 
@@ -100,8 +105,8 @@ def test_large_unresolved_candidate_has_no_classical_fallback(
 def test_source_derived_observer_cli(
     kind: str, capsys: pytest.CaptureFixture[str]
 ) -> None:
-    assert main(["observe", "collatz", "3", "--seed", "27", "--kind", kind]) == 0
-    row = json.loads(capsys.readouterr().out)
+    assert main(["collatz", "--events", "3", "--seed", "27", "--info", kind, "--format", "json"]) == 0
+    row = json.loads(capsys.readouterr().out)["info"][kind]
     assert row["discovered_events"] == 3 and row["discovery_digit_work"] > 0
     if kind == "modular":
         assert row["value"] == {"upper": 27, "offset": 23, "lower": 16}
@@ -113,20 +118,22 @@ def test_source_derived_observer_cli(
 def test_observer_cli_consumes_dispatch(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(CollatzClockObservers, "modular", forbidden)
     with pytest.raises(AssertionError, match="unrequested"):
-        main(["observe", "collatz", "3", "--seed", "27", "--kind", "modular"])
+        main(["collatz", "--events", "3", "--seed", "27", "--info", "modular"])
 
 
 def test_mirror_and_supplied_root_cli(capsys: pytest.CaptureFixture[str]) -> None:
-    assert main(["observe", "196", "3"]) == 0
-    row = json.loads(capsys.readouterr().out)
+    assert main(["196", "--nth", "3", "--no-value", "--info", "mirror", "--format", "json"]) == 0
+    row = json.loads(capsys.readouterr().out)["info"]["mirror"]
     assert row["palindrome"] is False and any(row["value"]["coefficients"])
     assert row["work_counters"]["tile_cylinder_node_evaluations"] > 0
+    assert row["work_counters"]["tile_cylinder_compositions"] > 0
+    assert row["work_counters"]["tile_cylinder_leaf_reads"] > 0
     assert row["work_counters"].get("point_response_requests", 0) == 0
     assert row["peak_nodes"] >= row["retained_nodes"] > 0
-    assert main(["observe", "mersenne", "11", "--defect", "621"]) == 0
-    row = json.loads(capsys.readouterr().out)
+    assert main(["mersenne", "--nth", "11", "--no-value", "--info", "root", "--defect", "621", "--format", "json"]) == 0
+    row = json.loads(capsys.readouterr().out)["info"]["root"]
     assert row["factor"] == 23 and "supplied" in row["scope"]
-    assert main(["observe", "mersenne", "11", "--defect", "391"]) == 2
+    assert main(["mersenne", "--nth", "11", "--no-value", "--info", "root", "--defect", "391"]) == 2
     capsys.readouterr()
 
 
@@ -206,19 +213,23 @@ def test_hard_composite_exponent_needs_no_full_factor_search(
     assert (
         main(
             [
-                "classify",
                 "mersenne",
+                "--nth",
                 p,
+                "--no-value",
+                "--info",
+                "primality",
+                "--info",
+                "factor",
                 "--max-candidate-bits",
                 p,
-                "--factor",
                 "--format",
                 "json",
             ]
         )
         == 0
     )
-    row = json.loads(capsys.readouterr().out)
+    row = json.loads(capsys.readouterr().out)["info"]["primality"]
     assert row["status"] == "composite" and row["factor_expression"] is None
     assert row["factor_query_status"] == "no-split"
 
@@ -226,15 +237,15 @@ def test_hard_composite_exponent_needs_no_full_factor_search(
 def test_mirror_sheet_budget_precedes_allocation(
     capsys: pytest.CaptureFixture[str],
 ) -> None:
-    assert main(["observe", "196", "3", "--width", "1000000000000"]) == 2
+    assert main(["196", "--nth", "3", "--no-value", "--info", "mirror", "--width", "1000000000000"]) == 2
     assert "sheet exceeds digit budget" in capsys.readouterr().err
 
 
 def test_prefix_does_not_claim_arrival_at_one(
     capsys: pytest.CaptureFixture[str],
 ) -> None:
-    assert main(["observe", "collatz", "1", "--seed", "27"]) == 0
-    assert json.loads(capsys.readouterr().out)["reached_one"] is False
+    assert main(["collatz", "--events", "1", "--seed", "27", "--info", "clock", "--format", "json"]) == 0
+    assert json.loads(capsys.readouterr().out)["info"]["clock"]["reached_one"] is False
 
 
 @pytest.mark.parametrize("mutation", ("ports", "action", "wiring"))
@@ -242,7 +253,7 @@ def test_warm_point_rejects_mutated_issued_contract(mutation: str) -> None:
     term = PoweredCollatzTerm(27, 8)
     term.digit(0)
     lazy = term._point_index()._lazy_application
-    assert lazy is not None
+    assert type(lazy) is LazyProjection
     application = lazy._open()
     if mutation == "ports":
         original = application.ports
@@ -275,7 +286,7 @@ def test_warm_point_and_inventory_reject_same_tile_lease_alias() -> None:
     term = PoweredCollatzTerm(27, 8)
     expected = term.digit(0)
     lazy = term._point_index()._lazy_application
-    assert lazy is not None
+    assert type(lazy) is LazyProjection
     application = lazy._open()
     scheduler = application.scheduler
     with scheduler.application(

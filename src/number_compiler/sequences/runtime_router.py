@@ -50,9 +50,7 @@ def build_certified_field_application(
     source_geometry.require_source(source, effect.blank)
     if certificate.family not in ("reverse-add", "collatz"):
         raise ValueError("unknown certified temporal family")
-    from number_compiler.hashlife.observation.tile_projection import (
-        build_tile_projection,
-    )
+    from number_compiler.hashlife.observation.tile_projection import build_tile_projection
 
     return build_tile_projection(effect, source_geometry)
 

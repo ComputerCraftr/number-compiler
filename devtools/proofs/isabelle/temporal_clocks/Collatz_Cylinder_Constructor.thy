@@ -184,6 +184,23 @@ definition cylinder_prefix_then ::
     (fst first + (2::rat)^(snd first) * fst second,
       snd first + snd second)"
 
+definition cylinder_prefix_projection ::
+    "cylinder_prefix \<Rightarrow> rat skew_transfer" where
+  "cylinder_prefix_projection A =
+    \<lparr>upper = 1, offset = fst A, lower = (2::rat)^(snd A)\<rparr>"
+
+lemma cylinder_prefix_projection_identity:
+  "cylinder_prefix_projection cylinder_prefix_identity = shared_skew_identity"
+  by (simp add: cylinder_prefix_projection_def
+      cylinder_prefix_identity_def shared_skew_identity_def)
+
+lemma cylinder_prefix_projection_then:
+  "cylinder_prefix_projection (cylinder_prefix_then A B) = shared_skew_then
+    (cylinder_prefix_projection A) (cylinder_prefix_projection B)"
+  by (cases A; cases B)
+    (simp add: cylinder_prefix_projection_def cylinder_prefix_then_def
+      shared_skew_then_def power_add algebra_simps)
+
 lemma cylinder_prefix_then_identity [simp]:
   "cylinder_prefix_then cylinder_prefix_identity A = A"
   "cylinder_prefix_then A cylinder_prefix_identity = A"
@@ -385,7 +402,7 @@ lemma phase_neutrality_does_not_fix_cylinder_action:
 
 ML \<open>
   val _ = if null (Thm_Deps.all_oracles
-    @{thms strip_twos_spec collatz_source_split_exact
+    @{thms cylinder_prefix_projection_identity cylinder_prefix_projection_then strip_twos_spec collatz_source_split_exact
       collatz_accelerated_target_odd odd_source_has_positive_valuation
       physical_collatz_removes_dyadic_prefix physical_collatz_three_cycle
       physical_collatz_power_two_cycle_tail source_split_embeds_physical_ticks

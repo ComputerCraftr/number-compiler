@@ -109,7 +109,7 @@ The restored probes reproduce M11→23, M23→47, M83→167, M131→263. The pub
 compiler accepts `collect_etale_factor=True`; the CLI exposes this as:
 
 ```
-number-compiler classify mersenne 131 --factor --format json
+number-compiler mersenne --nth 131 --no-value --info primality --info factor --format json
 ```
 
 An available terminal gcd packet is also preserved through the certificate and

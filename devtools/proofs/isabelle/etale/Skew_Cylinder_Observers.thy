@@ -1,27 +1,20 @@
 theory Skew_Cylinder_Observers
-  imports Etale_Primality_Bridge "HOL.Rat"
+  imports Etale_Primality_Bridge "HOL.Rat" "Shared_S_Arithmetic.S_Arithmetic_Skew"
 begin
 
-record 'a skew_transfer =
-  upper :: 'a
-  offset :: 'a
-  lower :: 'a
-
 definition skew_then :: "'a::comm_semiring_1 skew_transfer \<Rightarrow> 'a skew_transfer \<Rightarrow> 'a skew_transfer" where
-  "skew_then A B = \<lparr>upper = upper B * upper A,
-    offset = upper B * offset A + lower A * offset B,
-    lower = lower B * lower A\<rparr>"
+  "skew_then A B = shared_skew_then A B"
 
 definition skew_identity :: "'a::comm_semiring_1 skew_transfer" where
-  "skew_identity = \<lparr>upper=1, offset=0, lower=1\<rparr>"
+  "skew_identity = shared_skew_identity"
 
 lemma skew_associative:
   "skew_then (skew_then A B) C = skew_then A (skew_then B C)"
-  by (cases A; cases B; cases C) (simp add: skew_then_def algebra_simps)
+  unfolding skew_then_def by (rule shared_skew_associative)
 
 lemma skew_identities [simp]:
   "skew_then skew_identity A = A" "skew_then A skew_identity = A"
-  by (cases A; simp add: skew_then_def skew_identity_def)+
+  by (simp_all add: skew_then_def shared_skew_then_def skew_identity_def shared_skew_identity_def)
 
 definition skew_map where
   "skew_map f A = \<lparr>upper=f (upper A), offset=f (offset A), lower=f (lower A)\<rparr>"
@@ -31,7 +24,7 @@ theorem observer_commutes_with_composition:
   assumes plus: "\<And>x y. f (x+y) = f x + f y"
     and times: "\<And>x y. f (x*y) = f x * f y"
   shows "skew_map f (skew_then A B) = skew_then (skew_map f A) (skew_map f B)"
-  by (simp add: skew_map_def skew_then_def plus times)
+  by (simp add: skew_map_def skew_then_def shared_skew_then_def plus times)
 
 fun clock_transfer :: "'a::comm_semiring_1 \<Rightarrow> 'a \<Rightarrow> nat list \<Rightarrow> 'a skew_transfer" where
   "clock_transfer s z [] = skew_identity"
@@ -40,7 +33,7 @@ fun clock_transfer :: "'a::comm_semiring_1 \<Rightarrow> 'a \<Rightarrow> nat li
 lemma clock_diagonals:
   "upper (clock_transfer s z ks) = s^(length ks)"
   "lower (clock_transfer s z ks) = z^(sum_list ks)"
-  by (induction ks) (simp_all add: skew_then_def skew_identity_def power_add algebra_simps)
+  by (induction ks) (simp_all add: skew_then_def shared_skew_then_def skew_identity_def shared_skew_identity_def power_add algebra_simps)
 
 lemma clock_append:
   "clock_transfer s z (xs@ys) = skew_then (clock_transfer s z xs) (clock_transfer s z ys)"
@@ -50,20 +43,15 @@ theorem clock_offset_skew:
   "offset (clock_transfer s z (xs@ys)) =
     s^(length ys) * offset (clock_transfer s z xs) +
     z^(sum_list xs) * offset (clock_transfer s z ys)"
-  by (simp add: clock_append skew_then_def clock_diagonals)
+  by (simp add: clock_append skew_then_def shared_skew_then_def clock_diagonals)
 
 theorem skew_transport_composes:
   fixes A B :: "'a::comm_ring_1 skew_transfer"
   assumes first: "upper A*x + offset A = lower A*y"
     and second: "upper B*y + offset B = lower B*z"
   shows "upper (skew_then A B)*x + offset (skew_then A B) = lower (skew_then A B)*z"
-proof -
-  have "upper B * (upper A*x + offset A) + lower A * offset B =
-      lower A * (upper B*y + offset B)"
-    using first by (simp add: algebra_simps)
-  also have "... = lower A * (lower B*z)" using second by simp
-  finally show ?thesis by (simp add: skew_then_def algebra_simps)
-qed
+  unfolding skew_then_def
+  by (rule shared_skew_transport[OF first second])
 
 theorem s_arithmetic_product_formula:
   "((3::rat)^n / 2^k) * 2^k * (1 / 3^n) = 1"

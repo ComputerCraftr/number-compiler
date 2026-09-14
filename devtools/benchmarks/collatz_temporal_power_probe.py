@@ -78,6 +78,11 @@ def _projection_rows() -> list[dict[str, object]]:
         behavior = term.behavior_metrics()
         point_metrics = term._point_index().metrics()
         scheduler_work = projection_accounting(point_metrics)
+        from number_compiler.hashlife.observation.tile_projection import LazyProjection
+
+        projection = term._point_index()._lazy_application
+        if type(projection) is not LazyProjection:
+            raise AssertionError(("collatz-projection-is-not-tile-backed", steps))
         if metrics.direct_powered_point_queries != 1:
             raise AssertionError(("not-direct-point", steps, metrics))
         if not metrics.resource_audit_complete or metrics.resource_accounting_mismatch:
@@ -91,7 +96,7 @@ def _projection_rows() -> list[dict[str, object]]:
             {
                 **scheduler_work,
                 **retained_result_profile(
-                    term._point_index()._lazy_application.scheduler.results
+                    projection.scheduler.results
                 ),
                 "steps": steps,
                 "index_bits": max(1, steps.bit_length()),

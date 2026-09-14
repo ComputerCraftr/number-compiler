@@ -5,12 +5,26 @@ from dataclasses import replace
 import pytest
 
 from devtools.benchmarks.tile_projection_accounting import projection_accounting
-from number_compiler.sequences.reverse_add.power import ReverseAddPoweredTerm
+from number_compiler.resources.metric_records import HashLifeProjectionMetrics
 
 
 def test_scheduler_leaf_work_is_reported_and_retired_work_is_rejected() -> None:
-    metrics = replace(
-        ReverseAddPoweredTerm(196, 1)._point_index().metrics(),
+    metrics = HashLifeProjectionMetrics(
+        point_queries=0,
+        section_requests=0,
+        section_cache_hits=0,
+        section_cache_entries=0,
+        leaf_word_requests=0,
+        leaf_word_cache_hits=0,
+        leaf_word_cache_entries=0,
+        boundary_requests=0,
+        boundary_cache_hits=0,
+        boundary_cache_entries=0,
+        canonical_tile_roots=0,
+        retained_execution_nodes=0,
+        canonical_program_word_roots=0,
+        left_boundary_residuals=0,
+        right_boundary_residuals=0,
         bounded_application_enabled=1,
         temporal_leaf_applications=7,
         tile_scheduler_leaf_function_applications=7,

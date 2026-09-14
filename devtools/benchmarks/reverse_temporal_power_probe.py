@@ -15,7 +15,6 @@ from time import perf_counter
 
 from devtools.benchmarks.tile_projection_accounting import (
     projection_accounting,
-    retained_result_profile,
 )
 from devtools.paths import repository_root
 
@@ -69,6 +68,7 @@ def _scalar_digit(generation: int, position: int) -> int:
 
 
 def _production_projection_rows() -> list[dict[str, object]]:
+    from number_compiler.hashlife.observation.tile_projection import LazyProjection
     from number_compiler.sequences.reverse_add.power import ReverseAddPoweredTerm
 
     rows = []
@@ -84,6 +84,9 @@ def _production_projection_rows() -> list[dict[str, object]]:
         point_metrics = term._point_index().metrics()
         behavior = term.behavior_metrics()
         scheduler_work = projection_accounting(point_metrics)
+        projection = term._point_index()._lazy_application
+        if type(projection) is not LazyProjection:
+            raise AssertionError(("reverse-projection-is-not-tile-hashlife", generation))
         if (
             metrics.hashlife_section_cache_entries
             or metrics.hashlife_leaf_cache_entries
@@ -107,9 +110,10 @@ def _production_projection_rows() -> list[dict[str, object]]:
         rows.append(
             {
                 **scheduler_work,
-                **retained_result_profile(
-                    term._point_index()._lazy_application.scheduler.results
-                ),
+                "retained_tile_output_nodes": metrics.completed_result_entries,
+                "retained_tile_action_nodes": metrics.field_action_nodes,
+                "retained_tile_logical_extent": term.maximum_width,
+                "retained_tile_source_extent": len(term.seed_pair),
                 "generation": generation,
                 "metrics_schema_version": metrics.metrics_schema_version,
                 "resource_ledger_entries": metrics.resource_ledger_entries,

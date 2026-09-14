@@ -8,7 +8,7 @@ specialization; constructing an unused five-component emission would add work.
 
 ## Production changes
 
-`number-compiler nth` now renders power-of-two output bases 2, 4, 8, 16 and 32
+`number-compiler FAMILY --nth` now renders power-of-two output bases 2, 4, 8, 16 and 32
 without reconstructing an endpoint integer when the payload permits it.
 Collatz streams its native binary image, independently of the requested digit
 view radix. Reverse/add regroups source digits when its source radix is a power

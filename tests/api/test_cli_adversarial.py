@@ -43,29 +43,25 @@ def forbid_compiler(monkeypatch: pytest.MonkeyPatch) -> None:
 @pytest.mark.parametrize(
     "arguments, message",
     [
-        (["prime", "-1"], "index"),
-        (["mersenne", "0"], "index"),
-        (["reverse-add", "3"], "requires seed"),
-        (["collatz", "3"], "requires seed"),
-        (["reverse-add", "3", "--seed", "-1"], "--seed"),
-        (["collatz", "3", "--seed", "0"], "--seed"),
-        (["collatz", "3", "--seed", "-1"], "--seed"),
-        (["196", "3", "--base", "1"], "--base"),
-        (["196", "3", "--base", "0"], "--base"),
-        (["collatz", "3", "--seed", "27", "--radix", "4"], "--radix"),
-        (["collatz", "3", "--seed", "27", "--radix", "-6"], "--radix"),
-        (["prime", "1000000000000000", "--output-base", "37"], "--output-base"),
-        (["prime", "1000000000000000", "--output-base", "1"], "--output-base"),
-        (["prime", "1000000000000000", "--max-output-bits", "0"], "--max-output-bits"),
+        (["prime", "--nth", "-1"], "--nth"),
+        (["mersenne", "--nth", "0"], "--nth"),
+        (["reverse-add", "--nth", "3"], "requires --seed"),
+        (["collatz", "--nth", "3"], "requires --seed"),
+        (["reverse-add", "--nth", "3", "--seed", "-1"], "--seed"),
+        (["collatz", "--nth", "3", "--seed", "0"], "--seed"),
+        (["collatz", "--nth", "3", "--seed", "-1"], "--seed"),
+        (["196", "--nth", "3", "--base", "1"], "--base"),
+        (["196", "--nth", "3", "--base", "0"], "--base"),
+        (["collatz", "--nth", "3", "--seed", "27", "--radix", "4"], "--radix"),
+        (["collatz", "--nth", "3", "--seed", "27", "--radix", "-6"], "--radix"),
+        (["prime", "--nth", "1000000000000000", "--output-base", "37"], "--output-base"),
+        (["prime", "--nth", "1000000000000000", "--output-base", "1"], "--output-base"),
+        (["prime", "--nth", "1000000000000000", "--max-output-bits", "0"], "--max-output-bits"),
         (
-            ["fermat", "20", "--format", "symbolic", "--max-output-bits", "-1"],
+            ["fermat", "--nth", "20", "--format", "symbolic", "--max-output-bits", "-1"],
             "--max-output-bits",
         ),
-        (["prime", "1", "--start", "-1"], "--start"),
-        (["prime", "1000000000000000", "--seed", "1"], "does not apply"),
-        (["collatz", "1", "--seed", "1", "--base", "10"], "does not apply"),
-        (["196", "1", "--radix", "2"], "does not apply"),
-        (["mersenne", "1", "--start", "2"], "does not apply"),
+        (["prime", "--nth", "1", "--start", "-1"], "--start"),
     ],
 )
 def test_invalid_domains_reject_before_compilation(
@@ -75,7 +71,7 @@ def test_invalid_domains_reject_before_compilation(
     message: str,
 ) -> None:
     forbid_compiler(monkeypatch)
-    assert cli.main(["nth", *arguments]) == 2
+    assert cli.main([*arguments]) == 2
     output = capsys.readouterr()
     assert not output.out
     assert message in output.err
@@ -83,15 +79,42 @@ def test_invalid_domains_reject_before_compilation(
 
 
 @pytest.mark.parametrize(
+    "arguments, option",
+    [
+        (["prime", "--nth", "1000000000000000", "--seed", "1"], "--seed"),
+        (["collatz", "--nth", "1", "--seed", "1", "--base", "10"], "--base"),
+        (["196", "--nth", "1", "--radix", "2"], "--radix"),
+        (["mersenne", "--nth", "1", "--start", "2"], "--start"),
+    ],
+)
+def test_foreign_family_options_are_parser_errors_before_compilation(
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+    arguments: list[str],
+    option: str,
+) -> None:
+    forbid_compiler(monkeypatch)
+    with pytest.raises(SystemExit) as error:
+        cli.main(arguments)
+    assert error.value.code == 2
+    output = capsys.readouterr()
+    assert not output.out
+    assert "unrecognized arguments:" in output.err
+    assert option in output.err
+    assert "Traceback" not in output.err
+
+
+@pytest.mark.parametrize(
     "arguments",
     [
-        ["fermat", "100000000000000000000000000", "--max-output-bits", "16"],
-        ["mersenne", "100000000000000000000000000", "--max-output-bits", "16"],
-        ["prime", "100000000000000000000000000", "--max-output-bits", "16"],
-        ["prime", "0", "--start", "65536", "--max-output-bits", "16"],
-        ["196", "100000000000000000000000000", "--max-output-bits", "7"],
+        ["fermat", "--nth", "100000000000000000000000000", "--max-output-bits", "16"],
+        ["mersenne", "--nth", "100000000000000000000000000", "--max-output-bits", "16"],
+        ["prime", "--nth", "100000000000000000000000000", "--max-output-bits", "16"],
+        ["prime", "--nth", "0", "--start", "65536", "--max-output-bits", "16"],
+        ["196", "--nth", "100000000000000000000000000", "--max-output-bits", "7"],
         [
             "collatz",
+            "--nth",
             "100000000000000000000000000",
             "--seed",
             "27",
@@ -106,26 +129,26 @@ def test_provably_over_limit_output_rejects_before_compilation(
     arguments: list[str],
 ) -> None:
     forbid_compiler(monkeypatch)
-    assert cli.main(["nth", *arguments]) == 2
+    assert cli.main([*arguments]) == 2
     assert "output exceeds --max-output-bits" in capsys.readouterr().err
 
 
 @pytest.mark.parametrize(
     "arguments",
     [
-        ["nth", "unknown", "0"],
+        ["unknown", "--nth", "0"],
         ["unknown"],
-        ["nth", "prime", "1.5"],
-        ["nth", "prime", "True"],
-        ["nth", "prime", "1_0"],
-        ["nth", "prime", "１"],
-        ["nth", "prime", " 1"],
-        ["nth", "196", "0", "--seed", "1_96"],
-        ["nth", "prime", "0", "--max-cache-entries", "-1"],
-        ["nth", "prime", "0", "--max-output-bits", "2.5"],
-        ["nth", "196", "0", "--seed", "5", "--seed=6"],
-        ["nth", "196", "0", "--format", "json", "--format", "value"],
-        ["nth", "196", "0", "--base", "10", "--base", "2"],
+        ["prime", "--nth", "1.5"],
+        ["prime", "--nth", "True"],
+        ["prime", "--nth", "1_0"],
+        ["prime", "--nth", "１"],
+        ["prime", "--nth", " 1"],
+        ["196", "--nth", "0", "--seed", "1_96"],
+        ["prime", "--nth", "0", "--max-cache-entries", "-1"],
+        ["prime", "--nth", "0", "--max-output-bits", "2.5"],
+        ["196", "--nth", "0", "--seed", "5", "--seed=6"],
+        ["196", "--nth", "0", "--format", "json", "--format", "value"],
+        ["196", "--nth", "0", "--base", "10", "--base", "2"],
     ],
 )
 def test_malformed_unknown_or_conflicting_arguments_are_parser_errors(
@@ -142,7 +165,7 @@ def test_malformed_unknown_or_conflicting_arguments_are_parser_errors(
 
 @pytest.mark.parametrize(
     "arguments",
-    [True, 1.5, "nth prime 0", ["nth", "prime", True], ["nth", "prime", 1.5]],
+    [True, 1.5, "nth prime 0", ["prime", "--nth", True], ["prime", "--nth", 1.5]],
 )
 def test_callable_main_rejects_non_string_arguments(
     monkeypatch: pytest.MonkeyPatch,
@@ -264,7 +287,7 @@ def test_expected_resource_failures_have_usable_cli_errors(
             raise error
 
     monkeypatch.setattr(cli, "NumberCompiler", LimitedCompiler)
-    assert cli.main(["nth", "prime", "0"]) == 2
+    assert cli.main(["prime", "--nth", "0"]) == 2
     output = capsys.readouterr()
     assert not output.out
     assert str(error) in output.err
@@ -275,20 +298,20 @@ def test_valid_zero_indices_alias_overrides_and_small_caps_are_preserved(
     capsys: pytest.CaptureFixture[str],
 ) -> None:
     for arguments, expected in [
-        (["reverse-add", "0", "--seed", "0", "--max-output-bits", "4"], "0"),
-        (["196", "0", "--seed", "5", "--base", "2"], "5"),
-        (["prime", "0", "--start", "0", "--max-output-bits", "2"], "2"),
-        (["fermat", "0", "--max-output-bits", "2"], "3"),
-        (["mersenne", "1", "--max-output-bits", "1"], "1"),
-        (["196", "0", "--seed", "5", "--seed", "5"], "5"),
+        (["reverse-add", "--nth", "0", "--seed", "0", "--max-output-bits", "4"], "0"),
+        (["196", "--nth", "0", "--seed", "5", "--base", "2"], "5"),
+        (["prime", "--nth", "0", "--start", "0", "--max-output-bits", "2"], "2"),
+        (["fermat", "--nth", "0", "--max-output-bits", "2"], "3"),
+        (["mersenne", "--nth", "1", "--max-output-bits", "1"], "1"),
+        (["196", "--nth", "0", "--seed", "5", "--seed", "5"], "5"),
     ]:
-        assert cli.main(["nth", *arguments]) == 0
+        assert cli.main([*arguments]) == 0
         assert capsys.readouterr().out.strip() == expected
     assert (
         cli.main(
             [
-                "nth",
                 "fermat",
+                "--nth",
                 "1000000000000",
                 "--format",
                 "symbolic",
@@ -299,7 +322,7 @@ def test_valid_zero_indices_alias_overrides_and_small_caps_are_preserved(
         == 0
     )
     assert capsys.readouterr().out.strip() == "2^(2^1000000000000)+1"
-    assert cli.main(["nth", "prime", "0", "--format", "json"]) == 0
+    assert cli.main(["prime", "--nth", "0", "--format", "json"]) == 0
     assert json.loads(capsys.readouterr().out)["value"] == "2"
 
 
@@ -310,8 +333,8 @@ def test_real_cli_invalid_option_exits_without_traceback() -> None:
             sys.executable,
             "-m",
             "number_compiler",
-            "nth",
             "prime",
+            "--nth",
             "999999999",
             "--output-base",
             "37",
@@ -364,9 +387,24 @@ def test_emitted_execution_metrics_match_actual_rendered_term_ledger(
             base: int = 10,
             radix: int = 2,
             start: int = 2,
+            max_steps: int = 4096,
+            max_state_bits: int = 4096,
+            max_prime_states: int = 131072,
+            max_prime_work: int = 1000000,
+            max_prime_stages: int = 4096,
         ) -> ProjectedNumberTerm:
             term = super().project_nth(
-                family, index, seed=seed, base=base, radix=radix, start=start
+                family,
+                index,
+                seed=seed,
+                base=base,
+                radix=radix,
+                start=start,
+                max_steps=max_steps,
+                max_state_bits=max_state_bits,
+                max_prime_states=max_prime_states,
+                max_prime_work=max_prime_work,
+                max_prime_stages=max_prime_stages,
             )
             terms.append(term)
             return term
@@ -374,14 +412,17 @@ def test_emitted_execution_metrics_match_actual_rendered_term_ledger(
     monkeypatch.setattr(cli, "NumberCompiler", CapturingCompiler)
     monkeypatch.setattr(payload_type, "power_metrics", capture_metrics)
     assert (
-        cli.main(["nth", family, "2", *extra, "--format", output_format, "--metrics"])
+        cli.main([family, "--nth", "2", *extra, "--format", output_format, "--info", "metrics"])
         == 0
     )
     captured = capsys.readouterr()
-    metrics = json.loads(captured.out if output_format == "json" else captured.err)
-    descriptors = metrics["projection_metrics"] if output_format == "json" else metrics
-    assert descriptors["metrics_scope"] == "construction_and_projection_descriptors"
-    assert descriptors["projection_work"] == 0
+    rendered = json.loads(captured.out if output_format == "json" else captured.err)
+    if output_format == "json":
+        metrics = rendered["info"]["metrics"]
+    else:
+        metrics = rendered["metrics"]
+    assert metrics["metrics_scope"] == "construction_and_projection_descriptors"
+    assert metrics["projection_work"] == 0
     assert metrics["execution_metrics_scope"] == "current_powered_term_ledger_snapshot"
     execution = metrics["execution_metrics"]
     term = terms[0]
@@ -430,9 +471,24 @@ def test_symbolic_metrics_do_not_execute_points_or_width(
             base: int = 10,
             radix: int = 2,
             start: int = 2,
+            max_steps: int = 4096,
+            max_state_bits: int = 4096,
+            max_prime_states: int = 131072,
+            max_prime_work: int = 1000000,
+            max_prime_stages: int = 4096,
         ) -> ProjectedNumberTerm:
             term = super().project_nth(
-                family, index, seed=seed, base=base, radix=radix, start=start
+                family,
+                index,
+                seed=seed,
+                base=base,
+                radix=radix,
+                start=start,
+                max_steps=max_steps,
+                max_state_bits=max_state_bits,
+                max_prime_states=max_prime_states,
+                max_prime_work=max_prime_work,
+                max_prime_stages=max_prime_stages,
             )
             terms.append(term)
             return term
@@ -445,11 +501,11 @@ def test_symbolic_metrics_do_not_execute_points_or_width(
         monkeypatch.setattr(cls, "_point_index", forbidden)
         monkeypatch.setattr(cls, "digit", forbidden)
     assert (
-        cli.main(["nth", family, "256", *extra, "--format", "symbolic", "--metrics"])
+        cli.main([family, "--nth", "256", *extra, "--format", "symbolic", "--info", "metrics"])
         == 0
     )
     output = capsys.readouterr()
-    execution = json.loads(output.err)["execution_metrics"]
+    execution = json.loads(output.err)["metrics"]["execution_metrics"]
     assert isinstance(
         terms[0].payload, (PoweredReverseAddTermPayload, PoweredCollatzTermPayload)
     )
@@ -468,12 +524,12 @@ def test_symbolic_metrics_do_not_execute_points_or_width(
 def test_families_without_runtime_ledger_report_unavailable_not_zero(
     capsys: pytest.CaptureFixture[str], family: str, index: str
 ) -> None:
-    assert cli.main(["nth", family, index, "--format", "json"]) == 0
-    metrics = json.loads(capsys.readouterr().out)
+    assert cli.main([family, "--nth", index, "--format", "json", "--info", "metrics"]) == 0
+    metrics = json.loads(capsys.readouterr().out)["info"]["metrics"]
     assert metrics["execution_metrics"] is None
     assert metrics["execution_metrics_scope"] == "unavailable_for_this_family"
     assert (
-        metrics["projection_metrics"]["metrics_scope"]
+        metrics["metrics_scope"]
         == "construction_and_projection_descriptors"
     )
 

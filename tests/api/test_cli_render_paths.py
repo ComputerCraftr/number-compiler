@@ -47,7 +47,7 @@ def test_power_family_text_uses_sparse_or_uniform_source(
 ) -> None:
     monkeypatch.setattr(FermatTermPayload, "materialize", _forbidden)
     monkeypatch.setattr(MersenneTermPayload, "materialize", _forbidden)
-    assert cli.main(["nth", family, str(index), "--output-base", str(base)]) == 0
+    assert cli.main([family, "--nth", str(index), "--output-base", str(base)]) == 0
     expected = (1 << (1 << index)) + 1 if family == "fermat" else (1 << index) - 1
     assert capsys.readouterr().out.strip() == _reference(expected, base)
 
@@ -65,8 +65,8 @@ def test_collatz_power_radix_text_streams_native_binary_image(
     assert (
         cli.main(
             [
-                "nth",
                 "collatz",
+                "--nth",
                 "4",
                 "--seed",
                 "27",
@@ -95,8 +95,8 @@ def test_reverse_power_radix_conversion_does_not_rebuild_an_integer(
     assert (
         cli.main(
             [
-                "nth",
                 "reverse-add",
+                "--nth",
                 "1",
                 "--seed",
                 "27",
@@ -117,7 +117,7 @@ def test_196_symbolic_upper_bound_avoids_width_preflight(
 ) -> None:
     monkeypatch.setattr(ReverseAddPoweredTerm, "width", _forbidden)
     monkeypatch.setattr(ReverseAddPoweredTerm, "materialize", _forbidden)
-    assert cli.main(["nth", "196", "4"]) == 0
+    assert cli.main(["196", "--nth", "4"]) == 0
     assert capsys.readouterr().out.strip() == "13783"
 
 
@@ -126,7 +126,7 @@ def test_tight_output_cap_still_rejects_before_endpoint_emission(
     capsys: pytest.CaptureFixture[str],
 ) -> None:
     monkeypatch.setattr(ReverseAddPoweredTerm, "iter_digits", _forbidden)
-    assert cli.main(["nth", "196", "1", "--max-output-bits", "8"]) == 2
+    assert cli.main(["196", "--nth", "1", "--max-output-bits", "8"]) == 2
     output = capsys.readouterr()
     assert not output.out
     assert "output exceeds --max-output-bits" in output.err

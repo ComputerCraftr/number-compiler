@@ -175,6 +175,9 @@ def test_composition_certification_requires_the_actual_registered_bound_record()
         == 1
     )
     original = index._lazy_application
+    from number_compiler.hashlife.observation.tile_projection import LazyProjection
+
+    assert type(original) is LazyProjection
     index._lazy_application = copy(original)
     assert index.metrics().bimachine_composition_certified == 0
     index._lazy_application = original

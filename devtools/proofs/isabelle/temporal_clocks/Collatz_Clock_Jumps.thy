@@ -1,5 +1,5 @@
 theory Collatz_Clock_Jumps
-  imports "Reverse_Residuals.Hensel_Cylinders" "HOL.Rat"
+  imports "Reverse_Residuals.Hensel_Cylinders" "HOL.Rat" "Shared_S_Arithmetic.S_Arithmetic_Skew"
 begin
 
 text \<open>Exact composition laws for a caller-supplied accelerated Collatz
@@ -33,6 +33,23 @@ definition collatz_valuation_atom :: "nat \<Rightarrow> collatz_clock_block" whe
 definition collatz_block_identity :: collatz_clock_block where
   "collatz_block_identity = \<lparr>
     odd_count = 0, valuation_sum = 0, affine_offset = 0 \<rparr>"
+
+definition collatz_clock_projection ::
+    "collatz_clock_block \<Rightarrow> int skew_transfer" where
+  "collatz_clock_projection B = \<lparr>upper = (3::int)^odd_count B,
+    offset = affine_offset B, lower = (2::int)^valuation_sum B\<rparr>"
+
+lemma collatz_clock_projection_identity:
+  "collatz_clock_projection collatz_block_identity = shared_skew_identity"
+  by (simp add: collatz_clock_projection_def
+      collatz_block_identity_def shared_skew_identity_def)
+
+lemma collatz_clock_projection_compose:
+  "collatz_clock_projection (collatz_block_compose first second) =
+    shared_skew_then (collatz_clock_projection first) (collatz_clock_projection second)"
+  by (cases first; cases second)
+    (simp add: collatz_clock_projection_def collatz_block_compose_def
+      shared_skew_then_def power_add algebra_simps)
 
 lemma collatz_valuation_atom_exact:
   "collatz_block_apply (collatz_valuation_atom k) x y \<longleftrightarrow>
@@ -322,7 +339,7 @@ qed
 
 ML \<open>
   val _ = if null (Thm_Deps.all_oracles
-    @{thms collatz_valuation_atom_exact collatz_block_compose
+    @{thms collatz_clock_projection_identity collatz_clock_projection_compose collatz_valuation_atom_exact collatz_block_compose
       collatz_block_compose_identity collatz_block_compose_associative
       collatz_known_two_block_itinerary collatz_frame_compose
       inverse_three_clock_conjugacy

@@ -16,6 +16,7 @@ from number_compiler.hashlife.execution.tile_fused_kernel import LeafProductKey
 from number_compiler.hashlife.execution.tile_kernel import PrimitiveTileKernelAdapter
 from number_compiler.hashlife.execution.tile_scheduler import TileApplication
 from number_compiler.hashlife.interfaces.diamond_kernel import PrimitiveKernel
+from number_compiler.hashlife.observation.hashlife_projection import HashLifeBlockIndex
 from number_compiler.hashlife.observation.tile_projection import LazyProjection
 from number_compiler.hashlife.tiles.tile_result_records import PoweredInterfaceKey
 from number_compiler.resources.metric_collection import collect_ledger_metrics
@@ -24,21 +25,29 @@ from number_compiler.sequences.reverse_add.power import ReverseAddPoweredTerm
 
 
 def _runtime() -> tuple[
-    ReverseAddPoweredTerm,
+    HashLifeBlockIndex,
     PrimitiveTileKernelAdapter,
     TileApplication,
 ]:
-    """Open the real source-196, generation-two production tile application."""
+    """Build the tile executor explicitly as the component under audit."""
     term = ReverseAddPoweredTerm(196, 2)
-    term.digit(0)
-    projection = term._point_index()._lazy_application
+    assert term.effect is not None
+    index = HashLifeBlockIndex(
+        term.effect,
+        term.seed_pair,
+        logical_length=term.maximum_width,
+        ledger=term._ledger,
+        compiler=term._compiler,
+        source_construction=term._source_construction,
+    )
+    projection = index._lazy_application
     assert type(projection) is LazyProjection
     application = projection._application
     assert type(application) is TileApplication
     adapter = application.scheduler.adapter
     assert type(adapter) is PrimitiveTileKernelAdapter
     assert adapter._actions and adapter._compositions
-    return term, adapter, application
+    return index, adapter, application
 
 
 def _primitive_reverse_action(

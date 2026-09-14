@@ -55,7 +55,7 @@ theorem physical_matrix_transport:
     lower (physical_matrix n x) * int ((physical_next ^^ n) x)"
 proof (induction n arbitrary: x)
   case 0
-  then show ?case by (simp add: skew_identity_def)
+  then show ?case by (simp add: skew_identity_def shared_skew_identity_def)
 next
   case (Suc n)
   have first:
@@ -85,19 +85,19 @@ lemma physical_matrix_upper:
   "upper (physical_matrix n x) = (3::int)^(physical_odd_count n x)"
 proof (induction n arbitrary: x)
   case 0
-  then show ?case by (simp add: skew_identity_def)
+  then show ?case by (simp add: skew_identity_def shared_skew_identity_def)
 next
   case (Suc n)
   then show ?case
     by (cases "even x")
-      (simp_all add: physical_atom_def skew_then_def power_Suc)
+      (simp_all add: physical_atom_def skew_then_def shared_skew_then_def power_Suc)
 qed
 
 lemma physical_matrix_lower:
   "lower (physical_matrix n x) = (2::int)^(n - physical_odd_count n x)"
 proof (induction n arbitrary: x)
   case 0
-  then show ?case by (simp add: skew_identity_def)
+  then show ?case by (simp add: skew_identity_def shared_skew_identity_def)
 next
   case (Suc n)
   have bound: "physical_odd_count n (physical_next x) \<le> n"
@@ -111,12 +111,12 @@ next
       using bound by arith
     show ?thesis
       using Suc.IH[of "physical_next x"] True exponent
-      by (simp add: physical_atom_def skew_then_def power_Suc algebra_simps)
+      by (simp add: physical_atom_def skew_then_def shared_skew_then_def power_Suc algebra_simps)
   next
     case False
     show ?thesis
       using Suc.IH[of "physical_next x"] False
-      by (simp add: physical_atom_def skew_then_def)
+      by (simp add: physical_atom_def skew_then_def shared_skew_then_def)
   qed
 qed
 
@@ -181,7 +181,7 @@ theorem physical_slope_append:
   "physical_slope (m+n) x =
     physical_slope m x *
       physical_slope n ((physical_next ^^ m) x)"
-  by (simp add: physical_slope_def physical_matrix_append skew_then_def
+  by (simp add: physical_slope_def physical_matrix_append skew_then_def shared_skew_then_def
       physical_matrix_diagonals field_simps)
 
 corollary physical_slope_double:

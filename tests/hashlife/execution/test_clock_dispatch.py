@@ -14,6 +14,7 @@ from number_compiler.hashlife.tiles.tile_results import ResultLease
 from number_compiler.hashlife.execution.tile_scheduler import TileScheduler
 from number_compiler.resources.payload_audit import audit_registered_payloads
 from number_compiler.sequences.collatz.block_power import PoweredCollatzTerm
+from number_compiler.hashlife.observation.tile_projection import LazyProjection
 
 
 @pytest.mark.parametrize("operation", ("point", "width", "complete", "interface"))
@@ -22,6 +23,7 @@ def test_clock_dispatch_precedes_deep_causal_execution(
 ) -> None:
     term = PoweredCollatzTerm(1, 10**6)
     projection = term._point_index()._lazy_application
+    assert type(projection) is LazyProjection
     application = projection._application
     scheduler = application.scheduler
     original_complete = tile_causal_entry.causal_complete
@@ -71,6 +73,7 @@ def test_clock_dispatch_cannot_bypass_execution_context_admission(
 ) -> None:
     term = PoweredCollatzTerm(1, 16)
     projection = term._point_index()._lazy_application
+    assert type(projection) is LazyProjection
     application = projection._application
     scheduler = application.scheduler
 
@@ -102,6 +105,7 @@ def test_clock_leaves_do_not_recursively_reenter_scheduler(
 ) -> None:
     term = PoweredCollatzTerm(seed, ticks)
     projection = term._point_index()._lazy_application
+    assert type(projection) is LazyProjection
     application = projection._application
     scheduler = application.scheduler
     complete = scheduler.complete

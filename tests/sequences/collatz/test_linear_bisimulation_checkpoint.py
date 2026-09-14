@@ -48,7 +48,9 @@ def _assert_diamond_bridge(
     assert metrics.forbidden_future_payloads == 0
     assert metrics.representation_boundary_complete == 1
     assert behavior.temporal_quotient_family == (
-        "reverse-add-tile-hashlife" if proof == (757, 179) else "collatz-tile-hashlife"
+        "reverse-add-tile-hashlife"
+        if proof == (757, 179)
+        else "collatz-tile-hashlife"
     )
     assert (
         behavior.temporal_quotient_state_class_bound

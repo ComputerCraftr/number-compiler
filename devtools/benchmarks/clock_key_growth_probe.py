@@ -118,7 +118,10 @@ def measure(family: str, steps: int) -> dict[str, object]:
         }
     )
     application = index._lazy_application
-    assert application is not None
+    from number_compiler.hashlife.observation.tile_projection import LazyProjection
+
+    if type(application) is not LazyProjection:
+        raise AssertionError("Collatz clock probe requires the tile projection")
     profile = retained_result_profile(application.scheduler.results)
     ablations = occurrence_key_ablations(application.scheduler.results)
     assert term.digit(position) == expected

@@ -1,5 +1,75 @@
 # P0 powered-cylinder release gates — 2026-09-12
 
+Current performance execution: [September 13 agent implementation and audit](performance-agent-closure-2026-09-13.md).
+The new bounded prime reuse and scoped proof increments do not close this ledger's
+source-construction or complete refinement assertions. The unchanged P0 selection
+still reports **15 failures and seven passes** on the frozen follow-up source.
+
+## September 13 adversarial follow-up
+
+The [new independent audit](adversarial-release-audit-2026-09-13.md) found and
+repaired two production authority defects: unchecked retained Antihydra support
+and coordinated substitution of the pending 196 action and binding. Publisher
+construction now defers its higher image until an output demand; pending state
+still reports cutover incomplete. All executable checks and budgets remain.
+The same 22 release assertions have 15 failures and seven passes: five 196
+image/cutover failures, nine special-number recovery failures and one absent
+Antihydra certificate. Their concrete production and Isabelle integration
+points are recorded in the audit. The broader common-support, Collatz and
+projection obligations below remain P0.
+Final ordinary-unit validation has 5,032 passes and the same four release
+failures, finishing in 290.64 seconds under the unchanged 300-second/1-GiB
+guard. Installed-wheel checks and strict typing pass. This does not close any
+of the missing construction or mathematical obligations.
+
+## Current performance follow-up
+
+The [CLI performance audit](cli-performance-release-audit-2026-09-12.md) removes
+unrequested imports and metrics construction, fixes repeated Antihydra result
+ownership, and reuses its retained parity support. The existing Antihydra
+no-macro-rediscovery assertion now passes. Its linear section fold and complete
+powered consumer refinement remain separate obligations. The 196 schema edge
+cache passes exact-authority and allocation-free rejection checks, but its
+continuation work still blocks powered cutover. No special-number decision
+assertion, work budget or proof obligation was weakened.
+Final September 13 validation has 5,002 unit passes and the four existing
+failures. The same 22-assertion release selection now has 15 failures and seven
+passes. The source-7 certificate, nine special-number assertions and five
+reverse/add assertions remain red; the broader source-construction and
+projection obligations below remain open.
+
+## Earlier publisher follow-up
+
+The [publisher and Antihydra follow-up](publisher-antihydra-p0-followup-2026-09-12.md)
+connects reverse/add point, width and mirror observations to the source-bound
+higher publisher. The actual higher-continuation work still blocks cutover.
+Antihydra retained-cylinder admission now passes exact bounded recomposition;
+its demanded spacetime images are faster, while macro rediscovery remains
+charged and blocked. No Fermat/Mersenne decision gate was relaxed.
+The complete decimal two-port one-step theorem now passes Isabelle for every
+valid pair word, including every source-generated 196 iterate. Powered Python
+arena refinement and the complete support/cocycle consumers remain P0.
+Final validation completes inside the full-suite watchdog: 4,929 unit tests
+pass and four preserved release assertions fail. The separate explicit P0
+selection has 16 failures and six passes. See the follow-up for exact evidence.
+
+## Antihydra addition — earlier checkpoint
+
+The pinned Antihydra machine now has a dependency-free Python observation route,
+composed physical-clock cylinders, compressed event projections and a separate
+Isabelle component session. Its all-time source-7 barrier, full literal macro
+refinement, retained powered spacetime construction and payload/performance
+admission remain P0. The [integration and certificate contract](antihydra-production-and-proof-2026-09-12.md)
+records exact proof scope, missing obligations and assigned owners. No finite
+observation or generic certificate-checker theorem clears this release hold.
+All existing four-family gates below remain unchanged.
+
+Final Antihydra checkpoint: 332 component/package tests, strict mypy and an
+isolated fresh-wheel CLI check pass; the Isabelle component session passes in
+15.35s. The full unit gate still times out at 300s. The explicit release
+selection remains red with three new Antihydra failures and the nine pre-existing
+Fermat/Mersenne assertions. [Evidence](../results/current/antihydra-integration-2026-09-12/README.md).
+
 Release is **blocked**. The user's accepted factor contract is conditional:
 print a checked proper factor when one is available. Universal free factor
 discovery is not the acceptance condition. A failed split must not be turned
@@ -153,22 +223,25 @@ promoted into proofs of those claims.
 - `sequences/collatz/local_transfer.py` and `powered_local_codec.py` own the
   separate local carry-action interface. The missing complete-output compiler
   must bridge these semantics; the current test callback supplies fake outputs.
-- `sequences/reverse_add/power.py` now sends positive-generation mirror demands
-  through `LazyProjection` to `hashlife/observation/tile_cylinder.py`. That
-  consumer folds a completed target DAG with shared clipped subtree summaries.
-  It still calls `TileApplication.complete()`; this is not the missing cheap
-  cold powered constructor.
+- `sequences/reverse_add/power.py` now sends positive-generation demands
+  through `HashLifeBlockIndex` to `ReversePublisherProjection`. The authenticated
+  `SourceBoundHigherMacro` supplies point and extent observations; mirror sheets
+  fold the recursive output branches without `TileApplication.complete()`.
+  Its higher continuation evaluator still fails the cutover/performance gate.
 - `api/cylinder_observation.py` reports the actual demanded observations.
   Its supplied-root F/M command is explicitly distinct from terminal discovery.
 - `devtools/proofs/isabelle/etale/` owns the carry, zero-section, skew, Hensel,
   tropical and mirror-consumer lemmas. `Reverse_Invariant.thy` and the proof-side
   reverse spacetime engine do not yet refine the production powered constructor.
 
-## Latest adversarial disposition
+## Earlier adversarial disposition
 
 The proposed query-scoped action-child cache was removed after review found
 stale authority hits, an omitted workspace-peak component, and an unapproved
 payload-audit role. No cache-validation shortcut was retained to improve timing.
+The later schema-owned composition-edge cache in the performance follow-up
+validates exact authority on every call and charges its storage; it does not
+restore that rejected query-scoped cache or cache validation results.
 
 The new 196 consumer uses two reusable charged workspace accounts, clears their
 contents after each sheet including failures, rejects interior padding, and

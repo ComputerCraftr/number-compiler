@@ -424,6 +424,9 @@ def test_unallocated_semantic_id_rejects_before_the_node_store(
         term.digit(0)
         index = term._point_index()
         ledger = term._ledger
+        from number_compiler.hashlife.observation.tile_projection import LazyProjection
+
+        assert type(index._lazy_application) is LazyProjection
         tiles = index._lazy_application.scheduler.tiles
         arena = tiles
         probe = _probe(

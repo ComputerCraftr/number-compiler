@@ -1,3 +1,10 @@
+"""Public API and lazy descriptor checks, not executable cutover evidence.
+
+Digit execution and absence of higher-continuation work are independently
+required by test_temporal_cutover_reporting. Passing this module does not
+establish those architectural obligations.
+"""
+
 from __future__ import annotations
 
 import number_compiler
@@ -7,7 +14,7 @@ from number_compiler.sequences.collatz.block_power import PoweredCollatzTerm
 from number_compiler.sequences.reverse_add.power import ReverseAddPoweredTerm
 
 
-def test_public_reverse_add_and_collatz_use_only_powered_block_backends() -> None:
+def test_public_api_excludes_retired_entrypoints() -> None:
     root = repository_root() / "src" / "number_compiler"
     reverse_text = (root / "sequences/reverse_add/power.py").read_text()
     api_text = (root / "api/number_api.py").read_text()

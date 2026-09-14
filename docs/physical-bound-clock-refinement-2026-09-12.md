@@ -4,7 +4,7 @@ The physical clock now comes from the same admitted application used by
 `PoweredCollatzTerm`. The CLI command is:
 
 ```sh
-number-compiler observe collatz 4 --seed 11 --kind physical-clock
+number-compiler collatz --nth 4 --seed 11 --info clock
 ```
 
 It reports two odd events and two divisions. This command's index counts

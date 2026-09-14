@@ -466,15 +466,12 @@ def test_public_reverse_route_rejects_proof_t2_and_whole_word_execution(
     assert metrics.forbidden_future_payloads == 0
     assert metrics.resource_audit_unknown_payloads == 0
     counters = metrics.resource_work_counters
-    assert metrics.temporal_parent_requests == counters.get(
-        "tile_temporal_action_hits", 0
-    ) + counters.get("tile_temporal_action_publications", 0) + counters.get(
-        "tile_temporal_action_semantic_alias_hits", 0
+    action_hits = counters.get("tile_temporal_action_hits", 0)
+    action_aliases = counters.get("tile_temporal_action_semantic_alias_hits", 0)
+    action_evaluations = (
+        counters.get("tile_temporal_action_publications", 0) + action_aliases
     )
-    assert metrics.temporal_parent_early_hits == counters.get(
-        "tile_temporal_action_hits", 0
-    )
-    assert metrics.temporal_parent_compositions == counters.get(
-        "tile_temporal_action_publications", 0
-    ) + counters.get("tile_temporal_action_semantic_alias_hits", 0)
+    assert metrics.temporal_parent_requests == action_hits + action_evaluations
+    assert metrics.temporal_parent_early_hits == action_hits
+    assert metrics.temporal_parent_compositions == action_evaluations
     assert metrics.temporal_parent_compositions <= 2 * term.generation.bit_length() + 4

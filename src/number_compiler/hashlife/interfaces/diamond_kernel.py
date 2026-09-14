@@ -46,7 +46,6 @@ from number_compiler.hashlife.interfaces.primitive_behavior import (
 from number_compiler.hashlife.observation.diamond_observers import NonblankBlockEffect
 from number_compiler.projection.digit_terminal import DigitNormalizeBlockEffect
 from number_compiler.resources.ledger import OwnedMemo, ResourceLedger
-from number_compiler.sequences.collatz.block_power import CollatzPhysicalBlockEffect
 
 if TYPE_CHECKING:
     from number_compiler.hashlife.execution.diamond_reverse_expression import (
@@ -181,6 +180,8 @@ class PrimitiveKernel:
         leaf. Valuation and frame changes belong to higher temporal actions
         for this primitive, so their local deltas are zero.
         """
+        from number_compiler.sequences.collatz.block_power import CollatzPhysicalBlockEffect
+
         self._check(left, self.left_count)
         self._check(right, self.right_count)
         self._check(symbol, self.blank + 1)
@@ -345,6 +346,8 @@ class DiamondKernelArena:
         *,
         symmetry_witnesses: tuple[LocalSymmetryWitness, ...] | None = None,
     ) -> ActionProgramID:
+        from number_compiler.sequences.collatz.block_power import CollatzPhysicalBlockEffect
+
         # Admission precedes all key lookups; a forged alias is not a kernel.
         common = (
             BaseBlockEffect,

@@ -97,7 +97,7 @@ def test_certified_reverse_uses_tile_hashlife_and_reports_concrete_work() -> Non
     assert point.whole_word_sweeps == point.whole_word_symbol_visits == 0
     assert point.proof_machine_applications == 0
     assert point.higher_concrete_operation_evaluations == 0
-    assert point.tile_scheduler_leaf_function_applications > 0
+    assert point.tile_causal_direct_parent_transfers > 0
     assert (
         point.bounded_application_nonlinear_branch_evaluations
         == point.primitive_transition_evaluations
@@ -146,10 +146,9 @@ def test_reverse_hashlife_semantic_action_interning_merges_distinct_tiles() -> N
     metrics = term.metrics()
     # Cold canonical tiles may evaluate unresolved primitive leaves. That work
     # is reported separately from forbidden generation/continuation replay.
-    assert metrics.hashlife_temporal_leaf_applications == (
-        metrics.tile_scheduler_leaf_function_applications
-    )
-    assert metrics.hashlife_temporal_leaf_applications > 0
+    assert metrics.hashlife_temporal_leaf_applications == 0
+    assert metrics.tile_scheduler_leaf_function_applications == 0
+    assert metrics.tile_causal_direct_parent_transfers > 0
     assert metrics.higher_concrete_operation_evaluations == 0
     assert metrics.sequential_generation_advances == 0
     assert metrics.completed_result_entries > 0

@@ -87,7 +87,11 @@ def test_certified_family_uses_tile_scheduler_without_legacy_construction(
     assert report.temporal_quotient_family == family
     assert report.bounded_temporal_runtime_cutover_complete == 1
     assert report.bounded_temporal_runtime_cutover_blocker == ""
-    assert index.metrics().tile_scheduler_leaf_function_applications > 0
+    metrics = index.metrics()
+    if family == "reverse-add-tile-hashlife":
+        assert metrics.tile_causal_direct_parent_transfers > 0
+    else:
+        assert metrics.tile_scheduler_leaf_function_applications > 0
 
 
 def test_reverse_tile_route_reports_no_retired_execution_work() -> None:
@@ -106,15 +110,11 @@ def test_reverse_warm_tile_parent_needs_no_compiler_or_child_rebuild(
     index = term._point_index()
     projection = index._lazy_application
     assert type(projection) is LazyProjection
-    application = projection._application
-    assert application.point(0) >= 0
-    expected = application.interface()
-    scheduler = application.scheduler
+    expected = term.digit(0)
     before = term._ledger.snapshot()
 
-    monkeypatch.setattr(scheduler.adapter, "leaf_interface", _forbidden)
-    monkeypatch.setattr(scheduler.adapter, "apply_leaf", _forbidden)
-    assert application.interface() == expected
+    monkeypatch.setattr(LazyProjection, "point", _forbidden)
+    assert term.digit(0) == expected
     after = term._ledger.snapshot()
     assert after.counters.get("proof_machine_applications", 0) == 0
     assert after.counters.get("sequential_generation_advances", 0) == 0

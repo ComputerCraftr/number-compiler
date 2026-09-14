@@ -13,6 +13,9 @@ from number_compiler.hashlife.execution.tile_application_authority import (
     application_source,
 )
 from number_compiler.hashlife.execution.tile_clock_dispatch import complete_clock
+from number_compiler.hashlife.execution.source_bound_images import (
+    SourceBoundImageMixin,
+)
 from number_compiler.hashlife.execution.tile_causal_interfaces import (
     CausalInterfacePayload,
     interface_payload_from_completed,
@@ -165,7 +168,7 @@ class _DirectFrame:
 _APPLICATION_SEAL = object()
 
 
-class TileScheduler:
+class TileScheduler(SourceBoundImageMixin):
     """One iterative complete-result and demand-observation executor."""
 
     def __init__(
@@ -199,6 +202,7 @@ class TileScheduler:
             node_count=lambda: 0,
         )
         self._applications = TileApplicationRegistry(self, prefix)
+        self._source_images = None
         self._causal_dependencies = TileDependencyLeases(
             self.ledger,
             self.tiles,

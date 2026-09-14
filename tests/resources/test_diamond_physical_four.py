@@ -64,6 +64,9 @@ def test_fixed_kernel_projection_lowers_before_tile_execution(
     source = (1, 0, 1, 1, 1)
     expected = oracle(CollatzPhysicalBlockEffect(), source, 16, 4)
     application = HashLifeBlockIndex(effect, source, logical_length=16)
+    from number_compiler.hashlife.observation.tile_projection import LazyProjection
+
+    assert type(application._lazy_application) is LazyProjection
     adapter = application._lazy_application.scheduler.adapter
     assert isinstance(adapter, PrimitiveTileKernelAdapter)
     assert all(

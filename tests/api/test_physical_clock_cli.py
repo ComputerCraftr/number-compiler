@@ -14,6 +14,7 @@ from number_compiler.arithmetic.functions.finite_function_types import (
 )
 from number_compiler.hashlife.execution.tile_kernel import PrimitiveTileKernelAdapter
 from number_compiler.hashlife.execution.tile_scheduler import TileApplication
+from number_compiler.hashlife.observation.tile_projection import LazyProjection
 from number_compiler.sequences.collatz.physical_support import PhysicalSupport
 from number_compiler.hashlife.interfaces.semantic_bits import FactoredFunctionID
 from number_compiler.sequences.collatz.block_power import PoweredCollatzTerm
@@ -44,11 +45,11 @@ def test_physical_clock_cli_uses_bound_interface(
     monkeypatch: pytest.MonkeyPatch,
     capsys: pytest.CaptureFixture[str],
 ) -> None:
-    from number_compiler.api import cylinder_observation
+    from number_compiler.sequences.collatz import raw_field
 
     monkeypatch.setattr(CollatzEventArena, "__init__", _forbidden)
     monkeypatch.setattr(
-        cylinder_observation, "accelerated_collatz_sentinel_step_digits", _forbidden
+        raw_field, "accelerated_collatz_sentinel_step_digits", _forbidden
     )
     # The query uses the admitted interface or an already completed root. It
     # must not unconditionally request a full endpoint just to read its clock.
@@ -56,18 +57,21 @@ def test_physical_clock_cli_uses_bound_interface(
     assert (
         main(
             [
-                "observe",
                 "collatz",
+                "--nth",
                 str(ticks),
                 "--seed",
                 str(seed),
-                "--kind",
-                "physical-clock",
+                "--info",
+                "clock",
+                "--no-value",
+                "--format",
+                "json",
             ]
         )
         == 0
     )
-    result = json.loads(capsys.readouterr().out)
+    result = json.loads(capsys.readouterr().out)["info"]["clock"]
     _, odd = _reference(seed, ticks)
     assert result["value"] == {
         "events": odd,
@@ -91,7 +95,9 @@ def test_clock_reuses_same_completed_source_binding(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     term = PoweredCollatzTerm(11, 4)
-    application = term._point_index()._lazy_application._open()
+    projection = term._point_index()._lazy_application
+    assert type(projection) is LazyProjection
+    application = projection._open()
     result = application.complete()
     assert (result.physical_ticks, result.event_weight) == (4, 2)
     support = result.physical_support
@@ -117,7 +123,9 @@ def test_physical_support_rejects_forgery_and_another_scheduler() -> None:
     second = PoweredCollatzTerm(11, 4)
     support = first._point_index().direct_physical_support()
     other = second._point_index().direct_physical_support()
-    first_scheduler = first._point_index()._lazy_application._open().scheduler
+    projection = first._point_index()._lazy_application
+    assert type(projection) is LazyProjection
+    first_scheduler = projection._open().scheduler
     with pytest.raises(ValueError, match="another scheduler"):
         first_scheduler.results.validate_physical_support(other)
     forged = PhysicalSupport(
@@ -152,13 +160,13 @@ def test_clock_budget_is_checked_before_execution(
     assert (
         main(
             [
-                "observe",
                 "collatz",
+                "--nth",
                 "5",
                 "--seed",
                 "11",
-                "--kind",
-                "physical-clock",
+                "--info",
+                "clock",
                 "--max-events",
                 "4",
             ]
@@ -185,9 +193,24 @@ def test_cli_physical_output_cannot_rebuild_joint_table(
         return original(self, ports, output, active, table)
 
     monkeypatch.setattr(PrimitiveTileKernelAdapter, "_tabulated", reject_joint)
-    assert main(["nth", "collatz", "16", "--seed", "27", "--format", "json"]) == 0
+    assert (
+        main(
+            [
+                "collatz",
+                "--nth",
+                "16",
+                "--seed",
+                "27",
+                "--format",
+                "json",
+                "--info",
+                "metrics",
+            ]
+        )
+        == 0
+    )
     result = json.loads(capsys.readouterr().out)
     assert int(result["value"]) == _reference(27, 16)[0]
-    metrics = result["execution_metrics"]
+    metrics = result["info"]["metrics"]["execution_metrics"]
     assert metrics["collatz_physical_factored_output_compilations"] > 0
     assert metrics["collatz_physical_joint_output_tables_elided"] > 0

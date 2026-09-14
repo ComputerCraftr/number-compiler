@@ -7,6 +7,7 @@ they are removed before lookup and returned only as valuation actions.
 
 from __future__ import annotations
 
+from collections.abc import MutableMapping
 from dataclasses import dataclass
 
 from number_compiler.arithmetic.automata.program_word import EMPTY, CanonicalWord
@@ -16,6 +17,7 @@ from number_compiler.arithmetic.automata.symmetry_powering import (
 )
 from number_compiler.arithmetic.fields.morphism_core import AffineCocycle
 from number_compiler.arithmetic.fields.two_adic import v2_positive
+from number_compiler.resources.ledger import OwnedMemo, ResourceLedger
 from number_compiler.sequences.collatz.frame import (
     CollatzAffineSuffixAdvance,
     CollatzAffineSuffixGerm,
@@ -63,6 +65,24 @@ class CollatzGermEventPowerAdvance:
     lift_metrics: BinaryLiftMetrics
 
 
+class _OwnedKeySet:
+    """Minimal set facade over a ledger-owned memo."""
+
+    __slots__ = ("_memo",)
+
+    def __init__(self, memo: OwnedMemo[tuple[object, ...], None]) -> None:
+        self._memo = memo
+
+    def add(self, key: tuple[object, ...]) -> None:
+        self._memo[key] = None
+
+    def __contains__(self, key: object) -> bool:
+        return key in self._memo
+
+    def __len__(self) -> int:
+        return len(self._memo)
+
+
 class CollatzGermTransitionCache:
     """Early cache over normalized algebraic Collatz frame state.
 
@@ -75,6 +95,7 @@ class CollatzGermTransitionCache:
     """
 
     __slots__ = (
+        "__weakref__",
         "_event_power_engines",
         "_power_engine",
         "_raw_keys",
@@ -83,11 +104,43 @@ class CollatzGermTransitionCache:
         "lookups",
         "misses",
         "normalized_quarters",
+        "_ledger",
+        "_allow_power",
+        "_raw_owner",
+        "_value_owner",
+        "_engine_owner",
     )
 
-    def __init__(self) -> None:
-        self._values: dict[tuple[object, ...], _CanonicalCollatzTransition] = {}
-        self._raw_keys: set[tuple[object, ...]] = set()
+    def __init__(
+        self,
+        *,
+        ledger: ResourceLedger | None = None,
+        allow_power: bool = True,
+    ) -> None:
+        if type(allow_power) is not bool:
+            raise TypeError("Collatz power-cache policy must be a boolean")
+        supplied_ledger = ledger is not None
+        if supplied_ledger and allow_power:
+            raise ValueError("ledger-owned germ cache requires allow_power=False")
+        ledger = ledger if ledger is not None else ResourceLedger()
+        self._ledger = ledger
+        self._allow_power = allow_power
+        prefix = f"collatz-germ-{len(ledger.inventory())}"
+        self._raw_owner = ledger.register(
+            prefix + "-raw-states", "runtime_query_state_memo"
+        )
+        self._value_owner = ledger.register(
+            prefix + "-canonical-states", "runtime_query_state_memo"
+        )
+        self._engine_owner = ledger.register(
+            prefix + "-event-power-engines", "runtime_query_state_memo"
+        )
+        self._values: MutableMapping[
+            tuple[object, ...], _CanonicalCollatzTransition
+        ] = OwnedMemo(ledger, self._value_owner)
+        self._raw_keys: _OwnedKeySet = _OwnedKeySet(
+            OwnedMemo(ledger, self._raw_owner)
+        )
         self.lookups = 0
         self.hits = 0
         self.misses = 0
@@ -95,10 +148,11 @@ class CollatzGermTransitionCache:
         self._power_engine: (
             BinaryLiftEngine[CollatzAffineSuffixGerm, tuple[int, int]] | None
         ) = None
-        self._event_power_engines: dict[
+        self._event_power_engines: MutableMapping[
             int,
             tuple[object, BinaryLiftEngine[CollatzAffineSuffixGerm, CollatzEventNode]],
-        ] = {}
+        ] = OwnedMemo(ledger, self._engine_owner)
+        ledger.register_execution_root(self)
 
     @property
     def raw_state_count(self) -> int:
@@ -143,7 +197,8 @@ class CollatzGermTransitionCache:
         if not isinstance(germ, CollatzAffineSuffixGerm):
             raise TypeError(type(germ))
         self.lookups += 1
-        self._raw_keys.add(germ.canonical_key)
+        raw_key = germ.canonical_key
+        normalized_added = 0
 
         if germ.multiplier == 0:
             key: tuple[object, ...] = ("collatz-germ-constant", germ.offset)
@@ -205,7 +260,7 @@ class CollatzGermTransitionCache:
                         germ.suffix,
                     )
                 )
-                self.normalized_quarters += matched
+                normalized_added = matched
                 key = (
                     "collatz-germ-root-boundary",
                     normalized_root.canonical_key,
@@ -236,14 +291,23 @@ class CollatzGermTransitionCache:
                         mismatch,
                     )
 
+        missing = False
         try:
             payload = self._values[key]
         except KeyError:
             payload = lower()
-            self._values[key] = payload
-            self.misses += 1
+            missing = True
         else:
             self.hits += 1
+        if self._ledger is not None:
+            self._ledger.check_capacity(
+                entries=int(raw_key not in self._raw_keys) + int(missing)
+            )
+        if missing:
+            self._values[key] = payload
+            self.misses += 1
+        self._raw_keys.add(raw_key)
+        self.normalized_quarters += normalized_added
         return self._transport(payload, action)
 
     @staticmethod
@@ -258,6 +322,8 @@ class CollatzGermTransitionCache:
     def _lift_engine(
         self,
     ) -> BinaryLiftEngine[CollatzAffineSuffixGerm, tuple[int, int]]:
+        if not self._allow_power:
+            raise RuntimeError("this Collatz germ cache admits only single transitions")
         found = self._power_engine
         if found is not None:
             return found
@@ -317,6 +383,8 @@ class CollatzGermTransitionCache:
         self, arena: object
     ) -> BinaryLiftEngine[CollatzAffineSuffixGerm, CollatzEventNode]:
         """Return the shared lift specialized to one lazy event-monoid arena."""
+        if not self._allow_power:
+            raise RuntimeError("this Collatz germ cache admits only single transitions")
         key = id(arena)
         found = self._event_power_engines.get(key)
         if found is not None and found[0] is arena:

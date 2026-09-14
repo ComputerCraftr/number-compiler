@@ -5,7 +5,7 @@ from __future__ import annotations
 from collections import OrderedDict
 from dataclasses import dataclass
 from math import ceil, log2
-from typing import Iterator, Literal
+from typing import TYPE_CHECKING, Iterator, Literal
 
 from number_compiler.arithmetic.contracts.exact_tree_context import source_reads_only
 from number_compiler.arithmetic.contracts.input_validation import require_integer
@@ -20,33 +20,26 @@ from number_compiler.arithmetic.fields.symbolic_extent import (
     ReverseAddExtent,
 )
 from number_compiler.arithmetic.formula.formula import FormulaRoot
-from number_compiler.arithmetic.functions.state_reduction import ReverseAddGrowthState
-from number_compiler.hashlife.execution.evaluator import (
-    iter_values,
-    materialize_values,
-    value_at,
-)
-from number_compiler.sequences.collatz.block_power import (
-    CollatzPhysicalBlockMetrics,
-    PoweredCollatzTerm,
-)
-from number_compiler.sequences.collatz.character import (
-    CollatzGrowthCharacter,
-    CollatzRadialCharacter,
-    collatz_growth_character_value,
-    collatz_radial_character_value,
-)
 from number_compiler.sequences.power_numbers.numbers import (
     FermatNumberSpec,
     MersenneNumberSpec,
 )
-from number_compiler.sequences.prime.select import nth_prime_at_or_after
-from number_compiler.sequences.reverse_add.power import (
-    ReverseAddPoweredTerm,
-    ReverseAddPowerMetrics,
-)
 
-NumberFamily = Literal["reverse-add", "collatz", "prime", "fermat", "mersenne"]
+if TYPE_CHECKING:
+    from number_compiler.sequences.antihydra.runtime import AntihydraArithmeticTerm
+    from number_compiler.sequences.collatz.character import CollatzGrowthCharacter
+    from number_compiler.sequences.collatz.block_power import CollatzPhysicalBlockMetrics
+    from number_compiler.sequences.collatz.character import CollatzRadialCharacter
+    from number_compiler.sequences.collatz.block_power import PoweredCollatzTerm
+    from number_compiler.arithmetic.functions.state_reduction import ReverseAddGrowthState
+    from number_compiler.sequences.reverse_add.power import ReverseAddPowerMetrics
+    from number_compiler.sequences.reverse_add.power import ReverseAddPoweredTerm
+    from number_compiler.sequences.antihydra.runtime import Run
+
+
+NumberFamily = Literal[
+    "reverse-add", "collatz", "antihydra", "prime", "fermat", "mersenne"
+]
 
 
 @dataclass(frozen=True, slots=True)
@@ -61,6 +54,26 @@ class ProjectionMetrics:
     raw_squarings: int = 0
     prime_block_compilations: int = 0
     prime_max_block_length: int = 0
+    prime_dag_states: int = 0
+    prime_cache_hits: int = 0
+    prime_factor_stages: int = 0
+    prime_discovery_queries: int = 0
+    prime_peak_pending_frames: int = 0
+    prime_retained_entries: int = 0
+    prime_arithmetic_bit_work: int = 0
+    prime_parent_gap_positions_materialized: int = 0
+    shared_cache_hits: int = 0
+    shared_cache_misses: int = 0
+    shared_cache_entries: int = 0
+    shared_cache_bytes: int = 0
+    shared_cache_evictions: int = 0
+    shared_cache_bypasses: int = 0
+    shared_cache_publications: int = 0
+    prime_admission_work: int = 0
+    prime_request_allocations: int = 0
+    prime_scheduler_work: int = 0
+    prime_scheduler_peak_entries: int = 0
+    prime_scheduler_counters: tuple[tuple[str, int], ...] = ()
 
 
 @dataclass(frozen=True, slots=True)
@@ -80,15 +93,21 @@ class FormulaTermPayload:
         return max(1, ceil(self.root.width * log2(self.radix)))
 
     def digits(self) -> tuple[int, ...]:
+        from number_compiler.hashlife.execution.evaluator import materialize_values
+
         return tuple(map(int, materialize_values(self.root)))
 
     def iter_digits(self, *, reverse: bool = False) -> Iterator[int]:
+        from number_compiler.hashlife.execution.evaluator import iter_values
+
         if type(reverse) is not bool:
             raise TypeError("reverse must be a Boolean")
         return (int(value) for value in iter_values(self.root, reverse=reverse))
 
     @source_reads_only
     def digit(self, index: int) -> int:
+        from number_compiler.hashlife.execution.evaluator import value_at
+
         index = require_integer(index, "digit coordinate")
         if not 0 <= index < self.root.width:
             raise IndexError(index)
@@ -106,6 +125,8 @@ class PoweredReverseAddTermPayload:
     term: ReverseAddPoweredTerm
 
     def __post_init__(self) -> None:
+        from number_compiler.sequences.reverse_add.power import ReverseAddPoweredTerm
+
         if type(self.term) is not ReverseAddPoweredTerm:
             raise TypeError("powered reverse payload requires its exact term type")
 
@@ -144,6 +165,8 @@ class PoweredCollatzTermPayload:
     radix: int
 
     def __post_init__(self) -> None:
+        from number_compiler.sequences.collatz.block_power import PoweredCollatzTerm
+
         if type(self.term) is not PoweredCollatzTerm:
             raise TypeError("powered Collatz payload requires its exact term type")
         require_integer(self.radix, "Collatz payload radix", 2)
@@ -189,6 +212,65 @@ class PoweredCollatzTermPayload:
         return collatz_radix_digit(self.term, self.radix, index)
 
     def power_metrics(self) -> CollatzPhysicalBlockMetrics:
+        return self.term.metrics()
+
+
+@dataclass(frozen=True, slots=True)
+class AntihydraTermPayload:
+    """Lazy total arithmetic image of the pinned blank-tape source."""
+
+    term: AntihydraArithmeticTerm
+
+    def __post_init__(self) -> None:
+        from number_compiler.sequences.antihydra.runtime import AntihydraArithmeticTerm
+
+        if type(self.term) is not AntihydraArithmeticTerm:
+            raise TypeError("Antihydra payload requires its exact arithmetic owner")
+
+    @property
+    def estimated_bit_length(self) -> int:
+        # Each source return maps h to h+floor(h/2), increasing bit width by
+        # at most one. This bound rejects impossible output budgets without
+        # forcing the lazy arithmetic image.
+        return 4 + self.term.requested
+
+    def materialize(self, *, max_bits: int) -> int:
+        max_bits = require_integer(max_bits, "output bit cap", 0)
+        value = self.term.result().h
+        if value.bit_length() > max_bits:
+            raise ValueError((value.bit_length(), max_bits))
+        return value
+
+    def digits(self) -> tuple[int, ...]:
+        value = self.term.result().h
+        return tuple((value >> index) & 1 for index in range(max(1, value.bit_length())))
+
+    @source_reads_only
+    def digit(self, index: int) -> int:
+        index = require_integer(index, "digit coordinate")
+        value = self.term.result().h
+        if not 0 <= index < max(1, value.bit_length()):
+            raise IndexError(index)
+        return (value >> index) & 1
+
+    def info(self) -> dict[str, object]:
+        result = self.term.result()
+        return {
+            "requested_returns": result.requested,
+            "completed_arithmetic_returns": result.returns,
+            "h": result.h,
+            "ledger": result.balance,
+            "minimum_ledger": result.minimum,
+            "first_failure_index": result.first_failure_index,
+            "source_binding": result.source_binding,
+            "total_arithmetic": True,
+            "physical_roof_evaluated": self.term._physical is not None,
+        }
+
+    def physical_run(self) -> Run:
+        return self.term.physical_run()
+
+    def power_metrics(self) -> dict[str, object]:
         return self.term.metrics()
 
 
@@ -251,6 +333,7 @@ class ScalarTermPayload:
 TermPayload = (
     PoweredReverseAddTermPayload
     | PoweredCollatzTermPayload
+    | AntihydraTermPayload
     | FormulaTermPayload
     | FermatTermPayload
     | MersenneTermPayload
@@ -284,6 +367,7 @@ class ProjectedNumberTerm:
                 FormulaTermPayload,
                 PoweredReverseAddTermPayload,
                 PoweredCollatzTermPayload,
+                AntihydraTermPayload,
             ),
         ):
             return self.payload.digits()
@@ -297,6 +381,7 @@ class ProjectedNumberTerm:
             (
                 PoweredReverseAddTermPayload,
                 PoweredCollatzTermPayload,
+                AntihydraTermPayload,
                 FormulaTermPayload,
                 FermatTermPayload,
                 MersenneTermPayload,
@@ -322,12 +407,33 @@ class NumberCompiler:
     for serial use. The limit bounds cached terms, not the size of their DAGs.
     """
 
-    def __init__(self, *, max_cached_terms: int = 8) -> None:
+    def __init__(
+        self,
+        *,
+        max_cached_terms: int = 8,
+        max_context_nodes: int | None = None,
+        max_cache_entries: int | None = None,
+        shared_cache: bool = True,
+    ) -> None:
+        if type(shared_cache) is not bool:
+            raise TypeError("shared_cache must be a bool")
+        self._shared_cache = shared_cache
         self._max_cached_terms = require_integer(
             max_cached_terms, "powered term cache capacity", 0
         )
+        self._max_context_nodes = (
+            None
+            if max_context_nodes is None
+            else require_integer(max_context_nodes, "context node budget", 0)
+        )
+        self._max_cache_entries = (
+            None
+            if max_cache_entries is None
+            else require_integer(max_cache_entries, "cache entry budget", 0)
+        )
         self._powered_terms: OrderedDict[
-            tuple[str, int, int, int], ReverseAddPoweredTerm | PoweredCollatzTerm
+            tuple[str, int, int, int],
+            ReverseAddPoweredTerm | PoweredCollatzTerm | AntihydraArithmeticTerm,
         ] = OrderedDict()
         self._powered_hits = self._powered_misses = self._powered_evictions = 0
 
@@ -345,19 +451,45 @@ class NumberCompiler:
         """Release API references; already returned terms remain usable."""
         self._powered_terms.clear()
 
+    @staticmethod
+    def clear_shared_cache() -> None:
+        """Clear process summaries and invalidate outstanding cache leases."""
+        from number_compiler.resources.process_cache import clear_process_cache
+
+        clear_process_cache()
+
     def _powered_term(
         self, family: str, source: int, generation: int, base: int
-    ) -> ReverseAddPoweredTerm | PoweredCollatzTerm:
+    ) -> ReverseAddPoweredTerm | PoweredCollatzTerm | AntihydraArithmeticTerm:
+        if family == "reverse-add":
+            from number_compiler.sequences.reverse_add.power import ReverseAddPoweredTerm
+        elif family == "collatz":
+            from number_compiler.sequences.collatz.block_power import PoweredCollatzTerm
+        elif family == "antihydra":
+            from number_compiler.sequences.antihydra.runtime import AntihydraArithmeticTerm
+        else:
+            raise ValueError("unsupported powered family")
         key = (family, source, generation, base)
         found = self._powered_terms.get(key)
         if found is not None:
             # A caller can retain a term after eviction, but changing its public
             # source parameters must not poison a later canonical request.
-            valid = (
-                (found.seed, found.generation, found.base) == (source, generation, base)
-                if isinstance(found, ReverseAddPoweredTerm)
-                else (found.seed, found.steps) == (source, generation)
-            )
+            if family == "reverse-add" and isinstance(found, ReverseAddPoweredTerm):
+                valid = (found.seed, found.generation, found.base) == (
+                    source,
+                    generation,
+                    base,
+                )
+            elif family == "collatz" and isinstance(found, PoweredCollatzTerm):
+                valid = (found.seed, found.steps) == (source, generation)
+            elif family == "antihydra" and isinstance(found, AntihydraArithmeticTerm):
+                valid = (
+                    found.requested,
+                    found.max_steps,
+                    found.max_state_bits,
+                ) == (generation, source, base)
+            else:
+                valid = False
             if not valid:
                 del self._powered_terms[key]
                 self._powered_evictions += 1
@@ -367,11 +499,35 @@ class NumberCompiler:
             self._powered_hits += 1
             return found
         self._powered_misses += 1
-        term = (
-            ReverseAddPoweredTerm(source, generation, base=base)
-            if family == "reverse-add"
-            else PoweredCollatzTerm(source, generation)
-        )
+        term: ReverseAddPoweredTerm | PoweredCollatzTerm | AntihydraArithmeticTerm
+        if family == "reverse-add":
+            term = ReverseAddPoweredTerm(
+                source,
+                generation,
+                base=base,
+                max_context_nodes=self._max_context_nodes,
+                max_cache_entries=self._max_cache_entries,
+            )
+        elif family == "collatz":
+            term = PoweredCollatzTerm(
+                source,
+                generation,
+                max_context_nodes=self._max_context_nodes,
+                max_cache_entries=self._max_cache_entries,
+            )
+        elif family == "antihydra":
+            term = AntihydraArithmeticTerm(
+                generation,
+                max_steps=source,
+                max_state_bits=base,
+                max_cache_entries=(
+                    8192
+                    if self._max_cache_entries is None
+                    else self._max_cache_entries
+                ),
+            )
+        else:
+            raise ValueError("unsupported powered family")
         if self._max_cached_terms:
             if len(self._powered_terms) == self._max_cached_terms:
                 self._powered_terms.popitem(last=False)
@@ -388,6 +544,11 @@ class NumberCompiler:
         base: int = 10,
         radix: int = 2,
         start: int = 2,
+        max_steps: int = 4096,
+        max_state_bits: int = 4096,
+        max_prime_states: int = 131_072,
+        max_prime_work: int = 1_000_000,
+        max_prime_stages: int = 4096,
     ) -> ProjectedNumberTerm:
         if type(family) is not str:
             raise TypeError("family must be a string")
@@ -398,11 +559,20 @@ class NumberCompiler:
             base = 10 if base is None else base
         if name == "primes":
             name = "prime"
-        if name not in {"reverse-add", "collatz", "prime", "fermat", "mersenne"}:
+        if name not in {
+            "reverse-add",
+            "collatz",
+            "antihydra",
+            "prime",
+            "fermat",
+            "mersenne",
+        }:
             raise ValueError(f"unsupported family: {family}")
         n = require_integer(index, "term index", 0)
 
         if name == "reverse-add":
+            from number_compiler.sequences.reverse_add.power import ReverseAddPoweredTerm
+
             if seed is None:
                 raise ValueError("reverse-add requires seed")
             b = require_integer(base, "base", 2)
@@ -438,6 +608,8 @@ class NumberCompiler:
             )
 
         if name == "collatz":
+            from number_compiler.sequences.collatz.block_power import PoweredCollatzTerm
+
             if seed is None:
                 raise ValueError("collatz requires seed")
             r = require_integer(radix, "radix", 2)
@@ -470,9 +642,53 @@ class NumberCompiler:
                 ),
             )
 
+        if name == "antihydra":
+            from number_compiler.sequences.antihydra.runtime import AntihydraArithmeticTerm
+
+            if seed is not None:
+                raise ValueError("Antihydra uses the pinned blank-tape source")
+            steps = require_integer(max_steps, "macro return budget", 0)
+            state_bits = require_integer(max_state_bits, "integer bit budget", 4)
+            antihydra = self._powered_term("antihydra", steps, n, state_bits)
+            if not isinstance(antihydra, AntihydraArithmeticTerm):
+                raise AssertionError("Antihydra cache contains another family")
+            payload = AntihydraTermPayload(antihydra)
+            descriptor_bits = max(
+                1, n.bit_length() + steps.bit_length() + state_bits.bit_length()
+            )
+            return ProjectedNumberTerm(
+                "antihydra",
+                n,
+                None,
+                2,
+                f"antihydra_arithmetic(source=blank)[{n}]",
+                payload,
+                ProjectionMetrics(
+                    "antihydra", n, 0, 0, 1, descriptor_bits, 4 + n
+                ),
+            )
+
         if name == "prime":
+            from number_compiler.sequences.prime.select import nth_prime_at_or_after
+
             start = require_integer(start, "prime start", 0)
-            value, pm = nth_prime_at_or_after(start, n)
+            prime_states = require_integer(
+                max_prime_states, "prime rank DAG state budget", 1
+            )
+            prime_work = require_integer(
+                max_prime_work, "prime rank arithmetic work budget", 1
+            )
+            prime_stages = require_integer(
+                max_prime_stages, "prime factor stage budget", 1
+            )
+            value, pm = nth_prime_at_or_after(
+                start,
+                n,
+                max_states=prime_states,
+                max_work=prime_work,
+                max_stages=prime_stages,
+                shared_cache=self._shared_cache,
+            )
             payload = ScalarTermPayload(value)
             return ProjectedNumberTerm(
                 "prime",
@@ -491,6 +707,28 @@ class NumberCompiler:
                     1,
                     prime_block_compilations=pm.block_compilations,
                     prime_max_block_length=pm.max_block_length,
+                    prime_dag_states=pm.dag_states,
+                    prime_cache_hits=pm.cache_hits,
+                    prime_factor_stages=pm.factor_stages,
+                    prime_discovery_queries=pm.discovery_queries,
+                    prime_peak_pending_frames=pm.peak_pending_frames,
+                    prime_retained_entries=pm.retained_entries,
+                    prime_arithmetic_bit_work=pm.arithmetic_bit_work,
+                    prime_parent_gap_positions_materialized=(
+                        pm.parent_gap_positions_materialized
+                    ),
+                    shared_cache_hits=pm.shared_cache_hits,
+                    shared_cache_misses=pm.shared_cache_misses,
+                    shared_cache_entries=pm.shared_cache_entries,
+                    shared_cache_bytes=pm.shared_cache_bytes,
+                    shared_cache_evictions=pm.shared_cache_evictions,
+                    shared_cache_bypasses=pm.shared_cache_bypasses,
+                    shared_cache_publications=pm.shared_cache_publications,
+                    prime_admission_work=pm.admission_work,
+                    prime_request_allocations=pm.request_allocations,
+                    prime_scheduler_work=pm.scheduler_work,
+                    prime_scheduler_peak_entries=pm.scheduler_allocations,
+                    prime_scheduler_counters=pm.scheduler_counters,
                 ),
             )
 
@@ -565,6 +803,8 @@ class NumberCompiler:
         ``relation`` is its -1/0/+1 unit phase.  No carry field, successor
         formula, or output digit word is constructed.
         """
+        from number_compiler.arithmetic.functions.state_reduction import ReverseAddGrowthState
+
         value = require_integer(seed, "seed", 0)
         base = require_integer(base, "base", 2)
         digits = digits_lsd(value, base)
@@ -585,6 +825,8 @@ class NumberCompiler:
         This deliberately bypasses orbit construction and exact valuation/root
         germ acquisition.
         """
+        from number_compiler.sequences.collatz.character import collatz_growth_character_value
+
         return collatz_growth_character_value(require_integer(seed, "seed", 1))
 
     def project_collatz_radial_character(
@@ -598,6 +840,8 @@ class NumberCompiler:
         For compressed radix-four sources use ``collatz_radial_character_word``
         directly so the full valuation coordinate need not be retained.
         """
+        from number_compiler.sequences.collatz.character import collatz_radial_character_value
+
         return collatz_radial_character_value(
             require_integer(seed, "seed", 1), require_integer(order, "order", 0)
         )
@@ -606,7 +850,13 @@ class NumberCompiler:
         self, family: str, index: int, *, max_bits: int = 1_000_000, **kwargs: int
     ) -> int:
         max_bits = require_integer(max_bits, "output bit cap", 0)
-        return self.project_nth(family, index, **kwargs).materialize(max_bits=max_bits)
+        projected = self.project_nth(family, index, **kwargs)
+        if (
+            isinstance(projected.payload, AntihydraTermPayload)
+            and projected.payload.estimated_bit_length > max_bits
+        ):
+            raise ValueError((projected.payload.estimated_bit_length, max_bits))
+        return projected.materialize(max_bits=max_bits)
 
 
 __all__ = [
@@ -614,6 +864,7 @@ __all__ = [
     "ProjectionMetrics",
     "PoweredReverseAddTermPayload",
     "PoweredCollatzTermPayload",
+    "AntihydraTermPayload",
     "FormulaTermPayload",
     "FermatTermPayload",
     "MersenneTermPayload",

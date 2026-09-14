@@ -1,29 +1,41 @@
 # Number Compiler
 
 Number Compiler provides exact terms and radix projections for reverse-add,
-Collatz, prime blocks, Fermat numbers and Mersenne numbers.
+Collatz, Antihydra, prime blocks, Fermat numbers and Mersenne numbers.
 
 ```bash
 python -m pip install -e '.[dev]'
-number-compiler families
-number-compiler nth 196 8
-number-compiler nth collatz 8 --seed 27
-number-compiler classify fermat 3 --format json
-number-compiler classify mersenne 131 --factor --format json
+number-compiler --list-families
+number-compiler 196 --nth 8
+number-compiler collatz --nth 8 --seed 27
+number-compiler antihydra --nth 64 --info ledger --info clock
+number-compiler fermat --nth 3 --no-value --info primality --format json
+number-compiler mersenne --nth 131 --no-value --info primality --info factor --format json
 ```
 
 The supported Python entry points are exported from `number_compiler`.
 Implementation modules have one canonical owner; historical forwarding imports
 have been removed as described in the [API migration guide](docs/api-migration.md).
 
-`classify` requests a primality certificate; `nth` emits the candidate itself.
-Classification defaults to the admitted compact proof route. It prints `unknown`
-and exits 3 when that route cannot decide. Pépin and Lucas–Lehmer are available
-only as research oracles. `--factor` requests a separately budgeted étale
-coefficient witness; a proper divisor proves composite, while a non-split does
-not prove prime. `--max-candidate-bits` bounds candidate size before theorem work.
+Each family owns its command: `FAMILY --nth N` emits the candidate or term, while
+`--no-value --info primality` requests the admitted compact primality route.
+It reports `unknown` and exits 3 when that route cannot decide. Pépin and
+Lucas–Lehmer are available only as research oracles. Add `--info factor` to
+request a separately budgeted étale coefficient witness; a proper divisor proves
+composite, while a non-split does not prove prime. `--max-candidate-bits` bounds
+candidate size before theorem work.
 Candidate-derived mod-16 shadow-cylinder prime-bit recovery remains a P0
 release blocker.
+
+Digits go to stdout; requested information goes to stderr. `--format json`
+combines them as `value` and `info` in one stdout object. Information is evaluated
+only when requested. Collatz `--nth` counts ordinary iterations; its separate
+`--events E` selector requests accelerated-event observations. Antihydra `--nth`
+is the total arithmetic sequence starting at 8, even if its ledger crosses −1;
+physical TM observations retain their halting boundary.
+
+The old `nth`, `observe`, `classify`, `verify-nonhalting` and `families` command
+forms have been removed. See the [CLI migration guide](docs/family-first-cli.md).
 
 A reused `NumberCompiler` keeps up to eight recent powered execution owners.
 Repeated requests and Collatz radix views reuse their existing HashLife caches;

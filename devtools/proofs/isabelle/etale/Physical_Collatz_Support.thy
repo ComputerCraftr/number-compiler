@@ -46,7 +46,7 @@ theorem support_eval_mapping:
     support_eval (f s) (f z) P"
 proof (induction P)
   case Support_Id
-  then show ?case by (simp add: skew_map_def skew_identity_def zero one)
+  then show ?case by (simp add: skew_map_def skew_identity_def shared_skew_identity_def zero one)
 next
   case Support_Even
   then show ?case by (simp add: skew_map_def zero one)
@@ -129,7 +129,7 @@ lemma physical_sources_4_5_distinct_support_offsets:
   "offset (support_eval (1::int) 2 (physical_support_program 3 4)) = 4"
   "offset (support_eval (1::int) 2 (physical_support_program 3 5)) = 1"
   using physical_support_program_4 physical_support_program_5
-  by (simp_all add: skew_then_def skew_identity_def)
+  by (simp_all add: skew_then_def shared_skew_then_def skew_identity_def shared_skew_identity_def)
 
 text \<open>The three-tick equations are the smallest mathematical witness.
 The eight-tick equations below are the corresponding normalized-consumer
@@ -162,11 +162,11 @@ proof -
   show "offset (support_eval (1::int) 2
       (physical_support_program 8 4)) = 20"
     unfolding duration
-    by (simp add: physical_next_def skew_then_def skew_identity_def)
+    by (simp add: physical_next_def skew_then_def shared_skew_then_def skew_identity_def shared_skew_identity_def)
   show "offset (support_eval (1::int) 2
       (physical_support_program 8 5)) = 17"
     unfolding duration
-    by (simp add: physical_next_def skew_then_def skew_identity_def)
+    by (simp add: physical_next_def skew_then_def shared_skew_then_def skew_identity_def shared_skew_identity_def)
 qed
 
 theorem endpoint_and_weight_do_not_determine_support:

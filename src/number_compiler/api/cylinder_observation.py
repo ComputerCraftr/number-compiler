@@ -13,7 +13,6 @@ from dataclasses import asdict
 from typing import Any
 
 from number_compiler.arithmetic.contracts.input_validation import require_integer
-from number_compiler.arithmetic.fields.radix import digits_lsd
 from number_compiler.arithmetic.polynomials.arithmetic_tile import (
     ArithmeticTile,
     ArithmeticTileSpec,
@@ -21,16 +20,13 @@ from number_compiler.arithmetic.polynomials.arithmetic_tile import (
 from number_compiler.sequences.collatz.clock_observers import CollatzClockObservers
 from number_compiler.sequences.collatz.block_power import PoweredCollatzTerm
 from number_compiler.sequences.collatz.hensel_cylinders import HenselCylinder
-from number_compiler.sequences.collatz.power import CollatzEventArena
-from number_compiler.sequences.collatz.raw_field import (
-    accelerated_collatz_sentinel_step_digits,
-)
 from number_compiler.sequences.power_numbers.etale_factor import factor_from_etale_root
 from number_compiler.sequences.reverse_add.power import ReverseAddPoweredTerm
 
 
 def observe_physical_clock(
-    seed: int, ticks: int, *, max_ticks: int, max_digits: int
+    seed: int, ticks: int, *, max_ticks: int, max_digits: int,
+    _term: PoweredCollatzTerm | None = None,
 ) -> dict[str, Any]:
     """Read the existing bound powered result; no accelerated-prefix discovery."""
     seed = require_integer(seed, "seed", 1)
@@ -39,9 +35,11 @@ def observe_physical_clock(
     require_integer(max_digits, "digit budget", 1)
     if ticks > max_ticks or seed.bit_length() > max_digits:
         raise ValueError("physical clock observation budget exceeded")
-    term = PoweredCollatzTerm(
+    term = _term or PoweredCollatzTerm(
         seed, ticks, max_context_nodes=10000, max_cache_entries=20000
     )
+    if (term.seed, term.steps) != (seed, ticks):
+        raise ValueError("physical clock term belongs to another source request")
     if ticks and term.maximum_width > max_digits:
         raise ValueError("physical clock target exceeds digit budget")
     clock = term.s_arithmetic_clock()
@@ -63,6 +61,35 @@ def observe_physical_clock(
     }
 
 
+class CollatzObservationContext:
+    """One admitted accelerated prefix and one reusable observer for a query."""
+
+    def __init__(self, seed: int, events: int, *, max_events: int, max_digits: int) -> None:
+        from number_compiler.sequences.collatz.source_publisher import CollatzSourcePublisher
+
+        require_integer(seed, "seed", 1)
+        require_integer(events, "events", 0)
+        require_integer(max_events, "event budget", 0)
+        require_integer(max_digits, "digit budget", 1)
+        if not seed & 1:
+            raise ValueError("accelerated event observations require an odd seed")
+        if events > max_events or seed.bit_length() > 2 * max_digits:
+            raise ValueError("source observation budget exceeded")
+        publisher = CollatzSourcePublisher(
+            seed, events, max_events=max_events, max_digits=max_digits
+        )
+        published = publisher.publish()
+        arena, root = publisher.events, published.event_root
+        observer = CollatzClockObservers(arena)
+        self.binding = (seed, events, max_events, max_digits)
+        self.publisher, self.published = publisher, published
+        self.physical_support = published.physical_support
+        self.arena, self.root, self.observer = arena, root, observer
+        self.discovered = published.discovered_events
+        self.digit_work = published.discovery_digit_work
+        self.reached_one = published.reached_one
+
+
 def observe_collatz(
     seed: int,
     events: int,
@@ -77,6 +104,7 @@ def observe_collatz(
     z_weight: int = 1,
     max_events: int = 4096,
     max_digits: int = 4096,
+    _context: CollatzObservationContext | None = None,
 ) -> dict[str, Any]:
     if kind not in {
         "clock",
@@ -100,22 +128,22 @@ def observe_collatz(
         raise ValueError("observer coefficient/width budget exceeded")
     if not 0 <= precision <= 4096:
         raise ValueError("observer precision budget exceeded")
-    arena = CollatzEventArena()
-    root = arena.identity
-    digits = tuple(digits_lsd(seed, 4))
-    digit_work = 0
-    discovered = 0
-    for _ in range(events):
-        if digits == (1,):
-            break
-        if len(digits) > max_digits:
-            raise ValueError("source observation digit budget exceeded")
-        step = accelerated_collatz_sentinel_step_digits(digits, base=4)
-        digit_work += step.source_width
-        discovered += 1
-        root = arena.concat(root, arena.event(step.valuation))
-        digits = step.target_digits
-    observer = CollatzClockObservers(arena)
+    context = _context or CollatzObservationContext(
+        seed, events, max_events=max_events, max_digits=max_digits
+    )
+    if context.binding != (seed, events, max_events, max_digits):
+        raise ValueError("accelerated observer context belongs to another source request")
+    context.published.validate()
+    if (
+        context.arena is not context.publisher.events
+        or context.root is not context.published.event_root
+        or context.physical_support is not context.published.physical_support
+        or context.observer.arena is not context.arena
+        or context.publisher.binding[1:] != context.binding
+    ):
+        raise ValueError("accelerated observer lost its published source binding")
+    arena, root, observer = context.arena, context.root, context.observer
+    discovered, digit_work = context.discovered, context.digit_work
     value: Any
     if kind == "clock":
         clock = observer.clock(root)
@@ -148,10 +176,15 @@ def observe_collatz(
         "kind": kind,
         "value": value,
         "scope": "source-derived accelerated prefix, stopping at one if reached",
-        "reached_one": digits == (1,),
+        "reached_one": context.reached_one,
         "requested_events": events,
         "discovered_events": discovered,
         "discovery_digit_work": digit_work,
+        "admission_digit_comparisons": context.published.admission_digit_comparisons,
+        "source_support_ticks": context.physical_support.ticks,
+        "source_work_counters": dict(context.publisher.ledger.counters),
+        "source_support_retained_nodes": context.publisher.ledger.nodes,
+        "separately_retained": context.publisher.separately_retained,
         "arena_nodes": arena.node_count,
         "normalization_compositions": arena.composition_operations,
         "observer_nodes": observer.node_evaluations,
@@ -161,15 +194,18 @@ def observe_collatz(
 
 
 def observe_mirror(
-    seed: int, generation: int, *, first_width: int, max_digits: int
+    seed: int, generation: int, *, first_width: int, max_digits: int,
+    base: int = 10, _term: ReverseAddPoweredTerm | None = None,
 ) -> dict[str, Any]:
     require_integer(max_digits, "digit budget", 1)
     first_width = require_integer(first_width, "first sheet width", 1)
     if first_width > max_digits:
         raise ValueError("mirror sheet exceeds digit budget")
-    term = ReverseAddPoweredTerm(
-        seed, generation, max_context_nodes=10000, max_cache_entries=20000
+    term = _term or ReverseAddPoweredTerm(
+        seed, generation, base=base, max_context_nodes=10000, max_cache_entries=20000
     )
+    if (term.seed, term.generation, term.base) != (seed, generation, base):
+        raise ValueError("mirror term belongs to another source request")
     if term.maximum_width > require_integer(max_digits, "digit budget", 1):
         raise ValueError("mirror target exceeds digit budget")
     projection = term.mirror_obstruction(first_width=first_width)
@@ -220,6 +256,10 @@ def observe_etale_root(
 
 
 def execute_observation(args: argparse.Namespace) -> dict[str, Any]:
+    if args.family == "antihydra":
+        from number_compiler.api.antihydra_observation import observe
+
+        return observe(args)
     if args.family == "collatz":
         if args.seed is None:
             raise ValueError("Collatz observation requires --seed")

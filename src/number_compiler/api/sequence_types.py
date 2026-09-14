@@ -12,14 +12,11 @@ from typing import TYPE_CHECKING, Generic, Sequence, TypeVar
 
 from number_compiler.arithmetic.fields.symbolic_extent import Extent
 from number_compiler.arithmetic.polynomials.primary_jet import PrimaryJetBlock
-from number_compiler.sequences.collatz.orbit import COLLATZ_PIECEWISE_MORPHISM
 from number_compiler.sequences.power_numbers.numbers import MersenneNumberSpec
-from number_compiler.sequences.prime.lane_quotient import PrimeLaneQuotientCompilation
-from number_compiler.sequences.prime.wheel_cyclotomic import (
-    PrimeWheelCyclotomicAutomaton,
-)
 
 if TYPE_CHECKING:
+    from number_compiler.sequences.prime.lane_quotient import PrimeLaneQuotientCompilation
+    from number_compiler.sequences.prime.wheel_cyclotomic import PrimeWheelCyclotomicAutomaton
     from number_compiler.arithmetic.fields.adic_morphism import (
         PadicRadialQuotient,
         ValuationSensitivityMorphism,
@@ -271,6 +268,8 @@ class CollatzCompilation:
 
     @property
     def successor_morphism_key(self) -> tuple[object, ...]:
+        from number_compiler.sequences.collatz.orbit import COLLATZ_PIECEWISE_MORPHISM
+
         return COLLATZ_PIECEWISE_MORPHISM.canonical_key
 
 

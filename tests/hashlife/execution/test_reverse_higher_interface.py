@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import fields
-from typing import Never
+from typing import Never, cast
 
 import pytest
 
@@ -30,6 +30,7 @@ from number_compiler.hashlife.execution.continuations.higher_temporal_provider i
 )
 from number_compiler.hashlife.execution.continuations.higher_types import (
     FieldAtomSort,
+    FieldStateSort,
     HigherExpressionID,
 )
 from number_compiler.hashlife.execution.field_images import SourceForestID
@@ -57,6 +58,36 @@ def test_reverse_leaf_activity_positions_use_harmless_zero_for_blank_and_active(
         inputs = {compiled.left: left, compiled.symbol: symbol, compiled.right: right}
         assert semantics.evaluate(_expression(components.first_active), inputs) == 0
         assert semantics.evaluate(_expression(components.last_active), inputs) == 0
+
+
+def test_reverse_schema_cache_cannot_be_entered_by_hash_equality_spoof() -> None:
+    _actions, primitive, semantics, *_ = _fixture()
+    schema = semantics.schema
+    schema.validate_action(primitive)
+
+    class Spoof:
+        def __hash__(self) -> int:
+            return hash(primitive)
+
+        def __eq__(self, _other: object) -> bool:
+            return True
+
+    before = semantics.ledger.snapshot()
+    with pytest.raises(TypeError, match="field-action ID"):
+        schema.validate_action(cast("FieldCellActionID", Spoof()))
+    assert semantics.ledger.snapshot() == before
+
+
+def test_reverse_schema_readonly_validation_does_not_publish_cache_entries() -> None:
+    from number_compiler.sequences.reverse_add.higher_schema import ReverseHigherActionSchema
+
+    actions, primitive, semantics, *_ = _fixture()
+    action = actions.power(primitive, 3)
+    before = semantics.ledger.snapshot()
+    semantics._validate_sort(FieldStateSort(action, 0), readonly=True)
+    assert semantics.ledger.snapshot() == before
+    assert isinstance(semantics.schema, ReverseHigherActionSchema)
+    assert action not in semantics.schema._children
 
 
 @pytest.mark.parametrize(

@@ -61,18 +61,17 @@ changed its class count.
 The CLI now connects the public theorem resolver through:
 
 ```sh
-number-compiler classify fermat 3 --format json
-number-compiler classify mersenne 13 --format json
-number-compiler classify mersenne 13 --allow-classical-ceiling --format json
+number-compiler fermat --nth 3 --no-value --info primality --format json
+number-compiler mersenne --nth 13 --no-value --info primality --format json
 ```
 
 The first command produces a proved prime result without recurrence. The second
-reports `unknown` with exit 3 and zero classical squarings. The third produces
-the exact prime result and reports 11 specialization squarings. Both prime and
+reports `unknown` with exit 3 and zero classical squarings. Both prime and
 composite decisions exit 0; invalid or over-budget inputs exit 2. Candidate size
 is checked before theorem work using `--max-candidate-bits` (default 1,000,000).
-F4 likewise stays unknown by default; explicit fallback reports its 15 Pépin
-squarings. An unknown result is never interpreted as composite.
+F4 likewise stays unknown. The historical classical-ceiling option has been
+removed; production does not enable Pépin or Lucas–Lehmer fallback. An unknown
+result is never interpreted as composite.
 
 The Python theorem/certificate APIs accept `allow_classical_ceiling=False` for
 the same policy. Their default remains true for backward compatibility. Cache
