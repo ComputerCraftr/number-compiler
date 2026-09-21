@@ -13,6 +13,7 @@ truncated. No source admission is inferred from a matching numeric bound.
 from __future__ import annotations
 
 from collections.abc import Iterator
+from contextlib import contextmanager
 from dataclasses import dataclass
 from types import TracebackType
 from typing import Self
@@ -202,6 +203,45 @@ class LiveForcingProjection:
                 state.radial.growth,
                 self._work.terms[state],
             )
+
+    @contextmanager
+    def leased_residue_runs(
+        self, start: int, stop: int
+    ) -> Iterator[tuple[ResidueRun, ...]]:
+        """Pre-admit returned boundaries and retain them for a consumer's scope.
+
+        One live packet has at most 2*(growth+1) boundary events. Cancellation
+        and clipping can only reduce that bound. Reserve before the underlying
+        demand allocates its result, independently of its temporary workspace.
+        """
+        self._check_open()
+        if type(start) is not int or type(stop) is not int or stop < start:
+            raise ValueError("residue interval requires ordered exact integers")
+        ledger = self.ledger
+        capacity = 1 if start != stop else 0
+        if capacity:
+            for packet in self.packets():
+                capacity += 2 * (packet.growth + 1)
+                ledger.bump("live_forcing_run_admission_packets")
+        limbs = max(
+            1, (max(abs(start).bit_length(), abs(stop).bit_length()) + 63) // 64
+        )
+        required = capacity * (6 + 2 * limbs)
+        owner = ledger.register(f"forcing-run-lease-{ledger.owner_count}", "query_memo")
+        reserved = False
+        try:
+            ledger.reserve(owner, nodes=required)
+            reserved = True
+            runs = self.residue_runs(start, stop)
+            if len(runs) > capacity:
+                raise ArithmeticError(
+                    "residue demand exceeded admitted boundary capacity"
+                )
+            yield runs
+        finally:
+            if reserved:
+                ledger.release(owner, nodes=required)
+            ledger.mark_disposed(owner)
 
     def residue_runs(self, start: int, stop: int) -> tuple[ResidueRun, ...]:
         """Demand scalar/interval residues without walking the spatial span.

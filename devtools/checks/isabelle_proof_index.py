@@ -17,11 +17,48 @@ ISABELLE = ROOT / "devtools/proofs/isabelle"
 # empty mapping is deliberate: a standalone mathematical theory must not be
 # presented as a production refinement merely because it is registered.
 COUNTERPARTS: dict[str, tuple[str, ...]] = {
+    "Mahler_Spatial_Carry_Pump": (
+        "devtools/experiments/antihydra/spatial_carry.py",
+        "devtools/experiments/antihydra/future_grammar.py",
+        "tests/validation/proofs/test_mahler_spatial_carry.py",
+    ),
+    "Reverse_Centered_Future_Grammar": (
+        "devtools/experiments/reverse_add/centered_future.py",
+        "tests/validation/proofs/reverse_add/test_centered_future_grammar.py",
+    ),
+    "Reverse_Growth_Run_Admission": (
+        "src/number_compiler/arithmetic/polynomials/frobenius_sector.py",
+        "tests/validation/proofs/reverse_add/test_source_growth_admission.py",
+    ),
+    "Mahler_Reachable_Repetition": (
+        "devtools/experiments/antihydra/future_grammar.py",
+        "tests/validation/proofs/test_mahler_future_grammar.py",
+    ),
+    "Mahler_Source_Cylinder_Transport": (
+        "devtools/experiments/antihydra/source_safety.py",
+        "tests/validation/proofs/test_mahler_source_transport.py",
+    ),
+    "Mahler_Source_Event_Safety": (
+        "devtools/experiments/antihydra/source_safety.py",
+        "devtools/experiments/antihydra/source_observers.py",
+        "tests/validation/proofs/test_mahler_source_observers.py",
+    ),
+    "Generated_Mahler_Safety": (
+        "tests/validation/proofs/test_mahler_safety_cylinders.py",
+    ),
+    "Mahler_Safety_Ledger_Separation": (
+        "tests/validation/proofs/test_mahler_safety_cylinders.py",
+    ),
     "Cylinder_Radial_Event_Clock": (
         "devtools/experiments/reverse_add/radial_event_clock.py",
         "tests/validation/proofs/reverse_add/test_radial_event_clock.py",
     ),
     "Cylinder_Radial_Hypergeometric_Elimination": (),
+    "Cylinder_Innovation_Transport": (
+        "src/number_compiler/arithmetic/fields/symbolic_innovation.py",
+        "src/number_compiler/arithmetic/fields/innovation_substitution.py",
+        "tests/arithmetic/fields/test_innovation_pullback.py",
+    ),
     "Cylinder_Live_Forcing_Reduction": (
         "src/number_compiler/arithmetic/fields/live_forcing.py",
         "tests/arithmetic/fields/test_live_forcing.py",

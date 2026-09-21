@@ -11,17 +11,198 @@ from number_compiler.arithmetic.carry.event_memory import (
     forcing_event_alphabet,
     pair_step,
 )
+from number_compiler.arithmetic.contracts.block_effect import BlockContextBudgetExceeded
 from number_compiler.arithmetic.contracts.cylinder_chart import CylinderChart
 from number_compiler.arithmetic.fields.live_carry_projection import (
     project_centered_residue_carries,
     project_live_pair_carries,
+    recover_centered_carry_events,
 )
 from number_compiler.arithmetic.fields.live_forcing import LiveForcingProjection
 from number_compiler.arithmetic.fields.symbolic_innovation import (
     SymbolicInnovationArena,
 )
 from number_compiler.resources.ledger import ResourceLedger
-from tests.arithmetic.fields.test_centered_carry import _polynomial
+from tests.arithmetic.fields.test_centered_carry import _evaluate, _polynomial
+
+
+@pytest.mark.parametrize("incoming", [0, 1])
+def test_direct_events_match_literal_carry_for_every_pair_symbol(incoming: int) -> None:
+    # Includes wires, unchanged resets, changes at seams and asymmetric fields.
+    for pair in ([p] * 3 + [9, 9, 18 - p, 0, 18] for p in range(19)):
+        ledger = ResourceLedger()
+        arena = SymbolicInnovationArena(ledger)
+        residual = _polynomial(arena, [p - 9 for p in pair])
+        events = recover_centered_carry_events(
+            arena, residual, extent=len(pair), incoming=incoming
+        )
+        carry = incoming
+        resets: dict[int, int] = {}
+        correction: dict[int, int] = {}
+        for i, p in enumerate(pair):
+            after = int(p + carry >= 10)
+            resets[i] = after - carry
+            correction[i] = correction.get(i, 0) - 10 * after
+            correction[i + 1] = after
+            carry = after
+        assert events.terminal_carry == carry
+        assert _evaluate(arena, events.reset_jumps) == {
+            i: x for i, x in resets.items() if x
+        }
+        assert _evaluate(arena, events.correction) == {
+            i: x for i, x in correction.items() if x
+        }
+        arena.close()
+        assert ledger.entries == ledger.nodes == 0
+
+
+def test_direct_events_merge_carry_domains_without_spatial_expansion(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    def forbidden(*_args: object, **_kwargs: object) -> None:
+        raise AssertionError("carry event recovery constructed a word grammar")
+
+    monkeypatch.setattr(SLPArena, "__init__", forbidden)
+    ledger = ResourceLedger()
+    arena = SymbolicInnovationArena(ledger)
+    width = 1 << 200
+    # P = 18, then an enormous 9-wire, then 10, then 0. All first three
+    # quotient intervals share a single carry-one domain despite different P.
+    residual = arena.linear_combination(
+        (
+            (9, arena.interval(1)),
+            (1, arena.chart(arena.interval(1), CylinderChart(1, -width))),
+            (-9, arena.chart(arena.interval(1), CylinderChart(1, -width - 1))),
+        )
+    )
+    before = arena.node_count
+    events = recover_centered_carry_events(arena, residual, extent=width + 2)
+    assert events.terminal_carry == 0
+    assert ledger.counters["carry_event_domain_actions"] == 4
+    assert ledger.counters["carry_event_reset_events"] == 2
+    assert ledger.counters["carry_event_occupied_intervals"] == 1
+    assert arena.node_count - before < 25
+    with LiveForcingProjection(arena, events.reset_jumps) as view:
+        assert tuple(
+            (r.start, r.stop, r.residue) for r in view.residue_runs(0, width + 2)
+        ) == ((0, 1, 1), (1, width + 1, 0), (width + 1, width + 2, 31))
+    arena.close()
+    assert ledger.entries == ledger.nodes == 0
+
+
+@pytest.mark.parametrize("incoming", [0, 1])
+def test_direct_neutral_domain_preserves_incoming_without_reset(incoming: int) -> None:
+    ledger = ResourceLedger()
+    arena = SymbolicInnovationArena(ledger)
+    events = recover_centered_carry_events(
+        arena, arena.zero, extent=7, incoming=incoming
+    )
+    assert events.terminal_carry == incoming
+    assert events.reset_jumps == arena.zero
+    correction = _evaluate(arena, events.correction)
+    assert correction == (
+        {0: -10, **dict.fromkeys(range(1, 7), -9), 7: 1} if incoming else {}
+    )
+    arena.close()
+
+
+def test_direct_recovery_rejects_foreign_and_invalid_residuals() -> None:
+    ledger = ResourceLedger()
+    arena = SymbolicInnovationArena(ledger)
+    foreign = SymbolicInnovationArena(ResourceLedger())
+    retained = ledger.entries, ledger.nodes
+    with pytest.raises(ValueError, match="different arena"):
+        recover_centered_carry_events(arena, foreign.zero, extent=3)
+    assert (ledger.entries, ledger.nodes) == retained
+    residual = arena.linear_combination(((22, arena.interval(1)),))  # P=31
+    with pytest.raises(ValueError, match="pair range"):
+        recover_centered_carry_events(arena, residual, extent=1)
+    assert ledger.counters.get("carry_event_domain_actions", 0) == 0
+    foreign.close()
+    arena.close()
+    assert ledger.entries == ledger.nodes == 0
+
+
+def test_direct_recovery_cancels_before_sign_and_retains_terminal_seam() -> None:
+    ledger = ResourceLedger()
+    arena = SymbolicInnovationArena(ledger)
+    positive = arena.linear_combination(((9, arena.interval(3)),))
+    negative = arena.linear_combination(((-9, arena.interval(3)),))
+    # The cancelling packets must not emit a spurious carry reset. The only
+    # non-neutral site is the middle one: P=(9,18,9), with growth at the end.
+    residual = arena.linear_combination(
+        (
+            (1, positive),
+            (1, negative),
+            (9, arena.chart(arena.interval(1), CylinderChart(1, -1))),
+        )
+    )
+    events = recover_centered_carry_events(arena, residual, extent=3)
+    assert _evaluate(arena, events.reset_jumps) == {1: 1}
+    assert events.terminal_carry == 1
+    assert _evaluate(arena, events.correction) == {1: -10, 2: -9, 3: 1}
+    assert ledger.counters["carry_event_reset_events"] == 1
+    arena.close()
+
+
+def test_direct_events_do_not_grant_source_authority_from_residue_range() -> None:
+    from number_compiler.sequences.reverse_add.source_images import (
+        ReverseSourceImageWorkspace,
+    )
+
+    ledger = ResourceLedger()
+    arena = SymbolicInnovationArena(ledger)
+    workspace = ReverseSourceImageWorkspace(ledger, 196, 0)
+    # Formal P=32 aliases to zero, so the arithmetic observer's result is
+    # conditional and must never be accepted as an admitted successor image.
+    residual = arena.linear_combination(((23, arena.interval(1)),))
+    events = recover_centered_carry_events(arena, residual, extent=1)
+    assert events.terminal_carry == 0
+    with pytest.raises(TypeError, match="payload sort"):
+        workspace.adapter.validate_payload(events)
+    workspace.dispose()
+    arena.close()
+    assert ledger.entries == ledger.nodes == 0
+
+
+def test_residue_lease_refuses_before_allocating_result(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    ledger = ResourceLedger()
+    arena = SymbolicInnovationArena(ledger)
+    with LiveForcingProjection(arena, arena.interval(1 << 200)) as view:
+        held = ledger.nodes, ledger.entries
+        ledger.max_nodes = ledger.nodes
+
+        def forbidden(*_args: object, **_kwargs: object) -> tuple[()]:
+            raise AssertionError("residue result allocated before lease admission")
+
+        monkeypatch.setattr(LiveForcingProjection, "residue_runs", forbidden)
+        with (
+            pytest.raises(BlockContextBudgetExceeded),
+            view.leased_residue_runs(0, 1 << 200),
+        ):
+            pytest.fail("refused lease was published")
+        assert (ledger.nodes, ledger.entries) == held
+    arena.close()
+    assert ledger.entries == ledger.nodes == 0
+
+
+def test_residue_lease_releases_after_consumer_failure() -> None:
+    ledger = ResourceLedger()
+    arena = SymbolicInnovationArena(ledger)
+    with LiveForcingProjection(arena, arena.interval(100)) as view:
+        held = ledger.nodes, ledger.entries
+        with (
+            pytest.raises(RuntimeError, match="consumer"),
+            view.leased_residue_runs(0, 100) as runs,
+        ):
+            assert (ledger.nodes, ledger.entries) != held
+            assert len(runs) == 1
+            raise RuntimeError("consumer failed")
+        assert (ledger.nodes, ledger.entries) == held
+    arena.close()
+    assert ledger.entries == ledger.nodes == 0
 
 
 def test_forcing_alphabet_is_beta_not_its_difference() -> None:

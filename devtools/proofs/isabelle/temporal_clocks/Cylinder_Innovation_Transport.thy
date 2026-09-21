@@ -119,12 +119,81 @@ text \<open>
   No source occurrence or carry quotient is inferred from this identity.
 \<close>
 
+text \<open>
+  Arithmetic syntax for simultaneous primitive-atom substitution. These seven
+  constructors correspond to SymbolicInnovationArena's node kinds. Evaluation
+  observes the original replacement environment, not a recursively rewritten
+  replacement. This supplies the semantic specification for substitute_many;
+  memo/worklist refinement, complete-channel source admission and temporal
+  grammar bounds remain separate obligations.
+\<close>
+
+datatype 'a innovation_expr =
+    IZero
+  | IAtom 'a
+  | IInterval nat
+  | IRadial nat nat "'a innovation_expr"
+  | IChart int int "'a innovation_expr"
+  | IScale int "'a innovation_expr"
+  | IAdd "'a innovation_expr" "'a innovation_expr"
+
+fun innovation_eval ::
+  "('a => coefficient_function) => 'a innovation_expr => coefficient_function"
+where
+  "innovation_eval env IZero = (\<lambda>i. 0)"
+| "innovation_eval env (IAtom a) = env a"
+| "innovation_eval env (IInterval n) =
+    (\<lambda>i. if 0 \<le> i \<and> i < int n then 1 else 0)"
+| "innovation_eval env (IRadial q r x) =
+    (innovation_double ^^ q) ((innovation_neighbor ^^ r) (innovation_eval env x))"
+| "innovation_eval env (IChart s offset x) =
+    (\<lambda>i. innovation_eval env x (s * i + offset))"
+| "innovation_eval env (IScale c x) = (\<lambda>i. c * innovation_eval env x i)"
+| "innovation_eval env (IAdd x y) =
+    innovation_add (innovation_eval env x) (innovation_eval env y)"
+
+fun innovation_substitute ::
+  "('a => 'b innovation_expr) => 'a innovation_expr => 'b innovation_expr"
+where
+  "innovation_substitute sigma IZero = IZero"
+| "innovation_substitute sigma (IAtom a) = sigma a"
+| "innovation_substitute sigma (IInterval n) = IInterval n"
+| "innovation_substitute sigma (IRadial q r x) =
+    IRadial q r (innovation_substitute sigma x)"
+| "innovation_substitute sigma (IChart s offset x) =
+    IChart s offset (innovation_substitute sigma x)"
+| "innovation_substitute sigma (IScale c x) =
+    IScale c (innovation_substitute sigma x)"
+| "innovation_substitute sigma (IAdd x y) =
+    IAdd (innovation_substitute sigma x) (innovation_substitute sigma y)"
+
+lemma innovation_substitute_semantics:
+  "innovation_eval env (innovation_substitute sigma x) =
+    innovation_eval (\<lambda>a. innovation_eval env (sigma a)) x"
+  by (induction x) auto
+
+lemma innovation_substitute_identity:
+  "innovation_substitute IAtom x = x"
+  by (induction x) auto
+
+lemma innovation_substitute_composition:
+  "innovation_substitute tau (innovation_substitute sigma x) =
+    innovation_substitute (\<lambda>a. innovation_substitute tau (sigma a)) x"
+  by (induction x) auto
+
+lemma innovation_substitute_many_semantics:
+  "map (innovation_eval env) (map (innovation_substitute sigma) xs) =
+    map (innovation_eval (\<lambda>a. innovation_eval env (sigma a))) xs"
+  by (simp add: map_map innovation_substitute_semantics)
+
 ML \<open>
   val checked = @{thms innovation_reflect_neighbor
     innovation_reflect_neighbor_power innovation_translate_neighbor
     innovation_double_neighbor innovation_reflect_translate
     innovation_reflect_double innovation_double_translate
-    innovation_add_negate innovation_residue_add innovation_residue_cancel};
+    innovation_add_negate innovation_residue_add innovation_residue_cancel
+    innovation_substitute_semantics innovation_substitute_identity
+    innovation_substitute_composition innovation_substitute_many_semantics};
   val _ = if null (Thm_Deps.all_oracles checked) then ()
     else error "Cylinder innovation transport depends on an oracle";
 \<close>

@@ -14,13 +14,22 @@ Its current-path interpretation and theorem boundaries are recorded in the
 [reverse/add research synthesis](research/reverse-add.md); its older path
 names and proposed backend are not instructions to restore deleted execution.
 
+The supplied [v0.12.0 carry-slab jump report](archive/reverse-add/CARRY_SLAB_JUMP_RESULTS.md)
+is also preserved verbatim (SHA-256
+`e5a4e9bb00d4391b6c6e99c35b3fb1ef8570d75dbf13189ed349338a9a6bc310`).
+It records historical D4/D8 representation sizes and guarded jump results;
+its executable and raw measurement environment have not been recovered.
+The [comparison](research/reverse-add.md#comparison-with-the-current-output-morphism-gates)
+separates those results from current production cutover acceptance.
+
 Original generated measurements remain under [results](../results/). Reviewed
 checkpoint prose is consolidated by ISO week, while ignored logs, profiles and
 fingerprints retain their original evidence paths. Current validation is
 recorded separately in [release status](release-status.md).
 
-The retained archive is a mixed-provenance collection.  The decimal pair
-paper identified above is externally supplied.  The other entries are authored
+The retained archive is a mixed-provenance collection. The decimal pair
+paper and carry-slab jump report identified above are externally supplied.
+The other entries are authored
 historical research; they are retained only where a derivation, measurement,
 or design boundary is not fully reproduced in the maintained syntheses.  In
 particular, a filename ending in `RESULTS` does not make a report external or a

@@ -43,6 +43,7 @@ construction, finite experiments and open obligations.
 - [Document migration and provenance](provenance.md)
 
 The [`archive/`](archive/) retains selected derivations and historical evidence.
-Only the explicitly identified decimal pair paper is designated as a verbatim
-external source. Old proposals do not authorize restoring retired execution.
+The decimal pair paper and carry-slab jump report identified in the history
+index are preserved verbatim as external sources. Old proposals do not
+authorize restoring retired execution.
 The machine-readable current-document catalog is [`catalog.toml`](catalog.toml).

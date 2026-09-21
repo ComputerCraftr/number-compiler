@@ -1,22 +1,130 @@
-"""Compressed carry observation of the bounded live-forcing residue view.
+"""Carry-event recovery and compressed observations of live forcing residues.
 
-The input is the pair field P modulo 32, not its derivative or centered Delta.
-A caller must separately establish P in [0,18] on the admitted source before
-interpreting this arithmetic observation as that source's exact carries.
-The returned SLP is a projection and cannot authorize a temporal successor.
+Pair-view inputs are P modulo 32; centered entry points explicitly uncenter
+Delta first. A caller must separately establish P in [0,18] on the admitted
+source before interpreting these arithmetic projections as exact carries.
+Neither returned event handles nor SLPs authorize a temporal successor.
 """
+
+from dataclasses import dataclass
 
 from number_compiler.arithmetic.automata.residue_carry_slp import (
     ResidueCarrySLPProjector,
     ResidueCarrySLPResult,
 )
 from number_compiler.arithmetic.automata.slp import SLPArena
-from number_compiler.arithmetic.fields.centered_carry import uncenter_pair_field
+from number_compiler.arithmetic.carry.carry_monoid import (
+    apply_carry_fn,
+    value_carry_fn,
+)
+from number_compiler.arithmetic.contracts.cylinder_chart import CylinderChart
+from number_compiler.arithmetic.fields.centered_carry import (
+    carry_coboundary,
+    uncenter_pair_field,
+)
 from number_compiler.arithmetic.fields.live_forcing import LiveForcingProjection
 from number_compiler.arithmetic.fields.symbolic_innovation import (
     InnovationID,
     SymbolicInnovationArena,
 )
+
+
+@dataclass(frozen=True, slots=True)
+class RecoveredCarryEvents:
+    """Exact arithmetic views under the caller's pair-range admission.
+
+    ``reset_jumps[i] = c[i+1]-c[i]``; ``correction = (z-10)Q``.
+    These scoped arithmetic handles carry no successor/source authority.
+    With physical incoming zero, ``terminal_carry`` is the leading-one birth.
+    """
+
+    extent: int
+    incoming: int
+    terminal_carry: int
+    reset_jumps: InnovationID
+    correction: InnovationID
+
+
+def recover_centered_carry_events(
+    arena: SymbolicInnovationArena,
+    residual: InnovationID,
+    *,
+    extent: int,
+    incoming: int = 0,
+) -> RecoveredCarryEvents:
+    """Recover signed resets and forcing correction from modular boundaries.
+
+    Each constant residue interval applies one element of the existing carry
+    monoid. Its length never enters an iteration: a non-neutral interval resets
+    at its first coordinate and is constant thereafter; a neutral one wires
+    its input through. Adjacent carry-one intervals merge even when their pair
+    residues differ. No pair/carry SLP or represented coefficient is created.
+
+    Work is proportional to the demanded residue boundaries and emitted reset
+    events, plus the existing live-projection cost, not the spatial extent.
+    This is not a bound on boundary growth across temporal composition. The
+    source owner must establish exact P in [0,18]; modulo 32 alone cannot do so.
+    """
+    if type(arena) is not SymbolicInnovationArena:
+        raise TypeError("carry events require the shared innovation arena")
+    arena.resolve(residual)
+    if type(incoming) is not int or incoming not in (0, 1):
+        raise ValueError("incoming carry must be zero or one")
+    pair = uncenter_pair_field(arena, residual, extent=extent)
+    ledger = arena.ledger
+    owner = ledger.register(f"carry-event-demand-{ledger.owner_count}", "query_memo")
+    units = 0
+    try:
+        # Cursors are owned before allocating the projection; its separate
+        # boundary lease remains live through all arithmetic consumption.
+        required = 6 + 2 * max(1, (extent.bit_length() + 63) // 64)
+        ledger.reserve(owner, nodes=required)
+        units = required
+        with (
+            LiveForcingProjection(arena, pair) as view,
+            view.leased_residue_runs(0, extent) as runs,
+        ):
+            for run in runs:
+                ledger.bump("carry_event_boundary_checks")
+                if not 0 <= run.residue <= 18:
+                    raise ValueError("pair residue is outside the decimal pair range")
+
+            carry = incoming
+            opened = 0 if incoming else None
+            outgoing = arena.zero
+            resets = arena.zero
+
+            def append_occupied(start: int, stop: int) -> None:
+                nonlocal outgoing
+                if stop > start:
+                    interval = arena.chart(
+                        arena.interval(stop - start), CylinderChart(1, -start)
+                    )
+                    outgoing = arena.add(outgoing, interval)
+                    ledger.bump("carry_event_occupied_intervals")
+
+            for run in runs:
+                ledger.bump("carry_event_domain_actions")
+                after = apply_carry_fn(value_carry_fn(run.residue, 10), carry)
+                if after == carry:
+                    continue
+                point = arena.chart(arena.interval(1), CylinderChart(1, -run.start))
+                resets = arena.linear_combination(((1, resets), (after - carry, point)))
+                ledger.bump("carry_event_reset_events")
+                if after:
+                    opened = run.start
+                else:
+                    assert opened is not None
+                    append_occupied(opened, run.start)
+                    opened = None
+                carry = after
+            if opened is not None:
+                append_occupied(opened, extent)
+            correction = carry_coboundary(arena, outgoing, base=10)
+            return RecoveredCarryEvents(extent, incoming, carry, resets, correction)
+    finally:
+        ledger.release(owner, nodes=units)
+        ledger.mark_disposed(owner)
 
 
 def project_live_pair_carries(

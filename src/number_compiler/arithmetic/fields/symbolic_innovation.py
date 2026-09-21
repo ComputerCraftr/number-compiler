@@ -466,6 +466,30 @@ class SymbolicInnovationArena:
     def identity(self) -> SymbolicRadialInnovation:
         return SymbolicRadialInnovation(RadialMultiplier(), self._copy_ref(self.zero))
 
+    def substitute_many(
+        self,
+        roots: Sequence[InnovationID],
+        replacements: Mapping[InnovationID, InnovationID],
+    ) -> tuple[InnovationID, ...]:
+        """Simultaneously substitute primitive atoms through shared expressions.
+
+        Replacement expressions belong to the original environment: they are
+        not recursively substituted. All roots share one iterative postorder
+        traversal and memo. Rebuilding uses the existing chart, radial and
+        signed-sum normalizers, without projection or coefficient evaluation.
+
+        This arithmetic operation supplies no source admission, carry discovery
+        or complete temporal return. Workspace is released on failure; any
+        already interned arithmetic nodes remain valid and charged, but no
+        result tuple is published. Work visits distinct reachable input nodes
+        plus their edges; it does not bound temporal grammar growth.
+        """
+        from number_compiler.arithmetic.fields.innovation_substitution import (
+            substitute_innovations,
+        )
+
+        return substitute_innovations(self, roots, replacements)
+
     def action(
         self, multiplier: RadialMultiplier, innovation: InnovationID
     ) -> SymbolicRadialInnovation:
