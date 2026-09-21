@@ -4,6 +4,13 @@ from typing import Never, cast
 
 import pytest
 
+from devtools.experiments.reverse_add.field_action import (
+    ProofMachineStateID,
+)
+from devtools.experiments.reverse_add.local_interface import (
+    ReverseLocalInterfaceArena,
+    ReversePortStateID,
+)
 from number_compiler.arithmetic.automata.symmetry_powering import ActionTransform
 from number_compiler.arithmetic.contracts.block_effect import (
     BlockContextBudgetExceeded,
@@ -17,13 +24,6 @@ from number_compiler.hashlife.execution.field_images import (
     SourceForestID,
 )
 from number_compiler.resources.ledger import ResourceLedger
-from number_compiler.sequences.reverse_add.field_action import (
-    ProofMachineStateID,
-)
-from number_compiler.sequences.reverse_add.local_interface import (
-    ReverseLocalInterfaceArena,
-    ReversePortStateID,
-)
 from number_compiler.sequences.reverse_add.powered_local_codec import (
     ReverseLocalActionID,
     ReversePoweredLocalCodec,

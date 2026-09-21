@@ -111,6 +111,62 @@ def _arena() -> tuple[_Schema, HigherSemanticArena]:
     return schema, HigherSemanticArena(schema)
 
 
+def test_substitution_preserves_variable_dependency_identity() -> None:
+    schema, arena = _arena()
+    symbol = arena.variable(arena.symbol_sort(schema.primitive), "symbol")
+    state = arena.variable(arena.state_sort(schema.primitive, 0), "state", (symbol,))
+    expression = arena.primitive_step(schema.primitive, 0, state, symbol)
+    zero = arena.symbol(schema.primitive, 0)
+
+    replaced = arena.substitute(expression, symbol, zero)
+
+    # Dependency children distinguish variable identities; they are not free
+    # occurrences inside that variable. Only the explicit symbol is replaced.
+    assert replaced == arena.primitive_step(schema.primitive, 0, state, zero)
+    assert arena._free_variables(replaced) == (state,)
+    assert arena.evaluate(replaced, {state: 1}) == schema.step(
+        schema.primitive, 0, 1, 0
+    )
+
+
+def test_substitution_keeps_occurrences_inside_replacement_free() -> None:
+    schema, arena = _arena()
+    state = arena.variable(arena.state_sort(schema.primitive, 0), "state")
+    zero = arena.symbol(schema.primitive, 0)
+    expression = arena.primitive_step(schema.primitive, 0, state, zero)
+    replaced = arena.substitute(expression, state, expression)
+    assert replaced == arena.primitive_step(schema.primitive, 0, expression, zero)
+    assert arena._free_variables(replaced) == (state,)
+    assert arena.evaluate(replaced, {state: 0}) == 2
+
+
+def test_substitution_reaches_free_symbol_under_function_binder() -> None:
+    schema, arena = _arena()
+    parameter = arena.variable(arena.state_sort(schema.primitive, 0), "parameter")
+    symbol = arena.variable(arena.symbol_sort(schema.primitive), "symbol")
+    body = arena.primitive_step(schema.primitive, 0, parameter, symbol)
+    function = arena.function_expression(arena.function(parameter, body))
+    replaced = arena.substitute(function, symbol, arena.symbol(schema.primitive, 0))
+    assert not arena._free_variables(replaced)
+    assert (
+        arena.evaluate(arena.apply(replaced, arena.literal(schema.primitive, 0, 1)))
+        == 2
+    )
+
+
+def test_substitution_reaches_deferred_binding_replacement() -> None:
+    schema, arena = _arena()
+    state = arena.literal(schema.primitive, 0, 1)
+    symbol = arena.variable(arena.symbol_sort(schema.primitive), "symbol")
+    replacement = arena.variable(arena.symbol_sort(schema.primitive), "replacement")
+    expression = arena.primitive_step(schema.primitive, 0, state, symbol)
+    bound = arena.bind_free(expression, symbol, replacement)
+    replaced = arena.substitute(bound, replacement, arena.symbol(schema.primitive, 0))
+    assert not arena._free_variables(replaced)
+    assert arena.evaluate(replaced) == 2
+    assert arena.substitute(bound, symbol, arena.symbol(schema.primitive, 1)) == bound
+
+
 def test_higher_identity_and_noncommuting_primitive_order() -> None:
     schema, arena = _arena()
     assert arena.evaluate(arena.literal(schema.identity, 0, 0)) == 0

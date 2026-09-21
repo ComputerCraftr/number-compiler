@@ -29,7 +29,7 @@ class _Term:
 
     def metrics(self) -> types.SimpleNamespace:
         return SimpleNamespace(
-            metrics_schema_version=6,
+            metrics_schema_version=7,
             new_canonical_field_images_published=self.horizon.bit_length(),
             field_image_nodes=self.horizon.bit_length(),
             field_interface_nodes=1,

@@ -3,7 +3,6 @@
 import gc
 import weakref
 from collections.abc import Callable
-from copy import copy
 from typing import Never, cast
 
 import pytest
@@ -34,8 +33,6 @@ from number_compiler.arithmetic.fields.dyadic_tile import (
     tile_arena_metrics,
     uniform,
 )
-from number_compiler.hashlife.observation.tile_projection import LazyProjection
-from number_compiler.projection.tile_radix import TileRadixObservation
 from number_compiler.resources.ledger import ResourceLedger
 from number_compiler.sequences.collatz.block_power import PoweredCollatzTerm
 from number_compiler.sequences.reverse_add.power import ReverseAddPoweredTerm
@@ -89,15 +86,20 @@ def test_public_point_and_width_reject_discarded_exact_future_tree(
         if family == "reverse"
         else PoweredCollatzTerm(27, 4)
     )
-    index = term._point_index()
 
     def eager_callback(*args: object) -> int:
         # Bypasses every endpoint-lowering API, and would discard its output.
         source_span((1, 0, 1), blank=0, logical_length=3)
         return 1
 
-    method = "point" if observer == "digit" else "active_width"
-    monkeypatch.setattr(type(index._lazy_application), method, eager_callback)
+    if isinstance(term, ReverseAddPoweredTerm):
+        reverse_workspace = term._source_workspace()
+        monkeypatch.setattr(
+            type(reverse_workspace.adapter), "admit_source", eager_callback
+        )
+    else:
+        collatz_workspace = term._source_image()
+        monkeypatch.setattr(type(collatz_workspace), "summary", eager_callback)
     with pytest.raises(ExactTreeConstructionForbidden):
         if observer == "digit":
             term.digit(0)
@@ -113,95 +115,15 @@ def test_public_radix_queries_reject_transient_construction_in_callback(
     result = NumberCompiler().project_nth("collatz", 4, seed=27, radix=radix)
     assert isinstance(result.payload, PoweredCollatzTermPayload)
     term = result.payload.term
-    index = term._point_index()
+    workspace = term._source_image()
 
     def eager_callback(*args: object) -> int:
         DyadicSpan(0, 0, ())
         return 1
 
-    if radix == 2:
-        monkeypatch.setattr(type(index._lazy_application), "point", eager_callback)
-    else:
-        monkeypatch.setattr(
-            TileRadixObservation,
-            "_application",
-            eager_callback,
-        )
+    monkeypatch.setattr(type(workspace), "summary", eager_callback)
     with pytest.raises(ExactTreeConstructionForbidden):
         result.digit(0)
-
-
-@pytest.mark.parametrize("method", ("point", "width", "interface"))
-def test_direct_tile_application_guards_active_callbacks(
-    monkeypatch: pytest.MonkeyPatch,
-    method: str,
-) -> None:
-    from number_compiler.hashlife.execution.tile_causal import CausalTileEngine
-
-    projection = PoweredCollatzTerm(27, 4)._point_index()._lazy_application
-    assert type(projection) is LazyProjection
-    application = projection._open()
-
-    def eager_callback(*args: object, **kwargs: object) -> int:
-        DyadicSpan(0, 0, ())
-        return 1
-
-    if method == "interface":
-        monkeypatch.setattr(CausalTileEngine, "interface", eager_callback)
-    else:
-        monkeypatch.setattr(type(application.scheduler), method, eager_callback)
-    calls: dict[str, Callable[[], object]] = {
-        "point": lambda: application.point(0),
-        "width": application.width,
-        "interface": application.interface,
-    }
-    with pytest.raises(ExactTreeConstructionForbidden):
-        calls[method]()
-
-
-@pytest.mark.parametrize("method", ("source", "point", "width", "interface"))
-def test_copied_tile_application_rejects_before_scheduler_work(
-    monkeypatch: pytest.MonkeyPatch, method: str
-) -> None:
-    from number_compiler.hashlife.execution.tile_causal import CausalTileEngine
-
-    projection = PoweredCollatzTerm(27, 4)._point_index()._lazy_application
-    assert type(projection) is LazyProjection
-    application = projection._open()
-    forged = copy(application)
-
-    def forbidden(*args: object, **kwargs: object) -> None:
-        pytest.fail("forged application reached scheduler execution")
-
-    monkeypatch.setattr(type(application.scheduler), "point", forbidden)
-    monkeypatch.setattr(type(application.scheduler), "width", forbidden)
-    monkeypatch.setattr(CausalTileEngine, "interface", forbidden)
-    before = projection.ledger.snapshot()
-    calls: dict[str, Callable[[], object]] = {
-        "source": lambda: forged.source,
-        "point": lambda: forged.point(0),
-        "width": forged.width,
-        "interface": forged.interface,
-    }
-    with pytest.raises(ValueError, match="issued"):
-        calls[method]()
-    assert projection.ledger.snapshot() == before
-
-
-def test_direct_radix_observation_guards_active_callback(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    projection = PoweredCollatzTerm(27, 4)._point_index()._lazy_application
-    assert type(projection) is LazyProjection
-    observation = TileRadixObservation(projection, 3)
-
-    def eager_callback(*args: object, **kwargs: object) -> int:
-        DyadicSpan(0, 0, ())
-        return 1
-
-    monkeypatch.setattr(type(observation), "_application", eager_callback)
-    with pytest.raises(ExactTreeConstructionForbidden):
-        observation.digit(0)
 
 
 def test_zero_and_exterior_paths_reject_argument_coercion_before_work() -> None:

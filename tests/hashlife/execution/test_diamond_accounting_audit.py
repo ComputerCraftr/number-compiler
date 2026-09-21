@@ -10,7 +10,6 @@ from number_compiler.hashlife.execution.diamond_payload import DiamondPayloadReg
 from number_compiler.hashlife.interfaces.diamond_unary import UnaryComposition
 from number_compiler.resources.metric_collection import collect_ledger_metrics
 from number_compiler.resources.metric_registry import observed_node_partition
-from number_compiler.resources.stores import LedgerList
 from tests.support.dataclass_records import replace_record
 from tests.support.diamond_context_program import populated
 
@@ -150,35 +149,6 @@ def test_singleton_finite_domain_reports_live_workspace_without_reduction_loop()
     arena.finite_function([value], atom, 1)
     # Output references, singleton frontier, staged-node list and staged map.
     assert engine.ledger.counters["boundary_function_workspace_peak"] == 4
-
-
-def test_fixed_decimal_definition_and_lookup_need_actual_registered_provenance() -> (
-    None
-):
-    from number_compiler.hashlife.execution.diamond_reverse_expression import (
-        DecimalT2Emitter,
-    )
-    from number_compiler.hashlife.interfaces.diamond_kernel import DiamondKernelArena
-
-    arena = DiamondKernelArena()
-    emitter = DecimalT2Emitter(arena)
-    emitter._lookup("left-anchor", (arena.constant(757, 0),))
-    before = arena.ledger.snapshot()
-    registry = DiamondPayloadRegistry(arena.ledger)
-    assert registry.valid(emitter.definition)
-    assert not registry.valid(replace(emitter.definition))
-    lookup = emitter.templates["left-anchor"]
-    assert registry.valid(lookup)
-    assert not registry.valid(replace(lookup))
-    report = collect_ledger_metrics(arena.ledger)
-    assert report.representation_boundary_complete == 1
-    assert arena.ledger.snapshot() == before
-    owner = arena.ledger.register("forged kernel table", "finite_kernel")
-    records: LedgerList[object]
-    records = arena.ledger.make_list(owner)
-    arena.ledger.reserve(owner, entries=1, nodes=1)
-    records.append(replace(emitter.definition, base_outputs=b"\x00" * 4300))
-    assert collect_ledger_metrics(arena.ledger).representation_boundary_complete == 0
 
 
 def test_reset_certificates_are_distinct_from_output_halos_and_guard_state_free_keys() -> (

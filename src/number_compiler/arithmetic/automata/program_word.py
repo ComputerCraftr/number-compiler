@@ -8,7 +8,7 @@ one node per symbol.
 from __future__ import annotations
 
 import weakref
-from collections.abc import Iterable, Iterator
+from collections.abc import Callable, Generator, Iterable, Iterator, MutableSequence
 from dataclasses import dataclass
 from itertools import count
 from typing import Any, TypeVar
@@ -71,6 +71,16 @@ class CanonicalWord:
             )
         if not valid:
             raise ValueError("malformed canonical word node")
+
+
+@dataclass(slots=True)
+class RunTraversalMetrics:
+    """Ephemeral work retained by one run-order traversal."""
+
+    visited_nodes: int = 0
+    peak_frontier: int = 0
+    visited_block_bits: int = 0
+    peak_frontier_bits: int = 0
 
 
 EMPTY = CanonicalWord(next(_IDS), 0, 0)
@@ -407,6 +417,81 @@ def iter_runs(root: CanonicalWord) -> Iterator[tuple[int, int]]:
         node = stack.pop()
 
 
+def iter_run_blocks_reverse(
+    root: CanonicalWord,
+    value: int,
+    *,
+    symbol_bits: int,
+    metrics: RunTraversalMetrics | None = None,
+    frontier_delta: Callable[[int, int], None] | None = None,
+    frontier: MutableSequence[tuple[CanonicalWord, int, int]] | None = None,
+) -> Generator[tuple[int, int, int], None, None]:
+    """Yield right-to-left runs paired with their integer source blocks.
+
+    The input integer is split at the existing balanced word boundaries. No
+    digit vector or integer representing the canonical word is constructed.
+    """
+    _validate_word(root)
+    if type(value) is not int or value < 0:
+        raise ValueError("word block traversal requires a nonnegative integer")
+    if type(symbol_bits) is not int or symbol_bits < 1:
+        raise ValueError("word block traversal requires a positive symbol width")
+    if value.bit_length() > root.length * symbol_bits:
+        raise ValueError("integer does not fit the canonical word extent")
+    stack: MutableSequence[tuple[CanonicalWord, int, int]]
+    if frontier is None:
+        stack = []
+    else:
+        if frontier:
+            raise ValueError("word block traversal requires an empty frontier")
+        stack = frontier
+    frontier_bits = 0
+    node, block = root, value
+    try:
+        while stack or node.run_count:
+            if metrics is not None:
+                metrics.visited_nodes += 1
+                metrics.visited_block_bits += node.length * symbol_bits
+            while node.run_count and node.right is not None:
+                if node.left is None:
+                    raise AssertionError(node)
+                left_bits = node.left.length * symbol_bits
+                right_block = block >> left_bits
+                left_block = block - (right_block << left_bits)
+                if frontier_delta is not None:
+                    frontier_delta(1, left_bits)
+                try:
+                    stack.append((node.left, left_block, left_bits))
+                except BaseException:
+                    if frontier_delta is not None:
+                        frontier_delta(-1, -left_bits)
+                    raise
+                frontier_bits += left_bits
+                if metrics is not None:
+                    metrics.peak_frontier = max(metrics.peak_frontier, len(stack))
+                    metrics.peak_frontier_bits = max(
+                        metrics.peak_frontier_bits, frontier_bits
+                    )
+                    metrics.visited_nodes += 1
+                    metrics.visited_block_bits += node.right.length * symbol_bits
+                node, block = node.right, right_block
+            if node.run_count:
+                if node.symbol is None:
+                    raise AssertionError(node)
+                yield int(node.symbol), int(node.run_length), block
+            if not stack:
+                break
+            node, block, block_bits = stack.pop()
+            frontier_bits -= block_bits
+            if frontier_delta is not None:
+                frontier_delta(-1, -block_bits)
+    finally:
+        while stack:
+            _, _, block_bits = stack.pop()
+            if frontier_delta is not None:
+                frontier_delta(-1, -block_bits)
+
+
 def word_metrics(root: CanonicalWord) -> dict[str, int]:
     """Charge the retained RLE/SLP word, including references and run parameters."""
     _validate_word(root)
@@ -562,6 +647,7 @@ def prune_stale_program_word_memos() -> None:
 __all__ = [
     "EMPTY",
     "CanonicalWord",
+    "RunTraversalMetrics",
     "cap_symbol_runs",
     "clear_transient_program_word_caches",
     "concat",
@@ -569,6 +655,7 @@ __all__ = [
     "first_run",
     "from_runs",
     "from_values",
+    "iter_run_blocks_reverse",
     "iter_runs",
     "last_run",
     "leaf",

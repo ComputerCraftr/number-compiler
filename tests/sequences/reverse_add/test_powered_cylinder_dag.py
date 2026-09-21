@@ -11,9 +11,7 @@ from number_compiler.arithmetic.polynomials.twisted_observer import (
     TwistedCylinderProjection,
     first_mirror_obstruction,
 )
-from number_compiler.hashlife.execution.tile_scheduler import TileApplication
 from number_compiler.hashlife.observation.tile_cylinder import _sheet
-from number_compiler.hashlife.observation.tile_projection import LazyProjection
 from number_compiler.hashlife.tiles.tiles import TileAlphabet, TileArena
 from number_compiler.resources.ledger import ResourceLedger
 from number_compiler.sequences.reverse_add.power import ReverseAddPoweredTerm
@@ -60,30 +58,6 @@ def test_sheet_append_matches_independent_concatenation(width: int, sign: int) -
             assert a.append(b, span=len(left)) == TwistedCylinderProjection.observe(
                 left + right, width=width, sign=sign
             )
-
-
-def test_cylinder_workspace_disposes_if_application_close_fails(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    term = ReverseAddPoweredTerm(196, 1)
-    term.mirror_obstruction()
-    projection = term._point_index()._lazy_application
-    assert isinstance(projection, LazyProjection)
-    close = TileApplication.close
-
-    def fail_close(self: TileApplication) -> Never:
-        raise ValueError("corrupt application")
-
-    monkeypatch.setattr(TileApplication, "close", fail_close)
-    with pytest.raises(ValueError, match="corrupt application"):
-        projection.close()
-    accounts = [
-        a for a in term._ledger.inventory() if a.name.startswith("tile-cylinder-")
-    ]
-    assert len(accounts) == 2
-    assert all(a.disposed and a.entries == a.nodes == 0 for a in accounts)
-    monkeypatch.setattr(TileApplication, "close", close)
-    projection.close()
 
 
 def test_tile_fold_shares_uniform_subtrees_and_clips_partial_prefix() -> None:

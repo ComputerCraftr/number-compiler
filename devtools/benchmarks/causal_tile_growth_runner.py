@@ -7,8 +7,8 @@ import json
 import math
 import os
 import statistics
-import subprocess
 import sys
+import tempfile
 from collections.abc import Mapping, Sequence
 from dataclasses import asdict, fields, replace
 from pathlib import Path
@@ -22,6 +22,7 @@ from devtools.benchmarks.causal_tile_growth_probe import (
     cold_row,
     series_report,
 )
+from devtools.checks.process_guard import run_guarded
 from devtools.checks.test_run_evidence import source_fingerprint
 from devtools.paths import repository_root
 
@@ -38,6 +39,9 @@ class TrialRecord(TypedDict, total=False):
     stderr: str
     returncode: int | None
     process_wall_seconds: float
+    sampled_peak_bytes: int
+    memory_measurement: str
+    memory_samples: int
     source_before: str
     source_after: str
     row: dict[str, object]
@@ -60,6 +64,7 @@ class ProbeManifest(RegionManifest):
     fixed_width: int
     fresh_process_trials_per_sample: int
     worker_watchdog_seconds: int
+    worker_memory_limit_bytes: int
 
 
 class SampleReport(TypedDict):
@@ -79,6 +84,7 @@ class CausalProbeReport(TypedDict):
     source_unchanged: bool
     fresh_process_trials_per_sample: int
     worker_watchdog_seconds: int
+    worker_memory_limit_bytes: int
     timed_environment: dict[str, str]
     default_release_horizons: list[int]
     release_manifest_complete: bool
@@ -102,6 +108,7 @@ ROOT = repository_root()
 HORIZONS = (16, 32, 64, 128, 256, 512, 1024)
 TRIALS = 5
 WORKER_TIMEOUT_SECONDS = 35
+WORKER_MEMORY_LIMIT_BYTES = 1024**3
 RELEASE_FIXED_WIDTH = 16
 _TIMING_FIELDS = (
     "setup_seconds",
@@ -155,12 +162,6 @@ def _failure(
         "stderr": stderr,
         "returncode": returncode,
     }
-
-
-def _text(value: str | bytes | None) -> str:
-    if value is None:
-        return ""
-    return value.decode(errors="replace") if isinstance(value, bytes) else value
 
 
 def _parse_row(value: object) -> CausalGrowthRow | None:
@@ -218,53 +219,71 @@ def _one_trial(
 ) -> TrialRecord:
     _scenario, _temporal_steps, _spatial_width, _coordinate = request
     command = _command(*request)
-    environment = dict(os.environ)
-    try:
-        process_started = perf_counter()
-        completed = subprocess.run(
-            command,
+    process_started = perf_counter()
+    with tempfile.TemporaryDirectory(prefix="causal-growth-worker-") as directory:
+        output = Path(directory) / "worker.log"
+        guard = run_guarded(
+            tuple(command),
+            output=output,
             cwd=ROOT,
-            env=environment,
-            capture_output=True,
-            text=True,
-            check=False,
             timeout=timeout,
+            memory_bytes=WORKER_MEMORY_LIMIT_BYTES,
         )
-    except subprocess.TimeoutExpired as error:
+        worker_output = output.read_text()
+    if guard.outcome == "timeout":
         failure = _failure(
             *request,
             trial,
             "timed_out",
             reason=f"worker exceeded {timeout}s watchdog",
-            stdout=_text(error.stdout),
-            stderr=_text(error.stderr),
+            stdout=worker_output,
+        )
+        failure["process_wall_seconds"] = perf_counter() - process_started
+        return failure
+    if guard.outcome != "completed":
+        failure = _failure(
+            *request,
+            trial,
+            "failed",
+            reason=f"worker guard stopped execution: {guard.outcome}",
+            stdout=worker_output,
+            returncode=guard.child_returncode,
+        )
+        failure["process_wall_seconds"] = perf_counter() - process_started
+        return failure
+    if guard.samples <= 0 or guard.sampled_peak_bytes is None:
+        failure = _failure(
+            *request,
+            trial,
+            "failed",
+            reason="worker guard produced no memory samples",
+            stdout=worker_output,
+            returncode=guard.child_returncode,
         )
         failure["process_wall_seconds"] = perf_counter() - process_started
         return failure
     process_wall_seconds = perf_counter() - process_started
-    if completed.returncode:
+    if guard.child_returncode:
         failure = _failure(
             *request,
             trial,
             "failed",
             reason="worker exited unsuccessfully",
-            stdout=completed.stdout,
-            stderr=completed.stderr,
-            returncode=completed.returncode,
+            stdout=worker_output,
+            returncode=guard.child_returncode,
         )
         failure["process_wall_seconds"] = process_wall_seconds
         return failure
     try:
-        parsed = json.loads(completed.stdout)
+        parsed = json.loads(worker_output)
     except (json.JSONDecodeError, TypeError) as error:
         failure = _failure(
             *request,
             trial,
             "failed",
             reason=f"invalid worker JSON: {error}",
-            stdout=completed.stdout,
-            stderr=completed.stderr,
-            returncode=completed.returncode,
+            stdout=worker_output,
+            returncode=guard.child_returncode,
         )
         failure["process_wall_seconds"] = process_wall_seconds
         return failure
@@ -314,6 +333,9 @@ def _one_trial(
     parsed["trial"] = trial
     parsed["status"] = "passed"
     parsed["process_wall_seconds"] = process_wall_seconds
+    parsed["sampled_peak_bytes"] = guard.sampled_peak_bytes
+    parsed["memory_measurement"] = guard.memory_measurement
+    parsed["memory_samples"] = guard.samples
     return cast("TrialRecord", parsed)
 
 
@@ -456,6 +478,7 @@ def _manifest(
         "fixed_width": fixed_width,
         "fresh_process_trials_per_sample": trials,
         "worker_watchdog_seconds": timeout,
+        "worker_memory_limit_bytes": WORKER_MEMORY_LIMIT_BYTES,
         "requests": [_request_record(request) for request in _flat_requests(groups)],
     }
 
@@ -554,11 +577,12 @@ def run_fresh_process_probe(
     release_measurement_pass = release_manifest_complete and diagnostic_accepted
     observed = set(observed_requests)
     return {
-        "metrics_schema_version": 6,
+        "metrics_schema_version": 7,
         "source_fingerprint": fingerprint,
         "source_unchanged": source_unchanged,
         "fresh_process_trials_per_sample": trials,
         "worker_watchdog_seconds": timeout,
+        "worker_memory_limit_bytes": WORKER_MEMORY_LIMIT_BYTES,
         "timed_environment": {
             "python_executable": sys.executable,
             "python_version": sys.version,

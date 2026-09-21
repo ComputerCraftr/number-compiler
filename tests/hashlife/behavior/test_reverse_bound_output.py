@@ -8,7 +8,11 @@ from number_compiler.arithmetic.carry.reverse_port_functions import (
     ReversePortCodec,
     ReverseRightTransfer,
 )
-from number_compiler.arithmetic.contracts.block_effect import BoundarySide
+from number_compiler.arithmetic.contracts.block_effect import (
+    BoundarySide,
+    BoundaryState,
+)
+from number_compiler.arithmetic.contracts.block_kernel import BaseBlockEffect
 from number_compiler.hashlife.behavior.reverse_bound_output import ReverseBoundOutput
 from number_compiler.projection.digit_terminal import DigitNormalizeBlockEffect
 from number_compiler.resources.ledger import ResourceLedger
@@ -51,6 +55,49 @@ def test_distinct_interiors_share_complete_bound_consumer_behavior() -> None:
     first = ReverseBoundOutput.leaf(10, 0).then(ReverseBoundOutput.leaf(10, 0), ledger)
     second = ReverseBoundOutput.leaf(10, 1).then(ReverseBoundOutput.leaf(10, 0), ledger)
     assert first == second
+
+
+def test_bound_reverse_output_is_not_a_successor_identity() -> None:
+    """A carry summary alone cannot authorize another output-producing step."""
+    ledger = ResourceLedger()
+    first_word = (0, 1)
+    second_word = (1, 1)
+
+    def summarize(symbols: tuple[int, ...]) -> ReverseBoundOutput:
+        summary = ReverseBoundOutput.leaf(3, symbols[0])
+        for symbol in symbols[1:]:
+            summary = summary.then(ReverseBoundOutput.leaf(3, symbol), ledger)
+        return summary
+
+    effect = BaseBlockEffect(3)
+
+    def literal_step(symbols: tuple[int, ...]) -> tuple[int, ...]:
+        left = effect.initial(BoundarySide.LEFT)
+        right = effect.initial(BoundarySide.RIGHT)
+        left_states: list[BoundaryState] = []
+        right_states: list[BoundaryState] = []
+        for symbol in symbols:
+            left_states.append(left)
+            left = effect.advance(BoundarySide.LEFT, left, symbol)
+        for symbol in reversed(symbols):
+            right_states.append(right)
+            right = effect.advance(BoundarySide.RIGHT, right, symbol)
+        return tuple(
+            effect.emit(left_state, symbol, right_state)
+            for left_state, symbol, right_state in zip(
+                left_states,
+                symbols,
+                reversed(right_states),
+                strict=True,
+            )
+        )
+
+    assert summarize(first_word) == summarize(second_word)
+    first_successor = literal_step(first_word)
+    second_successor = literal_step(second_word)
+    assert first_successor == (0, 2)
+    assert second_successor == (2, 2)
+    assert summarize(first_successor) != summarize(second_successor)
 
 
 def test_bound_reverse_output_rejects_numeric_aliases() -> None:

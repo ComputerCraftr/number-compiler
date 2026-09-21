@@ -1,5 +1,3 @@
-"""Primitive finite bimachine adapter for canonical future tiles."""
-
 from __future__ import annotations
 
 from number_compiler.arithmetic.contracts.block_effect import (
@@ -68,6 +66,9 @@ from number_compiler.hashlife.execution.tile_fused_kernel import (
 )
 from number_compiler.hashlife.execution.tile_fused_kernel import (
     fused_primitive_pair as _fused_primitive_pair,
+)
+from number_compiler.hashlife.execution.tile_kernel_validation import (
+    validate_action_record as _validate_action_record,
 )
 from number_compiler.hashlife.execution.tile_kernel_validation import (
     validate_fused_action as _validate_fused_action,
@@ -240,9 +241,6 @@ class PrimitiveTileKernelAdapter:
         if type(effect) is SymbolicBinaryDivisionEffect and division_radix is None:
             raise ValueError("symbolic division has malformed fixed semantics")
         if division_radix is not None:
-            # Compile and weight the arena-owned canonical definition.  A
-            # caller-mutated finite table or symbolic record cannot inject
-            # alternate semantics into an otherwise identical closed law.
             effect = SymbolicBinaryDivisionEffect(division_radix)
         if cocycle is not None and type(cocycle) is not TemporalCocycle:
             raise TypeError("primitive action cocycle must be canonical")
@@ -392,8 +390,12 @@ class PrimitiveTileKernelAdapter:
         self.validate_action(action)
         return self._actions[action.local_id]
 
+    def _action_record(self, action: FieldCellActionID) -> _Action:
+        return _validate_action_record(self, action)[0]
+
     def signature_for(self, action: FieldCellActionID) -> PortSignatureID:
-        return self._action(action).signature
+        self.validate_action(action)
+        return self._actions[action.local_id].signature
 
     def validated_signature_for(self, action: FieldCellActionID) -> PortSignatureID:
         return self.signature_for(action)
@@ -409,7 +411,8 @@ class PrimitiveTileKernelAdapter:
         before: FieldCellActionID,
         after: FieldCellActionID,
     ) -> FieldCellActionID:
-        return _compose_actions(self, before, after)
+        self.validate_action(result := _compose_actions(self, before, after))
+        return result
 
     def power(
         self,
@@ -889,8 +892,7 @@ class PrimitiveTileKernelAdapter:
         original_ports: tuple[int, ...],
         wiring: ResultWiring,
     ) -> ChildContext:
-        # Shape validation performs the complete action/wiring audit once.
-        # Read the exact record only inside this checked call chain thereafter.
+        # Shape validation authenticates this exact action/wiring call chain.
         self._require_results().validate_shape(action, original_ports, wiring)
         record = self._actions[action.local_id]
         children = record.children

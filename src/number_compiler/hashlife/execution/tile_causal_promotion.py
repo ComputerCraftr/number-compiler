@@ -44,12 +44,38 @@ def promotion_step(
     if engine._children(before) is None:
         values.append(False)
         return True
+    node = engine.tiles.resolve(tile)
+    if not node.level or node.left is None or node.right is None:
+        values.append(False)
+        return True
     match (left, right):
         case (CausalPrefix(), CausalPrefix()):
             pass
         case _:
             raise ValueError("midpoint promotion requires exact causal prefixes")
     if frame.stage == 0:
+        from number_compiler.hashlife.tiles.result_reverse_indexes import (
+            _has_completed_result_input,
+        )
+
+        # A retained exact parent is reusable even after either child is
+        # independently evicted.  Without a parent candidate, promotion cannot
+        # succeed unless both spatial children have some completed producer
+        # result. Reject only that impossible cold case before constructing
+        # temporal anchors or half-parent contexts. A positive answer grants no
+        # authority: the exact keyed lookups below validate the full requests.
+        parent_present = _has_completed_result_input(
+            engine.scheduler.results, before, tile
+        )
+        if not parent_present and (
+            not _has_completed_result_input(engine.scheduler.results, before, node.left)
+            or not _has_completed_result_input(
+                engine.scheduler.results, before, node.right
+            )
+        ):
+            engine.ledger.bump("tile_causal_parent_promotion_preflight_misses")
+            values.append(False)
+            return True
         frame.stage = 1
         frames.extend(
             (
@@ -70,7 +96,11 @@ def promotion_step(
         if parent_key is None:
             values.append(False)
             return True
-        completed = lookup_causal_result(engine.scheduler.results, parent_key)
+        completed = lookup_causal_result(
+            engine.scheduler.results,
+            parent_key,
+            action_admission=engine._action_admission_token,
+        )
         if completed is not None:
             engine.scheduler._pin_causal(
                 engine._application,
@@ -79,10 +109,6 @@ def promotion_step(
             )
             engine.ledger.bump("tile_causal_parent_promotion_hits")
             values.append(True)
-            return True
-        node = engine.tiles.resolve(tile)
-        if not node.level or node.left is None or node.right is None:
-            values.append(False)
             return True
         frame.stage = 2
         frame.saved = (parent_key, node.left, node.right)
@@ -114,8 +140,16 @@ def promotion_step(
     if left_key is None or right_key is None:
         values.append(False)
         return True
-    left_result = lookup_causal_result(engine.scheduler.results, left_key)
-    right_result = lookup_causal_result(engine.scheduler.results, right_key)
+    left_result = lookup_causal_result(
+        engine.scheduler.results,
+        left_key,
+        action_admission=engine._action_admission_token,
+    )
+    right_result = lookup_causal_result(
+        engine.scheduler.results,
+        right_key,
+        action_admission=engine._action_admission_token,
+    )
     if left_result is None or right_result is None:
         if left_result is not None:
             left_result.close()
@@ -141,7 +175,7 @@ def promotion_step(
             joined.tile,
             left_output,
             right_output,
-            engine.adapter.wiring(before),
+            engine._wiring(before),
             producer_output=producer_output,
         )
         published = publish_causal_completed(

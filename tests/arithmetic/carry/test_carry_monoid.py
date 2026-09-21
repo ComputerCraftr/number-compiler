@@ -11,10 +11,45 @@ from number_compiler.arithmetic.carry.carry_monoid import (
     CarryFn,
     CarryScanAutomatonResult,
     apply_carry_fn,
+    centered_carry_fn,
     compose_carry_fn,
     scan_carry_automaton,
     value_carry_fn,
 )
+
+
+def test_centered_ports_are_the_same_canonical_monoid() -> None:
+    for base in (2, 3, 10, 64):
+        for symbol, incoming in product(range(2 * base - 1), (0, 1)):
+            centered = centered_carry_fn(symbol - (base - 1))
+            assert centered is value_carry_fn(symbol, base)
+            assert apply_carry_fn(centered, incoming) == (symbol + incoming) // base
+    assert centered_carry_fn(0) is CarryFn.ID
+    assert apply_carry_fn(centered_carry_fn(0), 1) == 1
+
+
+@pytest.mark.parametrize("alias", (True, False, 0.0, "0", None))
+def test_centered_port_rejects_noninteger_aliases(alias: object) -> None:
+    with pytest.raises(TypeError):
+        centered_carry_fn(cast(int, alias))
+
+
+def test_raw_pair_classifier_calls_the_centered_owner(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    import number_compiler.arithmetic.carry.carry_monoid as monoid
+
+    observed: list[int] = []
+    original = monoid.centered_carry_fn
+
+    def record(delta: int) -> CarryFn:
+        observed.append(delta)
+        return original(delta)
+
+    monkeypatch.setattr(monoid, "centered_carry_fn", record)
+    assert monoid.value_carry_fn(9, 10) is CarryFn.ID
+    assert monoid.value_carry_fn(18, 10) is CarryFn.CONST1
+    assert observed == [0, 9]
 
 
 def test_carry_composition_has_the_documented_before_after_order() -> None:

@@ -7,6 +7,10 @@ import json
 from time import perf_counter
 from unittest.mock import patch
 
+from devtools.experiments.reverse_add.cocycle_carrier import CocycleReverseCarrier
+from devtools.experiments.reverse_add.factored_carrier import (
+    FactoredReverseCarrier,
+)
 from devtools.proofs import exact_oracle
 from devtools.proofs.reverse_geometry_context import ReverseGeometryContext
 from number_compiler.arithmetic.carry.event_memory import forcing_event, pair_step
@@ -19,10 +23,6 @@ from number_compiler.arithmetic.formula.symmetry_frame import (
 )
 from number_compiler.arithmetic.functions.decision import MultiTerminalDecisionArena
 from number_compiler.hashlife.interfaces.semantic_bits import BitFunctionArena
-from number_compiler.sequences.reverse_add.cocycle_carrier import CocycleReverseCarrier
-from number_compiler.sequences.reverse_add.factored_carrier import (
-    FactoredReverseCarrier,
-)
 
 
 def geometry_probe(capacity: int, steps: int, seed: int) -> dict[str, object]:

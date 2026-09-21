@@ -4,12 +4,12 @@ from __future__ import annotations
 
 from typing import Any, Protocol
 
-from number_compiler.arithmetic.automata import program_word as words
-from number_compiler.sequences.reverse_add.factored_carrier import (
+from devtools.experiments.reverse_add.factored_carrier import (
     FactoredReverseCarrier,
     TemporalCell,
 )
-from number_compiler.sequences.reverse_add.factored_planes import PlaneAlgebra, PlaneID
+from devtools.experiments.reverse_add.factored_planes import PlaneAlgebra, PlaneID
+from number_compiler.arithmetic.automata import program_word as words
 
 
 class _PlaneCarrier(Protocol):

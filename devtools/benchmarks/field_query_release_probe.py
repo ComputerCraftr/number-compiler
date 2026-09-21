@@ -446,7 +446,7 @@ def run_probe() -> FieldProbeReport:
         and all(report["status"] == "GREEN" for report in family_reports.values())
     )
     return {
-        "metrics_schema_version": 6,
+        "metrics_schema_version": 7,
         "source_fingerprint": before,
         "source_unchanged": source_unchanged,
         "worker_sources_consistent": worker_sources_consistent,

@@ -7,6 +7,16 @@ the cost of a flat interface; it is not a claimed recursive spatial quotient.
 
 from __future__ import annotations
 
+from devtools.experiments.reverse_add.cocycle_temporal import (
+    CocycleAction,
+    CocycleTemporalArena,
+)
+from devtools.experiments.reverse_add.factored_carrier import DOMAINS
+from devtools.experiments.reverse_add.threshold_cocycle import (
+    ResidueMorphism,
+    ThresholdCocycleArena,
+    ThresholdCocycleResidualID,
+)
 from number_compiler.arithmetic.formula.decimal_pair_coordinates import (
     decimal_cocycle_coordinates,
 )
@@ -23,16 +33,6 @@ from number_compiler.hashlife.interfaces.semantic_bits import (
 )
 from number_compiler.resources.ledger import ResourceLedger
 from number_compiler.sequences.reverse_add.active_output import CARRY_ACTION, F5
-from number_compiler.sequences.reverse_add.cocycle_temporal import (
-    CocycleAction,
-    CocycleTemporalArena,
-)
-from number_compiler.sequences.reverse_add.factored_carrier import DOMAINS
-from number_compiler.sequences.reverse_add.threshold_cocycle import (
-    ResidueMorphism,
-    ThresholdCocycleArena,
-    ThresholdCocycleResidualID,
-)
 
 
 class BoundedReverseCocycle:

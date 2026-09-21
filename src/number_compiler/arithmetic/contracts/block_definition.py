@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from hashlib import sha256
 from typing import ClassVar, Protocol, TypeGuard, cast
 
 from number_compiler.arithmetic.contracts.block_effect import BlockEffect, _effect_key
@@ -121,9 +120,7 @@ class ComposedBlockDefinition:
             _effect_key(left),
             _effect_key(right),
         )
-        identity = SemanticIdentity(
-            sha256(repr(behavior).encode("utf-8")).hexdigest(), behavior
-        )
+        identity = SemanticIdentity("composed-block-definition", behavior)
         values: dict[str, object] = {
             "first": left,
             "second": right,

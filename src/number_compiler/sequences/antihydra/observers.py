@@ -254,50 +254,41 @@ class SpaceTimeProjection:
         )
 
     def _accumulate_retained_fragments(
-        self, ports: list[list[int]], capacity: int
+        self, ports: list[list[int]], capacity: int, section_capacity: int
     ) -> int:
         """Consume safe source cylinders; a discovered halt stays on the reference path."""
         result = self.result
         if result.halted:
             raise ValueError("halted Antihydra runs require first-failure descent")
-        h, balance, head, time, completed = 8, 0, 1, 11, 0
+        from number_compiler.sequences.antihydra.projection_core import (
+            AntihydraProjectionDriver,
+            build_projection_fragment,
+        )
+
         families = 0
         cache = result._engine.projection_fragments
-        for segment in result._term.segments:
-            block = segment.cylinder
-            if segment.start != completed or block.residue != h % (1 << block.width):
-                raise ValueError("retained Antihydra section support was changed")
-            if balance + block.minimum < 0:
-                raise ValueError(
-                    "unsafe Antihydra cylinder requires first-failure descent"
-                )
-            key = self._fragment_key(block, completed, head, time)
-            fragment = cache.get(key)
-            if fragment is None:
-                from number_compiler.sequences.antihydra.projection_core import (
-                    build_projection_fragment,
-                )
-
-                fragment = build_projection_fragment(
-                    self, key, block, h, balance, capacity
-                )
-                result.ledger.bump("spacetime_projection_fragment_evaluations")
-            self._shift(ports, fragment.typed_ports, head, time)
-            result.ledger.bump("spacetime_projection_fragment_translations")
-            families += fragment.sampled_sweep_classes
-            roof = physical_roof(block)
-            h, balance, left, right = roof.apply(h, balance)
-            head += right - left
-            time += right + left
-            completed += block.width
-        if (completed, h, balance, head, time) != (
-            result.returns,
-            result.h,
-            result.balance,
-            result.head,
-            result.physical_ticks,
-        ):
-            raise ArithmeticError("projection fragments diverged from bound execution")
+        driver = result._engine.projection_fragment_driver
+        if driver is None:
+            driver = AntihydraProjectionDriver(result.ledger)
+            result._engine.projection_fragment_driver = driver
+        if type(driver) is not AntihydraProjectionDriver:
+            raise ValueError("Antihydra projection driver owner was changed")
+        try:
+            driver.cursor.begin(self)
+            while (occurrence := driver.cursor.next()) is not None:
+                record = driver.cursor.resolve(occurrence)
+                fragment = cache.get(record.key)
+                if fragment is None:
+                    fragment = build_projection_fragment(
+                        self, occurrence, capacity, section_capacity
+                    )
+                    result.ledger.bump("spacetime_projection_fragment_evaluations")
+                self._shift(ports, fragment.typed_ports, record.head, record.time)
+                result.ledger.bump("spacetime_projection_fragment_translations")
+                families += fragment.sampled_sweep_classes
+            driver.cursor.finish()
+        finally:
+            driver.cursor.clear()
         return families
 
     def _shift(
@@ -375,9 +366,17 @@ class SpaceTimeProjection:
             engine.projection_workspace = SectionImageWorkspace(ledger)
         cache = engine.projection_workspace
         # Final lanes plus one transient section image and its immutable copy.
-        use_images = self.cache_entries > 0 and (
-            ledger.max_nodes is None
-            or ledger.nodes + 40 * area + self.cache_entries <= ledger.max_nodes
+        # A nonhalting query retains complete source-bound fragments. Its
+        # internal section images are redundant and compete with the fragment
+        # construction/seal transaction for the same fixed ledger budget.
+        # Keep that second cache only on the guarded fallback path.
+        use_images = (
+            self.cache_entries > 0
+            and self.result.halted
+            and (
+                ledger.max_nodes is None
+                or ledger.nodes + 40 * area + self.cache_entries <= ledger.max_nodes
+            )
         )
         batch_capacity = self.cache_entries if use_images else 0
         workspace_nodes = (40 if use_images else 16) * area + batch_capacity
@@ -400,7 +399,9 @@ class SpaceTimeProjection:
             ports = [[0] * area for _ in range(12)]
             self._word(ports, STARTUP, 0, 0)
             if capacity and not self.result.halted:
-                families = self._accumulate_retained_fragments(ports, capacity)
+                families = self._accumulate_retained_fragments(
+                    ports, capacity, batch_capacity
+                )
             else:
                 families = 0
                 classes: dict[tuple[tuple[int, int], int, int], int] = {}

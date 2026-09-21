@@ -27,6 +27,24 @@ def test_completed_child_has_real_footprint_and_log(tmp_path: Path) -> None:
     assert (tmp_path / "worker.log").read_text().strip() == "done"
 
 
+def test_worker_uses_explicit_working_directory(tmp_path: Path) -> None:
+    working = tmp_path / "working"
+    working.mkdir()
+    result = process_guard.run_guarded(
+        (
+            sys.executable,
+            "-c",
+            "import pathlib,time; print(pathlib.Path.cwd()); time.sleep(.15)",
+        ),
+        output=tmp_path / "worker.log",
+        cwd=working,
+        lock_path=tmp_path / "lock",
+    )
+    assert result.outcome == "completed"
+    observed = Path((tmp_path / "worker.log").read_text().strip())
+    assert observed.resolve() == working.resolve()
+
+
 def test_timeout_reaps_worker(tmp_path: Path) -> None:
     log = tmp_path / "worker.log"
     result = process_guard.run_guarded(

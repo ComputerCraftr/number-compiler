@@ -43,16 +43,16 @@ metrics remain cumulative per term. `NumberCompiler(max_cached_terms=0)` disable
 this reuse. The capacity bounds retained terms, not total DAG memory, and does
 not share caches between standalone CLI processes.
 
+- [Documentation index](docs/index.md)
 - [Architecture and package ownership](docs/architecture.md)
 - [Development and checks](docs/development.md)
 - [Current validation status](docs/release-status.md)
-- [Historical reports](docs/history.md)
+- [Research and proof history](docs/history.md)
 - [Repository rules](REPOSITORY_RULES.md)
 
 The HashLife production cutover is unfinished. Structural cleanup does not prove
-sublinear execution or satisfy the five-minute runtime release gate.
-The [P0 integration report](docs/production-p0-integration.md) records the current
-production changes and the remaining release blockers.
+sublinear execution or satisfy the five-minute runtime release gate. The
+[current release status](docs/release-status.md) records the remaining blockers.
 
 For development, `pytest` runs the unit suite; `pytest -m validation` runs
 exhaustive proofs, research and release workloads. Use `pytest -m ''` for both.

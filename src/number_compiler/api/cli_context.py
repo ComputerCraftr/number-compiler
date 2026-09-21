@@ -95,8 +95,6 @@ class QueryContext:
                     {
                         "tape": "twisted",
                         "twisted": "tape",
-                        "mahler": "hensel",
-                        "hensel": "mahler",
                     }.get(name)
                     if self.request.family == "antihydra"
                     else None
@@ -266,7 +264,15 @@ class QueryContext:
                 "nonhalting_certified": False,
                 **payload.power_metrics(),
             }
-        from number_compiler.api.antihydra_observation import observe_run
+        from number_compiler.api.antihydra_observation import (
+            observe_arithmetic,
+            observe_run,
+        )
+
+        if name in {"mahler", "hensel"}:
+            return observe_arithmetic(
+                payload.term.result(), kind=name, precision=q.precision
+            )
 
         return observe_run(
             payload.term.physical_run(),

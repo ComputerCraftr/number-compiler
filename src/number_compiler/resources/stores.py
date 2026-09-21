@@ -292,6 +292,15 @@ class LedgerList(_StoreSerializationBoundary, MutableSequence[T]):
             yield self[index]
             index += 1
 
+    def snapshot(self) -> tuple[T, ...]:
+        """Copy values without exposing a reducible backing-list iterator.
+
+        This is an immutable, detached value snapshot, not retained authority.
+        Native tuple construction avoids a Python callback for every element;
+        ordinary public iteration keeps its non-serializable boundary above.
+        """
+        return tuple(self._data)
+
     @overload
     def __getitem__(self, key: SupportsIndex) -> T: ...
     @overload

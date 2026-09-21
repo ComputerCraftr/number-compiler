@@ -208,3 +208,17 @@ def test_exact_microblocks_cannot_accept_numeric_limb_wrappers_or_wide_payloads(
         ExactMicroblock(cast("int", limbs()[0]), 1)
     with pytest.raises(ValueError, match="at most 64"):
         ExactMicroblock(1 << 64, 64)
+
+
+def test_numeric_aggregate_classifies_each_object_once() -> None:
+    root = ("semantic", 7)
+    calls: dict[int, int] = {}
+
+    def semantic(value: object) -> bool:
+        identity = id(value)
+        calls[identity] = calls.get(identity, 0) + 1
+        return value is root
+
+    audit = numeric_aggregate_audit((root, root), semantic=semantic)
+    assert not audit.forbidden_objects
+    assert calls[id(root)] == 1

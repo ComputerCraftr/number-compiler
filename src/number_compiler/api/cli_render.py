@@ -18,6 +18,7 @@ from number_compiler.api.number_api import (
 from number_compiler.arithmetic.contracts.input_validation import (
     require_integer as _integer,
 )
+from number_compiler.arithmetic.fields.radix import digits_lsd
 from number_compiler.arithmetic.fields.symbolic_extent import (
     Extent,
     ReverseAddExtent,
@@ -101,11 +102,7 @@ def _radix_string(value: int, base: int) -> str:
             return str(value)
         finally:
             sys.set_int_max_str_digits(previous_limit)
-    out: list[str] = []
-    while value:
-        value, digit = divmod(value, base)
-        out.append(_DIGITS[digit])
-    return "".join(reversed(out))
+    return "".join(_DIGITS[digit] for digit in reversed(digits_lsd(value, base)))
 
 
 def _render_value(term: ProjectedNumberTerm, *, output_base: int, max_bits: int) -> str:
@@ -120,6 +117,11 @@ def _render_value(term: ProjectedNumberTerm, *, output_base: int, max_bits: int)
         # existing exact-width decision.
         bit_extent = (
             upper_bound if upper_bound <= max_bits else powered.estimated_bit_length
+        )
+    elif isinstance(term.payload, PoweredCollatzTermPayload):
+        upper_bound = term.payload.term.maximum_width
+        bit_extent = (
+            upper_bound if upper_bound <= max_bits else term.payload.term.width()
         )
     else:
         bit_extent = term.estimated_bit_length

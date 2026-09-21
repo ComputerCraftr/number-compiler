@@ -92,11 +92,6 @@ def audit_registered_payloads(
     )
     from number_compiler.arithmetic.radix_division import SymbolicBinaryDivisionEffect
     from number_compiler.hashlife.actions.lazy_compiler import ProgramComposition
-    from number_compiler.hashlife.behavior.future_behavior import (
-        FutureBehaviorClass,
-        FutureBehaviorProfile,
-        QuiescentBlankCertificate,
-    )
     from number_compiler.hashlife.execution.continuations.concrete_port_scheduler import (
         ConcretePortScheduler,
     )
@@ -117,18 +112,11 @@ def audit_registered_payloads(
     from number_compiler.hashlife.execution.tile_scheduler import TileScheduler
     from number_compiler.hashlife.interfaces.diamond_boundary_expr import ExprID
     from number_compiler.hashlife.interfaces.diamond_kernel import (
-        DiamondKernelArena,
         PrimitiveKernel,
     )
     from number_compiler.hashlife.interfaces.diamond_quotient import (
         DiamondQuotientArena,
         LocalInterfaceID,
-    )
-    from number_compiler.hashlife.interfaces.primitive_behavior import (
-        CertifiedLocalSymmetry,
-        PrimitiveBehaviorQuotient,
-        validate_certified_local_symmetry,
-        validate_primitive_behavior_quotient,
     )
     from number_compiler.hashlife.observation.diamond_observers import (
         NonblankBlockEffect,
@@ -155,6 +143,12 @@ def audit_registered_payloads(
         PointResponse,
         PointResponseRegister,
     )
+    from number_compiler.resources.associated_action_payload_audit import (
+        audit_associated_action_payloads,
+    )
+    from number_compiler.resources.behavior_payload_audit import (
+        BehaviorPayloadValidator,
+    )
     from number_compiler.resources.field_action_payload_audit import (
         audit_field_action_payloads,
     )
@@ -169,7 +163,13 @@ def audit_registered_payloads(
     from number_compiler.resources.radix_provider_payload_audit import (
         audit_radix_provider_payloads,
     )
+    from number_compiler.resources.reverse_source_payload_audit import (
+        audit_reverse_source_payloads,
+    )
     from number_compiler.resources.semantic_payload import SemanticPayloadRegistry
+    from number_compiler.resources.source_bound_payload_audit import (
+        audit_source_bound_payloads,
+    )
     from number_compiler.resources.support_payload_audit import (
         audit_support_payloads,
     )
@@ -256,11 +256,24 @@ def audit_registered_payloads(
     definition_source: Iterator[tuple[int, object]] | None = iter(
         ledger.iter_payloads()
     )
-    definitions: list[object] = []
+    definitions: list[tuple[int, object]] = []
     definition_seen: set[int] = set()
     state_bound, pair_bound, radix_bound = 6, 1, 2
     response_records: dict[int, int] = {}
     actual_containers = dict(ledger.iter_containers())
+    source_bound = audit_source_bound_payloads(
+        ledger, execution_roots, actual_containers
+    )
+    forbidden.update(source_bound.invalid)
+    reverse_source = audit_reverse_source_payloads(
+        ledger, execution_roots, actual_containers
+    )
+    forbidden.update(reverse_source.invalid)
+    associated = audit_associated_action_payloads(
+        ledger, execution_roots, actual_containers
+    )
+    forbidden.update(associated.invalid)
+    behaviors = BehaviorPayloadValidator(ledger)
     valid_behavior_records: set[int] = set()
     for root in execution_roots:
         if type(root) is not CompletedResultArena or root.ledger is not ledger:
@@ -283,6 +296,8 @@ def audit_registered_payloads(
                 valid_behavior_records.update((id(behavior_key), id(behavior_value)))
     for root in execution_roots:
         if type(root) is not TileScheduler or root.ledger is not ledger:
+            continue
+        if root._source_only:
             continue
         approved, invalid = audit_tile_dependency_leases(
             root._causal_dependencies,
@@ -350,11 +365,11 @@ def audit_registered_payloads(
                     response_records[id(response)] = root.owner
     while definitions or definition_source is not None:
         if definitions:
-            definition = definitions.pop()
+            definition_owner, definition = definitions.pop()
         else:
             assert definition_source is not None
             try:
-                _, definition = next(definition_source)
+                definition_owner, definition = next(definition_source)
             except StopIteration:
                 definition_source = None
                 continue
@@ -386,30 +401,43 @@ def audit_registered_payloads(
             else:
                 state_bound = max(state_bound, effect.blank)
             key = _effect_key(effect)
-            approved_keys.add(key)
             metadata_nodes: list[object] = [key]
-            while metadata_nodes:
-                part = metadata_nodes.pop()
-                if (
-                    not isinstance(part, (tuple, SemanticIdentity))
-                    or id(part) in approved_metadata
-                ):
-                    continue
-                approved_metadata.add(id(part))
-                if isinstance(part, tuple):
-                    metadata_nodes.extend(part)
-                elif isinstance(part, SemanticIdentity):
-                    metadata_nodes.append(part.behavior)
+            candidate_metadata: set[int] = set()
+            try:
+                while metadata_nodes:
+                    part = metadata_nodes.pop()
+                    if (
+                        type(part) not in (tuple, SemanticIdentity)
+                        or id(part) in approved_metadata
+                        or id(part) in candidate_metadata
+                    ):
+                        continue
+                    candidate_metadata.add(id(part))
+                    if type(part) is tuple:
+                        metadata_nodes.extend(part)
+                    elif type(part) is SemanticIdentity:
+                        behaviors.validate_identity(part)
+                        metadata_nodes.append(part.behavior)
+            except (TypeError, ValueError, AttributeError):
+                forbidden.add((definition_owner, id(definition)))
+                continue
+            approved_keys.add(key)
+            approved_metadata.update(candidate_metadata)
             if type(definition) is ProgramComposition:
-                definitions.extend((definition.first, definition.second))
+                definitions.extend(
+                    (
+                        (definition_owner, definition.first),
+                        (definition_owner, definition.second),
+                    )
+                )
         elif type(definition) is PrimitiveKernel:
-            definitions.append(definition.effect)
+            definitions.append((definition_owner, definition.effect))
         elif isinstance(definition, Mapping):
-            definitions.extend(definition.values())
+            definitions.extend((definition_owner, item) for item in definition.values())
         elif isinstance(definition, Sequence) and not isinstance(
             definition, (str, bytes)
         ):
-            definitions.extend(definition)
+            definitions.extend((definition_owner, item) for item in definition)
 
     def approved_key(value: object) -> bool:
         if id(value) in approved_metadata:
@@ -451,58 +479,27 @@ def audit_registered_payloads(
             "_native_source",
         )
     )
-    checked_quotients: dict[int, tuple[PrimitiveBehaviorQuotient, bool]] = {}
-    quotient_by_behavior = {
-        quotient.semantic_identity: quotient
-        for root in execution_roots
-        if type(root) is DiamondKernelArena and root.ledger is ledger
-        for quotient in root._behavioral_quotients.values()
-    }
-    checked_symmetries: dict[int, tuple[CertifiedLocalSymmetry, bool]] = {}
+    checked_components: dict[int, tuple[object, bool]] = {}
 
     def semantic_component(value: object) -> bool:
+        checked = checked_components.get(id(value))
+        if checked is not None and checked[0] is value:
+            return checked[1]
+        valid = semantic_component_uncached(value)
+        checked_components[id(value)] = value, valid
+        return valid
+
+    def semantic_component_uncached(value: object) -> bool:
+        if source_bound.recognizes(value):
+            return source_bound.valid(value)
+        if reverse_source.recognizes(value):
+            return reverse_source.valid(value)
+        if associated.recognizes(value):
+            return associated.valid(value)
         if type(value) in (BehaviorBindingKey, CompletedBehaviorClassification):
             return id(value) in valid_behavior_records
-        if type(value) is PrimitiveBehaviorQuotient:
-            checked = checked_quotients.get(id(value))
-            if checked is not None and checked[0] is value:
-                return checked[1]
-            try:
-                validate_primitive_behavior_quotient(value)
-                valid = True
-            except (TypeError, ValueError, AttributeError):
-                valid = False
-            checked_quotients[id(value)] = value, valid
-            return valid
-        if type(value) is CertifiedLocalSymmetry:
-            symmetry_check = checked_symmetries.get(id(value))
-            if symmetry_check is not None and symmetry_check[0] is value:
-                return symmetry_check[1]
-            quotient = quotient_by_behavior.get(value.behavior)
-            try:
-                if quotient is None:
-                    raise ValueError("local symmetry omitted its quotient")
-                validate_certified_local_symmetry(quotient, value)
-                valid = True
-            except (TypeError, ValueError, AttributeError):
-                valid = False
-            checked_symmetries[id(value)] = value, valid
-            return valid
-        if type(value) in (
-            FutureBehaviorClass,
-            FutureBehaviorProfile,
-            QuiescentBlankCertificate,
-        ):
-            try:
-                cast(
-                    FutureBehaviorClass
-                    | FutureBehaviorProfile
-                    | QuiescentBlankCertificate,
-                    value,
-                ).__post_init__()
-                return True
-            except (TypeError, ValueError, AttributeError):
-                return False
+        if behaviors.recognizes(value):
+            return behaviors.valid(value)
         if type(value) is _ChoiceIndexKey:
             return id(value) in finite_choice_records
         if type(value) is _SubstitutionIndexKey:
@@ -525,6 +522,8 @@ def audit_registered_payloads(
         if id(value) in field_images.approved:
             return True
         if id(value) in radix_providers.approved:
+            return True
+        if id(value) in reverse_source.approved:
             return True
         if id(value) in semantic.auxiliary.projection_maps:
             return True  # Actual radix parameter -> owned execution context, not digit storage.
@@ -684,6 +683,7 @@ def audit_registered_payloads(
             id(container) not in field_images.approved
             and id(container) not in radix_providers.approved
             and id(container) not in support_payloads.approved
+            and id(container) not in reverse_source.approved
             and owner not in finite_index_owners
             and owner not in cache_event_owners
             and roles[owner]
@@ -734,20 +734,22 @@ def audit_registered_payloads(
             continue
         if id(value) in support_payloads.approved:
             continue
-        if type(value) is PrimitiveBehaviorQuotient:
-            if not semantic_component(value):
+        if id(value) in reverse_source.approved:
+            continue
+        if source_bound.recognizes(value):
+            if not source_bound.valid(value):
                 forbidden.add(identity)
             continue
-        if type(value) is CertifiedLocalSymmetry:
-            if not semantic_component(value):
+        if reverse_source.recognizes(value):
+            if not reverse_source.valid(value):
                 forbidden.add(identity)
             continue
-        if type(value) in (
-            FutureBehaviorClass,
-            FutureBehaviorProfile,
-            QuiescentBlankCertificate,
-        ):
-            if not semantic_component(value):
+        if associated.recognizes(value):
+            if not associated.valid(value):
+                forbidden.add(identity)
+            continue
+        if behaviors.recognizes(value):
+            if not behaviors.valid(value):
                 forbidden.add(identity)
             continue
         if type(value) in (BehaviorBindingKey, CompletedBehaviorClassification):
@@ -966,6 +968,7 @@ def audit_registered_payloads(
             )
         else:
             unknown.add(identity)
+    behaviors.finish()
     result = PayloadAudit(len(forbidden), len(huge), len(unknown))
     if not fresh or not execution_roots:
         ledger.cache_payload_audit(audit_version, result, root_signature)

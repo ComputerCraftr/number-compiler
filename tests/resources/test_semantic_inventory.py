@@ -52,7 +52,7 @@ def test_semantic_inventory_counts_real_nodes_and_work_without_evaluation(
     monkeypatch.setattr(functions, "substitute", forbidden)
     report = collect_ledger_metrics(ledger)
     assert ledger.snapshot() == before
-    assert report.metrics_schema_version == 6
+    assert report.metrics_schema_version == 7
     assert report.semantic_function_nodes == len(functions.nodes) + len(bits.nodes)
     assert report.semantic_binary_division_compilations == 1
     assert report.semantic_function_evaluations > 0
@@ -105,6 +105,24 @@ def test_orphan_and_malformed_semantic_records_do_not_gain_class_name_authority(
     records.append(replace(node))
     audit = audit_registered_payloads(ledger)
     assert audit.forbidden_future_payloads > 0
+
+
+def test_forged_finite_effect_identity_is_rejected_without_repair() -> None:
+    from tests.support.diamond_observation_adversarial import neighbor_xor
+
+    ledger = ResourceLedger()
+    effect = neighbor_xor()
+    identity = effect._semantic_identity
+    object.__setattr__(identity, "digest", "forged")
+    owner = ledger.register("forged-finite-effect", "compiled_action_program")
+    records: LedgerList[object] = ledger.make_list(owner)
+    ledger.reserve(owner, entries=1, nodes=1)
+    records.append(effect)
+    before = ledger.snapshot()
+    audit = audit_registered_payloads(ledger)
+    assert audit.forbidden_future_payloads > 0
+    assert identity.digest == "forged"
+    assert ledger.snapshot() == before
 
 
 def test_factored_higher_outputs_are_accounted_without_observing_outer_ports(

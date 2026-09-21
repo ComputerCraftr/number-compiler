@@ -41,7 +41,7 @@ Package boundaries are checked from imports and the actual file tree. Generated
 build inventories and historical migration lists are not sources of truth.
 
 The [cutover optimization plan](hashlife-optimization.md) records remaining
-execution and measurement gates. The [decimal pair algebra summary](research/reverse-add/decimal-pair-algebra.md)
+execution and measurement gates. The [reverse/add research synthesis](research/reverse-add.md)
 maps the local carry/output and radial research to these owners without reviving
 the old image/provider runtime.
 

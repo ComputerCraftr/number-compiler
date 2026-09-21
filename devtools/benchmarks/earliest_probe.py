@@ -161,12 +161,12 @@ if __name__ == "__main__":
     import random
     import time
 
+    from devtools.experiments.reverse_add.power import compose_bimachines
     from number_compiler.arithmetic.automata.transducer import (
         build_pair_step_bimachine,
         encode_pair_half,
     )
     from number_compiler.arithmetic.functions.residual import minimize_bimachine
-    from number_compiler.hashlife.actions.power import compose_bimachines
 
     b = minimize_bimachine(build_pair_step_bimachine(10)).machine
     t = time.perf_counter()

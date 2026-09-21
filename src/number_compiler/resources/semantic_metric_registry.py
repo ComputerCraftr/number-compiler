@@ -1,4 +1,4 @@
-"""Declared semantic-adapter work counters forwarded by schema-six reports."""
+"""Declared semantic-adapter work counters forwarded by schema-seven reports."""
 
 from __future__ import annotations
 

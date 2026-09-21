@@ -11,7 +11,6 @@ import argparse
 import json
 import subprocess
 import sys
-import xml.etree.ElementTree as ET
 from pathlib import Path
 from tempfile import TemporaryDirectory
 
@@ -151,8 +150,41 @@ CASES = {
 }
 
 
-def run_case(name: str) -> dict[str, object]:
+def _case_result(
+    name: str,
+    required: tuple[str, ...],
+    durations: dict[str, float],
+    *,
+    evidence: str,
+    execution_reused: bool,
+) -> dict[str, object]:
     selectors = CASES[name]
+    nodes = tuple(
+        node
+        for node in required
+        if any(
+            node == selector or node.startswith((selector + "::", selector + "["))
+            for selector in selectors
+        )
+    )
+    if not nodes:
+        raise ValueError(f"no current test nodes cover audit case {name}")
+    return {
+        "status": "PASS",
+        "tests": len(nodes),
+        "selectors": selectors,
+        "seconds": sum(durations[node] for node in nodes),
+        "errors_failures_skips": 0,
+        "evidence": evidence,
+        "execution_reused": execution_reused,
+    }
+
+
+def run_cases(names: tuple[str, ...]) -> dict[str, dict[str, object]]:
+    """Execute the union once, then attribute validated nodes to each case."""
+    selectors = tuple(
+        dict.fromkeys(selector for name in names for selector in CASES[name])
+    )
     required = collect_required(ROOT, selectors)
     with TemporaryDirectory(prefix="morphism-audit-") as directory:
         report = Path(directory) / "junit.xml"
@@ -177,27 +209,25 @@ def run_case(name: str) -> dict[str, object]:
         )
         if completed.returncode != 0 or not report.exists():
             raise RuntimeError(
-                f"adversarial case {name} failed:\n{completed.stdout}\n{completed.stderr}"
+                "adversarial regression union failed:\n"
+                f"{completed.stdout}\n{completed.stderr}"
             )
-        suites = tuple(ET.parse(report).getroot().iter("testsuite"))
-        tests = sum(int(suite.attrib.get("tests", 0)) for suite in suites)
-        rejected = sum(
-            int(suite.attrib.get(key, 0))
-            for suite in suites
-            for key in ("errors", "failures", "skipped")
-        )
-        if tests == 0 or rejected:
-            raise RuntimeError(
-                f"adversarial case {name} has no complete passing coverage"
-            )
-        validate_evidence(report, ROOT, required)
+        durations = validate_evidence(report, ROOT, required)
         return {
-            "status": "PASS",
-            "tests": tests,
-            "selectors": selectors,
-            "seconds": sum(float(suite.attrib.get("time", 0)) for suite in suites),
-            "errors_failures_skips": rejected,
+            name: _case_result(
+                name,
+                required,
+                durations,
+                evidence=str(report),
+                execution_reused=False,
+            )
+            for name in names
         }
+
+
+def run_case(name: str) -> dict[str, object]:
+    """Compatibility entry point for one explicitly selected audit case."""
+    return run_cases((name,))[name]
 
 
 def main() -> None:
@@ -229,35 +259,23 @@ def main() -> None:
         else (*tuple(name for name in CASES if name not in expensive), *expensive)
     )
     if args.junit is None:
-        checks = {name: run_case(name) for name in names}
+        checks = run_cases(names)
     else:
         selectors = tuple(
             dict.fromkeys(selector for name in names for selector in CASES[name])
         )
         required = collect_required(ROOT, selectors)
         durations = validate_evidence(args.junit, ROOT, required)
-        checks = {}
-        for name in names:
-            nodes = tuple(
-                node
-                for node in required
-                if any(
-                    node == selector
-                    or node.startswith((selector + "::", selector + "["))
-                    for selector in CASES[name]
-                )
+        checks = {
+            name: _case_result(
+                name,
+                required,
+                durations,
+                evidence=str(args.junit),
+                execution_reused=True,
             )
-            if not nodes:
-                raise ValueError(f"no current test nodes cover audit case {name}")
-            checks[name] = {
-                "status": "PASS",
-                "tests": len(nodes),
-                "selectors": CASES[name],
-                "seconds": sum(durations[node] for node in nodes),
-                "errors_failures_skips": 0,
-                "evidence": str(args.junit),
-                "execution_reused": True,
-            }
+            for name in names
+        }
     result = {
         "metrics_schema_version": 5,
         "audit_revision": 8,

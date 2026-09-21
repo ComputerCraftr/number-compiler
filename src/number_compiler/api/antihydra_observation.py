@@ -14,7 +14,7 @@ from number_compiler.sequences.antihydra.observers import (
     SpaceTimeProjection,
     tape_projection,
 )
-from number_compiler.sequences.antihydra.runtime import Run, run
+from number_compiler.sequences.antihydra.runtime import ArithmeticResult, Run, run
 from number_compiler.sequences.antihydra.support import (
     directional_hasse,
     tape_hasse,
@@ -66,6 +66,40 @@ def observe(args: argparse.Namespace) -> dict[str, Any]:
         time_width=args.time_width,
         time_sign=args.time_sign,
         max_observer_terms=args.max_observer_terms,
+    )
+
+
+def observe_arithmetic(
+    result: ArithmeticResult, *, kind: str, precision: int = 8
+) -> dict[str, Any]:
+    """Demand a total arithmetic observation without requesting physical execution."""
+    if kind not in {"mahler", "hensel"}:
+        raise ValueError("unsupported arithmetic Antihydra observation")
+    result.require_source()
+    value = tangent(result, precision)
+    if kind == "mahler":
+        from number_compiler.sequences.antihydra.mahler_action import associated_action
+
+        value["associated_action"] = associated_action(result)
+    return json_integers(
+        {
+            "family": "antihydra",
+            "machine": MACHINE,
+            "machine_sha256": MACHINE_SHA256,
+            "source_binding": result.source_binding,
+            "kind": kind,
+            "index_unit": "macro_returns_after_11_step_startup",
+            "requested_returns": result.returns,
+            "completed_returns": result.returns,
+            "guarded_physical_status": "not_requested",
+            "ledger_first_failure_index": result.first_failure_index,
+            "nonhalting_certified": False,
+            "scope": "total arithmetic iteration; all-time barrier unresolved",
+            "value": value,
+            "work_counters": dict(result.ledger.counters),
+            "peak_nodes": result.ledger.peak_nodes,
+            "retained_nodes": result.ledger.nodes,
+        }
     )
 
 
@@ -126,6 +160,12 @@ def observe_run(
         }
     elif kind in {"mahler", "hensel"}:
         value = tangent(result, precision)
+        if kind == "mahler":
+            from number_compiler.sequences.antihydra.mahler_action import (
+                associated_action,
+            )
+
+            value["associated_action"] = associated_action(result)
     elif kind == "modular":
         value = {
             "modulus": modulus,
@@ -190,4 +230,4 @@ def observe_run(
     )
 
 
-__all__ = ["json_integers", "observe", "observe_run"]
+__all__ = ["json_integers", "observe", "observe_arithmetic", "observe_run"]

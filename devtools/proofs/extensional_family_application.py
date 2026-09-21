@@ -1,9 +1,8 @@
-"""Certified family execution through bounded bisimulation-machine rungs.
+"""Collatz reference execution through bounded C4 bisimulation-machine rungs.
 
-This is the checkpoint executor between the retired generation/event walkers and
-full binary diamond closure.  Decimal reverse/add uses the SHA-verified minimized
-T^2 bimachine and physical Collatz uses the SHA-verified minimized C^4 bimachine.
-Those finite kernels are already complete two-sided output/successor quotients.
+This test oracle retains the SHA-verified minimized physical Collatz C4
+bimachine. Reverse/add uses the production primitive grammar and has no finite
+machine shortcut.
 
 A query never builds a future ``DyadicTile`` and never retains an intermediate
 field.  For sources whose *encoded* working word fits the fixed transient
@@ -25,17 +24,11 @@ from number_compiler.arithmetic.contracts.block_effect import (
     BoundarySide,
     BoundaryState,
 )
-from number_compiler.arithmetic.contracts.block_kernel import (
-    BaseBlockEffect,
-    FiniteBlockEffect,
-    _load_base10_t2_kernel,
-)
 from number_compiler.arithmetic.contracts.source_geometry import SourceGeometry
 from number_compiler.arithmetic.contracts.temporal_family import (
     TemporalFamilyCertificate,
 )
 from number_compiler.hashlife.actions.lazy_compiler import LazyCompiler
-from number_compiler.projection.digit_terminal import DigitNormalizeBlockEffect
 from number_compiler.projection.microblock_cache import (
     ExactMicroblock,
     MicroblockCache,
@@ -170,11 +163,7 @@ class ExtensionalFamilyApplication:
         ):
             raise ValueError("family executor resources belong to different indices")
         source_geometry.require_source(source, effect.blank)
-        if certificate.family == "reverse-add" and effect.base != 10:
-            raise ValueError(
-                "checkpoint reverse bisimulation machine is certified only for decimal"
-            )
-        if certificate.family not in ("reverse-add", "collatz"):
+        if certificate.family != "collatz":
             raise ValueError(certificate.family)
         self.ledger = ledger
         self.compiler = compiler
@@ -291,35 +280,23 @@ class ExtensionalFamilyApplication:
                 "transient payload preflight and construction disagree"
             )
 
-        if self.certificate.family == "reverse-add":
-            steps = self.certificate.steps
-            t2: FiniteBlockEffect = _load_base10_t2_kernel()
-            for _ in range(steps // 2):
-                self._apply_machine(word, t2)
-            if steps & 1:
-                self._apply_machine(word, BaseBlockEffect(10))
-            # The public reverse term's source is the pair field; terminal
-            # normalization is part of the certified family effect, not a
-            # materialized successor generation.
-            self._apply_machine(word, DigitNormalizeBlockEffect(10))
-        else:
-            from number_compiler.arithmetic.contracts.physical_collatz_kernel import (
-                PhysicalCollatzFourBlockEffect,
-            )
-            from number_compiler.sequences.collatz.block_power import (
-                CollatzPhysicalBlockEffect,
-            )
+        from number_compiler.arithmetic.contracts.physical_collatz_kernel import (
+            PhysicalCollatzFourBlockEffect,
+        )
+        from number_compiler.sequences.collatz.block_power import (
+            CollatzPhysicalBlockEffect,
+        )
 
-            steps = self.certificate.steps
-            c4 = PhysicalCollatzFourBlockEffect()
-            for _ in range(steps // 4):
-                self._apply_machine(word, c4)
-            residual = steps & 3
-            self._residual_steps += residual
-            if residual:
-                c1 = CollatzPhysicalBlockEffect()
-                for _ in range(residual):
-                    self._apply_machine(word, c1)
+        steps = self.certificate.steps
+        c4 = PhysicalCollatzFourBlockEffect()
+        for _ in range(steps // 4):
+            self._apply_machine(word, c4)
+        residual = steps & 3
+        self._residual_steps += residual
+        if residual:
+            c1 = CollatzPhysicalBlockEffect()
+            for _ in range(residual):
+                self._apply_machine(word, c1)
         return word
 
     def _publish_final(self, word: _TransientMicroWord, width: int) -> None:
@@ -413,16 +390,10 @@ class ExtensionalFamilyApplication:
         )
 
     def metrics(self) -> ExtensionalFamilyMetrics:
-        if self.certificate.family == "reverse-add":
-            family = "reverse-add-bisimulation-t2-linear"
-            # Verified minimized T^2 kernel: 757 LEFT / 179 RIGHT classes.
-            state_classes = 757 + 179
-            action_classes = 1
-        else:
-            family = "collatz-bisimulation-c4-linear"
-            # Verified minimized C^4 kernel: 50 LEFT / 90 RIGHT classes.
-            state_classes = 50 + 90
-            action_classes = 1
+        family = "collatz-bisimulation-c4-linear"
+        # Verified minimized C^4 kernel: 50 LEFT / 90 RIGHT classes.
+        state_classes = 50 + 90
+        action_classes = 1
         return ExtensionalFamilyMetrics(
             family=family,
             temporal_state_classes=state_classes,

@@ -43,11 +43,26 @@ def event_memory_horizon(base: int) -> int:
 
 
 def forcing_event_alphabet(base: int) -> tuple[int, ...]:
-    """Universal signed forcing alphabet induced by a valid carry recurrence."""
+    """Coefficient alphabet of beta in S' = A_g S + beta.
+
+    This is not the alphabet of (1-z) beta or of the centered forcing term.
+    Those changes of basis must retain differences and boundary corrections.
+    """
     base = int(base)
     if base < 2:
         raise ValueError(base)
     return tuple(sorted({-2 * base, -2 * base + 1, -2 * base + 2, 1 - base, 0, 1, 2}))
+
+
+def forcing_difference_alphabet(base: int) -> tuple[int, ...]:
+    """Sound finite cover for (1-z) beta, including its terminal boundary.
+
+    Zero belongs to the forcing alphabet, so zero extension at both ends is
+    included. This is a difference-set cover, not an assertion that every
+    pair of adjacent alphabet symbols occurs on an admitted trajectory.
+    """
+    alphabet = forcing_event_alphabet(base)
+    return tuple(sorted({a - b for a in alphabet for b in alphabet}))
 
 
 def _forward_carry_field(
@@ -276,6 +291,7 @@ __all__ = [
     "carry_field",
     "endpoint_width_from_event_window",
     "event_memory_horizon",
+    "forcing_difference_alphabet",
     "forcing_event",
     "forcing_event_alphabet",
     "forcing_event_from_carry",

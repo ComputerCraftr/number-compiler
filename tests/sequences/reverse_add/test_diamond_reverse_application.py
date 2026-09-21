@@ -4,10 +4,6 @@ from typing import Never, cast
 
 import pytest
 
-from number_compiler.arithmetic.contracts.exact_tree_context import (
-    ExactTreeConstructionForbidden,
-    source_reads_only,
-)
 from number_compiler.arithmetic.fields.radix import digits_lsd
 from number_compiler.hashlife.execution.continuations.diamond_runtime import (
     DiamondRuntime,
@@ -55,20 +51,6 @@ def test_certified_route_matches_exact_reverse_oracle(
     assert term.digits() == expected
     assert all(row.accounting_delta == 0 for row in term._ledger.inventory())
     assert not term._ledger.counters.get("sequential_generation_advances", 0)
-
-
-def test_explicit_output_cannot_be_lowered_from_point_scope() -> None:
-    term = ReverseAddPoweredTerm(12, 1)
-    index = term._point_index()
-    before = term._ledger.snapshot()
-
-    @source_reads_only
-    def lower() -> tuple[int, ...]:
-        return tuple(index.iter_direct_active())
-
-    with pytest.raises(ExactTreeConstructionForbidden):
-        lower()
-    assert term._ledger.snapshot() == before
 
 
 @pytest.mark.parametrize(

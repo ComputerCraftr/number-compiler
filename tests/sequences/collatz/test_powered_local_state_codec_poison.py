@@ -7,8 +7,6 @@ from typing import Never
 
 import pytest
 
-from number_compiler.hashlife.execution.tile_scheduler import TileApplication
-from number_compiler.hashlife.observation.tile_projection import LazyProjection
 from number_compiler.sequences.collatz.block_power import PoweredCollatzTerm
 from number_compiler.sequences.reverse_add.power import ReverseAddPoweredTerm
 
@@ -68,28 +66,3 @@ def test_reverse_fused_parent_bypasses_retired_provider_and_higher_point_routes(
     assert term.width() == 31
     assert term._ledger.counters["powered_absorption_successes"] > 0
     assert term._ledger.counters.get("provider_fused_point_evaluations", 0) == 0
-
-
-@pytest.mark.validation  # N=64 midpoint-construction and retained-prefix gate.
-def test_reverse_temporal_images_do_not_build_discarded_prefix_occurrences(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    """The tile recurrence consumes the balanced action without prefix replay."""
-    import number_compiler.hashlife.execution.tile_temporal as temporal
-
-    term = ReverseAddPoweredTerm(196, 64)
-    projection = term._point_index()._bounded_application
-    assert type(projection) is LazyProjection
-    application = projection._open()
-    assert type(application) is TileApplication
-
-    def forbidden(*_args: object, **_kwargs: object) -> Never:
-        raise AssertionError("point completed an unconditional temporal midpoint")
-
-    monkeypatch.setattr(temporal, "complete_temporal", forbidden)
-    monkeypatch.setattr(TileApplication, "complete", forbidden)
-    assert term.digit(0) == 8
-    assert application._root is None
-    assert term._ledger.counters["powered_absorption_successes"] > 0
-    assert term._ledger.counters.get("reverse_recursive_spatial_compositions", 0) <= 14
-    assert term._ledger.counters.get("higher_concrete_operation_evaluations", 0) == 0

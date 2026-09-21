@@ -6,16 +6,16 @@ from typing import Never
 
 import pytest
 
+from devtools.experiments.reverse_add import cocycle_carrier as module
+from devtools.experiments.reverse_add.cocycle_carrier import (
+    CocycleReverseCarrier,
+)
+from devtools.experiments.reverse_add.factored_planes import PlaneGate
 from devtools.proofs import exact_oracle
 from number_compiler.arithmetic.automata import program_word as words
 from number_compiler.arithmetic.carry.carry_monoid import CarryFn
 from number_compiler.arithmetic.carry.event_memory import pair_step
 from number_compiler.arithmetic.fields.radix import reverse_pair_sums
-from number_compiler.sequences.reverse_add import cocycle_carrier as module
-from number_compiler.sequences.reverse_add.cocycle_carrier import (
-    CocycleReverseCarrier,
-)
-from number_compiler.sequences.reverse_add.factored_planes import PlaneGate
 
 
 @pytest.mark.parametrize("seed", (1, 1111, 196))

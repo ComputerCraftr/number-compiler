@@ -6,6 +6,9 @@ from random import Random
 
 import pytest
 
+from devtools.experiments.reverse_add.frobenius_sectors import (
+    ReverseFrobeniusSectorProduct,
+)
 from number_compiler.arithmetic.carry.event_memory import pair_step
 from number_compiler.arithmetic.carry.reverse_sector_transfer import (
     ReverseCarrySectorTransfer,
@@ -17,8 +20,9 @@ from number_compiler.arithmetic.polynomials.frobenius_sector import (
     DECIMAL_REVERSE_GROWTH_CERTIFICATE,
     ReverseFrobeniusPlan,
 )
-from number_compiler.sequences.reverse_add.frobenius_sectors import (
-    ReverseFrobeniusSectorProduct,
+from tests.support.reverse_sector_reference import (
+    from_annihilated_source,
+    from_endpoint_sectors,
 )
 
 
@@ -164,7 +168,7 @@ def test_endpoint_sector_product_recovers_affine_block_without_event_tape() -> N
     source = (7, 18, 7)
     middle, _ = pair_step(source, 10)
     target, _ = pair_step(middle, 10)
-    product = ReverseFrobeniusSectorProduct.from_endpoint_sectors(
+    product = from_endpoint_sectors(
         _carry_summary(source),
         _carry_summary(middle),
         2,
@@ -189,7 +193,7 @@ def test_annihilated_product_needs_source_extent_only(steps: int) -> None:
         final_input, _ = pair_step(final_input, 10)
     target, _ = pair_step(final_input, 10)
     summary = _carry_summary(final_input)
-    product = ReverseFrobeniusSectorProduct.from_annihilated_source(
+    product = from_annihilated_source(
         len(source),
         summary,
         ReverseFrobeniusPlan.for_steps(
@@ -199,9 +203,7 @@ def test_annihilated_product_needs_source_extent_only(steps: int) -> None:
             growth_certificate=DECIMAL_REVERSE_GROWTH_CERTIFICATE,
         ),
     )
-    assert product == ReverseFrobeniusSectorProduct.from_endpoint_sectors(
-        _carry_summary(source), summary, steps
-    )
+    assert product == from_endpoint_sectors(_carry_summary(source), summary, steps)
     assert product.growth == len(target) - len(source)
     assert all(product.source_annihilated_sectors)
     for block in product.sectors:
@@ -211,7 +213,7 @@ def test_annihilated_product_needs_source_extent_only(steps: int) -> None:
 def test_annihilated_product_rejects_unproved_source_death() -> None:
     summary = _carry_summary((7, 18, 7))
     with pytest.raises(ValueError, match="not proved"):
-        ReverseFrobeniusSectorProduct.from_annihilated_source(
+        from_annihilated_source(
             3,
             summary,
             ReverseFrobeniusPlan.for_steps(
@@ -222,7 +224,7 @@ def test_annihilated_product_rejects_unproved_source_death() -> None:
             ),
         )
     with pytest.raises(TypeError, match="exact integer"):
-        ReverseFrobeniusSectorProduct.from_annihilated_source(
+        from_annihilated_source(
             True,
             summary,
             ReverseFrobeniusPlan.for_steps(

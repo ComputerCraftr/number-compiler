@@ -20,6 +20,47 @@ def test_package_ownership_is_derived_and_unambiguous() -> None:
     assert len(modules) == len(set(modules.values()))
 
 
+def test_universal_cascade_output_experiment_is_not_an_installed_constructor() -> None:
+    assert (
+        importlib.util.find_spec("number_compiler.hashlife.execution.cascade_output")
+        is None
+    )
+
+
+@pytest.mark.parametrize(
+    "removed",
+    (
+        "hashlife.actions.power",
+        "hashlife.actions.native_power",
+        "hashlife.execution.cascade",
+        "hashlife.execution.cascade_power",
+        "hashlife.execution.diamond_reverse_expression",
+        "hashlife.execution.diamond_reverse_kernel",
+        "hashlife.execution.powered_local_codec",
+        "hashlife.execution.temporal_leaf_diamond",
+        "sequences.reverse_add.source_carry",
+        "sequences.reverse_add.source_length",
+        "sequences.reverse_add.factored_planes",
+        "sequences.reverse_add.factored_carrier",
+        "sequences.reverse_add.factored_power",
+        "sequences.reverse_add.cocycle_carrier",
+        "sequences.reverse_add.coordinate_program",
+        "sequences.reverse_add.field_action",
+        "sequences.reverse_add.higher_schema",
+        "sequences.reverse_add.higher_interface",
+        "sequences.reverse_add.cocycle_temporal",
+        "sequences.reverse_add.threshold_cocycle",
+        "sequences.reverse_add.domain",
+        "sequences.reverse_add.local_interface",
+        "sequences.reverse_add.frobenius_sectors",
+        "sequences.reverse_add.tile_sector_observation",
+        "resources.cocycle_temporal_payload_audit",
+    ),
+)
+def test_retired_reverse_constructors_are_absent_from_production(removed: str) -> None:
+    assert importlib.util.find_spec("number_compiler." + removed) is None
+
+
 def test_public_api_is_deliberate_and_has_no_dynamic_compatibility_dispatch() -> None:
     import number_compiler
 

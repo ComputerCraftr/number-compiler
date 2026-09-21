@@ -18,7 +18,6 @@ from number_compiler.hashlife.execution.continuations.higher_semantic import (
     HigherSemanticArena,
 )
 from number_compiler.hashlife.interfaces.diamond_quotient import LocalInterfaceID
-from number_compiler.hashlife.observation.tile_projection import LazyProjection
 from number_compiler.hashlife.tiles.tiles import TileID
 from number_compiler.sequences.reverse_add.power import ReverseAddPoweredTerm
 from tests.arithmetic.contracts.test_tile_kernel import _runtime, _tile
@@ -82,15 +81,17 @@ def test_public_reverse_digits_use_canonical_reachable_images(
     expected = tuple(map(int, reversed(str(value))))
 
     term = ReverseAddPoweredTerm(196, generation)
-    index = term._point_index()
-    assert type(index._lazy_application) is LazyProjection
     with monkeypatch.context() as poison:
         poison.setattr(temporal, "complete_temporal", forbidden)
         assert tuple(term.digit(i) for i in range(len(expected))) == expected
         assert term.width() == len(expected)
     counters = term._ledger.counters
-    assert counters["tile_projection_compilation_frames"] > 0
-    assert counters["primitive_transition_evaluations"] > 0
+    assert counters["source_image_publications"] > 0
+    assert counters["source_image_projection_publications"] > 0
+    assert counters["reverse_source_mod9_digit_reconstructions"] > 0
+    assert counters["reverse_source_ports_source_reads"] > 0
+    if generation == 2:
+        assert counters["reverse_source_two_step_pullback_publications"] > 0
     assert counters.get("higher_action_continuation_requests", 0) == 0
     assert counters.get("higher_concrete_operation_evaluations", 0) == 0
     assert counters.get("whole_word_sweeps", 0) == 0

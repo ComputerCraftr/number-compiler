@@ -5,6 +5,7 @@ from typing import Never
 
 import pytest
 
+from devtools.experiments.reverse_add.domain import ReverseAddSpatialIndex
 from number_compiler.api.number_api import NumberCompiler
 from number_compiler.arithmetic.carry.event_memory import pair_step
 from number_compiler.arithmetic.fields.digit_formula import (
@@ -21,7 +22,6 @@ from number_compiler.arithmetic.formula.formula import (
 )
 from number_compiler.hashlife.execution.evaluator import materialize_values
 from number_compiler.sequences.reverse_add.digits import reverse_add_orbit_formulas
-from number_compiler.sequences.reverse_add.domain import ReverseAddSpatialIndex
 
 
 def test_reverse_add_domain_index_matches_exact_pair_and_digit_orbit() -> None:
@@ -144,6 +144,7 @@ def test_collatz_sentinel_formula_endpoint_uses_prefix_select_not_sentinel_scan(
 ) -> None:
     from number_compiler.arithmetic.fields import digit_formula
     from number_compiler.arithmetic.fields.digit_formula import digit_root_from_values
+    from number_compiler.sequences.collatz import radix
     from number_compiler.sequences.collatz.raw_field import (
         accelerated_collatz_sentinel_formula_step,
     )
@@ -160,6 +161,9 @@ def test_collatz_sentinel_formula_endpoint_uses_prefix_select_not_sentinel_scan(
         return original(arena, root, position)
 
     monkeypatch.setattr(digit_formula, "closed_digit_at", counted)
+    # The radix module binds the same function at import time. Instrument both
+    # names so prior imports cannot hide a remainder query from this budget.
+    monkeypatch.setattr(radix, "closed_digit_at", counted)
     _out, valuation, stripped, local = accelerated_collatz_sentinel_formula_step(
         arena, root, base=4
     )

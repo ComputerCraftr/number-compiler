@@ -8,6 +8,10 @@ from typing import Never, cast
 import pytest
 
 import number_compiler.hashlife.execution.tile_causal_api as causal_api
+from devtools.experiments.reverse_add.tile_sector_observation import (
+    observe_reverse_interval_forcing,
+    observe_reverse_sector_product,
+)
 from number_compiler.arithmetic.carry.event_memory import carry_field, pair_step
 from number_compiler.arithmetic.carry.reverse_sector_transfer import (
     ReverseCarrySectorTransfer,
@@ -38,10 +42,6 @@ from number_compiler.hashlife.tiles.tile_result_records import SpatialInterfaceK
 from number_compiler.projection.digit_terminal import DigitNormalizeBlockEffect
 from number_compiler.resources.ledger import ResourceLedger
 from number_compiler.resources.metric_collection import collect_ledger_metrics
-from number_compiler.sequences.reverse_add.tile_sector_observation import (
-    observe_reverse_interval_forcing,
-    observe_reverse_sector_product,
-)
 
 
 def _reduce(values: tuple[int, ...], classes: int) -> tuple[int, ...]:

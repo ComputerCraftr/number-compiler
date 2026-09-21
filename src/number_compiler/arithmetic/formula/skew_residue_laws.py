@@ -8,6 +8,36 @@ pairs, with nonzero EQ residues excluded by the action admission predicate.
 from number_compiler.arithmetic.carry.carry_monoid import CarryFn, apply_carry_fn
 
 
+def pair_no_growth(
+    pair: int,
+    left_in: int,
+    left_out: int,
+    right_in: int,
+    right_out: int,
+    base: int,
+) -> int:
+    """Pair publisher with both carry ports, at unchanged reflected extent."""
+    return 2 * pair + left_in + right_in - base * (left_out + right_out)
+
+
+def pair_growth_interior(
+    pair: int,
+    previous: int,
+    left_in: int,
+    left_out: int,
+    right_in: int,
+    right_out: int,
+    base: int,
+) -> int:
+    """Interior publisher after the appended one shifts the reflected source."""
+    return pair + previous + left_in + right_in - base * (left_out + right_out)
+
+
+def pair_growth_edge(pair: int, first_out: int, base: int) -> int:
+    """Both growth edges pair the low normalized digit with the new one."""
+    return pair + 1 - base * first_out
+
+
 def skew_pair_value(domain: int, residue: int) -> int:
     """Decode only at an explicitly requested observation boundary."""
     if type(domain) is not int or domain not in (0, 1, 2):

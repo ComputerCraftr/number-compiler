@@ -97,6 +97,8 @@ def canonical_directed_transfer(
     tile: TileID,
     side: int,
     incoming: int,
+    *,
+    _action_admission: object | None = None,
 ) -> int:
     """Apply canonical primitive wiring after one action validation."""
     results = host._require_results()
@@ -106,7 +108,12 @@ def canonical_directed_transfer(
     frames, values = tasks.directed_frames, tasks.directed_values
     if len(frames) or len(values):
         raise ValueError("directed transfer auxiliary workspace is already active")
-    admission = _prepare_canonical_admission(results, action, side)
+    admission = _prepare_canonical_admission(
+        results,
+        action,
+        side,
+        action_admission=_action_admission,
+    )
     ports = list(admission.initial_ports)
     ports[side] = incoming
     results._validate_ports(admission.wiring.signature, (ports[0], ports[1]))

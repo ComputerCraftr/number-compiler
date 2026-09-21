@@ -7,7 +7,7 @@ from dataclasses import fields
 import pytest
 
 from devtools.proofs.block_composed import ComposedBlockEffect
-from number_compiler.arithmetic.contracts import block_definition
+from number_compiler.arithmetic.contracts import semantic_identity
 from number_compiler.arithmetic.contracts.block_definition import (
     BlockDefinition,
     ComposedBlockDefinition,
@@ -17,6 +17,7 @@ from number_compiler.arithmetic.contracts.block_effect import (
     BoundarySide,
 )
 from number_compiler.arithmetic.contracts.block_kernel import BaseBlockEffect
+from number_compiler.arithmetic.contracts.semantic_identity import SemanticIdentity
 from number_compiler.hashlife.actions.lazy_compiler import (
     LazyCompiler,
     ProgramComposition,
@@ -89,14 +90,21 @@ def test_definition_digest_collision_still_compares_complete_child_semantics(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     class ConstantDigest:
-        def hexdigest(self) -> str:
-            return "intentional-collision"
+        def update(self, _data: bytes) -> None:
+            pass
 
-    monkeypatch.setattr(block_definition, "sha256", lambda _data: ConstantDigest())
+        def digest(self) -> bytes:
+            return b"x" * 32
+
+    monkeypatch.setattr(semantic_identity, "sha256", lambda _data: ConstantDigest())
     atom = BaseBlockEffect(2)
     one = ComposedBlockDefinition(atom, atom)
     alias = ComposedBlockDefinition(BaseBlockEffect(2), BaseBlockEffect(2))
     different = ComposedBlockDefinition(atom, DigitNormalizeBlockEffect(2))
+    identity, other_identity = one.canonical_key[1], different.canonical_key[1]
+    assert isinstance(identity, SemanticIdentity)
+    assert isinstance(other_identity, SemanticIdentity)
+    assert identity.digest == other_identity.digest
     assert one.canonical_key == alias.canonical_key
     assert one.canonical_key != different.canonical_key
 

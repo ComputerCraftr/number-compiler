@@ -47,7 +47,7 @@ digit sets or enumeration of composed register valuations is used. Equality
 is equality of canonical finite functions with the same signature and validity
 domain; no active future-class ID is manufactured.
 
-The [future-consumer follow-up](../future-consumer-cleanup.md) records the
+The [Collatz research synthesis](../research/collatz.md) records the
 shared orientation maps, workbook collision regressions, and the scoped
 normalized Hensel angular clock.
 
@@ -131,7 +131,7 @@ state counts and terminal-halo bounds are not compiler guarantees.
 
 ## Carry-domain and Hensel validation — September 10
 
-The [validation checkpoint](../../results/current/collatz-hensel-validation-2026-09-10/README.md)
+The [2026-W37 validation checkpoint](../../results/current/2026-W37/README.md)
 adds `tests/validation/research/collatz/test_carry_domain_hensel_quotient.py`.
 It is research evidence only; no new production identity is admitted.
 

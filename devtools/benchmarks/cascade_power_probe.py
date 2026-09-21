@@ -6,10 +6,10 @@ from collections import defaultdict, deque
 from collections.abc import Iterable, Sequence
 from typing import TYPE_CHECKING
 
+from devtools.experiments.reverse_add.cascade import DependencyCascadeArena
 from devtools.paths import report_output, repository_root
 from devtools.proofs.builders.bimachine_lazy_power import compose, lazy_from_eager
 from devtools.proofs.builders.bimachine_power import build_step, determinize
-from number_compiler.hashlife.execution.cascade import DependencyCascadeArena
 
 if TYPE_CHECKING:
     import devtools.proofs.builders.bimachine_lazy_power

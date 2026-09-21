@@ -1,0 +1,217 @@
+version = 1
+
+[[document]]
+id = "docs-index"
+path = "docs/index.md"
+kind = "index"
+topic = "documentation"
+status = "current"
+date = "2026-09-20"
+
+[[document]]
+id = "architecture"
+path = "docs/architecture.md"
+kind = "architecture"
+topic = "package-ownership"
+status = "current"
+date = "2026-09-20"
+
+[[document]]
+id = "architecture-arithmetic-square-tiles"
+path = "docs/architecture/arithmetic-square-tiles.md"
+kind = "architecture"
+topic = "arithmetic-square-tiles"
+status = "current"
+date = "2026-09-20"
+
+[[document]]
+id = "architecture-carry-domain-quotients"
+path = "docs/architecture/carry-domain-quotients.md"
+kind = "architecture"
+topic = "carry-domain-quotients"
+status = "current"
+date = "2026-09-20"
+
+[[document]]
+id = "architecture-collatz-carry-output"
+path = "docs/architecture/collatz-carry-output-quotients.md"
+kind = "architecture"
+topic = "collatz-carry-output"
+status = "current"
+date = "2026-09-20"
+
+[[document]]
+id = "architecture-reverse-context"
+path = "docs/architecture/reverse-contextual-residuals.md"
+kind = "architecture"
+topic = "reverse-contextual-residuals"
+status = "current"
+date = "2026-09-20"
+
+[[document]]
+id = "architecture-reverse-coordinates"
+path = "docs/architecture/reverse-coordinate-morphisms.md"
+kind = "architecture"
+topic = "reverse-coordinate-morphisms"
+status = "current"
+date = "2026-09-20"
+
+[[document]]
+id = "architecture-reverse-carrier"
+path = "docs/architecture/reverse-factored-carrier.md"
+kind = "architecture"
+topic = "reverse-factored-carrier"
+status = "current"
+date = "2026-09-20"
+
+[[document]]
+id = "architecture-reverse-threshold"
+path = "docs/architecture/reverse-threshold-cocycle.md"
+kind = "architecture"
+topic = "reverse-threshold-cocycle"
+status = "current"
+date = "2026-09-20"
+
+[[document]]
+id = "api-migration"
+path = "docs/api-migration.md"
+kind = "guide"
+topic = "api-migration"
+status = "current"
+date = "2026-09-20"
+
+[[document]]
+id = "development"
+path = "docs/development.md"
+kind = "guide"
+topic = "development"
+status = "current"
+date = "2026-09-20"
+
+[[document]]
+id = "family-first-cli"
+path = "docs/family-first-cli.md"
+kind = "guide"
+topic = "family-first-cli"
+status = "current"
+date = "2026-09-20"
+
+[[document]]
+id = "hashlife-optimization"
+path = "docs/hashlife-optimization.md"
+kind = "guide"
+topic = "hashlife-optimization"
+status = "current"
+date = "2026-09-20"
+
+[[document]]
+id = "proof-index"
+path = "docs/proofs.md"
+kind = "proof"
+topic = "formal-proof-index"
+status = "current"
+date = "2026-09-20"
+
+[[document]]
+id = "release-status"
+path = "docs/release-status.md"
+kind = "status"
+topic = "release-status"
+status = "current"
+date = "2026-09-20"
+
+[[document]]
+id = "history"
+path = "docs/history.md"
+kind = "history"
+topic = "historical-reports"
+status = "current"
+date = "2026-09-20"
+
+[[document]]
+id = "provenance"
+path = "docs/provenance.md"
+kind = "provenance"
+topic = "documentation-migration"
+status = "current"
+date = "2026-09-20"
+
+[[document]]
+id = "hygiene-disposition"
+path = "docs/hygiene-disposition.md"
+kind = "provenance"
+topic = "repository-hygiene"
+status = "current"
+date = "2026-09-20"
+
+[[document]]
+id = "research-shared"
+path = "docs/research/shared.md"
+kind = "research"
+topic = "shared-actions"
+status = "current"
+date = "2026-09-20"
+
+[[document]]
+id = "research-primes-goldbach"
+path = "docs/research/primes-goldbach.md"
+kind = "research"
+topic = "primes-goldbach"
+status = "current"
+date = "2026-09-20"
+
+[[document]]
+id = "research-reverse-add"
+path = "docs/research/reverse-add.md"
+kind = "research"
+topic = "reverse-add"
+status = "current"
+date = "2026-09-20"
+
+[[document]]
+id = "research-collatz"
+path = "docs/research/collatz.md"
+kind = "research"
+topic = "collatz"
+status = "current"
+date = "2026-09-20"
+
+[[document]]
+id = "research-antihydra-mahler"
+path = "docs/research/antihydra-mahler.md"
+kind = "research"
+topic = "antihydra-mahler"
+status = "current"
+date = "2026-09-20"
+
+[[document]]
+id = "research-fermat-mersenne"
+path = "docs/research/fermat-mersenne.md"
+kind = "research"
+topic = "fermat-mersenne"
+status = "current"
+date = "2026-09-20"
+
+[[document]]
+id = "results-policy"
+path = "results/README.md"
+kind = "guide"
+topic = "result-evidence"
+status = "current"
+date = "2026-09-20"
+
+[[document]]
+id = "sprint-2026-w37"
+path = "results/current/2026-W37/README.md"
+kind = "checkpoint"
+topic = "repository-sprint"
+status = "historical"
+date = "2026-09-13"
+
+[[document]]
+id = "sprint-2026-w38"
+path = "results/current/2026-W38/README.md"
+kind = "checkpoint"
+topic = "repository-sprint"
+status = "current"
+date = "2026-09-20"

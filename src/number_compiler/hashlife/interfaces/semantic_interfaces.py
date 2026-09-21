@@ -12,7 +12,6 @@ from __future__ import annotations
 
 from collections.abc import Callable, MutableMapping, MutableSequence
 from dataclasses import dataclass, field
-from hashlib import sha256
 from typing import TYPE_CHECKING
 
 from number_compiler.arithmetic.automata.primitive_semantics import (
@@ -299,9 +298,7 @@ class SemanticLocalInterfaceCompiler:
         # geometry.  Including them here creates a width-sized port domain and
         # prevents equivalent local boundary actions from aliasing.
         behavior = (SEMANTIC_INTERFACE_CONTRACT, _effect_key(primitive.effect), level)
-        identity = SemanticIdentity(
-            sha256(repr(behavior).encode()).hexdigest(), behavior
-        )
+        identity = SemanticIdentity("semantic-interface", behavior)
         admissible = self.quotients.functions.atom(FunctionSignature(ports, BOOL), 1)
         return self.quotients.intern_interface(
             MacroInterface(identity, ports, outputs, admissible)

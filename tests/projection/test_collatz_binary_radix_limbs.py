@@ -5,7 +5,6 @@ from typing import Never
 import pytest
 
 from number_compiler.api.number_api import PoweredCollatzTermPayload
-from number_compiler.hashlife.observation.hashlife_projection import HashLifeBlockIndex
 from number_compiler.sequences.collatz.block_power import PoweredCollatzTerm
 
 
@@ -44,21 +43,17 @@ def test_partial_limb_and_exterior_without_width_or_materialization(
 def test_limb_does_not_swallow_an_internal_point_failure(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    original = HashLifeBlockIndex.direct_powered_point
+    def broken(_term: PoweredCollatzTerm, _radix: int, _position: int) -> int:
+        raise IndexError("internal point failure")
 
-    def broken(index: HashLifeBlockIndex, position: int) -> int:
-        if position == 1:
-            raise IndexError("internal point failure")
-        return original(index, position)
-
-    monkeypatch.setattr(HashLifeBlockIndex, "direct_powered_point", broken)
+    monkeypatch.setattr(PoweredCollatzTerm, "radix_digit", broken)
     with pytest.raises(IndexError, match="internal point failure"):
-        PoweredCollatzTermPayload(PoweredCollatzTerm(1, 1), 64).digit(0)
+        PoweredCollatzTermPayload(PoweredCollatzTerm(27, 3), 64).digit(0)
 
 
 def test_limb_rejects_an_invalid_kernel_symbol(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(
-        HashLifeBlockIndex, "direct_powered_point", lambda _self, _position: 3
+        PoweredCollatzTerm, "radix_digit", lambda _self, _radix, _position: 64
     )
     with pytest.raises(AssertionError):
-        PoweredCollatzTermPayload(PoweredCollatzTerm(1, 1), 64).digit(0)
+        PoweredCollatzTermPayload(PoweredCollatzTerm(27, 3), 64).digit(0)

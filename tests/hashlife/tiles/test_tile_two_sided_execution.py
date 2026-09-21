@@ -497,6 +497,40 @@ def test_fused_requests_retain_the_explicit_temporal_edge(runtime: TileRuntime) 
     assert ledger.snapshot() == before
 
 
+def test_fused_children_use_combined_admission_without_retired_callbacks(
+    runtime: TileRuntime, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from number_compiler.hashlife.tiles.tile_result_records import FusedInterfaceKey
+    from number_compiler.hashlife.tiles.tile_result_validation import (
+        validate_fused_edge,
+        validate_fusion_contexts,
+    )
+
+    ledger, _tiles, adapter, scheduler, _effect, primitive, tile = runtime
+    source = tile((0, 0, 0, 1))
+    square = adapter.power(primitive, 2)
+    wiring = adapter.wiring(primitive)
+    scheduler.point(square, source, (0, 0), wiring, 0)
+    key = next(key for key in scheduler.results._memo if type(key) is FusedInterfaceKey)
+    context = BoundPorts((0, 0), wiring)
+    fusion = FusedBoundaryContract(context, context)
+    monkeypatch.setattr(scheduler.results, "_validate_action", forbidden)
+    monkeypatch.setattr(scheduler.results, "_signature_for", forbidden)
+    validate_fused_edge(scheduler.results, key)
+    validate_fusion_contexts(scheduler.results, square, fusion, context, source)
+
+    # The combined path still checks the live child record on every request.
+    record = adapter._action(primitive)
+    object.__setattr__(record, "repetitions", 0)
+    try:
+        before = ledger.snapshot()
+        with pytest.raises(ValueError, match="repetition count"):
+            validate_fused_edge(scheduler.results, key)
+        assert ledger.snapshot() == before
+    finally:
+        object.__setattr__(record, "repetitions", 1)
+
+
 @pytest.mark.parametrize(
     "invalid", ("foreign", "bool", "float", "different-edge", "missing-child")
 )

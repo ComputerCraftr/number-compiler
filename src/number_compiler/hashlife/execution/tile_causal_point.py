@@ -7,8 +7,8 @@ from typing import Any
 from number_compiler.hashlife.execution.tile_causal_behavior import quiescent_boundary
 from number_compiler.hashlife.execution.tile_causal_results import (
     PrimitiveCausalPorts,
-    causal_result_key,
     lookup_causal_result,
+    probe_causal_result,
 )
 from number_compiler.hashlife.execution.tile_causal_tasks import CausalFrame as _Frame
 from number_compiler.hashlife.tiles.tile_boundaries import BoundaryTileView
@@ -55,18 +55,25 @@ def point_step(self: Any, frame: _Frame, frames: Any, values: CausalResults) -> 
             raise IndexError(coordinate)
         self.ledger.bump("tile_causal_point_parent_requests")
         if self._children(action) is None:
-            key = causal_result_key(
+            key, completed = probe_causal_result(
                 self.scheduler.results,
                 action,
                 tile,
                 PrimitiveCausalPorts(base_left, base_right),
-                self.adapter.wiring(action),
+                self._wiring(action),
+                action_admission=self._action_admission_token,
             )
         else:
             key = self._composite_key(action, tile, base_left, base_right)
-        completed = (
-            None if key is None else lookup_causal_result(self.scheduler.results, key)
-        )
+            completed = (
+                None
+                if key is None
+                else lookup_causal_result(
+                    self.scheduler.results,
+                    key,
+                    action_admission=self._action_admission_token,
+                )
+            )
         if completed is not None:
             symbol = self.tiles.point(completed.output, coordinate)
             if self._application is None:
@@ -101,23 +108,40 @@ def point_step(self: Any, frame: _Frame, frames: Any, values: CausalResults) -> 
                 )
             )
             return True
+        if node.left is None or node.right is None:
+            raise ValueError("causal point parent omitted its children")
+        side = int(coordinate >= node.width // 2)
+        sibling = node.left if side else node.right
+        incoming = base_left if side else base_right
         frame.stage = 1
         frames.extend(
             (
                 frame,
                 _Frame(
-                    "child_states",
-                    (action, tile, base_left, base_right),
+                    "advance",
+                    (
+                        action,
+                        1 - side,
+                        incoming,
+                        BoundaryTileView(
+                            sibling,
+                            0,
+                            node.width // 2,
+                            1 - side,
+                        ),
+                    ),
                 ),
             )
         )
         return True
-    contexts = values.pop()
+    transferred = values.pop()
     if node.left is None or node.right is None:
         raise ValueError("causal point parent omitted its children")
     side = int(coordinate >= node.width // 2)
     child = node.right if side else node.left
-    child_left, child_right = contexts[side]
+    child_left, child_right = (
+        (transferred, base_right) if side else (base_left, transferred)
+    )
     frame.stage = 2
     self.ledger.bump("tile_causal_point_demanded_descents")
     frames.extend(

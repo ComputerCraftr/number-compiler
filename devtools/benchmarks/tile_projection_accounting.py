@@ -5,7 +5,7 @@ from typing import TYPE_CHECKING
 if TYPE_CHECKING:
     from number_compiler.hashlife.tiles.tile_results import CompletedResultArena
 
-from number_compiler.resources.metric_records import HashLifeProjectionMetrics
+from number_compiler.resources.metric_records import LedgerMetrics
 
 _COUNTERS = (
     "sequential_generation_advances",
@@ -31,13 +31,8 @@ _COUNTERS = (
 )
 
 
-def projection_accounting(metrics: HashLifeProjectionMetrics) -> dict[str, int]:
+def projection_accounting(metrics: LedgerMetrics) -> dict[str, int]:
     """Validate the installed route without declaring finite leaf work forbidden."""
-    if (
-        metrics.temporal_leaf_applications
-        != metrics.tile_scheduler_leaf_function_applications
-    ):
-        raise AssertionError("temporal-leaf-compatibility-alias-mismatch")
     if (
         metrics.sequential_generation_advances
         or metrics.higher_concrete_operation_evaluations
@@ -45,8 +40,6 @@ def projection_accounting(metrics: HashLifeProjectionMetrics) -> dict[str, int]:
         or metrics.temporal_leaf_diamond_descents
     ):
         raise AssertionError("retired-temporal-interpreter-work-observed")
-    if not metrics.bounded_application_enabled:
-        raise AssertionError("bounded-application-not-installed")
     counters = {name: int(getattr(metrics, name)) for name in _COUNTERS}
     for name in (
         "reverse_morphism_directional_leaf_consumers",

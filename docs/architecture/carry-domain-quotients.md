@@ -19,7 +19,7 @@ padding and growth hypotheses establish it. Fixed-width symmetric pair fields
 include active zero-valued cells; their counts are not counts of canonical
 positive-integer decimal representations.
 
-The [residue-consumer research lowering](../mirror-pair-residue-quotient.md)
+The [reverse/add research synthesis](../research/reverse-add.md)
 uses geometry-derived carries to normalize through `S mod 10` on both
 branches. Its no-growth domain observer has four response classes. Growth
 uses adjacent normalized residues and affine F2 transport, retaining parity
@@ -27,7 +27,8 @@ where required while avoiding an intermediate 19-valued threshold input.
 These consumer reductions do not identify complete source states or establish
 bounded temporal closure.
 
-The later [growth coboundary experiment](../growth-coboundary-directional-quotients.md)
+The later growth coboundary experiment, summarized in the
+[reverse/add research synthesis](../research/reverse-add.md),
 jointly forgets source domain/value changes through twelve `(q,delta)` symbols.
 Its exact forward reconstruction is proved, but its generic A16 circuit is
 larger than the residue lowering and remains opt-in. Collatz's directional
@@ -146,7 +147,7 @@ separate local-law dependency; no temporal successor certificate is inferred
 from the spatial equations alone. The current binary physical scheduler does
 not publish such a jet as an output-complete future-behavior class.
 
-The [Collatz harmonic proof update](../collatz-harmonic-port-actions.md)
+The [Collatz research synthesis](../research/collatz.md)
 reproduces the two-wire response hierarchy and proves carry projection and
 conditional five-event linear source death in Isabelle. That death theorem
 holds with the same forcing events; it does not establish a five-round bound
@@ -154,7 +155,8 @@ on nonlinear Hensel refinement. Spatial radix-64 and binary jet coordinates
 are related by `z_cell = z_bit^6`, not by renaming their nilpotent variables.
 
 All current carry boundaries are already derivable from exact domain geometry.
-The [geometry-derived carry implementation](../geometry-derived-carry.md)
+The geometry-derived carry implementation, summarized in the
+[shared research synthesis](../research/shared.md),
 uses shared prefix monoid operations for reverse/add and both Collatz wires.
 The harmonic observer's failure to answer a pointwise query is a projection
 gap, not missing carry state. The remaining temporal dependency is the exact

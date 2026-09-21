@@ -7,6 +7,7 @@ published output behavior without returning to the higher temporal interpreter.
 
 from __future__ import annotations
 
+from importlib.util import find_spec
 from typing import Never
 
 import pytest
@@ -17,9 +18,11 @@ from number_compiler.hashlife.execution.continuations.higher_summaries import (
 from number_compiler.hashlife.execution.continuations.higher_values import (
     RuntimeValueArena,
 )
-from number_compiler.hashlife.observation.tile_projection import LazyProjection
+from number_compiler.hashlife.execution.source_bound_images import SourceImageDemand
+from number_compiler.hashlife.execution.tile_causal import CausalTileEngine
 from number_compiler.projection.microblock_cache import MicroblockCache
 from number_compiler.projection.point_response import PointResponseRegister
+from number_compiler.resources.payload_audit import audit_registered_payloads
 from number_compiler.sequences.reverse_add.power import ReverseAddPoweredTerm
 
 
@@ -37,7 +40,7 @@ def _reverse_digits(steps: int) -> tuple[int, ...]:
 def test_reverse_compiled_parent_absorbs_powered_output(
     steps: int, observation: str, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    import number_compiler.hashlife.execution.temporal_leaf_diamond as leaf_runtime
+    assert find_spec("number_compiler.hashlife.execution.temporal_leaf_diamond") is None
 
     monkeypatch.setattr(MicroblockCache, "get", lambda *_args, **_kwargs: None)
     monkeypatch.setattr(MicroblockCache, "put", lambda *_args, **_kwargs: None)
@@ -48,16 +51,22 @@ def test_reverse_compiled_parent_absorbs_powered_output(
     )
     expected = _reverse_digits(steps)
     term = ReverseAddPoweredTerm(196, steps)
-    application = term._point_index()._lazy_application
-    assert isinstance(application, LazyProjection)
-    application._application.interface()
-    assert application._application._root is None
+    application = term._source_workspace()
+    image = application._demanded_image(SourceImageDemand("width"))
+    view = application.scheduler._source_image_core().view(image)
+    assert view.binding.source == application.source
+    assert view.binding.action == application.root_action
+    # Admission must publish support, not retain an intermediate endpoint.
+    audit = audit_registered_payloads(term._ledger)
+    assert audit.forbidden_future_payloads == audit.unknown_payloads == 0
     before = term._ledger.snapshot()
 
     def forbidden(*_args: object, **_kwargs: object) -> Never:
         raise AssertionError("compiled parent replayed the temporal output interpreter")
 
-    monkeypatch.setattr(leaf_runtime, "evaluate_temporal_leaf", forbidden)
+    monkeypatch.setattr(CausalTileEngine, "_run", forbidden)
+    monkeypatch.setattr(type(application.adapter), "apply_composite", forbidden)
+    monkeypatch.setattr(type(application.adapter), "compose_chronological", forbidden)
     monkeypatch.setattr(RuntimeValueArena, "action_function", forbidden)
     monkeypatch.setattr(HigherSummaryArena, "runtime_unary", forbidden)
 
@@ -65,13 +74,16 @@ def test_reverse_compiled_parent_absorbs_powered_output(
     # descent remains available; interpreting temporal continuations does not.
     if observation == "point":
         for coordinate in (0, len(expected) // 2, len(expected) - 1):
-            assert application.point(coordinate) == expected[coordinate]
+            assert application.digit(coordinate) == expected[coordinate]
     else:
-        assert application.active_width() == len(expected)
+        assert application.width() == len(expected)
     after = term._ledger.snapshot()
     for name in (
         "higher_concrete_operation_evaluations",
         "temporal_leaf_diamond_descents",
+        "source_image_primitive_applications",
+        "source_image_chronological_compositions",
+        "source_image_publications",
     ):
         assert after.counters.get(name, 0) == before.counters.get(name, 0)
     assert after.counters.get("microblock_publications", 0) == 0

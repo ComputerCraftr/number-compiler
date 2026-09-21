@@ -124,6 +124,31 @@ def test_public_iterators_cannot_expose_the_canonical_backing_container() -> Non
     assert tuple(mapping.items()) == (("key", "value"),)
 
 
+def test_immutable_snapshot_is_detached_without_using_public_iteration(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    ledger = ResourceLedger()
+    owner = ledger.register("snapshot-values", "action_program")
+    nodes: LedgerList[int] = ledger.make_list(owner)
+    ledger.reserve(owner, entries=3, nodes=3)
+    nodes.extend((2, 3))
+    before = ledger.snapshot()
+
+    def forbidden(_store: object) -> object:
+        raise AssertionError("snapshot used the guarded per-element iterator")
+
+    with monkeypatch.context() as patch:
+        patch.setattr(LedgerList, "__iter__", forbidden)
+        snapshot = nodes.snapshot()
+    assert type(snapshot) is tuple and snapshot == (2, 3)
+    assert ledger.snapshot() == before
+    with pytest.raises(TypeError):
+        list.__setitem__(cast("list[int]", snapshot), 0, 97)
+    nodes.append(5)
+    assert snapshot == (2, 3)
+    assert nodes.snapshot() == (2, 3, 5)
+
+
 @pytest.mark.parametrize("populated", (False, True))
 def test_public_serialization_hooks_never_expose_live_store_backing(
     populated: bool,

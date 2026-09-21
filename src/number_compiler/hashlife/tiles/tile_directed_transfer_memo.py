@@ -104,6 +104,7 @@ class DirectedTransferRequest:
     _arena: CompletedResultArena
     _key_snapshot: _KeySnapshot
     _validated_exit_cardinality: int
+    _action_admission: object | None
     _seal: object
 
     def __post_init__(self) -> None:
@@ -136,6 +137,7 @@ class _DirectedTransferAdmission:
     kernel: PrimitiveKernel
     initial_ports: tuple[int, int]
     arena: CompletedResultArena
+    action_admission: object | None
     snapshot: tuple[object, ...]
     seal: object
 
@@ -209,6 +211,7 @@ def _prepare_admission(
     side: int,
     *,
     action_validation: object | None = None,
+    action_admission: object | None = None,
 ) -> _DirectedTransferAdmission:
     """Audit immutable action metadata once for one non-reentrant scan."""
     if type(side) is not int:
@@ -258,6 +261,7 @@ def _prepare_admission(
             kernel.initial(BoundarySide.RIGHT),
         ),
         results,
+        action_admission,
         _admission_snapshot(action, wiring, side),
         _ADMISSION_SEAL,
     )
@@ -267,10 +271,19 @@ def _prepare_canonical_admission(
     results: CompletedResultArena,
     action: FieldCellActionID,
     side: int,
+    *,
+    action_admission: object | None = None,
 ) -> _DirectedTransferAdmission:
     """Validate an action once and derive its canonical primitive wiring."""
     authority = _authority(results)
-    results._validate_action(action)
+    if action_admission is None:
+        results._validate_action(action)
+    else:
+        from number_compiler.resources.causal_workspace import (
+            admitted_action_metadata,
+        )
+
+        admitted_action_metadata(action_admission, authority, action)
     record = authority._actions[action.local_id]
     return _prepare_admission(
         results,
@@ -278,6 +291,7 @@ def _prepare_canonical_admission(
         ResultWiring(record.signature),
         side,
         action_validation=_ACTION_VALIDATED_SEAL,
+        action_admission=action_admission,
     )
 
 
@@ -379,6 +393,7 @@ def prepare_directed_transfer(
         results,
         _snapshot_key(key),
         cardinality,
+        None,
         _REQUEST_SEAL,
     )
 
@@ -395,6 +410,7 @@ def _prepare_directed_transfer_with_admission(
         results,
         _snapshot_key(key),
         cardinality,
+        admission.action_admission,
         _REQUEST_SEAL,
     )
 
@@ -410,6 +426,16 @@ def _validate_request(
     request.__post_init__()
     if request._arena is not results:
         raise ValueError("directed transfer request belongs to another result arena")
+    if request._action_admission is not None:
+        from number_compiler.resources.causal_workspace import (
+            admitted_action_metadata,
+        )
+
+        admitted_action_metadata(
+            request._action_admission,
+            _authority(results),
+            request.key.action,
+        )
     # Prepared requests are transient validation capabilities.  Tile identities
     # can retire while a caller holds one, so liveness remains a use-time check.
     results.tiles.resolve(request.key.input)
@@ -459,8 +485,9 @@ def publish_prepared_directed_transfer(
     request: DirectedTransferRequest,
     outgoing: int,
 ) -> int:
-    """Publish a validated request without repeating primitive admission."""
+    """Revalidate action authority, then publish one exact finite exit."""
     _validate_request(results, request)
+    results._validate_action(request.key.action)
     _validate_exit(request, outgoing)
     key = request.key
     results.ledger.bump("tile_directed_transfer_publication_requests")

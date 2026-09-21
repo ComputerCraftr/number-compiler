@@ -1,5 +1,7 @@
 # Exact reverse/add carrier in three planes
 
+Scope: **retained bounded research design, not the current production constructor**. Its algebra and experiments remain useful; descriptions of execution below refer to that historical prototype. The current [reverse/add synthesis](../research/reverse-add.md) identifies the implemented owner and unresolved temporal grammar.
+
 `FactoredReverseCarrier` stores a `TemporalCell` as three separately typed,
 canonical grammar roots: domain, F5 value, and Boolean half. Source admission
 may import pair coefficients. Successor execution uses only the three small
@@ -57,6 +59,6 @@ it does not materialize a combined alphabet, and it is not a count of a
 certified finite temporal quotient. Node counts alone do not prove entropy
 or asymptotic compression bounds.
 
-The [validation checkpoint](../../results/current/reverse-factored-carrier-2026-09-10/README.md)
+The [2026-W37 validation checkpoint](../../results/current/2026-W37/README.md)
 records exhaustive widths, repunit controls, per-plane 196 measurements,
 temporal composition checks, formal theorem scope, and failed probes.

@@ -2,15 +2,22 @@
 
 from __future__ import annotations
 
+from collections.abc import Hashable
 from math import gcd
 from typing import Never, cast
 
 import pytest
 
+from number_compiler.hashlife.execution.source_bound_images import (
+    SourceImageCandidate,
+    SourceImageDemand,
+    SourceImageView,
+)
 from number_compiler.sequences.prime.coprime_rank import CoprimeRankDAG
 from number_compiler.sequences.prime.successor_action import (
     PrimeSuccessorActionArena,
     PrimeSuccessorImageAdapter,
+    PrimeSuccessorImagePayload,
     PrimeSuccessorSource,
 )
 
@@ -69,27 +76,30 @@ def test_partial_fresh_successor_is_the_production_rank_recurrence(
     finally:
         dag.close()
 
-    from number_compiler.sequences.prime.partial_successor_image import (
-        PrimePartialSuccessorAdapter,
-    )
-
-    original = PrimePartialSuccessorAdapter.apply_primitive
+    original = PrimeSuccessorImageAdapter.apply_composite
     calls = 0
 
     def traced(
-        self: PrimePartialSuccessorAdapter, action: object, source: object
-    ) -> object:
-        from number_compiler.hashlife.execution.source_bound_images import (
-            SourceImageView,
-        )
-
+        self: PrimeSuccessorImageAdapter,
+        action: Hashable,
+        source: SourceImageView,
+        demand: SourceImageDemand,
+    ) -> SourceImageCandidate | None:
         nonlocal calls
         calls += 1
-        return original(self, action, cast(SourceImageView, source))
+        return original(self, action, source, demand)
 
-    monkeypatch.setattr(PrimePartialSuccessorAdapter, "apply_primitive", traced)
-    assert nth_prime_at_or_after(2, 100)[0] == 547
+    monkeypatch.setattr(PrimeSuccessorImageAdapter, "apply_composite", traced)
+    value, metrics = nth_prime_at_or_after(2, 100)
+    assert value == 547
     assert calls > 0
+    assert metrics.scheduler_counters
+    counters = dict(metrics.scheduler_counters)
+    assert counters["source_image_demanded_composite_applications"] > 0
+    assert counters["prime_partial_successor_interval_projections"] > 0
+    assert counters["source_image_demanded_composite_applications"] == calls
+    assert counters.get("source_image_primitive_applications", 0) == 0
+    assert calls < metrics.max_block_length
 
 
 @pytest.mark.parametrize("max_states", range(8, 33))
@@ -139,35 +149,33 @@ def test_contained_descent_reuses_issued_stage_but_revalidates_image(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     from number_compiler.sequences.prime.partial_successor_image import (
-        PrimePartialSuccessorAdapter,
         PrimePartialSuccessorQuery,
     )
 
     dag = CoprimeRankDAG((2, 3, 5, 7), max_states=100, max_work=100_000)
     query = PrimePartialSuccessorQuery(dag)
-    original_stage = PrimePartialSuccessorAdapter.stage
-    original_payload = PrimePartialSuccessorAdapter.validate_payload
-    stage_calls = payload_checks = 0
+    original_payload = PrimeSuccessorImageAdapter.validate_payload
+    payload_checks = 0
 
-    def traced_stage(adapter: PrimePartialSuccessorAdapter, depth: int) -> object:
-        nonlocal stage_calls
-        stage_calls += 1
-        return original_stage(adapter, depth)
-
-    def traced_payload(adapter: PrimePartialSuccessorAdapter, payload: object) -> None:
+    def traced_payload(adapter: PrimeSuccessorImageAdapter, payload: object) -> None:
         nonlocal payload_checks
         payload_checks += 1
         original_payload(adapter, payload)
 
-    monkeypatch.setattr(PrimePartialSuccessorAdapter, "stage", traced_stage)
-    monkeypatch.setattr(
-        PrimePartialSuccessorAdapter, "validate_payload", traced_payload
-    )
+    monkeypatch.setattr(PrimeSuccessorImageAdapter, "validate_payload", traced_payload)
     try:
         assert query.count_primes(11, 48, 4) == 11
+        arena = query._arena
+        publications = dag.ledger.counters.get(
+            "prime_partial_successor_stage_publications", 0
+        )
         before = payload_checks
         assert query.count_primes(11, 30, 4) == 6
-        assert stage_calls == 1
+        assert query._arena is arena
+        assert (
+            dag.ledger.counters.get("prime_partial_successor_stage_publications", 0)
+            == publications
+        )
         assert payload_checks > before
     finally:
         query.close()
@@ -176,47 +184,38 @@ def test_contained_descent_reuses_issued_stage_but_revalidates_image(
 
 def test_issued_prime_prefix_is_append_only_after_stage_authentication() -> None:
     """A stage stays exact under extension; earlier factors cannot be replaced."""
-    from number_compiler.sequences.prime.partial_successor_image import (
-        PrimePartialSuccessorAdapter,
-    )
-
     dag = CoprimeRankDAG((2, 3, 5, 7), max_states=100, max_work=100_000)
-    adapter = PrimePartialSuccessorAdapter(dag)
+    arena = PrimeSuccessorActionArena(dag, 7, parent_depth=3)
     try:
-        stage = adapter.stage(4)
         with pytest.raises(TypeError, match="append-only"):
             dag._primes[0] = 3
         dag.append_consecutive_factor(11)
-        assert adapter._stage(stage).factors == (2, 3, 5, 7)
+        assert arena.descriptor.parent_factors == (2, 3, 5)
+        assert arena.node(arena.base).primitive
     finally:
-        adapter.close()
+        arena.close()
         dag.close()
     assert dag.ledger.entries == dag.ledger.nodes == 0
 
 
 def test_partial_stage_rejects_foreign_rank_and_factor_store_authorities() -> None:
-    from number_compiler.sequences.prime.partial_successor_image import (
-        PrimePartialSuccessorAdapter,
-    )
-
     dag = CoprimeRankDAG((2, 3, 5, 7), max_states=100, max_work=100_000)
     foreign = CoprimeRankDAG((2, 3, 5, 7), max_states=100, max_work=100_000)
-    adapter = PrimePartialSuccessorAdapter(dag)
-    stage = adapter.stage(4)
+    arena = PrimeSuccessorActionArena(dag, 7, parent_depth=3)
     original_store = dag._primes
     try:
-        adapter.rank = foreign
+        arena.rank = foreign
         with pytest.raises(ValueError, match="source authority"):
-            adapter._stage(stage)
-        adapter.rank = dag
+            arena.node(arena.base)
+        arena.rank = dag
 
         object.__setattr__(dag, "_primes", foreign._primes)
         with pytest.raises(ValueError, match="source authority"):
-            adapter._stage(stage)
+            arena.node(arena.base)
     finally:
         object.__setattr__(dag, "_primes", original_store)
-        adapter.rank = dag
-        adapter.close()
+        arena.rank = dag
+        arena.close()
         dag.close()
         foreign.close()
     assert dag.ledger.entries == dag.ledger.nodes == 0
@@ -283,6 +282,37 @@ def test_binary_prime_cycle_closes_without_eager_ports_or_parent_gaps(
         dag.close()
 
 
+def test_admitted_composed_prefix_traces_every_mark_rank_select_and_phase() -> None:
+    factors, fresh, parent_depth, copies, phase = (2, 3, 5, 7), 7, 3, 7, 2
+    dag = CoprimeRankDAG(factors, max_states=100_000, max_work=2_000_000)
+    arena = PrimeSuccessorActionArena(dag, fresh, parent_depth=parent_depth)
+    try:
+        action = arena.power(copies)
+        width = copies * arena.descriptor.parent_period
+        expected_marks = [
+            gcd(offset, arena.descriptor.parent_period) == 1
+            and (offset + phase) % fresh != 0
+            for offset in range(1, width + 1)
+        ]
+        expected_offsets = [
+            offset for offset, marked in enumerate(expected_marks) if marked
+        ]
+        effect = arena.port_effect(action, phase)
+        assert effect.surviving_values == len(expected_offsets)
+        assert effect.outgoing_phase == (phase + width) % fresh
+        for stop in range(width + 1):
+            assert arena.rank_before(action, phase, stop) == sum(expected_marks[:stop])
+        for rank, offset in enumerate(expected_offsets):
+            assert arena.select(action, phase, rank) == offset
+        with pytest.raises(IndexError, match=str(len(expected_offsets))):
+            arena.select(action, phase, len(expected_offsets))
+        assert arena.metrics().parent_gap_positions_materialized == 0
+        assert arena.metrics().action_nodes < copies
+    finally:
+        arena.close()
+        dag.close()
+
+
 def test_action_identity_is_associative_and_shared_scheduler_uses_real_image() -> None:
     from number_compiler.hashlife.execution.source_bound_images import (
         SourceBoundSchedulerCore,
@@ -317,6 +347,89 @@ def test_action_identity_is_associative_and_shared_scheduler_uses_real_image() -
         counters = dag.ledger.counters
         assert counters.get("source_image_primitive_applications", 0) <= 5
         assert counters.get("source_image_relative_transfer_hits", 0) > 0
+    finally:
+        core.dispose()
+        arena.close()
+        dag.close()
+    assert dag.ledger.entries == dag.ledger.nodes == 0
+
+
+def test_relative_reuse_keeps_parent_wheel_phase_for_arbitrary_prefixes() -> None:
+    from number_compiler.hashlife.execution.source_bound_images import (
+        SourceBoundSchedulerCore,
+    )
+
+    # W=6 and q=5 make offsets zero and five share their q-phase while occupying
+    # different parent-wheel slots: value 1 survives the parent and value 6 does
+    # not.  Width eleven forces a composite to start off the parent-period
+    # boundary; width forty-one additionally reaches an exact translated state
+    # after lcm(W, q)=30 without confusing the intervening states.
+    dag = CoprimeRankDAG((2, 3), max_states=1024, max_work=100_000)
+    arena = PrimeSuccessorActionArena(dag, 5)
+    adapter = PrimeSuccessorImageAdapter(arena)
+    core = SourceBoundSchedulerCore(dag.ledger)
+    core.register(adapter)
+    try:
+        source = PrimeSuccessorSource(arena.descriptor_id, 0)
+        for width in (11, 41):
+            image = core.apply(adapter, source, arena.prefix(width))
+            payload = cast(PrimeSuccessorImagePayload, core.view(image).payload)
+            parent = sum(gcd(value, 6) == 1 for value in range(1, width + 1))
+            deleted = sum(
+                gcd(value, 6) == 1 and value % 5 == 0 for value in range(1, width + 1)
+            )
+            assert (
+                payload.parent_survivors,
+                payload.deleted_survivors,
+                payload.surviving_values,
+                payload.outgoing_phase,
+                core.view(image).binding.extent,
+            ) == (parent, deleted, parent - deleted, width % 5, width)
+        assert dag.ledger.counters.get("source_image_relative_transfer_hits", 0) > 0
+        assert dag.ledger.entries - dag.factor_count <= 1024
+    finally:
+        core.dispose()
+        arena.close()
+        dag.close()
+    assert dag.ledger.entries == dag.ledger.nodes == 0
+
+
+def test_cold_relative_publication_reserves_its_seal_before_capacity() -> None:
+    from number_compiler.hashlife.execution.source_bound_images import (
+        SourceBoundSchedulerCore,
+    )
+
+    dag = CoprimeRankDAG((2, 3), max_states=100, max_work=100_000)
+    arena = PrimeSuccessorActionArena(dag, 5)
+    adapter = PrimeSuccessorImageAdapter(arena)
+    core = SourceBoundSchedulerCore(dag.ledger)
+    core.register(adapter)
+    try:
+        source = PrimeSuccessorSource(arena.descriptor_id, 0)
+        core.apply(adapter, source, arena.prefix(1))
+        # Keep action evaluation from changing the retained baseline below.
+        arena.port_effect(arena.base, 0)
+        retained = dag.ledger.entries - dag.factor_count
+        publications = dag.ledger.counters.get("source_image_publications", 0)
+        peak_before = dag.ledger.peak_entries
+
+        dag.max_states = retained + 3
+        with pytest.raises(ValueError, match="prime state budget"):
+            core.apply(adapter, source, arena.base)
+        assert dag.ledger.entries - dag.factor_count == retained
+        assert dag.ledger.counters.get("source_image_publications", 0) == publications
+        assert dag.ledger.peak_entries <= max(
+            peak_before, dag.factor_count + retained + 3
+        )
+
+        dag.max_states = retained + 4
+        core.apply(adapter, source, arena.base)
+        assert dag.ledger.entries - dag.factor_count == dag.max_states
+        assert dag.ledger.counters["source_image_publications"] == publications + 1
+        assert dag.ledger.peak_entries == max(
+            peak_before, dag.factor_count + dag.max_states + 1
+        )
+        assert dag.ledger.counters["source_image_workspace_peak"] == 1
     finally:
         core.dispose()
         arena.close()

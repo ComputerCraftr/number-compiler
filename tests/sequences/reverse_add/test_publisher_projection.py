@@ -18,35 +18,58 @@ from number_compiler.arithmetic.polynomials.twisted_observer import (
 from number_compiler.hashlife.actions.field_actions import FieldCellActionID
 from number_compiler.hashlife.actions.lazy_compiler import LazyCompiler
 from number_compiler.hashlife.observation.hashlife_projection import HashLifeBlockIndex
+from number_compiler.projection.digit_terminal import DigitNormalizeBlockEffect
 from number_compiler.resources.ledger import ResourceLedger
 from number_compiler.sequences.reverse_add.compilation import compile_reverse_pair_power
-from number_compiler.sequences.reverse_add.power import ReverseAddPoweredTerm
+from number_compiler.sequences.reverse_add.power import (
+    ReverseAddPoweredTerm,
+    pair_field_from_integer,
+)
 from tests.support.reverse_higher_interface import _direct_step
 
 
 def _reference_publisher(term: ReverseAddPoweredTerm) -> ReversePublisherProjection:
     """Construct the retired publisher only as a bounded differential oracle."""
-    if term.effect is None:
+    if term.generation < 1:
         raise AssertionError("publisher reference requires a positive generation")
+    ledger = term._ledger
+    compiler = LazyCompiler(ledger)
+    terminal = compiler.atom(DigitNormalizeBlockEffect(term.base))
+    effect = terminal
+    if term.generation > 1:
+        pair_power = compile_reverse_pair_power(
+            compiler, term.base, term.generation - 1
+        )
+        if pair_power.root is None:
+            raise AssertionError("positive pair exponent without powered effect")
+        effect = compiler.compose(pair_power.root, terminal)
+    source = pair_field_from_integer(term.seed, term.base)
+    blank = 2 * term.base - 1
     source_geometry = SourceGeometry(
-        term._ledger,
-        term._source_construction.source,
-        term._source_construction,
+        ledger,
+        ExactSource(
+            source,
+            term.base,
+            "reverse-add",
+            blank,
+            term.maximum_width,
+            blank,
+        ),
     )
-    source_geometry.span(term.seed_pair, 2 * term.base - 1, term.maximum_width)
+    source_geometry.span(source, blank, term.maximum_width)
     certificate = _issue_certificate(
-        term.effect,
+        effect,
         "reverse-add",
         term.generation - 1,
-        ledger=term._ledger,
+        ledger=ledger,
     )
     return build_reverse_publisher_projection(
-        term.seed_pair,
+        source,
         logical_extent=term.maximum_width,
         source_geometry=source_geometry,
-        ledger=term._ledger,
-        effect=term.effect,
-        compiler=term._compiler,
+        ledger=ledger,
+        effect=effect,
+        compiler=compiler,
         certificate=certificate,
     )
 
@@ -64,7 +87,9 @@ def test_source_bound_publisher_matches_literal_196(generation: int) -> None:
     expected = _literal(196, generation)
     publisher = _reference_publisher(term)
     assert type(publisher) is ReversePublisherProjection
-    assert publisher.macro.source_extent == len(term.seed_pair)
+    source = pair_field_from_integer(term.seed, term.base)
+    publisher.sources.source.require_source(source, 2 * term.base - 1)
+    assert publisher.macro.source_extent == len(source)
     assert publisher.macro.width == term.maximum_width
     assert tuple(publisher.iter_active()) == expected
     assert publisher.active_width() == len(expected)
@@ -80,8 +105,10 @@ def test_publisher_defers_reachable_image_until_first_output_demand() -> None:
     assert term._ledger.counters.get("higher_action_continuation_requests", 0) == 0
     report = term.behavior_metrics()
     assert publisher._macro is None
-    assert report.bounded_temporal_runtime_cutover_complete == 1
-    assert report.bounded_temporal_runtime_cutover_blocker == ""
+    assert report.bounded_temporal_runtime_cutover_complete == 0
+    assert report.bounded_temporal_runtime_cutover_blocker == (
+        "reverse_cylinder_pullback_unconstructed"
+    )
 
     publisher.validate_execution()
     assert publisher._macro is None
@@ -165,9 +192,11 @@ def test_pending_publisher_rejects_coordinated_action_and_schema_mutation() -> N
 def test_failed_lazy_image_demand_is_terminal_and_auditable(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    from number_compiler.resources.payload_audit import audit_registered_payloads
-    from number_compiler.sequences.reverse_add.higher_interface import (
+    from devtools.experiments.reverse_add.higher_interface import (
         ReverseHigherInterfaceCompiler,
+    )
+    from devtools.experiments.reverse_add.temporal_payload_audit import (
+        audit_reverse_temporal_experiment,
     )
 
     publisher = _reference_publisher(ReverseAddPoweredTerm(196, 8))
@@ -182,7 +211,7 @@ def test_failed_lazy_image_demand_is_terminal_and_auditable(
     assert publisher._macro is None
     assert publisher._image_binding is None
     assert publisher._image_failure is not None
-    assert audit_registered_payloads(publisher.ledger).forbidden_future_payloads == 0
+    assert not audit_reverse_temporal_experiment(publisher.ledger).invalid
     before = publisher.ledger.snapshot()
     with pytest.raises(RuntimeError, match="previously failed"):
         publisher.point(0)
@@ -367,7 +396,9 @@ def test_recursive_fold_matches_independent_literal_sheets(
     publisher = _reference_publisher(term)
     assert type(publisher) is ReversePublisherProjection
     assert publisher.macro.width == term.maximum_width
-    assert publisher.macro.source_extent == len(term.seed_pair)
+    source = pair_field_from_integer(term.seed, term.base)
+    publisher.sources.source.require_source(source, 2 * term.base - 1)
+    assert publisher.macro.source_extent == len(source)
     assert publisher.mirror_obstruction() == reference
     assert (
         publisher.ledger.counters.get("reverse_publisher_cylinder_node_evaluations", 0)
@@ -382,7 +413,7 @@ def test_reference_publisher_does_not_exempt_higher_continuation_work() -> None:
     assert term.metrics().higher_action_continuation_requests > 0
     assert report.bounded_temporal_runtime_cutover_complete == 0
     assert report.bounded_temporal_runtime_cutover_blocker == (
-        "higher_continuation_execution"
+        "reverse_cylinder_pullback_unconstructed"
     )
 
 
@@ -391,10 +422,11 @@ def test_publisher_preserves_budget_refusal() -> None:
         BlockContextBudgetExceeded,
     )
 
+    term = ReverseAddPoweredTerm(
+        196,
+        32,
+        max_context_nodes=16,
+        max_cache_entries=16,
+    )
     with pytest.raises(BlockContextBudgetExceeded):
-        ReverseAddPoweredTerm(
-            196,
-            32,
-            max_context_nodes=16,
-            max_cache_entries=16,
-        )
+        _reference_publisher(term)

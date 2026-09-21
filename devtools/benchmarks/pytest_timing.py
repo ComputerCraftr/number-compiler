@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import json
 from pathlib import Path
+from time import perf_counter
 from typing import TextIO
 
 import pytest
@@ -23,12 +24,26 @@ class PhaseTiming:
         self.bytes = 0
         self.truncated = False
         self.closed = False
+        self.collection_started = 0.0
 
     def _write(self, record: dict[str, object]) -> None:
         encoded = json.dumps(record, separators=(",", ":")) + "\n"
         self.stream.write(encoded)
         self.stream.flush()
         self.bytes += len(encoded.encode("utf-8"))
+
+    def pytest_collection(self) -> None:
+        self.collection_started = perf_counter()
+
+    def pytest_collection_finish(self, session: pytest.Session) -> None:
+        self._write(
+            {
+                "phase": "collection",
+                "seconds": perf_counter() - self.collection_started,
+                "selected_items": len(session.items),
+            }
+        )
+        self.records += 1
 
     def pytest_runtest_logreport(self, report: pytest.TestReport) -> None:
         if self.truncated:

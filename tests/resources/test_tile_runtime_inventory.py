@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-from collections.abc import MutableMapping
 from dataclasses import replace
 from typing import Never, cast
 
@@ -37,29 +36,24 @@ from number_compiler.hashlife.observation.tile_projection import (
     LazyProjection,
     import_exact_source,
 )
-from number_compiler.hashlife.tiles.source_root_match_memo import source_root_match
 from number_compiler.hashlife.tiles.tile_result_records import (
     CausalInterfaceKey,
     CompletedInterfaceResult,
     FusedInterfaceKey,
     PoweredInterfaceKey,
     PoweredResultKey,
-    SourceRootMatchKey,
 )
 from number_compiler.hashlife.tiles.tile_results import (
     CompletedResultArena,
     ResultLease,
 )
 from number_compiler.hashlife.tiles.tiles import TileAlphabet, TileArena
-from number_compiler.projection.lazy_radix import collatz_radix_digit
-from number_compiler.projection.tile_radix import TileRadixObservation
 from number_compiler.resources.field_image_payload_audit import (
     audit_field_image_payloads,
 )
 from number_compiler.resources.ledger import ResourceLedger
 from number_compiler.resources.metric_collection import collect_ledger_metrics
 from number_compiler.resources.payload_audit import audit_registered_payloads
-from number_compiler.sequences.collatz.block_power import PoweredCollatzTerm
 
 
 def _runtime(
@@ -98,15 +92,6 @@ def _runtime(
         adapter.wiring(action),
     )
     return ledger, adapter, scheduler, projection
-
-
-def _collatz_radix_observation() -> tuple[PoweredCollatzTerm, TileRadixObservation]:
-    term = PoweredCollatzTerm(27, 4)
-    assert collatz_radix_digit(term, 3, 0) == 2
-    projection = term._radix_projections[3]
-    observation = projection._tile_observation
-    assert type(observation) is TileRadixObservation
-    return term, observation
 
 
 def test_tile_runtime_inventory_approves_real_action_and_demand_pin() -> None:
@@ -324,29 +309,6 @@ def test_tile_runtime_inventory_rejects_mutated_reverse_observation_metadata() -
     finally:
         engine._release_workspace()
         projection.close()
-
-
-def test_tile_runtime_inventory_validates_source_root_match_publication() -> None:
-    term, observation = _collatz_radix_observation()
-    application = observation._apps[0]
-    result = source_root_match(observation.scheduler.results, application.source)
-    key = next(
-        key
-        for key in observation.scheduler.results._memo
-        if type(key) is SourceRootMatchKey and key.input == application.source
-    )
-    assert observation.scheduler.results._memo[key] is result
-    assert not audit_field_image_payloads(term._ledger).invalid
-
-    before = term._ledger.snapshot()
-    publication_snapshot = result._publication_snapshot
-    object.__setattr__(result, "_publication_snapshot", ())
-    try:
-        audit = audit_field_image_payloads(term._ledger)
-        assert (observation.scheduler.results._memo_owner, id(key)) in audit.invalid
-        assert term._ledger.snapshot() == before
-    finally:
-        object.__setattr__(result, "_publication_snapshot", publication_snapshot)
 
 
 def test_reverse_frobenius_plan_compilation_does_not_claim_executed_algebra() -> None:
@@ -653,39 +615,39 @@ def test_tile_runtime_inventory_validates_composed_action_dag_and_interner() -> 
         projection.close()
 
 
-def test_tile_radix_inventory_rejects_semantically_wrong_action_children() -> None:
-    term, observation = _collatz_radix_observation()
-    application = observation._apps[0]
-    adapter = observation.adapter
-    record = adapter._action(application.action)
-    assert record.children is not None
-    original = record.children
-    object.__setattr__(record, "children", (original[0], original[0]))
+def test_tile_runtime_inventory_validates_retained_causal_task_payloads() -> None:
+    ledger, _, scheduler, projection = _runtime()
+    tasks = scheduler._causal_tasks
+    action = projection._open().action
+    memo_key = ("advance_symbol", (action, 0, 0, 0))
+    active_key = ("advance_symbol", (action, 1, 0, 0))
     try:
-        assert audit_field_image_payloads(term._ledger).invalid
+        tasks.begin(memo_key)
+        tasks.finish(memo_key, 0)
+        tasks.begin(active_key)
+        before = ledger.snapshot()
+        assert not audit_field_image_payloads(ledger).invalid
+        assert ledger.snapshot() == before
+
+        tasks.memo[memo_key] = object()
+        forged_memo = ledger.snapshot()
+        assert (
+            tasks.memo_owner,
+            id(tasks.memo[memo_key]),
+        ) in audit_field_image_payloads(ledger).invalid
+        assert ledger.snapshot() == forged_memo
+
+        tasks.memo[memo_key] = 0
+        tasks.active[active_key] = cast(bool, 1)
+        forged_active = ledger.snapshot()
+        assert (
+            tasks.active_owner,
+            id(tasks.active[active_key]),
+        ) in audit_field_image_payloads(ledger).invalid
+        assert ledger.snapshot() == forged_active
     finally:
-        object.__setattr__(record, "children", original)
-
-
-def test_tile_radix_inventory_rejects_boolean_observation_alias_key() -> None:
-    term, observation = _collatz_radix_observation()
-    application = observation._apps[0]
-    observation.scheduler.ledger.reserve(observation._owner, entries=1)
-    cast(MutableMapping[object, object], observation._apps)[True] = application
-    audit = audit_registered_payloads(term._ledger)
-    assert audit.forbidden_future_payloads > 0
-
-
-def test_tile_radix_root_lease_survives_query_memo_eviction() -> None:
-    term, observation = _collatz_radix_observation()
-    expected = observation.digit(2)
-    applications = tuple(observation._apps.values())
-    term._ledger.evict_query_memos()
-    assert observation.digit(2) == expected
-    assert tuple(observation._apps.values()) == applications
-    assert not audit_field_image_payloads(term._ledger).invalid
-    assert audit_registered_payloads(term._ledger).unknown_payloads == 0
-    assert all(row.accounting_delta == 0 for row in term._ledger.snapshot().inventory)
+        tasks.clear()
+        projection.close()
 
 
 def test_sparse_legacy_source_geometry_is_canonical_tile_content() -> None:

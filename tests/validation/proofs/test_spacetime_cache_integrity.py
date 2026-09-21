@@ -146,9 +146,7 @@ def test_lazy_production_retains_only_registered_scoped_programs_and_summaries()
 
     term = ReverseAddPoweredTerm(196, 32)
     term.digit(0)
-    index = term._point_index()
-    assert not hasattr(index, "_advance_cache")
-    metrics = index.metrics()
+    metrics = term.metrics()
     assert metrics.resource_audit_complete == 1
     assert metrics.forbidden_future_payloads == 0
     assert metrics.resource_inventory
@@ -199,9 +197,7 @@ def test_mirror_is_a_canonical_involutive_tile_action() -> None:
 def test_composed_hashlife_has_one_registered_owner_per_retained_container() -> None:
     for term in (ReverseAddPoweredTerm(196, 32), PoweredCollatzTerm(27, 32)):
         term.digit(0)
-        index = term._point_index()
-        assert not hasattr(index, "_advance_cache")
-        inventory = index._ledger.inventory()
+        inventory = term._ledger.inventory()
         assert len({item.owner for item in inventory}) == len(inventory)
         assert len({item.name for item in inventory}) == len(inventory)
         assert all(item.accounting_delta == 0 for item in inventory)
@@ -225,30 +221,6 @@ def test_collatz_compiler_syntax_is_separate_from_lazy_application_work() -> Non
     )
     assert metrics.compiler_retained_execution_nodes == metrics.compiler_program_nodes
     assert before.point_queries == 0 and metrics.point_queries == 1
-
-
-def test_public_compiler_never_constructs_cartesian_partition_domains() -> None:
-    from number_compiler.hashlife.actions.lazy_compiler import ProgramComposition
-
-    for term in (PoweredCollatzTerm(27, 32), ReverseAddPoweredTerm(196, 32)):
-        assert isinstance(term.effect, ProgramComposition)
-        term.digit(0)
-        metrics = term.metrics()
-        assert (
-            metrics.first_recursive_exponent_left
-            == metrics.first_recursive_exponent_right
-            == 0
-        )
-        assert (
-            metrics.partition_carrier_layers_left
-            == metrics.partition_carrier_layers_right
-            == 0
-        )
-        assert (
-            metrics.max_partition_domain_left == metrics.max_partition_domain_right == 0
-        )
-        assert metrics.compiler_program_nodes <= 4 * (32).bit_length()
-        assert metrics.resource_audit_complete == 1
 
 
 def test_lazy_carrier_metrics_expose_programs_without_duplicate_finite_domains() -> (
@@ -493,71 +465,3 @@ def test_standalone_finite_tile_action_reuse_counts_real_hits() -> None:
     assert after_first.tile_cache_hits == before.tile_cache_hits
     assert after_second.tile_cache_hits == after_first.tile_cache_hits + 1
     assert after_second.unique_actions == after_first.unique_actions
-
-
-def test_identical_warm_point_query_creates_no_new_hashlife_cold_entries() -> None:
-    for term in (ReverseAddPoweredTerm(196, 64), PoweredCollatzTerm(27, 64)):
-        index = term._point_index()
-        first_value = index.direct_powered_point(0)
-        first = index.metrics()
-        # A response-register hit is distinct from a HashLife parent hit. Clear
-        # only that one scalar so this assertion exercises the engine itself.
-        index._point_response.clear()
-        second_value = index.direct_powered_point(0)
-        second = index.metrics()
-
-        assert second_value == first_value
-        assert (
-            second.bounded_application_query_requests
-            == first.bounded_application_query_requests + 1
-        )
-        # The cold query publishes its bounded interfaces.  Clearing only the
-        # scalar response must reuse those exact quotient nodes without
-        # publishing another one.
-        assert (
-            second.bounded_application_quotient_builds
-            == first.bounded_application_quotient_builds
-        )
-        assert (
-            second.bounded_application_retained_entries
-            == first.bounded_application_retained_entries
-        )
-        assert (
-            second.bounded_application_primitive_step_evaluations
-            == first.bounded_application_primitive_step_evaluations
-        )
-        assert (
-            second.bounded_application_exact_spatial_occurrences
-            == first.bounded_application_exact_spatial_occurrences
-        )
-        assert (
-            second.bounded_application_symbolic_action_nodes
-            == first.bounded_application_symbolic_action_nodes
-        )
-        assert (
-            second.canonical_tile_intern_misses_query
-            == first.canonical_tile_intern_misses_query
-        )
-        assert (
-            second.spacetime_macro_cache_hits == first.spacetime_macro_cache_hits == 0
-        )
-        assert (
-            second.spacetime_macro_cache_misses
-            == first.spacetime_macro_cache_misses
-            == 0
-        )
-        assert (
-            second.spacetime_macro_cache_entries
-            == first.spacetime_macro_cache_entries
-            == 0
-        )
-        assert (
-            second.recursive_value_cache_misses
-            == first.recursive_value_cache_misses
-            == 0
-        )
-        assert (
-            second.recursive_value_cache_entries
-            == first.recursive_value_cache_entries
-            == 0
-        )

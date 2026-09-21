@@ -44,9 +44,10 @@ def numeric_aggregate_audit(
         identity = id(value)
         if identity in widths:
             continue
-        if semantic(value) or value is None or isinstance(value, (str, bool)):
+        is_semantic = semantic(value)
+        if is_semantic or value is None or isinstance(value, (str, bool)):
             widths[identity] = 0
-            if semantic(value):
+            if is_semantic:
                 semantic_nodes.add(identity)
             continue
         if type(value) is int:

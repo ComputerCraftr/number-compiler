@@ -389,8 +389,11 @@ class BitFunctionArena:
     def domain_predicate(self, function: FactoredFunctionID) -> FactoredFunctionID:
         """Return definedness as a Boolean function on the declared port domain."""
         node = self.resolve(function)
+        self.functions.resolve(node.valid)
         circuit = _Circuit(self.functions, node.signature.inputs)
-        _, valid = circuit.imported(node)
+        # Definedness is already a complete canonical root. Importing the value
+        # bits here makes every admission query pay for an unrequested output.
+        valid = circuit.tx.resign(node.valid.local_id, circuit.signature)
         signature = FunctionSignature(node.signature.inputs, BOOL)
         result = circuit.normalized(signature, (valid,), circuit.admitted())
         return self._publish(circuit, (result,))[0]
@@ -483,6 +486,32 @@ class BitFunctionArena:
         self.ledger.bump("semantic_bit_composition_evaluations")
         return self._publish(circuit, (result,), substitution=key)[0]
 
+    def substitute_many(
+        self,
+        functions: tuple[FactoredFunctionID, ...],
+        replacements: Mapping[PortVariable, FactoredFunctionID],
+        *,
+        joint: bool = True,
+    ) -> tuple[FactoredFunctionID, ...]:
+        """Substitute one environment through several shared DAG roots."""
+        from number_compiler.hashlife.interfaces.semantic_bit_batches import (
+            substitute_many,
+        )
+
+        return substitute_many(self, functions, replacements, joint=joint)
+
+    def restrict_many(
+        self,
+        functions: tuple[FactoredFunctionID, ...],
+        predicate: FactoredFunctionID,
+    ) -> tuple[FactoredFunctionID, ...]:
+        """Restrict several functions in one atomic shared-DAG transaction."""
+        from number_compiler.hashlife.interfaces.semantic_bit_batches import (
+            restrict_many,
+        )
+
+        return restrict_many(self, functions, predicate)
+
     def divide_binary(
         self,
         radix: int,
@@ -560,7 +589,12 @@ class BitFunctionArena:
         *,
         scalar_source: SemanticFunctionID | None = None,
         substitution: BitSubstitutionKey | None = None,
+        substitutions: tuple[BitSubstitutionKey, ...] = (),
     ) -> tuple[FactoredFunctionID, ...]:
+        if substitution is not None and substitutions:
+            raise ValueError("factored publication has two substitution owners")
+        if substitutions and len(substitutions) != len(results):
+            raise ValueError("batch substitution keys disagree with their results")
         if scalar_source is not None:
             source = self.functions.resolve(scalar_source)
             if len(results) != 1 or results[0].signature != source.signature:
@@ -620,9 +654,14 @@ class BitFunctionArena:
                     fresh[record] = identity
                 identities.append(identity)
             count = len(prepared.nodes)
+            substitution_count = int(substitution is not None) + len(substitutions)
             memo_reservation = (
                 () if scalar_source is None else ((self._scalar_sources.owner, 1, 0),)
-            ) + (() if substitution is None else ((self._compositions.owner, 1, 0),))
+            ) + (
+                ()
+                if not substitution_count
+                else ((self._compositions.owner, substitution_count, 0),)
+            )
             prepared.reserve_with(
                 (
                     (self.node_owner, len(fresh), len(fresh)),
@@ -638,6 +677,9 @@ class BitFunctionArena:
                 self._scalar_sources._data[scalar_source] = self._handle(identities[0])
             if substitution is not None:
                 self._compositions._data[substitution] = self._handle(identities[0])
+            if substitutions:
+                for key, identity in zip(substitutions, identities, strict=True):
+                    self._compositions._data[key] = self._handle(identity)
             self.ledger.bump("semantic_bit_boolean_nodes_published", count)
             self.ledger.bump("semantic_factored_nodes_published", len(fresh))
             return tuple(self._handle(identity) for identity in identities)

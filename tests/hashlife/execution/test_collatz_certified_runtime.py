@@ -8,24 +8,14 @@ from typing import Never
 import pytest
 
 from number_compiler.arithmetic.contracts.block_effect import BoundarySide
-from number_compiler.arithmetic.functions.finite_function_types import (
-    AtomSort,
-    FinitePort,
-)
 from number_compiler.arithmetic.functions.finite_port_action import PortVariable
 from number_compiler.hashlife.actions.field_actions import FieldCellActionID
-from number_compiler.hashlife.execution.tile_kernel import PrimitiveTileKernelAdapter
-from number_compiler.hashlife.execution.tile_scheduler import (
-    TileApplication,
-    TileScheduler,
-)
-from number_compiler.hashlife.interfaces.semantic_bits import FactoredFunctionID
+from number_compiler.hashlife.execution.tile_scheduler import TileScheduler
 from number_compiler.hashlife.tiles.tile_boundaries import BoundaryTileOperands
 from number_compiler.hashlife.tiles.tile_ports import (
     FusedBoundaryContract,
     ResultWiring,
 )
-from number_compiler.hashlife.tiles.tile_result_records import PoweredResultKey
 from number_compiler.hashlife.tiles.tiles import TileArena, TileID
 from number_compiler.resources.payload_audit import audit_registered_payloads
 from number_compiler.sequences.collatz.block_power import (
@@ -33,27 +23,6 @@ from number_compiler.sequences.collatz.block_power import (
     PoweredCollatzTerm,
 )
 from tests.arithmetic.contracts.test_tile_kernel import _oracle, _runtime, _tile
-
-
-def _application(term: PoweredCollatzTerm) -> TileApplication:
-    application = term._point_index()._lazy_application._open()
-    assert type(application) is TileApplication
-    return application
-
-
-def _assert_no_completed_root(application: TileApplication) -> None:
-    key = PoweredResultKey(
-        application.action,
-        application.source,
-        application.ports,
-        application.wiring,
-    )
-    found = application.scheduler.results.lookup(key)
-    try:
-        assert found is None
-    finally:
-        if found is not None:
-            found.close()
 
 
 def _physical(seed: int, steps: int) -> int:
@@ -102,24 +71,7 @@ def test_physical_collatz_leaf_consumer_is_exact_in_every_finite_context() -> No
 
 
 @pytest.mark.parametrize("steps", (16, 32))
-def test_public_powered_collatz_uses_factored_physical_consumer(
-    monkeypatch: pytest.MonkeyPatch,
-    steps: int,
-) -> None:
-    original = PrimitiveTileKernelAdapter._tabulated
-
-    def reject_joint_output(
-        self: PrimitiveTileKernelAdapter,
-        ports: tuple[FinitePort, ...],
-        output: AtomSort,
-        active: tuple[FinitePort, ...],
-        table: tuple[int, ...],
-    ) -> FactoredFunctionID:
-        if len(active) == 2:
-            raise AssertionError("physical Collatz rebuilt the joint output table")
-        return original(self, ports, output, active, table)
-
-    monkeypatch.setattr(PrimitiveTileKernelAdapter, "_tabulated", reject_joint_output)
+def test_public_powered_collatz_uses_source_image_consumer(steps: int) -> None:
     expected = _physical(27, steps)
     term = PoweredCollatzTerm(27, steps)
     assert term.width() == expected.bit_length()
@@ -127,23 +79,11 @@ def test_public_powered_collatz_uses_factored_physical_consumer(
         (expected >> i) & 1 for i in range(expected.bit_length())
     )
     counters = term._ledger.counters
-    assert counters.get("collatz_physical_factored_output_compilations", 0) > 0
-    assert counters.get("collatz_physical_joint_output_tables_elided", 0) > 0
-    assert counters.get("powered_absorption_max_span", 0) == steps
+    assert counters.get("collatz_physical_action_publications", 0) > 0
+    assert counters.get("source_image_publications", 0) > 0
+    assert counters.get("source_image_projection_publications", 0) > 0
     assert counters.get("sequential_generation_advances", 0) == 0
     assert counters.get("whole_word_symbol_visits", 0) == 0
-
-
-def test_collatz_primitive_interface_reuses_the_canonical_tile_result() -> None:
-    term = PoweredCollatzTerm(27, 1)
-    application = _application(term)
-    first = application.interface()
-    before = term._ledger.counters.get("causal_interface_result_early_hits", 0)
-    second = application.interface()
-    assert second == first
-    assert term._ledger.counters.get("causal_interface_result_early_hits", 0) > before
-    assert term._ledger.counters.get("whole_word_symbol_visits", 0) == 0
-    assert term._ledger.counters.get("sequential_generation_advances", 0) == 0
 
 
 def test_nonboundary_collatz_interfaces_elide_the_low_source_read(
@@ -313,51 +253,8 @@ def test_noncycle_public_observations_do_not_use_higher_point_or_width(
 def test_noncycle_point_does_not_eagerly_observe_width_channels() -> None:
     term = PoweredCollatzTerm(27, 4)
     assert term.digit(0) == 0
-    assert term._ledger.counters.get("powered_absorption_successes", 0) > 0
-    assert term._ledger.counters.get("tile_causal_width_requests", 0) == 0
-    assert term._ledger.counters.get("tile_projection_width_observations", 0) == 0
-
-
-def test_temporal_actions_compose_before_canonical_tile_observation(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    original = PrimitiveTileKernelAdapter.compose
-    calls = 0
-
-    def checked(
-        self: PrimitiveTileKernelAdapter,
-        before: FieldCellActionID,
-        after: FieldCellActionID,
-    ) -> FieldCellActionID:
-        nonlocal calls
-        calls += 1
-        return original(self, before, after)
-
-    monkeypatch.setattr(PrimitiveTileKernelAdapter, "compose", checked)
-    term = PoweredCollatzTerm(27, 16)
-    assert term.digit(0) == 1
-    assert calls > 0
-    counters = term._ledger.snapshot().counters
-    assert counters.get("tile_temporal_action_publications", 0) > 0
-    assert counters.get("powered_absorption_successes", 0) > 0
-    assert counters.get("powered_absorption_max_span", 0) == 16
-    assert counters.get("sequential_generation_advances", 0) == 0
-    assert counters.get("whole_word_symbol_visits", 0) == 0
-
-
-def test_temporal_observation_never_replays_the_complete_root_emit(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    def forbidden(*_args: object, **_kwargs: object) -> Never:
-        raise AssertionError("point observation completed the exact output root")
-
-    monkeypatch.setattr(TileApplication, "complete", forbidden)
-    term = PoweredCollatzTerm(27, 16)
-    assert term.digit(0) == (_physical(27, 16) & 1)
-    application = _application(term)
-    assert application._root is None
-    _assert_no_completed_root(application)
-    assert term._ledger.counters.get("powered_absorption_successes", 0) > 0
+    assert term._ledger.counters.get("direct_powered_point_queries", 0) == 1
+    assert term._active_width is None
 
 
 @pytest.mark.validation  # N=64 end-to-end temporal execution poison gate.
@@ -402,50 +299,6 @@ def test_temporal_prefix_evaluation_does_not_reenter_output_observer(
     term = PoweredCollatzTerm(27, 64)
     assert term.digit(0) == (_physical(27, 64) & 1)
     assert peak == 1
-
-
-def test_noncycle_width_uses_tile_extent_without_completing_output(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    def forbidden(*_args: object, **_kwargs: object) -> Never:
-        raise AssertionError("width observation completed the exact output root")
-
-    monkeypatch.setattr(TileApplication, "complete", forbidden)
-    expected = _physical(27, 16)
-    term = PoweredCollatzTerm(27, 16)
-    assert term.width() == expected.bit_length()
-    application = _application(term)
-    assert application._root is None
-    _assert_no_completed_root(application)
-    assert term._ledger.counters.get("tile_causal_width_requests", 0) > 0
-    assert term._ledger.counters.get("tile_projection_width_observations", 0) == 1
-    assert term._ledger.counters.get("tile_endpoint_emissions", 0) == 0
-
-
-@pytest.mark.validation  # N=64 execution and complete port-growth inventory.
-def test_collatz_public_ports_do_not_scale_with_future_extent() -> None:
-    term = PoweredCollatzTerm(27, 64)
-    assert term.digit(0) == _physical(27, 64) & 1
-    application = _application(term)
-    adapter = application.scheduler.adapter
-    assert type(adapter) is PrimitiveTileKernelAdapter
-    pending = [application.action]
-    signatures: set[tuple[tuple[str, int], ...]] = set()
-    while pending:
-        action = pending.pop()
-        signature = adapter.quotients.interface(adapter.signature_for(action))
-        signatures.add(
-            tuple((port.variable.role, port.cardinality) for port in signature.inputs)
-        )
-        assert all(
-            type(output) is AtomSort and "position" not in output.name
-            for output in signature.outputs
-        )
-        children = adapter.action_children(action)
-        if children is not None:
-            pending.extend(children)
-    assert len(signatures) == 1
-    assert max(cardinality for _role, cardinality in signatures.pop()) <= 6
 
 
 @pytest.mark.parametrize("steps", (16, 32))

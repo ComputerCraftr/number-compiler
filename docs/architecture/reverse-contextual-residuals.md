@@ -85,7 +85,7 @@ remain required before calling the 196 carry-domain quotient complete.
 
 ## Formal validation and continuation counterexamples
 
-The [Isabelle checkpoint](../../results/current/reverse-isabelle-2026-09-10/README.md)
+The [2026-W37 checkpoint](../../results/current/2026-W37/README.md)
 now proves the carry law, the seven-band no-growth factorization, exact
 pair-field invariant closure containing the 196 seed, and the generic
 factor-through/iteration theorems without oracle dependencies. The generic
@@ -105,7 +105,7 @@ but these merges cannot be promoted to an all-future domain-state quotient.
 
 ## Counted-run control and fixed-point refinement
 
-The [positive-control checkpoint](../../results/current/reverse-run-controls-2026-09-10/README.md)
+The [2026-W37 checkpoint](../../results/current/2026-W37/README.md)
 adds an exact counted-run successor that uses the existing decimal normalizer
 and carry actions. It never expands a run or stores a carry track. This remains
 an explicit reference endpoint representation, guarded by `exact_oracle()`;

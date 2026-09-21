@@ -4,6 +4,7 @@ from itertools import product
 
 import pytest
 
+from devtools.experiments.reverse_add.cocycle_carrier import CocycleReverseCarrier
 from devtools.proofs.reverse_geometry_context import ReverseGeometryContext
 from devtools.proofs.reverse_threshold_geometry import ThresholdGeometry
 from devtools.proofs.threshold_expressions import ThresholdExpressions
@@ -15,7 +16,6 @@ from number_compiler.arithmetic.formula.symmetry_frame import (
     ReverseAddSymmetryProjection,
 )
 from number_compiler.arithmetic.functions.decision import MultiTerminalDecisionArena
-from number_compiler.sequences.reverse_add.cocycle_carrier import CocycleReverseCarrier
 
 
 def test_harmonic_kernel_collision_changes_threshold_geometry() -> None:

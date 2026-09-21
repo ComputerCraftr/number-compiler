@@ -527,9 +527,8 @@ def test_reverse_add_slab_removed_and_spatial_prefix_has_one_owner() -> None:
     assert definitions.get("compile_reset_prefix_monoid") == [
         "arithmetic/carry/prefix_monoid.py"
     ]
-    assert definitions.get("ReverseAddSpatialIndex") == [
-        "sequences/reverse_add/domain.py"
-    ]
+    assert definitions.get("ReverseAddSpatialIndex") is None
+    assert (ROOT / "devtools/experiments/reverse_add/domain.py").is_file()
 
     formula_sources = "\n".join(
         (src / name).read_text()

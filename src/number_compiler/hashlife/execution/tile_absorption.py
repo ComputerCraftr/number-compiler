@@ -115,8 +115,9 @@ def _bind_higher(
     left: HigherExpressionID,
     right: HigherExpressionID,
 ) -> HigherExpressionID:
-    result = semantics.bind_free(expression, transfer.left_input, left)
-    return semantics.bind_free(result, transfer.right_input, right)
+    return semantics.bind_free_many(
+        expression, ((transfer.left_input, left), (transfer.right_input, right))
+    )
 
 
 def compose_higher_spatial_transfers(

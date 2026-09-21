@@ -187,14 +187,22 @@ def audit_callback_future_payloads(
             else:
                 dataclass_fields[value_type] = layout
         if layout is not None:
-            pending.extend(
-                (
-                    getattr(value, name),
-                    callback_scope,
-                    suspicious or callback_scope and named_payload,
+            for name, named_payload in layout:
+                try:
+                    child = getattr(value, name)
+                except AttributeError:
+                    # A partially initialized or tampered record is not a
+                    # valid retained callback owner. Report it instead of
+                    # aborting the independent inventory audit.
+                    violations.add((-1, id(value)))
+                    continue
+                pending.append(
+                    (
+                        child,
+                        callback_scope,
+                        suspicious or callback_scope and named_payload,
+                    )
                 )
-                for name, named_payload in layout
-            )
             continue
         try:
             attributes = vars(value)

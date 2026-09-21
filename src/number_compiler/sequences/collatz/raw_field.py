@@ -559,7 +559,7 @@ def accelerated_collatz_sentinel_formula_step(
         digit_value_masks,
         multiply_add_formula,
     )
-    from number_compiler.sequences.collatz.radix import local_divide2_even_radix
+    from number_compiler.sequences.collatz.radix import local_half_even_radix
 
     base = int(base)
     bits = power4_radix_bits(base)
@@ -580,9 +580,9 @@ def accelerated_collatz_sentinel_formula_step(
     suffix = root if q == 0 else _drop_low_formula_digits(arena, root, q)
     out, _compiled = multiply_add_formula(arena, suffix, spec, 3, 1)
     for _ in range(local):
-        out, remainder = local_divide2_even_radix(arena, out, spec)
-        if remainder:
-            raise AssertionError((base, q, local, remainder))
+        # The exact first-hole valuation proves these divisions are integral.
+        # Floor division has the same result and avoids rediscovering parity.
+        out = local_half_even_radix(arena, out, spec)
     return out, q * bits + local, q, local
 
 

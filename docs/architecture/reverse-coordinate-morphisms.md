@@ -1,9 +1,10 @@
 # Executable local reverse/add morphisms
 
+Scope: **retained bounded research design, not the current production constructor**. Its algebra and experiments remain useful; descriptions of execution below refer to that historical prototype. The current [reverse/add synthesis](../research/reverse-add.md) identifies the implemented owner and unresolved temporal grammar.
+
 The September 10 output-morphism implementation supplies executable arithmetic
 arrows for a bounded, declared coordinate-port profile. It does not establish
-an active future-behavior quotient for 196. The public causal executor now
-connects a decimal primitive producer's output to a decimal primitive
+an active future-behavior quotient for 196. The historical causal prototype connected a decimal primitive producer's output to a decimal primitive
 consumer's carry response through the bounded morphism described below.
 
 The [contextual residual extension](reverse-contextual-residuals.md) now derives

@@ -9,6 +9,13 @@ literal TM refinement of the arithmetic law.
 from __future__ import annotations
 
 from dataclasses import fields
+from typing import TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from number_compiler.sequences.antihydra.projection_fragments import (
+        ProjectionFragmentCache,
+    )
+    from number_compiler.sequences.antihydra.runtime import AntihydraArithmeticTerm
 
 from number_compiler.resources.ledger import ResourceLedger
 from number_compiler.resources.physical_support_payload_audit import (
@@ -80,16 +87,144 @@ def canonical_arithmetic_cylinder(value: object, ledger: ResourceLedger) -> bool
     return value == result
 
 
-def audit_antihydra_payloads(ledger: ResourceLedger) -> PhysicalSupportPayloadAudit:
+def _fragment_source_bindings(
+    cache: ProjectionFragmentCache,
+    terms: dict[int, AntihydraArithmeticTerm],
+    ledger: ResourceLedger,
+) -> set[int]:
+    """Replay each demanded source prefix once, retaining only key approvals.
+
+    Cache insertion order is unrelated to source chronology. Group at most 32
+    retained keys by source and start; never retain intermediate endpoint words
+    or treat a cached phase as authority for the next source occurrence.
+    """
+    from number_compiler.sequences.antihydra.blocks import (
+        ArithmeticCylinder,
+        physical_roof,
+    )
+    from number_compiler.sequences.antihydra.projection_fragments import (
+        ProjectionFragmentKey,
+    )
+    from number_compiler.sequences.antihydra.runtime import ArithmeticSegment
+
+    demanded: dict[int, dict[int, list[ProjectionFragmentKey]]] = {}
+    for key in cache.fragments:
+        if type(key) is not ProjectionFragmentKey:
+            continue
+        if any(
+            type(getattr(key, field.name)) is not int
+            for field in fields(key)
+            if field.name != "cylinder"
+        ):
+            continue
+        term = terms.get(key.source_owner)
+        if (
+            term is None
+            or term.ledger is not ledger
+            or term.engine.projection_fragments is not cache
+            or key.requested != term.requested
+            or not 0 <= key.start < key.requested
+            or term._physical is None
+            or term._physical.halted
+            or not 1 <= key.spatial_width <= 64
+            or not 1 <= key.temporal_width <= 64
+            or key.spatial_sign not in (-1, 1)
+            or key.temporal_sign not in (-1, 1)
+            or key.modulus < 2
+            or type(key.cylinder) is not tuple
+            or len(key.cylinder) != 6
+            or any(type(part) is not int for part in key.cylinder)
+        ):
+            continue
+        demanded.setdefault(key.source_owner, {}).setdefault(key.start, []).append(key)
+
+    bound: set[int] = set()
+    for owner, starts in demanded.items():
+        term = terms[owner]
+        last = max(starts)
+        h, balance, head, time, start = 8, 0, 1, 11, 0
+        for segment in term.segments:
+            if (
+                type(segment) is not ArithmeticSegment
+                or type(segment.start) is not int
+                or segment.start != start
+                or type(segment.cylinder) is not ArithmeticCylinder
+            ):
+                break
+            block = segment.cylinder
+            if (
+                type(block.width) is not int
+                or not 1 <= block.width <= 64
+                or any(
+                    type(getattr(block, field.name)) is not int
+                    or abs(getattr(block, field.name)).bit_length()
+                    > 2 * block.width + 10
+                    for field in fields(block)
+                )
+                or block.residue != h % (1 << block.width)
+                or balance + block.minimum < 0
+            ):
+                break
+            signature = (
+                block.width,
+                block.residue,
+                block.output,
+                block.delta,
+                block.minimum,
+                block.parity_word,
+            )
+            for key in starts.get(start, ()):
+                spatial_phase = key.spatial_width * (2 if key.spatial_sign == -1 else 1)
+                temporal_phase = key.temporal_width * (
+                    2 if key.temporal_sign == -1 else 1
+                )
+                if (
+                    key.cylinder == signature
+                    and key.head_phase == head % spatial_phase
+                    and key.time_phase == time % temporal_phase
+                ):
+                    bound.add(id(key))
+            if start >= last:
+                break
+            ledger.bump(
+                "antihydra_payload_audit_projection_fragment_steps", block.width
+            )
+            ledger.bump(
+                "antihydra_payload_audit_projection_fragment_operand_bits",
+                h.bit_length()
+                + balance.bit_length()
+                + head.bit_length()
+                + time.bit_length(),
+            )
+            h, balance, left, right = physical_roof(block).apply(h, balance)
+            head += right - left
+            time += right + left
+            start += block.width
+    return bound
+
+
+def audit_antihydra_payloads(
+    ledger: ResourceLedger,
+    *,
+    dyadic: PhysicalSupportPayloadAudit | None = None,
+) -> PhysicalSupportPayloadAudit:
     from number_compiler.hashlife.execution.source_bound_images import (
         SourceBoundSchedulerCore,
     )
+    from number_compiler.hashlife.execution.tile_scheduler import TileScheduler
+    from number_compiler.resources.dyadic_return_payload_audit import (
+        audit_dyadic_return_payloads,
+    )
+    from number_compiler.sequences.antihydra.arithmetic_images import (
+        AntihydraArithmeticImageWorkspace,
+    )
     from number_compiler.sequences.antihydra.blocks import (
+        ArithmeticCylinder,
         arithmetic_kernel,
         kernel,
-        physical_roof,
         terminal_effect,
     )
+    from number_compiler.sequences.antihydra.mahler_action import MahlerWorkspace
     from number_compiler.sequences.antihydra.projection_core import (
         AntihydraProjectionDriver,
         _AntihydraFragmentAdapter,
@@ -98,6 +233,9 @@ def audit_antihydra_payloads(ledger: ResourceLedger) -> PhysicalSupportPayloadAu
         ProjectionFragment,
         ProjectionFragmentCache,
         ProjectionFragmentKey,
+    )
+    from number_compiler.sequences.antihydra.projection_occurrences import (
+        ProjectionOccurrenceCursor,
     )
     from number_compiler.sequences.antihydra.projection_workspace import (
         SectionImageWorkspace,
@@ -111,12 +249,62 @@ def audit_antihydra_payloads(ledger: ResourceLedger) -> PhysicalSupportPayloadAu
         _PhysicalPublication,
     )
 
-    approved: set[int] = set()
-    invalid: set[tuple[int, int]] = set()
+    if dyadic is None:
+        dyadic = audit_dyadic_return_payloads(ledger)
+    approved = set(dyadic.approved)
+    invalid = set(dyadic.invalid)
     containers = dict(ledger.iter_containers())
     inventory = {row.owner: row for row in ledger.inventory()}
     roots = tuple(ledger.iter_execution_roots())
     for root in roots:
+        if isinstance(root, AntihydraArithmeticImageWorkspace):
+            continue
+        if type(root) is ProjectionOccurrenceCursor:
+            owner = root._state_owner
+            try:
+                stores = (
+                    (root._state_owner, root._states, "workspace"),
+                    (root._state_seal_owner, root._state_seals, "projection_binding"),
+                    (root._occurrence_owner, root._occurrences, "demanded_projection"),
+                    (
+                        root._occurrence_seal_owner,
+                        root._occurrence_seals,
+                        "projection_binding",
+                    ),
+                )
+                valid = (
+                    root.ledger is ledger
+                    and root._active is False
+                    and set(vars(root))
+                    == {
+                        "ledger",
+                        "_state_owner",
+                        "_state_seal_owner",
+                        "_occurrence_owner",
+                        "_occurrence_seal_owner",
+                        "_states",
+                        "_state_seals",
+                        "_occurrences",
+                        "_occurrence_seals",
+                        "_token",
+                        "_active",
+                    }
+                    and all(
+                        not store
+                        and containers.get(store_owner) is store
+                        and inventory[store_owner].role == role
+                        and inventory[store_owner].accounting_delta == 0
+                        for store_owner, store, role in stores
+                    )
+                )
+                if valid:
+                    approved.add(id(root))
+                    approved.update(id(store) for _, store, _ in stores)
+                else:
+                    invalid.add((owner, id(root)))
+            except (AttributeError, TypeError, ValueError, KeyError):
+                invalid.add((owner if type(owner) is int else -1, id(root)))
+            continue
         if type(root) is ProjectionFragmentCache:
             owner = root.owner
             try:
@@ -135,69 +323,16 @@ def audit_antihydra_payloads(ledger: ResourceLedger) -> PhysicalSupportPayloadAu
                     for candidate in roots
                     if type(candidate) is AntihydraArithmeticTerm
                 }
+                source_bindings = (
+                    _fragment_source_bindings(root, terms, ledger) if valid else set()
+                )
                 for fragment_key, fragment in root.fragments.items():
-                    term = terms.get(getattr(fragment_key, "source_owner", -1))
-                    segment = None
-                    entering_h, entering_balance = 8, 0
-                    entering_head, entering_time = 1, 11
-                    if term is not None:
-                        for item in term.segments:
-                            if item.start == getattr(fragment_key, "start", -1):
-                                segment = item
-                                break
-                            roof = physical_roof(item.cylinder)
-                            (
-                                entering_h,
-                                entering_balance,
-                                left,
-                                right,
-                            ) = roof.apply(entering_h, entering_balance)
-                            entering_head += right - left
-                            entering_time += right + left
-                            ledger.bump(
-                                "antihydra_payload_audit_projection_fragment_steps",
-                                item.cylinder.width,
-                            )
-                    spatial_phase = (
-                        fragment_key.spatial_width
-                        * (2 if fragment_key.spatial_sign == -1 else 1)
-                        if type(fragment_key) is ProjectionFragmentKey
-                        else 0
-                    )
-                    temporal_phase = (
-                        fragment_key.temporal_width
-                        * (2 if fragment_key.temporal_sign == -1 else 1)
-                        if type(fragment_key) is ProjectionFragmentKey
-                        else 0
-                    )
                     bound = (
-                        type(fragment_key) is ProjectionFragmentKey
+                        id(fragment_key) in source_bindings
+                        and type(fragment_key) is ProjectionFragmentKey
                         and type(fragment) is ProjectionFragment
                         and root.matches_seal(fragment_key, fragment)
                         and fragment.key == fragment_key
-                        and term is not None
-                        and fragment_key.requested == term.requested
-                        and type(segment) is ArithmeticSegment
-                        and term._physical is not None
-                        and not term._physical.halted
-                        and entering_balance + segment.cylinder.minimum >= 0
-                        and fragment_key.head_phase == entering_head % spatial_phase
-                        and fragment_key.time_phase == entering_time % temporal_phase
-                        and fragment_key.cylinder
-                        == (
-                            segment.cylinder.width,
-                            segment.cylinder.residue,
-                            segment.cylinder.output,
-                            segment.cylinder.delta,
-                            segment.cylinder.minimum,
-                            segment.cylinder.parity_word,
-                        )
-                        and 1 <= fragment_key.spatial_width <= 64
-                        and 1 <= fragment_key.temporal_width <= 64
-                        and fragment_key.spatial_sign in (-1, 1)
-                        and fragment_key.temporal_sign in (-1, 1)
-                        and type(fragment_key.modulus) is int
-                        and fragment_key.modulus >= 2
                     )
                     if bound:
                         try:
@@ -205,7 +340,16 @@ def audit_antihydra_payloads(ledger: ResourceLedger) -> PhysicalSupportPayloadAu
                         except ValueError:
                             bound = False
                     if bound:
-                        approved.update((id(fragment_key), id(fragment)))
+                        # iter_payloads exposes each retained seal independently
+                        # of its container. Admit only the exact snapshot already
+                        # compared above, including its bounded cylinder fields.
+                        approved.update(
+                            (
+                                id(fragment_key),
+                                id(fragment),
+                                id(root.seals[fragment_key]),
+                            )
+                        )
                     else:
                         valid = False
                         invalid.update(
@@ -235,6 +379,8 @@ def audit_antihydra_payloads(ledger: ResourceLedger) -> PhysicalSupportPayloadAu
                         "physical_owner",
                         "physical_publications",
                         "_result",
+                        "arithmetic_workspace",
+                        "mahler_workspace",
                     }
                     and root.ledger is ledger
                     and root.engine.ledger is ledger
@@ -256,37 +402,60 @@ def audit_antihydra_payloads(ledger: ResourceLedger) -> PhysicalSupportPayloadAu
                     and inventory[root.physical_owner].accounting_delta == 0
                     and len(root.physical_publications) <= 1
                 )
-                h, balance, minimum, start = 8, 0, 0, 0
-                first_failure: int | None = None
-                for segment in root.segments:
+                mahler = root.mahler_workspace
+                if mahler is not None:
+                    arithmetic = root._result
+                    if (
+                        type(mahler) is not MahlerWorkspace
+                        or type(arithmetic) is not ArithmeticResult
+                    ):
+                        valid = False
+                    else:
+                        mahler.validate(arithmetic)
+                        approved.add(id(mahler))
+                arithmetic_workspace = root.arithmetic_workspace
+                if arithmetic_workspace is None:
+                    expected_segments: tuple[tuple[int, ArithmeticCylinder], ...] = ()
+                    h, balance, minimum, start = 8, 0, 0, 0
+                    first_failure: int | None = None
+                else:
+                    if (
+                        type(arithmetic_workspace)
+                        is not AntihydraArithmeticImageWorkspace
+                    ):
+                        valid = False
+                        expected_segments = ()
+                        h, balance, minimum, start = 8, 0, 0, 0
+                        first_failure = None
+                    else:
+                        valid &= id(arithmetic_workspace) in dyadic.approved
+                        summary = arithmetic_workspace.summary()
+                        expected_segments = tuple(arithmetic_workspace.segments())
+                        h = arithmetic_workspace.endpoint()
+                        balance, minimum, start = (
+                            summary.delta,
+                            summary.minimum,
+                            summary.width,
+                        )
+                        first_failure = arithmetic_workspace.first_failure_index()
+                        approved.add(id(arithmetic_workspace))
+                if len(root.segments) != len(expected_segments):
+                    valid = False
+                for segment, expected_segment in zip(
+                    root.segments, expected_segments, strict=False
+                ):
+                    expected_start, expected_block = expected_segment
                     bound = (
                         type(segment) is ArithmeticSegment
                         and type(segment.start) is int
-                        and segment.start == start
-                        and canonical_arithmetic_cylinder(segment.cylinder, ledger)
-                        and segment.cylinder.residue
-                        == h % (1 << segment.cylinder.width)
+                        and segment.start == expected_start
+                        and segment.cylinder == expected_block
                     )
                     if not bound:
                         valid = False
                         invalid.add((owner, id(segment)))
                         continue
                     approved.update((id(segment), id(segment.cylinder)))
-                    if first_failure is None and balance + segment.cylinder.minimum < 0:
-                        local_h, local_balance = h, balance
-                        for offset in range(segment.cylinder.width):
-                            leaf = arithmetic_kernel(local_h & 1, 1)
-                            local_h, local_balance = leaf.advance(
-                                local_h, local_balance
-                            )
-                            ledger.bump("antihydra_payload_audit_failure_steps")
-                            if local_balance < 0:
-                                first_failure = start + offset
-                                break
-                    old_balance = balance
-                    h, balance = segment.cylinder.advance(h, balance)
-                    minimum = min(minimum, old_balance + segment.cylinder.minimum)
-                    start += segment.cylinder.width
                 result = root._result
                 if result is not None:
                     valid &= (
@@ -300,8 +469,6 @@ def audit_antihydra_payloads(ledger: ResourceLedger) -> PhysicalSupportPayloadAu
                         and result.h.bit_length() <= root.max_state_bits
                         and result.balance.bit_length() <= root.max_state_bits
                     )
-                    if valid:
-                        result.require_source()
                     approved.add(id(result))
                 physical = root._physical
                 if physical is not None:
@@ -363,8 +530,6 @@ def audit_antihydra_payloads(ledger: ResourceLedger) -> PhysicalSupportPayloadAu
                             expected_halted,
                         )
                     )
-                    if valid:
-                        physical.require_source()
                     approved.update((id(publication), id(physical)))
                 if valid:
                     approved.update(
@@ -428,15 +593,31 @@ def audit_antihydra_payloads(ledger: ResourceLedger) -> PhysicalSupportPayloadAu
             if driver is not None:
                 adapter = getattr(driver, "adapter", None)
                 core = getattr(driver, "core", None)
+                scheduler = getattr(driver, "scheduler", None)
+                cursor = getattr(driver, "cursor", None)
                 valid &= (
                     type(driver) is AntihydraProjectionDriver
                     and type(adapter) is _AntihydraFragmentAdapter
                     and type(core) is SourceBoundSchedulerCore
+                    and type(scheduler) is TileScheduler
+                    and scheduler._source_only
+                    and scheduler.ledger is ledger
+                    and scheduler._source_images is core
+                    and type(cursor) is ProjectionOccurrenceCursor
+                    and cursor.ledger is ledger
+                    and not cursor._active
+                    and not cursor._states
+                    and not cursor._state_seals
+                    and not cursor._occurrences
+                    and not cursor._occurrence_seals
                     and adapter.ledger is ledger
                     and core.ledger is ledger
                     and adapter.projection is None
                     and adapter.key is None
                     and adapter.block is None
+                    and adapter._cursor is None
+                    and adapter._occurrence is None
+                    and adapter._source_h == adapter._source_balance == 0
                     and adapter._section_capacity == 0
                     and adapter._source_token is None
                     and not adapter._records

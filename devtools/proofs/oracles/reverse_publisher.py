@@ -14,6 +14,19 @@ from __future__ import annotations
 from collections.abc import Iterator, MutableMapping, MutableSequence, Sequence
 from dataclasses import dataclass
 
+from devtools.experiments.reverse_add.coordinate_program import (
+    ReverseCoordinateProgramArena,
+)
+from devtools.experiments.reverse_add.field_action import (
+    ReverseActionAutomorphisms,
+    ReverseFieldActionArena,
+)
+from devtools.experiments.reverse_add.higher_interface import (
+    ReverseHigherInterfaceCompiler,
+)
+from devtools.experiments.reverse_add.higher_schema import (
+    ReverseHigherActionSchema,
+)
 from number_compiler.arithmetic.carry.carry_monoid import CarryFn
 from number_compiler.arithmetic.contracts.block_effect import BlockEffect, BoundarySide
 from number_compiler.arithmetic.contracts.scoped_handles import ActionProgramID
@@ -52,19 +65,6 @@ from number_compiler.hashlife.execution.recursive_outputs import (
 )
 from number_compiler.hashlife.interfaces.diamond_quotient import LocalInterfaceID
 from number_compiler.resources.ledger import ResourceLedger
-from number_compiler.sequences.reverse_add.coordinate_program import (
-    ReverseCoordinateProgramArena,
-)
-from number_compiler.sequences.reverse_add.field_action import (
-    ReverseActionAutomorphisms,
-    ReverseFieldActionArena,
-)
-from number_compiler.sequences.reverse_add.higher_interface import (
-    ReverseHigherInterfaceCompiler,
-)
-from number_compiler.sequences.reverse_add.higher_schema import (
-    ReverseHigherActionSchema,
-)
 from number_compiler.sequences.reverse_add.powered_local_codec import (
     ReverseLocalActionID,
     ReversePoweredLocalCodec,

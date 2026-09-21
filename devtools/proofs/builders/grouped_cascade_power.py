@@ -8,6 +8,10 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import NotRequired, TypedDict
 
+from devtools.experiments.reverse_add.cascade import (
+    CascadeRelation,
+    GroupedDependencyCascadeArena,
+)
 from devtools.paths import report_output
 from devtools.proofs.builders.bimachine_lazy_power import (
     LazyBimachine,
@@ -15,10 +19,6 @@ from devtools.proofs.builders.bimachine_lazy_power import (
     lazy_from_eager,
 )
 from devtools.proofs.builders.bimachine_power import build_step
-from number_compiler.hashlife.execution.cascade import (
-    CascadeRelation,
-    GroupedDependencyCascadeArena,
-)
 
 
 class CascadeReport(TypedDict):

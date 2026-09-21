@@ -10,7 +10,6 @@ import pytest
 from number_compiler.arithmetic.contracts.block_effect import BoundarySide
 from number_compiler.arithmetic.contracts.block_kernel import (
     BaseBlockEffect,
-    _load_base10_t2_kernel,
 )
 from number_compiler.arithmetic.functions.finite_port_action import PortVariable
 from number_compiler.hashlife.interfaces.diamond_kernel import (
@@ -106,46 +105,6 @@ def test_correlated_and_nontrivial_argument_functions_use_exact_ite_fallback() -
         compile_truth_function(arena, kernel, "advance", BoundarySide.LEFT, nodes)
         == reference
     )
-
-
-def test_verified_t2_slice_publishes_only_final_finite_expression() -> None:
-    arena = DiamondKernelArena()
-    kernel = arena.kernel(arena.intern(_load_base10_t2_kernel()))
-    left_port, right_port = PortVariable(0, 0, "t2", 0), PortVariable(0, 2, "t2", 0)
-    arguments = (
-        arena.variable(kernel.left_count, left_port),
-        arena.constant(20, 7),
-        arena.variable(kernel.right_count, right_port),
-    )
-    before = len(arena._expressions)
-    result = compile_truth_function(
-        arena,
-        kernel,
-        "emit",
-        BoundarySide.LEFT,
-        tuple(arena.expression(value) for value in arguments),
-    )
-    assert len(arena._expressions) == before + 1
-    assert arena.ledger.counters["primitive_output_evaluations"] == 757 * 179
-    assert arena.ledger.counters["diamond_kernel_shannon_peak_frames"] <= 18
-    # Deterministic coverage of allleft/right ranges, plus invalidbinary codes.
-    for left, right in product(
-        (0, 1, 17, 231, 756, 757, 1023), (0, 1, 37, 178, 179, 255)
-    ):
-        inputs = {
-            PortVariable(0, 0, "t2", bit): bool(left & (1 << bit)) for bit in range(10)
-        }
-        inputs.update(
-            {
-                PortVariable(0, 2, "t2", bit): bool(right & (1 << bit))
-                for bit in range(8)
-            }
-        )
-        expected = (
-            kernel.effect.emit(left, 7, right) if left < 757 and right < 179 else 0
-        )
-        assert arena.evaluate(result, inputs) == expected
-    assert all(row.accounting_delta == 0 for row in arena.ledger.inventory())
 
 
 def test_foreign_boolean_argument_rejects_before_allocating() -> None:

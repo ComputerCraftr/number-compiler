@@ -15,9 +15,8 @@ if TYPE_CHECKING:
 def _exercise(
     term: PoweredCollatzTerm | ReverseAddPoweredTerm,
 ) -> tuple[HashLifeBehaviorMetrics, HashLifeBehaviorMetrics]:
-    index = term._point_index()
-    assert not hasattr(index, "_diamond_runtime")
-    before = index.behavior_metrics()
+    assert not hasattr(term, "_diamond_runtime")
+    before = term.behavior_metrics()
     assert before.field_action_nodes > 0
     assert before.resource_audit_complete == 1
     assert before.resource_accounting_mismatch == 0
@@ -27,8 +26,8 @@ def _exercise(
     assert before.representation_boundary_complete == 1
     assert before.seed_payload_tile_nodes > 0
     term.digit(0)
-    after = index.behavior_metrics()
-    runtime = index.metrics()
+    after = term.behavior_metrics()
+    runtime = term.metrics()
     assert after.resource_audit_complete == 1
     assert after.resource_accounting_mismatch == 0
     assert (
@@ -92,13 +91,13 @@ def test_collatz_hashlife_reports_current_tile_action_work() -> None:
 
 
 def test_seed_payload_description_is_independent_of_temporal_generation() -> None:
-    reverse_small = ReverseAddPoweredTerm(196, 8)._point_index().behavior_metrics()
-    reverse_large = ReverseAddPoweredTerm(196, 16)._point_index().behavior_metrics()
+    reverse_small = ReverseAddPoweredTerm(196, 8).behavior_metrics()
+    reverse_large = ReverseAddPoweredTerm(196, 16).behavior_metrics()
     assert (
         reverse_small.seed_payload_tile_nodes == reverse_large.seed_payload_tile_nodes
     )
-    collatz_small = PoweredCollatzTerm(27, 8)._point_index().behavior_metrics()
-    collatz_large = PoweredCollatzTerm(27, 16)._point_index().behavior_metrics()
+    collatz_small = PoweredCollatzTerm(27, 8).behavior_metrics()
+    collatz_large = PoweredCollatzTerm(27, 16).behavior_metrics()
     assert (
         collatz_small.seed_payload_tile_nodes == collatz_large.seed_payload_tile_nodes
     )

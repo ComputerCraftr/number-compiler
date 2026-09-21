@@ -5,7 +5,6 @@ from __future__ import annotations
 import argparse
 import json
 
-from devtools.benchmarks.clock_key_growth_probe import measure
 from devtools.benchmarks.tile_projection_accounting import projection_accounting
 from devtools.checks.test_run_evidence import source_fingerprint
 from devtools.paths import repository_root
@@ -26,7 +25,7 @@ def repeated_request(family: str, steps: int) -> dict[str, object]:
     core = term.payload.term
     position = core.maximum_width // 3 if family == "196" else 0
     digit = term.digit(position)
-    before_metrics = core._point_index().metrics()
+    before_metrics = core.metrics()
     before = projection_accounting(before_metrics)
     repeat = compiler.project_nth(family, steps, seed=seed)
     assert isinstance(
@@ -34,7 +33,7 @@ def repeated_request(family: str, steps: int) -> dict[str, object]:
     )
     if repeat.payload.term is not core or repeat.digit(position) != digit:
         raise AssertionError("public request lost its exact execution owner")
-    after_metrics = core._point_index().metrics()
+    after_metrics = core.metrics()
     if (
         not after_metrics.resource_audit_complete
         or after_metrics.resource_accounting_mismatch
@@ -60,6 +59,26 @@ def repeated_request(family: str, steps: int) -> dict[str, object]:
     }
 
 
+def cold_request(family: str, steps: int) -> dict[str, object]:
+    compiler = NumberCompiler()
+    seed = 196 if family == "196" else 27
+    result = compiler.project_nth(family, steps, seed=seed)
+    assert isinstance(
+        result.payload, (PoweredReverseAddTermPayload, PoweredCollatzTermPayload)
+    )
+    core = result.payload.term
+    position = core.maximum_width // 3 if family == "196" else 0
+    digit = result.digit(position)
+    metrics = core.metrics()
+    return {
+        "family": family,
+        "steps": steps,
+        "digit": digit,
+        "cache": compiler.powered_cache_info(),
+        "cold": projection_accounting(metrics),
+    }
+
+
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--family", choices=("196", "collatz"), required=True)
@@ -68,7 +87,7 @@ def main() -> None:
     root = repository_root()
     before = source_fingerprint(root)
     rows = [
-        measure(args.family, steps)
+        cold_request(args.family, steps)
         if args.mode == "cold"
         else repeated_request(args.family, steps)
         for steps in (8, 16, 32)

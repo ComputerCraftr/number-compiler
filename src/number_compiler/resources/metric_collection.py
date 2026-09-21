@@ -1,9 +1,9 @@
-"""Schema-six metric collection from one immutable ledger snapshot."""
+"""Schema-seven metric collection from one immutable ledger snapshot."""
 
 from __future__ import annotations
 
 from collections.abc import Mapping, Sequence
-from dataclasses import fields
+from dataclasses import fields, replace
 from typing import cast
 
 from number_compiler.arithmetic.contracts.scoped_handles import ExactSource
@@ -21,8 +21,8 @@ from number_compiler.resources.metric_registry import (
     QUOTIENT_WORK_COUNTERS,
     SEMANTIC_ADAPTER_WORK_COUNTERS,
     observed_node_partition,
-    schema6_inventory_values,
-    schema6_work_values,
+    schema7_inventory_values,
+    schema7_work_values,
 )
 from number_compiler.resources.metric_replace import replace_metric
 from number_compiler.resources.ownership import audit_execution_ownership
@@ -80,6 +80,22 @@ def collect_ledger_metrics(ledger: ResourceLedger) -> LedgerMetrics:
 
     source_version = ledger.mutation_version
     snapshot = ledger.snapshot()
+    # Audits charge their bounded arithmetic; the retained inventory stays fixed.
+    audit = audit_registered_payloads(ledger, snapshot=snapshot, fresh=False)
+    audit_counters = {
+        "dyadic_payload_audit_branch_steps",
+        "dyadic_payload_audit_operand_bits",
+        "dyadic_payload_audit_cycle_checks",
+        "dyadic_payload_audit_compositions",
+        "dyadic_payload_audit_prefix_additions",
+    }
+    if ledger.mutation_version != source_version or any(
+        ledger.counters.get(key, 0) != snapshot.counters.get(key, 0)
+        for key in ledger.counters.keys() | snapshot.counters.keys()
+        if key not in audit_counters
+    ):
+        raise RuntimeError("execution resources changed during metric projection")
+    snapshot = replace(snapshot, counters=dict(ledger.counters))
     execution_roots = tuple(ledger.iter_execution_roots())
     cache_histograms = tuple(
         cache_event_histograms(root._cache_metrics)
@@ -92,7 +108,6 @@ def collect_ledger_metrics(ledger: ResourceLedger) -> LedgerMetrics:
     ):
         raise RuntimeError("execution resources changed during metric capture")
     inventory = snapshot.inventory
-    audit = audit_registered_payloads(ledger, snapshot=snapshot, fresh=False)
     ownership = audit_execution_ownership(ledger, fresh=False)
     # A zero-population scope is an accounting namespace, not a retained
     # container.  Require inventory and payload callbacks as soon as the owner
@@ -511,7 +526,7 @@ def collect_ledger_metrics(ledger: ResourceLedger) -> LedgerMetrics:
             # interface population below counts canonical records only.
             **{name: counters.get(name, 0) for name in QUOTIENT_WORK_COUNTERS},
             **{name: counters.get(name, 0) for name in DIAMOND_WORK_COUNTERS},
-            **schema6_work_values(counters),
+            **schema7_work_values(counters),
             # Semantic outcomes are evidence of successful reuse, not
             # executed-work units.
             **{name: counters.get(name, 0) for name in SEMANTIC_OUTCOME_COUNTERS},
@@ -520,7 +535,7 @@ def collect_ledger_metrics(ledger: ResourceLedger) -> LedgerMetrics:
                 for item in fields(report)
                 if item.name in SEMANTIC_ADAPTER_WORK_COUNTERS and item.name in counters
             },
-            **schema6_inventory_values(inventory),
+            **schema7_inventory_values(inventory),
             "local_interface_nodes": interface_records,
             "causal_geometry_nodes": nodes_for("causal_geometry"),
             "right_reset_certificate_nodes": nodes_for("right_reset_certificate"),
@@ -605,12 +620,6 @@ def collect_ledger_metrics(ledger: ResourceLedger) -> LedgerMetrics:
             "algebraic_instrumentation_complete": int(
                 set(ALGEBRAIC_FIELD_WORK_COUNTERS) <= counters.keys()
             ),
-            "reverse_t2_proof_left_state_classes": PROOF_CERTIFICATE_POPULATIONS[
-                "reverse_t2_left"
-            ],
-            "reverse_t2_proof_right_state_classes": PROOF_CERTIFICATE_POPULATIONS[
-                "reverse_t2_right"
-            ],
             "collatz_c4_proof_left_state_classes": PROOF_CERTIFICATE_POPULATIONS[
                 "collatz_c4_left"
             ],

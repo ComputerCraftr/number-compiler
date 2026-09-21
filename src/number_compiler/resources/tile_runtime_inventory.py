@@ -3,11 +3,11 @@
 from __future__ import annotations
 
 from collections.abc import Mapping
-from dataclasses import fields, is_dataclass
-from hashlib import sha256
 from sys import getsizeof
 from typing import cast
 
+import number_compiler.resources.tile_causal_workspace_inventory as causal_inventory
+import number_compiler.resources.tile_scheduler_inventory_support as scheduler_support
 from number_compiler.arithmetic.contracts.block_effect import _effect_key
 from number_compiler.arithmetic.contracts.block_kernel import BaseBlockEffect
 from number_compiler.arithmetic.contracts.scoped_handles import ActionProgramID
@@ -26,7 +26,6 @@ from number_compiler.hashlife.actions.tile_action_algebra import (
 from number_compiler.hashlife.actions.tile_action_algebra import (
     PrimitiveTileAction as _Action,
 )
-from number_compiler.hashlife.behavior.reverse_bound_output import ReverseBoundOutput
 from number_compiler.hashlife.execution.tile_application_authority import (
     audit_tile_application_registry,
 )
@@ -45,9 +44,6 @@ from number_compiler.hashlife.execution.tile_scheduler import (
 )
 from number_compiler.hashlife.interfaces.diamond_quotient import LocalInterfaceID
 from number_compiler.hashlife.observation.tile_projection import LazyProjection
-from number_compiler.hashlife.tiles.tile_boundaries import (
-    BoundaryTileView,
-)
 from number_compiler.hashlife.tiles.tile_context import TemporalCocycle
 from number_compiler.hashlife.tiles.tile_result_records import (
     BehaviorBindingKey,
@@ -118,13 +114,16 @@ def audit_tile_runtime(
     invalid.update(audit_reverse_residuals(ledger, roots))
     adapters = tuple(root for root in roots if type(root) is PrimitiveTileKernelAdapter)
     schedulers = tuple(root for root in roots if type(root) is TileScheduler)
+    physical_schedulers = tuple(
+        scheduler for scheduler in schedulers if not scheduler._source_only
+    )
     applications = tuple(root for root in roots if type(root) is TileApplication)
 
     for adapter in adapters:
         adapter_scheduler = next(
             (
                 scheduler
-                for scheduler in schedulers
+                for scheduler in physical_schedulers
                 if scheduler.adapter is adapter and scheduler.results is adapter.results
             ),
             None,
@@ -167,10 +166,9 @@ def audit_tile_runtime(
                 kernel = adapter.kernels.kernel(record.kernel)
                 declaration = adapter.quotients.interface(record.signature)
                 behavior = (_CONTRACT, _effect_key(kernel.effect))
-                digest = sha256(repr(behavior).encode()).hexdigest()
+                declaration.kernel.validate()
                 valid &= (
                     declaration.kernel.behavior == behavior
-                    and declaration.kernel.digest == digest
                     and declaration.inputs == adapter._ports(kernel)
                     and declaration.outputs == adapter._output_sorts(kernel)
                     and declaration.phase_count == 1
@@ -633,7 +631,7 @@ def audit_tile_runtime(
         scheduler = application.scheduler
         valid = (
             type(scheduler) is TileScheduler
-            and scheduler in schedulers
+            and scheduler in physical_schedulers
             and type(application.identity) is int
             and 0 <= application.identity < scheduler._next_application
             and type(application._closed) is bool
@@ -678,112 +676,20 @@ def audit_tile_runtime(
         else:
             invalid.add((-1, id(application)))
 
-    frame_ops = frozenset(
-        (
-            "memo_done",
-            "point",
-            "advance",
-            "emit",
-            "advance_symbol",
-            "anchor",
-            "residual",
-            "output",
-            "output_boundary",
-            "scan_chunks",
-            "output_chunk_list",
-            "interface",
-            "reverse_interface",
-            "exact_reverse_output",
-            "reverse_boundary",
-            "source_root_match",
-            "interface_emit",
-            "child_states",
-        )
-    )
-
-    def valid_frame_value(scheduler: TileScheduler, value: object) -> bool:
-        pending = [value]
-        seen: set[int] = set()
-        while pending:
-            current = pending.pop()
-            if id(current) in seen:
-                continue
-            seen.add(id(current))
-            if current is None or type(current) in (int, bool, str):
-                continue
-            if type(current) is ReverseBoundOutput:
-                try:
-                    current.__post_init__()
-                except (TypeError, ValueError, AttributeError):
-                    return False
-                continue
-            if type(current) is tuple:
-                if len(current) > 8 or (
-                    len(current) > 2 and all(type(item) is TileID for item in current)
-                ):
-                    return False
-                pending.extend(current)
-                continue
-            if type(current) is FieldCellActionID:
-                try:
-                    scheduler.adapter.validate_action(current)
-                except (TypeError, ValueError, KeyError, AttributeError, IndexError):
-                    return False
-                continue
-            if type(current) is TileID:
-                try:
-                    scheduler.tiles.resolve(current)
-                except (TypeError, ValueError, KeyError, AttributeError, IndexError):
-                    return False
-                continue
-            if type(current) is LocalInterfaceID:
-                try:
-                    scheduler.results.interfaces.resolve(current)
-                except (TypeError, ValueError, KeyError, AttributeError, IndexError):
-                    return False
-                continue
-            if type(current) is PortSignatureID:
-                try:
-                    scheduler.results.interfaces.interface(current)
-                except (TypeError, ValueError, KeyError, AttributeError, IndexError):
-                    return False
-                continue
-            if type(current) is BoundaryTileView:
-                try:
-                    current.__post_init__()
-                    tile_record = scheduler.tiles.resolve(current.tile)
-                    if (
-                        current.source_offset + current.relative_extent
-                        > tile_record.width
-                    ):
-                        return False
-                except (TypeError, ValueError, KeyError, AttributeError, IndexError):
-                    return False
-                continue
-            if type(current) is SpatialReferenceBuffer:
-                if (
-                    current.workspace is not scheduler._causal_workspace
-                    or current.closed
-                    or current.workspace._buffers.get(current.identity) is not current
-                ):
-                    return False
-                continue
-            if is_dataclass(current) and (
-                type(current).__module__.startswith(
-                    (
-                        "number_compiler.hashlife.tiles.tile_",
-                        "number_compiler.hashlife.execution.tile_",
-                    )
-                )
-                or type(current).__module__
-                == "number_compiler.arithmetic.contracts.scoped_handles"
-            ):
-                pending.extend(getattr(current, item.name) for item in fields(current))
-                continue
-            return False
-        return True
-
     for scheduler in schedulers:
+        if scheduler._source_only:
+            valid_source_root, source_core = (
+                scheduler_support.valid_source_only_scheduler(
+                    scheduler, ledger, containers, roots
+                )
+            )
+            if valid_source_root:
+                approved.add(id(scheduler))
+                if source_core is not None:
+                    approved.add(id(source_core))
+            else:
+                invalid.add((-1, id(scheduler)))
+            continue
         spatial = scheduler._causal_workspace
         tasks = scheduler._causal_tasks
         valid_root = (
@@ -799,6 +705,8 @@ def audit_tile_runtime(
             and tasks.ledger is ledger
             and containers.get(tasks.memo_owner) is tasks.memo
             and containers.get(tasks.active_owner) is tasks.active
+            and containers.get(tasks.action_pending_owner) is tasks.action_pending
+            and containers.get(tasks.action_admitted_owner) is tasks.action_admitted
             and type(tasks.frames) is CausalFrameStack
             and tasks.frames.ledger is ledger
             and containers.get(tasks.frames.owner) is tasks.frames._frames
@@ -916,13 +824,19 @@ def audit_tile_runtime(
         )
         if not valid_root:
             invalid.add((spatial.owner, id(spatial)))
+
+        task_approved, task_invalid = causal_inventory.audit_task_payloads(
+            scheduler, tasks, valid_root
+        )
+        approved.update(task_approved)
+        invalid.update(task_invalid)
         frame_references = 0
         for frame in tasks.frames._frames:
             valid = (
                 valid_root
                 and type(frame) is CausalFrame
                 and type(frame.op) is str
-                and frame.op in frame_ops
+                and frame.op in scheduler_support.CAUSAL_FRAME_OPS
                 and type(frame.args) is tuple
                 and len(frame.args) <= 8
                 and type(frame.saved) is tuple
@@ -930,8 +844,8 @@ def audit_tile_runtime(
                 and type(frame.stage) is int
                 and frame.stage >= -1
                 and type(frame.memoized) is bool
-                and valid_frame_value(scheduler, frame.args)
-                and valid_frame_value(scheduler, frame.saved)
+                and causal_inventory.valid_frame_value(scheduler, frame.args, approved)
+                and causal_inventory.valid_frame_value(scheduler, frame.saved, approved)
             )
             frame_references += len(frame.args) + len(frame.saved)
             if valid:
@@ -942,7 +856,9 @@ def audit_tile_runtime(
         if not valid_root:
             invalid.add((tasks.frames.owner, id(tasks.frames)))
         for value in tasks.values._values:
-            if valid_root and valid_frame_value(scheduler, value):
+            if valid_root and causal_inventory.valid_frame_value(
+                scheduler, value, approved
+            ):
                 approved.add(id(value))
             else:
                 invalid.add((tasks.values.owner, id(value)))
@@ -972,7 +888,7 @@ def audit_tile_runtime(
         ledger,
         containers,
         roots,
-        schedulers,
+        physical_schedulers,
         applications,
     )
     approved.update(radix_approved)
@@ -982,7 +898,7 @@ def audit_tile_runtime(
             valid = (
                 root.ledger is ledger
                 and type(root.scheduler) is TileScheduler
-                and root.scheduler in schedulers
+                and root.scheduler in physical_schedulers
                 and type(root._application) is TileApplication
                 and root._application.scheduler is root.scheduler
                 and type(root._logical_extent) is int

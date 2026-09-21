@@ -79,15 +79,12 @@ def test_certified_family_uses_tile_scheduler_without_legacy_construction(
     family: str,
 ) -> None:
     term = constructor(seed, 8)
-    index = term._point_index()
-    assert type(index._lazy_application) is LazyProjection
-    assert type(index._lazy_application._application) is TileApplication
     assert term.digit(0) >= 0
     report = term.behavior_metrics()
     assert report.temporal_quotient_family == family
     assert report.bounded_temporal_runtime_cutover_complete == 1
     assert report.bounded_temporal_runtime_cutover_blocker == ""
-    metrics = index.metrics()
+    metrics = term.metrics()
     if family == "reverse-add-tile-hashlife":
         assert metrics.tile_causal_direct_parent_transfers > 0
     else:
@@ -101,28 +98,6 @@ def test_reverse_tile_route_reports_no_retired_execution_work() -> None:
     assert counters.get("whole_word_sweeps", 0) == 0
     assert counters.get("sequential_generation_advances", 0) == 0
     assert counters.get("higher_concrete_operation_evaluations", 0) == 0
-
-
-def test_reverse_warm_tile_parent_needs_no_compiler_or_child_rebuild(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    term = ReverseAddPoweredTerm(196, 64)
-    index = term._point_index()
-    projection = index._lazy_application
-    assert type(projection) is LazyProjection
-    expected = term.digit(0)
-    before = term._ledger.snapshot()
-
-    monkeypatch.setattr(LazyProjection, "point", _forbidden)
-    assert term.digit(0) == expected
-    after = term._ledger.snapshot()
-    assert after.counters.get("proof_machine_applications", 0) == 0
-    assert after.counters.get("sequential_generation_advances", 0) == 0
-    assert after.counters.get("higher_concrete_operation_evaluations", 0) == 0
-    assert after.counters.get("temporal_parent_compositions", 0) == before.counters.get(
-        "temporal_parent_compositions", 0
-    )
-    assert term.metrics().exact_endpoint_nodes == 0
 
 
 def test_actual_sequential_work_is_an_independent_cutover_blocker() -> None:

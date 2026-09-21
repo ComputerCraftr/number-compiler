@@ -3,6 +3,11 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Any, TypeVar
 
+from number_compiler.arithmetic.formula.skew_residue_laws import (
+    pair_growth_edge,
+    pair_growth_interior,
+    pair_no_growth,
+)
 from number_compiler.arithmetic.formula.types import Expr, FormulaStorage
 
 _MetaT = TypeVar("_MetaT")
@@ -329,7 +334,7 @@ class FormulaEvalMixin(FormulaStorage):
                     Li, Li1, Ri, Ri1 = (
                         get(node.args[j], pos) for j in range(nplanes, nplanes + 4)
                     )
-                    coeff = 2 * coeff + Li + Ri1 - base * (Li1 + Ri)
+                    coeff = pair_no_growth(coeff, Li, Li1, Ri1, Ri, base)
                 elif mode == "GROWTH_INTERNAL":
                     coeff = sum(get(node.args[b], pos) << b for b in range(nplanes))
                     prev = sum(
@@ -339,10 +344,10 @@ class FormulaEvalMixin(FormulaStorage):
                     Li, Li1, Ri, Rim1 = (
                         get(node.args[j], pos) for j in range(off, off + 4)
                     )
-                    coeff = coeff + prev + Li + Ri - base * (Li1 + Rim1)
+                    coeff = pair_growth_interior(coeff, prev, Li, Li1, Ri, Rim1, base)
                 elif mode == "GROWTH_EDGE":
                     coeff = sum(get(node.args[b], 0) << b for b in range(nplanes))
-                    coeff = coeff + 1 - base * get(node.args[nplanes], 0)
+                    coeff = pair_growth_edge(coeff, get(node.args[nplanes], 0), base)
                 elif mode == "DIGIT_NORMALIZE":
                     coeff = sum(get(node.args[b], pos) << b for b in range(nplanes))
                     incoming = get(node.args[nplanes], pos)

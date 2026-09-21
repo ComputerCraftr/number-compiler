@@ -6,7 +6,6 @@ That claim is tested by the producer's differential and algebraic tests.
 
 from __future__ import annotations
 
-from hashlib import sha256
 from typing import TYPE_CHECKING
 
 from number_compiler.arithmetic.contracts.block_effect import _effect_key
@@ -89,7 +88,7 @@ class PrimitiveMacroPayloadRegistry:
         if type(value) is not SemanticIdentity:
             return False
         try:
-            SemanticIdentity.__post_init__(value)
+            value.validate()
             behavior = value.behavior
             if (
                 len(behavior) != 3
@@ -97,7 +96,6 @@ class PrimitiveMacroPayloadRegistry:
                 or type(behavior[2]) is not int
                 or not 1 <= behavior[2] <= 1 << 62
                 or behavior[2] & (behavior[2] - 1)
-                or value.digest != sha256(repr(behavior).encode()).hexdigest()
             ):
                 return False
             return any(

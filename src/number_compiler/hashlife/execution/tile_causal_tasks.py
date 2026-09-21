@@ -5,6 +5,7 @@ from __future__ import annotations
 from dataclasses import dataclass, replace
 from typing import TYPE_CHECKING, Any
 
+from number_compiler.arithmetic.contracts.block_effect import BoundarySide
 from number_compiler.hashlife.actions.field_actions import FieldCellActionID
 from number_compiler.hashlife.tiles.tile_boundaries import (
     BoundaryTileOperands,
@@ -115,6 +116,8 @@ def primitive_advance(
     side: int,
     state: int,
     view: BoundaryTileView,
+    *,
+    action_admission: object | None = None,
 ) -> int:
     """Apply a primitive directed transfer to one exact logical view."""
     from number_compiler.hashlife.tiles.tile_ports import BoundPorts
@@ -142,6 +145,7 @@ def primitive_advance(
             view.tile,
             side,
             state,
+            _action_admission=action_admission,
         )
         adapter.ledger.bump("tile_causal_direct_parent_transfers")
         return result
@@ -152,8 +156,31 @@ def primitive_advance(
         view.orientation ^ side,
         view.source_offset,
     )
-    wiring = adapter.wiring(action)
-    initial = adapter.initial_ports(action)
+    if action_admission is None:
+        wiring = adapter.wiring(action)
+        initial = adapter.initial_ports(action)
+    else:
+        # The token is the authority for the current causal run. Recover its
+        # workspace only after checking its exact lease sort; the admission
+        # helpers then authenticate the action metadata and reject foreign or
+        # stale tokens before exposing wiring or initial ports.
+        from number_compiler.hashlife.execution.tile_causal_admission import (
+            admitted_kernel,
+            admitted_wiring,
+        )
+        from number_compiler.resources.causal_workspace import (
+            CausalActionAdmission,
+        )
+
+        if type(action_admission) is not CausalActionAdmission:
+            raise TypeError("primitive advance requires a causal admission lease")
+        tasks = action_admission._workspace
+        wiring = admitted_wiring(adapter, tasks, action_admission, action)
+        law = admitted_kernel(adapter, tasks, action_admission, action)
+        initial = (
+            law.initial(BoundarySide.LEFT),
+            law.initial(BoundarySide.RIGHT),
+        )
     ports = (state, initial[1]) if side == 0 else (initial[0], state)
     return adapter.transfer_view(action, scan_view, BoundPorts(ports, wiring), side)
 
@@ -388,6 +415,8 @@ def composite_result_key(
     tile: TileID,
     left: object,
     right: object,
+    *,
+    action_admission: object | None = None,
 ) -> PoweredResultKey | None:
     """Build a key only when the exact edge context is represented."""
     from number_compiler.hashlife.execution.tile_causal_results import (
@@ -397,6 +426,7 @@ def composite_result_key(
     from number_compiler.hashlife.tiles.tile_ports import (
         BoundPorts,
         FusedBoundaryContract,
+        ResultWiring,
     )
     from number_compiler.hashlife.tiles.tile_result_records import PoweredResultKey
 
@@ -407,15 +437,44 @@ def composite_result_key(
         1,
     ):
         raise ValueError("composite causal prefixes have another action or direction")
-    children = adapter.action_children(action)
+    if action_admission is None:
+        children = adapter.action_children(action)
+        action_wiring = adapter.wiring(action)
+    else:
+        from number_compiler.resources.causal_workspace import (
+            admitted_action_metadata,
+        )
+
+        signature, _kernel, record = admitted_action_metadata(
+            action_admission, adapter, action
+        )
+        children = record.children
+        action_wiring = ResultWiring(signature)
     if children is None:
         return None
     before, _after = children
-    initial = adapter.initial_ports(before)
+    if action_admission is None:
+        initial = adapter.initial_ports(before)
+        before_wiring = adapter.wiring(before)
+        after_wiring = adapter.wiring(_after)
+    else:
+        before_signature, before_kernel, _before_record = admitted_action_metadata(
+            action_admission, adapter, before
+        )
+        after_signature, _after_kernel, _after_record = admitted_action_metadata(
+            action_admission, adapter, _after
+        )
+        kernel = adapter.kernels.kernel(before_kernel)
+        initial = (
+            kernel.initial(BoundarySide.LEFT),
+            kernel.initial(BoundarySide.RIGHT),
+        )
+        before_wiring = ResultWiring(before_signature)
+        after_wiring = ResultWiring(after_signature)
     if left.explicit_edge or right.explicit_edge:
         producer = BoundPorts(
             (left.producer_seed, right.producer_seed),
-            adapter.wiring(before),
+            before_wiring,
             BoundaryTileOperands(left.view, right.view),
         )
         consumer_boundaries = BoundaryTileOperands(
@@ -424,18 +483,18 @@ def composite_result_key(
         )
         consumer = BoundPorts(
             (left.consumer_seed, right.consumer_seed),
-            adapter.wiring(_after),
+            after_wiring,
             consumer_boundaries,
         )
         key = PoweredResultKey(
             action,
             tile,
             consumer.ports,
-            adapter.wiring(action),
+            action_wiring,
             consumer_boundaries,
             FusedBoundaryContract(producer, consumer),
         )
-        results._validate_key(key)
+        results._validate_key(key, action_admission=action_admission)
         return key
     if (
         left.consumer_view is not None
@@ -447,7 +506,14 @@ def composite_result_key(
         (left.consumer_seed, right.consumer_seed),
         BoundaryTileOperands(left.view, right.view),
     )
-    return causal_result_key(results, action, tile, state, adapter.wiring(action))
+    return causal_result_key(
+        results,
+        action,
+        tile,
+        state,
+        action_wiring,
+        action_admission=action_admission,
+    )
 
 
 __all__ = [

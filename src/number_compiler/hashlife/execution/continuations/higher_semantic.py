@@ -914,6 +914,17 @@ class HigherSemanticArena:
 
         return bind_free(self, expression, variable, replacement)
 
+    def bind_free_many(
+        self,
+        expression: HigherExpressionID,
+        bindings: tuple[tuple[HigherExpressionID, HigherExpressionID], ...],
+    ) -> HigherExpressionID:
+        from number_compiler.hashlife.execution.continuations.substitution import (
+            bind_free_many,
+        )
+
+        return bind_free_many(self, expression, bindings)
+
     def substitute(
         self,
         expression: HigherExpressionID,

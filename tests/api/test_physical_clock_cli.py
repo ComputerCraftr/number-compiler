@@ -15,9 +15,7 @@ from number_compiler.arithmetic.functions.finite_function_types import (
 from number_compiler.hashlife.execution.tile_kernel import PrimitiveTileKernelAdapter
 from number_compiler.hashlife.execution.tile_scheduler import TileApplication
 from number_compiler.hashlife.interfaces.semantic_bits import FactoredFunctionID
-from number_compiler.hashlife.observation.tile_projection import LazyProjection
 from number_compiler.sequences.collatz.block_power import PoweredCollatzTerm
-from number_compiler.sequences.collatz.physical_support import PhysicalSupport
 from number_compiler.sequences.collatz.power import CollatzEventArena
 
 
@@ -84,64 +82,8 @@ def test_physical_clock_cli_uses_bound_interface(
     assert result["requested_ticks"] == ticks
     assert "discovered_events" not in result
     if ticks:
-        assert (
-            result["work_counters"]["tile_projection_physical_support_observations"]
-            == 1
-        )
-        assert "tile_projection_cocycle_observations" not in result["work_counters"]
-
-
-def test_clock_reuses_same_completed_source_binding(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    term = PoweredCollatzTerm(11, 4)
-    projection = term._point_index()._lazy_application
-    assert type(projection) is LazyProjection
-    application = projection._open()
-    result = application.complete()
-    assert (result.physical_ticks, result.event_weight) == (4, 2)
-    support = result.physical_support
-    assert support is not None
-    assert tuple(support.tick(index) for index in range(4)) == (
-        True,
-        False,
-        True,
-        False,
-    )
-    original_root = application._root
-    monkeypatch.setattr(application.scheduler, "complete", _forbidden)
-    clock = term.s_arithmetic_clock()
-    assert (clock.events, clock.divisions) == (2, 2)
-    assert application._root is original_root
-    application.close()
-    with pytest.raises(ValueError):
-        term.s_arithmetic_clock()
-
-
-def test_physical_support_rejects_forgery_and_another_scheduler() -> None:
-    first = PoweredCollatzTerm(11, 4)
-    second = PoweredCollatzTerm(11, 4)
-    support = first._point_index().direct_physical_support()
-    other = second._point_index().direct_physical_support()
-    projection = first._point_index()._lazy_application
-    assert type(projection) is LazyProjection
-    first_scheduler = projection._open().scheduler
-    with pytest.raises(ValueError, match="another scheduler"):
-        first_scheduler.results.validate_physical_support(other)
-    forged = PhysicalSupport(
-        support.owner,
-        support.node_id,
-        support.ticks,
-        support.odd_ticks,
-        support.parity,
-        support.left,
-        support.right,
-    )
-    with pytest.raises(ValueError, match="another arena"):
-        support.owner.validate(forged)
-    object.__setattr__(support, "parity", True)
-    with pytest.raises(ValueError, match="semantic fields"):
-        support.owner.validate(support)
+        assert result["work_counters"]["source_image_publications"] > 0
+        assert result["work_counters"]["collatz_physical_action_publications"] > 0
 
 
 def test_clock_composition_rebases_the_source() -> None:
@@ -212,5 +154,6 @@ def test_cli_physical_output_cannot_rebuild_joint_table(
     result = json.loads(capsys.readouterr().out)
     assert int(result["value"]) == _reference(27, 16)[0]
     metrics = result["info"]["metrics"]["execution_metrics"]
-    assert metrics["collatz_physical_factored_output_compilations"] > 0
-    assert metrics["collatz_physical_joint_output_tables_elided"] > 0
+    counters = metrics["resource_work_counters"]
+    assert counters["collatz_physical_action_publications"] > 0
+    assert counters["source_image_publications"] > 0

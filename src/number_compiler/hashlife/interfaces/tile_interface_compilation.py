@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-from hashlib import sha256
 from typing import TYPE_CHECKING
 
 from number_compiler.arithmetic.contracts.block_effect import (
@@ -387,10 +386,7 @@ def _signature(
         if division_radix is not None
         else _effect_key(effect),
     )
-    identity = SemanticIdentity(
-        sha256(repr(behavior).encode()).hexdigest(),
-        behavior,
-    )
+    identity = SemanticIdentity("tile-interface", behavior)
     admissible = self.quotients.functions.atom(
         FunctionSignature(ports, BOOL),
         1,

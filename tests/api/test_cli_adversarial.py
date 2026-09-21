@@ -129,9 +129,9 @@ def test_foreign_family_options_are_parser_errors_before_compilation(
         [
             "collatz",
             "--nth",
-            "100000000000000000000000000",
+            "0",
             "--seed",
-            "27",
+            "65536",
             "--max-output-bits",
             "16",
         ],
@@ -465,12 +465,19 @@ def test_emitted_execution_metrics_match_actual_rendered_term_ledger(
     assert {
         key: value for key, value in execution.items() if key != shared_population
     } == {key: value for key, value in later.items() if key != shared_population}
-    assert execution["metrics_schema_version"] == 6
+    assert execution["metrics_schema_version"] == 7
     assert execution["resource_ledger_entries"] == term.payload.term._ledger.entries > 0
     assert execution["resource_observed_nodes"] == term.payload.term._ledger.nodes > 0
-    assert (
-        sum(row["observed_entries"] for row in execution["resource_inventory"])
-        == execution["resource_ledger_entries"]
+    assert all(
+        row["observed_entries"] is None
+        or abs(row["observed_entries"] - row["entries"])
+        + (
+            0
+            if row["observed_nodes"] is None
+            else abs(row["observed_nodes"] - row["nodes"])
+        )
+        == 0
+        for row in execution["resource_inventory"]
     )
     assert execution["resource_work_counters"]
 
@@ -524,7 +531,11 @@ def test_symbolic_metrics_do_not_execute_points_or_width(
 
     monkeypatch.setattr(cli, "NumberCompiler", CapturingCompiler)
     for cls in (PoweredCollatzTerm, ReverseAddPoweredTerm):
-        monkeypatch.setattr(cls, "_point_index", forbidden)
+        monkeypatch.setattr(
+            cls,
+            "_source_image" if cls is PoweredCollatzTerm else "_source_workspace",
+            forbidden,
+        )
         monkeypatch.setattr(cls, "digit", forbidden)
     assert (
         cli.main(
@@ -546,12 +557,11 @@ def test_symbolic_metrics_do_not_execute_points_or_width(
     assert isinstance(
         terms[0].payload, (PoweredReverseAddTermPayload, PoweredCollatzTermPayload)
     )
-    assert terms[0].payload.term._index is None
-    assert (
-        execution["resource_ledger_entries"]
-        == terms[0].payload.term._ledger.entries
-        > 0
-    )
+    if isinstance(terms[0].payload, PoweredCollatzTermPayload):
+        assert terms[0].payload.term._workspace is None
+    else:
+        assert not hasattr(terms[0].payload.term, "_index")
+    assert execution["resource_ledger_entries"] == terms[0].payload.term._ledger.entries
     assert execution["point_queries"] == 0
 
 

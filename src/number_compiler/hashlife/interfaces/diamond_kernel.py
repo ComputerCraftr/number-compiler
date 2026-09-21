@@ -8,7 +8,7 @@ from __future__ import annotations
 
 from collections.abc import Mapping, MutableMapping, MutableSequence, Sequence
 from dataclasses import dataclass
-from typing import TYPE_CHECKING, Literal, Protocol, cast
+from typing import Literal, Protocol, cast
 
 from number_compiler.arithmetic.contracts.block_effect import (
     BlockEffect,
@@ -46,11 +46,6 @@ from number_compiler.hashlife.interfaces.primitive_behavior import (
 from number_compiler.hashlife.observation.diamond_observers import NonblankBlockEffect
 from number_compiler.projection.digit_terminal import DigitNormalizeBlockEffect
 from number_compiler.resources.ledger import OwnedMemo, ResourceLedger
-
-if TYPE_CHECKING:
-    from number_compiler.hashlife.execution.diamond_reverse_expression import (
-        DecimalT2Emitter,
-    )
 
 
 class _BoundedBoundaryUniverse(Protocol):
@@ -340,7 +335,6 @@ class DiamondKernelArena:
             nodes_per_entry=1,
         )
         self.functions = FinitePortActionArena(self.ledger)
-        self._reverse_emitter: DecimalT2Emitter | None = None
 
     def intern(
         self,
@@ -802,20 +796,6 @@ class DiamondKernelArena:
         nonconstant = sum(any(bit.local_id >= 2 for bit in node.bits) for node in nodes)
         if nonconstant <= 1:
             answer = self._direct(primitive, operation, side, nodes)
-        elif (
-            operation == "emit"
-            and type(primitive.effect) is FiniteBlockEffect
-            and self._is_decimal_t2(primitive.effect)
-        ):
-            from number_compiler.hashlife.execution.diamond_reverse_expression import (
-                DecimalT2Emitter,
-            )
-
-            if self._reverse_emitter is None:
-                self._reverse_emitter = DecimalT2Emitter(self)
-            answer = self._reverse_emitter.emit(
-                arguments[0], arguments[1], arguments[2]
-            )
         else:
             constants = tuple(
                 None
@@ -889,12 +869,3 @@ class DiamondKernelArena:
         )
 
         return compile_truth_function(self, primitive, operation, side, nodes)
-
-    @staticmethod
-    def _is_decimal_t2(effect: FiniteBlockEffect) -> bool:
-        """Recognize the proof T2 kernel without loading it for other leaves."""
-        from number_compiler.arithmetic.contracts.block_kernel import (
-            _load_base10_t2_kernel,
-        )
-
-        return _effect_key(effect) == _effect_key(_load_base10_t2_kernel())

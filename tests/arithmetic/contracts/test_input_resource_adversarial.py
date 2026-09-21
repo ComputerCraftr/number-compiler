@@ -257,7 +257,11 @@ def test_public_digit_aliases_reject_before_zero_or_warm_lookup(
     term = constructor(1, int(warm))
     if warm:
         term.digit(0)
-    monkeypatch.setattr(constructor, "_point_index", forbidden)
+    monkeypatch.setattr(
+        constructor,
+        "_source_workspace" if family == "reverse" else "_source_image",
+        forbidden,
+    )
     for value in BAD:
         before = term._ledger.snapshot()
         with pytest.raises(TypeError):

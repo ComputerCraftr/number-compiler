@@ -196,7 +196,6 @@ def test_public_point_never_creates_lowering_capability(
     monkeypatch.setattr(projection, "LoweringCapability", _forbid)
     assert term.width() > 0
     assert term.digit(0) >= 0
-    # Explicit output must cross the same capability boundary that scalar
-    # projection avoided; poisoning it therefore rejects only this request.
-    with pytest.raises(AssertionError, match="lowering boundary"):
-        term.digits()
+    # The current source image also returns the explicit bounded output without
+    # creating the retired lowering capability.
+    assert term.digits()

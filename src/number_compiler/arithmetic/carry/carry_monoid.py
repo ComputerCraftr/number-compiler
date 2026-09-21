@@ -1,4 +1,8 @@
-"""Three-element carry-transfer monoid used by temporal block composition."""
+"""Three-element spatial carry-transfer monoid, with physical LSD-to-MSD order.
+
+A neutral port preserves the incoming carry; it does not authorize replacing
+a temporal action or its output by the identity.
+"""
 
 from __future__ import annotations
 
@@ -52,16 +56,26 @@ def compose_carry_fn(after: CarryFn, before: CarryFn) -> CarryFn:
     return before if after is CarryFn.ID else after
 
 
+def centered_carry_fn(delta: int) -> CarryFn:
+    """The centered threshold port, in the existing carry-transfer monoid.
+
+    Zero is a neutral spatial wire, not a temporal identity or a reset to zero.
+    Classification alone supplies no admission for a symbolic source clause.
+    """
+    _exact_integer(delta, "centered pair coefficient")
+    if delta < 0:
+        return CarryFn.CONST0
+    if delta == 0:
+        return CarryFn.ID
+    return CarryFn.CONST1
+
+
 def value_carry_fn(symbol: int, base: int) -> CarryFn:
     if type(symbol) is not int or type(base) is not int:
         raise TypeError("pair symbol and carry radix require an exact integer")
     if base < 2 or not 0 <= symbol <= 2 * (base - 1):
         raise ValueError((symbol, base))
-    if symbol < base - 1:
-        return CarryFn.CONST0
-    if symbol == base - 1:
-        return CarryFn.ID
-    return CarryFn.CONST1
+    return centered_carry_fn(symbol - (base - 1))
 
 
 def carry_fn_from_outputs(outputs: tuple[int, ...]) -> CarryFn:
@@ -136,6 +150,7 @@ __all__ = [
     "CarryScanAutomatonResult",
     "apply_carry_fn",
     "carry_fn_from_outputs",
+    "centered_carry_fn",
     "compose_carry_fn",
     "scan_carry_automaton",
     "value_carry_fn",

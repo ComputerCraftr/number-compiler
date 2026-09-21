@@ -10,13 +10,13 @@ ruff check .
 mypy
 mypy --no-incremental
 python -m devtools.checks.repository_policy
+python -m devtools.checks.docs_index
+python -m devtools.checks.isabelle_proof_index
 pytest
 ```
 
 Strict mypy checks the configured maintained roots `src`, `tests`, and `devtools`.
-Historical reproduction scripts under `results` are run artifacts, not one Python
-package (several share module names); they remain included in repository-wide
-Ruff checks. There are no mypy error exclusions or inline mypy/Ruff suppressions
+Executable reproductions live under `devtools`; `results` contains weekly summaries and ignored raw evidence, with no executable checkpoint launchers. Repository-wide Ruff checks include every remaining authored Python file. There are no mypy error exclusions or inline mypy/Ruff suppressions
 in the maintained roots.
 
 Development minimums are pytest 9.1.1, mypy 2.3.1, Ruff 0.16.7 and setuptools
@@ -99,8 +99,7 @@ with SIGKILL or the machine stops; check for survivors in those cases. A tool
 returning a running session is a yield, not a timeout. Keep tracking that
 session to completion, or terminate the guard so its cleanup runs.
 
-These controls contain the [recorded memory
-incident](../results/current/memory-incident-2026-09-08.md); they do not make the
+These controls contain the memory incident recorded in the [2026-W37 sprint](../results/current/2026-W37/README.md); they do not make the
 affected wide-port decision-DAG algorithm acceptable. Large failing probes stay
 paused until the construction path is bounded. Guard failures are incomplete
 evidence, and application allocation budgets remain independently enforced.
@@ -111,10 +110,10 @@ Build a wheel with `python -m pip wheel --no-deps --wheel-dir /tmp/number-compil
 
 New evidence uses fingerprint version 4: project configuration plus authored files and assets under `src`, `tests`, and `devtools`, excluding tool caches and generated distribution metadata. Historical fingerprints are unchanged.
 
-New benchmark narratives use `devtools.paths.report_output` under `results/current/`, grouped by canonical developer module. They do not overwrite archived checkpoints or create Markdown in source directories.
+Summarize new benchmark evidence in the current ISO-week record under `results/current/`. Canonical developer modules write raw evidence to fresh local paths; they do not create another versioned microtask report.
 
 Generated run payloads under `results/` are local or CI artifacts and are ignored
-by Git. Commit only reviewed Markdown summaries and reproduction scripts there;
+by Git. Commit only reviewed weekly Markdown summaries there; keep executable reproductions under `devtools` and independent oracles under `tests/support`;
 keep console transcripts, JUnit XML, result JSON, profiles and caches out of
 source control. Historical raw artifacts were removed during the September 11
 cleanup. Paths in retained summaries describe local outputs, and their recorded
@@ -125,7 +124,7 @@ before a release; the evidence requirements above remain unchanged. See the
 For an interrupted-suite diagnostic, add
 `-p devtools.benchmarks.pytest_timing --timing-output /tmp/NEW-phases.jsonl`
 to a guarded pytest command. The file is created exclusively and flushed after
-each setup/call/teardown record, with a 32,768-record/8 MiB cap. A missing finish
+collection and each setup/call/teardown record, with a 32,768-record/8 MiB cap. A missing finish
 record means the run was interrupted; a truncation record invalidates complete
 coverage claims. Use this trace to locate expensive tests, then time the default
 serial release command without the plugin. The plugin caches no test runtime or

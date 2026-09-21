@@ -2,6 +2,16 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING
 
+from devtools.experiments.reverse_add.field_action import (
+    ReverseActionAutomorphisms,
+    ReverseFieldActionArena,
+)
+from devtools.experiments.reverse_add.higher_interface import (
+    ReverseHigherInterfaceCompiler,
+)
+from devtools.experiments.reverse_add.higher_schema import (
+    ReverseHigherActionSchema,
+)
 from number_compiler.arithmetic.carry.carry_monoid import CarryFn
 from number_compiler.arithmetic.contracts.scoped_handles import ExactSource
 from number_compiler.arithmetic.contracts.source_geometry import SourceGeometry
@@ -23,16 +33,6 @@ from number_compiler.hashlife.execution.field_images import (
     SourceForestID,
 )
 from number_compiler.resources.ledger import ResourceLedger
-from number_compiler.sequences.reverse_add.field_action import (
-    ReverseActionAutomorphisms,
-    ReverseFieldActionArena,
-)
-from number_compiler.sequences.reverse_add.higher_interface import (
-    ReverseHigherInterfaceCompiler,
-)
-from number_compiler.sequences.reverse_add.higher_schema import (
-    ReverseHigherActionSchema,
-)
 
 if TYPE_CHECKING:
     from number_compiler.hashlife.actions.field_actions import FieldCellActionID

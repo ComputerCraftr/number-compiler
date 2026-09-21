@@ -78,9 +78,8 @@ def power_block_effect(
     """Build the explicit compatibility/proof operator ``T**exponent``.
 
     The public lazy family runtime does not call this function. Decimal proof
-    and differential callers retain the frozen T2 oracle here so their exact
-    reference workloads stay bounded; production temporal ports are compiled
-    by :mod:`reverse_compilation` from the primitive one-step law.
+    and differential callers build from the same primitive one-step law as
+    production; no separate finite reverse machine is admitted.
     Construction performs no pair-generation replay and no source-word scan.
     Its immutable operator DAG has logarithmic depth/size in ``exponent``.
     Applying the resulting full nonlinear transduction is a separate operation;
@@ -110,19 +109,8 @@ def power_block_effect(
     operations = 0
     power: BlockEffect
     n: int
-    trailing: BlockEffect | None = None
-    if base == 10 and exponent >= 2:
-        from number_compiler.arithmetic.contracts.block_kernel import (
-            _load_base10_t2_kernel,
-        )
-
-        power = _load_base10_t2_kernel()
-        n = exponent // 2
-        if exponent & 1:
-            trailing = BaseBlockEffect(base)
-    else:
-        power = BaseBlockEffect(base)
-        n = exponent
+    power = BaseBlockEffect(base)
+    n = exponent
 
     def combine(
         first: BlockEffect | None, second: BlockEffect | None
@@ -141,7 +129,6 @@ def power_block_effect(
         identity=cast(BlockEffect | None, None),
         compose=combine,
     ).value
-    result = combine(result, trailing)
     if result is None or result.exponent != exponent:
         raise AssertionError((None if result is None else result.exponent, exponent))
     return BlockPower(
@@ -232,17 +219,9 @@ def apply_block_power(
 
 
 def _is_reverse_pair_program(effect: BlockEffect) -> bool:
-    """Recognize the complete immutable reverse language, including proof DAGs.
-
-    This check visits operator nodes, never their boundary states or output
-    tables. A verified T2 atom expands to two primitive laws in the production
-    compiler; its proof-state domain does not enter that executor.
-    """
+    """Recognize primitive reverse operators and their immutable compositions."""
     from devtools.proofs.block_composed import ComposedBlockEffect
     from number_compiler.hashlife.actions.lazy_compiler import ProgramComposition
-    from number_compiler.sequences.reverse_add.compilation import (
-        is_verified_decimal_pair_kernel,
-    )
 
     counts: dict[int, int] = {}
     active: set[int] = set()
@@ -277,8 +256,6 @@ def _is_reverse_pair_program(effect: BlockEffect) -> bool:
             active.remove(key)
         elif type(current) is BaseBlockEffect:
             count = 1
-        elif is_verified_decimal_pair_kernel(current):
-            count = 2
         else:
             return False
         if count != current.exponent:

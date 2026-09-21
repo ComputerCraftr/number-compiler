@@ -16,7 +16,6 @@ from number_compiler.arithmetic.polynomials.arithmetic_tile import (
 from number_compiler.arithmetic.polynomials.twisted_observer import (
     first_mirror_obstruction,
 )
-from number_compiler.hashlife.observation.tile_projection import LazyProjection
 from number_compiler.sequences.collatz.block_power import PoweredCollatzTerm
 from number_compiler.sequences.collatz.clock_observers import CollatzClockObservers
 from number_compiler.sequences.collatz.power import CollatzEventArena
@@ -357,61 +356,3 @@ def test_prefix_does_not_claim_arrival_at_one(
         == 0
     )
     assert json.loads(capsys.readouterr().out)["info"]["clock"]["reached_one"] is False
-
-
-@pytest.mark.parametrize("mutation", ("ports", "action", "wiring"))
-def test_warm_point_rejects_mutated_issued_contract(mutation: str) -> None:
-    term = PoweredCollatzTerm(27, 8)
-    term.digit(0)
-    lazy = term._point_index()._lazy_application
-    assert type(lazy) is LazyProjection
-    application = lazy._open()
-    if mutation == "ports":
-        original = application.ports
-        # bool aliases integer equality; tuple identity must still reject it.
-        forged = tuple(bool(value) for value in original)
-        object.__setattr__(application, "ports", forged)
-        try:
-            with pytest.raises((TypeError, ValueError)):
-                term.digit(0)
-        finally:
-            object.__setattr__(application, "ports", original)
-    else:
-        target = application.action if mutation == "action" else application.wiring
-        field = "local_id" if mutation == "action" else "phase"
-        previous = getattr(target, field)
-        object.__setattr__(target, field, previous + 1)
-        try:
-            with pytest.raises((TypeError, ValueError)):
-                term.digit(0)
-        finally:
-            object.__setattr__(target, field, previous)
-    term.digit(0)
-
-
-def test_warm_point_and_inventory_reject_same_tile_lease_alias() -> None:
-    from number_compiler.hashlife.execution.tile_application_authority import (
-        audit_tile_application_registry,
-    )
-
-    term = PoweredCollatzTerm(27, 8)
-    expected = term.digit(0)
-    lazy = term._point_index()._lazy_application
-    assert type(lazy) is LazyProjection
-    application = lazy._open()
-    scheduler = application.scheduler
-    with scheduler.application(
-        application.action, application.source, application.ports, application.wiring
-    ) as second:
-        original = application._input._id
-        object.__setattr__(application._input, "_id", second._input._id)
-        try:
-            with pytest.raises(ValueError):
-                term.digit(0)
-            _, invalid = audit_tile_application_registry(
-                scheduler._applications, dict(term._ledger.iter_containers())
-            )
-            assert invalid
-        finally:
-            object.__setattr__(application._input, "_id", original)
-    assert term.digit(0) == expected

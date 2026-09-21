@@ -377,7 +377,6 @@ def test_finite_unary_payload_rejects_boolean_wide_and_mutable_aliases(
 
 def test_production_collatz_shares_one_tile_execution_authority() -> None:
     from number_compiler.hashlife.execution.tile_scheduler import TileScheduler
-    from number_compiler.hashlife.observation.tile_projection import LazyProjection
 
     assert (
         importlib.util.find_spec("number_compiler.sequences.collatz.concrete_port")
@@ -385,12 +384,15 @@ def test_production_collatz_shares_one_tile_execution_authority() -> None:
     )
     term = PoweredCollatzTerm(27, 8)
     assert term.digit(0) in (0, 1)
-    projection = term._point_index()._lazy_application
-    assert type(projection) is LazyProjection
-    scheduler = projection._application.scheduler
-    assert scheduler.results.action_authority is scheduler.adapter
-    assert scheduler.results.interfaces is scheduler.adapter.quotients
-    assert scheduler.ledger is scheduler.results.ledger is term._ledger
+    workspace = term._source_image()
+    scheduler = workspace.scheduler
+    core = scheduler._source_image_core()
+    assert scheduler._source_only
+    assert core._adapters == {(workspace.family, workspace.semantic_version): workspace}
+    view = core.view(workspace.root_image)
+    assert view.binding.source == workspace.root_source
+    assert view.binding.action == workspace.root_action
+    assert scheduler.ledger is core.ledger is workspace.ledger is term._ledger
     assert tuple(
         root
         for root in term._ledger.iter_execution_roots()
@@ -399,7 +401,7 @@ def test_production_collatz_shares_one_tile_execution_authority() -> None:
 
 
 def test_composition_inventory_rejects_wrong_same_interface_result() -> None:
-    from number_compiler.resources.payload_audit import audit_registered_payloads
+    from number_compiler.resources.higher_payload_audit import audit_higher_payloads
 
     _, primitive, semantics, runtime, _, _, sources, _ = _fixture((0, 10))
     first = runtime.summaries.runtime_unary(primitive, sources.intern(0, 0), 1)
@@ -407,17 +409,19 @@ def test_composition_inventory_rejects_wrong_same_interface_result() -> None:
     forward = runtime.summaries.combine_runtime_unary((first, second))
     reverse = runtime.summaries.combine_runtime_unary((second, first))
     assert forward != reverse
-    clean = audit_registered_payloads(semantics.ledger)
-    assert clean.forbidden_future_payloads == 0
+    # This experimental reverse fixture is not an admitted production graph.
+    # Check the retained generic summary owner, without whitelisting the fixture.
+    clean = audit_higher_payloads(semantics.ledger)
+    assert not clean.invalid
     runtime.summaries._runtime_compositions[(first, second)] = reverse
-    damaged = audit_registered_payloads(semantics.ledger)
-    assert damaged.forbidden_future_payloads > 0
+    damaged = audit_higher_payloads(semantics.ledger)
+    assert damaged.invalid
 
 
 def test_temporal_leaf_publishes_complete_parent_for_warm_reuse(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    from number_compiler.hashlife.execution.temporal_leaf_diamond import (
+    from devtools.experiments.reverse_add.temporal_leaf_diamond import (
         evaluate_temporal_leaf,
     )
 
@@ -434,7 +438,7 @@ def test_temporal_leaf_publishes_complete_parent_for_warm_reuse(
 
     monkeypatch.setattr(semantics.schema, "children", forbidden)
     monkeypatch.setattr(
-        "number_compiler.hashlife.execution.temporal_leaf_diamond.evaluate_operation",
+        "devtools.experiments.reverse_add.temporal_leaf_diamond.evaluate_operation",
         forbidden,
     )
     assert evaluate_temporal_leaf(semantics, action, 7, left, right) == expected

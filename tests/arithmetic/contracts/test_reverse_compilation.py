@@ -1,16 +1,13 @@
 from __future__ import annotations
 
 from array import array
-from typing import Never
 
 import pytest
 
 from number_compiler.arithmetic.contracts.block_kernel import (
     BaseBlockEffect,
     FiniteBlockEffect,
-    _load_base10_t2_kernel,
 )
-from number_compiler.arithmetic.contracts.semantic_identity import SemanticIdentity
 from number_compiler.arithmetic.contracts.temporal_family import _issue_certificate
 from number_compiler.hashlife.actions.lazy_compiler import (
     LazyCompiler,
@@ -21,9 +18,7 @@ from number_compiler.projection.digit_terminal import DigitNormalizeBlockEffect
 from number_compiler.resources.ledger import ResourceLedger
 from number_compiler.sequences.reverse_add.compilation import (
     compile_reverse_pair_power,
-    is_verified_decimal_pair_kernel,
 )
-from number_compiler.sequences.reverse_add.power import ReverseAddPoweredTerm
 from tests.support.reverse_pair_oracle import reference_successor
 
 
@@ -46,7 +41,7 @@ def test_decimal_compilation_preserves_physical_exponent_and_verified_primitive(
     # The verified T² table is a proof certificate, not a production temporal
     # leaf.  Binary powering retains one exact algebraic T primitive for every
     # positive exponent, including even powers.
-    assert not any(is_verified_decimal_pair_kernel(atom) for atom in atoms)
+    assert not any(type(atom) is FiniteBlockEffect for atom in atoms)
     assert sum(type(atom) is BaseBlockEffect for atom in atoms) == 1
 
 
@@ -76,15 +71,15 @@ def test_compiled_pair_digits_match_scalar_reference(exponent: int) -> None:
 
 
 def test_public_reverse_descriptor_excludes_t2_and_certifies_physical_steps() -> None:
-    term = ReverseAddPoweredTerm(196, 18)
-    assert term.pair_power is not None and term.pair_power.exponent == 17
-    assert not any(
-        is_verified_decimal_pair_kernel(node) for node in term._compiler.nodes
+    compiler = LazyCompiler(ResourceLedger())
+    power = compile_reverse_pair_power(compiler, 10, 17)
+    assert power.root is not None and power.root.exponent == 17
+    assert not any(type(node) is FiniteBlockEffect for node in compiler.nodes)
+    certificate = _issue_certificate(
+        power.root, "reverse-add", 17, output_encoding="pair"
     )
-    assert term.effect is not None
-    certificate = _issue_certificate(term.effect, "reverse-add", 17)
-    certificate.validate(term.effect)
-    assert certificate.steps == term.effect.exponent == 17
+    certificate.validate(power.root)
+    assert certificate.steps == power.root.exponent == 17
 
 
 def fake_kernel() -> FiniteBlockEffect:
@@ -99,7 +94,7 @@ def fake_kernel() -> FiniteBlockEffect:
         left_transitions=array("H", [0] * 20),
         right_transitions=array("H", [0] * 20),
         outputs=bytes(range(20)),
-        kernel_name="base10_t2_minimized_757x179",
+        kernel_name="forged-reverse-machine",
         storage_bytes=451918,
         uncompressed_bytes=0,
         blank_left_tail=2,
@@ -108,34 +103,18 @@ def fake_kernel() -> FiniteBlockEffect:
     )
 
 
-def test_same_name_and_forged_matching_digest_cannot_grant_arithmetic_certificate() -> (
-    None
-):
+def test_same_name_finite_machine_cannot_grant_arithmetic_certificate() -> None:
     compiler = LazyCompiler(ResourceLedger())
     fake = fake_kernel()
-    assert not is_verified_decimal_pair_kernel(fake)
-    # A matching hash is only an index hint: the exact definition must match.
-    verified = _load_base10_t2_kernel()
-    object.__setattr__(
-        fake,
-        "_semantic_identity",
-        SemanticIdentity(verified.semantic_digest, ("different table",)),
-    )
-    assert not is_verified_decimal_pair_kernel(fake)
     effect = compiler.compose(fake, DigitNormalizeBlockEffect(10))
     with pytest.raises(ValueError, match="certified arithmetic"):
         _issue_certificate(effect, "reverse-add", 2)
 
 
-def test_production_compilation_does_not_load_the_proof_artifact(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
+def test_production_compilation_has_no_t2_artifact_loader() -> None:
     import number_compiler.arithmetic.contracts.block_kernel as module
 
-    def refused() -> Never:
-        raise RuntimeError("kernel digest mismatch")
-
-    monkeypatch.setattr(module, "_load_base10_t2_kernel", refused)
+    assert not hasattr(module, "_load_base10_t2_kernel")
     compiler = LazyCompiler(ResourceLedger())
     power = compile_reverse_pair_power(compiler, 10, 2)
     assert power.root is not None

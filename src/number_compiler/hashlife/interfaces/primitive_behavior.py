@@ -13,6 +13,7 @@ differ.  The implementation is iterative and deterministic.
 
 from __future__ import annotations
 
+from collections.abc import Callable
 from dataclasses import dataclass
 from hashlib import sha256
 from typing import Protocol
@@ -324,9 +325,8 @@ def capture_primitive_behavior(
         PRIMITIVE_OCCURRENCE_SCHEMA,
         observations,
     )
-    digest = sha256(repr(key).encode("utf-8")).hexdigest()
     return PrimitiveBehaviorTable(
-        SemanticIdentity(digest, key),
+        SemanticIdentity("primitive-behavior-table", key),
         alphabet_size,
         kernel.blank,
         left,
@@ -457,10 +457,9 @@ def minimize_primitive_behavior(
         projected_channels,
         projected_observations,
     )
-    digest = sha256(repr(semantic_key).encode("utf-8")).hexdigest()
     return PrimitiveBehaviorQuotient(
         table.identity,
-        SemanticIdentity(digest, semantic_key),
+        SemanticIdentity("primitive-behavior-quotient", semantic_key),
         table.alphabet_size,
         table.blank,
         left_part,
@@ -563,12 +562,14 @@ def validate_certified_local_symmetry(
 
 def validate_primitive_behavior_quotient(
     quotient: PrimitiveBehaviorQuotient,
+    *,
+    validate_identity: Callable[[SemanticIdentity], None] = SemanticIdentity.validate,
 ) -> None:
     """Revalidate a retained certificate without executing a kernel."""
     if type(quotient) is not PrimitiveBehaviorQuotient:
         raise TypeError("expected a primitive behavioral quotient")
-    quotient.source_identity.__post_init__()
-    quotient.semantic_identity.__post_init__()
+    validate_identity(quotient.source_identity)
+    validate_identity(quotient.semantic_identity)
     if type(quotient.refinement_rounds) is not int or quotient.refinement_rounds < 1:
         raise ValueError("invalid primitive refinement count")
     _ordinal(quotient.blank, quotient.alphabet_size, "blank")
@@ -767,8 +768,12 @@ def _validate_composition(
         raise ValueError("declared causal transform maps violate the group law")
 
 
-def _validate_table(table: PrimitiveBehaviorTable) -> None:
-    table.identity.__post_init__()
+def _validate_table(
+    table: PrimitiveBehaviorTable,
+    *,
+    validate_identity: Callable[[SemanticIdentity], None] = SemanticIdentity.validate,
+) -> None:
+    validate_identity(table.identity)
     if type(table.alphabet_size) is not int or not 1 <= table.alphabet_size <= 1 << 64:
         raise ValueError("invalid primitive alphabet")
     _ordinal(table.blank, table.alphabet_size, "blank")

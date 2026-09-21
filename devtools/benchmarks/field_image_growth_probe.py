@@ -1,4 +1,4 @@
-"""Cold schema-six M(N, X) measurements with explicit horizon ordering."""
+"""Cold schema-seven M(N, X) measurements with explicit horizon ordering."""
 
 from __future__ import annotations
 
@@ -64,8 +64,8 @@ def cold_rows(
         ledgers.append(term._ledger)
         digit = term.digit(0)
         metrics = term.metrics()
-        if metrics.metrics_schema_version != 6 or metrics.forbidden_future_payloads:
-            raise AssertionError(("invalid-schema6-cold-snapshot", horizon, metrics))
+        if metrics.metrics_schema_version != 7 or metrics.forbidden_future_payloads:
+            raise AssertionError(("invalid-schema7-cold-snapshot", horizon, metrics))
         rows.append(
             ColdFieldImageRow(
                 family,
@@ -209,7 +209,7 @@ def run_probe(
         if isinstance(family, dict)
     )
     return {
-        "metrics_schema_version": 6,
+        "metrics_schema_version": 7,
         "cold_index_scope": "fresh-per-row",
         "orders": results,
         "status": "GREEN" if green else ("RED" if complete else "unavailable"),

@@ -75,7 +75,22 @@ def quiescent_boundary(
         or not 0 <= discharged_extent <= view.relative_extent
     ):
         raise ValueError("behavioral discharge extent escaped the requested view")
-    record = engine.adapter._action(action)
+    token = engine._action_admission_token
+    if token is None:
+        record = engine.adapter._action(action)
+        kernel_id = record.kernel
+    else:
+        from number_compiler.resources.causal_workspace import (
+            CausalActionAdmission,
+        )
+
+        if type(token) is not CausalActionAdmission:
+            raise TypeError("behavior requires a causal admission lease")
+        _signature, kernel_id, record = (
+            engine.scheduler._causal_tasks.admitted_action_metadata(
+                token, engine.adapter, action
+            )
+        )
     if not record.homogeneous or not _blank_view(engine, view):
         engine.ledger.bump("exact_causal_fallback_requests")
         return None
@@ -89,14 +104,19 @@ def quiescent_boundary(
             action,
             view.tile,
             PrimitiveCausalPorts(left, right),
-            engine.adapter.wiring(action),
+            engine._wiring(action),
+            action_admission=engine._action_admission_token,
         )
     else:
         key = engine._composite_key(action, view.tile, left, right)
         if key is None:
             engine.ledger.bump("exact_causal_fallback_requests")
             return None
-    kernel = engine.adapter.kernels.kernel(record.kernel)
+    # The action record is authenticated above when a run admission is live.
+    # Composite actions refer to their primitive behavioral kernel, so resolve
+    # that admitted kernel ID without asking the adapter to treat the composite
+    # action itself as a primitive law.
+    kernel = engine.adapter.kernels.kernel(kernel_id)
     behavior = kernel.behavior
     if behavior is None:
         engine.ledger.bump("exact_causal_fallback_requests")

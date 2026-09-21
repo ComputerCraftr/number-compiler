@@ -5,17 +5,17 @@ from typing import Never
 
 import pytest
 
-from number_compiler.arithmetic.fields.digit_formula import closed_digit_at
-from number_compiler.arithmetic.formula.derived import successor
-from number_compiler.arithmetic.formula.formula import FormulaArena, root_from_values
-from number_compiler.arithmetic.formula.types import RadixSpec
-from number_compiler.hashlife.actions.native_power import (
+from devtools.experiments.reverse_add.native_power import (
     compile_native_two_step,
     native_two_step,
     native_two_step_digits,
     native_two_step_reset_sets,
     native_two_step_value_sets,
 )
+from number_compiler.arithmetic.fields.digit_formula import closed_digit_at
+from number_compiler.arithmetic.formula.derived import successor
+from number_compiler.arithmetic.formula.formula import FormulaArena, root_from_values
+from number_compiler.arithmetic.formula.types import RadixSpec
 from number_compiler.hashlife.execution.evaluator import materialize_values
 
 
@@ -175,7 +175,7 @@ def test_native_two_step_and_composed_reference_are_extensionally_identical() ->
 
 
 def test_native_four_step_matches_four_successors_random_bases() -> None:
-    from number_compiler.hashlife.actions.native_power import compile_native_four_step
+    from devtools.experiments.reverse_add.native_power import compile_native_four_step
 
     rng = random.Random(0x41964)
     for base in range(2, 14):
@@ -201,8 +201,8 @@ def test_native_four_step_matches_four_successors_random_bases() -> None:
 def test_native_four_step_is_not_composed_from_native_t2_or_successor(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
+    from devtools.experiments.reverse_add import native_power
     from number_compiler.arithmetic.formula import derived
-    from number_compiler.hashlife.actions import native_power
 
     def forbidden(*_args: object, **_kwargs: object) -> Never:
         raise AssertionError("native T4 used a semantic temporal step")
@@ -230,8 +230,8 @@ def test_native_four_step_is_not_composed_from_native_t2_or_successor(
 def test_native_four_step_matches_t2_squared_but_uses_no_intermediate_root_cache() -> (
     None
 ):
+    from devtools.experiments.reverse_add.native_power import native_four_step
     from number_compiler.arithmetic.formula.formula import formula_metrics
-    from number_compiler.hashlife.actions.native_power import native_four_step
 
     spec = RadixSpec(10)
     values = (7, 18, 7)
@@ -257,7 +257,7 @@ def test_native_four_step_matches_t2_squared_but_uses_no_intermediate_root_cache
 
 
 def test_native_four_step_digit_projector() -> None:
-    from number_compiler.hashlife.actions.native_power import native_four_step_digits
+    from devtools.experiments.reverse_add.native_power import native_four_step_digits
 
     rng = random.Random(0xD4196)
     for base in (2, 3, 5, 10, 16):
@@ -280,9 +280,9 @@ def test_native_four_step_digit_projector() -> None:
 def test_general_native_power_matches_reference_without_semantic_intermediate_roots(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    import number_compiler.hashlife.actions.native_power as native_module
+    import devtools.experiments.reverse_add.native_power as native_module
+    from devtools.experiments.reverse_add.native_power import compile_native_power
     from number_compiler.arithmetic.formula import derived
-    from number_compiler.hashlife.actions.native_power import compile_native_power
 
     def forbidden(*_args: object, **_kwargs: object) -> Never:
         raise AssertionError("general native power used a semantic temporal primitive")
@@ -323,7 +323,7 @@ def test_general_native_power_matches_reference_without_semantic_intermediate_ro
 
 
 def test_general_native_power_digit_projector() -> None:
-    from number_compiler.hashlife.actions.native_power import native_power_digits
+    from devtools.experiments.reverse_add.native_power import native_power_digits
 
     rng = random.Random(0x196D1617)
     for base in (2, 3, 7, 10, 16):
@@ -346,13 +346,13 @@ def test_general_native_power_digit_projector() -> None:
 
 
 def test_general_native_power_is_guard_ineligible_until_growth_is_symbolic() -> None:
+    from devtools.experiments.reverse_add.native_power import (
+        native_power as native_power_root,
+    )
     from number_compiler.arithmetic.automata.guard import (
         JumpAudit,
         JumpGuardViolation,
         powered_jump_scope,
-    )
-    from number_compiler.hashlife.actions.native_power import (
-        native_power as native_power_root,
     )
 
     arena = FormulaArena()

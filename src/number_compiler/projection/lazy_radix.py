@@ -97,17 +97,12 @@ class RadixProjection:
             self.ledger.bump("radix_provider_digit_early_hits")
             return int(cached.encoded)
 
-        application = term._point_index()._lazy_application
-        from number_compiler.hashlife.observation.tile_projection import LazyProjection
-
-        if type(application) is LazyProjection:
-            if self._tile_observation is None:
-                self._tile_observation = TileRadixObservation(application, self.radix)
-            digit = self._tile_observation.digit(index)
-        else:
-            raise UnsupportedInterfaceError(
-                "radix observation requires the canonical tile application"
-            )
+        # Exterior admission uses the same affine image; a zero remainder
+        # alone cannot distinguish an internal zero digit from blank padding.
+        numerator, divisor = term._source_numerator()
+        if index and numerator < divisor * self.radix**index:
+            raise IndexError(index)
+        digit = term.radix_digit(self.radix, index)
         if not 0 <= digit < self.radix:
             raise AssertionError("radix provider produced an invalid digit")
         self._microblocks.put(

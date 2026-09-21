@@ -1,0 +1,574 @@
+"""Lazy spatial carry ports for one authenticated reverse/add source."""
+
+from __future__ import annotations
+
+from dataclasses import dataclass
+
+from number_compiler.arithmetic.carry.carry_monoid import (
+    CarryFn,
+    apply_carry_fn,
+    compose_carry_fn,
+    value_carry_fn,
+)
+from number_compiler.arithmetic.contracts.cylinder_chart import (
+    CylinderChart,
+    right_dyadic_blocks,
+)
+from number_compiler.arithmetic.contracts.scoped_handles import ExactSource
+from number_compiler.arithmetic.formula.skew_residue_laws import (
+    pair_growth_edge,
+    pair_growth_interior,
+    pair_no_growth,
+)
+from number_compiler.resources.ledger import OwnedMemo, ResourceLedger
+
+
+@dataclass(slots=True)
+class _IntervalFrame:
+    key: tuple[int, int, int]
+    expanded: bool = False
+
+
+class _QueryWorkspace:
+    """Explicitly charged, nonretained references for one interval query."""
+
+    __slots__ = ("created", "ledger", "owner", "pruned", "stack")
+
+    def __init__(self, ledger: ResourceLedger, owner: int) -> None:
+        self.ledger = ledger
+        self.owner = owner
+        self.stack: list[_IntervalFrame] = []
+        self.created: dict[tuple[int, int, int], None] = {}
+        self.pruned: dict[tuple[int, int, int], None] = {}
+
+    def _note_peak(self) -> None:
+        count = len(self.stack) + len(self.created) + len(self.pruned)
+        peak = self.ledger.counters.get("reverse_source_ports_workspace_peak", 0)
+        if count > peak:
+            self.ledger.bump("reverse_source_ports_workspace_peak", count - peak)
+
+    def push(self, frame: _IntervalFrame) -> None:
+        self.ledger.reserve(self.owner, nodes=1)
+        try:
+            self.stack.append(frame)
+        except BaseException:
+            self.ledger.release(self.owner, nodes=1)
+            raise
+        self._note_peak()
+
+    def pop(self) -> _IntervalFrame:
+        frame = self.stack.pop()
+        self.ledger.release(self.owner, nodes=1)
+        return frame
+
+    def record(self, key: tuple[int, int, int]) -> None:
+        self.ledger.reserve(self.owner, nodes=1)
+        try:
+            self.created[key] = None
+        except BaseException:
+            self.ledger.release(self.owner, nodes=1)
+            raise
+        self._note_peak()
+
+    def forget(self, key: tuple[int, int, int]) -> None:
+        if key not in self.created:
+            return
+        del self.created[key]
+        self.ledger.release(self.owner, nodes=1)
+
+    def pop_created(self) -> tuple[int, int, int]:
+        key, _value = self.created.popitem()
+        self.ledger.release(self.owner, nodes=1)
+        return key
+
+    def prune(self, key: tuple[int, int, int]) -> None:
+        if key in self.pruned:
+            return
+        self.ledger.reserve(self.owner, nodes=1)
+        try:
+            self.pruned[key] = None
+        except BaseException:
+            self.ledger.release(self.owner, nodes=1)
+            raise
+        self._note_peak()
+
+    def commit_pruning(
+        self,
+        cache: OwnedMemo[tuple[int, int, int], CarryFn],
+    ) -> None:
+        # Validate the complete transaction before removing any pre-existing
+        # admitted child. Normal deletion is then nonfailing and exactly
+        # releases the child's retained cache reservation.
+        for key in self.pruned:
+            found = cache.get(key)
+            if found is not None and (
+                type(found) is not CarryFn or found is not CarryFn.ID
+            ):
+                raise ValueError("identity carry interval has a nonidentity child")
+        while self.pruned:
+            key, _value = self.pruned.popitem()
+            self.ledger.release(self.owner, nodes=1)
+            if key in cache:
+                del cache[key]
+                self.forget(key)
+                self.ledger.bump("reverse_source_ports_identity_children_pruned")
+
+    def close(self) -> None:
+        nodes = len(self.stack) + len(self.created) + len(self.pruned)
+        self.stack.clear()
+        self.created.clear()
+        self.pruned.clear()
+        if nodes:
+            self.ledger.release(self.owner, nodes=nodes)
+
+
+class SourceCarryPorts:
+    """Memoize dyadic spatial carry actions, never pair or carry rows."""
+
+    __slots__ = (
+        "__weakref__",
+        "_authority",
+        "_cache",
+        "_closed",
+        "_ledger",
+        "_source",
+        "_width",
+        "_workspace_authority",
+        "_workspace_owner",
+    )
+
+    def __init__(self, source: ExactSource, ledger: ResourceLedger) -> None:
+        if type(source) is not ExactSource or type(ledger) is not ResourceLedger:
+            raise TypeError("source carry ports require an exact source and ledger")
+        coordinates = 2 * len(source.digits)
+        ledger.bump("reverse_source_validation_coordinates", coordinates)
+        ledger.bump("reverse_source_ports_validation_coordinates", coordinates)
+        # Keep the established source-pullback metrics present while the new
+        # interval implementation records the same work at its actual leaves.
+        ledger.bump("reverse_source_pullback_pair_reads", 0)
+        ledger.bump("reverse_source_pullback_predecessor_search", 0)
+        ledger.bump("reverse_source_length_pair_reads", 0)
+        source.__post_init__()
+        if not source.digits:
+            raise ValueError("source carry ports require nonempty original digits")
+        cache_owner = ledger.register(
+            f"reverse-source-ports-{ledger.owner_count}",
+            "reverse_source_carry_interval",
+        )
+        workspace_owner = ledger.register(
+            f"reverse-source-ports-workspace-{ledger.owner_count}",
+            "reverse_source_carry_workspace",
+        )
+        cache: OwnedMemo[tuple[int, int, int], CarryFn] = OwnedMemo(
+            ledger,
+            cache_owner,
+            nodes_per_entry=1,
+            composition_entries=True,
+        )
+        self._source = source
+        self._ledger = ledger
+        self._width = len(source.digits)
+        # Preserve the established seven ExactSource fields for read-only audit.
+        self._authority = (
+            source,
+            source.digits,
+            source.base,
+            source.orbit,
+            source.blank,
+            source.extent,
+            source.alphabet_size,
+            ledger,
+            cache,
+            cache_owner,
+        )
+        self._cache = cache
+        self._workspace_owner = workspace_owner
+        self._workspace_authority = workspace_owner
+        self._closed = False
+        ledger.register_execution_root(self)
+
+    @property
+    def source(self) -> ExactSource:
+        self._check_open()
+        return self._source
+
+    @property
+    def ledger(self) -> ResourceLedger:
+        self._check_open()
+        return self._ledger
+
+    @property
+    def width(self) -> int:
+        self._check_open()
+        return self._width
+
+    def _check_open(self) -> None:
+        if self._closed:
+            raise ValueError("disposed source carry ports")
+        self.check_source(self._source)
+
+    def check_source(self, source: ExactSource) -> None:
+        """Authenticate the exact original object and immutable binding in O(1)."""
+        if self._closed:
+            raise ValueError("disposed source carry ports")
+        if type(source) is not ExactSource:
+            raise TypeError("source carry ports require an exact source")
+        authority = self._authority
+        if (
+            source is not authority[0]
+            or source.digits is not authority[1]
+            or source.base != authority[2]
+            or source.orbit != authority[3]
+            or source.blank != authority[4]
+            or source.extent != authority[5]
+            or source.alphabet_size != authority[6]
+            or self._ledger is not authority[7]
+            or self._cache is not authority[8]
+            or self._cache.owner != authority[9]
+            or self._cache.ledger is not self._ledger
+            or self._source is not authority[0]
+            or self._width != len(authority[1])
+            or self._workspace_owner != self._workspace_authority
+        ):
+            raise ValueError("source carry port binding was altered or is foreign")
+        self._ledger.bump("reverse_source_ports_binding_checks")
+
+    def _raw_first_pair(self, position: int) -> int:
+        self._ledger.bump("reverse_source_ports_source_reads", 2)
+        self._ledger.bump("reverse_source_pullback_pair_reads")
+        digits = self._source.digits
+        return digits[position] + digits[self._width - 1 - position]
+
+    def first_pair(self, position: int) -> int:
+        self._check_open()
+        if type(position) is not int or not 0 <= position < self._width:
+            raise IndexError(position)
+        return self._raw_first_pair(position)
+
+    def pair(self, position: int) -> int:
+        return self.first_pair(position)
+
+    def _exact_cached(self, key: tuple[int, int, int]) -> CarryFn | None:
+        found = self._cache.get(key)
+        if found is not None:
+            if type(found) is not CarryFn:
+                raise ValueError("source carry interval cache was altered")
+            self._ledger.bump("reverse_source_ports_interval_hits")
+            return found
+        return None
+
+    def _cached(
+        self,
+        key: tuple[int, int, int],
+        extent: int,
+    ) -> CarryFn | None:
+        found = self._exact_cached(key)
+        if found is not None:
+            return found
+
+        layer, start, span = key
+        parent_span = span << 1
+        while parent_span <= extent:
+            parent_start = start - start % parent_span
+            if parent_start + parent_span > extent:
+                break
+            self._ledger.bump("reverse_source_ports_identity_ancestor_probes")
+            ancestor = self._cache.get((layer, parent_start, parent_span))
+            if ancestor is not None:
+                if type(ancestor) is not CarryFn:
+                    raise ValueError("source carry interval cache was altered")
+                if ancestor is CarryFn.ID:
+                    self._ledger.bump("reverse_source_ports_identity_ancestor_hits")
+                    return CarryFn.ID
+                # A reset summary says nothing about a proper subinterval. A
+                # valid identity ancestor cannot exist above a reset interval.
+                self._ledger.bump("reverse_source_ports_reset_ancestor_rejections")
+                break
+            parent_span <<= 1
+        return None
+
+    def _publish(
+        self,
+        workspace: _QueryWorkspace,
+        key: tuple[int, int, int],
+        result: CarryFn,
+    ) -> None:
+        workspace.record(key)
+        try:
+            self._cache[key] = result
+        except BaseException:
+            workspace.forget(key)
+            raise
+        if result is CarryFn.ID and key[2] > 1:
+            half = key[2] // 2
+            children = ((key[0], key[1], half), (key[0], key[1] + half, half))
+            for child in children:
+                found = self._cache.get(child)
+                if found is None:
+                    continue
+                if type(found) is not CarryFn or found is not CarryFn.ID:
+                    raise ValueError("identity carry interval has a nonidentity child")
+                workspace.prune(child)
+        self._ledger.bump("reverse_source_ports_interval_publications")
+
+    def _first_interval(self, start: int, span: int) -> CarryFn:
+        root = 1, start, span
+        found = self._cached(root, self._width)
+        if found is not None:
+            return found
+        workspace = _QueryWorkspace(self._ledger, self._workspace_owner)
+        try:
+            workspace.push(_IntervalFrame(root))
+            while workspace.stack:
+                frame = workspace.stack[-1]
+                cached = self._exact_cached(frame.key)
+                if cached is not None:
+                    workspace.pop()
+                    continue
+                _, current_start, current_span = frame.key
+                self._ledger.bump("reverse_source_ports_postorder_frames")
+                if current_span == 1:
+                    result = value_carry_fn(
+                        self._raw_first_pair(current_start), self._source.base
+                    )
+                    self._publish(workspace, frame.key, result)
+                    workspace.pop()
+                    continue
+                half = current_span // 2
+                left = 1, current_start, half
+                right = 1, current_start + half, half
+                if not frame.expanded:
+                    frame.expanded = True
+                    if self._exact_cached(right) is None:
+                        workspace.push(_IntervalFrame(right))
+                    continue
+                after = self._exact_cached(right)
+                if after is None:
+                    raise AssertionError("right carry interval was not constructed")
+                if after is CarryFn.ID:
+                    before = self._exact_cached(left)
+                    if before is None:
+                        workspace.push(_IntervalFrame(left))
+                        continue
+                    result = compose_carry_fn(after, before)
+                else:
+                    result = after
+                    self._ledger.bump("reverse_source_ports_reset_shortcuts")
+                self._publish(workspace, frame.key, result)
+                self._ledger.bump("reverse_source_ports_interval_compositions")
+                workspace.pop()
+            workspace.commit_pruning(self._cache)
+        except BaseException:
+            while workspace.created:
+                key = workspace.pop_created()
+                del self._cache[key]
+            self._ledger.bump("reverse_source_ports_failed_queries")
+            raise
+        finally:
+            workspace.close()
+        published = self._exact_cached(root)
+        if published is None:
+            raise AssertionError("first carry interval was not published")
+        return published
+
+    def _first_range(self, start: int, stop: int) -> CarryFn:
+        effect = CarryFn.ID
+        for position, span in right_dyadic_blocks(start, stop):
+            effect = compose_carry_fn(effect, self._first_interval(position, span))
+            self._ledger.bump("reverse_source_ports_prefix_blocks")
+            if effect is not CarryFn.ID:
+                self._ledger.bump("reverse_source_ports_prefix_reset_shortcuts")
+                break
+        return effect
+
+    def _first_prefix(self, boundary: int) -> int:
+        if type(boundary) is not int or not 0 <= boundary <= self._width:
+            raise IndexError(boundary)
+        effect = self._first_range(0, boundary)
+        self._ledger.bump("reverse_source_ports_layer_1_carry_queries")
+        return apply_carry_fn(effect, 0)
+
+    def carry(self, boundary: int) -> int:
+        self._check_open()
+        return self._first_prefix(boundary)
+
+    @property
+    def terminal(self) -> int:
+        self._check_open()
+        return self._first_prefix(self._width)
+
+    def _raw_second_pair(self, position: int, growth: int) -> int:
+        self._ledger.bump("reverse_source_length_pair_reads")
+        base = self._source.base
+        if growth and position in (0, self._width):
+            result = pair_growth_edge(
+                self._raw_first_pair(0), self._first_prefix(1), base
+            )
+        elif growth:
+            result = pair_growth_interior(
+                self._raw_first_pair(position),
+                self._raw_first_pair(position - 1),
+                self._first_prefix(position),
+                self._first_prefix(position + 1),
+                self._first_prefix(self._width - position),
+                self._first_prefix(self._width - position + 1),
+                base,
+            )
+        else:
+            result = pair_no_growth(
+                self._raw_first_pair(position),
+                self._first_prefix(position),
+                self._first_prefix(position + 1),
+                self._first_prefix(self._width - 1 - position),
+                self._first_prefix(self._width - position),
+                base,
+            )
+        if not 0 <= result <= 2 * base - 2:
+            raise ValueError("second source pair left its radix")
+        self._ledger.bump("reverse_source_ports_second_pair_queries")
+        return result
+
+    def second_pair(self, position: int) -> int:
+        self._check_open()
+        if type(position) is not int:
+            raise IndexError(position)
+        growth = self._first_prefix(self._width)
+        extent = self._width + growth
+        if type(position) is not int or not 0 <= position < extent:
+            raise IndexError(position)
+        return self._raw_second_pair(position, growth)
+
+    def _second_interval(self, start: int, span: int, extent: int) -> CarryFn:
+        root = 2, start, span
+        found = self._cached(root, extent)
+        if found is not None:
+            return found
+        growth = extent - self._width
+        workspace = _QueryWorkspace(self._ledger, self._workspace_owner)
+        try:
+            workspace.push(_IntervalFrame(root))
+            while workspace.stack:
+                frame = workspace.stack[-1]
+                cached = self._exact_cached(frame.key)
+                if cached is not None:
+                    workspace.pop()
+                    continue
+                _, current_start, current_span = frame.key
+                self._ledger.bump("reverse_source_ports_postorder_frames")
+                if current_span == 1:
+                    result = value_carry_fn(
+                        self._raw_second_pair(current_start, growth),
+                        self._source.base,
+                    )
+                    self._publish(workspace, frame.key, result)
+                    workspace.pop()
+                    continue
+                half = current_span // 2
+                left = 2, current_start, half
+                right = 2, current_start + half, half
+                if not frame.expanded:
+                    frame.expanded = True
+                    if self._exact_cached(right) is None:
+                        workspace.push(_IntervalFrame(right))
+                    continue
+                after = self._exact_cached(right)
+                if after is None:
+                    raise AssertionError("right carry interval was not constructed")
+                if after is CarryFn.ID:
+                    before = self._exact_cached(left)
+                    if before is None:
+                        workspace.push(_IntervalFrame(left))
+                        continue
+                    result = compose_carry_fn(after, before)
+                else:
+                    result = after
+                    self._ledger.bump("reverse_source_ports_reset_shortcuts")
+                self._publish(workspace, frame.key, result)
+                self._ledger.bump("reverse_source_ports_interval_compositions")
+                workspace.pop()
+            workspace.commit_pruning(self._cache)
+        except BaseException:
+            while workspace.created:
+                key = workspace.pop_created()
+                del self._cache[key]
+            self._ledger.bump("reverse_source_ports_failed_queries")
+            raise
+        finally:
+            workspace.close()
+        published = self._exact_cached(root)
+        if published is None:
+            raise AssertionError("second carry interval was not published")
+        return published
+
+    def _second_range(self, start: int, stop: int, extent: int) -> CarryFn:
+        effect = CarryFn.ID
+        for position, span in right_dyadic_blocks(start, stop):
+            effect = compose_carry_fn(
+                effect, self._second_interval(position, span, extent)
+            )
+            self._ledger.bump("reverse_source_ports_prefix_blocks")
+            if effect is not CarryFn.ID:
+                self._ledger.bump("reverse_source_ports_prefix_reset_shortcuts")
+                break
+        return effect
+
+    def _second_prefix(self, boundary: int, extent: int) -> int:
+        if type(boundary) is not int or not 0 <= boundary <= extent:
+            raise IndexError(boundary)
+        effect = self._second_range(0, boundary, extent)
+        self._ledger.bump("reverse_source_ports_layer_2_carry_queries")
+        return apply_carry_fn(effect, 0)
+
+    def range_transfer(
+        self, layer: int, start: int, stop: int, chart: CylinderChart | None = None
+    ) -> CarryFn:
+        """Consume an oriented interval lens over an admitted pair field.
+
+        M is the original digit width. G is zero for the first field and the
+        admitted first growth for the second. Both pair fields are palindromic,
+        so a descending image is reflected once into a forward range; no
+        reverse scan or second copy of the carry tree is needed. This range
+        operation does not admit additional temporal layers.
+        """
+        self._check_open()
+        if type(layer) is not int or layer not in (1, 2):
+            raise ValueError("source carry ranges support only admitted layers 1 and 2")
+        if chart is None:
+            chart = CylinderChart()
+        if type(chart) is not CylinderChart:
+            raise TypeError("source carry range requires a cylinder chart")
+        # Validate the symbolic geometry before discovering any growth.
+        chart.image(start, stop, self._width, 0)
+        growth = 0 if layer == 1 else self._first_prefix(self._width)
+        extent = self._width + growth
+        low, high = chart.image(start, stop, self._width, growth)
+        if not 0 <= low <= high <= extent:
+            raise IndexError((low, high))
+        if chart.slope == -1:
+            low, high = extent - high, extent - low
+        self._ledger.bump("reverse_source_ports_range_queries")
+        if layer == 1:
+            return self._first_range(low, high)
+        return self._second_range(low, high, extent)
+
+    def second_carry(self, boundary: int) -> int:
+        self._check_open()
+        extent = self._width + self._first_prefix(self._width)
+        return self._second_prefix(boundary, extent)
+
+    def second_width(self) -> int:
+        self._check_open()
+        first_width = self._width + self._first_prefix(self._width)
+        result = first_width + self._second_prefix(first_width, first_width)
+        self._ledger.bump("reverse_source_ports_second_width_queries")
+        return result
+
+    def dispose(self) -> None:
+        if self._closed:
+            return
+        self._cache.dispose()
+        self._ledger.mark_disposed(self._workspace_owner)
+        self._closed = True
+
+
+__all__ = ["SourceCarryPorts"]

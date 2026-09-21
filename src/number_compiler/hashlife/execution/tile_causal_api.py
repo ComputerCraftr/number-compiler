@@ -12,8 +12,8 @@ from number_compiler.hashlife.execution.tile_causal_interfaces import (
 from number_compiler.hashlife.execution.tile_causal_observation import causal_width
 from number_compiler.hashlife.execution.tile_causal_results import (
     PrimitiveCausalPorts,
-    causal_result_key,
     lookup_causal_result,
+    probe_causal_result,
 )
 from number_compiler.hashlife.execution.tile_causal_tasks import (
     CausalFrame,
@@ -190,20 +190,20 @@ class CausalTileAPI:
         self._application = application
         try:
             if self._children(action) is None:
-                key = causal_result_key(
+                key, completed = probe_causal_result(
                     self.scheduler.results,
                     action,
                     tile,
                     PrimitiveCausalPorts(left, right),
-                    self.adapter.wiring(action),
+                    self._wiring(action),
                 )
             else:
                 key = self._composite_key(action, tile, left, right)
-            completed = (
-                None
-                if key is None
-                else lookup_causal_result(self.scheduler.results, key)
-            )
+                completed = (
+                    None
+                    if key is None
+                    else lookup_causal_result(self.scheduler.results, key)
+                )
             if completed is not None:
                 try:
                     with completed:

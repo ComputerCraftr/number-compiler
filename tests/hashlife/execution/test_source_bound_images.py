@@ -1,10 +1,12 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, replace
+from typing import cast
 
 import pytest
 
 from number_compiler.hashlife.execution.source_bound_images import (
+    SourceBoundImageAdapter,
     SourceBoundSchedulerCore,
     SourceImageCandidate,
     SourceImageDemand,
@@ -14,6 +16,13 @@ from number_compiler.hashlife.execution.source_bound_images import (
 )
 from number_compiler.hashlife.execution.source_image_seals import publication_seal
 from number_compiler.resources.ledger import ResourceLedger
+from number_compiler.resources.ownership import audit_execution_ownership
+from number_compiler.resources.payload_audit import audit_registered_payloads
+from number_compiler.resources.source_bound_payload_audit import (
+    SourceBoundPayloadAudit,
+    audit_source_bound_payloads,
+)
+from number_compiler.sequences.reverse_add.power import ReverseAddPoweredTerm
 
 
 @dataclass(frozen=True, slots=True)
@@ -165,6 +174,16 @@ def _runtime(
     return ledger, core, adapter
 
 
+def _source_audit(
+    ledger: ResourceLedger, core: SourceBoundSchedulerCore
+) -> SourceBoundPayloadAudit:
+    return audit_source_bound_payloads(
+        ledger,
+        (core,),
+        dict(ledger.iter_containers()),
+    )
+
+
 def test_composite_applies_after_to_the_exact_before_image_and_reuses_it() -> None:
     ledger, core, adapter = _runtime()
     action = _Action((1, 2, 3, 4))
@@ -185,6 +204,15 @@ def test_composite_applies_after_to_the_exact_before_image_and_reuses_it() -> No
         row for row in ledger.inventory() if row.role == "source_image_workspace"
     )
     assert workspace.entries == workspace.nodes == 0
+    assert dict(ledger.iter_containers())[core._workspace_owner] is (
+        core._workspace._storage
+    )
+    assert ledger.is_factory_container(core._workspace._storage)
+    assert not tuple(
+        violation
+        for violation in audit_execution_ownership(ledger).violations
+        if "._workspace" in violation.path
+    )
     assert ledger.counters["source_image_chronological_compositions"] == 3
 
 
@@ -199,6 +227,38 @@ def test_projection_is_demanded_once_and_never_becomes_action_identity() -> None
     assert type(first) is SourceImageProjection and type(image) is SourceImageID
 
 
+def test_complete_image_constructor_precedes_undemanded_child_traversal() -> None:
+    class CompleteAdapter(_DecimalAdapter):
+        def apply_composite(
+            self,
+            action: object,
+            source: SourceImageView,
+            demand: SourceImageDemand | None,
+        ) -> SourceImageCandidate:
+            assert demand is None
+            assert action == _Action((8, 9))
+            assert source.payload == 7
+            return SourceImageCandidate(789, 1, (1, 0), radix=10)
+
+        def apply_primitive(
+            self,
+            action: object,
+            source: SourceImageView,
+        ) -> SourceImageCandidate:
+            raise AssertionError("complete-image construction descended to a child")
+
+    ledger = ResourceLedger()
+    core = SourceBoundSchedulerCore(ledger)
+    adapter = CompleteAdapter(ledger)
+    core.register(adapter)
+    image = core.apply(adapter, 7, _Action((8, 9)))
+    assert core.view(image).payload == 789
+    assert len(core._nodes) == 2  # Original source and final image only.
+    assert adapter.projection_calls == 0
+    assert ledger.counters["source_image_composite_applications"] == 1
+    assert ledger.counters.get("source_image_primitive_applications", 0) == 0
+
+
 def test_powered_repetition_reuses_relative_transfer_not_cumulative_endpoint() -> None:
     ledger, core, adapter = _runtime()
     action = _Action((1,) * 32)
@@ -206,6 +266,159 @@ def test_powered_repetition_reuses_relative_transfer_not_cumulative_endpoint() -
     assert core.view(image).payload == int("1" * 32)
     assert adapter.primitive_calls == 1
     assert ledger.counters["source_image_relative_transfer_hits"] >= 5
+
+
+@pytest.mark.parametrize("damage", ("origin", "application", "relative", "orphan"))
+def test_payload_audit_rejects_redirected_or_orphaned_memo_publications(
+    damage: str,
+) -> None:
+    ledger, core, adapter = _runtime()
+    core.apply(adapter, 0, _Action((1, 2, 3, 4)))
+    core.apply(adapter, 9, _Action((5,)))
+    assert not _source_audit(ledger, core).invalid
+    if damage == "origin":
+        first, second = tuple(core._origins.items())
+        core._origins[first[0]] = second[1]
+    elif damage == "application":
+        first_application, second_application = tuple(core._applications.items())[:2]
+        core._applications[first_application[0]] = second_application[1]
+    elif damage == "relative":
+        first_relative, second_relative = tuple(core._relative.items())[:2]
+        core._relative[first_relative[0]] = second_relative[1]
+    else:
+        core._applications.pop(next(iter(core._applications)))
+    assert _source_audit(ledger, core).invalid
+
+
+def test_payload_audit_rejects_forged_seal_and_stale_image() -> None:
+    ledger, core, adapter = _runtime()
+    image = core.apply(adapter, 0, _Action((1,)))
+    record = core._nodes[image.local_id]
+    forged = publication_seal(
+        (
+            record.binding,
+            record.payload,
+            record.failure_prefix,
+            record.publication_provenance,
+        ),
+        ledger,
+    )
+    core._nodes[image.local_id] = replace(record, publication_snapshot=forged)
+    assert _source_audit(ledger, core).invalid
+    core.clear()
+    assert not _source_audit(ledger, core).valid(image)
+
+
+def test_prime_source_payload_audit_is_read_only_at_the_work_limit() -> None:
+    from number_compiler.sequences.prime.coprime_rank import CoprimeRankDAG
+    from number_compiler.sequences.prime.successor_action import (
+        PrimeSuccessorActionArena,
+        PrimeSuccessorImageAdapter,
+        PrimeSuccessorSource,
+    )
+
+    dag = CoprimeRankDAG((2, 3), max_states=1024, max_work=100_000)
+    arena = PrimeSuccessorActionArena(dag, 5)
+    adapter = PrimeSuccessorImageAdapter(arena)
+    core = SourceBoundSchedulerCore(dag.ledger)
+    core.register(adapter)
+    try:
+        action = arena.prefix(11)
+        image = core.apply_demanded(
+            adapter,
+            PrimeSuccessorSource(arena.descriptor_id, 0),
+            action,
+            SourceImageDemand("rank-before", (11,)),
+        )
+        core.projection(adapter, image, SourceImageDemand("rank-before", (11,)))
+        dag.max_work = dag.work
+        before, work = dag.ledger.snapshot(), dag.work
+        report = audit_registered_payloads(dag.ledger)
+        after = dag.ledger.snapshot()
+        assert (
+            report.forbidden_future_payloads,
+            report.unbounded_future_integers,
+            report.unknown_payloads,
+        ) == (0, 0, 0)
+        assert after == before
+        assert dag.work == work
+    finally:
+        core.dispose()
+        arena.close()
+        dag.close()
+
+
+@pytest.mark.parametrize("damage", ("node-width", "node-child", "container"))
+def test_prime_source_payload_audit_rejects_forged_arena_ownership(
+    damage: str,
+) -> None:
+    from number_compiler.sequences.prime.coprime_rank import CoprimeRankDAG
+    from number_compiler.sequences.prime.successor_action import (
+        PrimeSuccessorActionArena,
+        PrimeSuccessorImageAdapter,
+        PrimeSuccessorSource,
+    )
+
+    dag = CoprimeRankDAG((2, 3), max_states=1024, max_work=100_000)
+    arena = PrimeSuccessorActionArena(dag, 5)
+    adapter = PrimeSuccessorImageAdapter(arena)
+    core = SourceBoundSchedulerCore(dag.ledger)
+    core.register(adapter)
+    try:
+        core.apply(
+            adapter,
+            PrimeSuccessorSource(arena.descriptor_id, 0),
+            arena.prefix(11),
+        )
+        containers = dict(dag.ledger.iter_containers())
+        if damage == "node-width":
+            object.__setattr__(arena._nodes[2], "width", 99)
+        elif damage == "node-child":
+            composite = next(
+                node for node in arena._nodes.values() if node.before is not None
+            )
+            object.__setattr__(composite, "before", arena.descriptor_id)
+        else:
+            containers[arena._nodes.owner] = object()
+        audit = audit_source_bound_payloads(dag.ledger, (core,), containers)
+        assert audit.invalid
+    finally:
+        core.dispose()
+        arena.close()
+        dag.close()
+
+
+def test_prime_source_payload_audit_rejects_replaced_adapter_arena() -> None:
+    from number_compiler.sequences.prime.coprime_rank import CoprimeRankDAG
+    from number_compiler.sequences.prime.successor_action import (
+        PrimeSuccessorActionArena,
+        PrimeSuccessorImageAdapter,
+        PrimeSuccessorSource,
+    )
+
+    dag = CoprimeRankDAG((2, 3), max_states=1024, max_work=100_000)
+    foreign_dag = CoprimeRankDAG((2, 3), max_states=1024, max_work=100_000)
+    arena = PrimeSuccessorActionArena(dag, 5)
+    foreign = PrimeSuccessorActionArena(foreign_dag, 5)
+    adapter = PrimeSuccessorImageAdapter(arena)
+    core = SourceBoundSchedulerCore(dag.ledger)
+    core.register(adapter)
+    try:
+        core.apply(
+            adapter,
+            PrimeSuccessorSource(arena.descriptor_id, 0),
+            arena.prefix(7),
+        )
+        adapter.arena = foreign
+        audit = _source_audit(dag.ledger, core)
+        assert audit.invalid
+    finally:
+        adapter.arena = arena
+        core.dispose()
+        arena.close()
+        foreign.close()
+        dag.close()
+        foreign_dag.close()
 
 
 def test_foreign_adapter_image_and_forged_binding_are_rejected() -> None:
@@ -310,6 +523,23 @@ def test_in_place_frozen_projection_mutation_is_detected() -> None:
         core.projection(adapter, image, demand)
 
 
+def test_public_reverse_warm_projection_validates_binding_before_cache_hit() -> None:
+    term = ReverseAddPoweredTerm(196, 2)
+    expected = term.digit(0)
+    before_hits = term._ledger.counters.get("source_image_projection_hits", 0)
+    original = term.seed
+    term.seed = original + 1
+    try:
+        with pytest.raises(ValueError, match="binding changed"):
+            term.digit(0)
+        assert (
+            term._ledger.counters.get("source_image_projection_hits", 0) == before_hits
+        )
+    finally:
+        term.seed = original
+    assert term.digit(0) == expected
+
+
 def test_first_failure_survives_a_later_successful_primitive() -> None:
     _, core, adapter = _runtime()
     failed = core.apply(adapter, 0, _Action((1, 2, 3, 4)))
@@ -343,6 +573,12 @@ def test_indirect_action_cycle_is_rejected_and_workspace_is_released(
         row for row in ledger.inventory() if row.role == "source_image_workspace"
     )
     assert workspace.entries == workspace.nodes == 0
+    assert not core._workspace.frames and not core._workspace.values
+    assert not tuple(
+        violation
+        for violation in audit_execution_ownership(ledger).violations
+        if "._workspace" in violation.path
+    )
 
 
 def test_mutable_hash_objects_are_not_admitted_as_semantic_keys() -> None:
@@ -381,6 +617,19 @@ def test_budget_refusal_does_not_publish_an_orphan_image() -> None:
     after = ledger.snapshot()
     assert (after.entries, after.nodes) == (before.entries, before.nodes)
     assert len(core._nodes) == len(core._origins) == 0
+
+
+def test_workspace_budget_refusal_releases_its_factory_store() -> None:
+    ledger, core, adapter = _runtime()
+    core._origin(adapter, 0)
+    ledger.max_cache_entries = ledger.entries
+    before = ledger.snapshot()
+    with pytest.raises(Exception, match="budget exceeded"):
+        core.apply(adapter, 0, _Action((1,)))
+    after = ledger.snapshot()
+    assert (after.entries, after.nodes) == (before.entries, before.nodes)
+    assert not core._workspace.running and not core._workspace
+    assert not core._workspace.frames and not core._workspace.values
 
 
 def test_handle_subclasses_cannot_alias_the_image_sort() -> None:
@@ -431,3 +680,62 @@ def test_clear_invalidates_handles_and_dispose_releases_adapter() -> None:
         row for row in ledger.inventory() if row.role == "source_image_adapter"
     )
     assert adapter_row.entries == 0
+
+
+def test_payload_audit_rejects_malformed_registered_adapter_without_callbacks() -> None:
+    ledger, core, adapter = _runtime()
+    core.apply(adapter, 0, _Action((1,)))
+    key = next(iter(core._adapters))
+    core._adapters[key] = cast(SourceBoundImageAdapter, object())
+    before = ledger.snapshot()
+    try:
+        assert _source_audit(ledger, core).invalid
+        assert ledger.snapshot() == before
+    finally:
+        core.dispose()
+
+
+@pytest.mark.parametrize("damage", ("fresh-prime", "forbidden-residues", "port-count"))
+def test_prime_descriptor_authority_and_port_extent_are_immutable(damage: str) -> None:
+    from number_compiler.sequences.prime.coprime_rank import CoprimeRankDAG
+    from number_compiler.sequences.prime.successor_action import (
+        PrimeSuccessorActionArena,
+        PrimeSuccessorImageAdapter,
+        PrimeSuccessorSource,
+    )
+
+    dag = CoprimeRankDAG((2, 3, 5, 7), max_states=1024, max_work=100_000)
+    arena = PrimeSuccessorActionArena(dag, 11)
+    adapter = PrimeSuccessorImageAdapter(arena)
+    core = SourceBoundSchedulerCore(dag.ledger)
+    core.register(adapter)
+    try:
+        action = arena.prefix(1)
+        core.apply(adapter, PrimeSuccessorSource(arena.descriptor_id, 0), action)
+        if damage == "fresh-prime":
+            # Both fresh-prime phases on the old period are 1; phase checks alone
+            # cannot distinguish the admitted successor 11 from the later 19.
+            assert 210 % 11 == 210 % 19 == 1
+            object.__setattr__(arena.descriptor, "fresh_prime", 19)
+        elif damage == "forbidden-residues":
+            object.__setattr__(arena.descriptor, "forbidden_residues", (2,))
+        else:
+            effect = arena.port_effect(arena.base, 0)
+            too_many = arena.descriptor.parent_period + 1
+            object.__setattr__(effect, "parent_survivors", too_many)
+            object.__setattr__(
+                effect, "surviving_values", too_many - effect.deleted_survivors
+            )
+        before, work = dag.ledger.snapshot(), dag.work
+        assert _source_audit(dag.ledger, core).invalid
+        assert dag.ledger.snapshot() == before
+        assert dag.work == work
+        if damage != "port-count":
+            with pytest.raises(
+                ValueError, match="descriptor lost its source authority"
+            ):
+                arena.node(action)
+    finally:
+        core.dispose()
+        arena.close()
+        dag.close()

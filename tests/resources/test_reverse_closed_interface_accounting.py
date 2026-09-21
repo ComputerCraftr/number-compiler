@@ -7,6 +7,9 @@ from typing import Never
 
 import pytest
 
+from devtools.experiments.reverse_add.tile_sector_observation import (
+    observe_reverse_sector_product,
+)
 from number_compiler.arithmetic.carry.reverse_port_functions import ReversePortFunction
 from number_compiler.arithmetic.carry.reverse_sector_transfer import (
     ReverseCarrySectorTransfer,
@@ -22,9 +25,6 @@ from number_compiler.hashlife.observation.tile_projection import build_tile_proj
 from number_compiler.resources.ledger import ResourceLedger
 from number_compiler.resources.metric_collection import collect_ledger_metrics
 from number_compiler.resources.payload_audit import audit_registered_payloads
-from number_compiler.sequences.reverse_add.tile_sector_observation import (
-    observe_reverse_sector_product,
-)
 
 
 def forbidden(*_args: object, **_kwargs: object) -> Never:

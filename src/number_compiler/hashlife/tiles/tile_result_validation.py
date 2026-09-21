@@ -67,6 +67,30 @@ def normalize_output_region(
     return key
 
 
+def validated_action_signature(
+    arena: CompletedResultArena, action: FieldCellActionID
+) -> PortSignatureID:
+    """Deeply admit an action and obtain its signature in one authority call.
+
+    This is request-local validation, not memoized admission. Authorities which
+    do not offer the combined operation retain the separate validation path.
+    """
+    if type(action) is not FieldCellActionID:
+        raise TypeError("powered result requires a scoped field action")
+    if arena._validated_signature_for is None:
+        arena._validate_action(action)
+        signature = arena._signature_for(action)
+    else:
+        admitted = arena._validated_signature_for(action)
+        if type(admitted) is not PortSignatureID:
+            raise TypeError(
+                "combined action validation returned another signature sort"
+            )
+        signature = admitted
+    arena.interfaces.interface(signature)
+    return signature
+
+
 def validate_fused_edge(arena: CompletedResultArena, key: FusedInterfaceKey) -> None:
     """Check an explicit temporal edge without compiling or observing it.
 
@@ -88,8 +112,8 @@ def validate_fused_edge(arena: CompletedResultArena, key: FusedInterfaceKey) -> 
             or type(key.after) is not FieldCellActionID
         ):
             raise TypeError("fused edge requires scoped temporal children")
-        arena._validate_action(key.before)
-        arena._validate_action(key.after)
+        before_signature = validated_action_signature(arena, key.before)
+        after_signature = validated_action_signature(arena, key.after)
         if (
             not callable(children_hook)
             or getattr(children_hook, "__self__", None) is not arena.action_authority
@@ -106,8 +130,8 @@ def validate_fused_edge(arena: CompletedResultArena, key: FusedInterfaceKey) -> 
                 "fused temporal decomposition requires verified port transport"
             )
         if (
-            arena._signature_for(key.before) != key.producer_context.signature
-            or arena._signature_for(key.after) != key.wiring.signature
+            before_signature != key.producer_context.signature
+            or after_signature != key.wiring.signature
         ):
             raise ValueError(
                 "fused temporal children have different interface signatures"
@@ -162,6 +186,7 @@ def validate_fusion_contexts(
     *,
     counted: bool = True,
     output: bool = False,
+    action_admission: object | None = None,
 ) -> int:
     """Validate each temporal side in its own input or output alphabet."""
     if type(fusion) is not FusedBoundaryContract:
@@ -169,20 +194,36 @@ def validate_fusion_contexts(
     fusion.__post_init__()
     if fusion.consumer != consumer:
         raise ValueError("fusion consumer disagrees with the execution request")
-    if arena._validate_fused_action is None:
-        raise ValueError("action authority does not admit fused interfaces")
-    arena._validate_fused_action(action)
-    if arena._validate_fused_wiring is None:
-        if fusion.producer.wiring != fusion.consumer.wiring:
-            raise ValueError(
-                "action authority does not admit heterogeneous fused wiring"
+    if action_admission is None:
+        if arena._validate_fused_action is None:
+            raise ValueError("action authority does not admit fused interfaces")
+        arena._validate_fused_action(action)
+        if arena._validate_fused_wiring is None:
+            if fusion.producer.wiring != fusion.consumer.wiring:
+                raise ValueError(
+                    "action authority does not admit heterogeneous fused wiring"
+                )
+        else:
+            arena._validate_fused_wiring(
+                action, fusion.producer.wiring, fusion.consumer.wiring
             )
+        children_hook = getattr(arena.action_authority, "action_children", None)
+        children = None
     else:
-        arena._validate_fused_wiring(
-            action, fusion.producer.wiring, fusion.consumer.wiring
+        from number_compiler.resources.causal_workspace import (
+            admitted_action_metadata,
         )
-    children_hook = getattr(arena.action_authority, "action_children", None)
-    children = None
+
+        _signature, _kernel, record = admitted_action_metadata(
+            action_admission, arena.action_authority, action
+        )
+        children_hook = None
+        children = record.children
+        if children is None or any(
+            wiring.orientation or wiring.phase
+            for wiring in (fusion.producer.wiring, fusion.consumer.wiring)
+        ):
+            raise ValueError("fused wiring requires its admitted temporal edge")
     if children_hook is not None:
         if (
             not callable(children_hook)
@@ -205,15 +246,36 @@ def validate_fusion_contexts(
             child = children[side]
             if type(child) is not FieldCellActionID:
                 raise TypeError("fusion requires scoped temporal children")
-            arena._validate_action(child)
-            if arena._signature_for(child) != context.signature:
+            if action_admission is None:
+                child_signature = validated_action_signature(arena, child)
+            else:
+                child_signature, _kernel, _record = admitted_action_metadata(
+                    action_admission, arena.action_authority, child
+                )
+            if child_signature != context.signature:
                 raise ValueError("fusion child has another interface signature")
-        if child is not None and domain_validator is not None:
+        if child is not None and (
+            domain_validator is not None or action_admission is not None
+        ):
             visits += validate_bound_context(
                 arena.interfaces, arena.tiles, context, None
             )
             for tile in context.boundaries.tile_ids():
-                domain_validator(child, tile)
+                if action_admission is None:
+                    assert domain_validator is not None
+                    domain_validator(child, tile)
+                else:
+                    from number_compiler.hashlife.tiles.completed_result_validation import (
+                        _validate_admitted_input,
+                    )
+
+                    _validate_admitted_input(
+                        arena,
+                        child,
+                        tile,
+                        action_admission,
+                        output=output,
+                    )
         else:
             visits += validate_bound_context(
                 arena.interfaces,

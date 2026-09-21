@@ -161,20 +161,32 @@ def cached_causal_output(
     )
 
 
-def causal_result_key(
+def _causal_result_key(
     results: CompletedResultArena,
     action: FieldCellActionID,
     input_tile: TileID,
     state: CausalInputState,
     wiring: ResultWiring,
+    *,
+    action_admission: object | None = None,
 ) -> PoweredResultKey:
-    """Build and validate the sole completed-result key for a causal request."""
+    """Build a request envelope for immediate validation by its consumer."""
     if type(results) is not CompletedResultArena:
         raise TypeError("causal result keys require the shared result arena")
-    children_hook = getattr(results.action_authority, "action_children", None)
-    if not callable(children_hook):
-        raise TypeError("causal result keys require a temporal action authority")
-    children = children_hook(action)
+    if action_admission is None:
+        children_hook = getattr(results.action_authority, "action_children", None)
+        if not callable(children_hook):
+            raise TypeError("causal result keys require a temporal action authority")
+        children = children_hook(action)
+    else:
+        from number_compiler.resources.causal_workspace import (
+            admitted_action_metadata,
+        )
+
+        _signature, _kernel, record = admitted_action_metadata(
+            action_admission, results.action_authority, action
+        )
+        children = record.children
     if type(state) is PrimitiveCausalPorts:
         if children is not None:
             raise ValueError("composed causal actions require exact prefix operands")
@@ -187,23 +199,68 @@ def causal_result_key(
         boundaries = state.operands
     else:
         raise TypeError("causal input state has another sort")
-    key = PoweredResultKey(action, input_tile, request_ports, wiring, boundaries)
+    return PoweredResultKey(action, input_tile, request_ports, wiring, boundaries)
+
+
+def causal_result_key(
+    results: CompletedResultArena,
+    action: FieldCellActionID,
+    input_tile: TileID,
+    state: CausalInputState,
+    wiring: ResultWiring,
+    *,
+    action_admission: object | None = None,
+) -> PoweredResultKey:
+    """Build and validate a key which may escape before its next consumer."""
+    key = _causal_result_key(
+        results, action, input_tile, state, wiring, action_admission=action_admission
+    )
     # Validate owner/kind/allocation, signature, ports and exact operand geometry
     # before this key can probe a warm memo or reach a publisher.
-    results._validate_key(key)
+    if action_admission is None:
+        results._validate_key(key)
+    else:
+        results._validate_key(key, action_admission=action_admission)
     return key
+
+
+def probe_causal_result(
+    results: CompletedResultArena,
+    action: FieldCellActionID,
+    input_tile: TileID,
+    state: CausalInputState,
+    wiring: ResultWiring,
+    *,
+    action_admission: object | None = None,
+) -> tuple[PoweredResultKey, ResultLease | None]:
+    """Construct and probe atomically; the lookup validates before memo access.
+
+    Unlike a separately published key, this envelope never escapes before the
+    validating lookup. Public lookup and completed-result publication retain
+    their full validation paths.
+    """
+    key = _causal_result_key(
+        results, action, input_tile, state, wiring, action_admission=action_admission
+    )
+    results.ledger.bump("tile_causal_result_probe_requests")
+    found = lookup_causal_result(results, key, action_admission=action_admission)
+    return key, found
 
 
 def lookup_causal_result(
     results: CompletedResultArena,
     key: PoweredResultKey,
+    *,
+    action_admission: object | None = None,
 ) -> ResultLease | None:
     """Probe the existing result memo; no causal continuation is retained."""
     if type(results) is not CompletedResultArena:
         raise TypeError("causal lookup requires the shared result arena")
     if type(key) is not PoweredResultKey:
         raise TypeError("causal lookup requires a powered-result key")
-    return results.lookup(key)
+    if action_admission is None:
+        return results.lookup(key)
+    return results.lookup(key, _action_admission=action_admission)
 
 
 def primitive_causal_semantics(
@@ -493,6 +550,7 @@ __all__ = [
     "combine_causal_outputs",
     "lookup_causal_result",
     "primitive_causal_semantics",
+    "probe_causal_result",
     "publish_causal_completed",
     "publish_causal_result",
 ]

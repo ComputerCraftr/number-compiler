@@ -15,21 +15,11 @@ from number_compiler.hashlife.execution.radix_consumer import (
     RadixDivisionActionArena,
     RadixDivisionActionID,
 )
-from number_compiler.hashlife.observation.tile_projection import LazyProjection
-from number_compiler.hashlife.tiles.tiles import TileArena
 from number_compiler.projection.lazy_radix import RadixProjection, collatz_radix_digit
 from number_compiler.projection.microblock_cache import MicroblockCache
-from number_compiler.projection.tile_radix import TileRadixObservation
 from number_compiler.resources.ledger import ResourceLedger
-from number_compiler.resources.metric_collection import collect_ledger_metrics
 from number_compiler.resources.payload_audit import audit_registered_payloads
 from number_compiler.sequences.collatz.block_power import PoweredCollatzTerm
-
-
-def _observation(term: PoweredCollatzTerm, radix: int) -> TileRadixObservation:
-    projection = term._point_index()._lazy_application
-    assert type(projection) is LazyProjection
-    return TileRadixObservation(projection, radix)
 
 
 def test_division_images_are_strong_scoped_constant_size_records() -> None:
@@ -94,31 +84,6 @@ def test_division_consumer_power_is_canonical_logarithmic_and_scoped() -> None:
             arena.resolve(cast(RadixDivisionActionID, invalid))
 
 
-def test_radix_provider_action_roots_are_audited_and_counted_as_field_actions() -> None:
-    term = PoweredCollatzTerm(27, 2)
-    observation = _observation(term, 3)
-    division = observation.adapter.power(observation.division, 9)
-    observation.adapter.validate_action(division)
-
-    audit = audit_registered_payloads(term._ledger)
-    assert audit == type(audit)(0, 0, 0)
-    report = collect_ledger_metrics(term._ledger)
-    radix_rows = tuple(
-        row
-        for row in report.resource_inventory
-        if row.name.startswith("primitive-tile-actions-")
-        and row.name.endswith("-nodes")
-    )
-    assert len(radix_rows) == 1
-    assert radix_rows[0].role == "field_action"
-    assert report.field_action_nodes >= sum(
-        row.observed_nodes or 0 for row in radix_rows
-    )
-    assert report.field_action_publications >= sum(
-        row.observed_nodes or 0 for row in radix_rows
-    )
-
-
 def test_radix_action_semantic_records_are_append_only_and_remain_auditable() -> None:
     ledger = ResourceLedger()
     arena = RadixDivisionActionArena(ledger, 3)
@@ -174,27 +139,6 @@ def test_new_digit_uses_one_provider_observation_without_stage_replay() -> None:
     assert term._ledger.counters.get("radix_microblock_source_fills", 0) == 0
     assert term._ledger.counters["radix_provider_digit_requests"] == 2
     assert term._ledger.counters.get("radix_provider_digit_early_hits", 0) == 0
-
-
-def test_new_radix_consumer_reuses_complete_leaf_interfaces(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    exact = 140137
-    for _ in range(11):
-        exact = exact // 2 if exact % 2 == 0 else 3 * exact + 1
-    term = PoweredCollatzTerm(140137, 11)
-    observation = _observation(term, 3)
-    assert observation.digit(0) == exact % 3
-    hits_before = term._ledger.counters.get("tile_radix_observation_early_hits", 0)
-    monkeypatch.setattr(
-        TileArena,
-        "point",
-        lambda *_args: pytest.fail("reread the original source leaf"),
-    )
-    assert observation.digit(0) == exact % 3
-    assert (
-        term._ledger.counters.get("tile_radix_observation_early_hits", 0) > hits_before
-    )
 
 
 @pytest.mark.parametrize("radix", (3, 6, 10, 12))

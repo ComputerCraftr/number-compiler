@@ -5,6 +5,13 @@ from typing import Never
 
 import pytest
 
+from devtools.experiments.reverse_add import factored_carrier as module
+from devtools.experiments.reverse_add.factored_carrier import (
+    FactoredReverseCarrier,
+    OutputResidualID,
+    TemporalCell,
+)
+from devtools.experiments.reverse_add.factored_power import FactoredTemporalPower
 from devtools.proofs import exact_oracle
 from number_compiler.arithmetic.automata import program_word as words
 from number_compiler.arithmetic.carry.carry_monoid import CarryFn
@@ -15,13 +22,6 @@ from number_compiler.arithmetic.contracts.exact_tree_context import (
     source_reads_only,
 )
 from number_compiler.arithmetic.fields.radix import reverse_pair_sums
-from number_compiler.sequences.reverse_add import factored_carrier as module
-from number_compiler.sequences.reverse_add.factored_carrier import (
-    FactoredReverseCarrier,
-    OutputResidualID,
-    TemporalCell,
-)
-from number_compiler.sequences.reverse_add.factored_power import FactoredTemporalPower
 
 
 @pytest.mark.parametrize("seed", (1, 1111, 196))

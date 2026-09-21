@@ -16,6 +16,34 @@ def forbidden(*args: object, **kwargs: object) -> Never:
     raise AssertionError("unrequested execution was entered")
 
 
+@pytest.mark.parametrize("names", (("hensel",), ("mahler",), ("hensel", "mahler")))
+def test_arithmetic_observers_do_not_request_physical_execution(
+    names: tuple[str, ...],
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    from number_compiler.sequences.antihydra import runtime
+    from number_compiler.sequences.antihydra.runtime import AntihydraArithmeticTerm
+
+    monkeypatch.setattr(AntihydraArithmeticTerm, "physical_run", forbidden)
+    monkeypatch.setattr(runtime, "physical_roof", forbidden)
+    monkeypatch.setattr(cli, "_render_value", forbidden)
+    options = [option for name in names for option in ("--info", name)]
+    assert (
+        cli.main(
+            ["antihydra", "--nth", "64", "--no-value", "--format", "json", *options]
+        )
+        == 0
+    )
+    row = json.loads(capsys.readouterr().out)
+    assert row["value"] is None
+    for name in names:
+        packet = row["info"][name]
+        assert packet["guarded_physical_status"] == "not_requested"
+        assert "halted" not in packet
+        assert packet["value"]["timestamp_macro_returns"] == 64
+
+
 @pytest.mark.parametrize(
     "family,index,extra,expected",
     [
@@ -341,8 +369,6 @@ def test_antihydra_output_budget_accepts_seed_exactly(
     [
         ("tape", "twisted"),
         ("twisted", "tape"),
-        ("mahler", "hensel"),
-        ("hensel", "mahler"),
     ],
 )
 def test_antihydra_equivalent_information_reuses_the_demand(
@@ -412,6 +438,45 @@ def test_antihydra_equivalent_information_reuses_the_demand(
     assert row["value"] is None
     work = row["info"]["metrics"]["execution_metrics"]["work_counters"]
     assert work["query_observer_reuses"] == 1
+
+
+@pytest.mark.parametrize("names", [("mahler", "hensel"), ("hensel", "mahler")])
+def test_antihydra_mahler_extends_shared_tangent_without_aliasing(
+    names: tuple[str, str],
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    monkeypatch.setattr(cli, "_render_value", forbidden)
+    assert (
+        cli.main(
+            [
+                "antihydra",
+                "--nth",
+                "16",
+                "--no-value",
+                "--info",
+                names[0],
+                "--info",
+                names[1],
+                "--info",
+                "metrics",
+                "--format",
+                "json",
+            ]
+        )
+        == 0
+    )
+    row = json.loads(capsys.readouterr().out)
+    mahler = row["info"]["mahler"]["value"]
+    hensel = row["info"]["hensel"]["value"]
+    assert "associated_action" not in hensel
+    assert {
+        key: value for key, value in mahler.items() if key != "associated_action"
+    } == hensel
+    assert mahler["associated_action"]["extent"] == 16
+    assert row["value"] is None
+    work = row["info"]["metrics"]["execution_metrics"]["work_counters"]
+    assert work["arithmetic_returns"] == 16
 
 
 @pytest.mark.parametrize("base", (2, 16, 36))

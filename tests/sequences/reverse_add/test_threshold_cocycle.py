@@ -1,11 +1,18 @@
 """Extensional nonlinear consumers and genuinely substituted temporal powers."""
 
+from collections.abc import MutableMapping
 from dataclasses import replace
 from itertools import product
-from typing import Never
+from typing import Never, cast
 
 import pytest
 
+from devtools.experiments.reverse_add.cocycle_temporal import CocycleTemporalArena
+from devtools.experiments.reverse_add.threshold_cocycle import (
+    ResidueMorphism,
+    ThresholdCocycleArena,
+    ThresholdCocycleResidualID,
+)
 from number_compiler.arithmetic.functions.finite_function_types import (
     BOOL,
     FinitePort,
@@ -15,12 +22,6 @@ from number_compiler.arithmetic.functions.finite_port_action import PortVariable
 from number_compiler.hashlife.interfaces.semantic_bits import BitFunctionArena
 from number_compiler.resources.ledger import ResourceLedger
 from number_compiler.sequences.reverse_add.active_output import DIGIT, F5
-from number_compiler.sequences.reverse_add.cocycle_temporal import CocycleTemporalArena
-from number_compiler.sequences.reverse_add.threshold_cocycle import (
-    ResidueMorphism,
-    ThresholdCocycleArena,
-    ThresholdCocycleResidualID,
-)
 
 
 def test_primitive_cocycle_and_swapped_affine_arguments_are_extensional() -> None:
@@ -100,6 +101,8 @@ def test_affine_cocycle_squares_to_1024_with_primitive_and_evaluation_poisoned(
     with monkeypatch.context() as patch:
         patch.setattr(t, "primitive", forbidden)
         patch.setattr(bits, "evaluate", forbidden)
+        patch.setattr(bits, "substitute", forbidden)
+        patch.setattr(bits, "restrict", forbidden)
         for _ in range(10):
             action = t.compose(action, action)
             powers[action.events] = action
@@ -140,3 +143,102 @@ def test_uninterned_cocycle_cannot_bypass_root_accounting() -> None:
     assert k.residual_count == count + 1
     assert k.intern(function) == forged
     assert k.residual_count == count + 1
+
+
+def test_temporal_composition_cache_is_complete_and_event_sensitive() -> None:
+    bits = BitFunctionArena(ResourceLedger())
+    k = ThresholdCocycleArena(bits)
+    t = CocycleTemporalArena(k)
+    sorts = (F5, BOOL, F5, BOOL, BOOL)
+    ports = tuple(
+        FinitePort(PortVariable(0, i, "cache-context", 0), sort.cardinality)
+        for i, sort in enumerate(sorts)
+    )
+    a, e, b, f, _last = (
+        bits.variable(ports, port, sort)
+        for port, sort in zip(ports, sorts, strict=True)
+    )
+    left, right = ResidueMorphism(a, e), ResidueMorphism(b, f)
+    value = k.add(left, right)
+    residual = k.precompose(k.primitive, left, right)
+    action = t.primitive(
+        ports,
+        (value.alpha, value.epsilon, b, f, k.resolve(residual)),
+        (residual,),
+        bits.constant(FunctionSignature(ports, BOOL), 1),
+    )
+
+    initial_requests = bits.ledger.counters.get("temporal_composition_requests", 0)
+    initial_validations = bits.ledger.counters.get(
+        "temporal_composition_validation_attempts", 0
+    )
+    first = t.compose(action, action)
+    assert bits.ledger.counters["temporal_composition_requests"] == initial_requests + 1
+    assert (
+        bits.ledger.counters["temporal_composition_validation_attempts"]
+        == initial_validations + 2
+    )
+    second = t.compose(action, action)
+    assert second == first
+    assert t.temporal_composition_cache_hits == 1
+    assert t.temporal_compositions == 1
+    assert bits.ledger.counters["temporal_composition_requests"] == initial_requests + 2
+    assert (
+        bits.ledger.counters["temporal_composition_validation_attempts"]
+        == initial_validations + 5
+    )
+
+    cache_key = next(iter(t._composition_cache))
+    cache_data = cast(MutableMapping[object, object], t._composition_cache._data)
+    original_entry = cache_data[cache_key]
+    cache_data[cache_key] = object()
+    try:
+        with pytest.raises(ValueError, match="cache payload"):
+            t.compose(action, action)
+    finally:
+        cache_data[cache_key] = original_entry
+
+    cached_entry = next(iter(t._composition_cache.values()))
+    original_entry_id = cached_entry.entry_id
+    object.__setattr__(cached_entry, "entry_id", False)
+    try:
+        with pytest.raises(ValueError, match="cache entry"):
+            t.compose(action, action)
+    finally:
+        object.__setattr__(cached_entry, "entry_id", original_entry_id)
+
+    original_key = cached_entry.key
+    object.__setattr__(
+        cached_entry,
+        "key",
+        replace(original_key, before_events=True),
+    )
+    try:
+        with pytest.raises(ValueError, match="cache key"):
+            t.compose(action, action)
+    finally:
+        object.__setattr__(cached_entry, "key", original_key)
+
+    output_handle = cached_entry.result.outputs[0]
+    original_local_id = output_handle.local_id
+    replacement = bits.constant(FunctionSignature(ports, F5), 0)
+    object.__setattr__(output_handle, "local_id", replacement.local_id)
+    try:
+        with pytest.raises(ValueError, match="cache seal"):
+            t.compose(action, action)
+    finally:
+        object.__setattr__(output_handle, "local_id", original_local_id)
+
+    event_shifted = replace(action, events=2)
+    t.compose(event_shifted, action)
+    assert t.temporal_composition_cache_hits == 1
+    assert t.temporal_compositions == 2
+
+    cached_entry = next(iter(t._composition_cache.values()))
+    original_events = cached_entry.result.events
+    object.__setattr__(cached_entry.result, "events", original_events + 1)
+    try:
+        with pytest.raises(ValueError, match="cache seal"):
+            t.compose(action, action)
+    finally:
+        object.__setattr__(cached_entry.result, "events", original_events)

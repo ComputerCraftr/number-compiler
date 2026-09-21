@@ -65,14 +65,6 @@ from number_compiler.hashlife.execution.diamond_pair_macros import (
     PrimitivePairMacros,
 )
 from number_compiler.hashlife.execution.diamond_primitive_pair import PrimitivePairKey
-from number_compiler.hashlife.execution.diamond_reverse_expression import (
-    DecimalT2Emitter,
-    FactorLookup,
-)
-from number_compiler.hashlife.execution.diamond_reverse_kernel import (
-    DecimalT2Factorization,
-    validate_decimal_t2_factorization,
-)
 from number_compiler.hashlife.interfaces.diamond_boundary import (
     BoundaryActionArena,
     BoundaryActionID,
@@ -179,8 +171,6 @@ class DiamondPayloadRegistry:
         ContextObservation,
         UnaryComposition,
         UnaryKernelApplication,
-        DecimalT2Factorization,
-        FactorLookup,
         RightResetCertificate,
         *ExpressionPayloadRegistry.record_types,
         *HigherPayloadRegistry.record_types,
@@ -260,15 +250,6 @@ class DiamondPayloadRegistry:
             if type(root) is PrimitiveUnaryFunctions
             and root.ledger is ledger
             and actual.get(root.owner) is root._memo._data
-        )
-        self.decimal_emitters = tuple(
-            root
-            for root in roots
-            if type(root) is DecimalT2Emitter
-            and root.ledger is ledger
-            and root.arena in self.kernels
-            and actual.get(root.definition_owner) is root._definitions
-            and actual.get(root.template_owner) is root.templates._data
         )
         self.domain_ids = {
             id(domain): kernel
@@ -416,8 +397,6 @@ class DiamondPayloadRegistry:
             return self._handle(value)
         if type(value) is PrimitiveKernel:
             return self._kernel(value)
-        if type(value) in (DecimalT2Factorization, FactorLookup):
-            return self._decimal_definition(value)
         if type(value) is RightHalo:
             return self._halo(value)
         if type(value) is RightResetCertificate:
@@ -596,41 +575,6 @@ class DiamondPayloadRegistry:
             return self._context(value)
         # Port records become admissible only when their executable arenas are
         # available for owner membership checks. Unbound declarations fail.
-        return False
-
-    def _decimal_definition(self, value: object) -> bool:
-        if type(value) is DecimalT2Factorization:
-            return any(
-                any(record is value for record in emitter._definitions)
-                for emitter in self.decimal_emitters
-            ) and validate_decimal_t2_factorization(value)
-        if type(value) is FactorLookup:
-            if type(value.parameters) is not tuple:
-                return False
-            for emitter in self.decimal_emitters:
-                for name, actual in emitter.templates.items():
-                    if actual is not value:
-                        continue
-                    if type(name) is not str or name not in (
-                        "left-anchor",
-                        "right-anchor",
-                        "left-continuation",
-                        "right-continuation",
-                    ):
-                        return False
-                    domains, output = emitter._domains(name)
-                    try:
-                        return (
-                            tuple(
-                                emitter.arena.expression(item).domain
-                                for item in value.parameters
-                            )
-                            == domains
-                            and emitter.arena.expression(value.function).domain
-                            == output
-                        )
-                    except (TypeError, ValueError):
-                        return False
         return False
 
     def _pair_macro(self, value: PairMacroRecord) -> bool:

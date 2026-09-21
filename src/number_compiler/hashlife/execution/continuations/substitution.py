@@ -48,6 +48,61 @@ def bind_free(
     )
 
 
+def bind_free_many(
+    self: HigherSemanticArena,
+    expression: HigherExpressionID,
+    bindings: tuple[tuple[HigherExpressionID, HigherExpressionID], ...],
+) -> HigherExpressionID:
+    """Suspend simultaneous port substitution without traversing the body.
+
+    All replacements see the original environment. Fresh staging variables
+    depend on the complete supplied binding vector, so no replacement can
+    contain another staging variable, including on repeated calls. This adds
+    at most three expression nodes per relevant port; it is not a bound on
+    subsequent evaluation or on free-variable metadata storage.
+    """
+    self.expression(expression)
+    if type(bindings) is not tuple:
+        raise TypeError("simultaneous bindings require an immutable port vector")
+    seen: set[int] = set()
+    relevant: list[tuple[HigherExpressionID, HigherExpressionID]] = []
+    free = self._expression_free_ids[expression.local_id]
+    for binding in bindings:
+        self.ledger.bump("higher_simultaneous_binding_pairs_checked")
+        if type(binding) is not tuple or len(binding) != 2:
+            raise TypeError("simultaneous bindings require variable/value pairs")
+        variable, replacement = binding
+        old, new = self.expression(variable), self.expression(replacement)
+        if old.kind != "variable" or old.sort != new.sort:
+            raise ValueError("simultaneous bindings require equal free-port sorts")
+        if variable.local_id in seen:
+            raise ValueError("simultaneous bindings repeat a free port")
+        seen.add(variable.local_id)
+        if variable != replacement and variable.local_id in free:
+            relevant.append((variable, replacement))
+    if not relevant:
+        return expression
+    if len(relevant) == 1:
+        variable, replacement = relevant[0]
+        self.ledger.bump("higher_simultaneous_binding_ports")
+        return bind_free(self, expression, variable, replacement)
+    relevant.sort(key=lambda binding: binding[0].local_id)
+    dependencies = (expression,) + tuple(item for pair in relevant for item in pair)
+    staged: list[tuple[HigherExpressionID, HigherExpressionID]] = []
+    for variable, replacement in relevant:
+        placeholder = self.variable(
+            self.expression(variable).sort,
+            f"simultaneous-free-port:{variable.local_id}",
+            dependencies,
+        )
+        expression = bind_free(self, expression, variable, placeholder)
+        staged.append((placeholder, replacement))
+    for placeholder, replacement in staged:
+        expression = bind_free(self, expression, placeholder, replacement)
+    self.ledger.bump("higher_simultaneous_binding_ports", len(relevant))
+    return expression
+
+
 def substitute(
     self: HigherSemanticArena,
     expression: HigherExpressionID,
@@ -78,6 +133,12 @@ def substitute(
         while pending:
             local_id, ready = pending.pop()
             if local_id in built:
+                continue
+            # Variable dependency children are identity metadata, not free
+            # occurrences. Respect the same lexical scope used by interning
+            # and skip subgraphs that cannot contain the substituted variable.
+            if variable.local_id not in self._expression_free_ids[local_id]:
+                built[local_id] = local_id
                 continue
             if local_id == variable.local_id:
                 built[local_id] = replacement.local_id

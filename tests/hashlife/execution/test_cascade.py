@@ -1,4 +1,4 @@
-from number_compiler.hashlife.execution.cascade import DependencyCascadeArena
+from devtools.experiments.reverse_add.cascade import DependencyCascadeArena
 
 
 def test_dependency_cascade_is_exact_and_hash_cons_suffixes() -> None:
@@ -17,7 +17,7 @@ def test_dependency_cascade_is_exact_and_hash_cons_suffixes() -> None:
 
 
 def test_grouped_dependency_cascade_merges_equal_child_fibers() -> None:
-    from number_compiler.hashlife.execution.cascade import GroupedDependencyCascadeArena
+    from devtools.experiments.reverse_add.cascade import GroupedDependencyCascadeArena
 
     rows = {(x, 0, 1) for x in range(32)} | {(x, 1, 2) for x in range(32)}
     a = GroupedDependencyCascadeArena(3)
@@ -30,7 +30,7 @@ def test_grouped_dependency_cascade_merges_equal_child_fibers() -> None:
 
 
 def test_grouped_cascade_boxes_are_exact_without_cartesian_expansion() -> None:
-    from number_compiler.hashlife.execution.cascade import GroupedDependencyCascadeArena
+    from devtools.experiments.reverse_add.cascade import GroupedDependencyCascadeArena
 
     a = GroupedDependencyCascadeArena(3)
     # {0..63} x {2,3} x {7..10} is 512 tuples but one dependency box.

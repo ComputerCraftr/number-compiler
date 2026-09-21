@@ -156,7 +156,7 @@ def test_higher_summary_rejects_foreign_and_integer_alias_handles() -> None:
 
 
 def test_higher_summary_payload_audit_covers_nodes_bindings_and_eviction() -> None:
-    from number_compiler.resources.payload_audit import audit_registered_payloads
+    from number_compiler.resources.higher_payload_audit import audit_higher_payloads
 
     (
         actions,
@@ -172,14 +172,16 @@ def test_higher_summary_payload_audit_covers_nodes_bindings_and_eviction() -> No
     action = actions.power(primitive, 4)
     runtime.summaries.unary(action, cell, 0)
     runtime.summaries.context(primitive, primitive, cell)
-    clean = audit_registered_payloads(runtime.ledger)
-    assert clean.forbidden_future_payloads == 0
-    assert clean.unknown_payloads == 0
+    # This experimental reverse fixture is not an admitted production graph.
+    # Check the retained generic summary owner, without whitelisting the fixture.
+    clean = audit_higher_payloads(runtime.ledger)
+    assert not clean.invalid
+    assert clean.approved
 
     runtime.summaries.clear_bindings()
-    evicted = audit_registered_payloads(runtime.ledger)
-    assert evicted.forbidden_future_payloads == 0
-    assert evicted.unknown_payloads == 0
+    evicted = audit_higher_payloads(runtime.ledger)
+    assert not evicted.invalid
+    assert evicted.approved
 
 
 def test_higher_summary_payload_audit_rejects_mutated_semantic_reference() -> None:

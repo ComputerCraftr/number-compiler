@@ -10,11 +10,17 @@ power, or callback is retained by the certificate.
 
 from __future__ import annotations
 
+from collections.abc import Callable, Iterator
+from contextlib import contextmanager
+from contextvars import ContextVar
 from dataclasses import dataclass
 from hashlib import sha256
 
 from number_compiler.arithmetic.contracts.scoped_handles import ArenaHandle
-from number_compiler.arithmetic.contracts.semantic_identity import SemanticIdentity
+from number_compiler.arithmetic.contracts.semantic_identity import (
+    SemanticIdentity,
+    SemanticIdentityValidator,
+)
 from number_compiler.hashlife.interfaces.primitive_behavior import (
     PrimitiveBehaviorQuotient,
     validate_primitive_behavior_quotient,
@@ -33,6 +39,38 @@ QUIESCENT_OBSERVATIONS = (
 QUIESCENT_GEOMETRY_SCHEMA = "nonempty-uniform-blank-dyadic-v1"
 QUIESCENT_COCYCLE_SCHEMA = "primitive-zero-occurrence-cocycle-v1"
 QUIESCENT_LAW = "successor-closed-uniform-blank-v1"
+
+_ACTIVE_IDENTITY_VALIDATOR: ContextVar[SemanticIdentityValidator | None] = ContextVar(
+    "future_behavior_identity_validator", default=None
+)
+
+
+@contextmanager
+def _identity_validation_scope() -> Iterator[SemanticIdentityValidator]:
+    """Own one synchronous union-DAG audit without exposing a public bypass."""
+    if _ACTIVE_IDENTITY_VALIDATOR.get() is not None:
+        raise RuntimeError("identity validation scope cannot be nested")
+    validator = SemanticIdentityValidator()
+    token = _ACTIVE_IDENTITY_VALIDATOR.set(validator)
+    try:
+        yield validator
+        SemanticIdentityValidator.finish(validator)
+    finally:
+        _ACTIVE_IDENTITY_VALIDATOR.reset(token)
+
+
+def _validate_identity_union(
+    validate: Callable[[Callable[[SemanticIdentity], None]], None],
+) -> None:
+    validator = _ACTIVE_IDENTITY_VALIDATOR.get()
+    if validator is None:
+        validator = SemanticIdentityValidator()
+        validate(
+            lambda identity: SemanticIdentityValidator.validate(validator, identity)
+        )
+        SemanticIdentityValidator.finish(validator)
+        return
+    validate(lambda identity: SemanticIdentityValidator.validate(validator, identity))
 
 
 class UnsupportedFutureBehaviorProfile(ValueError):
@@ -74,10 +112,16 @@ class QuiescentBlankCertificate:
     semantic_digest: str
 
     def __post_init__(self) -> None:
+        _validate_identity_union(self.validate_with)
+
+    def validate_with(
+        self, validate_identity: Callable[[SemanticIdentity], None]
+    ) -> None:
+        """Validate this certificate with the caller's identity boundary."""
         for identity in (self.kernel, self.continuation):
             if type(identity) is not SemanticIdentity:
                 raise TypeError("quiescent behavior requires semantic identities")
-            identity.__post_init__()
+            validate_identity(identity)
         if type(self.alphabet_size) is not int or self.alphabet_size < 1:
             raise ValueError("quiescent behavior requires a finite alphabet")
         if type(self.blank) is not int or not 0 <= self.blank < self.alphabet_size:
@@ -151,10 +195,16 @@ class FutureBehaviorProfile:
     certificate_digest: str
 
     def __post_init__(self) -> None:
+        _validate_identity_union(self.validate_with)
+
+    def validate_with(
+        self, validate_identity: Callable[[SemanticIdentity], None]
+    ) -> None:
+        """Validate this profile with the caller's identity boundary."""
         for identity in (self.kernel, self.continuation):
             if type(identity) is not SemanticIdentity:
                 raise TypeError("future profiles require semantic identities")
-            identity.__post_init__()
+            validate_identity(identity)
         if type(self.alphabet_size) is not int or self.alphabet_size < 1:
             raise ValueError("future profile requires a finite alphabet")
         if type(self.blank) is not int or not 0 <= self.blank < self.alphabet_size:
@@ -217,7 +267,26 @@ def certify_quiescent_blank(
     work: FutureBehaviorWork | None = None,
 ) -> QuiescentBlankCertificate:
     """Compute the greatest primitive blank and absorbing-sink fixed points."""
-    validate_primitive_behavior_quotient(quotient)
+    if _ACTIVE_IDENTITY_VALIDATOR.get() is None:
+        with _identity_validation_scope():
+            return _certify_quiescent_blank(quotient, work=work)
+    return _certify_quiescent_blank(quotient, work=work)
+
+
+def _certify_quiescent_blank(
+    quotient: PrimitiveBehaviorQuotient,
+    *,
+    work: FutureBehaviorWork | None,
+) -> QuiescentBlankCertificate:
+    validator = _ACTIVE_IDENTITY_VALIDATOR.get()
+    if type(validator) is not SemanticIdentityValidator:
+        raise AssertionError("identity validation scope lost its sealed owner")
+    validate_primitive_behavior_quotient(
+        quotient,
+        validate_identity=lambda identity: SemanticIdentityValidator.validate(
+            validator, identity
+        ),
+    )
     measured = FutureBehaviorWork() if work is None else work
     if type(measured) is not FutureBehaviorWork:
         raise TypeError("quiescent refinement work requires a mutable work record")
@@ -292,7 +361,7 @@ def certify_quiescent_blank(
         right_transition,
         rounds,
     )
-    return QuiescentBlankCertificate(
+    certificate = QuiescentBlankCertificate(
         quotient.source_identity,
         quotient.semantic_identity,
         quotient.alphabet_size,
@@ -304,6 +373,7 @@ def certify_quiescent_blank(
         rounds,
         sha256(repr(key).encode("utf-8")).hexdigest(),
     )
+    return certificate
 
 
 def _successor_in(

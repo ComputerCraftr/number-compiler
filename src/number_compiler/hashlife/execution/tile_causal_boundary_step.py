@@ -6,8 +6,8 @@ from typing import Any
 
 from number_compiler.hashlife.execution.tile_causal_results import (
     PrimitiveCausalPorts,
-    causal_result_key,
     lookup_causal_result,
+    probe_causal_result,
 )
 from number_compiler.hashlife.execution.tile_causal_tasks import CausalFrame
 from number_compiler.hashlife.tiles.tile_boundaries import (
@@ -39,18 +39,25 @@ def probe_boundary_result(engine: Any, frame: CausalFrame) -> BoundaryTileView |
     if engine._children(action) is None:
         if type(anchor) is not int or type(argument) is not int:
             raise TypeError("primitive boundary requires finite endpoints")
-        key = causal_result_key(
+        key, completed = probe_causal_result(
             engine.scheduler.results,
             action,
             tile,
             PrimitiveCausalPorts(anchor, argument),
-            engine.adapter.wiring(action),
+            engine._wiring(action),
+            action_admission=engine._action_admission_token,
         )
     else:
         key = engine._composite_key(action, tile, anchor, argument)
-    completed = (
-        None if key is None else lookup_causal_result(engine.scheduler.results, key)
-    )
+        completed = (
+            None
+            if key is None
+            else lookup_causal_result(
+                engine.scheduler.results,
+                key,
+                action_admission=engine._action_admission_token,
+            )
+        )
     if completed is None:
         chunks = engine.scheduler._causal_workspace.allocate(1)
         chunks.append(tile)

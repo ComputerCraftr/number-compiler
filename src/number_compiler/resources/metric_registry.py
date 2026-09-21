@@ -213,6 +213,7 @@ TILE_WORK_COUNTERS = (
     "completed_result_evicted_entries",
     "completed_result_retirement_memo_removals",
     "completed_result_reverse_index_removals",
+    "completed_result_presence_index_visits",
     "completed_result_retirement_traversal_steps",
     "completed_result_eviction_reverse_index_entries",
     "completed_result_recomputation_attribution_unknown",
@@ -561,10 +562,6 @@ CANONICAL_EXPRESSION_VISIT_COUNTERS = (
     "semantic_function_rewrite_frames",
     "unary_function_admission_visits",
     "unary_function_admission_frame_visits",
-    "decimal_t2_output_reduction_evaluations",
-    "decimal_t2_output_reduction_early_hits",
-    "decimal_t2_output_identity_reductions",
-    "decimal_t2_cofactor_visits",
     "semantic_expression_finite_lift_frames",
     "unary_correlated_cofactor_visits",
     "higher_context_admission_visits",
@@ -579,8 +576,8 @@ CANONICAL_EXPRESSION_VISIT_COUNTERS = (
 )
 
 
-def schema6_work_values(counters: Mapping[str, int]) -> dict[str, int]:
-    """Map actual executor instruments into the stable schema-six vocabulary."""
+def schema7_work_values(counters: Mapping[str, int]) -> dict[str, int]:
+    """Map actual executor instruments into the stable schema-seven vocabulary."""
     values = {name: counters.get(name, 0) for name in ALGEBRAIC_FIELD_WORK_COUNTERS}
     values.update((name, counters.get(name, 0)) for name in TILE_WORK_COUNTERS)
     # The concrete scheduler records misses as ``*_requests`` because its
@@ -819,7 +816,7 @@ def schema6_work_values(counters: Mapping[str, int]) -> dict[str, int]:
     return values
 
 
-def schema6_inventory_values(inventory: Iterable[ResourceInventory]) -> dict[str, int]:
+def schema7_inventory_values(inventory: Iterable[ResourceInventory]) -> dict[str, int]:
     """Field-runtime populations from the same immutable ledger snapshot."""
     rows = tuple(inventory)
 
@@ -868,8 +865,6 @@ def schema6_inventory_values(inventory: Iterable[ResourceInventory]) -> dict[str
 
 PROOF_CERTIFICATE_POPULATIONS: Mapping[str, int] = MappingProxyType(
     {
-        "reverse_t2_left": 757,
-        "reverse_t2_right": 179,
         "collatz_c4_left": 50,
         "collatz_c4_right": 90,
     }

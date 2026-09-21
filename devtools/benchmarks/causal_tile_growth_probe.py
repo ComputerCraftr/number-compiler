@@ -865,7 +865,7 @@ def run_probe(
     complete = all(bool(report["measurements_complete"]) for report in reports.values())
     blocked = any(report["status"] == "RED" for report in reports.values())
     return {
-        "metrics_schema_version": 6,
+        "metrics_schema_version": 7,
         "probe_policy": "fresh-index-single-cold-point-no-acceleration",
         "measurements_complete": complete,
         "status": "RED" if blocked or not complete else "MEASURED_PASS",

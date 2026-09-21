@@ -61,6 +61,8 @@ def verify_wheel(wheel: Path) -> dict[str, object]:
     ]
     if not resources:
         raise ValueError("installed distribution has no immutable kernel resources")
+    if any(Path(name).name.startswith("base10_t2_") for name in resources):
+        raise ValueError("retired reverse/add proof-machine resource was packaged")
     environment = dict(os.environ)
     environment.pop("PYTHONPATH", None)
     environment.pop("MYPYPATH", None)
@@ -101,6 +103,8 @@ def verify_wheel(wheel: Path) -> dict[str, object]:
                 """
 import json
 import sys
+from contextlib import redirect_stdout
+from io import StringIO
 from importlib.util import find_spec
 from importlib.resources import files
 import number_compiler as api
@@ -112,8 +116,52 @@ kernel = PhysicalCollatzFourBlockEffect()
 assert kernel.left_count > 0 and kernel.right_count > 0
 for removed in ('classical_ceiling', 'digit_power'):
     assert find_spec('number_compiler.sequences.power_numbers.' + removed) is None
+for removed in (
+    'hashlife.actions.power',
+    'hashlife.actions.native_power',
+    'hashlife.execution.cascade',
+    'hashlife.execution.cascade_power',
+    'hashlife.execution.powered_local_codec',
+    'hashlife.execution.temporal_leaf_diamond',
+    'hashlife.execution.diamond_reverse_kernel',
+    'hashlife.execution.diamond_reverse_expression',
+    'sequences.reverse_add.source_carry',
+    'sequences.reverse_add.source_length',
+    'sequences.reverse_add.factored_planes',
+    'sequences.reverse_add.factored_carrier',
+    'sequences.reverse_add.factored_power',
+    'sequences.reverse_add.cocycle_carrier',
+    'sequences.reverse_add.coordinate_program',
+    'sequences.reverse_add.field_action',
+    'sequences.reverse_add.higher_schema',
+    'sequences.reverse_add.cocycle_temporal',
+    'sequences.reverse_add.threshold_cocycle',
+    'sequences.reverse_add.domain',
+    'sequences.reverse_add.local_interface',
+    'sequences.reverse_add.frobenius_sectors',
+    'sequences.reverse_add.tile_sector_observation',
+    'resources.cocycle_temporal_payload_audit',
+    'sequences.reverse_add.higher_interface',
+):
+    assert find_spec('number_compiler.' + removed) is None
 assert not any(name == 'devtools' or name.startswith('devtools.') for name in sys.modules)
-print(json.dumps({'public_exports': len(api.__all__), 'kernel_left_states': kernel.left_count, 'kernel_right_states': kernel.right_count, 'installed_path': api.__file__}))
+from number_compiler.api.cli import main
+from number_compiler.sequences.antihydra import runtime
+def forbidden_roof(*args, **kwargs):
+    raise AssertionError('arithmetic CLI requested physical execution')
+runtime.physical_roof = forbidden_roof
+runtime.AntihydraArithmeticTerm.physical_run = forbidden_roof
+captured = StringIO()
+with redirect_stdout(captured):
+    assert main(['antihydra', '--nth', '64', '--no-value', '--info', 'hensel', '--info', 'mahler', '--format', 'json']) == 0
+arithmetic = json.loads(captured.getvalue())
+assert arithmetic['value'] is None
+for name in ('hensel', 'mahler'):
+    packet = arithmetic['info'][name]
+    assert packet['guarded_physical_status'] == 'not_requested'
+    assert packet['work_counters'].get('physical_roof_construction_requests', 0) == 0
+assert arithmetic['info']['mahler']['value']['associated_action']['first_failure'] == 2
+print(json.dumps({'public_exports': len(api.__all__), 'kernel_left_states': kernel.left_count, 'kernel_right_states': kernel.right_count, 'installed_path': api.__file__, 'arithmetic_cli_roof_poison': 'passed'}))
 """,
             ],
             cwd=work,
@@ -183,10 +231,49 @@ print(json.dumps({'public_exports': len(api.__all__), 'kernel_left_states': kern
             (["196", "--nth", "0"], 0, "196"),
             (["reverse-add", "--nth", "0", "--seed", "0"], 0, "0"),
             (["collatz", "--nth", "4", "--seed", "27"], 0, "62"),
+            (["collatz", "--nth", "1000000", "--seed", "27"], 0, "4"),
+            (
+                [
+                    "collatz",
+                    "--nth",
+                    "999999",
+                    "--seed",
+                    "27",
+                    "--max-output-bits",
+                    "1",
+                ],
+                0,
+                "1",
+            ),
+            (
+                [
+                    "collatz",
+                    "--nth",
+                    "1000000",
+                    "--seed",
+                    "27",
+                    "--max-output-bits",
+                    "2",
+                ],
+                2,
+                "",
+            ),
             (["fermat", "--nth", "0"], 0, "3"),
             (["mersenne", "--nth", "1"], 0, "1"),
             (
-                ["antihydra", "--nth", "10", "--info", "ledger", "--info", "clock"],
+                [
+                    "antihydra",
+                    "--nth",
+                    "10",
+                    "--info",
+                    "ledger",
+                    "--info",
+                    "clock",
+                    "--info",
+                    "hensel",
+                    "--info",
+                    "mahler",
+                ],
                 0,
                 "454",
             ),
@@ -221,6 +308,20 @@ print(json.dumps({'public_exports': len(api.__all__), 'kernel_left_states': kern
                 if details["ledger"]["value"]["ledger"] != 11:
                     raise ValueError(
                         "installed Antihydra ledger differs from arithmetic source"
+                    )
+                mahler = details["mahler"]["value"]
+                hensel = details["hensel"]["value"]
+                if (
+                    "associated_action" in hensel
+                    or mahler["associated_action"]["extent"] != 10
+                    or mahler["associated_action"]["first_failure"] != 2
+                    or details["mahler"]["work_counters"].get(
+                        "source_image_chronological_compositions", 0
+                    )
+                    < 1
+                ):
+                    raise ValueError(
+                        "installed Mahler consumer bypassed the shared scheduler"
                     )
             if (
                 arguments[0] == "nth"

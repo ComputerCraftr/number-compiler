@@ -5,6 +5,12 @@ from typing import Never
 
 import pytest
 
+from devtools.experiments.reverse_add.cascade_power import (
+    build_left_context,
+    build_right_context,
+    compose_bimachines_cascade,
+)
+from devtools.experiments.reverse_add.power import compose_bimachines
 from number_compiler.arithmetic.automata.guard import (
     JumpAudit,
     JumpGuardViolation,
@@ -19,12 +25,6 @@ from number_compiler.arithmetic.automata.transducer import (
 from number_compiler.arithmetic.fields.tropical import TropicalMatrix, normalize_vector
 from number_compiler.arithmetic.functions.decision import MultiTerminalDecisionArena
 from number_compiler.arithmetic.functions.residual import minimize_bimachine
-from number_compiler.hashlife.actions.power import compose_bimachines
-from number_compiler.hashlife.execution.cascade_power import (
-    build_left_context,
-    build_right_context,
-    compose_bimachines_cascade,
-)
 
 
 def ref_step(
@@ -218,7 +218,7 @@ def test_quotient_first_composition_is_exhaustive_on_small_bases() -> None:
 def test_power_table_t4_forbids_raw_primitive_fallback(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    from number_compiler.hashlife.actions import power
+    from devtools.experiments.reverse_add import power
 
     b = minimize_bimachine(build_pair_step_bimachine(10), cache_outputs=False).machine
     table = power.ResidualPowerTable(b, state_cap=10000, time_cap=20)

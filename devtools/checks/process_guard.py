@@ -184,6 +184,7 @@ def run_guarded(
     command: tuple[str, ...],
     *,
     output: Path,
+    cwd: Path | None = None,
     timeout: float = 35,
     memory_bytes: int = 1024**3,
     output_bytes: int = 8 * 1024**2,
@@ -209,6 +210,7 @@ def run_guarded(
             started = time.monotonic()
             child = subprocess.Popen(
                 command,
+                cwd=cwd,
                 stdin=subprocess.DEVNULL,
                 stdout=subprocess.PIPE,
                 stderr=subprocess.STDOUT,

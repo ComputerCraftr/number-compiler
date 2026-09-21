@@ -7,11 +7,13 @@ from typing import Never
 
 import pytest
 
+from number_compiler.arithmetic.automata.program_word import CanonicalWord
 from number_compiler.arithmetic.contracts.block_effect import BlockContextBudgetExceeded
 from number_compiler.arithmetic.fields.radix import digits_lsd
 from number_compiler.resources.physical_support_payload_audit import (
     audit_physical_support_payloads,
 )
+from number_compiler.resources.stores import LedgerList
 from number_compiler.sequences.collatz.block_power import PoweredCollatzTerm
 from number_compiler.sequences.collatz.clock_observers import CollatzClockObservers
 from number_compiler.sequences.collatz.germ_cache import CollatzGermTransitionCache
@@ -102,9 +104,10 @@ def test_even_seed_remains_a_physical_tick_source(seed: int) -> None:
     with pytest.raises(ValueError, match="odd seed"):
         CollatzSourcePublisher(seed, 1, max_events=1, max_digits=64)
     term = PoweredCollatzTerm(seed, 1)
-    support = term._point_index().direct_physical_support()
-    assert support.ticks == 1 and support.odd_ticks == 0
-    assert support.tick(0) is False
+    workspace = term._source_image()
+    summary = workspace.summary()
+    assert summary.width == 1 and summary.odd_steps == 0
+    assert tuple(workspace.segments()) == ((0, 1, 0),)
 
 
 def test_source_authority_rejects_foreign_and_forged_publications() -> None:
@@ -238,6 +241,130 @@ def test_symbolic_width_admission_matches_exact_bounded_endpoints() -> None:
             valuation = (numerator & -numerator).bit_length() - 1
             value = numerator >> valuation
             germ = advance.target
+
+
+@pytest.mark.parametrize(
+    "runs",
+    (
+        ((0, 1),),
+        ((3, 1), (0, 2), (2, 1)),
+        ((1, 5), (2, 3), (0, 4), (3, 2)),
+    ),
+)
+def test_reverse_run_comparison_matches_bounded_integer_reference(
+    runs: tuple[tuple[int, int], ...],
+) -> None:
+    from number_compiler.arithmetic.automata.program_word import from_runs
+    from number_compiler.resources.ledger import ResourceLedger
+
+    word = from_runs(runs)
+    digits = tuple(symbol for symbol, count in runs for _ in range(count))
+    value = sum(symbol << (2 * position) for position, symbol in enumerate(digits))
+    ledger = ResourceLedger()
+    frontier_owner = ledger.register("test-word-frontier", "runtime_query_workspace")
+    frontier: LedgerList[tuple[CanonicalWord, int, int]] = ledger.make_list(
+        frontier_owner, append_only=False
+    )
+    boundaries = (
+        0,
+        max(0, value - 1),
+        value,
+        value + 1,
+        (1 << (2 * len(digits))) - 1,
+    )
+    for boundary in boundaries:
+        observed, comparisons = CollatzSourcePublisher._word_leq_integer(
+            word,
+            boundary,
+            ledger=ledger,
+            frontier_owner=frontier_owner,
+            frontier=frontier,
+        )
+        assert observed is (value <= boundary)
+        assert 0 <= comparisons <= word.length
+    assert ledger.counters["collatz_source_admission_word_nodes_visited"] > 0
+    frontier_peak = ledger.counters.get(
+        "collatz_source_admission_word_frontier_peak", 0
+    )
+    assert (frontier_peak > 0) is (word.run_count > 1)
+    assert ledger.entries == ledger.nodes == 0
+
+
+def test_most_significant_mismatch_does_not_exhaust_reverse_run_tail() -> None:
+    from number_compiler.arithmetic.automata.program_word import from_runs
+
+    word = from_runs(((97, 1), (1, 1), (3, 1)))
+    lowest = word
+    while lowest.left is not None:
+        lowest = lowest.left
+    original = lowest.symbol
+    object.__setattr__(lowest, "symbol", None)
+    try:
+        # Both operands have three radix-4 digits, and 3 > 2 at the most
+        # significant digit. Reaching the deliberately malformed low tail would
+        # prove that comparison had first exhausted/materialized every run.
+        observed, comparisons = CollatzSourcePublisher._word_leq_integer(word, 2 << 4)
+        assert observed is False and comparisons == 1
+    finally:
+        object.__setattr__(lowest, "symbol", original)
+
+
+def test_long_common_prefix_uses_balanced_block_work() -> None:
+    from number_compiler.arithmetic.automata.program_word import from_runs
+    from number_compiler.resources.ledger import ResourceLedger
+
+    runs = tuple((position % 4, 1) for position in range(256))
+    word = from_runs(runs)
+    value = sum(symbol << (2 * position) for position, (symbol, _) in enumerate(runs))
+    ledger = ResourceLedger()
+    frontier_owner = ledger.register("test-long-frontier", "runtime_query_workspace")
+    frontier: LedgerList[tuple[CanonicalWord, int, int]] = ledger.make_list(
+        frontier_owner, append_only=False
+    )
+    observed, comparisons = CollatzSourcePublisher._word_leq_integer(
+        word,
+        value,
+        ledger=ledger,
+        frontier_owner=frontier_owner,
+        frontier=frontier,
+    )
+    assert observed is True and comparisons == word.length
+    assert ledger.counters["collatz_source_admission_word_nodes_visited"] <= (
+        2 * word.run_count - 1
+    )
+    assert ledger.counters["collatz_source_admission_word_block_bits_visited"] < (
+        8 * word.length * word.run_count.bit_length()
+    )
+    assert ledger.entries == ledger.nodes == 0
+
+
+def test_reverse_block_failure_releases_admission_frontier() -> None:
+    from number_compiler.arithmetic.automata.program_word import from_runs
+    from number_compiler.resources.ledger import ResourceLedger
+
+    word = from_runs(((97, 1), (1, 1), (3, 1)))
+    lowest = word
+    while lowest.left is not None:
+        lowest = lowest.left
+    original = lowest.symbol
+    ledger = ResourceLedger()
+    frontier_owner = ledger.register("test-failing-frontier", "runtime_query_workspace")
+    frontier: LedgerList[tuple[CanonicalWord, int, int]] = ledger.make_list(
+        frontier_owner, append_only=False
+    )
+    object.__setattr__(lowest, "symbol", None)
+    try:
+        with pytest.raises(AssertionError):
+            CollatzSourcePublisher._word_leq_integer(
+                word,
+                (3 << 4) | (1 << 2),
+                ledger=ledger,
+                frontier_owner=frontier_owner,
+                frontier=frontier,
+            )
+        assert ledger.entries == ledger.nodes == 0
+    finally:
+        object.__setattr__(lowest, "symbol", original)
 
 
 def test_publisher_preserves_exact_intermediate_digit_budget() -> None:

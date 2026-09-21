@@ -1,10 +1,22 @@
 from __future__ import annotations
 
 from dataclasses import replace
-from typing import Never, cast
+from typing import cast
 
 import pytest
 
+from devtools.experiments.reverse_add.coordinate_program import (
+    ReverseCoordinateProgramArena,
+)
+from devtools.experiments.reverse_add.field_action import (
+    ProofMachineStateID,
+    ReverseActionAutomorphisms,
+    ReverseFieldActionArena,
+    ReverseGeometry,
+)
+from devtools.experiments.reverse_add.local_interface import (
+    ReverseLocalInterfaceArena,
+)
 from number_compiler.arithmetic.automata.symmetry_powering import ActionTransform
 from number_compiler.arithmetic.carry.carry_monoid import CarryFn, compose_carry_fn
 from number_compiler.arithmetic.contracts.block_effect import (
@@ -27,20 +39,9 @@ from number_compiler.hashlife.actions.field_actions import (
 from number_compiler.hashlife.actions.field_actions import (
     FieldCellActionID as RuntimeFieldCellActionID,
 )
+from number_compiler.hashlife.actions.lazy_compiler import LazyCompiler
 from number_compiler.resources.ledger import ResourceLedger
-from number_compiler.sequences.reverse_add.coordinate_program import (
-    ReverseCoordinateProgramArena,
-)
-from number_compiler.sequences.reverse_add.field_action import (
-    ProofMachineStateID,
-    ReverseActionAutomorphisms,
-    ReverseFieldActionArena,
-    ReverseGeometry,
-)
-from number_compiler.sequences.reverse_add.local_interface import (
-    ReverseLocalInterfaceArena,
-)
-from number_compiler.sequences.reverse_add.power import ReverseAddPoweredTerm
+from number_compiler.sequences.reverse_add.compilation import compile_reverse_pair_power
 from number_compiler.sequences.reverse_add.powered_local_codec import (
     ReversePoweredLocalCodec,
 )
@@ -354,28 +355,19 @@ def test_residual_and_semantic_records_are_bounded() -> None:
 
 
 @pytest.mark.representation
-def test_reverse_diamond_compiles_primitive_law_without_t2_proof_states(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    def forbidden() -> Never:
-        raise AssertionError("the 757/179 proof machine entered production")
+def test_reverse_diamond_compiles_primitive_law_without_t2_proof_states() -> None:
+    import number_compiler.arithmetic.contracts.block_kernel as kernels
+    from number_compiler.arithmetic.contracts.block_kernel import FiniteBlockEffect
 
-    monkeypatch.setattr(
-        "number_compiler.arithmetic.contracts.block_kernel._load_base10_t2_kernel",
-        forbidden,
-    )
-    application = ReverseAddPoweredTerm(196, 4)
-    assert tuple(application.digit(index) for index in range(application.width())) == (
-        3,
-        8,
-        7,
-        3,
-        1,
-    )
-    counters = application._ledger.counters
-    assert counters.get("family_bisimulation_machine_applications", 0) == 0
-    assert counters.get("family_bisimulation_symbol_visits", 0) == 0
-    assert counters.get("sequential_generation_advances", 0) == 0
+    assert not hasattr(kernels, "_load_base10_t2_kernel")
+    ledger = ResourceLedger()
+    compiler = LazyCompiler(ledger)
+    power = compile_reverse_pair_power(compiler, 10, 4)
+    assert power.root is not None and power.root.exponent == 4
+    assert not any(type(node) is FiniteBlockEffect for node in compiler.nodes)
+    assert ledger.counters.get("family_bisimulation_machine_applications", 0) == 0
+    assert ledger.counters.get("family_bisimulation_symbol_visits", 0) == 0
+    assert ledger.counters.get("sequential_generation_advances", 0) == 0
 
 
 def test_reverse_family_stores_are_independently_inventoried() -> None:
@@ -439,39 +431,3 @@ def test_reverse_family_stores_are_independently_inventoried() -> None:
     assert report.finite_port_state_nodes == (
         ports.metrics().left_states + ports.metrics().right_states
     )
-
-
-@pytest.mark.representation
-def test_public_reverse_route_rejects_proof_t2_and_whole_word_execution(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    def forbidden(*args: object, **kwargs: object) -> None:
-        raise AssertionError("proof or whole-word execution entered production")
-
-    monkeypatch.setattr(
-        "number_compiler.arithmetic.contracts.block_kernel._load_base10_t2_kernel",
-        forbidden,
-    )
-    monkeypatch.setattr(
-        "devtools.proofs.extensional_family_application.ExtensionalFamilyApplication._apply_machine",
-        forbidden,
-    )
-    term = ReverseAddPoweredTerm(196, 4)
-    assert term.digit(0) == 3
-    assert term.width() == 5
-    metrics = term.metrics()
-    assert metrics.whole_word_sweeps == 0
-    assert metrics.whole_word_symbol_visits == 0
-    assert metrics.proof_machine_applications == 0
-    assert metrics.forbidden_future_payloads == 0
-    assert metrics.resource_audit_unknown_payloads == 0
-    counters = metrics.resource_work_counters
-    action_hits = counters.get("tile_temporal_action_hits", 0)
-    action_aliases = counters.get("tile_temporal_action_semantic_alias_hits", 0)
-    action_evaluations = (
-        counters.get("tile_temporal_action_publications", 0) + action_aliases
-    )
-    assert metrics.temporal_parent_requests == action_hits + action_evaluations
-    assert metrics.temporal_parent_early_hits == action_hits
-    assert metrics.temporal_parent_compositions == action_evaluations
-    assert metrics.temporal_parent_compositions <= 2 * term.generation.bit_length() + 4

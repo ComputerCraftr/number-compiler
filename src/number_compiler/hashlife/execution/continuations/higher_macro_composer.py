@@ -149,8 +149,10 @@ class HigherSpatialMacroComposer:
         if set(ports) != {"left-boundary", "right-boundary"}:
             raise ValueError("higher child macro has another bound interface")
         value = self._scalar(getattr(record.components, role), role)
-        value = self.semantics.bind_free(value, ports["left-boundary"], left)
-        return self.semantics.bind_free(value, ports["right-boundary"], right)
+        return self.semantics.bind_free_many(
+            value,
+            ((ports["left-boundary"], left), (ports["right-boundary"], right)),
+        )
 
     def _boundary_transfer(
         self,
@@ -198,9 +200,39 @@ class HigherSpatialMacroComposer:
         signature = self.interfaces.intern_interface(contract)
         return self.interfaces.intern(signature, components)
 
-    def _leaf(self, source: SourceCellID) -> SourceBoundHigherMacro:
-        symbol_value = self.sources.symbol(source)
-        source_symbol = self.semantics.symbol(self.action, symbol_value)
+    def bind_symbol_expression(
+        self,
+        source_symbol: HigherExpressionID,
+        *,
+        source_extent: int,
+    ) -> SourceBoundHigherMacro:
+        """Construct one symbolic leaf; this grants no occurrence authority.
+
+        This is the leaf constructor used by temporal image substitution.  The
+        supplied symbol may depend on a separately admitted predecessor image,
+        but this method only checks its semantic sort.  ``source_extent`` is
+        symbolic composition metadata.  Callers must use ``validate_binding``
+        or an issued temporal-image handle before treating the result as bound.
+        """
+        return self._bind_symbol_expression(
+            source_symbol,
+            source_extent=source_extent,
+            source=None,
+        )
+
+    def _bind_symbol_expression(
+        self,
+        source_symbol: HigherExpressionID,
+        *,
+        source_extent: int,
+        source: SourceCellID | None,
+    ) -> SourceBoundHigherMacro:
+        if self.semantics.expression(source_symbol).sort != self.semantics.symbol_sort(
+            self.action
+        ):
+            raise ValueError("higher source symbol has another action alphabet")
+        if type(source_extent) is not int or source_extent not in (0, 1):
+            raise ValueError("higher source leaf extent must be zero or one")
         local = self.interfaces.resolve(self.local_interface)
         values = tuple(
             self.semantics.bind_free(
@@ -234,14 +266,14 @@ class HigherSpatialMacroComposer:
         )
         output = (
             self.outputs.source_image(source, self.action, interface)
-            if self.source_backed_temporal
+            if source is not None and self.source_backed_temporal
             else self.outputs.leaf(interface)
         )
         return SourceBoundHigherMacro(
             interface,
             output,
             1,
-            int(symbol_value != self.blank),
+            source_extent,
             *(
                 self._scalar(getattr(components, role), role)
                 for role in (
@@ -253,6 +285,37 @@ class HigherSpatialMacroComposer:
                 )
             ),
         )
+
+    def _leaf(self, source: SourceCellID) -> SourceBoundHigherMacro:
+        symbol_value = self.sources.symbol(source)
+        return self._bind_symbol_expression(
+            self.semantics.symbol(self.action, symbol_value),
+            source_extent=int(symbol_value != self.blank),
+            source=source,
+        )
+
+    def combine(
+        self,
+        left: SourceBoundHigherMacro,
+        right: SourceBoundHigherMacro,
+    ) -> SourceBoundHigherMacro:
+        """Compose symbolic macrocells without granting source authority."""
+        if (
+            type(left) is not SourceBoundHigherMacro
+            or type(right) is not SourceBoundHigherMacro
+        ):
+            raise TypeError("higher spatial composition requires two canonical macros")
+        for child in (left, right):
+            self.interfaces.resolve(child.interface)
+            self.outputs.resolve(child.output)
+            if (
+                type(child.width) is not int
+                or child.width < 1
+                or type(child.source_extent) is not int
+                or not 0 <= child.source_extent <= child.width
+            ):
+                raise ValueError("higher spatial child has invalid extent metadata")
+        return self._combine(left, right)
 
     def _combine(
         self,
@@ -280,8 +343,9 @@ class HigherSpatialMacroComposer:
             right_port: HigherExpressionID,
         ) -> HigherExpressionID:
             value = getattr(child, role)
-            value = self.semantics.bind_free(value, self.left, left_port)
-            return self.semantics.bind_free(value, self.right, right_port)
+            return self.semantics.bind_free_many(
+                value, ((self.left, left_port), (self.right, right_port))
+            )
 
         active_a = summary(left, "activity", incoming_left, right_mid)
         active_b = summary(right, "activity", left_mid, incoming_right)
@@ -485,6 +549,26 @@ class HigherSpatialMacroComposer:
         self.ledger.bump("higher_spatial_forest_evaluations")
         self.ledger.bump("spatial_parent_evaluations")
         return result
+
+    def validate_binding(
+        self,
+        source: SourceBindingID,
+        macro: SourceBoundHigherMacro,
+    ) -> None:
+        """Authenticate one live source occurrence and its compiled macro."""
+        if type(macro) is not SourceBoundHigherMacro:
+            raise TypeError("higher source binding requires a canonical macro")
+        if type(source) is SourceCellID:
+            self.sources.resolve(source)
+        elif type(source) is SourceForestID:
+            self.sources.resolve_forest(source)
+        else:
+            raise TypeError("higher source binding requires a scoped source")
+        found = self._bindings.get(_MacroBindingKey(self.action, source))
+        if found is None or found != macro:
+            raise ValueError("higher macro is not bound to this source occurrence")
+        self.interfaces.resolve(macro.interface)
+        self.outputs.resolve(macro.output)
 
     def clear(self) -> None:
         """Discard source-specific construction memos after parent publication.

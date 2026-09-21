@@ -15,11 +15,12 @@ pytestmark = pytest.mark.validation
 def _assert_diamond_bridge(
     term: PoweredCollatzTerm | ReverseAddPoweredTerm,
     *,
-    proof: tuple[int, int],
+    family: str,
+    retained_proof: tuple[int, int] | None = None,
 ) -> None:
     metrics = term.metrics()
     behavior = term.behavior_metrics()
-    assert metrics.metrics_schema_version == 6
+    assert metrics.metrics_schema_version == 7
     assert metrics.temporal_parent_requests == (
         metrics.temporal_parent_early_hits + metrics.temporal_parent_compositions
     )
@@ -40,9 +41,7 @@ def _assert_diamond_bridge(
     assert metrics.exact_endpoint_nodes == 0
     assert metrics.forbidden_future_payloads == 0
     assert metrics.representation_boundary_complete == 1
-    assert behavior.temporal_quotient_family == (
-        "reverse-add-tile-hashlife" if proof == (757, 179) else "collatz-tile-hashlife"
-    )
+    assert behavior.temporal_quotient_family == family
     assert (
         behavior.temporal_quotient_state_class_bound
         == metrics.local_interface_nodes
@@ -51,16 +50,11 @@ def _assert_diamond_bridge(
     assert behavior.temporal_quotient_action_class_bound == metrics.field_action_nodes
     assert behavior.bounded_temporal_runtime_cutover_complete == 1
     assert behavior.bounded_temporal_runtime_cutover_blocker == ""
-    if proof == (757, 179):
-        assert (
-            metrics.reverse_t2_proof_left_state_classes,
-            metrics.reverse_t2_proof_right_state_classes,
-        ) == proof
-    else:
+    if retained_proof is not None:
         assert (
             metrics.collatz_c4_proof_left_state_classes,
             metrics.collatz_c4_proof_right_state_classes,
-        ) == proof
+        ) == retained_proof
 
 
 @pytest.mark.parametrize("generation", (16, 32, 64, 128, 256))
@@ -69,14 +63,18 @@ def test_reverse_diamond_reports_proof_populations_only_as_metadata(
 ) -> None:
     term = ReverseAddPoweredTerm(196, generation)
     assert 0 <= term.digit(0) <= 9
-    _assert_diamond_bridge(term, proof=(757, 179))
+    _assert_diamond_bridge(term, family="reverse-add-tile-hashlife")
 
 
 @pytest.mark.parametrize("steps", (16, 32, 64, 128, 256))
 def test_collatz_diamond_reports_proof_populations_only_as_metadata(steps: int) -> None:
     term = PoweredCollatzTerm(140137, steps)
     assert term.digit(0) in (0, 1)
-    _assert_diamond_bridge(term, proof=(50, 90))
+    _assert_diamond_bridge(
+        term,
+        family="collatz-tile-hashlife",
+        retained_proof=(50, 90),
+    )
 
 
 def test_public_family_and_radix_paths_report_no_sequential_backend_work() -> None:

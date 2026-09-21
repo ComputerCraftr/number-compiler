@@ -11,8 +11,11 @@ factorial satisfies
 
     u(n) = product_{1<=j<=n, j odd} j * u(floor(n/2))  (mod m),
 
-and the odd product is periodic modulo ``m``.  Therefore ``u(n)`` is computed in
-O(a log n) arithmetic operations.  Kummer/Legendre supplies the exact 2-adic
+and the odd product is periodic modulo ``m``. The implementation first builds
+and caches ``2**a + 1`` prefix entries; only subsequent queries reuse that
+table while traversing the binary digits of ``n``. This is useful at fixed
+small precision, not a polynomial-in-``a`` cold construction.
+Kummer/Legendre supplies the exact 2-adic
 valuation of ``binom(n,k)``; if it reaches ``a`` the coefficient is zero.
 
 The transport helper exploits the extra factor ``2**q`` directly:
@@ -56,7 +59,7 @@ def _odd_prefix_table(bits: int) -> tuple[tuple[int, ...], int]:
 
 
 def odd_factorial_mod_pow2(n: int, bits: int) -> int:
-    """Odd part of ``n!`` modulo ``2**bits`` in O(bits log n) work."""
+    """Odd part of ``n!``; cold setup allocates ``2**bits + 1`` prefix entries."""
     n, bits = int(n), int(bits)
     if n < 0 or bits <= 0:
         raise ValueError((n, bits))

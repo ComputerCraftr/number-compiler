@@ -5,7 +5,11 @@ from __future__ import annotations
 from collections.abc import Callable
 
 from number_compiler.arithmetic.carry.carry_monoid import CarryFn
-from number_compiler.arithmetic.carry.reverse_port_functions import ReversePortCodec
+from number_compiler.arithmetic.carry.reverse_port_functions import (
+    ReverseLeftTransfer,
+    ReversePortCodec,
+    ReverseRightTransfer,
+)
 from number_compiler.arithmetic.contracts.block_kernel import BaseBlockEffect
 from number_compiler.arithmetic.functions.finite_function_types import (
     BOOL,
@@ -30,6 +34,10 @@ CELL = AtomSort("reverse-decimal-cell", 20)
 LEFT = FinitePort(PortVariable(0, 0, "reverse-producer-left", 0), 43)
 RIGHT = FinitePort(PortVariable(0, 1, "reverse-producer-right", 0), 5)
 PORTS = (LEFT, RIGHT)
+SYMBOL = FinitePort(PortVariable(0, 0, "reverse-producer-symbol", 0), 20)
+LEFT_STATE = AtomSort("primitive-left-state", 43)
+RIGHT_STATE = AtomSort("primitive-right-state", 5)
+CHANNEL_SYMBOL = AtomSort("primitive-symbol", 20)
 CARRIES = (CarryFn.CONST0, CarryFn.ID, CarryFn.CONST1)
 
 
@@ -61,6 +69,143 @@ class ReversePrimitiveOutputMorphism:
         self._leaves: OwnedMemo[int, FactoredFunctionID] = OwnedMemo(
             self.ledger, owner, evictable=True
         )
+        self._channel_templates: OwnedMemo[int, tuple[FactoredFunctionID, ...]] = (
+            OwnedMemo(
+                self.ledger,
+                self.ledger.register(
+                    f"reverse-symbolic-channels-{len(self.ledger.inventory())}",
+                    "query_memo",
+                ),
+                evictable=True,
+            )
+        )
+        self._channel_seals: OwnedMemo[int, tuple[FactoredFunctionID, ...]] = OwnedMemo(
+            self.ledger,
+            self.ledger.register(
+                f"reverse-symbolic-channel-seals-{len(self.ledger.inventory())}",
+                "query_memo",
+            ),
+            evictable=True,
+        )
+
+    def pullback_channels(
+        self,
+        symbol: FactoredFunctionID,
+        left: FactoredFunctionID,
+        right: FactoredFunctionID,
+    ) -> tuple[FactoredFunctionID, ...]:
+        """Substitute a symbolic cell and both ports through all local channels.
+
+        The argument functions share a frozen source environment; no argument
+        is evaluated or substituted into another. The result order is
+        ``COMPONENT_ROLES`` for the existing reverse leaf contract. In this
+        local contract extent/growth are activity predicates, not whole-word
+        lengths or accumulated temporal growth. This is local semantic closure,
+        not a constructor for recursive temporal intervals.
+        """
+        for function, sort in (
+            (symbol, CHANNEL_SYMBOL),
+            (left, LEFT_STATE),
+            (right, RIGHT_STATE),
+        ):
+            if self.bits.resolve(function).signature.output != sort:
+                raise ValueError("symbolic reverse pullback has another channel sort")
+        return self.bits.substitute_many(
+            self._symbolic_channels(),
+            {SYMBOL.variable: symbol, LEFT.variable: left, RIGHT.variable: right},
+        )
+
+    def _symbolic_channels(self) -> tuple[FactoredFunctionID, ...]:
+        """Lift the bounded primitive alphabet without enumerating source states."""
+        cached = self._channel_templates.get(0)
+        seal = self._channel_seals.get(0)
+        if (cached is None) != (seal is None):
+            raise ValueError(
+                "symbolic reverse channel template has incomplete publication"
+            )
+        if cached is not None:
+            if cached != seal:
+                raise ValueError(
+                    "symbolic reverse channel template changed after publication"
+                )
+            for function in cached:
+                self.bits.resolve(function)
+            return cached
+        bits, codec = self.bits, ReversePortCodec(10)
+        inputs = tuple(sorted((*PORTS, SYMBOL), key=lambda port: port.variable))
+        symbol = bits.variable(inputs, SYMBOL, CHANNEL_SYMBOL)
+        left_port = bits.variable(PORTS, LEFT, LEFT_STATE)
+        right_port = bits.variable(PORTS, RIGHT, RIGHT_STATE)
+        # Each branch is one existing primitive law. Only the fixed alphabet
+        # and the two unary boundary domains are inspected, never their product
+        # or the caller's source assignments.
+        roots: tuple[FactoredFunctionID, ...] = ()
+        for value in reversed(range(20)):
+            self.ledger.bump("reverse_symbolic_channel_alphabet_branches")
+            left = ReverseLeftTransfer.leaf(10, value)
+            right = ReverseRightTransfer.leaf(10, value)
+            branches = (
+                bits.map_atoms(
+                    left_port,
+                    LEFT_STATE,
+                    tuple(
+                        codec.encode_left(left.apply(codec.decode_left(i)))
+                        for i in range(43)
+                    ),
+                ),
+                bits.map_atoms(
+                    right_port,
+                    RIGHT_STATE,
+                    tuple(
+                        codec.encode_right(right.apply(codec.decode_right(i)))
+                        for i in range(5)
+                    ),
+                ),
+                bits.map_atoms(
+                    self._compile_leaf(value), CHANNEL_SYMBOL, tuple(range(20))
+                ),
+            )
+            condition = bits.map_atoms(
+                symbol, BOOL, tuple(int(i == value) for i in range(20))
+            )
+            if not roots:
+                # Import the full three-port domain even for constant branches.
+                roots = tuple(bits.select(condition, f, f) for f in branches)
+            else:
+                roots = tuple(
+                    bits.select(condition, f, other)
+                    for f, other in zip(branches, roots, strict=True)
+                )
+        forward, backward, output = roots
+        active = bits.map_atoms(output, BOOL, tuple(int(i != 19) for i in range(20)))
+        inactive = bits.map_atoms(active, BOOL, (1, 0))
+        zero = bits.constant(FunctionSignature(inputs, BOOL), 0)
+        result = (
+            forward,
+            backward,
+            output,
+            active,
+            active,
+            active,
+            active,
+            output,
+            output,
+            active,
+            inactive,
+            zero,
+            zero,
+        )
+        try:
+            # Copy handle metadata: mutating a supposedly frozen cached handle
+            # must not also mutate its publication witness through aliasing.
+            self._channel_seals[0] = tuple(
+                FactoredFunctionID(f.owner, f.kind, f.local_id) for f in result
+            )
+            self._channel_templates[0] = result
+        except BaseException:
+            self._channel_seals.clear()
+            raise
+        return result
 
     def bind(self, symbol: int, ports: tuple[int, int]) -> FactoredFunctionID:
         """Specialize known producer ports before building a decision function.
@@ -97,6 +242,13 @@ class ReversePrimitiveOutputMorphism:
         cached = self._leaves.get(symbol)
         if cached is not None:
             return cached
+        value = self._compile_leaf(symbol)
+        self._leaves[symbol] = value
+        self.ledger.bump("reverse_primitive_output_morphism_compilations")
+        return value
+
+    def _compile_leaf(self, symbol: int) -> FactoredFunctionID:
+        """Build the shared local law without retaining an alphabet lookup table."""
         bits, active, codec = self.bits, self.active, ReversePortCodec(10)
         zero = self.constant(BOOL, 0)
         one = self.constant(PAIR, 1)
@@ -153,6 +305,4 @@ class ReversePrimitiveOutputMorphism:
             value = bits.select(
                 sink, blank, bits.map_atoms(pair, CELL, tuple(range(19)))
             )
-        self._leaves[symbol] = value
-        self.ledger.bump("reverse_primitive_output_morphism_compilations")
         return value

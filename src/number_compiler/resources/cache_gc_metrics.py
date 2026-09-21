@@ -143,8 +143,34 @@ def record_cache_event(
     )
 
 
-def temporal_span(authority: object, action: object) -> int | None:
-    """Read an admitted action's immutable cocycle without evaluating semantics."""
+def _admitted_temporal_span(
+    authority: object,
+    action: object,
+    action_admission: object,
+) -> int | None:
+    """Read a cocycle through an authenticated causal action admission."""
+    from number_compiler.hashlife.actions.field_actions import FieldCellActionID
+    from number_compiler.resources.causal_workspace import admitted_action_metadata
+
+    if type(action) is not FieldCellActionID:
+        raise TypeError("admitted cache accounting requires a field action ID")
+    _signature, _kernel, record = admitted_action_metadata(
+        action_admission, authority, action
+    )
+    value = record.cocycle
+    span = getattr(value, "physical_ticks", None)
+    return span if type(span) is int and span >= 0 else None
+
+
+def temporal_span(
+    authority: object,
+    action: object,
+    *,
+    action_admission: object | None = None,
+) -> int | None:
+    """Read an action's cocycle, using live admission when supplied."""
+    if action_admission is not None:
+        return _admitted_temporal_span(authority, action, action_admission)
     method = getattr(authority, "action_cocycle", None)
     if not callable(method) or getattr(method, "__self__", None) is not authority:
         return None
@@ -161,6 +187,7 @@ def record_execution_cache_event(
     input_tile: object,
     *,
     allow_new: bool = True,
+    action_admission: object | None = None,
 ) -> None:
     """Record an execution memo event using already-owned arena metadata."""
     tiles = getattr(arena, "tiles", None)
@@ -177,7 +204,11 @@ def record_execution_cache_event(
         kind,
         outcome,
         spatial_level=level,
-        temporal_span=temporal_span(authority, action),
+        temporal_span=temporal_span(
+            authority,
+            action,
+            action_admission=action_admission,
+        ),
         allow_new=allow_new,
     )
 
@@ -188,6 +219,8 @@ def prepare_execution_cache_event(
     outcome: str,
     action: object,
     input_tile: object,
+    *,
+    action_admission: object | None = None,
 ) -> None:
     tiles = getattr(arena, "tiles", None)
     authority = getattr(arena, "action_authority", None)
@@ -202,7 +235,11 @@ def prepare_execution_cache_event(
         kind,
         outcome,
         spatial_level=level,
-        temporal_span=temporal_span(authority, action),
+        temporal_span=temporal_span(
+            authority,
+            action,
+            action_admission=action_admission,
+        ),
     )
 
 

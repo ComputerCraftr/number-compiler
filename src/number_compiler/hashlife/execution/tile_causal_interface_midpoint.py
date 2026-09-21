@@ -12,8 +12,8 @@ from number_compiler.hashlife.execution.tile_causal_interfaces import (
 from number_compiler.hashlife.execution.tile_causal_results import (
     CausalCompletedOutput,
     PrimitiveCausalPorts,
-    causal_result_key,
     lookup_causal_result,
+    probe_causal_result,
 )
 from number_compiler.hashlife.execution.tile_causal_tasks import (
     CausalFrame,
@@ -55,12 +55,13 @@ def cached_midpoint_interface_step(
     if frame.stage == 30:
         right_anchor, left_anchor = values.pop(), values.pop()
         if type(left_anchor) is int and type(right_anchor) is int:
-            before_key = causal_result_key(
+            before_key, completed = probe_causal_result(
                 engine.scheduler.results,
                 before,
                 tile,
                 PrimitiveCausalPorts(left_anchor, right_anchor),
-                engine.adapter.wiring(before),
+                engine._wiring(before),
+                action_admission=engine._action_admission_token,
             )
         else:
             before_key = engine._composite_key(
@@ -69,11 +70,15 @@ def cached_midpoint_interface_step(
                 left_anchor,
                 right_anchor,
             )
-        completed = (
-            None
-            if before_key is None
-            else lookup_causal_result(engine.scheduler.results, before_key)
-        )
+            completed = (
+                None
+                if before_key is None
+                else lookup_causal_result(
+                    engine.scheduler.results,
+                    before_key,
+                    action_admission=engine._action_admission_token,
+                )
+            )
         if completed is None:
             frame.stage = 0
             return False

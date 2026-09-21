@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from collections.abc import Hashable
 from dataclasses import dataclass, fields, is_dataclass
-from typing import Protocol
+from typing import Protocol, runtime_checkable
 
 from number_compiler.arithmetic.contracts.scoped_handles import ArenaHandle, ArenaToken
 from number_compiler.hashlife.execution.source_image_seals import (
@@ -61,8 +61,6 @@ class SourceImageBinding:
 
 @dataclass(frozen=True, slots=True)
 class SourceImageCandidate:
-    """Adapter-produced payload and geometry before scheduler publication."""
-
     payload: Hashable
     extent: int
     boundary_ports: tuple[Hashable, ...] = ()
@@ -92,8 +90,6 @@ class SourceImageCandidate:
 
 @dataclass(frozen=True, slots=True)
 class SourceImageDemand:
-    """One immutable requested projection, distinct from an action identity."""
-
     name: str
     parameters: tuple[Hashable, ...] = ()
 
@@ -108,8 +104,6 @@ class SourceImageDemand:
 
 @dataclass(frozen=True, slots=True)
 class SourceImageProjection:
-    """Adapter result retained once for one exact image and demand."""
-
     value: Hashable
 
     def __post_init__(self) -> None:
@@ -178,8 +172,6 @@ def _require_immutable_key(value: object, label: str) -> int:
 
 @dataclass(frozen=True, slots=True)
 class SourceImageView:
-    """Read-only authenticated image supplied to a family adapter."""
-
     identity: SourceImageID
     binding: SourceImageBinding
     payload: Hashable
@@ -242,6 +234,23 @@ class SourceBoundImageAdapter(Protocol):
     def first_failure(self, image: SourceImageView) -> Hashable | None: ...
 
 
+@runtime_checkable
+class SourceBoundCompositeAdapter(Protocol):
+    """Construct a complete image, optionally specialized to an output demand.
+
+    ``None`` requests the image itself. Returning ``None`` delegates to the
+    scheduler's child traversal; a family may refuse instead if that traversal
+    cannot construct an admitted image.
+    """
+
+    def apply_composite(
+        self,
+        action: Hashable,
+        source: SourceImageView,
+        demand: SourceImageDemand | None,
+    ) -> SourceImageCandidate | None: ...
+
+
 @dataclass(frozen=True, slots=True)
 class _ImageRecord:
     adapter_key: tuple[str, str]
@@ -250,6 +259,7 @@ class _ImageRecord:
     failure_prefix: int | None
     publication_owner: object
     publication_snapshot: PublicationSeal
+    publication_provenance: tuple[str, object, object | None]
 
 
 _IMAGE_RECORD_SEAL = object()
@@ -292,16 +302,102 @@ class _ApplyFrame:
     children: tuple[Hashable, Hashable] | None = None
     before: SourceImageID | None = None
     relative_key: _RelativeKey | None = None
+    before_source: SourceImageID | None = None
+    after_source: SourceImageID | None = None
+
+
+class _SourceImageWorkspace:
+    """Actual charged postorder storage, empty between source-image calls."""
+
+    def __init__(self, ledger: ResourceLedger, owner: int) -> None:
+        self._storage: LedgerDict[tuple[str, object], object] = ledger.make_dict(
+            owner, nodes_per_entry=1
+        )
+        self._frame_count = 0
+        self._value_count = 0
+        self.running = False
+
+    def __len__(self) -> int:
+        return len(self._storage)
+
+    @property
+    def frames(self) -> tuple[_ApplyFrame, ...]:
+        return tuple(self._frame(index) for index in range(self._frame_count))
+
+    @property
+    def values(self) -> tuple[SourceImageID, ...]:
+        return tuple(self._value(index) for index in range(self._value_count))
+
+    def _frame(self, index: int) -> _ApplyFrame:
+        frame = self._storage["frame", index]
+        if type(frame) is not _ApplyFrame:
+            raise AssertionError("source image workspace contains another frame sort")
+        return frame
+
+    def _value(self, index: int) -> SourceImageID:
+        value = self._storage["value", index]
+        if type(value) is not SourceImageID:
+            raise AssertionError("source image workspace contains another value sort")
+        return value
+
+    def push_frame(self, frame: _ApplyFrame) -> None:
+        self._storage["frame", self._frame_count] = frame
+        self._frame_count += 1
+
+    def pop_frame(self) -> _ApplyFrame:
+        if not self._frame_count:
+            raise IndexError("pop from empty source image frame stack")
+        index = self._frame_count - 1
+        frame = self._frame(index)
+        del self._storage["frame", index]
+        self._frame_count = index
+        return frame
+
+    def has_frames(self) -> bool:
+        return self._frame_count > 0
+
+    def push_value(self, value: SourceImageID) -> None:
+        self._storage["value", self._value_count] = value
+        self._value_count += 1
+
+    def pop_value(self) -> SourceImageID:
+        if not self._value_count:
+            raise IndexError("pop from empty source image value stack")
+        index = self._value_count - 1
+        value = self._value(index)
+        del self._storage["value", index]
+        self._value_count = index
+        return value
+
+    def has_values(self) -> bool:
+        return self._value_count > 0
+
+    def value_count(self) -> int:
+        return self._value_count
+
+    def contains_active(self, action: tuple[str, str, Hashable]) -> bool:
+        return ("active", action) in self._storage
+
+    def add_active(self, action: tuple[str, str, Hashable]) -> None:
+        key = "active", action
+        if key in self._storage:
+            raise ValueError("source image action is already active")
+        self._storage[key] = None
+
+    def remove_active(self, action: tuple[str, str, Hashable]) -> None:
+        key = "active", action
+        if key not in self._storage:
+            raise KeyError(action)
+        del self._storage[key]
+
+    def clear(self) -> None:
+        self._storage.clear()
+        self._frame_count = 0
+        self._value_count = 0
+        self.running = False
 
 
 class SourceBoundSchedulerCore:
-    """Lightweight ledger-owned image scheduler shared by every family.
-
-    It has no tile, sequence, or observer dependency.  ``TileScheduler`` owns
-    one instance, while descriptor-only families may use this same canonical
-    driver without allocating physical tile geometry.
-    """
-
     _KIND = "source-bound-image"
 
     def __init__(self, ledger: ResourceLedger) -> None:
@@ -330,6 +426,7 @@ class SourceBoundSchedulerCore:
         self._workspace_owner = self.ledger.register(
             prefix + "-workspace", "source_image_workspace"
         )
+        self._workspace = _SourceImageWorkspace(self.ledger, self._workspace_owner)
         self._adapters: LedgerDict[tuple[str, str], SourceBoundImageAdapter] = (
             self.ledger.make_dict(self._adapter_owner)
         )
@@ -409,6 +506,10 @@ class SourceBoundSchedulerCore:
         """Drop query images and invalidate every previously issued image ID."""
         if self._closed:
             raise ValueError("disposed source image scheduler")
+        if self._workspace.running or len(self._workspace):
+            raise RuntimeError(
+                "cannot clear source images during an active application"
+            )
         projections = len(self._projections)
         applications = len(self._applications)
         relative = len(self._relative)
@@ -456,7 +557,12 @@ class SourceBoundSchedulerCore:
             or record.publication_snapshot
             is not self._publication_seals.images[image.local_id]
             or not publication_matches(
-                (record.binding, record.payload, record.failure_prefix),
+                (
+                    record.binding,
+                    record.payload,
+                    record.failure_prefix,
+                    record.publication_provenance,
+                ),
                 record.publication_snapshot,
                 self.ledger,
             )
@@ -495,6 +601,7 @@ class SourceBoundSchedulerCore:
         source: Hashable,
         cumulative_action: Hashable,
         candidate: SourceImageCandidate,
+        publication_provenance: tuple[str, object, object | None],
         *,
         reserved: bool = False,
     ) -> SourceImageID:
@@ -517,7 +624,13 @@ class SourceBoundSchedulerCore:
             candidate.precision,
         )
         snapshot = publication_seal(
-            (binding, candidate.payload, candidate.failure_prefix), self.ledger
+            (
+                binding,
+                candidate.payload,
+                candidate.failure_prefix,
+                publication_provenance,
+            ),
+            self.ledger,
         )
         record = _ImageRecord(
             adapter_key,
@@ -526,6 +639,7 @@ class SourceBoundSchedulerCore:
             candidate.failure_prefix,
             _IMAGE_RECORD_SEAL,
             snapshot,
+            publication_provenance,
         )
         if not reserved:
             self.ledger.reserve(self._node_owner, entries=1, nodes=1)
@@ -568,7 +682,14 @@ class SourceBoundSchedulerCore:
         self.ledger.reserve_many(((self._node_owner, 1, 1), (self._origin_owner, 1, 0)))
         image: SourceImageID | None = None
         try:
-            image = self._publish(key, source, identity, candidate, reserved=True)
+            image = self._publish(
+                key,
+                source,
+                identity,
+                candidate,
+                ("origin", origin_key, None),
+                reserved=True,
+            )
             self._origins[origin_key] = image
         except BaseException:
             self._origins.pop(origin_key, None)
@@ -588,202 +709,36 @@ class SourceBoundSchedulerCore:
         action: Hashable,
     ) -> SourceImageID:
         """Apply one action with an explicit chronological postorder stack."""
-        adapter_key = self._registered(adapter)
-        self._validate_key(source, "source image source")
-        self._validate_key(action, "source image action")
-        adapter.validate_action(action)
-        origin = self._origin(adapter, source)
-        frames: list[_ApplyFrame] = [_ApplyFrame(origin, action)]
-        values: list[SourceImageID] = []
-        active: set[tuple[str, str, Hashable]] = set()
-        workspace_credit = 1
-        self.ledger.reserve(self._workspace_owner, entries=1, nodes=1)
+        return self._apply(adapter, source, action, demand=None)
 
-        def push_frame(frame: _ApplyFrame) -> None:
-            nonlocal workspace_credit
-            self.ledger.reserve(self._workspace_owner, entries=1, nodes=1)
-            workspace_credit += 1
-            frames.append(frame)
+    def apply_demanded(
+        self,
+        adapter: SourceBoundImageAdapter,
+        source: Hashable,
+        action: Hashable,
+        demand: SourceImageDemand,
+    ) -> SourceImageID:
+        """Apply while accepting composites certified sufficient for one demand."""
+        if type(demand) is not SourceImageDemand:
+            raise TypeError(
+                "source image demanded application requires an exact demand"
+            )
+        demand.__post_init__()
+        return self._apply(adapter, source, action, demand=demand)
 
-        def push_value(image: SourceImageID) -> None:
-            nonlocal workspace_credit
-            self.ledger.reserve(self._workspace_owner, entries=1, nodes=1)
-            workspace_credit += 1
-            values.append(image)
+    def _apply(
+        self,
+        adapter: SourceBoundImageAdapter,
+        source: Hashable,
+        action: Hashable,
+        *,
+        demand: SourceImageDemand | None,
+    ) -> SourceImageID:
+        from number_compiler.hashlife.execution.source_image_application import (
+            apply_source_image,
+        )
 
-        def release_workspace() -> None:
-            nonlocal workspace_credit
-            self.ledger.release(self._workspace_owner, entries=1, nodes=1)
-            workspace_credit -= 1
-
-        try:
-            while frames:
-                peak = len(frames) + len(values) + len(active)
-                previous = self.ledger.counters.get("source_image_workspace_peak", 0)
-                if peak > previous:
-                    self.ledger.bump("source_image_workspace_peak", peak - previous)
-                self.ledger.bump("source_image_postorder_frames")
-                frame = frames.pop()
-                release_workspace()
-                apply_key = _ApplyKey(adapter_key, frame.source, frame.action)
-                action_key = adapter_key[0], adapter_key[1], frame.action
-                if frame.stage == 0:
-                    found = self._applications.get(apply_key)
-                    if found is not None:
-                        self._validate_application_binding(adapter, apply_key, found)
-                        push_value(found)
-                        self.ledger.bump("source_image_application_hits")
-                        continue
-                    source_view = self.view(frame.source)
-                    admitted_input = adapter.admitted_input_key(
-                        frame.action, source_view
-                    )
-                    relative_key = None
-                    if admitted_input is not None:
-                        self._validate_key(
-                            admitted_input, "source image admitted input"
-                        )
-                        relative_key = _RelativeKey(
-                            adapter_key, frame.action, admitted_input
-                        )
-                        cached = self._relative.get(relative_key)
-                        if cached is not None:
-                            cached_source = self.view(cached.source)
-                            cached_result = self.view(cached.result)
-                            if (
-                                adapter.admitted_input_key(frame.action, cached_source)
-                                != admitted_input
-                            ):
-                                raise ValueError(
-                                    "relative transfer has another admitted input"
-                                )
-                            self._validate_application_binding(
-                                adapter,
-                                _ApplyKey(adapter_key, cached.source, frame.action),
-                                cached.result,
-                            )
-                            candidate = adapter.transport_reuse(
-                                frame.action,
-                                cached_source,
-                                cached_result,
-                                source_view,
-                            )
-                            cumulative = adapter.compose_actions(
-                                source_view.binding.action, frame.action
-                            )
-                            result = self._publish_application_result(
-                                apply_key,
-                                source_view.binding.source,
-                                cumulative,
-                                candidate,
-                                relative_key=None,
-                            )
-                            push_value(result)
-                            self.ledger.bump("source_image_relative_transfer_hits")
-                            continue
-                    children = adapter.action_children(frame.action)
-                    if children is None:
-                        candidate = adapter.apply_primitive(frame.action, source_view)
-                        cumulative = adapter.compose_actions(
-                            source_view.binding.action, frame.action
-                        )
-                        result = self._publish_application_result(
-                            apply_key,
-                            source_view.binding.source,
-                            cumulative,
-                            candidate,
-                            relative_key=relative_key,
-                        )
-                        push_value(result)
-                        self.ledger.bump("source_image_primitive_applications")
-                        continue
-                    if type(children) is not tuple or len(children) != 2:
-                        raise TypeError(
-                            "source image action requires before/after children"
-                        )
-                    before, after = children
-                    adapter.validate_action(before)
-                    adapter.validate_action(after)
-                    if frame.action in children:
-                        raise ValueError(
-                            "source image action cannot directly contain itself"
-                        )
-                    if action_key in active:
-                        raise ValueError("source image action graph contains a cycle")
-                    if adapter.compose_actions(before, after) != frame.action:
-                        raise ValueError(
-                            "source image children do not compose to their parent"
-                        )
-                    self.ledger.reserve(self._workspace_owner, entries=1, nodes=1)
-                    workspace_credit += 1
-                    active.add(action_key)
-                    frame.stage, frame.children, frame.relative_key = (
-                        1,
-                        children,
-                        relative_key,
-                    )
-                    push_frame(frame)
-                    push_frame(_ApplyFrame(frame.source, before))
-                    continue
-                if frame.stage == 1:
-                    if frame.children is None or not values:
-                        raise AssertionError(
-                            "source image frame lost its before result"
-                        )
-                    before_image = values.pop()
-                    release_workspace()
-                    frame.stage, frame.before = 2, before_image
-                    push_frame(frame)
-                    push_frame(_ApplyFrame(before_image, frame.children[1]))
-                    continue
-                if frame.children is None or frame.before is None or not values:
-                    raise AssertionError(
-                        "source image frame lost chronological dependencies"
-                    )
-                after_image = values.pop()
-                release_workspace()
-                source_view = self.view(frame.source)
-                before_view = self.view(frame.before)
-                after_view = self.view(after_image)
-                expected = adapter.compose_actions(
-                    source_view.binding.action, frame.action
-                )
-                if after_view.binding.action != expected:
-                    raise ValueError(
-                        "source image chronology produced another action binding"
-                    )
-                candidate = adapter.compose_chronological(
-                    frame.action, source_view, before_view, after_view
-                )
-                if candidate.failure_prefix != after_view.failure_prefix:
-                    raise ValueError(
-                        "source image composition discarded its chronological failure"
-                    )
-                result = self._publish_application_result(
-                    apply_key,
-                    source_view.binding.source,
-                    expected,
-                    candidate,
-                    relative_key=frame.relative_key,
-                )
-                if action_key not in active:
-                    raise AssertionError("source image action lost its active frame")
-                active.remove(action_key)
-                release_workspace()
-                push_value(result)
-                self.ledger.bump("source_image_chronological_compositions")
-            if len(values) != 1:
-                raise AssertionError("source image scheduler produced multiple results")
-            result = values.pop()
-            release_workspace()
-            return result
-        finally:
-            if workspace_credit:
-                self.ledger.release(
-                    self._workspace_owner,
-                    entries=workspace_credit,
-                    nodes=workspace_credit,
-                )
+        return apply_source_image(self, adapter, source, action, demand=demand)
 
     def _publish_application_result(
         self,
@@ -817,6 +772,7 @@ class SourceBoundSchedulerCore:
                 source,
                 cumulative_action,
                 candidate,
+                ("application", key, relative_key if publish_relative else None),
                 reserved=True,
             )
             self._applications[key] = image
@@ -931,60 +887,3 @@ class SourceBoundSchedulerCore:
             raise TypeError("source image failure witness must be immutable")
         self.ledger.bump("source_image_failure_descents")
         return failure
-
-
-class SourceBoundImageMixin:
-    """Methods inherited by ``TileScheduler`` without another executor facade."""
-
-    ledger: ResourceLedger
-    _source_images: SourceBoundSchedulerCore | None
-
-    def _source_image_core(self) -> SourceBoundSchedulerCore:
-        found = self._source_images
-        if found is None:
-            found = SourceBoundSchedulerCore(self.ledger)
-            self._source_images = found
-        return found
-
-    def register_source_image_adapter(self, adapter: SourceBoundImageAdapter) -> None:
-        self._source_image_core().register(adapter)
-
-    def source_image(
-        self,
-        adapter: SourceBoundImageAdapter,
-        source: Hashable,
-        action: Hashable,
-    ) -> SourceImageID:
-        return self._source_image_core().apply(adapter, source, action)
-
-    def source_projection(
-        self,
-        adapter: SourceBoundImageAdapter,
-        image: SourceImageID,
-        demand: SourceImageDemand,
-    ) -> SourceImageProjection:
-        return self._source_image_core().projection(adapter, image, demand)
-
-    def source_first_failure(
-        self,
-        adapter: SourceBoundImageAdapter,
-        image: SourceImageID,
-    ) -> Hashable | None:
-        return self._source_image_core().first_failure(adapter, image)
-
-    def clear_source_images(self) -> None:
-        if self._source_images is not None:
-            self._source_images.clear()
-
-
-__all__ = [
-    "SourceBoundImageAdapter",
-    "SourceBoundImageMixin",
-    "SourceBoundSchedulerCore",
-    "SourceImageBinding",
-    "SourceImageCandidate",
-    "SourceImageDemand",
-    "SourceImageID",
-    "SourceImageProjection",
-    "SourceImageView",
-]

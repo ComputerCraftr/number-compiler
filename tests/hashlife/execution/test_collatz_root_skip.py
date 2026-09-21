@@ -102,5 +102,5 @@ def test_public_collatz_point_and_width_consume_source_root_summary() -> None:
     term = PoweredCollatzTerm(((1 << 32) - 1) // 3, 16)
     assert term.digit(17) == 1
     assert term.width() == 18
-    assert term._ledger.counters["collatz_initial_root_point_skips"] > 0
-    assert term._ledger.counters["collatz_initial_root_width_skips"] > 0
+    assert term._ledger.counters["source_image_publications"] > 0
+    assert term._ledger.counters["source_image_projection_publications"] >= 1

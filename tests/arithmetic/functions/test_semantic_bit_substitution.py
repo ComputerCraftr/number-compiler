@@ -81,6 +81,110 @@ def test_multiple_output_bits_share_one_substitution_traversal() -> None:
     assert arena.evaluate(result, {target.variable: 1}) == (1 << 32) - 1
 
 
+def test_batch_substitution_shares_roots_and_matches_individual_results() -> None:
+    arena = BitFunctionArena(ResourceLedger())
+    first = FinitePort(PortVariable(0, 0, "first", 0), 4)
+    second = FinitePort(PortVariable(0, 1, "second", 0), 4)
+    output = AtomSort("word", 4)
+    a = arena.variable((first, second), first, output)
+    b = arena.variable((first, second), second, output)
+    summed = arena.add(a, b, output, wrap=True)
+    replacements = {first.variable: b, second.variable: a}
+    before_hits = arena.ledger.counters.get("semantic_bit_substitution_shared_hits", 0)
+    actual = arena.substitute_many((summed, a), replacements)
+    expected = tuple(arena.substitute(f, replacements) for f in (summed, a))
+    assert actual == expected
+    assert arena.ledger.counters["semantic_bit_substitution_shared_hits"] > before_hits
+    assert arena.ledger.counters["semantic_bit_batch_composition_evaluations"] == 1
+
+
+def test_batch_restriction_preserves_each_output_sort_and_shared_domain() -> None:
+    arena = BitFunctionArena(ResourceLedger())
+    port = FinitePort(PortVariable(0, 0, "port", 0), 4)
+    value = arena.variable((port,), port)
+    bit = arena.map_atoms(value, BOOL, (1, 0, 1, 0))
+    guard = arena.map_atoms(value, BOOL, (1, 1, 0, 0))
+    expected = arena.restrict(value, guard), arena.restrict(bit, guard)
+    actual = arena.restrict_many((value, bit), guard)
+    assert actual == expected
+    for supplied in range(4):
+        assert arena.evaluate(actual[0], {port.variable: supplied}) == (
+            supplied if supplied < 2 else None
+        )
+        assert arena.evaluate(actual[1], {port.variable: supplied}) == (
+            1 - supplied if supplied < 2 else None
+        )
+
+
+def test_batch_operations_reject_mixed_or_undeclared_interfaces() -> None:
+    arena = BitFunctionArena(ResourceLedger())
+    first = FinitePort(PortVariable(0, 0, "first", 0), 2)
+    second = FinitePort(PortVariable(0, 1, "second", 0), 2)
+    a = arena.variable((first,), first)
+    b = arena.variable((second,), second)
+    first_guard = arena.map_atoms(a, BOOL, (0, 1))
+    before = arena.ledger.snapshot()
+    with pytest.raises(ValueError, match="one complete input interface"):
+        arena.substitute_many((a, b), {first.variable: a})
+    with pytest.raises(ValueError, match="undeclared input port"):
+        arena.restrict_many((b,), first_guard)
+    assert arena.ledger.snapshot() == before
+
+
+@pytest.mark.parametrize("budget", ("nodes", "entries"))
+def test_batch_restriction_budget_failure_publishes_no_partial_result(
+    budget: str,
+) -> None:
+    from number_compiler.arithmetic.contracts.block_effect import (
+        BlockContextBudgetExceeded,
+    )
+
+    def fixture() -> tuple[
+        BitFunctionArena,
+        tuple[FactoredFunctionID, FactoredFunctionID],
+        FactoredFunctionID,
+    ]:
+        arena = BitFunctionArena(ResourceLedger())
+        port = FinitePort(PortVariable(0, 0, "batch-budget", 0), 4)
+        value = arena.variable((port,), port)
+        bit = arena.map_atoms(value, BOOL, (1, 0, 1, 0))
+        guard = arena.map_atoms(value, BOOL, (1, 1, 0, 0))
+        return arena, (value, bit), guard
+
+    reference, functions, guard = fixture()
+    baseline = reference.ledger.nodes, reference.ledger.entries
+    reference.restrict_many(functions, guard)
+    delta = reference.ledger.nodes - baseline[0], reference.ledger.entries - baseline[1]
+    arena, functions, guard = fixture()
+    if budget == "nodes":
+        arena.ledger.max_nodes = arena.ledger.nodes + delta[0] - 1
+    else:
+        arena.ledger.max_cache_entries = arena.ledger.entries + delta[1] - 1
+    before = arena.ledger.snapshot()
+    lengths = (
+        len(arena.functions.nodes),
+        len(arena.functions.keys),
+        len(arena.nodes),
+        len(arena.keys),
+    )
+    with pytest.raises(BlockContextBudgetExceeded):
+        arena.restrict_many(functions, guard)
+    after = arena.ledger.snapshot()
+    assert (after.nodes, after.entries, after.inventory) == (
+        before.nodes,
+        before.entries,
+        before.inventory,
+    )
+    assert after.peak_nodes >= before.peak_nodes
+    assert after.peak_entries >= before.peak_entries
+    assert lengths == (
+        len(arena.functions.nodes),
+        len(arena.functions.keys),
+        len(arena.nodes),
+        len(arena.keys),
+    )
+
+
 def test_identity_on_unaffected_support_does_not_walk_children(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:

@@ -38,7 +38,8 @@ from number_compiler.hashlife.execution.field_images import (
     SourceForestID,
 )
 from number_compiler.hashlife.observation.hashlife_projection import HashLifeBlockIndex
-from number_compiler.hashlife.tiles.tiles import TileID
+from number_compiler.hashlife.tiles.tiles import TileArena, TileID
+from number_compiler.resources.ledger import ResourceLedger
 from number_compiler.resources.stores import LedgerList
 from tests.support.recursive_field_images import (
     _Adapter,
@@ -413,16 +414,8 @@ def test_unallocated_semantic_id_rejects_before_the_node_store(
             transfer_arena.resolve, transfer_arena._handle(transfer_arena._next_id)
         )
     else:
-        from number_compiler.sequences.collatz.block_power import PoweredCollatzTerm
-
-        term = PoweredCollatzTerm(27, 1)
-        term.digit(0)
-        index = term._point_index()
-        ledger = term._ledger
-        from number_compiler.hashlife.observation.tile_projection import LazyProjection
-
-        assert type(index._lazy_application) is LazyProjection
-        tiles = index._lazy_application.scheduler.tiles
+        ledger = ResourceLedger()
+        tiles = TileArena(ledger)
         arena = tiles
         probe = _probe(
             tiles.resolve,

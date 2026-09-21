@@ -4,7 +4,9 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING
 
-from number_compiler.arithmetic.contracts.semantic_identity import SemanticIdentity
+from number_compiler.arithmetic.contracts.semantic_identity import (
+    SemanticIdentity,
+)
 from number_compiler.hashlife.behavior.future_behavior import (
     QUIESCENT_COCYCLE_SCHEMA,
     QUIESCENT_GEOMETRY_SCHEMA,
@@ -16,6 +18,7 @@ from number_compiler.hashlife.behavior.future_behavior import (
     FutureBehaviorProfile,
     FutureBehaviorProfileID,
     FutureBehaviorWork,
+    _identity_validation_scope,
     certify_quiescent_blank,
 )
 from number_compiler.hashlife.interfaces.primitive_behavior import (
@@ -38,37 +41,39 @@ def admit_quiescent_blank(
         self.ledger.bump("future_behavior_profile_early_hits")
         return admitted
     workspace_entries = 4 * quotient.left_count
-    self.ledger.reserve(self._future_work_owner, entries=workspace_entries)
     work = FutureBehaviorWork()
-    try:
-        certificate = certify_quiescent_blank(quotient, work=work)
-    finally:
-        self.ledger.bump(
-            "future_behavior_refinement_observation_checks",
-            work.observation_checks,
+    with _identity_validation_scope():
+        self.ledger.reserve(self._future_work_owner, entries=workspace_entries)
+        try:
+            certificate = certify_quiescent_blank(quotient, work=work)
+        finally:
+            self.ledger.bump(
+                "future_behavior_refinement_observation_checks",
+                work.observation_checks,
+            )
+            self.ledger.bump(
+                "future_behavior_refinement_successor_checks",
+                work.successor_checks,
+            )
+            self.ledger.bump(
+                "future_behavior_classification_work",
+                work.refinement_rounds,
+            )
+            self.ledger.release(self._future_work_owner, entries=workspace_entries)
+        profile = FutureBehaviorProfile(
+            certificate.kernel,
+            certificate.continuation,
+            certificate.alphabet_size,
+            certificate.blank,
+            QUIESCENT_OBSERVATIONS,
+            certificate.safe_blank_left_states,
+            QUIESCENT_GEOMETRY_SCHEMA,
+            QUIESCENT_COCYCLE_SCHEMA,
+            QUIESCENT_PROFILE_VERSION,
+            certificate.semantic_digest,
         )
-        self.ledger.bump(
-            "future_behavior_refinement_successor_checks",
-            work.successor_checks,
-        )
-        self.ledger.bump(
-            "future_behavior_classification_work",
-            work.refinement_rounds,
-        )
-        self.ledger.release(self._future_work_owner, entries=workspace_entries)
-    profile = FutureBehaviorProfile(
-        certificate.kernel,
-        certificate.continuation,
-        certificate.alphabet_size,
-        certificate.blank,
-        QUIESCENT_OBSERVATIONS,
-        certificate.safe_blank_left_states,
-        QUIESCENT_GEOMETRY_SCHEMA,
-        QUIESCENT_COCYCLE_SCHEMA,
-        QUIESCENT_PROFILE_VERSION,
-        certificate.semantic_digest,
-    )
-    profile.__post_init__()
+    # The private scope finishes here, before canonical key lookup, reservation,
+    # or publication; its validator is reset rather than retained by the arena.
     found_profile = self._future_profile_keys.get(profile)
     if found_profile is not None:
         self.resolve_future_profile(found_profile)
@@ -87,7 +92,6 @@ def admit_quiescent_blank(
         True,
         certificate.blank,
     )
-    behavior.__post_init__()
     found_class = self._future_class_keys.get(behavior)
     if found_class is not None:
         self.resolve_future_behavior(found_class)

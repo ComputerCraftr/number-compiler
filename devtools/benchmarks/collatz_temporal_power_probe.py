@@ -9,7 +9,6 @@ from time import perf_counter
 
 from devtools.benchmarks.tile_projection_accounting import (
     projection_accounting,
-    retained_result_profile,
 )
 from devtools.paths import repository_root
 from number_compiler.api.number_api import NumberCompiler
@@ -76,13 +75,8 @@ def _projection_rows() -> list[dict[str, object]]:
             raise AssertionError((steps, low, expected))
         metrics = term.metrics()
         behavior = term.behavior_metrics()
-        point_metrics = term._point_index().metrics()
+        point_metrics = term.metrics()
         scheduler_work = projection_accounting(point_metrics)
-        from number_compiler.hashlife.observation.tile_projection import LazyProjection
-
-        projection = term._point_index()._lazy_application
-        if type(projection) is not LazyProjection:
-            raise AssertionError(("collatz-projection-is-not-tile-backed", steps))
         if metrics.direct_powered_point_queries != 1:
             raise AssertionError(("not-direct-point", steps, metrics))
         if not metrics.resource_audit_complete or metrics.resource_accounting_mismatch:
@@ -95,7 +89,6 @@ def _projection_rows() -> list[dict[str, object]]:
         rows.append(
             {
                 **scheduler_work,
-                **retained_result_profile(projection.scheduler.results),
                 "steps": steps,
                 "index_bits": max(1, steps.bit_length()),
                 "schema_version": metrics.metrics_schema_version,
@@ -315,8 +308,8 @@ def run_probe() -> dict[str, object]:
     ):
         blockers.append("higher_interface_work_exceeds_doubling_envelope")
     return {
-        "version": "0.62.0-schema6-certified-execution",
-        "schema_version": 6,
+        "version": "0.62.0-schema7-certified-execution",
+        "schema_version": 7,
         "status": "RED" if blockers else "GREEN",
         "construction": _construction_rows(),
         "projection": projection,

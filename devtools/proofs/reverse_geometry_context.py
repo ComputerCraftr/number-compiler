@@ -9,6 +9,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 
+from devtools.experiments.reverse_add.factored_carrier import DOMAINS
 from devtools.proofs.growth_coboundary import GROWTH_SYMBOLS
 from devtools.proofs.reverse_threshold_geometry import (
     DOMAIN_TABLE,
@@ -22,7 +23,6 @@ from number_compiler.arithmetic.formula.decimal_pair_coordinates import (
     decimal_cocycle_value,
     decimal_pair_carry_action,
 )
-from number_compiler.sequences.reverse_add.factored_carrier import DOMAINS
 
 
 @dataclass(frozen=True, slots=True)

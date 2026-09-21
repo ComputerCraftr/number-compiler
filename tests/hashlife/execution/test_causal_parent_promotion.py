@@ -128,25 +128,76 @@ def test_completed_p4_children_promote_without_more_output_work(
             == before_boundaries
         )
 
-        monkeypatch.setattr(engine, "_append_prefix", forbidden)
-        before_hits = ledger.counters.get("tile_causal_parent_promotion_hits", 0)
-        engine._application = application.identity
-        assert (
-            engine._run(
-                CausalFrame(
-                    "promote_midpoint",
-                    (
-                        eighth,
-                        source.tile,
-                        engine._initial(eighth, 0),
-                        engine._initial(eighth, 1),
+        # A retained parent remains reusable when one independently evicted
+        # child can no longer satisfy the speculative promotion fallback.
+        parent_guard = scheduler.results.lookup(parent_key)
+        assert parent_guard is not None
+        try:
+            scheduler._release_pins(application.identity)
+            scheduler.results._remove_key(left_key)
+            assert left_key not in scheduler.results._memo
+            retained_parent = scheduler.results.lookup(parent_key)
+            assert retained_parent is not None
+            retained_parent.close()
+
+            monkeypatch.setattr(engine, "_append_prefix", forbidden)
+            before_hits = ledger.counters.get("tile_causal_parent_promotion_hits", 0)
+            engine._application = application.identity
+            assert (
+                engine._run(
+                    CausalFrame(
+                        "promote_midpoint",
+                        (
+                            eighth,
+                            source.tile,
+                            engine._initial(eighth, 0),
+                            engine._initial(eighth, 1),
+                        ),
                     ),
-                ),
-                tile_result=False,
+                    tile_result=False,
+                )
+                is True
             )
-            is True
+            assert ledger.counters["tile_causal_parent_promotion_hits"] > before_hits
+        finally:
+            parent_guard.close()
+
+
+def test_cold_parent_promotion_declines_before_constructing_child_contexts(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    import number_compiler.hashlife.execution.tile_causal_promotion as promotion
+
+    ledger, tiles, adapter, primitive, scheduler = _runtime(BaseBlockEffect(3))
+    eighth = adapter.power(primitive, 8)
+    with (
+        _tile(tiles, adapter, primitive, (0, 0, 0, 1)) as source,
+        scheduler.application(
+            eighth,
+            source.tile,
+            adapter.initial_ports(eighth),
+            adapter.wiring(eighth),
+        ) as application,
+    ):
+        engine = CausalTileEngine(scheduler)
+        root = CausalFrame(
+            "promote_midpoint",
+            (
+                eighth,
+                source.tile,
+                engine._initial(eighth, 0),
+                engine._initial(eighth, 1),
+            ),
         )
-        assert ledger.counters["tile_causal_parent_promotion_hits"] > before_hits
+
+        def forbidden_frame(*_args: object, **_kwargs: object) -> Never:
+            raise AssertionError("cold promotion constructed a child context")
+
+        monkeypatch.setattr(promotion, "CausalFrame", forbidden_frame)
+        engine._application = application.identity
+        assert engine._run(root, tile_result=False) is False
+        assert ledger.counters["tile_causal_parent_promotion_preflight_misses"] == 1
+        assert ledger.counters.get("tile_causal_parent_promotion_misses", 0) == 0
 
 
 def test_promoted_p4_parent_reduces_later_p8_completion_frames(

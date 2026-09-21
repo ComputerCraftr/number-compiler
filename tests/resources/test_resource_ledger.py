@@ -261,22 +261,17 @@ def test_owning_term_and_ledger_lifetime_does_not_pin_unowned_arenas() -> None:
     from number_compiler.sequences.reverse_add.power import ReverseAddPoweredTerm
 
     term = ReverseAddPoweredTerm(196, 16)
-    term.digit(0)
-    index = term._point_index()
-    ledger = weakref.ref(index._ledger)
-    engine = weakref.ref(index._bounded_application)
-    geometry = weakref.ref(index._source_geometry)
-    index_owner = weakref.ref(index)
-    # Immutable source tiles may remain shared by unrelated live indices.
-    # Keeping one alive must not retain this index or its accounting owners.
-    shared_tile = index.seed_root.chunks[0].tile
-    del index, term
+    workspace = term._source_workspace()
+    ledger = weakref.ref(term._ledger)
+    scheduler = weakref.ref(workspace.scheduler)
+    actions = weakref.ref(workspace.actions)
+    workspace_owner = weakref.ref(workspace)
+    del workspace, term
     gc.collect()
     assert ledger() is None
-    assert engine() is None
-    assert geometry() is None
-    assert index_owner() is None
-    assert shared_tile.width > 0
+    assert scheduler() is None
+    assert actions() is None
+    assert workspace_owner() is None
 
 
 def test_container_identity_has_one_owner_and_same_owner_can_upgrade_resolver() -> None:

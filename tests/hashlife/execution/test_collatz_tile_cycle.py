@@ -1,11 +1,12 @@
-"""Certified Collatz cycle completion remains inside the tile scheduler."""
+"""Exact singleton cycles stay in the shared source-image scheduler."""
 
 from __future__ import annotations
 
+from itertools import islice
+
 import pytest
 
-from number_compiler.hashlife.actions.lazy_compiler import UnsupportedInterfaceError
-from number_compiler.hashlife.observation.tile_projection import LazyProjection
+from number_compiler.hashlife.execution.tile_causal import CausalTileEngine
 from number_compiler.resources.payload_audit import audit_registered_payloads
 from number_compiler.sequences.collatz.block_power import PoweredCollatzTerm
 
@@ -16,29 +17,20 @@ def test_large_fixed_cycle_publishes_one_constant_tile_result(seed: int) -> None
     cycle = {1: (1, 4, 2), 2: (2, 1, 4), 4: (4, 2, 1)}[seed]
     expected = cycle[steps % 3]
     term = PoweredCollatzTerm(seed, steps)
-    width = term.width()
+    assert sum(term.digit(i) << i for i in range(term.width())) == expected
+    workspace = term._source_image()
+    summary = workspace.summary()
+    assert summary.width == steps
+    assert summary.odd_steps == (steps + {1: 2, 2: 1, 4: 0}[seed]) // 3
+    assert summary.cycle is not None
+    first = next(islice(workspace.segments(), 1))
+    assert first[0] == 0
     assert (
-        sum(term.digit(position) << position for position in range(width)) == expected
+        tuple((first[2] >> i) & 1 for i in range(5))
+        == {1: (1, 0, 0, 1, 0), 2: (0, 1, 0, 0, 1), 4: (0, 0, 1, 0, 0)}[seed]
     )
-    projection = term._point_index()._lazy_application
-    assert type(projection) is LazyProjection
-    completed = projection._application.complete()
-    assert completed.physical_ticks == steps
-    event_offset = {1: 2, 2: 1, 4: 0}[seed]
-    assert completed.event_weight == (steps + event_offset) // 3
-    support = completed.physical_support
-    assert support is not None
-    assert (support.ticks, support.odd_ticks) == (steps, completed.event_weight)
-    assert (
-        tuple(support.tick(index) for index in range(5))
-        == {
-            1: (True, False, False, True, False),
-            2: (False, True, False, False, True),
-            4: (False, False, True, False, False),
-        }[seed]
-    )
-    assert term._ledger.counters.get("tile_collatz_cycle_completions", 0) == 1
-    assert term._ledger.counters.get("tile_causal_frames", 0) < 1024
+    assert term._ledger.counters["collatz_physical_cycle_compressions"] == 1
+    assert term._ledger.counters.get("collatz_physical_leaf_steps", 0) == 0
     audit = audit_registered_payloads(term._ledger)
     assert (
         audit.forbidden_future_payloads,
@@ -49,42 +41,33 @@ def test_large_fixed_cycle_publishes_one_constant_tile_result(seed: int) -> None
 
 def test_noninitial_cycle_contract_rejects_the_certified_shortcut() -> None:
     term = PoweredCollatzTerm(1, 8)
-    projection = term._point_index()._lazy_application
-    assert type(projection) is LazyProjection
-    application = projection._application
-    altered = application.scheduler.application(
-        application.action,
-        application.source,
-        (1, application.ports[1]),
-        application.wiring,
-    )
-    try:
-        with pytest.raises(UnsupportedInterfaceError):
-            altered.point(0)
-        assert term._ledger.counters.get("tile_collatz_cycle_completions", 0) == 0
-    finally:
-        altered.close()
+    workspace = term._source_image()
+    foreign = PoweredCollatzTerm(2, 8)._source_image()
+    before = term._ledger.snapshot()
+    with pytest.raises((ValueError, TypeError)):
+        workspace.validate_source(foreign.root_source)
+    assert term._ledger.snapshot() == before
 
 
 def test_completed_cycle_interface_bypasses_causal_evaluation(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    from number_compiler.hashlife.execution.tile_causal import CausalTileEngine
-
     term = PoweredCollatzTerm(1, 10**12)
-    projection = term._point_index()._lazy_application
-    assert type(projection) is LazyProjection
-    completed = projection._application.complete()
+    workspace = term._source_image()
+    completed = workspace.summary()
     monkeypatch.setattr(
         CausalTileEngine,
         "interface",
-        lambda *_args: pytest.fail("warm completed result replayed causal evaluation"),
+        lambda *_args: pytest.fail("cycle replayed causal evaluation"),
     )
-    payload = projection._application.interface()
-    assert payload.interface == completed.outgoing
-    assert payload.outgoing_ports == completed.outgoing_ports
-    assert payload.physical_ticks == completed.physical_ticks
-    assert payload.event_weight == completed.event_weight
+    monkeypatch.setattr(
+        type(workspace),
+        "apply_primitive",
+        lambda *_args: pytest.fail("completed image rediscovered leaves"),
+    )
+    assert workspace.summary() is completed
+    assert term.s_arithmetic_clock().events == completed.odd_steps
+    assert term.materialize(max_bits=4) == 4
 
 
 @pytest.mark.parametrize("exponent", (4, 8))
@@ -96,37 +79,35 @@ def test_power_of_two_enters_cycle_with_bounded_residual_work(
     steps = exponent + cycle_ticks
     expected = (1, 4, 2)[cycle_ticks % 3]
     term = PoweredCollatzTerm(1 << exponent, steps)
-    projection = term._point_index()._lazy_application
-    assert type(projection) is LazyProjection
-    completed = projection._application.complete()
-    assert completed.physical_ticks == steps
-    assert completed.event_weight == (cycle_ticks + 2) // 3
-    assert completed.relative_extent == expected.bit_length()
+    summary = term._source_image().summary()
+    assert summary.width == steps
+    assert summary.odd_steps == (cycle_ticks + 2) // 3
     assert term.materialize(max_bits=4) == expected
-    assert term._ledger.counters.get("tile_collatz_power_two_entries", 0) == 1
-    assert term._ledger.counters.get("tile_causal_frames", 0) < 1024
+    assert term.width() == expected.bit_length()
+    assert term._ledger.counters.get("collatz_physical_leaf_steps", 0) <= steps
+    assert term._ledger.counters.get("tile_causal_frames", 0) == 0
 
 
 def test_wide_power_of_two_cycle_entry_is_independent_of_temporal_extent() -> None:
     exponent = 1000
     steps = 10**12 + exponent
-    cycle_ticks = steps - exponent
-    expected = (1, 4, 2)[cycle_ticks % 3]
+    expected = (1, 4, 2)[(steps - exponent) % 3]
     term = PoweredCollatzTerm(1 << exponent, steps)
     assert term.materialize(max_bits=4) == expected
-    assert term._ledger.counters.get("tile_collatz_power_two_entries", 0) == 1
-    assert term._ledger.counters.get("tile_causal_frames", 0) < 1024
+    assert term._ledger.counters["collatz_physical_cycle_compressions"] > 0
+    assert term._ledger.counters.get("collatz_physical_leaf_steps", 0) <= 1024
+    assert term._ledger.counters.get("tile_causal_frames", 0) == 0
 
 
 def test_power_of_two_short_prefix_does_not_claim_cycle_entry() -> None:
     term = PoweredCollatzTerm(1 << 8, 4)
     assert term.materialize(max_bits=16) == 1 << 4
-    assert term._ledger.counters.get("tile_collatz_cycle_completions", 0) == 0
+    assert term._source_image().summary().cycle is None
+    assert term._ledger.counters.get("collatz_physical_cycle_compressions", 0) == 0
 
 
 def test_multi_one_source_does_not_claim_power_of_two_cycle_entry() -> None:
     term = PoweredCollatzTerm((1 << 8) | 1, 4)
     assert term.materialize(max_bits=16) == 580
-    assert term._ledger.counters.get("tile_collatz_cycle_completions", 0) == 0
-    assert term._ledger.counters.get("collatz_power_two_low_bit_declines", 0) > 0
-    assert term._ledger.counters.get("collatz_power_two_summary_node_visits", 0) == 0
+    assert term._source_image().summary().cycle is None
+    assert term._ledger.counters.get("collatz_physical_cycle_compressions", 0) == 0

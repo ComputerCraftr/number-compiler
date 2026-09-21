@@ -13,8 +13,6 @@ from typing import Any
 
 from devtools.checks.test_run_evidence import source_fingerprint
 from devtools.paths import repository_root
-from number_compiler.hashlife.observation.tile_projection import LazyProjection
-from number_compiler.projection.tile_radix import TileRadixObservation
 from number_compiler.sequences.collatz.block_power import PoweredCollatzTerm
 
 ROOT = repository_root()
@@ -25,13 +23,9 @@ def cold_row(coordinate: int) -> dict[str, Any]:
     for _ in range(11):
         exact = 3 * exact + 1 if exact & 1 else exact // 2
     term = PoweredCollatzTerm(140137, 11)
-    projection = term._point_index()._lazy_application
-    if type(projection) is not LazyProjection:
-        raise AssertionError("public radix source did not use TileScheduler")
-    observer = TileRadixObservation(projection, 3)
     start = perf_counter()
     try:
-        value: int | None = observer.digit(coordinate)
+        value: int | None = term.radix_digit(3, coordinate)
     except IndexError:
         value = None
     elapsed = perf_counter() - start

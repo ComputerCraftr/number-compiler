@@ -13,9 +13,9 @@ from number_compiler.resources.ledger import ResourceInventory
 
 @dataclass(frozen=True, slots=True, kw_only=True)
 class LedgerMetrics:
-    """Schema-six accounting separates proof machines from production actions."""
+    """Schema-seven accounting reports live production and retained oracles."""
 
-    metrics_schema_version: int = 6
+    metrics_schema_version: int = 7
     tile_representation_policy: str = "canonical-future-tiles-and-boundary-operands-v2"
     future_behavior_profile_nodes: int = 0
     future_behavior_class_nodes: int = 0
@@ -147,6 +147,7 @@ class LedgerMetrics:
     completed_result_evicted_entries: int = 0
     completed_result_retirement_memo_removals: int = 0
     completed_result_reverse_index_removals: int = 0
+    completed_result_presence_index_visits: int = 0
     completed_result_retirement_traversal_steps: int = 0
     completed_result_eviction_reverse_index_entries: int = 0
     completed_result_recomputation_attribution_unknown: int = 0
@@ -216,8 +217,6 @@ class LedgerMetrics:
     production_residual_state_nodes: int = 0
     production_residual_state_classes: int = 0
     algebraic_instrumentation_complete: int = 0
-    reverse_t2_proof_left_state_classes: int = 757
-    reverse_t2_proof_right_state_classes: int = 179
     collatz_c4_proof_left_state_classes: int = 50
     collatz_c4_proof_right_state_classes: int = 90
     temporal_parent_requests: int = 0
@@ -385,7 +384,7 @@ class LedgerMetrics:
     field_action_publications: int = 0
     output_morphism_publications: int = 0
     image_publications: int = 0
-    # Direct schema-six spellings of the recursive-image runtime instruments.
+    # Direct schema-seven spellings of the recursive-image runtime instruments.
     # The older normalized aliases below remain for compatibility.
     new_field_image_nodes: int = 0
     field_image_binding_requests: int = 0
@@ -696,7 +695,7 @@ class LedgerMetrics:
 
 @dataclass(frozen=True, slots=True)
 class HashLifeProjectionMetrics(LedgerMetrics):
-    """Schema-six totals and compatibility views of actual diamond work.
+    """Schema-seven totals and compatibility views of actual diamond work.
 
     ``spacetime_macro_*`` counts complete substitution observations;
     ``spacetime_tile_advance_*`` counts spatial transfer observations; and
@@ -712,7 +711,7 @@ class HashLifeProjectionMetrics(LedgerMetrics):
     ``tile_observations`` includes original-source leaf reads and canonical-tile
     observation descents. ``canonical_tile_arena_nodes`` includes source and
     future content on the canonical-tile route. Spatial interface memo hits
-    remain separate from late reductions in schema-six counters.
+    remain separate from late reductions in schema-seven counters.
 
     ``canonical_tile_arena_nodes_global`` is a retained compatibility name for
     the weak, process-shared immutable DyadicTile source-geometry population.
@@ -724,7 +723,7 @@ class HashLifeProjectionMetrics(LedgerMetrics):
 
     ``section_*``, ``leaf_word_*``, plain ``boundary_*`` and exact tile-output
     compatibility fields remain retired. Zero there does not assert absent
-    work, storage, or logarithmic complexity. The schema-six fields give the
+    work, storage, or logarithmic complexity. The schema-seven fields give the
     full independently observed node partition and every instrumented counter.
     """
 

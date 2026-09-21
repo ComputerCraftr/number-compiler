@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 
+from devtools.experiments.reverse_add.domain import ReverseAddSpatialIndex
 from devtools.paths import repository_root
 from number_compiler.api.number_api import NumberCompiler
 from number_compiler.arithmetic.formula.types import RadixSpec
@@ -14,7 +15,6 @@ from number_compiler.sequences.collatz.parity import (
     collatz_parity_word,
 )
 from number_compiler.sequences.reverse_add.digits import reverse_add_orbit_formulas
-from number_compiler.sequences.reverse_add.domain import ReverseAddSpatialIndex
 
 ROOT = repository_root()
 
@@ -132,7 +132,7 @@ def structure_metrics() -> dict[str, object]:
             kind for kind in legacy_kinds if kind in formula_text
         ],
         "shared_prefix_owner": "src/number_compiler/arithmetic/carry/prefix_monoid.py",
-        "reverse_spatial_owner": "src/number_compiler/sequences/reverse_add/domain.py",
+        "reverse_spatial_owner": "devtools/experiments/reverse_add/domain.py",
     }
 
 

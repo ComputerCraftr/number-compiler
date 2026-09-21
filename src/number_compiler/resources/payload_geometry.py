@@ -14,6 +14,13 @@ from number_compiler.arithmetic.contracts.scoped_handles import (
     LoweringCapability,
     TransferSummaryID,
 )
+from number_compiler.arithmetic.fields.consumer_pullback import (
+    AssociatedActionID,
+    AssociatedActionRecord,
+    ExactRational,
+    SaturatingAffineAction,
+    ThresholdDemand,
+)
 from number_compiler.arithmetic.functions.finite_port_action import (
     ChoiceKey,
     DecisionKey,
@@ -31,6 +38,10 @@ from number_compiler.arithmetic.functions.finite_port_substitution import (
     _SubstitutionIndexKey,
 )
 from number_compiler.hashlife.actions.lazy_compiler import CompilerCompositionKey
+from number_compiler.hashlife.execution.associated_action_images import (
+    AssociatedScalarPayload,
+    AssociatedScalarSource,
+)
 from number_compiler.hashlife.tiles.tile_result_records import (
     BehaviorBindingKey,
     CompletedBehaviorClassification,
@@ -68,4 +79,11 @@ def geometry_field_policy() -> dict[type[object], frozenset[str]]:
         MicroblockKey: frozenset(("radix", "stage", "block")),
         BehaviorBindingKey: frozenset(),
         CompletedBehaviorClassification: frozenset(),
+        ExactRational: frozenset(("numerator", "denominator")),
+        ThresholdDemand: frozenset(),
+        SaturatingAffineAction: frozenset(),
+        AssociatedActionID: frozenset(("local_id",)),
+        AssociatedActionRecord: frozenset(("semantic_id", "logical_extent")),
+        AssociatedScalarSource: frozenset(),
+        AssociatedScalarPayload: frozenset(),
     }

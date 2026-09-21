@@ -8,8 +8,13 @@ import pytest
 
 from number_compiler.api.antihydra_observation import observe_run
 from number_compiler.api.number_api import AntihydraTermPayload, NumberCompiler
+from number_compiler.hashlife.execution.tile_scheduler import TileScheduler
 from number_compiler.resources.payload_audit import audit_registered_payloads
+from number_compiler.sequences.antihydra.arithmetic_images import (
+    AntihydraArithmeticImageWorkspace,
+)
 from number_compiler.sequences.antihydra.blocks import (
+    ArithmeticCylinder,
     admitted_arithmetic_cylinder,
     arithmetic_from_word,
     arithmetic_kernel,
@@ -62,6 +67,34 @@ def test_total_arithmetic_result_matches_source_recurrence(returns: int) -> None
     assert result.returns == returns
     assert len(term.segments) <= (returns + 63) // 64
     assert not term.engine.memo
+    assert term.ledger.counters.get("physical_roof_evaluations", 0) == 0
+
+
+def test_total_arithmetic_uses_balanced_scheduler_images_without_endpoint_replay(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    def forbidden_advance(
+        _block: ArithmeticCylinder, _h: int, _balance: int
+    ) -> tuple[int, int]:
+        raise AssertionError("total arithmetic replayed a growing endpoint")
+
+    monkeypatch.setattr(ArithmeticCylinder, "advance", forbidden_advance)
+    term = AntihydraArithmeticTerm(1024)
+    result = term.result()
+    assert (result.h, result.balance, result.minimum) == _reference(1024)[:3]
+    workspace = term.arithmetic_workspace
+    assert type(workspace) is AntihydraArithmeticImageWorkspace
+    assert type(workspace.scheduler) is TileScheduler
+    assert workspace.scheduler._source_only
+    assert workspace.scheduler.ledger is term.ledger
+    assert len(term.segments) == 16
+    assert term.ledger.counters["source_image_first_child_contexts"] == 15
+    assert term.ledger.counters["source_image_second_child_contexts"] == 15
+    operand_work = (
+        term.ledger.counters["antihydra_arithmetic_transport_operand_bits"]
+        + term.ledger.counters["antihydra_arithmetic_composition_operand_bits"]
+    )
+    assert operand_work < 24 * result.returns
     assert term.ledger.counters.get("physical_roof_evaluations", 0) == 0
 
 
@@ -146,6 +179,7 @@ def test_failed_result_publication_rolls_back_retained_support() -> None:
     with pytest.raises(ValueError, match="state exceeds"):
         term.result()
     assert term._result is None and not term.segments
+    assert term.arithmetic_workspace is None
     row = next(
         item
         for item in term.ledger.inventory()
@@ -153,6 +187,42 @@ def test_failed_result_publication_rolls_back_retained_support() -> None:
     )
     assert row.entries == row.nodes == 0
     assert term.ledger.counters["arithmetic_publication_rollbacks"] == 1
+    assert all(
+        row.entries == row.nodes == 0
+        for row in term.ledger.inventory()
+        if row.name.startswith("dyadic-return-images-")
+    )
+
+
+@pytest.mark.parametrize("target", ("source", "image", "action", "provenance"))
+def test_balanced_arithmetic_authority_rejects_mutated_internal_nodes(
+    target: str,
+) -> None:
+    term = AntihydraArithmeticTerm(128)
+    result = term.result()
+    workspace = term.arithmetic_workspace
+    assert type(workspace) is AntihydraArithmeticImageWorkspace
+    assert not workspace.construction_stack
+    if target == "source":
+        source_node = workspace.sources[1]
+        object.__setattr__(source_node, "residue", source_node.residue ^ 1)
+    elif target == "image":
+        image_node = next(image for image in workspace.images if image.summary.width)
+        object.__setattr__(
+            image_node.summary.transfer,
+            "offset",
+            image_node.summary.transfer.offset + 1,
+        )
+    elif target == "action":
+        action_node = workspace.actions[workspace.root_action.local_id]
+        object.__setattr__(action_node, "width", action_node.width + 1)
+    else:
+        second_source = next(source for source in workspace.sources if source.side == 2)
+        assert second_source.before_image is not None
+        before_image = workspace.images[second_source.before_image.local_id]
+        object.__setattr__(before_image, "source", workspace.root_source)
+    with pytest.raises(ValueError, match="Antihydra arithmetic"):
+        result.require_source()
 
 
 def test_arithmetic_support_is_charged_and_auditable() -> None:

@@ -20,12 +20,17 @@ from number_compiler.arithmetic.contracts.block_kernel import (
     FiniteBlockEffect,
 )
 from number_compiler.arithmetic.fields.dyadic_tile import join, leaf, tile_arena_metrics
+from number_compiler.hashlife.actions.lazy_compiler import LazyCompiler
 from number_compiler.hashlife.observation.hashlife_projection import HashLifeBlockIndex
 from number_compiler.hashlife.observation.tile_projection import LazyProjection
 from number_compiler.projection.digit_terminal import DigitNormalizeBlockEffect
 from number_compiler.resources.ledger import ResourceLedger
 from number_compiler.sequences.collatz.block_power import PoweredCollatzTerm
-from number_compiler.sequences.reverse_add.power import ReverseAddPoweredTerm
+from number_compiler.sequences.reverse_add.compilation import compile_reverse_pair_power
+from number_compiler.sequences.reverse_add.power import (
+    ReverseAddPoweredTerm,
+    pair_field_from_integer,
+)
 
 
 def finite(
@@ -144,7 +149,9 @@ def test_zero_budget_rejects_before_source_geometry_or_branch_work() -> None:
     assert tile_arena_metrics()["intern_misses"] == before
     for cls in (ReverseAddPoweredTerm, PoweredCollatzTerm):
         with pytest.raises(BlockContextBudgetExceeded):
-            cls(27, 64, max_cache_entries=0)
+            # A pure request descriptor may be created without allocating an
+            # image. Admission must still refuse before the first digit work.
+            cls(27, 64, max_cache_entries=0).digit(0)
 
 
 def test_shared_immutable_source_interning_is_weak_and_ids_are_not_recycled() -> None:
@@ -193,12 +200,15 @@ def test_uncertified_huge_blank_geometry_never_expands_to_a_future_word() -> Non
 def test_explicit_block_application_preserves_compiled_program_output_type() -> None:
     from devtools.proofs.block_power import apply_block_power
 
-    term = ReverseAddPoweredTerm(196, 4)
-    expected = term.seed_pair
+    # This test concerns the explicit bounded block oracle. It must construct
+    # its own reference program, not restore a retired backend on public terms.
+    source = pair_field_from_integer(196, 10)
+    compiler = LazyCompiler(ResourceLedger())
+    pair_power = compile_reverse_pair_power(compiler, 10, 3)
+    expected = source
     for _ in range(3):
         expected, _ = pair_step(expected, 10)
-    assert term.pair_power is not None
-    result = apply_block_power(term.pair_power, term.seed_pair)
+    result = apply_block_power(pair_power, source)
     assert result.values == expected
     assert isinstance(result.values, tuple)
     assert result.intermediate_pair_words == 0

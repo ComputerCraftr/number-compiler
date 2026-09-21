@@ -5,6 +5,8 @@ from __future__ import annotations
 from typing import TYPE_CHECKING, cast
 
 from number_compiler.hashlife.tiles.tile_result_records import (
+    CompletedResult,
+    PoweredResultKey,
     _ReverseHead,
     _ReverseLinks,
     _ReverseMember,
@@ -83,6 +85,59 @@ def _restore_reverse(
             # Snapshot entries came from this typed store; only the absence
             # sentinel widened their annotation while the mutation was pending.
             self._reverse[key] = cast("ReverseValue", value)
+
+
+def _has_completed_result_input(
+    self: CompletedResultArena,
+    action: object,
+    tile: object,
+) -> bool:
+    """Return whether an exact result exists for ``action`` on ``tile``.
+
+    This is a negative promotion preflight, not cache authority.  It validates
+    the requested handles and every traversed reverse link, while the caller's
+    later exact-key lookup remains responsible for admitting ports and result
+    semantics.
+    """
+    from number_compiler.hashlife.actions.field_actions import FieldCellActionID
+
+    if type(action) is not FieldCellActionID:
+        raise TypeError("completed-result presence requires a field action ID")
+    if type(tile) is not TileID:
+        raise TypeError("completed-result presence requires a tile ID")
+    self._validate_action(action)
+    self.tiles.resolve(tile)
+    visits = 1
+    try:
+        current = self._reverse.get(_ReverseHead(tile))
+        if current is None:
+            return False
+        if not is_execution_key(current):
+            raise ValueError("completed-result reverse head is corrupt")
+        previous = None
+        members = 0
+        while current is not None:
+            members += 1
+            if members > len(self._reverse):
+                raise ValueError("completed-result reverse index contains a cycle")
+            visits += 1
+            member = self._reverse.get(_ReverseMember(tile, current))
+            if type(member) is not _ReverseLinks or member.previous != previous:
+                raise ValueError("completed-result reverse link is corrupt")
+            if type(current) is PoweredResultKey and (
+                current.action == action and current.input == tile
+            ):
+                visits += 1
+                retained = self._memo.get(current)
+                if type(retained) is not CompletedResult:
+                    raise ValueError("completed-result reverse member lost its result")
+                return True
+            previous, current = current, member.following
+            if current is not None and not is_execution_key(current):
+                raise ValueError("completed-result reverse link is corrupt")
+        return False
+    finally:
+        self.ledger.bump("completed_result_presence_index_visits", visits)
 
 
 def _remove_membership(

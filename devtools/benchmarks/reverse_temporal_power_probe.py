@@ -1,4 +1,4 @@
-"""Schema-six probe separating compiled images from actual projection work.
+"""Schema-seven probe separating compiled images from actual projection work.
 
 Compact binary action syntax and a small image graph do not certify output
 absorption. Report concrete continuation work, semantic interpreter frames,
@@ -68,7 +68,7 @@ def _scalar_digit(generation: int, position: int) -> int:
 
 
 def _production_projection_rows() -> list[dict[str, object]]:
-    from number_compiler.hashlife.observation.tile_projection import LazyProjection
+    from number_compiler.arithmetic.fields.radix import digits_lsd
     from number_compiler.sequences.reverse_add.power import ReverseAddPoweredTerm
 
     rows = []
@@ -81,14 +81,9 @@ def _production_projection_rows() -> list[dict[str, object]]:
         if digit != _scalar_digit(generation, position):
             raise AssertionError((generation, position, digit))
         metrics = term.metrics()
-        point_metrics = term._point_index().metrics()
+        point_metrics = term.metrics()
         behavior = term.behavior_metrics()
         scheduler_work = projection_accounting(point_metrics)
-        projection = term._point_index()._lazy_application
-        if type(projection) is not LazyProjection:
-            raise AssertionError(
-                ("reverse-projection-is-not-tile-hashlife", generation)
-            )
         if (
             metrics.hashlife_section_cache_entries
             or metrics.hashlife_leaf_cache_entries
@@ -115,7 +110,7 @@ def _production_projection_rows() -> list[dict[str, object]]:
                 "retained_tile_output_nodes": metrics.completed_result_entries,
                 "retained_tile_action_nodes": metrics.field_action_nodes,
                 "retained_tile_logical_extent": term.maximum_width,
-                "retained_tile_source_extent": len(term.seed_pair),
+                "retained_tile_source_extent": len(digits_lsd(term.seed, term.base)),
                 "generation": generation,
                 "metrics_schema_version": metrics.metrics_schema_version,
                 "resource_ledger_entries": metrics.resource_ledger_entries,
@@ -172,8 +167,6 @@ def _production_projection_rows() -> list[dict[str, object]]:
                 "bounded_application_enabled": point_metrics.bounded_application_enabled,
                 # Legacy key counts observed spatial effects, not temporal states.
                 "bounded_temporal_state_classes": point_metrics.bounded_application_temporal_state_classes,
-                "reverse_t2_proof_left_state_classes": point_metrics.reverse_t2_proof_left_state_classes,
-                "reverse_t2_proof_right_state_classes": point_metrics.reverse_t2_proof_right_state_classes,
                 "spatial_interval_action_classes": behavior.spatial_interval_action_classes,
                 "spatial_interval_action_class_bound": behavior.spatial_interval_action_class_bound,
                 "carry_port_function_class_bound": behavior.carry_port_function_class_bound,
@@ -391,7 +384,7 @@ def run_probe() -> dict[str, object]:
     if interpreter_observed or continuation_observed:
         blockers.append("powered_output_still_replays_temporal_interpreter")
     return {
-        "version": "0.62.0-schema6-certified-execution",
+        "version": "0.62.0-schema7-certified-execution",
         "status": "RED" if blockers else "GREEN",
         "construction": construction,
         "projection": projection,

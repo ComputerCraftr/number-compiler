@@ -27,6 +27,7 @@ from typing import TYPE_CHECKING, Any
 
 from number_compiler.arithmetic.contracts.block_effect import (
     _OPERATOR_IDS,
+    BlockEffect,
     BoundarySide,
     BoundaryState,
 )
@@ -37,14 +38,11 @@ from number_compiler.arithmetic.contracts.exact_tree_context import (
 )
 from number_compiler.arithmetic.contracts.input_validation import require_integer
 from number_compiler.arithmetic.contracts.scoped_handles import ExactSource
-from number_compiler.arithmetic.contracts.temporal_family import _issue_certificate
 from number_compiler.arithmetic.fields.radix import (
     bit_width,
     digits_lsd,
-    value_from_lsd_digits,
 )
 from number_compiler.hashlife.actions.lazy_compiler import LazyCompiler
-from number_compiler.hashlife.observation.hashlife_projection import HashLifeBlockIndex
 from number_compiler.resources.ledger import ResourceLedger
 
 if TYPE_CHECKING:
@@ -54,6 +52,9 @@ if TYPE_CHECKING:
     )
     from number_compiler.resources.metric_records import HashLifeBehaviorMetrics
     from number_compiler.sequences.collatz.clock_observers import SArithmeticClock
+    from number_compiler.sequences.collatz.physical_images import (
+        CollatzPhysicalImageWorkspace,
+    )
 
 
 # Left boundary states.  START means no active source digit has been consumed.
@@ -265,16 +266,16 @@ class PoweredCollatzTerm:
         "__weakref__",
         "_active_width",
         "_compiler",
-        "_index",
+        "_effect",
         "_ledger",
         "_max_cache_entries",
         "_max_context_nodes",
         "_microblocks",
+        "_power",
         "_radix_projections",
         "_source_construction",
+        "_workspace",
         "compose_operations",
-        "effect",
-        "power",
         "seed",
         "seed_digits",
         "steps",
@@ -304,7 +305,7 @@ class PoweredCollatzTerm:
         self._compiler = LazyCompiler(self._ledger)
         self._max_context_nodes = max_context_nodes
         self._max_cache_entries = max_cache_entries
-        self._index: HashLifeBlockIndex | None = None
+        self._workspace: CollatzPhysicalImageWorkspace | None = None
         radix_owner = self._ledger.register(
             "radix-applications", "application_index", "INDEX_OWNED"
         )
@@ -319,23 +320,36 @@ class PoweredCollatzTerm:
             self._compiler.token,
             self._compiler.resolve,
         )
-        if steps == 0:
-            self.power = None
-            self.effect = None
-            self.compose_operations = 0
-            self.syntax_depth_bound = 0
+        self._power: BlockPower | None = None
+        self._effect: BlockEffect | None = None
+        self.compose_operations = 0
+        self.syntax_depth_bound = 0
+
+    def _compile_compatibility_descriptor(self) -> None:
+        """Demand the public block descriptor without using it as an executor."""
+        if self.steps == 0 or self._power is not None:
             return
         from number_compiler.sequences.collatz.compilation import (
             compile_collatz_physical_power,
         )
 
-        power = compile_collatz_physical_power(self._compiler, steps)
+        power = compile_collatz_physical_power(self._compiler, self.steps)
         if power.root is None:
             raise AssertionError("positive Collatz exponent without powered effect")
-        self.power = power
-        self.effect = power.root
+        self._power = power
+        self._effect = power.root
         self.compose_operations = power.compose_operations
         self.syntax_depth_bound = power.syntax_depth
+
+    @property
+    def power(self) -> BlockPower | None:
+        self._compile_compatibility_descriptor()
+        return self._power
+
+    @property
+    def effect(self) -> BlockEffect | None:
+        self._compile_compatibility_descriptor()
+        return self._effect
 
     @property
     def maximum_width(self) -> int:
@@ -358,33 +372,63 @@ class PoweredCollatzTerm:
         # Re-walking the live effect here can populate canonical composition
         # interners after a metrics snapshot, making reporting mutate the very
         # counters it reports.
-        return 0 if self.power is None else int(self.power.operator_nodes)
+        return 0 if self._power is None else int(self._power.operator_nodes)
 
     @property
     def descriptor_bits(self) -> int:
         return bit_width(self.seed) + bit_width(self.steps) + 2
 
-    def _point_index(self) -> HashLifeBlockIndex:
-        if self.steps == 0 or self.effect is None:
-            raise ValueError("step zero is a literal seed")
-        found = self._index
-        if found is None:
-            found = HashLifeBlockIndex(
-                self.effect,
-                self.seed_digits,
-                logical_length=self.maximum_width,
-                source_construction=self._source_construction,
-                certificate=_issue_certificate(
-                    self.effect, "collatz", self.steps, ledger=self._ledger
-                ),
-                max_tile_nodes=self._max_context_nodes,
-                max_cache_entries=self._max_cache_entries,
-                ledger=self._ledger,
-                compiler=self._compiler,
-                microblocks=self._microblocks,
+    def _source_image(self) -> CollatzPhysicalImageWorkspace:
+        from number_compiler.sequences.collatz.physical_images import (
+            COLLATZ_PHYSICAL_LAW,
+            CollatzPhysicalImageWorkspace,
+        )
+
+        workspace = self._workspace
+        if workspace is None:
+            workspace = CollatzPhysicalImageWorkspace(
+                self._ledger, self.seed, self.steps
             )
-            self._index = found
-        return found
+            self._workspace = workspace
+        if (
+            type(workspace) is not CollatzPhysicalImageWorkspace
+            or workspace.ledger is not self._ledger
+            or workspace.seed != self.seed
+            or workspace.steps != self.steps
+            or workspace.law != COLLATZ_PHYSICAL_LAW
+        ):
+            raise ValueError("Collatz source image belongs to another term")
+        return workspace
+
+    def _source_numerator(self) -> tuple[int, int]:
+        """Demand the terminal affine expression, without retaining an endpoint."""
+        transfer = self._source_image().summary().transfer
+        numerator = transfer.upper * self.seed + transfer.offset
+        self._ledger.bump(
+            "collatz_image_projection_operand_bits",
+            transfer.upper.bit_length()
+            + self.seed.bit_length()
+            + abs(transfer.offset).bit_length(),
+        )
+        if numerator < 0 or numerator % transfer.lower:
+            raise ArithmeticError(
+                "Collatz source image has an invalid terminal divisor"
+            )
+        return numerator, transfer.lower
+
+    def radix_digit(self, radix: int, position: int) -> int:
+        """Pull a bounded radix digit through the admitted affine transfer."""
+        radix = require_integer(radix, "radix", 2)
+        position = require_integer(position, "digit coordinate", 0)
+        transfer = self._source_image().summary().transfer
+        place = int(radix**position)
+        modulus = transfer.lower * place * radix
+        residue = (
+            (transfer.upper % modulus) * (self.seed % modulus) + transfer.offset
+        ) % modulus
+        self._ledger.bump("collatz_image_radix_demands")
+        self._ledger.bump("collatz_image_projection_operand_bits", modulus.bit_length())
+        return (residue // transfer.lower // place) % radix
 
     @source_reads_only
     def _point_symbol(self, position: int) -> int:
@@ -396,10 +440,40 @@ class PoweredCollatzTerm:
             if position >= len(self.seed_digits):
                 return 2
             return int(self.seed_digits[position])
-        value = self._point_index().direct_powered_point(position)
-        if value not in (0, 1, 2):
-            raise AssertionError(value)
-        return int(value)
+        from number_compiler.projection.microblock_cache import (
+            ExactMicroblock,
+            MicroblockKey,
+        )
+
+        self._ledger.bump("direct_powered_point_queries")
+        workspace = self._source_image()
+        effect = self.effect
+        if effect is None:
+            raise AssertionError("positive point without an action descriptor")
+        key = MicroblockKey(
+            self._compiler.reference(effect),
+            2,
+            0,
+            position,
+            "output",
+            source_scope=workspace.owner,
+        )
+        cached = self._microblocks.get(key)
+        if cached is not None:
+            if cached.encoded not in (0, 1, 2):
+                raise ValueError("cached Collatz point belongs to another alphabet")
+            return cached.encoded
+        # Blank admission is a threshold demand on the same affine image.
+        # Do not compute the full endpoint width to observe one binary cell.
+        numerator, divisor = self._source_numerator()
+        if numerator < divisor << position:
+            symbol = 2
+        else:
+            symbol = self.radix_digit(2, position)
+            if symbol not in (0, 1):
+                raise AssertionError("binary source image produced an invalid symbol")
+        self._microblocks.put(key, ExactMicroblock(symbol, 2))
+        return symbol
 
     @source_reads_only
     def digit(self, position: int) -> int:
@@ -414,7 +488,8 @@ class PoweredCollatzTerm:
             return len(self.seed_digits)
         found = self._active_width
         if found is None:
-            found = self._point_index().direct_active_width()
+            numerator, divisor = self._source_numerator()
+            found = max(1, numerator.bit_length() - (divisor.bit_length() - 1))
             self._active_width = found
         return found
 
@@ -434,36 +509,45 @@ class PoweredCollatzTerm:
 
         if self.steps == 0:
             return SArithmeticClock(0, 0)
-        support = self._point_index().direct_physical_support()
-        if support.ticks != self.steps or support.odd_ticks > self.steps:
+        odd = self._source_image().odd_steps()
+        if not 0 <= odd <= self.steps:
             raise ValueError("bound Collatz result has an invalid physical clock")
-        return SArithmeticClock(support.odd_ticks, self.steps - support.odd_ticks)
+        return SArithmeticClock(odd, self.steps - odd)
 
     def iter_digits(self) -> Iterator[int]:
         if self.steps == 0:
             yield from self.seed_digits
             return
-        yield from self._point_index().iter_direct_active()
+        numerator, divisor = self._source_numerator()
+        yield from digits_lsd(numerator // divisor, 2)
 
     def digits(self) -> tuple[int, ...]:
         return tuple(map(int, self.iter_digits()))
 
     def materialize(self, *, max_bits: int) -> int:
         max_bits = require_integer(max_bits, "output bit cap", 0)
-        if self.maximum_width > max_bits:
-            width = self.width()
-            if width > max_bits:
-                raise ValueError((width, max_bits))
-        return value_from_lsd_digits(self.iter_digits(), 2)
+        if self.steps == 0:
+            if self.seed.bit_length() > max_bits:
+                raise ValueError((self.seed.bit_length(), max_bits))
+            return self.seed
+        numerator, divisor = self._source_numerator()
+        width = max(1, numerator.bit_length() - (divisor.bit_length() - 1))
+        if width > max_bits:
+            raise ValueError((width, max_bits))
+        return numerator // divisor
 
     def behavior_metrics(self) -> HashLifeBehaviorMetrics:
         """Return the seed/function/application HashLife description split.
 
         This metric does not materialize the output word.  For positive powers it
         reports the compact source-independent jump function separately from the
-        seed-specific causal state/action description created by point queries.
+        seed-specific source-image description created by point queries.
         """
-        return self._point_index().behavior_metrics()
+        from number_compiler.resources.dyadic_behavior_metrics import (
+            collatz_behavior_metrics,
+        )
+
+        return collatz_behavior_metrics(self)
 
     def metrics(self) -> CollatzPhysicalBlockMetrics:
         from number_compiler.resources.collatz_power_metrics import (
@@ -474,10 +558,7 @@ class PoweredCollatzTerm:
         )
         from number_compiler.resources.powered_metrics import project_powered_metrics
 
-        if self._index is None:
-            point = collect_unindexed_metrics(self._ledger)
-        else:
-            point = self._index.metrics()
+        point = collect_unindexed_metrics(self._ledger)
         return project_powered_metrics(
             CollatzPhysicalBlockMetrics,
             point,

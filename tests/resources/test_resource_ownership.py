@@ -7,20 +7,16 @@ import gc
 import weakref
 from collections.abc import Callable, Iterator, Mapping, MutableSequence
 from types import MappingProxyType, SimpleNamespace
-from typing import TYPE_CHECKING, ClassVar
+from typing import Any, ClassVar
 
 import pytest
 
 from devtools.paths import repository_root
-from number_compiler.hashlife.actions.lazy_compiler import LazyCompiler
 from number_compiler.resources.ledger import ResourceLedger
 from number_compiler.resources.ownership import audit_execution_ownership
 from number_compiler.resources.stores import LedgerDict
 from number_compiler.sequences.collatz.block_power import PoweredCollatzTerm
 from number_compiler.sequences.reverse_add.power import ReverseAddPoweredTerm
-
-if TYPE_CHECKING:
-    from number_compiler.arithmetic.contracts.block_effect import BlockEffect
 
 
 @pytest.mark.parametrize("factory", [dict, list, set])
@@ -117,33 +113,22 @@ def test_execution_root_registry_is_weak_and_factory_writes_are_seen() -> None:
     assert saved() is None and tuple(ledger.iter_execution_roots()) == ()
 
 
-def test_collatz_tile_runtime_graph_is_collectable_after_term_lifetime() -> None:
+def test_collatz_source_image_graph_is_collectable_after_term_lifetime() -> None:
     term = PoweredCollatzTerm(27, 4)
     term.digit(0)
-    index = term._point_index()
     ledger = term._ledger
-    projection = index._lazy_application
-    from number_compiler.hashlife.observation.tile_projection import LazyProjection
-
-    assert type(projection) is LazyProjection
-    application = projection._application
-    scheduler = projection.scheduler
-    results = scheduler.results
-    tiles = scheduler.tiles
+    workspace = term._source_image()
+    scheduler = workspace.scheduler
     saved = tuple(
         weakref.ref(item)
         for item in (
-            index,
             ledger,
-            projection,
-            application,
+            workspace,
             scheduler,
-            results,
-            tiles,
         )
     )
 
-    del application, results, tiles, scheduler, projection, index, term, ledger
+    del scheduler, workspace, term, ledger
     gc.collect()
 
     assert all(reference() is None for reference in saved)
@@ -159,15 +144,45 @@ def test_actual_public_graph_is_factory_owned_before_and_after_compilation(
         else PoweredCollatzTerm(27, 4)
     )
     before = audit_execution_ownership(term._ledger)
-    assert before.roots >= 2
+    assert before.roots >= 1
     assert not before.violations
     term.digit(0)
     after = audit_execution_ownership(term._ledger)
     assert after.observed_mutable_containers > before.observed_mutable_containers
     assert not after.violations
     # This store is deliberately absent from all ledger payload callbacks.
-    term._point_index().__setattr__("hidden_late_cache", {"unaccounted": 1})
+    workspace = (
+        term._source_workspace()
+        if isinstance(term, ReverseAddPoweredTerm)
+        else term._source_image()
+    )
+    workspace.__setattr__("hidden_late_cache", {"unaccounted": 1})
     assert audit_execution_ownership(term._ledger).unregistered_containers == 1
+
+
+def test_reverse_source_workspace_cleans_later_owners_after_failed_dispose(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    term = ReverseAddPoweredTerm(196, 2)
+    term.digit(0)
+    workspace = term._source_workspace()
+    adapter_type = type(workspace.adapter)
+    original = adapter_type.dispose
+
+    def fail_after_dispose(adapter: Any) -> None:
+        original(adapter)
+        raise RuntimeError("injected adapter close failure")
+
+    monkeypatch.setattr(adapter_type, "dispose", fail_after_dispose)
+    with pytest.raises(RuntimeError, match="injected adapter close failure"):
+        workspace.dispose()
+    with pytest.raises(ValueError, match="disposed reverse action arena"):
+        workspace.actions.node(workspace.root_action)
+    assert all(
+        account.disposed
+        for account in term._ledger.inventory()
+        if account.name.startswith("reverse-source-")
+    )
 
 
 _BARE_CONSTRUCTORS = {
@@ -293,30 +308,6 @@ def test_execution_owners_allocate_persistent_stores_only_through_factories() ->
                 violations[str(path.relative_to(repository_root()))] = rows
     assert examined > 0
     assert not violations, violations
-
-
-def test_term_and_compiler_are_execution_roots_before_powered_compilation(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    from number_compiler.hashlife.actions.lazy_compiler import LazyCompiler
-
-    original = LazyCompiler.atom
-    observed = []
-
-    def check_roots(compiler: LazyCompiler, effect: BlockEffect) -> BlockEffect:
-        roots = tuple(compiler.ledger.iter_execution_roots())
-        assert compiler in roots
-        assert any(
-            isinstance(root, (ReverseAddPoweredTerm, PoweredCollatzTerm))
-            for root in roots
-        )
-        observed.append(type(effect).__name__)
-        return original(compiler, effect)
-
-    monkeypatch.setattr(LazyCompiler, "atom", check_roots)
-    ReverseAddPoweredTerm(196, 4)
-    PoweredCollatzTerm(27, 4)
-    assert observed
 
 
 def test_direct_store_class_construction_cannot_forge_factory_provenance() -> None:

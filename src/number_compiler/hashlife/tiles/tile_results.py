@@ -62,7 +62,6 @@ from number_compiler.hashlife.tiles.tile_result_validation import (
     normalize_output_region,
     validate_boundary_operands,
     validate_fused_request,
-    validate_output_region,
     validate_ports_readonly,
 )
 from number_compiler.hashlife.tiles.tiles import TileArena, TileID, TileLease
@@ -371,53 +370,55 @@ class CompletedResultArena:
         *,
         counted: bool = True,
         output: bool = False,
+        action_admission: object | None = None,
     ) -> int:
         from number_compiler.hashlife.tiles.completed_result_validation import (
             _validate_fusion,
         )
 
         return _validate_fusion(
-            self, action, fusion, consumer, expected, counted=counted, output=output
+            self,
+            action,
+            fusion,
+            consumer,
+            expected,
+            counted=counted,
+            output=output,
+            action_admission=action_admission,
         )
 
-    def _validate_boundary_allocations(
-        self,
-        boundaries: BoundaryTileOperands,
-    ) -> None:
-        if type(boundaries) is not BoundaryTileOperands:
-            raise ValueError("malformed completed-result boundary operands")
-        boundaries.__post_init__()
-        for tile in boundaries.tile_ids():
-            tile.validate(
-                self.tiles.owner,
-                "canonical-tile",
-                size=self.tiles._next_tile,
-            )
+    def _validate_boundary_allocations(self, boundaries: BoundaryTileOperands) -> None:
+        from number_compiler.hashlife.tiles.completed_result_validation import (
+            _validate_boundary_allocations,
+        )
+
+        return _validate_boundary_allocations(self, boundaries)
 
     def _validate_bound_port_allocations(
         self, context: BoundPorts, *, counted: bool = True
     ) -> None:
-        if type(context) is not BoundPorts:
-            raise ValueError("malformed leased bound-port context")
-        context.__post_init__()
-        declaration = self.interfaces.interface(context.signature)
-        if context.wiring.orientation not in declaration.orientations:
-            raise ValueError("leased bound-port orientation lies outside its signature")
-        if context.wiring.phase >= declaration.phase_count:
-            raise ValueError("leased bound-port phase lies outside its signature")
-        self._validate_ports(context.signature, context.ports, counted=counted)
-        self._validate_boundary_allocations(context.boundaries)
+        from number_compiler.hashlife.tiles.completed_result_validation import (
+            _validate_bound_port_allocations,
+        )
+
+        return _validate_bound_port_allocations(self, context, counted=counted)
 
     def _validate_action_wiring(
         self,
         action: FieldCellActionID,
         wiring: ResultWiring,
+        *,
+        action_admission: object | None = None,
     ) -> None:
         from number_compiler.hashlife.tiles.completed_result_validation import (
             _validate_action_wiring,
         )
 
-        return _validate_action_wiring(self, action, wiring)
+        if action_admission is None:
+            return _validate_action_wiring(self, action, wiring)
+        return _validate_action_wiring(
+            self, action, wiring, action_admission=action_admission
+        )
 
     def validate_shape(
         self,
@@ -434,40 +435,41 @@ class CompletedResultArena:
         action: FieldCellActionID,
         input_tile: TileID,
         wiring: ResultWiring,
+        *,
+        action_admission: object | None = None,
     ) -> None:
-        self._validate_action_wiring(action, wiring)
-        if type(input_tile) is not TileID:
-            raise TypeError("powered result requires a scoped input tile")
-        self.tiles.resolve(input_tile)
-        if self._validate_input is not None:
-            self._validate_input(action, input_tile)
-
-    def _validate_key(self, key: PoweredResultKey) -> None:
-        if type(key) is not PoweredResultKey:
-            raise TypeError("expected a powered-result key")
-        self._validate_base(key.action, key.input, key.wiring)
-        validate_output_region(
-            key.region, input_level=self.tiles.resolve(key.input).level
+        from number_compiler.hashlife.tiles.completed_result_validation import (
+            _validate_base,
         )
-        if key.fusion is not None:
-            visits = self._validate_fusion(
-                key.action,
-                key.fusion,
-                key.bound_ports,
-                key.input,
-                counted=False,
-            )
-            self.ledger.bump("completed_result_port_validation_requests", 2)
-            self.ledger.bump("completed_result_port_validation_visits", visits)
-        else:
-            self._validate_boundaries(key.boundaries, key.input)
-            self._validate_ports(key.wiring.signature, key.ports)
+
+        if action_admission is None:
+            return _validate_base(self, action, input_tile, wiring)
+        return _validate_base(
+            self,
+            action,
+            input_tile,
+            wiring,
+            action_admission=action_admission,
+        )
+
+    def _validate_key(
+        self,
+        key: PoweredResultKey,
+        *,
+        action_admission: object | None = None,
+    ) -> None:
+        from number_compiler.hashlife.tiles.completed_result_validation import (
+            _validate_key,
+        )
+
+        return _validate_key(self, key, action_admission=action_admission)
 
     def _validate_interface_key(self, key: PoweredInterfaceKey) -> None:
-        if type(key) is not PoweredInterfaceKey:
-            raise TypeError("expected a powered-interface key")
-        self._validate_base(key.action, key.input, key.wiring)
-        self._validate_boundaries(key.boundaries, key.input)
+        from number_compiler.hashlife.tiles.completed_result_validation import (
+            _validate_interface_key,
+        )
+
+        return _validate_interface_key(self, key)
 
     def _validate_fused_key(self, key: FusedInterfaceKey) -> None:
         validate_fused_request(self, key)
@@ -477,48 +479,44 @@ class CompletedResultArena:
         key: PoweredInterfaceKey,
         interface: LocalInterfaceID,
     ) -> None:
-        if type(interface) is not LocalInterfaceID:
-            raise TypeError("powered interface requires a local interface ID")
-        if self.interfaces.resolve(interface).signature != key.wiring.signature:
-            raise ValueError("powered interface has another port signature")
+        from number_compiler.hashlife.tiles.completed_result_validation import (
+            _validate_interface,
+        )
+
+        return _validate_interface(self, key, interface)
 
     def _validate_spatial_key(self, key: SpatialInterfaceKey) -> None:
-        if type(key) is not SpatialInterfaceKey:
-            raise TypeError("expected a spatial-interface key")
-        if type(key.wiring) is not ResultWiring:
-            raise TypeError("spatial interface requires normalized wiring")
-        key.wiring.__post_init__()
-        signature = self.interfaces.interface(key.wiring.signature)
-        if key.wiring.orientation not in signature.orientations:
-            raise ValueError("spatial interface orientation lies outside its signature")
-        if key.wiring.phase >= signature.phase_count:
-            raise ValueError("spatial interface phase lies outside its signature")
-        for child in (key.left, key.right):
-            if type(child) is not LocalInterfaceID:
-                raise TypeError("spatial child requires a local interface ID")
-            if self.interfaces.resolve(child).signature != key.wiring.signature:
-                raise ValueError("spatial child has another port signature")
+        from number_compiler.hashlife.tiles.completed_result_validation import (
+            _validate_spatial_key,
+        )
+
+        return _validate_spatial_key(self, key)
 
     def _validate_spatial_result(
         self,
         key: SpatialInterfaceKey,
         result: LocalInterfaceID,
     ) -> None:
-        if type(result) is not LocalInterfaceID:
-            raise TypeError("spatial result requires a local interface ID")
-        if self.interfaces.resolve(result).signature != key.wiring.signature:
-            raise ValueError("spatial result has another port signature")
+        from number_compiler.hashlife.tiles.completed_result_validation import (
+            _validate_spatial_result,
+        )
+
+        return _validate_spatial_result(self, key, result)
 
     def _validate_result(
         self,
         key: PoweredResultKey,
         result: CompletedResult,
+        *,
+        action_admission: object | None = None,
     ) -> None:
         from number_compiler.hashlife.tiles.completed_result_validation import (
             _validate_result,
         )
 
-        return _validate_result(self, key, result)
+        if action_admission is None:
+            return _validate_result(self, key, result)
+        return _validate_result(self, key, result, action_admission=action_admission)
 
     def _validate_leased(
         self,
@@ -539,35 +537,19 @@ class CompletedResultArena:
         return tuple(dict.fromkeys(values))
 
     def _result_tile_ids(self, result: CompletedResult) -> tuple[TileID, ...]:
-        fused_tiles: tuple[TileID, ...] = ()
-        if result.fusion is not None:
-            fused_tiles = (
-                *result.fusion.producer.boundaries.tile_ids(),
-                *result.fusion.consumer.boundaries.tile_ids(),
-            )
-        return self._unique_tiles(
-            (
-                result.output,
-                *result.outgoing_boundaries.tile_ids(),
-                *fused_tiles,
-            )
+        from number_compiler.hashlife.tiles.completed_result_validation import (
+            _result_tile_ids,
         )
+
+        return _result_tile_ids(self, result)
 
     @staticmethod
     def _result_operand_views(result: CompletedResult) -> tuple[BoundaryTileView, ...]:
-        operands = [result.outgoing_boundaries]
-        if result.fusion is not None:
-            operands.extend(
-                (result.fusion.producer.boundaries, result.fusion.consumer.boundaries)
-            )
-        return tuple(
-            dict.fromkeys(
-                view
-                for item in operands
-                for view in (item.left, item.right)
-                if view is not None
-            )
+        from number_compiler.hashlife.tiles.completed_result_validation import (
+            _result_operand_views,
         )
+
+        return _result_operand_views(result)
 
     def _result_leases(
         self,
@@ -643,25 +625,45 @@ class CompletedResultArena:
         key: PoweredResultKey,
         *,
         validate_context: Callable[[PoweredResultKey], None] | None = None,
+        _action_admission: object | None = None,
     ) -> ResultLease | None:
         """Admit the key and optional execution context before any memo access."""
-        self._validate_key(key)
+        if _action_admission is None:
+            self._validate_key(key)
+        else:
+            self._validate_key(key, action_admission=_action_admission)
         if validate_context is not None:
             validate_context(key)
         key = normalize_output_region(self.tiles, key)
         found = self._memo.get(key)
         self.ledger.bump("completed_result_requests")
         if found is None:
-            record_execution_cache_event(self, "result", "miss", key.action, key.input)
+            record_execution_cache_event(
+                self,
+                "result",
+                "miss",
+                key.action,
+                key.input,
+                action_admission=_action_admission,
+            )
             record_unattributed_post_eviction_miss(self.ledger, "result")
             return None
         if type(found) is not CompletedResult:
             raise TypeError("completed result memo has another value sort")
-        self._validate_result(key, found)
+        if _action_admission is None:
+            self._validate_result(key, found)
+        else:
+            self._validate_result(key, found, action_admission=_action_admission)
         lease = self._lease(key, found)
         self.ledger.bump("completed_result_early_hits")
         record_execution_cache_event(
-            self, "result", "early_hit", key.action, key.input, allow_new=False
+            self,
+            "result",
+            "early_hit",
+            key.action,
+            key.input,
+            allow_new=False,
+            action_admission=_action_admission,
         )
         return lease
 

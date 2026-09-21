@@ -170,7 +170,15 @@ def observation_options(family: str) -> dict[str, tuple[int | None, tuple[str, .
     return selected
 
 
-def parser() -> argparse.ArgumentParser:
+def parser(*, demanded_family: str | None = None) -> argparse.ArgumentParser:
+    """Build all family names, configuring only the requested family's options.
+
+    Keeping every name preserves top-level usage and error text. Ordinary
+    family-first queries need no argument actions for the other families.
+    The default remains the complete parser for callers and top-level help.
+    """
+    if demanded_family is not None and demanded_family not in CAPABILITIES:
+        raise ValueError("unknown demanded CLI family")
     result = argparse.ArgumentParser(
         prog="number-compiler",
         description="Exact family terms: number-compiler FAMILY --nth N [--info NAME].",
@@ -183,6 +191,8 @@ def parser() -> argparse.ArgumentParser:
             help=f"index unit: {capability.unit}",
             description=f"{name}: --nth uses {capability.unit}; term zero is the seed where applicable.",
         )
+        if demanded_family is not None and name != demanded_family:
+            continue
         selectors = command.add_mutually_exclusive_group(required=True)
         selectors.add_argument("--nth", type=cli_integer, action=UniqueValue)
         if capability.event_info:
@@ -259,7 +269,8 @@ def parser() -> argparse.ArgumentParser:
 
 
 def parse_request(argv: list[str]) -> QueryRequest | None:
-    command = parser()
+    demanded_family = argv[0] if argv and argv[0] in CAPABILITIES else None
+    command = parser(demanded_family=demanded_family)
     if argv and argv[0] in {
         "nth",
         "observe",
@@ -420,7 +431,9 @@ def validate(q: QueryRequest, specified: frozenset[str]) -> None:
         over_cap = (196 if q.seed is None else q.seed).bit_length() > cap
     elif q.family == "collatz":
         assert q.seed is not None
-        over_cap = q.seed.bit_length() + 2 * q.index + 2 > cap
+        # A growth upper bound cannot prove the terminal output is too large.
+        # Positive iterates may shrink into an admitted finite cycle.
+        over_cap = q.index == 0 and q.seed.bit_length() > cap
     elif q.family == "prime":
         over_cap = (max(2, q.start) + q.index).bit_length() > cap
     if over_cap:

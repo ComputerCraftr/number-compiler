@@ -16,8 +16,8 @@ from number_compiler.hashlife.execution.tile_causal_interfaces import (
 )
 from number_compiler.hashlife.execution.tile_causal_results import (
     PrimitiveCausalPorts,
-    causal_result_key,
     lookup_causal_result,
+    probe_causal_result,
 )
 from number_compiler.hashlife.execution.tile_causal_tasks import (
     CausalFrame,
@@ -77,7 +77,7 @@ def _primitive_parent_payload(
     from number_compiler.projection.digit_terminal import DigitNormalizeBlockEffect
     from number_compiler.sequences.collatz.block_power import CollatzPhysicalBlockEffect
 
-    kernel = engine.adapter.primitive_law(action)
+    kernel = engine._law(action)
     zero_occurrence = (
         type(kernel.effect)
         in (
@@ -113,7 +113,7 @@ def _primitive_parent_payload(
         action,
         tile,
         PrimitiveCausalPorts(left, right),
-        engine.adapter.wiring(action),
+        engine._wiring(action),
         occurrence,
         physical_support=support,
     )
@@ -127,20 +127,20 @@ def _leaf(
     right: int,
     require_output: bool,
 ) -> _LeafInterface:
-    wiring = engine.adapter.wiring(action)
+    wiring = engine._wiring(action)
     output, interface, occurrence = engine.adapter.leaf_interface_symbol(
         action,
         symbol,
         (left, right),
         wiring,
     )
-    action_weight = engine.adapter.action_cocycle(action)
+    action_weight = engine._cocycle(action)
     outgoing = (
         engine.adapter._observe(interface, "boundary_left", (left, right)),
         engine.adapter._observe(interface, "boundary_right", (left, right)),
     )
     active = bool(engine.adapter._observe(interface, "activity", (left, right)))
-    law = engine.adapter.primitive_law(action)
+    law = engine._law(action)
     support = None
     from number_compiler.sequences.collatz.block_power import (
         CollatzPhysicalBlockEffect,
@@ -320,15 +320,25 @@ def interface_step(
             if engine._children(action) is None:
                 if type(left) is not int or type(right) is not int:
                     raise TypeError("primitive causal interface requires finite ports")
-                key = causal_result_key(
+                key, completed = probe_causal_result(
                     engine.scheduler.results,
                     action,
                     tile,
                     PrimitiveCausalPorts(left, right),
-                    engine.adapter.wiring(action),
+                    engine._wiring(action),
+                    action_admission=engine._action_admission_token,
                 )
             else:
                 key = engine._composite_key(action, tile, left, right)
+                completed = (
+                    None
+                    if key is None
+                    else lookup_causal_result(
+                        engine.scheduler.results,
+                        key,
+                        action_admission=engine._action_admission_token,
+                    )
+                )
             observation_key = (
                 None
                 if key is None
@@ -338,11 +348,6 @@ def interface_step(
                         "reverse-output-carry" if require_output else "interface"
                     ),
                 )
-            )
-            completed = (
-                None
-                if key is None
-                else lookup_causal_result(engine.scheduler.results, key)
             )
             if completed is not None:
                 if require_output and observation_key is not None:
@@ -372,7 +377,7 @@ def interface_step(
                     engine.scheduler.results,
                     action,
                     causal,
-                    engine.adapter.wiring(action),
+                    engine._wiring(action),
                     expected_level=node.level,
                 )
                 if require_output:
@@ -510,7 +515,7 @@ def interface_step(
                 action,
                 left_payload,
                 right_payload,
-                engine.adapter.wiring(action),
+                engine._wiring(action),
                 expected_level=node.level,
             )
             values.append(

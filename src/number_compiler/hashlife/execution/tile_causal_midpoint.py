@@ -8,8 +8,8 @@ from number_compiler.hashlife.actions.field_actions import FieldCellActionID
 from number_compiler.hashlife.execution.tile_causal_results import (
     CausalCompletedOutput,
     PrimitiveCausalPorts,
-    causal_result_key,
     lookup_causal_result,
+    probe_causal_result,
     publish_causal_completed,
 )
 from number_compiler.hashlife.execution.tile_causal_tasks import (
@@ -51,20 +51,25 @@ def cached_midpoint_step(
         right_anchor, left_anchor = values.pop(), values.pop()
         before_key: PoweredResultKey | None
         if type(left_anchor) is int and type(right_anchor) is int:
-            before_key = causal_result_key(
+            before_key, completed = probe_causal_result(
                 engine.scheduler.results,
                 before,
                 tile,
                 PrimitiveCausalPorts(left_anchor, right_anchor),
-                engine.adapter.wiring(before),
+                engine._wiring(before),
+                action_admission=engine._action_admission_token,
             )
         else:
             before_key = engine._composite_key(before, tile, left_anchor, right_anchor)
-        completed = (
-            None
-            if before_key is None
-            else lookup_causal_result(engine.scheduler.results, before_key)
-        )
+            completed = (
+                None
+                if before_key is None
+                else lookup_causal_result(
+                    engine.scheduler.results,
+                    before_key,
+                    action_admission=engine._action_admission_token,
+                )
+            )
         if completed is None:
             frame.stage = 20
             frames.append(frame)

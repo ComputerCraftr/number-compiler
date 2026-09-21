@@ -13,12 +13,14 @@ from dataclasses import dataclass, field
 
 from number_compiler.arithmetic.automata.program_word import (
     CanonicalWord,
+    RunTraversalMetrics,
     from_values,
-    iter_runs,
+    iter_run_blocks_reverse,
 )
 from number_compiler.arithmetic.contracts.input_validation import require_integer
 from number_compiler.arithmetic.fields.radix import digits_lsd
 from number_compiler.resources.ledger import ResourceLedger
+from number_compiler.resources.stores import LedgerList
 from number_compiler.sequences.collatz.frame import CollatzAffineSuffixGerm
 from number_compiler.sequences.collatz.germ_cache import CollatzGermTransitionCache
 from number_compiler.sequences.collatz.physical_support import (
@@ -58,6 +60,8 @@ class CollatzSourcePublisher:
 
     __slots__ = (
         "__weakref__",
+        "_admission_workspace",
+        "_admission_workspace_owner",
         "_issued_snapshot",
         "_published",
         "events",
@@ -102,6 +106,12 @@ class CollatzSourcePublisher:
         self.max_events = max_events
         self.max_digits = max_digits
         self.ledger = ResourceLedger(total_nodes, total_entries)
+        self._admission_workspace_owner = self.ledger.register(
+            "collatz-source-admission-workspace", "runtime_query_workspace"
+        )
+        self._admission_workspace: LedgerList[tuple[CanonicalWord, int, int]] = (
+            self.ledger.make_list(self._admission_workspace_owner, append_only=False)
+        )
         self.events = CollatzEventArena(ledger=self.ledger)
         self.supports = PhysicalSupportArena(
             max_nodes=max(3, support_nodes), ledger=self.ledger
@@ -124,7 +134,14 @@ class CollatzSourcePublisher:
         )
 
     @staticmethod
-    def _word_leq_integer(word: CanonicalWord, limit: int) -> tuple[bool, int]:
+    def _word_leq_integer(
+        word: CanonicalWord,
+        limit: int,
+        *,
+        ledger: ResourceLedger | None = None,
+        frontier_owner: int | None = None,
+        frontier: LedgerList[tuple[CanonicalWord, int, int]] | None = None,
+    ) -> tuple[bool, int]:
         """Compare an LSD-first radix-4 word without lowering its integer.
 
         The scan is bounded by the already admitted source-digit budget and is
@@ -136,21 +153,143 @@ class CollatzSourcePublisher:
         limit_width = max(1, (limit.bit_length() + 1) // 2)
         if word.length != limit_width:
             return word.length < limit_width, 0
-        position = word.length - 1
         comparisons = 0
-        for symbol, count in reversed(tuple(iter_runs(word))):
-            stop = position - count
-            while position > stop:
-                comparisons += 1
-                boundary = (limit >> (2 * position)) & 3
-                if symbol != boundary:
-                    return symbol < boundary, comparisons
-                position -= 1
-        return True, comparisons
+        run_block_bits = 0
+        mismatch_descent_steps = 0
+        mismatch_descent_bits = 0
+        metrics = RunTraversalMetrics()
+        if not (
+            (ledger is None and frontier_owner is None and frontier is None)
+            or (
+                ledger is not None
+                and frontier_owner is not None
+                and frontier is not None
+            )
+        ):
+            raise ValueError("Collatz admission workspace requires its ledger owner")
+
+        def account_frontier(delta: int, _bits: int) -> None:
+            assert (
+                ledger is not None
+                and frontier_owner is not None
+                and frontier is not None
+            )
+            if delta > 0:
+                ledger.reserve(frontier_owner, entries=delta, nodes=delta)
+            elif delta < 0:
+                ledger.release(frontier_owner, entries=-delta, nodes=-delta)
+
+        traversal = iter_run_blocks_reverse(
+            word,
+            limit,
+            symbol_bits=2,
+            metrics=metrics,
+            frontier_delta=None if ledger is None else account_frontier,
+            frontier=frontier,
+        )
+        try:
+            for symbol, count, block in traversal:
+                relation = CollatzSourcePublisher._run_block_relation(
+                    block, symbol, count
+                )
+                run_block_bits += 2 * count
+                if relation:
+                    matched, descent_steps, descent_bits = (
+                        CollatzSourcePublisher._run_common_prefix(block, symbol, count)
+                    )
+                    comparisons += 1 + matched
+                    mismatch_descent_steps += descent_steps
+                    mismatch_descent_bits += descent_bits
+                    return relation < 0, comparisons
+                comparisons += count
+            return True, comparisons
+        finally:
+            traversal.close()
+            if ledger is not None:
+                ledger.bump(
+                    "collatz_source_admission_word_nodes_visited",
+                    metrics.visited_nodes,
+                )
+                ledger.bump(
+                    "collatz_source_admission_word_block_bits_visited",
+                    metrics.visited_block_bits,
+                )
+                ledger.bump(
+                    "collatz_source_admission_run_block_bits_compared",
+                    run_block_bits,
+                )
+                ledger.bump(
+                    "collatz_source_admission_mismatch_descent_steps",
+                    mismatch_descent_steps,
+                )
+                ledger.bump(
+                    "collatz_source_admission_mismatch_descent_block_bits",
+                    mismatch_descent_bits,
+                )
+                previous = ledger.counters.get(
+                    "collatz_source_admission_word_frontier_peak", 0
+                )
+                if metrics.peak_frontier > previous:
+                    ledger.bump(
+                        "collatz_source_admission_word_frontier_peak",
+                        metrics.peak_frontier - previous,
+                    )
+                previous_bits = ledger.counters.get(
+                    "collatz_source_admission_word_frontier_bits_peak", 0
+                )
+                if metrics.peak_frontier_bits > previous_bits:
+                    ledger.bump(
+                        "collatz_source_admission_word_frontier_bits_peak",
+                        metrics.peak_frontier_bits - previous_bits,
+                    )
+
+    @staticmethod
+    def _run_block_relation(block: int, symbol: int, count: int) -> int:
+        """Compare one radix-4 block with ``symbol`` repeated ``count`` times."""
+        if not 0 <= symbol <= 3:
+            return -1 if symbol < 0 else 1
+        if symbol == 0:
+            return 0 if block == 0 else -1
+        scaled = 3 * block + symbol
+        high = scaled >> (2 * count)
+        if high != symbol:
+            return -1 if symbol < high else 1
+        return 0 if scaled.bit_count() == symbol.bit_count() else -1
+
+    @classmethod
+    def _run_common_prefix(
+        cls, block: int, symbol: int, count: int
+    ) -> tuple[int, int, int]:
+        """Count equal MSDs before a known mismatch without digit replay."""
+        if not 0 <= symbol <= 3:
+            return 0, 0, 0
+        matched = 0
+        steps = 0
+        block_bits = 0
+        width = count
+        while width > 1:
+            high_width = (width + 1) // 2
+            low_width = width - high_width
+            high = block >> (2 * low_width)
+            steps += 1
+            block_bits += 2 * high_width
+            if cls._run_block_relation(high, symbol, high_width):
+                block, width = high, high_width
+                continue
+            matched += high_width
+            block -= high << (2 * low_width)
+            width = low_width
+        return matched, steps, block_bits
 
     @classmethod
     def _germ_fits_digits(
-        cls, germ: CollatzAffineSuffixGerm, digits: int
+        cls,
+        germ: CollatzAffineSuffixGerm,
+        digits: int,
+        *,
+        ledger: ResourceLedger | None = None,
+        frontier_owner: int | None = None,
+        frontier: LedgerList[tuple[CanonicalWord, int, int]] | None = None,
     ) -> tuple[bool, int]:
         boundary = (1 << (2 * digits)) - 1
         if germ.offset > boundary:
@@ -158,10 +297,23 @@ class CollatzSourcePublisher:
         if germ.multiplier == 0:
             return True, 0
         quotient = (boundary - germ.offset) // germ.multiplier
-        return cls._word_leq_integer(germ.suffix, quotient)
+        return cls._word_leq_integer(
+            germ.suffix,
+            quotient,
+            ledger=ledger,
+            frontier_owner=frontier_owner,
+            frontier=frontier,
+        )
 
     @classmethod
-    def _germ_radix4_width(cls, germ: CollatzAffineSuffixGerm) -> tuple[int, int]:
+    def _germ_radix4_width(
+        cls,
+        germ: CollatzAffineSuffixGerm,
+        *,
+        ledger: ResourceLedger | None = None,
+        frontier_owner: int | None = None,
+        frontier: LedgerList[tuple[CanonicalWord, int, int]] | None = None,
+    ) -> tuple[int, int]:
         """Return exact endpoint width using at most three boundary queries."""
         if germ.multiplier == 0:
             return max(1, (germ.offset.bit_length() + 1) // 2), 0
@@ -171,7 +323,13 @@ class CollatzSourcePublisher:
         upper = max(beta_width, germ.suffix.length + alpha_width) + 1
         comparisons = 0
         while width <= upper:
-            fits, work = cls._germ_fits_digits(germ, width)
+            fits, work = cls._germ_fits_digits(
+                germ,
+                width,
+                ledger=ledger,
+                frontier_owner=frontier_owner,
+                frontier=frontier,
+            )
             comparisons += work
             if fits:
                 return width, comparisons
@@ -193,7 +351,12 @@ class CollatzSourcePublisher:
         admission_comparisons = 0
         reached_one = self.seed == 1
         while discovered < self.requested_events and not reached_one:
-            source_width, comparisons = self._germ_radix4_width(germ)
+            source_width, comparisons = self._germ_radix4_width(
+                germ,
+                ledger=self.ledger,
+                frontier_owner=self._admission_workspace_owner,
+                frontier=self._admission_workspace,
+            )
             admission_comparisons += comparisons
             self.ledger.bump("collatz_source_admission_digit_comparisons", comparisons)
             if source_width > self.max_digits:

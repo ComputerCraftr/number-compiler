@@ -2,6 +2,7 @@ session Shared_S_Arithmetic in shared = HOL +
   options [document = false, quick_and_dirty = false, threads = 1]
   theories
     S_Arithmetic_Skew
+    Dyadic_Source_Lift
 
 session Reverse_Residuals = HOL +
   options [document = false, quick_and_dirty = false, threads = 1]
@@ -26,22 +27,63 @@ session Reverse_Residuals = HOL +
     Hensel_Cylinders
     Reverse_Contextual_Fixed_Point
 
+session Reverse_Cylinder_Length_Refinement in reverse_length = Reverse_Residuals +
+  options [document = false, quick_and_dirty = false, threads = 1]
+  theories
+    Reverse_Cylinder_Length
+    Reverse_Cylinder_Range_Geometry
+
 session Reverse_Digit_Terminal in reverse_terminal = Reverse_Residuals +
   options [document = false, quick_and_dirty = false, threads = 1]
   theories
     Reverse_Digit_Terminal_Refinement
 
-session Temporal_Clock_Jumps in temporal_clocks = Reverse_Residuals +
+session Cylinder_Radial_Algebra in temporal_radial = HOL +
+  options [document = false, quick_and_dirty = false, threads = 1]
+  theories
+    Cylinder_Radial_Event_Clock
+    Cylinder_Radial_Hypergeometric_Elimination
+
+session Cylinder_Forcing_Automata in temporal_forcing = Reverse_Residuals +
+  options [document = false, quick_and_dirty = false, threads = 1]
+  theories
+    Cylinder_Forcing_Alphabet
+    Cylinder_Residue_Carry_SLP
+
+session Collatz_Cylinder_Refinement in temporal_collatz = Reverse_Residuals +
   options [document = false, quick_and_dirty = false, threads = 1]
   sessions Shared_S_Arithmetic
+  theories
+    Collatz_Clock_Jumps
+    Collatz_Cylinder_Constructor
+    Collatz_Physical_Cylinder_Lift
+    Collatz_Physical_One_Cycle
+    Collatz_Source_Hensel_Anchor_Refinement
+    Inverse_Three_Lift
+
+session Temporal_Clock_Jumps in temporal_clocks = Reverse_Residuals +
+  options [document = false, quick_and_dirty = false, threads = 1]
+  sessions Shared_S_Arithmetic Cylinder_Radial_Algebra Cylinder_Forcing_Automata Collatz_Cylinder_Refinement
   theories
     Temporal_Clock_Jumps
     Decimal_Clock_Jumps
     Decimal_Publisher_Constructor
+    Reverse_196_Complete_Interface_Substitution
+    Bilateral_Cascade_Scan
+    Bilateral_Carry_Residual
+    Cascade_Output_Elimination
+    Uniform_Pair_Field_Grammar
+    Cylinder_Innovation_Transport
+    Cylinder_Coboundary_Publisher
+    Cylinder_Source_Coboundary
+    Cylinder_Centered_Clock
+    Cylinder_Live_Forcing_Reduction
+    Cylinder_Source_Publisher
+    Cylinder_D2_Edge_Interior
+    Cylinder_D4_Source_Formulas
+    Cylinder_D4_Carry_Admission
+    Cylinder_Radial_Sections
     Power_Clock_Jumps
-    Collatz_Clock_Jumps
-    Collatz_Cylinder_Constructor
-    Inverse_Three_Lift
     Five_Bit_Folded_Square
     Radix64_Mirror_Correlation
 
@@ -72,6 +114,7 @@ session Antihydra in antihydra = HOL +
     Antihydra_Mahler_Skew
     Antihydra_Source_Barrier
     Antihydra_Family_Iteration
+    Antihydra_Arithmetic_Cylinder_Lift
     Antihydra_Affine_Certificate
     Antihydra_Macro_Grammar
 
@@ -81,3 +124,40 @@ session Prime_Wheel_Bridge in prime_wheel = "HOL-Number_Theory" +
     Prime_Wheel_Bridge
     Prime_Wheel_Executor
     Prime_Wheel_Skew_Actions
+
+session Prime_Deterministic_Refinement in integration_prime = Prime_Wheel_Bridge +
+  options [document = false, quick_and_dirty = false, threads = 1]
+  theories
+    Prime_Deterministic_Phi_Refinement
+    Prime_Deterministic_Worklist_Refinement
+    Prime_Python_Count_Transition_Refinement
+    Prime_Prefix_Image_Projection_Refinement
+    Prime_Odd_Window_Selection_Refinement
+    Prime_Odd_Window_Expansion_Refinement
+
+session Prime_Selection_Initialization in integration_prime_selection = Prime_Deterministic_Refinement +
+  options [document = false, quick_and_dirty = false, threads = 1]
+  theories
+    Prime_Selected_Prefix_Rank_Refinement
+    Prime_Retained_Prefix_Count_Refinement
+    Prime_Deterministic_Prefix_Extension_Refinement
+    Prime_Deterministic_Cover_Loop_Refinement
+    Prime_Selection_Initialization_Refinement
+
+session Associated_Action_Core in integration = Temporal_Clock_Jumps +
+  options [document = false, quick_and_dirty = false, threads = 1]
+  theories
+    Associated_Action_Pullback
+    Source_Chart_Selector_Fusion
+
+session Decimal_196_Integration in integration_decimal = Associated_Action_Core +
+  options [document = false, quick_and_dirty = false, threads = 1]
+  sessions Reverse_Digit_Terminal
+  theories
+    Decimal_196_Terminal_Integration
+
+session Antihydra_Mahler_Integration in integration_mahler = Associated_Action_Core +
+  options [document = false, quick_and_dirty = false, threads = 1]
+  sessions Antihydra
+  theories
+    Antihydra_Mahler_Associated_Action

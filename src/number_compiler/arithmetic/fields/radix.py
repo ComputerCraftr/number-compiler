@@ -23,9 +23,45 @@ def digits_lsd(value: int, base: int, width: int | None = None) -> tuple[int, ..
     if value < 0 or base < 2:
         raise ValueError((value, base))
     out: list[int] = []
-    while value:
-        value, digit = divmod(value, base)
-        out.append(digit)
+    if value < base:
+        out.append(value)
+    elif base & (base - 1) == 0:
+        digit_bits = base.bit_length() - 1
+        accumulator = available = 0
+        for byte in value.to_bytes((value.bit_length() + 7) // 8, "little"):
+            accumulator |= byte << available
+            available += 8
+            while available >= digit_bits:
+                out.append(accumulator & (base - 1))
+                accumulator >>= digit_bits
+                available -= digit_bits
+        if available:
+            out.append(accumulator)
+        while len(out) > 1 and out[-1] == 0:
+            out.pop()
+    else:
+        # Split at radix powers before extracting bounded leaves. A digit
+        # extraction never divides the entire remaining endpoint integer.
+        powers = [base**32]
+        while powers[-1] <= value:
+            powers.append(powers[-1] * powers[-1])
+        pending = [(value, len(powers) - 1, False)]
+        while pending:
+            part, level, padded = pending.pop()
+            if level:
+                high, low = divmod(part, powers[level - 1])
+                if high or padded:
+                    pending.append((high, level - 1, padded))
+                    pending.append((low, level - 1, True))
+                else:
+                    pending.append((low, level - 1, False))
+            else:
+                start = len(out)
+                while part:
+                    part, digit = divmod(part, base)
+                    out.append(digit)
+                if padded:
+                    out.extend([0] * (32 - (len(out) - start)))
     if not out:
         out.append(0)
     if width is not None:
@@ -40,10 +76,7 @@ def reverse_radix_integer(value: int, base: int) -> int:
     """Reverse the canonical radix digits of a nonnegative integer."""
     base = int(base)
     digits = digits_lsd(int(value), base)
-    out = 0
-    for digit in digits:
-        out = out * base + digit
-    return out
+    return value_from_lsd_digits(reversed(digits), base)
 
 
 def reverse_pair_sums(value: int, base: int) -> tuple[int, ...]:
@@ -102,14 +135,29 @@ def value_from_lsd_digits(digits: Sequence[int] | Iterable[int], base: int) -> i
     base = int(base)
     if base < 2:
         raise ValueError(base)
-    out = 0
-    weight = 1
+    # Each retained block represents a contiguous LSF word. Equal-width
+    # blocks combine chronologically; the explicit stack has logarithmic
+    # depth and never grows an endpoint integer once per input digit.
+    blocks: list[tuple[int, int, int]] = []
+    part, weight, size = 0, 1, 0
     for digit in digits:
         digit = int(digit)
         if not 0 <= digit < base:
             raise ValueError((digit, base))
-        out += digit * weight
+        part += digit * weight
         weight *= base
+        size += 1
+        if size == 32:
+            while blocks and blocks[-1][2] == size:
+                low, low_weight, low_size = blocks.pop()
+                part = low + low_weight * part
+                weight *= low_weight
+                size += low_size
+            blocks.append((part, weight, size))
+            part, weight, size = 0, 1, 0
+    out = part
+    for low, low_weight, _ in reversed(blocks):
+        out = low + low_weight * out
     return out
 
 

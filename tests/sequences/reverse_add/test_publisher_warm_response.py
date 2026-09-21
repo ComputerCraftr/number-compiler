@@ -1,6 +1,5 @@
 """Bounded warm-response evidence for the canonical 196 image runtime."""
 
-from number_compiler.hashlife.observation.tile_projection import LazyProjection
 from number_compiler.sequences.reverse_add.power import ReverseAddPoweredTerm
 
 
@@ -8,27 +7,23 @@ def test_public_196_point_reuses_authenticated_scalar_without_replaying_image() 
     term = ReverseAddPoweredTerm(196, 8)
     position = term.maximum_width // 3
     expected = term.digit(position)
-    index = term._point_index()
-    projection = index._lazy_application
-    assert type(projection) is LazyProjection
-
     before = dict(term._ledger.counters)
     assert term.digit(position) == expected
     after = term._ledger.counters
 
     assert (
-        after.get("point_response_requests", 0)
-        - before.get("point_response_requests", 0)
+        after.get("source_image_projection_requests", 0)
+        - before.get("source_image_projection_requests", 0)
+        == 0
+    )
+    assert (
+        after.get("source_image_projection_hits", 0)
+        - before.get("source_image_projection_hits", 0)
         == 1
     )
     assert (
-        after.get("point_response_cache_hits", 0)
-        - before.get("point_response_cache_hits", 0)
-        == 1
-    )
-    assert (
-        after.get("point_response_evaluations", 0)
-        - before.get("point_response_evaluations", 0)
+        after.get("source_image_projection_evaluations", 0)
+        - before.get("source_image_projection_evaluations", 0)
         == 0
     )
     for counter in (

@@ -108,12 +108,12 @@ class CascadeExplosionBackend:
     def jump_bit(
         self, prefix_index: object, root: FormulaRoot, bit: object
     ) -> FormulaRoot:
+        from devtools.experiments.reverse_add.cascade import (
+            GroupedDependencyCascadeArena,
+        )
         from number_compiler.arithmetic.formula.summary import (
             get_summary,
             register_summary,
-        )
-        from number_compiler.hashlife.execution.cascade import (
-            GroupedDependencyCascadeArena,
         )
 
         c = GroupedDependencyCascadeArena(3)

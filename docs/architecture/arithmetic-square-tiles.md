@@ -58,7 +58,7 @@ The tile does not construct the terminal prime bit. Production classification
 requires the candidate-derived admitted shadow action and a proved recovery
 predicate. The supplied-root primary carry key alone does not provide that
 binding. The missing recovery remains a
-[P0 release blocker](../production-shadow-jet-release-blocker-2026-09-12.md).
+[Fermat/Mersenne release gate](../research/fermat-mersenne.md).
 
 The persistent block's explicit factor is the full boundary polynomial.  It
 must not be passed off as an irreducible étale factor.  When an angular or jet
@@ -66,7 +66,7 @@ consumer is demanded, `angular_view` reprojects the canonical digits into a
 standard factor-free `CyclotomicDigitBlock`; finite-field primary splitting,
 when valid, starts from that observer and is never stored back into the tile.
 
-The [future-consumer audit](../future-consumer-cleanup.md) also requests
+The [shared research synthesis](../research/shared.md) also records
 `step_with_harmonic_consumer` to compile a carry/cyclotomic action from the
 actual transient folded product. `step_with_carry_interval` separately derives
 admitted carry bounds when needed; ordinary steps do not perform that scan.
@@ -79,4 +79,4 @@ The research-only runners are
 [`special_digit_power.py`](../../devtools/proofs/oracles/special_digit_power.py)
 and [`special_classical_ceiling.py`](../../devtools/proofs/oracles/special_classical_ceiling.py).
 The bounded square-only congruence evidence is documented in
-[`square-consumer-congruence.md`](../research/power-numbers/square-consumer-congruence.md).
+the [Fermat/Mersenne research synthesis](../research/fermat-mersenne.md).

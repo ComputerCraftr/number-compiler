@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-from collections.abc import Callable
 from typing import TYPE_CHECKING, Never, TypedDict
 
 import pytest
@@ -67,36 +66,60 @@ def test_compiler_rejected_parent_cannot_publish_new_children() -> None:
     assert not compiler.nodes and not compiler.ids
 
 
-@pytest.mark.parametrize(
-    "factory",
-    (lambda: ReverseAddPoweredTerm(196, 32), lambda: PoweredCollatzTerm(27, 32)),
-)
-def test_identical_warm_point_bypasses_evaluator_and_retains_one_response(
-    factory: Callable[[], ReverseAddPoweredTerm | PoweredCollatzTerm],
+def test_warm_reverse_point_bypasses_projection_and_retains_one_response(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    term = factory()
+    term = ReverseAddPoweredTerm(196, 2)
     expected = term.digit(0)
-    index = term._point_index()
+    workspace = term._source_workspace()
+    core = workspace.scheduler._source_image_core()
+    assert len(core._projections) == 1
     before = dict(term._ledger.counters)
 
     def forbidden(*args: object, **kwargs: object) -> Never:
-        raise AssertionError("warm point replayed the lazy evaluator")
+        raise AssertionError("warm point replayed the source-image projection")
 
-    monkeypatch.setattr(type(index._lazy_application), "point", forbidden)
+    monkeypatch.setattr(type(workspace.adapter), "project", forbidden)
     assert term.digit(0) == expected
     changes = {
         key: value - before.get(key, 0)
         for key, value in term._ledger.counters.items()
         if value != before.get(key, 0)
     }
-    assert changes == {"point_response_requests": 1, "point_response_cache_hits": 1}
-    assert len(index._point_response._value) == 1
-    assert not hasattr(index, "_diamond_runtime")
-    application = index._bounded_application
-    # Tile applications bind a canonical field action directly.
-    assert not hasattr(application, "program")
-    assert index._compiler.resolve(index.program) is index.effect
+    assert changes == {
+        "source_image_seal_validation_visits": 18,
+        "source_image_projection_hits": 1,
+    }
+    assert len(core._projections) == 1
+
+
+def test_warm_collatz_point_bypasses_projection_and_retains_one_response(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    term = PoweredCollatzTerm(27, 32)
+    expected = term.digit(0)
+    workspace = term._source_image()
+    assert len(term._microblocks.blocks) == 1
+    before = dict(term._ledger.counters)
+
+    def forbidden(*args: object, **kwargs: object) -> Never:
+        raise AssertionError("warm point replayed the source-image projection")
+
+    monkeypatch.setattr(PoweredCollatzTerm, "radix_digit", forbidden)
+    assert term.digit(0) == expected
+    changes = {
+        key: value - before.get(key, 0)
+        for key, value in term._ledger.counters.items()
+        if value != before.get(key, 0)
+    }
+    assert changes == {
+        "direct_powered_point_queries": 1,
+        "microblock_requests": 1,
+        "microblock_hits": 1,
+    }
+    assert len(term._microblocks.blocks) == 1
+    view = workspace.scheduler._source_image_core().view(workspace.root_image)
+    assert view.payload == workspace.root_payload
 
 
 def test_response_register_never_becomes_an_output_tape_and_eviction_releases_charge() -> (
@@ -159,27 +182,14 @@ def test_response_budget_rejects_before_evaluation_and_failed_evaluation_release
     assert not register._value
 
 
-@pytest.mark.parametrize(
-    ("factory", "query_reads_source_tree"),
-    (
-        (lambda: ReverseAddPoweredTerm(196, 8)._point_index(), False),
-        (lambda: PoweredCollatzTerm(27, 8)._point_index(), False),
-        (
-            lambda: HashLifeBlockIndex(
-                DigitNormalizeBlockEffect(10),
-                (2, 4, 2),
-                logical_length=8,
-            ),
-            False,
-        ),
-    ),
-)
-def test_projection_families_use_their_registered_source_geometry(
-    factory: Callable[[], HashLifeBlockIndex],
-    query_reads_source_tree: bool,
+def test_explicit_projection_uses_its_registered_source_geometry(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    index = factory()
+    index = HashLifeBlockIndex(
+        DigitNormalizeBlockEffect(10),
+        (2, 4, 2),
+        logical_length=8,
+    )
     reads = []
     original = index._source_geometry.tile_at
 
@@ -189,8 +199,29 @@ def test_projection_families_use_their_registered_source_geometry(
 
     monkeypatch.setattr(index._source_geometry, "tile_at", counted)
     index.direct_powered_point(0)
-    assert bool(reads) is query_reads_source_tree
+    assert not reads
     assert index._ledger.counters.get("source_tile_lookup_requests", 0) >= len(reads)
+
+
+def test_source_image_families_use_their_registered_source_authority() -> None:
+    reverse = ReverseAddPoweredTerm(196, 2)
+    assert reverse.digit(0) == 5
+    reverse_workspace = reverse._source_workspace()
+    reverse_image = reverse_workspace._image
+    assert reverse_image is not None
+    reverse_view = reverse_workspace.scheduler._source_image_core().view(reverse_image)
+    assert reverse_view.binding.source == reverse_workspace.source
+    assert reverse_view.binding.action == reverse_workspace.root_action
+
+    collatz = PoweredCollatzTerm(27, 8)
+    assert collatz.digit(0) == 0
+    collatz_workspace = collatz._source_image()
+    collatz_view = collatz_workspace.scheduler._source_image_core().view(
+        collatz_workspace.root_image
+    )
+    assert collatz_view.binding.source == collatz_workspace.root_source
+    assert collatz_view.binding.action == collatz_workspace.root_action
+    assert collatz_view.payload == collatz_workspace.root_payload
 
 
 def test_boundary_effect_alias_does_not_establish_output_complete_temporal_equivalence() -> (

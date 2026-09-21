@@ -11,13 +11,13 @@ from __future__ import annotations
 from dataclasses import dataclass
 from weakref import ReferenceType, finalize, ref
 
+from devtools.experiments.reverse_add.factored_planes import PlaneAlgebra
 from devtools.proofs.threshold_expressions import (
     DECIMAL_SUM_DOMAINS,
     Expr,
     ThresholdExpressions,
 )
 from number_compiler.arithmetic.automata import program_word as words
-from number_compiler.sequences.reverse_add.factored_planes import PlaneAlgebra
 
 DOMAIN_TABLE = DECIMAL_SUM_DOMAINS
 

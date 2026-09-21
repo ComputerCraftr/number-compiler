@@ -103,6 +103,11 @@ class ResourceLedger:
         """Monotonic retained-store version used by read-only audit caches."""
         return self._mutation_version
 
+    @property
+    def owner_count(self) -> int:
+        """Return the registered-owner count without constructing an inventory."""
+        return len(self._accounts)
+
     def note_store_mutation(self) -> None:
         """Invalidate cached object-graph evidence after an actual store change."""
         self._mutation_version += 1

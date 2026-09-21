@@ -9,35 +9,34 @@ from number_compiler.api import cli
 from number_compiler.api.number_api import NumberCompiler
 from number_compiler.hashlife.execution.source_bound_images import (
     SourceBoundImageAdapter,
-    SourceBoundSchedulerCore,
+    SourceImageCandidate,
+    SourceImageDemand,
     SourceImageID,
+    SourceImageView,
 )
-from number_compiler.sequences.prime.partial_successor_image import (
-    PrimePartialSuccessorAdapter,
-)
+from number_compiler.hashlife.execution.tile_scheduler import TileScheduler
 from number_compiler.sequences.prime.select import PrimePrefixRank
+from number_compiler.sequences.prime.successor_action import (
+    PrimeSuccessorImageAdapter,
+)
 
 
 def test_prime_cli_consumes_shared_source_images(
     monkeypatch: pytest.MonkeyPatch,
     capsys: pytest.CaptureFixture[str],
 ) -> None:
-    original = SourceBoundSchedulerCore.apply
-    families: list[str] = []
+    original = TileScheduler.source_image_demanded
+    demands: list[tuple[str, SourceImageDemand]] = []
     filters: list[int] = []
-    original_filter = PrimePartialSuccessorAdapter.apply_primitive
+    original_filter = PrimeSuccessorImageAdapter.apply_composite
 
     def filtered(
-        self: PrimePartialSuccessorAdapter,
+        self: PrimeSuccessorImageAdapter,
         action: Hashable,
-        source: object,
-    ) -> object:
-        from number_compiler.hashlife.execution.source_bound_images import (
-            SourceImageView,
-        )
-
-        assert isinstance(source, SourceImageView)
-        result = original_filter(self, action, source)
+        source: SourceImageView,
+        demand: SourceImageDemand,
+    ) -> SourceImageCandidate | None:
+        result = original_filter(self, action, source, demand)
         filters.append(self.ledger.counters.get("prime_partial_successor_filters", 0))
         return result
 
@@ -45,18 +44,19 @@ def test_prime_cli_consumes_shared_source_images(
         raise AssertionError("prime CLI delegated to retired rank wrapper")
 
     def traced(
-        self: SourceBoundSchedulerCore,
+        self: TileScheduler,
         adapter: SourceBoundImageAdapter,
         source: Hashable,
         action: Hashable,
+        demand: SourceImageDemand,
     ) -> SourceImageID:
-        result = original(self, adapter, source, action)
-        families.append(adapter.family)
+        result = original(self, adapter, source, action, demand)
+        demands.append((adapter.family, demand))
         return result
 
     NumberCompiler().clear_shared_cache()
-    monkeypatch.setattr(SourceBoundSchedulerCore, "apply", traced)
-    monkeypatch.setattr(PrimePartialSuccessorAdapter, "apply_primitive", filtered)
+    monkeypatch.setattr(TileScheduler, "source_image_demanded", traced)
+    monkeypatch.setattr(PrimeSuccessorImageAdapter, "apply_composite", filtered)
     monkeypatch.setattr(PrimePrefixRank, "count_leq", retired)
     assert (
         cli.main(
@@ -76,15 +76,16 @@ def test_prime_cli_consumes_shared_source_images(
     packet = json.loads(captured.out)
     assert packet["value"] == "547"
     assert captured.err == ""
-    assert families, "prime CLI bypassed the common source-image executor"
-    assert all(family.startswith("prime") for family in families)
+    assert demands, "prime CLI bypassed the common source-image executor"
+    assert all(family.startswith("prime") for family, _demand in demands)
+    assert all(demand.name == "rank-before" for _family, demand in demands)
     assert filters and max(filters) > 0, "CLI never applied the fresh-prime filter"
     metrics = packet["info"]["metrics"]
     assert metrics["prime_scheduler_work"] > 0
     assert metrics["prime_scheduler_peak_entries"] > 0
     counters = metrics["prime_scheduler_counters"]
     assert counters["prime_partial_successor_filters"] == max(filters)
-    assert counters["source_image_primitive_applications"] == max(filters)
+    assert counters["source_image_demanded_composite_applications"] == max(filters)
     assert counters["source_image_seal_creation_visits"] > 0
     assert counters["source_image_seal_validation_visits"] > 0
     assert counters["source_image_workspace_peak"] > 0

@@ -103,7 +103,7 @@ def test_public_collatz_radices_share_the_same_physical_powered_backend() -> Non
 
 
 @pytest.mark.validation
-def test_collatz_temporal_release_probe_reports_available_schema6_execution_as_red(
+def test_collatz_temporal_release_probe_reports_available_schema7_execution_as_red(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     """Run the real multi-size Collatz release benchmark and full report audit."""
@@ -112,7 +112,7 @@ def test_collatz_temporal_release_probe_reports_available_schema6_execution_as_r
     monkeypatch.setattr(probe, "CONSTRUCTION_STEPS", (16, 32))
     monkeypatch.setattr(probe, "PROJECTION_STEPS", (16, 32))
     result = probe.run_probe()
-    assert result["version"] == "0.62.0-schema6-certified-execution"
+    assert result["version"] == "0.62.0-schema7-certified-execution"
     assert result["status"] == "RED"
     assert result["execution_available"] is True
     assert result["execution_status"] == "available"

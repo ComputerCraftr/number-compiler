@@ -4,6 +4,8 @@ import gc
 import weakref
 from dataclasses import dataclass
 
+import pytest
+
 from number_compiler.hashlife.execution.source_image_seals import (
     PublicationSeals,
     publication_matches,
@@ -89,3 +91,35 @@ def test_seal_registry_uses_ledger_created_visible_stores() -> None:
     assert all(row.accounting_delta == 0 for row in rows)
     registry.clear()
     assert all(row.entries == row.nodes == 0 for row in ledger.inventory())
+
+
+def test_root_tuple_anchors_are_charged_even_without_mutable_guards() -> None:
+    ledger = ResourceLedger()
+    registry = PublicationSeals(ledger, "root-anchors")
+    small = publication_seal((1,), ledger)
+    large = publication_seal(tuple(range(4096)), ledger)
+    assert not large.guards
+    assert large.retained_nodes >= small.retained_nodes + 2 * 4095
+    registry.append_image(large)
+    assert sum(row.nodes for row in ledger.inventory()) >= large.retained_nodes
+    assert all(row.accounting_delta == 0 for row in ledger.inventory())
+    registry.clear()
+    assert all(row.nodes == 0 for row in ledger.inventory())
+
+
+def test_tuple_anchor_budget_is_checked_before_allocation(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from number_compiler.arithmetic.contracts.block_effect import (
+        BlockContextBudgetExceeded,
+    )
+    from number_compiler.hashlife.execution import source_image_seals
+
+    def forbidden_anchor(_value: object) -> object:
+        raise AssertionError("anchor allocation preceded budget admission")
+
+    monkeypatch.setattr(source_image_seals, "_root_anchor", forbidden_anchor)
+    ledger = ResourceLedger(max_nodes=20)
+    with pytest.raises(BlockContextBudgetExceeded):
+        publication_seal(tuple(range(4096)), ledger)
+    assert ledger.nodes == 0

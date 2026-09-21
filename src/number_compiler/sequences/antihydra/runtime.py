@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+from typing import TYPE_CHECKING
 
 from number_compiler.arithmetic.contracts.input_validation import require_integer
 from number_compiler.resources.ledger import OwnedMemo, ResourceLedger
@@ -10,7 +11,6 @@ from number_compiler.resources.stores import LedgerList
 from number_compiler.sequences.antihydra.blocks import (
     ArithmeticCylinder,
     Cylinder,
-    admitted_arithmetic_cylinder,
     arithmetic_from_word,
     arithmetic_kernel,
     kernel,
@@ -26,6 +26,12 @@ from number_compiler.sequences.antihydra.projection_workspace import (
 )
 
 _SOURCE = object()
+
+if TYPE_CHECKING:
+    from number_compiler.sequences.antihydra.arithmetic_images import (
+        AntihydraArithmeticImageWorkspace,
+    )
+    from number_compiler.sequences.antihydra.mahler_action import MahlerWorkspace
 
 
 @dataclass(frozen=True, slots=True, init=False)
@@ -141,6 +147,11 @@ class ArithmeticResult:
         return self.requested
 
     @property
+    def odd_events(self) -> int:
+        """Centered odd steps in the total arithmetic image."""
+        return (self.returns + self.balance) // 3
+
+    @property
     def source_binding(self) -> str:
         return f"{MACHINE_SHA256}:blank:arithmetic:{self.requested}"
 
@@ -154,6 +165,25 @@ class ArithmeticResult:
         ):
             raise ValueError("unbound Antihydra arithmetic result")
         self._term._validate_result(self)
+
+
+def authenticated_arithmetic_result(
+    result: Run | ArithmeticResult,
+) -> ArithmeticResult:
+    """Return the exact total arithmetic owner behind a public source result."""
+    if type(result) is ArithmeticResult:
+        result.require_source()
+        return result
+    if type(result) is Run:
+        result.require_source()
+        if result.halted:
+            raise ValueError("halted source has no returning Mahler seam")
+        arithmetic = result._term._result
+        if type(arithmetic) is not ArithmeticResult:
+            raise ValueError("unbound Antihydra arithmetic result")
+        arithmetic.require_source()
+        return arithmetic
+    raise TypeError("Mahler observations require an Antihydra source result")
 
 
 class AntihydraArithmeticTerm:
@@ -215,6 +245,8 @@ class AntihydraArithmeticTerm:
             node_count=lambda: 2 * len(self.physical_publications),
         )
         self._result: ArithmeticResult | None = None
+        self.arithmetic_workspace: AntihydraArithmeticImageWorkspace | None = None
+        self.mahler_workspace: MahlerWorkspace | None = None
         self.ledger.register_execution_root(self)
 
     @property
@@ -225,32 +257,6 @@ class AntihydraArithmeticTerm:
             raise ValueError("multiple Antihydra physical publications")
         return self.physical_publications[0].run
 
-    def _first_failure(
-        self, block: ArithmeticCylinder, h: int, balance: int, start: int
-    ) -> int:
-        if balance + block.minimum >= 0:
-            raise ValueError("safe cylinder has no first failure")
-        while block.width > 1:
-            first_width = 1 << ((block.width - 1).bit_length() - 1)
-            first = arithmetic_from_word(
-                h % (1 << first_width),
-                first_width,
-                block.parity_word & ((1 << first_width) - 1),
-            )
-            self.engine.count("first_failure_descents")
-            if balance + first.minimum < 0:
-                block = first
-                continue
-            h, balance = first.advance(h, balance)
-            start += first_width
-            last_width = block.width - first_width
-            block = arithmetic_from_word(
-                h % (1 << last_width),
-                last_width,
-                block.parity_word >> first_width,
-            )
-        return start
-
     def result(self) -> ArithmeticResult:
         if self._result is not None:
             self._result.require_source()
@@ -258,36 +264,44 @@ class AntihydraArithmeticTerm:
             return self._result
         if self.segments:
             raise ValueError("partial Antihydra arithmetic publication")
-        h = 8
-        balance = minimum = 0
-        first_failure: int | None = None
-        completed = 0
+        from number_compiler.sequences.antihydra.arithmetic_images import (
+            AntihydraArithmeticImageWorkspace,
+        )
+
         try:
-            while completed < self.requested:
-                width = min(64, self.requested - completed)
-                block = self.engine.arithmetic_cylinder(h % (1 << width), width)
-                self.ledger.reserve(self.segment_owner, entries=1, nodes=1)
-                self.segments.append(ArithmeticSegment(completed, block))
-                if first_failure is None and balance + block.minimum < 0:
-                    first_failure = self._first_failure(block, h, balance, completed)
-                old_balance = balance
-                h, balance = block.advance(h, balance)
-                minimum = min(minimum, old_balance + block.minimum)
-                completed += width
-                self.engine.count("arithmetic_block_applications")
-                self.engine.count("arithmetic_returns", width)
-                self.engine.count(
-                    "arithmetic_operand_bits", h.bit_length() + balance.bit_length()
+            workspace = self.arithmetic_workspace
+            if workspace is None:
+                workspace = AntihydraArithmeticImageWorkspace(
+                    self.ledger, self.requested
                 )
-                if (
-                    h.bit_length() > self.max_state_bits
-                    or balance.bit_length() > self.max_state_bits
-                ):
-                    raise ValueError("Antihydra arithmetic state exceeds bit budget")
+                self.arithmetic_workspace = workspace
+            summary = workspace.summary()
+            h = workspace.endpoint()
+            balance = summary.delta
+            minimum = summary.minimum
+            first_failure = workspace.first_failure_index()
+            for start, block in workspace.segments():
+                self.ledger.reserve(self.segment_owner, entries=1, nodes=1)
+                self.segments.append(ArithmeticSegment(start, block))
+            self.engine.count("arithmetic_block_applications", len(self.segments))
+            self.engine.count("arithmetic_returns", self.requested)
+            self.engine.count(
+                "arithmetic_endpoint_operand_bits",
+                h.bit_length() + balance.bit_length(),
+            )
+            if (
+                h.bit_length() > self.max_state_bits
+                or balance.bit_length() > self.max_state_bits
+            ):
+                raise ValueError("Antihydra arithmetic state exceeds bit budget")
         except BaseException:
             retained = len(self.segments)
             self.segments.clear()
             self.ledger.release(self.segment_owner, entries=retained, nodes=retained)
+            workspace = self.arithmetic_workspace
+            if workspace is not None:
+                workspace.dispose()
+                self.arithmetic_workspace = None
             self.engine.count("arithmetic_publication_rollbacks")
             raise
         result = object.__new__(ArithmeticResult)
@@ -308,9 +322,17 @@ class AntihydraArithmeticTerm:
         return result
 
     def _validate_result(self, result: ArithmeticResult) -> None:
-        h, balance, minimum, completed = 8, 0, 0, 0
-        first_failure: int | None = None
-        for segment in self.segments:
+        workspace = self.arithmetic_workspace
+        if workspace is None:
+            raise ValueError("retained Antihydra arithmetic support was changed")
+        workspace.validate()
+        summary = workspace.summary()
+        expected = tuple(workspace.segments())
+        if len(expected) != len(self.segments):
+            raise ValueError("retained Antihydra arithmetic support was changed")
+        for segment, (start, expected_block) in zip(
+            self.segments, expected, strict=True
+        ):
             if type(segment) is not ArithmeticSegment or type(segment.start) is not int:
                 raise ValueError("retained Antihydra arithmetic support was changed")
             block = segment.cylinder
@@ -322,28 +344,16 @@ class AntihydraArithmeticTerm:
                 raise ValueError(
                     "retained Antihydra arithmetic support was changed"
                 ) from error
-            canonical = admitted_arithmetic_cylinder(block.residue, block.width)
-            self.engine.count("arithmetic_result_validation_branch_steps", block.width)
-            if canonical != block:
+            if block != expected_block or segment.start != start:
                 raise ValueError("retained Antihydra arithmetic support was changed")
-            if segment.start != completed or block.residue != h % (1 << block.width):
-                raise ValueError("retained Antihydra arithmetic support was changed")
-            if first_failure is None and balance + block.minimum < 0:
-                first_failure = self._first_failure(block, h, balance, completed)
-            old_balance = balance
-            h, balance = block.advance(h, balance)
-            minimum = min(minimum, old_balance + block.minimum)
-            completed += block.width
             self.engine.count("arithmetic_result_validation_blocks")
-            self.engine.count(
-                "arithmetic_result_validation_operand_bits",
-                h.bit_length() + balance.bit_length(),
-            )
+        h = workspace.endpoint()
+        first_failure = workspace.first_failure_index()
         if (
-            completed != self.requested
+            summary.width != self.requested
             or result.requested != self.requested
             or (result.h, result.balance, result.minimum, result.first_failure_index)
-            != (h, balance, minimum, first_failure)
+            != (h, summary.delta, summary.minimum, first_failure)
         ):
             raise ValueError("Antihydra arithmetic result was changed")
 

@@ -2,14 +2,8 @@ from __future__ import annotations
 
 import hashlib
 import json
-import struct
-import sys
-import zlib
 from array import array
 from dataclasses import dataclass
-from functools import lru_cache
-from importlib.resources import files
-from pathlib import Path
 
 from number_compiler.arithmetic.carry.carry_monoid import (
     CarryFn,
@@ -540,59 +534,6 @@ class FiniteBlockEffect:
             "leaf_effect_output_cache_entries": 0,
             "leaf_effect_cache_entries": 0,
         }
-
-
-_BASE10_T2_SHA256 = "35276802973d716c642cb1e78dfa7ee395ba60798bc3014cfc57da10e1927e61"
-_BASE10_T2_HEADER = struct.Struct("<6sBBHHHH")
-
-
-@lru_cache(maxsize=1)
-def _load_base10_t2_kernel() -> FiniteBlockEffect:
-    path = Path(str(files("number_compiler"))) / "kernels" / "base10_t2_kernel.zlib"
-    packed = path.read_bytes()
-    digest = hashlib.sha256(packed).hexdigest()
-    if digest != _BASE10_T2_SHA256:
-        raise RuntimeError(f"base-10 T^2 block-effect kernel digest mismatch: {digest}")
-    raw = zlib.decompress(packed)
-    header_size = _BASE10_T2_HEADER.size
-    magic, base, alphabet, left_count, right_count, initial_left, initial_right = (
-        _BASE10_T2_HEADER.unpack_from(raw, 0)
-    )
-    if magic != b"RAT2K1" or base != 10 or alphabet != 20:
-        raise RuntimeError("invalid base-10 T^2 block-effect kernel header")
-    offset = header_size
-    left_items = left_count * alphabet
-    right_items = right_count * alphabet
-    left_bytes = 2 * left_items
-    right_bytes = 2 * right_items
-    left_transitions = array("H")
-    left_transitions.frombytes(raw[offset : offset + left_bytes])
-    offset += left_bytes
-    right_transitions = array("H")
-    right_transitions.frombytes(raw[offset : offset + right_bytes])
-    offset += right_bytes
-    if sys.byteorder != "little":
-        left_transitions.byteswap()
-        right_transitions.byteswap()
-    outputs = bytes(raw[offset:])
-    return FiniteBlockEffect(
-        base=base,
-        exponent=2,
-        left_count=left_count,
-        right_count=right_count,
-        alphabet_size=alphabet,
-        initial_left=initial_left,
-        initial_right=initial_right,
-        left_transitions=left_transitions,
-        right_transitions=right_transitions,
-        outputs=outputs,
-        kernel_name="base10_t2_minimized_757x179",
-        storage_bytes=len(packed),
-        uncompressed_bytes=len(raw),
-        blank_left_tail=2,
-        blank_right_tail=1,
-        stable_blank_output=True,
-    )
 
 
 __all__ = ["BaseBlockEffect", "FiniteBlockEffect"]

@@ -65,6 +65,22 @@ def local_divide2_even_radix(
     remainder scan; the MSD-to-LSD remainder is simply the parity of the next
     more-significant digit.
     """
+    quotient = local_half_even_radix(arena, root, spec)
+    remainder = closed_digit_at(arena, root, 0) & 1
+    return quotient, remainder
+
+
+def local_half_even_radix(
+    arena: FormulaArena,
+    root: FormulaRoot,
+    spec: DigitSpec,
+) -> FormulaRoot:
+    """Construct floor(n/2) without requesting its independent remainder.
+
+    This uses the same adjacent-digit formula for odd and even inputs.
+    Consumers that already know divisibility need only this quotient; the
+    public divide/remainder operation above still computes both outputs.
+    """
     if spec.base % 2:
         raise ValueError("local divide-by-two requires an even radix")
     if root.plane_count != spec.plane_count:
@@ -80,9 +96,7 @@ def local_divide2_even_radix(
         out_masks[lo].append(arena.and_(masks[d], higher_even))
         out_masks[lo + half].append(arena.and_(masks[d], higher_odd))
     values = tuple(arena.or_many(group, root.width) for group in out_masks)
-    quotient = trim_closed_root(arena, digit_root_from_value_masks(arena, values, spec))
-    remainder = closed_digit_at(arena, root, 0) & 1
-    return quotient, remainder
+    return trim_closed_root(arena, digit_root_from_value_masks(arena, values, spec))
 
 
 def local_multiply3_add1_radix_multiple3(
@@ -195,6 +209,7 @@ __all__ = [
     "collatz_successor_formula_local_composite_radix",
     "collatz_successor_formula_ternary",
     "local_divide2_even_radix",
+    "local_half_even_radix",
     "local_multiply3_add1_radix_multiple3",
     "ternary_multiply3_add1",
 ]

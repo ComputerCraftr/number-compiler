@@ -15,7 +15,6 @@ from __future__ import annotations
 
 from collections.abc import Generator
 from dataclasses import dataclass
-from hashlib import sha256
 from typing import TYPE_CHECKING
 
 from number_compiler.arithmetic.automata.primitive_semantics import (
@@ -315,9 +314,7 @@ class PrimitiveMacroArena:
             else:
                 channels, extent = self._parent(laws, node.width, *children)
             behavior = (CONTRACT, _effect_key(primitive.effect), node.width)
-            identity = SemanticIdentity(
-                sha256(repr(behavior).encode()).hexdigest(), behavior
-            )
+            identity = SemanticIdentity("primitive-macro", behavior)
             outputs = tuple(
                 self.bits.resolve(channel).signature.output for channel in channels
             )

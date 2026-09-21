@@ -5,6 +5,7 @@ from typing import cast
 
 import pytest
 
+import number_compiler.sequences.prime.select as prime_select
 from number_compiler.resources.process_cache import (
     ProcessCache,
     clear_process_cache,
@@ -19,6 +20,10 @@ from number_compiler.sequences.prime.select import (
 
 def reference_primes(high: int) -> list[int]:
     return [n for n in range(2, high + 1) if all(n % d for d in range(2, isqrt(n) + 1))]
+
+
+def factor_snapshot(owner: PrimePrefixRank) -> tuple[int, ...]:
+    return owner.dag.primes
 
 
 def test_counts_include_square_boundary_and_extend_past_eleven_stages() -> None:
@@ -302,3 +307,213 @@ def test_shared_phi_roots_bind_the_complete_factor_descriptor() -> None:
             assert second.shared_hits == 0
         finally:
             second.close()
+
+
+def test_failed_cover_cannot_publish_until_successful_retry(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    clear_process_cache()
+    owner = PrimePrefixRank(
+        max_states=10_000,
+        max_work=100_000,
+        max_stages=100,
+        shared_cache=True,
+    )
+    original_count = owner.dag.count
+
+    def exhaust_work_after_first_append(limit: int, depth: int | None = None) -> int:
+        if owner.dag.factor_count > 1:
+            owner.dag.max_work = owner.dag.work
+        return original_count(limit, depth)
+
+    try:
+        monkeypatch.setattr(owner.dag, "count", exhaust_work_after_first_append)
+        with pytest.raises(ValueError, match="prime work budget"):
+            owner.cover(25)
+        assert factor_snapshot(owner) == (2, 3)
+        with pytest.raises(RuntimeError, match="coverage is incomplete"):
+            owner.publish()
+
+        monkeypatch.setattr(owner.dag, "count", original_count)
+        owner.dag.max_work = 100_000
+        owner.cover(25)
+        assert owner.covered_root == 5
+        assert factor_snapshot(owner) == (2, 3, 5)
+        owner.publish()
+    finally:
+        owner.close()
+
+    recovered = PrimePrefixRank(
+        max_states=10_000,
+        max_work=100_000,
+        max_stages=100,
+        shared_cache=True,
+    )
+    try:
+        recovered.cover(25)
+        assert factor_snapshot(recovered) == (2, 3, 5)
+        assert recovered.discovery_queries == 0
+    finally:
+        recovered.close()
+        clear_process_cache()
+
+
+def test_cached_prefix_admission_charges_each_new_entry_once() -> None:
+    clear_process_cache()
+    publisher = PrimePrefixRank(
+        max_states=10_000,
+        max_work=100_000,
+        max_stages=100,
+        shared_cache=True,
+    )
+    try:
+        publisher.cover(400)
+        publisher.publish()
+    finally:
+        publisher.close()
+
+    owner = PrimePrefixRank(
+        max_states=10_000,
+        max_work=100_000,
+        max_stages=100,
+        shared_cache=True,
+    )
+    try:
+        before = owner.admission_work
+        owner.cover(25)
+        assert factor_snapshot(owner) == (2, 3, 5)
+        assert owner.admission_work - before == 5
+
+        before = owner.admission_work
+        owner.cover(49)
+        assert factor_snapshot(owner) == (2, 3, 5, 7)
+        assert owner.admission_work - before == 2
+
+        before = owner.admission_work
+        owner.cover(121)
+        assert factor_snapshot(owner) == (2, 3, 5, 7, 11)
+        assert owner.admission_work - before == 2
+
+        admission_before = owner.admission_work
+        work_before = owner.dag.work
+        bit_work_before = owner.dag.arithmetic_bit_work
+        owner.cover(49)
+        assert owner.admission_work == admission_before
+        assert owner.dag.work - work_before == 1
+        assert owner.dag.arithmetic_bit_work - bit_work_before == (49).bit_length()
+        assert owner.discovery_queries == 0
+    finally:
+        owner.close()
+        clear_process_cache()
+
+
+def test_cover_commits_do_not_snapshot_the_full_factor_prefix(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    clear_process_cache()
+    owner = PrimePrefixRank(
+        max_states=10_000,
+        max_work=100_000,
+        max_stages=100,
+        shared_cache=True,
+    )
+    primes_property = CoprimeRankDAG.primes
+
+    def reject_snapshot(_owner: CoprimeRankDAG) -> tuple[int, ...]:
+        raise AssertionError("coverage commit copied the full prime prefix")
+
+    try:
+        monkeypatch.setattr(CoprimeRankDAG, "primes", property(reject_snapshot))
+        owner.cover(25)
+        owner.cover(49)
+        assert owner.dag.factor_count == 4
+        assert owner.dag.last_factor == 7
+
+        monkeypatch.setattr(CoprimeRankDAG, "primes", primes_property)
+        owner.publish()
+        assert owner.shared_metrics()[-1] == 1
+    finally:
+        owner.close()
+        clear_process_cache()
+
+
+def test_publish_rejects_a_foreign_factor_store_with_matching_markers() -> None:
+    owner = PrimePrefixRank(max_states=10_000, max_work=100_000, max_stages=100)
+    foreign = CoprimeRankDAG((2, 3, 5), max_states=10_000, max_work=100_000)
+    original_store = owner.dag._factor_store_authority
+    try:
+        owner.cover(25)
+        assert owner.dag.factor_count == foreign.factor_count
+        assert owner.dag.last_factor == foreign.last_factor
+        object.__setattr__(owner.dag, "_primes", foreign._factor_store_authority)
+        with pytest.raises(RuntimeError, match="coverage is incomplete"):
+            owner.publish()
+    finally:
+        object.__setattr__(owner.dag, "_primes", original_store)
+        owner.close()
+        foreign.close()
+
+
+@pytest.mark.parametrize("forged_root", [3, 2.0])
+def test_cover_and_publish_reject_a_mutated_covered_root_without_snapshot(
+    monkeypatch: pytest.MonkeyPatch,
+    forged_root: object,
+) -> None:
+    clear_process_cache()
+    owner = PrimePrefixRank(
+        max_states=10_000,
+        max_work=100_000,
+        max_stages=100,
+        shared_cache=True,
+    )
+    primes_property = CoprimeRankDAG.primes
+
+    def reject_snapshot(_owner: CoprimeRankDAG) -> tuple[int, ...]:
+        raise AssertionError("invalid coverage attempted a factor snapshot")
+
+    try:
+        monkeypatch.setattr(CoprimeRankDAG, "primes", property(reject_snapshot))
+        object.__setattr__(owner, "covered_root", forged_root)
+        with pytest.raises(RuntimeError, match="coverage is incomplete"):
+            owner.cover(4)
+        with pytest.raises(RuntimeError, match="coverage is incomplete"):
+            owner.publish()
+        assert owner.shared_metrics()[-1] == 0
+    finally:
+        monkeypatch.setattr(CoprimeRankDAG, "primes", primes_property)
+        owner.close()
+        clear_process_cache()
+
+
+def test_cached_prefix_cursor_rejects_a_newly_reached_forged_entry(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    clear_process_cache()
+    source = ("test-positive-integers", "test-consecutive-prefix", b"issuer")
+    monkeypatch.setattr(prime_select, "_PRIME_CACHE_SOURCE", source)
+    cache = get_process_cache()
+    with cache.acquire(
+        "prime.coprime-rank",
+        "positive-integers-least-survivor-v1",
+        source,
+    ) as lease:
+        assert lease.put(("admitted-prefix",), (19, (2, 3, 5, 4, 19), 0))
+
+    owner = PrimePrefixRank(
+        max_states=10_000,
+        max_work=100_000,
+        max_stages=100,
+        shared_cache=True,
+    )
+    try:
+        owner.cover(9)
+        assert owner.dag.primes == (2, 3)
+        before = owner.admission_work
+        with pytest.raises(RuntimeError, match="invalid shared prime prefix"):
+            owner.cover(25)
+        assert owner.admission_work == before + 1
+        with pytest.raises(RuntimeError, match="coverage is incomplete"):
+            owner.publish()
+    finally:
+        owner.close()
+        clear_process_cache()

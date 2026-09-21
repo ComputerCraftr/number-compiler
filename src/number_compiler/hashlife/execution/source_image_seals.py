@@ -4,13 +4,13 @@ from __future__ import annotations
 
 from collections.abc import Hashable
 from dataclasses import fields, is_dataclass
-from typing import NamedTuple, cast
+from typing import Self, cast
 
 from number_compiler.arithmetic.contracts.scoped_handles import ArenaHandle
 from number_compiler.resources.ledger import ResourceLedger
 from number_compiler.resources.stores import LedgerDict, LedgerList
 
-_FieldAnchor = tuple[str, object, object | None]
+_FieldAnchor = tuple[type[object], object | None]
 _Guard = tuple[object, type[object], tuple[str, ...], tuple[_FieldAnchor, ...]]
 
 
@@ -19,18 +19,17 @@ def _primitive(value: object) -> bool:
 
 
 def _anchor(value: object) -> _FieldAnchor:
-    if _primitive(value):
-        return ("value", type(value), value)
     # Retaining the object prevents Python from recycling its identity after a
-    # reflected field replacement. Validation compares this slot with ``is``.
-    return ("identity", type(value), value)
+    # reflected field replacement. The exact type already determines whether
+    # this is a primitive value comparison or an identity comparison.
+    return (type(value), value)
 
 
 def _anchor_matches(value: object, expected: _FieldAnchor) -> bool:
-    kind, expected_type, expected_value = expected
+    expected_type, expected_value = expected
     if type(value) is not expected_type:
         return False
-    return value == expected_value if kind == "value" else value is expected_value
+    return value == expected_value if _primitive(value) else value is expected_value
 
 
 def _root_anchor(value: object) -> object:
@@ -70,12 +69,29 @@ def _root_matches(value: object, expected: object) -> bool:
     )
 
 
-class PublicationSeal(NamedTuple):
+class PublicationSeal(tuple[object, tuple[_Guard, ...], int]):
     """Exact process-local anchors for one immutable publication graph."""
 
-    root: object
-    guards: tuple[_Guard, ...]
-    retained_nodes: int
+    __slots__ = ()
+
+    def __new__(
+        cls, root: object, guards: tuple[_Guard, ...], retained_nodes: int
+    ) -> Self:
+        # Keep tuple immutability without NamedTuple's mutable class-level
+        # defaults dictionary entering every retained execution graph.
+        return tuple.__new__(cls, (root, guards, retained_nodes))
+
+    @property
+    def root(self) -> object:
+        return self[0]
+
+    @property
+    def guards(self) -> tuple[_Guard, ...]:
+        return self[1]
+
+    @property
+    def retained_nodes(self) -> int:
+        return self[2]
 
 
 class PublicationSeals:
@@ -167,6 +183,9 @@ def publication_seal(value: object, ledger: ResourceLedger) -> PublicationSeal:
     dataclass or arena handle retains an independent shallow field snapshot. Warm
     validation visits guarded objects instead of flattening large primitive tuples.
     """
+    root_nodes = 3 + (1 + 2 * len(value) if type(value) is tuple else 0)
+    retained_nodes = 4 + root_nodes
+    ledger.check_capacity(nodes=retained_nodes)
     pending: list[tuple[object, bool]] = [(value, False)]
     active: set[int] = set()
     finished: set[int] = set()
@@ -195,6 +214,8 @@ def publication_seal(value: object, ledger: ResourceLedger) -> PublicationSeal:
                 continue
             children: tuple[object, ...]
             if isinstance(current, ArenaHandle):
+                retained_nodes += 14
+                ledger.check_capacity(nodes=retained_nodes)
                 guards.append(
                     (
                         current,
@@ -214,6 +235,8 @@ def publication_seal(value: object, ledger: ResourceLedger) -> PublicationSeal:
             elif is_dataclass(current) and not isinstance(current, type):
                 names = tuple(item.name for item in fields(current))
                 children = tuple(getattr(current, name) for name in names)
+                retained_nodes += 5 + 3 * len(names)
+                ledger.check_capacity(nodes=retained_nodes)
                 guards.append(
                     (
                         current,
@@ -224,11 +247,11 @@ def publication_seal(value: object, ledger: ResourceLedger) -> PublicationSeal:
                 )
             else:
                 raise TypeError("publication contains an unsupported value")
+            ledger.check_capacity(nodes=retained_nodes + len(pending) + len(children))
             active.add(identity)
             pending.append((current, True))
             pending.extend((child, False) for child in reversed(children))
             consumed += 8 + 8 * len(children)
-        retained_nodes = 3 + 3 * len(guards)
         return PublicationSeal(_root_anchor(value), tuple(guards), retained_nodes)
     finally:
         ledger.bump("source_image_seal_creation_visits", visits)
@@ -238,10 +261,7 @@ def publication_seal(value: object, ledger: ResourceLedger) -> PublicationSeal:
         ledger.bump("source_image_seal_bytes", consumed)
 
 
-def publication_matches(
-    value: object, seal: PublicationSeal, ledger: ResourceLedger
-) -> bool:
-    """Validate exact root and field anchors in O(number of guarded objects)."""
+def _publication_matches(value: object, seal: PublicationSeal) -> tuple[bool, int]:
     visits = 1
     valid = type(seal) is PublicationSeal and _root_matches(value, seal.root)
     if valid:
@@ -259,8 +279,26 @@ def publication_matches(
             ):
                 valid = False
                 break
+    return valid, visits
+
+
+def publication_matches(
+    value: object, seal: PublicationSeal, ledger: ResourceLedger
+) -> bool:
+    """Validate exact root and field anchors and charge the runtime visit."""
+    valid, visits = _publication_matches(value, seal)
     ledger.bump("source_image_seal_validation_visits", visits)
     return valid
 
 
-__all__ = ["PublicationSeal", "publication_matches", "publication_seal"]
+def publication_matches_readonly(value: object, seal: PublicationSeal) -> bool:
+    """Validate the same independent anchors without changing runtime metrics."""
+    return _publication_matches(value, seal)[0]
+
+
+__all__ = [
+    "PublicationSeal",
+    "publication_matches",
+    "publication_matches_readonly",
+    "publication_seal",
+]

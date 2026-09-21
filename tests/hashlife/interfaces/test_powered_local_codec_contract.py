@@ -5,15 +5,15 @@ from typing import cast
 
 import pytest
 
+from devtools.experiments.reverse_add.powered_local_codec import (
+    PoweredLocalCodec,
+    PoweredLocalEffect,
+)
 from number_compiler.arithmetic.contracts.scoped_handles import (
     ArenaToken,
     TransferSummaryID,
 )
 from number_compiler.hashlife.actions.field_actions import CoordinateOutputMorphismID
-from number_compiler.hashlife.execution.powered_local_codec import (
-    PoweredLocalCodec,
-    PoweredLocalEffect,
-)
 from number_compiler.hashlife.interfaces.diamond_quotient import LocalInterfaceID
 
 

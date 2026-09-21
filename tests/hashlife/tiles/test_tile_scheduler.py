@@ -387,6 +387,17 @@ def _runtime() -> _Runtime:
     )
 
 
+def test_physical_constructor_installs_deferred_scheduler_dependencies() -> None:
+    runtime = _runtime()
+    try:
+        assert type(runtime.scheduler.tiles) is TileArena
+        assert type(runtime.scheduler.results) is CompletedResultArena
+        assert type(runtime.scheduler) is TileScheduler
+        assert not runtime.scheduler._source_only
+    finally:
+        runtime.close()
+
+
 def _symbols(runtime: _Runtime, tile: TileID) -> tuple[int, ...]:
     width = runtime.tiles.resolve(tile).width
     return tuple(runtime.tiles.point(tile, coordinate) for coordinate in range(width))

@@ -21,6 +21,9 @@ from number_compiler.sequences.antihydra.projection_core import (
     AntihydraFragmentID,
     AntihydraProjectionDriver,
 )
+from number_compiler.sequences.antihydra.projection_occurrences import (
+    ProjectionOccurrenceCursor,
+)
 from number_compiler.sequences.antihydra.runtime import CylinderEngine, run
 
 
@@ -75,6 +78,12 @@ def test_image_period_reduction_preserves_all_typed_ports(
 
 def test_cached_images_are_exact_and_released_after_demand() -> None:
     cached, uncached = run(512), run(512)
+    primitive_before = cached.ledger.counters.get(
+        "source_image_primitive_applications", 0
+    )
+    compositions_before = cached.ledger.counters.get(
+        "source_image_chronological_compositions", 0
+    )
     baseline = SpaceTimeProjection(
         uncached, 2, 2, -1, 1, 3, 1000000, cache_entries=0
     ).evaluate()
@@ -84,11 +93,24 @@ def test_cached_images_are_exact_and_released_after_demand() -> None:
     }
     assert cached.ledger.counters["spacetime_projection_fragment_publications"] == 8
     assert cached.ledger.counters["spacetime_projection_fragment_evaluations"] == 8
-    assert cached.ledger.counters["source_image_primitive_applications"] == 64
-    assert cached.ledger.counters["source_image_chronological_compositions"] == 56
+    assert (
+        cached.ledger.counters["source_image_primitive_applications"] - primitive_before
+        == 64
+    )
+    assert (
+        cached.ledger.counters["source_image_chronological_compositions"]
+        - compositions_before
+        == 56
+    )
     assert cached.ledger.counters.get("observer_macro_discovery_steps", 0) == 0
     assert cached.ledger.counters.get("observer_retained_support_steps", 0) == 0
-    assert cached.ledger.counters["spacetime_projection_fragment_leaf_returns"] == 512
+    assert (
+        cached.ledger.counters["antihydra_projection_block_image_discovery_steps"]
+        == 512
+    )
+    assert (
+        cached.ledger.counters.get("spacetime_projection_fragment_leaf_returns", 0) == 0
+    )
     assert cached.ledger.counters["spacetime_projection_fragment_translations"] == 8
     leaf_rows = [
         row
@@ -118,13 +140,32 @@ def test_cached_images_are_exact_and_released_after_demand() -> None:
         == 8
     )
     assert (
-        after["spacetime_projection_fragment_leaf_returns"]
-        == before["spacetime_projection_fragment_leaf_returns"]
+        after["antihydra_projection_block_image_discovery_steps"]
+        == before["antihydra_projection_block_image_discovery_steps"]
     )
     assert (
         after["source_image_primitive_applications"]
         == before["source_image_primitive_applications"]
     )
+
+
+def test_fragment_eviction_keeps_only_detached_projection_ownership() -> None:
+    result = run(128)
+    first_query = SpaceTimeProjection(result, 2, 2, -1, 1, 3, 1000000, cache_entries=1)
+    expected = first_query.evaluate()
+    cache = result._engine.projection_fragments
+    first_keys = tuple(cache.fragments)
+    assert len(first_keys) == 1
+
+    SpaceTimeProjection(result, 2, 2, 1, -1, 5, 1000000, cache_entries=1).evaluate()
+    assert len(cache.fragments) == 1
+    assert tuple(cache.fragments) != first_keys
+    assert result.ledger.counters["spacetime_projection_fragment_evictions"] > 0
+
+    assert first_query.evaluate() == expected
+    assert audit_registered_payloads(result.ledger).forbidden_future_payloads == 0
+    assert result.ledger.max_nodes is not None
+    assert result.ledger.peak_nodes <= result.ledger.max_nodes
 
 
 def test_equal_translated_section_images_are_combined_in_the_coefficient_ring() -> None:
@@ -194,15 +235,14 @@ def test_shared_audit_rejects_wrong_key_and_live_unaccounted_stack() -> None:
 
 def test_audit_recomputation_work_is_visible() -> None:
     result = run(64)
+    before = result.ledger.counters.get("dyadic_payload_audit_branch_steps", 0)
     audit = audit_registered_payloads(result.ledger)
     assert (
         audit.forbidden_future_payloads,
         audit.unbounded_future_integers,
         audit.unknown_payloads,
     ) == (0, 0, 0)
-    assert (
-        result.ledger.counters["antihydra_payload_audit_arithmetic_branch_steps"] == 320
-    )
+    assert result.ledger.counters["dyadic_payload_audit_branch_steps"] - before == 64
     assert result.ledger.counters["antihydra_payload_audit_physical_steps"] == 64
 
 
@@ -447,20 +487,23 @@ def test_fragment_payload_authority_rotates_between_builds() -> None:
 
     result = run(8)
     projection = SpaceTimeProjection(result, 2, 2, -1, 1, 3, 1_000_000)
-    segment = result._term.segments[0]
-    key = projection._fragment_key(segment.cylinder, 0, 1, 11)
     adapter = _AntihydraFragmentAdapter(result.ledger)
-    adapter.configure(projection, key, segment.cylinder, 8, 0, 0)
+    cursor = ProjectionOccurrenceCursor(result.ledger)
+    cursor.begin(projection)
+    occurrence = cursor.next()
+    assert occurrence is not None
+    adapter.configure(cursor, occurrence, 0)
     stale = adapter.admit_source(adapter.source()).payload
     assert type(stale) is AntihydraFragmentID
     adapter.clear_context()
-    adapter.configure(projection, key, segment.cylinder, 8, 0, 0)
+    adapter.configure(cursor, occurrence, 0)
     adapter.admit_source(adapter.source())
     try:
         with pytest.raises(ValueError, match="different arena"):
             adapter.resolve(stale)
     finally:
         adapter.clear_context()
+        cursor.clear()
 
 
 def test_fragment_prefix_seal_rejects_in_place_field_change() -> None:
@@ -472,11 +515,13 @@ def test_fragment_prefix_seal_rejects_in_place_field_change() -> None:
 
     result = run(8)
     projection = SpaceTimeProjection(result, 2, 2, -1, 1, 3, 1_000_000)
-    segment = result._term.segments[0]
-    key = projection._fragment_key(segment.cylinder, 0, 1, 11)
     adapter = _AntihydraFragmentAdapter(result.ledger)
     core = SourceBoundSchedulerCore(result.ledger)
-    adapter.configure(projection, key, segment.cylinder, 8, 0, 0)
+    cursor = ProjectionOccurrenceCursor(result.ledger)
+    cursor.begin(projection)
+    occurrence = cursor.next()
+    assert occurrence is not None
+    adapter.configure(cursor, occurrence, 0)
     core.register(adapter)
     image = core.apply(adapter, adapter.source(), AntihydraFragmentAction(0, 8))
     handle = core.view(image).payload
@@ -492,3 +537,4 @@ def test_fragment_prefix_seal_rejects_in_place_field_change() -> None:
         object.__setattr__(record.prefix, "output", original)
         core.clear()
         adapter.clear_context()
+        cursor.clear()

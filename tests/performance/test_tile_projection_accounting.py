@@ -32,8 +32,10 @@ def test_scheduler_leaf_work_is_reported_and_retired_work_is_rejected() -> None:
     assert (
         projection_accounting(metrics)["tile_scheduler_leaf_function_applications"] == 7
     )
-    with pytest.raises(AssertionError, match="alias-mismatch"):
-        projection_accounting(replace(metrics, temporal_leaf_applications=0))
+    # A retired compatibility alias is not the execution authority.
+    assert projection_accounting(
+        replace(metrics, temporal_leaf_applications=0)
+    ) == projection_accounting(metrics)
     for invalid in (
         replace(metrics, sequential_generation_advances=1),
         replace(metrics, higher_concrete_operation_evaluations=1),

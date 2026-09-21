@@ -118,6 +118,7 @@ class PrimePrefixRank:
         self._imported_states = 0
         self._cached_factors: tuple[int, ...] = (2,)
         self._cached_covered_root = 2
+        self._cached_validated_count = 1
         self.admission_work = 0
         factors: tuple[int, ...] = (2,)
         covered_root, validation_work = 2, 0
@@ -159,11 +160,17 @@ class PrimePrefixRank:
                 self._lease = None
             raise
         self.covered_root = 2
+        self._committed_covered_root = 2
+        self._covered_factor_authority = self.dag._factor_store_authority
+        self._covered_factor_count = self.dag.factor_count
+        self._covered_last_factor = self.dag.last_factor
+        self._coverage_publishable = True
         self.discovery_queries = 0
         self._partial_query: object | None = None
 
     def _admit_cached_factors(self, root: int) -> None:
         """Import only the prefix required by this request's square-root bound."""
+        self._coverage_publishable = False
         if (
             root >= self._cached_covered_root
             and self.dag.max_states is not None
@@ -174,17 +181,19 @@ class PrimePrefixRank:
             # prefix and construct their demanded Phi states locally.
             raise ValueError("prime state budget exceeded (--max-prime-states)")
         root = min(root, self._cached_covered_root)
-        required = 0
-        previous = 1
-        for factor in self._cached_factors:
-            self.dag.charge()
-            self.admission_work += 1
-            if type(factor) is not int or factor <= previous:
-                raise RuntimeError("invalid shared prime prefix manifest")
+        required = self.dag.factor_count
+        while required < len(self._cached_factors):
+            factor = self._cached_factors[required]
+            if required >= self._cached_validated_count:
+                self.dag.charge()
+                self.admission_work += 1
+                previous = self._cached_factors[required - 1]
+                if type(factor) is not int or factor <= previous:
+                    raise RuntimeError("invalid shared prime prefix manifest")
+                self._cached_validated_count = required + 1
             if factor > root:
                 break
             required += 1
-            previous = factor
         if required > self.max_stages:
             raise ValueError("prime stage budget exceeded (--max-prime-stages)")
         for factor in self._cached_factors[self.dag.factor_count : required]:
@@ -193,8 +202,17 @@ class PrimePrefixRank:
             self.dag._append_issued_consecutive_factor(factor)
             self.admission_work += 1
         self.covered_root = max(self.covered_root, root)
+        self._committed_covered_root = self.covered_root
+        self._covered_factor_count = self.dag.factor_count
+        self._covered_last_factor = self.dag.last_factor
+        self._coverage_publishable = True
 
     def cover(self, high: int) -> None:
+        if (
+            type(self.covered_root) is not int
+            or self.covered_root != self._committed_covered_root
+        ):
+            raise RuntimeError("prime prefix coverage is incomplete")
         self.dag.charge(high.bit_length())
         root = isqrt(high)
         if root <= self.covered_root:
@@ -206,12 +224,17 @@ class PrimePrefixRank:
         # The admitted prefix manifest is the reusable result of source
         # discovery. Publishing every internal discovery rank adds cold latency
         # and retains states that a warm query never consumes.
+        self._coverage_publishable = False
         self.dag.shared_publication_enabled = False
         try:
             while True:
                 self.discovery_queries += 1
                 if self.dag.count(root) == 1:
                     self.covered_root = root
+                    self._committed_covered_root = root
+                    self._covered_factor_count = self.dag.factor_count
+                    self._covered_last_factor = self.dag.last_factor
+                    self._coverage_publishable = True
                     return
                 if self.dag.factor_count >= self.max_stages:
                     raise ValueError("prime stage budget exceeded (--max-prime-stages)")
@@ -284,6 +307,15 @@ class PrimePrefixRank:
 
     def publish(self) -> None:
         """Publish only admitted source metadata; selected endpoints stay local."""
+        if (
+            not self._coverage_publishable
+            or type(self.covered_root) is not int
+            or self.covered_root != self._committed_covered_root
+            or self.dag._factor_store_authority is not self._covered_factor_authority
+            or self.dag.factor_count != self._covered_factor_count
+            or self.dag.last_factor != self._covered_last_factor
+        ):
+            raise RuntimeError("prime prefix coverage is incomplete")
         if self._lease is None or self.dag.factor_count > MAX_SHARED_FACTOR_STAGES:
             return
         if self.covered_root < self._cached_covered_root:
@@ -292,7 +324,8 @@ class PrimePrefixRank:
         # number of root states retained by the process cache.  A warm request
         # therefore cannot use reuse to evade its state budget.
         state_count = max(self._imported_states, len(self.dag.memo))
-        self._lease.put(_PREFIX_KEY, (self.covered_root, self.dag.primes, state_count))
+        factors = self.dag.primes
+        self._lease.put(_PREFIX_KEY, (self.covered_root, factors, state_count))
 
     def shared_metrics(self) -> tuple[int, int, int, int, int, int, int]:
         if self._lease is None or self._cache_start is None:
@@ -391,9 +424,7 @@ def nth_prime_at_or_after(
         partial = context._partial_query
         if type(partial) is not PrimePartialSuccessorQuery:
             raise RuntimeError("prime selection did not publish its partial successor")
-        scheduler_work = dag.ledger.counters.get(
-            "prime_partial_successor_scheduler_work", 0
-        )
+        scheduler_work = dag.ledger.counters.get("prime_successor_scheduler_work", 0)
         scheduler_allocations = partial.peak_scheduler_entries
         context.publish()
         (
@@ -435,7 +466,13 @@ def nth_prime_at_or_after(
                 sorted(
                     (name, count)
                     for name, count in dag.ledger.counters.items()
-                    if name.startswith(("source_image_", "prime_partial_successor_"))
+                    if name.startswith(
+                        (
+                            "source_image_",
+                            "prime_partial_successor_",
+                            "prime_successor_",
+                        )
+                    )
                 )
             ),
         )

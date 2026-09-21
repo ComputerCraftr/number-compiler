@@ -2,114 +2,56 @@
 
 These reports describe their original checkpoints. They are not current release claims.
 
+For current navigation, use the [documentation index](index.md). Superseded
+authored notes and their maintained destinations are listed in the
+[migration and provenance index](provenance.md). Reviewed implementation
+checkpoints are consolidated in the [2026-W37](../results/current/2026-W37/README.md)
+and [2026-W38](../results/current/2026-W38/README.md) sprint records.
+
 The supplied [decimal pair quotient research](archive/reverse-add/DECIMAL_PAIR_QUOTIENT_RESEARCH.md)
-is preserved verbatim (SHA-256 `2b0f4cc1c88bc91e81e214998eb258375d9747437c6f748fe5b8e3972b91fc96`).
+is preserved verbatim (SHA-256 `023599ebc89d1f17601bb84f4fda49c2daaff3308a39e3a7179630cd41683cbe`).
 Its current-path interpretation and theorem boundaries are recorded in the
-[research summary](research/reverse-add/decimal-pair-algebra.md); its older path
+[reverse/add research synthesis](research/reverse-add.md); its older path
 names and proposed backend are not instructions to restore deleted execution.
 
-Original measurement files remain under [results](../results/), including [former root checkpoints](../results/historical-root-checkpoints/) and [former developer artifacts](../results/historical-developer-data/). Historical report text and fingerprints are preserved; old relative paths within those texts refer to their original checkout layout. Current validation is recorded separately in [release status](release-status.md).
+Original generated measurements remain under [results](../results/). Reviewed
+checkpoint prose is consolidated by ISO week, while ignored logs, profiles and
+fingerprints retain their original evidence paths. Current validation is
+recorded separately in [release status](release-status.md).
 
-- [CANONICAL_FORMULA_COLLATZ_INTEGRATION](archive/collatz/CANONICAL_FORMULA_COLLATZ_INTEGRATION.md)
-- [COLLATZ_CHARACTER_RESULTS](archive/collatz/COLLATZ_CHARACTER_RESULTS.md)
-- [COLLATZ_RAW_FIELD_RESULTS](archive/collatz/COLLATZ_RAW_FIELD_RESULTS.md)
-- [WHEEL_COLLATZ_CYCLOTOMIC_RESULTS](archive/collatz/WHEEL_COLLATZ_CYCLOTOMIC_RESULTS.md)
-- [BABY_GIANT_BEHAVIORAL_BEND_RESULTS](archive/hashlife/BABY_GIANT_BEHAVIORAL_BEND_RESULTS.md)
-- [BEHAVIORAL_DEDUP_RESULTS](archive/hashlife/BEHAVIORAL_DEDUP_RESULTS.md)
-- [BIMACHINE_POWER_RESULTS](archive/hashlife/BIMACHINE_POWER_RESULTS.md)
-- [CASCADE_POWER_RESULTS](archive/hashlife/CASCADE_POWER_RESULTS.md)
-- [CAUSAL_SPACETIME_RESULTS](archive/hashlife/CAUSAL_SPACETIME_RESULTS.md)
-- [DIAMOND_IMPLEMENTATION_STATUS](archive/hashlife/DIAMOND_IMPLEMENTATION_STATUS.md)
-- [DIAMOND_PARAMETRIC_MEASUREMENTS](archive/hashlife/DIAMOND_PARAMETRIC_MEASUREMENTS.md)
-- [DYADIC_HASHLIFE_RESULTS](archive/hashlife/DYADIC_HASHLIFE_RESULTS.md)
-- [HASHLIFE_ACTION_FIX_RESULTS](archive/hashlife/HASHLIFE_ACTION_FIX_RESULTS.md)
-- [HASHLIFE_BOUNDARY_QUOTIENT_CHECKPOINT](archive/hashlife/HASHLIFE_BOUNDARY_QUOTIENT_CHECKPOINT.md)
-- [HASHLIFE_CACHE_FIX_RESULTS](archive/hashlife/HASHLIFE_CACHE_FIX_RESULTS.md)
-- [HASHLIFE_CUTOVER_PLAN](archive/hashlife/HASHLIFE_CUTOVER_PLAN.md)
-- [HASHLIFE_METRICS_INTEGRITY_RESULTS](archive/hashlife/HASHLIFE_METRICS_INTEGRITY_RESULTS.md)
-- [HASHLIFE_STATE_ACTION_GROWTH_RESULTS](archive/hashlife/HASHLIFE_STATE_ACTION_GROWTH_RESULTS.md)
-- [HASHLIFE_TEMPORAL_RESULTS](archive/hashlife/HASHLIFE_TEMPORAL_RESULTS.md)
-- [HASHLIFE_TWO_SIDED_CHECKPOINT](archive/hashlife/HASHLIFE_TWO_SIDED_CHECKPOINT.md)
-- [MONOID_QUOTIENT_V020_RESULTS](archive/hashlife/MONOID_QUOTIENT_V020_RESULTS.md)
-- [QUOTIENT_PATTERN_RESULTS](archive/hashlife/QUOTIENT_PATTERN_RESULTS.md)
-- [SEMANTIC_RELEASE_RESULTS](archive/hashlife/SEMANTIC_RELEASE_RESULTS.md)
-- [SLP_CASCADE_RESULTS](archive/hashlife/SLP_CASCADE_RESULTS.md)
-- [SPACETIME_EXECUTION_AUDIT](archive/hashlife/SPACETIME_EXECUTION_AUDIT.md)
-- [CYCLOTOMIC_SPECIAL_RESULTS](archive/power-numbers/CYCLOTOMIC_SPECIAL_RESULTS.md)
-- [SPECIAL_BINARY_GERM_RESULTS](archive/power-numbers/SPECIAL_BINARY_GERM_RESULTS.md)
-- [SPECIAL_BINARY_JUMP_RESULTS](archive/power-numbers/SPECIAL_BINARY_JUMP_RESULTS.md)
-- [SPECIAL_CONSTRAINT_PULLBACK_RESULTS](archive/power-numbers/SPECIAL_CONSTRAINT_PULLBACK_RESULTS.md)
-- [SPECIAL_GERM_DESCENT_RESULTS](archive/power-numbers/SPECIAL_GERM_DESCENT_RESULTS.md)
-- [SPECIAL_IDEMPOTENT_OUTPUT_RESULTS](archive/power-numbers/SPECIAL_IDEMPOTENT_OUTPUT_RESULTS.md)
-- [SPECIAL_LAZY_HOTPATH_RESULTS](archive/power-numbers/SPECIAL_LAZY_HOTPATH_RESULTS.md)
-- [SPECIAL_SOURCE_CERTIFICATE_RESULTS](archive/power-numbers/SPECIAL_SOURCE_CERTIFICATE_RESULTS.md)
-- [SPECIAL_SUCCESSOR_GENERATOR_RESULTS](archive/power-numbers/SPECIAL_SUCCESSOR_GENERATOR_RESULTS.md)
-- [SPECIAL_TERMINAL_THRESHOLD_RESULTS](archive/power-numbers/SPECIAL_TERMINAL_THRESHOLD_RESULTS.md)
-- [SPECIAL_THEOREM_BEHAVIORAL_QUOTIENT_RESULTS](archive/power-numbers/SPECIAL_THEOREM_BEHAVIORAL_QUOTIENT_RESULTS.md)
-- [SPECIAL_TRANSVERSE_JET_RESULTS](archive/power-numbers/SPECIAL_TRANSVERSE_JET_RESULTS.md)
-- [TERMINAL_BINARY_PIECEWISE_RESULTS](archive/power-numbers/TERMINAL_BINARY_PIECEWISE_RESULTS.md)
-- [TERMINAL_DIVISOR_NORM_RESULTS](archive/power-numbers/TERMINAL_DIVISOR_NORM_RESULTS.md)
-- [TERMINAL_FROBENIUS_CHUNK_RESULTS](archive/power-numbers/TERMINAL_FROBENIUS_CHUNK_RESULTS.md)
-- [TERMINAL_FROBENIUS_QUOTIENT_RESULTS](archive/power-numbers/TERMINAL_FROBENIUS_QUOTIENT_RESULTS.md)
-- [TERMINAL_PROJECTIVE_WREATH_RESULTS](archive/power-numbers/TERMINAL_PROJECTIVE_WREATH_RESULTS.md)
-- [TERMINAL_SATURATED_CYCLOTOMIC_RESULTS](archive/power-numbers/TERMINAL_SATURATED_CYCLOTOMIC_RESULTS.md)
-- [TERMINAL_SECTION_CONSTRUCTOR_FRONTIER](archive/power-numbers/TERMINAL_SECTION_CONSTRUCTOR_FRONTIER.md)
-- [ENDPOINT_WHEEL_EXTENT_RESULTS](archive/primes/ENDPOINT_WHEEL_EXTENT_RESULTS.md)
-- [PRIME_CLOCK_QUOTIENT_RESULTS](archive/primes/PRIME_CLOCK_QUOTIENT_RESULTS.md)
-- [PRIME_COORDINATE_RESULTS](archive/primes/PRIME_COORDINATE_RESULTS.md)
-- [ACTION_MORPHISM_RESULTS](archive/repository-and-algebra/ACTION_MORPHISM_RESULTS.md)
-- [ADVERSARIAL_ACTION_AUDIT](archive/repository-and-algebra/ADVERSARIAL_ACTION_AUDIT.md)
-- [ARITHMETIC_GHOST_FLUX_RESULTS](archive/repository-and-algebra/ARITHMETIC_GHOST_FLUX_RESULTS.md)
-- [AUXILIARY_POWERED_MONOIDS](archive/repository-and-algebra/AUXILIARY_POWERED_MONOIDS.md)
-- [CANONICAL_CLEANUP_RESULTS](archive/repository-and-algebra/CANONICAL_CLEANUP_RESULTS.md)
-- [CANONICAL_COMPILER_AUDIT](archive/repository-and-algebra/CANONICAL_COMPILER_AUDIT.md)
-- [CLEANUP_RESULTS](archive/repository-and-algebra/CLEANUP_RESULTS.md)
-- [COMPILER_DEBT_RESULTS](archive/repository-and-algebra/COMPILER_DEBT_RESULTS.md)
-- [CROSS_DOMAIN_ITINERARY_RESULTS](archive/repository-and-algebra/CROSS_DOMAIN_ITINERARY_RESULTS.md)
-- [CYCLOTOMIC_OBSERVER_RESULTS](archive/repository-and-algebra/CYCLOTOMIC_OBSERVER_RESULTS.md)
-- [DIGIT_CYCLOTOMIC_UNIFICATION_RESULTS](archive/repository-and-algebra/DIGIT_CYCLOTOMIC_UNIFICATION_RESULTS.md)
-- [DIGIT_GENERATION_PERFORMANCE_RESULTS](archive/repository-and-algebra/DIGIT_GENERATION_PERFORMANCE_RESULTS.md)
-- [DYADIC_DIFFERENCE_GERM_RESULTS](archive/repository-and-algebra/DYADIC_DIFFERENCE_GERM_RESULTS.md)
-- [EARLY_ALGEBRAIC_CACHE_RESULTS](archive/repository-and-algebra/EARLY_ALGEBRAIC_CACHE_RESULTS.md)
-- [EARLY_CANONICAL_LOOKUP](archive/repository-and-algebra/EARLY_CANONICAL_LOOKUP.md)
-- [EARLY_CANONICAL_RELEASE_RESULTS](archive/repository-and-algebra/EARLY_CANONICAL_RELEASE_RESULTS.md)
-- [EARLY_CANONICAL_RESULTS](archive/repository-and-algebra/EARLY_CANONICAL_RESULTS.md)
-- [EASY_SPACE_TIME_CLEANUP_RESULTS](archive/repository-and-algebra/EASY_SPACE_TIME_CLEANUP_RESULTS.md)
-- [FOLLOWUP_REPRESENTATION_AUDIT](archive/repository-and-algebra/FOLLOWUP_REPRESENTATION_AUDIT.md)
-- [FORMAL_GROUP_CYCLOTOMIC_RESULTS](archive/repository-and-algebra/FORMAL_GROUP_CYCLOTOMIC_RESULTS.md)
-- [GENERALIZED_POWER_RESULTS](archive/repository-and-algebra/GENERALIZED_POWER_RESULTS.md)
-- [GUARD_RESULTS](archive/repository-and-algebra/GUARD_RESULTS.md)
-- [ITERATIVE_REPOSITORY_CLEANUP_RESULTS](archive/repository-and-algebra/ITERATIVE_REPOSITORY_CLEANUP_RESULTS.md)
-- [LAZY_DECISION_RESULTS](archive/repository-and-algebra/LAZY_DECISION_RESULTS.md)
-- [LINEAR_BISIMULATION_CHECKPOINT](archive/repository-and-algebra/LINEAR_BISIMULATION_CHECKPOINT.md)
-- [MORPHISM_LAZY_CLEANUP_RESULTS](archive/repository-and-algebra/MORPHISM_LAZY_CLEANUP_RESULTS.md)
-- [NATIVE_POWER_RESULTS](archive/repository-and-algebra/NATIVE_POWER_RESULTS.md)
-- [POWERED_LOCAL_CODEC_MIGRATION](archive/repository-and-algebra/POWERED_LOCAL_CODEC_MIGRATION.md)
-- [POWERED_MORPHISM_RESULTS](archive/repository-and-algebra/POWERED_MORPHISM_RESULTS.md)
-- [PREFIX_MONOID_RANDOM_ACCESS_RESULTS](archive/repository-and-algebra/PREFIX_MONOID_RANDOM_ACCESS_RESULTS.md)
-- [PRODUCTION_TRANSFER_BOUNDARY](archive/repository-and-algebra/PRODUCTION_TRANSFER_BOUNDARY.md)
-- [PROJECTION_FIELD_RESULTS](archive/repository-and-algebra/PROJECTION_FIELD_RESULTS.md)
-- [PROJECTION_OBSERVER_RESULTS](archive/repository-and-algebra/PROJECTION_OBSERVER_RESULTS.md)
-- [RADIAL_INNOVATION_RESULTS](archive/repository-and-algebra/RADIAL_INNOVATION_RESULTS.md)
-- [RADIX_SET_BINOMIAL_RESULTS](archive/repository-and-algebra/RADIX_SET_BINOMIAL_RESULTS.md)
-- [RELEASE_BLOCKERS](archive/repository-and-algebra/RELEASE_BLOCKERS.md)
-- [RELEASE_RESULTS](archive/repository-and-algebra/RELEASE_RESULTS.md)
-- [REPO_LAYOUT](archive/repository-and-algebra/REPO_LAYOUT.md)
-- [REPRESENTATION_BOUNDARY_RESULTS](archive/repository-and-algebra/REPRESENTATION_BOUNDARY_RESULTS.md)
-- [RESEARCH_IMPLEMENTATION](archive/repository-and-algebra/RESEARCH_IMPLEMENTATION.md)
-- [RESIDUAL_CANONICALIZATION_RESULTS](archive/repository-and-algebra/RESIDUAL_CANONICALIZATION_RESULTS.md)
-- [RESIDUE_REFINED_BEND_RESULTS](archive/repository-and-algebra/RESIDUE_REFINED_BEND_RESULTS.md)
-- [SEQUENCE_FAMILY_RESULTS](archive/repository-and-algebra/SEQUENCE_FAMILY_RESULTS.md)
-- [SHARED_DAG_POWER_RESULTS](archive/repository-and-algebra/SHARED_DAG_POWER_RESULTS.md)
-- [SHARED_POWERING_ENGINE_RESULTS](archive/repository-and-algebra/SHARED_POWERING_ENGINE_RESULTS.md)
-- [STATE_REDUCTION_RESULTS](archive/repository-and-algebra/STATE_REDUCTION_RESULTS.md)
-- [STATUS](archive/repository-and-algebra/STATUS.md)
-- [TECH_DEBT_CLEANUP_RESULTS](archive/repository-and-algebra/TECH_DEBT_CLEANUP_RESULTS.md)
-- [TEMPORAL_BINARY_POWER_RESULTS](archive/repository-and-algebra/TEMPORAL_BINARY_POWER_RESULTS.md)
-- [TEST_RESULTS](archive/repository-and-algebra/TEST_RESULTS.md)
-- [TROPICAL_GHOST_FLUX_RESULTS](archive/repository-and-algebra/TROPICAL_GHOST_FLUX_RESULTS.md)
-- [TWO_PRIMARY_FILTRATION_RESULTS](archive/repository-and-algebra/TWO_PRIMARY_FILTRATION_RESULTS.md)
-- [WREATH_CASCADE_RESULTS](archive/repository-and-algebra/WREATH_CASCADE_RESULTS.md)
-- [CARRY_EVENT_FORMULA_RESULTS](archive/reverse-add/CARRY_EVENT_FORMULA_RESULTS.md)
-- [CARRY_LEAF_REUSE_CHECKPOINT](archive/reverse-add/CARRY_LEAF_REUSE_CHECKPOINT.md)
-- [CARRY_RADIX_PROJECTION_RESULTS](archive/reverse-add/CARRY_RADIX_PROJECTION_RESULTS.md)
+The retained archive is a mixed-provenance collection.  The decimal pair
+paper identified above is externally supplied.  The other entries are authored
+historical research; they are retained only where a derivation, measurement,
+or design boundary is not fully reproduced in the maintained syntheses.  In
+particular, a filename ending in `RESULTS` does not make a report external or a
+current release result.
+
+The archive is grouped by purpose: `collatz/` records early raw-field
+and character experiments; `hashlife/` records the evolution of powered DAG and
+causal execution designs; `power-numbers/` records special-number terminal and
+Frobenius experiments; `primes/` records wheel and clock studies;
+`repository-and-algebra/` records shared representation and cleanup history;
+and `reverse-add/` records carry and pair-quotient investigations. These files
+remain available at their existing paths, but this maintained page does not
+recreate an index of every obsolete report.
+
+Representative cornerstone records are:
+
+- Collatz: [canonical formula integration](archive/collatz/CANONICAL_FORMULA_COLLATZ_INTEGRATION.md)
+  and [raw-field results](archive/collatz/COLLATZ_RAW_FIELD_RESULTS.md).
+- HashLife: [state/action growth](archive/hashlife/HASHLIFE_STATE_ACTION_GROWTH_RESULTS.md),
+  [metrics integrity](archive/hashlife/HASHLIFE_METRICS_INTEGRITY_RESULTS.md), and
+  [spacetime execution audit](archive/hashlife/SPACETIME_EXECUTION_AUDIT.md).
+- Special numbers: [transverse-jet results](archive/power-numbers/SPECIAL_TRANSVERSE_JET_RESULTS.md)
+  and [terminal constructor frontier](archive/power-numbers/TERMINAL_SECTION_CONSTRUCTOR_FRONTIER.md).
+- Primes: [prime coordinates](archive/primes/PRIME_COORDINATE_RESULTS.md) and
+  [clock quotient results](archive/primes/PRIME_CLOCK_QUOTIENT_RESULTS.md).
+- Shared algebra: [canonical compiler audit](archive/repository-and-algebra/CANONICAL_COMPILER_AUDIT.md),
+  [production transfer boundary](archive/repository-and-algebra/PRODUCTION_TRANSFER_BOUNDARY.md),
+  and [radial innovation results](archive/repository-and-algebra/RADIAL_INNOVATION_RESULTS.md).
+- Reverse/add: [carry event formulas](archive/reverse-add/CARRY_EVENT_FORMULA_RESULTS.md)
+  and the supplied [decimal pair quotient paper](archive/reverse-add/DECIMAL_PAIR_QUOTIENT_RESEARCH.md).
+
+Use repository search for a specific retained filename. The maintained
+[research syntheses](index.md#research-syntheses) remain the entry point for
+current claim boundaries.

@@ -1,8 +1,7 @@
-"""Schema-six metrics separate proof metadata and production resources."""
+"""Schema-seven metrics report retained oracles and production resources."""
 
 from __future__ import annotations
 
-from collections.abc import Iterable, Mapping
 from typing import TYPE_CHECKING
 
 from number_compiler.hashlife.observation.hashlife_projection import HashLifeBlockIndex
@@ -11,7 +10,6 @@ from number_compiler.resources.ledger import ResourceLedger
 from number_compiler.resources.metric_collection import collect_ledger_metrics
 from number_compiler.resources.stores import LedgerList
 from number_compiler.sequences.collatz.block_power import PoweredCollatzTerm
-from number_compiler.sequences.reverse_add.power import ReverseAddPoweredTerm
 
 if TYPE_CHECKING:
     from number_compiler.resources.metric_records import LedgerMetrics
@@ -24,7 +22,7 @@ if TYPE_CHECKING:
 def assert_node_partition(
     metrics: LedgerMetrics | CollatzPhysicalBlockMetrics | ReverseAddPowerMetrics,
 ) -> None:
-    assert metrics.metrics_schema_version == 6
+    assert metrics.metrics_schema_version == 7
     assert metrics.resource_observed_nodes == (
         metrics.source_payload_nodes
         + metrics.temporal_program_nodes
@@ -62,81 +60,27 @@ def assert_node_partition(
     )
 
 
-def test_reverse_diamond_does_not_report_proof_states_as_runtime_classes() -> None:
-    term = ReverseAddPoweredTerm(196, 32)
-    term.digit(0)
-    metrics, behavior = term.metrics(), term.behavior_metrics()
-    assert_node_partition(metrics)
-    assert (
-        metrics.bounded_application_temporal_state_classes
-        == metrics.local_interface_nodes
-        > 0
-    )
-    assert (
-        metrics.bounded_application_temporal_action_classes
-        == metrics.field_action_nodes
-    )
-    assert (
-        metrics.reverse_t2_proof_left_state_classes,
-        metrics.reverse_t2_proof_right_state_classes,
-    ) == (757, 179)
-    assert metrics.temporal_parent_requests > 0
-    assert metrics.temporal_parent_requests == (
-        metrics.temporal_parent_early_hits + metrics.temporal_parent_compositions
-    )
-    assert metrics.bounded_application_nonlinear_branch_evaluations == (
-        metrics.primitive_transition_evaluations
-    )
-    assert metrics.bounded_application_exact_endpoint_entries == 0
-    assert metrics.forbidden_future_payloads == 0
-    assert metrics.whole_word_sweeps == metrics.proof_machine_applications == 0
-    assert behavior.temporal_quotient_family == "reverse-add-tile-hashlife"
-    assert behavior.bounded_temporal_runtime_cutover_complete == 1
-    assert behavior.bounded_temporal_runtime_cutover_blocker == ""
-
-
-def test_query_memo_eviction_does_not_change_proof_metadata_or_runtime_classes() -> (
-    None
-):
-    term = ReverseAddPoweredTerm(196, 24)
-    expected = term.digit(0)
-    before = term.metrics()
-    term._ledger.evict_query_memos()
-    evicted = term.metrics()
-    assert_node_partition(evicted)
-    assert evicted.temporal_program_nodes == before.temporal_program_nodes
-    assert (
-        evicted.bounded_application_temporal_state_classes
-        == evicted.local_interface_nodes
-        > 0
-    )
-    assert evicted.reverse_t2_proof_left_state_classes == 757
-    assert evicted.reverse_t2_proof_right_state_classes == 179
-    assert (
-        evicted.bounded_application_retained_entries
-        < before.bounded_application_retained_entries
-    )
-    assert evicted.cache_slots < before.cache_slots
-    assert term.digit(0) == expected
-    assert_node_partition(term.metrics())
-
-
 def test_collatz_query_eviction_preserves_canonical_temporal_compositions() -> None:
-    """Eviction may rebuild occurrence bindings, never the powered action DAG."""
+    """Eviction reuses the authenticated source image and powered action DAG."""
     term = PoweredCollatzTerm(27, 16)
     expected = term.digit(0)
     before = dict(term._ledger.counters)
-    assert before.get("tile_temporal_action_publications", 0) > 0
+    assert before.get("source_image_publications", 0) > 0
 
     term._ledger.evict_query_memos()
     assert term.digit(0) == expected
     after = term._ledger.counters
 
-    assert after.get("tile_temporal_action_publications", 0) == before.get(
-        "tile_temporal_action_publications", 0
+    assert after.get("source_image_publications", 0) == before.get(
+        "source_image_publications", 0
     )
-    assert after.get("temporal_parent_compositions", 0) == before.get(
-        "temporal_parent_compositions", 0
+    assert after.get("source_image_primitive_applications", 0) == before.get(
+        "source_image_primitive_applications", 0
+    )
+    assert after["source_image_publications"] == before["source_image_publications"]
+    assert (
+        after["direct_powered_point_queries"]
+        == before["direct_powered_point_queries"] + 1
     )
 
 
@@ -146,22 +90,11 @@ def test_collatz_diamond_does_not_report_proof_states_as_runtime_classes() -> No
     metrics = term.metrics()
     assert_node_partition(metrics)
     assert (
-        metrics.bounded_application_temporal_state_classes
-        == metrics.local_interface_nodes
-        > 0
-    )
-    assert (
-        metrics.bounded_application_temporal_action_classes
-        == metrics.field_action_nodes
-    )
-    assert (
         metrics.collatz_c4_proof_left_state_classes,
         metrics.collatz_c4_proof_right_state_classes,
     ) == (50, 90)
-    assert metrics.temporal_parent_requests > 0
-    assert metrics.bounded_application_nonlinear_branch_evaluations == (
-        metrics.primitive_transition_evaluations
-    )
+    assert metrics.local_interface_nodes == metrics.field_action_nodes == 0
+    assert metrics.canonical_tile_nodes == 0
     assert metrics.bounded_application_exact_endpoint_entries == 0
     assert metrics.forbidden_future_payloads == 0
     assert metrics.whole_word_sweeps == metrics.proof_machine_applications == 0
@@ -171,19 +104,21 @@ def test_exact_spatial_population_does_not_add_work_visits_to_retained_nodes() -
     term = PoweredCollatzTerm(27, 16)
     term.digit(0)
     before = term.metrics()
+    before_inventory = term._ledger.snapshot().inventory
     term._ledger.bump("source_leaf_reads", 101)
     after = term.metrics()
+    after_inventory = term._ledger.snapshot().inventory
     assert after.source_leaf_visits == before.source_leaf_visits + 101
-    # Canonical source and future tiles are the exact spatial population on the
-    # production route.  Source-cell and endpoint arenas belong to retired or
-    # explicit-lowering carriers and are not a substitute for this inventory.
-    assert (
-        after.bounded_application_exact_spatial_occurrences
-        == after.canonical_tile_nodes
+    before_images = sum(
+        row.observed_nodes or 0
+        for row in before_inventory
+        if row.role == "source_image"
     )
-    assert after.bounded_application_exact_spatial_occurrences == (
-        before.bounded_application_exact_spatial_occurrences
+    after_images = sum(
+        row.observed_nodes or 0 for row in after_inventory if row.role == "source_image"
     )
+    assert after_images == before_images > 0
+    assert after.canonical_tile_nodes == before.canonical_tile_nodes == 0
 
 
 def test_geometry_population_has_its_own_inventory_unit() -> None:
@@ -311,74 +246,6 @@ def test_work_and_temporary_component_peaks_are_forwarded_without_inventing_tota
     assert "total_workspace" not in metrics.resource_workspace_peaks
 
 
-def test_point_response_domain_accepts_decimal_nine_and_rejects_a_wide_payload() -> (
-    None
-):
-    from number_compiler.projection.point_response import PointResponse
-
-    term = ReverseAddPoweredTerm(18, 1)
-    assert term.digit(0) == 9
-    ledger = term._ledger
-    clean = collect_ledger_metrics(ledger)
-    assert clean.representation_boundary_complete == 1
-    assert clean.retained_point_response_scalars == 1
-    assert clean.exact_endpoint_nodes == 0
-    response = next(
-        value
-        for _, container in ledger.iter_containers()
-        for value in (
-            list(container.values())
-            if isinstance(container, Mapping)
-            else list(container)
-            if isinstance(container, Iterable)
-            else []
-        )
-        if isinstance(value, PointResponse)
-    )
-    owner = ledger.register("forged-response", "observation_memo")
-    records: LedgerList[object]
-    records = ledger.make_list(owner)
-    ledger.reserve(owner, entries=1, nodes=1)
-    records.append(PointResponse(response.program, response.position, 1 << 1000))
-    rejected = collect_ledger_metrics(ledger)
-    assert rejected.forbidden_future_payloads > 0
-    assert rejected.representation_boundary_complete == 0
-
-
-def test_response_record_collection_cannot_become_a_tape_under_semantic_wrappers() -> (
-    None
-):
-    from number_compiler.projection.point_response import PointResponse
-
-    term = ReverseAddPoweredTerm(18, 1)
-    term.digit(0)
-    register = term._point_index()._point_response
-    saved = register._value[0]
-    term._ledger.reserve(register.owner, entries=3, nodes=3)
-    register._value.extend(
-        PointResponse(saved.program, position, position) for position in (1, 2, 3)
-    )
-    metrics = collect_ledger_metrics(term._ledger)
-    assert metrics.retained_point_response_scalars == 4
-    assert metrics.resource_accounting_mismatch == 0
-    assert metrics.forbidden_future_payloads > 0
-    assert metrics.representation_boundary_complete == 0
-
-
-def test_legitimate_response_cannot_be_reused_as_a_canonical_action_payload() -> None:
-    term = ReverseAddPoweredTerm(18, 1)
-    term.digit(0)
-    response = term._point_index()._point_response._value[0]
-    owner = term._ledger.register("counterfeit-action", "canonical_transfer")
-    records: LedgerList[object]
-    records = term._ledger.make_list(owner)
-    term._ledger.reserve(owner, entries=1, nodes=1)
-    records.append(response)
-    metrics = collect_ledger_metrics(term._ledger)
-    assert metrics.forbidden_future_payloads > 0
-    assert metrics.representation_boundary_complete == 0
-
-
 def test_boundary_validation_work_is_separate_from_proof_publication_slots() -> None:
     ledger = ResourceLedger()
     quantities = {
@@ -421,18 +288,6 @@ def test_higher_interpreter_counts_frames_instead_of_one_call_as_one_unit() -> N
     assert report.higher_semantic_task_frames == 301
     assert report.temporal_leaf_diamond_descents == 17
     assert report.total_internal_action_work == 318
-
-
-def test_composed_reverse_work_uses_the_canonical_tile_scheduler() -> None:
-    term = ReverseAddPoweredTerm(196, 16)
-    term.digit(term.maximum_width // 3)
-    report = term.metrics()
-    assert report.powered_absorption_requests > 0
-    causal_frames = report.resource_work_counters["tile_causal_frames"]
-    assert causal_frames > 0
-    assert report.higher_action_continuation_requests == 0
-    assert report.higher_concrete_operation_evaluations == 0
-    assert causal_frames == term._ledger.counters["tile_causal_frames"]
 
 
 def test_absorbed_span_is_metadata_not_additive_execution_work() -> None:

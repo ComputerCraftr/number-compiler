@@ -10,6 +10,7 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING
 
+from number_compiler.arithmetic.contracts.block_effect import BoundarySide
 from number_compiler.arithmetic.contracts.block_kernel import BaseBlockEffect
 from number_compiler.hashlife.execution.reverse_morphism_transfer import (
     ReverseMorphismTransferArena,
@@ -68,7 +69,7 @@ def finite_pair_transfer(
         left, right = right, left
 
     morphism = None
-    laws = tuple(adapter.primitive_law(child) for child in pair)
+    laws = tuple(engine._law(child) for child in pair)
     if all(type(law.effect) is BaseBlockEffect and law.base == 10 for law in laws):
         if adapter._reverse_morphism_transfer is None:
             adapter._reverse_morphism_transfer = ReverseMorphismTransferArena(
@@ -95,6 +96,7 @@ def finite_pair_transfer(
                 0,
                 anchors[-1],
                 BoundaryTileView(tile, 0, node.width),
+                action_admission=engine._action_admission_token,
             )
         )
     arguments = [right]
@@ -107,13 +109,18 @@ def finite_pair_transfer(
                 1,
                 arguments[-1],
                 BoundaryTileView(tile, 0, node.width, 1),
+                action_admission=engine._action_admission_token,
             )
         )
     arguments.reverse()
 
     if morphism is None:
-        wiring, producer_wiring = adapter.wiring(after), adapter.wiring(before)
-        initial = adapter.initial_ports(after)
+        wiring, producer_wiring = engine._wiring(after), engine._wiring(before)
+        after_law = engine._law(after)
+        initial = (
+            after_law.initial(BoundarySide.LEFT),
+            after_law.initial(BoundarySide.RIGHT),
+        )
     order = range(len(chunks) - 1, -1, -1) if side else range(len(chunks))
     state = consumer
     for index in order:

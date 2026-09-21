@@ -153,22 +153,10 @@ def _verify_program(
         elif family == "collatz" and type(node) is CollatzPhysicalBlockEffect:
             counts = 1, 0
         else:
-            # Proof-only kernels are imported only when the supplied program
-            # actually contains one. Normal production programs consist of
-            # the primitive one-step laws above and never load the T2/C4
-            # certificate modules as a side effect of family admission.
-            if family == "reverse-add":
-                from number_compiler.sequences.reverse_add.compilation import (
-                    is_verified_decimal_pair_kernel,
-                )
-
-                if is_verified_decimal_pair_kernel(node):
-                    counts = 2, 0
-                else:
-                    raise ValueError(
-                        "operator has no certified arithmetic-family implementation"
-                    )
-            else:
+            # C4 remains an explicit bounded Collatz oracle. Reverse/add has
+            # one arithmetic language: primitive BaseBlockEffect nodes plus
+            # its terminal digit normalization.
+            if family == "collatz":
                 from number_compiler.arithmetic.contracts.physical_collatz_kernel import (
                     is_verified_physical_four,
                 )
@@ -179,6 +167,10 @@ def _verify_program(
                     raise ValueError(
                         "operator has no certified arithmetic-family implementation"
                     )
+            else:
+                raise ValueError(
+                    "operator has no certified arithmetic-family implementation"
+                )
         if counts[0] != node.exponent or counts[1] > 1:
             raise ValueError("arithmetic program does not match its declared semantics")
         facts[identity] = counts

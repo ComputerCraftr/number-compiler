@@ -14,7 +14,6 @@ from number_compiler.projection.microblock_cache import (
 from number_compiler.resources.ledger import ResourceLedger
 from number_compiler.resources.payload_audit import audit_registered_payloads
 from number_compiler.sequences.collatz.block_power import PoweredCollatzTerm
-from number_compiler.sequences.reverse_add.power import ReverseAddPoweredTerm
 
 
 def _assert_single_scoped_point(cache: object, output_radix: int) -> None:
@@ -31,42 +30,6 @@ def _assert_single_scoped_point(cache: object, output_radix: int) -> None:
     assert type(value) is ExactMicroblock
     assert value.bit_count <= 64
     assert cache.payload_bytes <= 8 * 1024
-
-
-def test_reverse_point_survives_query_eviction_without_transition_replay() -> None:
-    term = ReverseAddPoweredTerm(196, 32)
-    expected = term.digit(3)
-    index = term._point_index()
-    cache = index._microblocks
-    _assert_single_scoped_point(cache, 10)
-    before = dict(term._ledger.counters)
-
-    term._ledger.evict_query_memos()
-    assert term.digit(3) == expected
-
-    after = term._ledger.counters
-    assert after.get("microblock_hits", 0) > before.get("microblock_hits", 0)
-    assert after.get("nonlinear_branch_evaluations", 0) == before.get(
-        "nonlinear_branch_evaluations",
-        0,
-    )
-    assert after.get("output_morphism_visits", 0) == before.get(
-        "output_morphism_visits",
-        0,
-    )
-    assert after.get("recursive_field_image_temporal_compositions", 0) == before.get(
-        "recursive_field_image_temporal_compositions",
-        0,
-    )
-    assert after.get("temporal_parent_compositions", 0) == before.get(
-        "temporal_parent_compositions",
-        0,
-    )
-    assert after.get("new_field_image_nodes", 0) == before.get(
-        "new_field_image_nodes",
-        0,
-    )
-    assert audit_registered_payloads(term._ledger).forbidden_future_payloads == 0
 
 
 def test_collatz_point_survives_query_eviction_without_transition_replay() -> None:

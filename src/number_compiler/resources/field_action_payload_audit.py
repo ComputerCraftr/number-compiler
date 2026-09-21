@@ -52,27 +52,34 @@ def audit_field_action_payloads(ledger: ResourceLedger) -> FieldActionPayloadAud
     registered backing stores, scoped component handles, and bounded arithmetic
     invariants must all agree.
     """
+    from number_compiler.resources.cylinder_innovation_payload_audit import (
+        audit_cylinder_innovation_payloads,
+    )
+    from number_compiler.resources.symbolic_innovation_payload_audit import (
+        audit_symbolic_innovation_payloads,
+    )
+
+    innovations = audit_symbolic_innovation_payloads(ledger)
+    cylinders = audit_cylinder_innovation_payloads(ledger)
+    scoped_approved = innovations.approved | cylinders.approved
+    scoped_invalid = innovations.invalid | cylinders.invalid
     legacy_prefixes = (
         "number_compiler.hashlife.actions.field_actions",
         "number_compiler.hashlife.execution.field_",
         "number_compiler.sequences.collatz.field_action",
         "number_compiler.sequences.collatz.powered_local_codec",
-        "number_compiler.sequences.reverse_add.coordinate_program",
-        "number_compiler.sequences.reverse_add.field_action",
         "number_compiler.sequences.reverse_add.powered_local_codec",
     )
     if not any(
         type(root).__module__.startswith(legacy_prefixes)
         for root in ledger.iter_execution_roots()
     ):
-        return FieldActionPayloadAudit(frozenset(), frozenset())
+        return FieldActionPayloadAudit(scoped_approved, scoped_invalid)
 
-    from number_compiler.arithmetic.automata.symmetry_powering import ActionTransform
     from number_compiler.arithmetic.contracts.block_effect import BoundarySide
     from number_compiler.arithmetic.contracts.scoped_handles import ActionProgramID
     from number_compiler.arithmetic.contracts.semantic_identity import SemanticIdentity
     from number_compiler.hashlife.actions.field_actions import (
-        CoordinateOutputMorphismID,
         FieldCellActionID,
     )
     from number_compiler.hashlife.execution.continuations.generic_higher import (
@@ -96,13 +103,6 @@ def audit_field_action_payloads(ledger: ResourceLedger) -> FieldActionPayloadAud
         CollatzRuntimeProgram,
         CollatzRuntimeProgramArena,
     )
-    from number_compiler.sequences.reverse_add.coordinate_program import (
-        ReverseCoordinateProgram,
-        ReverseCoordinateProgramArena,
-    )
-    from number_compiler.sequences.reverse_add.field_action import (
-        ReverseFieldActionArena,
-    )
     from number_compiler.sequences.reverse_add.powered_local_codec import (
         ReverseLocalAction,
         ReverseLocalActionID,
@@ -111,8 +111,8 @@ def audit_field_action_payloads(ledger: ResourceLedger) -> FieldActionPayloadAud
 
     containers = dict(ledger.iter_containers())
     container_owners = {id(value): owner for owner, value in containers.items()}
-    approved: set[int] = set()
-    invalid: set[tuple[int, int]] = set()
+    approved: set[int] = set(scoped_approved)
+    invalid: set[tuple[int, int]] = set(scoped_invalid)
     for root in ledger.iter_execution_roots():
         if type(root) is GenericHigherActionSchema:
             stores = root._nodes, root._keys
@@ -211,127 +211,6 @@ def audit_field_action_payloads(ledger: ResourceLedger) -> FieldActionPayloadAud
             all_valid &= len(root._keys) == len(root._nodes)
             if all_valid:
                 approved.update(id(value) for value in stores)
-        elif type(root) is ReverseFieldActionArena:
-            reverse_stores = (
-                (root._action_owner, root._actions),
-                (root._action_key_owner, root._action_keys),
-                (root._residual_owner, root._residuals),
-                (root._residual_key_owner, root._residual_keys),
-                (root._output_owner, root._outputs),
-                (root._output_key_owner, root._output_keys),
-                (root._compose_owner, root._compose),
-                (root._transform_owner, root._transforms),
-                (root._witness_owner, root._witnesses),
-            )
-            if root.ledger is not ledger or any(
-                containers.get(owner) is not store for owner, store in reverse_stores
-            ):
-                invalid.add((root._action_owner, id(root)))
-                continue
-            for index, reverse_action in enumerate(root._actions):
-                try:
-                    reverse_reference = FieldCellActionID(
-                        root.owner, root._ACTION_KIND, index
-                    )
-                    valid = root.resolve(reverse_reference) is reverse_action
-                    block = root._canonical_block(root._block(reverse_action))
-                    valid &= block.innovation == reverse_action.innovation
-                    root._residual_key(reverse_action.residual)
-                    root._output_key(reverse_action.output)
-                    reverse_action.geometry.__post_init__()
-                except (TypeError, ValueError, IndexError, AttributeError):
-                    valid = False
-                if valid:
-                    approved.add(id(reverse_action))
-                else:
-                    invalid.add((root._action_owner, id(reverse_action)))
-            for key, reference in root._action_keys.items():
-                try:
-                    action = root.resolve(reference)
-                    block = root._canonical_block(root._block(action))
-                    valid = key == root._action_key(
-                        action.base,
-                        block,
-                        action.carry_forward,
-                        action.carry_backward,
-                        action.residual,
-                        action.output,
-                        action.geometry,
-                    )
-                except (TypeError, ValueError, IndexError, AttributeError):
-                    valid = False
-                if valid:
-                    approved.add(id(key))
-                else:
-                    invalid.add((root._action_key_owner, id(key)))
-            for residual_key, residual_reference in root._residual_keys.items():
-                try:
-                    root._validate_semantic_key(residual_key)
-                    valid = root._residual_key(
-                        residual_reference
-                    ) == residual_key and _bounded_semantic_key(residual_key)
-                except (TypeError, ValueError, IndexError, AttributeError):
-                    valid = False
-                if valid:
-                    approved.add(id(residual_key))
-                else:
-                    invalid.add((root._residual_key_owner, id(residual_key)))
-            for output_key, output_reference in root._output_keys.items():
-                try:
-                    root._validate_semantic_key(output_key)
-                    valid = root._output_key(
-                        output_reference
-                    ) == output_key and _bounded_semantic_key(output_key)
-                except (TypeError, ValueError, IndexError, AttributeError):
-                    valid = False
-                if valid:
-                    approved.add(id(output_key))
-                else:
-                    invalid.add((root._output_key_owner, id(output_key)))
-            for key, result in root._compose.items():
-                try:
-                    valid = type(key) is tuple and len(key) == 2
-                    valid &= all(type(item) is FieldCellActionID for item in key)
-                    root.resolve(key[0])
-                    root.resolve(key[1])
-                    root.resolve(result)
-                except (TypeError, ValueError, IndexError, AttributeError):
-                    valid = False
-                if valid:
-                    approved.update((id(key), id(result)))
-                else:
-                    invalid.add((root._compose_owner, id(key)))
-            for key, result in root._transforms.items():
-                try:
-                    valid = type(key) is tuple and len(key) == 2
-                    valid &= type(key[0]) is FieldCellActionID
-                    valid &= type(key[1]) is ActionTransform
-                    root.resolve(key[0])
-                    ActionTransform(key[1])
-                    root.resolve(result)
-                except (TypeError, ValueError, IndexError, AttributeError):
-                    valid = False
-                if valid:
-                    approved.update((id(key), id(result)))
-                else:
-                    invalid.add((root._transform_owner, id(key)))
-            for reverse_parent, witness in root._witnesses.items():
-                try:
-                    valid = (
-                        type(reverse_parent) is FieldCellActionID
-                        and type(witness) is tuple
-                        and len(witness) == 2
-                    )
-                    root.resolve(reverse_parent)
-                    valid &= all(root.resolve(child) is not None for child in witness)
-                except (TypeError, ValueError, IndexError, AttributeError):
-                    valid = False
-                if valid:
-                    approved.add(id(witness))
-                    approved.update(id(child) for child in witness)
-                else:
-                    invalid.add((root._witness_owner, id(witness)))
-            approved.update(id(store) for _, store in reverse_stores)
         elif type(root) is ReversePoweredLocalCodec:
             local_stores = (
                 root._nodes,
@@ -460,64 +339,6 @@ def audit_field_action_payloads(ledger: ResourceLedger) -> FieldActionPayloadAud
                     bindings_valid = False
             if nodes_valid and compose_valid and bindings_valid:
                 approved.update(id(value) for value in local_stores)
-        elif type(root) is ReverseCoordinateProgramArena:
-            coordinate_stores = root._nodes, root._keys, root._compose
-            valid_root = root.ledger is ledger and all(
-                containers.get(container_owners.get(id(value), -1)) is value
-                for value in coordinate_stores
-            )
-            nodes_valid = valid_root
-            for index, program in enumerate(root._nodes):
-                valid = type(program) is ReverseCoordinateProgram
-                try:
-                    program.__post_init__()
-                    valid &= program.base == root.base
-                    valid &= (
-                        root.resolve(
-                            CoordinateOutputMorphismID(
-                                root.owner,
-                                root._KIND,
-                                index,
-                            )
-                        )
-                        is program
-                    )
-                    valid &= root._keys.get(program) == index
-                    if program.atom is not None:
-                        valid &= _bounded_semantic_key(program.atom)
-                except (TypeError, ValueError, IndexError, AttributeError):
-                    valid = False
-                if valid:
-                    approved.add(id(program))
-                else:
-                    invalid.add((root._node_owner, id(program)))
-                    nodes_valid = False
-            compositions_valid = valid_root
-            for key, coordinate_result in root._compose.items():
-                valid = (
-                    type(key) is tuple
-                    and len(key) == 2
-                    and all(type(item) is CoordinateOutputMorphismID for item in key)
-                )
-                try:
-                    first = root.resolve(key[0])
-                    second = root.resolve(key[1])
-                    coordinate_actual = root.resolve(coordinate_result)
-                    valid &= first.executable and second.executable
-                    valid &= coordinate_actual == ReverseCoordinateProgram(
-                        root.base,
-                        first.pair_steps + second.pair_steps,
-                        first.normalized or second.normalized,
-                    )
-                except (TypeError, ValueError, IndexError, AttributeError):
-                    valid = False
-                if valid:
-                    approved.update((id(key), id(coordinate_result)))
-                else:
-                    invalid.add((root._compose_owner, id(key)))
-                    compositions_valid = False
-            if nodes_valid and compositions_valid:
-                approved.update(id(value) for value in coordinate_stores)
         elif type(root) is CollatzFieldActionArena:
             collatz_stores = (
                 (root._node_owner, root._nodes),
@@ -647,14 +468,14 @@ def audit_field_action_payloads(ledger: ResourceLedger) -> FieldActionPayloadAud
                 else:
                     invalid.add((root._node_owner, id(collatz_local_action)))
                     all_valid = False
-            for key, collatz_composition_result in root._compose.items():
+            for collatz_key, collatz_composition_result in root._compose.items():
                 valid = (
-                    type(key) is tuple
-                    and len(key) == 2
-                    and all(type(item) is CollatzLocalActionID for item in key)
+                    type(collatz_key) is tuple
+                    and len(collatz_key) == 2
+                    and all(type(item) is CollatzLocalActionID for item in collatz_key)
                 )
                 try:
-                    collatz_left, collatz_right = key
+                    collatz_left, collatz_right = collatz_key
                     collatz_a = root.resolve(collatz_left)
                     collatz_b = root.resolve(collatz_right)
                     valid &= root.resolve(
@@ -666,9 +487,9 @@ def audit_field_action_payloads(ledger: ResourceLedger) -> FieldActionPayloadAud
                 except (TypeError, ValueError, IndexError, AttributeError):
                     valid = False
                 if valid:
-                    approved.update((id(key), id(collatz_composition_result)))
+                    approved.update((id(collatz_key), id(collatz_composition_result)))
                 else:
-                    invalid.add((root._compose_owner, id(key)))
+                    invalid.add((root._compose_owner, id(collatz_key)))
                     all_valid = False
             for symbol, collatz_leaf_result in root._leaf_actions.items():
                 try:
@@ -752,30 +573,34 @@ def audit_field_action_payloads(ledger: ResourceLedger) -> FieldActionPayloadAud
                 else:
                     invalid.add((root._node_owner, id(runtime_program)))
                     all_valid = False
-            for key, program_result in root._compositions.items():
-                valid = type(key) is tuple and len(key) == 3 and type(key[0]) is str
+            for runtime_key, program_result in root._compositions.items():
+                valid = (
+                    type(runtime_key) is tuple
+                    and len(runtime_key) == 3
+                    and type(runtime_key[0]) is str
+                )
                 try:
-                    runtime_first = root.resolve(key[1])
-                    runtime_second = root.resolve(key[2])
+                    runtime_first = root.resolve(runtime_key[1])
+                    runtime_second = root.resolve(runtime_key[2])
                     runtime_actual = root.resolve(program_result)
                     valid &= (
                         runtime_first.role
                         == runtime_second.role
-                        == key[0]
+                        == runtime_key[0]
                         == runtime_actual.role
                     )
                     valid &= (
                         runtime_actual.exponent
                         == runtime_first.exponent + runtime_second.exponent
                     )
-                    valid &= runtime_actual.before == key[1]
-                    valid &= runtime_actual.after == key[2]
+                    valid &= runtime_actual.before == runtime_key[1]
+                    valid &= runtime_actual.after == runtime_key[2]
                 except (TypeError, ValueError, IndexError, AttributeError):
                     valid = False
                 if valid:
-                    approved.update((id(key), id(program_result)))
+                    approved.update((id(runtime_key), id(program_result)))
                 else:
-                    invalid.add((root._compose_owner, id(key)))
+                    invalid.add((root._compose_owner, id(runtime_key)))
                     all_valid = False
             if all_valid:
                 approved.update(id(value) for value in program_stores)

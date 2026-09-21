@@ -47,17 +47,18 @@ class PrimeSuccessorActionDescriptor:
 @dataclass(frozen=True, slots=True)
 class PrimeSuccessorActionNode:
     copies: int
+    width: int
     phase_shift: int
     before: PrimeSuccessorActionID | None
     after: PrimeSuccessorActionID | None
 
     @property
     def primitive(self) -> bool:
-        return self.copies == 1
+        return self.width > 0 and self.before is None and self.after is None
 
     @property
     def identity(self) -> bool:
-        return self.copies == 0
+        return self.width == 0
 
 
 @dataclass(frozen=True, slots=True)
@@ -121,13 +122,28 @@ class PrimeSuccessorActionArena:
         rank: CoprimeRankDAG,
         fresh_prime: int,
         *,
+        parent_depth: int | None = None,
         forbidden_residues: tuple[int, ...] = (0,),
         max_action_entries: int | None = None,
     ) -> None:
         if type(fresh_prime) is not int or fresh_prime < 2:
             raise ValueError("fresh prime must be an integer >= 2")
-        if not rank.primes or fresh_prime <= rank.last_factor:
-            raise ValueError("fresh prime must follow a nonempty parent prefix")
+        factors = rank.primes
+        if parent_depth is None:
+            if not factors or fresh_prime <= rank.last_factor:
+                raise ValueError("fresh prime must follow a nonempty parent prefix")
+            parent_depth = len(factors)
+            rank.validate_fresh_successor(fresh_prime)
+            admitted_successor = False
+        elif (
+            type(parent_depth) is not int
+            or not 0 <= parent_depth < len(factors)
+            or factors[parent_depth] != fresh_prime
+        ):
+            raise ValueError("fresh prime must be the admitted successor stage")
+        else:
+            rank.validate_consecutive_prefix(parent_depth + 1)
+            admitted_successor = True
         if max_action_entries is not None and (
             type(max_action_entries) is not int or max_action_entries < 4
         ):
@@ -137,56 +153,111 @@ class PrimeSuccessorActionArena:
             raise ValueError("fresh-prime forbidden residues must be integers")
         q = fresh_prime
         forbidden = tuple(sorted({value % q for value in raw_forbidden}))
-        # This authenticates the complete parent prefix and discharges
-        # freshness from that admitted source.  No primality oracle participates.
-        rank.validate_fresh_successor(q)
-
         self.rank = rank
+        self._rank_authority = rank, rank.ledger, rank._factor_store_authority
+        self._parent_depth = parent_depth
+        self._admitted_successor = admitted_successor
         self._owner = ArenaToken("prime-successor-actions")
         self.descriptor = PrimeSuccessorActionDescriptor(
-            rank.primes, prod(rank.primes), q, forbidden
+            factors[:parent_depth], prod(factors[:parent_depth]), q, forbidden
+        )
+        self._descriptor_authority = (
+            self.descriptor,
+            self.descriptor.parent_factors,
+            self.descriptor.parent_period,
+            self.descriptor.fresh_prime,
+            self.descriptor.forbidden_residues,
         )
         self.descriptor_id = PrimeSuccessorDescriptorID(
             self._owner, "prime-successor-descriptor", 0
         )
         self.max_action_entries = max_action_entries
         ledger = rank.ledger
+        prefix = f"prime.successor-{ledger.owner_count}"
         node_owner = ledger.register(
-            "prime.successor.nodes", "fresh-prime chronological action nodes"
+            prefix + ".nodes", "fresh-prime chronological action nodes"
         )
         composition_owner = ledger.register(
-            "prime.successor.normal-forms", "fresh-prime action normal forms"
+            prefix + ".normal-forms", "fresh-prime action normal forms"
         )
         port_owner = ledger.register(
-            "prime.successor.ports", "demanded fresh-prime port effects"
+            prefix + ".ports", "demanded fresh-prime port effects"
         )
-        self._nodes: OwnedMemo[int, PrimeSuccessorActionNode] = OwnedMemo(
-            ledger, node_owner, nodes_per_entry=1
-        )
-        self._normal_forms: OwnedMemo[int, PrimeSuccessorActionID] = OwnedMemo(
-            ledger, composition_owner, composition_entries=True
-        )
-        self._ports: OwnedMemo[
-            tuple[PrimeSuccessorActionID, int], PrimeSuccessorPortEffect
-        ] = OwnedMemo(ledger, port_owner)
-        self._next_node = 0
-        self._closed = False
-        self.identity = self._append_node(PrimeSuccessorActionNode(0, 0, None, None))
-        self.base = self._append_node(
-            PrimeSuccessorActionNode(1, self.descriptor.parent_period % q, None, None)
-        )
-        self._normal_forms[0] = self.identity
-        self._normal_forms[1] = self.base
+        nodes: OwnedMemo[int, PrimeSuccessorActionNode] | None = None
+        normal_forms: OwnedMemo[int, PrimeSuccessorActionID] | None = None
+        ports: (
+            OwnedMemo[tuple[PrimeSuccessorActionID, int], PrimeSuccessorPortEffect]
+            | None
+        ) = None
+        try:
+            nodes = OwnedMemo(ledger, node_owner, nodes_per_entry=1)
+            normal_forms = OwnedMemo(
+                ledger, composition_owner, composition_entries=True
+            )
+            ports = OwnedMemo(ledger, port_owner)
+            self._nodes = nodes
+            self._normal_forms = normal_forms
+            self._ports = ports
+            self._next_node = 0
+            self._closed = False
+            self._check_budget(4)
+            self.identity = self._append_node(
+                PrimeSuccessorActionNode(0, 0, 0, None, None)
+            )
+            self.base = self._append_node(
+                PrimeSuccessorActionNode(
+                    1,
+                    self.descriptor.parent_period,
+                    self.descriptor.parent_period % q,
+                    None,
+                    None,
+                )
+            )
+            self._normal_forms[0] = self.identity
+            self._normal_forms[self.descriptor.parent_period] = self.base
+        except BaseException:
+            for memo in (ports, normal_forms, nodes):
+                if memo is not None:
+                    memo.dispose()
+            self._closed = True
+            raise
 
     def _check_open(self) -> None:
         if self._closed:
             raise RuntimeError("prime successor action arena is closed")
+        descriptor, parent, period, fresh, forbidden = self._descriptor_authority
+        if self.descriptor is not descriptor or (
+            descriptor.parent_factors,
+            descriptor.parent_period,
+            descriptor.fresh_prime,
+            descriptor.forbidden_residues,
+        ) != (parent, period, fresh, forbidden):
+            raise ValueError("prime successor descriptor lost its source authority")
+        rank, ledger, factors = self._rank_authority
+        if (
+            self.rank is not rank
+            or self.rank.ledger is not ledger
+            or self.rank._factor_store_authority is not factors
+        ):
+            raise ValueError("prime successor action lost its source authority")
         depth = len(self.descriptor.parent_factors)
-        if self.rank.primes[:depth] != self.descriptor.parent_factors:
+        admitted = self.rank.primes
+        if admitted[:depth] != self.descriptor.parent_factors or (
+            self._admitted_successor
+            and (
+                len(admitted) <= depth or admitted[depth] != self.descriptor.fresh_prime
+            )
+        ):
             raise RuntimeError("prime successor action lost its parent source binding")
 
     def _check_budget(self, additional: int = 1) -> None:
         retained = len(self._nodes) + len(self._normal_forms) + len(self._ports)
+        request_retained = self.rank.ledger.entries - self.rank.factor_count
+        if (
+            self.rank.max_states is not None
+            and request_retained + additional > self.rank.max_states
+        ):
+            raise ValueError("prime state budget exceeded (--max-prime-states)")
         if (
             self.max_action_entries is not None
             and retained + additional > self.max_action_entries
@@ -222,21 +293,23 @@ class PrimeSuccessorActionArena:
             return after
         if right.identity:
             return before
-        copies = left.copies + right.copies
+        width = left.width + right.width
         try:
-            return self._normal_forms[copies]
+            return self._normal_forms[width]
         except KeyError:
             pass
         self._check_budget(2)
+        W = self.descriptor.parent_period
         action = self._append_node(
             PrimeSuccessorActionNode(
-                copies,
+                width // W if width % W == 0 else -1,
+                width,
                 (left.phase_shift + right.phase_shift) % self.descriptor.fresh_prime,
                 before,
                 after,
             )
         )
-        self._normal_forms[copies] = action
+        self._normal_forms[width] = action
         return action
 
     def power(self, copies: int) -> PrimeSuccessorActionID:
@@ -253,6 +326,69 @@ class PrimeSuccessorActionArena:
             if remaining:
                 power = self.compose(power, power)
         return result
+
+    def prefix(self, width: int) -> PrimeSuccessorActionID:
+        """Build a binary admitted integer prefix without enumerating its leaves."""
+        self._check_open()
+        if type(width) is not int or width < 0:
+            raise ValueError("prime successor prefix width must be nonnegative")
+        found = self._normal_forms.get(width)
+        if found is not None:
+            return found
+        unit = self._normal_forms.get(1)
+        if unit is None:
+            self._check_budget(2)
+            unit = self._append_node(
+                PrimeSuccessorActionNode(
+                    -1,
+                    1,
+                    1 % self.descriptor.fresh_prime,
+                    None,
+                    None,
+                )
+            )
+            self._normal_forms[1] = unit
+        result, power, remaining = self.identity, unit, width
+        while remaining:
+            self.rank.charge()
+            if remaining & 1:
+                result = self.compose(result, power)
+            remaining >>= 1
+            if remaining:
+                power = self.compose(power, power)
+        return result
+
+    def _interval_effect(
+        self, start: int, width: int, entering_phase: int
+    ) -> PrimeSuccessorPortEffect:
+        q = self.descriptor.fresh_prime
+        phase = entering_phase % q
+        depth = len(self.descriptor.parent_factors)
+        parent = self.rank.count(start + width, depth) - self.rank.count(start, depth)
+        if phase == start % q and self.descriptor.forbidden_residues == (0,):
+            deleted = self.rank.count((start + width) // q, depth) - self.rank.count(
+                start // q, depth
+            )
+            return PrimeSuccessorPortEffect(
+                phase,
+                (phase + width) % q,
+                parent,
+                deleted,
+                parent - deleted,
+            )
+        deleted = 0
+        for forbidden in self.descriptor.forbidden_residues:
+            residue = (start + forbidden - phase) % q
+            deleted += self.rank.count_progression_interval(
+                start + 1, start + width + 1, q, residue, depth
+            )
+        return PrimeSuccessorPortEffect(
+            phase,
+            (phase + width) % q,
+            parent,
+            deleted,
+            parent - deleted,
+        )
 
     def _base_rank(self, entering_phase: int, stop: int) -> int:
         """Survivors in the first ``stop`` offsets of one parent period."""
@@ -278,17 +414,40 @@ class PrimeSuccessorActionArena:
         W, q = self.descriptor.parent_period, self.descriptor.fresh_prime
         depth = len(self.descriptor.parent_factors)
         parent = prod(factor - 1 for factor in self.descriptor.parent_factors)
+        phase = entering_phase % q
+        if phase == 0 and self.descriptor.forbidden_residues == (0,):
+            surviving = self.rank.count(W, depth) - self.rank.count(W // q, depth)
+            return PrimeSuccessorPortEffect(
+                phase,
+                W % q,
+                parent,
+                parent - surviving,
+                surviving,
+            )
         deleted = 0
         for forbidden in self.descriptor.forbidden_residues:
-            residue = (forbidden - entering_phase) % q
+            residue = (forbidden - phase) % q
             deleted += self.rank.count_progression_interval(1, W + 1, q, residue, depth)
         return PrimeSuccessorPortEffect(
-            entering_phase,
-            (entering_phase + W) % q,
+            phase,
+            (phase + W) % q,
             parent,
             deleted,
             parent - deleted,
         )
+
+    def _period_aligned_split(self, node: PrimeSuccessorActionNode) -> bool:
+        """Whether the second child starts on the parent's wheel seam.
+
+        A whole-period extent does not imply that its binary children split
+        on a period seam. Off-seam intervals need the progression count owner;
+        transporting only the fresh-prime phase would lose the parent offset.
+        """
+        if node.width % self.descriptor.parent_period:
+            return False
+        if node.before is None:
+            return True
+        return self.node(node.before).width % self.descriptor.parent_period == 0
 
     def port_effect(
         self, action: PrimeSuccessorActionID, entering_phase: int
@@ -304,6 +463,11 @@ class PrimeSuccessorActionArena:
             return self._ports[root]
         except KeyError:
             pass
+        root_node = self.node(action)
+        if not self._period_aligned_split(root_node):
+            self._check_budget()
+            self._ports[root] = self._interval_effect(0, root_node.width, phase)
+            return self._ports[root]
         stack = [(action, phase, False)]
         while stack:
             action_id, incoming, _ready = stack.pop()
@@ -312,7 +476,9 @@ class PrimeSuccessorActionArena:
             if key in self._ports:
                 continue
             node = self.node(action_id)
-            if node.identity:
+            if not self._period_aligned_split(node):
+                effect = self._interval_effect(0, node.width, incoming)
+            elif node.identity:
                 effect = PrimeSuccessorPortEffect(incoming, incoming, 0, 0, 0)
             elif node.primitive:
                 effect = self._base_effect(incoming)
@@ -347,22 +513,31 @@ class PrimeSuccessorActionArena:
     ) -> int:
         """Count action survivors in the half-open offset prefix ``[0, stop)``."""
         node = self.node(action)
-        W = self.descriptor.parent_period
-        if type(stop) is not int or not 0 <= stop <= node.copies * W:
+        if type(stop) is not int or not 0 <= stop <= node.width:
             raise ValueError("prime successor rank is outside its action")
         phase = entering_phase % self.descriptor.fresh_prime
+        if phase == 0 and self.descriptor.forbidden_residues == (0,):
+            depth = len(self.descriptor.parent_factors)
+            q = self.descriptor.fresh_prime
+            return self.rank.count(stop, depth) - self.rank.count(stop // q, depth)
+        if not self._period_aligned_split(node):
+            return self._interval_effect(0, stop, phase).surviving_values
         current, remaining, result = action, stop, 0
         while True:
             self.rank.charge()
             current_node = self.node(current)
             if current_node.identity or remaining == 0:
                 return result
+            if not self._period_aligned_split(current_node):
+                return (
+                    result + self._interval_effect(0, remaining, phase).surviving_values
+                )
             if current_node.primitive:
                 return result + self._base_rank(phase, remaining)
             if current_node.before is None or current_node.after is None:
                 raise RuntimeError("composed prime action lost its children")
             before_node = self.node(current_node.before)
-            split = before_node.copies * W
+            split = before_node.width
             if remaining <= split:
                 current = current_node.before
                 continue
@@ -371,6 +546,20 @@ class PrimeSuccessorActionArena:
             phase = first.outgoing_phase
             remaining -= split
             current = current_node.after
+
+    def _select_interval(
+        self, action: PrimeSuccessorActionID, phase: int, rank: int
+    ) -> int:
+        """Descend exact interval ranks where a binary edge crosses a seam."""
+        lo, hi = 1, self.node(action).width
+        while lo < hi:
+            self.rank.charge()
+            mid = (lo + hi) // 2
+            if self.rank_before(action, phase, mid) > rank:
+                hi = mid
+            else:
+                lo = mid + 1
+        return lo - 1
 
     def select(
         self, action: PrimeSuccessorActionID, entering_phase: int, rank: int
@@ -382,11 +571,16 @@ class PrimeSuccessorActionArena:
         if rank >= total:
             raise IndexError(rank)
         W = self.descriptor.parent_period
+        root_node = self.node(action)
+        if not self._period_aligned_split(root_node):
+            return self._select_interval(action, entering_phase, rank)
         phase = entering_phase % self.descriptor.fresh_prime
         current, offset, remaining_rank = action, 0, rank
         while True:
             self.rank.charge()
             node = self.node(current)
+            if not self._period_aligned_split(node):
+                return offset + self._select_interval(current, phase, remaining_rank)
             if node.primitive:
                 lo, hi = 1, W
                 while lo < hi:
@@ -404,7 +598,7 @@ class PrimeSuccessorActionArena:
                 current = node.before
                 continue
             remaining_rank -= first.surviving_values
-            offset += self.node(node.before).copies * W
+            offset += self.node(node.before).width
             phase = first.outgoing_phase
             current = node.after
 
@@ -432,7 +626,7 @@ class PrimeSuccessorImageAdapter(SourceBoundImageAdapter):
     """Connect fresh-prime actions to the shared chronological image owner."""
 
     family = "prime"
-    semantic_version = "successor-wheel-v1"
+    semantic_version = "successor-wheel-v2"
 
     def __init__(self, arena: PrimeSuccessorActionArena) -> None:
         if type(arena) is not PrimeSuccessorActionArena:
@@ -440,7 +634,19 @@ class PrimeSuccessorImageAdapter(SourceBoundImageAdapter):
         self.arena = arena
         self.ledger = arena.rank.ledger
 
+    def _charge(self) -> None:
+        self.arena._check_open()
+        self.arena.rank.charge()
+        self.ledger.bump("prime_successor_scheduler_work")
+
+    def _check_capacity(self, additional: int) -> None:
+        maximum = self.arena.rank.max_states
+        retained = self.ledger.entries - self.arena.rank.factor_count
+        if maximum is not None and retained + additional > maximum:
+            raise ValueError("prime state budget exceeded (--max-prime-states)")
+
     def validate_source(self, source: Hashable) -> None:
+        self._charge()
         if type(source) is not PrimeSuccessorSource:
             raise TypeError("prime successor image requires its exact source")
         try:
@@ -453,19 +659,33 @@ class PrimeSuccessorImageAdapter(SourceBoundImageAdapter):
             raise ValueError("prime successor source phase is not canonical")
 
     def validate_action(self, action: Hashable) -> None:
+        self._charge()
         if type(action) is not PrimeSuccessorActionID:
             raise TypeError("prime successor image requires a scoped action")
         self.arena.node(action)
 
     def validate_payload(self, payload: Hashable) -> None:
+        self._charge()
         if type(payload) is not PrimeSuccessorImagePayload:
             raise TypeError("prime successor image has another payload sort")
         self.arena.validate_descriptor(payload.descriptor)
-        self.arena.node(payload.action)
+        node = self.arena.node(payload.action)
         q = self.arena.descriptor.fresh_prime
         if (
-            not 0 <= payload.entering_phase < q
+            any(
+                type(value) is not int
+                for value in (
+                    payload.entering_phase,
+                    payload.outgoing_phase,
+                    payload.parent_survivors,
+                    payload.deleted_survivors,
+                    payload.surviving_values,
+                )
+            )
+            or not 0 <= payload.entering_phase < q
             or not 0 <= payload.outgoing_phase < q
+            or payload.outgoing_phase != (payload.entering_phase + node.width) % q
+            or payload.parent_survivors > node.width
             or min(
                 payload.parent_survivors,
                 payload.deleted_survivors,
@@ -512,6 +732,7 @@ class PrimeSuccessorImageAdapter(SourceBoundImageAdapter):
             0,
             0,
         )
+        self._check_capacity(3)
         return SourceImageCandidate(
             payload, 0, (exact_source.entering_phase, exact_source.entering_phase)
         )
@@ -526,7 +747,15 @@ class PrimeSuccessorImageAdapter(SourceBoundImageAdapter):
         node = self.arena.node(exact_action)
         if not node.identity and not node.primitive:
             raise ValueError("shared scheduler must refine composite prime actions")
-        effect = self.arena.port_effect(exact_action, payload.outgoing_phase)
+        if (
+            node.width == self.arena.descriptor.parent_period
+            and source.binding.extent % self.arena.descriptor.parent_period == 0
+        ):
+            effect = self.arena.port_effect(exact_action, payload.outgoing_phase)
+        else:
+            effect = self.arena._interval_effect(
+                source.binding.extent, node.width, payload.outgoing_phase
+            )
         cumulative = self.arena.compose(payload.action, exact_action)
         result = PrimeSuccessorImagePayload(
             self.arena.descriptor_id,
@@ -537,21 +766,73 @@ class PrimeSuccessorImageAdapter(SourceBoundImageAdapter):
             payload.deleted_survivors + effect.deleted_survivors,
             payload.surviving_values + effect.surviving_values,
         )
+        if node.primitive:
+            self.ledger.bump("prime_partial_successor_filters")
+        self._check_capacity(4)
         return SourceImageCandidate(
             result,
-            source.binding.extent + node.copies * self.arena.descriptor.parent_period,
+            source.binding.extent + node.width,
+            (result.entering_phase, result.outgoing_phase),
+        )
+
+    def apply_composite(
+        self,
+        action: Hashable,
+        source: SourceImageView,
+        demand: SourceImageDemand | None,
+    ) -> SourceImageCandidate | None:
+        """Admit the exact zero-phase fresh-prime specialization as one image."""
+        self.validate_action(action)
+        self.validate_payload(source.payload)
+        payload = cast(PrimeSuccessorImagePayload, source.payload)
+        exact_action = cast(PrimeSuccessorActionID, action)
+        node = self.arena.node(exact_action)
+        if (
+            demand is None
+            or node.primitive
+            or node.identity
+            or payload.outgoing_phase != 0
+            or self.arena.descriptor.forbidden_residues != (0,)
+            or demand.name != "rank-before"
+            or len(demand.parameters) != 1
+        ):
+            return None
+        width = node.width
+        effect = self.arena._interval_effect(
+            source.binding.extent, width, payload.outgoing_phase
+        )
+        cumulative = self.arena.compose(payload.action, exact_action)
+        result = PrimeSuccessorImagePayload(
+            self.arena.descriptor_id,
+            cumulative,
+            payload.entering_phase,
+            effect.outgoing_phase,
+            payload.parent_survivors + effect.parent_survivors,
+            payload.deleted_survivors + effect.deleted_survivors,
+            payload.surviving_values + effect.surviving_values,
+        )
+        self.ledger.bump("prime_partial_successor_filters")
+        self._check_capacity(4)
+        return SourceImageCandidate(
+            result,
+            source.binding.extent + width,
             (result.entering_phase, result.outgoing_phase),
         )
 
     def admitted_input_key(
         self, action: Hashable, source: SourceImageView
-    ) -> tuple[PrimeSuccessorDescriptorID, int]:
+    ) -> tuple[PrimeSuccessorDescriptorID, int, int]:
         self.validate_action(action)
         self.validate_payload(source.payload)
         payload = cast(PrimeSuccessorImagePayload, source.payload)
-        # The full incoming q-phase is the exact translation state for the
-        # homogeneous parent-period action.  No cyclic/count summary replaces it.
-        return payload.descriptor, payload.outgoing_phase
+        # Arbitrary admitted prefixes need both translation coordinates.  Equal
+        # fresh-prime phase alone does not determine which parent-wheel slots
+        # survive when the source extent is not parent-period aligned.
+        return (
+            payload.descriptor,
+            payload.outgoing_phase,
+            source.binding.extent % self.arena.descriptor.parent_period,
+        )
 
     def transport_reuse(
         self,
@@ -567,8 +848,13 @@ class PrimeSuccessorImageAdapter(SourceBoundImageAdapter):
         old_source = cast(PrimeSuccessorImagePayload, cached_source.payload)
         old_result = cast(PrimeSuccessorImagePayload, cached_result.payload)
         new = cast(PrimeSuccessorImagePayload, new_source.payload)
-        if old_source.outgoing_phase != new.outgoing_phase:
-            raise ValueError("prime relative transfer has another incoming phase")
+        parent_period = self.arena.descriptor.parent_period
+        if (
+            old_source.outgoing_phase != new.outgoing_phase
+            or cached_source.binding.extent % parent_period
+            != new_source.binding.extent % parent_period
+        ):
+            raise ValueError("prime relative transfer has another incoming state")
         exact_action = cast(PrimeSuccessorActionID, action)
         cumulative = self.arena.compose(new.action, exact_action)
         result = PrimeSuccessorImagePayload(
@@ -587,10 +873,10 @@ class PrimeSuccessorImageAdapter(SourceBoundImageAdapter):
             - old_source.surviving_values,
         )
         node = self.arena.node(exact_action)
+        self._check_capacity(3)
         return SourceImageCandidate(
             result,
-            new_source.binding.extent
-            + node.copies * self.arena.descriptor.parent_period,
+            new_source.binding.extent + node.width,
             (result.entering_phase, result.outgoing_phase),
         )
 
@@ -607,11 +893,18 @@ class PrimeSuccessorImageAdapter(SourceBoundImageAdapter):
         self.validate_payload(after.payload)
         source_payload = cast(PrimeSuccessorImagePayload, source.payload)
         after_payload = cast(PrimeSuccessorImagePayload, after.payload)
-        effect = self.arena.port_effect(
-            cast(PrimeSuccessorActionID, action), source_payload.outgoing_phase
-        )
+        exact_action = cast(PrimeSuccessorActionID, action)
+        node = self.arena.node(exact_action)
+        if source.binding.extent % self.arena.descriptor.parent_period:
+            effect = self.arena._interval_effect(
+                source.binding.extent, node.width, source_payload.outgoing_phase
+            )
+        else:
+            effect = self.arena.port_effect(exact_action, source_payload.outgoing_phase)
         if (
-            after_payload.parent_survivors - source_payload.parent_survivors
+            after.binding.extent != source.binding.extent + node.width
+            or after_payload.outgoing_phase != effect.outgoing_phase
+            or after_payload.parent_survivors - source_payload.parent_survivors
             != effect.parent_survivors
             or after_payload.deleted_survivors - source_payload.deleted_survivors
             != effect.deleted_survivors
@@ -619,6 +912,7 @@ class PrimeSuccessorImageAdapter(SourceBoundImageAdapter):
             != effect.surviving_values
         ):
             raise ValueError("prime chronological image disagrees with its action")
+        self._check_capacity(4)
         return SourceImageCandidate(
             after_payload,
             after.binding.extent,
@@ -631,13 +925,31 @@ class PrimeSuccessorImageAdapter(SourceBoundImageAdapter):
         self.validate_payload(image.payload)
         payload = cast(PrimeSuccessorImagePayload, image.payload)
         if demand.name == "effect" and not demand.parameters:
+            self._check_capacity(2)
+            self.ledger.bump("prime_successor_image_effect_projections")
             return SourceImageProjection(
-                self.arena.port_effect(payload.action, payload.entering_phase)
+                PrimeSuccessorPortEffect(
+                    payload.entering_phase,
+                    payload.outgoing_phase,
+                    payload.parent_survivors,
+                    payload.deleted_survivors,
+                    payload.surviving_values,
+                )
             )
         if demand.name == "rank-before" and len(demand.parameters) == 1:
             stop = demand.parameters[0]
             if type(stop) is not int:
                 raise TypeError("prime rank demand must contain an integer stop")
+            self._check_capacity(2)
+            # The scheduler authenticates this image's publication before
+            # calling the adapter. Its whole-extent rank is already part of
+            # the admitted support; only interior queries need count descent.
+            width = self.arena.node(payload.action).width
+            if stop == 0 or stop == width:
+                self.ledger.bump("prime_successor_image_endpoint_rank_projections")
+                return SourceImageProjection(
+                    0 if stop == 0 else payload.surviving_values
+                )
             return SourceImageProjection(
                 self.arena.rank_before(payload.action, payload.entering_phase, stop)
             )
@@ -645,6 +957,7 @@ class PrimeSuccessorImageAdapter(SourceBoundImageAdapter):
             rank = demand.parameters[0]
             if type(rank) is not int:
                 raise TypeError("prime select demand must contain an integer rank")
+            self._check_capacity(2)
             return SourceImageProjection(
                 self.arena.select(payload.action, payload.entering_phase, rank)
             )

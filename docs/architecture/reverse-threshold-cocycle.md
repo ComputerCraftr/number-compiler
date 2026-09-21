@@ -1,5 +1,7 @@
 # Decimal threshold cocycle and contextual composition
 
+Scope: **retained bounded research design, not the current production constructor**. Its algebra and experiments remain useful; descriptions of execution below refer to that historical prototype. The current [reverse/add synthesis](../research/reverse-add.md) identifies the implemented owner and unresolved temporal grammar.
+
 The exact endpoint carrier can store `(Gamma, alpha, epsilon)`, where alpha is
 modulo five and epsilon is decimal parity. The old Boolean-half coordinate is
 recovered by `beta = epsilon XOR (alpha mod 2)`. Both value coordinates now

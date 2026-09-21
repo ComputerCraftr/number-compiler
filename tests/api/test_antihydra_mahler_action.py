@@ -1,0 +1,183 @@
+"""Independent bounded consumer checks, distinct from a non-halting proof."""
+
+import subprocess
+import sys
+from fractions import Fraction
+
+import pytest
+
+from number_compiler.api.antihydra_observation import observe_run
+from number_compiler.arithmetic.contracts.block_effect import BlockContextBudgetExceeded
+from number_compiler.sequences.antihydra import runtime
+from number_compiler.sequences.antihydra.mahler import tangent
+from number_compiler.sequences.antihydra.mahler_action import associated_action
+from number_compiler.sequences.antihydra.runtime import AntihydraArithmeticTerm, run
+
+
+@pytest.mark.parametrize("kind", ("clock", "hensel"))
+def test_unrequested_mahler_module_is_not_imported(kind: str) -> None:
+    code = """
+import sys
+sys.modules['number_compiler.sequences.antihydra.mahler_action'] = None
+from number_compiler.api.cli import main
+raise SystemExit(main(sys.argv[1:]))
+"""
+    result = subprocess.run(
+        [sys.executable, "-c", code, "antihydra", "--nth", "2", "--info", kind],
+        capture_output=True,
+        text=True,
+        timeout=10,
+        check=False,
+    )
+    assert result.returncode == 0, result.stderr
+    assert result.stdout == "18\n"
+
+
+def _rational(value: object) -> Fraction:
+    assert isinstance(value, dict)
+    numerator, denominator = value["numerator"], value["denominator"]
+    assert type(numerator) is int and type(denominator) is int
+    return Fraction(numerator, denominator)
+
+
+def test_arithmetic_mahler_and_hensel_do_not_construct_physical_roof(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    term = AntihydraArithmeticTerm(64)
+    result = term.result()
+
+    def forbidden(*_args: object, **_kwargs: object) -> None:
+        raise AssertionError("arithmetic Mahler observation requested a physical roof")
+
+    monkeypatch.setattr(runtime, "physical_roof", forbidden)
+    hensel = tangent(result, 8)
+    action = associated_action(result)
+    mahler = dict(hensel)
+    mahler["associated_action"] = action
+
+    assert action["source_binding"] == result.source_binding
+    assert mahler["timestamp_macro_returns"] == result.returns
+    assert hensel["consumed_centered_odd_events"] == result.odd_events
+    assert not term.physical_publications
+    assert term.ledger.counters.get("physical_roof_evaluations", 0) == 0
+    assert term.ledger.counters.get("physical_roof_construction_requests", 0) == 0
+
+
+def test_halted_physical_adapter_does_not_relabel_total_arithmetic_extent() -> None:
+    term = AntihydraArithmeticTerm(0)
+    arithmetic = term.result()
+    halted = object.__new__(runtime.Run)
+    values = {
+        "requested": 0,
+        "returns": 0,
+        "h": 8,
+        "balance": -1,
+        "minimum": -1,
+        "left": 5,
+        "right": 6,
+        "halted": True,
+        "ledger": term.ledger,
+        "_engine": term.engine,
+        "_term": term,
+        "_source": runtime._SOURCE,
+    }
+    for name, value in values.items():
+        object.__setattr__(halted, name, value)
+    publication = runtime._PhysicalPublication(
+        halted,
+        halted.requested,
+        halted.returns,
+        halted.h,
+        halted.balance,
+        halted.minimum,
+        halted.left,
+        halted.right,
+        halted.halted,
+    )
+    term.ledger.reserve(term.physical_owner, entries=1, nodes=2)
+    term.physical_publications.append(publication)
+    halted.require_source()
+
+    with pytest.raises(ValueError, match="halted source"):
+        tangent(halted, 8)
+    with pytest.raises(ValueError, match="halted source"):
+        associated_action(halted)
+    assert tangent(arithmetic, 8)["timestamp_macro_returns"] == 0
+
+
+@pytest.mark.parametrize("extent", (0, 1, 2, 3, 7, 8, 15, 16, 63, 64, 65, 128))
+def test_mahler_action_matches_independent_finite_source(extent: int) -> None:
+    result = run(extent)
+    packet = observe_run(result, kind="mahler")["value"]["associated_action"]
+    h = 8
+    scale, offset = Fraction(1), Fraction(0)
+    cap: Fraction | None = None
+    first_failure: int | None = None
+    for index in range(extent):
+        bit = (h - 1) & 1
+        scale *= Fraction(3, 2)
+        offset = Fraction(3, 2) * offset - Fraction(3 * bit, 2)
+        roof = Fraction(3, 4) if bit else Fraction(9, 4)
+        cap = (
+            roof
+            if cap is None
+            else min(roof, Fraction(3, 2) * cap - Fraction(3 * bit, 2))
+        )
+        if first_failure is None and cap <= 0:
+            first_failure = index + 1
+        h += h // 2
+    assert packet["source_binding"] == result.source_binding
+    assert packet["extent"] == extent
+    assert packet["bit_convention"] == "parity_of_centered_D_equals_a_minus_one"
+    assert _rational(packet["scale"]) == scale
+    assert _rational(packet["offset"]) == offset
+    assert packet["cap"] is None if cap is None else _rational(packet["cap"]) == cap
+    assert packet["first_failure"] == first_failure
+    assert packet["first_failure_index_unit"] == "one_based_macro_return"
+    assert packet["all_time_claim"] is False
+
+
+def test_mahler_demand_reuses_source_support(monkeypatch: pytest.MonkeyPatch) -> None:
+    term = AntihydraArithmeticTerm(64)
+    result = term.result()
+
+    def forbidden(*args: object, **kwargs: object) -> None:
+        raise AssertionError("Mahler consumer rediscovered source arithmetic")
+
+    monkeypatch.setattr(term.engine, "arithmetic_cylinder", forbidden)
+    first = associated_action(result)
+    second = associated_action(result)
+    assert first == second
+
+
+def test_mahler_consumer_does_not_transfer_ledger_safety() -> None:
+    # The actual source begins with centered bits 11.  Its ledger is +4,
+    # whereas the Mahler cap is 3/2 * 3/4 - 3/2 = -3/8.
+    result = run(2)
+    packet = observe_run(result, kind="mahler")["value"]["associated_action"]
+    assert result.balance == 4 and not result.halted
+    assert packet["first_failure"] == 2
+    assert _rational(packet["cap"]) == Fraction(-3, 8)
+
+
+def test_mahler_rejected_publication_releases_its_stores() -> None:
+    term = AntihydraArithmeticTerm(64)
+    result = term.result()
+    ledger = result.ledger
+    before = ledger.entries, ledger.nodes
+    limit = ledger.max_cache_entries
+    ledger.max_cache_entries = ledger.entries + 10
+    with pytest.raises(BlockContextBudgetExceeded):
+        associated_action(result)
+    assert (ledger.entries, ledger.nodes) == before
+    assert term.mahler_workspace is None
+    ledger.max_cache_entries = limit
+    assert associated_action(result)["first_failure"] == 2
+
+
+def test_mahler_rejects_foreign_occurrence_workspace() -> None:
+    first, second = run(16), run(16)
+    associated_action(first)
+    second._term.mahler_workspace = first._term.mahler_workspace
+    with pytest.raises(ValueError, match="another source occurrence"):
+        associated_action(second)

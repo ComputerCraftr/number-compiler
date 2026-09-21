@@ -21,7 +21,6 @@ def audit_higher_payloads(ledger: ResourceLedger) -> HigherPayloadAudit:
     legacy_prefixes = (
         "number_compiler.hashlife.execution.continuations.",
         "number_compiler.hashlife.execution.recursive_outputs",
-        "number_compiler.sequences.reverse_add.higher_interface",
     )
     if not any(
         type(root).__module__.startswith(legacy_prefixes)
@@ -30,9 +29,6 @@ def audit_higher_payloads(ledger: ResourceLedger) -> HigherPayloadAudit:
         return HigherPayloadAudit(frozenset(), frozenset())
 
     from number_compiler.hashlife.actions.diamond_actions import PortSignatureID
-    from number_compiler.hashlife.actions.field_actions import (
-        FieldCellActionID,
-    )
     from number_compiler.hashlife.execution.continuations.higher_bimachine import (
         HigherBimachineRuntime,
         _Emit,
@@ -56,6 +52,9 @@ def audit_higher_payloads(ledger: ResourceLedger) -> HigherPayloadAudit:
     )
     from number_compiler.hashlife.execution.continuations.higher_summaries import (
         HigherSummaryArena,
+    )
+    from number_compiler.hashlife.execution.continuations.higher_temporal_image import (
+        HigherTemporalImageArena,
     )
     from number_compiler.hashlife.execution.continuations.higher_temporal_provider import (
         HigherTemporalProviderEvaluator,
@@ -97,10 +96,6 @@ def audit_higher_payloads(ledger: ResourceLedger) -> HigherPayloadAudit:
         CollatzRadix4Range,
         CollatzRadix4RangeArena,
         CollatzRadix4RangeID,
-    )
-    from number_compiler.sequences.reverse_add.higher_interface import (
-        ReverseHigherInterfaceCompilation,
-        ReverseHigherInterfaceCompiler,
     )
 
     containers = dict(ledger.iter_containers())
@@ -472,6 +467,16 @@ def audit_higher_payloads(ledger: ResourceLedger) -> HigherPayloadAudit:
                     bindings_valid = False
             if bindings_valid:
                 approved.add(id(root._bindings))
+        elif type(root) is HigherTemporalImageArena:
+            from number_compiler.resources.higher_image_payload_audit import (
+                audit_temporal_image_owner,
+            )
+
+            image_approved, image_invalid = audit_temporal_image_owner(
+                root, ledger, containers
+            )
+            approved.update(image_approved)
+            invalid.update(image_invalid)
         elif type(root) is HigherSpatialMacroComposer:
             valid_root = root.ledger is ledger and store(
                 root._binding_owner, root._bindings
@@ -726,48 +731,6 @@ def audit_higher_payloads(ledger: ResourceLedger) -> HigherPayloadAudit:
             )
             approved.update(summary_approved)
             invalid.update(summary_invalid)
-        elif type(root) is ReverseHigherInterfaceCompiler:
-            valid_root = root.ledger is ledger and store(root._cache_owner, root._cache)
-            cache_valid = valid_root
-            for action, compilation in root._cache.items():
-                valid = (
-                    type(action) is FieldCellActionID
-                    and type(compilation) is ReverseHigherInterfaceCompilation
-                    and compilation.action == action
-                )
-                try:
-                    root.actions.validate_action(action)
-                    root.actions.validate_action(compilation.action)
-                    root.interfaces.interface(compilation.signature)
-                    resolved_compilation = root.interfaces.resolve(
-                        compilation.interface
-                    )
-                    valid &= resolved_compilation.signature == compilation.signature
-                    root.actions._output_key(compilation.output_morphism)
-                    root.semantics.expression(compilation.left)
-                    root.semantics.expression(compilation.symbol)
-                    root.semantics.expression(compilation.right)
-                except (TypeError, ValueError, IndexError, KeyError, AttributeError):
-                    valid = False
-                if valid:
-                    approved.add(id(compilation))
-                    approved.update(
-                        id(getattr(compilation, field))
-                        for field in (
-                            "action",
-                            "signature",
-                            "interface",
-                            "output_morphism",
-                            "left",
-                            "symbol",
-                            "right",
-                        )
-                    )
-                else:
-                    invalid.add((root._cache_owner, id(compilation)))
-                    cache_valid = False
-            if cache_valid:
-                approved.add(id(root._cache))
         elif type(root) is SemanticBoundaryArena:
             valid_root = store(root._node_owner, root._nodes) and store(
                 root._key_owner, root._keys

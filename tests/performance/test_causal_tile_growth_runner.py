@@ -3,15 +3,31 @@
 from __future__ import annotations
 
 import json
-import subprocess
 from dataclasses import asdict, fields, replace
-from subprocess import CompletedProcess, TimeoutExpired
-from typing import Never
+from pathlib import Path
+from typing import Never, cast
 
 import pytest
 
 import devtools.benchmarks.causal_tile_growth_runner as runner
 from devtools.benchmarks.causal_tile_growth_probe import CausalGrowthRow
+from devtools.checks.process_guard import GuardResult
+
+
+def _guard(outcome: str, returncode: int = 0) -> GuardResult:
+    return GuardResult(
+        schema=1,
+        outcome=outcome,
+        child_returncode=returncode,
+        elapsed_seconds=0.1,
+        sampled_peak_bytes=1024,
+        memory_limit_bytes=runner.WORKER_MEMORY_LIMIT_BYTES,
+        memory_measurement="test",
+        sample_interval_seconds=0.05,
+        samples=1,
+        output_bytes=0,
+        detail="",
+    )
 
 
 def _row() -> CausalGrowthRow:
@@ -48,6 +64,7 @@ def test_release_runner_keeps_five_trials_and_full_horizon_manifest() -> None:
     assert runner.TRIALS == 5
     assert runner.HORIZONS == (16, 32, 64, 128, 256, 512, 1024)
     assert runner.WORKER_TIMEOUT_SECONDS == 35
+    assert runner.WORKER_MEMORY_LIMIT_BYTES == 1024**3
 
 
 def test_worker_timeout_remains_missing_evidence(
@@ -55,11 +72,14 @@ def test_worker_timeout_remains_missing_evidence(
 ) -> None:
     monkeypatch.setattr(runner, "source_fingerprint", lambda _root: "frozen")
 
-    def timed_out(command: list[str], **kwargs: object) -> None:
+    def timed_out(command: tuple[str, ...], **kwargs: object) -> GuardResult:
         assert kwargs["timeout"] == 7
-        raise TimeoutExpired(command, 7, output="partial", stderr="watchdog")
+        assert kwargs["memory_bytes"] == 1024**3
+        assert kwargs["cwd"] == runner.ROOT
+        cast(Path, kwargs["output"]).write_text("partial")
+        return _guard("timeout", -9)
 
-    monkeypatch.setattr(subprocess, "run", timed_out)
+    monkeypatch.setattr(runner, "run_guarded", timed_out)
     result = runner.run_fresh_process_probe(
         horizons=(4, 8),
         spatial_widths=(4, 8),
@@ -91,11 +111,13 @@ def test_worker_fingerprint_is_checked_before_row_payload(
         "source_after": "changed",
         "row": {"malformed": True},
     }
-    monkeypatch.setattr(
-        subprocess,
-        "run",
-        lambda *_args, **_kwargs: CompletedProcess([], 0, json.dumps(payload), ""),
-    )
+
+    def completed(_command: tuple[str, ...], **kwargs: object) -> GuardResult:
+        assert kwargs["cwd"] == runner.ROOT
+        cast(Path, kwargs["output"]).write_text(json.dumps(payload))
+        return _guard("completed")
+
+    monkeypatch.setattr(runner, "run_guarded", completed)
 
     def forbidden(_value: object) -> Never:
         raise AssertionError("row decoded before source identity was validated")
@@ -104,6 +126,55 @@ def test_worker_fingerprint_is_checked_before_row_payload(
     result = runner._one_trial(("fixed-width", 4, 4, 1), 0, "frozen", 35)
     assert result["status"] == "failed"
     assert result["failure_reason"] == "worker source fingerprint changed"
+
+
+def test_completed_worker_without_memory_sample_is_missing_evidence(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    def completed(_command: tuple[str, ...], **kwargs: object) -> GuardResult:
+        cast(Path, kwargs["output"]).write_text("{}")
+        return GuardResult(
+            schema=1,
+            outcome="completed",
+            child_returncode=0,
+            elapsed_seconds=0.1,
+            sampled_peak_bytes=None,
+            memory_limit_bytes=runner.WORKER_MEMORY_LIMIT_BYTES,
+            memory_measurement="test",
+            sample_interval_seconds=0.05,
+            samples=0,
+            output_bytes=2,
+            detail="",
+        )
+
+    monkeypatch.setattr(runner, "run_guarded", completed)
+    result = runner._one_trial(("fixed-width", 4, 4, 1), 0, "frozen", 35)
+    assert result["status"] == "failed"
+    assert result["failure_reason"] == "worker guard produced no memory samples"
+
+
+def test_successful_trial_retains_memory_evidence(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    payload = {
+        "scenario": "fixed-width",
+        "temporal_steps": 4,
+        "spatial_width": 4,
+        "coordinate": 1,
+        "source_before": "frozen",
+        "source_after": "frozen",
+        "row": asdict(_row()),
+    }
+
+    def completed(_command: tuple[str, ...], **kwargs: object) -> GuardResult:
+        cast(Path, kwargs["output"]).write_text(json.dumps(payload))
+        return _guard("completed")
+
+    monkeypatch.setattr(runner, "run_guarded", completed)
+    result = runner._one_trial(("fixed-width", 4, 4, 1), 0, "frozen", 35)
+    assert result["sampled_peak_bytes"] == 1024
+    assert result["memory_measurement"] == "test"
+    assert result["memory_samples"] == 1
 
 
 def test_trial_aggregation_reports_median_spread_and_stable_counters() -> None:

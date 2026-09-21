@@ -251,9 +251,7 @@ class AntihydraTermPayload:
 
     def digits(self) -> tuple[int, ...]:
         value = self.term.result().h
-        return tuple(
-            (value >> index) & 1 for index in range(max(1, value.bit_length()))
-        )
+        return digits_lsd(value, 2)
 
     @source_reads_only
     def digit(self, index: int) -> int:

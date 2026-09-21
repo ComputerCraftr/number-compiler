@@ -20,6 +20,10 @@ import json
 from pathlib import Path
 from time import perf_counter
 
+from devtools.experiments.reverse_add.cocycle_carrier import (
+    CocycleCell,
+    CocycleReverseCarrier,
+)
 from devtools.proofs import exact_oracle, require_exact_oracle
 from devtools.proofs.reverse_plane_checkpoint import (
     export_plane_roots,
@@ -27,10 +31,6 @@ from devtools.proofs.reverse_plane_checkpoint import (
 )
 from number_compiler.arithmetic.carry.event_memory import pair_step
 from number_compiler.arithmetic.fields.radix import reverse_pair_sums
-from number_compiler.sequences.reverse_add.cocycle_carrier import (
-    CocycleCell,
-    CocycleReverseCarrier,
-)
 
 MILESTONES = frozenset((16, 32, 64, 128, 256, 512, 1024))
 

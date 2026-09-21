@@ -73,7 +73,7 @@ class CoprimeRankDAG:
     @property
     def primes(self) -> tuple[int, ...]:
         """Immutable descriptor; cache keys remain bound to their original prefix."""
-        return tuple(self._primes)
+        return self._primes.snapshot()
 
     @property
     def factor_count(self) -> int:

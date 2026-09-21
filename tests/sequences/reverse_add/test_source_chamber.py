@@ -1,0 +1,82 @@
+"""Independent bounded references for the source-bound no-growth branch."""
+
+from __future__ import annotations
+
+import pytest
+
+from number_compiler.arithmetic.contracts.scoped_handles import ExactSource
+from number_compiler.resources.ledger import ResourceLedger
+from number_compiler.sequences.reverse_add.source_chamber import (
+    SameCarryChamberRejected,
+    iter_same_carry_digits,
+)
+from number_compiler.sequences.reverse_add.source_images import (
+    ReverseSourceImageWorkspace,
+)
+
+
+def _digits(value: int, base: int) -> tuple[int, ...]:
+    result = []
+    while True:
+        value, digit = divmod(value, base)
+        result.append(digit)
+        if value == 0:
+            return tuple(result)
+
+
+def _step(
+    digits: tuple[int, ...], base: int
+) -> tuple[tuple[int, ...], tuple[int, ...]]:
+    output = []
+    carries = [0]
+    for left, right in zip(digits, reversed(digits), strict=True):
+        carry, digit = divmod(left + right + carries[-1], base)
+        carries.append(carry)
+        output.append(digit)
+    if carries[-1]:
+        output.append(carries[-1])
+    return tuple(output), tuple(carries)
+
+
+@pytest.mark.parametrize("base", [2, 3, 10, 16])
+@pytest.mark.parametrize("steps", [3, 4, 6])
+def test_chamber_acceptance_matches_independent_full_trajectories(
+    base: int, steps: int
+) -> None:
+    for seed in range(256):
+        digits = _digits(seed, base)
+        endpoint = digits
+        initial = _step(digits, base)[1]
+        admitted = initial[-1] == 0
+        for _ in range(steps):
+            endpoint, carries = _step(endpoint, base)
+            admitted &= carries == initial and len(endpoint) == len(digits)
+        ledger = ResourceLedger()
+        output = iter_same_carry_digits(ExactSource(digits, base), steps, ledger)
+        if admitted:
+            assert tuple(output) == endpoint, (base, seed, steps)
+        else:
+            with pytest.raises(SameCarryChamberRejected):
+                next(output)
+            assert ledger.counters["reverse_source_chamber_rejections"] == 1
+
+
+@pytest.mark.parametrize("width", [16, 32, 64, 128, 256, 512, 1024])
+def test_complete_stream_has_linear_source_reads(width: int) -> None:
+    source = ExactSource((1,) * width, 10)
+    ledger = ResourceLedger()
+    assert tuple(iter_same_carry_digits(source, 3, ledger)) == (8,) * width
+    assert ledger.counters["reverse_source_pullback_pair_reads"] <= 10 * width
+    assert ledger.nodes == ledger.entries == 0
+
+
+@pytest.mark.parametrize(
+    "seed,expected", [(13783, 94039), (18211171, 60744805), (111589511, 454050344)]
+)
+def test_196_orbit_no_growth_pairs_preserve_generic_two_step_path(
+    seed: int, expected: int
+) -> None:
+    workspace = ReverseSourceImageWorkspace(ResourceLedger(), seed, 2)
+    assert tuple(workspace.iter_digits()) == _digits(expected, 10)
+    assert workspace.ledger.counters.get("source_image_primitive_applications", 0) == 0
+    workspace.dispose()

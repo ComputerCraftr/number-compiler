@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from array import array
-from collections.abc import MutableSequence
+from collections.abc import Callable, MutableSequence
 from dataclasses import dataclass, replace
 from typing import cast
 
@@ -509,9 +509,15 @@ def test_quotient_audit_deduplicates_references_only_within_one_snapshot(
     validate = behavior.validate_primitive_behavior_quotient
     calls = []
 
-    def counted(record: PrimitiveBehaviorQuotient) -> None:
+    def counted(
+        record: PrimitiveBehaviorQuotient,
+        *,
+        validate_identity: Callable[
+            [SemanticIdentity], None
+        ] = SemanticIdentity.validate,
+    ) -> None:
         calls.append(record)
-        return validate(record)
+        return validate(record, validate_identity=validate_identity)
 
     monkeypatch.setattr(behavior, "validate_primitive_behavior_quotient", counted)
     before = arena.ledger.snapshot()

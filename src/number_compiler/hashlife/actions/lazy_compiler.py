@@ -6,7 +6,6 @@ The complete interface is interpreted by the iterative lazy view evaluator.
 
 from __future__ import annotations
 
-import hashlib
 from collections.abc import Mapping, MutableMapping, MutableSequence
 from dataclasses import dataclass
 from types import MappingProxyType
@@ -82,12 +81,11 @@ class ProgramComposition:
         self.base, self.blank = first.base, first.blank
         self.exponent = first.exponent + second.exponent
         self.node_id = handle.local_id
-        digest = hashlib.sha256(
-            repr((_effect_key(first), _effect_key(second))).encode()
-        ).hexdigest()
         self.canonical_key = (
             "action-program-v2",
-            SemanticIdentity(digest, (_effect_key(first), _effect_key(second))),
+            SemanticIdentity(
+                "action-program", (_effect_key(first), _effect_key(second))
+            ),
         )
         self.blank_left_tail = first.blank_left_tail + second.blank_left_tail
         self.blank_right_tail = first.blank_right_tail + second.blank_right_tail

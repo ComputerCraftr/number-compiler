@@ -275,7 +275,7 @@ def test_public_reverse_uses_directional_future_quotient(generation: int) -> Non
         expected += int(str(expected)[::-1])
     position = term.maximum_width // 3
     assert term.digit(position) == expected // 10**position % 10
-    metrics = term._point_index().metrics()
+    metrics = term.metrics()
     assert (
         metrics.resource_work_counters["reverse_morphism_directional_leaf_consumers"]
         > 0

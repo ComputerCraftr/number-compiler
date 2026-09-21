@@ -106,7 +106,7 @@ def test_wide_radix_point_fails_before_registry_growth_but_explicit_digits_work(
     assert tuple(PoweredCollatzTermPayload(term, 1 << 100).digits()) == (82,)
 
 
-def test_radix_block_arithmetic_never_exceeds_a_machine_limb() -> None:
+def test_radix_block_arithmetic_tracks_exact_operand_width() -> None:
     radix = (1 << 63) - 25
     seed, steps = (1 << 70) + 0x12345, 11
     expected = _collatz(seed, steps)
@@ -118,7 +118,7 @@ def test_radix_block_arithmetic_never_exceeds_a_machine_limb() -> None:
     ) == tuple(digits)
     with pytest.raises(IndexError):
         projection.digit(term, len(digits))
-    assert term._ledger.counters["maximum_arithmetic_bits"] <= 64
+    assert term._ledger.counters["collatz_image_projection_operand_bits"] > 64
     assert term._microblocks.payload_bytes <= term._microblocks.MAX_PAYLOAD_BYTES
 
 

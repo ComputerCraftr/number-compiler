@@ -14,6 +14,10 @@ import time
 from typing import NotRequired, TypedDict
 
 from devtools.benchmarks.probe_support import symmetric_word
+from devtools.experiments.reverse_add.native_power import (
+    native_four_step,
+    native_two_step,
+)
 from devtools.paths import report_output, repository_root
 from number_compiler.arithmetic.formula.derived import successor
 from number_compiler.arithmetic.formula.formula import (
@@ -22,10 +26,6 @@ from number_compiler.arithmetic.formula.formula import (
     root_from_values,
 )
 from number_compiler.arithmetic.formula.types import RadixSpec
-from number_compiler.hashlife.actions.native_power import (
-    native_four_step,
-    native_two_step,
-)
 from number_compiler.hashlife.execution.evaluator import materialize_values
 
 HERE = repository_root()

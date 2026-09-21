@@ -13,7 +13,6 @@ from number_compiler.arithmetic.contracts.block_effect import (
 )
 from number_compiler.arithmetic.contracts.block_kernel import (
     BaseBlockEffect,
-    FiniteBlockEffect,
 )
 from tests.support.reverse_pair_oracle import reference_successor
 
@@ -91,25 +90,6 @@ def test_t2_residual_identity_is_exact_function_not_history() -> None:
     assert stats["provenance_path_right_states"] == 0
 
 
-def test_decimal_t2_power_uses_preminimized_semantic_kernel() -> None:
-    effect = power_block_effect(base=10, exponent=2).root
-    assert isinstance(effect, FiniteBlockEffect)
-    assert effect.left_count == 757
-    assert effect.right_count == 179
-    assert effect.kernel_name == "base10_t2_minimized_757x179"
-
-    # Same concrete semantic collision as above, now represented directly by
-    # one minimized finite state ID rather than two raw function states.
-    start = effect.initial(BoundarySide.LEFT)
-    direct = effect.advance(BoundarySide.LEFT, start, 10)
-    via_neutral_prefix = effect.advance(
-        BoundarySide.LEFT,
-        effect.advance(BoundarySide.LEFT, start, 0),
-        10,
-    )
-    assert direct == via_neutral_prefix
-
-
 def test_projection_memos_do_not_drop_exact_reusable_entries() -> None:
     source = (7, 18, 7)
     power = power_block_effect(base=10, exponent=64, max_cache_entries=1_000_000)
@@ -130,13 +110,13 @@ def test_projection_memos_do_not_drop_exact_reusable_entries() -> None:
     assert stats["positional_context_vectors"] == 0
 
 
-def test_composed_runtime_stats_attribute_shared_finite_kernel_once() -> None:
+def test_composed_runtime_stats_contain_no_retired_finite_kernel() -> None:
     power = power_block_effect(base=10, exponent=1024)
     assert power.root is not None
     stats = power.root.runtime_stats()
-    assert stats["finite_kernel_left_states"] == 757
-    assert stats["finite_kernel_right_states"] == 179
-    assert stats["finite_kernel_storage_bytes"] == 451_918
+    assert stats["finite_kernel_left_states"] == 0
+    assert stats["finite_kernel_right_states"] == 0
+    assert stats["finite_kernel_storage_bytes"] == 0
 
 
 def test_t4_uses_canonical_partition_decision_state_not_history() -> None:
@@ -144,7 +124,7 @@ def test_t4_uses_canonical_partition_decision_state_not_history() -> None:
     assert effect is not None
 
     # These are distinct input histories but the exact T^4 left continuation
-    # functions are equal over all 179 minimized T^2 right-boundary states.
+    # functions are equal over the complete primitive-composition domain.
     start_left = effect.initial(BoundarySide.LEFT)
     a = effect.advance(
         BoundarySide.LEFT,
@@ -158,9 +138,8 @@ def test_t4_uses_canonical_partition_decision_state_not_history() -> None:
     )
     assert a is b
 
-    # Same check on the opposite side; its complete proof domain has 757 T^2
-    # left-boundary states.  Equality is partition/MTDD identity, not a cache hit
-    # on one sampled argument.
+    # Same check on the opposite side. Equality is partition/MTDD identity,
+    # not a cache hit on one sampled argument.
     start_right = effect.initial(BoundarySide.RIGHT)
     c = effect.advance(
         BoundarySide.RIGHT,
