@@ -100,6 +100,8 @@ def audit_dyadic_return_payloads(
                 root.source_snapshot_owner,
                 root.support_snapshot_owner,
                 root.image_snapshot_owner,
+                root.macro_owner,
+                root.macro_stack_owner,
             )
             antihydra = root.law.family.startswith("antihydra")
             stores = (
@@ -135,6 +137,8 @@ def audit_dyadic_return_payloads(
                 (root.source_snapshot_owner, root.source_snapshots, "workspace", 1),
                 (root.support_snapshot_owner, root.support_snapshots, "workspace", 1),
                 (root.image_snapshot_owner, root.image_snapshots, "workspace", 1),
+                (root.macro_owner, root.macros, "dyadic_return_macro_index", 1),
+                (root.macro_stack_owner, root.macro_stack, "workspace", 1),
             )
             scheduler_valid, core = valid_source_only_scheduler(
                 root.scheduler, ledger, containers, roots
@@ -161,6 +165,8 @@ def audit_dyadic_return_payloads(
                 and len(set(owners)) == len(owners)
                 and all(type(store_owner) is int for store_owner in owners)
                 and not root.construction_stack
+                and not root.macro_stack
+                and not root.macros
                 and all(
                     containers.get(store_owner) is store
                     and inventory[store_owner].role == role

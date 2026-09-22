@@ -12,7 +12,6 @@ from devtools.proofs.collatz_harmonic_ports import (
     binary_carry_birth,
     binary_jet,
     binary_output_response,
-    binary_temporal_action,
 )
 from devtools.proofs.collatz_harmonic_ports import (
     Radix64OutputHarmonicAction as OutputAction,
@@ -129,7 +128,7 @@ def test_binary_jet_identity_and_phase_units() -> None:
     assert _poly_mul(z, inverse, 32) == (1, 0, 0, 0, 0)
     for n in (1, 15, 19, 27, 129, 385, 477, 797, 58723):
         e = v2_positive(3 * n + 1)
-        assert binary_temporal_action(e, binary_carry_birth(n)).apply(
+        assert PrimaryJetAffineMorphism.binary_event(e, binary_carry_birth(n)).apply(
             binary_jet(n)
         ) == binary_jet((3 * n + 1) >> e)
     # Changing from bit positions to radix-64 positions is a substitution,
@@ -146,7 +145,9 @@ def test_five_step_linear_death_does_not_kill_source_dependent_births() -> None:
         combined = PrimaryJetAffineMorphism.identity(5, 32)
         for _ in range(5):
             e = v2_positive(3 * n + 1)
-            combined = combined.then(binary_temporal_action(e, binary_carry_birth(n)))
+            combined = combined.then(
+                PrimaryJetAffineMorphism.binary_event(e, binary_carry_birth(n))
+            )
             n = (3 * n + 1) >> e
         assert combined.kernel == ZERO
         assert combined.apply(binary_jet(source)) == binary_jet(n)
@@ -176,4 +177,40 @@ def test_hensel_admission_and_root_mismatch_are_distinct() -> None:
             d for d in range(64) if domain.contains(d)
         )
     with pytest.raises(ValueError):
-        binary_temporal_action(-1, ZERO)
+        PrimaryJetAffineMorphism.binary_event(-1, ZERO)
+
+
+def test_all_odd_16_bit_sources_have_reported_inherited_kernel_counts() -> None:
+    """Finite census of the homogeneous jet, not a source grammar certificate."""
+    horizons = (1, 2, 4, 8, 16, 32, 64)
+    kernels: dict[int, set[tuple[int, ...]]] = {k: set() for k in horizons}
+    units: dict[int, tuple[int, ...]] = {}
+    for source in range(1, 1 << 16, 2):
+        value, valuation = source, 0
+        for k in range(1, 65):
+            numerator = 3 * value + 1
+            gap = (numerator & -numerator).bit_length() - 1
+            valuation += gap
+            value = numerator >> gap
+            if k not in kernels:
+                continue
+            if k >= 5:
+                kernel = ZERO
+            else:
+                if valuation not in units:
+                    units[valuation] = PrimaryJetAffineMorphism.binary_event(
+                        valuation, ZERO
+                    ).kernel
+                # y^(k-1) times the canonical z^-valuation*y kernel.
+                kernel = (0,) * (k - 1) + units[valuation][: 6 - k]
+            kernels[k].add(kernel)
+    assert {k: len(v) for k, v in kernels.items()} == {
+        1: 16,
+        2: 18,
+        4: 2,
+        8: 1,
+        16: 1,
+        32: 1,
+        64: 1,
+    }
+    assert all(kernels[k] == {ZERO} for k in horizons if k >= 8)

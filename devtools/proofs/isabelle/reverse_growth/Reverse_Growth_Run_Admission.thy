@@ -116,11 +116,45 @@ corollary source_196_live_radial_age:
   shows "n < 20" "source_growth_count n (run step t [7,18,7]) \<le> 15"
   using source_live_radial_age[OF all_196_pair_fields_valid assms] by auto
 
+corollary source_four_step_no_growth:
+  assumes "valid_pair ss" "4 \<le> n"
+  shows "1 \<le> source_no_growth_count n ss"
+  using source_live_radial_age(1)[OF assms(1), of n 1] assms(2) by force
+
+corollary source_block_parity_forcing:
+  assumes "valid_pair ss" "4 \<le> n"
+  shows "((2::int)^source_no_growth_count n ss * x + forcing) mod 2 =
+    forcing mod 2"
+proof -
+  obtain q where q: "source_no_growth_count n ss = Suc q"
+    using source_four_step_no_growth[OF assms] by (cases "source_no_growth_count n ss") auto
+  have even: "((2::int)^source_no_growth_count n ss * x) mod 2 = 0"
+    by (simp add: q power_Suc mult.assoc)
+  have "((2::int)^source_no_growth_count n ss * x + forcing) mod 2 =
+    (((2::int)^source_no_growth_count n ss * x) mod 2 + forcing mod 2) mod 2"
+    by (rule mod_add_eq[symmetric])
+  also have "... = forcing mod 2" by (simp add: even)
+  finally show ?thesis .
+qed
+
+corollary source_196_block_parity_forcing:
+  assumes "4 \<le> n"
+  shows "((2::int)^source_no_growth_count n (run step t [7,18,7]) *
+    x + forcing) mod 2 = forcing mod 2"
+  by (rule source_block_parity_forcing[OF all_196_pair_fields_valid assms])
+
+text \<open>Here x may include the entire neighbor-power contribution. Only
+the homogeneous source term is erased. The forcing can still depend on the
+original source through intervening carries and must be pulled back before
+composing admitted blocks. No spatial scan or grammar-size bound follows.\<close>
+
 ML \<open>
   val _ = if null (Thm_Deps.all_oracles
     @{thms source_growth_requires_edge source_growth_edge_successor
       source_growth_rank_decreases source_growth_potential source_radial_growth_bound
-      source_live_radial_age source_196_live_radial_age})
+      source_live_radial_age source_196_live_radial_age
+      source_four_step_no_growth source_block_parity_forcing
+      source_196_block_parity_forcing})
     then () else error "Source growth admission depends on an oracle";
 \<close>
 

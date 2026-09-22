@@ -9,6 +9,7 @@ from __future__ import annotations
 
 from collections.abc import Iterator
 
+from number_compiler.arithmetic.fields.skew_transfer import integer_dyadic_fiber_action
 from number_compiler.hashlife.execution.dyadic_return_images import (
     DyadicImageSummary,
     DyadicReturnActionID,
@@ -51,10 +52,10 @@ class AntihydraArithmeticImageWorkspace(DyadicReturnImageWorkspace):
     def segments(self) -> Iterator[tuple[int, ArithmeticCylinder]]:
         for start, summary, word in self.leaf_summaries():
             transfer = summary.transfer
-            numerator = transfer.upper * summary.residue + transfer.offset
-            output, remainder = divmod(numerator, transfer.lower)
-            if remainder:
-                raise ArithmeticError("Antihydra arithmetic leaf is not integral")
+            chart = integer_dyadic_fiber_action(
+                transfer, summary.residue, summary.width
+            )
+            output = chart.addend
             yield (
                 start,
                 ArithmeticCylinder(

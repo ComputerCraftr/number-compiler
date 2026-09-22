@@ -21,6 +21,7 @@ from number_compiler.arithmetic.contracts.block_effect import BlockContextBudget
 from number_compiler.arithmetic.polynomials.affine_transport import (
     apply_output_forcing,
     compose_output_forcing,
+    radix_exponent_factors,
 )
 
 T = TypeVar("T")
@@ -70,15 +71,7 @@ class F2SpatialTransport:
         """Return one ``(2**j, 1)`` factor for every set bit of the exponent."""
         if self.annihilated:
             return ()
-        remaining = self.growths
-        stride = 1
-        factors: list[tuple[int, int]] = []
-        while remaining:
-            if remaining & 1:
-                factors.append((stride, 1))
-            remaining >>= 1
-            stride <<= 1
-        return tuple(factors)
+        return radix_exponent_factors(self.growths, 2)
 
     def shifts(self, *, max_terms: int = 4096) -> tuple[tuple[int, int], ...]:
         """Expand a bounded nonzero coefficient support as ``(shift, 1)``."""
@@ -118,6 +111,8 @@ class F2SpatialTransport:
         add: Callable[[T, T], T],
     ) -> T:
         """Apply the homogeneous operator, then add output-aligned forcing."""
+        if self.annihilated:
+            return forcing
         return add(self.apply(source, shift=shift, add=add), forcing)
 
 
@@ -144,6 +139,8 @@ class F2AffineTransport(Generic[T]):
         shift: Callable[[T, int], T],
         add: Callable[[T, T], T],
     ) -> T:
+        if self.linear.annihilated:
+            return self.forcing
         return apply_output_forcing(
             source,
             self.forcing,
@@ -161,6 +158,11 @@ class F2AffineTransport(Generic[T]):
         """Compose exact affine maps using ``A2*f1 + f2`` for the forcing."""
         if type(after) is not F2AffineTransport:
             raise TypeError("F2 affine composition requires the same field")
+        if after.linear.annihilated:
+            # after.forcing is already expressed in its admitted output chart.
+            # Its source dependence must have been pulled back by the caller;
+            # only the homogeneous action on our earlier forcing is dead.
+            return F2AffineTransport(self.linear.then(after.linear), after.forcing)
         forcing = compose_output_forcing(
             self.forcing,
             after.forcing,

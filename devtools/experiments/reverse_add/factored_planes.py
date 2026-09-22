@@ -7,10 +7,11 @@ These are explicit execution coordinates, not admitted public point-cache keys.
 
 from __future__ import annotations
 
+from collections import OrderedDict
 from collections.abc import Callable
 from dataclasses import dataclass, field
 from itertools import product
-from weakref import WeakValueDictionary
+from weakref import ReferenceType, WeakValueDictionary, ref
 
 from number_compiler.arithmetic.automata import program_word as words
 from number_compiler.arithmetic.contracts.block_effect import BlockContextBudgetExceeded
@@ -31,16 +32,18 @@ class PlaneID:
 
 @dataclass(frozen=True, slots=True)
 class PlaneGate:
-    name: str
+    name: str = field(compare=False)
     inputs: tuple[str, ...]
     output: str
     table: tuple[int | None, ...]
+    projection: int | None = field(init=False, compare=False, repr=False)
+    constant: bool = field(init=False, compare=False, repr=False)
 
     def __post_init__(self) -> None:
         if (
             type(self.name) is not str
             or type(self.inputs) is not tuple
-            or not 1 <= len(self.inputs) <= 4
+            or not 0 <= len(self.inputs) <= 4
             or self.output not in KINDS
             or any(kind not in KINDS for kind in self.inputs)
             or type(self.table) is not tuple
@@ -55,6 +58,22 @@ class PlaneGate:
             for value in self.table
         ):
             raise ValueError("invalid bounded plane gate table")
+        assignments = tuple(product(*(range(KINDS[k]) for k in self.inputs)))
+        projection = next(
+            (
+                port
+                for port in range(len(self.inputs))
+                if all(
+                    result == values[port]
+                    for result, values in zip(self.table, assignments, strict=True)
+                )
+            ),
+            None,
+        )
+        object.__setattr__(self, "projection", projection)
+        object.__setattr__(
+            self, "constant", all(v == self.table[0] for v in self.table)
+        )
 
     @classmethod
     def build(
@@ -89,6 +108,7 @@ class PlaneGate:
 
 _View = tuple[words.CanonicalWord, int]
 _GateKey = tuple[PlaneGate, tuple[tuple[int, int], ...], int]
+_CofactorKey = tuple[PlaneGate, tuple[int, ...]]
 
 
 class PlaneAlgebra:
@@ -96,17 +116,49 @@ class PlaneAlgebra:
 
     Issued handles retain their roots; the registry is weak. Clearing work
     releases temporary gate results, not externally retained carrier planes.
+    A bounded source-free cofactor catalog survives those resets. It contains
+    complete finite functions, never source occurrences or future observations.
     Work limits apply before each new traversal task, including cache misses.
     This explicit endpoint library has no production resource-audit admission.
     """
 
-    def __init__(self, *, max_work: int = 1_000_000) -> None:
+    def __init__(
+        self,
+        *,
+        max_work: int = 1_000_000,
+        max_cofactors: int = 512,
+        max_reuse_entries: int = 4096,
+    ) -> None:
         require_endpoint_construction()
         if type(max_work) is not int or max_work <= 0:
             raise ValueError("plane work budget must be positive")
+        if type(max_cofactors) is not int or max_cofactors < 0:
+            raise ValueError("plane cofactor capacity must be nonnegative")
+        if type(max_reuse_entries) is not int or max_reuse_entries < 0:
+            raise ValueError("plane reuse capacity must be nonnegative")
         self.owner = object()
         self.max_work = max_work
         self.work = 0
+        self.total_work = 0
+        self.gate_cache_hits = 0
+        self.max_cofactors = max_cofactors
+        self.cofactor_cells = 0
+        self.cofactor_hits = 0
+        self.cofactor_evictions = 0
+        self.projection_returns = 0
+        self.constant_returns = 0
+        self.memo_prune_visits = 0
+        self.max_reuse_entries = max_reuse_entries
+        self.reuse_lookups = 0
+        self.reuse_hits = 0
+        self.reuse_evictions = 0
+        self.reuse_peak_entries = 0
+        self._cofactors: OrderedDict[_CofactorKey, PlaneGate] = OrderedDict()
+        # Weak values own no endpoint or intermediate word. Keys contain only
+        # exact finite functions and globally unique, validated word IDs.
+        self._reuse: OrderedDict[_GateKey, ReferenceType[words.CanonicalWord]] = (
+            OrderedDict()
+        )
         self._issued: WeakValueDictionary[tuple[str, int], PlaneID] = (
             WeakValueDictionary()
         )
@@ -116,10 +168,16 @@ class PlaneAlgebra:
         self._gates.clear()
         self.work = 0
 
+    def clear_reuse(self) -> None:
+        """Bypass arithmetic reuse without invalidating issued source handles."""
+        self._reuse.clear()
+        self._cofactors.clear()
+
     def _tick(self) -> None:
         if self.work >= self.max_work:
             raise BlockContextBudgetExceeded("factored plane traversal budget exceeded")
         self.work += 1
+        self.total_work += 1
 
     def _issue(self, kind: str, root: words.CanonicalWord) -> PlaneID:
         key = kind, root.node_id
@@ -183,45 +241,172 @@ class PlaneAlgebra:
     def _apply_views(
         self, gate: PlaneGate, views: tuple[_View, ...], width: int
     ) -> words.CanonicalWord:
-        pending = [(views, width, False)]
+        pending = [(gate, views, width, False)]
         results: list[words.CanonicalWord] = []
         while pending:
-            current, length, ready = pending.pop()
+            operation, current, length, ready = pending.pop()
             current = tuple(self._view(root, start, length) for root, start in current)
-            key = gate, tuple((root.node_id, start) for root, start in current), length
+            if not ready:
+                operation, current = self._cofactor(operation, current)
+            key = (
+                operation,
+                tuple((root.node_id, start) for root, start in current),
+                length,
+            )
             found = self._gates.get(key)
             if found is not None:
+                self.gate_cache_hits += 1
                 results.append(found)
                 continue
+            if not ready and self.max_reuse_entries:
+                self.reuse_lookups += 1
+                weak_result = self._reuse.get(key)
+                found = None if weak_result is None else weak_result()
+                if found is not None:
+                    self.reuse_hits += 1
+                    self._gates[key] = found
+                    results.append(found)
+                    continue
             self._tick()
             if ready:
                 right, left = results.pop(), results.pop()
                 result = words.concat(left, right)
+            elif operation.projection is not None:
+                self.projection_returns += 1
+                root, start = current[operation.projection]
+                result = self._slice_view(root, start, length)
+            elif not current:
+                self.constant_returns += 1
+                result = words.run(operation.evaluate(()), length)
             elif all(root.symbol is not None for root, _ in current):
                 values = tuple(
                     int(root.symbol) for root, _ in current if root.symbol is not None
                 )
-                result = words.run(gate.evaluate(values), length)
+                result = words.run(operation.evaluate(values), length)
             else:
                 split = min(
                     root.left.length - start
                     for root, start in current
                     if root.left is not None
                 )
-                pending.append((current, length, True))
+                pending.append((operation, current, length, True))
                 pending.append(
                     (
+                        operation,
                         tuple((root, start + split) for root, start in current),
                         length - split,
                         False,
                     )
                 )
-                pending.append((current, split, False))
+                pending.append((operation, current, split, False))
                 continue
             self._gates[key] = result
+            if self.max_reuse_entries:
+                if (
+                    key not in self._reuse
+                    and len(self._reuse) >= self.max_reuse_entries
+                ):
+                    self._reuse.popitem(last=False)
+                    self.reuse_evictions += 1
+                self._reuse[key] = ref(result)
+                self.reuse_peak_entries = max(self.reuse_peak_entries, len(self._reuse))
             results.append(result)
         if len(results) != 1:
             raise AssertionError("plane gate lost its result stack")
+        return results[0]
+
+    def _cofactor(
+        self, gate: PlaneGate, views: tuple[_View, ...]
+    ) -> tuple[PlaneGate, tuple[_View, ...]]:
+        """Quotient aligned gate requests by their complete residual function.
+
+        Negative bindings encode constants; nonnegative ones name distinct
+        aligned input functions. Repeated views of the same sort are identified
+        simultaneously. Undefined table entries remain undefined: neither
+        sampled output equality nor an unreachable-input guess permits a merge.
+        """
+        slots: dict[tuple[str, int, int], int] = {}
+        active: list[_View] = []
+        kinds: list[str] = []
+        binding: list[int] = []
+        for kind, (root, start) in zip(gate.inputs, views, strict=True):
+            if root.symbol is not None:
+                binding.append(-1 - root.symbol)
+                continue
+            slot_key = kind, root.node_id, start
+            slot = slots.get(slot_key)
+            if slot is None:
+                slot = len(active)
+                slots[slot_key] = slot
+                active.append((root, start))
+                kinds.append(kind)
+            binding.append(slot)
+        if not gate.constant and tuple(binding) == tuple(range(len(views))):
+            return gate, views
+        key = gate, tuple(binding)
+        residual = self._cofactors.get(key)
+        if residual is None:
+            table: list[int | None] = []
+            for assignment in product(*(range(KINDS[k]) for k in kinds)):
+                self._tick()
+                self.cofactor_cells += 1
+                index = 0
+                for kind, port in zip(gate.inputs, binding, strict=True):
+                    value = -1 - port if port < 0 else assignment[port]
+                    index = index * KINDS[kind] + value
+                table.append(gate.table[index])
+            if all(value == table[0] for value in table):
+                residual = PlaneGate("constant-residual", (), gate.output, (table[0],))
+            else:
+                residual = PlaneGate(
+                    "gate-residual", tuple(kinds), gate.output, tuple(table)
+                )
+            if self.max_cofactors:
+                if len(self._cofactors) == self.max_cofactors:
+                    self._cofactors.popitem(last=False)
+                    self.cofactor_evictions += 1
+                self._cofactors[key] = residual
+        else:
+            self.cofactor_hits += 1
+        return residual, tuple(active) if residual.inputs else ()
+
+    def _slice_view(
+        self, root: words.CanonicalWord, start: int, width: int
+    ) -> words.CanonicalWord:
+        """Share full subtrees; visit only the two clipped interval boundaries."""
+        pending = [(root, start, width, False)]
+        results: list[words.CanonicalWord] = []
+        while pending:
+            node, offset, length, ready = pending.pop()
+            self._tick()
+            if ready:
+                after, before = results.pop(), results.pop()
+                result = words.concat(before, after)
+            elif offset == 0 and length == node.length:
+                result = node
+            elif node.symbol is not None:
+                result = words.run(node.symbol, length)
+            else:
+                left, right = node.left, node.right
+                if left is None or right is None:
+                    raise ValueError("plane interval lost its children")
+                if offset + length <= left.length:
+                    pending.append((left, offset, length, False))
+                elif offset >= left.length:
+                    pending.append((right, offset - left.length, length, False))
+                else:
+                    split = left.length - offset
+                    pending.extend(
+                        (
+                            (node, offset, length, True),
+                            (right, 0, length - split, False),
+                            (left, offset, split, False),
+                        )
+                    )
+                continue
+            results.append(result)
+        if len(results) != 1:
+            raise AssertionError("plane slice lost its result stack")
         return results[0]
 
     def apply(self, gate: PlaneGate, *planes: PlaneID) -> PlaneID:

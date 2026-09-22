@@ -14,10 +14,6 @@ from dataclasses import dataclass, field
 from number_compiler.arithmetic.contracts.scoped_handles import ArenaHandle, ArenaToken
 from number_compiler.arithmetic.radix_transfer import RadixRemainderTransfer
 from number_compiler.hashlife.actions.field_actions import FieldCellActionID
-from number_compiler.hashlife.execution.continuations.higher_input import (
-    InputCellGeometry,
-    RuntimeInputCellID,
-)
 from number_compiler.hashlife.execution.continuations.higher_semantic import (
     HigherSemanticArena,
 )
@@ -35,6 +31,14 @@ from number_compiler.hashlife.execution.field_images import (
     SourceCellID,
 )
 from number_compiler.resources.ledger import ResourceLedger
+
+
+@dataclass(frozen=True, slots=True)
+class InputCellGeometry:
+    """Read-only geometry of the authenticated source cell."""
+
+    level: int
+    uniform_symbol: int | None
 
 
 @dataclass(frozen=True, slots=True)
@@ -154,7 +158,7 @@ SummaryRecord = (
 @dataclass(frozen=True, slots=True)
 class _UnaryBinding:
     action: FieldCellActionID
-    source: RuntimeInputCellID
+    source: SourceCellID
     side: int
 
 
@@ -162,7 +166,7 @@ class _UnaryBinding:
 class _ContextBinding:
     provider: FieldCellActionID
     consumer: FieldCellActionID
-    source: RuntimeInputCellID
+    source: SourceCellID
 
 
 class HigherSummaryArena:
@@ -262,23 +266,21 @@ class HigherSummaryArena:
             evict=self.clear_bindings,
         )
 
-    def validate_input(self, cell: RuntimeInputCellID) -> None:
+    def validate_input(self, cell: SourceCellID) -> None:
         if type(cell) is not SourceCellID:
             raise TypeError("summary input requires an issued source cell")
         self.sources.resolve(cell)
 
-    def _input_geometry(self, cell: RuntimeInputCellID) -> InputCellGeometry:
+    def _input_geometry(self, cell: SourceCellID) -> InputCellGeometry:
         self.validate_input(cell)
         node = self.sources.resolve(cell)
         return InputCellGeometry(node.level, node.uniform_symbol)
 
-    def _input_children(
-        self, cell: RuntimeInputCellID
-    ) -> tuple[RuntimeInputCellID, RuntimeInputCellID]:
+    def _input_children(self, cell: SourceCellID) -> tuple[SourceCellID, SourceCellID]:
         self.validate_input(cell)
         return self.sources.children(cell)
 
-    def _input_symbol(self, cell: RuntimeInputCellID) -> int:
+    def _input_symbol(self, cell: SourceCellID) -> int:
         self.validate_input(cell)
         return self.sources.symbol(cell)
 
@@ -796,7 +798,7 @@ class HigherSummaryArena:
     def runtime_unary(
         self,
         action: FieldCellActionID,
-        source: RuntimeInputCellID,
+        source: SourceCellID,
         side: int,
     ) -> HigherSummaryID:
         self.schema.validate_action(action)
@@ -809,7 +811,7 @@ class HigherSummaryArena:
         self,
         provider: FieldCellActionID,
         consumer: FieldCellActionID,
-        source: RuntimeInputCellID,
+        source: SourceCellID,
     ) -> HigherSummaryID:
         """Return one output-complete runtime U summary for a source cell."""
         self.schema.validate_action(provider)

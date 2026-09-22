@@ -221,14 +221,15 @@ class AntihydraArithmeticTerm:
             f"antihydra.arithmetic.segments.{term_serial}",
             "arithmetic_cylinder_support",
         )
-        self.segments: LedgerList[ArithmeticSegment] = self.ledger.make_list(
+        self._segments: LedgerList[ArithmeticSegment] = self.ledger.make_list(
             self.segment_owner, nodes_per_entry=1, append_only=False
         )
+        self._segments_ready = False
         self.ledger.register_container(
             self.segment_owner,
-            self.segments,
-            payloads=lambda: self.segments,
-            node_count=lambda: len(self.segments),
+            self._segments,
+            payloads=lambda: self._segments,
+            node_count=lambda: len(self._segments),
         )
         self.physical_owner = self.ledger.register(
             f"antihydra.physical-result.{term_serial}", "physical_result"
@@ -257,12 +258,47 @@ class AntihydraArithmeticTerm:
             raise ValueError("multiple Antihydra physical publications")
         return self.physical_publications[0].run
 
+    @property
+    def segments(self) -> LedgerList[ArithmeticSegment]:
+        """Publish bounded chronological cylinders only for explicit consumers."""
+        return self._materialize_segments(self.result())
+
+    def _materialize_segments(
+        self, result: ArithmeticResult
+    ) -> LedgerList[ArithmeticSegment]:
+        if self._segments_ready:
+            return self._segments
+        if self._segments:
+            raise ValueError("partial Antihydra arithmetic publication")
+        workspace = self.arithmetic_workspace
+        if workspace is None:
+            raise ValueError("retained Antihydra arithmetic support was changed")
+        try:
+            for start, block in workspace.segments():
+                self.ledger.reserve(self.segment_owner, entries=1, nodes=1)
+                try:
+                    self._segments.append(ArithmeticSegment(start, block))
+                except BaseException:
+                    self.ledger.release(self.segment_owner, entries=1, nodes=1)
+                    raise
+            self._segments_ready = True
+            result.require_source()
+        except BaseException:
+            retained = len(self._segments)
+            self._segments.clear()
+            self.ledger.release(self.segment_owner, entries=retained, nodes=retained)
+            self._segments_ready = False
+            self.engine.count("arithmetic_segment_publication_rollbacks")
+            raise
+        self.engine.count("arithmetic_block_applications", len(self._segments))
+        return self._segments
+
     def result(self) -> ArithmeticResult:
         if self._result is not None:
             self._result.require_source()
             self.engine.count("arithmetic_result_hits")
             return self._result
-        if self.segments:
+        if self._segments or self._segments_ready:
             raise ValueError("partial Antihydra arithmetic publication")
         from number_compiler.sequences.antihydra.arithmetic_images import (
             AntihydraArithmeticImageWorkspace,
@@ -280,10 +316,6 @@ class AntihydraArithmeticTerm:
             balance = summary.delta
             minimum = summary.minimum
             first_failure = workspace.first_failure_index()
-            for start, block in workspace.segments():
-                self.ledger.reserve(self.segment_owner, entries=1, nodes=1)
-                self.segments.append(ArithmeticSegment(start, block))
-            self.engine.count("arithmetic_block_applications", len(self.segments))
             self.engine.count("arithmetic_returns", self.requested)
             self.engine.count(
                 "arithmetic_endpoint_operand_bits",
@@ -295,8 +327,8 @@ class AntihydraArithmeticTerm:
             ):
                 raise ValueError("Antihydra arithmetic state exceeds bit budget")
         except BaseException:
-            retained = len(self.segments)
-            self.segments.clear()
+            retained = len(self._segments)
+            self._segments.clear()
             self.ledger.release(self.segment_owner, entries=retained, nodes=retained)
             workspace = self.arithmetic_workspace
             if workspace is not None:
@@ -327,26 +359,40 @@ class AntihydraArithmeticTerm:
             raise ValueError("retained Antihydra arithmetic support was changed")
         workspace.validate()
         summary = workspace.summary()
-        expected = tuple(workspace.segments())
-        if len(expected) != len(self.segments):
-            raise ValueError("retained Antihydra arithmetic support was changed")
-        for segment, (start, expected_block) in zip(
-            self.segments, expected, strict=True
+        if type(self._segments_ready) is not bool or (
+            not self._segments_ready and self._segments
         ):
-            if type(segment) is not ArithmeticSegment or type(segment.start) is not int:
+            raise ValueError("retained Antihydra arithmetic support was changed")
+        if self._segments_ready:
+            expected = tuple(workspace.segments())
+            if len(expected) != len(self._segments):
                 raise ValueError("retained Antihydra arithmetic support was changed")
-            block = segment.cylinder
-            if type(block) is not ArithmeticCylinder:
-                raise ValueError("retained Antihydra arithmetic support was changed")
-            try:
-                block.__post_init__()
-            except ValueError as error:
-                raise ValueError(
-                    "retained Antihydra arithmetic support was changed"
-                ) from error
-            if block != expected_block or segment.start != start:
-                raise ValueError("retained Antihydra arithmetic support was changed")
-            self.engine.count("arithmetic_result_validation_blocks")
+            for segment, (start, expected_block) in zip(
+                self._segments, expected, strict=True
+            ):
+                if (
+                    type(segment) is not ArithmeticSegment
+                    or type(segment.start) is not int
+                ):
+                    raise ValueError(
+                        "retained Antihydra arithmetic support was changed"
+                    )
+                block = segment.cylinder
+                if type(block) is not ArithmeticCylinder:
+                    raise ValueError(
+                        "retained Antihydra arithmetic support was changed"
+                    )
+                try:
+                    block.__post_init__()
+                except ValueError as error:
+                    raise ValueError(
+                        "retained Antihydra arithmetic support was changed"
+                    ) from error
+                if block != expected_block or segment.start != start:
+                    raise ValueError(
+                        "retained Antihydra arithmetic support was changed"
+                    )
+                self.engine.count("arithmetic_result_validation_blocks")
         h = workspace.endpoint()
         first_failure = workspace.first_failure_index()
         if (
@@ -443,7 +489,7 @@ class AntihydraArithmeticTerm:
             return cached
         h, balance, minimum, left, right, completed = 8, 0, 0, 5, 6, 0
         halted = False
-        for segment in self.segments:
+        for segment in self._materialize_segments(result):
             if segment.start != completed:
                 raise ValueError("retained Antihydra source block was changed")
             old_balance = balance
@@ -494,7 +540,7 @@ class AntihydraArithmeticTerm:
     def metrics(self) -> dict[str, object]:
         return {
             "requested_returns": self.requested,
-            "retained_source_blocks": len(self.segments),
+            "retained_source_blocks": len(self._segments),
             "retained_nodes": self.ledger.nodes,
             "peak_nodes": self.ledger.peak_nodes,
             "work_counters": dict(self.ledger.counters),

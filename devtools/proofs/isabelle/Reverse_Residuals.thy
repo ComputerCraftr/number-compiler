@@ -15,6 +15,15 @@ fun carry_apply :: "carry_domain \<Rightarrow> bool \<Rightarrow> bool" where
 | "carry_apply Equal c = c"
 | "carry_apply Above c = True"
 
+definition carry_then ::
+    "carry_domain \<Rightarrow> carry_domain \<Rightarrow> carry_domain" where
+  "carry_then after before = (if after = Equal then before else after)"
+
+lemma carry_then_apply:
+  "carry_apply (carry_then after before) c =
+    carry_apply after (carry_apply before c)"
+  by (cases after; cases before; cases c; simp_all add: carry_then_def)
+
 lemma carry_from_domain:
   "carry_apply (domain s) c = (10 \<le> s + (if c then 1 else 0))"
   by (cases c) (auto simp: domain_def)
@@ -161,7 +170,7 @@ proof -
 qed
 
 ML \<open>
-  val checked = @{thms carry_from_domain carry_depends_only_on_domains
+  val checked = @{thms carry_then_apply carry_from_domain carry_depends_only_on_domains
     two_event_key_has_no_total_successor five_examples_separated_by_three_events
     factor_through_iff contextual_successor_iff iterate_commutes invariant_quotient_exists};
   val _ = if null (Thm_Deps.all_oracles checked) then ()

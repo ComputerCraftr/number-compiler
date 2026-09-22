@@ -23,6 +23,8 @@ def substitute_innovations(
     arena: SymbolicInnovationArena,
     roots: Sequence[InnovationID],
     replacements: Mapping[InnovationID, InnovationID],
+    *,
+    parity: bool = False,
 ) -> tuple[InnovationID, ...]:
     """Run simultaneous substitution using only the caller's arithmetic owner."""
     arena._check_open()
@@ -65,6 +67,18 @@ def substitute_innovations(
                     arena.ledger.bump("symbolic_innovation_pullback_hits")
                     continue
                 node = arena.resolve(reference)
+                if parity and (
+                    isinstance(node, _Radial)
+                    and node.multiplier.no_growth > 0
+                    or isinstance(node, _Scale)
+                    and node.coefficient % 2 == 0
+                ):
+                    # Do not enter the old source or forcing subtree. This
+                    # changes only the demanded parity view, never exact data.
+                    memo[reference] = arena.zero
+                    arena.ledger.bump("symbolic_innovation_parity_pruned")
+                    arena.ledger.bump("symbolic_innovation_pullback_nodes")
+                    continue
                 children: tuple[InnovationID, ...]
                 if isinstance(node, (_Radial, _Charted, _Scale)):
                     children = (node.child,)
@@ -84,9 +98,18 @@ def substitute_innovations(
                 elif isinstance(node, _Charted):
                     result = arena.chart(memo[node.child], node.chart)
                 elif isinstance(node, _Scale):
-                    result = arena._scale(memo[node.child], node.coefficient)
+                    result = (
+                        memo[node.child]
+                        if parity
+                        else arena._scale(memo[node.child], node.coefficient)
+                    )
                 elif isinstance(node, _Add):
-                    result = arena.add(memo[node.left], memo[node.right])
+                    left, right = memo[node.left], memo[node.right]
+                    result = (
+                        arena.zero
+                        if parity and left == right
+                        else arena.add(left, right)
+                    )
                 else:
                     result = reference
                 memo[reference] = result

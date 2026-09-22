@@ -220,6 +220,9 @@ class SymbolicInnovationArena:
             ledger,
             ledger.register(prefix + "-projection", "query_memo"),
         )
+        self._f5_compositions: (
+            OwnedMemo[tuple[InnovationID, InnovationID, int, int], InnovationID] | None
+        ) = None
         self._nodes: LedgerList[_Node] = ledger.make_list(self._node_owner)
         self._keys: LedgerDict[_Node, InnovationID] = ledger.make_dict(self._key_owner)
         ledger.register_container(
@@ -244,6 +247,15 @@ class SymbolicInnovationArena:
     def _check_open(self) -> None:
         if self._closed:
             raise ValueError("disposed symbolic innovation arena")
+
+    def _f5_composition_cache(
+        self,
+        minimum_nodes: int = 1,
+    ) -> OwnedMemo[tuple[InnovationID, InnovationID, int, int], InnovationID]:
+        """Lazy arithmetic-demand memo; it carries no source-image authority."""
+        from number_compiler.arithmetic.fields.f5_innovation import composition_cache
+
+        return composition_cache(self, minimum_nodes)
 
     @staticmethod
     def bind_chart(chart: CylinderChart, *, extent: int, growth: int) -> CylinderChart:
@@ -345,6 +357,9 @@ class SymbolicInnovationArena:
         entries = len(self._nodes)
         nodes = sum(_node_units(node) for node in self._nodes)
         self._projection.dispose()
+        if self._f5_compositions is not None:
+            self._f5_compositions.dispose()
+            self._f5_compositions = None
         self._keys.clear()
         self._nodes._rollback_unpublished(0)
         self.ledger.release(self._key_owner, entries=keys)
@@ -489,6 +504,24 @@ class SymbolicInnovationArena:
         )
 
         return substitute_innovations(self, roots, replacements)
+
+    def substitute_parity_many(
+        self,
+        roots: Sequence[InnovationID],
+        replacements: Mapping[InnovationID, InnovationID],
+    ) -> tuple[InnovationID, ...]:
+        """Pull back coefficient parity, pruning even factors before descent.
+
+        Returned expressions are equivalent only modulo 2. They must not
+        replace exact output/carry expressions or grant source admission.
+        Replacement expressions retain their original environment, as in
+        substitute_many. This is not a canonical whole-cylinder quotient.
+        """
+        from number_compiler.arithmetic.fields.innovation_substitution import (
+            substitute_innovations,
+        )
+
+        return substitute_innovations(self, roots, replacements, parity=True)
 
     def action(
         self, multiplier: RadialMultiplier, innovation: InnovationID

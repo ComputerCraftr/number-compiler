@@ -20,6 +20,7 @@ from number_compiler.hashlife.execution.source_bound_images import (
     _ApplyKey,
     _RelativeKey,
 )
+from number_compiler.hashlife.execution.source_image_seals import _typed_equal
 
 
 @runtime_checkable
@@ -137,9 +138,9 @@ def apply_source_image(
                     if cached is not None:
                         cached_source = self.view(cached.source)
                         cached_result = self.view(cached.result)
-                        if (
-                            adapter.admitted_input_key(frame.action, cached_source)
-                            != admitted_input
+                        if not _typed_equal(
+                            adapter.admitted_input_key(frame.action, cached_source),
+                            admitted_input,
                         ):
                             raise ValueError(
                                 "relative transfer has another admitted input"
@@ -201,7 +202,9 @@ def apply_source_image(
                     )
                 if workspace.contains_active(action_key):
                     raise ValueError("source image action graph contains a cycle")
-                if adapter.compose_actions(before, after) != frame.action:
+                if not _typed_equal(
+                    adapter.compose_actions(before, after), frame.action
+                ):
                     raise ValueError(
                         "source image children do not compose to their parent"
                     )
@@ -314,7 +317,7 @@ def apply_source_image(
                     after_image,
                 )
             expected = adapter.compose_actions(source_view.binding.action, frame.action)
-            if split is None and after_view.binding.action != expected:
+            if split is None and not _typed_equal(after_view.binding.action, expected):
                 raise ValueError(
                     "source image chronology produced another action binding"
                 )

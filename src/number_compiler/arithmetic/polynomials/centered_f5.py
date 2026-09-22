@@ -10,6 +10,9 @@ from dataclasses import dataclass
 from math import comb
 
 from number_compiler.arithmetic.contracts.block_effect import BlockContextBudgetExceeded
+from number_compiler.arithmetic.polynomials.affine_transport import (
+    radix_exponent_factors,
+)
 
 
 @dataclass(frozen=True, slots=True)
@@ -66,15 +69,7 @@ class CenteredF5Transport:
         ``5**j``.  Multiplicities are therefore in ``1..4`` and the descriptor
         has logarithmic size even when the expanded operator is enormous.
         """
-        remaining = self.growths
-        stride = 1
-        factors: list[tuple[int, int]] = []
-        while remaining:
-            remaining, digit = divmod(remaining, 5)
-            if digit:
-                factors.append((stride, digit))
-            stride *= 5
-        return tuple(factors)
+        return radix_exponent_factors(self.growths, 5)
 
     def shifts(self, *, max_terms: int = 4096) -> tuple[tuple[int, int], ...]:
         """Expand nonzero Frobenius factors only, with a preallocation bound.

@@ -194,18 +194,43 @@ class CocycleReverseCarrier:
     def _bool_add(self, left: PlaneID, right: PlaneID) -> PlaneID:
         return self.planes.apply(_BOOL_ADD, left, right)
 
+    def _add(self, left: PlaneID, right: PlaneID) -> PlaneID:
+        return self._factored._add(left, right)
+
+    def _scale(self, plane: PlaneID, scalar: int) -> PlaneID:
+        return self._factored._scale(plane, scalar)
+
+    def successor_with_action(
+        self, cell: CocycleCell
+    ) -> tuple[CocycleCell, int, F5AffineTransport[PlaneID]]:
+        """The common macro interface; parity remains in the complete output."""
+        output, growth, actions = self.successor_with_actions(cell)
+        return output, growth, actions.f5
+
     def successor(self, cell: CocycleCell) -> tuple[CocycleCell, int]:
         output, growth, _actions = self.successor_with_actions(cell)
         return output, growth
 
+    def successor_with_emission(
+        self, cell: CocycleCell
+    ) -> tuple[CocycleCell, int, F5AffineTransport[PlaneID], tuple[PlaneID, PlaneID]]:
+        output, growth, actions, emission = self._advance(cell)
+        return output, growth, actions.f5, emission
+
     def successor_with_actions(
         self, cell: CocycleCell
     ) -> tuple[CocycleCell, int, CocycleActions]:
+        output, growth, actions, _emission = self._advance(cell)
+        return output, growth, actions
+
+    def _advance(
+        self, cell: CocycleCell
+    ) -> tuple[CocycleCell, int, CocycleActions, tuple[PlaneID, PlaneID]]:
         """Advance once and expose both exact source-bound affine actions."""
         require_endpoint_construction()
         p = self.planes
         p.clear_work()
-        prune_stale_program_word_memos()
+        p.memo_prune_visits += prune_stale_program_word_memos(amortized=True)
         try:
             self.validate(cell)
             carry, growth = p.carry_prefix(cell.domain)
@@ -263,6 +288,7 @@ class CocycleReverseCarrier:
                     F5AffineTransport(f5_linear, f5_forcing),
                     F2AffineTransport(epsilon_linear, epsilon_forcing),
                 ),
+                (normal_alpha, normal_epsilon),
             )
         finally:
             p.clear_work()

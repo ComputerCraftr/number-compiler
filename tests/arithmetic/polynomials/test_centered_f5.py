@@ -6,7 +6,35 @@ from typing import cast
 import pytest
 
 from number_compiler.arithmetic.contracts.block_effect import BlockContextBudgetExceeded
+from number_compiler.arithmetic.polynomials.affine_transport import (
+    radix_exponent_factors,
+)
 from number_compiler.arithmetic.polynomials.centered_f5 import CenteredF5Transport
+from number_compiler.arithmetic.polynomials.f2_transport import F2SpatialTransport
+
+
+def test_shared_frobenius_radix_walk_preserves_distinct_field_laws() -> None:
+    for radix, exponent in ((2, (1 << 127) + (1 << 7) + 1), (5, 5**64 + 3)):
+        factors = radix_exponent_factors(exponent, radix)
+        assert (
+            sum(stride * multiplicity for stride, multiplicity in factors) == exponent
+        )
+        assert all(0 < multiplicity < radix for _, multiplicity in factors)
+        assert tuple(stride for stride, _ in factors) == tuple(
+            sorted(stride for stride, _ in factors)
+        )
+    assert F2SpatialTransport(0, (1 << 127) + 1).frobenius_factors() == (
+        (1, 1),
+        (1 << 127, 1),
+    )
+    assert CenteredF5Transport(0, 5**64 + 3).frobenius_factors() == (
+        (1, 3),
+        (5**64, 1),
+    )
+    assert F2SpatialTransport(1, 5**64 + 3).frobenius_factors() == ()
+    for bad in (True, -1, 1.0):
+        with pytest.raises(ValueError):
+            radix_exponent_factors(cast(int, bad), 5)
 
 
 def test_centered_coefficients_and_frobenius_expansion() -> None:

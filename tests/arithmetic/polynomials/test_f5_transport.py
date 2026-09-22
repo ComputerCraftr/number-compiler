@@ -10,6 +10,7 @@ from number_compiler.arithmetic.polynomials.f5_transport import (
     F5AffineTransport,
     F5SpatialTransport,
 )
+from number_compiler.arithmetic.polynomials.centered_f5 import CenteredF5Transport
 
 
 def _shift(values: tuple[int, ...], distance: int) -> tuple[int, ...]:
@@ -98,6 +99,62 @@ def test_composition_and_output_forcing_are_explicit() -> None:
         add=_add,
         scale=_scale,
     ) == _add(homogeneous, forcing)
+
+
+def test_dense_radix_five_transport_keeps_shared_operator_structure(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A supplied operator needs O(log r) calls even when all r+1 terms live.
+
+    These callbacks represent region-operation handles. This tests the
+    homogeneous operator constructor, not source discovery or callback cost.
+    """
+
+    def forbidden(*_args: object, **_kwargs: object) -> tuple[tuple[int, int], ...]:
+        raise AssertionError("region transport expanded its coefficient support")
+
+    monkeypatch.setattr(F5SpatialTransport, "shifts", forbidden)
+    monkeypatch.setattr(CenteredF5Transport, "shifts", forbidden)
+    depth = 64
+    transport = F5SpatialTransport(3, 5**depth - 1)
+    next_id = 1
+    shifts: list[tuple[int, int, int]] = []
+    additions: list[tuple[int, int, int]] = []
+    scales: list[tuple[int, int]] = []
+
+    def shift(source: int, distance: int) -> int:
+        nonlocal next_id
+        result = next_id
+        next_id += 1
+        shifts.append((source, distance, result))
+        return result
+
+    def add(left: int, right: int) -> int:
+        nonlocal next_id
+        result = next_id
+        next_id += 1
+        additions.append((left, right, result))
+        return result
+
+    def scale(source: int, scalar: int) -> int:
+        scales.append((source, scalar))
+        return source
+
+    result = transport.apply(0, shift=shift, add=add, scale=scale)
+    assert len(shifts) == len(additions) == 4 * depth
+    assert tuple(distance for _, distance, _ in shifts) == tuple(
+        5**level for level in range(depth) for _ in range(4)
+    )
+    # Each factor reuses the previous root on both sides; no operand is copied.
+    previous = 0
+    for (source, _, shifted), (left, right, combined) in zip(
+        shifts, additions, strict=True
+    ):
+        assert source == left == previous
+        assert right == shifted
+        previous = combined
+    assert result == previous
+    assert scales == [(result, 3)]
 
 
 def test_affine_composition_transports_earlier_output_forcing() -> None:

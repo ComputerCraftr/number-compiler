@@ -619,29 +619,52 @@ def clear_transient_program_word_caches() -> None:
     The explicit clear remains available for compatibility and deterministic
     research epochs.
     """
+    global _NEXT_PRUNE_SIZE
+    _NEXT_PRUNE_SIZE = 256
     _SLICE.clear()
     _JOIN.clear()
     _NORMALIZE_RUN_CAP.clear()
 
 
-def prune_stale_program_word_memos() -> None:
+_NEXT_PRUNE_SIZE = 256
+
+
+def prune_stale_program_word_memos(*, amortized: bool = False) -> int:
     """Retire operation keys whose operands have expired, preserving live hits.
 
     A weak result can remain live after an operand dies (for example a slice
     returning a shared literal). Weak values alone do not retire such keys.
+    Automatic callers sweep only after the table population doubles. Rechecking
+    the same live tables at every grammar advance was quadratic bookkeeping.
+    Explicit callers retain immediate cleanup. Return the number of keys visited
+    so cleanup work is visible independently of semantic construction.
     """
+    global _NEXT_PRUNE_SIZE
+    if type(amortized) is not bool:
+        raise TypeError("memo cleanup policy must be a boolean")
+    population = len(_SLICE) + len(_JOIN) + len(_NORMALIZE_RUN_CAP) + len(_REVERSE)
+    if amortized and population < _NEXT_PRUNE_SIZE:
+        return 0
+    visited = 0
     for slice_key in tuple(_SLICE):
+        visited += 1
         if slice_key[0] not in _WORDS:
             _SLICE.pop(slice_key, None)
     for join_key in tuple(_JOIN):
+        visited += 1
         if join_key[0] not in _WORDS or join_key[1] not in _WORDS:
             _JOIN.pop(join_key, None)
     for cap_key in tuple(_NORMALIZE_RUN_CAP):
+        visited += 1
         if cap_key[0] not in _WORDS:
             _NORMALIZE_RUN_CAP.pop(cap_key, None)
     for reverse_key in tuple(_REVERSE):
+        visited += 1
         if reverse_key not in _WORDS:
             _REVERSE.pop(reverse_key, None)
+    survivors = len(_SLICE) + len(_JOIN) + len(_NORMALIZE_RUN_CAP) + len(_REVERSE)
+    _NEXT_PRUNE_SIZE = max(256, 2 * survivors)
+    return visited
 
 
 __all__ = [

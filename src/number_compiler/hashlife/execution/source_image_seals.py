@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from collections.abc import Hashable
-from dataclasses import fields, is_dataclass
+from dataclasses import dataclass, fields, is_dataclass
 from typing import Self, cast
 
 from number_compiler.arithmetic.contracts.scoped_handles import ArenaHandle
@@ -67,6 +67,169 @@ def _root_matches(value: object, expected: object) -> bool:
     return type(expected) is tuple and _anchor_matches(
         value, cast(_FieldAnchor, expected)
     )
+
+
+_MAX_INLINE_KEY_NODES = 64
+
+
+def _require_immutable_key(value: object, label: str) -> int:
+    """Accept structural immutable keys; reject user-defined mutable hashes."""
+    pending: list[tuple[object, bool]] = [(value, False)]
+    active: set[int] = set()
+    finished: set[int] = set()
+    visited = 0
+    while pending:
+        current, exiting = pending.pop()
+        identity = id(current)
+        if exiting:
+            active.remove(identity)
+            finished.add(identity)
+            continue
+        if current is None or type(current) in (bool, int, str, bytes):
+            visited += 1
+            if visited > _MAX_INLINE_KEY_NODES:
+                raise ValueError(
+                    f"{label} exceeds the inline descriptor bound; intern it in an arena"
+                )
+            continue
+        if isinstance(current, ArenaHandle):
+            current.__post_init__()
+            visited += 1
+            if visited > _MAX_INLINE_KEY_NODES:
+                raise ValueError(
+                    f"{label} exceeds the inline descriptor bound; intern it in an arena"
+                )
+            continue
+        if identity in active:
+            raise ValueError(f"{label} contains a reference cycle")
+        if identity in finished:
+            continue
+        visited += 1
+        if visited > _MAX_INLINE_KEY_NODES:
+            raise ValueError(
+                f"{label} exceeds the inline descriptor bound; intern it in an arena"
+            )
+        active.add(identity)
+        pending.append((current, True))
+        if type(current) is tuple:
+            pending.extend((item, False) for item in current)
+            continue
+        if type(current) is frozenset:
+            pending.extend((item, False) for item in current)
+            continue
+        if is_dataclass(current) and not isinstance(current, type):
+            parameters = getattr(type(current), "__dataclass_params__", None)
+            if parameters is None or not parameters.frozen:
+                raise TypeError(f"{label} must be structurally immutable")
+            pending.extend(
+                (getattr(current, item.name), False) for item in fields(current)
+            )
+            continue
+        raise TypeError(f"{label} must be a structural immutable key")
+    return visited
+
+
+def _typed_equal(left: object, right: object) -> bool:
+    """Compare admitted structural keys without Python's bool/int aliases."""
+    pending = [(left, right)]
+    seen: set[tuple[int, int]] = set()
+    while pending:
+        first, second = pending.pop()
+        if type(first) is not type(second):
+            return False
+        if first is None or type(first) in (bool, int, str, bytes):
+            if first != second:
+                return False
+            continue
+        if isinstance(first, ArenaHandle):
+            assert isinstance(second, ArenaHandle)
+            if (
+                first.owner is not second.owner
+                or first.kind != second.kind
+                or first.local_id != second.local_id
+            ):
+                return False
+            continue
+        pair = id(first), id(second)
+        if pair in seen:
+            continue
+        seen.add(pair)
+        if type(first) is tuple:
+            assert isinstance(second, tuple)
+            if len(first) != len(second):
+                return False
+            pending.extend(zip(first, second))
+        elif type(first) is frozenset:
+            assert isinstance(second, frozenset)
+            if {_TypedKey(item) for item in first} != {
+                _TypedKey(item) for item in second
+            }:
+                return False
+        elif is_dataclass(first):
+            assert second is not None
+            pending.extend(
+                (getattr(first, item.name), getattr(second, item.name))
+                for item in fields(first)
+            )
+        else:
+            raise TypeError("source image key has an unsupported structural sort")
+    return True
+
+
+def _typed_hash(value: object) -> int:
+    """Hash each admitted DAG node once, including shared tuple subgraphs."""
+    pending: list[tuple[object, bool]] = [(value, False)]
+    hashes: dict[int, int] = {}
+    active: set[int] = set()
+    while pending:
+        current, closing = pending.pop()
+        identity = id(current)
+        if identity in hashes:
+            continue
+        if current is None or type(current) in (bool, int, str, bytes):
+            hashes[identity] = hash((type(current), current))
+            continue
+        if isinstance(current, ArenaHandle):
+            hashes[identity] = hash(
+                (type(current), current.owner, current.kind, current.local_id)
+            )
+            continue
+        if type(current) is tuple:
+            children = current
+        elif type(current) is frozenset:
+            children = tuple(current)
+        elif is_dataclass(current):
+            children = tuple(getattr(current, item.name) for item in fields(current))
+        else:
+            raise TypeError("source image key has an unsupported structural sort")
+        if closing:
+            if type(current) is frozenset:
+                parts: object = frozenset(hashes[id(item)] for item in children)
+            else:
+                parts = tuple(hashes[id(item)] for item in children)
+            hashes[identity] = hash((type(current), parts))
+            active.remove(identity)
+            continue
+        if identity in active:
+            raise ValueError("source image typed key contains a reference cycle")
+        active.add(identity)
+        pending.append((current, True))
+        pending.extend((child, False) for child in children)
+    return hashes[id(value)]
+
+
+@dataclass(frozen=True, slots=True, eq=False)
+class _TypedKey:
+    value: Hashable
+
+    def __post_init__(self) -> None:
+        _require_immutable_key(self.value, "source image typed key")
+
+    def __hash__(self) -> int:
+        return _typed_hash(self.value)
+
+    def __eq__(self, other: object) -> bool:
+        return type(other) is _TypedKey and _typed_equal(self.value, other.value)
 
 
 class PublicationSeal(tuple[object, tuple[_Guard, ...], int]):

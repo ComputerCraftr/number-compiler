@@ -62,7 +62,9 @@ class CacheStats:
 CacheRecord = tuple[PartitionKey, ImmutableValue, int, int]
 
 
-def _validate_immutable(value: object, name: str) -> ImmutableValue:
+def _validate_immutable(
+    value: object, name: str, *, allow_bool: bool = True
+) -> ImmutableValue:
     """Validate the explicit cache wire domain without recursive Python calls."""
     pending = [(value, 0)]
     while pending:
@@ -71,6 +73,10 @@ def _validate_immutable(value: object, name: str) -> ImmutableValue:
             if depth >= _MAX_IMMUTABLE_DEPTH:
                 raise ValueError(f"{name} exceeds the immutable nesting limit")
             pending.extend((item, depth + 1) for item in current)
+        elif type(current) is bool and not allow_bool:
+            # bool compares and hashes like 0/1, so allowing it in an
+            # authority key can cross otherwise distinct source partitions.
+            raise TypeError(f"{name} cannot contain Boolean key components")
         elif current is None or type(current) in (int, str, bytes, bool):
             continue
         else:
@@ -81,8 +87,8 @@ def _validate_immutable(value: object, name: str) -> ImmutableValue:
     return cast(ImmutableValue, value)
 
 
-def _deep_size(value: ImmutableValue) -> int:
-    """Conservatively charge a complete immutable value, including tuple shells."""
+def _deep_size(value: object) -> int:
+    """Charge an immutable wire value or an internal authority record."""
     total = 0
     pending = [value]
     seen: set[int] = set()
@@ -99,7 +105,11 @@ def _deep_size(value: ImmutableValue) -> int:
 
 
 class CacheLease:
-    """Generation-bound authority over one source-qualified cache partition."""
+    """Generation-bound authority over one source-qualified cache partition.
+
+    The cache retains each issued lease until explicit close or reset; merely
+    dropping the caller's reference does not release its pinned partition.
+    """
 
     def __init__(
         self,
@@ -164,12 +174,13 @@ class CacheLease:
         return self._cache.stats()
 
     def close(self) -> None:
-        if self._closed:
-            return
-        self._closed = True
-        self._cache._release_lease(
-            id(self), self._token, self._partition, self._generation
-        )
+        with self._cache._lock:
+            if self._closed:
+                return
+            self._cache._release_lease(
+                id(self), self._token, self._partition, self._generation
+            )
+            self._closed = True
 
     def __enter__(self) -> Self:
         self._check_live()
@@ -217,9 +228,9 @@ class ProcessCache:
         self._pins: OwnedMemo[PartitionKey, tuple[int, int]] = OwnedMemo(
             self.ledger, pin_owner, nodes_per_entry=1
         )
-        self._authorities: OwnedMemo[int, tuple[int, PartitionKey, int, int]] = (
-            OwnedMemo(self.ledger, authority_owner, nodes_per_entry=1)
-        )
+        self._authorities: OwnedMemo[
+            int, tuple[int, PartitionKey, int, int, CacheLease]
+        ] = OwnedMemo(self.ledger, authority_owner, nodes_per_entry=1)
         self._lock = RLock()
         self._generation = 0
         self._tick = 0
@@ -261,7 +272,9 @@ class ProcessCache:
             raise ValueError("process-cache namespace must be a nonempty string")
         if type(version) is not str or not version:
             raise ValueError("process-cache version must be a nonempty string")
-        source = _validate_immutable(source_key, "source qualification")
+        source = _validate_immutable(
+            source_key, "source qualification", allow_bool=False
+        )
         if type(source) is not tuple:
             raise TypeError("source qualification must be a tuple")
         if not source:
@@ -271,15 +284,13 @@ class ProcessCache:
             generation = self._generation
             self._token_serial += 1
             token = self._token_serial
-            self._active_leases += 1
             pinned = self._pins.get(partition)
             partition_cost = (
                 _deep_size(partition) + _LEASE_OVERHEAD if pinned is None else 0
             )
             provisional = CacheLease(self, partition, generation, _token=token)
             authority_cost = (
-                _deep_size((token, id(provisional), partition, generation))
-                + sys.getsizeof(provisional)
+                _deep_size((token, id(provisional), partition, generation, provisional))
                 + sys.getsizeof(vars(provisional))
                 + _LEASE_OVERHEAD
             )
@@ -289,7 +300,6 @@ class ProcessCache:
                 partition_cost + authority_cost,
                 excluded=None,
             ):
-                self._active_leases -= 1
                 raise BlockContextBudgetExceeded(
                     "process-cache capacity cannot admit a source lease"
                 )
@@ -301,11 +311,12 @@ class ProcessCache:
                 else:
                     count, cost = pinned
                     self._pins[partition] = (count + 1, cost)
-                self._authorities[token] = (
-                    id(provisional),
+                self._authorities[id(provisional)] = (
+                    token,
                     partition,
                     generation,
                     authority_cost,
+                    provisional,
                 )
             except BaseException:
                 registered = self._pins.get(partition)
@@ -316,9 +327,9 @@ class ProcessCache:
                     elif pinned is not None:
                         self._pins[partition] = (count - 1, cost)
                 self.ledger.release(self._byte_owner, nodes=total_cost)
-                self._active_leases -= 1
                 raise
             self._lease_bytes += total_cost
+            self._active_leases += 1
             return provisional
 
     def _validate_lease(
@@ -329,15 +340,52 @@ class ProcessCache:
         generation: int,
     ) -> None:
         with self._lock:
+            self._require_lease_fields(lease_identity, token, partition, generation)
+            authority = self._authorities.get(lease_identity)
             if generation != self._generation:
+                if authority is not None:
+                    raise RuntimeError("process-cache lease has foreign authority")
                 raise RuntimeError("process-cache lease is stale after reset")
-            authority = self._authorities.get(token)
-            if authority is None or authority[:3] != (
-                lease_identity,
-                partition,
-                generation,
+            if not self._matches_authority(
+                authority, lease_identity, token, partition, generation
             ):
                 raise RuntimeError("process-cache lease has foreign authority")
+
+    @staticmethod
+    def _require_lease_fields(
+        lease_identity: int,
+        token: int,
+        partition: PartitionKey,
+        generation: int,
+    ) -> None:
+        if (
+            type(lease_identity) is not int
+            or type(token) is not int
+            or type(partition) is not tuple
+            or type(generation) is not int
+        ):
+            raise RuntimeError("process-cache lease has foreign authority")
+
+    @staticmethod
+    def _matches_authority(
+        authority: tuple[int, PartitionKey, int, int, CacheLease] | None,
+        lease_identity: int,
+        token: int,
+        partition: PartitionKey,
+        generation: int,
+    ) -> bool:
+        # The issued immutable partition object is held by both the lease and
+        # the authority. Value equality alone admits bool/int tuple aliases.
+        return (
+            authority is not None
+            and type(authority[0]) is int
+            and authority[0] == token
+            and authority[1] is partition
+            and type(authority[2]) is int
+            and authority[2] == generation
+            and type(authority[4]) is CacheLease
+            and id(authority[4]) == lease_identity
+        )
 
     def _release_lease(
         self,
@@ -347,20 +395,22 @@ class ProcessCache:
         generation: int,
     ) -> None:
         with self._lock:
+            self._require_lease_fields(lease_identity, token, partition, generation)
+            authority = self._authorities.get(lease_identity)
             if generation != self._generation:
+                if authority is not None:
+                    raise RuntimeError("process-cache lease has foreign authority")
                 return
             if self._active_leases < 1:
                 raise RuntimeError("process-cache lease accounting underflow")
-            authority = self._authorities.get(token)
-            if authority is None or authority[:3] != (
-                lease_identity,
-                partition,
-                generation,
+            if not self._matches_authority(
+                authority, lease_identity, token, partition, generation
             ):
                 raise RuntimeError("process-cache lease has foreign authority")
+            assert authority is not None
             self._active_leases -= 1
             authority_cost = authority[3]
-            del self._authorities[token]
+            del self._authorities[lease_identity]
             pinned = self._pins.get(partition)
             if pinned is None:
                 raise RuntimeError("process-cache source lease is not registered")
@@ -377,7 +427,7 @@ class ProcessCache:
     def _qualified_key(
         self, partition: PartitionKey, key: tuple[ImmutableValue, ...]
     ) -> FullKey:
-        local = _validate_immutable(key, "cache key")
+        local = _validate_immutable(key, "cache key", allow_bool=False)
         if type(local) is not tuple:
             raise TypeError("cache key must be a tuple")
         return partition, local

@@ -46,6 +46,10 @@ def audit_temporal_image_owner(
     )
     approved: set[int] = set()
     invalid: set[tuple[int, int]] = set()
+    try:
+        root._check_authority()
+    except (TypeError, ValueError, AttributeError):
+        valid_root = False
     if not valid_root:
         invalid.update((owner, id(store)) for owner, store in stores)
         return frozenset(), frozenset(invalid)

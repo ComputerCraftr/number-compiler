@@ -7,10 +7,15 @@ from fractions import Fraction
 import pytest
 
 from number_compiler.api.antihydra_observation import observe_run
+from number_compiler.api.number_api import NumberCompiler
 from number_compiler.arithmetic.contracts.block_effect import BlockContextBudgetExceeded
+from number_compiler.resources.payload_audit import audit_registered_payloads
 from number_compiler.sequences.antihydra import runtime
 from number_compiler.sequences.antihydra.mahler import tangent
 from number_compiler.sequences.antihydra.mahler_action import associated_action
+from number_compiler.sequences.antihydra.arithmetic_images import (
+    AntihydraArithmeticImageWorkspace,
+)
 from number_compiler.sequences.antihydra.runtime import AntihydraArithmeticTerm, run
 
 
@@ -61,6 +66,42 @@ def test_arithmetic_mahler_and_hensel_do_not_construct_physical_roof(
     assert not term.physical_publications
     assert term.ledger.counters.get("physical_roof_evaluations", 0) == 0
     assert term.ledger.counters.get("physical_roof_construction_requests", 0) == 0
+
+
+def test_mahler_consumes_the_composed_source_image_without_refolding_segments() -> None:
+    term = AntihydraArithmeticTerm(1024)
+    result = term.result()
+    packet = associated_action(result)
+    workspace = term.arithmetic_workspace
+    assert workspace is not None
+    transfer = workspace.summary().transfer
+    assert _rational(packet["scale"]) == Fraction(transfer.upper, transfer.lower)
+    assert _rational(packet["offset"]) == -3 * Fraction(
+        transfer.upper + transfer.offset - transfer.lower, transfer.lower
+    )
+    assert term.ledger.counters.get("mahler_source_cylinder_compositions", 0) == 0
+    assert term.ledger.counters["mahler_source_composed_image_reads"] == 1
+
+
+def test_plain_digits_and_mahler_do_not_materialize_segments(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    def forbidden(
+        _workspace: AntihydraArithmeticImageWorkspace,
+    ) -> None:
+        raise AssertionError("unrequested Antihydra segments were materialized")
+
+    monkeypatch.setattr(AntihydraArithmeticImageWorkspace, "segments", forbidden)
+    term = AntihydraArithmeticTerm(64)
+    result = term.result()
+    assert result.h > 8
+    assert NumberCompiler().nth("antihydra", 64) == result.h
+    assert associated_action(result)["extent"] == 64
+    assert not term._segments and not term._segments_ready
+    assert term.metrics()["retained_source_blocks"] == 0
+    report = audit_registered_payloads(term.ledger)
+    assert report.forbidden_future_payloads == report.unknown_payloads == 0
+    assert term.ledger.counters.get("arithmetic_block_applications", 0) == 0
 
 
 def test_halted_physical_adapter_does_not_relabel_total_arithmetic_extent() -> None:

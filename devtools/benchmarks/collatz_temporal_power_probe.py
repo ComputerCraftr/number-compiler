@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import ast
 import itertools
 import json
 from time import perf_counter
@@ -10,6 +9,7 @@ from time import perf_counter
 from devtools.benchmarks.tile_projection_accounting import (
     projection_accounting,
 )
+from devtools.checks.dependency_graph import source_syntax
 from devtools.paths import repository_root
 from number_compiler.api.number_api import NumberCompiler
 from number_compiler.sequences.collatz.block_power import PoweredCollatzTerm
@@ -160,69 +160,70 @@ def _projection_rows() -> list[dict[str, object]]:
 
 
 def _source_audit() -> dict[str, bool]:
-    api = (ROOT / "src" / "number_compiler" / "api/number_api.py").read_text()
-    block = (
+    api = source_syntax(ROOT / "src" / "number_compiler" / "api/number_api.py")
+    block = source_syntax(
         ROOT / "src" / "number_compiler" / "sequences/collatz/block_power.py"
-    ).read_text()
+    )
     proof = ROOT / "devtools" / "proofs"
-    runtime = (proof / "block_runtime.py").read_text()
-    spacetime = (proof / "block_spacetime_runtime.py").read_text()
-    compatibility_runtime = runtime + spacetime
-    init = (ROOT / "src" / "number_compiler" / "__init__.py").read_text()
-    bounded = (
+    runtime = source_syntax(proof / "block_runtime.py")
+    spacetime = source_syntax(proof / "block_spacetime_runtime.py")
+    compatibility_names = runtime.identifiers | spacetime.identifiers
+    compatibility_imports = runtime.imports | spacetime.imports
+    init = source_syntax(ROOT / "src" / "number_compiler" / "__init__.py")
+    bounded = source_syntax(
         ROOT
         / "src"
         / "number_compiler"
         / "hashlife"
         / "execution"
         / "bounded_application.py"
-    ).read_text()
-    boundary = (ROOT / "devtools" / "proofs" / "spacetime_boundary.py").read_text()
+    )
+    boundary = source_syntax(proof / "spacetime_boundary.py")
     router_path = ROOT / "src" / "number_compiler" / "sequences" / "runtime_router.py"
-    router_tree = ast.parse(router_path.read_text(), filename=str(router_path))
-    router_imports = {
-        node.module.lstrip(".")
-        for node in ast.walk(router_tree)
-        if isinstance(node, ast.ImportFrom) and node.module
-    } | {
-        alias.name
-        for node in ast.walk(router_tree)
-        if isinstance(node, ast.Import)
-        for alias in node.names
-    }
-    generic_executor_imported = any(
+    router_syntax = source_syntax(router_path)
+    router_imports = router_syntax.imports | router_syntax.dynamic_imports
+    generic_executor_imported = router_syntax.unknown_dynamic_import or any(
         name.endswith("diamond_runtime") for name in router_imports
     )
+    public_modules = init.imports | init.export_modules | init.dynamic_imports
     checks = {
-        "number_api_has_no_orbit_builder": "collatz_orbit_formulas(" not in api,
+        "number_api_has_no_orbit_builder": "collatz_orbit_formulas"
+        not in api.identifiers,
         "number_api_has_no_ternary_orbit_builder": "collatz_orbit_formulas_ternary"
-        not in api,
+        not in api.identifiers,
         "number_api_has_no_composite_orbit_builder": "collatz_orbit_formulas_local_composite_radix"
-        not in api,
+        not in api.identifiers,
         "powered_term_has_no_causal_engine": "CollatzCausalSpacetimeEngine"
-        not in block,
-        "slow_causal_engine_not_public": "from .collatz_spacetime import" not in init,
-        "legacy_germ_cache_not_public": "from .collatz_germ_cache import" not in init,
+        not in block.identifiers,
+        "slow_causal_engine_not_public": not any(
+            name.endswith("collatz_spacetime") for name in public_modules
+        )
+        and "CollatzCausalSpacetimeEngine" not in init.exports,
+        "legacy_germ_cache_not_public": not any(
+            name.endswith("collatz_germ_cache") for name in public_modules
+        ),
         "accelerated_reference_power_not_public": "collatz_affine_suffix_event_power_word"
-        not in init
-        and "collatz_affine_suffix_event_power_value" not in init,
-        "history_word_carrier_deleted": "from ..program_word"
-        not in compatibility_runtime
-        and "CanonicalWord" not in compatibility_runtime,
-        "exact_future_tile_output_deleted": "def _output_tile_macro" not in spacetime,
+        not in init.identifiers
+        and "collatz_affine_suffix_event_power_word" not in init.exports
+        and "collatz_affine_suffix_event_power_value" not in init.identifiers
+        and "collatz_affine_suffix_event_power_value" not in init.exports,
+        "history_word_carrier_deleted": "..program_word" not in compatibility_imports
+        and "CanonicalWord" not in compatibility_names,
+        "exact_future_tile_output_deleted": "_output_tile_macro"
+        not in spacetime.functions,
         "certified_family_has_no_generic_executor_import": not generic_executor_imported,
         "raw_spacetime_boundary_runtime_deleted": (
-            "import SpacetimeBoundary" not in compatibility_runtime
-            and "SpacetimeBoundary," not in compatibility_runtime
-            and "intern_boundary(" not in compatibility_runtime
-            and "_intern_spacetime_state" not in compatibility_runtime
-            and "_advance_effect_boundary" not in compatibility_runtime
+            "SpacetimeBoundary" not in compatibility_names
+            and "intern_boundary" not in compatibility_names
+            and "_intern_spacetime_state" not in compatibility_names
+            and "_advance_effect_boundary" not in compatibility_names
         ),
         "generic_recursive_carrier_available_for_other_effects": "_RecursiveBoundaryState"
-        in compatibility_runtime,
+        in compatibility_names,
         "bounded_temporal_application_boundary_present": "build_certified_field_application"
-        in bounded,
-        "raw_boundary_carrier_class_deleted": "class SpacetimeBoundary" not in boundary,
+        in bounded.identifiers,
+        "raw_boundary_carrier_class_deleted": "SpacetimeBoundary"
+        not in boundary.classes,
     }
     if not all(checks.values()):
         raise AssertionError(checks)

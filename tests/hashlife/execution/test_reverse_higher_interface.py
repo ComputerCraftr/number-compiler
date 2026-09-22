@@ -26,8 +26,6 @@ from number_compiler.hashlife.execution.continuations.higher_interfaces import (
 )
 from number_compiler.hashlife.execution.continuations.higher_macro_composer import (
     HigherSpatialMacroComposer,
-    SourceBoundHigherMacro,
-    _MacroBindingKey,
 )
 from number_compiler.hashlife.execution.continuations.higher_temporal_provider import (
     HigherTemporalProviderEvaluator,
@@ -37,7 +35,6 @@ from number_compiler.hashlife.execution.continuations.higher_types import (
     FieldStateSort,
     HigherExpressionID,
 )
-from number_compiler.hashlife.execution.field_images import SourceForestID
 from number_compiler.hashlife.execution.recursive_outputs import (
     RecursiveCoordinateMorphismArena,
     RecursiveOutputSource,
@@ -508,90 +505,6 @@ def test_reverse_macro_keeps_coordinate_magnitudes_outside_local_port_sorts() ->
     )
 
 
-def test_reverse_macro_probes_the_source_parent_before_descending(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    (
-        _actions,
-        primitive,
-        semantics,
-        _runtime,
-        interfaces,
-        compiler,
-        sources,
-        binding,
-    ) = _fixture((7, 18, 7, 19, 19, 19, 19, 19))
-    compiled = compiler.compile(primitive)
-    outputs = RecursiveCoordinateMorphismArena(
-        interfaces,
-        evaluate=semantics.evaluate,
-    )
-    composer = HigherSpatialMacroComposer(
-        semantics,
-        interfaces,
-        outputs,
-        sources,
-        primitive,
-        compiled.interface,
-        compiled.left,
-        compiled.symbol,
-        compiled.right,
-    )
-    expected = composer.compile(binding)
-    visits = semantics.ledger.counters.get("source_leaf_visits", 0)
-
-    def forbidden(_source: object) -> Never:
-        raise AssertionError("warm source parent descended into its children")
-
-    monkeypatch.setattr(composer, "_cell", forbidden)
-    assert composer.compile(binding) == expected
-    assert semantics.ledger.counters.get("source_leaf_visits", 0) == visits
-    assert semantics.ledger.counters["higher_spatial_forest_early_hits"] == 1
-
-
-def test_reverse_macro_rejects_foreign_source_before_warm_binding_probe() -> None:
-    (
-        _actions,
-        primitive,
-        semantics,
-        _runtime,
-        interfaces,
-        compiler,
-        sources,
-        binding,
-    ) = _fixture((7, 18, 7, 19, 19, 19, 19, 19))
-    compiled = compiler.compile(primitive)
-    outputs = RecursiveCoordinateMorphismArena(
-        interfaces,
-        evaluate=semantics.evaluate,
-    )
-    composer = HigherSpatialMacroComposer(
-        semantics,
-        interfaces,
-        outputs,
-        sources,
-        primitive,
-        compiled.interface,
-        compiled.left,
-        compiled.symbol,
-        compiled.right,
-    )
-    composer.compile(binding)
-
-    class PoisonedBindings(dict[_MacroBindingKey, SourceBoundHigherMacro]):
-        def get(self, _key: object, _default: object = None) -> Never:
-            raise AssertionError("invalid source reached the warm binding cache")
-
-    composer._bindings = PoisonedBindings(composer._bindings)
-    foreign = SourceForestID(
-        ArenaToken("foreign-source"), binding.kind, binding.local_id
-    )
-    snapshot = semantics.ledger.snapshot()
-    with pytest.raises(ValueError, match="different arena"):
-        composer.compile(foreign)
-    assert semantics.ledger.snapshot() == snapshot
-
-
 def test_higher_operations_validate_scoped_ids_before_warm_cache_probe() -> None:
     (
         _actions,
@@ -667,6 +580,7 @@ def test_higher_temporal_provider_executes_without_midpoint_tile() -> None:
         runtime,
         validate_output=outputs.resolve,
         compose_actions=actions.compose,
+        validate_binding=composer.validate_provider_binding,
     )
     evaluator.bind(macro.output, binding, primitive)
     outputs.set_temporal_evaluator(

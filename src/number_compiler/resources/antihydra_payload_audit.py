@@ -143,7 +143,9 @@ def _fragment_source_bindings(
         term = terms[owner]
         last = max(starts)
         h, balance, head, time, start = 8, 0, 1, 11, 0
-        for segment in term.segments:
+        if not term._segments_ready:
+            continue
+        for segment in term._segments:
             if (
                 type(segment) is not ArithmeticSegment
                 or type(segment.start) is not int
@@ -375,7 +377,8 @@ def audit_antihydra_payloads(
                         "engine",
                         "ledger",
                         "segment_owner",
-                        "segments",
+                        "_segments",
+                        "_segments_ready",
                         "physical_owner",
                         "physical_publications",
                         "_result",
@@ -391,10 +394,12 @@ def audit_antihydra_payloads(
                     and 4 + root.requested <= root.max_state_bits
                     and root.max_cache_entries == root.engine.capacity
                     and type(owner) is int
-                    and containers.get(owner) is root.segments
+                    and containers.get(owner) is root._segments
                     and inventory[owner].role == "arithmetic_cylinder_support"
                     and inventory[owner].accounting_delta == 0
-                    and len(root.segments) <= (root.requested + 63) // 64
+                    and type(root._segments_ready) is bool
+                    and (root._segments_ready or not root._segments)
+                    and len(root._segments) <= (root.requested + 63) // 64
                     and type(root.physical_owner) is int
                     and containers.get(root.physical_owner)
                     is root.physical_publications
@@ -430,7 +435,11 @@ def audit_antihydra_payloads(
                     else:
                         valid &= id(arithmetic_workspace) in dyadic.approved
                         summary = arithmetic_workspace.summary()
-                        expected_segments = tuple(arithmetic_workspace.segments())
+                        expected_segments = (
+                            tuple(arithmetic_workspace.segments())
+                            if root._segments_ready
+                            else ()
+                        )
                         h = arithmetic_workspace.endpoint()
                         balance, minimum, start = (
                             summary.delta,
@@ -439,10 +448,10 @@ def audit_antihydra_payloads(
                         )
                         first_failure = arithmetic_workspace.first_failure_index()
                         approved.add(id(arithmetic_workspace))
-                if len(root.segments) != len(expected_segments):
+                if len(root._segments) != len(expected_segments):
                     valid = False
                 for segment, expected_segment in zip(
-                    root.segments, expected_segments, strict=False
+                    root._segments, expected_segments, strict=False
                 ):
                     expected_start, expected_block = expected_segment
                     bound = (
@@ -472,6 +481,7 @@ def audit_antihydra_payloads(
                     approved.add(id(result))
                 physical = root._physical
                 if physical is not None:
+                    valid &= root._segments_ready
                     publication = root.physical_publications[0]
                     expected_h, expected_balance = 8, 0
                     expected_left, expected_right = 5, 6
@@ -533,7 +543,7 @@ def audit_antihydra_payloads(
                     approved.update((id(publication), id(physical)))
                 if valid:
                     approved.update(
-                        (id(root), id(root.segments), id(root.physical_publications))
+                        (id(root), id(root._segments), id(root.physical_publications))
                     )
                 else:
                     invalid.add((owner, id(root)))

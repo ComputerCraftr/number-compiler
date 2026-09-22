@@ -279,6 +279,25 @@ class PrimaryJetAffineMorphism:
         return cls(degree, modulus, kernel, offset, 1, 0)
 
     @classmethod
+    def binary_event(
+        cls, valuation: int, birth: Sequence[int], *, degree: int = 5, modulus: int = 32
+    ) -> PrimaryJetAffineMorphism:
+        """Known multiplication birth, ``J -> z^-e (y J + B)``.
+
+        Source admission and discovery of B remain the caller's obligations.
+        This is one multiplication by three, not an arbitrary physical step
+        or an Antihydra accelerated block containing several multiplications.
+        """
+        if type(valuation) is not int or valuation < 0:
+            raise ValueError("valuation must be nonnegative and exact")
+        offset = _validate_poly(birth, degree, modulus)
+        # z=y-1: its inverse is -(1+y+...+y^(degree-1)).
+        inverse = cls(degree, modulus, (modulus - 1,) * degree, (0,) * degree)
+        unit = inverse.power(valuation).kernel
+        kernel = (0,) + unit[:-1]
+        return cls(degree, modulus, kernel, _poly_mul(unit, offset, modulus), 1)
+
+    @classmethod
     def square_tangent(
         cls,
         base_germ: Sequence[int],
@@ -311,6 +330,8 @@ class PrimaryJetAffineMorphism:
 
     def apply(self, state: Sequence[int]) -> tuple[int, ...]:
         state = _validate_poly(state, self.degree, self.modulus)
+        if self.source_annihilated:
+            return self.offset
         return _poly_add(
             _poly_mul(self.kernel, state, self.modulus), self.offset, self.modulus
         )
@@ -327,6 +348,17 @@ class PrimaryJetAffineMorphism:
     def _then_raw(self, other: PrimaryJetAffineMorphism) -> PrimaryJetAffineMorphism:
         if (self.degree, self.modulus) != (other.degree, other.modulus):
             raise ValueError("incompatible primary affine morphisms")
+        if other.source_annihilated:
+            # A constant right action erases the entire earlier jet effect,
+            # including earlier births. Keep the occurrence's step extent.
+            return PrimaryJetAffineMorphism(
+                self.degree,
+                self.modulus,
+                other.kernel,
+                other.offset,
+                self.steps + other.steps,
+                0,
+            )
         cocycle = self.cocycle.then(
             other.cocycle,
             multiply=lambda a, b: _poly_mul(a, b, self.modulus),

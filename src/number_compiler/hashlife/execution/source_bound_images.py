@@ -3,13 +3,16 @@
 from __future__ import annotations
 
 from collections.abc import Hashable
-from dataclasses import dataclass, fields, is_dataclass
+from dataclasses import dataclass
 from typing import Protocol, runtime_checkable
 
 from number_compiler.arithmetic.contracts.scoped_handles import ArenaHandle, ArenaToken
 from number_compiler.hashlife.execution.source_image_seals import (
     PublicationSeal,
     PublicationSeals,
+    _TypedKey,
+    _require_immutable_key,
+    _typed_equal,
     publication_matches,
     publication_seal,
 )
@@ -88,7 +91,7 @@ class SourceImageCandidate:
             raise ValueError("source image failure prefix must be nonnegative")
 
 
-@dataclass(frozen=True, slots=True)
+@dataclass(frozen=True, slots=True, eq=False)
 class SourceImageDemand:
     name: str
     parameters: tuple[Hashable, ...] = ()
@@ -101,6 +104,16 @@ class SourceImageDemand:
         for value in self.parameters:
             _require_immutable_key(value, "source image demand parameter")
 
+    def __hash__(self) -> int:
+        return hash((self.name, _TypedKey(self.parameters)))
+
+    def __eq__(self, other: object) -> bool:
+        return (
+            type(other) is SourceImageDemand
+            and self.name == other.name
+            and _TypedKey(self.parameters) == _TypedKey(other.parameters)
+        )
+
 
 @dataclass(frozen=True, slots=True)
 class SourceImageProjection:
@@ -108,66 +121,6 @@ class SourceImageProjection:
 
     def __post_init__(self) -> None:
         _require_immutable_key(self.value, "source image projection")
-
-
-_MAX_INLINE_KEY_NODES = 64
-
-
-def _require_immutable_key(value: object, label: str) -> int:
-    """Accept structural immutable keys; reject user-defined mutable hashes."""
-    pending: list[tuple[object, bool]] = [(value, False)]
-    active: set[int] = set()
-    finished: set[int] = set()
-    visited = 0
-    while pending:
-        current, exiting = pending.pop()
-        identity = id(current)
-        if exiting:
-            active.remove(identity)
-            finished.add(identity)
-            continue
-        if current is None or type(current) in (bool, int, str, bytes):
-            visited += 1
-            if visited > _MAX_INLINE_KEY_NODES:
-                raise ValueError(
-                    f"{label} exceeds the inline descriptor bound; intern it in an arena"
-                )
-            continue
-        if isinstance(current, ArenaHandle):
-            current.__post_init__()
-            visited += 1
-            if visited > _MAX_INLINE_KEY_NODES:
-                raise ValueError(
-                    f"{label} exceeds the inline descriptor bound; intern it in an arena"
-                )
-            continue
-        if identity in active:
-            raise ValueError(f"{label} contains a reference cycle")
-        if identity in finished:
-            continue
-        visited += 1
-        if visited > _MAX_INLINE_KEY_NODES:
-            raise ValueError(
-                f"{label} exceeds the inline descriptor bound; intern it in an arena"
-            )
-        active.add(identity)
-        pending.append((current, True))
-        if type(current) is tuple:
-            pending.extend((item, False) for item in current)
-            continue
-        if type(current) is frozenset:
-            pending.extend((item, False) for item in current)
-            continue
-        if is_dataclass(current) and not isinstance(current, type):
-            parameters = getattr(type(current), "__dataclass_params__", None)
-            if parameters is None or not parameters.frozen:
-                raise TypeError(f"{label} must be structurally immutable")
-            pending.extend(
-                (getattr(current, item.name), False) for item in fields(current)
-            )
-            continue
-        raise TypeError(f"{label} must be a structural immutable key")
-    return visited
 
 
 @dataclass(frozen=True, slots=True)
@@ -274,18 +227,46 @@ class _ProjectionRecord:
     publication_snapshot: PublicationSeal
 
 
-@dataclass(frozen=True, slots=True)
+@dataclass(frozen=True, slots=True, eq=False)
 class _ApplyKey:
     adapter_key: tuple[str, str]
     source: SourceImageID
     action: Hashable
 
+    def __hash__(self) -> int:
+        return hash((self.adapter_key, self.source, _TypedKey(self.action)))
 
-@dataclass(frozen=True, slots=True)
+    def __eq__(self, other: object) -> bool:
+        return (
+            type(other) is _ApplyKey
+            and self.adapter_key == other.adapter_key
+            and self.source == other.source
+            and _TypedKey(self.action) == _TypedKey(other.action)
+        )
+
+
+@dataclass(frozen=True, slots=True, eq=False)
 class _RelativeKey:
     adapter_key: tuple[str, str]
     action: Hashable
     admitted_input: Hashable
+
+    def __hash__(self) -> int:
+        return hash(
+            (
+                self.adapter_key,
+                _TypedKey(self.action),
+                _TypedKey(self.admitted_input),
+            )
+        )
+
+    def __eq__(self, other: object) -> bool:
+        return (
+            type(other) is _RelativeKey
+            and self.adapter_key == other.adapter_key
+            and _TypedKey(self.action) == _TypedKey(other.action)
+            and _TypedKey(self.admitted_input) == _TypedKey(other.admitted_input)
+        )
 
 
 @dataclass(frozen=True, slots=True)
@@ -375,17 +356,21 @@ class _SourceImageWorkspace:
     def value_count(self) -> int:
         return self._value_count
 
+    @staticmethod
+    def _active_key(action: tuple[str, str, Hashable]) -> tuple[str, object]:
+        return "active", (action[0], action[1], _TypedKey(action[2]))
+
     def contains_active(self, action: tuple[str, str, Hashable]) -> bool:
-        return ("active", action) in self._storage
+        return self._active_key(action) in self._storage
 
     def add_active(self, action: tuple[str, str, Hashable]) -> None:
-        key = "active", action
+        key = self._active_key(action)
         if key in self._storage:
             raise ValueError("source image action is already active")
         self._storage[key] = None
 
     def remove_active(self, action: tuple[str, str, Hashable]) -> None:
-        key = "active", action
+        key = self._active_key(action)
         if key not in self._storage:
             raise KeyError(action)
         del self._storage[key]
@@ -433,7 +418,7 @@ class SourceBoundSchedulerCore:
         self._nodes: LedgerList[_ImageRecord] = self.ledger.make_list(
             self._node_owner, append_only=False
         )
-        self._origins: LedgerDict[tuple[tuple[str, str], Hashable], SourceImageID] = (
+        self._origins: LedgerDict[tuple[tuple[str, str], _TypedKey], SourceImageID] = (
             self.ledger.make_dict(self._origin_owner)
         )
         self._applications: LedgerDict[_ApplyKey, SourceImageID] = (
@@ -664,13 +649,12 @@ class SourceBoundSchedulerCore:
         key = self._registered(adapter)
         self._validate_key(source, "source image source")
         adapter.validate_source(source)
-        origin_key = key, source
+        origin_key = key, _TypedKey(source)
         found = self._origins.get(origin_key)
         if found is not None:
             found_view = self.view(found)
-            if (
-                found_view.binding.source != source
-                or found_view.binding.action != adapter.identity_action(source)
+            if not _typed_equal(found_view.binding.source, source) or not _typed_equal(
+                found_view.binding.action, adapter.identity_action(source)
             ):
                 raise ValueError("source image origin binding was altered")
             self.ledger.bump("source_image_origin_hits")
@@ -687,7 +671,7 @@ class SourceBoundSchedulerCore:
                 source,
                 identity,
                 candidate,
-                ("origin", origin_key, None),
+                ("origin", (key, source), None),
                 reserved=True,
             )
             self._origins[origin_key] = image
@@ -807,8 +791,8 @@ class SourceBoundSchedulerCore:
         if (
             result.binding.family != key.adapter_key[0]
             or result.binding.semantic_version != key.adapter_key[1]
-            or result.binding.source != source.binding.source
-            or result.binding.action != expected
+            or not _typed_equal(result.binding.source, source.binding.source)
+            or not _typed_equal(result.binding.action, expected)
         ):
             raise ValueError("source image application binding was altered")
 

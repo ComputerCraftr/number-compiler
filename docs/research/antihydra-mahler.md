@@ -36,6 +36,81 @@ proves source coefficients determine the defined Mahler action. It also proves
 that the centered word `11` has distinct Mahler and ledger outcomes, so a Mahler
 failure must not be reported as Antihydra halting.
 
+## Shared Collatz F5 spatial action: checked transfer
+
+The September 21 [Collatz spatial patch](collatz.md) applies to the centered
+Antihydra/Mahler coordinate through the **same production carry/F5 owner**:
+[`collatz_f5_quotient.py`](../../src/number_compiler/arithmetic/carry/collatz_f5_quotient.py).
+No second F5 alphabet or source recurrence is needed.
+
+- **Exact arithmetic:** for `D=a-1`, the next centered state is
+  `D' = floor((3D+1)/2)`, and the next Antihydra value is `D'+1`.
+  This also holds for even `D`; the extra one is discarded by division.
+- **Spatial projection:** a radix-64 cell uses the same five complete
+  multiplication carry actions on incoming ports `0,1,2`. The joint
+  carry/phase leaf alphabet has 15 classes and its spatial compositions reach
+  17. The phase is the additive sum of the fixed incoming-one leaf `phi5`
+  observations. It is **not** the whole numeral's carry jet, and actual
+  inter-cell carries still travel through the complete carry action.
+- **Division boundary:** the existing directional F5 views pair adjacent raw
+  multiplication outputs after a one-bit shift. They observe the exact next
+  centered cell without identifying its source with a class ID.
+- **Conditional spatial pumping:** a supplied repeated block can use shared
+  binary composition. The new tests power every radix-64 leaf through
+  `5^64` spatial repetitions and compare all three carry ports with Mahler's
+  independently checked fixed-carry compression. Composition count is
+  `bit_length(n)-1+bit_count(n)`; no repeated numeral is expanded.
+
+The [spatial theory](../../devtools/proofs/isabelle/mahler_transport/Mahler_Spatial_Carry_Pump.thy)
+adds `mahler_spatial_low_block_transport` and
+`antihydra_centered_spatial_low_block_transport`. For `D=u+2bv`, write
+`e=(3u+1) mod 2b` and `c=(3u+1) div 2b`. They prove
+
+\[
+D'=\lfloor e/2\rfloor+b(3v+c),\qquad a'=D'+1.
+\]
+
+At radix 64, `b=32`. This transports both the emitted block and its high
+boundary, for arbitrary high part `v`. It reuses the existing centered-step
+and carry-conservation lemmas. The owning `Mahler_Source_Transport` session
+passed its oracle audits on September 21 in 8.81 seconds with 1,672,236,704
+sampled peak bytes, within the unchanged 35-second/4-GiB limit. These are
+checked arithmetic transport lemmas, not a formal refinement of the Python
+F5 tables or a complete temporal constructor.
+
+The [production bridge tests](../../tests/validation/proofs/test_mahler_f5_production_bridge.py)
+check every two-cell residue at both a small high fiber and `2^80+37` against
+`admitted_arithmetic_cylinder`. They also compare spatial carry actions with
+the independent Mahler multiplier reference and preserve the observer
+collision `67,75 -> 101,113`. That collision concerns the reduced spatial
+observation, not the complete source-bound cylinder.
+
+**Temporal boundary:** for an odd centered source `U` and
+`a=v2(3U+1)`, Antihydra's next odd event is
+
+\[
+U'=3^{a-1}(3U+1)/2^a,\qquad E'=E+3-a.
+\]
+
+The extra `3^(a-1)` distinguishes it from an ordinary accelerated Collatz
+event. Bounded tests compare this law, the actual parity word, and the
+minimum-prefix ledger with production cylinders for every odd source from
+5 through 4095. The fractional-safe guard remains a separate consumer.
+Neither the 17 spatial classes nor fast powering of a supplied repeated
+block proves a source-compatible temporal grammar, a CLI speedup, Mahler's
+global exclusion, or the Antihydra source-7 barrier.
+
+Reproduce the bridge with:
+
+```console
+python -m pytest -q -o addopts='' tests/validation/proofs/test_mahler_f5_production_bridge.py tests/validation/proofs/test_mahler_centered_production_bridge.py tests/validation/proofs/test_mahler_spatial_carry.py
+isabelle build -d devtools/proofs/isabelle Mahler_Source_Transport
+```
+
+Local validation evidence and its source fingerprint are retained under
+`results/current/mahler-f5-bridge-2026-09-21/`. Historical measurements do not
+certify subsequent edits or the aggregate release.
+
 ## Literal and barrier boundary
 
 [`Antihydra_Literal_TM.thy`](../../devtools/proofs/isabelle/antihydra/Antihydra_Literal_TM.thy)
@@ -52,6 +127,25 @@ the barrier. No accepted source-7 all-time certificate or source-reachable
 counterexample is currently present.
 
 ## Production boundary
+
+The [shared temporal-reuse adapter](collatz.md#shared-temporal-effect-reuse)
+now shares complete admitted cylinder effects across compatible source
+occurrences. The minimum-prefix ledger and first-failure descent remain part
+of the reused support. A synthetic repeated negative-ledger macro still fails
+at its first return while total arithmetic continues exactly.
+
+[`mahler_action.source_action`](../../src/number_compiler/sequences/antihydra/mahler_action.py)
+now reads the authenticated root skew from `arithmetic_workspace.summary()`.
+It no longer recomposes every retained segment to recover that same action.
+The ledger reports `mahler_source_composed_image_reads`; the retired
+`mahler_source_cylinder_compositions` count stays zero. Source validation,
+fractional predicates and ledger safety remain distinct checks. This eliminates
+the redundant arithmetic fold, not all source validation or rational-integer work.
+
+The blank source's 1,024-step measurement still constructs 31 distinct support
+nodes with no complete-effect reuse. General F5-based normalization across its
+changing source residues remains an open construction obligation; the positive
+aligned-source result does not close it.
 
 Finite `--nth` arithmetic and selected projections are available with bounded
 ownership. Reusing retained parity avoids rediscovery, but folding every
@@ -513,3 +607,42 @@ These do not validate the proposed mixed-coordinate bridge:
 ```console
 python -m pytest -o addopts='' tests/api/test_antihydra_support_cache.py tests/api/test_antihydra_projection_occurrences.py
 ```
+
+## Demanded history and the shared joint-adic chart
+
+Antihydra arithmetic results and Mahler associated actions now consume the
+same authenticated dyadic summary without copying its chronological segments.
+`AntihydraArithmeticTerm.segments` is an explicit lazy demand; physical and
+support observations still obtain the exact bounded cylinders. A failed
+segment publication releases its new entries and can be retried without
+invalidating the arithmetic result. Payload audits inspect retained state
+without causing materialization.
+
+The Mahler source-prefix check uses the pinned source `h=8`, centered `D=7`,
+source precision and arithmetic law. It does not trust a caller-supplied odd
+state or rebuild the segment sequence merely to check the initial `11`.
+Mahler's existing associated-action projection remains distinct from the
+Antihydra ledger predicate.
+
+`source_macro_projection_correct` and `six_step_constant_three_lift` prove
+finite endpoint/gain projection and the six-step high-fiber multiplier 729.
+`six_step_three_adic_high_fiber_forgetting` proves its contribution vanishes
+modulo `3^h` when `h <= 6`. This does not remove the integer high fiber, the
+source-selected offset, or the fractional-safety guard. The shared Collatz
+carry/F5 observer and Mahler prime/deck restrictions remain projections with
+their existing admission conditions. They are not interchangeable source
+identities or an all-time safe/fail certificate.
+
+Tests poison segment extraction during public digit, Mahler, metrics and
+payload-audit queries. Explicit physical/support demands retain their source,
+overwrite and first-failure checks. Python construction/refinement and a global
+source-compatible safety invariant remain separate obligations.
+
+At fingerprint `6560841b95ca428e64f941235defc4318cec58b9cfe2f56e9cec7086a894443d`, the 1,024-return probe retained zero copied
+segments after digits and after Mahler demand. Explicit segment demand created
+16 entries and validated all 16. Total ledger nodes were 7,266 after digits,
+8,169 after Mahler and 8,185 after segment demand. Underlying authenticated
+source support remains counted; zero copied segments is not zero retained
+source history or zero construction work. The endpoint matched an independent
+bounded recurrence. Evidence is local under
+`results/current/joint-cylinder-2026-09-22/`.

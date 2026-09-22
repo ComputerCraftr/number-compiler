@@ -12,12 +12,101 @@ from unittest.mock import patch
 from devtools.experiments.reverse_add.factored_carrier import (
     FactoredReverseCarrier,
 )
+from devtools.experiments.reverse_add.cocycle_carrier import CocycleReverseCarrier
 from devtools.experiments.reverse_add.factored_power import FactoredTemporalPower
 from devtools.proofs import exact_oracle, require_exact_oracle
 from devtools.proofs.reverse_plane_checkpoint import export_planes, import_planes
 from number_compiler.arithmetic.carry.carry_monoid import CarryFn
 from number_compiler.arithmetic.carry.event_memory import pair_step
 from number_compiler.arithmetic.fields.radix import reverse_pair_sums
+from number_compiler.arithmetic.formula.decimal_pair_coordinates import (
+    decimal_crt_digit,
+)
+
+
+def native_macro(seed: int, steps: int) -> dict[str, object]:
+    """Measure one source-only J4 square, separating construction from output.
+
+    Run this mode in a fresh process for each cold sample: plane-word interning
+    is process-wide. A same-instance repeat is reported separately, never as
+    cold discovery. Literal validation happens only after construction.
+    """
+    require_exact_oracle()
+    if type(seed) is not int or seed < 0 or type(steps) is not int or steps < 1:
+        raise ValueError("native macro needs a nonnegative seed and positive extent")
+    carrier = CocycleReverseCarrier()
+    started = perf_counter()
+    source = carrier.source(reverse_pair_sums(seed, 10))
+    discovery_seconds = perf_counter() - started
+    power = FactoredTemporalPower(carrier)
+    discovered_work = carrier.planes.total_work
+    with (
+        patch.object(
+            carrier, "source", side_effect=AssertionError("re-encoded source")
+        ),
+        patch.object(carrier, "decode", side_effect=AssertionError("decoded endpoint")),
+        patch.object(
+            carrier.planes, "from_values", side_effect=AssertionError("imported rows")
+        ),
+    ):
+        started = perf_counter()
+        block = power.block(source, steps)
+        construction_seconds = perf_counter() - started
+        constructed_work = carrier.planes.total_work
+        started = perf_counter()
+        if power.block(source, steps) is not block:
+            raise AssertionError("warm macro did not reuse the admitted block")
+        warm_seconds = perf_counter() - started
+    if block.emission is None:
+        raise AssertionError("positive macro lost its terminal output channels")
+    alpha, epsilon = block.emission
+    started = perf_counter()
+    width = carrier.planes.resolve(alpha).length
+    digits = [
+        decimal_crt_digit(
+            carrier.planes.atom(alpha, i), carrier.planes.atom(epsilon, i)
+        )
+        for i in reversed(range(width))
+    ]
+    value = "".join(map(str, digits))
+    rendering_seconds = perf_counter() - started
+    expected = seed
+    for _ in range(steps):
+        expected += int(str(expected)[::-1])
+    if value != str(expected):
+        raise AssertionError("terminal output differs from bounded literal reference")
+    return {
+        "seed": seed,
+        "steps": steps,
+        "value": value,
+        "discovery_seconds": discovery_seconds,
+        "construction_seconds": construction_seconds,
+        "warm_seconds": warm_seconds,
+        "rendering_seconds": rendering_seconds,
+        "discovery_work": discovered_work,
+        "construction_work": constructed_work - discovered_work,
+        "total_plane_work": carrier.planes.total_work,
+        "gate_cache_hits": carrier.planes.gate_cache_hits,
+        "cofactor_cells": carrier.planes.cofactor_cells,
+        "cofactor_hits": carrier.planes.cofactor_hits,
+        "cofactor_entries": len(carrier.planes._cofactors),
+        "cofactor_table_cells": sum(
+            len(gate.table) for gate in carrier.planes._cofactors.values()
+        ),
+        "cofactor_evictions": carrier.planes.cofactor_evictions,
+        "projection_returns": carrier.planes.projection_returns,
+        "constant_returns": carrier.planes.constant_returns,
+        "memo_prune_visits": carrier.planes.memo_prune_visits,
+        "reuse_lookups": carrier.planes.reuse_lookups,
+        "reuse_hits": carrier.planes.reuse_hits,
+        "reuse_evictions": carrier.planes.reuse_evictions,
+        "reuse_peak_entries": carrier.planes.reuse_peak_entries,
+        "macro_cache_hits": power.cache_hits,
+        "compositions": power.compositions,
+        "carrier": carrier.metrics(block.output),
+        "production_admitted": False,
+        "temporal_compression_proved": False,
+    }
 
 
 def exhaustive(
@@ -186,7 +275,9 @@ def uniform(width: int) -> dict[str, object]:
 
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("mode", choices=("exhaustive", "trajectory", "uniform"))
+    parser.add_argument(
+        "mode", choices=("exhaustive", "trajectory", "uniform", "native-macro")
+    )
     parser.add_argument("--width", type=int, default=4)
     parser.add_argument("--first", type=int)
     parser.add_argument("--limit", type=int)
@@ -207,6 +298,8 @@ def main() -> None:
                 resume=args.resume,
                 checkpoint=args.checkpoint,
             )
+        elif args.mode == "native-macro":
+            result = native_macro(args.seed, args.steps)
         else:
             result = uniform(args.width)
     print(json.dumps(result, indent=2))

@@ -13,7 +13,6 @@ from devtools.proofs.collatz_harmonic_ports import (
     WireResponse,
     binary_carry_birth,
     binary_jet,
-    binary_temporal_action,
 )
 from devtools.proofs.collatz_harmonic_ports import (
     Radix64WireHarmonicAction as Action,
@@ -96,7 +95,7 @@ def temporal(chunk: int) -> dict[str, object]:
         m = value_from_lsd_digits(normalized, 64)
         valuation = v2_positive(3 * m + 1)
         assert valuation < 6
-        action = binary_temporal_action(valuation, binary_carry_birth(m))
+        action = PrimaryJetAffineMorphism.binary_event(valuation, binary_carry_birth(m))
         target = (3 * m + 1) >> valuation
         assert action.apply(binary_jet(m)) == binary_jet(target)
         assert v2_positive(3 * n + 1) == 6 * q + valuation
@@ -114,7 +113,7 @@ def temporal(chunk: int) -> dict[str, object]:
 
 
 def death() -> dict[str, object]:
-    actions = tuple(binary_temporal_action(e, ZERO) for e in range(6))
+    actions = tuple(PrimaryJetAffineMorphism.binary_event(e, ZERO) for e in range(6))
     count = 0
     for phases in product(range(6), repeat=5):
         combined = PrimaryJetAffineMorphism.identity(5, 32)

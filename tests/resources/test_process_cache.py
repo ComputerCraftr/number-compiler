@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import gc
+from weakref import ref
 from typing import cast
 
 import pytest
@@ -25,6 +27,20 @@ def test_source_qualified_lease_does_not_cross_partitions() -> None:
         assert foreign.get(("phi", 2, 100)) is MISSING
     with cache.acquire("prime", "2", ("source-a",)) as newer_version:
         assert newer_version.get(("phi", 2, 100)) is MISSING
+
+
+def test_boolean_integer_aliases_cannot_cross_cache_authority_keys() -> None:
+    cache = ProcessCache(max_entries=8, max_bytes=100_000)
+    # Python considers these tuple keys equal. Reject the ambiguous key at
+    # admission, including nested components, while allowing Boolean payloads.
+    with pytest.raises(TypeError, match="Boolean key components"):
+        cache.acquire("prime", "1", (True,))
+    with cache.acquire("prime", "1", (1,)) as lease:
+        with pytest.raises(TypeError, match="Boolean key components"):
+            lease.put(("phi", (False,)), 7)
+        assert lease.put(("phi", 0), True)
+        assert lease.get(("phi", 0)) is True
+    assert cache.stats().entries == 1
 
 
 def test_reset_invalidates_existing_authority_and_releases_accounting() -> None:
@@ -193,6 +209,107 @@ def test_lease_close_is_idempotent_and_closed_lease_cannot_be_reused() -> None:
     assert cache.stats().active_leases == 0
     with pytest.raises(RuntimeError, match="closed"):
         lease.get(("value",))
+
+
+def test_failed_close_keeps_lease_recoverable_and_releases_its_pin() -> None:
+    cache = ProcessCache(max_entries=8, max_bytes=100_000)
+    lease = cache.acquire("prime", "1", ("source",))
+    original = lease.source_qualification
+    lease._partition = ("prime", "1", ("other",))
+    with pytest.raises(RuntimeError, match="foreign authority"):
+        lease.close()
+    assert cache.stats().active_leases == 1
+    lease._partition = original
+    lease.close()
+    assert cache.stats().active_leases == 0
+    assert cache.stats().lease_partitions == 0
+    assert cache.ledger.entries == cache.ledger.nodes == 0
+
+
+def test_issued_lease_rejects_numeric_alias_mutations_before_cache_access() -> None:
+    cache = ProcessCache(max_entries=8, max_bytes=100_000)
+    cache.reset()  # Both the next token and generation equal integer one.
+    lease = cache.acquire("prime", "1", (1,))
+    assert lease.put((0,), 19)
+    issued = lease.source_qualification
+    for field, alias in (
+        ("_partition", ("prime", "1", (True,))),
+        ("_token", True),
+        ("_generation", True),
+        ("_generation", 1.0),
+    ):
+        original = getattr(lease, field)
+        setattr(lease, field, alias)
+        try:
+            with pytest.raises(RuntimeError, match="foreign authority"):
+                lease.get((0,))
+            with pytest.raises(RuntimeError, match="foreign authority"):
+                lease.close()
+            assert cache.stats().active_leases == 1
+        finally:
+            setattr(lease, field, original)
+    assert lease.source_qualification is issued
+    assert lease.get((0,)) == 19
+    lease.close()
+    assert cache.stats().active_leases == 0
+
+
+def test_active_lease_cannot_close_as_a_forged_stale_generation_or_token() -> None:
+    cache = ProcessCache(max_entries=8, max_bytes=100_000)
+    cache.reset()
+    lease = cache.acquire("prime", "1", ("source",))
+    assert lease.put(("state",), 7)
+    for field, forged in (
+        ("_generation", cache.generation + 1),
+        ("_generation", cache.generation - 1),
+        ("_token", lease._token + 1),
+    ):
+        original = getattr(lease, field)
+        setattr(lease, field, forged)
+        try:
+            with pytest.raises(RuntimeError, match="foreign authority"):
+                lease.close()
+            assert cache.stats().active_leases == 1
+            assert cache.stats().lease_partitions == 1
+        finally:
+            setattr(lease, field, original)
+    assert lease.get(("state",)) == 7
+    lease.close()
+    assert cache.stats().active_leases == 0
+    assert cache.stats().lease_partitions == 0
+
+
+def test_dropped_unclosed_lease_keeps_its_issued_identity_until_reset() -> None:
+    cache = ProcessCache(max_entries=8, max_bytes=100_000)
+    forgotten = cache.acquire("prime", "1", ("first",))
+    forgotten_ref = ref(forgotten)
+    issued_id = id(forgotten)
+    del forgotten
+    gc.collect()
+    assert forgotten_ref() is not None
+
+    next_lease = cache.acquire("prime", "1", ("second",))
+    assert id(next_lease) != issued_id
+    assert cache.stats().active_leases == 2
+    assert cache.stats().lease_partitions == 2
+    cache.reset()
+    next_lease.close()  # A genuinely stale lease is harmless after reset.
+    del next_lease
+    gc.collect()
+    assert forgotten_ref() is None
+    assert cache.stats().active_leases == 0
+    assert cache.ledger.entries == cache.ledger.nodes == 0
+
+
+def test_ledger_reserve_refusal_does_not_publish_a_phantom_lease() -> None:
+    cache = ProcessCache(max_entries=8, max_bytes=100_000)
+    cache.ledger.tighten_limits(0, None)
+    with pytest.raises(BlockContextBudgetExceeded, match="node budget"):
+        cache.acquire("prime", "1", ("source",))
+    stats = cache.stats()
+    assert stats.active_leases == stats.lease_partitions == stats.bytes == 0
+    assert stats.entries == 0
+    assert cache.ledger.entries == cache.ledger.nodes == 0
 
 
 def test_forged_and_foreign_lease_authority_is_rejected() -> None:

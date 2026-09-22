@@ -535,3 +535,22 @@ The mappings below record which assertion survived, which private-layout asserti
 - Extracted command and outcome fields are limited to what the original authored report recorded. Raw JSON may retain stronger timing and memory evidence at its original ignored result path.
 - Parameterized baseline node IDs are listed separately because each was a distinct failing case.
 - Replacement tests establish the named local contract only. They do not prove generic powered reverse/add temporal closure, which remains governed by the production cutover gates.
+
+## September 21 adversarial cleanup
+
+The later cleanup has its own source fingerprint and evidence; it does not
+change the historical 206-case disposition above.
+
+| Retired implementation | Retained coverage or owner | Disposition |
+| --- | --- | --- |
+| `sequences/collatz/clocked_target_seam.py` | [Inverse-three clock tests](../tests/sequences/collatz/test_inverse_three_clock.py) | No production callers. Two occupancy/Hasse law checks moved unchanged in substance. Four tests specific to the unused target interner were retired, not counted as fixes. |
+| `hashlife/execution/continuations/higher_input.py` | [Higher summaries](../src/number_compiler/hashlife/execution/continuations/higher_summaries.py) | Sole consumer now uses `SourceCellID` directly and owns its read-only geometry record. Existing authority and atomic-publication tests retained. |
+| Separate F2/F5 exponent-decomposition loops | [Affine transport](../src/number_compiler/arithmetic/polynomials/affine_transport.py) | One radix-factor traversal; field-specific coefficient and annihilation rules remain separate, with cross-field regression checks. |
+| Duplicated temporal-probe substring/AST scans | [Dependency graph helpers](../devtools/checks/dependency_graph.py) | Shared AST facts distinguish comments from executable imports, lazy export tables and literal dynamic imports. Original audit result keys retained. |
+| Proof-index local source parsers | [Isabelle syntax reader](../devtools/checks/isabelle_syntax.py) | Central syntax navigation rejects quoted/commented fake declarations. Semantic implementation mappings remain curated; proof validity still requires Isabelle. |
+
+The audit also repaired an unrecognized F5 memo payload and charged its retained
+exponent metadata, restoring 12 previously failing tests. Dyadic cache reuse now
+checks sealed publications and rejects forged Boolean/float aliases and foreign
+or disposed handles. These repairs do not construct the missing reverse/add
+temporal grammar or Fermat/Mersenne terminal extractor.

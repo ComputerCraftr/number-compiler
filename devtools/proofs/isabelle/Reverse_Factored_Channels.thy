@@ -155,12 +155,88 @@ text \<open>The last theorem transports the already-proved arbitrary-length
 uniform-run control into the three exact channels.  It does not assert that
 the channel DAGs or their output residuals remain bounded under iteration.\<close>
 
+
+text \<open>Exact residual functions used by PlaneAlgebra's spatial request
+normalizer. Fixed inputs and repeated views are substituted simultaneously.
+The option value is part of the function: undefined inputs cannot be merged
+with defined zero. These are spatial bisimulation laws, not a finite temporal
+quotient or a proof of the Python interner's implementation.\<close>
+
+datatype plane_binding = PlaneConst nat | PlaneInput nat
+
+fun plane_binding_value :: "nat list \<Rightarrow> plane_binding \<Rightarrow> nat" where
+  "plane_binding_value xs (PlaneConst c) = c"
+| "plane_binding_value xs (PlaneInput port) = xs ! port"
+
+definition plane_cofactor_table ::
+  "(nat list \<Rightarrow> nat option) \<Rightarrow> plane_binding list \<Rightarrow>
+    nat list list \<Rightarrow> nat option list" where
+  "plane_cofactor_table gate bindings assignments =
+    map (\<lambda>xs. gate (map (plane_binding_value xs) bindings)) assignments"
+
+lemma plane_cofactor_entry_refines:
+  assumes "i < length assignments"
+  shows "plane_cofactor_table gate bindings assignments ! i =
+    gate (map (plane_binding_value (assignments ! i)) bindings)"
+  using assms by (simp add: plane_cofactor_table_def)
+
+lemma plane_cofactor_undefined_exact:
+  assumes "i < length assignments"
+  shows "plane_cofactor_table gate bindings assignments ! i = None \<longleftrightarrow>
+    gate (map (plane_binding_value (assignments ! i)) bindings) = None"
+  using plane_cofactor_entry_refines[OF assms] by simp
+
+lemma plane_diagonal_binding_exact:
+  "map (plane_binding_value xs) [PlaneInput i, PlaneConst c, PlaneInput i] =
+    [xs!i, c, xs!i]"
+  by simp
+
+lemma plane_complete_residual_bisimulation:
+  "plane_cofactor_table f a assignments = plane_cofactor_table g b assignments
+    \<longleftrightarrow> (\<forall>xs \<in> set assignments.
+      f (map (plane_binding_value xs) a) = g (map (plane_binding_value xs) b))"
+  by (simp add: plane_cofactor_table_def map_eq_conv)
+
+lemma plane_projection_elimination:
+  assumes "\<And>xs. xs \<in> set assignments \<Longrightarrow>
+    gate (map (plane_binding_value xs) bindings) = Some (xs!port)"
+  shows "plane_cofactor_table gate bindings assignments =
+    map (\<lambda>xs. Some (xs!port)) assignments"
+  unfolding plane_cofactor_table_def using assms by (intro map_cong) auto
+
+lemma plane_constant_elimination:
+  assumes "\<And>xs. xs \<in> set assignments \<Longrightarrow>
+    gate (map (plane_binding_value xs) bindings) = result"
+  shows "plane_cofactor_table gate bindings assignments =
+    replicate (length assignments) result"
+  using assms by (induction assignments) (auto simp: plane_cofactor_table_def)
+
+lemma plane_cofactor_spatial_split:
+  "plane_cofactor_table gate bindings (left @ right) =
+    plane_cofactor_table gate bindings left @ plane_cofactor_table gate bindings right"
+  by (simp add: plane_cofactor_table_def)
+
+lemma plane_cofactor_interval:
+  "take width (drop start (plane_cofactor_table gate bindings assignments)) =
+    plane_cofactor_table gate bindings (take width (drop start assignments))"
+  by (simp add: plane_cofactor_table_def take_map drop_map)
+
+lemma automatic_sweep_charged_to_insertions:
+  assumes "2 * (survivors::nat) \<le> population"
+    and "population \<le> survivors + insertions"
+  shows "population \<le> 2 * insertions"
+  using assms by arith
+
 ML \<open>
   val _ = if null (Thm_Deps.all_oracles
     @{thms normalization_gate_exact xor3_is_boolean_xor
       majority3_is_boolean_majority full_adder_gate_exact
       full_adder_domain_exact repunit_factored_phases
-      repunit_factored_four_events}) then ()
+      repunit_factored_four_events plane_cofactor_entry_refines
+      plane_cofactor_undefined_exact plane_diagonal_binding_exact
+      plane_complete_residual_bisimulation plane_projection_elimination
+      plane_constant_elimination plane_cofactor_spatial_split
+      plane_cofactor_interval automatic_sweep_charged_to_insertions}) then ()
     else error "Factored channel proof depends on an oracle";
 \<close>
 

@@ -1,10 +1,10 @@
 """Law-parameterized bounded source images for dyadic return systems.
 
 The branch word of ``n`` dyadic returns is determined by the low ``n`` source bits.  This module keeps that fact local to the source-bound scheduler:
-leaves simulate at most 64 branches, while composed images retain an exact
-affine skew transfer and a chronological support tree.  It deliberately does
-not claim logarithmic source discovery; discovering the bounded leaves is
-linear in the requested physical extent.
+bounded leaves compose memoized residue macros, while images retain an exact
+affine skew transfer and chronological support. Equal admitted source cylinders
+share complete effects under transported occurrence bindings. Unmatched source
+discovery still costs linear work in the requested physical extent.
 """
 
 from __future__ import annotations
@@ -127,6 +127,18 @@ class DyadicReturnImageWorkspace(
         )
         self.image_snapshot_owner = ledger.register(
             prefix + "-image-snapshots", "workspace"
+        )
+        self.macro_owner = ledger.register(
+            prefix + "-macros", "dyadic_return_macro_index"
+        )
+        self.macro_stack_owner = ledger.register(prefix + "-macro-stack", "workspace")
+        self.macros: LedgerDict[tuple[int, int], _SupportNode] = ledger.make_dict(
+            self.macro_owner, nodes_per_entry=1
+        )
+        self.macro_stack: LedgerList[tuple[int, int, _SupportNode | None]] = (
+            ledger.make_list(
+                self.macro_stack_owner, nodes_per_entry=1, append_only=False
+            )
         )
         self.actions: LedgerList[_ActionNode] = ledger.make_list(
             self.action_owner, nodes_per_entry=1, append_only=False
@@ -585,39 +597,14 @@ class DyadicReturnImageWorkspace(
             )
         if source_node.precision != node.width:
             raise ValueError("dyadic return leaf received another demanded precision")
-        state = source_node.residue
-        transfer = _identity_transfer()
-        branch_word = 0
-        odd_steps = 0
-        delta = 0
-        minimum = 0
-        for index in range(node.width):
-            bit = state & 1
-            if bit:
-                branch_word |= 1 << index
-                odd_steps += 1
-            gain = self.law.gains[bit]
-            offset = self.law.offsets[bit]
-            state_numerator = gain * state + offset
-            if state_numerator % 2:
-                raise ArithmeticError("dyadic return branch output was not integral")
-            state = state_numerator // 2
-            delta += self.law.weights[bit]
-            minimum = min(minimum, delta)
-            step = SkewTransfer(gain, offset, 2)
-            transfer = transfer.then(step, multiply=mul, add=add)
-        support = self._append_support(
-            _SupportNode(
-                node.width,
-                source_node.residue,
-                transfer,
-                odd_steps,
-                delta,
-                minimum,
-                branch_word,
-                None,
-            )
+        from number_compiler.hashlife.execution.dyadic_return_transport import (
+            residue_macro,
         )
+
+        support = residue_macro(self, node.width, source_node.residue)
+        macro = self.support_node(support)
+        transfer = macro.transfer
+        odd_steps, delta, minimum = macro.odd_steps, macro.delta, macro.minimum
         summary = DyadicImageSummary(
             node.width,
             source_node.residue,
@@ -861,9 +848,11 @@ class DyadicReturnImageWorkspace(
     def admitted_input_key(
         self, action: Hashable, source: SourceImageView
     ) -> Hashable | None:
-        self.validate_action(action)
-        self.validate_payload(source.payload)
-        return None
+        from number_compiler.hashlife.execution.dyadic_return_reuse import (
+            admitted_input_key,
+        )
+
+        return admitted_input_key(self, action, source)
 
     def transport_reuse(
         self,
@@ -872,9 +861,11 @@ class DyadicReturnImageWorkspace(
         cached_result: SourceImageView,
         source: SourceImageView,
     ) -> SourceImageCandidate:
-        raise ValueError(
-            "dyadic return local source contexts do not use relative reuse"
+        from number_compiler.hashlife.execution.dyadic_return_reuse import (
+            transport_reuse,
         )
+
+        return transport_reuse(self, action, cached_source, cached_result, source)
 
     def project(
         self, image: SourceImageView, demand: SourceImageDemand

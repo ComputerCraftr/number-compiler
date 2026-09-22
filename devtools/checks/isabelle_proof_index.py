@@ -5,9 +5,17 @@ from __future__ import annotations
 import argparse
 import json
 import re
-from dataclasses import dataclass
 from pathlib import Path
 
+from devtools.checks.isabelle_syntax import (
+    executable_text,
+    first_documentation_scope,
+    ml_cartouches,
+    navigation_text,
+    parse_sessions,
+    parse_theory_header,
+    unquoted_matches,
+)
 from devtools.paths import repository_root
 
 ROOT = repository_root()
@@ -17,10 +25,27 @@ ISABELLE = ROOT / "devtools/proofs/isabelle"
 # empty mapping is deliberate: a standalone mathematical theory must not be
 # presented as a production refinement merely because it is registered.
 COUNTERPARTS: dict[str, tuple[str, ...]] = {
+    "S_Arithmetic_Skew": (
+        "src/number_compiler/arithmetic/fields/skew_transfer.py",
+        "tests/arithmetic/fields/test_integer_cylinder_chart.py",
+    ),
+    "Dyadic_Source_Lift": (
+        "src/number_compiler/hashlife/execution/dyadic_return_reuse.py",
+        "src/number_compiler/hashlife/execution/dyadic_return_transport.py",
+        "src/number_compiler/hashlife/execution/dyadic_return_observers.py",
+        "tests/hashlife/execution/test_dyadic_effect_reuse.py",
+        "tests/arithmetic/fields/test_integer_cylinder_chart.py",
+    ),
+    "Reverse_Threshold_Cocycle": (
+        "devtools/experiments/reverse_add/cocycle_carrier.py",
+        "devtools/experiments/reverse_add/factored_power.py",
+        "tests/sequences/reverse_add/test_cocycle_carrier.py",
+    ),
     "Mahler_Spatial_Carry_Pump": (
         "devtools/experiments/antihydra/spatial_carry.py",
         "devtools/experiments/antihydra/future_grammar.py",
         "tests/validation/proofs/test_mahler_spatial_carry.py",
+        "tests/validation/proofs/test_mahler_f5_production_bridge.py",
     ),
     "Reverse_Centered_Future_Grammar": (
         "devtools/experiments/reverse_add/centered_future.py",
@@ -74,100 +99,14 @@ COUNTERPARTS: dict[str, tuple[str, ...]] = {
 }
 
 
-@dataclass(frozen=True)
-class Session:
-    name: str
-    directory: Path
-    parent: str
-    dependencies: tuple[str, ...]
-    theories: tuple[str, ...]
-
-
-def _sessions(text: str) -> tuple[Session, ...]:
-    starts = tuple(
-        re.finditer(
-            r"(?m)^session\s+(\w+)(?:\s+in\s+([^\s=]+))?\s*=\s+([^\s+]+)\s*\+", text
-        )
-    )
-    sessions: list[Session] = []
-    for index, match in enumerate(starts):
-        end = starts[index + 1].start() if index + 1 < len(starts) else len(text)
-        body = text[match.end() : end]
-        dependency_match = re.search(r"(?m)^\s{2}sessions\s+(.+)$", body)
-        theory_match = re.search(r"(?ms)^\s{2}theories\s*\n(.*?)(?=^\s{2}\w|\Z)", body)
-        theories = (
-            tuple(re.findall(r"(?m)^\s{4}([A-Za-z0-9_]+)\s*$", theory_match.group(1)))
-            if theory_match
-            else ()
-        )
-        directory = Path(match.group(2) or ".")
-        sessions.append(
-            Session(
-                match.group(1),
-                directory,
-                match.group(3).strip('"'),
-                tuple(dependency_match.group(1).split()) if dependency_match else (),
-                theories,
-            )
-        )
-    return tuple(sessions)
-
-
-def _theory_header(text: str, path: Path) -> tuple[str, tuple[str, ...]]:
-    match = re.search(r"\btheory\s+(\w+)\s+imports\s+(.*?)\s+begin\b", text, re.DOTALL)
-    if match is None:
-        raise ValueError(f"{path}: missing theory/imports header")
-    imports = tuple(
-        quoted or bare
-        for quoted, bare in re.findall(r'"([^"]+)"|([A-Za-z0-9_./-]+)', match.group(2))
-    )
-    return match.group(1), imports
-
-
 def _scope(text: str) -> str:
-    match = re.search(r"text\s+\\<open>(.*?)\\<close>", text, re.DOTALL)
-    if match is None:
-        return ""
-    return " ".join(match.group(1).split())
-
-
-def _without_comments(text: str) -> str:
-    """Remove nested Isabelle/ML comments while retaining navigation line numbers."""
-    output: list[str] = []
-    depth = 0
-    offset = 0
-    quoted = False
-    while offset < len(text):
-        pair = text[offset : offset + 2]
-        if not quoted and pair == "(*":
-            depth += 1
-            output.append("  ")
-            offset += 2
-        elif depth and pair == "*)":
-            depth -= 1
-            output.append("  ")
-            offset += 2
-        else:
-            char = text[offset]
-            if not depth and char == '"' and (offset == 0 or text[offset - 1] != "\\"):
-                quoted = not quoted
-            output.append(char if not depth or char == "\n" else " ")
-            offset += 1
-    if depth:
-        raise ValueError("unterminated Isabelle comment")
-    return "".join(output)
+    return first_documentation_scope(text)
 
 
 def _audited_theorems(text: str) -> tuple[str, ...]:
     names: list[str] = []
-    clean = _without_comments(text)
-    # Documentation cartouches cannot serve as executable ML audits.
-    clean = re.sub(
-        r"\btext(?:_raw)?\s+\\<open>.*?\\<close>", "", clean, flags=re.DOTALL
-    )
-    for block in re.findall(
-        r"(?m)^ML(?:_val)?\s+\\<open>(.*?)\\<close>", clean, re.DOTALL
-    ):
+    clean = executable_text(text)
+    for block in ml_cartouches(clean):
         block = re.sub(r'"(?:\\.|[^"\\])*"', '""', block)
         bindings = dict(
             re.findall(r"\bval\s+(\w+)\s*=\s*@\{thms?\s+(.*?)\}", block, re.DOTALL)
@@ -183,29 +122,19 @@ def _audited_theorems(text: str) -> tuple[str, ...]:
     return tuple(dict.fromkeys(names))
 
 
-def _executable_text(text: str) -> str:
-    clean = _without_comments(text)
-
-    def erase(match: re.Match[str]) -> str:
-        value = match.group(0)
-        return "".join("\n" if char == "\n" else " " for char in value)
-
-    return re.sub(
-        r"\btext(?:_raw)?\s+\\<open>.*?\\<close>", erase, clean, flags=re.DOTALL
-    )
-
-
 def _declarations(text: str) -> tuple[dict[str, object], ...]:
     """Lexical navigation inventory; Isabelle remains the authority on statements."""
-    text = _executable_text(text)
-    starts = tuple(
-        re.finditer(r"(?m)^(lemma|theorem|corollary)\s+([A-Za-z][A-Za-z0-9_']*)", text)
+    text = navigation_text(text)
+    starts = unquoted_matches(
+        re.compile(r"(?m)^(lemma|theorem|corollary)\s+([A-Za-z][A-Za-z0-9_']*)"),
+        text,
     )
     rows: list[dict[str, object]] = []
     for index, match in enumerate(starts):
         end = starts[index + 1].start() if index + 1 < len(starts) else len(text)
         body = text[match.end() : end]
-        proof = re.search(r"(?m)(?:^|\s)(?:by|proof)\s", body)
+        proofs = unquoted_matches(re.compile(r"(?m)(?:^|\s)(?:by|proof)\s"), body)
+        proof = proofs[0] if proofs else None
         statement = (
             body[: proof.start()] if proof is not None else body.split("\n\n", 1)[0]
         )
@@ -220,11 +149,11 @@ def _declarations(text: str) -> tuple[dict[str, object], ...]:
 
 
 def build_index() -> dict[str, object]:
-    sessions = _sessions((ISABELLE / "ROOT").read_text())
+    sessions = parse_sessions((ISABELLE / "ROOT").read_text())
     declared: dict[str, tuple[Path, tuple[str, ...], str, tuple[str, ...]]] = {}
     for path in sorted(ISABELLE.rglob("*.thy")):
         text = path.read_text()
-        name, imports = _theory_header(text, path)
+        name, imports = parse_theory_header(text, path)
         if name in declared:
             raise ValueError(f"duplicate theory declaration: {name}")
         declared[name] = (path, imports, _scope(text), _audited_theorems(text))
@@ -277,7 +206,7 @@ def build_index() -> dict[str, object]:
     source_texts = {name: row[0].read_text() for name, row in declared.items()}
     token_uses: dict[str, set[str]] = {}
     for theory, contents in source_texts.items():
-        contents = _executable_text(contents)
+        contents = executable_text(contents)
         for token in set(re.findall(r"[A-Za-z][A-Za-z0-9_']*", contents)):
             token_uses.setdefault(token, set()).add(theory)
     for name in sorted(declared):

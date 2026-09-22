@@ -443,9 +443,19 @@ def audit_higher_payloads(ledger: ResourceLedger) -> HigherPayloadAudit:
             valid_root = root.ledger is ledger and store(
                 root._binding_owner, root._bindings
             )
+            try:
+                root._check_authority()
+            except (TypeError, ValueError, KeyError, AttributeError):
+                valid_root = False
+            if not valid_root:
+                invalid.add((root._binding_owner, id(root._bindings)))
             bindings_valid = valid_root
             for output, provider_binding in root._bindings.items():
-                valid = type(provider_binding) is tuple and len(provider_binding) == 2
+                valid = (
+                    valid_root
+                    and type(provider_binding) is tuple
+                    and len(provider_binding) == 2
+                )
                 try:
                     root._validate_output(output)
                     source, provider_action = provider_binding
@@ -481,10 +491,17 @@ def audit_higher_payloads(ledger: ResourceLedger) -> HigherPayloadAudit:
             valid_root = root.ledger is ledger and store(
                 root._binding_owner, root._bindings
             )
+            try:
+                root.declaration()
+            except (TypeError, ValueError, KeyError, AttributeError):
+                valid_root = False
+            if not valid_root:
+                invalid.add((root._binding_owner, id(root._bindings)))
             bindings_valid = valid_root
             for key, macro in root._bindings.items():
                 valid = (
-                    type(key) is _MacroBindingKey
+                    valid_root
+                    and type(key) is _MacroBindingKey
                     and type(macro) is SourceBoundHigherMacro
                 )
                 try:

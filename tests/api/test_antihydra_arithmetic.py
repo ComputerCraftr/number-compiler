@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from collections.abc import Iterator
 from typing import cast
 
 import pytest
@@ -87,7 +88,7 @@ def test_total_arithmetic_uses_balanced_scheduler_images_without_endpoint_replay
     assert type(workspace.scheduler) is TileScheduler
     assert workspace.scheduler._source_only
     assert workspace.scheduler.ledger is term.ledger
-    assert len(term.segments) == 16
+    assert not term._segments and not term._segments_ready
     assert term.ledger.counters["source_image_first_child_contexts"] == 15
     assert term.ledger.counters["source_image_second_child_contexts"] == 15
     operand_work = (
@@ -95,6 +96,7 @@ def test_total_arithmetic_uses_balanced_scheduler_images_without_endpoint_replay
         + term.ledger.counters["antihydra_arithmetic_composition_operand_bits"]
     )
     assert operand_work < 24 * result.returns
+    assert len(term.segments) == 16
     assert term.ledger.counters.get("physical_roof_evaluations", 0) == 0
 
 
@@ -105,16 +107,19 @@ def test_number_api_is_lazy_and_reuses_arithmetic_owner_for_info_and_physical(
     projected = compiler.project_nth("antihydra", 129)
     assert type(projected.payload) is AntihydraTermPayload
     owner = projected.payload.term
-    assert owner._result is None and not owner.segments
+    assert owner._result is None and not owner._segments
     reused = compiler.project_nth("antihydra", 129).payload
     assert type(reused) is AntihydraTermPayload
     assert reused.term is owner
 
     expected = _reference(129)[0]
     assert projected.materialize(max_bits=4096) == expected
-    arithmetic_work = owner.ledger.counters["arithmetic_block_applications"]
+    arithmetic_work = owner.ledger.counters.get("arithmetic_block_applications", 0)
+    assert arithmetic_work == 0 and not owner._segments
     assert projected.payload.info()["h"] == expected
-    assert owner.ledger.counters["arithmetic_block_applications"] == arithmetic_work
+    assert (
+        owner.ledger.counters.get("arithmetic_block_applications", 0) == arithmetic_work
+    )
     assert owner.ledger.counters.get("physical_roof_evaluations", 0) == 0
     reference = run(129)
 
@@ -143,7 +148,10 @@ def test_number_api_is_lazy_and_reuses_arithmetic_owner_for_info_and_physical(
         reference.right,
         reference.halted,
     )
-    assert owner.ledger.counters["arithmetic_block_applications"] == arithmetic_work
+    assert owner.ledger.counters["arithmetic_block_applications"] == len(
+        owner._segments
+    )
+    assert owner.ledger.counters["arithmetic_block_applications"] > arithmetic_work
     assert owner.ledger.counters.get("physical_roof_evaluations", 0) > 0
     assert owner.ledger.counters.get("physical_roof_branch_discovery_steps", 0) == 0
 
@@ -169,7 +177,7 @@ def test_output_budget_refuses_before_arithmetic_execution() -> None:
     payload = compiler.project_nth("antihydra", 1000).payload
     assert type(payload) is AntihydraTermPayload
     assert payload.term._result is None
-    assert not payload.term.segments
+    assert not payload.term._segments
     assert compiler.nth("antihydra", 0, max_bits=4) == 8
 
 
@@ -178,7 +186,7 @@ def test_failed_result_publication_rolls_back_retained_support() -> None:
     term.max_state_bits = 4
     with pytest.raises(ValueError, match="state exceeds"):
         term.result()
-    assert term._result is None and not term.segments
+    assert term._result is None and not term._segments
     assert term.arithmetic_workspace is None
     row = next(
         item
@@ -192,6 +200,35 @@ def test_failed_result_publication_rolls_back_retained_support() -> None:
         for row in term.ledger.inventory()
         if row.name.startswith("dyadic-return-images-")
     )
+
+
+def test_failed_lazy_segment_publication_preserves_arithmetic_result(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    term = AntihydraArithmeticTerm(64)
+    result = term.result()
+    original = AntihydraArithmeticImageWorkspace.segments
+
+    def partial(
+        workspace: AntihydraArithmeticImageWorkspace,
+    ) -> Iterator[tuple[int, ArithmeticCylinder]]:
+        yield next(original(workspace))
+        raise RuntimeError("injected lazy segment failure")
+
+    with monkeypatch.context() as patch:
+        patch.setattr(AntihydraArithmeticImageWorkspace, "segments", partial)
+        with pytest.raises(RuntimeError, match="injected lazy segment failure"):
+            term.segments
+    assert term._result is result
+    assert not term._segments and not term._segments_ready
+    row = next(
+        item
+        for item in term.ledger.inventory()
+        if item.role == "arithmetic_cylinder_support"
+    )
+    assert row.entries == row.nodes == 0
+    result.require_source()
+    assert len(term.segments) == 1
 
 
 @pytest.mark.parametrize("target", ("source", "image", "action", "provenance"))
@@ -236,7 +273,14 @@ def test_arithmetic_support_is_charged_and_auditable() -> None:
         for item in term.ledger.inventory()
         if item.role == "arithmetic_cylinder_support"
     )
-    assert row.entries == row.nodes == len(term.segments) == 3
+    assert row.entries == row.nodes == 0
+    assert len(term.segments) == 3
+    row = next(
+        item
+        for item in term.ledger.inventory()
+        if item.role == "arithmetic_cylinder_support"
+    )
+    assert row.entries == row.nodes == 3
 
     result = term.result()
     object.__setattr__(result, "h", result.h + 1)

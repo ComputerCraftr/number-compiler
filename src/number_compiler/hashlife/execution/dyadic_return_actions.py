@@ -25,6 +25,7 @@ def rollback_construction(workspace: DyadicReturnImageWorkspace) -> None:
         (workspace.support_owner, workspace.support, 1),
         (workspace.image_owner, workspace.images, 1),
         (workspace.construction_owner, workspace.construction_stack, 1),
+        (workspace.macro_stack_owner, workspace.macro_stack, 1),
     ):
         retained = len(store)
         store.clear()
@@ -32,6 +33,9 @@ def rollback_construction(workspace: DyadicReturnImageWorkspace) -> None:
     widths = len(workspace.by_width)
     workspace.by_width.clear()
     workspace.ledger.release(workspace.width_owner, entries=widths)
+    macros = len(workspace.macros)
+    workspace.macros.clear()
+    workspace.ledger.release(workspace.macro_owner, entries=macros, nodes=macros)
     snapshot_stores: tuple[tuple[int, LedgerDict[int, object]], ...] = (
         (workspace.action_snapshot_owner, workspace.action_snapshots),
         (workspace.source_snapshot_owner, workspace.source_snapshots),

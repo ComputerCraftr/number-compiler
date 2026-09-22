@@ -15,6 +15,11 @@ from number_compiler.arithmetic.contracts.cylinder_chart import (
     right_dyadic_blocks,
 )
 from number_compiler.arithmetic.contracts.scoped_handles import ExactSource
+from number_compiler.arithmetic.formula.decimal_pair_coordinates import (
+    decimal_add_cocycle,
+    decimal_cocycle_value,
+    decimal_normalize_cocycle,
+)
 from number_compiler.arithmetic.formula.skew_residue_laws import (
     pair_growth_edge,
     pair_growth_interior,
@@ -400,7 +405,10 @@ class SourceCarryPorts:
     def _raw_second_pair(self, position: int, growth: int) -> int:
         self._ledger.bump("reverse_source_length_pair_reads")
         base = self._source.base
-        if growth and position in (0, self._width):
+        if base == 10:
+            domain, alpha, epsilon, _ = self._second_decimal_cocycle(position, growth)
+            result = decimal_cocycle_value(domain, alpha, epsilon)
+        elif growth and position in (0, self._width):
             result = pair_growth_edge(
                 self._raw_first_pair(0), self._first_prefix(1), base
             )
@@ -427,6 +435,28 @@ class SourceCarryPorts:
             raise ValueError("second source pair left its radix")
         self._ledger.bump("reverse_source_ports_second_pair_queries")
         return result
+
+    def _first_output_channels(self, position: int, growth: int) -> tuple[int, int]:
+        """Exact normalized F5/parity digit channels in the output chart.
+
+        Only the forward incoming carry is demanded. Decimal wrap is already
+        encoded by CRT; there is no second outgoing carry or digit renderer.
+        """
+        if growth and position == self._width:
+            return 1, 1
+        symbol = self._raw_first_pair(position)
+        return decimal_normalize_cocycle(
+            symbol % 5, symbol % 2, self._first_prefix(position)
+        )
+
+    def _second_decimal_cocycle(
+        self, position: int, growth: int
+    ) -> tuple[CarryFn, int, int, int]:
+        self._ledger.bump("reverse_source_ports_crt_threshold_queries")
+        return decimal_add_cocycle(
+            self._first_output_channels(position, growth),
+            self._first_output_channels(self._width + growth - 1 - position, growth),
+        )
 
     def second_pair(self, position: int) -> int:
         self._check_open()
@@ -456,9 +486,13 @@ class SourceCarryPorts:
                 _, current_start, current_span = frame.key
                 self._ledger.bump("reverse_source_ports_postorder_frames")
                 if current_span == 1:
-                    result = value_carry_fn(
-                        self._raw_second_pair(current_start, growth),
-                        self._source.base,
+                    result = (
+                        self._second_decimal_cocycle(current_start, growth)[0]
+                        if self._source.base == 10
+                        else value_carry_fn(
+                            self._raw_second_pair(current_start, growth),
+                            self._source.base,
+                        )
                     )
                     self._publish(workspace, frame.key, result)
                     workspace.pop()

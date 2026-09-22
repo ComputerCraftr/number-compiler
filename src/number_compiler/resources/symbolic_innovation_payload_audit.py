@@ -66,6 +66,7 @@ def audit_symbolic_innovation_payloads(
                 "_node_owner",
                 "_key_owner",
                 "_projection",
+                "_f5_compositions",
                 "_nodes",
                 "_keys",
                 "zero",
@@ -102,6 +103,9 @@ def audit_symbolic_innovation_payloads(
             and projection_row.entries == projection_row.nodes == 0
             and len(root._projection._data) == 0
         )
+        memo_valid, memo_approved = _valid_f5_memo(root, ledger)
+        valid &= memo_valid
+        root_approved.update(memo_approved)
         if root._closed:
             valid &= (
                 node_row is not None
@@ -166,6 +170,68 @@ def audit_symbolic_innovation_payloads(
         else:
             invalid.update((owner, id(root)) for owner in owners)
     return PhysicalSupportPayloadAudit(frozenset(approved), frozenset(invalid))
+
+
+def _valid_f5_memo(
+    root: SymbolicInnovationArena, ledger: ResourceLedger
+) -> tuple[bool, set[int]]:
+    """Validate arithmetic handles and charged key metadata without evaluation."""
+    from number_compiler.resources.ledger import OwnedMemo
+    from number_compiler.resources.stores import LedgerDict
+
+    try:
+        memo = root._f5_compositions
+    except AttributeError:
+        return False, set()
+    if memo is None:
+        return True, set()
+    if (
+        root._closed
+        or type(memo) is not OwnedMemo
+        or memo.ledger is not ledger
+        or type(memo.owner) is not int
+        or type(memo.nodes_per_entry) is not int
+        or memo.nodes_per_entry < 1
+        or memo._disposed
+        or type(memo._data) is not LedgerDict
+        or memo._data.ledger is not ledger
+        or memo._data.owner != memo.owner
+        or memo._data.nodes_per_entry != memo.nodes_per_entry
+        or not ledger.is_factory_container(memo._data)
+    ):
+        return False, set()
+    row = next((row for row in ledger.inventory() if row.owner == memo.owner), None)
+    if (
+        row is None
+        or row.disposed
+        or row.role != "query_memo"
+        or row.name != f"innovation-F5-{root._node_owner}-{memo.owner}"
+        or not row.evictable
+        or row.accounting_delta != 0
+        or dict(ledger.iter_containers()).get(memo.owner) is not memo._data
+        or row.entries != len(memo._data)
+        or row.nodes != row.entries * memo.nodes_per_entry
+    ):
+        return False, set()
+    approved = {id(memo._data)}
+    for key, result in memo._data.items():
+        if (
+            type(key) is not tuple
+            or len(key) != 4
+            or not _valid_child(key[0], root, len(root._nodes))
+            or not _valid_child(key[1], root, len(root._nodes))
+            or not _valid_child(result, root, len(root._nodes))
+            or type(key[2]) is not int
+            or key[2] < 0
+            or type(key[3]) is not int
+            or key[3] < 0
+        ):
+            return False, set()
+        bits = max(1, key[2].bit_length()) + max(1, key[3].bit_length())
+        if bits > 64 * memo.nodes_per_entry:
+            return False, set()
+        approved.update((id(key), *(id(item) for item in key), id(result)))
+    return True, approved
 
 
 def _valid_handle(

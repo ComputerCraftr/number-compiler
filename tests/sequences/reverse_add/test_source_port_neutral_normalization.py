@@ -85,9 +85,12 @@ def test_identity_cache_is_layer_scoped(
     def forbidden(*_args: object, **_kwargs: object) -> Never:
         raise AssertionError("layer two inherited a layer-one identity")
 
-    monkeypatch.setattr(SourceCarryPorts, "_raw_second_pair", forbidden)
-    with pytest.raises(AssertionError, match="layer two inherited"):
-        ports.range_transfer(2, 0, 1)
+    with monkeypatch.context() as poison:
+        poison.setattr(SourceCarryPorts, "_second_decimal_cocycle", forbidden)
+        with pytest.raises(AssertionError, match="layer two inherited"):
+            ports.range_transfer(2, 0, 1)
+    assert ports.range_transfer(2, 0, 1) is CarryFn.CONST1
+    assert ports.range_transfer(1, 0, 1) is CarryFn.ID
 
 
 def test_whole_neutral_interval_retains_only_its_normalized_root() -> None:

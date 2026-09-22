@@ -7,7 +7,6 @@ and temporal leaf descents alongside canonical spatial/temporal populations.
 
 from __future__ import annotations
 
-import ast
 import itertools
 import json
 from collections.abc import Mapping, Sequence
@@ -16,6 +15,7 @@ from time import perf_counter
 from devtools.benchmarks.tile_projection_accounting import (
     projection_accounting,
 )
+from devtools.checks.dependency_graph import source_syntax
 from devtools.paths import repository_root
 
 ROOT = repository_root()
@@ -202,44 +202,36 @@ def _production_projection_rows() -> list[dict[str, object]]:
 
 
 def _source_audit() -> dict[str, bool]:
-    hashlife = (
+    hashlife = source_syntax(
         ROOT / "src" / "number_compiler" / "hashlife/observation/hashlife_projection.py"
-    ).read_text()
-    reverse = (
+    )
+    reverse = source_syntax(
         ROOT / "src" / "number_compiler" / "sequences/reverse_add/power.py"
-    ).read_text()
+    )
     proof = ROOT / "devtools" / "proofs"
-    runtime = (proof / "block_runtime.py").read_text()
-    spacetime = (proof / "block_spacetime_runtime.py").read_text()
-    compatibility_runtime = runtime + spacetime
-    boundary = (ROOT / "devtools" / "proofs" / "spacetime_boundary.py").read_text()
+    runtime = source_syntax(proof / "block_runtime.py")
+    spacetime = source_syntax(proof / "block_spacetime_runtime.py")
+    compatibility_names = runtime.identifiers | spacetime.identifiers
+    compatibility_imports = runtime.imports | spacetime.imports
+    boundary = source_syntax(proof / "spacetime_boundary.py")
     router_path = ROOT / "src" / "number_compiler" / "sequences" / "runtime_router.py"
-    router_tree = ast.parse(router_path.read_text(), filename=str(router_path))
-    router_imports = {
-        node.module.lstrip(".")
-        for node in ast.walk(router_tree)
-        if isinstance(node, ast.ImportFrom) and node.module
-    } | {
-        alias.name
-        for node in ast.walk(router_tree)
-        if isinstance(node, ast.Import)
-        for alias in node.names
-    }
-    generic_executor_imported = any(
+    router_syntax = source_syntax(router_path)
+    router_imports = router_syntax.imports | router_syntax.dynamic_imports
+    generic_executor_imported = router_syntax.unknown_dynamic_import or any(
         name.endswith("diamond_runtime") for name in router_imports
     )
     checks = {
         "causal_engine_absent_from_reverse_power": "ReverseAddCausalSpacetimeEngine"
-        not in reverse,
-        "t2_partition_interpreter_deleted": "def _partition3" not in hashlife
-        and "def _leaf_partition3" not in hashlife,
-        "whole_output_projection_deleted": "def output_word" not in hashlife,
-        "ordinary_point_fallback_deleted": "def point(" not in hashlife,
-        "prefix_pop_residual_deleted": "program_pop_last" not in runtime,
-        "history_word_carrier_deleted": "from ..program_word"
-        not in compatibility_runtime
-        and "CanonicalWord" not in compatibility_runtime,
-        "exact_future_tile_output_deleted": "def _output_tile_macro" not in spacetime,
+        not in reverse.identifiers,
+        "t2_partition_interpreter_deleted": "_partition3" not in hashlife.functions
+        and "_leaf_partition3" not in hashlife.functions,
+        "whole_output_projection_deleted": "output_word" not in hashlife.functions,
+        "ordinary_point_fallback_deleted": "point" not in hashlife.functions,
+        "prefix_pop_residual_deleted": "program_pop_last" not in runtime.identifiers,
+        "history_word_carrier_deleted": "..program_word" not in compatibility_imports
+        and "CanonicalWord" not in compatibility_names,
+        "exact_future_tile_output_deleted": "_output_tile_macro"
+        not in spacetime.functions,
         "bounded_temporal_application_installed": (
             ROOT
             / "src"
@@ -248,13 +240,13 @@ def _source_audit() -> dict[str, bool]:
         ).exists(),
         "certified_family_has_no_generic_executor_import": not generic_executor_imported,
         "raw_spacetime_boundary_runtime_deleted": (
-            "import SpacetimeBoundary" not in compatibility_runtime
-            and "SpacetimeBoundary," not in compatibility_runtime
-            and "intern_boundary(" not in compatibility_runtime
-            and "_intern_spacetime_state" not in compatibility_runtime
-            and "_advance_effect_boundary" not in compatibility_runtime
+            "SpacetimeBoundary" not in compatibility_names
+            and "intern_boundary" not in compatibility_names
+            and "_intern_spacetime_state" not in compatibility_names
+            and "_advance_effect_boundary" not in compatibility_names
         ),
-        "raw_boundary_carrier_class_deleted": "class SpacetimeBoundary" not in boundary,
+        "raw_boundary_carrier_class_deleted": "SpacetimeBoundary"
+        not in boundary.classes,
     }
     if not all(checks.values()):
         raise AssertionError(checks)

@@ -3,10 +3,11 @@
 from __future__ import annotations
 
 from collections.abc import MutableMapping
-from dataclasses import dataclass
+from dataclasses import dataclass, fields
 from hashlib import sha256
 from typing import cast
 
+from number_compiler.arithmetic.contracts.scoped_handles import ArenaHandle, ArenaToken
 from number_compiler.arithmetic.contracts.semantic_identity import SemanticIdentity
 from number_compiler.hashlife.actions.field_actions import (
     CoordinateOutputMorphismID,
@@ -63,6 +64,50 @@ class SourceBoundHigherMacro:
 class _MacroBindingKey:
     action: FieldCellActionID
     source: SourceBindingID
+
+
+@dataclass(frozen=True, slots=True)
+class HigherMacroDeclaration:
+    """Issued consumer law shared by source bindings and temporal images."""
+
+    action: FieldCellActionID
+    interface: LocalInterfaceID
+    left: HigherExpressionID
+    symbol: HigherExpressionID
+    right: HigherExpressionID
+    blank: int
+    kernel_digest: str
+    source_backed_temporal: bool
+    morphism_sort: HigherMorphismSort
+
+    def seal(self) -> tuple[tuple[object, ...], ...]:
+        """Snapshot exact values independently of mutable-in-practice records."""
+        if (
+            type(self.action) is not FieldCellActionID
+            or type(self.interface) is not LocalInterfaceID
+            or any(
+                type(port) is not HigherExpressionID
+                for port in (self.left, self.symbol, self.right)
+            )
+            or type(self.blank) is not int
+            or type(self.kernel_digest) is not str
+            or type(self.source_backed_temporal) is not bool
+            or type(self.morphism_sort) is not HigherMorphismSort
+            or type(self.morphism_sort.owner) is not ArenaToken
+            or type(self.morphism_sort.kind) is not str
+        ):
+            raise ValueError("higher spatial macro declaration has invalid types")
+        result: list[tuple[object, ...]] = []
+        for field in fields(self):
+            value: object = getattr(self, field.name)
+            if isinstance(value, ArenaHandle):
+                value.__post_init__()
+                result.append((type(value), value.owner, value.kind, value.local_id))
+            elif isinstance(value, HigherMorphismSort):
+                result.append((type(value), value.owner, value.kind))
+            else:
+                result.append((type(value), value))
+        return tuple(result)
 
 
 class HigherSpatialMacroComposer:
@@ -124,6 +169,71 @@ class HigherSpatialMacroComposer:
             self._bindings,
             payloads=self._bindings.items,
         )
+        self._declaration = self._current_declaration()
+        self._declaration_seal = self._declaration.seal()
+        self._issued_authority = (
+            self.semantics,
+            self.interfaces,
+            self.outputs,
+            self.sources,
+            self.ledger,
+            self.semantics.owner,
+            self.interfaces.owner,
+            self.outputs.owner,
+            self.sources.owner,
+            self._bindings,
+            self._declaration,
+            self._declaration_seal,
+        )
+
+    def _current_declaration(self) -> HigherMacroDeclaration:
+        return HigherMacroDeclaration(
+            self.action,
+            self.local_interface,
+            self.left,
+            self.symbol,
+            self.right,
+            self.blank,
+            self.kernel_digest,
+            self.source_backed_temporal,
+            self.morphism_sort,
+        )
+
+    def declaration(self) -> HigherMacroDeclaration:
+        """Validate and return the original complete consumer declaration."""
+        issued = self._issued_authority
+        current = (
+            self.semantics,
+            self.interfaces,
+            self.outputs,
+            self.sources,
+            self.ledger,
+            self.semantics.owner,
+            self.interfaces.owner,
+            self.outputs.owner,
+            self.sources.owner,
+            self._bindings,
+            self._declaration,
+            self._declaration_seal,
+        )
+        if any(
+            actual is not original
+            for actual, original in zip(current, issued, strict=True)
+        ):
+            raise ValueError("higher spatial macro authority was changed")
+        if (
+            self._current_declaration().seal() != self._declaration_seal
+            or self._declaration.seal() != self._declaration_seal
+            or self.semantics.ledger is not self.ledger
+            or self.interfaces.ledger is not self.ledger
+            or self.outputs.ledger is not self.ledger
+            or self.sources.ledger is not self.ledger
+            or self.morphism_sort.owner is not self.outputs.owner
+            or self.morphism_sort.kind != self.outputs.kind
+            or not self.ledger.is_factory_container(self._bindings)
+        ):
+            raise ValueError("higher spatial macro declaration was changed")
+        return self._declaration
 
     def _ports(self) -> tuple[HigherPort, HigherPort]:
         return HigherPort(self.left, "left-boundary"), HigherPort(
@@ -214,6 +324,7 @@ class HigherSpatialMacroComposer:
         symbolic composition metadata.  Callers must use ``validate_binding``
         or an issued temporal-image handle before treating the result as bound.
         """
+        self.declaration()
         return self._bind_symbol_expression(
             source_symbol,
             source_extent=source_extent,
@@ -300,6 +411,7 @@ class HigherSpatialMacroComposer:
         right: SourceBoundHigherMacro,
     ) -> SourceBoundHigherMacro:
         """Compose symbolic macrocells without granting source authority."""
+        self.declaration()
         if (
             type(left) is not SourceBoundHigherMacro
             or type(right) is not SourceBoundHigherMacro
@@ -484,6 +596,7 @@ class HigherSpatialMacroComposer:
         # an occurrence key.  In particular, a forged handle must not be able
         # to compare equal to a warm binding through its integer payload.
         self.sources.resolve(source)
+        self.declaration()
         key = _MacroBindingKey(self.action, source)
         self.ledger.bump("higher_spatial_parent_requests")
         self.ledger.bump("spatial_parent_requests")
@@ -525,6 +638,7 @@ class HigherSpatialMacroComposer:
         if type(source) is not SourceForestID:
             raise TypeError("higher spatial macro requires a scoped source binding")
         forest = self.sources.resolve_forest(source)
+        self.declaration()
         key = _MacroBindingKey(self.action, source)
         self.ledger.bump("higher_spatial_forest_requests")
         self.ledger.bump("spatial_parent_requests")
@@ -556,6 +670,7 @@ class HigherSpatialMacroComposer:
         macro: SourceBoundHigherMacro,
     ) -> None:
         """Authenticate one live source occurrence and its compiled macro."""
+        self.declaration()
         if type(macro) is not SourceBoundHigherMacro:
             raise TypeError("higher source binding requires a canonical macro")
         if type(source) is SourceCellID:
@@ -569,6 +684,33 @@ class HigherSpatialMacroComposer:
             raise ValueError("higher macro is not bound to this source occurrence")
         self.interfaces.resolve(macro.interface)
         self.outputs.resolve(macro.output)
+
+    def validate_provider_binding(
+        self,
+        provider: CoordinateOutputMorphismID,
+        source: SourceBindingID,
+        action: FieldCellActionID,
+    ) -> None:
+        """Authenticate a provider against its issued source and consumer action."""
+        self.declaration()
+        self.semantics.schema.validate_action(action)
+        if action != self.action:
+            raise ValueError("higher provider has another consumer action")
+        if type(source) is SourceCellID:
+            self.sources.resolve(source)
+        elif type(source) is SourceForestID:
+            self.sources.resolve_forest(source)
+        else:
+            raise TypeError("higher provider requires a scoped source binding")
+        if type(provider) is not CoordinateOutputMorphismID:
+            raise TypeError("higher provider requires a scoped output ID")
+        self.outputs.resolve(provider)
+        macro = self._bindings.get(_MacroBindingKey(self.action, source))
+        if macro is None:
+            raise ValueError("higher provider source was never compiled")
+        self.validate_binding(source, macro)
+        if macro.output != provider:
+            raise ValueError("higher provider differs from its bound source output")
 
     def clear(self) -> None:
         """Discard source-specific construction memos after parent publication.
@@ -585,4 +727,8 @@ class HigherSpatialMacroComposer:
         self.ledger.release(self._binding_owner, entries=retained)
 
 
-__all__ = ["HigherSpatialMacroComposer", "SourceBoundHigherMacro"]
+__all__ = [
+    "HigherMacroDeclaration",
+    "HigherSpatialMacroComposer",
+    "SourceBoundHigherMacro",
+]

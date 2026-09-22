@@ -1,6 +1,7 @@
 """Exact parity-cocycle carrier and nonmaterializing controls."""
 
 import json
+from collections.abc import Callable
 from pathlib import Path
 from typing import Never
 
@@ -10,12 +11,135 @@ from devtools.experiments.reverse_add import cocycle_carrier as module
 from devtools.experiments.reverse_add.cocycle_carrier import (
     CocycleReverseCarrier,
 )
-from devtools.experiments.reverse_add.factored_planes import PlaneGate
+from devtools.experiments.reverse_add.factored_planes import PlaneGate, PlaneID
+from devtools.experiments.reverse_add.factored_power import FactoredTemporalPower
 from devtools.proofs import exact_oracle
 from number_compiler.arithmetic.automata import program_word as words
 from number_compiler.arithmetic.carry.carry_monoid import CarryFn
 from number_compiler.arithmetic.carry.event_memory import pair_step
 from number_compiler.arithmetic.fields.radix import reverse_pair_sums
+from number_compiler.arithmetic.formula.decimal_pair_coordinates import (
+    decimal_crt_digit,
+)
+from number_compiler.arithmetic.polynomials.f2_transport import F2SpatialTransport
+from number_compiler.arithmetic.polynomials.f5_transport import F5AffineTransport
+
+
+def test_cocycle_endpoint_demand_is_separate_from_complete_f5_action(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    carrier = CocycleReverseCarrier()
+    with exact_oracle():
+        field = reverse_pair_sums(196, 10)
+        source = carrier.source(field)
+        expected = field
+        for _ in range(8):
+            expected, _ = pair_step(expected, 10)
+        power = FactoredTemporalPower(carrier)
+
+        def forbidden(*_args: object, **_kwargs: object) -> Never:
+            raise AssertionError("endpoint demand composed historical F5 forcing")
+
+        with monkeypatch.context() as patch:
+            patch.setattr(power, "_compose", forbidden)
+            endpoint = power.advance(source, 8)
+        assert carrier.decode(endpoint) == expected
+        assert power.compositions == 0
+        assert not power._memo
+        assert carrier.primitive_successors == 8
+        complete = power.block(source, 8)
+        assert complete.output == endpoint
+        assert complete.action.linear.growths == (
+            carrier.planes.resolve(endpoint.f5).length
+            - carrier.planes.resolve(source.f5).length
+        )
+        assert power.compositions > 0
+
+
+@pytest.mark.parametrize("seed", (0, 1, 18, 196, 909, 1041, 1051, 1593))
+def test_source_only_d4_squares_use_returned_cocycle_grammar(
+    seed: int, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from devtools.experiments.reverse_add import powered_f5f2_carrier as orbit
+
+    def pair(value: int) -> tuple[int, ...]:
+        digits = tuple(map(int, reversed(str(value))))
+        return tuple(a + b for a, b in zip(digits, reversed(digits), strict=True))
+
+    expected: dict[int, tuple[int, ...]] = {}
+    expected_values: dict[int, int] = {}
+    value = seed
+    for count in range(1, 21):
+        value += int(str(value)[::-1])
+        if count in (4, 8, 16, 20):
+            expected[count] = pair(value)
+            expected_values[count] = value
+    carrier = CocycleReverseCarrier()
+    source = carrier.source(pair(seed))
+    power = FactoredTemporalPower(carrier)
+
+    def forbidden(*args: object, **kwargs: object) -> Never:
+        raise AssertionError("macro requested an endpoint row or pair decoder")
+
+    with monkeypatch.context() as patch:
+        patch.setattr(orbit, "reverse_add_pair_orbit", forbidden)
+        patch.setattr(orbit, "powered_block", forbidden)
+        patch.setattr(module, "decimal_cocycle_value", forbidden)
+        patch.setattr(carrier, "source", forbidden)
+        patch.setattr(carrier, "decode", forbidden)
+        patch.setattr(carrier.planes, "from_values", forbidden)
+        patch.setattr(words, "from_values", forbidden)
+        patch.setattr(F5AffineTransport, "apply", forbidden)
+        left = power.block(source, 4)
+        right = power.block(left.output, 4)
+        squared = power.block(source, 8)
+        assert squared.output == right.output
+        assert squared.action == power._compose(source, left, right).action
+        fourth = power.block(squared.output, 8)
+        sixteen = power.block(source, 16)
+        assert sixteen.output == fourth.output
+        assert sixteen.action == power._compose(source, squared, fourth).action
+        work = carrier.planes.total_work
+        primitives = carrier.primitive_successors
+        assert power.block(source, 16) is sixteen
+        # Revalidate the source but do not reconstruct the macro on a memo hit.
+        assert carrier.primitive_successors == primitives
+        assert carrier.planes.total_work >= work > 0
+        assert power.cache_hits > 0
+        twenty = power.block(source, 20)
+    for count, block in ((4, left), (8, squared), (16, sixteen), (20, twenty)):
+        assert carrier.decode(block.output) == expected[count]
+        assert block.action.linear.growths == len(expected[count]) - len(pair(seed))
+        # The expensive independent equality check belongs here, not in every
+        # internal temporal composition that already has its returned grammar.
+        assert (
+            block.action.apply(
+                power._pad(source.f5, len(expected[count])),
+                shift=carrier.planes.shift,
+                add=carrier._add,
+                scale=carrier._scale,
+            )
+            == block.output.f5
+        )
+        assert block.emission is not None
+        alpha, epsilon = block.emission
+        width = carrier.planes.resolve(alpha).length
+        digits = tuple(
+            decimal_crt_digit(
+                carrier.planes.atom(alpha, i), carrier.planes.atom(epsilon, i)
+            )
+            for i in range(width)
+        )
+        assert (
+            sum(digit * 10**i for i, digit in enumerate(digits))
+            == expected_values[count]
+        )
+    # This is a complete finite constructor, not a sublinear temporal pump:
+    # a cold D16 still executes sixteen native grammar advances.
+    assert carrier.primitive_successors <= 20
+    if seed == 196:
+        assert carrier.primitive_successors == 20
+        assert expected_values[20] == 70446464506
 
 
 @pytest.mark.parametrize("seed", (1, 1111, 196))
@@ -60,6 +184,39 @@ def test_cocycle_planes_agree_with_independent_successors(seed: int) -> None:
             )
     assert carrier.primitive_successors == 16
     assert carrier.nonlinear_gate_requests == 32
+
+
+def test_existing_carrier_aliases_dead_f2_forcing_without_source_arithmetic(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    original = F2SpatialTransport.apply
+
+    def live_only(
+        self: F2SpatialTransport,
+        source: PlaneID,
+        *,
+        shift: Callable[[PlaneID, int], PlaneID],
+        add: Callable[[PlaneID, PlaneID], PlaneID],
+    ) -> PlaneID:
+        if self.annihilated:
+            raise AssertionError("carrier re-evaluated its annihilated F2 source")
+        return original(self, source, shift=shift, add=add)
+
+    monkeypatch.setattr(F2SpatialTransport, "apply", live_only)
+    carrier = CocycleReverseCarrier()
+    no_growths = 0
+    with exact_oracle():
+        expected = reverse_pair_sums(196, 10)
+        cell = carrier.source(expected)
+        for _ in range(8):
+            expected, growth = pair_step(expected, 10)
+            cell, actual, action = carrier.successor_with_actions(cell)
+            assert actual == growth
+            assert carrier.decode(cell) == expected
+            if not growth:
+                no_growths += 1
+                assert cell.epsilon is action.epsilon.forcing
+    assert no_growths == 4
 
 
 @pytest.mark.parametrize("length", (1, 4, 10**100))

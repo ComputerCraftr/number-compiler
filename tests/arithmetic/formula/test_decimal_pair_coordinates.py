@@ -209,3 +209,34 @@ def test_decimal_base_kernel_uses_factored_carry_and_output_laws(
                 effect.emit(left, symbol, right)
     assert calls["carry"] > 0
     assert calls["output"] > 0
+
+
+def test_threshold_residue_saturation_requires_the_admitted_pair_range() -> None:
+    # The proposed (F5, parity, final threshold) chart is an exact recoding
+    # of physical pair coefficients, not arbitrary accumulated forcing sums.
+    for symbol in range(19):
+        alpha, epsilon, nu = symbol % 5, symbol % 2, int(symbol > 9)
+        beta = epsilon ^ (alpha % 2)
+        assert decimal_pair_value((alpha, beta, nu)) == symbol
+    assert (10 % 5, 10 % 2, int(10 > 9)) == (20 % 5, 20 % 2, int(20 > 9))
+    with pytest.raises(ValueError):
+        decimal_pair_coordinates(20)
+
+
+def test_a_local_chamber_does_not_replace_the_full_spatial_cylinder() -> None:
+    # Same width, same low pair coefficient and zero exterior incoming carry,
+    # but another internal domain changes the next reflected pair. This only
+    # rules out a context-free 19->19 successor on one coordinate.
+    seeds = (111, 191)
+    old_pairs = []
+    new_pairs = []
+    for seed in seeds:
+        digits = tuple(map(int, str(seed)))
+        old_pairs.append(tuple(a + b for a, b in zip(digits, reversed(digits))))
+        target = seed + int(str(seed)[::-1])
+        digits = tuple(map(int, str(target)))
+        new_pairs.append(tuple(a + b for a, b in zip(digits, reversed(digits))))
+    assert old_pairs == [(2, 2, 2), (2, 18, 2)]
+    assert old_pairs[0][0] == old_pairs[1][0]
+    assert new_pairs == [(4, 4, 4), (5, 16, 5)]
+    assert new_pairs[0][0] != new_pairs[1][0]

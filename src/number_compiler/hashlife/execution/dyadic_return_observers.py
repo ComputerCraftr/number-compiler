@@ -5,6 +5,7 @@ from __future__ import annotations
 from collections.abc import Iterator
 from typing import TYPE_CHECKING
 
+from number_compiler.arithmetic.fields.skew_transfer import integer_dyadic_fiber_action
 from number_compiler.hashlife.execution.dyadic_return_records import (
     DyadicImageSummary,
     DyadicReturnImageID,
@@ -36,11 +37,17 @@ def summary(workspace: DyadicReturnImageWorkspace) -> DyadicImageSummary:
 def endpoint(workspace: DyadicReturnImageWorkspace) -> int:
     summary = workspace.summary()
     source = workspace.source_node(workspace.root_source)
-    input_value = workspace._source_value(source)
-    numerator = summary.transfer.upper * input_value + summary.transfer.offset
-    if numerator % summary.transfer.lower:
-        raise ArithmeticError("dyadic return endpoint was not integral")
-    return numerator // summary.transfer.lower
+    chart = integer_dyadic_fiber_action(
+        summary.transfer, source.residue, source.precision
+    )
+    workspace._bump("fiber_endpoint_demands")
+    workspace._bump(
+        "fiber_endpoint_operand_bits",
+        max(1, abs(chart.multiplier).bit_length())
+        + max(1, abs(chart.addend).bit_length())
+        + max(1, source.lift.bit_length()),
+    )
+    return chart.addend + chart.multiplier * source.lift
 
 
 def odd_steps(workspace: DyadicReturnImageWorkspace) -> int:

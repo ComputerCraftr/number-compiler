@@ -117,6 +117,8 @@ assert kernel.left_count > 0 and kernel.right_count > 0
 for removed in ('classical_ceiling', 'digit_power'):
     assert find_spec('number_compiler.sequences.power_numbers.' + removed) is None
 for removed in (
+    'sequences.collatz.clocked_target_seam',
+    'hashlife.execution.continuations.higher_input',
     'hashlife.actions.power',
     'hashlife.actions.native_power',
     'hashlife.execution.cascade',
@@ -161,7 +163,25 @@ for name in ('hensel', 'mahler'):
     assert packet['guarded_physical_status'] == 'not_requested'
     assert packet['work_counters'].get('physical_roof_construction_requests', 0) == 0
 assert arithmetic['info']['mahler']['value']['associated_action']['first_failure'] == 2
-print(json.dumps({'public_exports': len(api.__all__), 'kernel_left_states': kernel.left_count, 'kernel_right_states': kernel.right_count, 'installed_path': api.__file__, 'arithmetic_cli_roof_poison': 'passed'}))
+mahler_work = arithmetic['info']['mahler']['work_counters']
+assert mahler_work['mahler_source_composed_image_reads'] == 1
+assert mahler_work.get('mahler_source_cylinder_compositions', 0) == 0
+from number_compiler.hashlife.execution.dyadic_return_images import DyadicReturnImageWorkspace as Images
+original_reuse = Images.transport_reuse
+reuse_calls = []
+def traced_reuse(self, *args, **kwargs):
+    reuse_calls.append(1)
+    return original_reuse(self, *args, **kwargs)
+Images.transport_reuse = traced_reuse
+try:
+    captured = StringIO()
+    with redirect_stdout(captured):
+        assert main(['collatz', '--nth', '1024', '--seed', str(1 << 4096)]) == 0
+    assert captured.getvalue().strip() == str(1 << 3072)
+    assert reuse_calls
+finally:
+    Images.transport_reuse = original_reuse
+print(json.dumps({'public_exports': len(api.__all__), 'kernel_left_states': kernel.left_count, 'kernel_right_states': kernel.right_count, 'installed_path': api.__file__, 'arithmetic_cli_roof_poison': 'passed', 'complete_effect_cli_reuses': len(reuse_calls), 'mahler_composed_image': 'passed'}))
 """,
             ],
             cwd=work,
@@ -229,6 +249,7 @@ print(json.dumps({'public_exports': len(api.__all__), 'kernel_left_states': kern
             (["prime", "--nth", "10", "--info", "metrics"], 0, "31"),
             (["prime", "--nth", "10", "--max-prime-states", "1"], 2, ""),
             (["196", "--nth", "0"], 0, "196"),
+            (["196", "--nth", "2"], 0, "1675"),
             (["reverse-add", "--nth", "0", "--seed", "0"], 0, "0"),
             (["collatz", "--nth", "4", "--seed", "27"], 0, "62"),
             (["collatz", "--nth", "1000000", "--seed", "27"], 0, "4"),

@@ -62,6 +62,35 @@ Historical evidence keeps its original fingerprint. New passing evidence uses
 the versioned authored-source fingerprint and a fresh unfiltered serial run.
 An interrupted run or one whose sources changed is diagnostic, not release evidence.
 
+## Shared audit and arithmetic owners
+
+- Python architecture checks use the AST helpers in
+  [`dependency_graph.py`](../devtools/checks/dependency_graph.py). Comments and
+  incidental string literals are not evidence of imports or runtime dispatch.
+  Literal lazy-export tables and import-loader calls are inspected explicitly;
+  aliases retain their original targets, and an unknown dynamic router target
+  cannot pass the executor boundary gate.
+- The Isabelle inventory uses
+  [`isabelle_syntax.py`](../devtools/checks/isabelle_syntax.py) for its supported
+  source syntax. This is a conservative navigation reader, not Isabelle's
+  elaborated AST or proof checker. Registered sessions come from `ROOT`; builds
+  and oracle checks remain required.
+- F2 and F5 transports share the radix-exponent decomposition in
+  [`affine_transport.py`](../src/number_compiler/arithmetic/polynomials/affine_transport.py).
+  Their annihilation, coefficient and coordinate laws remain distinct.
+- Dyadic reuse resolves sealed scheduler publications before sharing complete
+  effects. Equal integer indices, Boolean/numeric aliases and equal F5
+  observations cannot substitute for source/action authority.
+- Symbolic F5 result memos retain arena-bound handles and charge exponent
+  metadata. Capacity growth evicts memo entries; it does not discard the shared
+  expression DAG or authorize a source image.
+
+The unused Collatz target-seam interner and the `RuntimeInputCellID` alias module
+were removed. Independent clock-law coverage lives with the inverse-three clock
+tests; higher summaries use the existing `SourceCellID` directly. Small shared
+helpers with live consumers are retained when merging would introduce circular
+imports or mix different semantic contracts.
+
 ## Resource-controlled diagnostics
 
 During the tile cutover, run expensive checks and probes through the shared

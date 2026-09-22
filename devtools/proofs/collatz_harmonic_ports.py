@@ -15,8 +15,9 @@ from number_compiler.arithmetic.carry.carry_monoid import (
     apply_carry_fn,
     carry_fn_from_outputs,
 )
-from number_compiler.arithmetic.carry.carry_normalization import (
-    linear_normalization_fields,
+from number_compiler.arithmetic.carry.collatz_binary_forcing import (
+    binary_carry_birth as binary_carry_birth,
+    radix64_phi5 as radix64_phi5,
 )
 from number_compiler.arithmetic.carry.collatz_carry_wires import (
     CollatzCarryWires,
@@ -28,7 +29,6 @@ from number_compiler.arithmetic.contracts.exact_tree_context import (
 )
 from number_compiler.arithmetic.fields.radix import digits_lsd
 from number_compiler.arithmetic.polynomials.primary_jet import (
-    PrimaryJetAffineMorphism,
     PrimaryJetBlock,
     _poly_add,
     _poly_mul,
@@ -153,41 +153,6 @@ def binary_jet(value: int, modulus: int = 32) -> Jet:
     return primary_jet_from_digits(digits_lsd(value, 2), degree=5, modulus=modulus).jet
 
 
-def binary_carry_birth(value: int, modulus: int = 32, incoming: int = 1) -> Jet:
-    """Independent carry forcing for 3*value+incoming, from redundant bits."""
-    if type(incoming) is not int or incoming not in (0, 1, 2):
-        raise ValueError("Collatz incoming carry must be 0,1,2")
-    if type(value) is not int or value < 0:
-        raise ValueError("binary forcing source must be nonnegative and exact")
-    bits = digits_lsd(value, 2) + (0, 0)
-    raw = tuple(bit + (bits[i - 1] if i else 0) for i, bit in enumerate(bits))
-    _digits, carries = linear_normalization_fields(raw, base=2, boundary_in=incoming)
-    assert carries[-1] == 0
-    forcing = tuple(carries[i] - 2 * carries[i + 1] for i in range(len(raw)))
-    return primary_jet_from_digits(forcing, degree=5, modulus=modulus).jet
-
-
-def binary_temporal_action(
-    valuation: int, birth: Jet, modulus: int = 32
-) -> PrimaryJetAffineMorphism:
-    """Known forcing event: z^{-e}(y*J+B). Valuation legality is external."""
-    if type(valuation) is not int or valuation < 0:
-        raise ValueError("valuation must be nonnegative and exact")
-    # z=y-1, hence z^{-1}=-(1+y+...+y^4) in this quotient.
-    inverse = (
-        PrimaryJetAffineMorphism(5, modulus, ((modulus - 1),) * 5, ZERO)
-        .power(valuation)
-        .kernel
-    )
-    return PrimaryJetAffineMorphism(
-        5,
-        modulus,
-        _poly_mul(inverse, Y, modulus),
-        _poly_mul(inverse, birth, modulus),
-        1,
-    )
-
-
 def binary_output_response(value: int, modulus: int = 2) -> tuple[Jet, Jet, Jet]:
     """All three unshifted multiply/add output jets, from source plus forcing."""
     transported = _poly_mul(Y, binary_jet(value, modulus), modulus)
@@ -268,12 +233,6 @@ class Radix64OutputHarmonicAction:
         for digit in digits:
             result = result.then(cls.digit(digit))
         return result
-
-
-def radix64_phi5(digit: int) -> int:
-    """y_bit^2 coefficient of the digit's binary forcing birth at carry one."""
-    collatz_digit_carry_wires(digit, base=64)  # Validate the radix-64 digit.
-    return binary_carry_birth(digit, modulus=5, incoming=1)[2]
 
 
 def admitted_cylinder_symbols(cylinder: HenselCylinder) -> tuple[int, ...]:

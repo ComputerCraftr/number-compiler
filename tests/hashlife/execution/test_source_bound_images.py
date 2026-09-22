@@ -13,6 +13,7 @@ from number_compiler.hashlife.execution.source_bound_images import (
     SourceImageID,
     SourceImageProjection,
     SourceImageView,
+    _ApplyKey,
 )
 from number_compiler.hashlife.execution.source_image_seals import publication_seal
 from number_compiler.resources.ledger import ResourceLedger
@@ -227,6 +228,213 @@ def test_projection_is_demanded_once_and_never_becomes_action_identity() -> None
     assert type(first) is SourceImageProjection and type(image) is SourceImageID
 
 
+def test_projection_cache_distinguishes_boolean_and_integer_parameters() -> None:
+    class TypedProjection(_DecimalAdapter):
+        def project(
+            self, image: SourceImageView, demand: SourceImageDemand
+        ) -> SourceImageProjection:
+            self.projection_calls += 1
+            return SourceImageProjection(
+                11 if type(demand.parameters[0]) is bool else 22
+            )
+
+    ledger = ResourceLedger()
+    core = SourceBoundSchedulerCore(ledger)
+    adapter = TypedProjection(ledger)
+    core.register(adapter)
+    image = core.apply(adapter, 7, _Action((8,)))
+    boolean = SourceImageDemand("value", (True,))
+    integer = SourceImageDemand("value", (1,))
+    assert core.projection(adapter, image, boolean).value == 11
+    assert core.projection(adapter, image, integer).value == 22
+    assert core.projection(adapter, image, boolean).value == 11
+    assert adapter.projection_calls == 2
+    assert ledger.counters["source_image_projection_publications"] == 2
+    assert ledger.counters["source_image_projection_hits"] == 1
+    assert not _source_audit(ledger, core).invalid
+
+
+def test_typed_demand_hashes_shared_descriptor_dags_without_expansion() -> None:
+    def shared(levels: int, leaf: int | bool) -> object:
+        result: object = leaf
+        for _ in range(levels):
+            result = (result, result)
+        return result
+
+    first = SourceImageDemand("value", (shared(50, 1),))
+    equal = SourceImageDemand("value", (shared(50, 1),))
+    different = SourceImageDemand("value", (shared(50, True),))
+    assert first == equal
+    assert hash(first) == hash(equal)
+    assert first != different
+
+
+def test_origin_cache_distinguishes_boolean_and_integer_sources() -> None:
+    class TypedSource(_DecimalAdapter):
+        def validate_source(self, source: object) -> None:
+            if type(source) not in (bool, int):
+                raise ValueError("invalid source")
+
+        def admit_source(self, source: object) -> SourceImageCandidate:
+            return SourceImageCandidate(11 if type(source) is bool else 22, 0)
+
+    ledger = ResourceLedger()
+    core = SourceBoundSchedulerCore(ledger)
+    adapter = TypedSource(ledger)
+    core.register(adapter)
+    boolean = core._origin(adapter, True)
+    integer = core._origin(adapter, 1)
+    assert boolean != integer
+    assert core.view(boolean).payload == 11
+    assert core.view(integer).payload == 22
+    assert core._origin(adapter, True) == boolean
+    assert core._origin(adapter, 1) == integer
+    assert ledger.counters["source_image_origin_publications"] == 2
+    assert ledger.counters["source_image_origin_hits"] == 2
+    assert not _source_audit(ledger, core).invalid
+
+
+def test_application_cache_distinguishes_boolean_and_integer_actions() -> None:
+    class TypedAction:
+        family = "test-typed-action"
+        semantic_version = "test-typed-action-v1"
+
+        def __init__(self, ledger: ResourceLedger) -> None:
+            self.ledger = ledger
+            self.primitive_calls = 0
+
+        def validate_source(self, source: object) -> None:
+            if type(source) is not int or source < 0:
+                raise ValueError("invalid source")
+
+        def validate_action(self, action: object) -> None:
+            if type(action) not in (bool, int):
+                raise ValueError("invalid action")
+
+        def validate_payload(self, payload: object) -> None:
+            if type(payload) is not int or payload < 0:
+                raise ValueError("invalid payload")
+
+        def identity_action(self, _source: object) -> int:
+            return 0
+
+        def action_children(self, action: object) -> None:
+            self.validate_action(action)
+            return None
+
+        def compose_actions(self, before: object, after: object) -> object:
+            self.validate_action(before)
+            self.validate_action(after)
+            return after
+
+        def apply_primitive(
+            self, action: object, source: SourceImageView
+        ) -> SourceImageCandidate:
+            self.primitive_calls += 1
+            return SourceImageCandidate(11 if type(action) is bool else 22, 1)
+
+        def admit_source(self, source: object) -> SourceImageCandidate:
+            self.validate_source(source)
+            return SourceImageCandidate(cast(int, source), 0)
+
+        def compose_chronological(
+            self,
+            action: object,
+            source: SourceImageView,
+            before: SourceImageView,
+            after: SourceImageView,
+        ) -> SourceImageCandidate:
+            return SourceImageCandidate(after.payload, after.binding.extent)
+
+        def admitted_input_key(self, action: object, source: SourceImageView) -> None:
+            return None
+
+        def transport_reuse(
+            self,
+            action: object,
+            cached_source: SourceImageView,
+            cached_result: SourceImageView,
+            source: SourceImageView,
+        ) -> SourceImageCandidate:
+            raise AssertionError("typed action test has no relative reuse")
+
+        def project(
+            self, image: SourceImageView, demand: SourceImageDemand
+        ) -> SourceImageProjection:
+            return SourceImageProjection(image.payload)
+
+        def first_failure(self, image: SourceImageView) -> None:
+            return None
+
+    ledger = ResourceLedger()
+    core = SourceBoundSchedulerCore(ledger)
+    adapter = TypedAction(ledger)
+    core.register(adapter)
+    boolean = core.apply(adapter, 7, True)
+    integer = core.apply(adapter, 7, 1)
+    assert boolean != integer
+    assert core.view(boolean).payload == 11
+    assert core.view(integer).payload == 22
+    assert adapter.primitive_calls == 2
+    assert ledger.counters["source_image_primitive_applications"] == 2
+    origin = core._origin(adapter, 7)
+    with pytest.raises(ValueError, match="application binding was altered"):
+        core._validate_application_binding(
+            adapter,
+            _ApplyKey((adapter.family, adapter.semantic_version), origin, 1),
+            boolean,
+        )
+    assert not _source_audit(ledger, core).invalid
+
+
+def test_active_action_stack_distinguishes_boolean_and_integer_ids() -> None:
+    ledger, core, _ = _runtime()
+    active = core._workspace
+    boolean = ("test-decimal", "test-decimal-v1", True)
+    integer = ("test-decimal", "test-decimal-v1", 1)
+    ledger.reserve(core._workspace_owner, entries=2, nodes=2)
+    active.add_active(boolean)
+    assert active.contains_active(boolean)
+    assert not active.contains_active(integer)
+    active.add_active(integer)
+    assert active.contains_active(integer)
+    active.remove_active(boolean)
+    assert active.contains_active(integer)
+    active.remove_active(integer)
+    assert not active.contains_active(integer)
+    assert len(active) == 0
+    ledger.release(core._workspace_owner, entries=2, nodes=2)
+
+
+def test_relative_cache_distinguishes_boolean_and_integer_inputs() -> None:
+    class TypedRelative(_DecimalAdapter):
+        def admitted_input_key(
+            self, action: object, source: SourceImageView
+        ) -> bool | int:
+            return True if source.payload == 7 else 1
+
+        def transport_reuse(
+            self,
+            action: object,
+            cached_source: SourceImageView,
+            cached_result: SourceImageView,
+            source: SourceImageView,
+        ) -> SourceImageCandidate:
+            raise AssertionError("different typed relative inputs reused an effect")
+
+    ledger = ResourceLedger()
+    core = SourceBoundSchedulerCore(ledger)
+    adapter = TypedRelative(ledger)
+    core.register(adapter)
+    action = _Action((8,))
+    assert core.view(core.apply(adapter, 7, action)).payload == 78
+    assert core.view(core.apply(adapter, 8, action)).payload == 88
+    assert adapter.primitive_calls == 2
+    assert ledger.counters.get("source_image_relative_transfer_hits", 0) == 0
+    assert ledger.counters["source_image_relative_transfer_publications"] == 2
+    assert not _source_audit(ledger, core).invalid
+
+
 def test_complete_image_constructor_precedes_undemanded_child_traversal() -> None:
     class CompleteAdapter(_DecimalAdapter):
         def apply_composite(
@@ -287,6 +495,19 @@ def test_payload_audit_rejects_redirected_or_orphaned_memo_publications(
         core._relative[first_relative[0]] = second_relative[1]
     else:
         core._applications.pop(next(iter(core._applications)))
+    assert _source_audit(ledger, core).invalid
+
+
+@pytest.mark.parametrize("replacement", (9, False))
+def test_origin_provenance_rejects_reflected_typed_key_change(
+    replacement: object,
+) -> None:
+    ledger, core, adapter = _runtime()
+    core.apply(adapter, 0, _Action((1,)))
+    assert not _source_audit(ledger, core).invalid
+    origin_key = next(iter(core._origins))
+    typed_source = origin_key[1]
+    object.__setattr__(typed_source, "value", replacement)
     assert _source_audit(ledger, core).invalid
 
 

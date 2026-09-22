@@ -30,6 +30,7 @@ from number_compiler.hashlife.interfaces.semantic_bits import (
     BitFunctionArena,
     FactoredFunctionID,
 )
+from number_compiler.resources.ledger import OwnedMemo
 
 DIGIT = AtomSort("collatz-radix64-digit", 64)
 CARRY = AtomSort("collatz-mul3-carry", 3)
@@ -59,12 +60,24 @@ RIGHT_DOMAIN_VIEW = tuple(
 
 
 class CollatzOutputMorphism:
-    """Stateless operations owned by the caller's finite-function arena."""
+    """Operations and lazy observer memos in the caller's finite-function arena."""
 
     def __init__(self, bits: BitFunctionArena) -> None:
         if type(bits) is not BitFunctionArena:
             raise TypeError("Collatz output requires an owned bit-function arena")
         self.bits = bits
+        self._f5_pairs: (
+            OwnedMemo[
+                tuple[FactoredFunctionID, FactoredFunctionID, int], FactoredFunctionID
+            ]
+            | None
+        ) = None
+
+    def clear_f5_cache(self) -> None:
+        """Release optional observation reuse; existing semantic handles survive."""
+        if self._f5_pairs is not None:
+            self._f5_pairs.dispose()
+            self._f5_pairs = None
 
     def _domain(self, value: FactoredFunctionID, sort: AtomSort) -> None:
         if self.bits.resolve(value).signature.output != sort:
@@ -82,6 +95,98 @@ class CollatzOutputMorphism:
         return self.bits.map_atoms(
             digit, DOMAIN, tuple(radix64_domain(d) for d in range(64))
         )
+
+    def f5_class(self, digit: FactoredFunctionID) -> FactoredFunctionID:
+        """Demand the joint carry/F5 observer; it is not a successor key."""
+        from number_compiler.arithmetic.carry.collatz_f5_quotient import (
+            RADIX64_F5_CLASSES,
+            RADIX64_F5_DIGIT_CLASSES,
+        )
+
+        self._domain(digit, DIGIT)
+        return self.bits.map_atoms(
+            digit,
+            AtomSort("collatz-carry-F5-class", len(RADIX64_F5_CLASSES)),
+            RADIX64_F5_DIGIT_CLASSES,
+        )
+
+    def f5_directional_views(
+        self, raw: FactoredFunctionID, shift: int
+    ) -> tuple[FactoredFunctionID, FactoredFunctionID]:
+        """Reduce raw input to the two minimal fixed-shift response ports."""
+        from number_compiler.arithmetic.carry.collatz_f5_quotient import (
+            F5_DIRECTIONAL_COUNTS,
+            radix64_f5_directional_views,
+        )
+
+        self._domain(raw, DIGIT)
+        radix64_shift_views(0, shift)
+        lsize, rsize = F5_DIRECTIONAL_COUNTS[shift]
+        rows = tuple(radix64_f5_directional_views(d, shift) for d in range(64))
+        return (
+            self.bits.map_atoms(
+                raw,
+                AtomSort(f"collatz-F5-left-e{shift}", lsize),
+                tuple(r[0] for r in rows),
+            ),
+            self.bits.map_atoms(
+                raw,
+                AtomSort(f"collatz-F5-right-e{shift}", rsize),
+                tuple(r[1] for r in rows),
+            ),
+        )
+
+    def pair_f5_views(
+        self, left: FactoredFunctionID, right: FactoredFunctionID, shift: int
+    ) -> FactoredFunctionID:
+        """Compose directional observers without reconstructing a target digit.
+
+        Only the fixed unary port domains are inspected. Repeated Boolean
+        operations share the existing HashLife semantic arena and its ledger.
+        This finite consumer law does not discover source events or certify
+        repeated temporal application of the fifteen-class leaf quotient.
+        """
+        from number_compiler.arithmetic.carry.collatz_f5_quotient import (
+            F5_DIRECTIONAL_COUNTS,
+            F5_JOIN_TABLES,
+            RADIX64_F5_CLASSES,
+        )
+
+        radix64_shift_views(0, shift)
+        lsize, rsize = F5_DIRECTIONAL_COUNTS[shift]
+        self._domain(left, AtomSort(f"collatz-F5-left-e{shift}", lsize))
+        self._domain(right, AtomSort(f"collatz-F5-right-e{shift}", rsize))
+        sort = AtomSort("collatz-carry-F5-class", len(RADIX64_F5_CLASSES))
+        self.bits.ledger.bump("collatz_f5_directional_requests")
+        if self._f5_pairs is None:
+            ledger = self.bits.ledger
+            ledger.register_execution_root(self)
+            self._f5_pairs = OwnedMemo(
+                ledger,
+                ledger.register(f"collatz-F5-pairs-{ledger.owner_count}", "query_memo"),
+                evictable=True,
+            )
+        key = (
+            FactoredFunctionID(left.owner, left.kind, left.local_id),
+            FactoredFunctionID(right.owner, right.kind, right.local_id),
+            shift,
+        )
+        cached = self._f5_pairs.get(key)
+        if cached is not None:
+            self._domain(cached, sort)
+            self.bits.ledger.bump("collatz_f5_directional_hits")
+            return FactoredFunctionID(cached.owner, cached.kind, cached.local_id)
+        result = self._select_index(
+            left,
+            tuple(
+                self.bits.map_atoms(right, sort, row) for row in F5_JOIN_TABLES[shift]
+            ),
+        )
+        self._f5_pairs[key] = FactoredFunctionID(
+            result.owner, result.kind, result.local_id
+        )
+        self.bits.ledger.bump("collatz_f5_directional_compositions")
+        return result
 
     def _select_carry(
         self, carry: FactoredFunctionID, branches: tuple[FactoredFunctionID, ...]

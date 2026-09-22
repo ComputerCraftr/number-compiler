@@ -15,6 +15,11 @@ from number_compiler.arithmetic.fields.symbolic_innovation import (
     SymbolicInnovationArena,
     _Add,
 )
+from number_compiler.arithmetic.fields.f5_innovation import compose_f5_forcing
+from number_compiler.arithmetic.polynomials.f5_transport import (
+    F5AffineTransport,
+    F5SpatialTransport,
+)
 from number_compiler.resources.ledger import ResourceLedger
 from number_compiler.resources.payload_audit import audit_registered_payloads
 
@@ -53,6 +58,75 @@ def _mixed_arena() -> tuple[ResourceLedger, SymbolicInnovationArena]:
     )
     arena.power(arena.action(RadialMultiplier(1, 1), summed), 16)
     return ledger, arena
+
+
+def test_live_f5_memo_is_audited_without_evaluating_arithmetic(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    ledger = ResourceLedger()
+    arena = SymbolicInnovationArena(ledger)
+    before = F5AffineTransport(F5SpatialTransport(), arena.interval(1))
+    after = F5AffineTransport(F5SpatialTransport(3, 5**64 - 1), arena.interval(2))
+    compose_f5_forcing(arena, before, after)
+    memo = arena._f5_composition_cache()
+    assert memo.nodes_per_entry == 3
+
+    def forbidden(*_args: object, **_kwargs: object) -> Never:
+        raise AssertionError("F5 payload audit evaluated arithmetic")
+
+    monkeypatch.setattr(type(arena), "resolve", forbidden)
+    counters = dict(ledger.counters)
+    report = audit_registered_payloads(ledger)
+    assert report.forbidden_future_payloads == report.unknown_payloads == 0
+    assert report.unbounded_future_integers == 0
+    assert ledger.counters == counters
+    ledger.evict_query_memos()
+    assert len(memo) == 0
+    arena.close()
+    report = audit_registered_payloads(ledger)
+    assert ledger.entries == ledger.nodes == 0
+    assert report.forbidden_future_payloads == report.unknown_payloads == 0
+
+
+def test_f5_memo_capacity_grows_by_eviction_with_exact_metadata_accounting() -> None:
+    ledger = ResourceLedger()
+    arena = SymbolicInnovationArena(ledger)
+    before = F5AffineTransport(F5SpatialTransport(), arena.interval(1))
+    compose_f5_forcing(arena, before, before)
+    old = arena._f5_composition_cache()
+    after = F5AffineTransport(F5SpatialTransport(0, 5**64), before.forcing)
+    compose_f5_forcing(arena, before, after)
+    current = arena._f5_composition_cache()
+    assert old._disposed and len(old._data) == 0
+    assert current is not old and current.nodes_per_entry == 3
+    assert all(row.accounting_delta in (None, 0) for row in ledger.inventory())
+    report = audit_registered_payloads(ledger)
+    assert report.forbidden_future_payloads == report.unknown_payloads == 0
+
+
+@pytest.mark.parametrize(
+    "tamper", ("foreign-result", "foreign-empty-memo", "uncharged-key", "missing-field")
+)
+def test_f5_memo_audit_rejects_foreign_or_uncharged_payloads(tamper: str) -> None:
+    ledger = ResourceLedger()
+    arena = SymbolicInnovationArena(ledger)
+    action = F5AffineTransport(F5SpatialTransport(), arena.interval(1))
+    compose_f5_forcing(arena, action, action)
+    memo = arena._f5_composition_cache()
+    key = next(iter(memo))
+    if tamper == "foreign-result":
+        foreign = SymbolicInnovationArena(ResourceLedger())
+        memo[key] = foreign.zero
+    elif tamper == "foreign-empty-memo":
+        sibling = SymbolicInnovationArena(ledger)
+        arena._f5_compositions = sibling._f5_composition_cache()
+    elif tamper == "uncharged-key":
+        value = memo[key]
+        del memo[key]
+        memo[(key[0], key[1], 1 << 130, key[3])] = value
+    else:
+        del arena._f5_compositions
+    assert audit_registered_payloads(ledger).forbidden_future_payloads > 0
 
 
 def test_live_mixed_dag_is_fully_audited_without_runtime_callbacks(

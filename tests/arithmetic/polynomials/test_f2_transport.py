@@ -117,3 +117,34 @@ def test_exact_input_contracts_fail_closed() -> None:
         F2SpatialTransport().then(cast(F2SpatialTransport, object()))
     with pytest.raises(TypeError):
         F2AffineTransport(cast(F2SpatialTransport, object()), (0,))
+
+
+def test_dead_affine_source_and_earlier_forcing_never_enter_callbacks() -> None:
+    def forbidden(*_args: object) -> object:
+        raise AssertionError("annihilated F2 source was evaluated")
+
+    source, earlier_forcing, later_forcing = object(), object(), object()
+    before = F2AffineTransport(F2SpatialTransport(0, 1 << 200), earlier_forcing)
+    after = F2AffineTransport(F2SpatialTransport(1, 1 << 300), later_forcing)
+    assert after.apply(source, shift=forbidden, add=forbidden) is later_forcing
+    assert (
+        after.linear.apply_with_output_forcing(
+            source, later_forcing, shift=forbidden, add=forbidden
+        )
+        is later_forcing
+    )
+    composed = before.then(after, shift=forbidden, add=forbidden)
+    assert composed.forcing is later_forcing
+    assert composed.apply(source, shift=forbidden, add=forbidden) is later_forcing
+
+
+def test_live_later_block_still_transports_earlier_forcing() -> None:
+    before: F2AffineTransport[tuple[int, ...]] = F2AffineTransport(
+        F2SpatialTransport(1, 0), (1, 0, 1)
+    )
+    after: F2AffineTransport[tuple[int, ...]] = F2AffineTransport(
+        F2SpatialTransport(0, 1), (0, 1, 0, 1)
+    )
+    result = before.then(after, shift=_shift, add=_add)
+    assert result.forcing == (1, 0, 1, 0)
+    assert result.forcing != after.forcing

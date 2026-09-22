@@ -172,7 +172,8 @@ def test_decisive_outer_pair_does_not_scan_pair_interior(width: int) -> None:
     # Initial radix validation remains linear and is explicitly charged.
     assert ledger.counters["reverse_source_validation_coordinates"] == 2 * width
     assert ledger.counters["reverse_source_pullback_pair_reads"] <= 5
-    assert ledger.counters["reverse_source_length_pair_reads"] == 1
+    assert ledger.counters["reverse_source_length_pair_reads"] == 0
+    assert ledger.counters["reverse_source_ports_crt_threshold_queries"] == 1
 
 
 @pytest.mark.parametrize("width", [16, 64, 256, 1024])

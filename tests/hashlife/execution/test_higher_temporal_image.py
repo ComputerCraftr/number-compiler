@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from dataclasses import replace
 from typing import Never
 
 import pytest
@@ -22,6 +23,9 @@ from number_compiler.hashlife.execution.continuations.higher_semantic import (
 from number_compiler.hashlife.execution.continuations.higher_temporal_image import (
     HigherTemporalImageArena,
     HigherTemporalImageID,
+)
+from number_compiler.hashlife.execution.continuations.higher_temporal_provider import (
+    HigherTemporalProviderEvaluator,
 )
 from number_compiler.hashlife.execution.continuations.higher_types import (
     HigherExpressionID,
@@ -178,6 +182,182 @@ def test_temporal_image_repeatedly_substitutes_bound_recursive_output(
         )
     assert semantics.ledger.counters["higher_temporal_image_node_visits"] > 0
     assert semantics.ledger.counters["higher_temporal_image_boundary_substitutions"] > 0
+
+
+@pytest.mark.parametrize(
+    "field",
+    (
+        "action",
+        "local_interface",
+        "left",
+        "symbol",
+        "right",
+        "blank",
+        "kernel_digest",
+        "source_backed_temporal",
+        "morphism_sort",
+    ),
+)
+def test_temporal_memo_rejects_changed_consumer_before_a_warm_hit(
+    field: str, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    actions, _primitive, semantics, _runtime, _outputs, _producer, images, _binding = (
+        _construction((7, 19, 19, 19))
+    )
+    changes = {
+        "action": actions.identity,
+        "local_interface": None,
+        "left": images.spatial.right,
+        "symbol": images.spatial.left,
+        "right": images.spatial.left,
+        "blank": 0,
+        "kernel_digest": "another-kernel",
+        "source_backed_temporal": True,
+        "morphism_sort": None,
+    }
+    try:
+        first = images._blank_macro(4)
+        before = dict(semantics.ledger.counters)
+        with monkeypatch.context() as patch:
+            patch.setattr(images.spatial, field, changes[field])
+            with pytest.raises(ValueError, match="consumer binding"):
+                images._blank_macro(4)
+            assert dict(semantics.ledger.counters) == before
+        assert images._blank_macro(4) is first
+    finally:
+        images._clear_workspace()
+    assert not images._built and not images._frames
+    assert images.ledger._account(images._built_owner).entries == 0
+    assert images.ledger._account(images._frame_owner).entries == 0
+
+
+def test_temporal_memo_keys_bind_consumer_and_reject_foreign_publication() -> None:
+    actions, _primitive, _semantics, _runtime, _outputs, _producer, images, _binding = (
+        _construction((7, 19, 19, 19))
+    )
+    try:
+        macro = images._blank_macro(4)
+        key = next(key for key in images._built if key.width == 4)
+        foreign = replace(key, consumer=replace(key.consumer, action=actions.identity))
+        assert key != foreign
+        before = images.ledger._account(images._built_owner).entries
+        with pytest.raises(ValueError, match="another consumer"):
+            images._remember_built(foreign, macro)
+        assert images.ledger._account(images._built_owner).entries == before
+        assert foreign not in images._built
+    finally:
+        images._clear_workspace()
+
+
+def test_temporal_step_work_and_results_are_not_reused_from_an_earlier_call() -> None:
+    source = (7, 18, 7, *(19 for _ in range(29)))
+    _actions, primitive, semantics, runtime, outputs, producer, images, binding = (
+        _construction(source)
+    )
+    left, right = runtime.initial(primitive, 0), runtime.initial(primitive, 1)
+    image = images.bind_initial(
+        producer, binding, producer.compile(binding), left, right
+    )
+    expected = _bound_step(source, 0, 0)
+    for _ in range(15):
+        before = semantics.ledger.counters.get("higher_temporal_image_node_visits", 0)
+        probes = semantics.ledger.counters.get(
+            "higher_temporal_image_workspace_probes", 0
+        )
+        image = images.step(image, left, right)
+        assert semantics.ledger.counters["higher_temporal_image_node_visits"] > before
+        assert (
+            semantics.ledger.counters["higher_temporal_image_workspace_probes"] > probes
+        )
+        assert not images._built and not images._frames
+        assert images.ledger._account(images._built_owner).entries == 0
+        expected = _bound_step(expected, 0, 0)
+        record = images.resolve(image)
+        assert (
+            tuple(
+                outputs.observe(record.macro.output, i, 0, 0)
+                for i in range(record.padded_extent)
+            )
+            == expected
+        )
+
+
+def test_temporal_arena_rejects_replaced_composition_authority(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    (
+        _actions,
+        _primitive,
+        _semantics,
+        _runtime,
+        _outputs,
+        _producer,
+        images,
+        _binding,
+    ) = _construction((7, 19, 19, 19))
+    monkeypatch.setattr(images, "_compose_actions", lambda before, _after: before)
+    with pytest.raises(ValueError, match="issued authority"):
+        images._blank_macro(4)
+    assert not images._built
+
+
+def test_empty_temporal_arena_audit_rejects_changed_consumer(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    actions, _primitive, _semantics, _runtime, _outputs, _producer, images, _binding = (
+        _construction((7, 19, 19, 19))
+    )
+    assert not audit_higher_payloads(images.ledger).invalid
+    monkeypatch.setattr(images.spatial, "action", actions.identity)
+    assert audit_higher_payloads(images.ledger).invalid
+
+
+@pytest.mark.parametrize(
+    ("field", "value"), (("blank", 19.0), ("source_backed_temporal", 0))
+)
+def test_temporal_consumer_rejects_equal_but_differently_typed_fields(
+    field: str, value: object, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    (
+        _actions,
+        _primitive,
+        _semantics,
+        _runtime,
+        _outputs,
+        _producer,
+        images,
+        _binding,
+    ) = _construction((7, 19, 19, 19))
+    try:
+        images._blank_macro(4)
+        monkeypatch.setattr(images.spatial, field, value)
+        with pytest.raises(ValueError, match="consumer binding"):
+            images._blank_macro(4)
+    finally:
+        images._clear_workspace()
+
+
+def test_temporal_consumer_seal_is_independent_of_the_memo_key(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    (
+        _actions,
+        _primitive,
+        _semantics,
+        _runtime,
+        _outputs,
+        _producer,
+        images,
+        _binding,
+    ) = _construction((7, 19, 19, 19))
+    try:
+        images._blank_macro(4)
+        object.__setattr__(images._consumer, "blank", 0)
+        monkeypatch.setattr(images.spatial, "blank", 0)
+        with pytest.raises(ValueError, match="consumer binding"):
+            images._blank_macro(4)
+    finally:
+        images._clear_workspace()
 
 
 def test_temporal_image_preserves_noninitial_two_sided_ports() -> None:
@@ -555,3 +735,120 @@ def test_temporal_image_publishes_complete_split_interface_channels(
     assert type(encoded_growth) is int
     decoded_growth = encoded_growth - result.macro.width
     assert decoded_growth == expected_extent - prior.active_extent
+
+
+def test_provider_rejects_foreign_binding_before_warm_alias() -> None:
+    actions, primitive, semantics, runtime, outputs, producer, _images, binding = (
+        _construction((7, 18, 7, 19, 19, 19, 19, 19))
+    )
+    macro = producer.compile(binding)
+    provider = HigherTemporalProviderEvaluator(
+        runtime,
+        validate_output=outputs.resolve,
+        validate_binding=producer.validate_provider_binding,
+        compose_actions=actions.compose,
+    )
+    foreign = producer.sources.forest(1, 4)
+    for warm in (False, True):
+        if warm:
+            provider.bind(macro.output, binding, primitive)
+        before = dict(semantics.ledger.counters)
+        with pytest.raises(ValueError, match="source was never compiled"):
+            provider.bind(macro.output, foreign, primitive)
+        with pytest.raises(ValueError, match="another consumer action"):
+            provider.bind(macro.output, binding, actions.identity)
+        assert dict(semantics.ledger.counters) == before
+        assert len(provider._bindings) == int(warm)
+    provider.bind(macro.output, binding, primitive)
+    assert provider.complete_action(macro.output, primitive) == actions.compose(
+        primitive, primitive
+    )
+    # Issued provenance remains valid when the construction workspace is cleared.
+    producer.clear()
+    assert provider.complete_action(macro.output, primitive) == actions.compose(
+        primitive, primitive
+    )
+
+
+@pytest.mark.parametrize(
+    "field", ("_validate_output", "_validate_binding", "_compose_actions", "runtime")
+)
+def test_provider_rejects_replaced_authority_before_a_warm_lookup(
+    field: str, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    actions, primitive, semantics, runtime, outputs, producer, _images, binding = (
+        _construction((7, 18, 7, 19))
+    )
+    macro = producer.compile(binding)
+    provider = HigherTemporalProviderEvaluator(
+        runtime,
+        validate_output=outputs.resolve,
+        validate_binding=producer.validate_provider_binding,
+        compose_actions=actions.compose,
+    )
+    provider.bind(macro.output, binding, primitive)
+
+    def replacement_callback(*args: object) -> None:
+        pass
+
+    replacement: object = replacement_callback
+    if field == "runtime":
+        replacement = _construction((7, 18, 7, 19))[3]
+    before = dict(semantics.ledger.counters)
+    with monkeypatch.context() as patch:
+        patch.setattr(provider, field, replacement)
+        with pytest.raises(ValueError, match="issued authority"):
+            provider.bind(macro.output, binding, primitive)
+        with pytest.raises(ValueError, match="issued authority"):
+            provider.complete_action(macro.output, primitive)
+        with pytest.raises(ValueError, match="issued authority"):
+            provider(macro.output, primitive, macro.interface, 0, 0, 0)
+        assert dict(semantics.ledger.counters) == before
+    assert provider.complete_action(macro.output, primitive) == actions.compose(
+        primitive, primitive
+    )
+
+
+def test_provider_rejects_another_compiled_sources_output() -> None:
+    actions, primitive, _semantics, runtime, outputs, producer, _images, binding = (
+        _construction((7, 18, 7, 19, 19, 19, 19, 19))
+    )
+    original = producer.compile(binding)
+    foreign = producer.sources.forest(1, 4)
+    other = producer.compile(foreign)
+    assert other.output != original.output
+    provider = HigherTemporalProviderEvaluator(
+        runtime,
+        validate_output=outputs.resolve,
+        validate_binding=producer.validate_provider_binding,
+        compose_actions=actions.compose,
+    )
+    with pytest.raises(ValueError, match="differs from its bound source output"):
+        provider.bind(original.output, foreign, primitive)
+    assert not provider._bindings
+    provider.bind(other.output, foreign, primitive)
+    provider.bind(original.output, binding, primitive)
+    assert len(provider._bindings) == 2
+
+
+@pytest.mark.parametrize("target", ("provider", "composer"))
+def test_empty_provider_and_composer_audits_check_authority(
+    target: str, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    actions, _primitive, semantics, runtime, outputs, producer, _images, _binding = (
+        _construction((7, 18, 7, 19))
+    )
+    provider = HigherTemporalProviderEvaluator(
+        runtime,
+        validate_output=outputs.resolve,
+        validate_binding=producer.validate_provider_binding,
+        compose_actions=actions.compose,
+    )
+    assert not audit_higher_payloads(semantics.ledger).invalid
+    if target == "provider":
+        monkeypatch.setattr(provider, "_validate_binding", lambda *args: None)
+        expected = provider._binding_owner, id(provider._bindings)
+    else:
+        monkeypatch.setattr(producer, "blank", 0)
+        expected = producer._binding_owner, id(producer._bindings)
+    assert expected in audit_higher_payloads(semantics.ledger).invalid

@@ -188,3 +188,22 @@ def test_failed_interval_publication_rolls_back_query_entries() -> None:
     with pytest.raises(BlockContextBudgetExceeded):
         _ = ports.terminal
     assert ledger.entries == ledger.nodes == 0
+
+
+@pytest.mark.parametrize("seed", [0, 1, 18, 99, 196, 909, 1041, 1051, 1593])
+def test_decimal_thresholds_use_output_crt_without_next_pair_reconstruction(
+    seed: int, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    def forbidden(*_args: object, **_kwargs: object) -> int:
+        raise AssertionError("threshold consumer reconstructed the next pair")
+
+    source = _source(seed, 10)
+    first = _step_digits(source.digits, 10)
+    expected = _carries(_pairs(first), 10)
+    ports = SourceCarryPorts(source, ResourceLedger())
+    monkeypatch.setattr(SourceCarryPorts, "_raw_second_pair", forbidden)
+    assert tuple(ports.second_carry(i) for i in range(len(first) + 1)) == expected
+    assert ports.second_width() == len(first) + expected[-1]
+    # A second demand reuses the same admitted interval summaries.
+    assert tuple(ports.second_carry(i) for i in range(len(first) + 1)) == expected
+    ports.dispose()

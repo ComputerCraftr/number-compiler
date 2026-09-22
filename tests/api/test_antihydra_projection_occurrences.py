@@ -360,7 +360,9 @@ def test_projection_cursor_rejects_mutated_key_and_block() -> None:
         output = record.block.output
         object.__setattr__(record.block, "output", output + 1)
         try:
-            with pytest.raises(ValueError, match="occurrence was changed"):
+            # The realized arithmetic support now rejects the shared cylinder
+            # before the cursor reaches its own occurrence seal.
+            with pytest.raises(ValueError, match="arithmetic support was changed"):
                 cursor.resolve(handle)
         finally:
             object.__setattr__(record.block, "output", output)

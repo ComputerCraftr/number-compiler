@@ -191,11 +191,17 @@ class FactoredReverseCarrier:
     def successor_with_action(
         self, cell: TemporalCell
     ) -> tuple[TemporalCell, int, F5AffineTransport[PlaneID]]:
+        output, growth, action, _emission = self.successor_with_emission(cell)
+        return output, growth, action
+
+    def successor_with_emission(
+        self, cell: TemporalCell
+    ) -> tuple[TemporalCell, int, F5AffineTransport[PlaneID], tuple[PlaneID, PlaneID]]:
         """Also expose exact source-bound affine forcing for temporal composition."""
         require_endpoint_construction()
         p = self.planes
         p.clear_work()
-        prune_stale_program_word_memos()
+        p.memo_prune_visits += prune_stale_program_word_memos(amortized=True)
         try:
             self.validate(cell)
             carry, growth = p.carry_prefix(cell.domain)
@@ -220,7 +226,12 @@ class FactoredReverseCarrier:
             domains = p.apply(_DOMAIN, alpha, beta, nu)
             result = TemporalCell(domains, alpha, beta)
             self.successor_evaluations += 1
-            return result, growth, F5AffineTransport(transport, forcing)
+            return (
+                result,
+                growth,
+                F5AffineTransport(transport, forcing),
+                (normal_alpha, normal_beta),
+            )
         finally:
             p.clear_work()
 

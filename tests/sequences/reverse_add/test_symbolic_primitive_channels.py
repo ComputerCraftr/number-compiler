@@ -58,12 +58,16 @@ def test_all_symbolic_channels_match_closed_primitive_including_blank(
         assert tuple(bits.resolve(f).signature.output for f in result) == tuple(
             f.signature.output for f in expected
         )
-        for l, r in product(range(43), range(5)):
-            binding = {SYMBOL.variable: value, LEFT.variable: l, RIGHT.variable: r}
+        for left_value, right_value in product(range(43), range(5)):
+            binding = {
+                SYMBOL.variable: value,
+                LEFT.variable: left_value,
+                RIGHT.variable: right_value,
+            }
             # Repeated roles share IDs; evaluate each demanded function once.
             actual = {f: bits.evaluate(f, binding) for f in set(result)}
             assert tuple(actual[f] for f in result) == tuple(
-                f.evaluate((l, r), ledger) for f in expected
+                f.evaluate((left_value, right_value), ledger) for f in expected
             )
 
 

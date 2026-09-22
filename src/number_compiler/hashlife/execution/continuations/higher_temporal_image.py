@@ -18,6 +18,7 @@ from number_compiler.hashlife.actions.field_actions import (
     FieldCellActionID,
 )
 from number_compiler.hashlife.execution.continuations.higher_macro_composer import (
+    HigherMacroDeclaration,
     HigherSpatialMacroComposer,
     SourceBoundHigherMacro,
 )
@@ -59,6 +60,7 @@ class HigherTemporalImage:
 
 @dataclass(frozen=True, slots=True)
 class _NodeKey:
+    consumer: HigherMacroDeclaration
     output: CoordinateOutputMorphismID
     interface: LocalInterfaceID
     left: HigherExpressionID
@@ -69,6 +71,7 @@ class _NodeKey:
 
 @dataclass(frozen=True, slots=True)
 class _BlankKey:
+    consumer: HigherMacroDeclaration
     width: int
 
 
@@ -89,6 +92,9 @@ class HigherTemporalImageArena:
     Composite consumers are deliberately rejected.  Repeated primitive calls
     are successor closed because every result is an ordinary recursive image
     and is retained with its exact source, chronology and exterior states.
+    Workspace memos are request-local and consumer-bound, including blank
+    summaries. Changing the spatial composer's declaration invalidates this
+    arena; it does not authorize reusing earlier images under another action.
     """
 
     _KIND = "higher-temporal-image"
@@ -112,6 +118,8 @@ class HigherTemporalImageArena:
         self.sources = spatial.sources
         self.ledger: ResourceLedger = spatial.ledger
         self._compose_actions = compose_actions
+        self._consumer = self._consumer_key()
+        self._consumer_seal = self._consumer.seal()
         self.owner = ArenaToken("higher-temporal-images")
         prefix = f"higher-temporal-images-{len(self.ledger.inventory())}"
         self._node_owner = self.ledger.register(prefix + "-nodes", "field_image")
@@ -165,6 +173,9 @@ class HigherTemporalImageArena:
             self._built,
             self._source_frames,
             self._source_summaries,
+            self._consumer,
+            self._consumer_seal,
+            self._compose_actions,
         )
         self.ledger.register_execution_root(self)
 
@@ -186,6 +197,9 @@ class HigherTemporalImageArena:
             self._built,
             self._source_frames,
             self._source_summaries,
+            self._consumer,
+            self._consumer_seal,
+            self._compose_actions,
         )
         if (
             type(expected) is not tuple
@@ -196,6 +210,24 @@ class HigherTemporalImageArena:
             )
         ):
             raise ValueError("higher temporal image arena lost its issued authority")
+        if (
+            self._consumer_key().seal() != self._consumer_seal
+            or self._consumer.seal() != self._consumer_seal
+            or self.spatial.semantics is not self.semantics
+            or self.spatial.interfaces is not self.interfaces
+            or self.spatial.outputs is not self.outputs
+            or self.spatial.sources is not self.sources
+            or self.spatial.ledger is not self.ledger
+        ):
+            raise ValueError("higher temporal image consumer binding was changed")
+
+    def _consumer_key(self) -> HigherMacroDeclaration:
+        try:
+            return self.spatial.declaration()
+        except ValueError as error:
+            raise ValueError(
+                "higher temporal image consumer binding was changed"
+            ) from error
 
     def _handle(self, local_id: int) -> HigherTemporalImageID:
         return HigherTemporalImageID(self.owner, self._KIND, local_id)
@@ -471,9 +503,9 @@ class HigherTemporalImageArena:
             self.ledger.release(self._frame_owner, entries=1, nodes=1)
             raise
 
-    @staticmethod
-    def _node_key(frame: _Frame, active_extent: int) -> _NodeKey:
+    def _node_key(self, frame: _Frame, active_extent: int) -> _NodeKey:
         return _NodeKey(
+            self._consumer,
             frame.output,
             frame.interface,
             frame.left,
@@ -494,6 +526,8 @@ class HigherTemporalImageArena:
         key: _NodeKey | _BlankKey,
         result: SourceBoundHigherMacro,
     ) -> SourceBoundHigherMacro:
+        if key.consumer != self._consumer:
+            raise ValueError("temporal memo has another consumer binding")
         found = self._built.get(key)
         if found is not None:
             return found
@@ -513,6 +547,7 @@ class HigherTemporalImageArena:
         is constructed from logarithmically many distinct symbolic nodes and
         never expands or observes the provider word.
         """
+        self._check_authority()
         if type(width) is not int or width < 1:
             raise ValueError("temporal blank macro requires a positive width")
         self.ledger.reserve(self._frame_owner, entries=1, nodes=1)
@@ -520,8 +555,10 @@ class HigherTemporalImageArena:
         try:
             while pending:
                 current = pending[-1]
-                key = _BlankKey(current)
+                key = _BlankKey(self._consumer, current)
+                self.ledger.bump("higher_temporal_image_workspace_probes")
                 if key in self._built:
+                    self.ledger.bump("higher_temporal_image_blank_macro_cache_hits")
                     pending.pop()
                     self.ledger.release(self._frame_owner, entries=1, nodes=1)
                     continue
@@ -533,8 +570,8 @@ class HigherTemporalImageArena:
                 else:
                     left_width = 1 << ((current - 1).bit_length() - 1)
                     right_width = current - left_width
-                    left = self._built.get(_BlankKey(left_width))
-                    right = self._built.get(_BlankKey(right_width))
+                    left = self._built.get(_BlankKey(self._consumer, left_width))
+                    right = self._built.get(_BlankKey(self._consumer, right_width))
                     if left is None or right is None:
                         self.ledger.reserve(self._frame_owner, entries=1, nodes=1)
                         pending.append(left_width if left is None else right_width)
@@ -544,7 +581,7 @@ class HigherTemporalImageArena:
                 self.ledger.bump("higher_temporal_image_blank_macro_nodes")
                 pending.pop()
                 self.ledger.release(self._frame_owner, entries=1, nodes=1)
-            return self._built[_BlankKey(width)]
+            return self._built[_BlankKey(self._consumer, width)]
         finally:
             self.ledger.release(
                 self._frame_owner, entries=len(pending), nodes=len(pending)
@@ -602,7 +639,9 @@ class HigherTemporalImageArena:
                 frame = self._frames.pop()
                 self.ledger.release(self._frame_owner, entries=1, nodes=1)
                 key = self._node_key(frame, prior.active_extent)
+                self.ledger.bump("higher_temporal_image_workspace_probes")
                 if key in self._built:
+                    self.ledger.bump("higher_temporal_image_memo_hits")
                     continue
                 if key.source_extent == 0 and self._provider_subtree_is_blank(frame):
                     self.ledger.bump("higher_temporal_image_blank_subtree_hits")

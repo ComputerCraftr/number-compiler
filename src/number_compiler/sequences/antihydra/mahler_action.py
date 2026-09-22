@@ -9,7 +9,6 @@ This is a source-specific consumer restriction, never a successor identity.
 
 from __future__ import annotations
 
-from operator import add, mul
 from typing import TYPE_CHECKING
 
 from number_compiler.arithmetic.fields.consumer_pullback import (
@@ -19,13 +18,15 @@ from number_compiler.arithmetic.fields.consumer_pullback import (
     SaturatingAffineAction,
     ThresholdDemand,
 )
-from number_compiler.arithmetic.fields.skew_transfer import SkewTransfer
 from number_compiler.hashlife.execution.associated_action_images import (
     AssociatedActionSourceAdapter,
     AssociatedScalarSource,
 )
 from number_compiler.hashlife.execution.source_bound_images import SourceImageDemand
 from number_compiler.hashlife.execution.tile_scheduler import TileScheduler
+from number_compiler.sequences.antihydra.arithmetic_images import (
+    ANTIHYDRA_ARITHMETIC_LAW,
+)
 from number_compiler.sequences.antihydra.runtime import authenticated_arithmetic_result
 
 if TYPE_CHECKING:
@@ -47,9 +48,20 @@ def source_action(
         raise ValueError("Mahler action requires its arithmetic source ledger")
     if result.returns == 0:
         return arena.identity
-    first = result._term.segments[0].cylinder
+    workspace = result._term.arithmetic_workspace
+    if workspace is None:
+        raise ValueError("Mahler source lost its admitted arithmetic image")
     prefix_width = min(2, result.returns)
-    if first.parity_word & ((1 << prefix_width) - 1):
+    root = workspace.source_node(workspace.root_source)
+    # The pinned source is h=8 and its centered state is D=7 (binary 11).
+    # Under the pinned even branch 8 -> 12, the first two h bits are even.
+    if (
+        workspace.seed != 8
+        or workspace.law != ANTIHYDRA_ARITHMETIC_LAW
+        or not root.exact
+        or root.precision < prefix_width
+        or root.residue & ((1 << prefix_width) - 1)
+    ):
         raise ValueError("Mahler source does not have the admitted centered 11 prefix")
     odd = arena.admit(
         SaturatingAffineAction(
@@ -61,16 +73,14 @@ def source_action(
     prefix = arena.compose(odd, odd)
     if result.returns == 2:
         return prefix
-    transfer = SkewTransfer(1, 0, 1)
-    for segment in result._term.segments:
-        transfer = transfer.then(segment.cylinder.skew, multiply=mul, add=add)
-        result.ledger.bump("mahler_source_cylinder_compositions")
-        result.ledger.bump(
-            "mahler_source_arithmetic_operand_bits",
-            transfer.upper.bit_length()
-            + abs(transfer.offset).bit_length()
-            + transfer.lower.bit_length(),
-        )
+    transfer = workspace.summary().transfer
+    result.ledger.bump("mahler_source_composed_image_reads")
+    result.ledger.bump(
+        "mahler_source_arithmetic_operand_bits",
+        transfer.upper.bit_length()
+        + abs(transfer.offset).bit_length()
+        + transfer.lower.bit_length(),
+    )
     scale = ExactRational(transfer.upper, transfer.lower)
     centered_offset = ExactRational(
         transfer.upper + transfer.offset - transfer.lower, transfer.lower

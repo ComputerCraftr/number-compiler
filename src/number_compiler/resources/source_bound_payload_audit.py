@@ -16,6 +16,8 @@ from number_compiler.hashlife.execution.source_bound_images import (
     _RelativeKey,
 )
 from number_compiler.hashlife.execution.source_image_seals import (
+    _TypedKey,
+    _typed_equal,
     publication_matches_readonly,
 )
 from number_compiler.resources.ledger import ResourceLedger
@@ -193,13 +195,27 @@ def audit_source_bound_payloads(
             try:
                 if type(origin_key) is not tuple or len(origin_key) != 2:
                     raise TypeError("source origin contains another key sort")
-                adapter_key, source = origin_key
+                adapter_key, typed_source = origin_key
+                if type(typed_source) is not _TypedKey:
+                    raise TypeError("source origin lost its typed key")
+                source = typed_source.value
                 record = _resolve_readonly(core, image)
-                provenance = _provenance(record, "origin", origin_key)
+                provenance = record.publication_provenance
+                if (
+                    type(provenance) is not tuple
+                    or len(provenance) != 3
+                    or provenance[0] != "origin"
+                    or type(provenance[1]) is not tuple
+                    or len(provenance[1]) != 2
+                    or provenance[1][0] != adapter_key
+                    or provenance[1][1] is not source
+                ):
+                    raise ValueError("source image has another origin provenance")
                 if (
                     provenance[2] is not None
                     or record.adapter_key != adapter_key
-                    or record.binding.source != source
+                    or record.binding.source is not source
+                    or _TypedKey(record.binding.source) != typed_source
                 ):
                     raise ValueError("source image origin binding was altered")
             except (TypeError, ValueError, KeyError, IndexError, AttributeError):
@@ -218,7 +234,7 @@ def audit_source_bound_payloads(
                 if (
                     result.adapter_key != apply_key.adapter_key
                     or source.adapter_key != apply_key.adapter_key
-                    or result.binding.source != source.binding.source
+                    or not _typed_equal(result.binding.source, source.binding.source)
                 ):
                     raise ValueError("source image application binding was altered")
                 relative_key = provenance[2]

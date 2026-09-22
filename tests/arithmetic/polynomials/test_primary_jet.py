@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import pytest
+
 from number_compiler.arithmetic.carry.carry_itinerary import (
     zplus1_jet,
     zplus1_jet_advance,
@@ -77,3 +79,44 @@ def test_square_tangent_kills_old_mod32_jet_after_five_transports() -> None:
     assert action.source_annihilated
     assert action.apply((1, 2, 3, 4, 5)) == action.apply((5, 4, 3, 2, 1))
     assert "steps" not in repr(action.canonical_key)
+
+
+def test_constant_right_jet_erases_earlier_effect_before_arithmetic(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    import number_compiler.arithmetic.polynomials.primary_jet as owner
+
+    early = PrimaryJetAffineMorphism(5, 32, (7, 3, 1, 0, 8), (9, 3, 7, 5, 2), 100)
+    later = PrimaryJetAffineMorphism.identity(5, 32)
+    for e in (1, 2, 7, 3, 11):
+        later = later.then(PrimaryJetAffineMorphism.binary_event(e, (e, 1, 2, 3, 4)))
+    assert later.source_annihilated
+    expected = later.apply(early.apply((1, 2, 3, 4, 5)))
+
+    def forbidden(*_args: object, **_kwargs: object) -> tuple[int, ...]:
+        raise AssertionError("dead inherited jet was multiplied")
+
+    monkeypatch.setattr(owner, "_poly_mul", forbidden)
+    result = early.then(later)
+    assert result.steps == 105
+    assert result.offset == expected
+    assert result.apply((5, 4, 3, 2, 1)) == expected
+    with pytest.raises(ValueError, match="incompatible"):
+        early.then(PrimaryJetAffineMorphism(5, 5, (0,) * 5, (0,) * 5))
+    with pytest.raises(ValueError):
+        result.apply((0,))
+
+
+def test_binary_squares_keep_new_births_after_inherited_source_dies() -> None:
+    atom = PrimaryJetAffineMorphism.binary_event(3, (1, 2, 3, 4, 5))
+    other = PrimaryJetAffineMorphism.binary_event(3, (2, 2, 3, 4, 5))
+    for count in (1, 2, 4, 8, 16, 32, 64):
+        action = atom.power(count)
+        literal: tuple[int, ...] = (3, 1, 4, 1, 5)
+        for _ in range(count):
+            literal = atom.apply(literal)
+        assert action.apply((3, 1, 4, 1, 5)) == literal
+        assert action.source_annihilated == (count >= 5)
+        if count >= 8:
+            assert action.offset == atom.power(5).offset
+            assert action.offset != other.power(count).offset

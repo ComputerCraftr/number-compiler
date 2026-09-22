@@ -40,6 +40,9 @@ class HigherTemporalProviderEvaluator:
         runtime: HigherBimachineRuntime,
         *,
         validate_output: Callable[[CoordinateOutputMorphismID], object],
+        validate_binding: Callable[
+            [CoordinateOutputMorphismID, SourceBindingID, FieldCellActionID], None
+        ],
         compose_actions: Callable[
             [FieldCellActionID, FieldCellActionID], FieldCellActionID
         ],
@@ -47,12 +50,14 @@ class HigherTemporalProviderEvaluator:
         if (
             type(runtime) is not HigherBimachineRuntime
             or not callable(validate_output)
+            or not callable(validate_binding)
             or not callable(compose_actions)
         ):
             raise TypeError("higher temporal provider requires scoped runtime objects")
         self.runtime = runtime
         self.ledger: ResourceLedger = runtime.ledger
         self._validate_output = validate_output
+        self._validate_binding = validate_binding
         self._compose_actions = compose_actions
         self.ledger.register_execution_root(self)
         prefix = f"higher-temporal-provider-{len(self.ledger.inventory())}"
@@ -69,6 +74,37 @@ class HigherTemporalProviderEvaluator:
             payloads=self._bindings.items,
         )
 
+        self._authority = self._authority_objects()
+
+    def _authority_objects(self) -> tuple[object, ...]:
+        return (
+            self.runtime,
+            self.ledger,
+            self.runtime.ledger,
+            self.runtime.owner,
+            self.runtime.sources,
+            self.runtime.sources.owner,
+            self.runtime.schema,
+            self.runtime.semantics,
+            self.runtime.summaries,
+            self._validate_output,
+            self._validate_binding,
+            self._compose_actions,
+            self._binding_owner,
+            self._bindings,
+        )
+
+    def _check_authority(self) -> None:
+        expected = self._authority
+        actual = self._authority_objects()
+        if (
+            type(expected) is not tuple
+            or len(expected) != len(actual)
+            or any(a is not b for a, b in zip(actual, expected, strict=True))
+            or self.ledger is not self.runtime.ledger
+        ):
+            raise ValueError("higher temporal provider lost its issued authority")
+
     def bind(
         self,
         provider: CoordinateOutputMorphismID,
@@ -76,6 +112,7 @@ class HigherTemporalProviderEvaluator:
         action: FieldCellActionID,
     ) -> None:
         """Associate one canonical output provider with immutable source geometry."""
+        self._check_authority()
         self._validate_output(provider)
         self.runtime.schema.validate_action(action)
         if type(source) is SourceCellID:
@@ -84,6 +121,7 @@ class HigherTemporalProviderEvaluator:
             self.runtime.sources.resolve_forest(source)
         else:
             raise TypeError("temporal provider requires a scoped source binding")
+        self._validate_binding(provider, source, action)
         found = self._bindings.get(provider)
         if found is not None:
             # The output ID is already the complete semantic identity.  Equal
@@ -102,6 +140,7 @@ class HigherTemporalProviderEvaluator:
         after: FieldCellActionID,
     ) -> FieldCellActionID:
         """Resolve and compose the provider action once, before publication."""
+        self._check_authority()
         self._validate_output(provider)
         self.runtime.schema.validate_action(after)
         binding = self._bindings.get(provider)
@@ -126,6 +165,7 @@ class HigherTemporalProviderEvaluator:
         complete local-interface evaluator; silently ignoring those values would
         equate carry exits with output-complete behavior.
         """
+        self._check_authority()
         self._validate_output(provider)
         self.runtime.schema.validate_action(action)
         binding = self._bindings.get(provider)

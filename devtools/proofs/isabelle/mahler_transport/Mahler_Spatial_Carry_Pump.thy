@@ -24,6 +24,35 @@ lemma spatial_block_conservation:
   by (simp add: spatial_block_output_def spatial_block_carry_def
       mult.commute mod_div_mult_eq)
 
+text \<open>
+  The radix block is a spatial view of the centered production arithmetic.
+  Carry moves from the low block u into the high part v. Division by two
+  transports the emitted low block and its boundary; no new source recurrence
+  is defined. At radix 64 choose b=32. A finite F5 observer may be applied to
+  this exact output, but equality of that observer is not successor authority.
+\<close>
+
+theorem mahler_spatial_low_block_transport:
+  "mahler_D_step (u + 2*b*v) =
+    spatial_block_output (2*b) 3 u 1 div 2 +
+    b * (3*v + spatial_block_carry (2*b) 3 u 1)"
+proof -
+  have numerator: "3*(u + 2*b*v)+1 =
+      spatial_block_output (2*b) 3 u 1 +
+      2 * (b * (3*v + spatial_block_carry (2*b) 3 u 1))"
+    using spatial_block_conservation[of 3 u 1 "2*b"]
+    by (simp add: algebra_simps)
+  show ?thesis
+    unfolding mahler_D_step_def
+    by (simp only: numerator)
+qed
+
+corollary antihydra_centered_spatial_low_block_transport:
+  "antihydra_h_step (u + 2*b*v + 1) =
+    spatial_block_output (2*b) 3 u 1 div 2 +
+    b * (3*v + spatial_block_carry (2*b) 3 u 1) + 1"
+  by (simp only: centered_return_commutes mahler_spatial_low_block_transport)
+
 lemma spatial_repeat_value_bound:
   assumes radix: "0 < b" and digit: "u < b"
   shows "spatial_repeat_value b u n < b^n"
@@ -137,6 +166,8 @@ qed
 ML \<open>
   val _ = if null (Thm_Deps.all_oracles
     @{thms spatial_block_conservation spatial_repeat_value_bound
+      mahler_spatial_low_block_transport
+      antihydra_centered_spatial_low_block_transport
       spatial_fixed_carry_repeat_conservation spatial_fixed_carry_repeat_complete
       spatial_block_carry_monotone translated_safe_interval
       translated_safe_output strict_interval_intersection_nonempty

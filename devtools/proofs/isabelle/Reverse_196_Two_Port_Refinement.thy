@@ -7,15 +7,6 @@ The left port retains incoming carry, the previous pair coefficient and the
 blank/sink flags.  The right port retains the forward and reflected carry
 functions.  Output is published only after both scans have reached the cell.\<close>
 
-definition carry_then ::
-    "carry_domain \<Rightarrow> carry_domain \<Rightarrow> carry_domain" where
-  "carry_then after before = (if after = Equal then before else after)"
-
-lemma carry_then_apply:
-  "carry_apply (carry_then after before) c =
-    carry_apply after (carry_apply before c)"
-  by (cases after; cases before; cases c; simp_all add: carry_then_def)
-
 record reverse_left_port =
   rp_carry :: bool
   rp_previous :: "nat option"
