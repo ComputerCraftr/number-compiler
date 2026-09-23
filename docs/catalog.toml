@@ -223,3 +223,11 @@ kind = "checkpoint"
 topic = "repository-sprint"
 status = "current"
 date = "2026-09-22"
+
+[[document]]
+id = "research-comma"
+path = "docs/research/comma.md"
+kind = "research"
+topic = "comma-cylinders"
+status = "current"
+date = "2026-09-23"

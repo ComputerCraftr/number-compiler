@@ -26,6 +26,7 @@ records below; see the [placement guide](development.md#documentation-placement)
 - [Collatz physical time, events, and Hensel cylinders](research/collatz.md)
 - [Antihydra arithmetic, literal machine, and Mahler action](research/antihydra-mahler.md)
 - [Fermat and Mersenne square actions and terminal certificates](research/fermat-mersenne.md)
+- [Decimal comma cylinders and A367620 prefix certificates](research/comma.md)
 
 ## Proofs and development
 

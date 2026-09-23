@@ -6,6 +6,7 @@ from number_compiler.api.lazy_exports import resolve_export as _resolve_export
 
 if TYPE_CHECKING:
     from number_compiler.api.number_api import (
+        CommaTermPayload,
         FermatTermPayload,
         FormulaTermPayload,
         MersenneTermPayload,
@@ -57,6 +58,7 @@ __all__ = [
     "BlockContextBudget",
     "BlockContextBudgetExceeded",
     "CanonicalSequenceCompiler",
+    "CommaTermPayload",
     "CollatzCompilation",
     "CollatzPhysicalBlockMetrics",
     "CollatzRawFieldQuotient",
@@ -95,6 +97,7 @@ __all__ = [
 
 _EXPORT_MODULES = {
     "FermatTermPayload": "number_compiler.api.number_api",
+    "CommaTermPayload": "number_compiler.api.number_api",
     "FormulaTermPayload": "number_compiler.api.number_api",
     "MersenneTermPayload": "number_compiler.api.number_api",
     "NumberCompiler": "number_compiler.api.number_api",

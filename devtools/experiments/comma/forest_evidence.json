@@ -1,0 +1,17 @@
+{
+  "schema": "a367620-forest-evidence-v1",
+  "root": 20,
+  "excluded_roots_exhausted": 49,
+  "sector_entries": 84359,
+  "boundary_steps": 502451,
+  "maximum_decimal_digits": 365,
+  "trace_sha256": "ebc7cbef8f0468db3b98bda59ff4b65eabb5629f87bdb72b74f1b7ed522df004",
+  "first_fork_index_one_based": 412987859,
+  "first_fork_value": 19999999918,
+  "first_fork_children": [
+    19999999999,
+    20000000000
+  ],
+  "charged_work": 671313,
+  "formal_prefix_checked": false
+}

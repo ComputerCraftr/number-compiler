@@ -65,7 +65,11 @@ def _series(
                 "index": index,
                 "projection_work": work,
                 "descriptor_nodes": int(term.metrics.descriptor_nodes),
-                "width": extent_json_value(term.metrics.width),
+                "width": (
+                    None
+                    if term.metrics.width is None
+                    else extent_json_value(term.metrics.width)
+                ),
                 "doubling_ratio": ratio,
             }
         )

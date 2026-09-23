@@ -19,6 +19,9 @@ class FamilyCapability:
 
 
 CAPABILITIES = {
+    "a367620": FamilyCapability(
+        "oeis_index", (), ("metrics", "clock", "tropical", "certificate")
+    ),
     "reverse-add": FamilyCapability(
         "iterations", ("seed", "base"), ("metrics", "mirror")
     ),
@@ -88,6 +91,8 @@ class QueryRequest:
     max_observer_terms: int = 1_000_000
     max_candidate_bits: int = 1_000_000
     max_factor_products: int = 4096
+    max_comma_states: int = 131_072
+    max_comma_work: int = 1_000_000
     max_prime_states: int = 131_072
     max_prime_work: int = 1_000_000
     max_prime_stages: int = 4096
@@ -161,6 +166,8 @@ def observation_options(family: str) -> dict[str, tuple[int | None, tuple[str, .
         for name, (default, supported) in OBSERVER_OPTIONS.items()
         if infos.intersection(supported)
     }
+    if family == "a367620":
+        return {}
     if family in {"fermat", "mersenne"}:
         return {name: value for name, value in selected.items() if name == "defect"}
     if family == "antihydra":
@@ -198,7 +205,13 @@ def parser(*, demanded_family: str | None = None) -> argparse.ArgumentParser:
         command = families.add_parser(
             name,
             help=f"index unit: {capability.unit}",
-            description=f"{name}: --nth uses {capability.unit}; term zero is the seed where applicable.",
+            description=(
+                "a367620: one-based OEIS index; fixed decimal source 20. "
+                "Exact values require a checked infinite-path prefix. "
+                "Use --no-value --info certificate to inspect availability."
+                if name == "a367620"
+                else f"{name}: --nth uses {capability.unit}; term zero is the seed where applicable."
+            ),
         )
         if demanded_family is not None and name != demanded_family:
             continue
@@ -264,6 +277,8 @@ def parser(*, demanded_family: str | None = None) -> argparse.ArgumentParser:
             budgets.update(
                 max_steps=4096, max_state_bits=4096, max_observer_terms=1_000_000
             )
+        elif name == "a367620":
+            budgets.update(max_comma_states=131_072, max_comma_work=1_000_000)
         elif name == "prime":
             budgets.update(
                 max_prime_states=131_072,
@@ -351,7 +366,7 @@ def validate(q: QueryRequest, specified: frozenset[str]) -> None:
     require_integer(
         q.index,
         "--nth" if q.selector == "nth" else "--events",
-        1 if q.family == "mersenne" else 0,
+        1 if q.family in {"mersenne", "a367620"} else 0,
     )
     allowed = capability.event_info if q.selector == "events" else capability.nth_info
     if set(q.info) - set(allowed):
@@ -397,7 +412,13 @@ def validate(q: QueryRequest, specified: frozenset[str]) -> None:
         "max_observer_terms",
     ):
         require_integer(getattr(q, name), "--" + name.replace("_", "-"), 0)
-    for name in ("max_prime_states", "max_prime_work", "max_prime_stages"):
+    for name in (
+        "max_prime_states",
+        "max_prime_work",
+        "max_prime_stages",
+        "max_comma_states",
+        "max_comma_work",
+    ):
         require_integer(getattr(q, name), "--" + name.replace("_", "-"), 1)
     if q.selector == "events" and q.index > q.max_events:
         raise ValueError("source observation budget exceeded")

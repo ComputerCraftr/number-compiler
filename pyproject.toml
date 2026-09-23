@@ -22,7 +22,7 @@ package-dir = {"" = "src"}
 where = ["src"]
 
 [tool.setuptools.package-data]
-number_compiler = ["kernels/*.zlib", "py.typed"]
+number_compiler = ["kernels/*.zlib", "kernels/*.gz", "py.typed"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

@@ -8,6 +8,7 @@ from dataclasses import dataclass
 from math import ceil, log2
 from typing import TYPE_CHECKING, Literal
 
+from number_compiler.api.comma_term import CommaTermPayload
 from number_compiler.arithmetic.contracts.exact_tree_context import source_reads_only
 from number_compiler.arithmetic.contracts.input_validation import require_integer
 from number_compiler.arithmetic.fields.radix import (
@@ -31,6 +32,7 @@ if TYPE_CHECKING:
         ReverseAddGrowthState,
     )
     from number_compiler.sequences.antihydra.runtime import AntihydraArithmeticTerm, Run
+    from number_compiler.sequences.comma.power import CommaTerm
     from number_compiler.sequences.collatz.block_power import (
         CollatzPhysicalBlockMetrics,
         PoweredCollatzTerm,
@@ -46,7 +48,7 @@ if TYPE_CHECKING:
 
 
 NumberFamily = Literal[
-    "reverse-add", "collatz", "antihydra", "prime", "fermat", "mersenne"
+    "reverse-add", "collatz", "antihydra", "prime", "fermat", "mersenne", "a367620"
 ]
 
 
@@ -58,7 +60,7 @@ class ProjectionMetrics:
     projection_work: int
     descriptor_nodes: int
     descriptor_bits: int
-    width: Extent
+    width: Extent | None
     raw_squarings: int = 0
     prime_block_compilations: int = 0
     prime_max_block_length: int = 0
@@ -352,6 +354,7 @@ TermPayload = (
     PoweredReverseAddTermPayload
     | PoweredCollatzTermPayload
     | AntihydraTermPayload
+    | CommaTermPayload
     | FormulaTermPayload
     | FermatTermPayload
     | MersenneTermPayload
@@ -386,6 +389,7 @@ class ProjectedNumberTerm:
                 PoweredReverseAddTermPayload,
                 PoweredCollatzTermPayload,
                 AntihydraTermPayload,
+                CommaTermPayload,
             ),
         ):
             return self.payload.digits()
@@ -400,6 +404,7 @@ class ProjectedNumberTerm:
                 PoweredReverseAddTermPayload,
                 PoweredCollatzTermPayload,
                 AntihydraTermPayload,
+                CommaTermPayload,
                 FormulaTermPayload,
                 FermatTermPayload,
                 MersenneTermPayload,
@@ -412,7 +417,8 @@ class ProjectedNumberTerm:
 class NumberCompiler:
     """Project and materialize exact nth terms without family-specific frontends.
 
-    Indices are zero-based.  ``prime`` means the zero-based prime at or above
+    A367620 uses one-based OEIS indices. Other iteration indices are zero-based.
+    ``prime`` means the zero-based prime at or above
     ``start``.  ``mersenne`` uses the conventional exponent parameter, so term
     index ``p`` is ``2**p-1`` and requires ``p>=1``.
 
@@ -451,7 +457,10 @@ class NumberCompiler:
         )
         self._powered_terms: OrderedDict[
             tuple[str, int, int, int],
-            ReverseAddPoweredTerm | PoweredCollatzTerm | AntihydraArithmeticTerm,
+            ReverseAddPoweredTerm
+            | PoweredCollatzTerm
+            | AntihydraArithmeticTerm
+            | CommaTerm,
         ] = OrderedDict()
         self._powered_hits = self._powered_misses = self._powered_evictions = 0
 
@@ -478,7 +487,10 @@ class NumberCompiler:
 
     def _powered_term(
         self, family: str, source: int, generation: int, base: int
-    ) -> ReverseAddPoweredTerm | PoweredCollatzTerm | AntihydraArithmeticTerm:
+    ) -> (
+        ReverseAddPoweredTerm | PoweredCollatzTerm | AntihydraArithmeticTerm | CommaTerm
+    ):
+        certificate_version = ""
         if family == "reverse-add":
             from number_compiler.sequences.reverse_add.power import (
                 ReverseAddPoweredTerm,
@@ -489,9 +501,19 @@ class NumberCompiler:
             from number_compiler.sequences.antihydra.runtime import (
                 AntihydraArithmeticTerm,
             )
+        elif family == "a367620":
+            from number_compiler.sequences.comma.certificates import CERTIFICATE_ID
+            from number_compiler.sequences.comma.power import CommaTerm
+
+            certificate_version = CERTIFICATE_ID
         else:
             raise ValueError("unsupported powered family")
-        key = (family, source, generation, base)
+        key = (
+            family if not certificate_version else f"{family}:{certificate_version}",
+            source,
+            generation,
+            base,
+        )
         found = self._powered_terms.get(key)
         if found is not None:
             # A caller can retain a term after eviction, but changing its public
@@ -510,6 +532,16 @@ class NumberCompiler:
                     found.max_steps,
                     found.max_state_bits,
                 ) == (generation, source, base)
+            elif family == "a367620" and isinstance(found, CommaTerm):
+                valid = found.certificate_version == certificate_version and (
+                    found.index,
+                    found.max_states,
+                    found.max_work,
+                ) == (
+                    generation,
+                    source,
+                    base,
+                )
             else:
                 valid = False
             if not valid:
@@ -521,7 +553,12 @@ class NumberCompiler:
             self._powered_hits += 1
             return found
         self._powered_misses += 1
-        term: ReverseAddPoweredTerm | PoweredCollatzTerm | AntihydraArithmeticTerm
+        term: (
+            ReverseAddPoweredTerm
+            | PoweredCollatzTerm
+            | AntihydraArithmeticTerm
+            | CommaTerm
+        )
         if family == "reverse-add":
             term = ReverseAddPoweredTerm(
                 source,
@@ -546,6 +583,16 @@ class NumberCompiler:
                     8192 if self._max_cache_entries is None else self._max_cache_entries
                 ),
             )
+        elif family == "a367620":
+            term = CommaTerm(
+                generation,
+                max_states=source,
+                max_work=base,
+                certificate_version=certificate_version,
+                shared_cache=self._shared_cache,
+                max_context_nodes=self._max_context_nodes,
+                max_cache_entries=self._max_cache_entries,
+            )
         else:
             raise ValueError("unsupported powered family")
         if self._max_cached_terms:
@@ -566,6 +613,8 @@ class NumberCompiler:
         start: int = 2,
         max_steps: int = 4096,
         max_state_bits: int = 4096,
+        max_comma_states: int = 131_072,
+        max_comma_work: int = 1_000_000,
         max_prime_states: int = 131_072,
         max_prime_work: int = 1_000_000,
         max_prime_stages: int = 4096,
@@ -580,6 +629,7 @@ class NumberCompiler:
         if name == "primes":
             name = "prime"
         if name not in {
+            "a367620",
             "reverse-add",
             "collatz",
             "antihydra",
@@ -589,6 +639,34 @@ class NumberCompiler:
         }:
             raise ValueError(f"unsupported family: {family}")
         n = require_integer(index, "term index", 0)
+
+        if name == "a367620":
+            from number_compiler.sequences.comma.power import CommaTerm
+
+            require_integer(n, "A367620 index", 1)
+            states = require_integer(max_comma_states, "comma state budget", 1)
+            work = require_integer(max_comma_work, "comma work budget", 1)
+            if seed is not None or base != 10 or radix != 2 or start != 2:
+                raise ValueError("A367620 uses its fixed decimal source and indexing")
+            comma = self._powered_term(name, states, n, work)
+            assert isinstance(comma, CommaTerm)
+            return ProjectedNumberTerm(
+                "a367620",
+                n,
+                20,
+                10,
+                f"A367620[{n}]",
+                CommaTermPayload(comma),
+                ProjectionMetrics(
+                    "a367620",
+                    n,
+                    0,
+                    0,
+                    1,
+                    n.bit_length() + 5,
+                    None,
+                ),
+            )
 
         if name == "reverse-add":
             from number_compiler.sequences.reverse_add.power import (
@@ -889,6 +967,7 @@ class NumberCompiler:
 
 __all__ = [
     "AntihydraTermPayload",
+    "CommaTermPayload",
     "FermatTermPayload",
     "FormulaTermPayload",
     "MersenneTermPayload",

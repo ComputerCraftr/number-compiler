@@ -4,11 +4,13 @@ from __future__ import annotations
 
 import argparse
 import json
+from time import perf_counter
 
 from devtools.benchmarks.tile_projection_accounting import projection_accounting
 from devtools.checks.test_run_evidence import source_fingerprint
 from devtools.paths import repository_root
 from number_compiler.api.number_api import (
+    CommaTermPayload,
     NumberCompiler,
     PoweredCollatzTermPayload,
     PoweredReverseAddTermPayload,
@@ -79,19 +81,116 @@ def cold_request(family: str, steps: int) -> dict[str, object]:
     }
 
 
+def comma_arithmetic_requests(
+    mode: str,
+    trials: int,
+    indices: tuple[int, ...],
+    *,
+    certified: bool,
+) -> list[dict[str, object]]:
+    """Measure construction separately from certificate admission and rendering."""
+    rows: list[dict[str, object]] = []
+    for index in indices:
+        retained = NumberCompiler()
+        if mode == "repeat":
+            warm = retained.project_nth("a367620", index)
+            assert isinstance(warm.payload, CommaTermPayload)
+            if certified:
+                warm.materialize(max_bits=1_000_000)
+            else:
+                warm.payload.term.materialize()
+        for trial in range(trials):
+            if certified and mode == "cold":
+                NumberCompiler.clear_shared_cache()
+            compiler = (
+                retained
+                if mode == "repeat"
+                else NumberCompiler(
+                    max_cached_terms=0 if mode == "bypass" else 8,
+                    shared_cache=mode != "bypass",
+                )
+            )
+            start = perf_counter()
+            projected = compiler.project_nth("a367620", index)
+            assert isinstance(projected.payload, CommaTermPayload)
+            term = projected.payload.term
+            descriptor_end = perf_counter()
+            before = dict(term.ledger.counters)
+            if certified:
+                projected.payload.require_certified()
+            admission_end = perf_counter()
+            value = term.materialize()
+            construction_end = perf_counter()
+            clock = term.clock()
+            width = term.width()
+            observation_end = perf_counter()
+            digits = "".join(
+                str(digit) for digit in reversed(tuple(term.iter_digits()))
+            )
+            end = perf_counter()
+            assert int(digits) == value and len(digits) == width
+            rows.append(
+                {
+                    "index": index,
+                    "trial": trial,
+                    "mode": mode,
+                    "index_unit": "oeis_index",
+                    "value": value,
+                    "descriptor_seconds": descriptor_end - start,
+                    "certificate_seconds": admission_end - descriptor_end,
+                    "construction_seconds": construction_end - admission_end,
+                    "observation_seconds": observation_end - construction_end,
+                    "render_seconds": end - observation_end,
+                    "clock": clock,
+                    "work": dict(term.ledger.counters),
+                    "incremental_work": {
+                        key: count - before.get(key, 0)
+                        for key, count in term.ledger.counters.items()
+                    },
+                    "entries": term.ledger.entries,
+                    "nodes": term.ledger.nodes,
+                    "owner_cache": compiler.powered_cache_info(),
+                }
+            )
+    return rows
+
+
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--family", choices=("196", "collatz"), required=True)
-    parser.add_argument("--mode", choices=("cold", "repeat"), default="cold")
+    parser.add_argument(
+        "--family", choices=("196", "collatz", "a367620"), required=True
+    )
+    parser.add_argument("--mode", choices=("cold", "repeat", "bypass"), default="cold")
+    parser.add_argument("--arithmetic-only", action="store_true")
+    parser.add_argument("--trials", type=int, default=5)
+    parser.add_argument("--indices", nargs="+", type=int)
     args = parser.parse_args()
+    if args.trials < 1:
+        parser.error("--trials must be positive")
+    if args.family != "a367620" and (args.arithmetic_only or args.indices):
+        parser.error("--arithmetic-only and --indices apply only to a367620")
+    last_index = 412987859 if args.arithmetic_only else 412987860
+    indices = tuple(
+        args.indices or (16, 32, 64, 128, 256, 512, 1024, 20000, last_index)
+    )
+    if any(index < 1 for index in indices):
+        parser.error("comma indices must be positive")
+    if args.family != "a367620" and args.mode == "bypass":
+        parser.error("--mode bypass is currently available for a367620 only")
     root = repository_root()
     before = source_fingerprint(root)
-    rows = [
-        cold_request(args.family, steps)
-        if args.mode == "cold"
-        else repeated_request(args.family, steps)
-        for steps in (8, 16, 32)
-    ]
+    rows = (
+        comma_arithmetic_requests(
+            args.mode, args.trials, indices, certified=not args.arithmetic_only
+        )
+        if args.family == "a367620"
+        else [
+            cold_request(args.family, steps)
+            if args.mode == "cold"
+            else repeated_request(args.family, steps)
+            for steps in (8, 16, 32)
+        ]
+    )
     after = source_fingerprint(root)
     print(
         json.dumps(
@@ -99,7 +198,17 @@ def main() -> None:
                 "source_before": before,
                 "source_after": after,
                 "source_unchanged": before == after,
-                "scope": "bounded execution evidence; first-use logarithmic powering remains unproved",
+                "scope": (
+                    (
+                        "finite arithmetic only; certificate admission excluded; "
+                        if args.arithmetic_only
+                        else "runtime-certified prefix API; "
+                    )
+                    + "warm interpreter; cold clears shared cache, repeat retains owner; "
+                    + "bypass disables process/API reuse, not within-request memoization"
+                    if args.family == "a367620"
+                    else "bounded execution evidence; first-use logarithmic powering remains unproved"
+                ),
                 "mode": args.mode,
                 "rows": rows,
             },

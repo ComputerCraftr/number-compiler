@@ -25,6 +25,15 @@ ISABELLE = ROOT / "devtools/proofs/isabelle"
 # empty mapping is deliberate: a standalone mathematical theory must not be
 # presented as a production refinement merely because it is registered.
 COUNTERPARTS: dict[str, tuple[str, ...]] = {
+    "Comma_Child_Cylinder": (
+        "src/number_compiler/sequences/comma/arithmetic.py",
+        "tests/sequences/comma/test_comma_power.py",
+    ),
+    "Comma_Decimal_Parent": ("devtools/experiments/comma/forest_certificate.py",),
+    "Comma_Root_Forest": (
+        "devtools/experiments/comma/forest_certificate.py",
+        "src/number_compiler/sequences/comma/certificates.py",
+    ),
     "S_Arithmetic_Skew": (
         "src/number_compiler/arithmetic/fields/skew_transfer.py",
         "tests/arithmetic/fields/test_integer_cylinder_chart.py",

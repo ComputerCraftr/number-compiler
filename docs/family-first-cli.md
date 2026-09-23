@@ -29,6 +29,7 @@ number-compiler antihydra --verify-nonhalting certificate.json
 | `prime` | zero-based prime position starting at `--start` | optional `--start` |
 | `fermat` | Fermat index N, starting at zero | none |
 | `mersenne` | exponent N, starting at one | none |
+| `a367620` | OEIS index N, starting at one; checked-prefix admission required | none |
 
 Collatz `--events E` selects accelerated odd events from an odd seed, requires
 `--info`, and has no ordinary term value. It is exclusive with `--nth`.
@@ -75,6 +76,7 @@ than invented zero work.
 | Collatz `--nth` | `clock` |
 | Collatz `--events` | `clock`, `modular`, `twisted`, `hasse`, `hensel`, `tropical`, `factor`, `safety` |
 | Fermat/Mersenne | `primality`, `factor`, `root` (requires `--defect`) |
+| A367620 | `clock`, `tropical`, `certificate` |
 | Antihydra | `ledger`, `clock`, `modular`, `tape`, `twisted`, `spacetime`, `hasse`, `hensel`, `mahler`, `tropical`, `factor` |
 
 Family help lists the applicable projection parameters. Primality and factor
@@ -169,3 +171,44 @@ rank, with exact doubling when necessary; it assumes no prime-density bound.
 
 This finite production bridge does not establish cheap unbounded prime-stage
 discovery or the unresolved cross-family terminal and powered-construction proofs.
+
+## A367620 prefix admission
+
+`number-compiler a367620 --nth N` uses fixed source 20 and decimal comma-child
+semantics. It rejects `--seed`, `--base`, `--radix`, `--start` and `--events`.
+Construction budgets are `--max-comma-states` (131,072) and `--max-comma-work`
+(1,000,000); stricter resource limits still apply.
+
+The runtime-verified prefix covers indices **1 through 412987860**, including
+the first certified fork choice. The last admitted value is `19999999999`.
+Later indices return exit 3: JSON contains `value: null` and an
+`unresolved_sequence_boundary` error; text reports the boundary on stderr.
+The full Isabelle certificate-instance proof remains a release obligation.
+
+```sh
+number-compiler a367620 --nth 1
+number-compiler a367620 --nth 20000 --info clock
+number-compiler a367620 --nth 412987860 --info certificate --format json
+number-compiler a367620 --nth 20000 --no-value --info certificate --info metrics --format json
+```
+
+The certificate packet distinguishes `runtime_verified` from
+`isabelle_instance_checked`. Verification streams complete finite regions;
+the published OEIS choice bits are not runtime branch oracles. `--info metrics`
+alone never initiates certificate verification or arithmetic. Metrics remain
+read-only schema 8.
+Its `comma` lane distinguishes published transitions from evaluated image work,
+phase cycles, transfer constructions and phase-fold terms. Work budgets charge
+ten conservative slots per transfer; operand widths include phase-fold bounds,
+composition inputs and arbitrary-precision step counts. These are charged
+work units, not measured CPU instructions or a bit-complexity theorem. Missing
+counters are null. Exact width is null until a width demand has a certified result; it is
+not replaced by a bit upper bound. See the [mathematics](research/comma.md).
+
+Certificate work counts record parsing/checking, guarded-cycle checks and
+bounded child classifications. One such classification tests all nine possible
+leading digits; `certificate_candidate_digit_trials` reports these scalar
+trials separately. The work cap is not a cap on individual candidate trials.
+Verification markers use the existing bounded process cache, while bypassed
+queries retain only their own ledger-owned admission marker. Repeated demands
+still hash the immutable compressed certificate; those bytes are charged.

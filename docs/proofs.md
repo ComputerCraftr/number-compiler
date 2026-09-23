@@ -338,3 +338,23 @@ isabelle build -D devtools/proofs/isabelle -j 1 -o threads=1 -o parallel_proofs=
 The macrocell integration guard is 60 seconds / 4 GiB. `-d ... -a` instead
 selects every installed session, including unrelated Isabelle examples; a
 result from that broader invocation is not the repository aggregate check.
+
+## Comma-child prefix certificate
+
+The focused `Comma_Cylinder` session keeps literal child arithmetic separate
+from infinite-path admission:
+
+| Theory | Statement and assumptions | Implementation connection |
+| --- | --- | --- |
+| `Comma_Child_Cylinder` | Decimal carry/phase equations; fixed-leading-digit iteration and displacement; phase closure; a guarded block stays in its sector and refines a literal child path. | Local laws in `sequences/comma/arithmetic.py`; not yet full Python scheduler/worklist refinement. |
+| `Comma_Decimal_Parent` | Decimal leading digit, predecessor descent and the finite root classification. | Independent root-forest tooling; does not check the compressed termination forest instance. |
+| `Comma_Root_Forest` | Finite child-closed regions for excluded roots plus global root coverage imply infinitely many descendants of root 20; finite compressed-region closure is sound. | Runtime certificate specification; the concrete production certificate instance is not yet kernel-checked. |
+
+Build with `isabelle build -d devtools/proofs/isabelle -o threads=1 Comma_Cylinder`.
+Each theory audits exported theorems for oracles. The executable cycle-checker
+refinement, finite certificate instance, infinite-path/lexicographic-prefix
+bridge and scheduler cost proof remain distinct obligations. The generated
+[proof inventory](../devtools/checks/isabelle_proof_index.py) records imports
+and exact theorem names; registration alone never certifies a successful build.
+See the [research scope](research/comma.md) and the
+[weekly validation record](../results/current/2026-W39/README.md#a367620-integration).

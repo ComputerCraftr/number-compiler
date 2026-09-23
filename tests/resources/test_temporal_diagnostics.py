@@ -320,3 +320,42 @@ def test_snapshot_diagnostics_do_not_walk_inventory_or_semantic_audit(
     assert report.reporting.inspected_inventory_rows == 0
     assert report.reporting.captured_mapping_bytes is not None
     assert report.reporting.captured_mapping_bytes > 0
+
+
+def test_comma_metrics_separate_represented_time_from_work() -> None:
+    record = _collect(
+        {
+            "comma_work": 12,
+            "comma_represented_transitions": 10_000_000,
+            "comma_phase_cycles": 1_000_000,
+            "comma_child_candidate_checks": 9,
+            "comma_operand_bit_work": 600,
+            "comma_scalar_seam_steps": 1,
+            "comma_certificate_work": 0,
+        }
+    )
+    assert record.comma.operations == 12
+    assert record.comma.represented_transitions == 10_000_000
+    assert record.comma.represented_phase_cycles == 1_000_000
+    assert record.comma.child_candidate_checks == 9
+    assert record.comma.operand_bits == 600
+    assert record.comma.seam_steps == 1
+    assert record.comma.certificate_operations == 0
+    assert record.action.exact_hits is None
+    assert _collect({}).comma.represented_transitions is None
+
+
+def test_comma_action_reuse_uses_the_common_lane() -> None:
+    record = _collect(
+        {
+            "comma_action_requests": 4,
+            "comma_action_hits": 2,
+            "comma_action_misses": 2,
+            "comma_action_publications": 2,
+            "comma_operand_bit_work": 120,
+        }
+    )
+    assert record.action.requests == 4
+    assert record.action.exact_hits == 2
+    assert record.action.misses == record.action.publications == 2
+    assert record.family_work[0].operand_bits == (("comma_operand_bit_work", 120),)

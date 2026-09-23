@@ -1,0 +1,64 @@
+"""Certified public demands over the finite comma-cylinder arithmetic owner."""
+
+from __future__ import annotations
+
+from collections.abc import Iterator
+from dataclasses import dataclass
+from typing import TYPE_CHECKING
+
+from number_compiler.arithmetic.contracts.input_validation import require_integer
+
+if TYPE_CHECKING:
+    from number_compiler.sequences.comma.power import CommaTerm
+
+
+@dataclass(frozen=True, slots=True)
+class CommaTermPayload:
+    term: CommaTerm
+
+    def __post_init__(self) -> None:
+        from number_compiler.sequences.comma.power import CommaTerm
+
+        if type(self.term) is not CommaTerm:
+            raise TypeError("comma payload requires its exact source owner")
+
+    def require_certified(self) -> None:
+        from number_compiler.sequences.comma.certificates import (
+            CERTIFICATE_ID,
+            UnresolvedCommaTerm,
+            require_certified_index,
+        )
+
+        if self.term.certificate_version != CERTIFICATE_ID:
+            raise UnresolvedCommaTerm(
+                self.term.index, 0, CERTIFICATE_ID, "stale comma certificate binding"
+            )
+        require_certified_index(
+            self.term.index,
+            self.term.ledger,
+            self.term.max_work,
+            shared_cache=self.term.shared_cache,
+            memo=self.term.certificate_memo,
+        )
+
+    @property
+    def estimated_bit_length(self) -> int:
+        # Each legal edge adds between one and 99, independently of branch choice.
+        return (20 + 99 * (self.term.index - 1)).bit_length()
+
+    def materialize(self, *, max_bits: int) -> int:
+        require_integer(max_bits, "output bit cap", 0)
+        self.require_certified()
+        return self.term.materialize(max_bits=max_bits)
+
+    def digit(self, index: int) -> int:
+        index = require_integer(index, "digit coordinate", 0)
+        self.require_certified()
+        return self.term.digit(index)
+
+    def iter_digits(self) -> Iterator[int]:
+        self.require_certified()
+        return self.term.iter_digits()
+
+    def digits(self) -> tuple[int, ...]:
+        return tuple(self.iter_digits())

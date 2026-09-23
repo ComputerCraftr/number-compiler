@@ -9,6 +9,7 @@ from number_compiler.api import cli_render as _rendering
 from number_compiler.api.cli_requests import CAPABILITIES, QueryRequest, parse_request
 from number_compiler.api.number_api import NumberCompiler
 from number_compiler.arithmetic.contracts.block_effect import BlockContextBudgetExceeded
+from number_compiler.arithmetic.contracts.unresolved_term import UnresolvedSequenceTerm
 
 # Retain the established Python helper exports with their canonical owner.
 _metrics_json = _rendering._metrics_json
@@ -104,6 +105,11 @@ def main(argv: list[str] | None = None) -> int:
                             "output_base": request.output_base,
                             "value": value,
                             "info": info,
+                            **(
+                                {}
+                                if context.unresolved_boundary is None
+                                else {"error": context.unresolved_boundary.diagnostic()}
+                            ),
                         }
                     ),
                     sort_keys=True,
@@ -114,7 +120,41 @@ def main(argv: list[str] | None = None) -> int:
                 print(value)
             if info:
                 print(json.dumps(json_integers(info), sort_keys=True), file=sys.stderr)
+        if context.unresolved_boundary is not None:
+            if request.format != "json":
+                print(
+                    f"number-compiler: {context.unresolved_boundary}", file=sys.stderr
+                )
+            return 3
         return 3 if information_unresolved(info) else 0
+    except UnresolvedSequenceTerm as exc:
+        # No endpoint or symbolic value is published across an unproved boundary.
+        if request is not None and request.format == "json":
+            from number_compiler.api.json_output import json_integers
+
+            print(
+                json.dumps(
+                    json_integers(
+                        {
+                            "family": request.family,
+                            "index": request.index,
+                            "index_unit": request.index_unit,
+                            "output_base": request.output_base,
+                            "value": None,
+                            "info": {},
+                            "error": exc.diagnostic(),
+                        }
+                    ),
+                    sort_keys=True,
+                )
+            )
+        else:
+            print(
+                f"number-compiler: {exc}; certified through index "
+                f"{exc.certified_max_index}",
+                file=sys.stderr,
+            )
+        return 3
     except (
         ValueError,
         TypeError,

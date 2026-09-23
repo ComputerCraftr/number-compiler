@@ -9,11 +9,14 @@ from number_compiler.api.cli_render import _metrics_json
 from number_compiler.api.cli_requests import QueryRequest
 from number_compiler.api.number_api import (
     AntihydraTermPayload,
+    CommaTermPayload,
     NumberCompiler,
     PoweredCollatzTermPayload,
     PoweredReverseAddTermPayload,
     ProjectedNumberTerm,
 )
+
+from number_compiler.arithmetic.contracts.unresolved_term import UnresolvedSequenceTerm
 
 if TYPE_CHECKING:
     from number_compiler.api.cylinder_observation import CollatzObservationContext
@@ -37,10 +40,32 @@ class QueryContext:
         self._events: CollatzObservationContext | None = None
         self._special: dict[str, Any] | None = None
         self._info: dict[str, Any] = {}
+        self.unresolved_boundary: UnresolvedSequenceTerm | None = None
 
     def admit_observation_extents(self) -> None:
         """Reject descriptor bounds before any endpoint rendering or observation."""
         q = self.request
+        if q.family == "a367620":
+            comma = self.term.payload
+            assert isinstance(comma, CommaTermPayload)
+            from number_compiler.sequences.comma.certificates import (
+                CERTIFIED_MAX_INDEX,
+                unresolved_boundary,
+            )
+
+            if q.no_value and not set(q.info) - {"metrics", "certificate"}:
+                # Metadata never initiates a certificate forest or trajectory.
+                # An explicit certificate observer performs its own check.
+                if q.index > CERTIFIED_MAX_INDEX:
+                    self.unresolved_boundary = unresolved_boundary(q.index)
+                return
+            try:
+                comma.require_certified()
+            except UnresolvedSequenceTerm as error:
+                if not q.no_value or set(q.info) - {"metrics", "certificate"}:
+                    raise
+                # Metadata remains observable at an unresolved sequence boundary.
+                self.unresolved_boundary = error
         if "mirror" in q.info:
             payload = self.term.payload
             assert isinstance(payload, PoweredReverseAddTermPayload)
@@ -60,7 +85,14 @@ class QueryContext:
             )
         if self._term is None:
             q = self.request
-            if q.family == "antihydra":
+            if q.family == "a367620":
+                self._term = self.compiler.project_nth(
+                    q.family,
+                    q.index,
+                    max_comma_states=q.max_comma_states,
+                    max_comma_work=q.max_comma_work,
+                )
+            elif q.family == "antihydra":
                 self._term = self.compiler.project_nth(
                     q.family,
                     q.index,
@@ -127,6 +159,24 @@ class QueryContext:
 
     def _observe(self, name: str) -> dict[str, Any]:
         q = self.request
+        if q.family == "a367620":
+            payload = self.term.payload
+            assert isinstance(payload, CommaTermPayload)
+            if name == "certificate":
+                from number_compiler.sequences.comma.certificates import (
+                    certificate_status,
+                )
+
+                return certificate_status(
+                    q.index,
+                    payload.term.ledger,
+                    q.max_comma_work,
+                    shared_cache=payload.term.shared_cache,
+                    memo=payload.term.certificate_memo,
+                )
+            payload.require_certified()
+            value = payload.term.clock() if name == "clock" else payload.term.tropical()
+            return {"value": value, "scope": "checked comma-child prefix"}
         if q.family == "antihydra":
             return self._antihydra(name)
         if q.selector == "events":

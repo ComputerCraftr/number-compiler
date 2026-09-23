@@ -2021,3 +2021,118 @@ Quality, documentation and proof-index checks passed; Isabelle builds were not
 rerun because this audit did not edit theorem sources. The first wheel command
 lacked a local setuptools backend; isolated wheel building succeeded without
 changing repository dependencies.
+
+## A367620 integration
+
+Objective: add the one-based comma-child family through the existing scheduler,
+with exact output conditional on independently checked finite-region evidence.
+
+- Added fixed-source parsing, budgets and exact public demands. `clock`,
+  `tropical`, `certificate` and schema-eight metrics share the query owner.
+  Metrics-only queries do not initiate certificate or arithmetic computation.
+- Guarded phase-cycle actions use shared `PrefixSafety` and authenticated
+  scheduler images. Mixed actions retain chronological children. The audit
+  fixed dropped children, zero-limit defaulting, float admission, interrupted
+  publication, missing certificate-version bindings and work-accounting gaps.
+- Production now admits indices **1 through 412987860**, including the first
+  fork's forced lower child. Later indices return exit 3 with a null JSON value
+  and a structured boundary error. Pruning evidence is checked at runtime;
+  `isabelle_instance_checked` remains false.
+- The packaged certificate exhausts the 49 roots other than 20 and the first
+  fork's right child. It contains 84,764 sector records and 505,013 bounded
+  boundary classifications, with every outgoing alternative present. The raw
+  canonical JSONL is 38,171,326 bytes; gzip is 813,641 bytes. Verification
+  streams the artifact and retains only bounded BFS frontiers. The production
+  checker imports no generator or OEIS choice fixture.
+- The first right branch contributes 405 records and 2,466 boundary checks.
+  Its exhaustion forces the first A399179 choice 0. The remaining 29 published
+  choices are not yet production certificates.
+- All 20,000 published terms agree with an independent literal reference.
+  Guarded constructions and a separate full literal C enumerator put the first
+  fork at one-based index **412987859**, value **19999999918**, with children
+  **19999999999** and **20000000000**. The paper/OEIS label 412987860 differs.
+  Thus the last admitted value, at 412987860, is **19999999999**.
+- The focused Isabelle session checks root coverage, guarded fixed-phase
+  literal paths, compressed-region soundness and the finite-right branch
+  implication. It does not yet refine the full Python parser/checker or check
+  the concrete artifact instance. Scheduler cost and complete prefix theorems
+  remain formal release obligations.
+
+Regenerate the immutable certificate with:
+
+```sh
+python -m devtools.experiments.comma.closed_region_certificate /tmp/comma-prefix.jsonl.gz --verify
+```
+
+SHA256: `f6e864b26ca9c8164ed91594d995aca15b19e027166d469844be37268896e4eb`.
+The only process-cache payload is an authenticated verification marker, bound
+by source, decimal semantics, artifact hash, version and reset generation.
+A bypassed query uses its own ledger-owned marker after verifying once.
+Repeated demands still read/hash the compressed asset; those bytes are charged.
+
+Certificate work counts bounded nine-candidate classifications and record
+operations; candidate trials are also reported separately. This is an explicit
+operation unit, not an instruction count. Arithmetic transfer construction,
+operand widths, attempted image evaluation and successfully published
+transitions have separate counters. No missing instrumentation is recorded as
+zero.
+
+The first public cold run of index 412987860, including clock and certificate
+output, completed in 5.65 seconds / 22,561,296 sampled bytes under 35 seconds /
+1 GiB. This establishes a working bounded prefix query, not global periodic
+quotient closure or a complete asymptotic proof.
+
+Local evidence is under `results/current/a367620-integration/`; raw evidence
+stays ignored. Earlier `proof-v*`, arithmetic-only and blocked-prefix runs retain
+their original scopes. Current-source validation is recorded below after the
+freeze. Mathematical definitions belong in the
+[comma synthesis](../../../docs/research/comma.md).
+
+
+Frozen integration source:
+`4188758779ab96d115dbe4430a830030cebf85a9e666bc2b5521ab72fe288845`.
+Independent read-only review by `comma_arithmetic` covers runtime pruning,
+source/cache authority and the final arithmetic-only benchmark boundary fix.
+It explicitly excludes the unfinished concrete Isabelle instance.
+
+The certified API growth probe has **115 passing samples**: five trials for
+cold and cache-bypassed requests at each horizon 16–1024, and five warm trials
+at those horizons plus 20,000 and 412987860. Every report pins the same source.
+These run in a warm interpreter; fresh installed CLI checks are separate.
+
+| Mode | Scope | Median total | Included certificate cost |
+| --- | --- | --- | --- |
+| Cold | each 16–1024 horizon | 4.95–5.03 s | 4.91–5.01 s, complete verification |
+| Cache bypass | each 16–1024 horizon | 4.90–4.97 s | 4.88–4.95 s, complete verification |
+| Repeated owner | 16–412987860 | 0.408–0.444 ms | 0.397–0.430 ms, charged hash/admission |
+
+Five-trial probe processes each remained below 35 seconds / 1 GiB. Arithmetic
+construction medians ranged from roughly 7 to 43 ms over 16–1024. Observer and
+render timings are recorded separately. Warm reuse does not establish cold
+construction complexity. Certificate work is deliberately included; it is not
+reported as free setup. The arithmetic-only benchmark ends at index 412987859,
+whereas runtime-certified queries include its checked child at 412987860.
+
+
+| Frozen validation | Result | Local evidence stem |
+| --- | --- | --- |
+| Comma/API/metrics unfiltered focused selection | 175 PASS | `enabled-focused-final` |
+| Full units | 6,696 PASS / same 42 FAIL; 1,897 validation deselections | `enabled-unit-final`; 220.30 s / 799,081,576 sampled bytes |
+| Existing explicit P0 selection | 13 PASS / same 50 FAIL | `enabled-p0`; exact baseline failure IDs compared |
+| Strict mypy, Ruff, formatting, repository policy | PASS; 1,494 typed/formatted source files | `enabled-mypy-final`, `enabled-ruff`, `enabled-format-final`, `enabled-repository_policy` |
+| Documentation and proof index | PASS | `enabled-docs_index`, `enabled-isabelle_proof_index` |
+| Clean wheel and installed public CLI | PASS | `enabled-wheel-build-final`, `enabled-installed-final`; installed check 11.13 s |
+| All registered Isabelle sessions | PASS | `enabled-isabelle-final`; 11.96 s / 1,708,854,536 sampled bytes |
+| Certified cold/warm/bypassed growth queries | 115 samples PASS | `enabled-growth-*`, `enabled-growth-summary.json` |
+
+No new unit or P0 failure IDs were introduced. Existing reverse/add,
+special-number and other release obligations remain active. Successful
+Isabelle builds certify the registered statements, not the missing concrete
+certificate instance or full production refinement.
+
+Two validation-invocation errors were corrected without repository exceptions:
+`mypy .` included generated `build/lib` duplicates, so final strict checking used
+all authored `src tests devtools`; non-isolated wheel building lacked a local
+setuptools backend, so the final build used standard isolated build dependency
+installation. The benchmark boundary edit was formatted before the final
+fingerprint and full-suite run. Failed/intermediate logs remain local evidence.

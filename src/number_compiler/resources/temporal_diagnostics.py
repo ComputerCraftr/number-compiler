@@ -78,7 +78,7 @@ class TemporalObservations:
 
 @dataclass(frozen=True, slots=True)
 class TemporalFamilyWork:
-    """One pinned dyadic law's finite source-discovery measurements."""
+    """One arithmetic owner's finite source-discovery measurements."""
 
     counter_prefix: str
     action_requests: int | None
@@ -89,6 +89,38 @@ class TemporalFamilyWork:
     bounded_base_steps: int | None
     macro_compositions: int | None
     operand_bits: tuple[tuple[str, int], ...]
+
+
+@dataclass(frozen=True, slots=True)
+class TemporalCommaWork:
+    """Guarded comma construction; represented cycles are not executed work."""
+
+    operations: int | None = None
+    binary_compositions: int | None = None
+    transfer_constructions: int | None = None
+    transfer_phase_terms: int | None = None
+    child_candidate_checks: int | None = None
+    operand_bits: int | None = None
+    represented_phase_cycles: int | None = None
+    powered_image_applications: int | None = None
+    represented_transitions: int | None = None
+    evaluated_transitions: int | None = None
+    seam_steps: int | None = None
+    certificate_operations: int | None = None
+    certificate_sector_entries: int | None = None
+    certificate_boundary_classifications: int | None = None
+    certificate_candidate_digit_trials: int | None = None
+    certificate_operand_bits: int | None = None
+    certificate_read_bytes: int | None = None
+    certificate_uncompressed_bytes: int | None = None
+    certificate_frontier_peak: int | None = None
+    certificate_local_hits: int | None = None
+    certificate_cache_hits: int | None = None
+    certificate_cache_misses: int | None = None
+    certificate_cache_bypasses: int | None = None
+    certificate_cache_publications: int | None = None
+    budget_refusals: int | None = None
+    certificate_budget_refusals: int | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -126,14 +158,16 @@ class TemporalExecutionDiagnostics:
     stream: TemporalStreamDemand = TemporalStreamDemand()
     observations: TemporalObservations = TemporalObservations()
     family_work: tuple[TemporalFamilyWork, ...] = ()
+    comma: TemporalCommaWork = TemporalCommaWork()
     resources: TemporalResources = TemporalResources()
     reporting: TemporalReportingWork = TemporalReportingWork()
 
 
-_DYADIC_PREFIXES = (
+_ACTION_PREFIXES = (
     "antihydra_arithmetic",
     "collatz_physical",
     "dyadic_return",
+    "comma",
 )
 
 
@@ -158,13 +192,13 @@ def collect_temporal_diagnostics(
 ) -> TemporalExecutionDiagnostics:
     """Project exactly one immutable ledger snapshot without evaluating actions."""
     operand_bits: dict[str, list[tuple[str, int]]] = {
-        prefix: [] for prefix in _DYADIC_PREFIXES
+        prefix: [] for prefix in _ACTION_PREFIXES
     }
     for name, value in counters.items():
         if type(value) is not int or value < 0:
             raise ValueError("temporal diagnostics require exact nonnegative counters")
-        if name.endswith("operand_bits"):
-            for prefix in _DYADIC_PREFIXES:
+        if name.endswith("operand_bits") or name == "comma_operand_bit_work":
+            for prefix in _ACTION_PREFIXES:
                 if name.startswith(f"{prefix}_"):
                     operand_bits[prefix].append((name, value))
                     break
@@ -197,7 +231,7 @@ def collect_temporal_diagnostics(
         raise ValueError("source-image publication categories do not reconcile")
 
     families: list[TemporalFamilyWork] = []
-    for prefix in _DYADIC_PREFIXES:
+    for prefix in _ACTION_PREFIXES:
         enabled = f"{prefix}_action_publications" in counters
         if not enabled:
             continue
@@ -309,6 +343,54 @@ def collect_temporal_diagnostics(
             ),
         ),
         family_work=tuple(families),
+        comma=TemporalCommaWork(
+            operations=_count(counters, "comma_work"),
+            binary_compositions=_count(counters, "comma_binary_composition_work"),
+            transfer_constructions=_count(counters, "comma_transfer_constructions"),
+            transfer_phase_terms=_count(counters, "comma_transfer_phase_terms"),
+            child_candidate_checks=_count(counters, "comma_child_candidate_checks"),
+            operand_bits=_count(counters, "comma_operand_bit_work"),
+            represented_phase_cycles=_count(counters, "comma_phase_cycles"),
+            powered_image_applications=_count(
+                counters, "comma_powered_image_applications"
+            ),
+            represented_transitions=_count(counters, "comma_represented_transitions"),
+            evaluated_transitions=_count(counters, "comma_evaluated_transitions"),
+            seam_steps=_count(counters, "comma_scalar_seam_steps"),
+            certificate_operations=_count(counters, "comma_certificate_work"),
+            certificate_sector_entries=_count(
+                counters, "comma_certificate_sector_entries"
+            ),
+            certificate_boundary_classifications=_count(
+                counters, "comma_certificate_boundary_classifications"
+            ),
+            certificate_candidate_digit_trials=_count(
+                counters, "comma_certificate_candidate_digit_trials"
+            ),
+            certificate_operand_bits=_count(
+                counters, "comma_certificate_operand_bit_work"
+            ),
+            certificate_read_bytes=_count(counters, "comma_certificate_read_bytes"),
+            certificate_uncompressed_bytes=_count(
+                counters, "comma_certificate_uncompressed_bytes"
+            ),
+            certificate_frontier_peak=_count(
+                counters, "comma_certificate_frontier_peak"
+            ),
+            certificate_local_hits=_count(counters, "comma_certificate_local_hits"),
+            certificate_cache_hits=_count(counters, "comma_certificate_cache_hits"),
+            certificate_cache_misses=_count(counters, "comma_certificate_cache_misses"),
+            certificate_cache_bypasses=_count(
+                counters, "comma_certificate_cache_bypasses"
+            ),
+            certificate_cache_publications=_count(
+                counters, "comma_certificate_cache_publications"
+            ),
+            budget_refusals=_count(counters, "comma_budget_refusals"),
+            certificate_budget_refusals=_count(
+                counters, "comma_certificate_budget_refusals"
+            ),
+        ),
         resources=TemporalResources(
             entries,
             nodes,

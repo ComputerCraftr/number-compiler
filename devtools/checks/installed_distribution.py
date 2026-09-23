@@ -148,6 +148,21 @@ for removed in (
     assert find_spec('number_compiler.' + removed) is None
 assert not any(name == 'devtools' or name.startswith('devtools.') for name in sys.modules)
 from number_compiler.api.cli import main
+from number_compiler.sequences.comma.power import CommaTerm
+assert CommaTerm(20000).materialize() == 1039404
+captured = StringIO()
+with redirect_stdout(captured):
+    assert main(['a367620', '--nth', '20000', '--no-value', '--info', 'certificate', '--format', 'json']) == 0
+comma_status = json.loads(captured.getvalue())
+assert comma_status['index_unit'] == 'oeis_index'
+assert comma_status['value'] is None
+assert comma_status['info']['certificate']['runtime_verified'] is True
+assert comma_status['info']['certificate']['isabelle_instance_checked'] is False
+captured = StringIO()
+with redirect_stdout(captured):
+    assert main(['a367620', '--nth', '412987860']) == 0
+assert captured.getvalue().strip() == '19999999999'
+assert not any(name == 'devtools' or name.startswith('devtools.') for name in sys.modules)
 from number_compiler.sequences.antihydra import runtime
 def forbidden_roof(*args, **kwargs):
     raise AssertionError('arithmetic CLI requested physical execution')

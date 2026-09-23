@@ -8,6 +8,7 @@ from dataclasses import asdict, fields
 
 from number_compiler.api.number_api import (
     AntihydraTermPayload,
+    CommaTermPayload,
     FermatTermPayload,
     FormulaTermPayload,
     MersenneTermPayload,
@@ -39,7 +40,9 @@ def _metrics_json(term: ProjectedNumberTerm) -> dict[str, object]:
         "field_reads": len(descriptors),
         "counter_items_copied": len(term.metrics.prime_scheduler_counters),
     }
-    payload["width"] = extent_json_value(term.metrics.width)
+    payload["width"] = (
+        None if term.metrics.width is None else extent_json_value(term.metrics.width)
+    )
     payload["metrics_scope"] = "construction_and_projection_descriptors"
     payload["prime_scheduler_counters"] = dict(term.metrics.prime_scheduler_counters)
     if term.family == "prime":
@@ -51,7 +54,7 @@ def _metrics_json(term: ProjectedNumberTerm) -> dict[str, object]:
     owner = term.payload
     if isinstance(owner, (PoweredReverseAddTermPayload, PoweredCollatzTermPayload)):
         ledger = owner.term._ledger
-    elif isinstance(owner, AntihydraTermPayload):
+    elif isinstance(owner, (AntihydraTermPayload, CommaTermPayload)):
         ledger = owner.term.ledger
     else:
         ledger = None
@@ -142,6 +145,13 @@ def _render_value(term: ProjectedNumberTerm, *, output_base: int, max_bits: int)
         upper_bound = term.payload.term.maximum_width
         bit_extent = (
             upper_bound if upper_bound <= max_bits else term.payload.term.width()
+        )
+    elif isinstance(term.payload, CommaTermPayload):
+        upper_bound = term.payload.estimated_bit_length
+        bit_extent = (
+            upper_bound
+            if upper_bound <= max_bits
+            else term.payload.materialize(max_bits=max_bits).bit_length()
         )
     else:
         bit_extent = term.estimated_bit_length

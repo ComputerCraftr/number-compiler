@@ -185,3 +185,10 @@ session Reverse_Growth_Admission in reverse_growth = Reverse_Residuals +
   options [document = false, quick_and_dirty = false, threads = 1]
   theories
     Reverse_Growth_Run_Admission
+
+session Comma_Cylinder in comma = Shared_S_Arithmetic +
+  options [document = false, quick_and_dirty = false, threads = 1]
+  theories
+    Comma_Child_Cylinder
+    Comma_Decimal_Parent
+    Comma_Root_Forest
