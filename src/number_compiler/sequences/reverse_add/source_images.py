@@ -515,10 +515,15 @@ class _ReverseSourceImageAdapter(SourceBoundImageAdapter):
         return outgoing, digit
 
     def iter_second_digits(self, source: ExactSource) -> Iterator[int]:
-        """Emit final digits; no prefix or prior output is replayed per point."""
+        """Emit D2 with one forward carry over the pulled pair-field stream."""
         ports = self.ports(source)
-        for position in range(ports.second_width()):
-            yield self.second_digit(source, position)
+        carry = 0
+        for pair in ports.iter_second_pairs():
+            carry, digit = self._normalized(pair, carry, source.base)
+            self.ledger.bump("reverse_source_second_step_coordinates")
+            yield digit
+        if carry:
+            yield carry
 
     def second_digit(self, source: ExactSource, position: int) -> int:
         ports = self.ports(source)
@@ -606,15 +611,14 @@ class _ReverseSourceImageAdapter(SourceBoundImageAdapter):
         return SourceImageProjection(digit)
 
     def iter_primitive_digits(self, source: ExactSource) -> Iterator[int]:
-        """Demand output coordinates from the shared boundary action projection."""
+        """Stream one physical carry over original source pairs in LSD order."""
         ports = self.ports(source)
+        carry = 0
         for position in range(ports.width):
-            _, digit = self._normalized(
-                ports.pair(position), ports.carry(position), source.base
-            )
+            carry, digit = self._normalized(ports.pair(position), carry, source.base)
             self.ledger.bump("reverse_source_carry_coordinates")
             yield digit
-        if ports.terminal:
+        if carry:
             yield 1
 
     def first_failure(self, image: SourceImageView) -> None:
@@ -633,6 +637,8 @@ class ReverseSourceImageWorkspace:
         steps = require_integer(steps, "reverse/add steps", 0)
         base = require_integer(base, "base", 2)
         self.ledger = ledger
+        ledger.bump("temporal_point_requests", 0)
+        ledger.bump("temporal_length_requests", 0)
         actions = ReverseActionArena(ledger)
         scheduler: TileScheduler | None = None
         try:
@@ -728,6 +734,7 @@ class ReverseSourceImageWorkspace:
 
     def digit(self, position: int) -> int:
         position = require_integer(position, "digit coordinate")
+        self.ledger.bump("temporal_point_requests")
         demand = SourceImageDemand("digit", (position,))
         image = self._demanded_image(demand)
         return cast(
@@ -735,6 +742,7 @@ class ReverseSourceImageWorkspace:
         )
 
     def width(self) -> int:
+        self.ledger.bump("temporal_length_requests")
         demand = SourceImageDemand("width")
         image = self._demanded_image(demand)
         return cast(

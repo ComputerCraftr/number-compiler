@@ -72,6 +72,52 @@ def test_scalar_radix_observation_does_not_compute_the_complete_width(
         collatz_radix_digit(term, 3, exterior)
 
 
+def test_huge_exterior_coordinate_never_constructs_the_radix_power() -> None:
+    term = PoweredCollatzTerm(27, 3)
+    # The low-level modular projection has historically zero-padded exterior
+    # coordinates; the admitted public point wrapper turns that into IndexError.
+    assert term.radix_digit(3, 10**100) == 0
+    assert term._ledger.counters["collatz_radix_exterior_shortcuts"] == 1
+
+
+def test_scalar_points_never_construct_the_complete_affine_numerator(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    term = PoweredCollatzTerm(27, 3)
+
+    def forbidden(*args: object, **kwargs: object) -> None:
+        raise AssertionError("scalar point constructed the complete numerator")
+
+    monkeypatch.setattr(PoweredCollatzTerm, "_source_numerator", forbidden)
+    assert term.digit(0) == 0
+    assert collatz_radix_digit(term, 3, 0) == 1
+    assert collatz_radix_digit(term, 3, 4) == 1
+    with pytest.raises(IndexError):
+        collatz_radix_digit(term, 3, 5)
+
+
+def test_nonbinary_full_stream_lowers_once_on_first_demand(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from number_compiler.api.number_api import PoweredCollatzTermPayload
+
+    term = PoweredCollatzTerm(27, 3)
+    payload = PoweredCollatzTermPayload(term, 3)
+    original = PoweredCollatzTerm.materialize
+    calls = 0
+
+    def counted(self: PoweredCollatzTerm, *, max_bits: int) -> int:
+        nonlocal calls
+        calls += 1
+        return original(self, max_bits=max_bits)
+
+    monkeypatch.setattr(PoweredCollatzTerm, "materialize", counted)
+    stream = payload.iter_digits()
+    assert calls == 0
+    assert tuple(stream) == (1, 2, 1, 1, 1)
+    assert calls == 1
+
+
 @pytest.mark.parametrize("steps", (0, 1, 2, 11))
 @pytest.mark.validation  # Complete multi-step, multi-radix output matrix.
 def test_radix_points_remain_exact_with_all_explicit_lowering_poisoned(

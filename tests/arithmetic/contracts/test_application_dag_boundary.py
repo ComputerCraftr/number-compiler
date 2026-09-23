@@ -88,7 +88,9 @@ def test_warm_reverse_point_bypasses_projection_and_retains_one_response(
     }
     assert changes == {
         "source_image_seal_validation_visits": 18,
+        "source_image_projection_requests": 1,
         "source_image_projection_hits": 1,
+        "temporal_point_requests": 1,
     }
     assert len(core._projections) == 1
 
@@ -116,6 +118,7 @@ def test_warm_collatz_point_bypasses_projection_and_retains_one_response(
         "direct_powered_point_queries": 1,
         "microblock_requests": 1,
         "microblock_hits": 1,
+        "temporal_point_requests": 1,
     }
     assert len(term._microblocks.blocks) == 1
     view = workspace.scheduler._source_image_core().view(workspace.root_image)

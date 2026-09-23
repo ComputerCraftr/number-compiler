@@ -65,6 +65,7 @@ class ProviderBindingKey:
     output: CoordinateOutputMorphismID
     interface: LocalInterfaceID
     image: FieldImageID | None = None
+    active_extent: int | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -94,7 +95,7 @@ class ProviderAbsorptionArena:
         observe: Callable[[CoordinateOutputMorphismID, int, object, object], int],
         validate_image: Callable[[FieldImageID], FieldImageRecord] | None = None,
         validate_image_occurrence: Callable[
-            [FieldImageID, SourceBindingID, FieldCellActionID], None
+            [FieldImageID, SourceBindingID, FieldCellActionID, int | None], None
         ]
         | None = None,
     ) -> None:
@@ -175,6 +176,7 @@ class ProviderAbsorptionArena:
         action: FieldCellActionID,
         output: CoordinateOutputMorphismID,
         interface: LocalInterfaceID,
+        active_extent: int | None,
     ) -> FieldImageRecord:
         """Prove that an occurrence names the supplied completed behavior."""
         if type(image) is not FieldImageID or self._validate_image is None:
@@ -187,7 +189,7 @@ class ProviderAbsorptionArena:
         occurrence = self._validate_image_occurrence
         if occurrence is None:
             raise TypeError("provider image occurrence validation is not configured")
-        occurrence(image, source, action)
+        occurrence(image, source, action, active_extent)
         return record
 
     def clear_observations(self) -> None:
@@ -257,8 +259,11 @@ class ProviderAbsorptionArena:
         output: CoordinateOutputMorphismID,
         interface: LocalInterfaceID,
         image: FieldImageID | None = None,
+        active_extent: int | None = None,
     ) -> ProviderBindingKey:
-        return self.bind_many(((provider, source, output, interface, image),))[0]
+        return self.bind_many(
+            ((provider, source, output, interface, image, active_extent),)
+        )[0]
 
     def bind_many(
         self,
@@ -269,6 +274,7 @@ class ProviderAbsorptionArena:
                 CoordinateOutputMorphismID,
                 LocalInterfaceID,
                 FieldImageID | None,
+                int | None,
             ],
             ...,
         ],
@@ -289,6 +295,7 @@ class ProviderAbsorptionArena:
                 CoordinateOutputMorphismID,
                 LocalInterfaceID,
                 FieldImageID | None,
+                int | None,
             ],
             ...,
         ],
@@ -297,7 +304,7 @@ class ProviderAbsorptionArena:
         if type(requests) is not tuple:
             raise TypeError("provider binding batch must be canonical")
         keys: list[ProviderBindingKey] = []
-        for provider, source, output, interface, image in requests:
+        for provider, source, output, interface, image, active_extent in requests:
             self.resolve(provider)
             self.sources.binding_extent(source)
             if type(output) is not CoordinateOutputMorphismID:
@@ -308,10 +315,23 @@ class ProviderAbsorptionArena:
                 raise TypeError("provider binding requires a bounded local interface")
             self._validate_bound_output(output)
             self._validate_bound_interface(interface)
+            if active_extent is not None and (
+                type(active_extent) is not int
+                or not 0 <= active_extent <= self.sources.binding_extent(source)
+            ):
+                raise ValueError("provider active extent lies outside its source")
             if image is not None:
                 action = self.resolve(provider).action
-                self._validate_image_binding(image, source, action, output, interface)
-            keys.append(ProviderBindingKey(provider, source, output, interface, image))
+                self._validate_image_binding(
+                    image, source, action, output, interface, active_extent
+                )
+            elif active_extent is not None:
+                raise ValueError("scoped provider extent requires a completed image")
+            keys.append(
+                ProviderBindingKey(
+                    provider, source, output, interface, image, active_extent
+                )
+            )
         return tuple(keys)
 
     def _publish_prepared_bindings(
@@ -387,7 +407,10 @@ class ProviderAbsorptionArena:
                 record.action,
                 binding.output,
                 binding.interface,
+                binding.active_extent,
             )
+        elif binding.active_extent is not None:
+            raise ValueError("scoped provider extent requires a completed image")
         self._validate_boundary(left)
         self._validate_boundary(right)
         if binding not in self._bindings:
@@ -414,6 +437,7 @@ class ProviderAbsorptionArena:
             record.action,
             binding.output,
             binding.interface,
+            binding.active_extent,
         )
         if binding not in self._bindings:
             raise ValueError("provider occurrence was not published")

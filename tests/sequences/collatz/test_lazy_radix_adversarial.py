@@ -87,12 +87,13 @@ def test_radix_projection_rejects_foreign_source_before_cache_or_exterior(
 ) -> None:
     source = PoweredCollatzTerm(27, 1)
     foreign = PoweredCollatzTerm(31, 1)
-    assert source.width() == foreign.width()
-    arena = RadixProjection(3, source.width(), source._ledger)
+    source_width = source.width()
+    assert source_width == foreign.width()
+    arena = RadixProjection(3, source_width, source._ledger)
     if warm:
         assert arena.digit(source, 1) == 0
     before = source._ledger.snapshot()
-    for index in (1, -1, source.width()):
+    for index in (1, -1, source_width):
         with pytest.raises(ValueError, match="another binary source"):
             arena.digit(foreign, index)
         assert source._ledger.snapshot() == before

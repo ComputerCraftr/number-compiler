@@ -220,6 +220,179 @@ theorem temporal_interface_packet_exact_sequential_semantics:
      else None)"
   by (simp add: temporal_interface_packet_def complete_interface_packet_def)
 
+section \<open>Saturated complete-interface identity\<close>
+
+text \<open>A saturated action exposes its entire next interface together with
+the domain on which that interface is admitted.  The optional environment is
+the semantic observation; elapsed time and the construction history of the
+replacement roots are not part of this identity.  This result applies only
+when the environment includes every port that a later consumer may read.\<close>
+
+definition saturated_interface_image ::
+    "('v, 'a) interface_replacements \<Rightarrow>
+      ((('v, 'a) interface_environment) \<Rightarrow> bool) \<Rightarrow>
+      ('v, 'a) interface_environment \<Rightarrow>
+      ('v, 'a) interface_environment option" where
+  "saturated_interface_image transition admitted source =
+    (if admitted source then
+      Some (simultaneous_environment source transition) else None)"
+
+theorem saturated_interface_image_exact_consumer:
+  "temporal_interface_packet transition roots admitted_before admitted_after
+      source =
+    (case saturated_interface_image transition admitted_before source of
+      None \<Rightarrow> None
+    | Some next \<Rightarrow> complete_interface_packet roots admitted_after next)"
+  by (simp add: temporal_interface_packet_exact_sequential_semantics
+      saturated_interface_image_def)
+
+theorem saturated_interface_image_retained_consumer_congruence:
+  assumes same_image:
+    "saturated_interface_image first first_admitted =
+      saturated_interface_image second second_admitted"
+  shows "temporal_interface_packet first roots first_admitted admitted_after =
+    temporal_interface_packet second roots second_admitted admitted_after"
+proof (rule ext)
+  fix source
+  show "temporal_interface_packet first roots first_admitted admitted_after
+      source =
+    temporal_interface_packet second roots second_admitted admitted_after
+      source"
+    using same_image
+    by (simp add: saturated_interface_image_exact_consumer)
+qed
+
+theorem saturated_interface_image_complete_outputs_and_admission:
+  assumes same_admission: "\<And>source. first_admitted source = second_admitted source"
+      and same_outputs: "\<And>source. first_admitted source \<Longrightarrow>
+        simultaneous_environment source first =
+        simultaneous_environment source second"
+  shows "saturated_interface_image first first_admitted =
+    saturated_interface_image second second_admitted"
+proof (rule ext)
+  fix source
+  show "saturated_interface_image first first_admitted source =
+    saturated_interface_image second second_admitted source"
+    using same_admission[of source] same_outputs[of source]
+    by (simp add: saturated_interface_image_def)
+qed
+
+section \<open>Extensional future composition and admission normalization\<close>
+
+text \<open>A complete image is a partial function on the entire admitted
+environment.  Composition below is the semantic reference for future action
+equality.  The theorems require equality at every source environment, not
+equality of observations at one concrete occurrence.  They do not implement
+or bound the recursive reverse/add occurrence constructor.\<close>
+
+definition chronological_partial_image ::
+    "('s \<Rightarrow> 's option) \<Rightarrow> ('s \<Rightarrow> 's option) \<Rightarrow>
+      's \<Rightarrow> 's option" where
+  "chronological_partial_image before after source =
+    (case before source of None \<Rightarrow> None | Some middle \<Rightarrow> after middle)"
+
+theorem saturated_image_chronological_composition:
+  "chronological_partial_image
+      (saturated_interface_image before before_admitted)
+      (saturated_interface_image after after_admitted) =
+    saturated_interface_image
+      (compose_interface_replacements before after)
+      (\<lambda>source. before_admitted source \<and>
+        after_admitted (simultaneous_environment source before))"
+  by (rule ext)
+     (simp add: chronological_partial_image_def saturated_interface_image_def
+       simultaneous_environment_compose)
+
+corollary saturated_image_right_congruence:
+  assumes "saturated_interface_image first first_admitted =
+      saturated_interface_image second second_admitted"
+  shows "chronological_partial_image
+      (saturated_interface_image first first_admitted) future =
+    chronological_partial_image
+      (saturated_interface_image second second_admitted) future"
+  using assms by simp
+
+text \<open>Partial Boolean guards have one canonical total admission bit.
+Undefined and explicit false both mean rejection.  Keeping their raw option
+representations in an action key would distinguish equal admitted behavior.\<close>
+
+definition totalize_partial_guard ::
+    "('s \<Rightarrow> bool option) \<Rightarrow> 's \<Rightarrow> bool" where
+  "totalize_partial_guard guard source = (guard source = Some True)"
+
+definition canonical_partial_guard ::
+    "('s \<Rightarrow> bool option) \<Rightarrow> 's \<Rightarrow> bool option" where
+  "canonical_partial_guard guard source =
+    Some (totalize_partial_guard guard source)"
+
+lemma canonical_partial_guard_total [simp]:
+  "canonical_partial_guard guard source \<noteq> None"
+  by (simp add: canonical_partial_guard_def)
+
+lemma canonical_partial_guard_preserves_admission [simp]:
+  "canonical_partial_guard guard source = Some True \<longleftrightarrow>
+    guard source = Some True"
+  by (simp add: canonical_partial_guard_def totalize_partial_guard_def)
+
+theorem canonical_partial_guard_extensional:
+  assumes "\<And>source. first source = Some True \<longleftrightarrow>
+      second source = Some True"
+  shows "canonical_partial_guard first = canonical_partial_guard second"
+  by (rule ext) (simp add: canonical_partial_guard_def
+      totalize_partial_guard_def assms)
+
+lemma false_and_undefined_guard_have_one_admission:
+  "canonical_partial_guard
+      (\<lambda>x::nat. if x = 0 then Some True else None) =
+    canonical_partial_guard
+      (\<lambda>x::nat. Some (x = 0))"
+  by (rule canonical_partial_guard_extensional) auto
+
+text \<open>A single source observation does not imply right congruence.
+The following bounded functions agree at source 0, but their second
+applications differ at the shared successor 1.  This is a counterexample to
+using one occurrence as a semantic ActionID equality test; it is not a
+counterexample to the full extensional image quotient.\<close>
+
+definition weak_first_action :: "nat \<Rightarrow> nat option" where
+  "weak_first_action source = Some (if source = 0 then 1 else source)"
+
+definition weak_second_action :: "nat \<Rightarrow> nat option" where
+  "weak_second_action source =
+    Some (if source = 0 then 1 else if source = 1 then 2 else source)"
+
+lemma weak_actions_agree_at_initial_source:
+  "weak_first_action 0 = weak_second_action 0"
+  by (simp add: weak_first_action_def weak_second_action_def)
+
+lemma weak_actions_diverge_after_square:
+  "chronological_partial_image weak_first_action weak_first_action 0 \<noteq>
+    chronological_partial_image weak_second_action weak_second_action 0"
+  by (simp add: chronological_partial_image_def weak_first_action_def
+      weak_second_action_def)
+
+
+corollary saturated_interface_portwise_consumer_congruence:
+  assumes same_admission: "\<And>source. first_admitted source = second_admitted source"
+      and same_port: "\<And>source port. first_admitted source \<Longrightarrow>
+        simultaneous_environment source first port =
+        simultaneous_environment source second port"
+  shows "temporal_interface_packet first roots first_admitted admitted_after =
+    temporal_interface_packet second roots second_admitted admitted_after"
+proof (rule saturated_interface_image_retained_consumer_congruence)
+  show "saturated_interface_image first first_admitted =
+    saturated_interface_image second second_admitted"
+    by (rule saturated_interface_image_complete_outputs_and_admission
+        [OF same_admission])
+       (rule ext, rule same_port, assumption)
+qed
+
+text \<open>The converse constructor obligation is deliberately explicit:
+one must prove that a recursive source or growth region is represented by
+the complete environment above, including its admission and every retained
+consumer port.  Equality of a recipe, or equality of one digit projection,
+does not supply that obligation.\<close>
+
 definition chronological_packet ::
     "nat \<Rightarrow> 'a \<Rightarrow> nat \<times> 'a" where
   "chronological_packet events packet = (events, packet)"
@@ -333,6 +506,16 @@ ML \<open>
       complete_interface_final_restriction_fusion_many
       temporal_interface_packet_is_simultaneous_substitute_and_restrict
       temporal_interface_packet_exact_sequential_semantics
+      saturated_interface_image_exact_consumer
+      saturated_interface_image_retained_consumer_congruence
+      saturated_interface_image_complete_outputs_and_admission
+      saturated_interface_portwise_consumer_congruence
+      saturated_image_chronological_composition
+      saturated_image_right_congruence
+      canonical_partial_guard_extensional
+      false_and_undefined_guard_have_one_admission
+      weak_actions_agree_at_initial_source
+      weak_actions_diverge_after_square
       chronological_packet_extent_injective
       simultaneous_swap_uses_one_frozen_environment
       reverse_196_complete_observers_refine_one_step

@@ -15,6 +15,11 @@ from time import perf_counter
 
 from devtools.experiments.antihydra.event_domain import source_event_exponent_domain
 from devtools.experiments.antihydra.future_grammar import ReachableFutureGrammar
+from devtools.experiments.antihydra.joint_future_quotient import (
+    audit_collatz_sources,
+    audit_joint_future,
+)
+from devtools.experiments.antihydra.source_safety import PRIME_BANK
 from devtools.experiments.antihydra.source_safety import (
     SourceBlockID,
     SourceSafetyWorkspace,
@@ -116,13 +121,61 @@ def main() -> None:
     parser.add_argument("--rounds", type=int, default=3)
     parser.add_argument("--depth", type=int, default=32)
     parser.add_argument("--max-nodes", type=int, default=100000)
-    parser.add_argument("--max-event", type=int, default=4)
+    parser.add_argument("--max-event", type=int)
     parser.add_argument(
-        "--mode", choices=("ledger", "fractional", "grammar"), default="ledger"
+        "--joint-primes",
+        choices=("small", "full"),
+        default="small",
+        help="joint audit prime bank: small=5,7,11; full=declared research bank",
+    )
+    parser.add_argument("--joint-depth", type=int)
+    parser.add_argument("--joint-collatz-sources", type=int, default=255)
+    parser.add_argument("--joint-high-fiber-probes", action="store_true")
+    parser.add_argument("--joint-fractional-probes", action="store_true")
+    parser.add_argument(
+        "--mode", choices=("ledger", "fractional", "grammar", "joint"), default="ledger"
     )
     args = parser.parse_args()
+    if args.max_event is None:
+        args.max_event = 3 if args.mode == "joint" else 4
     if not 1 <= args.rounds <= 8:
         parser.error("rounds must be 1..8")
+    if args.mode != "joint" and (
+        args.joint_depth is not None
+        or args.joint_collatz_sources != 255
+        or args.joint_primes != "small"
+        or args.joint_high_fiber_probes
+        or args.joint_fractional_probes
+    ):
+        parser.error("joint audit options require --mode joint")
+    if args.mode == "joint":
+        if not 1 <= args.max_event <= 3 or args.max_nodes < 1:
+            parser.error("joint mode requires max-event 1..3 and positive max-nodes")
+        joint_depth = args.rounds if args.joint_depth is None else args.joint_depth
+        if not 1 <= joint_depth <= 64 or not 1 <= args.joint_collatz_sources <= 65535:
+            parser.error("joint-depth must be 1..64 and joint-collatz-sources 1..65535")
+        primes = (5, 7, 11) if args.joint_primes == "small" else PRIME_BANK
+        print(
+            json.dumps(
+                {
+                    "mahler": audit_joint_future(
+                        depth=joint_depth,
+                        max_event=args.max_event,
+                        max_nodes=args.max_nodes,
+                        primes=primes,
+                        high_fiber_probes=args.joint_high_fiber_probes,
+                        fractional_probes=args.joint_fractional_probes,
+                    ),
+                    "collatz": audit_collatz_sources(
+                        max_odd_source=args.joint_collatz_sources,
+                        max_nodes=args.max_nodes,
+                        primes=primes,
+                    ),
+                },
+                sort_keys=True,
+            )
+        )
+        return
     if args.mode == "grammar":
         if not 1 <= args.max_event <= 64 or args.max_nodes < 1:
             parser.error("max-event must be 1..64 and max-nodes positive")

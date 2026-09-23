@@ -20,7 +20,7 @@ if TYPE_CHECKING:
 
 def test_schema_seven_exposes_retained_proof_populations_as_metadata() -> None:
     report = collect_ledger_metrics(ResourceLedger())
-    assert report.metrics_schema_version == 7
+    assert report.metrics_schema_version == 8
     assert (
         report.collatz_c4_proof_left_state_classes,
         report.collatz_c4_proof_right_state_classes,

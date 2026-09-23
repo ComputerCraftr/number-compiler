@@ -22,6 +22,9 @@ from number_compiler.arithmetic.functions.finite_function_types import (
 )
 from number_compiler.arithmetic.functions.finite_port_action import PortVariable
 from number_compiler.hashlife.interfaces.semantic_bits import FactoredFunctionID
+from number_compiler.hashlife.interfaces.semantic_bit_transforms import (
+    CompleteFiniteTransform,
+)
 from number_compiler.resources.ledger import OwnedMemo
 
 
@@ -250,23 +253,15 @@ class CocycleTemporalArena:
                 raise ValueError(
                     "temporal residual contains an undeclared context port"
                 )
-        false = self.bits.constant(FunctionSignature((), BOOL), 0)
-        full = self.bits.constant(FunctionSignature(ports, BOOL), 1)
-        admissible = self.bits.select(full, admissible, false)
         residual_functions = tuple(self.cocycles.resolve(k) for k in cocycles)
-        for function in (*outputs, *residual_functions):
-            admissible = self.bits.select(
-                admissible, self.bits.domain_predicate(function), false
-            )
-        restricted = self.bits.restrict_many(
-            (*outputs, *residual_functions), admissible
+        saturated, restricted_residuals = self.bits.complete_transform(
+            ports, outputs, admissible, retained=residual_functions
         )
-        output_count = len(outputs)
         return CocycleAction(
-            ports,
-            restricted[:output_count],
-            tuple(self.cocycles.intern(f) for f in restricted[output_count:]),
-            admissible,
+            saturated.ports,
+            saturated.outputs,
+            tuple(self.cocycles.intern(f) for f in restricted_residuals),
+            saturated.admissible,
             events,
         )
 
@@ -312,6 +307,19 @@ class CocycleTemporalArena:
                 raise ValueError(
                     "action cocycle has inconsistent context or definedness"
                 )
+
+    def saturated(self, action: CocycleAction) -> CompleteFiniteTransform:
+        """Project complete finite functions, omitting event and cocycle identity.
+
+        The action was already normalized against its retained cocycles. This
+        projection does not assert source or recursive spatial admission.
+        """
+        self._validate(action)
+        result = CompleteFiniteTransform(
+            action.ports, action.outputs, action.admissible
+        )
+        self.bits.validate_complete_transform(result)
+        return result
 
     def compose(self, before: CocycleAction, after: CocycleAction) -> CocycleAction:
         """Return NF(after ∘ before), including intermediate definedness."""
@@ -365,24 +373,17 @@ class CocycleTemporalArena:
             self._validate(cached.result)
             self.temporal_composition_cache_hits += 1
             return cached.result
-        mapping = dict(
-            zip((p.variable for p in before.ports), before.outputs, strict=True)
-        )
         after_residuals = tuple(self.cocycles.resolve(k) for k in after.cocycles)
-        pulled = self.bits.substitute_many(
-            (after.admissible, *after.outputs, *after_residuals), mapping
+        saturated, retained = self.bits.compose_complete_transform(
+            self.saturated(before),
+            self.saturated(after),
+            retained=after_residuals,
         )
-        admitted_after = pulled[0]
-        false = self.bits.constant(FunctionSignature((), BOOL), 0)
-        admissible = self.bits.select(before.admissible, admitted_after, false)
-        output_count = len(after.outputs)
-        outputs = pulled[1 : 1 + output_count]
-        residuals = tuple(self.cocycles.intern(f) for f in pulled[1 + output_count :])
-        result = self._normal_form(
-            before.ports,
-            outputs,
-            residuals,
-            admissible,
+        result = CocycleAction(
+            saturated.ports,
+            saturated.outputs,
+            tuple(self.cocycles.intern(f) for f in retained),
+            saturated.admissible,
             before.events + after.events,
         )
         if result.events != before.events + after.events:

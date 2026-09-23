@@ -177,11 +177,12 @@ def test_same_ledger_foreign_original_rejected_before_warm_lookup() -> None:
     from number_compiler.projection.lazy_radix import RadixProjection
 
     source, foreign = PoweredCollatzTerm(27, 1), PoweredCollatzTerm(31, 1)
-    projection = RadixProjection(3, source.width(), source._ledger)
+    width = source.width()
+    projection = RadixProjection(3, width, source._ledger)
     assert projection.digit(source, 1) == 0
     foreign._ledger = source._ledger
     before = source._ledger.snapshot()
-    for index in (-1, 1, source.width()):
+    for index in (-1, 1, width):
         with pytest.raises(ValueError, match="another binary source"):
             projection.digit(foreign, index)
     assert source._ledger.snapshot() == before

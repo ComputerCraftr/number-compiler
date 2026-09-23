@@ -9,6 +9,10 @@ from __future__ import annotations
 
 from collections.abc import Iterator
 
+from number_compiler.arithmetic.fields.consumer_pullback import (
+    ExactRational,
+    SaturatingAffineAction,
+)
 from number_compiler.arithmetic.fields.skew_transfer import integer_dyadic_fiber_action
 from number_compiler.hashlife.execution.dyadic_return_images import (
     DyadicImageSummary,
@@ -20,6 +24,11 @@ from number_compiler.hashlife.execution.dyadic_return_images import (
     DyadicReturnSupportID,
 )
 from number_compiler.resources.ledger import ResourceLedger
+from number_compiler.hashlife.execution.source_bound_images import (
+    SourceImageDemand,
+    SourceImageProjection,
+    SourceImageView,
+)
 from number_compiler.sequences.antihydra.blocks import ArithmeticCylinder
 
 ANTIHYDRA_ARITHMETIC_LAW = DyadicReturnLaw(
@@ -48,6 +57,64 @@ class AntihydraArithmeticImageWorkspace(DyadicReturnImageWorkspace):
                 raise ValueError("another source law")
         except (ValueError, TypeError, AttributeError) as error:
             raise ValueError("Antihydra arithmetic source image was changed") from error
+
+    def project(
+        self, image: SourceImageView, demand: SourceImageDemand
+    ) -> SourceImageProjection:
+        if demand == SourceImageDemand("mahler-associated-action"):
+            # The associated action is a consumer of this same admitted image.
+            # Its first two centered bits are 11, although the physical h bits
+            # are 00.  Their cap becomes negative at return two, so all later
+            # source-selected steps act affinely on that prefix image.
+            if (
+                image.payload != self.root_payload
+                or image.binding.source != self.root_source
+                or image.binding.action != self.root_action
+                or image.binding.extent != self.returns
+                or self.seed != 8
+                or self.law != ANTIHYDRA_ARITHMETIC_LAW
+            ):
+                raise ValueError("Mahler projection has another source image")
+            transfer = self.saturated_summary().transfer
+            if self.returns and self.source_node(self.root_source).residue & 1:
+                raise ValueError("Mahler source lost its centered odd first bit")
+            if self.returns >= 2 and self.source_node(self.root_source).residue & 3:
+                raise ValueError("Mahler source lost its centered 11 prefix")
+            scale = ExactRational(transfer.upper, transfer.lower)
+            centered_offset = ExactRational(
+                transfer.upper + transfer.offset - transfer.lower,
+                transfer.lower,
+            )
+            offset = ExactRational(-3) * centered_offset
+            if self.returns >= 2:
+                # The first two odd associated steps have affine part
+                # (9/4)x - 15/4.  The remaining source-selected tail must
+                # retain nonpositive offset; then its positive cap is never
+                # active on the negative two-bit prefix image.
+                tail_offset = offset - (scale / ExactRational(9, 4)) * ExactRational(
+                    -15, 4
+                )
+                if tail_offset > ExactRational(0):
+                    raise ValueError("source Mahler tail lost its nonpositive offset")
+            cap = (
+                None
+                if self.returns == 0
+                else ExactRational(3, 4)
+                if self.returns == 1
+                else ExactRational(3, 2) * scale + offset
+            )
+            action = SaturatingAffineAction(scale, offset, cap)
+            if self.returns >= 2 and (cap is None or cap >= ExactRational(0)):
+                raise ArithmeticError("source Mahler cap lost its two-bit failure")
+            self.ledger.bump("mahler_source_composed_image_reads")
+            self.ledger.bump(
+                "mahler_source_arithmetic_operand_bits",
+                transfer.upper.bit_length()
+                + abs(transfer.offset).bit_length()
+                + transfer.lower.bit_length(),
+            )
+            return SourceImageProjection(action)
+        return super().project(image, demand)
 
     def segments(self) -> Iterator[tuple[int, ArithmeticCylinder]]:
         for start, summary, word in self.leaf_summaries():

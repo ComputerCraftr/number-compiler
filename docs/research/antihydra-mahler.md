@@ -1,13 +1,7 @@
 # Antihydra arithmetic, literal machine, and Mahler action
 
-Status: **finite arithmetic and demanded-cylinder laws are checked; the
-source-7 all-time barrier and complete literal/macro refinement remain open**.
-
-Antihydra has three related semantics that must remain distinct: the total
-arithmetic family, the guarded ledger computation, and the literal six-state
-machine. Mahler/Hensel outputs are projections of authenticated arithmetic
-source data; they are not alternate evidence that the literal machine never
-halts.
+Status: **Finite arithmetic and safety laws are checked; complete literal/macro
+refinement and the source-7 all-time barrier remain open.**
 
 ## Reading guide
 
@@ -15,6 +9,58 @@ halts.
 - **Checked theorem:** finite arithmetic composition and minimum-prefix guards preserve their stated semantics.
 - **Implemented construction:** arithmetic images and demanded support fragments retain source authority; guarded physical execution remains a separate consumer.
 - **Open obligation:** source-7 non-halting, complete literal/macro refinement and arbitrary-horizon retention bounds remain unresolved.
+
+## One scheduler for arithmetic and finite Mahler safety
+
+**Implemented:** [Mahler actions](../../src/number_compiler/sequences/antihydra/mahler_action.py)
+are lazy projections of the same authenticated arithmetic image used by value
+and ledger queries. The skew and pinned centered `11` prefix determine the
+finite cap law. Source, action, extent, law and tail-offset checks remain
+required. Hensel is a separate observation; neither requests physical roofs.
+
+The public aggregate omits support handles, while the scheduler retains support
+needed by physical consumers. The pinned source's Mahler margin fails at return
+two, where its Antihydra ledger remains safe. These predicates are distinct.
+
+**Proof scope:** finite associated-action laws and the pinned consumer are
+checked in `Associated_Action_Core` and `Antihydra_Mahler_Integration`; see the
+[proof index](../proofs.md#finite-saturated-threshold-actions).
+Python worklist/resource refinement and a source-global invariant remain open.
+Dated build and incremental-observation results are recorded separately.
+
+[Implementation and validation record](../../results/current/2026-W39/README.md#one-scheduler-for-arithmetic-and-finite-mahler-safety).
+
+## Joint future-observer experiment
+
+The [joint audit](../../devtools/experiments/antihydra/joint_future_quotient.py)
+combines suffix, prime buckets and deck/chart views of admitted source edges.
+High-fiber and fractional probes range over finite initial families, not a
+single blank-tape trajectory. Full keys observe a completed edge and are tested
+against subsequent continuation; they do not predict that edge without construction.
+
+**Finite evidence:** the full-prime depth-32 sample has 1,377 rows, 254 repeated
+keys and no coarse conflicts, but 476 exact-continuation differences. A
+three-prime depth-8 sample has eight coarse conflicts. At source 13, width 4,
+exponent 3 and suffix `(1,2)`, fractions `885/2048` and `1935095/4194304` share
+the current clause but disagree on next-event safety. Sources 20 and 46,676
+also share a finite key while reaching 230 and 531,671. These witnesses refute
+those observer identities, not the complete parameterized cylinder.
+
+**Checked algebra:** [Mahler_Joint_Quotient_Algebra](../../devtools/proofs/isabelle/mahler_transport/Mahler_Joint_Quotient_Algebra.thy)
+proves suffix composition, base-three encoding modulo 729 and distinct lane
+laws. Partition completeness and legal-continuation closure remain open;
+no experiment publishes a pump or merges production sources.
+
+[Implementation and validation record](../../results/current/2026-W39/README.md#joint-future-observer-experiment).
+
+## Bounded projection publication
+
+The projection adapter references the cursor's sealed bounded image; it checks
+source, action, projection and exact endpoint before publication. Eliminating
+a duplicate roof chain does not eliminate bounded physical discovery or prove
+the source-7 barrier.
+
+[Implementation and validation record](../../results/current/2026-W39/README.md#bounded-projection-publication).
 
 ## Checked arithmetic and cylinders
 
@@ -38,78 +84,39 @@ failure must not be reported as Antihydra halting.
 
 ## Shared Collatz F5 spatial action: checked transfer
 
-The September 21 [Collatz spatial patch](collatz.md) applies to the centered
-Antihydra/Mahler coordinate through the **same production carry/F5 owner**:
-[`collatz_f5_quotient.py`](../../src/number_compiler/arithmetic/carry/collatz_f5_quotient.py).
-No second F5 alphabet or source recurrence is needed.
+The shared [carry/F5 owner](../../src/number_compiler/arithmetic/carry/collatz_f5_quotient.py)
+applies to `D=a-1` with `D'=floor((3D+1)/2)` and `a'=D'+1`.
+Its 15 leaf and 17 spatial classes observe carry response and additive phase;
+that phase is not a whole-numeral jet or a source identity.
 
-- **Exact arithmetic:** for `D=a-1`, the next centered state is
-  `D' = floor((3D+1)/2)`, and the next Antihydra value is `D'+1`.
-  This also holds for even `D`; the extra one is discarded by division.
-- **Spatial projection:** a radix-64 cell uses the same five complete
-  multiplication carry actions on incoming ports `0,1,2`. The joint
-  carry/phase leaf alphabet has 15 classes and its spatial compositions reach
-  17. The phase is the additive sum of the fixed incoming-one leaf `phi5`
-  observations. It is **not** the whole numeral's carry jet, and actual
-  inter-cell carries still travel through the complete carry action.
-- **Division boundary:** the existing directional F5 views pair adjacent raw
-  multiplication outputs after a one-bit shift. They observe the exact next
-  centered cell without identifying its source with a class ID.
-- **Conditional spatial pumping:** a supplied repeated block can use shared
-  binary composition. The new tests power every radix-64 leaf through
-  `5^64` spatial repetitions and compare all three carry ports with Mahler's
-  independently checked fixed-carry compression. Composition count is
-  `bit_length(n)-1+bit_count(n)`; no repeated numeral is expanded.
-
-The [spatial theory](../../devtools/proofs/isabelle/mahler_transport/Mahler_Spatial_Carry_Pump.thy)
-adds `mahler_spatial_low_block_transport` and
-`antihydra_centered_spatial_low_block_transport`. For `D=u+2bv`, write
-`e=(3u+1) mod 2b` and `c=(3u+1) div 2b`. They prove
+For `D=u+2bv`, let `e=(3u+1) mod 2b` and `c=(3u+1) div 2b`. Then
 
 \[
 D'=\lfloor e/2\rfloor+b(3v+c),\qquad a'=D'+1.
 \]
 
-At radix 64, `b=32`. This transports both the emitted block and its high
-boundary, for arbitrary high part `v`. It reuses the existing centered-step
-and carry-conservation lemmas. The owning `Mahler_Source_Transport` session
-passed its oracle audits on September 21 in 8.81 seconds with 1,672,236,704
-sampled peak bytes, within the unchanged 35-second/4-GiB limit. These are
-checked arithmetic transport lemmas, not a formal refinement of the Python
-F5 tables or a complete temporal constructor.
+`mahler_spatial_low_block_transport` and
+`antihydra_centered_spatial_low_block_transport` in
+[Mahler_Spatial_Carry_Pump](../../devtools/proofs/isabelle/mahler_transport/Mahler_Spatial_Carry_Pump.thy)
+prove this complete low-block/high-boundary transport; radix 64 uses `b=32`.
+Supplied repeated spatial blocks admit powering. This does not select future
+source events or prove the Python F5 tables' complete temporal refinement.
 
-The [production bridge tests](../../tests/validation/proofs/test_mahler_f5_production_bridge.py)
-check every two-cell residue at both a small high fiber and `2^80+37` against
-`admitted_arithmetic_cylinder`. They also compare spatial carry actions with
-the independent Mahler multiplier reference and preserve the observer
-collision `67,75 -> 101,113`. That collision concerns the reduced spatial
-observation, not the complete source-bound cylinder.
+The bounded Mahler source observer now folds its column maps through this same
+carry/F5 owner. Temporal jet forgetting also holds before further shared
+continuations; ordered safety remains a separate consumer. See the
+[transfer and verification record](../../results/current/2026-W39/README.md#f5-observer-and-safety-transfer).
 
-**Temporal boundary:** for an odd centered source `U` and
-`a=v2(3U+1)`, Antihydra's next odd event is
+For an odd centered source `U`, with `a=v2(3U+1)`, the next odd event is
 
 \[
 U'=3^{a-1}(3U+1)/2^a,\qquad E'=E+3-a.
 \]
 
-The extra `3^(a-1)` distinguishes it from an ordinary accelerated Collatz
-event. Bounded tests compare this law, the actual parity word, and the
-minimum-prefix ledger with production cylinders for every odd source from
-5 through 4095. The fractional-safe guard remains a separate consumer.
-Neither the 17 spatial classes nor fast powering of a supplied repeated
-block proves a source-compatible temporal grammar, a CLI speedup, Mahler's
-global exclusion, or the Antihydra source-7 barrier.
+The extra factor distinguishes this law from accelerated Collatz. Fractional
+safety, ledger safety and all-time non-halting remain separate obligations.
 
-Reproduce the bridge with:
-
-```console
-python -m pytest -q -o addopts='' tests/validation/proofs/test_mahler_f5_production_bridge.py tests/validation/proofs/test_mahler_centered_production_bridge.py tests/validation/proofs/test_mahler_spatial_carry.py
-isabelle build -d devtools/proofs/isabelle Mahler_Source_Transport
-```
-
-Local validation evidence and its source fingerprint are retained under
-`results/current/mahler-f5-bridge-2026-09-21/`. Historical measurements do not
-certify subsequent edits or the aggregate release.
+[Implementation and validation record](../../results/current/2026-W39/README.md#shared-collatz-f5-spatial-action-checked-transfer).
 
 ## Literal and barrier boundary
 
@@ -187,11 +194,10 @@ source recurrence. [The 64 interval certificates](../../devtools/proofs/isabelle
 are propositions replayed by Isabelle, not trusted numerical table entries.
 Their upstream file hashes are recorded in their headers. The owning session
 is `Mahler_Safety_Cylinders`; the [proof index](../proofs.md) gives its build.
-**Checked theorem status:** the integrated session passed on 2026-09-20 in
-22.36 seconds under the unchanged 35-second/4-GiB guard, including its oracle
-audits. Local evidence is `results/current/mahler-safety-integration-2026-09-20/`
-(`final-build.log` and `final-build.json`). This is focused proof
-evidence, not an aggregate release result.
+The finite certificate session and oracle audits are checked; focused build
+evidence remains distinct from aggregate release validation.
+
+[Dated evidence](../../results/current/2026-W38/README.md#original-mahler-safety-build-evidence).
 
 **Predicate separation:** all `7 ≤ x < 7.5` fail fractional safety within two
 steps, while the source-seven Antihydra ledgers at those steps are `0, 2, 4`.
@@ -264,12 +270,10 @@ states the exact source-selected event guard. Both belong to
 `Mahler_Source_Transport`, a focused child of `Mahler_Safety_Cylinders`.
 They formalize the mathematical constructor rules; they are not a proof of
 the Python runtime, its full worklist implementation or a production CLI cutover.
-**Checked theorem status:** both theories passed Isabelle and their oracle
-audits on 2026-09-20. The focused child-session build took 7.56 seconds under
-the unchanged 35-second/4-GiB limit. Local evidence is
-`results/current/mahler-joint-transport-2026-09-20/final-proof.log` and
-`final-proof.json`; the earlier six-step certificate session is its checked
-parent.
+Both transport theories have checked focused-session evidence; they do not
+certify a production worklist or an arbitrary-horizon construction bound.
+
+[Dated evidence](../../results/current/2026-W38/README.md#source-cylinder-transport-build-evidence).
 
 ### Conditional prime and carry observations
 
@@ -301,16 +305,11 @@ every integer source. It reports work and partial results on budget refusal.
 Its result remains `FINITE_PREFIXES_ONLY` or `BUDGET_EXHAUSTED`, never an
 all-time safety or non-halting certificate.
 
-The four-round run on 2026-09-20 retained 18, 201, 2,291 and 26,111 nonempty
-cylinders at horizons 6, 12, 18 and 24. It constructed 45,259 retained blocks
-in 1.05 guarded seconds, with a sampled peak of 57,639,440 bytes. Twelve-step
-classes were exhaustively compared with an independent rational reference;
-the larger census is composed-constructor evidence. Work counters include
-composition attempts, source worklist visits, memo reuse, operand bits and
-retained integer bits. They are not a complete Python allocator model or a
-proved arbitrary-horizon complexity bound. Evidence is the local
-`results/current/mahler-joint-transport-2026-09-20/validated-refinement.log` and
-`validated-refinement.json`.
+The bounded refinement census preserves full high fibers but grows the
+number of retained cylinders. It is finite constructor evidence, not a
+compression theorem.
+
+[Dated evidence](../../results/current/2026-W38/README.md#fractional-refinement-census).
 
 For every finite horizon `N`, the positive real `x_N=2^N` is safe through
 `N`: each observed value is the integer `2^(N-n)3^n`. The witness changes
@@ -403,26 +402,11 @@ python -m devtools.experiments.antihydra.barrier_search --mode grammar --rounds 
 python -m pytest -o addopts='' tests/validation/proofs/test_mahler_future_grammar.py
 ```
 
-**Validation (2026-09-20):** the bounded event search at depths 1–4 and
-`q <= 4` retained 4, 12, 24 and 48 source families. It found respectively
-2, 4, 8 and 16 fractional-cycle clauses; these are word candidates, not a
-count of distinct cyclotomic orbits. The source obstruction prevents each
-from becoming an all-time positive-source repetition. The run retained 167
-source blocks and 498 ledger entries in 0.19 guarded seconds. Larger events
-remain unexplored. A separate poison test composes 512 copies of a supplied
-three-step clause with 10 compositions and no new source-leaf discovery;
-this is a supplied-word result, not arbitrary future discovery.
+Finite grammar validation includes supplied-word powering and exact source
+obstructions. Larger event exponents remain unexplored; the source-seven
+certificate and reverse/add construction failures were retained.
 
-The focused Isabelle session and its oracle audits pass. The selected Python
-checks have **220 passes and two retained release failures**: the existing
-196 powered-construction failure exposed by the proof-import firewall test,
-and the missing source-seven non-halting certificate. All 18 new grammar
-checks pass. Full strict typing, Ruff, formatting, repository policy and
-proof/documentation indexes pass. Evidence is local under
-`results/current/mahler-future-grammar-2026-09-20/` (`validated-*` and
-`validation_scope.json`), on authored-source fingerprint
-`18d66988222d91c9b0c12cc06b1d44318a36e6950dc9d0ebdf1554f987f5deb9`.
-The full suite and aggregate all-session release validation were not rerun.
+[Dated evidence](../../results/current/2026-W38/README.md#reachable-grammar-validation-evidence).
 
 **Open construction:** find and verify a parameter-transport rule preserving
 source realizability, chronological guards and subsequent consumers through
@@ -539,16 +523,12 @@ gives an exact unbounded tail; a positive lower endpoint gives a finite upper
 bound. This does not choose `q` for a fixed source: each demanded child still
 requires the source-congruence construction.
 
-The canonical research `barrier_search --mode grammar` now uses this domain
-before constructing children. In the four-level, `q <= 4` comparison, both
-versions retain 4, 12, 24 and 48 reachable families, but domain pruning avoids
-76 empty children. Source blocks fall from 167 to 91 and entries from 498 to
-270; composition attempts fall from 168 to 92. Domain work adds 129 exact
-comparisons and 1,498 summed operand bits. Finite witness and cycle-observer
-results agree. A poison test rejects construction of any excluded child.
-These are measured bounded reductions; the unexplored larger-event frontier
-and all-time claims remain open. The binary-search implementation has bounded
-differential tests, not a complete Isabelle worklist refinement.
+The research search applies this range before child construction, avoiding
+provably empty children. Bounded differential and poison tests support the
+implementation; complete binary-search worklist refinement and all-time
+closure remain open.
+
+[Dated evidence](../../results/current/2026-W38/README.md#next-event-domain-pruning-measurements).
 
 ## Primary literature and a mixed-coordinate grammar
 
@@ -610,39 +590,37 @@ python -m pytest -o addopts='' tests/api/test_antihydra_support_cache.py tests/a
 
 ## Demanded history and the shared joint-adic chart
 
-Antihydra arithmetic results and Mahler associated actions now consume the
-same authenticated dyadic summary without copying its chronological segments.
-`AntihydraArithmeticTerm.segments` is an explicit lazy demand; physical and
-support observations still obtain the exact bounded cylinders. A failed
-segment publication releases its new entries and can be retried without
-invalidating the arithmetic result. Payload audits inspect retained state
-without causing materialization.
-
-The Mahler source-prefix check uses the pinned source `h=8`, centered `D=7`,
-source precision and arithmetic law. It does not trust a caller-supplied odd
-state or rebuild the segment sequence merely to check the initial `11`.
-Mahler's existing associated-action projection remains distinct from the
-Antihydra ledger predicate.
+Arithmetic and Mahler consumers use the authenticated aggregate without copying
+chronological segments. Physical/support demands retain those segments' source,
+overwrite and first-failure checks. Zero copied segments is not zero retained
+source support or zero construction work.
 
 `source_macro_projection_correct` and `six_step_constant_three_lift` prove
-finite endpoint/gain projection and the six-step high-fiber multiplier 729.
-`six_step_three_adic_high_fiber_forgetting` proves its contribution vanishes
-modulo `3^h` when `h <= 6`. This does not remove the integer high fiber, the
-source-selected offset, or the fractional-safety guard. The shared Collatz
-carry/F5 observer and Mahler prime/deck restrictions remain projections with
-their existing admission conditions. They are not interchangeable source
-identities or an all-time safe/fail certificate.
+finite endpoint/gain projection and six-step high-fiber multiplier 729.
+`six_step_three_adic_high_fiber_forgetting` removes its contribution modulo
+`3^h` for `h<=6`. It does not remove the integer high fiber, source-selected
+offset or fractional guard. These projections cannot authorize successor
+substitution or an all-time certificate.
 
-Tests poison segment extraction during public digit, Mahler, metrics and
-payload-audit queries. Explicit physical/support demands retain their source,
-overwrite and first-failure checks. Python construction/refinement and a global
-source-compatible safety invariant remain separate obligations.
+[Implementation and validation record](../../results/current/2026-W39/README.md#demanded-history-and-the-shared-joint-adic-chart).
 
-At fingerprint `6560841b95ca428e64f941235defc4318cec58b9cfe2f56e9cec7086a894443d`, the 1,024-return probe retained zero copied
-segments after digits and after Mahler demand. Explicit segment demand created
-16 entries and validated all 16. Total ledger nodes were 7,266 after digits,
-8,169 after Mahler and 8,185 after segment demand. Underlying authenticated
-source support remains counted; zero copied segments is not zero retained
-source history or zero construction work. The endpoint matched an independent
-bounded recurrence. Evidence is local under
-`results/current/joint-cylinder-2026-09-22/`.
+## Recovered bounded tree-choice observer
+
+The shared [branch quotient algebra](../../src/number_compiler/arithmetic/fields/branch_quotients.py)
+retains at most six sibling indices from `{1,2,3}`. Length plus ternary code
+preserves leading choice-1 symbols, giving 1,093 encodings. Composition keeps
+the last six symbols; it neither selects an unbounded `q` nor admits an edge.
+
+The 67 Mahler buckets sum 20 prime-lane partitions, not their joint product.
+Sources 3 and 7 share a mod-5 bucket and Collatz gap 1, but targets 5 and 11
+have different buckets. This rejects that single observer as a deterministic
+successor identity. Archived suffix/bucket experiments also had continuation
+conflicts; injectivity after adding supplied menu data did not prove closure.
+
+The combined source-bound experiment is now implemented, with its limited
+scope stated [above](#joint-future-observer-experiment). The earlier proposal
+and archive audit are retained in the dated record. The shared minimum-prefix
+and affine-threshold actions preserve the distinction between Mahler positivity
+and Antihydra ledger safety.
+
+[Implementation and validation record](../../results/current/2026-W39/README.md#recovered-bounded-tree-choice-observer).

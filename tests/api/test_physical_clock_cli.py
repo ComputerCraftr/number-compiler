@@ -62,6 +62,8 @@ def test_physical_clock_cli_uses_bound_interface(
                 str(seed),
                 "--info",
                 "clock",
+                "--info",
+                "metrics",
                 "--no-value",
                 "--format",
                 "json",
@@ -69,7 +71,8 @@ def test_physical_clock_cli_uses_bound_interface(
         )
         == 0
     )
-    result = json.loads(capsys.readouterr().out)["info"]["clock"]
+    info = json.loads(capsys.readouterr().out)["info"]
+    result = info["clock"]
     _, odd = _reference(seed, ticks)
     assert result["value"] == {
         "events": odd,
@@ -82,8 +85,14 @@ def test_physical_clock_cli_uses_bound_interface(
     assert result["requested_ticks"] == ticks
     assert "discovered_events" not in result
     if ticks:
-        assert result["work_counters"]["source_image_publications"] > 0
-        assert result["work_counters"]["collatz_physical_action_publications"] > 0
+        execution = info["metrics"]["execution_metrics"]
+        assert execution["construction"]["source_image_publications"] > 0
+        family_work = next(
+            row
+            for row in execution["family_work"]
+            if row["counter_prefix"] == "collatz_physical"
+        )
+        assert family_work["action_publications"] > 0
 
 
 def test_clock_composition_rebases_the_source() -> None:
@@ -154,6 +163,6 @@ def test_cli_physical_output_cannot_rebuild_joint_table(
     result = json.loads(capsys.readouterr().out)
     assert int(result["value"]) == _reference(27, 16)[0]
     metrics = result["info"]["metrics"]["execution_metrics"]
-    counters = metrics["resource_work_counters"]
-    assert counters["collatz_physical_action_publications"] > 0
-    assert counters["source_image_publications"] > 0
+    assert metrics["schema_version"] == 8
+    assert metrics["action"]["publications"] > 0
+    assert metrics["construction"]["source_image_publications"] > 0

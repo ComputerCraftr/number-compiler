@@ -494,7 +494,9 @@ def audit_dyadic_return_payloads(
                             cycle.cycles * cycle_delta + remainder_prefixes[-1]
                         )
                         expected_minimum = min(
-                            min(prefixes if cycle.cycles else remainder_prefixes),
+                            (min(prefixes) + min(0, (cycle.cycles - 1) * cycle_delta))
+                            if cycle.cycles
+                            else min(remainder_prefixes),
                             cycle.cycles * cycle_delta + min(remainder_prefixes),
                         )
                         expected_odd = cycle.cycles * sum(
@@ -502,8 +504,7 @@ def audit_dyadic_return_payloads(
                         ) + sum(state & 1 for state in rotated[: cycle.remainder])
                         terminal = law_cycle.states[cycle.terminal_phase]
                         bound &= (
-                            cycle_delta >= 0
-                            and cycle.delta == expected_delta
+                            cycle.delta == expected_delta
                             and cycle.minimum == expected_minimum
                             and cycle.odd_steps == expected_odd
                             and support_record.delta == expected_delta

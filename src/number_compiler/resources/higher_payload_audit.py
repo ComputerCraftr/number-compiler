@@ -374,12 +374,31 @@ def audit_higher_payloads(ledger: ResourceLedger) -> HigherPayloadAudit:
                         root.interfaces.resolve(record.scalar_interface)
                     elif type(record) is RecursiveOutputBranch:
                         branch = record
-                        root.resolve(branch.left)
-                        root.resolve(branch.right)
+                        left = root.resolve(branch.left)
+                        right = root.resolve(branch.right)
                         root.interfaces.resolve(branch.left_interface)
                         root.interfaces.resolve(branch.right_interface)
                         valid &= (
-                            type(branch.left_width) is int and branch.left_width > 0
+                            type(branch.left_width) is int
+                            and branch.left_width > 0
+                            and type(branch.spatial_complete) is bool
+                            and branch.spatial_complete
+                            == (
+                                (
+                                    False
+                                    if type(left) is RecursiveOutputTemporal
+                                    else left.spatial_complete
+                                    if type(left) is RecursiveOutputBranch
+                                    else True
+                                )
+                                and (
+                                    False
+                                    if type(right) is RecursiveOutputTemporal
+                                    else right.spatial_complete
+                                    if type(right) is RecursiveOutputBranch
+                                    else True
+                                )
+                            )
                         )
                     else:
                         temporal = cast(RecursiveOutputTemporal, record)

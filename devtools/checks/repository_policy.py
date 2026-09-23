@@ -103,12 +103,14 @@ def _function_catalog(
     dict[tuple[str, str], dict[str, str]],
     dict[tuple[str, str], dict[str, str]],
     dict[str, dict[str, tuple[str, str | None]]],
+    dict[str, tuple[ast.Call, ...]],
 ]:
     functions: dict[str, FunctionInfo] = {}
     module_defs: dict[str, dict[str, str]] = {}
     scope_defs: dict[tuple[str, str], dict[str, str]] = {}
     class_defs: dict[tuple[str, str], dict[str, str]] = {}
     imports: dict[str, dict[str, tuple[str, str | None]]] = {}
+    calls: dict[str, list[ast.Call]] = {}
 
     sources = (
         parsed_sources if parsed_sources is not None else _parsed_python_sources(root)
@@ -119,9 +121,11 @@ def _function_catalog(
         imports.setdefault(module, {})
         # Stack items carry lexical parent and enclosing class names.  Function
         # bodies are traversed, so nested functions are catalogued too.
-        stack: list[tuple[ast.AST, str, str | None]] = [(tree, "", None)]
+        stack: list[tuple[ast.AST, str, str | None, str | None]] = [
+            (tree, "", None, None)
+        ]
         while stack:
-            node, parent_qn, class_qn = stack.pop()
+            node, parent_qn, class_qn, active_function = stack.pop()
             if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
                 qn = f"{parent_qn}.{node.name}" if parent_qn else node.name
                 key = f"{module}:{qn}"
@@ -129,19 +133,24 @@ def _function_catalog(
                     key, module, qn, node.name, parent_qn, class_qn, node
                 )
                 functions[key] = info
+                calls[key] = []
                 scope_defs.setdefault((module, parent_qn), {})[node.name] = key
                 if class_qn is not None and parent_qn == class_qn:
                     class_defs.setdefault((module, class_qn), {})[node.name] = key
                 if not parent_qn:
                     module_defs[module][node.name] = key
                 for child in reversed(node.body):
-                    stack.append((child, qn, class_qn))
+                    stack.append((child, qn, class_qn, key))
                 continue
             if isinstance(node, ast.ClassDef):
                 qn = f"{parent_qn}.{node.name}" if parent_qn else node.name
                 for child in reversed(node.body):
-                    stack.append((child, qn, qn))
+                    stack.append((child, qn, qn, None))
                 continue
+            if isinstance(node, ast.Lambda):
+                continue
+            if isinstance(node, ast.Call) and active_function is not None:
+                calls[active_function].append(node)
             import_scope = f"{module}:{parent_qn}" if parent_qn else module
             imports.setdefault(import_scope, {})
             if isinstance(node, ast.Import):
@@ -164,24 +173,15 @@ def _function_catalog(
                             alias.name,
                         )
             for descendant in reversed(tuple(ast.iter_child_nodes(node))):
-                stack.append((descendant, parent_qn, class_qn))
-    return functions, module_defs, scope_defs, class_defs, imports
-
-
-def _body_calls(info: FunctionInfo) -> tuple[ast.Call, ...]:
-    calls: list[ast.Call] = []
-    stack: list[ast.AST] = list(reversed(info.node.body))
-    while stack:
-        node = stack.pop()
-        if isinstance(
-            node, (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef, ast.Lambda)
-        ):
-            continue
-        if isinstance(node, ast.Call):
-            calls.append(node)
-        children = tuple(ast.iter_child_nodes(node))
-        stack.extend(reversed(children))
-    return tuple(calls)
+                stack.append((descendant, parent_qn, class_qn, active_function))
+    return (
+        functions,
+        module_defs,
+        scope_defs,
+        class_defs,
+        imports,
+        {key: tuple(items) for key, items in calls.items()},
+    )
 
 
 def _resolve_name(
@@ -226,12 +226,12 @@ def recursion_cycles(
     parsed_sources: Mapping[Path, ast.Module] | None = None,
 ) -> tuple[tuple[str, ...], ...]:
     """Return exact statically-resolved direct/mutual recursion SCCs."""
-    functions, module_defs, scope_defs, class_defs, imports = _function_catalog(
+    functions, module_defs, scope_defs, class_defs, imports, calls = _function_catalog(
         root, parsed_sources
     )
     graph: dict[str, set[str]] = {key: set() for key in functions}
     for key, info in functions.items():
-        for call in _body_calls(info):
+        for call in calls[key]:
             fn = call.func
             target: str | None = None
             if isinstance(fn, ast.Name):

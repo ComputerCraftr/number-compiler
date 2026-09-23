@@ -13,6 +13,9 @@ from number_compiler.hashlife.execution.dyadic_return_records import (
     _SupportNode,
 )
 from number_compiler.hashlife.execution.source_bound_images import SourceImageView
+from number_compiler.hashlife.execution.dyadic_return_transport import (
+    cycle_phase_summaries,
+)
 
 if TYPE_CHECKING:
     from number_compiler.hashlife.execution.dyadic_return_images import (
@@ -35,7 +38,7 @@ def summary(workspace: DyadicReturnImageWorkspace) -> DyadicImageSummary:
 
 
 def endpoint(workspace: DyadicReturnImageWorkspace) -> int:
-    summary = workspace.summary()
+    summary = workspace.saturated_summary()
     source = workspace.source_node(workspace.root_source)
     chart = integer_dyadic_fiber_action(
         summary.transfer, source.residue, source.precision
@@ -51,15 +54,15 @@ def endpoint(workspace: DyadicReturnImageWorkspace) -> int:
 
 
 def odd_steps(workspace: DyadicReturnImageWorkspace) -> int:
-    return workspace.summary().odd_steps
+    return workspace.saturated_summary().odd_steps
 
 
 def delta(workspace: DyadicReturnImageWorkspace) -> int:
-    return workspace.summary().delta
+    return workspace.saturated_summary().delta
 
 
 def minimum(workspace: DyadicReturnImageWorkspace) -> int:
-    return workspace.summary().minimum
+    return workspace.saturated_summary().minimum
 
 
 def branch_segments(
@@ -182,14 +185,24 @@ def _first_failure(
             metadata = node.cycle
             if cycle is None or metadata.entry_steps != 0:
                 raise ArithmeticError("singleton cycle compression lost its origin")
-            bits = tuple(state & 1 for state in cycle.states)
-            for offset in range(min(node.width, len(bits))):
-                balance += workspace.law.weights[
-                    bits[(metadata.cycle_phase + offset) % len(bits)]
-                ]
+            safety, _cycle_odd, _remainder_safety, _remainder_odd = (
+                cycle_phase_summaries(
+                    workspace.law, metadata.cycle_phase, metadata.remainder
+                )
+            )
+            failing_copy = safety.first_failing_copy(balance, metadata.cycles)
+            copies = metadata.cycles if failing_copy is None else failing_copy
+            cycle_length = len(cycle.states)
+            offset = copies * cycle_length
+            balance += copies * safety.delta
+            limit = metadata.remainder if failing_copy is None else cycle_length
+            workspace._bump("cycle_safety_descent_demands")
+            for local in range(limit):
+                state = cycle.states[(metadata.cycle_phase + local) % cycle_length]
+                balance += workspace.law.weights[state & 1]
                 if balance < 0:
-                    return start + offset
-            return None
+                    return start + offset + local
+            raise ArithmeticError("failing cycle summary lost its first failure")
         if node.children is None:
             raise ArithmeticError("dyadic return support lost its children")
         left, right = node.children

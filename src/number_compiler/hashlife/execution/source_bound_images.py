@@ -10,9 +10,9 @@ from number_compiler.arithmetic.contracts.scoped_handles import ArenaHandle, Are
 from number_compiler.hashlife.execution.source_image_seals import (
     PublicationSeal,
     PublicationSeals,
-    _TypedKey,
     _require_immutable_key,
     _typed_equal,
+    _TypedKey,
     publication_matches,
     publication_seal,
 )
@@ -389,6 +389,28 @@ class SourceBoundSchedulerCore:
         if type(ledger) is not ResourceLedger:
             raise TypeError("source image authority requires a resource ledger")
         self.ledger = ledger
+        # Declare exact instruments before the first origin or application.
+        # An absent key after this point is missing evidence, not zero work.
+        for counter in (
+            "source_image_application_requests",
+            "source_image_application_attempts",
+            "source_image_application_hits",
+            "source_image_relative_transfer_hits",
+            "source_image_application_misses",
+            "source_image_application_publications",
+            "source_image_origin_publications",
+            "source_image_publications",
+            "source_image_projection_requests",
+            "source_image_projection_hits",
+            "source_image_projection_misses",
+            "source_image_projection_publications",
+            "source_image_postorder_frames",
+            "source_image_primitive_applications",
+            "source_image_chronological_compositions",
+            "source_image_composite_applications",
+            "source_image_demanded_composite_applications",
+        ):
+            self.ledger.bump(counter, 0)
         self.owner = ArenaToken("tile-source-images")
         self._closed = False
         prefix = f"tile-source-images-{len(self.ledger.inventory())}"
@@ -777,6 +799,7 @@ class SourceBoundSchedulerCore:
             raise
         if publish_relative:
             self.ledger.bump("source_image_relative_transfer_publications")
+        self.ledger.bump("source_image_application_publications")
         return image
 
     def _validate_application_binding(
@@ -809,6 +832,7 @@ class SourceBoundSchedulerCore:
         if type(demand) is not SourceImageDemand:
             raise TypeError("source image projection requires an exact demand")
         demand.__post_init__()
+        self.ledger.bump("source_image_projection_requests")
         key = image, demand
         found = self._projections.get(key)
         if found is not None:
@@ -826,9 +850,15 @@ class SourceBoundSchedulerCore:
                 )
             ):
                 raise ValueError("source image projection record was altered")
+            # A seal authenticates the published record, but the adapter may
+            # revoke a backing source, action, or payload arena after the
+            # projection was cached. Apply the same authority checks as a
+            # cold demand before reporting a usable hit.
+            self._view_record(image, record)
             found.projection.__post_init__()
             self.ledger.bump("source_image_projection_hits")
             return found.projection
+        self.ledger.bump("source_image_projection_misses")
         projected = adapter.project(self._view_record(image, record), demand)
         if type(projected) is not SourceImageProjection:
             raise TypeError("source image adapter returned another projection sort")

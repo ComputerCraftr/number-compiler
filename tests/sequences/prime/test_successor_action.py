@@ -31,6 +31,63 @@ def _direct_progression(
     )
 
 
+@pytest.mark.parametrize("residue", (0, 4))
+def test_progression_reuses_each_inverse_across_the_query_dag(
+    residue: int, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from number_compiler.sequences.prime import coprime_rank
+
+    calls = 0
+
+    def counted(base: int, exponent: int, modulus: int) -> int:
+        nonlocal calls
+        calls += 1
+        return pow(base, exponent, modulus)
+
+    monkeypatch.setattr(coprime_rank, "pow", counted, raising=False)
+    factors = (2, 3, 5, 7)
+    dag = CoprimeRankDAG(factors)
+    try:
+        result = dag.count_progression(511, 11, residue)
+        assert result == _direct_progression(511, factors, 11, residue)
+        expected_calls = len(factors) if residue else 0
+        assert calls == expected_calls
+        assert bool(calls) == bool(residue)
+        assert (
+            dag.ledger.counters.get("prime_progression_inverse_evaluations", 0) == calls
+        )
+        assert dag.count_progression(511, 11, residue) == result
+        assert calls == expected_calls
+        assert not dag._progression_inverses
+        assert dag.count_progression(511, 13, residue) == _direct_progression(
+            511, factors, 13, residue
+        )
+        assert calls == 2 * expected_calls
+        assert not dag._progression_inverses
+        assert dag.pending_frames == 0
+    finally:
+        dag.close()
+    assert dag.ledger.entries == dag.ledger.nodes == 0
+
+
+def test_progression_inverse_workspace_is_charged_and_cleared_after_refusal() -> None:
+    dag = CoprimeRankDAG((2, 3, 5, 7), max_states=1)
+    try:
+        with pytest.raises(ValueError, match="prime state budget"):
+            dag.count_progression(511, 11, 4)
+        assert not dag._progression_inverses
+        assert dag.pending_frames == 0
+        assert dag.ledger.entries == dag.factor_count
+        assert all(row.accounting_delta == 0 for row in dag.ledger.inventory())
+        dag.max_states = 10000
+        assert dag.count_progression(511, 11, 4) == _direct_progression(
+            511, (2, 3, 5, 7), 11, 4
+        )
+    finally:
+        dag.close()
+    assert dag.ledger.entries == dag.ledger.nodes == 0
+
+
 def test_progression_recurrence_matches_direct_predicate_and_phi_owner(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:

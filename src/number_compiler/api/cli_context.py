@@ -108,13 +108,21 @@ class QueryContext:
                     payload = self.term.payload
                     assert isinstance(payload, AntihydraTermPayload)
                     payload.term.engine.count("query_observer_reuses")
-                    if "work_counters" in packet:
-                        packet["work_counters"] = dict(payload.term.ledger.counters)
                     self._info[name] = packet
                 else:
                     self._info[name] = self._observe(name)
         if "metrics" in self.request.info and "metrics" not in self._info:
             self._info["metrics"] = _metrics_json(self.term)
+        # Common CLI metadata is selector-based. Family-specific payload fields
+        # remain intact, while the public Python observers keep their own APIs.
+        for name, packet in self._info.items():
+            packet.update(
+                family=self.request.family,
+                kind=name,
+                index=self.request.index,
+                index_unit=self.request.index_unit,
+            )
+            packet.setdefault("status", "available")
         return {name: self._info[name] for name in self.request.info}
 
     def _observe(self, name: str) -> dict[str, Any]:
@@ -143,6 +151,7 @@ class QueryContext:
                 max_events=q.max_events,
                 max_digits=q.max_digits,
                 _context=self._events,
+                _include_metrics=False,
             )
         if name == "clock" and q.family == "collatz":
             from number_compiler.api.cylinder_observation import observe_physical_clock
@@ -156,6 +165,7 @@ class QueryContext:
                 max_ticks=q.max_events,
                 max_digits=q.max_digits,
                 _term=payload.term,
+                _include_metrics=False,
             )
         if name == "mirror":
             from number_compiler.api.cylinder_observation import observe_mirror
@@ -169,6 +179,7 @@ class QueryContext:
                 first_width=q.width,
                 max_digits=q.max_digits,
                 _term=reverse.term,
+                _include_metrics=False,
             )
             result["family"] = q.family
             return result
@@ -228,6 +239,8 @@ class QueryContext:
             or packet["factor_expression"] is not None
             else "not_applicable"
             if packet["status"] == "prime"
+            else "unknown"
+            if packet["status"] == "unknown"
             else "not_found"
         )
         packet["scope"] = (
@@ -262,16 +275,28 @@ class QueryContext:
                 "requested_returns": q.index,
                 "completed_returns": result.returns,
                 "nonhalting_certified": False,
-                **payload.power_metrics(),
             }
         from number_compiler.api.antihydra_observation import (
             observe_arithmetic,
+            observe_arithmetic_many,
             observe_run,
         )
 
         if name in {"mahler", "hensel"}:
+            if {"mahler", "hensel"}.issubset(q.info):
+                packets = observe_arithmetic_many(
+                    payload.term.result(),
+                    kinds=("mahler", "hensel"),
+                    precision=q.precision,
+                    _include_metrics=False,
+                )
+                self._info.update(packets)
+                return packets[name]
             return observe_arithmetic(
-                payload.term.result(), kind=name, precision=q.precision
+                payload.term.result(),
+                kind=name,
+                precision=q.precision,
+                _include_metrics=False,
             )
 
         return observe_run(
@@ -284,6 +309,7 @@ class QueryContext:
             time_width=q.time_width,
             time_sign=q.time_sign,
             max_observer_terms=q.max_observer_terms,
+            _include_metrics=False,
         )
 
 

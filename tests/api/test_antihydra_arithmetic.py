@@ -16,9 +16,11 @@ from number_compiler.sequences.antihydra.arithmetic_images import (
 )
 from number_compiler.sequences.antihydra.blocks import (
     ArithmeticCylinder,
+    Cylinder,
     admitted_arithmetic_cylinder,
     arithmetic_from_word,
     arithmetic_kernel,
+    physical_roof,
 )
 from number_compiler.sequences.antihydra.runtime import (
     AntihydraArithmeticTerm,
@@ -56,6 +58,51 @@ def test_admitted_constructor_owns_wide_source_parity(width: int, residue: int) 
     assert admitted == arithmetic_from_word(residue, width, admitted.parity_word)
     with pytest.raises(ValueError, match="kernel width"):
         arithmetic_kernel(residue, width)
+
+
+@pytest.mark.parametrize(
+    "first_width,first_residue,second_width,second_residue",
+    ((1, 1, 2, 3), (3, 5, 2, 1), (4, 13, 3, 6)),
+)
+def test_joined_antihydra_cylinders_match_both_consumers_on_high_fibers(
+    first_width: int,
+    first_residue: int,
+    second_width: int,
+    second_residue: int,
+) -> None:
+    first = admitted_arithmetic_cylinder(first_residue, first_width)
+    second = admitted_arithmetic_cylinder(second_residue, second_width)
+    joined = first.then(second)
+    first_roof, second_roof = physical_roof(first), physical_roof(second)
+    joined_roof = first_roof.then(second_roof)
+    assert joined_roof.residue == joined.residue
+    assert joined_roof.output == joined.output
+    assert (joined_roof.delta, joined_roof.minimum) == (
+        joined.delta,
+        joined.minimum,
+    )
+    for high in (1, 2, (1 << 70) + 3):
+        source = joined.residue + (high << joined.width)
+        middle, middle_ledger = first.advance(source, 100)
+        assert joined.advance(source, 100) == second.advance(middle, middle_ledger)
+        middle, middle_ledger, left1, right1 = first_roof.apply(source, 100)
+        target, target_ledger, left2, right2 = second_roof.apply(middle, middle_ledger)
+        assert joined_roof.apply(source, 100) == (
+            target,
+            target_ledger,
+            left1 + left2,
+            right1 + right2,
+        )
+        with pytest.raises(ValueError, match="safe admitted"):
+            joined_roof.apply(source, -joined.minimum - 1)
+
+
+def test_zero_width_physical_cylinder_is_a_composition_identity() -> None:
+    identity = Cylinder(0, 0, 0, 0, 0, 0, 0, 0, 0)
+    for residue in (0, 1):
+        cylinder = physical_roof(arithmetic_kernel(residue, 1))
+        assert identity.then(cylinder) == cylinder
+        assert cylinder.then(identity) == cylinder
 
 
 @pytest.mark.parametrize("returns", (0, 1, 7, 64, 65, 257))
@@ -433,6 +480,32 @@ def test_retained_support_rejects_forged_segment_and_cylinder_types() -> None:
             object.__setattr__(term.segments[0], "cylinder", object())
         with pytest.raises(ValueError, match="arithmetic support was changed"):
             result.require_source()
+
+
+def test_retained_support_validation_streams_and_charges_reconstruction(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    term = AntihydraArithmeticTerm(128)
+    result = term.physical_run()
+    workspace = term.arithmetic_workspace
+    assert workspace is not None
+    original = workspace.segments
+    before = term.ledger.counters.get("arithmetic_result_validation_reconstructions", 0)
+    result.require_source()
+    assert term.ledger.counters[
+        "arithmetic_result_validation_reconstructions"
+    ] - before == len(term._segments)
+
+    first = term._segments[0].cylinder
+    object.__setattr__(first, "parity_word", first.parity_word ^ 1)
+
+    def first_then_forbidden() -> Iterator[tuple[int, ArithmeticCylinder]]:
+        yield next(original())
+        raise AssertionError("validation eagerly reconstructed later segments")
+
+    monkeypatch.setattr(workspace, "segments", first_then_forbidden)
+    with pytest.raises(ValueError, match="arithmetic support was changed"):
+        result.require_source()
 
 
 def test_run_rejects_forged_arithmetic_publication_type() -> None:

@@ -518,3 +518,311 @@ The independent arithmetic and ownership audit found a preallocation accounting
 issue, which was fixed and re-reviewed. A boundary lease is borrowed for its
 context; the internal consumer does not retain its tuple after exit. Full-unit,
 installed-wheel, all-session and full growth-manifest validation were not rerun.
+
+## Additional dated evidence
+
+These relocated records supplement the topic summaries above.
+
+### Centered carry recovery measurements
+
+Relocated evidence from the reverse-add synthesis; original scope and dates below.
+
+<details>
+<summary>Recorded implementation and evidence</summary>
+
+On source `605e76066c6f`, five fresh-arena trials per horizon measured:
+
+| Horizon | Median construction seconds | Retained innovation nodes | Domain actions |
+| --- | --- | --- | --- |
+| 20 | 0.103 | 305 | 124 |
+| 64 | 0.803 | 1,376 | 946 |
+| 128 | 2.563 | 3,687 | 3,530 |
+
+The preceding same-host carry-SLP round-trip comparison had five complete
+20/64 trials, with medians 0.146/1.370 seconds and 285/1,149 retained nodes.
+Direct recovery reduces time but retains extra signed-reset expressions. The
+comparison's aggregate 35-second guard expired during its 128-step baseline;
+that incomplete group is not performance-acceptance evidence. The final
+direct-event trials completed separately, with observation, rendering and
+literal-reference costs reported apart. All still perform one chronological
+advance per step. Neither these diagnostics nor the checked spatial laws
+establish temporal powering, the full 16–1024 release manifest or CLI cutover.
+
+**Earlier measured limitation (before direct recovery):** fresh research constructions at depths 20, 40 and 80
+inspect 124, 394 and 1,428 carry runs, and 1,006, 3,699 and 16,345 packet stencil
+terms. Construction takes approximately 0.17, 0.52 and 2.12 seconds in these
+single diagnostic trials. Each performs exactly one `advance` per step and
+retains 21, 41 and 81 states. D20 emits `70446464506`, but this is not a
+production cutover or a successful complexity gate. The full-extent run
+construction can hide quadratic work even without a per-digit loop. The
+missing component remains a source-admitted parameter-changing temporal
+normal form with a successful construction bound.
+
+Reproduce bounded correctness with
+`python -m pytest -o addopts='' tests/validation/proofs/reverse_add/test_centered_future_grammar.py tests/validation/proofs/reverse_add/test_source_growth_admission.py`.
+Diagnostic evidence is local under
+`results/current/future-grammars-agents-2026-09-20/`; the
+[weekly record](README.md) separates it from
+release evidence and preserves the source fingerprint.
+
+</details>
+
+### Pair grammar spatial versus temporal cost
+
+Relocated evidence from the reverse-add synthesis; original scope and dates below.
+
+<details>
+<summary>Recorded implementation and evidence</summary>
+
+Single cold research probes on the `2^30`-cell field retain 80, 305, 1,290 and
+5,504 nodes after 6, 12, 24 and 48 steps. The corresponding final reachable
+grammars have only 10, 17, 37 and 67 nodes. Construction takes about 0.0012,
+0.0040, 0.016 and 0.063 seconds. Thus represented spatial width is compressed,
+but cumulative construction is still roughly quadratic in time. For 196,
+depths 20, 40 and 80 take about 0.0065, 0.024 and 0.079 seconds and retain
+541, 1,751 and 6,539 nodes. These are finite research diagnostics, not CLI
+latency or the unchanged five-trial release workload. The small final grammar
+does not erase construction or retained-work costs.
+
+</details>
+
+### Historical carry-slab comparison
+
+Relocated evidence from the reverse-add synthesis; original scope and dates below.
+
+<details>
+<summary>Recorded implementation and evidence</summary>
+
+The archived [carry/event account](../../../docs/archive/reverse-add/CARRY_EVENT_FORMULA_RESULTS.md)
+records a decimal `H=20` carry-field reconstruction window. The
+[generalized-power account](../../../docs/archive/repository-and-algebra/GENERALIZED_POWER_RESULTS.md)
+records native slab morphisms and guarded `32->65` and `64->128` jumps without
+ordinary replay, while explicitly leaving temporal closure open. These concern
+the carry/event owner, not the old digit/wreath executor or the recent pair-SLP
+spatial prototype. The pair-SLP measurements below cannot establish a lower
+bound or a regression result for that different construction.
+
+The supplied [v0.12.0 carry-slab report](../../../docs/archive/reverse-add/CARRY_SLAB_JUMP_RESULTS.md)
+is now preserved verbatim. Its SHA-256 is
+`e5a4e9bb00d4391b6c6e99c35b3fb1ef8570d75dbf13189ed349338a9a6bc310`.
+The following are historical measurements from that report, not current-source
+measurements. The report does not include a source fingerprint, executable,
+raw per-trial evidence or measurement environment; the local Git history search
+did not recover the retired slab modules.
+
+| Power | Nodes | References | Description bits |
+| --- | --- | --- | --- |
+| D4 | 79 | 255 | 2649 |
+| D8 | 111 | 463 | 4441 |
+| D256 | 2095 | 13359 | 182340 |
+| D1024 | 8239 | 53295 | 832674 |
+
+All eleven tabulated powers, D1 through D1024, satisfy **exactly**
+`nodes = 8N + 47`, `references = 52N + 47`, and `depth = 3N + 3`.
+These equalities were checked against the supplied table; they are not a proof
+for unmeasured powers. The node fit near `N^0.933` should not obscure the simpler
+linear relation including its fixed overhead. Description bits grow somewhat
+faster (the report fits `N^1.094`). These are representation measurements, not
+counts of all construction operations or cold-runtime measurements.
+
+#### Comparison with the current output-morphism gates
+
+| Question | Historical carry-slab report | Current acceptance |
+| --- | --- | --- |
+| Object being powered | Fixed-H carry reconstruction, carry scan and active-domain growth; five pair-bit projections share one core | An admitted complete source-cylinder output return, composed by the existing scheduler |
+| D4/D8 representation | 79/111 nodes, without expanded Boolean decision cones in powered roots | Generic D4 range construction and D4/D8 CLI output still fail; there is no successful current complete-return size to compare |
+| Exact execution evidence | Guarded `32->65` and `64->128` jumps; reported forbidden-operation maps empty | Positive digit, width and point checks with causal execution and temporal continuations poisoned |
+| Output accounting | Both roots materialized **outside** the powered guard and compared with an independent oracle | CLI tests cover requested digit emission; generic-range tests also check width, points, streaming and demand order |
+| Temporal reduction | About one nonlinear slab generation survives per represented step | Requires complete-effect normalization; a small wrapper around unresolved generations is insufficient |
+| Cost evidence | Linear retained node/reference/depth tables; two closed-jump measurements | Construction, demand and rendering must be measured separately under the unchanged resource gates |
+
+The two historical closed jumps used 5,162 and 18,218 bit evaluations, taking
+1.717 and 5.921 seconds respectively. The advance changes from 33 to 64 and
+target width from 32 to 58. These two different workloads do not establish an
+evaluation complexity bound; they do demonstrate why linear representation
+size must not be labeled linear end-to-end work. No D4/D8 cold-construction or
+final-materialization timings are supplied.
+
+The report nevertheless records a concrete capability missing from the current
+generic production route: exact guarded carry-domain jumps with a compact
+representation. It is a historical capability baseline, and the quadratic
+pair-SLP experiment cannot be used to dismiss it. Conversely, neither a recent
+single-coordinate circuit benchmark nor a local thirteen-channel test measures
+that historical whole-cylinder capability. Reproduction should preserve the
+historical representation columns while adding cold construction, demanded
+output and cumulative work, rather than replacing them with an unrelated DAG
+node count. Recovering or replacing that capability is an integration target;
+the stronger temporal quotient remains a separate target.
+
+</details>
+
+### Reverse CLI re-entry measurements
+
+Relocated evidence from the reverse-add synthesis; original scope and dates below.
+
+<details>
+<summary>Recorded implementation and evidence</summary>
+
+The current pair-SLP constructor remains research-only. The exact zipper now
+shares commutative operand pairs, but its chronological constructor still calls
+one spatial successor per time step. Structural validation visits are counted
+explicitly; cold construction, observation, rendering and warm re-demand are
+reported separately. Warm reuse allocates no new grammar nodes but still
+performs validation work.
+
+Five fresh-process trials at each horizon from 16 through 1024 were measured
+for seed 196 on authored source `42862bb0f8c9`. Selected results:
+
+| Steps | Output digits | Median construction seconds | Retained grammar nodes |
+| --- | --- | --- | --- |
+| 256 | 113 | 0.706 | 63,672 |
+| 512 | 222 | 2.859 | 254,754 |
+| 1024 | 421 | 11.311 | 994,782 |
+
+At 1024 the final pair root reaches only 439 nodes, but total retained ledger
+entries are 2,326,043. Reporting only the final graph would hide construction.
+The approximately fourfold increase on horizon doubling does not establish
+subquadratic temporal work. It is not fourfold growth on each individual
+successor. All rendered terms in these trials match an independent bounded
+integer reference.
+
+The experiment also rejected eagerly retaining every inverse-reversal memo:
+it increased ledger retention by about 9.5% at 1024 while barely reducing
+reverse work. That change was removed. Only exact commutative zipper reuse
+remains; its small improvement is not a temporal-compression claim.
+
+Reproduce one bounded trial through the existing measurement tool:
+
+```console
+python -m devtools.benchmarks.field_image_growth_probe --research-pair --seed 196 --horizon 1024
+```
+
+This mode explicitly reports `production_cutover_complete=false`. Returning
+the constructor to the CLI still requires source-bound scheduler publication,
+complete consumer refinement and the unchanged work/retention gates. The
+source-specific temporal grammar remains the missing construction.
+
+</details>
+
+### Archived output quotient audit validation
+
+Relocated evidence from the reverse-add synthesis; original scope and dates below.
+
+<details>
+<summary>Recorded implementation and evidence</summary>
+
+The audit rerun on source fingerprint
+`605e76066c6f4bb1b9427a360e0dc2edc85a57eb732e40893a3a6787b7403efc`
+reported **24 passed, 26 failed** in 20.95 seconds for
+`test_active_output_morphisms.py`, `test_symbolic_primitive_channels.py`,
+`test_contextual_residual.py`, `test_reverse_generic_range_constructor.py`
+and `test_reverse_temporal_publisher_cutover.py`, with pytest's default
+exclusions disabled. Failures comprise twelve generic-range cases and the
+fourteen existing CLI cutover cases. The 35-second/1-GiB guard measured
+21.65 seconds and 88,719,960 peak bytes. Local evidence is
+`results/current/future-grammars-agents-2026-09-20/output-quotient-audit-tests.{log,json}`;
+these ignored artifacts are not portable downloads. This is failed cutover
+evidence, not release acceptance.
+
+</details>
+
+### Original Mahler safety build evidence
+
+Relocated evidence from the antihydra-mahler synthesis; original scope and dates below.
+
+<details>
+<summary>Recorded implementation and evidence</summary>
+
+**Checked theorem status:** the integrated session passed on 2026-09-20 in
+22.36 seconds under the unchanged 35-second/4-GiB guard, including its oracle
+audits. Local evidence is `results/current/mahler-safety-integration-2026-09-20/`
+(`final-build.log` and `final-build.json`). This is focused proof
+evidence, not an aggregate release result.
+
+</details>
+
+### Source-cylinder transport build evidence
+
+Relocated evidence from the antihydra-mahler synthesis; original scope and dates below.
+
+<details>
+<summary>Recorded implementation and evidence</summary>
+
+**Checked theorem status:** both theories passed Isabelle and their oracle
+audits on 2026-09-20. The focused child-session build took 7.56 seconds under
+the unchanged 35-second/4-GiB limit. Local evidence is
+`results/current/mahler-joint-transport-2026-09-20/final-proof.log` and
+`final-proof.json`; the earlier six-step certificate session is its checked
+parent.
+
+</details>
+
+### Fractional refinement census
+
+Relocated evidence from the antihydra-mahler synthesis; original scope and dates below.
+
+<details>
+<summary>Recorded implementation and evidence</summary>
+
+The four-round run on 2026-09-20 retained 18, 201, 2,291 and 26,111 nonempty
+cylinders at horizons 6, 12, 18 and 24. It constructed 45,259 retained blocks
+in 1.05 guarded seconds, with a sampled peak of 57,639,440 bytes. Twelve-step
+classes were exhaustively compared with an independent rational reference;
+the larger census is composed-constructor evidence. Work counters include
+composition attempts, source worklist visits, memo reuse, operand bits and
+retained integer bits. They are not a complete Python allocator model or a
+proved arbitrary-horizon complexity bound. Evidence is the local
+`results/current/mahler-joint-transport-2026-09-20/validated-refinement.log` and
+`validated-refinement.json`.
+
+</details>
+
+### Reachable grammar validation evidence
+
+Relocated evidence from the antihydra-mahler synthesis; original scope and dates below.
+
+<details>
+<summary>Recorded implementation and evidence</summary>
+
+**Validation (2026-09-20):** the bounded event search at depths 1–4 and
+`q <= 4` retained 4, 12, 24 and 48 source families. It found respectively
+2, 4, 8 and 16 fractional-cycle clauses; these are word candidates, not a
+count of distinct cyclotomic orbits. The source obstruction prevents each
+from becoming an all-time positive-source repetition. The run retained 167
+source blocks and 498 ledger entries in 0.19 guarded seconds. Larger events
+remain unexplored. A separate poison test composes 512 copies of a supplied
+three-step clause with 10 compositions and no new source-leaf discovery;
+this is a supplied-word result, not arbitrary future discovery.
+
+The focused Isabelle session and its oracle audits pass. The selected Python
+checks have **220 passes and two retained release failures**: the existing
+196 powered-construction failure exposed by the proof-import firewall test,
+and the missing source-seven non-halting certificate. All 18 new grammar
+checks pass. Full strict typing, Ruff, formatting, repository policy and
+proof/documentation indexes pass. Evidence is local under
+`results/current/mahler-future-grammar-2026-09-20/` (`validated-*` and
+`validation_scope.json`), on authored-source fingerprint
+`18d66988222d91c9b0c12cc06b1d44318a36e6950dc9d0ebdf1554f987f5deb9`.
+The full suite and aggregate all-session release validation were not rerun.
+
+</details>
+
+### Next-event domain pruning measurements
+
+Relocated evidence from the antihydra-mahler synthesis; original scope and dates below.
+
+<details>
+<summary>Recorded implementation and evidence</summary>
+
+The canonical research `barrier_search --mode grammar` now uses this domain
+before constructing children. In the four-level, `q <= 4` comparison, both
+versions retain 4, 12, 24 and 48 reachable families, but domain pruning avoids
+76 empty children. Source blocks fall from 167 to 91 and entries from 498 to
+270; composition attempts fall from 168 to 92. Domain work adds 129 exact
+comparisons and 1,498 summed operand bits. Finite witness and cycle-observer
+results agree. A poison test rejects construction of any excluded child.
+These are measured bounded reductions; the unexplored larger-event frontier
+and all-time claims remain open. The binary-search implementation has bounded
+differential tests, not a complete Isabelle worklist refinement.
+
+</details>

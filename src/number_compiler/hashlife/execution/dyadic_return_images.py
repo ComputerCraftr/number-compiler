@@ -15,6 +15,7 @@ from operator import add, mul
 from number_compiler.arithmetic.contracts.scoped_handles import ArenaToken
 from number_compiler.arithmetic.fields.skew_transfer import SkewTransfer
 from number_compiler.hashlife.execution.dyadic_return_records import (
+    DyadicAggregateSummary,
     DyadicCycleSummary,
     DyadicImageSummary,
     DyadicReturnActionID,
@@ -28,7 +29,10 @@ from number_compiler.hashlife.execution.dyadic_return_records import (
     _SourceNode,
     _SupportNode,
 )
-from number_compiler.hashlife.execution.dyadic_return_transport import _low_bits
+from number_compiler.hashlife.execution.dyadic_return_transport import (
+    _low_bits,
+    cycle_phase_summaries,
+)
 from number_compiler.hashlife.execution.source_bound_images import (
     SourceBoundImageAdapter,
     SourceImageCandidate,
@@ -85,6 +89,16 @@ class DyadicReturnImageWorkspace(
             self.counter_prefix = "collatz_physical"
         else:
             self.counter_prefix = "dyadic_return"
+        for suffix in (
+            "action_requests",
+            "action_hits",
+            "action_misses",
+            "action_publications",
+            "macro_requests",
+            "macro_bounded_base_steps",
+            "macro_compositions",
+        ):
+            ledger.bump(f"{self.counter_prefix}_{suffix}", 0)
         self.owner = ArenaToken("dyadic-return-images")
         self._closed = False
         prefix = f"dyadic-return-images-{len(ledger.inventory())}"
@@ -473,41 +487,13 @@ class DyadicReturnImageWorkspace(
         cycle_length = len(cycle.states)
         cycles, remainder = divmod(action_node.width, cycle_length)
         terminal_phase = (entry_phase + remainder) % cycle_length
-        rotated_states = tuple(
-            cycle.states[(entry_phase + offset) % cycle_length]
-            for offset in range(cycle_length)
+        cycle_safety, cycle_odd, remainder_safety, remainder_odd = (
+            cycle_phase_summaries(self.law, entry_phase, remainder)
         )
-        cycle_weights = tuple(
-            self.law.weights[state_value & 1] for state_value in rotated_states
-        )
-        cycle_odd = sum(state_value & 1 for state_value in rotated_states)
-        cycle_delta = sum(cycle_weights)
-        if cycle_delta < 0:
-            return None
-        cycle_prefix = [
-            sum(cycle_weights[:offset]) for offset in range(cycle_length + 1)
-        ]
-        remainder_weights = tuple(
-            self.law.weights[cycle.states[(entry_phase + offset) % cycle_length] & 1]
-            for offset in range(remainder)
-        )
-        tail_delta = cycles * cycle_delta + sum(remainder_weights)
-        observed_prefix = (
-            cycle_prefix
-            if cycles
-            else [sum(cycle_weights[:offset]) for offset in range(remainder + 1)]
-        )
-        tail_minimum = min(
-            observed_prefix
-            + [
-                cycles * cycle_delta + sum(remainder_weights[:offset])
-                for offset in range(remainder + 1)
-            ]
-        )
-        tail_odd = cycles * cycle_odd + sum(
-            cycle.states[(entry_phase + offset) % cycle_length] & 1
-            for offset in range(remainder)
-        )
+        safety = cycle_safety.repeat(cycles).then(remainder_safety)
+        tail_delta, tail_minimum = safety.delta, safety.minimum
+        self._bump("cycle_safety_transformer_applications")
+        tail_odd = cycles * cycle_odd + remainder_odd
         terminal = cycle.states[terminal_phase]
         cycle_summary = DyadicCycleSummary(
             0,
@@ -889,6 +875,20 @@ class DyadicReturnImageWorkspace(
         from number_compiler.hashlife.execution.dyadic_return_observers import summary
 
         return summary(self)
+
+    def saturated_summary(self) -> DyadicAggregateSummary:
+        """Project an authenticated image; never cache unchecked public records."""
+        value = self.summary()
+        self._bump("aggregate_demands")
+        return DyadicAggregateSummary(
+            value.width,
+            value.residue,
+            value.transfer,
+            value.delta,
+            value.minimum,
+            value.odd_steps,
+            value.cycle,
+        )
 
     def endpoint(self) -> int:
         from number_compiler.hashlife.execution.dyadic_return_observers import endpoint

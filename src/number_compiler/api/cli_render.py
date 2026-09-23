@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import sys
 from collections.abc import Iterable
-from dataclasses import asdict
+from dataclasses import asdict, fields
 
 from number_compiler.api.number_api import (
     AntihydraTermPayload,
@@ -26,26 +26,40 @@ from number_compiler.arithmetic.fields.symbolic_extent import (
 )
 
 _DIGITS = "0123456789abcdefghijklmnopqrstuvwxyz"
+_DIGIT_BYTES = _DIGITS.encode("ascii")
 
 
 def _metrics_json(term: ProjectedNumberTerm) -> dict[str, object]:
     """Separate immutable construction descriptors from observed runtime work."""
-    payload = asdict(term.metrics)
+    # Projection descriptors are immutable. Do not recursively copy scheduler
+    # counters only to replace that copy with their JSON mapping below.
+    descriptors = fields(term.metrics)
+    payload = {field.name: getattr(term.metrics, field.name) for field in descriptors}
+    payload["descriptor_reporting"] = {
+        "field_reads": len(descriptors),
+        "counter_items_copied": len(term.metrics.prime_scheduler_counters),
+    }
     payload["width"] = extent_json_value(term.metrics.width)
     payload["metrics_scope"] = "construction_and_projection_descriptors"
+    payload["prime_scheduler_counters"] = dict(term.metrics.prime_scheduler_counters)
     if term.family == "prime":
-        payload["prime_scheduler_counters"] = dict(
-            term.metrics.prime_scheduler_counters
-        )
         payload["prime_scheduler_metrics_scope"] = "query_before_disposal"
-    if isinstance(
-        term.payload, (PoweredReverseAddTermPayload, PoweredCollatzTermPayload)
-    ):
-        payload["execution_metrics"] = asdict(term.payload.power_metrics())
-        payload["execution_metrics_scope"] = "current_powered_term_ledger_snapshot"
-    elif isinstance(term.payload, AntihydraTermPayload):
-        payload["execution_metrics"] = term.payload.power_metrics()
-        payload["execution_metrics_scope"] = "current_arithmetic_term_ledger_snapshot"
+    from number_compiler.resources.temporal_diagnostics import (
+        collect_temporal_diagnostics_snapshot,
+    )
+
+    owner = term.payload
+    if isinstance(owner, (PoweredReverseAddTermPayload, PoweredCollatzTermPayload)):
+        ledger = owner.term._ledger
+    elif isinstance(owner, AntihydraTermPayload):
+        ledger = owner.term.ledger
+    else:
+        ledger = None
+    if ledger is not None:
+        payload["execution_metrics"] = asdict(
+            collect_temporal_diagnostics_snapshot(ledger)
+        )
+        payload["execution_metrics_scope"] = "current_query_ledger_snapshot"
     else:
         payload["execution_metrics"] = None
         payload["execution_metrics_scope"] = "unavailable_for_this_family"
@@ -54,8 +68,11 @@ def _metrics_json(term: ProjectedNumberTerm) -> dict[str, object]:
 
 def _radix_string_from_lsd(digits: Iterable[int], base: int) -> str:
     base = _integer(base, "text output base", 2, len(_DIGITS))
-    encoded = [_DIGITS[_integer(d, "output digit", 0, base - 1)] for d in digits]
-    return "".join(reversed(encoded)) or "0"
+    encoded = bytearray(
+        _DIGIT_BYTES[_integer(d, "output digit", 0, base - 1)] for d in digits
+    )
+    encoded.reverse()
+    return encoded.decode("ascii") or "0"
 
 
 def _power_of_two_radix_string(
@@ -73,19 +90,20 @@ def _power_of_two_radix_string(
         output_base.bit_length() - 1,
     )
     accumulator = available = 0
-    encoded: list[str] = []
+    encoded = bytearray()
     for digit in digits:
         accumulator |= _integer(digit, "output digit", 0, source_base - 1) << available
         available += source_bits
         while available >= target_bits:
-            encoded.append(_DIGITS[accumulator & (output_base - 1)])
+            encoded.append(_DIGIT_BYTES[accumulator & (output_base - 1)])
             accumulator >>= target_bits
             available -= target_bits
     if available:
-        encoded.append(_DIGITS[accumulator])
-    while len(encoded) > 1 and encoded[-1] == "0":
+        encoded.append(_DIGIT_BYTES[accumulator])
+    while len(encoded) > 1 and encoded[-1] == ord("0"):
         encoded.pop()
-    return "".join(reversed(encoded)) or "0"
+    encoded.reverse()
+    return encoded.decode("ascii") or "0"
 
 
 def _radix_string(value: int, base: int) -> str:
@@ -102,7 +120,9 @@ def _radix_string(value: int, base: int) -> str:
             return str(value)
         finally:
             sys.set_int_max_str_digits(previous_limit)
-    return "".join(_DIGITS[digit] for digit in reversed(digits_lsd(value, base)))
+    encoded = bytearray(_DIGIT_BYTES[digit] for digit in digits_lsd(value, base))
+    encoded.reverse()
+    return encoded.decode("ascii")
 
 
 def _render_value(term: ProjectedNumberTerm, *, output_base: int, max_bits: int) -> str:

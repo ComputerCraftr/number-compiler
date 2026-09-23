@@ -15,10 +15,49 @@ from number_compiler.hashlife.execution.source_bound_images import (
     SourceImageView,
 )
 from number_compiler.hashlife.execution.tile_scheduler import TileScheduler
+from number_compiler.hashlife.execution.tile_causal import CausalTileEngine
+from number_compiler.hashlife.execution.dyadic_return_records import (
+    DyadicAggregateSummary,
+)
+from number_compiler.sequences.collatz.physical_images import (
+    CollatzPhysicalImageWorkspace,
+)
 from number_compiler.sequences.prime.select import PrimePrefixRank
 from number_compiler.sequences.prime.successor_action import (
     PrimeSuccessorImageAdapter,
 )
+
+
+@pytest.mark.parametrize(
+    "steps,expected", ((999999, "1"), (1000000, "4"), (10**12, "4"))
+)
+def test_public_collatz_cycle_uses_safety_transformer_after_exact_entry(
+    steps: int,
+    expected: str,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    original = CollatzPhysicalImageWorkspace.saturated_summary
+    counters: list[dict[str, int]] = []
+
+    def observed(self: CollatzPhysicalImageWorkspace) -> DyadicAggregateSummary:
+        result = original(self)
+        counters.append(dict(self.ledger.counters))
+        return result
+
+    def forbidden(*args: object, **kwargs: object) -> None:
+        raise AssertionError("public cycle query entered causal execution")
+
+    monkeypatch.setattr(CollatzPhysicalImageWorkspace, "saturated_summary", observed)
+    monkeypatch.setattr(CausalTileEngine, "__init__", forbidden)
+    assert cli.main(["collatz", "--seed", "27", "--nth", str(steps)]) == 0
+    output = capsys.readouterr()
+    assert output.out.strip() == expected
+    assert not output.err
+    assert counters
+    assert counters[-1]["collatz_physical_cycle_safety_transformer_applications"] > 0
+    assert counters[-1]["collatz_physical_leaf_steps"] <= 128
+    assert counters[-1].get("tile_causal_frames", 0) == 0
 
 
 def test_prime_cli_consumes_shared_source_images(

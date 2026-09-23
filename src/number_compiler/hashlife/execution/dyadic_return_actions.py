@@ -90,9 +90,12 @@ def append_action(
 def build_action(
     workspace: DyadicReturnImageWorkspace, width: int
 ) -> DyadicReturnActionID:
+    workspace._bump("action_requests")
     found = workspace.by_width.get(width)
     if found is not None:
+        workspace._bump("action_hits")
         return found
+    workspace._bump("action_misses")
     if workspace.construction_stack:
         raise RuntimeError("nested dyadic return action construction")
 

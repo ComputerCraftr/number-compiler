@@ -19,6 +19,18 @@ definition mirror_pair_channels ::
     (domain (mirror_pair_formula r k), mirror_pair_formula r k mod 5,
       mirror_pair_formula r k mod 2)"
 
+text \<open>One spatial reflection lemma serves the growth and publisher
+branches. It depends only on palindrome admission, not on a carry port.\<close>
+
+lemma palindrome_nth_reflect:
+  assumes palindrome: "rev ss = ss" and bound: "i < length ss"
+  shows "ss ! (length ss-Suc i) = ss!i"
+proof -
+  have "rev ss ! i = ss ! (length ss-Suc i)"
+    using bound by (simp add: rev_nth)
+  then show ?thesis using palindrome by simp
+qed
+
 lemma nat_less_three_cases:
   assumes "(k::nat) < 3"
   shows "k = 0 \<or> k = 1 \<or> k = 2"
@@ -216,6 +228,7 @@ is deliberately restricted to the matched-residue no-growth consumer.\<close>
 
 ML \<open>
   val checked = @{thms mirror_pair_step_closed_form
+    palindrome_nth_reflect
     mirror_pair_formula_below_nine mirror_pair_formula_at_nine
     mirror_pair_f5_channel mirror_pair_f2_channel
     mirror_pair_ports_emit_channels source_plus_ten_alias_after_ports

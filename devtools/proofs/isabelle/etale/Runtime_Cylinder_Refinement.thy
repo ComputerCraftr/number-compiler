@@ -2,6 +2,12 @@ theory Runtime_Cylinder_Refinement
   imports Twisted_Support_Observers "HOL-Computational_Algebra.Polynomial"
 begin
 
+text \<open>This theory checks finite observer equations and bounded
+counterexamples. Its event word is a semantic list/tree model, not the
+production CLI's source-bound action or an executable terminal extractor.
+The clock equalities below do not establish construction cost, arbitrary
+observer refinement, or primality recovery.\<close>
+
 definition folded_difference ::
   "nat \<Rightarrow> int \<Rightarrow> (nat \<Rightarrow> int) \<Rightarrow> nat \<Rightarrow> nat \<Rightarrow> int" where
   "folded_difference width sign d sheet k =
@@ -80,12 +86,12 @@ theorem event_clock_refines_list:
   "event_clock A = (length (event_list A), sum_list (event_list A))"
   by (induction A) simp_all
 
-theorem reassociation_preserves_every_clock_observer:
+theorem reassociation_preserves_clock_transfer:
   "clock_transfer s z (event_list (Join (Join A B) C)) =
     clock_transfer s z (event_list (Join A (Join B C)))"
   by simp
 
-theorem runtime_s_arithmetic_exponents:
+theorem event_clock_s_arithmetic_exponents:
   "-int (snd (event_clock A)) + int (sum_list (event_list A)) = 0"
   "int (fst (event_clock A)) - int (length (event_list A)) = 0"
   "fst (event_clock A) + snd (event_clock A) =
@@ -432,8 +438,8 @@ ML \<open>
    mirror_ladder_none_iff_palindrome
    folded_mirror_vector_nonzero_implies_mismatch folded_difference_no_wrap
    terminal_mirror_vector_zero_iff_palindrome doubling_reaches_target
-   event_clock_refines_list reassociation_preserves_every_clock_observer
-   runtime_s_arithmetic_exponents tropical_clock_support_refinement
+   event_clock_refines_list reassociation_preserves_clock_transfer
+   event_clock_s_arithmetic_exponents tropical_clock_support_refinement
    tropical_clock_returns_minimum tropical_event_dag_refines_support
    tropical_then_associative zero_root_does_not_decide_M11
    M11_frobenius_coordinates_are_not_roots F5_nonzero_coefficients_need_not_split})

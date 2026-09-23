@@ -62,6 +62,7 @@ def apply_source_image(
     self._validate_key(source, "source image source")
     self._validate_key(action, "source image action")
     adapter.validate_action(action)
+    self.ledger.bump("source_image_application_requests")
     split = adapter if isinstance(adapter, SourceBoundSplitContextAdapter) else None
     origin = self._origin(adapter, source)
     workspace = self._workspace
@@ -108,6 +109,7 @@ def apply_source_image(
             apply_key = _ApplyKey(adapter_key, frame.source, frame.action)
             action_key = adapter_key[0], adapter_key[1], frame.action
             if frame.stage == 0:
+                self.ledger.bump("source_image_application_attempts")
                 if (
                     split is not None
                     and self.view(frame.source).failure_prefix is not None
@@ -171,6 +173,7 @@ def apply_source_image(
                         push_value(result)
                         self.ledger.bump("source_image_relative_transfer_hits")
                         continue
+                self.ledger.bump("source_image_application_misses")
                 children = adapter.action_children(frame.action)
                 if children is None:
                     candidate = adapter.apply_primitive(frame.action, source_view)

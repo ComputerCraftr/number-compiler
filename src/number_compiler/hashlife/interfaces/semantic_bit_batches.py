@@ -22,6 +22,55 @@ from number_compiler.hashlife.interfaces.semantic_bits import (
 )
 
 
+def divmod_atoms(
+    arena: BitFunctionArena,
+    function: FactoredFunctionID,
+    divisor: int,
+    quotient_sort: AtomSort,
+    remainder_sort: AtomSort,
+) -> tuple[FactoredFunctionID, FactoredFunctionID]:
+    """Restoring binary division, sharing the existing carry/subtraction DAG."""
+    source = arena.resolve(function)
+    domain = source.signature.output
+    if type(divisor) is not int or not 1 <= divisor <= 1 << 63:
+        raise ValueError("atom divisor must be in 1..2**63")
+    if (
+        type(domain) is not AtomSort
+        or type(quotient_sort) is not AtomSort
+        or type(remainder_sort) is not AtomSort
+        or quotient_sort.cardinality != (domain.cardinality - 1) // divisor + 1
+        or remainder_sort.cardinality != divisor
+    ):
+        raise ValueError("atom division has incompatible quotient/remainder sorts")
+    circuit = _Circuit(arena.functions, source.signature.inputs)
+    bits, valid = circuit.imported(source)
+    width = (divisor - 1).bit_length()
+    remainder = (circuit.zero,) * width
+    quotient = []
+    for bit in reversed(bits):
+        doubled = (bit, *remainder)
+        difference, borrow = circuit.subtract_constant(doubled, divisor)
+        take = circuit.negate(borrow)
+        remainder = tuple(
+            circuit.choose(take, difference[i], doubled[i]) for i in range(width)
+        )
+        quotient.append(take)
+    count = (quotient_sort.cardinality - 1).bit_length()
+    quot = circuit.normalized(
+        FunctionSignature(source.signature.inputs, quotient_sort),
+        tuple(reversed(quotient))[:count],
+        valid,
+    )
+    rem = circuit.normalized(
+        FunctionSignature(source.signature.inputs, remainder_sort),
+        remainder,
+        valid,
+    )
+    result = arena._publish(circuit, (quot, rem))
+    arena.ledger.bump("semantic_atom_division_bits", len(bits))
+    return result[0], result[1]
+
+
 def substitute_many(
     arena: BitFunctionArena,
     functions: tuple[FactoredFunctionID, ...],

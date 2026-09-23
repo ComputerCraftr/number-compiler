@@ -94,9 +94,35 @@ class ProviderImageInputArena:
             raise TypeError("expected a completed provider input ID")
         value.validate(self.owner, self._KIND, size=self._next_id)
         try:
-            return self._nodes[value.local_id]
+            record = self._nodes[value.local_id]
         except KeyError as exc:
             raise ValueError("stale completed provider input ID") from exc
+        # A warm image hit must not bypass the occurrence/admission checks that
+        # bind() performed. Frozen records alone are not publication authority.
+        provider = self.providers.validate_occurrence(record.binding)
+        source = self.sources.resolve(record.source)
+        image = self.images.resolve(record.image)
+        self.images.validate_binding(record.request, record.image)
+        if (
+            record.binding.source != record.source
+            or record.binding.image != record.image
+            or record.request.source != record.source
+            or record.request.action != provider.action
+            or record.request.geometry != image.geometry
+            or record.request.active_extent != record.binding.active_extent
+            or record.level != source.level
+            or record.level != image.level
+            or type(record.active_extent) is not int
+            or not 0 <= record.active_extent <= source.width
+            or (
+                record.binding.active_extent is not None
+                and record.active_extent != record.binding.active_extent
+            )
+            or self._keys.get((record.binding, record.request, record.active_extent))
+            != value.local_id
+        ):
+            raise ValueError("completed provider input binding was altered")
+        return record
 
     def bind(
         self,
@@ -139,6 +165,7 @@ class ProviderImageInputArena:
             source,
             image_record.geometry,
             interface_record.signature,
+            binding.active_extent,
         )
         self.images.validate_binding(request, binding.image)
         if image_record.level != source_record.level:
@@ -148,6 +175,8 @@ class ProviderImageInputArena:
             or not 0 <= active_extent <= source_record.width
         ):
             raise ValueError("provider input extent lies outside its source cell")
+        if binding.active_extent is not None and active_extent != binding.active_extent:
+            raise ValueError("provider input extent differs from its completed image")
         key = binding, request, active_extent
         return key, ProviderImageInput(
             binding,
@@ -196,6 +225,8 @@ class ProviderImageInputArena:
         provider_id = record.binding.provider
         left_image = self.images.resolve(image_record.left)
         right_image = self.images.resolve(image_record.right)
+        left_scope = left_extent if record.binding.active_extent is not None else None
+        right_scope = right_extent if record.binding.active_extent is not None else None
         # Both provider bindings, both input nodes/keys, and the child edge
         # must fit before the first retained occurrence is published.
         prepared_bindings = self.providers._prepare_bindings(
@@ -206,6 +237,7 @@ class ProviderImageInputArena:
                     left_image.output,
                     left_image.interface,
                     image_record.left,
+                    left_scope,
                 ),
                 (
                     provider_id,
@@ -213,6 +245,7 @@ class ProviderImageInputArena:
                     right_image.output,
                     right_image.interface,
                     image_record.right,
+                    right_scope,
                 ),
             )
         )

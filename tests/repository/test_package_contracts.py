@@ -38,6 +38,7 @@ def test_universal_cascade_output_experiment_is_not_an_installed_constructor() -
         "hashlife.execution.diamond_reverse_kernel",
         "hashlife.execution.powered_local_codec",
         "hashlife.execution.temporal_leaf_diamond",
+        "hashlife.execution.continuations.virtual_field_provider",
         "sequences.reverse_add.source_carry",
         "sequences.reverse_add.source_length",
         "sequences.reverse_add.factored_planes",
@@ -169,3 +170,33 @@ def test_discovery_rejects_initializer_alias_and_forwarding_module(
     failures = package_violations(tmp_path)
     assert any("forwarding module without implementation" in item for item in failures)
     assert any("alternate initializer identity" in item for item in failures)
+
+
+def test_search_path_and_module_identity_rules_use_exact_ast_shapes(
+    tmp_path: Path,
+) -> None:
+    package = tmp_path / "src" / "number_compiler"
+    api = package / "api"
+    api.mkdir(parents=True)
+    (package / "__init__.py").write_text('"""Package."""\n')
+    (api / "__init__.py").write_text('"""API."""\n')
+    (api / "shape.py").write_text(
+        "import sys\n"
+        "def move(value):\n"
+        "    sys.path.insert(0, value)\n"
+        "    sys.modules[__name__] = value\n"
+    )
+    failures = package_violations(tmp_path)
+    assert sum("modifies module search path" in item for item in failures) == 1
+    assert sum("redirects its module identity" in item for item in failures) == 1
+    (api / "shape.py").write_text(
+        "class Other:\n"
+        "    path = []\n"
+        "    modules = {}\n"
+        "other = Other()\n"
+        "other.path.insert(0, 1)\n"
+        "other.modules['name'] = 1\n"
+    )
+    failures = package_violations(tmp_path)
+    assert not any("modifies module search path" in item for item in failures)
+    assert not any("redirects its module identity" in item for item in failures)

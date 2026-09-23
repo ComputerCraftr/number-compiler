@@ -53,17 +53,17 @@ def tape_projection(
     require_integer(modulus, "coefficient modulus", 2)
     if sign not in (-1, 1):
         raise ValueError("twist must be +/-1")
+    intervals = tape_intervals(result)
     values = [0] * width
     period = width * (2 if sign == -1 else 1)
-    for lo, hi, prime in tape_intervals(result):
+    for lo, hi, prime in intervals:
         for offset in range(min(hi - lo, period)):
             x = lo + offset
             turns, slot = divmod(x, width)
             copies = (hi - lo - 1 - offset) // period + 1
             values[slot] += prime * copies * (-1 if sign == -1 and turns & 1 else 1)
     result.ledger.counters["tape_projection_cells"] = (
-        result.ledger.counters.get("tape_projection_cells", 0)
-        + len(tape_intervals(result)) * period
+        result.ledger.counters.get("tape_projection_cells", 0) + len(intervals) * period
     )
     return TwistedCylinderProjection(width, sign, tuple(x % modulus for x in values))
 

@@ -93,6 +93,30 @@ imports or mix different semantic contracts.
 
 ## Resource-controlled diagnostics
 
+Install the optional sampling profiler with `python -m pip install -e '.[profile]'`.
+The development environment uses Pyinstrument 5.1.3; runtime installations
+remain dependency-free. Use the standard-library `cProfile`/`pstats` for exact
+call counts and `tracemalloc` for focused allocation investigations. Sampling
+profiles are useful for hot paths; uninstrumented runs remain the latency
+baseline.
+
+```bash
+python -m pyinstrument -r speedscope -o /tmp/collatz.speedscope.json \
+  -m number_compiler collatz --seed 931386509544713451 --nth 2000
+python -m cProfile -o /tmp/collatz.prof \
+  -m number_compiler collatz --seed 931386509544713451 --nth 2000
+python -m pstats /tmp/collatz.prof
+```
+
+Wrap expensive profiling invocations in the watchdog below. Capture successful
+output and the unprofiled exit status as well as the profile: `cProfile`'s
+module runner can swallow `SystemExit`, so its zero exit status does not prove
+the CLI completed the request. The sampling CLI preserves that status in the
+checked environment. A fast budget refusal is not a performance improvement.
+Use the existing `devtools.benchmarks.pytest_timing` plugin for separate
+collection/setup/call/teardown evidence. Never share warmed production caches
+between independent tests to improve timings.
+
 During the tile cutover, run expensive checks and probes through the shared
 watchdog, one worker group at a time:
 
@@ -140,6 +164,29 @@ Build a wheel with `python -m pip wheel --no-deps --wheel-dir /tmp/number-compil
 New evidence uses fingerprint version 4: project configuration plus authored files and assets under `src`, `tests`, and `devtools`, excluding tool caches and generated distribution metadata. Historical fingerprints are unchanged.
 
 Summarize new benchmark evidence in the current ISO-week record under `results/current/`. Canonical developer modules write raw evidence to fresh local paths; they do not create another versioned microtask report.
+
+### Documentation placement
+
+- **Research papers:** definitions, propositions, assumptions, proof sketches,
+  exact counterexample scope and open constructions. Keep a short production
+  connection and a canonical reproduction command. Update the existing account
+  when a result changes rather than appending another implementation milestone.
+- **Weekly sprints:** dated changes, patch provenance, cache fixes, rejected
+  implementations, benchmark tables, validation counts and source fingerprints.
+  Use one record per ISO week with topic summaries; put lengthy supporting
+  records in expandable details. Preserve original dates and evidence limits.
+- **Architecture and API guides:** current module responsibilities, interfaces
+  and user-visible behavior. Keep implementation history in the sprint.
+- **Release ledger and proof index:** current gate disposition and formal
+  statement/assumption/build references, respectively. Neither a historical
+  pass nor a documentation edit closes a current construction obligation.
+
+Link a research result to its dated evidence instead of copying the full run
+report. A superseded status belongs in history; the maintained paper should
+state the current scope once. Keep raw logs local or in CI and externally
+supplied archived documents unchanged. Register maintained pages in
+`docs/catalog.toml` and run `python -m devtools.checks.docs_index` after moving
+sections so local links and heading references remain valid.
 
 Generated run payloads under `results/` are local or CI artifacts and are ignored
 by Git. Commit only reviewed weekly Markdown summaries there; keep executable reproductions under `devtools` and independent oracles under `tests/support`;

@@ -20,7 +20,7 @@ def _assert_diamond_bridge(
 ) -> None:
     metrics = term.metrics()
     behavior = term.behavior_metrics()
-    assert metrics.metrics_schema_version == 7
+    assert metrics.metrics_schema_version == 8
     assert metrics.temporal_parent_requests == (
         metrics.temporal_parent_early_hits + metrics.temporal_parent_compositions
     )

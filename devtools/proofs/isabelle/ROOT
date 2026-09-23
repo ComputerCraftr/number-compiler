@@ -145,16 +145,17 @@ session Prime_Selection_Initialization in integration_prime_selection = Prime_De
     Prime_Deterministic_Cover_Loop_Refinement
     Prime_Selection_Initialization_Refinement
 
-session Associated_Action_Core in integration = Temporal_Clock_Jumps +
+session Associated_Action_Core in integration = HOL +
   options [document = false, quick_and_dirty = false, threads = 1]
   theories
     Associated_Action_Pullback
-    Source_Chart_Selector_Fusion
+    Collatz_Saturated_Threshold_Composition
 
-session Decimal_196_Integration in integration_decimal = Associated_Action_Core +
+session Decimal_196_Integration in integration_decimal = Temporal_Clock_Jumps +
   options [document = false, quick_and_dirty = false, threads = 1]
-  sessions Reverse_Digit_Terminal
+  sessions Reverse_Digit_Terminal Associated_Action_Core
   theories
+    Source_Chart_Selector_Fusion
     Decimal_196_Terminal_Integration
 
 session Antihydra_Mahler_Integration in integration_mahler = Associated_Action_Core +
@@ -176,6 +177,7 @@ session Mahler_Source_Transport in mahler_transport = Mahler_Safety_Cylinders +
   theories
     Mahler_Source_Cylinder_Transport
     Mahler_Source_Event_Safety
+    Mahler_Joint_Quotient_Algebra
     Mahler_Reachable_Repetition
     Mahler_Spatial_Carry_Pump
 

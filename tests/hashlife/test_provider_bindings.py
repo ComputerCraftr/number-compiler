@@ -13,6 +13,7 @@ from number_compiler.arithmetic.contracts.scoped_handles import (
 )
 from number_compiler.hashlife.actions.field_actions import (
     FieldCellActionID,
+    FieldGeometry,
     FieldGeometryID,
 )
 from number_compiler.hashlife.execution.continuations.provider_absorption import (
@@ -29,13 +30,16 @@ from number_compiler.hashlife.execution.continuations.provider_fused_transfer im
     ProviderFusedTransfer,
 )
 from number_compiler.hashlife.execution.continuations.provider_image_input import (
+    ProviderImageInput,
     ProviderImageInputArena,
 )
 from number_compiler.hashlife.execution.field_images import (
     FieldImageID,
+    FieldImageSummary,
     ImageRequestKey,
     SourceCellID,
 )
+from number_compiler.hashlife.execution.field_executor import FieldImageCandidate
 from number_compiler.hashlife.execution.field_provider import (
     PoweredFieldProviderView,
     validate_powered_provider_view,
@@ -220,6 +224,15 @@ def test_provider_occurrence_may_bind_validated_completed_image_atomically() -> 
         images,
         CompletedAdapter(),
     )
+    # The original image was published for an unscoped occurrence. Reuse for
+    # an active two-cell input requires its own exact occurrence publication.
+    assert (
+        images.publish(
+            ImageRequestKey(action, source, geometry, signature, 2),
+            images.resolve(image),
+        )
+        == image
+    )
     assert completed.image(action, root, geometry) == image
     before = ledger.snapshot()
     foreign = FieldImageID(ArenaToken("foreign-image"), image.kind, image.local_id)
@@ -232,6 +245,106 @@ def test_provider_occurrence_may_bind_validated_completed_image_atomically() -> 
             foreign,
         )
     assert ledger.snapshot() == before
+
+
+def test_provider_active_extent_is_occurrence_authority_not_semantic_action() -> None:
+    ledger, source, signature, geometry, action, images, adapter, executor = _setup(
+        (0, 1),
+    )
+    assert isinstance(source, SourceCellID)
+    image = executor.image(action, source, geometry, signature)
+    scoped_key = ImageRequestKey(action, source, geometry, signature, 1)
+    assert images.probe(scoped_key) is None
+    with pytest.raises(ValueError, match="not published"):
+        images.validate_occurrence(image, source, action, 1)
+    with pytest.raises(ValueError, match="active extent"):
+        images.probe(ImageRequestKey(action, source, geometry, signature, True))
+    with pytest.raises(ValueError, match="active extent"):
+        images.probe(ImageRequestKey(action, source, geometry, signature, 3))
+
+    providers = ProviderAbsorptionArena(
+        ledger,
+        images.sources,
+        validate_output=images._output_validate,
+        validate_bound_output=images._output_validate,
+        validate_interface=images.interfaces.resolve,
+        validate_bound_interface=images.interfaces.resolve,
+        validate_action=images._action_validate,
+        validate_boundary=lambda _value: None,
+        observe=lambda *_args: 0,
+        validate_image=images.resolve,
+        validate_image_occurrence=images.validate_occurrence,
+    )
+    provider = providers.intern(
+        ProviderAction(adapter.output, adapter.interface, action, 0, 0, 1)
+    )
+    before = ledger.snapshot()
+    with pytest.raises(ValueError, match="not published"):
+        providers.bind(
+            provider,
+            source,
+            adapter.output,
+            adapter.interface,
+            image,
+            active_extent=1,
+        )
+    assert ledger.snapshot() == before
+
+    # One semantic image may serve both occurrences only after each exact
+    # source/extent binding has been separately published.
+    assert images.publish(scoped_key, images.resolve(image)) == image
+    scoped = providers.bind(
+        provider,
+        source,
+        adapter.output,
+        adapter.interface,
+        image,
+        active_extent=1,
+    )
+    assert scoped.active_extent == 1
+    inputs = ProviderImageInputArena(providers, images)
+    scoped_input = inputs.bind(scoped, source, 1)
+    assert inputs.resolve(scoped_input).request.active_extent == 1
+    # A scoped parent does not silently authorize its children. The split
+    # fails without publishing any partial child binding, then succeeds once
+    # both exact child extents have been admitted separately.
+    before_split = ledger.snapshot()
+    before_bindings = len(providers._bindings)
+    with pytest.raises(ValueError, match="not published"):
+        inputs.children(scoped_input)
+    assert ledger.snapshot() == before_split
+    assert len(providers._bindings) == before_bindings
+    assert scoped_input.local_id not in inputs._children
+    left_source, right_source = images.sources.children(source)
+    left_image, right_image = images.children(image)
+    for child_source, child_image, child_extent in (
+        (left_source, left_image, 1),
+        (right_source, right_image, 0),
+    ):
+        child_record = images.resolve(child_image)
+        child_signature = images.resolve_interface(child_record.interface).signature
+        assert (
+            images.publish(
+                ImageRequestKey(
+                    action,
+                    child_source,
+                    child_record.geometry,
+                    child_signature,
+                    child_extent,
+                ),
+                child_record,
+            )
+            == child_image
+        )
+    left_input, right_input = inputs.children(scoped_input)
+    assert inputs.resolve(left_input).active_extent == 1
+    assert inputs.resolve(right_input).active_extent == 0
+    with pytest.raises(ValueError, match="differs from its completed image"):
+        inputs.bind(scoped, source, 2)
+
+    forged = replace(scoped, active_extent=0)
+    with pytest.raises(ValueError, match="not published"):
+        providers.validate_occurrence(forged)
 
 
 def test_provider_occurrence_rejects_mismatched_completed_image_before_warm_hit() -> (
@@ -340,6 +453,150 @@ def test_provider_child_batch_rejects_second_image_before_any_publication(
     assert ledger.snapshot() == before
     assert len(providers._bindings) == binding_count
     assert not inputs._children
+
+
+@pytest.mark.parametrize("change", ("extent", "level", "source", "request"))
+def test_provider_input_revalidates_published_context_before_resolution(
+    change: str,
+) -> None:
+    ledger, images, _providers, inputs, root = _completed_provider_input_setup()
+    record = inputs.resolve(root)
+    left, _ = inputs.sources.children(record.source)
+    altered = (
+        replace(record, active_extent=1)
+        if change == "extent"
+        else replace(record, level=0)
+        if change == "level"
+        else replace(record, source=left)
+        if change == "source"
+        else replace(record, request=replace(record.request, source=left))
+    )
+    inputs._nodes[root.local_id] = altered
+    before = ledger.snapshot()
+    with pytest.raises(ValueError):
+        inputs.resolve(root)
+    assert ledger.snapshot() == before
+    # The completed image is still live: rejecting the altered input is not
+    # accidentally just a cache miss or an evicted image.
+    images.resolve(record.image)
+
+
+def test_provider_input_rejects_revoked_image_binding_before_warm_hit() -> None:
+    ledger, images, _providers, inputs, root = _completed_provider_input_setup()
+    record = inputs.resolve(root)
+    assert images.probe(record.request) == record.image
+    images.clear_bindings()
+    images.resolve(record.image)
+    before = ledger.snapshot()
+    with pytest.raises(ValueError, match="occurrence"):
+        inputs.resolve(root)
+    assert ledger.snapshot() == before
+
+
+def test_provider_cold_join_preserves_distinct_charts_of_a_shared_child(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Traversal regression, not a reverse temporal constructor proof."""
+    ledger, images, providers, inputs, root = _completed_provider_input_setup((0, 0))
+    left, right = inputs.children(root)
+    assert left == right
+    record = inputs.resolve(root)
+    action = record.request.action
+    signature = record.request.signature
+    calls: list[str] = []
+
+    def child_geometry(parent: FieldGeometryID, side: int) -> FieldGeometryID:
+        parent_record = images.geometries.resolve(parent)
+        return images.geometries.intern(
+            FieldGeometry(
+                parent_record.spatial_level - 1, orientation=side, halo_left=1
+            )
+        )
+
+    monkeypatch.setattr(images.geometries, "child", child_geometry)
+
+    class Adapter:
+        def validate_action(self, value: FieldCellActionID) -> None:
+            images.validate_action(value)
+
+        def compose_actions(
+            self, before: FieldCellActionID, after: FieldCellActionID
+        ) -> FieldCellActionID:
+            assert before == after == action
+            return action
+
+        def signature(
+            self, value: FieldCellActionID, geometry: FieldGeometryID
+        ) -> PortSignatureID:
+            assert value == action
+            images.geometries.resolve(geometry)
+            return signature
+
+        def compile_leaf(
+            self,
+            complete: FieldCellActionID,
+            consumer: FieldCellActionID,
+            provider: ProviderImageInput,
+            geometry: FieldGeometryID,
+            selected_signature: PortSignatureID,
+        ) -> FieldImageCandidate:
+            assert complete == consumer == action
+            assert selected_signature == signature
+            calls.append("leaf")
+            prior = images.resolve(provider.image)
+            return FieldImageCandidate(
+                prior.interface, prior.output, FieldImageSummary(True, 0, 0, 1)
+            )
+
+        def join(
+            self,
+            complete: FieldCellActionID,
+            provider: ProviderImageInput,
+            left_image: FieldImageID,
+            right_image: FieldImageID,
+            geometry: FieldGeometryID,
+            selected_signature: PortSignatureID,
+        ) -> FieldImageCandidate:
+            assert complete == action and selected_signature == signature
+            calls.append("join")
+            assert images.resolve(left_image).geometry == child_geometry(geometry, 0)
+            assert images.resolve(right_image).geometry == child_geometry(geometry, 1)
+            assert left_image != right_image
+            prior = images.resolve(provider.image)
+            return FieldImageCandidate(
+                prior.interface, prior.output, FieldImageSummary(True, 0, 1, 2)
+            )
+
+    executor = ProviderFieldImageExecutor(providers, inputs, images, Adapter())
+    geometry = images.geometries.intern(FieldGeometry(1, halo_left=1))
+    result = executor.image(action, root, geometry)
+    assert calls == ["leaf", "leaf", "join"]
+    visits = ledger.counters["provider_field_image_frame_visits"]
+    assert visits == 4
+    assert executor.image(action, root, geometry) == result
+    assert calls == ["leaf", "leaf", "join"]
+    assert ledger.counters["provider_field_image_frame_visits"] == visits
+    assert ledger.counters["provider_field_image_evaluations"] == 3
+    workspace = next(
+        item for item in ledger.inventory() if item.role == "provider_image_workspace"
+    )
+    assert workspace.entries == workspace.nodes == 0
+
+    def rejected_join(*_args: object, **_kwargs: object) -> Never:
+        raise ValueError("rejected parent publication")
+
+    monkeypatch.setattr(executor.adapter, "join", rejected_join)
+    other_geometry = images.geometries.intern(FieldGeometry(1, halo_left=2))
+    with pytest.raises(ValueError, match="rejected parent"):
+        executor.image(action, root, other_geometry)
+    # Cached children still cost visits and temporary bindings; failed parent
+    # work is visible, and all temporary reservations are released.
+    assert ledger.counters["provider_field_image_frame_visits"] == visits + 4
+    assert ledger.counters["provider_field_image_evaluations"] == 3
+    workspace = next(
+        item for item in ledger.inventory() if item.role == "provider_image_workspace"
+    )
+    assert workspace.entries == workspace.nodes == 0
 
 
 def test_fused_provider_uses_one_entry_response_and_validates_before_warm_hit() -> None:

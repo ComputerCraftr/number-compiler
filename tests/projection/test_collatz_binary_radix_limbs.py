@@ -46,14 +46,20 @@ def test_limb_does_not_swallow_an_internal_point_failure(
     def broken(_term: PoweredCollatzTerm, _radix: int, _position: int) -> int:
         raise IndexError("internal point failure")
 
-    monkeypatch.setattr(PoweredCollatzTerm, "radix_digit", broken)
+    monkeypatch.setattr(PoweredCollatzTerm, "_admitted_radix_digit", broken)
+    with pytest.raises(IndexError, match="internal point failure"):
+        PoweredCollatzTerm(27, 3).radix_digit(2, 0)
+    with pytest.raises(IndexError, match="internal point failure"):
+        PoweredCollatzTerm(27, 3).digit(0)
     with pytest.raises(IndexError, match="internal point failure"):
         PoweredCollatzTermPayload(PoweredCollatzTerm(27, 3), 64).digit(0)
 
 
 def test_limb_rejects_an_invalid_kernel_symbol(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(
-        PoweredCollatzTerm, "radix_digit", lambda _self, _radix, _position: 64
+        PoweredCollatzTerm,
+        "_admitted_radix_digit",
+        lambda _self, _radix, _position: 64,
     )
     with pytest.raises(AssertionError):
         PoweredCollatzTermPayload(PoweredCollatzTerm(27, 3), 64).digit(0)

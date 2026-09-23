@@ -376,7 +376,7 @@ def run_probe() -> dict[str, object]:
     if interpreter_observed or continuation_observed:
         blockers.append("powered_output_still_replays_temporal_interpreter")
     return {
-        "version": "0.62.0-schema7-certified-execution",
+        "version": "0.63.0-schema8-certified-execution",
         "status": "RED" if blockers else "GREEN",
         "construction": construction,
         "projection": projection,

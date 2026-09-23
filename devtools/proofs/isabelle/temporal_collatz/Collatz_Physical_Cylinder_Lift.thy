@@ -355,6 +355,203 @@ proof -
       first_word second_word by simp
 qed
 
+section \<open>Bounded production leaf loop\<close>
+
+text \<open>The Python residue macro now evaluates at most four literal generator
+steps before the chronological worklist composes larger blocks. This record
+models those generator fields, including the exact skew numerator and
+denominator. Its proof concerns a bounded source residue; it does not assert
+that discovering all later residues is sublinear.\<close>
+
+record collatz_physical_leaf_state =
+  physical_leaf_current :: nat
+  physical_leaf_skew :: "nat skew_transfer"
+  physical_leaf_labels :: "bool list"
+  physical_leaf_odd_count :: nat
+  physical_leaf_delta :: int
+  physical_leaf_minimum :: int
+
+definition collatz_physical_leaf_initial ::
+    "nat \<Rightarrow> collatz_physical_leaf_state" where
+  "collatz_physical_leaf_initial source = \<lparr>
+    physical_leaf_current = source,
+    physical_leaf_skew = shared_skew_identity,
+    physical_leaf_labels = [],
+    physical_leaf_odd_count = 0,
+    physical_leaf_delta = 0,
+    physical_leaf_minimum = 0\<rparr>"
+
+definition collatz_physical_leaf_step ::
+    "collatz_physical_leaf_state \<Rightarrow> collatz_physical_leaf_state" where
+  "collatz_physical_leaf_step state =
+    (let q = physical_leaf_current state;
+         b = odd q;
+         generator = \<lparr>upper = collatz_physical_gain b,
+           offset = (if b then 2 else 0), lower = 2\<rparr>
+     in \<lparr>
+       physical_leaf_current = physical_collatz q,
+       physical_leaf_skew = shared_skew_then (physical_leaf_skew state) generator,
+       physical_leaf_labels = physical_leaf_labels state @ [b],
+       physical_leaf_odd_count = physical_leaf_odd_count state + (if b then 1 else 0),
+       physical_leaf_delta = physical_leaf_delta state + (if b then 1 else 0),
+       physical_leaf_minimum = min (physical_leaf_minimum state)
+         (physical_leaf_delta state + (if b then 1 else 0))\<rparr>)"
+
+fun collatz_physical_admitted_leaf_loop ::
+    "nat \<Rightarrow> nat \<Rightarrow> collatz_physical_leaf_state" where
+  "collatz_physical_admitted_leaf_loop source 0 =
+    collatz_physical_leaf_initial source"
+| "collatz_physical_admitted_leaf_loop source (Suc n) =
+    collatz_physical_leaf_step (collatz_physical_admitted_leaf_loop source n)"
+
+lemma collatz_physical_generator_skew:
+  "collatz_physical_gain (odd q) * q + (if odd q then 2 else 0) =
+    2 * physical_collatz q"
+proof (cases "odd q")
+  case True
+  then show ?thesis
+    by (simp add: collatz_physical_gain_def physical_collatz_def)
+next
+  case False
+  then have "q = 2 * (q div 2)" by simp
+  with False show ?thesis
+    by (simp add: collatz_physical_gain_def physical_collatz_def)
+qed
+
+lemma collatz_physical_branch_word_Suc_right:
+  "collatz_physical_branch_word (Suc n) source =
+    collatz_physical_branch_word n source @
+      [odd ((physical_collatz ^^ n) source)]"
+  using collatz_physical_branch_word_add[of n 1 source]
+  by simp
+
+theorem collatz_physical_admitted_leaf_loop_refinement:
+  fixes source n :: nat
+  defines "state \<equiv> collatz_physical_admitted_leaf_loop source n"
+  shows "physical_leaf_current state = (physical_collatz ^^ n) source"
+    and "physical_leaf_labels state =
+      collatz_physical_branch_word n source"
+    and "lower (physical_leaf_skew state) = 2^n"
+    and "upper (physical_leaf_skew state) =
+      dyadic_gain_product collatz_physical_gain
+        (collatz_physical_branch_word n source)"
+    and "physical_leaf_odd_count state =
+      collatz_physical_odd_count n source"
+    and "physical_leaf_delta state =
+      int (collatz_physical_odd_count n source)"
+    and "physical_leaf_minimum state = 0"
+    and "upper (physical_leaf_skew state) * source +
+      offset (physical_leaf_skew state) =
+      lower (physical_leaf_skew state) * physical_leaf_current state"
+proof -
+  have invariant: "
+    physical_leaf_current (collatz_physical_admitted_leaf_loop source k) =
+      (physical_collatz ^^ k) source \<and>
+    physical_leaf_labels (collatz_physical_admitted_leaf_loop source k) =
+      collatz_physical_branch_word k source \<and>
+    lower (physical_leaf_skew (collatz_physical_admitted_leaf_loop source k)) = 2^k \<and>
+    upper (physical_leaf_skew (collatz_physical_admitted_leaf_loop source k)) =
+      dyadic_gain_product collatz_physical_gain
+        (collatz_physical_branch_word k source) \<and>
+    physical_leaf_odd_count (collatz_physical_admitted_leaf_loop source k) =
+      collatz_physical_odd_count k source \<and>
+    physical_leaf_delta (collatz_physical_admitted_leaf_loop source k) =
+      int (collatz_physical_odd_count k source) \<and>
+    physical_leaf_minimum (collatz_physical_admitted_leaf_loop source k) = 0 \<and>
+    upper (physical_leaf_skew (collatz_physical_admitted_leaf_loop source k)) * source +
+      offset (physical_leaf_skew (collatz_physical_admitted_leaf_loop source k)) =
+      lower (physical_leaf_skew (collatz_physical_admitted_leaf_loop source k)) *
+        physical_leaf_current (collatz_physical_admitted_leaf_loop source k)"
+    for k
+  proof (induction k)
+    case 0
+    then show ?case
+      by (simp add: collatz_physical_leaf_initial_def shared_skew_identity_def
+          collatz_physical_odd_count_def dyadic_gain_product_def)
+  next
+    case (Suc k)
+    let ?state = "collatz_physical_admitted_leaf_loop source k"
+    let ?q = "physical_leaf_current ?state"
+    let ?b = "odd ?q"
+    have one_step:
+      "collatz_physical_gain ?b * ?q + (if ?b then 2 else 0) =
+        2 * physical_collatz ?q"
+      by (rule collatz_physical_generator_skew)
+    have old:
+      "upper (physical_leaf_skew ?state) * source +
+        offset (physical_leaf_skew ?state) =
+        lower (physical_leaf_skew ?state) * ?q"
+      using Suc.IH by blast
+    have transport:
+      "collatz_physical_gain ?b * upper (physical_leaf_skew ?state) * source +
+       collatz_physical_gain ?b * offset (physical_leaf_skew ?state) +
+       lower (physical_leaf_skew ?state) * (if ?b then 2 else 0) =
+       (2 * lower (physical_leaf_skew ?state)) * physical_collatz ?q"
+    proof -
+      have "collatz_physical_gain ?b * upper (physical_leaf_skew ?state) * source +
+          collatz_physical_gain ?b * offset (physical_leaf_skew ?state) +
+          lower (physical_leaf_skew ?state) * (if ?b then 2 else 0) =
+        collatz_physical_gain ?b *
+          (upper (physical_leaf_skew ?state) * source +
+           offset (physical_leaf_skew ?state)) +
+          lower (physical_leaf_skew ?state) * (if ?b then 2 else 0)"
+        by (simp add: algebra_simps)
+      also have "... = lower (physical_leaf_skew ?state) *
+          (collatz_physical_gain ?b * ?q + (if ?b then 2 else 0))"
+        using old by (simp add: algebra_simps)
+      also have "... =
+          (2 * lower (physical_leaf_skew ?state)) * physical_collatz ?q"
+        using one_step by (simp add: algebra_simps)
+      finally show ?thesis .
+    qed
+    show ?case
+      using Suc.IH transport
+      by (simp del: collatz_physical_branch_word.simps(2) funpow.simps(2)
+          add: collatz_physical_leaf_step_def Let_def
+          shared_skew_then_def collatz_physical_branch_word_Suc_right
+          collatz_physical_odd_count_def dyadic_gain_product_def
+          funpow_Suc_right funpow_swap1 power_Suc algebra_simps)
+  qed
+  show "physical_leaf_current state = (physical_collatz ^^ n) source"
+    using invariant[of n] unfolding state_def by simp
+  show "physical_leaf_labels state = collatz_physical_branch_word n source"
+    using invariant[of n] unfolding state_def by simp
+  show "lower (physical_leaf_skew state) = 2^n"
+    using invariant[of n] unfolding state_def by simp
+  show "upper (physical_leaf_skew state) =
+      dyadic_gain_product collatz_physical_gain
+        (collatz_physical_branch_word n source)"
+    using invariant[of n] unfolding state_def by simp
+  show "physical_leaf_odd_count state = collatz_physical_odd_count n source"
+    using invariant[of n] unfolding state_def by simp
+  show "physical_leaf_delta state = int (collatz_physical_odd_count n source)"
+    using invariant[of n] unfolding state_def by simp
+  show "physical_leaf_minimum state = 0"
+    using invariant[of n] unfolding state_def by simp
+  show "upper (physical_leaf_skew state) * source +
+      offset (physical_leaf_skew state) =
+      lower (physical_leaf_skew state) * physical_leaf_current state"
+    using invariant[of n] unfolding state_def by blast
+qed
+
+corollary collatz_physical_d4_base_refinement:
+  assumes "n \<le> 4"
+  shows "physical_leaf_labels
+      (collatz_physical_admitted_leaf_loop residue n) =
+        collatz_physical_branch_word n residue"
+    and "physical_leaf_delta
+      (collatz_physical_admitted_leaf_loop residue n) =
+        int (collatz_physical_odd_count n residue)"
+    and "physical_leaf_minimum
+      (collatz_physical_admitted_leaf_loop residue n) = 0"
+    and "upper (physical_leaf_skew
+      (collatz_physical_admitted_leaf_loop residue n)) * residue +
+      offset (physical_leaf_skew
+        (collatz_physical_admitted_leaf_loop residue n)) =
+      2^n * (physical_collatz ^^ n) residue"
+  using collatz_physical_admitted_leaf_loop_refinement[of residue n]
+  by simp_all
+
 corollary collatz_physical_affine_leaf_division:
   "(physical_collatz ^^ n) x =
     (3^(collatz_physical_odd_count n x) * x +
@@ -391,6 +588,10 @@ ML \<open>
       collatz_physical_low_residue_transport
       collatz_physical_branch_word_add
       collatz_physical_balanced_selector_split
+      collatz_physical_generator_skew
+      collatz_physical_branch_word_Suc_right
+      collatz_physical_admitted_leaf_loop_refinement
+      collatz_physical_d4_base_refinement
       collatz_physical_affine_leaf_division})
     then () else error "Physical Collatz cylinder lift depends on an oracle";
 \<close>

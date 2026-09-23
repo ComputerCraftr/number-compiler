@@ -138,6 +138,25 @@ def decimal_pair_carry_action(symbol: int) -> CarryFn:
     return _decimal_kernel_carry_action(_pair_symbol(symbol))
 
 
+def decimal_q95(symbol: int, forcing: int) -> int:
+    """Exact output carrier plus F5 forcing, with no incoming-carry coordinate.
+
+    Forgetting homogeneous F2 forcing requires separate source admission;
+    encoding this local alphabet alone does not establish that admission.
+    """
+    value = _pair_symbol(symbol)
+    if type(forcing) is not int or not 0 <= forcing < 5:
+        raise ValueError("Q95 forcing must be an exact F5 integer")
+    return 5 * value + forcing
+
+
+def decimal_q95_coordinates(value: int) -> tuple[int, int]:
+    """Decode the fixed Q95 alphabet; spatial carry is derived from its output."""
+    if type(value) is not int or not 0 <= value < 95:
+        raise ValueError("Q95 requires an exact integer in 0..94")
+    return divmod(value, 5)
+
+
 def _decimal_kernel_carry_action(symbol: int) -> CarryFn:
     """Carry projection after the primitive kernel has admitted ``symbol``."""
     if symbol == 9:
@@ -267,4 +286,6 @@ __all__ = [
     "decimal_pair_carry_action",
     "decimal_pair_coordinates",
     "decimal_pair_value",
+    "decimal_q95",
+    "decimal_q95_coordinates",
 ]

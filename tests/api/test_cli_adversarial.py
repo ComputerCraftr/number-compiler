@@ -6,7 +6,6 @@ import json
 import os
 import subprocess
 import sys
-from collections.abc import Callable
 from dataclasses import asdict
 from typing import TYPE_CHECKING, Never, TypedDict, cast
 
@@ -24,13 +23,12 @@ from number_compiler.api.number_api import (
 from number_compiler.arithmetic.contracts.block_effect import BlockContextBudgetExceeded
 from number_compiler.arithmetic.formula.formula import FormulaArena, root_from_values
 from number_compiler.arithmetic.formula.types import RadixSpec
+from number_compiler.resources.temporal_diagnostics import (
+    collect_temporal_diagnostics_snapshot,
+)
 
 if TYPE_CHECKING:
     from number_compiler.api.number_api import ProjectedNumberTerm
-    from number_compiler.sequences.collatz.block_power import (
-        CollatzPhysicalBlockMetrics,
-    )
-    from number_compiler.sequences.reverse_add.power import ReverseAddPowerMetrics
 
 
 def forbid_compiler(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -376,21 +374,12 @@ def test_emitted_execution_metrics_match_actual_rendered_term_ledger(
     output_format: str,
 ) -> None:
     terms: list[ProjectedNumberTerm] = []
-    snapshots = []
     payload_type = (
         PoweredReverseAddTermPayload if family == "196" else PoweredCollatzTermPayload
     )
-    original_metrics = cast(
-        "Callable[[PoweredReverseAddTermPayload | PoweredCollatzTermPayload], ReverseAddPowerMetrics | CollatzPhysicalBlockMetrics]",
-        payload_type.power_metrics,
-    )
 
-    def capture_metrics(
-        payload: PoweredReverseAddTermPayload | PoweredCollatzTermPayload,
-    ) -> ReverseAddPowerMetrics | CollatzPhysicalBlockMetrics:
-        report = original_metrics(payload)
-        snapshots.append(json.loads(json.dumps(asdict(report))))
-        return report
+    def forbidden_audit(*_args: object, **_kwargs: object) -> Never:
+        raise AssertionError("CLI metrics entered the explicit full-audit API")
 
     class CapturingCompiler(NumberCompiler):
         def project_nth(
@@ -425,7 +414,7 @@ def test_emitted_execution_metrics_match_actual_rendered_term_ledger(
             return term
 
     monkeypatch.setattr(cli, "NumberCompiler", CapturingCompiler)
-    monkeypatch.setattr(payload_type, "power_metrics", capture_metrics)
+    monkeypatch.setattr(payload_type, "power_metrics", forbidden_audit)
     assert (
         cli.main(
             [
@@ -449,37 +438,36 @@ def test_emitted_execution_metrics_match_actual_rendered_term_ledger(
         metrics = rendered["metrics"]
     assert metrics["metrics_scope"] == "construction_and_projection_descriptors"
     assert metrics["projection_work"] == 0
-    assert metrics["execution_metrics_scope"] == "current_powered_term_ledger_snapshot"
+    assert metrics["execution_metrics_scope"] == "current_query_ledger_snapshot"
     execution = metrics["execution_metrics"]
     term = terms[0]
-    assert len(snapshots) == 1
-    assert execution == snapshots[0]
     assert isinstance(
         term.payload, (PoweredReverseAddTermPayload, PoweredCollatzTermPayload)
     )
-    later = json.loads(json.dumps(asdict(original_metrics(term.payload))))
-    # Weak shared source tiles can disappear when unrelated owners are
-    # collected between reports. The emitted population must match its actual
-    # captured snapshot; all remaining index-owned metrics remain unchanged.
-    shared_population = "canonical_tile_arena_nodes_global"
-    assert {
-        key: value for key, value in execution.items() if key != shared_population
-    } == {key: value for key, value in later.items() if key != shared_population}
-    assert execution["metrics_schema_version"] == 7
-    assert execution["resource_ledger_entries"] == term.payload.term._ledger.entries > 0
-    assert execution["resource_observed_nodes"] == term.payload.term._ledger.nodes > 0
-    assert all(
-        row["observed_entries"] is None
-        or abs(row["observed_entries"] - row["entries"])
-        + (
-            0
-            if row["observed_nodes"] is None
-            else abs(row["observed_nodes"] - row["nodes"])
+    assert execution == json.loads(
+        json.dumps(
+            asdict(collect_temporal_diagnostics_snapshot(term.payload.term._ledger))
         )
-        == 0
-        for row in execution["resource_inventory"]
     )
-    assert execution["resource_work_counters"]
+    assert execution["schema_version"] == 8
+    resources = execution["resources"]
+    assert resources["entries"] == term.payload.term._ledger.entries > 0
+    assert resources["nodes"] == term.payload.term._ledger.nodes > 0
+    assert resources["audit_complete"] is False
+    assert resources["accounting_mismatch"] is None
+    assert execution["reporting"]["inspected_inventory_rows"] == 0
+    # The full Python API remains the explicit owner of semantic and inventory
+    # checks; CLI snapshot reporting does not silently perform that audit.
+    monkeypatch.undo()
+    full = term.payload.power_metrics()
+    assert full.resource_audit_complete
+    assert full.resource_accounting_mismatch == 0
+    assert all(
+        row.accounting_delta == 0
+        for row in full.resource_inventory
+        if row.accounting_delta is not None
+    )
+    assert full.resource_work_counters
 
 
 @pytest.mark.parametrize("family, extra", [("196", []), ("collatz", ["--seed", "27"])])
@@ -561,8 +549,10 @@ def test_symbolic_metrics_do_not_execute_points_or_width(
         assert terms[0].payload.term._workspace is None
     else:
         assert not hasattr(terms[0].payload.term, "_index")
-    assert execution["resource_ledger_entries"] == terms[0].payload.term._ledger.entries
-    assert execution["point_queries"] == 0
+    assert execution["resources"]["entries"] == terms[0].payload.term._ledger.entries
+    assert execution["resources"]["audit_complete"] is False
+    assert execution["resources"]["accounting_mismatch"] is None
+    assert execution["schema_version"] == 8
 
 
 @pytest.mark.parametrize(

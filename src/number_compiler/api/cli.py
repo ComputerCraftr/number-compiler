@@ -57,6 +57,12 @@ def main(argv: list[str] | None = None) -> int:
                 print(
                     f"{family}: --nth N ({capability.unit}); info: {', '.join(capability.nth_info)}"
                 )
+                if capability.event_info:
+                    print(
+                        f"  --events E (accelerated_odd_events); info: {', '.join(capability.event_info)}"
+                    )
+                if family == "antihydra":
+                    print("  --verify-nonhalting PATH")
             return 0
         if request.selector == "verify":
             return _verify(request)

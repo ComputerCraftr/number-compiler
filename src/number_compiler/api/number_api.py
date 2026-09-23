@@ -205,8 +205,18 @@ class PoweredCollatzTermPayload:
     def iter_digits(self, *, reverse: bool = False) -> Iterator[int]:
         if type(reverse) is not bool:
             raise TypeError("reverse must be a Boolean")
-        values = self.digits()
-        return iter(reversed(values) if reverse else values)
+        if reverse:
+            return iter(reversed(self.digits()))
+        if self.radix == 2:
+            return self.term.iter_digits()
+
+        def projected() -> Iterator[int]:
+            # Explicit full-output lowering happens once, on first demand.
+            # It must not become one source-image reconstruction per digit.
+            value = self.materialize(max_bits=self.term.maximum_width)
+            yield from map(int, digits_lsd(value, self.radix))
+
+        return projected()
 
     @source_reads_only
     def digit(self, index: int) -> int:

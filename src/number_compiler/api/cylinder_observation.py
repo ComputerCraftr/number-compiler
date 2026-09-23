@@ -31,6 +31,7 @@ def observe_physical_clock(
     max_ticks: int,
     max_digits: int,
     _term: PoweredCollatzTerm | None = None,
+    _include_metrics: bool = True,
 ) -> dict[str, Any]:
     """Read the existing bound powered result; no accelerated-prefix discovery."""
     seed = require_integer(seed, "seed", 1)
@@ -59,9 +60,15 @@ def observe_physical_clock(
             "two_adic_exponent": clock.two_adic_exponent,
             "three_adic_exponent": clock.three_adic_exponent,
         },
-        "work_counters": dict(term._ledger.counters),
-        "peak_nodes": term._ledger.peak_nodes,
-        "retained_nodes": term._ledger.nodes,
+        **(
+            {
+                "work_counters": dict(term._ledger.counters),
+                "peak_nodes": term._ledger.peak_nodes,
+                "retained_nodes": term._ledger.nodes,
+            }
+            if _include_metrics
+            else {}
+        ),
     }
 
 
@@ -113,6 +120,7 @@ def observe_collatz(
     max_events: int = 4096,
     max_digits: int = 4096,
     _context: CollatzObservationContext | None = None,
+    _include_metrics: bool = True,
 ) -> dict[str, Any]:
     if kind not in {
         "clock",
@@ -122,6 +130,7 @@ def observe_collatz(
         "hensel",
         "tropical",
         "factor",
+        "safety",
     }:
         raise ValueError("unknown Collatz observation")
     seed = require_integer(seed, "seed", 1)
@@ -179,6 +188,53 @@ def observe_collatz(
     elif kind == "factor":
         support = observer.factor_observation(root, modulus)
         value = {"support": support.divisor, "factor": support.proper_factor}
+    elif kind == "safety":
+        from number_compiler.sequences.collatz.saturated_future import (
+            from_published_prefix,
+        )
+
+        saturated = from_published_prefix(context.published)
+        if saturated is None:
+            value = {
+                "predicate": "strict_descent_below_source",
+                "descended_below_source": False,
+                "events": 0,
+                "endpoint": {"multiplier": 1, "offset": 0, "denominator": 1},
+                "source_cylinder": {"bits": 0, "residue": 0},
+                "threshold_lines": [],
+                "all_time_claim": False,
+            }
+        else:
+            occurrence = saturated.occurrence
+            transfer = occurrence.action.endpoint
+            value = {
+                "predicate": "strict_descent_below_source",
+                "descended_below_source": occurrence.descends(seed),
+                "events": occurrence.events,
+                "endpoint": {
+                    "multiplier": transfer.upper,
+                    "offset": transfer.offset,
+                    "denominator": transfer.lower,
+                },
+                "source_cylinder": {
+                    "bits": occurrence.domain.bits,
+                    "residue": occurrence.domain.residue,
+                },
+                "threshold_lines": [
+                    {
+                        "scale": {
+                            "numerator": line.multiplier.numerator,
+                            "denominator": line.multiplier.denominator,
+                        },
+                        "offset": {
+                            "numerator": line.addend.numerator,
+                            "denominator": line.addend.denominator,
+                        },
+                    }
+                    for line in occurrence.action.threshold.lines
+                ],
+                "all_time_claim": False,
+            }
     else:
         raise ValueError("unknown Collatz observation")
     return {
@@ -192,14 +248,20 @@ def observe_collatz(
         "discovery_digit_work": digit_work,
         "admission_digit_comparisons": context.published.admission_digit_comparisons,
         "source_support_ticks": context.physical_support.ticks,
-        "source_work_counters": dict(context.publisher.ledger.counters),
-        "source_support_retained_nodes": context.publisher.ledger.nodes,
-        "separately_retained": context.publisher.separately_retained,
-        "arena_nodes": arena.node_count,
-        "normalization_compositions": arena.composition_operations,
-        "observer_nodes": observer.node_evaluations,
-        "observer_compositions": observer.compositions,
-        "ring_power_compositions": observer.ring_power_compositions,
+        **(
+            {
+                "source_work_counters": dict(context.publisher.ledger.counters),
+                "source_support_retained_nodes": context.publisher.ledger.nodes,
+                "separately_retained": context.publisher.separately_retained,
+                "arena_nodes": arena.node_count,
+                "normalization_compositions": arena.composition_operations,
+                "observer_nodes": observer.node_evaluations,
+                "observer_compositions": observer.compositions,
+                "ring_power_compositions": observer.ring_power_compositions,
+            }
+            if _include_metrics
+            else {}
+        ),
     }
 
 
@@ -211,6 +273,7 @@ def observe_mirror(
     max_digits: int,
     base: int = 10,
     _term: ReverseAddPoweredTerm | None = None,
+    _include_metrics: bool = True,
 ) -> dict[str, Any]:
     require_integer(max_digits, "digit budget", 1)
     first_width = require_integer(first_width, "first sheet width", 1)
@@ -231,9 +294,15 @@ def observe_mirror(
         "scope": "current target only",
         "palindrome": projection is None,
         "value": None if projection is None else asdict(projection),
-        "work_counters": dict(term._ledger.counters),
-        "peak_nodes": term._ledger.peak_nodes,
-        "retained_nodes": term._ledger.nodes,
+        **(
+            {
+                "work_counters": dict(term._ledger.counters),
+                "peak_nodes": term._ledger.peak_nodes,
+                "retained_nodes": term._ledger.nodes,
+            }
+            if _include_metrics
+            else {}
+        ),
     }
 
 

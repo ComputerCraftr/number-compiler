@@ -29,6 +29,7 @@ from math import comb
 from collections.abc import Iterable
 
 from number_compiler.arithmetic.formula.decimal_pair_coordinates import (
+    decimal_q95,
     decimal_pair_coordinates,
 )
 from number_compiler.arithmetic.polynomials.f2_transport import F2SpatialTransport
@@ -106,7 +107,7 @@ class CarrierCoordinate:
             raise AssertionError(
                 "F2 forcing must equal target parity after annihilation"
             )
-        return self.symbol * 5 + self.f5_forcing
+        return decimal_q95(self.symbol, self.f5_forcing)
 
 
 def cocycle_word(block: PoweredCocycleBlock) -> tuple[int, ...]:
@@ -120,7 +121,7 @@ def cocycle_word(block: PoweredCocycleBlock) -> tuple[int, ...]:
     if block.f2_forcing != block.target_epsilon:
         raise ValueError("F2 forcing must equal target parity after annihilation")
     return tuple(
-        5 * symbol + forcing
+        decimal_q95(symbol, forcing)
         for symbol, forcing in zip(block.target_pair, block.f5_forcing, strict=True)
     )
 

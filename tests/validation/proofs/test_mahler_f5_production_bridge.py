@@ -4,6 +4,8 @@ The references are bounded numeral arithmetic. Spatial observation does not
 replace source admission, the fractional guard, or the ledger minimum.
 """
 
+import pytest
+
 from devtools.experiments.antihydra.spatial_carry import (
     block_carry_action,
     compress_repeated_block,
@@ -119,7 +121,10 @@ def test_spatial_class_collision_still_needs_the_centered_source_boundary() -> N
     # This is an observer collision, not a counterexample to a complete cylinder.
 
 
-def test_antihydra_centered_macro_uses_same_primary_birth_transport() -> None:
+@pytest.mark.parametrize("modulus", (5, 32))
+def test_antihydra_centered_macro_uses_same_primary_birth_transport(
+    modulus: int,
+) -> None:
     """Bounded refinement against admitted macros; no all-time guard claim."""
     from number_compiler.arithmetic.carry.collatz_binary_forcing import (
         binary_carry_birth,
@@ -131,16 +136,18 @@ def test_antihydra_centered_macro_uses_same_primary_birth_transport() -> None:
     )
 
     def jet(value: int) -> tuple[int, ...]:
-        return primary_jet_from_digits(digits_lsd(value, 2), degree=5, modulus=32).jet
+        return primary_jet_from_digits(
+            digits_lsd(value, 2), degree=5, modulus=modulus
+        ).jet
 
     cores = tuple(admitted_arithmetic_cylinder(bit, 1) for bit in range(2))
     for source in (5, 7, 27, 129, 931386509544713450):
         centered = source
-        combined = PrimaryJetAffineMorphism.identity(5, 32)
+        combined = PrimaryJetAffineMorphism.identity(5, modulus)
         suffix = []
         for k in range(1, 17):
-            birth = binary_carry_birth(centered, incoming=centered % 2)
-            event = PrimaryJetAffineMorphism.binary_event(1, birth)
+            birth = binary_carry_birth(centered, modulus=modulus, incoming=centered % 2)
+            event = PrimaryJetAffineMorphism.binary_event(1, birth, modulus=modulus)
             suffix.append(event)
             combined = combined.then(event)
             h = centered + 1
@@ -150,7 +157,40 @@ def test_antihydra_centered_macro_uses_same_primary_birth_transport() -> None:
             assert combined.apply(jet(source)) == jet(centered)
             assert combined.source_annihilated == (k >= 5)
             if k >= 5:
-                last = PrimaryJetAffineMorphism.identity(5, 32)
+                last = PrimaryJetAffineMorphism.identity(5, modulus)
                 for item in suffix[-5:]:
                     last = last.then(item)
                 assert combined.canonical_key == last.canonical_key
+
+
+@pytest.mark.parametrize("modulus", (5, 32))
+def test_dead_collatz_jet_does_not_erase_source_descent_consumer(modulus: int) -> None:
+    """The jet is a valid projection, not the complete safety/source action."""
+    from number_compiler.arithmetic.carry.collatz_binary_forcing import (
+        binary_carry_birth,
+    )
+    from number_compiler.arithmetic.polynomials.primary_jet import (
+        PrimaryJetAffineMorphism,
+    )
+    from number_compiler.sequences.collatz.saturated_future import (
+        SourceFreeSaturatedCollatzProgram,
+    )
+
+    keys = []
+    for source in (1, 5):
+        value = source
+        action = PrimaryJetAffineMorphism.identity(5, modulus)
+        for _ in range(8):
+            numerator = 3 * value + 1
+            gap = (numerator & -numerator).bit_length() - 1
+            birth = binary_carry_birth(value, modulus=modulus)
+            action = action.then(
+                PrimaryJetAffineMorphism.binary_event(gap, birth, modulus=modulus)
+            )
+            value = numerator >> gap
+        occurrence = SourceFreeSaturatedCollatzProgram(8).bind(source).occurrence
+        assert action.source_annihilated
+        assert occurrence.apply_exact(source) == value == 1
+        assert occurrence.descends(source) is (source == 5)
+        keys.append(action.canonical_key)
+    assert keys[0] == keys[1]

@@ -91,10 +91,11 @@ def integer_binomial(n: int, k: int) -> int:
 
 def tape_hasse(result: Run, degree: int, modulus: int) -> tuple[int, ...]:
     """Coefficients of P(1+X), computed before any cyclic quotient."""
+    intervals = tape_intervals(result)
     return tuple(
         sum(
             p * (integer_binomial(hi, k + 1) - integer_binomial(lo, k + 1))
-            for lo, hi, p in tape_intervals(result)
+            for lo, hi, p in intervals
         )
         % modulus
         for k in range(degree + 1)
@@ -131,7 +132,11 @@ def source_sections(result: Run) -> Iterator[tuple[int, int, int, int]]:
     atoms: list[Cylinder | None] = [None, None]
     retained_atoms = 0
     try:
-        for segment in result._term.segments:
+        # ``result`` was authenticated above. Publish the retained support once
+        # and consume its ledger-owned store directly; the public property
+        # otherwise repeats whole-result validation before this linear fold.
+        segments = result._term._materialize_segments(result)
+        for segment in segments:
             block = segment.cylinder
             if segment.start != completed or block.residue != h % (1 << block.width):
                 raise ValueError("retained Antihydra section support was changed")
@@ -190,16 +195,31 @@ def _directional_word(
     word: tuple[tuple[int, int], ...], head: int, degree: int
 ) -> list[list[int]]:
     values = [[0] * (degree + 1) for _ in range(2)]
+    runs: list[tuple[int, int]] = []
     for port, count in word:
         direction = move(port)
-        if not direction:
+        if not direction or not count:
             continue
+        if runs and runs[-1][0] == direction:
+            runs[-1] = direction, runs[-1][1] + count
+        else:
+            runs.append((direction, count))
+    # Directional moments depend on the visited interval, not on which TM
+    # control port traversed it. Adjacent equal-direction ports in a sweep
+    # share one interval and therefore one short binomial row.
+    for direction, count in runs:
         lo, hi = (head, head + count) if direction > 0 else (head - count + 1, head + 1)
         channel = values[int(direction > 0)]
+        # Build the two integer-valued binomial rows once. This recurrence is
+        # exact for negative Laurent coordinates as well as positive ones;
+        # calling ``comb`` separately for every order repeatedly rebuilds the
+        # same short falling products at each sweep sample.
+        upper = lower = 1
         for order in range(degree + 1):
-            channel[order] += integer_binomial(hi, order + 1) - integer_binomial(
-                lo, order + 1
-            )
+            k = order + 1
+            upper = upper * (hi - k + 1) // k
+            lower = lower * (lo - k + 1) // k
+            channel[order] += upper - lower
         head += direction * count
     return values
 

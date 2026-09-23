@@ -87,6 +87,28 @@ proof -
     by (auto simp: digit_terminal_normalize_def digits_def)
 qed
 
+text \<open>The production D1/D2 full-output iterator keeps one physical carry
+and emits a terminal one directly. Its pair input may be an iterator: the list
+below specifies the values supplied by that iterator, not a retained midpoint
+word. This theorem does not construct a temporal pair-field provider.\<close>
+
+fun streamed_digits :: "bool \<Rightarrow> nat list \<Rightarrow> nat list" where
+  "streamed_digits c [] = (if c then [1] else [])"
+| "streamed_digits c (s#ss) =
+    (s + (if c then 1 else 0)) mod 10 #
+      streamed_digits (10 \<le> s + (if c then 1 else 0)) ss"
+
+lemma streamed_digits_fold:
+  "streamed_digits c ss = emit c ss @ (if carry_out c ss then [1] else [])"
+  by (induct ss arbitrary: c)
+    (simp_all add: carry_out_def carry_from_domain)
+
+theorem streamed_digits_refines_terminal:
+  assumes "\<forall>s\<in>set ss. s<19"
+  shows "streamed_digits False ss = digit_terminal_normalize ss"
+  using streamed_digits_fold[of False ss] digit_terminal_refines_digits[OF assms]
+  by (simp add: digits_def)
+
 lemma digit_terminal_normalize_padding:
   assumes "\<forall>s\<in>set ss. s<19"
   shows "digit_terminal_normalize (ss@[19]) = digits ss"
@@ -128,6 +150,7 @@ qed
 ML \<open>
   val _ = if null (Thm_Deps.all_oracles
     @{thms digit_terminal_scan_admitted digit_terminal_refines_digits
+      streamed_digits_fold streamed_digits_refines_terminal
       digit_terminal_after_pair_publisher digit_terminal_196_pair_output
       digit_terminal_after_raw_pair_scan digit_terminal_normalize_padding})
     then () else error "Digit terminal refinement depends on an oracle";

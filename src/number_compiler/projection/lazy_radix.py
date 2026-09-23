@@ -99,10 +99,8 @@ class RadixProjection:
 
         # Exterior admission uses the same affine image; a zero remainder
         # alone cannot distinguish an internal zero digit from blank padding.
-        numerator, divisor = term._source_numerator()
-        if index and numerator < divisor * self.radix**index:
-            raise IndexError(index)
-        digit = term.radix_digit(self.radix, index)
+        digit = term._admitted_radix_digit(self.radix, index)
+        term._ledger.bump("collatz_image_radix_demands")
         if not 0 <= digit < self.radix:
             raise AssertionError("radix provider produced an invalid digit")
         self._microblocks.put(

@@ -119,3 +119,16 @@ def test_local_import_shadows_same_named_method_without_false_recursion(
         "def cycle(owner):\n from b import operation\n return operation(owner)\n"
     )
     assert ("b:operation", "c:cycle") in recursion_cycles(tmp_path)
+
+
+def test_call_catalog_keeps_nested_functions_and_lambdas_separate(
+    tmp_path: Path,
+) -> None:
+    (tmp_path / "a.py").write_text(
+        "def outer():\n"
+        "    def inner():\n"
+        "        return inner()\n"
+        "    deferred = lambda: outer()\n"
+        "    return inner, deferred\n"
+    )
+    assert recursion_cycles(tmp_path) == (("a:outer.inner",),)

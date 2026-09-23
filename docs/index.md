@@ -16,7 +16,9 @@ to their recorded checkout, not later source.
 ## Research syntheses
 
 Each paper distinguishes definitions, assumptions, checked results, implemented
-construction, finite experiments and open obligations.
+construction, finite experiments and open obligations. Patch histories,
+profiling details and source-fingerprinted validation belong in the weekly
+records below; see the [placement guide](development.md#documentation-placement).
 
 - [Shared actions, cylinders, and resource ownership](research/shared.md)
 - [Prime ranks, wheel actions, and Goldbach obligations](research/primes-goldbach.md)
@@ -37,6 +39,7 @@ construction, finite experiments and open obligations.
 
 ## Sprint history and provenance
 
+- [2026-W39 — current week](../results/current/2026-W39/README.md)
 - [2026-W37](../results/current/2026-W37/README.md)
 - [2026-W38](../results/current/2026-W38/README.md)
 - [Historical research and preserved external reports](history.md)

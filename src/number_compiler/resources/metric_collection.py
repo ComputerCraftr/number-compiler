@@ -1,4 +1,4 @@
-"""Schema-seven metric collection from one immutable ledger snapshot."""
+"""Schema-eight metric collection from one immutable ledger snapshot."""
 
 from __future__ import annotations
 
@@ -31,6 +31,9 @@ from number_compiler.resources.payload_containers import audit_mapping_items
 from number_compiler.resources.payload_policy import _role
 from number_compiler.resources.semantic_metric_registry import (
     SEMANTIC_OUTCOME_COUNTERS,
+)
+from number_compiler.resources.temporal_diagnostics import (
+    collect_temporal_diagnostics,
 )
 
 
@@ -516,6 +519,18 @@ def collect_ledger_metrics(ledger: ResourceLedger) -> LedgerMetrics:
             "explicitly_materialized_endpoints", 0
         ),
     )
+    report = replace(
+        report,
+        temporal_diagnostics=collect_temporal_diagnostics(
+            counters,
+            entries=snapshot.entries,
+            nodes=snapshot.nodes,
+            peak_entries=snapshot.peak_entries,
+            peak_nodes=snapshot.peak_nodes,
+            audit_complete=bool(report.resource_audit_complete),
+            accounting_mismatch=report.resource_accounting_mismatch,
+        ),
+    )
     projected = replace_metric(
         report,
         {
@@ -692,5 +707,8 @@ def collect_unindexed_metrics(ledger: ResourceLedger) -> HashLifeProjectionMetri
         budgeted_cache_entries=report.resource_ledger_entries,
         retained_cache_accounting_delta=report.resource_accounting_mismatch,
         total_hashlife_retained_entries=report.cache_slots,
+        direct_powered_point_queries=report.resource_work_counters.get(
+            "direct_powered_point_queries", 0
+        ),
     )
     return replace_metric(HashLifeProjectionMetrics(*([0] * 15)), values)

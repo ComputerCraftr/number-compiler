@@ -14,6 +14,7 @@ number-compiler antihydra --nth 64 --info ledger --info clock
 number-compiler fermat --nth 5 --info primality --info factor --format json
 number-compiler mersenne --nth 131 --no-value --info primality
 number-compiler collatz --events 20 --seed 27 --info hensel
+number-compiler collatz --events 20 --seed 27 --info safety --format json
 number-compiler antihydra --verify-nonhalting certificate.json
 ```
 
@@ -24,13 +25,16 @@ number-compiler antihydra --verify-nonhalting certificate.json
 | `196` | N reverse/add iterations; zero is 196 by default | optional `--seed`, `--base` |
 | `reverse-add` | N reverse/add iterations; zero is the seed | required `--seed`, optional `--base` |
 | `collatz` | N ordinary physical iterations; zero is the seed | required `--seed`, optional `--radix` |
-| `antihydra` | N arithmetic iterations; zero is 8 | none |
+| `antihydra` | N macro-return coordinates after startup; zero is 8 | none |
 | `prime` | zero-based prime position starting at `--start` | optional `--start` |
 | `fermat` | Fermat index N, starting at zero | none |
 | `mersenne` | exponent N, starting at one | none |
 
 Collatz `--events E` selects accelerated odd events from an odd seed, requires
 `--info`, and has no ordinary term value. It is exclusive with `--nth`.
+Explicit `--radix`, `--output-base`, and `--max-output-bits` are rejected for
+this selector because they configure a term output. Event help lists its own
+information choices; `metrics` currently applies to term queries only.
 Certificate verification is exclusive with term selectors and observation
 options. Explicit options belonging to another family or observation are errors.
 
@@ -48,20 +52,45 @@ information and skips term rendering. Metrics describe work performed in this
 query. Metrics bypass digit rendering; family-specific construction may still
 be required (prime rank/select computes its selected endpoint).
 
+Every CLI information packet carries `family`, `kind` (the requested info name),
+`index`, `index_unit`, and `status`. Family-specific values and completion counts
+remain separate: physical iterations and accelerated odd events are different
+units. Antihydra uses `macro_returns_after_startup`; Collatz terms use
+`physical_iterations` and event queries use `accelerated_odd_events`.
+
+Work-counter inventories are emitted only through `--info metrics`. Schema 8
+execution metrics use a read-only scalar-ledger snapshot after all requested
+work. Reporting never invokes semantic audits or inventory callbacks:
+`audit_complete` is false and `accounting_mismatch` is null. The `reporting`
+lane records counter extraction size separately from execution work; it does
+not measure dataclass-to-dictionary conversion or JSON serialization. Explicit
+Python audited metrics remain available.
+Families without a live execution ledger report null execution metrics rather
+than invented zero work.
+
 | Selector | Information names |
 |---|---|
 | Every term family | `metrics` |
 | Reverse/add and 196 | `mirror` |
 | Collatz `--nth` | `clock` |
-| Collatz `--events` | `clock`, `modular`, `twisted`, `hasse`, `hensel`, `tropical`, `factor` |
+| Collatz `--events` | `clock`, `modular`, `twisted`, `hasse`, `hensel`, `tropical`, `factor`, `safety` |
 | Fermat/Mersenne | `primality`, `factor`, `root` (requires `--defect`) |
 | Antihydra | `ledger`, `clock`, `modular`, `tape`, `twisted`, `spacetime`, `hasse`, `hensel`, `mahler`, `tropical`, `factor` |
 
 Family help lists the applicable projection parameters. Primality and factor
 discovery run only when explicitly requested. UNKNOWN remains unresolved;
 there is no classical primality fallback. A conditional factor result may say
-`not_found`; this says nothing about primality. Printed witnesses retain their
+`not_found` for a decided composite; this says nothing about primality.
+An undecided special-number factor query reports `unknown` and exits 3.
+Printed witnesses retain their
 checked integer target and discovery accounting.
+
+Collatz `safety` asks whether any event in the admitted finite prefix fell
+strictly below the starting seed. Its exact affine endpoint, Hensel cylinder
+and normalized inverse-threshold envelope are included. Events stop at one,
+as for the other event observations. A false result only describes this
+prefix; it is not a claim about the infinite trajectory. Safety reuses event
+discovery, but its demanded threshold construction still costs work.
 
 Exit codes are 0 for successful requests, 2 for invalid input or budget refusal,
 3 for requested information with UNKNOWN or unavailable status, and 1 for a

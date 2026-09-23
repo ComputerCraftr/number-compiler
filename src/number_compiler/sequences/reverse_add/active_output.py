@@ -17,6 +17,7 @@ from number_compiler.arithmetic.formula.decimal_pair_coordinates import (
     decimal_normalized_coordinates,
     decimal_pair_carry_action,
     decimal_pair_coordinates,
+    decimal_q95,
 )
 from number_compiler.arithmetic.functions.finite_function_types import (
     BOOL,
@@ -37,6 +38,7 @@ PAIR = AtomSort("reverse-decimal-pair", 19)
 F5 = AtomSort("reverse-F5", 5)
 DIGIT = AtomSort("reverse-decimal-digit", 10)
 CARRY_ACTION = AtomSort("reverse-carry-action", 3)
+Q95 = AtomSort("reverse-Q95", 95)
 _CARRIES = (CarryFn.CONST0, CarryFn.ID, CarryFn.CONST1)
 
 
@@ -200,6 +202,41 @@ class ReverseActiveOutputArena:
     def carry_action(self, output: CoordinateOutputMorphismID) -> FactoredFunctionID:
         return self.bits.map_atoms(
             self.resolve(output),
+            CARRY_ACTION,
+            tuple(_CARRIES.index(decimal_pair_carry_action(s)) for s in range(19)),
+        )
+
+    def q95(
+        self, output: CoordinateOutputMorphismID, forcing: FactoredFunctionID
+    ) -> FactoredFunctionID:
+        """Publish the fixed local carrier, without primitive boundary ports."""
+        self._domain(forcing, F5)
+        carrier = self.bits.map_atoms(
+            self.resolve(output), Q95, tuple(decimal_q95(s, 0) for s in range(19))
+        )
+        return self.bits.add(carrier, forcing, Q95)
+
+    def q95_output(self, carrier: FactoredFunctionID) -> CoordinateOutputMorphismID:
+        self._domain(carrier, Q95)
+        output, _forcing = self.bits.divmod_atoms(carrier, 5, PAIR, F5)
+        return self.intern(output)
+
+    def q95_forcing(self, carrier: FactoredFunctionID) -> FactoredFunctionID:
+        self._domain(carrier, Q95)
+        _output, forcing = self.bits.divmod_atoms(carrier, 5, PAIR, F5)
+        return forcing
+
+    def q95_carry(self, carrier: FactoredFunctionID) -> FactoredFunctionID:
+        """Project K0/identity/K1 from Q95, without interning output S.
+
+        The output symbol is ``q // 5``.  Its carry domain is a derived view,
+        so this projection must not publish another output function as state.
+        Incoming physical carry remains a later monoid consumer.
+        """
+        self._domain(carrier, Q95)
+        symbol, _forcing = self.bits.divmod_atoms(carrier, 5, PAIR, F5)
+        return self.bits.map_atoms(
+            symbol,
             CARRY_ACTION,
             tuple(_CARRIES.index(decimal_pair_carry_action(s)) for s in range(19)),
         )

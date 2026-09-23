@@ -13,13 +13,14 @@ from collections import Counter
 from dataclasses import dataclass, field
 
 from devtools.experiments.reverse_add.powered_f5f2_carrier import PoweredCocycleBlock
+from number_compiler.arithmetic.formula.decimal_pair_coordinates import (
+    decimal_q95_coordinates,
+)
 from number_compiler.arithmetic.polynomials.f5_transport import F5SpatialTransport
 
 
 def split_class95(value: int) -> tuple[int, int]:
-    if type(value) is not int or not 0 <= value < 95:
-        raise ValueError("class95 requires an exact integer in 0..94")
-    return divmod(value, 5)
+    return decimal_q95_coordinates(value)
 
 
 @dataclass(slots=True)

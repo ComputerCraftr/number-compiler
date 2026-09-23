@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import argparse
+from copy import deepcopy
 from dataclasses import asdict
 from typing import Any
 
@@ -70,37 +71,80 @@ def observe(args: argparse.Namespace) -> dict[str, Any]:
 
 
 def observe_arithmetic(
-    result: ArithmeticResult, *, kind: str, precision: int = 8
+    result: ArithmeticResult,
+    *,
+    kind: str,
+    precision: int = 8,
+    _include_metrics: bool = True,
 ) -> dict[str, Any]:
     """Demand a total arithmetic observation without requesting physical execution."""
-    if kind not in {"mahler", "hensel"}:
+    return observe_arithmetic_many(
+        result,
+        kinds=(kind,),
+        precision=precision,
+        _include_metrics=_include_metrics,
+    )[kind]
+
+
+def observe_arithmetic_many(
+    result: ArithmeticResult,
+    *,
+    kinds: tuple[str, ...],
+    precision: int = 8,
+    _include_metrics: bool = True,
+) -> dict[str, dict[str, Any]]:
+    """Evaluate the shared tangent once for the explicitly demanded observers."""
+    if (
+        type(kinds) is not tuple
+        or not 1 <= len(kinds) <= 2
+        or any(type(kind) is not str for kind in kinds)
+    ):
         raise ValueError("unsupported arithmetic Antihydra observation")
-    result.require_source()
-    value = tangent(result, precision)
-    if kind == "mahler":
+    requested = kinds if len(kinds) == 1 or kinds[0] != kinds[1] else kinds[:1]
+    if any(kind not in {"mahler", "hensel"} for kind in requested):
+        raise ValueError("unsupported arithmetic Antihydra observation")
+    # ``tangent`` authenticates the source at its public demand boundary.
+    # Deep copies below are required because ``json_integers`` lowers in place.
+    shared = tangent(result, precision)
+    action: dict[str, object] | None = None
+    if "mahler" in requested:
         from number_compiler.sequences.antihydra.mahler_action import associated_action
 
-        value["associated_action"] = associated_action(result)
-    return json_integers(
-        {
-            "family": "antihydra",
-            "machine": MACHINE,
-            "machine_sha256": MACHINE_SHA256,
-            "source_binding": result.source_binding,
-            "kind": kind,
-            "index_unit": "macro_returns_after_11_step_startup",
-            "requested_returns": result.returns,
-            "completed_returns": result.returns,
-            "guarded_physical_status": "not_requested",
-            "ledger_first_failure_index": result.first_failure_index,
-            "nonhalting_certified": False,
-            "scope": "total arithmetic iteration; all-time barrier unresolved",
-            "value": value,
-            "work_counters": dict(result.ledger.counters),
-            "peak_nodes": result.ledger.peak_nodes,
-            "retained_nodes": result.ledger.nodes,
-        }
-    )
+        action = associated_action(result)
+    packets: dict[str, dict[str, Any]] = {}
+    for index, kind in enumerate(requested):
+        value = deepcopy(shared) if index + 1 < len(requested) else shared
+        if kind == "mahler":
+            if action is None:
+                raise ArithmeticError("Mahler action demand was not evaluated")
+            value["associated_action"] = action
+        packets[kind] = json_integers(
+            {
+                "family": "antihydra",
+                "machine": MACHINE,
+                "machine_sha256": MACHINE_SHA256,
+                "source_binding": result.source_binding,
+                "kind": kind,
+                "index_unit": "macro_returns_after_11_step_startup",
+                "requested_returns": result.returns,
+                "completed_returns": result.returns,
+                "guarded_physical_status": "not_requested",
+                "ledger_first_failure_index": result.first_failure_index,
+                "nonhalting_certified": False,
+                "scope": "total arithmetic iteration; all-time barrier unresolved",
+                "value": value,
+                **(
+                    {
+                        "work_counters": dict(result.ledger.counters),
+                        "peak_nodes": result.ledger.peak_nodes,
+                        "retained_nodes": result.ledger.nodes,
+                    }
+                    if _include_metrics
+                    else {}
+                ),
+            }
+        )
+    return packets
 
 
 def observe_run(
@@ -114,6 +158,7 @@ def observe_run(
     time_width: int = 2,
     time_sign: int = 1,
     max_observer_terms: int = 1_000_000,
+    _include_metrics: bool = True,
 ) -> dict[str, Any]:
     """Demand one projection from an existing authenticated physical owner."""
     if kind not in {
@@ -223,9 +268,15 @@ def observe_run(
             "nonhalting_certified": False,
             "scope": "exact finite source execution; all-time barrier unresolved",
             "value": value,
-            "work_counters": dict(result.ledger.counters),
-            "peak_nodes": result.ledger.peak_nodes,
-            "retained_nodes": result.ledger.nodes,
+            **(
+                {
+                    "work_counters": dict(result.ledger.counters),
+                    "peak_nodes": result.ledger.peak_nodes,
+                    "retained_nodes": result.ledger.nodes,
+                }
+                if _include_metrics
+                else {}
+            ),
         }
     )
 

@@ -227,6 +227,33 @@ lemma automatic_sweep_charged_to_insertions:
   shows "population \<le> 2 * insertions"
   using assms by arith
 
+section \<open>Fixed Q95 output alphabet and derived spatial carry\<close>
+
+definition q95_encode :: "nat \<Rightarrow> nat \<Rightarrow> nat" where
+  "q95_encode symbol forcing = 5 * symbol + forcing"
+
+lemma q95_decode:
+  assumes "forcing < 5"
+  shows "q95_encode symbol forcing div 5 = symbol"
+    "q95_encode symbol forcing mod 5 = forcing"
+  using assms by (simp_all add: q95_encode_def)
+
+lemma q95_range:
+  assumes "symbol < 19" "forcing < 5"
+  shows "q95_encode symbol forcing < 95"
+  using assms unfolding q95_encode_def by arith
+
+lemma q95_derived_carry:
+  assumes "forcing < 5"
+  shows "carry_apply (domain (q95_encode symbol forcing div 5)) incoming =
+    carry_apply (domain symbol) incoming"
+  using q95_decode(1)[OF assms] by simp
+
+text \<open>These are fixed leaf/projection laws. They do not construct a
+future Q95 region, prove F2 erasure admission, or bound temporal grammar growth.
+Incoming carry is a consumer of the three-state spatial summary, not an
+additional coordinate of the Q95 alphabet.\<close>
+
 ML \<open>
   val _ = if null (Thm_Deps.all_oracles
     @{thms normalization_gate_exact xor3_is_boolean_xor
@@ -236,7 +263,8 @@ ML \<open>
       plane_cofactor_undefined_exact plane_diagonal_binding_exact
       plane_complete_residual_bisimulation plane_projection_elimination
       plane_constant_elimination plane_cofactor_spatial_split
-      plane_cofactor_interval automatic_sweep_charged_to_insertions}) then ()
+      plane_cofactor_interval automatic_sweep_charged_to_insertions
+      q95_decode q95_range q95_derived_carry}) then ()
     else error "Factored channel proof depends on an oracle";
 \<close>
 

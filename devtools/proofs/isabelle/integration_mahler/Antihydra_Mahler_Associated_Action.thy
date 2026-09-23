@@ -91,13 +91,69 @@ theorem centered_word_11_has_distinct_mahler_and_ledger_outcomes:
   by (simp add: mahler_source_two_prefix_exact skew_atom_def skew_identity_def
       skew_then_def)
 
-text \<open>The source-specific production construction checks the centered
-prefix bits before using @{const mahler_source_two_prefix}.  For a longer
-source it also checks that the derived tail offset is nonpositive before
-admitting @{const mahler_source_tail}.  The theorem above proves the resulting
-coefficient and cap calculation.  It does not prove that an arbitrary
-Antihydra cylinder has those prefix bits or satisfies the tail sign check, and
-it does not turn ledger safety into Mahler margin positivity.\<close>
+text \<open>The production demand now reads the authenticated dyadic root's
+three integer transfer coordinates directly. This is the executable
+calculation in AntihydraArithmeticImageWorkspace.project; it does not
+construct a second associated-action arena. The source/prefix checks are
+admission premises of the consumer, and the first-failure index remains a
+different output from the ledger minimum.\<close>
+
+definition mahler_demanded_projection ::
+  "nat \<Rightarrow> int \<Rightarrow> int \<Rightarrow> int \<Rightarrow> associated_action" where
+  "mahler_demanded_projection n u_coeff o_coeff d_coeff =
+    (let A = of_int u_coeff / of_int d_coeff;
+         B = -3 * ((of_int u_coeff + of_int o_coeff - of_int d_coeff)
+           / of_int d_coeff)
+     in \<lparr>action_scale=A, action_offset=B,
+       action_cap=(if n=0 then None else if n=1 then Some (3/4)
+                   else Some (3/2*A+B))\<rparr>)"
+
+theorem demanded_projection_reuses_two_prefix:
+  fixes upper offset lower :: int
+  assumes "2 \<le> n" "lower \<noteq> 0"
+  defines "A \<equiv> of_int upper / of_int lower"
+    and "B \<equiv> -3 * ((of_int upper + of_int offset - of_int lower)
+      / of_int lower)"
+  shows "mahler_demanded_projection n upper offset lower =
+    associated_action_then mahler_source_two_prefix (mahler_source_tail A B)"
+  using assms by (simp add: mahler_demanded_projection_def
+    mahler_source_coefficients_determine_action Let_def)
+
+lemma demanded_projection_pinned_prefix:
+  "mahler_demanded_projection 0 1 0 1 =
+     \<lparr>action_scale=1, action_offset=0, action_cap=None\<rparr>"
+  "mahler_demanded_projection 1 3 0 2 = mahler_bit_action 1"
+  "mahler_demanded_projection 2 9 0 4 = mahler_source_two_prefix"
+  by (simp_all add: mahler_demanded_projection_def mahler_bit_action_def
+    mahler_source_two_prefix_exact Let_def)
+
+theorem demanded_projection_negative_cap_scope:
+  fixes upper offset lower :: int
+  assumes "2 \<le> n" "lower \<noteq> 0"
+    "3/2 * (of_int upper / of_int lower) -
+      3 * ((of_int upper + of_int offset - of_int lower)
+        / of_int lower) < (0::rat)"
+  shows "\<exists>cap<0. action_cap
+    (mahler_demanded_projection n upper offset lower) = Some cap"
+proof -
+  let ?A = "(of_int upper / of_int lower :: rat)"
+  let ?C = "((of_int upper + of_int offset - of_int lower)
+    / of_int lower :: rat)"
+  have cap: "action_cap (mahler_demanded_projection n upper offset lower) =
+      Some (3/2 * ?A - 3 * ?C)"
+    using assms(1)
+    by (simp add: mahler_demanded_projection_def Let_def algebra_simps
+      add_divide_distrib[symmetric])
+  have negative: "(3/2::rat) * ?A - 3 * ?C < 0"
+    by (rule assms(3))
+  show ?thesis using cap negative by blast
+qed
+
+text \<open>The new production projection checks the source root, seed eight,
+law, extent and centered prefix before using this formula. Those runtime
+checks still need a refinement map from the exact Python handles to these
+assumptions. The algebra does not turn ledger safety into Mahler margin
+positivity or establish an all-time invariant.\<close>
 
 ML \<open>
   val _ = if null (Thm_Deps.all_oracles
@@ -105,7 +161,9 @@ ML \<open>
       mahler_source_two_prefix_exact mahler_source_tail_admitted
       mahler_source_coefficients_determine_action
       mahler_source_cap_from_centered_transfer mahler_source_first_two_caps
-      centered_word_11_has_distinct_mahler_and_ledger_outcomes}) then ()
+      centered_word_11_has_distinct_mahler_and_ledger_outcomes
+      demanded_projection_reuses_two_prefix demanded_projection_pinned_prefix
+      demanded_projection_negative_cap_scope}) then ()
     else error "Antihydra Mahler associated action depends on an oracle";
 \<close>
 

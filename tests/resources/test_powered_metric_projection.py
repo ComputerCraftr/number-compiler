@@ -64,3 +64,16 @@ def test_unknown_powered_metadata_is_not_silently_dropped() -> None:
     point = collect_unindexed_metrics(ResourceLedger())
     with pytest.raises(ValueError, match="unknown powered metric"):
         project_powered_metrics(CollatzPhysicalBlockMetrics, point, unknown=1)
+
+
+def test_unindexed_metrics_preserve_actual_point_work_without_new_queries() -> None:
+    ledger = ResourceLedger()
+    ledger.bump("direct_powered_point_queries", 7)
+    before = dict(ledger.counters)
+    report = collect_unindexed_metrics(ledger)
+    assert report.direct_powered_point_queries == 7
+    assert report.resource_work_counters["direct_powered_point_queries"] == 7
+    assert dict(ledger.counters) == before
+    ledger.bump("direct_powered_point_queries", 2)
+    assert report.direct_powered_point_queries == 7
+    assert collect_unindexed_metrics(ledger).direct_powered_point_queries == 9

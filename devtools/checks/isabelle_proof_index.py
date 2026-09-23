@@ -68,6 +68,21 @@ COUNTERPARTS: dict[str, tuple[str, ...]] = {
         "devtools/experiments/antihydra/source_observers.py",
         "tests/validation/proofs/test_mahler_source_observers.py",
     ),
+    "Mahler_Joint_Quotient_Algebra": (
+        "src/number_compiler/arithmetic/fields/branch_quotients.py",
+        "tests/arithmetic/fields/test_branch_quotients.py",
+        "tests/validation/proofs/test_mahler_source_observers.py",
+    ),
+    "Antihydra_Mahler_Associated_Action": (
+        "src/number_compiler/sequences/antihydra/arithmetic_images.py",
+        "src/number_compiler/sequences/antihydra/mahler_action.py",
+        "tests/api/test_antihydra_mahler_action.py",
+    ),
+    "Collatz_Saturated_Threshold_Composition": (
+        "src/number_compiler/arithmetic/fields/threshold_envelope.py",
+        "src/number_compiler/sequences/collatz/saturated_future.py",
+        "tests/arithmetic/fields/test_threshold_envelope.py",
+    ),
     "Generated_Mahler_Safety": (
         "tests/validation/proofs/test_mahler_safety_cylinders.py",
     ),

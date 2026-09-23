@@ -13,6 +13,24 @@ bulk deleted. Externally supplied decimal pair research remains verbatim at
 with SHA-256
 `023599ebc89d1f17601bb84f4fda49c2daaff3308a39e3a7179630cd41683cbe`.
 
+## September 22 research/sprint separation
+
+Thirty-four implementation and evidence records were moved out of the shared,
+Collatz, Antihydra/Mahler and reverse/add papers. Their mathematical definitions,
+assumptions, scoped counterexamples and current obligations remain in those
+papers, with links to the dated records. No external archive was edited.
+
+| Original material | Preserved destination | Scope |
+| --- | --- | --- |
+| September 20 reverse/add carry recovery, spatial grammar, slab comparison and failed cutover measurements | [W38 dated evidence](../results/current/2026-W38/README.md#additional-dated-evidence) | Original commands, missing-evidence qualifications and fingerprints retained |
+| September 20 Mahler proof builds, fractional census, reachable grammar and event pruning | [W38 dated evidence](../results/current/2026-W38/README.md#additional-dated-evidence) | Finite validation remains separate from source-global claims |
+| September 21–22 shared audits and family integrations | [W39 topic records](../results/current/2026-W39/README.md#provenance-and-reading-guide) | Original implementation snapshots and their later supersession remain explicit |
+| Collatz source-macro and cycle measurements | [W39 dated evidence](../results/current/2026-W39/README.md#additional-dated-evidence) | Construction boundaries and cold/warm qualifications retained |
+
+This is a documentation reorganization, not new code or proof validation.
+Historical artifact paths remain local evidence references. The
+[placement guide](development.md#documentation-placement) governs future updates.
+
 ## Checkpoint evidence capsules
 
 The archive was not an external-source collection.  Most entries were authored

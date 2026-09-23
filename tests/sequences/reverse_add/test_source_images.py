@@ -11,6 +11,7 @@ from number_compiler.sequences.reverse_add.source_images import (
     ReverseImagePayload,
     ReverseSourceImageWorkspace,
 )
+from number_compiler.sequences.reverse_add.source_ports import SourceCarryPorts
 
 
 def _digits(value: int, base: int) -> tuple[int, ...]:
@@ -60,6 +61,17 @@ def test_one_step_stream_is_linear_and_retains_no_endpoint_word() -> None:
     assert not hasattr(payload, "digits")
 
 
+@pytest.mark.parametrize("seed", (1, 196, int("4" * 128 + "5" * 128)))
+def test_one_step_stream_needs_no_random_access_carry_prefix(seed: int) -> None:
+    workspace = ReverseSourceImageWorkspace(ResourceLedger(), seed, 1)
+    expected = _digits(_reverse_add(seed, 1, 10), 10)
+    assert tuple(workspace.iter_digits()) == expected
+    assert (
+        workspace.ledger.counters.get("reverse_source_ports_layer_1_carry_queries", 0)
+        == 0
+    )
+
+
 @pytest.mark.parametrize(
     ("seed", "base"), ((0, 10), (5, 10), (11, 10), (196, 10), (99, 10), (41, 3))
 )
@@ -100,6 +112,59 @@ def test_fused_second_step_full_output_has_linear_source_work(seed: int) -> None
     assert workspace.ledger.counters["reverse_source_pullback_pair_reads"] <= 8 * width
 
 
+@pytest.mark.parametrize("seed", (0, 1, 18, 196, 909))
+def test_second_step_stream_uses_one_physical_carry_without_prefix_queries(
+    seed: int, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    workspace = ReverseSourceImageWorkspace(ResourceLedger(), seed, 2)
+    expected = _digits(_reverse_add(seed, 2, 10), 10)
+    assert workspace.width() == len(expected)
+    before = workspace.ledger.counters.get(
+        "reverse_source_ports_layer_2_carry_queries", 0
+    )
+
+    def forbidden(*_args: object, **_kwargs: object) -> None:
+        raise AssertionError("D2 stream repeated a random-access carry or pair query")
+
+    monkeypatch.setattr(SourceCarryPorts, "second_carry", forbidden)
+    monkeypatch.setattr(SourceCarryPorts, "second_pair", forbidden)
+    monkeypatch.setattr(type(workspace.adapter), "second_digit", forbidden)
+    assert tuple(workspace.iter_digits()) == expected
+    assert (
+        workspace.ledger.counters.get("reverse_source_ports_layer_2_carry_queries", 0)
+        == before
+    )
+
+
+@pytest.mark.parametrize(
+    "seed",
+    (int("4" * 128 + "5" * 128), int("9" + "4" * 127 + "5" * 127 + "9")),
+)
+def test_large_second_step_stream_eliminates_random_access_prefix_work(
+    seed: int,
+) -> None:
+    expected = _digits(_reverse_add(seed, 2, 10), 10)
+    streamed = ReverseSourceImageWorkspace(ResourceLedger(), seed, 2)
+    assert tuple(streamed.iter_digits()) == expected
+    stream_second_queries = streamed.ledger.counters.get(
+        "reverse_source_ports_layer_2_carry_queries", 0
+    )
+    assert stream_second_queries == 0
+    assert (
+        streamed.ledger.counters.get("reverse_source_ports_layer_1_carry_queries", 0)
+        > 0
+    )
+
+    points = ReverseSourceImageWorkspace(ResourceLedger(), seed, 2)
+    width = points.width()
+    assert width == len(expected)
+    assert tuple(points.digit(i) for i in range(width)) == expected
+    assert (
+        points.ledger.counters.get("reverse_source_ports_layer_2_carry_queries", 0)
+        > stream_second_queries
+    )
+
+
 def test_undemanded_second_step_publishes_one_fused_image() -> None:
     workspace = ReverseSourceImageWorkspace(ResourceLedger(), 196, 2)
     image = workspace.scheduler.source_image(
@@ -109,6 +174,29 @@ def test_undemanded_second_step_publishes_one_fused_image() -> None:
     assert isinstance(payload, ReverseImagePayload)
     assert workspace.actions.node(payload.action).steps == 2
     assert workspace.ledger.counters.get("source_image_primitive_applications", 0) == 0
+
+
+def test_count_only_d2_image_cannot_authorize_a_right_half() -> None:
+    """A returned D2 occurrence needs complete outputs before D4 admission."""
+    workspace = ReverseSourceImageWorkspace(ResourceLedger(), 196, 2)
+    image = workspace.scheduler.source_image(
+        workspace.adapter, workspace.source, workspace.root_action
+    )
+    view = workspace.scheduler._source_image_core().view(image)
+    assert isinstance(view.payload, ReverseImagePayload)
+    assert workspace.actions.node(view.payload.action).steps == 2
+    with pytest.raises(ReverseCylinderConstructionUnavailable, match="source cylinder"):
+        workspace.adapter.admitted_input_key(workspace.root_action, view)
+
+    # Matching numeric action duration and seed do not transfer authority from
+    # another occurrence arena. The right-half constructor must check both.
+    foreign = ReverseSourceImageWorkspace(ResourceLedger(), 196, 2)
+    other = foreign.scheduler.source_image(
+        foreign.adapter, foreign.source, foreign.root_action
+    )
+    other_view = foreign.scheduler._source_image_core().view(other)
+    with pytest.raises(ValueError, match="different arena"):
+        workspace.adapter.validate_payload(other_view.payload)
 
 
 @pytest.mark.parametrize(

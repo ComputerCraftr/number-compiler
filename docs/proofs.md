@@ -5,6 +5,74 @@ The Isabelle sources are registered in
 is the acceptance boundary: a theory file is not considered checked merely
 because it exists in the tree or is imported by an editor session.
 
+## Canonical spatial and finite-clock lemmas
+
+[`Mirror_Pair_Step`](../devtools/proofs/isabelle/Mirror_Pair_Step.thy) owns
+`palindrome_nth_reflect`; both publisher and growth branches import it. Its
+assumptions are palindrome admission and an in-range index. It is a spatial
+lemma, not temporal constructor refinement.
+
+[`Runtime_Cylinder_Refinement`](../devtools/proofs/isabelle/etale/Runtime_Cylinder_Refinement.thy)
+proves finite semantic observer equations and bounded counterexamples.
+`reassociation_preserves_clock_transfer` and
+`event_clock_s_arithmetic_exponents` concern its event-word model; they do not
+bind the production source or supply terminal primality evidence.
+
+## Finite saturated threshold actions
+
+`Associated_Action_Core` now depends directly on HOL. Its scalar algebra never
+needed the decimal temporal constructor. The optional
+`Source_Chart_Selector_Fusion` theory remains registered in
+`Decimal_196_Integration`, with its original temporal dependencies. No theorem
+or aggregate acceptance target was removed.
+
+The new
+[Collatz_Saturated_Threshold_Composition](../devtools/proofs/isabelle/integration/Collatz_Saturated_Threshold_Composition.thy)
+connects the shared skew endpoint and finite inverse-threshold envelope:
+
+- `saturated_endpoint_then` and `saturated_safety_then` state chronological
+  endpoint composition and contravariant threshold pullback, including the
+  empty envelope.
+- `saturated_finite_descent` equates a finite union of strict line comparisons
+  with comparison against the envelope. Interpreting those lines as trajectory
+  descent additionally requires their source-prefix inverse-map construction;
+  equality is not strict descent.
+- `equal_slope_elimination` and `middle_line_dominated` justify the two
+  deletion rules used by the rational upper-hull normalizer.
+- `high_fiber_deck_25` reduces a supplied six-event high-fiber multiplier
+  729 modulo 64. Source selection remains a separate prerequisite.
+
+These are finite algebra and rewrite lemmas. Full Python hull-stack refinement,
+canonicality, source-selector refinement and a bound on source application are
+not implied. Oracle audits cover the exported results. Build the registered
+core and Mahler consumer with:
+
+```sh
+isabelle build -d devtools/proofs/isabelle -o threads=1 -o parallel_proofs=0 Associated_Action_Core Antihydra_Mahler_Integration
+```
+
+## Inventory and existing branches
+
+`Collatz_Cylinder_Refinement` checks
+`collatz_physical_admitted_leaf_loop_refinement` and
+`collatz_physical_d4_base_refinement` in
+[Collatz_Physical_Cylinder_Lift](../devtools/proofs/isabelle/temporal_collatz/Collatz_Physical_Cylinder_Lift.thy).
+The model matches the shared residue owner's bounded generator updates for
+the physical Collatz law: current value, affine numerator/denominator, branch
+labels, odd count, delta and minimum. Existing dyadic lift/split theorems justify
+the transported right source. This does not prove the complete Python worklist,
+resource accounting or a sublinear cold constructor; see the
+[D4 sprint record](../results/current/2026-W39/README.md#bounded-d4-bases-and-larger-transported-powers).
+
+The `Reverse_Digit_Terminal` session also checks
+`streamed_digits_refines_terminal` in
+[Reverse_Digit_Terminal_Refinement](../devtools/proofs/isabelle/reverse_terminal/Reverse_Digit_Terminal_Refinement.thy).
+It proves the single-carry streaming fold used by the D1/D2 output iterators
+equals the existing digit normalizer for admitted pair coefficients below 19.
+It does not construct those coefficients or prove arbitrary temporal closure.
+The [weekly validation record](../results/current/2026-W39/README.md#temporal-production-agent-wave)
+records the registered build and its scope.
+
 Run the fast structural check with:
 
 ```console
@@ -28,6 +96,7 @@ The September 22 carry-quotient reduction adds two scoped connections in
 | --- | --- | --- |
 | `output_crt_threshold_exact`, `normalized_output_crt_threshold_exact` | `SourceCarryPorts` second-layer carry leaves | Complete normalized F5/parity output channels; arbitrary future output channels remain a constructor obligation |
 | `last_five_births_erase_earlier_jet` | `PrimaryJetAffineMorphism` constant-right reduction | The same last five births on both sides; neither birth discovery nor a source-global safety threshold follows |
+| `at_least_five_births_source_independence`, `annihilated_jet_future_consumer` | Primary-jet observations through subsequent supplied actions | At least five multiplication births in the nilpotent quotient; future births must be shared, and past safety guards are not discarded |
 
 Both reuse existing lemmas and are included in their theory's oracle audit.
 Build the owning session with
@@ -220,3 +289,52 @@ exceeded 4 GiB while rebuilding `Reverse_Residuals` (27.93 seconds;
 Local evidence: `results/current/joint-cylinder-2026-09-22/proofs-final` and
 `collatz-proofs`, each with log and guard report. The successful scope does
 not replace all-session release acceptance.
+
+## Complete finite-interface admission
+
+[Reverse_196_Complete_Interface_Substitution](../devtools/proofs/isabelle/temporal_clocks/Reverse_196_Complete_Interface_Substitution.thy)
+models complete partial images. `canonical_partial_guard_extensional` identifies
+undefined and false rejection guards; `saturated_image_chronological_composition`
+connects simultaneous output substitution with chronological partial application.
+`complete_image_right_congruence` assumes equality of complete functions, not
+agreement at one occurrence. The bounded divergence witnesses state that distinction.
+
+The Python connection is `BitFunctionArena.complete_transform`: admission is
+totalized before canonical publication and checked before composition. Exhaustive
+one-bit partial-action tests check future composition and D2/D4/D8 without
+midpoint evaluation. These tests and lemmas do not construct recursive Q95
+source images, establish circuit-size bounds, or refine the complete Python
+worklist. Additional observers outside the output tuple cannot authorize a
+successor merge.
+
+Owning session: `Temporal_Clock_Jumps`. Run
+`isabelle build -d devtools/proofs/isabelle -j 1 -o threads=1 -o parallel_proofs=0 Temporal_Clock_Jumps`.
+The [weekly record](../results/current/2026-W39/README.md#temporal-patch-cutover-audit)
+separates its timed-out build from the checked exact-body focused diagnostic.
+
+## Completed spatial streaming
+
+`Reverse_Cylinder_Range_Geometry.spatial_branch_range_refines_point` proves
+that a cropped spatial branch stream uses the same sibling-boundary transport
+and right-coordinate rebasing as point observation.
+`spatial_branch_range_emission_count` gives exactly `hi - lo` emitted values.
+The executable correspondence is `RecursiveCoordinateMorphismArena.iter_observe_range`;
+its input must be a completed spatial image. Temporal witnesses are rejected,
+including witnesses in undemanded siblings. The theorem does not prove temporal
+closure, source extent, the iterative Python worklist or its complexity bound.
+
+Verify the focused theory with:
+
+```console
+isabelle build -d devtools/proofs/isabelle Reverse_Cylinder_Length_Refinement
+```
+
+For **all repository sessions and their dependencies**, use:
+
+```console
+isabelle build -D devtools/proofs/isabelle -j 1 -o threads=1 -o parallel_proofs=0
+```
+
+The macrocell integration guard is 60 seconds / 4 GiB. `-d ... -a` instead
+selects every installed session, including unrelated Isabelle examples; a
+result from that broader invocation is not the repository aggregate check.

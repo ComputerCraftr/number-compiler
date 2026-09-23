@@ -134,7 +134,7 @@ def test_release_probe_does_not_call_direct_cutover_logarithmic_until_action_ret
 
 
 @pytest.mark.validation
-def test_reverse_release_probe_reports_available_schema7_execution_as_red(
+def test_reverse_release_probe_reports_available_schema8_execution_as_red(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     """Run the real multi-size release benchmark and validate its full report."""
@@ -143,7 +143,7 @@ def test_reverse_release_probe_reports_available_schema7_execution_as_red(
     monkeypatch.setattr(probe, "CONSTRUCTION_INDICES", (16, 32))
     monkeypatch.setattr(probe, "PROJECTION_INDICES", (16, 32))
     result = probe.run_probe()
-    assert result["version"] == "0.62.0-schema7-certified-execution"
+    assert result["version"] == "0.63.0-schema8-certified-execution"
     assert result["status"] == "RED"
     assert result["execution_available"] is True
     assert result["execution_status"] == "available"

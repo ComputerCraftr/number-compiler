@@ -158,6 +158,33 @@ def test_sweep_period_compression_and_failure_cleanup() -> None:
     assert result.ledger.nodes == before
 
 
+def test_tape_hasse_authenticates_once_for_all_orders(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    result = run(64)
+    original = Run.require_source
+    calls = 0
+
+    def counted(self: Run) -> None:
+        nonlocal calls
+        calls += 1
+        original(self)
+
+    monkeypatch.setattr(Run, "require_source", counted)
+    assert len(tape_hasse(result, 8, 257)) == 9
+    assert calls == 1
+
+
+def test_directional_hasse_degree_eight_keeps_signed_sweep_geometry() -> None:
+    # Includes reflected negative coordinates and adjacent equal-direction
+    # control ports. Values were obtained from the independent ungrouped
+    # event-interval formula before direction-run normalization.
+    result = run(16)
+    observed = directional_hasse(result, 8, 257)
+    assert observed["left"] == [152, 182, 148, 177, 55, 123, 128, 148, 37]
+    assert observed["right"] == [155, 33, 119, 59, 253, 127, 1, 147, 147]
+
+
 def test_tangent_is_bound_and_full_match_requires_refinement() -> None:
     result = run(0)
     first = tangent(result, 1)
@@ -193,16 +220,22 @@ def test_cli_real_execution(kind: str, capsys: pytest.CaptureFixture[str]) -> No
                 "--no-value",
                 "--info",
                 kind,
+                "--info",
+                "metrics",
                 "--format",
                 "json",
             ]
         )
         == 0
     )
-    output = json.loads(capsys.readouterr().out)["info"][kind]
+    info = json.loads(capsys.readouterr().out)["info"]
+    output = info[kind]
     assert output["completed_returns"] == 4
     assert output["nonhalting_certified"] is False
-    assert output["work_counters"]["arithmetic_returns"] == 4
+    assert (
+        info["metrics"]["execution_metrics"]["observations"]["arithmetic_returns"] == 4
+    )
+    assert "work_counters" not in output
 
 
 def test_cli_factor_and_source_rejection(capsys: pytest.CaptureFixture[str]) -> None:

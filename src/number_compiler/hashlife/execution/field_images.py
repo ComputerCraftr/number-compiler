@@ -483,6 +483,9 @@ class ImageRequestKey:
     source: SourceBindingID
     geometry: FieldGeometryID
     signature: PortSignatureID
+    # An active boundary belongs to this source occurrence, not to the
+    # canonical arithmetic action or the interned semantic image.
+    active_extent: int | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -744,6 +747,11 @@ class RecursiveFieldImageArena:
         else:
             assert type(key.source) is SourceForestID
             self.sources.resolve_forest(key.source)
+        if key.active_extent is not None and (
+            type(key.active_extent) is not int
+            or not 0 <= key.active_extent <= self.sources.binding_extent(key.source)
+        ):
+            raise ValueError("image request active extent lies outside its source")
         geometry = self.geometries.resolve(key.geometry)
         # The quotient arena owns every production signature.  Validating its
         # allocated range closes the same-owner forged-integer hole before the
@@ -804,12 +812,13 @@ class RecursiveFieldImageArena:
         image: FieldImageID,
         source: SourceBindingID,
         action: FieldCellActionID,
+        active_extent: int | None = None,
     ) -> None:
         """Prove an image's exact source/action occurrence without mutation."""
         record = self.resolve(image)
         signature = self.resolve_interface(record.interface).signature
         self.validate_binding(
-            ImageRequestKey(action, source, record.geometry, signature),
+            ImageRequestKey(action, source, record.geometry, signature, active_extent),
             image,
         )
 

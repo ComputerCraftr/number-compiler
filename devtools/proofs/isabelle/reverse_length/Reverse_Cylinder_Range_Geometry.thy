@@ -141,6 +141,148 @@ theorem chart_image_membership:
   by (subst chart_image_set_exact[OF valid ordered, symmetric];
       auto simp: chart_image_set_def)
 
+text \<open>A completed spatial output branch routes its two child ranges with
+  the same sibling-boundary functions as a point observation.  The functions
+  below abstract already-published child images; no temporal callback or
+  successor construction is part of this range law.\<close>
+
+definition spatial_branch_point ::
+  "nat \<Rightarrow> (nat \<Rightarrow> 'b \<Rightarrow> 'b \<Rightarrow> 'v)
+    \<Rightarrow> (nat \<Rightarrow> 'b \<Rightarrow> 'b \<Rightarrow> 'v)
+    \<Rightarrow> ('b \<Rightarrow> 'b \<Rightarrow> 'b)
+    \<Rightarrow> ('b \<Rightarrow> 'b \<Rightarrow> 'b)
+    \<Rightarrow> nat \<Rightarrow> 'b \<Rightarrow> 'b \<Rightarrow> 'v" where
+  "spatial_branch_point w left right right_boundary left_boundary i l r =
+    (if i < w then left i l (right_boundary l r)
+     else right (i-w) (left_boundary l r) r)"
+
+definition spatial_branch_range ::
+  "nat \<Rightarrow> (nat \<Rightarrow> 'b \<Rightarrow> 'b \<Rightarrow> 'v)
+    \<Rightarrow> (nat \<Rightarrow> 'b \<Rightarrow> 'b \<Rightarrow> 'v)
+    \<Rightarrow> ('b \<Rightarrow> 'b \<Rightarrow> 'b)
+    \<Rightarrow> ('b \<Rightarrow> 'b \<Rightarrow> 'b)
+    \<Rightarrow> nat \<Rightarrow> nat \<Rightarrow> 'b \<Rightarrow> 'b \<Rightarrow> 'v list" where
+  "spatial_branch_range w left right right_boundary left_boundary lo hi l r =
+    (if lo < w then
+       map (\<lambda>i. left i l (right_boundary l r)) [lo..<min hi w]
+     else []) @
+    (if w < hi then
+       map (\<lambda>i. right i (left_boundary l r) r) [lo-w..<hi-w]
+     else [])"
+
+lemma spatial_branch_interval_split:
+  assumes "lo \<le> hi"
+  shows "[lo..<hi] =
+    (if lo < w then [lo..<min hi w] else []) @
+    (if w < hi then [max lo w..<hi] else [])"
+proof (cases "hi \<le> w")
+  case True
+  then show ?thesis using assms by auto
+next
+  case False
+  then have wh: "w < hi" by simp
+  show ?thesis
+  proof (cases "w \<le> lo")
+    case True
+    then show ?thesis using wh by auto
+  next
+    case False
+    then have lw: "lo \<le> w" by simp
+    have "hi = w + (hi-w)" using wh by simp
+    then show ?thesis
+      using upt_add_eq_append[OF lw, of "hi-w"] wh False by simp
+  qed
+qed
+
+lemma spatial_branch_right_rebase:
+  assumes "lo \<le> hi" "w < hi"
+  shows "map (\<lambda>i. right (i-w) l r) [max lo w..<hi] =
+    map (\<lambda>i. right i l r) [lo-w..<hi-w]"
+proof (rule nth_equalityI)
+  show "length (map (\<lambda>i. right (i-w) l r) [max lo w..<hi]) =
+    length (map (\<lambda>i. right i l r) [lo-w..<hi-w])"
+    using assms by simp
+next
+  fix k
+  assume bound:
+    "k < length (map (\<lambda>i. right (i-w) l r) [max lo w..<hi])"
+  have left_bound: "k < hi - max lo w"
+    using bound by simp
+  have right_bound: "k < (hi-w) - (lo-w)"
+    using left_bound assms by arith
+  have offset: "max lo w + k - w = lo-w+k"
+    by (simp add: max_def split: if_splits)
+  then show "(map (\<lambda>i. right (i-w) l r) [max lo w..<hi]) ! k =
+    (map (\<lambda>i. right i l r) [lo-w..<hi-w]) ! k"
+    using left_bound right_bound by simp
+qed
+
+theorem spatial_branch_range_refines_point:
+  assumes "lo \<le> hi"
+  shows "spatial_branch_range w left right right_boundary left_boundary lo hi l r =
+    map (\<lambda>i. spatial_branch_point w left right right_boundary left_boundary i l r)
+      [lo..<hi]"
+proof -
+  let ?point =
+    "\<lambda>i. spatial_branch_point w left right right_boundary left_boundary i l r"
+  let ?left = "if lo < w then [lo..<min hi w] else []"
+  let ?right = "if w < hi then [max lo w..<hi] else []"
+  have left_map:
+    "map ?point ?left =
+      (if lo < w then
+         map (\<lambda>i. left i l (right_boundary l r)) [lo..<min hi w]
+       else [])"
+  proof (cases "lo < w")
+    case True
+    have "map ?point [lo..<min hi w] =
+      map (\<lambda>i. left i l (right_boundary l r)) [lo..<min hi w]"
+      by (rule map_cong) (auto simp: spatial_branch_point_def)
+    then show ?thesis using True by simp
+  next
+    case False
+    then show ?thesis by simp
+  qed
+  have right_map:
+    "map ?point ?right =
+      (if w < hi then
+         map (\<lambda>i. right (i-w) (left_boundary l r) r) [max lo w..<hi]
+       else [])"
+  proof (cases "w < hi")
+    case True
+    have "map ?point [max lo w..<hi] =
+      map (\<lambda>i. right (i-w) (left_boundary l r) r) [max lo w..<hi]"
+      by (rule map_cong) (auto simp: spatial_branch_point_def)
+    then show ?thesis using True by simp
+  next
+    case False
+    then show ?thesis by simp
+  qed
+  have right_rebased:
+    "(if w < hi then
+        map (\<lambda>i. right (i-w) (left_boundary l r) r) [max lo w..<hi]
+      else []) =
+     (if w < hi then
+        map (\<lambda>i. right i (left_boundary l r) r) [lo-w..<hi-w]
+      else [])"
+    using spatial_branch_right_rebase[OF assms, of w right "left_boundary l r" r]
+    by (cases "w < hi") simp_all
+  have split: "[lo..<hi] = ?left @ ?right"
+    by (rule spatial_branch_interval_split[OF assms])
+  have "map ?point [lo..<hi] = map ?point ?left @ map ?point ?right"
+    by (simp only: split map_append)
+  also have "... = spatial_branch_range w left right right_boundary
+      left_boundary lo hi l r"
+    using left_map right_map right_rebased
+    by (simp only: spatial_branch_range_def)
+  finally show ?thesis by simp
+qed
+
+corollary spatial_branch_range_emission_count:
+  assumes "lo \<le> hi"
+  shows "length (spatial_branch_range w left right right_boundary left_boundary lo hi l r)
+    = hi - lo"
+  by (subst spatial_branch_range_refines_point[OF assms]) simp
+
 lemma palindrome_range_coordinate:
   assumes palindrome: "rev xs = xs"
       and ordered: "lo \<le> hi" and bounded: "hi \<le> length xs"

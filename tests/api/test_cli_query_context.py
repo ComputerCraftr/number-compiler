@@ -16,6 +16,44 @@ def forbidden(*args: object, **kwargs: object) -> Never:
     raise AssertionError("unrequested execution was entered")
 
 
+@pytest.mark.parametrize("steps", (4, 8, 16, 32, 65))
+@pytest.mark.parametrize("family", ("collatz", "antihydra"))
+def test_public_temporal_powers_emit_digits_without_causal_or_physical_replay(
+    steps: int,
+    family: str,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    from number_compiler.hashlife.execution.tile_causal import CausalTileEngine
+    from number_compiler.sequences.antihydra import runtime
+    from number_compiler.sequences.antihydra.runtime import AntihydraArithmeticTerm
+
+    monkeypatch.setattr(CausalTileEngine, "__init__", forbidden)
+    monkeypatch.setattr(AntihydraArithmeticTerm, "physical_run", forbidden)
+    monkeypatch.setattr(runtime, "physical_roof", forbidden)
+    seed = 931386509544713451 if family == "collatz" else 8
+    expected = seed
+    for _ in range(steps):
+        if family == "collatz":
+            expected = 3 * expected + 1 if expected % 2 else expected // 2
+        else:
+            expected += expected // 2
+    options = (
+        ["--seed", str(seed)]
+        if family == "collatz"
+        else ["--info", "mahler", "--info", "hensel"]
+    )
+    assert cli.main([family, "--nth", str(steps), "--format", "json", *options]) == 0
+    captured = capsys.readouterr()
+    assert captured.err == ""
+    packet = json.loads(captured.out)
+    assert packet["value"] == str(expected)
+    if family == "antihydra":
+        for name in ("mahler", "hensel"):
+            assert packet["info"][name]["value"]["timestamp_macro_returns"] == steps
+            assert packet["info"][name]["guarded_physical_status"] == "not_requested"
+
+
 @pytest.mark.parametrize("names", (("hensel",), ("mahler",), ("hensel", "mahler")))
 def test_arithmetic_observers_do_not_request_physical_execution(
     names: tuple[str, ...],
@@ -28,6 +66,10 @@ def test_arithmetic_observers_do_not_request_physical_execution(
     monkeypatch.setattr(AntihydraArithmeticTerm, "physical_run", forbidden)
     monkeypatch.setattr(runtime, "physical_roof", forbidden)
     monkeypatch.setattr(cli, "_render_value", forbidden)
+    if names == ("hensel",):
+        from number_compiler.sequences.antihydra import mahler_action
+
+        monkeypatch.setattr(mahler_action, "associated_action", forbidden)
     options = [option for name in names for option in ("--info", name)]
     assert (
         cli.main(
@@ -147,8 +189,82 @@ def test_reverse_metrics_only_does_not_construct_reachable_image(
     row = json.loads(capture.out)
     assert row["value"] is None and capture.err == ""
     execution = row["info"]["metrics"]["execution_metrics"]
-    assert execution["higher_concrete_operation_evaluations"] == 0
-    assert execution["higher_action_continuation_requests"] == 0
+    assert execution["schema_version"] == 8
+    assert execution["observations"]["higher_concrete_operation_evaluations"] is None
+    assert execution["observations"]["higher_action_continuation_requests"] is None
+
+
+def test_antihydra_metrics_only_do_not_audit_or_construct_endpoint(
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    from number_compiler.resources import metric_collection
+    from number_compiler.sequences.antihydra.runtime import AntihydraArithmeticTerm
+
+    monkeypatch.setattr(metric_collection, "collect_ledger_metrics", forbidden)
+    monkeypatch.setattr(AntihydraArithmeticTerm, "result", forbidden)
+    monkeypatch.setattr(cli, "_render_value", forbidden)
+    assert (
+        cli.main(
+            [
+                "antihydra",
+                "--nth",
+                "64",
+                "--no-value",
+                "--info",
+                "metrics",
+                "--format",
+                "json",
+            ]
+        )
+        == 0
+    )
+    packet = json.loads(capsys.readouterr().out)["info"]["metrics"]
+    execution = packet["execution_metrics"]
+    assert execution["schema_version"] == 8
+    assert execution["resources"]["audit_complete"] is False
+    assert execution["observations"]["arithmetic_returns"] is None
+
+
+def test_antihydra_metrics_after_ledger_do_not_repeat_endpoint(
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    from number_compiler.hashlife.execution.dyadic_return_images import (
+        DyadicReturnImageWorkspace,
+    )
+    from number_compiler.resources import metric_collection
+
+    endpoint = DyadicReturnImageWorkspace.endpoint
+    calls = 0
+
+    def counted_endpoint(self: DyadicReturnImageWorkspace) -> int:
+        nonlocal calls
+        calls += 1
+        return endpoint(self)
+
+    monkeypatch.setattr(DyadicReturnImageWorkspace, "endpoint", counted_endpoint)
+    monkeypatch.setattr(metric_collection, "collect_ledger_metrics", forbidden)
+    assert (
+        cli.main(
+            [
+                "antihydra",
+                "--nth",
+                "16",
+                "--no-value",
+                "--info",
+                "ledger",
+                "--info",
+                "metrics",
+                "--format",
+                "json",
+            ]
+        )
+        == 0
+    )
+    packet = json.loads(capsys.readouterr().out)
+    assert packet["info"]["ledger"]["value"]["h"] > 0
+    assert calls == 1
 
 
 def test_multiple_collatz_event_views_discover_one_prefix(
@@ -223,9 +339,8 @@ def test_collatz_event_cli_consumes_published_support_without_digit_replay(
     info = json.loads(capsys.readouterr().out)["info"]
     for name in ("clock", "hasse"):
         assert info[name]["source_support_ticks"] == 9  # valuations 1, 2, 1, 1
-        assert (
-            info[name]["source_work_counters"]["collatz_source_discovery_events"] == 4
-        )
+        assert info[name]["discovered_events"] == 4
+        assert "source_work_counters" not in info[name]
 
 
 def test_collatz_context_rejects_substituted_published_root() -> None:
@@ -237,6 +352,87 @@ def test_collatz_context_rejects_substituted_published_root() -> None:
         observe_collatz(
             27, 4, kind="clock", max_events=4, max_digits=100, _context=context
         )
+
+
+@pytest.mark.parametrize(
+    "seed,events", [(27, 0), (1, 20), (27, 4), (27, 100), (931386509544713451, 40)]
+)
+def test_collatz_finite_safety_cli_shares_discovery(
+    seed: int,
+    events: int,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    from number_compiler.sequences.collatz import saturated_future
+
+    original = saturated_future.from_published_prefix
+    calls = 0
+
+    def counted(*args: Any, **kwargs: Any) -> Any:
+        nonlocal calls
+        calls += 1
+        return original(*args, **kwargs)
+
+    monkeypatch.setattr(saturated_future, "from_published_prefix", counted)
+    monkeypatch.setattr(
+        saturated_future.SourceFreeSaturatedCollatzProgram, "bind", forbidden
+    )
+    monkeypatch.setattr(cli, "_render_value", forbidden)
+    assert (
+        cli.main(
+            [
+                "collatz",
+                "--events",
+                str(events),
+                "--seed",
+                str(seed),
+                "--info",
+                "clock",
+                "--info",
+                "safety",
+                "--info",
+                "safety",
+                "--format",
+                "json",
+            ]
+        )
+        == 0
+    )
+    row = json.loads(capsys.readouterr().out)
+    packet = row["info"]["safety"]
+    value = packet["value"]
+    current, count, descended = seed, 0, False
+    while count < events and current != 1:
+        current = 3 * current + 1
+        while current % 2 == 0:
+            current //= 2
+        count += 1
+        descended |= current < seed
+    assert calls == 1
+    assert row["value"] is None
+    assert packet["discovered_events"] == count
+    assert "source_work_counters" not in packet
+    assert value["events"] == count
+    assert value["descended_below_source"] is descended
+    assert value["all_time_claim"] is False
+    action = value["endpoint"]
+    assert (action["multiplier"] * seed + action["offset"]) // action[
+        "denominator"
+    ] == current
+    assert row["info"]["clock"]["discovered_events"] == count
+
+
+def test_unrequested_collatz_safety_does_no_threshold_work(
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    from number_compiler.sequences.collatz import saturated_future
+
+    monkeypatch.setattr(saturated_future, "from_published_prefix", forbidden)
+    assert (
+        cli.main(["collatz", "--events", "4", "--seed", "27", "--info", "clock"]) == 0
+    )
+    assert capsys.readouterr().out == ""
 
 
 def test_multiple_physical_views_use_one_term(
@@ -352,9 +548,9 @@ def test_antihydra_value_and_ledger_do_not_build_physical_roofs(
     ledger = row["info"]["ledger"]["value"]
     assert ledger["ledger"] == 11 and ledger["odd_a_steps"] == 3
     assert ledger["centered_odd_events"] == 7
-    work = row["info"]["metrics"]["execution_metrics"]["work_counters"]
+    work = row["info"]["metrics"]["execution_metrics"]["observations"]
     assert work["arithmetic_returns"] == 10
-    assert work.get("physical_roof_evaluations", 0) == 0
+    assert work["physical_roof_evaluations"] is None
 
 
 def test_antihydra_output_budget_accepts_seed_exactly(
@@ -393,6 +589,7 @@ def test_antihydra_equivalent_information_reuses_the_demand(
         time_width: int = 2,
         time_sign: int = 1,
         max_observer_terms: int = 1_000_000,
+        _include_metrics: bool = True,
     ) -> dict[str, Any]:
         calls.append(kind)
         if len(calls) > 1:
@@ -407,6 +604,7 @@ def test_antihydra_equivalent_information_reuses_the_demand(
             time_width=time_width,
             time_sign=time_sign,
             max_observer_terms=max_observer_terms,
+            _include_metrics=_include_metrics,
         )
 
     monkeypatch.setattr(antihydra_observation, "observe_run", counted)
@@ -436,7 +634,7 @@ def test_antihydra_equivalent_information_reuses_the_demand(
     assert first["kind"] == names[0] and second["kind"] == names[1]
     assert first["value"] == second["value"]
     assert row["value"] is None
-    work = row["info"]["metrics"]["execution_metrics"]["work_counters"]
+    work = row["info"]["metrics"]["execution_metrics"]["observations"]
     assert work["query_observer_reuses"] == 1
 
 
@@ -446,6 +644,27 @@ def test_antihydra_mahler_extends_shared_tangent_without_aliasing(
     monkeypatch: pytest.MonkeyPatch,
     capsys: pytest.CaptureFixture[str],
 ) -> None:
+    from number_compiler.api import antihydra_observation
+    from number_compiler.sequences.antihydra import runtime
+    from number_compiler.sequences.antihydra.mahler import tangent as original_tangent
+    from number_compiler.sequences.antihydra.runtime import (
+        AntihydraArithmeticTerm,
+        ArithmeticResult,
+        Run,
+    )
+
+    calls = 0
+
+    def counted_tangent(
+        result: Run | ArithmeticResult, precision: int
+    ) -> dict[str, object]:
+        nonlocal calls
+        calls += 1
+        return original_tangent(result, precision)
+
+    monkeypatch.setattr(antihydra_observation, "tangent", counted_tangent)
+    monkeypatch.setattr(AntihydraArithmeticTerm, "physical_run", forbidden)
+    monkeypatch.setattr(runtime, "physical_roof", forbidden)
     monkeypatch.setattr(cli, "_render_value", forbidden)
     assert (
         cli.main(
@@ -467,6 +686,7 @@ def test_antihydra_mahler_extends_shared_tangent_without_aliasing(
         == 0
     )
     row = json.loads(capsys.readouterr().out)
+    assert calls == 1
     mahler = row["info"]["mahler"]["value"]
     hensel = row["info"]["hensel"]["value"]
     assert "associated_action" not in hensel
@@ -475,7 +695,7 @@ def test_antihydra_mahler_extends_shared_tangent_without_aliasing(
     } == hensel
     assert mahler["associated_action"]["extent"] == 16
     assert row["value"] is None
-    work = row["info"]["metrics"]["execution_metrics"]["work_counters"]
+    work = row["info"]["metrics"]["execution_metrics"]["observations"]
     assert work["arithmetic_returns"] == 16
 
 

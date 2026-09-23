@@ -9,13 +9,15 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 
 from number_compiler.resources.ledger import ResourceInventory
+from number_compiler.resources.temporal_diagnostics import TemporalExecutionDiagnostics
 
 
 @dataclass(frozen=True, slots=True, kw_only=True)
 class LedgerMetrics:
-    """Schema-seven accounting reports live production and retained oracles."""
+    """Schema-eight accounting with a typed temporal diagnostic view."""
 
-    metrics_schema_version: int = 7
+    metrics_schema_version: int = 8
+    temporal_diagnostics: TemporalExecutionDiagnostics = TemporalExecutionDiagnostics()
     tile_representation_policy: str = "canonical-future-tiles-and-boundary-operands-v2"
     future_behavior_profile_nodes: int = 0
     future_behavior_class_nodes: int = 0

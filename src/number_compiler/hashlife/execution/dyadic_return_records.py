@@ -164,6 +164,23 @@ class DyadicCycleSummary:
 
 
 @dataclass(frozen=True, slots=True)
+class DyadicAggregateSummary:
+    """Demanded arithmetic/clock projection, without chronological support.
+
+    This is not successor authority. The authenticated image remains owned by
+    the scheduler, including support needed for first-failure descent.
+    """
+
+    width: int
+    residue: int
+    transfer: SkewTransfer[int]
+    delta: int
+    minimum: int
+    odd_steps: int
+    cycle: DyadicCycleSummary | None
+
+
+@dataclass(frozen=True, slots=True)
 class DyadicImageSummary:
     """Exact affine result and retained chronological support."""
 

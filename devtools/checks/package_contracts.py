@@ -92,12 +92,11 @@ def package_violations(
             if (
                 isinstance(node, ast.Call)
                 and isinstance(node.func, ast.Attribute)
-                and ast.unparse(node.func)
-                in {
-                    "sys.path.insert",
-                    "sys.path.append",
-                    "sys.path.extend",
-                }
+                and node.func.attr in {"insert", "append", "extend"}
+                and isinstance(node.func.value, ast.Attribute)
+                and node.func.value.attr == "path"
+                and isinstance(node.func.value.value, ast.Name)
+                and node.func.value.value.id == "sys"
             ):
                 violations.append(
                     f"{module}:{node.lineno}: modifies module search path"
@@ -108,7 +107,10 @@ def package_violations(
                 )
                 for target_node in assigned:
                     if isinstance(target_node, ast.Subscript) and (
-                        ast.unparse(target_node.value) == "sys.modules"
+                        isinstance(target_node.value, ast.Attribute)
+                        and target_node.value.attr == "modules"
+                        and isinstance(target_node.value.value, ast.Name)
+                        and target_node.value.value.id == "sys"
                         or isinstance(target_node.slice, ast.Name)
                         and target_node.slice.id == "__name__"
                     ):

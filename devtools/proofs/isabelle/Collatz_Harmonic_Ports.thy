@@ -475,6 +475,35 @@ corollary last_five_births_erase_earlier_jet:
   unfolding harmonic_run_append
   by (rule five_step_same_birth_source_independence[OF assms])
 
+theorem at_least_five_births_source_independence:
+  fixes u y :: "'a::comm_ring_1"
+  assumes nilpotent: "y ^ 5 = 0" and enough: "5 \<le> length events"
+  shows "harmonic_run u y events source = harmonic_run u y events other"
+proof -
+  have five: "length (take 5 events) = 5" using enough by simp
+  have equal: "harmonic_run u y (take 5 events) source =
+      harmonic_run u y (take 5 events) other"
+    by (rule five_step_same_birth_source_independence[OF nilpotent five])
+  have split: "events = take 5 events @ drop 5 events" by simp
+  show ?thesis
+    using equal by (subst (1 2) split) (simp only: harmonic_run_append)
+qed
+
+corollary annihilated_jet_future_consumer:
+  fixes u y :: "'a::comm_ring_1"
+  assumes "y ^ 5 = 0" "5 \<le> length events"
+  shows "observe (harmonic_run u y (events @ future) source) =
+    observe (harmonic_run u y (events @ future) other)"
+  using at_least_five_births_source_independence[OF assms, of u source other]
+  by (simp only: harmonic_run_append)
+
+text \<open>The future-consumer theorem permits erasing a dead input jet even
+when more supplied actions follow. It does not replace the source authority
+selecting those future births. In particular, a first-failure predicate on the
+past trajectory need not factor through the final jet; its composed guard
+remains a separate retained consumer. The number five counts multiplications,
+not physical divisions or arbitrary accelerated blocks.\<close>
+
 text \<open>This is the right-constant reduction implemented by the primary-jet
 composition kernel. The suffix births are supplied and source-bound elsewhere;
 this reduction does not discover them, or identify distinct source occurrences.
@@ -499,6 +528,7 @@ ML \<open>
     harmonic_multiplier_product five_step_linear_harmonic_source_death
     harmonic_run_source_difference five_step_same_birth_source_independence
     harmonic_run_append last_five_births_erase_earlier_jet
+    at_least_five_births_source_independence annihilated_jet_future_consumer
     domain_wires_injective compose_domain_wires
     nonempty_generators_idempotent f5_spatial_length_transport
     f5_spatial_alphabet_card f5_spatial_macros_closed

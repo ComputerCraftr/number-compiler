@@ -7,16 +7,45 @@ from dataclasses import replace
 import pytest
 
 from number_compiler.arithmetic.contracts.block_effect import BlockContextBudgetExceeded
+from number_compiler.arithmetic.fields.skew_transfer import SkewTransfer
 from number_compiler.hashlife.execution.dyadic_return_images import (
     DyadicReturnImageWorkspace,
 )
 from number_compiler.hashlife.execution.dyadic_return_records import DyadicReturnLaw
-from number_compiler.hashlife.execution.dyadic_return_transport import residue_macro
+from number_compiler.hashlife.execution.dyadic_return_transport import (
+    residue_macro,
+    transport_low,
+)
 from number_compiler.resources.ledger import ResourceLedger
 from number_compiler.sequences.antihydra.arithmetic_images import (
     ANTIHYDRA_ARITHMETIC_LAW,
 )
 from number_compiler.sequences.collatz.physical_images import COLLATZ_PHYSICAL_LAW
+
+
+def test_short_residue_transport_charges_operands_not_requested_precision() -> None:
+    ledger = ResourceLedger()
+    workspace = DyadicReturnImageWorkspace(ledger, 1, 0, COLLATZ_PHYSICAL_LAW)
+    prefix = workspace.counter_prefix
+    before = ledger.counters.get(prefix + "_transport_operand_bits", 0)
+    assert transport_low(workspace, SkewTransfer(3, 1, 2), 9, 10**12) == 14
+    assert transport_low(workspace, SkewTransfer(3, -1, 2), 9, 10**12) == 13
+    assert ledger.counters[prefix + "_transport_operand_bits"] - before <= 16
+    assert ledger.counters[prefix + "_transport_short_numerator_demands"] == 2
+    assert transport_low(workspace, SkewTransfer(0, -2, 2), 9, 8) == 255
+    assert transport_low(workspace, SkewTransfer(0, -2, 2), 9, 0) == 0
+    # Canonical modular transport must still apply when the numerator is wide
+    # or negative. A short-numerator optimization must not replace that semantics.
+    for width in range(9):
+        for source in (1, 3, 9, (1 << 100) + 1):
+            for offset in (-1, 1):
+                assert transport_low(
+                    workspace, SkewTransfer(3, offset, 2), source, width
+                ) == ((3 * source + offset) // 2) % (1 << width)
+    with pytest.raises(ArithmeticError, match="integral"):
+        transport_low(workspace, SkewTransfer(3, 1, 2), 2, 10**12)
+    workspace.dispose()
+    assert ledger.entries == ledger.nodes == 0
 
 
 @pytest.mark.parametrize("law", (COLLATZ_PHYSICAL_LAW, ANTIHYDRA_ARITHMETIC_LAW))
@@ -69,12 +98,18 @@ def test_source_only_macro_squares_without_endpoint_access(
         assert macro.branch_word == left.branch_word | (right.branch_word << half)
         assert macro.minimum == min(left.minimum, left.delta + right.minimum)
     prefix = workspace.counter_prefix
-    assert workspace.ledger.counters[prefix + "_macro_generator_admissions"] <= (
-        2 * workspace.ledger.counters[prefix + "_macro_requests"]
+    assert (
+        workspace.ledger.counters[prefix + "_macro_generator_admissions"]
+        == (workspace.ledger.counters[prefix + "_macro_bounded_base_steps"])
     )
-    assert workspace.ledger.counters[prefix + "_macro_compositions"] > 0
-    assert workspace.ledger.counters[prefix + "_macro_hits"] > 0
-    assert not workspace.macro_stack
+    assert workspace.ledger.counters[prefix + "_macro_bounded_base_steps"] <= (
+        4 * workspace.ledger.counters[prefix + "_macro_bounded_base_calls"]
+    )
+    assert workspace.ledger.counters[prefix + "_macro_bounded_base_calls"] > 0
+    assert workspace.ledger.counters[prefix + "_macro_bounded_base_steps"] > 0
+    if width > 4:
+        assert workspace.ledger.counters[prefix + "_macro_compositions"] > 0
+    assert not workspace.macros and not workspace.macro_stack
     workspace.dispose()
     assert workspace.ledger.nodes == workspace.ledger.entries == 0
 

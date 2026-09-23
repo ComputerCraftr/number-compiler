@@ -1,5 +1,5 @@
 theory Associated_Action_Pullback
-  imports "Temporal_Clock_Jumps.Decimal_Publisher_Constructor" "HOL.Rat"
+  imports "HOL.Rat"
 begin
 
 text \<open>An increasing scalar tropical action has the executable form
@@ -158,6 +158,66 @@ lemma weak_affine_pullback:
   using assms
   by (simp add: pos_divide_le_eq algebra_simps)
 
+text \<open>The finite safety envelope uses the same inverse affine map as
+the saturated consumer. These are algebraic laws, not admission of a source
+itinerary or a certificate of all-time safety.\<close>
+
+lemma inverse_affine_max:
+  fixes scale offset u v :: rat
+  assumes "0 < scale"
+  shows "(max u v - offset) / scale =
+    max ((u-offset)/scale) ((v-offset)/scale)"
+  using assms by (auto simp: max_def divide_le_cancel)
+
+lemma prefix_safety_chronological:
+  fixes balance delta minimum next_minimum :: int
+  shows "0 \<le> balance + min minimum (delta + next_minimum) \<longleftrightarrow>
+    0 \<le> balance + minimum \<and> 0 \<le> (balance + delta) + next_minimum"
+  by (auto simp: min_def; linarith)
+
+fun repeated_prefix_minimum :: "nat \<Rightarrow> int \<Rightarrow> int \<Rightarrow> int" where
+  "repeated_prefix_minimum 0 delta minimum = 0"
+| "repeated_prefix_minimum (Suc n) delta minimum =
+    min (repeated_prefix_minimum n delta minimum) (int n * delta + minimum)"
+
+lemma repeated_prefix_minimum_closed:
+  assumes "minimum \<le> 0"
+  shows "repeated_prefix_minimum n delta minimum =
+    (if n = 0 then 0 else minimum + min 0 ((int n - 1) * delta))"
+proof (induction n)
+  case 0
+  then show ?case by simp
+next
+  case (Suc n)
+  show ?case
+  proof (cases "n = 0")
+    case True
+    with assms show ?thesis by simp
+  next
+    case False
+    note nonzero = False
+    have positive: "1 \<le> int n" using False by simp
+    show ?thesis
+    proof (cases "0 \<le> delta")
+      case True
+      have "0 \<le> (int n - 1) * delta"
+        using positive True by (intro mult_nonneg_nonneg) auto
+      moreover have "0 \<le> int n * delta"
+        using True by (intro mult_nonneg_nonneg) auto
+      ultimately show ?thesis using Suc.IH False True
+        by (auto simp: min_def algebra_simps)
+    next
+      case False
+      have "(int n - 1) * delta \<le> 0"
+        using positive False by (intro mult_nonneg_nonpos) auto
+      moreover have "int n * delta \<le> 0"
+        using False by (intro mult_nonneg_nonpos) auto
+      ultimately show ?thesis using Suc.IH nonzero False
+        by (auto simp: min_def algebra_simps)
+    qed
+  qed
+qed
+
 theorem associated_threshold_pullback_exact:
   assumes "associated_action_admitted A"
   shows "associated_threshold_eval (associated_threshold_pullback A D) x =
@@ -271,7 +331,8 @@ ML \<open>
     @{thms associated_action_then_admitted associated_action_apply_then
       associated_action_then_associative associated_threshold_pullback_exact
       associated_threshold_pullback_contravariant monotone_survival_ALL_min
-      monotone_survival_ANY_max monotone_survival_empty}) then ()
+      monotone_survival_ANY_max monotone_survival_empty inverse_affine_max
+      prefix_safety_chronological repeated_prefix_minimum_closed}) then ()
     else error "Associated action pullback depends on an oracle";
 \<close>
 

@@ -97,6 +97,66 @@ ZERO = ExactRational(0)
 ONE = ExactRational(1)
 
 
+def affine_threshold_preimage(
+    scale: ExactRational, offset: ExactRational, threshold: ExactRational
+) -> ExactRational:
+    """Contravariant threshold transport through a positive affine action."""
+    if any(type(value) is not ExactRational for value in (scale, offset, threshold)):
+        raise TypeError("affine threshold transport requires exact rationals")
+    if scale <= ZERO:
+        raise ValueError("affine threshold transport requires positive scale")
+    return (threshold - offset) / scale
+
+
+@dataclass(frozen=True, slots=True)
+class PrefixSafety:
+    """Integer specialization of the ALL/min affine safety transformer.
+
+    Input balance b is safe iff b + minimum >= 0; its endpoint is b + delta.
+    This is a consumer of an admitted action, never source admission itself.
+    """
+
+    delta: int = 0
+    minimum: int = 0
+
+    def __post_init__(self) -> None:
+        if type(self.delta) is not int or type(self.minimum) is not int:
+            raise TypeError("prefix safety requires exact integers")
+        if self.minimum > min(0, self.delta):
+            raise ValueError("prefix safety must include initial and final balance")
+
+    def then(self, after: PrefixSafety) -> PrefixSafety:
+        if type(after) is not PrefixSafety:
+            raise TypeError("prefix safety requires another prefix transformer")
+        return PrefixSafety(
+            self.delta + after.delta, min(self.minimum, self.delta + after.minimum)
+        )
+
+    def repeat(self, copies: int) -> PrefixSafety:
+        if type(copies) is not int or copies < 0:
+            raise ValueError("prefix safety repetition requires a natural count")
+        if copies == 0:
+            return PrefixSafety()
+        return PrefixSafety(
+            copies * self.delta,
+            self.minimum + min(0, (copies - 1) * self.delta),
+        )
+
+    def first_failing_copy(self, balance: int, copies: int) -> int | None:
+        """Zero-based failing repetition, without scanning safe copies."""
+        if type(balance) is not int or type(copies) is not int or copies < 0:
+            raise ValueError("invalid prefix safety repetition demand")
+        if copies == 0:
+            return None
+        slack = balance + self.minimum
+        if slack < 0:
+            return 0
+        if self.delta >= 0:
+            return None
+        index = slack // (-self.delta) + 1
+        return index if index < copies else None
+
+
 @dataclass(frozen=True, slots=True)
 class ThresholdDemand:
     """A strict or non-strict threshold predicate on an exact scalar."""
@@ -193,9 +253,10 @@ class SaturatingAffineAction:
             )
             if impossible:
                 return ThresholdDemand(False, ZERO, demand.strict)
-        return ThresholdDemand(
-            True, (demand.threshold - self.offset) / self.scale, demand.strict
-        )
+        # A saturated action already reduced its prefixes to one exact cap.
+        # Rebuilding a singleton hull here adds work without adding information.
+        threshold = affine_threshold_preimage(self.scale, self.offset, demand.threshold)
+        return ThresholdDemand(True, threshold, demand.strict)
 
 
 def power_action(base: SaturatingAffineAction, copies: int) -> SaturatingAffineAction:

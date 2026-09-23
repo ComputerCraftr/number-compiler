@@ -1,11 +1,7 @@
 # Collatz physical time, events, and Hensel cylinders
 
-Status: **finite physical/event refinements and source lifts are checked; the
-remaining compact publication and growth gates are not implied by them**.
-
-The CLI's `--nth` counts ordinary Collatz iterations. Accelerated events are a
-separate coordinate. A valid cylinder therefore records both physical tick
-count and event count rather than identifying them.
+Status: **Finite physical/event laws are checked; general source-discovery and
+executable refinement bounds remain open.**
 
 ## Reading guide
 
@@ -13,6 +9,47 @@ count and event count rather than identifying them.
 - **Checked theorem:** finite source cylinders, Hensel transport and physical/event refinements use the specified source, precision and action.
 - **Implemented construction:** physical terms and event observations consume authenticated source images.
 - **Open obligation:** exact finite output does not establish convergence or cheap construction at arbitrary horizons.
+
+## Saturated finite safety and source binding
+
+The finite action combines an exact skew endpoint with a positive-affine
+[threshold envelope](../../src/number_compiler/arithmetic/fields/threshold_envelope.py).
+For chronological blocks A then B, its threshold is
+`max(F_A(T), endpoint_A^-1(F_B(T)))`; source admission intersects A's cylinder
+with the pullback of B's cylinder. Empty prefixes have no descent, and equality
+at a threshold is not strict descent.
+
+**Implemented:** [saturated_future.py](../../src/number_compiler/sequences/collatz/saturated_future.py)
+binds this arithmetic to the Hensel cylinder and event count.
+`collatz --events N --info safety` consumes the authenticated event publication
+and reports `all_time_claim: false`. The value is not an authority token.
+
+**Finite evidence:** all `6^6` valuation words over 1..6 give 46,625 cylinders
+with descent for every natural high fiber, 30 with no descent in the block,
+and one with only the origin safe, `(2,2,2,2,2,2)`. This is a branch census,
+not coverage of one source's infinite trajectory.
+
+**Open:** binding still performs per-event radix-64 transport. No cheap
+source-application bound or complete Python worklist refinement follows from
+removing retained history. See the [proof scope](../proofs.md#finite-saturated-threshold-actions).
+
+[Implementation and validation record](../../results/current/2026-W39/README.md#saturated-finite-safety-and-source-binding).
+
+## Shared branch observers and joint experiment
+
+The shared [branch quotient owner](../../src/number_compiler/arithmetic/fields/branch_quotients.py)
+provides bounded suffixes, prime possibility partitions and phase laws.
+Collatz uses `3/2^q`; Mahler uses `(3/2)^q`. Their source exponents are separately
+bound. The 55 and 67 bucket totals sum individual prime partitions; neither
+is the size of an exact joint successor alphabet.
+
+A suffix records at most six sibling choices among three admitted branches,
+not an unbounded event exponent. The 64-sheet/729-chart experiment found no
+repeated full keys among 32,768 positive odd 16-bit Collatz sources. Absence
+of conflicts without reuse does not establish closure. See the
+[Mahler joint-observer scope](antihydra-mahler.md#joint-future-observer-experiment).
+
+[Implementation and validation record](../../results/current/2026-W39/README.md#shared-branch-observers-and-joint-experiment).
 
 ## Exact source and clock laws
 
@@ -44,213 +81,61 @@ endpoint and weight do not determine support.
 
 ## Production and resource boundary
 
-### Carry/F5 directional integration (2026-09-21)
+<a id="carryf5-directional-integration-2026-09-21"></a>
 
-- **Canonical projection:**
-  [collatz_binary_forcing.py](../../src/number_compiler/arithmetic/carry/collatz_binary_forcing.py)
-  now owns the existing `binary_carry_birth` and `radix64_phi5` functions.
-  The harmonic research module imports those same functions. No second phase
-  definition is used. The F5 fibers have sizes `(28,16,4,7,9)` and the joint
-  `(five-way carry action, phase)` observer has 15 realized classes.
-- **Exact scope of the missing port:** positive odd sources 67 and 75 have
-  identical two-cell class words and Hensel gap one, but their accelerated
-  targets are 101 and 113, with different low-cell classes. This distinguishes
-  the proposed leaf projection; it is not a counterexample to the full source
-  cylinder. The fixed-shift directional response resolves this witness.
-- **Implemented finite refinement:**
-  [collatz_f5_quotient.py](../../src/number_compiler/arithmetic/carry/collatz_f5_quotient.py)
-  partitions rows and columns of the exact join observation. Left/right class
-  counts for shifts 0–5 are `(15,1)`, `(12,2)`, `(10,4)`, `(8,8)`, `(4,9)` and
-  `(2,13)`. Distinct rows/columns supply distinguishing contexts, proving
-  minimality among independent one-sided response partitions for this fixed
-  consumer. This does not prove closure under repeated temporal application.
-- **HashLife arithmetic consumer:**
-  [CollatzOutputMorphism](../../src/number_compiler/sequences/collatz/output_morphism.py)
-  composes these reduced ports in the existing `BitFunctionArena`, without
-  constructing the joined target digit. Optional F5 tables and its result
-  memo are demanded lazily. The ledger accounts for the evictable memo;
-  clearing it preserves issued semantic handles. These observer IDs do not
-  authorize replacing source occurrences or successor images.
-- **Validation:** independent binary-output identities check the phase;
-  exhaustive finite joins check every raw pair and residual shift. Symbolic
-  tests check every reduced port pair, foreign handles, wrong-shift binding,
-  cache clearing, and unchanged nodes on warm demand. The focused selection
-  passed 83 tests in 3.26 seconds under the 35-second/1-GiB guard. This is
-  executable finite evidence, not a new checked Isabelle constructor theorem.
+### Directional carry/F5 quotient
 
-### Cross-family work and cache measurements
+The canonical [carry/F5 owner](../../src/number_compiler/arithmetic/carry/collatz_f5_quotient.py)
+derives directional response partitions from `binary_carry_birth` and
+`radix64_phi5`. F5 fibers have sizes `(28,16,4,7,9)`; carry/phase has 15 leaf
+classes. Left/right response counts for shifts 0–5 are `(15,1)`, `(12,2)`,
+`(10,4)`, `(8,8)`, `(4,9)`, `(2,13)`, minimal for that fixed join observation.
 
-At source fingerprint
-`94396a4d75337002e208641a0de41d1a4be03c6ccba776a039f22c6eb3ac9401`,
-five trials per case separated cold construction, repeated demand, and demand
-after clearing the result memo. Median times in milliseconds:
+Sources 67 and 75 have the same two-cell class word and Hensel gap one but
+produce 101 and 113, with different low-cell classes. The directional response
+resolves this missing context. This refutes the leaf projection as a successor
+identity, not the full cylinder. Production output morphisms consume the
+reduced ports lazily; repeated temporal closure remains unproved.
 
-| Component | Cold | Warm | Memo cleared, arithmetic retained |
-| --- | ---: | ---: | ---: |
-| 196 supplied forcing, growth exponent `5^64-1` | 7.6423 | 0.0165 | 4.9278 |
-| Collatz fixed-shift-1 F5 consumer | 9.1897 | 0.0106 | 8.2569 |
+[Implementation and validation record](../../results/current/2026-W39/README.md#carryf5-directional-integration-2026-09-21).
 
-Warm demand recorded exactly one request and one component memo hit, with no
-new arithmetic nodes, no repeated forcing shifts and no repeated directional
-construction workspace. These are local arithmetic/observer hits, not temporal
-source-image cache hits. The 196 component constructs 514 arithmetic records;
-the ledger charges 702 node units including retained integer sizes.
+<a id="cross-family-work-and-cache-measurements"></a>
 
-The same fingerprint was measured through the CLI and public API at every
-power-of-two horizon 16–1024, with five trials per horizon. Collatz used seed
-`931386509544713451`; all 140 outputs matched a separate bounded recurrence.
-Selected median times in milliseconds:
+### Cost and reuse boundary
 
-| Horizon | Fresh CLI process | First API query | Repeated API query | API cache bypassed |
-| ---: | ---: | ---: | ---: | ---: |
-| 16 | 441.733 | 1.057 | 0.029 | 0.670 |
-| 256 | 440.616 | 3.968 | 0.033 | 3.546 |
-| 1024 | 471.993 | 15.320 | 0.029 | 14.738 |
+Local F5 operator hits and authenticated temporal-image hits are distinct.
+The measured CLI digit path did not consume the new F5 observer, so those
+benchmarks cannot attribute a CLI speedup to it. Reverse/add construction
+refusals supply no successful-work samples.
 
-The CLI times include startup, rendering and requested metrics; API query
-times include construction/materialization but exclude the subsequent metrics
-snapshot. They are different measurement boundaries. The existing API owner
-cache already reuses Collatz construction. Its ordinary digit path does not
-consume the new F5 observer, so these timings establish no CLI improvement
-attributable to F5. The recorded transport-bit work still grows from 1024 to
-3072 to 8192 at horizons 256, 512 and 1024. Source leaf work and payload-audit
-branch work both still equal the requested horizon in these samples.
+[Implementation and validation record](../../results/current/2026-W39/README.md#cross-family-work-and-cache-measurements).
 
-All 140 reverse/add attempts returned construction refusal, beginning with
-the unsupported same-carry exit at D16. Their work samples are unavailable,
-not zero, and refusal latency is not a speedup. Source-derived forcing and
-complete output-carrier publication remain required before that cutover.
+<a id="downloaded-spatial-grammar-patch"></a>
 
-Raw evidence and reproduction scripts are local under
-`results/current/f5-cross-family-2026-09-21/`. The Collatz process group took
-18.03 seconds with 104,416,312 bytes sampled peak; the reverse/add group took
-3.34 seconds with 34,915,312 bytes. Both used the unchanged 35-second/1-GiB
-guard. These are source-fingerprinted finite probes, not full release approval.
+### Spatial observer composition
 
-Reproduce the finite consumer and reuse checks with:
+`CollatzF5SpatialAction` composes carry maps in physical order and sums
+leaf F5 phases. That additive phase is not the whole-word binary forcing jet.
+The exact spatial language and its length dependence are specified under
+[generator macros](#generator-macros-spatial-phase-and-birth-emissions).
+A fixed spatial alphabet does not establish reuse of complete future regions.
 
-```console
-python -m pytest -q -o addopts='' tests/sequences/collatz/test_f5_directional_quotient.py tests/arithmetic/fields/test_f5_innovation.py tests/sequences/reverse_add/test_powered_cocycle_regions.py
-```
-
-### Downloaded spatial-grammar patch
-
-The subsequently supplied `collatz_radix5_future_grammar.patch` (SHA-256
-`775ecdcf23730b2a354af17c9c12137eec5a664d45826f139edc2730c3e121c7`)
-and `collatz_radix5_future_grammar_report.md` (SHA-256
-`e9aad67d05b8e48ca843050c7eefeeb4d1d9c191e778c5e03f5fb3790c310537`)
-add a spatial observer semigroup. The local port refinement above and this
-spatial concatenation law are distinct operations.
-
-`CollatzF5SpatialAction` in the canonical F5 quotient module now owns the
-patch's `(carry action, additive phase)` law. Physical concatenation applies
-the more significant carry map after the less significant one. The phase is
-the sum of the leaf `phi5` values, **not** the binary forcing jet of the entire
-word. It cannot be substituted for that jet or for a temporal source image.
-
-The adapted
-[radix5_future_grammar.py](../../devtools/experiments/collatz/radix5_future_grammar.py)
-uses that production arithmetic owner. Its exact-length state-language
-construction now uses the existing `binary_power` work loop over finite sets
-instead of iterating once per represented cell. An explicit empty-word
-identity is separate from the five nonempty carry actions. The patch's
-repeated verifier calls, unchecked digit indexing and typing suppression were
-removed. Independent tests check physical carry on all two-cell radix-64
-words; alphabet cardinalities alone cannot detect reversed spatial order.
-
-At fingerprint
-`cddaa2890f2d97766a9616ac8dd3dc80d4333b36a81e74e9ba53dd76a0633a24`,
-five paired trials with the same action kernel measured these state-language
-construction medians (milliseconds):
-
-| Region length | Sequential length recurrence | Binary set composition |
-| ---: | ---: | ---: |
-| 5 | 1.504 | 1.174 |
-| 25 | 9.348 | 2.443 |
-| 125 | 45.810 | 4.540 |
-| 625 | 233.180 | 5.233 |
-
-Length `5^64` returned 17 states in one 99.68-ms sample. This is a finite
-observer-language constructor, not a source trajectory or a CLI output jump.
-The original report's deterministic 96-source, 240-cell D0–D64 occurrence
-table reproduced exactly. Across its sampled horizons only one prior
-five-cell occurrence was reused (at D8); all 25- and 125-cell occurrences
-were new. Thus the fixed 17-state macro alphabet does not itself establish
-useful reuse of complete future regions.
-
-The combined patch, directional, harmonic and F5 integration selection passed
-51 tests in 6.73 seconds. The guarded probe took 2.46 seconds and sampled
-25,346,576 bytes peak. Evidence is local in
-`results/current/f5-cross-family-2026-09-21/`, including the supplied report
-and patch. No Isabelle temporal-constructor or production source-publication
-obligation was closed by this spatial observer integration.
-
-```console
-python -m pytest -q -o addopts='' tests/validation/research/collatz/test_radix5_future_grammar.py tests/sequences/collatz/test_f5_directional_quotient.py
-```
-
-The installed implementation shares directional carry actions, source Hensel
-anchors, physical/event clocks, and demanded output buffers. Terminal output
-allocation is charged before materialization. Cached support belongs to the
-source occurrence and cannot be reused after provenance changes.
-
-The remaining release work is to keep construction and demanded projection
-within the public resource contract for arbitrary admitted queries. A local
-free-selection theorem or curvature view does not remove the source event
-pipeline. The three-cycle identities for source one describe that admitted
-cycle; low-residue equality alone is explicitly not cycle admission.
+[Implementation and validation record](../../results/current/2026-W39/README.md#downloaded-spatial-grammar-patch).
 
 ## Shared temporal effect reuse
 
-The production [dyadic scheduler adapter](../../src/number_compiler/hashlife/execution/dyadic_return_images.py)
-now uses [admitted-cylinder reuse](../../src/number_compiler/hashlife/execution/dyadic_return_reuse.py).
-Previously it always declined the scheduler's relative-reuse hook.
+The [dyadic reuse adapter](../../src/number_compiler/hashlife/execution/dyadic_return_reuse.py)
+shares complete skew, branch support, weights and minimum prefixes for the
+same admitted action/residue/precision, while issuing distinct occurrence
+handles. Exact singleton cycle shortcuts retain the high fiber.
 
-- **Implemented:** the same action and source residue at the demanded precision
-  share their complete skew, branch support, weights and minimum prefix. Each
-  occurrence receives a separately authenticated image. No midpoint, output
-  word or branch replay is needed on a reuse hit.
-- **Cycle admission:** exact singleton shortcuts retain the high fiber in
-  their key. For nonnegative branch offsets, a high fiber above every cycle
-  state excludes the cycle throughout the block. Only that checked case may
-  share a cylinder effect across high fibers.
-- **Checked mathematics:** existing `exact_precision_source_lift` gives the
-  shared branch word and endpoint transport. The new
-  `dyadic_source_orbit_lower_bound` and
-  `dyadic_high_fiber_excludes_small_states` prove the cycle exclusion used by
-  the adapter. These do not constitute a formal Python cache refinement.
-- **Remaining construction:** the 17-state spatial F5 observation is not the
-  reuse key. Normalization across different residue clauses remains missing.
-  This change does not establish a bounded future grammar for every source.
+`exact_precision_source_lift`, `dyadic_source_orbit_lower_bound` and
+`dyadic_high_fiber_excludes_small_states` justify branch transport and the
+stated cycle-exclusion condition for nonnegative offsets. They do not refine
+the Python cache or construct a quotient across different residue clauses.
+Aligned-source reuse and unmatched-source discovery have different costs.
 
-The September 21 paired probe covers horizons 16–1024 with five trials each,
-fresh ledgers, a reuse-disabled control and warm repeated requests. All 280
-endpoints agree with bounded independent arithmetic. This measurement predates
-the subsequent sealed-publication audit checks; its timings are historical,
-not measurements of the hardened path. At 1,024 steps:
-
-| Source and law | Support nodes, disabled → enabled | Discovered branches | Median construction, disabled → enabled |
-| --- | ---: | ---: | ---: |
-| Collatz, `2^4096` | 31 → 5 | 1024 → 64 | 14.36 → 4.59 ms |
-| Antihydra arithmetic, `2^4096` | 31 → 5 | 1024 → 64 | 13.62 → 4.36 ms |
-| Collatz, `931386509544713451` | 31 → 31 | 1024 → 1024 | 14.51 → 15.24 ms |
-| Antihydra blank source, `8` | 31 → 31 | 1024 → 1024 | 14.12 → 14.58 ms |
-
-The aligned Antihydra case tests the production arithmetic law with an
-alternate source; the public Antihydra CLI remains pinned to 8. Matching cases
-retain 144 ledger entries rather than 455; unmatched cases retain 486 rather
-than 455. Timings exclude endpoint observation, rendering and validation, which
-are recorded separately or explicitly outside the timed constructor. Reuse
-bookkeeping has a measured cost when no clauses match.
-
-Fresh CLI traces additionally check the Collatz digit path and Antihydra's
-Mahler consumer. Raw measurements, commands and source fingerprints remain
-local in `results/current/dyadic-effect-reuse-2026-09-21/`; they are focused
-evidence, not the full release growth manifest. Reproduce the semantic checks:
-
-```console
-python -m pytest -q -o addopts='' tests/hashlife/execution/test_dyadic_effect_reuse.py tests/api/test_antihydra_mahler_action.py
-```
+[Implementation and validation record](../../results/current/2026-W39/README.md#shared-temporal-effect-reuse).
 
 ## Five-multiplication primary-jet reduction
 
@@ -365,18 +250,11 @@ support and retains its separate safety predicate.
   Python worklist publication, memo lifecycle and costs still require their
   own refinement; the theorem does not assert a finite future quotient.
 
-**Performance scope:** generator reuse is measurable, but cold construction
-still creates a number of residuals proportional to unmatched source extent.
-The first five-trial comparison retained the same number of support nodes and
-regressed median latency at extent 1024: Collatz 16.245 → 19.625 ms;
-Antihydra 15.405 → 20.005 ms. These samples are local diagnostic evidence under
-`results/current/source-macros-2026-09-22/`, not a speedup claim or a replacement
-for the unchanged release workloads.
+**Construction boundary:** cold work remains proportional to unmatched source
+extent. The bounded comparison regressed latency; generator reuse alone is
+not a successful performance gate.
 
-```console
-python -m pytest -q -o addopts='' tests/hashlife/execution/test_dyadic_effect_reuse.py tests/api/test_antihydra_mahler_action.py
-isabelle build -d devtools/proofs/isabelle Shared_S_Arithmetic
-```
+[Dated evidence](../../results/current/2026-W39/README.md#source-only-macro-construction-measurements).
 
 ## Production and reproduction
 
@@ -433,3 +311,74 @@ precision, and poisoned input reconstruction/history readers. The supplied
 `collatz_joint_adic_quotient_report.md`, `collatz_future_grammar_closure_report.md`
 and patch remain external research inputs; their experiment claims are not
 current-source release evidence.
+
+<a id="updated-saturated-publication-patch"></a>
+
+## Authenticated aggregate publication
+
+The authenticated `DyadicAggregateSummary` exposes affine action, extent,
+aggregate clock, minimum prefix and cycle metadata. Scheduler-owned support
+remains available for first-failure descent; every demand revalidates authority.
+Its current finite safety consumer is described [above](#saturated-finite-safety-and-source-binding).
+
+Arithmetic consistency of a supplied action/cylinder pair is insufficient
+admission. The downloaded scalar-leaf constructor and unchecked summary cache
+were not accepted as replacements for the source-bound scheduler.
+
+[Implementation and validation record](../../results/current/2026-W39/README.md#updated-saturated-publication-patch).
+
+## Shared safety transformers and exact cycle acceleration
+
+- **Implemented construction:** `PrefixSafety(delta, minimum)` in
+  [consumer_pullback.py](../../src/number_compiler/arithmetic/fields/consumer_pullback.py)
+  composes as `(d+e, min(m,d+n))`. For `k>0`, repetition is
+  `(k*d, m+min(0,(k-1)*d))`. Both the shared dyadic cycle executor and
+  Antihydra block composition consume this same implementation.
+- **Guarded demand:** negative-drift cycles retain their exact minimum.
+  First-failure descent computes the first potentially unsafe repetition,
+  then inspects at most one cycle. Total arithmetic may continue beyond a
+  ledger failure; a physical safety predicate may not.
+- **Public CLI:** exact entry into the validated `1,4,2` cycle allows Collatz
+  to skip arbitrarily many repetitions. Admission still checks the exact
+  source and law. Sources with the same low residue cannot borrow this
+  singleton result. This shortcut existed before this change; the shared
+  safety transformer now handles both signs of ledger drift.
+- **Reduced work:** low-residue transport uses a short exact numerator directly
+  when its bit bound fits the demanded modulus. A trillion-bit requested
+  precision no longer forces construction of that modulus for a tiny
+  numerator. Wide and signed numerators retain the modular path.
+- **Finite algebra:** [threshold_envelope.py](../../src/number_compiler/arithmetic/fields/threshold_envelope.py)
+  normalizes exact upper hulls of positive affine inverse-threshold maps and
+  composes `max(F_A, P_A(F_B))`. Its domain is all real thresholds. The
+  rational inverse is shared with Mahler's production saturating action;
+  a single saturated action uses the inverse directly without rebuilding a
+  hull. Empty envelopes have no event and zero-slope singleton summaries
+  cannot be inverted as cylinders. This utility is not a source constructor.
+- **Checked theorem:** `inverse_affine_max`, `prefix_safety_chronological`
+  and `repeated_prefix_minimum_closed` in
+  [Associated_Action_Pullback.thy](../../devtools/proofs/isabelle/integration/Associated_Action_Pullback.thy)
+  establish inverse/max transport, chronological safety and the repetition
+  formula by induction. The same theory passes an isolated HOL-based build
+  with its oracle audit. The full integration build remains blocked by the
+  35-second parent-session rebuild. These algebraic statements do not prove
+  the Python hull algorithm, source admission or first-failure worklist.
+- **Open scope:** neither finite threshold reduction nor exact cycle skipping
+  proves that every Collatz source reaches a cycle, or supplies a general
+  sublinear cold source-discovery bound. Generic reverse D4+ and global
+  Mahler/Antihydra safety remain independent obligations.
+
+Reproduce the public path, exact admission, negative drift and short-operand
+regressions:
+
+```console
+python -m pytest -q tests/api/test_shared_skew_cli.py tests/resources/test_dyadic_return_audit.py tests/hashlife/execution/test_dyadic_effect_reuse.py tests/arithmetic/fields/test_threshold_envelope.py
+python -m number_compiler collatz --seed 27 --nth 1000000000000
+```
+
+The final command emits `4`. It does not request optional observers.
+
+Cycle-specific measurements confirm bounded primitive discovery after exact
+cycle entry, with logarithmic scheduler overhead. They are not a general
+source-discovery bound or the complete release growth manifest.
+
+[Dated evidence](../../results/current/2026-W39/README.md#exact-cycle-acceleration-measurements).

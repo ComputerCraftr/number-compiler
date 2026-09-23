@@ -8,7 +8,7 @@ powering or a certificate for a minimized universal controller.
 
 from __future__ import annotations
 
-from collections.abc import Iterable, Sequence
+from collections.abc import Callable, Iterable, Sequence
 from dataclasses import dataclass
 
 from number_compiler.arithmetic.carry.collatz_output_quotient import (
@@ -111,8 +111,28 @@ class Radix64TemporalResult:
     carry_peak: int
 
 
+class _OutputFrameCounter:
+    """Count leading 21-cells of an unretained endpoint stream."""
+
+    __slots__ = ("frame", "past_frame")
+
+    def __init__(self) -> None:
+        self.frame = 0
+        self.past_frame = False
+
+    def append(self, digit: int) -> None:
+        if not self.past_frame:
+            if digit == 21:
+                self.frame += 1
+            else:
+                self.past_frame = True
+
+
 def _push(
-    stages: Sequence[Radix64CollatzStage], start: int, digit: int, output: list[int]
+    stages: Sequence[Radix64CollatzStage],
+    start: int,
+    digit: int,
+    output: list[int] | _OutputFrameCounter,
 ) -> None:
     for i in range(start, len(stages)):
         emitted = stages[i].feed(digit)
@@ -123,7 +143,12 @@ def _push(
 
 
 def compose_radix64_events(
-    digits: Iterable[int], events: int = 1, *, max_events: int = 64
+    digits: Iterable[int],
+    events: int = 1,
+    *,
+    max_events: int = 64,
+    valuation_sink: Callable[[int], None] | None = None,
+    collect_output: bool = True,
 ) -> Radix64TemporalResult:
     """Compose finite streaming events with no intermediate digit collections.
 
@@ -137,13 +162,34 @@ def compose_radix64_events(
         raise ValueError("event counts must be positive")
     if events > max_events:
         raise BlockContextBudgetExceeded("radix-64 streaming event budget exceeded")
+    if valuation_sink is not None and not callable(valuation_sink):
+        raise TypeError("valuation sink must be callable")
+    if type(collect_output) is not bool:
+        raise TypeError("output collection flag must be a boolean")
+    if not collect_output and valuation_sink is None:
+        raise ValueError("output-free selector requires a valuation consumer")
     stages = [Radix64CollatzStage() for _ in range(events)]
-    output: list[int] = []
+    output: list[int] | _OutputFrameCounter = (
+        [] if collect_output else _OutputFrameCounter()
+    )
     for digit in digits:
         _push(stages, 0, digit, output)
     for i, stage in enumerate(stages):
         for digit in stage.finish():
             _push(stages, i + 1, digit, output)
+        if valuation_sink is not None:
+            valuation_sink(stage.valuation)
+    if not collect_output:
+        assert type(output) is _OutputFrameCounter
+        return Radix64TemporalResult(
+            (),
+            sum(stage.valuation for stage in stages),
+            stages[0].stripped,
+            stages[0].shift or 0,
+            output.frame,
+            max(stage.carry_peak for stage in stages),
+        )
+    assert type(output) is list
     frame = 0
     for digit in output:
         if digit != 21:

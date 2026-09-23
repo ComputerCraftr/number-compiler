@@ -25,7 +25,7 @@ Proofs for supplied actions do not establish cheap discovery of those actions.
 
 ## Measurements
 
-Use metrics schema 7. Report construction, discovery, observation, rendering,
+Use [metrics schema 8](api-migration.md#metrics-schema-8). Report construction, discovery, observation, rendering,
 failed work, retained nodes and peak storage separately. A small final root,
 large symbolic exponent or warm cache hit does not establish a construction bound.
 

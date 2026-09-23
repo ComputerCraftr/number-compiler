@@ -1,10 +1,9 @@
-"""Executable temporal provider over immutable source-bound morphisms.
+"""Source-bound point observer for admitted higher-bimachine actions.
 
-This is the production-safe part of the old spacetime provider algorithm.  A
-provider is associated with its immutable original source binding, while the
-consumer is one canonical ``FieldCellActionID``.  Observation delegates to the
-higher bimachine's dyadic unary/context summaries, which substitute the after
-action through the before action without constructing the midpoint word.
+The provider retains an original source binding and a fixed producer action.
+It observes a supplied composed action through the higher bimachine's dyadic
+summaries without constructing a midpoint word. This observer does not build
+or certify a complete temporal successor image for arbitrary consumers.
 """
 
 from __future__ import annotations
@@ -28,11 +27,11 @@ from number_compiler.resources.ledger import ResourceLedger
 
 
 class HigherTemporalProviderEvaluator:
-    """Bind recursive providers to original sources and execute temporal diamonds.
+    """Bind outputs to admitted sources for canonical-boundary point demands.
 
-    Bindings are occurrence metadata rather than semantic output identity.  The
-    temporal output arena normalizes nested images first, so one lookup recovers
-    the original source for an arbitrarily deep binary-composed action.
+    Bindings are occurrence metadata. The temporal output arena can normalize
+    nested action syntax, but this evaluator remains an observation consumer;
+    it does not establish successor right-congruence of output IDs.
     """
 
     def __init__(
@@ -124,10 +123,9 @@ class HigherTemporalProviderEvaluator:
         self._validate_binding(provider, source, action)
         found = self._bindings.get(provider)
         if found is not None:
-            # The output ID is already the complete semantic identity.  Equal
-            # providers may therefore originate at several exact source
-            # occurrences; retaining the first witness keeps provenance out of
-            # the semantic interner without rejecting legitimate aliases.
+            # The configured producer validated this occurrence for the same
+            # output. The first binding remains the observation witness; an
+            # output alias is not authority for a different future successor.
             self.ledger.bump("temporal_provider_binding_aliases")
             return
         self.ledger.reserve(self._binding_owner, entries=1)

@@ -511,15 +511,6 @@ theorem growth_edge_pair_equation:
   "growth_pair_step r 1 0 0 = r mod 10 + 1"
   by (simp add: growth_pair_step_def)
 
-lemma growth_palindrome_nth_reflect:
-  assumes palindrome: "rev ss = ss" and bound: "i < length ss"
-  shows "ss ! (length ss-Suc i) = ss!i"
-proof -
-  have "rev ss ! i = ss ! i"
-    using palindrome by simp
-  then show ?thesis using bound by (simp add: rev_nth)
-qed
-
 theorem growth_digits_append_one:
   assumes growth: "carry_out False ss"
   shows "digits ss = emit False ss @ [1]"
@@ -533,7 +524,7 @@ proof -
   have previous: "i-1 < length ss" using positive bound by arith
   have reflected:
     "ss ! (length ss-Suc (i-1)) = ss!(i-1)"
-    using growth_palindrome_nth_reflect[OF palindrome previous] .
+    using palindrome_nth_reflect[OF palindrome previous] .
   show ?thesis using reflected positive by simp
 qed
 
@@ -857,7 +848,7 @@ ML \<open>
     growth_symbol_has_twelve_forms
     nonzero_growth_skew_requires_equal_domain_source
     growth_edge_coboundary_factorization growth_edge_pair_equation
-    growth_palindrome_nth_reflect growth_digits_append_one
+    palindrome_nth_reflect growth_digits_append_one
     growth_reflection_shift
     no_growth_pair_output_expanded no_growth_symmetric_pair_formula
     no_growth_symmetric_pair_affine

@@ -6,16 +6,23 @@ from collections.abc import Hashable
 from dataclasses import dataclass, fields, is_dataclass
 from typing import Self, cast
 
+from number_compiler.arithmetic.automata.symmetry_powering import ActionTransform
 from number_compiler.arithmetic.contracts.scoped_handles import ArenaHandle
 from number_compiler.resources.ledger import ResourceLedger
 from number_compiler.resources.stores import LedgerDict, LedgerList
 
 _FieldAnchor = tuple[type[object], object | None]
-_Guard = tuple[object, type[object], tuple[str, ...], tuple[_FieldAnchor, ...]]
+_Guard = tuple[object, type[object], tuple[str, ...], tuple[object, ...]]
 
 
 def _primitive(value: object) -> bool:
-    return value is None or type(value) in (bool, int, str, bytes)
+    return value is None or type(value) in (
+        bool,
+        int,
+        str,
+        bytes,
+        ActionTransform,
+    )
 
 
 def _anchor(value: object) -> _FieldAnchor:
@@ -30,6 +37,15 @@ def _anchor_matches(value: object, expected: _FieldAnchor) -> bool:
     if type(value) is not expected_type:
         return False
     return value == expected_value if _primitive(value) else value is expected_value
+
+
+def _guard_field_matches(
+    value: object, expected_type: type[object], expected: object
+) -> bool:
+    """Compare a field against its separately pinned original type and value."""
+    if type(value) is not expected_type:
+        return False
+    return value == expected if _primitive(expected) else value is expected
 
 
 def _root_anchor(value: object) -> object:
@@ -85,7 +101,7 @@ def _require_immutable_key(value: object, label: str) -> int:
             active.remove(identity)
             finished.add(identity)
             continue
-        if current is None or type(current) in (bool, int, str, bytes):
+        if _primitive(current):
             visited += 1
             if visited > _MAX_INLINE_KEY_NODES:
                 raise ValueError(
@@ -99,6 +115,9 @@ def _require_immutable_key(value: object, label: str) -> int:
                 raise ValueError(
                     f"{label} exceeds the inline descriptor bound; intern it in an arena"
                 )
+            pending.extend(
+                (getattr(current, item.name), False) for item in fields(current)[3:]
+            )
             continue
         if identity in active:
             raise ValueError(f"{label} contains a reference cycle")
@@ -137,10 +156,14 @@ def _typed_equal(left: object, right: object) -> bool:
         first, second = pending.pop()
         if type(first) is not type(second):
             return False
-        if first is None or type(first) in (bool, int, str, bytes):
+        if _primitive(first):
             if first != second:
                 return False
             continue
+        pair = id(first), id(second)
+        if pair in seen:
+            continue
+        seen.add(pair)
         if isinstance(first, ArenaHandle):
             assert isinstance(second, ArenaHandle)
             if (
@@ -149,11 +172,11 @@ def _typed_equal(left: object, right: object) -> bool:
                 or first.local_id != second.local_id
             ):
                 return False
+            pending.extend(
+                (getattr(first, item.name), getattr(second, item.name))
+                for item in fields(first)[3:]
+            )
             continue
-        pair = id(first), id(second)
-        if pair in seen:
-            continue
-        seen.add(pair)
         if type(first) is tuple:
             assert isinstance(second, tuple)
             if len(first) != len(second):
@@ -186,15 +209,19 @@ def _typed_hash(value: object) -> int:
         identity = id(current)
         if identity in hashes:
             continue
-        if current is None or type(current) in (bool, int, str, bytes):
+        if _primitive(current):
             hashes[identity] = hash((type(current), current))
             continue
         if isinstance(current, ArenaHandle):
-            hashes[identity] = hash(
-                (type(current), current.owner, current.kind, current.local_id)
+            children = tuple(
+                getattr(current, item.name) for item in fields(current)[3:]
             )
-            continue
-        if type(current) is tuple:
+            if not children:
+                hashes[identity] = hash(
+                    (type(current), current.owner, current.kind, current.local_id)
+                )
+                continue
+        elif type(current) is tuple:
             children = current
         elif type(current) is frozenset:
             children = tuple(current)
@@ -203,6 +230,18 @@ def _typed_hash(value: object) -> int:
         else:
             raise TypeError("source image key has an unsupported structural sort")
         if closing:
+            if isinstance(current, ArenaHandle):
+                hashes[identity] = hash(
+                    (
+                        type(current),
+                        current.owner,
+                        current.kind,
+                        current.local_id,
+                        tuple(hashes[id(item)] for item in children),
+                    )
+                )
+                active.remove(identity)
+                continue
             if type(current) is frozenset:
                 parts: object = frozenset(hashes[id(item)] for item in children)
             else:
@@ -377,35 +416,43 @@ def publication_seal(value: object, ledger: ResourceLedger) -> PublicationSeal:
                 continue
             children: tuple[object, ...]
             if isinstance(current, ArenaHandle):
-                retained_nodes += 14
-                ledger.check_capacity(nodes=retained_nodes)
-                guards.append(
-                    (
-                        current,
-                        type(current),
-                        ("owner", "kind", "local_id"),
-                        (
-                            _anchor(current.owner),
-                            _anchor(current.kind),
-                            _anchor(current.local_id),
-                        ),
-                    )
-                )
-                # Arena authority is identity-anchored and is not traversed.
-                children = (current.kind, current.local_id)
-            elif type(current) in (tuple, frozenset):
-                children = tuple(cast(tuple[object, ...] | frozenset[object], current))
-            elif is_dataclass(current) and not isinstance(current, type):
+                # Flat type/value slots remove one allocated anchor tuple per
+                # field while still pinning the original type independently.
                 names = tuple(item.name for item in fields(current))
-                children = tuple(getattr(current, name) for name in names)
-                retained_nodes += 5 + 3 * len(names)
+                pinned = tuple(getattr(current, name) for name in names)
+                retained_nodes += 5 + 2 * len(names)
                 ledger.check_capacity(nodes=retained_nodes)
                 guards.append(
                     (
                         current,
                         type(current),
                         names,
-                        tuple(_anchor(child) for child in children),
+                        tuple(
+                            item for value in pinned for item in (type(value), value)
+                        ),
+                    )
+                )
+                # Arena authority is identity-anchored and is not traversed.
+                children = (
+                    current.kind,
+                    current.local_id,
+                    *pinned[3:],
+                )
+            elif type(current) in (tuple, frozenset):
+                children = tuple(cast(tuple[object, ...] | frozenset[object], current))
+            elif is_dataclass(current) and not isinstance(current, type):
+                names = tuple(item.name for item in fields(current))
+                children = tuple(getattr(current, name) for name in names)
+                retained_nodes += 5 + 2 * len(names)
+                ledger.check_capacity(nodes=retained_nodes)
+                guards.append(
+                    (
+                        current,
+                        type(current),
+                        names,
+                        tuple(
+                            item for child in children for item in (type(child), child)
+                        ),
                     )
                 )
             else:
@@ -433,12 +480,13 @@ def _publication_matches(value: object, seal: PublicationSeal) -> tuple[bool, in
             if type(current) is not expected_type:
                 valid = False
                 break
-            if any(
-                not _anchor_matches(value, anchor)
-                for value, anchor in zip(
-                    (getattr(current, name) for name in names),
-                    expected,
+            if len(expected) != 2 * len(names) or any(
+                not _guard_field_matches(
+                    getattr(current, name),
+                    cast(type[object], expected[2 * i]),
+                    expected[2 * i + 1],
                 )
+                for i, name in enumerate(names)
             ):
                 valid = False
                 break

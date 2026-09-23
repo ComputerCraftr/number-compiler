@@ -1,9 +1,10 @@
-"""Release probe for source-independent physical-Collatz block powering."""
+"""Release probe for source-bound physical-Collatz image construction."""
 
 from __future__ import annotations
 
 import itertools
 import json
+from dataclasses import asdict
 from time import perf_counter
 
 from devtools.benchmarks.tile_projection_accounting import (
@@ -12,12 +13,43 @@ from devtools.benchmarks.tile_projection_accounting import (
 from devtools.checks.dependency_graph import source_syntax
 from devtools.paths import repository_root
 from number_compiler.api.number_api import NumberCompiler
+from number_compiler.resources.collatz_power_metrics import CollatzPhysicalBlockMetrics
 from number_compiler.sequences.collatz.block_power import PoweredCollatzTerm
 
 ROOT = repository_root()
 
 CONSTRUCTION_STEPS = (16, 256, 1_000_000, 10**18)
 PROJECTION_STEPS = (16, 32, 64, 128, 256)
+
+
+def _required_work(metrics: CollatzPhysicalBlockMetrics, name: str) -> int:
+    """A missing production instrument is missing evidence, not zero work."""
+    counters = metrics.resource_work_counters
+    value = counters.get(name)
+    if type(value) is not int:
+        raise AssertionError(("source-image-work-measurement-missing", name))
+    return value
+
+
+def _source_image_work(metrics: CollatzPhysicalBlockMetrics) -> tuple[int, int, int]:
+    """Charge operations, operand bits, and seal bytes in distinct units."""
+    counters = metrics.resource_work_counters
+    prefixes = ("source_image_", "collatz_physical_", "collatz_image_")
+    operations = 0
+    operand_bits = 0
+    seal_bytes = 0
+    for name, value in counters.items():
+        if not name.startswith(prefixes):
+            continue
+        if type(value) is not int or value < 0:
+            raise AssertionError(("invalid-source-image-work-measurement", name, value))
+        if "operand_bits" in name or name.endswith("_bits"):
+            operand_bits += value
+        elif name.endswith("_bytes"):
+            seal_bytes += value
+        elif not (name.endswith("_peak") or name.endswith("_extent")):
+            operations += value
+    return operations, operand_bits, seal_bytes
 
 
 def _metric_int(value: object) -> int:
@@ -75,8 +107,55 @@ def _projection_rows() -> list[dict[str, object]]:
             raise AssertionError((steps, low, expected))
         metrics = term.metrics()
         behavior = term.behavior_metrics()
-        point_metrics = term.metrics()
-        scheduler_work = projection_accounting(point_metrics)
+        diagnostic = metrics.temporal_diagnostics
+        if diagnostic.schema_version != metrics.metrics_schema_version:
+            raise AssertionError(("temporal-diagnostic-schema-mismatch", steps))
+        scheduler_work = projection_accounting(metrics)
+        image_work = {
+            name: _required_work(metrics, name)
+            for name in (
+                "collatz_physical_action_publications",
+                "collatz_physical_macro_requests",
+                "collatz_physical_macro_bounded_base_steps",
+                "collatz_physical_macro_compositions",
+                "source_image_postorder_frames",
+                "source_image_primitive_applications",
+                "source_image_publications",
+                "source_image_projection_publications",
+                "collatz_image_radix_demands",
+            )
+        }
+        if any(value <= 0 for value in image_work.values()):
+            raise AssertionError(
+                ("source-image-construction-not-observed", steps, image_work)
+            )
+        family_work = tuple(
+            work
+            for work in diagnostic.family_work
+            if work.counter_prefix == "collatz_physical"
+        )
+        if (
+            len(family_work) != 1
+            or family_work[0].bounded_base_steps
+            != image_work["collatz_physical_macro_bounded_base_steps"]
+            or diagnostic.construction.source_image_publications
+            != image_work["source_image_publications"]
+            or diagnostic.projection.publications
+            != image_work["source_image_projection_publications"]
+        ):
+            raise AssertionError(("source-image-diagnostic-incomplete", steps))
+        image_action_work, image_operand_bits, image_seal_bytes = _source_image_work(
+            metrics
+        )
+        # A single admitted <=64-step leaf has no chronological join; absence
+        # of that operation counter is an exact zero for this bounded case.
+        chronological = metrics.resource_work_counters.get(
+            "source_image_chronological_compositions", 0
+        )
+        if type(chronological) is not int or chronological < 0:
+            raise AssertionError(("invalid-chronological-work", steps, chronological))
+        if steps > 64 and chronological == 0:
+            raise AssertionError(("missing-chronological-composition", steps))
         if metrics.direct_powered_point_queries != 1:
             raise AssertionError(("not-direct-point", steps, metrics))
         if not metrics.resource_audit_complete or metrics.resource_accounting_mismatch:
@@ -89,6 +168,15 @@ def _projection_rows() -> list[dict[str, object]]:
         rows.append(
             {
                 **scheduler_work,
+                **image_work,
+                "temporal_diagnostics": asdict(diagnostic),
+                "source_image_chronological_compositions": chronological,
+                "source_image_operand_bits": image_operand_bits,
+                "source_image_seal_bytes": image_seal_bytes,
+                "source_image_operation_work": image_action_work,
+                "source_image_bounded_base_steps": image_work[
+                    "collatz_physical_macro_bounded_base_steps"
+                ],
                 "steps": steps,
                 "index_bits": max(1, steps.bit_length()),
                 "schema_version": metrics.metrics_schema_version,
@@ -251,12 +339,12 @@ def run_probe() -> dict[str, object]:
     tail_sublinear = False
     if len(projection) >= 2:
         prev, tail = projection[-2], projection[-1]
-        prev_steps = _metric_int(prev["bounded_primitive_step_evaluations"])
-        tail_steps = _metric_int(tail["bounded_primitive_step_evaluations"])
+        prev_steps = _metric_int(prev["source_image_bounded_base_steps"])
+        tail_steps = _metric_int(tail["source_image_bounded_base_steps"])
         tail_sublinear = prev_steps > 0 and tail_steps < 2 * prev_steps
     bounded_cutover = bool(projection) and all(
-        _metric_int(row["bounded_application_enabled"]) == 1
-        and _metric_int(row["bounded_temporal_runtime_cutover_complete"]) == 1
+        _metric_int(row["bounded_temporal_runtime_cutover_complete"]) == 1
+        and _metric_int(row["source_image_publications"]) > 0
         and _metric_int(row["unquotiented_recursive_application_nodes"]) == 0
         and _metric_int(row["sequential_generation_advances"]) == 0
         and _metric_int(row["recursive_value_cache_entries"]) == 0
@@ -264,16 +352,35 @@ def run_probe() -> dict[str, object]:
     )
     work_envelope = True
     if len(projection) > 1:
-        bootstrap = _metric_int(projection[0]["total_internal_action_work"])
+        bootstrap = _metric_int(projection[0]["source_image_operation_work"])
         work_envelope = all(
-            _metric_int(current["total_internal_action_work"])
-            <= 2 * _metric_int(previous["total_internal_action_work"]) + bootstrap
+            _metric_int(current["source_image_operation_work"])
+            <= 2 * _metric_int(previous["source_image_operation_work"]) + bootstrap
+            for previous, current in itertools.pairwise(projection)
+        )
+    byte_envelope = True
+    if len(projection) > 1:
+        bootstrap_bytes = _metric_int(projection[0]["source_image_seal_bytes"])
+        byte_envelope = all(
+            _metric_int(current["source_image_seal_bytes"])
+            <= 2 * _metric_int(previous["source_image_seal_bytes"]) + bootstrap_bytes
+            for previous, current in itertools.pairwise(projection)
+        )
+    operand_envelope = True
+    if len(projection) > 1:
+        bootstrap_bits = _metric_int(projection[0]["source_image_operand_bits"])
+        operand_envelope = all(
+            _metric_int(current["source_image_operand_bits"])
+            <= 2 * _metric_int(previous["source_image_operand_bits"]) + bootstrap_bits
             for previous, current in itertools.pairwise(projection)
         )
     retention_envelope = len(projection) > 1 and all(
-        _metric_int(current["completed_result_entries"])
-        <= 2 * _metric_int(previous["completed_result_entries"])
-        + _metric_int(projection[0]["completed_result_entries"])
+        _metric_int(current["retained_entries"])
+        <= 2 * _metric_int(previous["retained_entries"])
+        + _metric_int(projection[0]["retained_entries"])
+        and _metric_int(current["retained_nodes"])
+        <= 2 * _metric_int(previous["retained_nodes"])
+        + _metric_int(projection[0]["retained_nodes"])
         for previous, current in itertools.pairwise(projection)
     )
     blockers: list[str] = []
@@ -289,37 +396,46 @@ def run_probe() -> dict[str, object]:
     ):
         blockers.append("forbidden_execution_work_observed")
     if projection and not all(
-        _metric_int(row["temporal_parent_compositions"])
+        _metric_int(row["source_image_chronological_compositions"])
         <= 2 * max(1, _metric_int(row["index_bits"])) + 4
         for row in projection
     ):
-        blockers.append("temporal_composition_exceeds_binary_envelope")
+        blockers.append("source_image_composition_exceeds_binary_envelope")
     if projection and not all(
-        _metric_int(row["tile_temporal_action_publications"]) > 0 for row in projection
+        _metric_int(row["source_image_publications"]) > 0
+        and _metric_int(row["source_image_projection_publications"]) > 0
+        for row in projection
     ):
-        blockers.append("certified_path_published_no_tile_actions")
+        blockers.append("certified_path_published_no_source_images")
     if not retention_envelope:
-        blockers.append("completed_result_entries_exceeds_doubling_envelope")
+        blockers.append("source_image_retention_exceeds_doubling_envelope")
     if not work_envelope:
         blockers.append("internal_action_work_exceeds_doubling_envelope")
+    if not operand_envelope:
+        blockers.append("source_image_operand_bits_exceed_doubling_envelope")
+    if not byte_envelope:
+        blockers.append("source_image_seal_bytes_exceed_doubling_envelope")
     if any(
-        _metric_int(current["higher_concrete_operation_evaluations"])
-        > 2 * _metric_int(previous["higher_concrete_operation_evaluations"]) + 64
+        _metric_int(current["source_image_operation_work"])
+        > 2 * _metric_int(previous["source_image_operation_work"]) + 64
         for previous, current in itertools.pairwise(projection)
     ):
-        blockers.append("higher_interface_work_exceeds_doubling_envelope")
+        blockers.append("source_image_work_exceeds_doubling_envelope")
+    measured_scaling_gate = "PASS" if not blockers else "BLOCKED"
+    if not bounded_cutover:
+        blockers.append("source_global_powered_construction_bound_unproved")
     return {
-        "version": "0.62.0-schema7-certified-execution",
-        "schema_version": 7,
+        "version": "0.62.0-schema8-source-image-observation",
+        "schema_version": 8,
         "status": "RED" if blockers else "GREEN",
         "construction": _construction_rows(),
         "projection": projection,
         "execution_available": rejection is None,
         "execution_status": "available" if rejection is None else "unavailable",
         "measurements_complete": rejection is None and bool(projection),
-        "measured_scaling_gate": "PASS" if not blockers else "BLOCKED",
+        "measured_scaling_gate": measured_scaling_gate,
         "release_blockers": blockers,
-        "completed_result_retention_envelope": retention_envelope,
+        "source_image_retention_envelope": retention_envelope,
         "execution_rejection_type": (
             None if rejection is None else type(rejection).__name__
         ),

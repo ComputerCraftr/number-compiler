@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from collections.abc import Iterator
 from dataclasses import dataclass
 
 from number_compiler.arithmetic.carry.carry_monoid import (
@@ -467,6 +468,18 @@ class SourceCarryPorts:
         if type(position) is not int or not 0 <= position < extent:
             raise IndexError(position)
         return self._raw_second_pair(position, growth)
+
+    def iter_second_pairs(self) -> Iterator[int]:
+        """Stream the pulled pair field with one authenticated growth choice.
+
+        A final-output consumer can run its physical carry once from LSD to
+        MSD. No second-layer prefix tree or pair word is built by this iterator.
+        """
+        self._check_open()
+        growth = self._first_prefix(self._width)
+        for position in range(self._width + growth):
+            self._check_open()
+            yield self._raw_second_pair(position, growth)
 
     def _second_interval(self, start: int, span: int, extent: int) -> CarryFn:
         root = 2, start, span

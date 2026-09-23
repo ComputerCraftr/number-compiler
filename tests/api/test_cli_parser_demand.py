@@ -1,6 +1,7 @@
 """Family-first parsing does not construct unrelated observation options."""
 
 import argparse
+import re
 
 import pytest
 
@@ -72,3 +73,72 @@ def test_demanded_request_matches_full_parser(
 
     monkeypatch.setattr(cli_requests, "parser", complete)
     assert cli_requests.parse_request(argv) == actual
+
+
+def test_collatz_help_distinguishes_term_and_event_information(
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    command = cli_requests.parser(demanded_family="collatz")
+    with pytest.raises(SystemExit) as stopped:
+        command.parse_args(["collatz", "--help"])
+    assert stopped.value.code == 0
+    help_text = re.sub(r"\s+", " ", capsys.readouterr().out)
+    assert "--nth: metrics, clock" in help_text
+    assert (
+        "--events: clock, modular, twisted, hasse, hensel, tropical, factor, safety"
+        in help_text
+    )
+
+
+@pytest.mark.parametrize("option", ("--output-base", "--max-output-bits"))
+def test_events_reject_term_only_output_controls(option: str) -> None:
+    with pytest.raises(ValueError, match="event observations have no term output"):
+        cli_requests.parse_request(
+            ["collatz", "--events", "1", "--seed", "27", "--info", "clock", option, "2"]
+        )
+
+
+def test_events_reject_term_only_metrics_and_preserve_term_metrics() -> None:
+    with pytest.raises(ValueError, match="unavailable for this selector"):
+        cli_requests.parse_request(
+            ["collatz", "--events", "1", "--seed", "27", "--info", "metrics"]
+        )
+    term = cli_requests.parse_request(
+        ["collatz", "--nth", "1", "--seed", "27", "--info", "metrics"]
+    )
+    assert term is not None and term.info == ("metrics",)
+
+
+def test_events_reject_unused_radix_but_nth_retains_it() -> None:
+    with pytest.raises(ValueError, match="--radix applies to Collatz --nth"):
+        cli_requests.parse_request(
+            [
+                "collatz",
+                "--events",
+                "1",
+                "--seed",
+                "27",
+                "--info",
+                "clock",
+                "--radix",
+                "6",
+            ]
+        )
+    term = cli_requests.parse_request(
+        ["collatz", "--nth", "1", "--seed", "27", "--radix", "6"]
+    )
+    assert term is not None and term.radix == 6
+
+
+def test_selector_index_units_are_explicit() -> None:
+    cases = (
+        (["collatz", "--nth", "0", "--seed", "27"], "physical_iterations"),
+        (
+            ["collatz", "--events", "0", "--seed", "27", "--info", "clock"],
+            "accelerated_odd_events",
+        ),
+        (["antihydra", "--nth", "0"], "macro_returns_after_startup"),
+    )
+    for argv, expected_unit in cases:
+        request = cli_requests.parse_request(argv)
+        assert request is not None and request.index_unit == expected_unit

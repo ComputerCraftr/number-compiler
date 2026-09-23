@@ -24,10 +24,19 @@ CAPABILITIES = {
     ),
     "196": FamilyCapability("iterations", ("seed", "base"), ("metrics", "mirror")),
     "collatz": FamilyCapability(
-        "iterations",
+        "physical_iterations",
         ("seed", "radix"),
         ("metrics", "clock"),
-        ("clock", "modular", "twisted", "hasse", "hensel", "tropical", "factor"),
+        (
+            "clock",
+            "modular",
+            "twisted",
+            "hasse",
+            "hensel",
+            "tropical",
+            "factor",
+            "safety",
+        ),
     ),
     "prime": FamilyCapability("prime_index", ("start",), ("metrics",)),
     "fermat": FamilyCapability(
@@ -37,7 +46,7 @@ CAPABILITIES = {
         "mersenne_exponent", (), ("metrics", "primality", "factor", "root")
     ),
     "antihydra": FamilyCapability(
-        "iterations",
+        "macro_returns_after_startup",
         (),
         (
             "metrics",
@@ -206,12 +215,18 @@ def parser(*, demanded_family: str | None = None) -> argparse.ArgumentParser:
             selectors.add_argument(
                 "--verify-nonhalting", action=UniqueValue, metavar="PATH"
             )
+        info_help = "requested information; repeat for multiple observations"
+        if capability.event_info:
+            info_help += (
+                f"; --nth: {', '.join(capability.nth_info)}"
+                f"; --events: {', '.join(capability.event_info)}"
+            )
         command.add_argument(
             "--info",
             action="append",
             choices=tuple(dict.fromkeys(capability.nth_info + capability.event_info)),
             default=[],
-            help="requested information; repeat for multiple observations",
+            help=info_help,
         )
         command.add_argument("--no-value", action="store_true")
         command.add_argument(
@@ -233,6 +248,9 @@ def parser(*, demanded_family: str | None = None) -> argparse.ArgumentParser:
                 type=cli_integer,
                 default=defaults[parameter],
                 action=UniqueValue,
+                help="ordinary --nth terms only"
+                if name == "collatz" and parameter == "radix"
+                else None,
             )
         for option, (default, _) in observation_options(name).items():
             command.add_argument(
@@ -338,6 +356,10 @@ def validate(q: QueryRequest, specified: frozenset[str]) -> None:
     allowed = capability.event_info if q.selector == "events" else capability.nth_info
     if set(q.info) - set(allowed):
         raise ValueError("requested information is unavailable for this selector")
+    if q.selector == "events" and {"output_base", "max_output_bits"} & specified:
+        raise ValueError("event observations have no term output to format or limit")
+    if q.selector == "events" and "radix" in specified:
+        raise ValueError("--radix applies to Collatz --nth terms, not --events")
     if (q.no_value or q.selector == "events") and not q.info:
         raise ValueError("information-only queries require --info")
     if q.format == "symbolic" and (q.no_value or q.selector == "events"):

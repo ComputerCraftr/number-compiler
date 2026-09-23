@@ -1,4 +1,4 @@
-"""Schema-seven metrics report retained oracles and production resources."""
+"""Schema-eight metrics report retained oracles and production resources."""
 
 from __future__ import annotations
 
@@ -22,7 +22,7 @@ if TYPE_CHECKING:
 def assert_node_partition(
     metrics: LedgerMetrics | CollatzPhysicalBlockMetrics | ReverseAddPowerMetrics,
 ) -> None:
-    assert metrics.metrics_schema_version == 7
+    assert metrics.metrics_schema_version == 8
     assert metrics.resource_observed_nodes == (
         metrics.source_payload_nodes
         + metrics.temporal_program_nodes

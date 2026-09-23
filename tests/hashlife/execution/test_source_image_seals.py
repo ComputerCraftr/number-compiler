@@ -3,13 +3,22 @@ from __future__ import annotations
 import gc
 import weakref
 from dataclasses import dataclass
+from enum import Enum
 
 import pytest
 
 from number_compiler.hashlife.execution.source_image_seals import (
     PublicationSeals,
+    _TypedKey,
     publication_matches,
     publication_seal,
+)
+from number_compiler.arithmetic.contracts.scoped_handles import ArenaHandle, ArenaToken
+from number_compiler.arithmetic.automata.symmetry_powering import ActionTransform
+from number_compiler.arithmetic.fields.symbolic_innovation import InnovationID
+from number_compiler.sequences.collatz.powered_local_codec import CollatzLocalActionID
+from number_compiler.sequences.reverse_add.powered_local_codec import (
+    ReverseLocalActionID,
 )
 from number_compiler.resources.ledger import ResourceLedger
 
@@ -22,6 +31,20 @@ class _Leaf:
 @dataclass(frozen=True, slots=True)
 class _Envelope:
     leaf: _Leaf
+
+
+@dataclass(frozen=True, slots=True, eq=False)
+class _CompatibleToken:
+    label: str = ""
+
+
+@dataclass(frozen=True, slots=True)
+class _MutablePayloadHandle(ArenaHandle):
+    payload: object = None
+
+
+class _MutableEnum(Enum):
+    ITEM = [1]
 
 
 def test_warm_validation_skips_large_immutable_primitive_tuple() -> None:
@@ -46,6 +69,57 @@ def test_nested_mutation_and_equal_replacement_are_rejected() -> None:
     replacement = _Leaf((1, 2, 3))
     object.__setattr__(envelope, "leaf", replacement)
     assert not publication_matches((envelope,), seal, ledger)
+
+
+def test_flat_guard_keeps_the_original_untraversed_owner_type() -> None:
+    ledger = ResourceLedger()
+    owner = ArenaToken("source")
+    handle = ArenaHandle(owner, "node", 0)
+    seal = publication_seal((handle,), ledger)
+    assert publication_matches((handle,), seal, ledger)
+    # The owner is identity-anchored inside the handle guard; it is not
+    # recursively traversed. A compatible in-place class mutation must still
+    # fail against the separately pinned original type.
+    object.__setattr__(owner, "__class__", _CompatibleToken)
+    assert not publication_matches((handle,), seal, ledger)
+
+
+@pytest.mark.parametrize("handle_type", (ReverseLocalActionID, CollatzLocalActionID))
+def test_subclass_transform_is_sealed_and_part_of_typed_identity(
+    handle_type: type[ReverseLocalActionID] | type[CollatzLocalActionID],
+) -> None:
+    owner = ArenaToken("source")
+    original = handle_type(owner, "action", 0, ActionTransform.IDENTITY)
+    mirrored = handle_type(owner, "action", 0, ActionTransform.MIRROR)
+    assert _TypedKey(original) != _TypedKey(mirrored)
+    assert len({_TypedKey(original): 1, _TypedKey(mirrored): 2}) == 2
+    ledger = ResourceLedger()
+    seal = publication_seal((original,), ledger)
+    assert publication_matches((original,), seal, ledger)
+    object.__setattr__(original, "transform", ActionTransform.MIRROR)
+    assert not publication_matches((original,), seal, ledger)
+
+
+def test_innovation_seal_is_sealed_and_part_of_typed_identity() -> None:
+    owner = ArenaToken("source")
+    first = InnovationID(owner, "innovation", 0, "first")
+    second = InnovationID(owner, "innovation", 0, "second")
+    assert _TypedKey(first) != _TypedKey(second)
+    ledger = ResourceLedger()
+    seal = publication_seal((first,), ledger)
+    object.__setattr__(first, "seal", "second")
+    assert not publication_matches((first,), seal, ledger)
+
+
+def test_typed_handle_key_rejects_unsupported_mutable_subclass_field() -> None:
+    handle = _MutablePayloadHandle(ArenaToken("source"), "node", 0, [1])
+    with pytest.raises(TypeError, match="structural immutable key"):
+        _TypedKey(handle)
+    enum_handle = _MutablePayloadHandle(
+        ArenaToken("source"), "node", 0, _MutableEnum.ITEM
+    )
+    with pytest.raises(TypeError, match="structural immutable key"):
+        _TypedKey(enum_handle)
 
 
 def test_identity_anchors_pin_replaced_nested_objects() -> None:

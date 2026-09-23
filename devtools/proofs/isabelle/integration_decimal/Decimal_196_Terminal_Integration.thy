@@ -1,5 +1,6 @@
 theory Decimal_196_Terminal_Integration
   imports "Associated_Action_Core.Associated_Action_Pullback"
+    "Temporal_Clock_Jumps.Decimal_Publisher_Constructor"
     "Reverse_Digit_Terminal.Reverse_Digit_Terminal_Refinement"
 begin
 

@@ -3,6 +3,7 @@
 import subprocess
 import sys
 from fractions import Fraction
+from dataclasses import fields
 
 import pytest
 
@@ -10,6 +11,9 @@ from number_compiler.api.antihydra_observation import observe_run
 from number_compiler.api.number_api import NumberCompiler
 from number_compiler.arithmetic.contracts.block_effect import BlockContextBudgetExceeded
 from number_compiler.resources.payload_audit import audit_registered_payloads
+from number_compiler.hashlife.execution.dyadic_return_records import (
+    DyadicAggregateSummary,
+)
 from number_compiler.sequences.antihydra import runtime
 from number_compiler.sequences.antihydra.mahler import tangent
 from number_compiler.sequences.antihydra.mahler_action import associated_action
@@ -81,6 +85,34 @@ def test_mahler_consumes_the_composed_source_image_without_refolding_segments() 
     )
     assert term.ledger.counters.get("mahler_source_cylinder_compositions", 0) == 0
     assert term.ledger.counters["mahler_source_composed_image_reads"] == 1
+
+
+def test_antihydra_and_mahler_consume_the_shared_saturated_publication(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    original = AntihydraArithmeticImageWorkspace.saturated_summary
+    published: list[DyadicAggregateSummary] = []
+
+    def counted(workspace: AntihydraArithmeticImageWorkspace) -> DyadicAggregateSummary:
+        value = original(workspace)
+        published.append(value)
+        return value
+
+    monkeypatch.setattr(AntihydraArithmeticImageWorkspace, "saturated_summary", counted)
+    term = AntihydraArithmeticTerm(65)
+    result = term.result()
+    assert published and published[-1].width == 65
+    prior = len(published)
+    action = associated_action(result)
+    assert len(published) > prior
+    assert action["extent"] == 65
+    assert action["first_failure"] == 2
+    assert result.first_failure_index is None
+    assert {field.name for field in fields(DyadicAggregateSummary)}.isdisjoint(
+        {"support", "children", "history", "branch_word", "valuations"}
+    )
+    assert term.ledger.counters["source_image_adapter_registrations"] == 1
+    assert not term._segments_ready and not term.physical_publications
 
 
 def test_plain_digits_and_mahler_do_not_materialize_segments(
@@ -189,6 +221,42 @@ def test_mahler_demand_reuses_source_support(monkeypatch: pytest.MonkeyPatch) ->
     first = associated_action(result)
     second = associated_action(result)
     assert first == second
+    assert term.ledger.counters["mahler_source_composed_image_reads"] == 1
+    assert term.ledger.counters["source_image_projection_hits"] >= 1
+
+
+def test_mahler_uses_arithmetic_scheduler_without_second_action_arena(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from number_compiler.arithmetic.fields import consumer_pullback
+
+    def forbidden(*_args: object, **_kwargs: object) -> None:
+        raise AssertionError("Mahler rebuilt a second action arena")
+
+    monkeypatch.setattr(consumer_pullback.AssociatedActionArena, "__init__", forbidden)
+    term = AntihydraArithmeticTerm(64)
+    result = term.result()
+    assert associated_action(result)["first_failure"] == 2
+    assert term.mahler_workspace is not None
+    assert term.mahler_workspace.source_workspace is term.arithmetic_workspace
+
+
+def test_mahler_rejects_tampered_cached_source_projection() -> None:
+    from number_compiler.hashlife.execution.source_bound_images import (
+        SourceImageDemand,
+    )
+
+    term = AntihydraArithmeticTerm(8)
+    result = term.result()
+    associated_action(result)
+    source = term.arithmetic_workspace
+    assert source is not None
+    projection = source.scheduler.source_projection(
+        source, source.root_image, SourceImageDemand("mahler-associated-action")
+    )
+    object.__setattr__(projection.value, "cap", None)
+    with pytest.raises(ValueError, match="projection record was altered"):
+        associated_action(result)
 
 
 def test_mahler_consumer_does_not_transfer_ledger_safety() -> None:
@@ -207,7 +275,7 @@ def test_mahler_rejected_publication_releases_its_stores() -> None:
     ledger = result.ledger
     before = ledger.entries, ledger.nodes
     limit = ledger.max_cache_entries
-    ledger.max_cache_entries = ledger.entries + 10
+    ledger.max_cache_entries = ledger.entries
     with pytest.raises(BlockContextBudgetExceeded):
         associated_action(result)
     assert (ledger.entries, ledger.nodes) == before

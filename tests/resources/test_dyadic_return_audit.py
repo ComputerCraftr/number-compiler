@@ -216,6 +216,57 @@ def test_cycle_compression_reconstructs_every_exact_cycle_phase() -> None:
         _assert_clean(ledger)
 
 
+def test_negative_drift_cycle_powers_and_descends_without_replaying_copies() -> None:
+    law = DyadicReturnLaw(
+        "weighted-negative-cycle",
+        "weighted-negative-cycle-v1",
+        (1, 6),
+        (0, 2),
+        (-2, 1),
+        DyadicReturnCycle((1, 4, 2)),
+    )
+    ledger = ResourceLedger()
+    count = 10**12
+    workspace = DyadicReturnImageWorkspace(ledger, 1, count, law)
+    # One period has prefix balances 0, 1, -1, -3.
+    cycles, tail = divmod(count, 3)
+    summary = workspace.summary()
+    assert summary.delta == -3 * cycles + (0, 1, -1)[tail]
+    assert summary.minimum == -3 * cycles + min(0, (0, 1, -1)[tail])
+    assert workspace.first_failure_index() == 1
+    assert len(workspace.support) == 1
+    assert ledger.counters.get("dyadic_return_leaf_steps", 0) == 0
+    assert ledger.counters["dyadic_return_cycle_safety_descent_demands"] > 0
+    _assert_clean(ledger)
+
+
+def test_negative_cycle_descent_skips_safe_copies_after_reachable_prefix() -> None:
+    law = DyadicReturnLaw(
+        "weighted-prefix-cycle",
+        "weighted-prefix-cycle-v1",
+        (1, 6),
+        (0, 2),
+        (1, -3),
+        DyadicReturnCycle((1, 4, 2)),
+    )
+    seed = 1 << 1000
+    state, balance = seed, 0
+    first_failure = None
+    for index in range(6000):
+        balance += -3 if state & 1 else 1
+        state = 3 * state + 1 if state & 1 else state // 2
+        if balance < 0:
+            first_failure = index
+            break
+    assert first_failure == 3994
+    ledger = ResourceLedger()
+    workspace = DyadicReturnImageWorkspace(ledger, seed, 10**12, law)
+    assert workspace.first_failure_index() == first_failure
+    assert ledger.counters["dyadic_return_cycle_safety_descent_demands"] == 1
+    assert ledger.counters["dyadic_return_leaf_steps"] <= 1024
+    _assert_clean(ledger)
+
+
 def test_cycle_summary_cannot_be_resealed_with_an_unreachable_phase() -> None:
     ledger = ResourceLedger()
     workspace = CollatzPhysicalImageWorkspace(ledger, 27, 1_024)

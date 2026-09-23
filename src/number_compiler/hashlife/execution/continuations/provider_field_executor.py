@@ -1,4 +1,8 @@
-"""Parent-first field images over completed symbolic provider inputs."""
+"""Conditional parent-first traversal over completed provider inputs.
+
+This module supplies a generic executor, not a family successor constructor.
+Completeness depends on the adapter's source-bound composition and join laws.
+"""
 
 from __future__ import annotations
 
@@ -17,6 +21,7 @@ from number_compiler.hashlife.execution.continuations.provider_image_input impor
     ProviderImageInputArena,
     ProviderImageInputID,
 )
+from number_compiler.resources.ledger import ResourceLedger
 from number_compiler.hashlife.execution.field_executor import FieldImageCandidate
 from number_compiler.hashlife.execution.field_images import (
     FieldImageID,
@@ -63,8 +68,58 @@ class ProviderFieldImageAdapter(Protocol):
     ) -> FieldImageCandidate: ...
 
 
+class _ProviderImageWork:
+    """Charged transient traversal state, released even if publication fails."""
+
+    def __init__(self, ledger: ResourceLedger, owner: int) -> None:
+        self.ledger, self.owner = ledger, owner
+        self.stack: list[tuple[ProviderImageInputID, FieldGeometryID, bool]] = []
+        self.built: dict[
+            tuple[ProviderImageInputID, FieldGeometryID], FieldImageID
+        ] = {}
+
+    def push(self, frame: tuple[ProviderImageInputID, FieldGeometryID, bool]) -> None:
+        self.ledger.reserve(self.owner, entries=1, nodes=1)
+        try:
+            self.stack.append(frame)
+        except BaseException:
+            self.ledger.release(self.owner, entries=1, nodes=1)
+            raise
+
+    def pop(self) -> tuple[ProviderImageInputID, FieldGeometryID, bool]:
+        frame = self.stack.pop()
+        self.ledger.release(self.owner, entries=1, nodes=1)
+        self.ledger.bump("provider_field_image_frame_visits")
+        return frame
+
+    def remember(
+        self, key: tuple[ProviderImageInputID, FieldGeometryID], image: FieldImageID
+    ) -> None:
+        fresh = key not in self.built
+        if fresh:
+            self.ledger.reserve(self.owner, entries=1, nodes=1)
+        try:
+            self.built[key] = image
+        except BaseException:
+            if fresh:
+                self.ledger.release(self.owner, entries=1, nodes=1)
+            raise
+
+    def close(self) -> None:
+        count = len(self.stack) + len(self.built)
+        self.stack.clear()
+        self.built.clear()
+        self.ledger.release(self.owner, entries=count, nodes=count)
+
+
 class ProviderFieldImageExecutor:
-    """Apply one action to a completed image without reading midpoint symbols."""
+    """Traverse completed images using an adapter's full substitution law.
+
+    The executor itself never reads midpoint symbols. Its adapter must supply
+    normalized chronological composition, leaf substitution and spatial joins;
+    this traversal does not derive those laws from carry-only projections or
+    establish that a family CLI has adopted the adapter.
+    """
 
     def __init__(
         self,
@@ -86,6 +141,9 @@ class ProviderFieldImageExecutor:
             adapter,
         )
         self.ledger = images.ledger
+        self._workspace_owner = self.ledger.register(
+            f"provider-field-work-{self.ledger.owner_count}", "provider_image_workspace"
+        )
         self.ledger.register_execution_root(self)
 
     def image(
@@ -102,74 +160,90 @@ class ProviderFieldImageExecutor:
         complete = self.adapter.compose_actions(before, consumer)
         self.adapter.validate_action(complete)
         signature = self.adapter.signature(complete, geometry)
-        root_key = ImageRequestKey(complete, root.source, geometry, signature)
+        root_key = ImageRequestKey(
+            complete, root.source, geometry, signature, root.active_extent
+        )
         cached = self.images.probe(root_key)
         self.ledger.bump("provider_field_image_requests")
         if cached is not None:
             self.ledger.bump("provider_field_image_early_hits")
             return cached
 
-        stack: list[tuple[ProviderImageInputID, FieldGeometryID, bool]] = [
-            (provider, geometry, False),
-        ]
-        built: dict[int, FieldImageID] = {}
-        while stack:
-            current, current_geometry, ready = stack.pop()
-            record = self.inputs.resolve(current)
-            current_signature = self.adapter.signature(complete, current_geometry)
-            key = ImageRequestKey(
-                complete,
-                record.source,
-                current_geometry,
-                current_signature,
-            )
-            found = self.images.probe(key)
-            if found is not None:
-                built[current.local_id] = found
-                continue
-            if record.level and not ready:
-                left, right = self.inputs.children(current)
-                stack.append((current, current_geometry, True))
-                stack.append(
-                    (right, self.images.geometries.child(current_geometry, 1), False)
-                )
-                stack.append(
-                    (left, self.images.geometries.child(current_geometry, 0), False)
-                )
-                continue
-            if record.level:
-                left, right = self.inputs.children(current)
-                candidate = self.adapter.join(
+        work = _ProviderImageWork(self.ledger, self._workspace_owner)
+        try:
+            work.push((provider, geometry, False))
+            while work.stack:
+                current, current_geometry, ready = work.pop()
+                record = self.inputs.resolve(current)
+                current_signature = self.adapter.signature(complete, current_geometry)
+                key = ImageRequestKey(
                     complete,
-                    record,
-                    built[left.local_id],
-                    built[right.local_id],
+                    record.source,
                     current_geometry,
                     current_signature,
+                    record.active_extent,
                 )
-                left_image: FieldImageID | None = built[left.local_id]
-                right_image: FieldImageID | None = built[right.local_id]
-            else:
-                candidate = self.adapter.compile_leaf(
-                    complete,
-                    consumer,
-                    record,
+                found = self.images.probe(key)
+                if found is not None:
+                    work.remember((current, current_geometry), found)
+                    continue
+                if record.level and not ready:
+                    left, right = self.inputs.children(current)
+                    work.push((current, current_geometry, True))
+                    work.push(
+                        (
+                            right,
+                            self.images.geometries.child(current_geometry, 1),
+                            False,
+                        )
+                    )
+                    work.push(
+                        (left, self.images.geometries.child(current_geometry, 0), False)
+                    )
+                    continue
+                left_image: FieldImageID | None
+                right_image: FieldImageID | None
+                if record.level:
+                    left, right = self.inputs.children(current)
+                    left_image = work.built[
+                        left, self.images.geometries.child(current_geometry, 0)
+                    ]
+                    right_image = work.built[
+                        right, self.images.geometries.child(current_geometry, 1)
+                    ]
+                    candidate = self.adapter.join(
+                        complete,
+                        record,
+                        left_image,
+                        right_image,
+                        current_geometry,
+                        current_signature,
+                    )
+                else:
+                    candidate = self.adapter.compile_leaf(
+                        complete,
+                        consumer,
+                        record,
+                        current_geometry,
+                        current_signature,
+                    )
+                    left_image = right_image = None
+                node = FieldImageRecord(
+                    record.level,
+                    left_image,
+                    right_image,
+                    candidate.interface,
+                    candidate.output,
                     current_geometry,
-                    current_signature,
+                    candidate.summary,
                 )
-                left_image = right_image = None
-            node = FieldImageRecord(
-                record.level,
-                left_image,
-                right_image,
-                candidate.interface,
-                candidate.output,
-                current_geometry,
-                candidate.summary,
-            )
-            built[current.local_id] = self.images.publish(key, node)
-            self.ledger.bump("provider_field_image_evaluations")
-        return built[provider.local_id]
+                work.remember(
+                    (current, current_geometry), self.images.publish(key, node)
+                )
+                self.ledger.bump("provider_field_image_evaluations")
+            return work.built[provider, geometry]
+        finally:
+            work.close()
 
 
 __all__ = ["ProviderFieldImageAdapter", "ProviderFieldImageExecutor"]

@@ -52,7 +52,7 @@ def test_semantic_inventory_counts_real_nodes_and_work_without_evaluation(
     monkeypatch.setattr(functions, "substitute", forbidden)
     report = collect_ledger_metrics(ledger)
     assert ledger.snapshot() == before
-    assert report.metrics_schema_version == 7
+    assert report.metrics_schema_version == 8
     assert report.semantic_function_nodes == len(functions.nodes) + len(bits.nodes)
     assert report.semantic_binary_division_compilations == 1
     assert report.semantic_function_evaluations > 0

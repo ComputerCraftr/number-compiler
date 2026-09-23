@@ -62,6 +62,10 @@ _START = 0
 _EVEN = 1
 
 
+class _ExteriorRadixCoordinate(IndexError):
+    """Exact affine threshold says a scalar coordinate is outside the value."""
+
+
 # Odd states encode (previous_bit, carry) in states 2..5.
 def _odd_state(previous: int, carry: int) -> int:
     previous = require_integer(previous, "previous Collatz bit", 0, 1)
@@ -293,6 +297,8 @@ class PoweredCollatzTerm:
         seed = require_integer(seed, "seed", 1)
         steps = require_integer(steps, "steps", 0)
         self._ledger = ResourceLedger(max_context_nodes, max_cache_entries)
+        self._ledger.bump("temporal_point_requests", 0)
+        self._ledger.bump("temporal_length_requests", 0)
         self.seed = seed
         self.steps = steps
         self.seed_digits = tuple(map(int, digits_lsd(seed, 2)))
@@ -402,7 +408,7 @@ class PoweredCollatzTerm:
 
     def _source_numerator(self) -> tuple[int, int]:
         """Demand the terminal affine expression, without retaining an endpoint."""
-        transfer = self._source_image().summary().transfer
+        transfer = self._source_image().saturated_summary().transfer
         numerator = transfer.upper * self.seed + transfer.offset
         self._ledger.bump(
             "collatz_image_projection_operand_bits",
@@ -420,15 +426,52 @@ class PoweredCollatzTerm:
         """Pull a bounded radix digit through the admitted affine transfer."""
         radix = require_integer(radix, "radix", 2)
         position = require_integer(position, "digit coordinate", 0)
-        transfer = self._source_image().summary().transfer
-        place = int(radix**position)
-        modulus = transfer.lower * place * radix
-        residue = (
-            (transfer.upper % modulus) * (self.seed % modulus) + transfer.offset
-        ) % modulus
+        self._ledger.bump("temporal_point_requests")
         self._ledger.bump("collatz_image_radix_demands")
+        try:
+            return self._admitted_radix_digit(radix, position)
+        except _ExteriorRadixCoordinate:
+            # The low-level modular view zero-pads exterior coordinates.
+            return 0
+
+    def _admitted_radix_digit(self, radix: int, position: int) -> int:
+        """Extract an active digit without constructing the affine numerator."""
+        transfer = self._source_image().saturated_summary().transfer
+        numerator_bits = (
+            max(
+                transfer.upper.bit_length() + self.seed.bit_length(),
+                abs(transfer.offset).bit_length(),
+            )
+            + 1
+        )
+        scaled_place_bits = (
+            transfer.lower.bit_length() - 1 + position * (radix.bit_length() - 1)
+        )
+        if scaled_place_bits >= numerator_bits:
+            self._ledger.bump("collatz_radix_exterior_shortcuts")
+            if position == 0:
+                return 0
+            raise _ExteriorRadixCoordinate(position)
+        place = int(radix**position)
+        threshold = transfer.lower * place
+        # For N=u*seed+o, N<T iff o<T and
+        # (u=0 or seed <= floor((T-o-1)/u)).
+        exterior = transfer.offset < threshold and (
+            transfer.upper == 0
+            or self.seed <= (threshold - transfer.offset - 1) // transfer.upper
+        )
+        if exterior:
+            self._ledger.bump("collatz_radix_exterior_shortcuts")
+            if position == 0:
+                return 0
+            raise _ExteriorRadixCoordinate(position)
+        modulus = threshold * radix
+        residue = (
+            (transfer.upper % modulus) * (self.seed % modulus)
+            + transfer.offset % modulus
+        ) % modulus
         self._ledger.bump("collatz_image_projection_operand_bits", modulus.bit_length())
-        return (residue // transfer.lower // place) % radix
+        return residue // threshold
 
     @source_reads_only
     def _point_symbol(self, position: int) -> int:
@@ -463,13 +506,12 @@ class PoweredCollatzTerm:
             if cached.encoded not in (0, 1, 2):
                 raise ValueError("cached Collatz point belongs to another alphabet")
             return cached.encoded
-        # Blank admission is a threshold demand on the same affine image.
-        # Do not compute the full endpoint width to observe one binary cell.
-        numerator, divisor = self._source_numerator()
-        if numerator < divisor << position:
+        try:
+            symbol = self._admitted_radix_digit(2, position)
+        except _ExteriorRadixCoordinate:
             symbol = 2
         else:
-            symbol = self.radix_digit(2, position)
+            self._ledger.bump("collatz_image_radix_demands")
             if symbol not in (0, 1):
                 raise AssertionError("binary source image produced an invalid symbol")
         self._microblocks.put(key, ExactMicroblock(symbol, 2))
@@ -480,10 +522,12 @@ class PoweredCollatzTerm:
         value = self._point_symbol(position)
         if value == 2:
             raise IndexError(position)
+        self._ledger.bump("temporal_point_requests")
         return value
 
     @source_reads_only
     def width(self) -> int:
+        self._ledger.bump("temporal_length_requests")
         if self.steps == 0:
             return len(self.seed_digits)
         found = self._active_width

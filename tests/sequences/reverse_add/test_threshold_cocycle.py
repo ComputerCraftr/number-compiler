@@ -109,6 +109,14 @@ def test_affine_cocycle_squares_to_1024_with_primitive_and_evaluation_poisoned(
     assert t.primitive_successors == 1
     assert t.temporal_compositions == 10
     assert powers[16] == powers[256]
+    assert t.saturated(powers[16]) == t.saturated(powers[256])
+    doubled, retained = bits.compose_complete_transform(
+        t.saturated(first),
+        t.saturated(first),
+        retained=tuple(k.resolve(residual) for residual in first.cocycles),
+    )
+    assert doubled == t.saturated(powers[2])
+    assert retained == tuple(k.resolve(residual) for residual in powers[2].cocycles)
     for count, power in powers.items():
         for x, y in product(range(10), repeat=2):
             bind = dict(

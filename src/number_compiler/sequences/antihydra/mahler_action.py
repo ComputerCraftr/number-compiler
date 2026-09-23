@@ -1,10 +1,8 @@
-"""Finite source Mahler consumer derived from the admitted arithmetic skew.
+"""Finite Mahler safety pulled from Antihydra's admitted dyadic source image.
 
-Centered arithmetic has offset +e/2; the Mahler affine part has offset -3e/2.
-The source begins with centered bits 11, so its second cap is negative.  Every
-later bit preserves negativity and has a positive cap.  Thus the tail acts
-affinely on the entire image of this prefix; its individual caps are redundant.
-This is a source-specific consumer restriction, never a successor identity.
+The associated min-plus action is a demanded projection of the same composed
+source cylinder that supplies the arithmetic endpoint and ledger safety. Its
+threshold is a consumer; neither it nor the ledger authorizes another source.
 """
 
 from __future__ import annotations
@@ -12,25 +10,21 @@ from __future__ import annotations
 from typing import TYPE_CHECKING
 
 from number_compiler.arithmetic.fields.consumer_pullback import (
-    AssociatedActionArena,
-    AssociatedActionID,
     ExactRational,
     SaturatingAffineAction,
     ThresholdDemand,
 )
-from number_compiler.hashlife.execution.associated_action_images import (
-    AssociatedActionSourceAdapter,
-    AssociatedScalarSource,
-)
 from number_compiler.hashlife.execution.source_bound_images import SourceImageDemand
-from number_compiler.hashlife.execution.tile_scheduler import TileScheduler
 from number_compiler.sequences.antihydra.arithmetic_images import (
-    ANTIHYDRA_ARITHMETIC_LAW,
+    AntihydraArithmeticImageWorkspace,
 )
 from number_compiler.sequences.antihydra.runtime import authenticated_arithmetic_result
 
 if TYPE_CHECKING:
     from number_compiler.sequences.antihydra.runtime import ArithmeticResult, Run
+
+
+_MAHLER_DEMAND = SourceImageDemand("mahler-associated-action")
 
 
 def rational_packet(value: ExactRational | None) -> dict[str, int] | None:
@@ -39,74 +33,11 @@ def rational_packet(value: ExactRational | None) -> dict[str, int] | None:
     return {"numerator": value.numerator, "denominator": value.denominator}
 
 
-def source_action(
-    result: ArithmeticResult, arena: AssociatedActionArena
-) -> AssociatedActionID:
-    """Pull the associated action from retained support without a bit replay."""
-    result.require_source()
-    if arena.ledger is not result.ledger:
-        raise ValueError("Mahler action requires its arithmetic source ledger")
-    if result.returns == 0:
-        return arena.identity
-    workspace = result._term.arithmetic_workspace
-    if workspace is None:
-        raise ValueError("Mahler source lost its admitted arithmetic image")
-    prefix_width = min(2, result.returns)
-    root = workspace.source_node(workspace.root_source)
-    # The pinned source is h=8 and its centered state is D=7 (binary 11).
-    # Under the pinned even branch 8 -> 12, the first two h bits are even.
-    if (
-        workspace.seed != 8
-        or workspace.law != ANTIHYDRA_ARITHMETIC_LAW
-        or not root.exact
-        or root.precision < prefix_width
-        or root.residue & ((1 << prefix_width) - 1)
-    ):
-        raise ValueError("Mahler source does not have the admitted centered 11 prefix")
-    odd = arena.admit(
-        SaturatingAffineAction(
-            ExactRational(3, 2), ExactRational(-3, 2), ExactRational(3, 4)
-        )
-    )
-    if result.returns == 1:
-        return odd
-    prefix = arena.compose(odd, odd)
-    if result.returns == 2:
-        return prefix
-    transfer = workspace.summary().transfer
-    result.ledger.bump("mahler_source_composed_image_reads")
-    result.ledger.bump(
-        "mahler_source_arithmetic_operand_bits",
-        transfer.upper.bit_length()
-        + abs(transfer.offset).bit_length()
-        + transfer.lower.bit_length(),
-    )
-    scale = ExactRational(transfer.upper, transfer.lower)
-    centered_offset = ExactRational(
-        transfer.upper + transfer.offset - transfer.lower, transfer.lower
-    )
-    offset = ExactRational(-3) * centered_offset
-    before = arena.semantic(prefix)
-    tail_scale = scale / before.scale
-    tail_offset = offset - tail_scale * before.offset
-    if tail_offset > ExactRational(0):
-        raise ValueError("source Mahler tail lost its nonpositive affine offset")
-    # This uncapped tail is admitted only after the two-bit negative image.
-    # It is not the standalone Mahler action of that tail at arbitrary inputs.
-    tail = arena.admit(
-        SaturatingAffineAction(tail_scale, tail_offset),
-        logical_extent=result.returns - 2,
-    )
-    return arena.compose(prefix, tail)
-
-
 def action_packet(
     result: ArithmeticResult,
-    arena: AssociatedActionArena,
-    action: AssociatedActionID,
+    semantic: SaturatingAffineAction,
     first_failure: int | None,
 ) -> dict[str, object]:
-    semantic = arena.semantic(action)
     demand = semantic.pullback(ThresholdDemand())
     return {
         "source_binding": result.source_binding,
@@ -129,72 +60,59 @@ def action_packet(
 
 
 class MahlerWorkspace:
-    """One source consumer; all action applications belong to TileScheduler."""
+    """Demand one finite consumer from the source scheduler's published image."""
 
     def __init__(self, result: ArithmeticResult) -> None:
-        result.require_source()
+        workspace = result._term.arithmetic_workspace
+        if type(workspace) is not AntihydraArithmeticImageWorkspace:
+            raise ValueError("Mahler source lost its admitted arithmetic image")
         self.result = result
-        self.scheduler = TileScheduler.source_only(result.ledger)
-        self.arena = AssociatedActionArena(result.ledger)
-        try:
-            self.action = source_action(result, self.arena)
-            self.adapter = AssociatedActionSourceAdapter(self.arena)
-            self.scheduler.register_source_image_adapter(self.adapter)
-            threshold = ThresholdDemand()
-            self.image = self.scheduler.source_image_demanded(
-                self.adapter,
-                AssociatedScalarSource(None, threshold),
-                self.action,
-                SourceImageDemand("threshold", (threshold,)),
-            )
-        except BaseException:
-            self.scheduler.dispose_source_images()
-            self.arena.close()
-            result.ledger.bump("mahler_associated_publication_rollbacks")
-            raise
+        self.source_workspace = workspace
 
-    def validate(self, result: ArithmeticResult) -> None:
+    def _validate_binding(self, result: ArithmeticResult) -> None:
         if (
             result is not self.result
-            or type(self.arena) is not AssociatedActionArena
-            or type(self.scheduler) is not TileScheduler
-            or type(self.adapter) is not AssociatedActionSourceAdapter
-            or self.arena.ledger is not result.ledger
-            or self.scheduler.ledger is not result.ledger
-            or self.adapter.arena is not self.arena
+            or type(self.source_workspace) is not AntihydraArithmeticImageWorkspace
+            or self.source_workspace is not result._term.arithmetic_workspace
+            or self.source_workspace.ledger is not result.ledger
         ):
             raise ValueError("Mahler consumer belongs to another source occurrence")
-        scale = ExactRational(3**result.returns, 1 << result.returns)
-        offset = ExactRational(3) * (
-            ExactRational(7) * scale - ExactRational(result.h - 1)
-        )
-        cap = None if result.returns == 0 else ExactRational(3, 2) * scale + offset
-        if self.arena.record(
-            self.action
-        ).logical_extent != result.returns or self.arena.semantic(
-            self.action
-        ) != SaturatingAffineAction(scale, offset, cap):
-            raise ValueError("Mahler action lost its source cylinder binding")
-        view = self.scheduler._source_image_core().view(self.image)
-        if (
-            view.binding.action != self.action
-            or view.binding.source != AssociatedScalarSource(None, ThresholdDemand())
-            or view.binding.extent != result.returns
-            or view.failure_prefix != (2 if result.returns >= 2 else None)
-        ):
-            raise ValueError("Mahler image lost its source action binding")
         result.ledger.bump(
             "mahler_source_validation_operand_bits", result.h.bit_length()
         )
 
+    def validate(self, result: ArithmeticResult) -> None:
+        self._validate_binding(result)
+        self.source_workspace.validate()
+
     def packet(self, result: ArithmeticResult) -> dict[str, object]:
         result.require_source()
-        self.validate(result)
-        failure = self.scheduler.source_first_failure(self.adapter, self.image)
-        if failure is not None and type(failure) is not int:
-            raise TypeError("Mahler first failure must be an exact return index")
+        return self._packet_authenticated(result)
+
+    def _packet_authenticated(self, result: ArithmeticResult) -> dict[str, object]:
+        # Call only after ``require_source`` (directly or through the public
+        # source adapter), which validates the complete dyadic image once.
+        self._validate_binding(result)
+        workspace = self.source_workspace
+        try:
+            projected = workspace.scheduler.source_projection(
+                workspace, workspace.root_image, _MAHLER_DEMAND
+            ).value
+        except BaseException:
+            result.ledger.bump("mahler_associated_publication_rollbacks")
+            raise
+        if type(projected) is not SaturatingAffineAction:
+            raise TypeError("Mahler source projected another action sort")
+        # The authenticated h=8 source has centered prefix 11. The first
+        # margin cap is 3/4 and the second is -3/8; later increasing actions
+        # cannot repair that first failure.
+        failure = 2 if result.returns >= 2 else None
+        if (projected.cap is not None and projected.cap <= ExactRational(0)) != (
+            failure is not None
+        ):
+            raise ArithmeticError("Mahler source projection lost first failure")
         result.ledger.bump("mahler_associated_action_demands")
-        return action_packet(result, self.arena, self.action, failure)
+        return action_packet(result, projected, failure)
 
 
 def associated_action(result: Run | ArithmeticResult) -> dict[str, object]:
@@ -203,7 +121,9 @@ def associated_action(result: Run | ArithmeticResult) -> dict[str, object]:
     workspace = arithmetic._term.mahler_workspace
     if workspace is None:
         workspace = MahlerWorkspace(arithmetic)
+        packet = workspace._packet_authenticated(arithmetic)
         arithmetic._term.mahler_workspace = workspace
-    packet = workspace.packet(arithmetic)
+    else:
+        packet = workspace._packet_authenticated(arithmetic)
     packet["source_binding"] = source_binding
     return packet

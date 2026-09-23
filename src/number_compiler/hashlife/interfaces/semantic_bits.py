@@ -9,6 +9,12 @@ from __future__ import annotations
 
 from collections.abc import Mapping
 from dataclasses import dataclass
+from typing import TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from number_compiler.hashlife.interfaces.semantic_bit_transforms import (
+        CompleteFiniteTransform,
+    )
 
 from number_compiler.arithmetic.contracts.scoped_handles import ArenaHandle, ArenaToken
 from number_compiler.arithmetic.functions.finite_function_types import (
@@ -511,6 +517,50 @@ class BitFunctionArena:
         )
 
         return restrict_many(self, functions, predicate)
+
+    def complete_transform(
+        self,
+        ports: tuple[FinitePort, ...],
+        outputs: tuple[FactoredFunctionID, ...],
+        admissible: FactoredFunctionID,
+        *,
+        retained: tuple[FactoredFunctionID, ...] = (),
+    ) -> tuple[CompleteFiniteTransform, tuple[FactoredFunctionID, ...]]:
+        from number_compiler.hashlife.interfaces.semantic_bit_transforms import (
+            normalize,
+        )
+
+        return normalize(self, ports, outputs, admissible, retained)
+
+    def validate_complete_transform(self, transform: CompleteFiniteTransform) -> None:
+        from number_compiler.hashlife.interfaces.semantic_bit_transforms import validate
+
+        validate(self, transform)
+
+    def compose_complete_transform(
+        self,
+        before: CompleteFiniteTransform,
+        after: CompleteFiniteTransform,
+        *,
+        retained: tuple[FactoredFunctionID, ...] = (),
+    ) -> tuple[CompleteFiniteTransform, tuple[FactoredFunctionID, ...]]:
+        from number_compiler.hashlife.interfaces.semantic_bit_transforms import compose
+
+        return compose(self, before, after, retained)
+
+    def divmod_atoms(
+        self,
+        function: FactoredFunctionID,
+        divisor: int,
+        quotient_sort: AtomSort,
+        remainder_sort: AtomSort,
+    ) -> tuple[FactoredFunctionID, FactoredFunctionID]:
+        """Factor an atom function by bit arithmetic, without an alphabet table."""
+        from number_compiler.hashlife.interfaces.semantic_bit_batches import (
+            divmod_atoms,
+        )
+
+        return divmod_atoms(self, function, divisor, quotient_sort, remainder_sort)
 
     def divide_binary(
         self,

@@ -53,12 +53,17 @@ def audit_provider_image_inputs(
             valid &= record.request.source == record.source
             valid &= record.request.action == provider.action
             valid &= record.request.geometry == image.geometry
+            valid &= record.request.active_extent == record.binding.active_extent
             valid &= (
                 record.request.signature
                 == root.images.resolve_interface(image.interface).signature
             )
             valid &= record.level == source.level == image.level
             valid &= 0 <= record.active_extent <= source.width
+            valid &= (
+                record.binding.active_extent is None
+                or record.binding.active_extent == record.active_extent
+            )
             key = record.binding, record.request, record.active_extent
             valid &= root._keys.get(key) == local_id
             valid &= root.resolve(root._handle(local_id)) is record
@@ -111,6 +116,12 @@ def audit_provider_image_inputs(
             left_width = root.sources.resolve(source_left).width
             valid &= left.active_extent == min(parent.active_extent, left_width)
             valid &= right.active_extent == max(0, parent.active_extent - left_width)
+            if parent.binding.active_extent is not None:
+                valid &= left.binding.active_extent == left.active_extent
+                valid &= right.binding.active_extent == right.active_extent
+            else:
+                valid &= left.binding.active_extent is None
+                valid &= right.binding.active_extent is None
         except (TypeError, ValueError, IndexError, KeyError, AttributeError):
             valid = False
         if valid:

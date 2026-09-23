@@ -8,7 +8,7 @@ boundary transfer needed at the midpoint.
 
 from __future__ import annotations
 
-from collections.abc import Callable, MutableMapping
+from collections.abc import Callable, Generator, MutableMapping
 from dataclasses import dataclass
 from typing import TypeAlias
 
@@ -60,17 +60,20 @@ class RecursiveOutputBindingSource:
 
 @dataclass(frozen=True, slots=True)
 class RecursiveOutputBranch:
-    """One constant-size spatial branch with bounded midpoint wiring."""
+    """One spatial branch; completion is derived from both children at issue."""
 
     left: CoordinateOutputMorphismID
     right: CoordinateOutputMorphismID
     left_interface: LocalInterfaceID
     right_interface: LocalInterfaceID
     left_width: int
+    spatial_complete: bool = True
 
     def __post_init__(self) -> None:
         if type(self.left_width) is not int or self.left_width < 1:
             raise ValueError("recursive output branch needs a positive left width")
+        if type(self.spatial_complete) is not bool:
+            raise TypeError("recursive output completion must be Boolean")
 
 
 @dataclass(frozen=True, slots=True)
@@ -98,6 +101,9 @@ RecursiveOutputRecord: TypeAlias = (
     | RecursiveOutputTemporal
 )
 BoundaryValue: TypeAlias = object
+_StreamFrame: TypeAlias = tuple[
+    CoordinateOutputMorphismID, int, int, BoundaryValue, BoundaryValue, int | None
+]
 TemporalOutputEvaluator: TypeAlias = Callable[
     [
         CoordinateOutputMorphismID,
@@ -193,6 +199,21 @@ class RecursiveCoordinateMorphismArena:
             payloads=self._keys.items,
         )
         self._next_id = 0
+        self._stream_owner = self.ledger.register(
+            prefix + "-stream-frames", "output_stream_workspace"
+        )
+        self._stream_frames: MutableMapping[int, _StreamFrame] = self.ledger.make_dict(
+            self._stream_owner, nodes_per_entry=6
+        )
+        self._stream_next_id = 0
+        for name in (
+            "requests",
+            "node_visits",
+            "boundary_evaluations",
+            "emitted_digits",
+            "frame_peak",
+        ):
+            self.ledger.bump("recursive_output_stream_" + name, 0)
 
     def set_temporal_evaluator(
         self,
@@ -230,6 +251,14 @@ class RecursiveCoordinateMorphismArena:
         except KeyError as exc:
             raise ValueError("stale recursive coordinate-morphism ID") from exc
 
+    @staticmethod
+    def _spatially_complete(record: RecursiveOutputRecord) -> bool:
+        if isinstance(record, RecursiveOutputTemporal):
+            return False
+        if isinstance(record, RecursiveOutputBranch):
+            return record.spatial_complete
+        return True
+
     def _intern(self, record: RecursiveOutputRecord) -> CoordinateOutputMorphismID:
         if type(record) not in (
             RecursiveOutputSource,
@@ -251,8 +280,12 @@ class RecursiveCoordinateMorphismArena:
             self.interfaces.resolve(record.scalar_interface)
         elif isinstance(record, RecursiveOutputBranch):
             record.__post_init__()
-            self.resolve(record.left)
-            self.resolve(record.right)
+            left = self.resolve(record.left)
+            right = self.resolve(record.right)
+            if record.spatial_complete != (
+                self._spatially_complete(left) and self._spatially_complete(right)
+            ):
+                raise ValueError("recursive output completion disagrees with children")
             self.interfaces.resolve(record.left_interface)
             self.interfaces.resolve(record.right_interface)
         else:
@@ -311,6 +344,9 @@ class RecursiveCoordinateMorphismArena:
         right_interface: LocalInterfaceID,
         left_width: int,
     ) -> CoordinateOutputMorphismID:
+        spatial_complete = self._spatially_complete(
+            self.resolve(left)
+        ) and self._spatially_complete(self.resolve(right))
         return self._intern(
             RecursiveOutputBranch(
                 left,
@@ -318,6 +354,7 @@ class RecursiveCoordinateMorphismArena:
                 left_interface,
                 right_interface,
                 left_width,
+                spatial_complete,
             )
         )
 
@@ -394,6 +431,133 @@ class RecursiveCoordinateMorphismArena:
     ) -> int:
         """Probe the rightmost-active selector without publishing a digit."""
         return self._observe(output, coordinate, left, right, "extent_selector_visits")
+
+    def _push_stream(self, frame: _StreamFrame) -> int:
+        self.ledger.reserve(self._stream_owner, entries=1, nodes=6)
+        key = self._stream_next_id
+        self._stream_next_id += 1
+        try:
+            self._stream_frames[key] = frame
+        except BaseException:
+            self._stream_frames.pop(key, None)
+            self.ledger.release(self._stream_owner, entries=1, nodes=6)
+            raise
+        peak = self.ledger.counters.get("recursive_output_stream_frame_peak", 0)
+        if len(self._stream_frames) > peak:
+            self.ledger.bump(
+                "recursive_output_stream_frame_peak", len(self._stream_frames) - peak
+            )
+        return key
+
+    def _pop_stream(self, key: int) -> int | None:
+        frame = self._stream_frames.pop(key)
+        self.ledger.release(self._stream_owner, entries=1, nodes=6)
+        return frame[5]
+
+    def iter_observe_range(
+        self,
+        output: CoordinateOutputMorphismID,
+        start: int,
+        stop: int,
+        left: BoundaryValue,
+        right: BoundaryValue,
+    ) -> Generator[int, None, None]:
+        """Stream a completed spatial image without restarting at its root.
+
+        Bounds are in the image's input coordinate chart, with ``stop`` exclusive.
+        Each intersected branch transports each demanded boundary once. Frames
+        remain charged across yields; closing a partial iterator releases only
+        its linked stack, so interleaved streams cannot dispose one another.
+
+        Temporal construction references are deliberately rejected. This method
+        cannot turn a deferred temporal point evaluator into a completed image.
+        Source-binding reads retain their own separately charged reader cost.
+        """
+        if type(start) is not int or type(stop) is not int or not 0 <= start <= stop:
+            raise ValueError("output range requires 0 <= start <= stop")
+        root = self.resolve(output)
+        if not self._spatially_complete(root):
+            raise ValueError("streaming requires a completed spatial image")
+        self.ledger.bump("recursive_output_stream_requests")
+        top: int | None = None
+        try:
+            if start < stop:
+                top = self._push_stream((output, start, stop, left, right, None))
+            while top is not None:
+                current, lo, hi, incoming_left, incoming_right, previous = (
+                    self._stream_frames[top]
+                )
+                if lo == hi:
+                    top = self._pop_stream(top)
+                    continue
+                node = self.resolve(current)
+                self.ledger.bump("recursive_output_stream_node_visits")
+                if isinstance(node, RecursiveOutputTemporal):
+                    raise ValueError("streaming requires a completed spatial image")
+                if isinstance(node, RecursiveOutputBranch):
+                    # Keep the parent charged until both child frames finish.
+                    # It also makes allocation failure cleanup transactional.
+                    self._stream_frames[top] = (
+                        current,
+                        lo,
+                        lo,
+                        incoming_left,
+                        incoming_right,
+                        previous,
+                    )
+                    if hi > node.left_width:
+                        transported_left = self._evaluate(
+                            self._component(node.left_interface, "boundary_left"),
+                            self._inputs(
+                                node.left_interface, incoming_left, incoming_right
+                            ),
+                        )
+                        self.ledger.bump("recursive_output_stream_boundary_evaluations")
+                        top = self._push_stream(
+                            (
+                                node.right,
+                                max(0, lo - node.left_width),
+                                hi - node.left_width,
+                                transported_left,
+                                incoming_right,
+                                top,
+                            )
+                        )
+                    if lo < node.left_width:
+                        transported_right = self._evaluate(
+                            self._component(node.right_interface, "boundary_right"),
+                            self._inputs(
+                                node.right_interface, incoming_left, incoming_right
+                            ),
+                        )
+                        self.ledger.bump("recursive_output_stream_boundary_evaluations")
+                        top = self._push_stream(
+                            (
+                                node.left,
+                                lo,
+                                min(hi, node.left_width),
+                                incoming_left,
+                                transported_right,
+                                top,
+                            )
+                        )
+                    continue
+                # No temporal node can reach the point observer. A binding source
+                # can cover multiple original-source coordinates; a leaf cannot.
+                for coordinate in range(lo, hi):
+                    value = self._observe(
+                        current,
+                        coordinate,
+                        incoming_left,
+                        incoming_right,
+                        "output_morphism_visits",
+                    )
+                    self.ledger.bump("recursive_output_stream_emitted_digits")
+                    yield value
+                top = self._pop_stream(top)
+        finally:
+            while top is not None:
+                top = self._pop_stream(top)
 
     def _observe(
         self,

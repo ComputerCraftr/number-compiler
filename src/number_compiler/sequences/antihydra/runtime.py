@@ -264,8 +264,10 @@ class AntihydraArithmeticTerm:
         return self._materialize_segments(self.result())
 
     def _materialize_segments(
-        self, result: ArithmeticResult
+        self, result: Run | ArithmeticResult
     ) -> LedgerList[ArithmeticSegment]:
+        if type(result) not in (Run, ArithmeticResult) or result._term is not self:
+            raise ValueError("retained Antihydra support has another source result")
         if self._segments_ready:
             return self._segments
         if self._segments:
@@ -311,7 +313,7 @@ class AntihydraArithmeticTerm:
                     self.ledger, self.requested
                 )
                 self.arithmetic_workspace = workspace
-            summary = workspace.summary()
+            summary = workspace.saturated_summary()
             h = workspace.endpoint()
             balance = summary.delta
             minimum = summary.minimum
@@ -358,18 +360,31 @@ class AntihydraArithmeticTerm:
         if workspace is None:
             raise ValueError("retained Antihydra arithmetic support was changed")
         workspace.validate()
-        summary = workspace.summary()
+        summary = workspace.saturated_summary()
         if type(self._segments_ready) is not bool or (
             not self._segments_ready and self._segments
         ):
             raise ValueError("retained Antihydra arithmetic support was changed")
         if self._segments_ready:
-            expected = tuple(workspace.segments())
-            if len(expected) != len(self._segments):
-                raise ValueError("retained Antihydra arithmetic support was changed")
-            for segment, (start, expected_block) in zip(
-                self._segments, expected, strict=True
-            ):
+            # The workspace is independently source-authenticated. Compare
+            # each retained segment as it is reconstructed; materializing a
+            # second tuple of every cylinder on each observer call costs
+            # uncharged storage and delays rejection of a changed first row.
+            expected = workspace.segments()
+            for segment in self._segments:
+                try:
+                    start, expected_block = next(expected)
+                except StopIteration as error:
+                    raise ValueError(
+                        "retained Antihydra arithmetic support was changed"
+                    ) from error
+                self.engine.count("arithmetic_result_validation_reconstructions")
+                self.engine.count(
+                    "arithmetic_result_validation_operand_bits",
+                    expected_block.residue.bit_length()
+                    + expected_block.output.bit_length()
+                    + expected_block.parity_word.bit_length(),
+                )
                 if (
                     type(segment) is not ArithmeticSegment
                     or type(segment.start) is not int
@@ -393,6 +408,9 @@ class AntihydraArithmeticTerm:
                         "retained Antihydra arithmetic support was changed"
                     )
                 self.engine.count("arithmetic_result_validation_blocks")
+            if next(expected, None) is not None:
+                self.engine.count("arithmetic_result_validation_reconstructions")
+                raise ValueError("retained Antihydra arithmetic support was changed")
         h = workspace.endpoint()
         first_failure = workspace.first_failure_index()
         if (

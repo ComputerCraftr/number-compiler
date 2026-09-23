@@ -269,6 +269,80 @@ def test_projection_cursor_chronology_matches_scalar_macro_recurrence() -> None:
     assert cursor.projection is None
 
 
+def test_projection_cursor_does_not_rescan_all_retained_segments_per_step() -> None:
+    projection = _projection(512)
+    result = projection.result
+    cursor = ProjectionOccurrenceCursor(result.ledger)
+    cursor.begin(projection)
+    sealed_rows = result.ledger.counters[
+        "antihydra_projection_occurrence_segment_seal_rows"
+    ]
+    assert sealed_rows == len(result._term._segments)
+    validations = result.ledger.counters.get("arithmetic_result_validation_blocks", 0)
+    try:
+        while (occurrence := cursor.next()) is not None:
+            cursor.resolve(occurrence)
+        # Per-occurrence field seals preserve source authority.  Traversing
+        # them must not re-run whole-result validation for every source block.
+        assert (
+            result.ledger.counters.get("arithmetic_result_validation_blocks", 0)
+            == validations
+        )
+        assert (
+            result.ledger.counters["antihydra_projection_occurrence_segment_seal_rows"]
+            == sealed_rows
+        )
+    finally:
+        cursor.clear()
+
+
+def test_projection_cursor_rejects_post_begin_segment_replacement() -> None:
+    projection = _projection(128)
+    result = projection.result
+    cursor = ProjectionOccurrenceCursor(result.ledger)
+    cursor.begin(projection)
+    segments = result._term._segments
+    original = segments[0]
+    replacement = type(original)(
+        original.start,
+        type(original.cylinder)(
+            original.cylinder.width,
+            original.cylinder.residue,
+            original.cylinder.output + (1 << original.cylinder.width),
+            original.cylinder.delta,
+            original.cylinder.minimum,
+            original.cylinder.parity_word,
+        ),
+    )
+    try:
+        segments[0] = replacement
+        with pytest.raises(
+            ValueError, match="retained Antihydra projection support was changed"
+        ):
+            cursor.next()
+    finally:
+        segments[0] = original
+        cursor.clear()
+
+
+def test_projection_cursor_finish_rejects_mutated_consumed_segment() -> None:
+    projection = _projection(128)
+    result = projection.result
+    cursor = ProjectionOccurrenceCursor(result.ledger)
+    cursor.begin(projection)
+    segments = result._term._segments
+    original = segments[0]
+    try:
+        while cursor.next() is not None:
+            pass
+        object.__setattr__(original.cylinder, "output", original.cylinder.output + 1)
+        with pytest.raises(ValueError, match="arithmetic support was changed"):
+            cursor.finish()
+    finally:
+        object.__setattr__(original.cylinder, "output", original.cylinder.output - 1)
+        cursor.clear()
+
+
 def test_projection_cursor_rejects_early_finish_and_stale_handle() -> None:
     projection = _projection()
     cursor = ProjectionOccurrenceCursor(projection.result.ledger)
@@ -497,6 +571,36 @@ def test_projection_cursor_budget_failure_releases_transient_authority() -> None
     for row in ledger.inventory():
         if row.name.startswith("antihydra.projection-occurrence"):
             assert row.entries == row.nodes == 0
+
+
+def test_projection_cursor_admits_segment_snapshot_before_allocating_it(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    projection = _projection(128)
+    result = projection.result
+    result._term._materialize_segments(result)
+    cursor = ProjectionOccurrenceCursor(result.ledger)
+    original_limit = result.ledger.max_nodes
+    result.ledger.max_nodes = result.ledger.nodes
+
+    def forbidden(_segment: object) -> tuple[int, int, int, int, int, int, int]:
+        raise AssertionError("segment snapshot allocated before resource admission")
+
+    monkeypatch.setattr(
+        ProjectionOccurrenceCursor, "_segment_seal", staticmethod(forbidden)
+    )
+    try:
+        with pytest.raises(BlockContextBudgetExceeded, match="budget exceeded"):
+            cursor.begin(projection)
+    finally:
+        result.ledger.max_nodes = original_limit
+        cursor.clear()
+    assert (
+        result.ledger.counters.get(
+            "antihydra_projection_occurrence_segment_seal_rows", 0
+        )
+        == 0
+    )
 
 
 def test_fragment_adapter_rejects_unissued_raw_occurrence_records() -> None:

@@ -71,8 +71,6 @@ def audit_field_image_payloads(ledger: ResourceLedger) -> FieldImagePayloadAudit
         PortStateID,
         Residual,
         ResidualBindingID,
-    )
-    from number_compiler.hashlife.execution.continuations.concrete_port_records import (
         VirtualBinding as _VirtualBinding,
     )
     from number_compiler.hashlife.execution.continuations.concrete_port_records import (
@@ -744,9 +742,13 @@ def audit_field_image_payloads(ledger: ResourceLedger) -> FieldImagePayloadAudit
                 valid = type(provider_binding) is ProviderBindingKey and marker is None
                 try:
                     root.resolve(provider_binding.provider)
-                    root.sources.binding_extent(provider_binding.source)
+                    source_extent = root.sources.binding_extent(provider_binding.source)
                     root._validate_bound_output(provider_binding.output)
                     root._validate_bound_interface(provider_binding.interface)
+                    valid &= provider_binding.active_extent is None or (
+                        type(provider_binding.active_extent) is int
+                        and 0 <= provider_binding.active_extent <= source_extent
+                    )
                     if provider_binding.image is not None:
                         root._validate_image_binding(
                             provider_binding.image,
@@ -754,7 +756,10 @@ def audit_field_image_payloads(ledger: ResourceLedger) -> FieldImagePayloadAudit
                             root.resolve(provider_binding.provider).action,
                             provider_binding.output,
                             provider_binding.interface,
+                            provider_binding.active_extent,
                         )
+                    else:
+                        valid &= provider_binding.active_extent is None
                 except (TypeError, ValueError, IndexError, KeyError, AttributeError):
                     valid = False
                 if valid:
@@ -808,11 +813,18 @@ def audit_field_image_payloads(ledger: ResourceLedger) -> FieldImagePayloadAudit
                     provider_record = current_root.providers.resolve(
                         occurrence.provider
                     )
-                    current_root.sources.binding_extent(occurrence.source)
+                    source_extent = current_root.sources.binding_extent(
+                        occurrence.source
+                    )
                     current_root.providers._validate_bound_output(occurrence.output)
                     current_root.providers._validate_bound_interface(
                         occurrence.interface
                     )
+                    if occurrence.active_extent is not None and (
+                        type(occurrence.active_extent) is not int
+                        or not 0 <= occurrence.active_extent <= source_extent
+                    ):
+                        return False
                     if occurrence.image is not None:
                         current_root.providers._validate_image_binding(
                             occurrence.image,
@@ -820,7 +832,10 @@ def audit_field_image_payloads(ledger: ResourceLedger) -> FieldImagePayloadAudit
                             provider_record.action,
                             occurrence.output,
                             occurrence.interface,
+                            occurrence.active_extent,
                         )
+                    elif occurrence.active_extent is not None:
+                        return False
                 except (TypeError, ValueError, IndexError, KeyError, AttributeError):
                     return False
                 return occurrence in current_root.providers._bindings

@@ -17,6 +17,7 @@ from number_compiler.arithmetic.functions.finite_function_types import (
     FunctionSignature,
 )
 from number_compiler.arithmetic.functions.finite_port_action import PortVariable
+from number_compiler.arithmetic.formula.decimal_pair_coordinates import decimal_q95
 from number_compiler.arithmetic.polynomials.centered_f5 import CenteredF5Transport
 from number_compiler.hashlife.actions.field_actions import CoordinateOutputMorphismID
 from number_compiler.hashlife.execution.tile_scheduler import TileScheduler
@@ -27,12 +28,111 @@ from number_compiler.sequences.reverse_add.active_output import (
     CARRY_ACTION,
     F5,
     PAIR,
+    Q95,
     ReverseActiveOutputArena,
 )
 
 
 def _arena() -> ReverseActiveOutputArena:
     return ReverseActiveOutputArena(BitFunctionArena(ResourceLedger()))
+
+
+def test_q95_has_fixed_leaf_semantics_and_derived_three_state_carry() -> None:
+    arena = _arena()
+    bits = arena.bits
+    port = FinitePort(PortVariable(0, 0, "q95", 0), 95)
+    value = bits.variable((port,), port, Q95)
+    output, forcing = arena.q95_output(value), arena.q95_forcing(value)
+    assert arena.q95(output, forcing) == value
+    domain = arena.q95_carry(value)
+    assert bits.resolve(domain).signature.output == CARRY_ACTION
+    for q in range(95):
+        binding = {port.variable: q}
+        symbol, residue = divmod(q, 5)
+        assert bits.evaluate(arena.resolve(output), binding) == symbol
+        assert bits.evaluate(forcing, binding) == residue
+        assert bits.evaluate(domain, binding) == (
+            0 if symbol < 9 else 1 if symbol == 9 else 2
+        )
+    assert bits.evaluate(domain, {port.variable: 95}) is None
+    with pytest.raises(ValueError, match="encoded width"):
+        bits.evaluate(domain, {port.variable: -1})
+
+
+def test_q95_carry_projection_needs_no_intermediate_output_publication(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    arena = _arena()
+    bits = arena.bits
+    port = FinitePort(PortVariable(0, 0, "q95", 0), 95)
+    carrier = bits.variable((port,), port, Q95)
+
+    def forbidden(*_args: object, **_kwargs: object) -> None:
+        raise AssertionError("carry projection constructed another output state")
+
+    monkeypatch.setattr(arena, "q95_output", forbidden)
+    monkeypatch.setattr(arena, "intern", forbidden)
+    derived = arena.q95_carry(carrier)
+    assert arena.ledger.counters.get("reverse_active_output_publications", 0) == 0
+    for q in range(95):
+        expected = 0 if q // 5 < 9 else 1 if q // 5 == 9 else 2
+        assert bits.evaluate(derived, {port.variable: q}) == expected
+
+
+def test_equal_q95_leaf_is_not_a_future_source_occurrence() -> None:
+    """A local quotient match cannot authorize a whole temporal cache hit."""
+    # Both width-three sources have the same outer pair 7 and the same
+    # incoming carry, so their outer Q95 leaf at zero forcing is 35.
+    outer_196 = 6 + 1
+    outer_106 = 6 + 1
+    assert outer_196 == outer_106 == 7
+    assert decimal_q95(outer_196, 0) == decimal_q95(outer_106, 0) == 35
+
+    # The differing center changes the next outer pair. This only refutes
+    # source substitution based on a single leaf; it does not refute a full
+    # source-bound saturated regional transformer.
+    next_196 = 196 + 691
+    next_106 = 106 + 601
+    assert next_196 == 887 and next_106 == 707
+    assert next_196 % 10 + next_196 // 100 == 15
+    assert next_106 % 10 + next_106 // 100 == 14
+
+
+def test_q95_region_summary_composes_without_primitive_port_expansion(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Spatial range closure, deliberately not a temporal successor theorem."""
+    _poison_tiles(monkeypatch)
+    arena = _arena()
+    bits = arena.bits
+    ports = (
+        FinitePort(PortVariable(0, 0, "q95", 0), 95),
+        FinitePort(PortVariable(0, 1, "carry-region", 0), 3),
+    )
+    leaf = bits.variable(ports, ports[0], Q95)
+    prefix = bits.variable(ports, ports[1], CARRY_ACTION)
+    allowed = bits.constant(FunctionSignature(ports, BOOL), 1)
+    scan, _ = bits.complete_transform(
+        ports, (leaf, arena.carry_then(prefix, arena.q95_carry(leaf))), allowed
+    )
+    with monkeypatch.context() as patch:
+
+        def forbidden(*_args: object) -> int:
+            raise AssertionError("range composition evaluated a symbol")
+
+        patch.setattr(bits, "evaluate", forbidden)
+        square, _ = bits.compose_complete_transform(scan, scan)
+        fourth, _ = bits.compose_complete_transform(square, square)
+    # Repeated equal-domain spatial ranges are idempotent, including EQ.
+    assert scan == square == fourth
+    assert tuple(port.cardinality for port in fourth.ports) == (95, 3)
+    monoid = (CarryFn.CONST0, CarryFn.ID, CarryFn.CONST1)
+    for q, incoming in product(range(95), range(3)):
+        symbol = q // 5
+        leaf_domain = 0 if symbol < 9 else 1 if symbol == 9 else 2
+        expected = monoid.index(compose_carry_fn(monoid[leaf_domain], monoid[incoming]))
+        values = {ports[0].variable: q, ports[1].variable: incoming}
+        assert bits.evaluate(fourth.outputs[1], values) == expected
 
 
 def _poison_tiles(monkeypatch: pytest.MonkeyPatch) -> None:

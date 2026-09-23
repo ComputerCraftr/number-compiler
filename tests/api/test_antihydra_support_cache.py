@@ -95,12 +95,12 @@ def test_cached_images_are_exact_and_released_after_demand() -> None:
     assert cached.ledger.counters["spacetime_projection_fragment_evaluations"] == 8
     assert (
         cached.ledger.counters["source_image_primitive_applications"] - primitive_before
-        == 64
+        == 8
     )
     assert (
-        cached.ledger.counters["source_image_chronological_compositions"]
+        cached.ledger.counters.get("source_image_chronological_compositions", 0)
         - compositions_before
-        == 56
+        == 0
     )
     assert cached.ledger.counters.get("observer_macro_discovery_steps", 0) == 0
     assert cached.ledger.counters.get("observer_retained_support_steps", 0) == 0
@@ -117,9 +117,8 @@ def test_cached_images_are_exact_and_released_after_demand() -> None:
         for row in cached.ledger.inventory()
         if row.name == "antihydra.observer.leaf-roofs"
     ]
-    # The composed cylinder-fragment path obtains its checked roof directly
-    # from each bounded arithmetic leaf; the retired scalar support iterator
-    # and its separate two-leaf workspace are never constructed.
+    # The occurrence image owns the checked physical roof and section classes.
+    # Fragment admission consumes that complete bounded image once per block.
     assert leaf_rows == []
     for row in cached.ledger.inventory():
         if (
@@ -455,18 +454,20 @@ def test_shared_fragment_failure_clears_images_and_active_source(
     original = _AntihydraFragmentAdapter.apply_primitive
     calls = 0
 
-    def fail_second_leaf(
+    def fail_admitted_image(
         adapter: _AntihydraFragmentAdapter,
         action: Hashable,
         source: SourceImageView,
     ) -> SourceImageCandidate:
         nonlocal calls
         calls += 1
-        if calls == 2:
+        if calls == 1:
             raise ValueError("injected primitive failure")
         return original(adapter, action, source)
 
-    monkeypatch.setattr(_AntihydraFragmentAdapter, "apply_primitive", fail_second_leaf)
+    monkeypatch.setattr(
+        _AntihydraFragmentAdapter, "apply_primitive", fail_admitted_image
+    )
     with pytest.raises(ValueError, match="injected primitive failure"):
         SpaceTimeProjection(result, 2, 2, -1, 1, 3, 1_000_000).evaluate()
     driver = result._engine.projection_fragment_driver
@@ -506,7 +507,7 @@ def test_fragment_payload_authority_rotates_between_builds() -> None:
         cursor.clear()
 
 
-def test_fragment_prefix_seal_rejects_in_place_field_change() -> None:
+def test_fragment_image_seal_rejects_in_place_field_change() -> None:
     from number_compiler.sequences.antihydra.projection_core import (
         AntihydraFragmentAction,
         AntihydraFragmentID,
@@ -527,14 +528,14 @@ def test_fragment_prefix_seal_rejects_in_place_field_change() -> None:
     handle = core.view(image).payload
     assert type(handle) is AntihydraFragmentID
     record = adapter.resolve(handle)
-    assert record.prefix is not None
-    original = record.prefix.output
-    object.__setattr__(record.prefix, "output", original + 1)
+    assert record.image is not None
+    original = record.image.output_h
+    object.__setattr__(record.image, "output_h", original + 1)
     try:
         with pytest.raises(ValueError, match="payload was changed"):
             adapter.resolve(handle)
     finally:
-        object.__setattr__(record.prefix, "output", original)
+        object.__setattr__(record.image, "output_h", original)
         core.clear()
         adapter.clear_context()
         cursor.clear()

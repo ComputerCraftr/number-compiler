@@ -13,6 +13,8 @@ from operator import add, mul
 
 from number_compiler.arithmetic.contracts.block_effect import BlockContextBudgetExceeded
 from number_compiler.arithmetic.contracts.scoped_handles import ArenaHandle, ArenaToken
+from number_compiler.arithmetic.fields.branch_quotients import PRIME_BANK as PRIME_BANK
+from number_compiler.arithmetic.fields.branch_quotients import prime_lane_after
 from number_compiler.arithmetic.fields.consumer_pullback import (
     ExactRational as Q,
 )
@@ -352,31 +354,6 @@ def source_event(
     return result
 
 
-# Same finite bank as the supplied observer; not a primality oracle.
-PRIME_BANK = (
-    5,
-    7,
-    11,
-    13,
-    17,
-    19,
-    23,
-    29,
-    31,
-    37,
-    41,
-    43,
-    47,
-    53,
-    59,
-    61,
-    67,
-    71,
-    73,
-    79,
-)
-
-
 def event_prime_lanes(event: SourceEvent) -> tuple[tuple[int, int, int], ...]:
     """Conditional dyadic-w observer; never an exclusion of arbitrary real t.
 
@@ -393,9 +370,7 @@ def event_prime_lanes(event: SourceEvent) -> tuple[tuple[int, int, int], ...]:
     rows = []
     for p in PRIME_BANK:
         before_lane = w.numerator * pow(2 * w.denominator, -1, p) % p
-        after_lane = (
-            pow(3 * pow(2, -1, p) % p, event.exponent, p) * before_lane - 1
-        ) % p
+        after_lane = prime_lane_after("mahler", p, before_lane, event.exponent)
         exact = after.numerator * pow(2 * after.denominator, -1, p) % p
         if after_lane != exact:
             raise ArithmeticError("prime lane detached from the common event")

@@ -413,7 +413,9 @@ def _provider_setup() -> tuple[
     return ledger, providers, provider, binding
 
 
-def _completed_provider_input_setup() -> tuple[
+def _completed_provider_input_setup(
+    digits: tuple[int, int] = (0, 1),
+) -> tuple[
     ResourceLedger,
     RecursiveFieldImageArena,
     ProviderAbsorptionArena,
@@ -421,7 +423,7 @@ def _completed_provider_input_setup() -> tuple[
     ProviderImageInputID,
 ]:
     ledger, source, signature, geometry, action, images, adapter, executor = _setup(
-        (0, 1),
+        digits,
     )
     image = executor.image(action, source, geometry, signature)
     providers = ProviderAbsorptionArena(

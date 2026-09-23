@@ -153,19 +153,57 @@ def forbidden_roof(*args, **kwargs):
     raise AssertionError('arithmetic CLI requested physical execution')
 runtime.physical_roof = forbidden_roof
 runtime.AntihydraArithmeticTerm.physical_run = forbidden_roof
+original_arithmetic_result = runtime.AntihydraArithmeticTerm.result
+arithmetic_terms = []
+def traced_arithmetic_result(self):
+    arithmetic_terms.append(self)
+    return original_arithmetic_result(self)
+runtime.AntihydraArithmeticTerm.result = traced_arithmetic_result
 captured = StringIO()
 with redirect_stdout(captured):
-    assert main(['antihydra', '--nth', '64', '--no-value', '--info', 'hensel', '--info', 'mahler', '--format', 'json']) == 0
+    assert main(['antihydra', '--nth', '64', '--no-value', '--info', 'hensel', '--info', 'mahler', '--info', 'metrics', '--format', 'json']) == 0
 arithmetic = json.loads(captured.getvalue())
 assert arithmetic['value'] is None
 for name in ('hensel', 'mahler'):
     packet = arithmetic['info'][name]
     assert packet['guarded_physical_status'] == 'not_requested'
-    assert packet['work_counters'].get('physical_roof_construction_requests', 0) == 0
 assert arithmetic['info']['mahler']['value']['associated_action']['first_failure'] == 2
-mahler_work = arithmetic['info']['mahler']['work_counters']
+assert arithmetic_terms and all(term is arithmetic_terms[0] for term in arithmetic_terms)
+mahler_work = arithmetic_terms[0].ledger.counters
+assert mahler_work.get('physical_roof_construction_requests', 0) == 0
 assert mahler_work['mahler_source_composed_image_reads'] == 1
 assert mahler_work.get('mahler_source_cylinder_compositions', 0) == 0
+mahler_metrics = arithmetic['info']['metrics']['execution_metrics']
+assert mahler_metrics['schema_version'] == 8
+assert mahler_metrics['construction']['source_image_adapter_registrations'] == 1
+assert mahler_metrics['construction']['arithmetic_result_publications'] == 1
+assert mahler_metrics['projection']['publications'] >= 2
+assert mahler_metrics['observations']['physical_roof_evaluations'] is None
+assert mahler_metrics['observations']['mahler_source_composed_image_reads'] == 1
+assert mahler_metrics['observations']['mahler_associated_action_demands'] == 1
+from number_compiler.sequences.collatz.source_publisher import CollatzSourcePublisher
+original_publish = CollatzSourcePublisher.publish
+published_sources = []
+def traced_publish(self):
+    published = original_publish(self)
+    published_sources.append((self, published))
+    return published
+CollatzSourcePublisher.publish = traced_publish
+try:
+    captured = StringIO()
+    with redirect_stdout(captured):
+        assert main(['collatz', '--events', '5', '--seed', '27', '--info', 'safety', '--format', 'json']) == 0
+    safety = json.loads(captured.getvalue())['info']['safety']
+    assert safety['value']['events'] == 5
+    assert not safety['value']['descended_below_source']
+    assert not safety['value']['all_time_claim']
+    assert len(published_sources) == 1
+    publisher, published = published_sources[0]
+    assert published.discovered_events == 5
+    assert publisher.ledger.counters['collatz_source_discovery_events'] == 5
+    assert publisher.ledger.counters['collatz_saturated_event_reads'] == 5
+finally:
+    CollatzSourcePublisher.publish = original_publish
 from number_compiler.hashlife.execution.dyadic_return_images import DyadicReturnImageWorkspace as Images
 original_reuse = Images.transport_reuse
 reuse_calls = []
@@ -252,6 +290,7 @@ print(json.dumps({'public_exports': len(api.__all__), 'kernel_left_states': kern
             (["196", "--nth", "2"], 0, "1675"),
             (["reverse-add", "--nth", "0", "--seed", "0"], 0, "0"),
             (["collatz", "--nth", "4", "--seed", "27"], 0, "62"),
+            (["collatz", "--events", "5", "--seed", "27", "--info", "safety"], 0, ""),
             (["collatz", "--nth", "1000000", "--seed", "27"], 0, "4"),
             (
                 [
@@ -294,6 +333,8 @@ print(json.dumps({'public_exports': len(api.__all__), 'kernel_left_states': kern
                     "hensel",
                     "--info",
                     "mahler",
+                    "--info",
+                    "metrics",
                 ],
                 0,
                 "454",
@@ -332,17 +373,31 @@ print(json.dumps({'public_exports': len(api.__all__), 'kernel_left_states': kern
                     )
                 mahler = details["mahler"]["value"]
                 hensel = details["hensel"]["value"]
+                execution = details["metrics"]["execution_metrics"]
+                construction = execution["construction"]
+                observations = execution["observations"]
                 if (
                     "associated_action" in hensel
                     or mahler["associated_action"]["extent"] != 10
                     or mahler["associated_action"]["first_failure"] != 2
-                    or details["mahler"]["work_counters"].get(
-                        "source_image_chronological_compositions", 0
-                    )
-                    < 1
+                    or construction["source_image_adapter_registrations"] != 1
+                    or construction["arithmetic_result_publications"] != 1
+                    or observations["mahler_source_composed_image_reads"] != 1
+                    or observations["mahler_associated_action_demands"] != 1
+                    or execution["projection"]["publications"] < 2
                 ):
                     raise ValueError(
                         "installed Mahler consumer bypassed the shared scheduler"
+                    )
+            if arguments[0] == "collatz" and "safety" in arguments:
+                safety = json.loads(observed.stderr)["safety"]
+                if (
+                    safety["value"]["events"] != 5
+                    or safety["value"]["descended_below_source"]
+                    or safety["value"]["all_time_claim"]
+                ):
+                    raise ValueError(
+                        "installed safety consumer lost its admitted prefix"
                     )
             if (
                 arguments[0] == "nth"

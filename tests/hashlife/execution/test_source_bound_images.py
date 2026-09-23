@@ -320,7 +320,6 @@ def test_application_cache_distinguishes_boolean_and_integer_actions() -> None:
 
         def action_children(self, action: object) -> None:
             self.validate_action(action)
-            return None
 
         def compose_actions(self, before: object, after: object) -> object:
             self.validate_action(before)
@@ -742,6 +741,31 @@ def test_in_place_frozen_projection_mutation_is_detected() -> None:
     object.__setattr__(projected, "value", 999)
     with pytest.raises(ValueError, match="projection record was altered"):
         core.projection(adapter, image, demand)
+
+
+def test_warm_projection_rechecks_adapter_authority_before_cache_hit() -> None:
+    class RevocableAdapter(_DecimalAdapter):
+        def __init__(self, ledger: ResourceLedger) -> None:
+            super().__init__(ledger)
+            self.revoked = False
+
+        def validate_payload(self, payload: object) -> None:
+            super().validate_payload(payload)
+            if self.revoked:
+                raise ValueError("payload authority was revoked")
+
+    ledger = ResourceLedger()
+    core = SourceBoundSchedulerCore(ledger)
+    adapter = RevocableAdapter(ledger)
+    core.register(adapter)
+    image = core.apply(adapter, 0, _Action((1,)))
+    demand = SourceImageDemand("value")
+    assert core.projection(adapter, image, demand).value == 1
+    assert adapter.projection_calls == 1
+    adapter.revoked = True
+    with pytest.raises(ValueError, match="payload authority was revoked"):
+        core.projection(adapter, image, demand)
+    assert adapter.projection_calls == 1
 
 
 def test_public_reverse_warm_projection_validates_binding_before_cache_hit() -> None:

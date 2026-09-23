@@ -98,15 +98,6 @@ lemma palindrome_reverse_drop:
   shows "rev (drop (Suc i) ss) = take (length ss-Suc i) ss"
   using palindrome by (simp add: rev_drop)
 
-lemma palindrome_nth_reflect:
-  assumes palindrome: "rev ss = ss" and bound: "i < length ss"
-  shows "ss ! (length ss-Suc i) = ss!i"
-proof -
-  have "rev ss ! i = ss ! (length ss-Suc i)"
-    using bound by (simp add: rev_nth)
-  then show ?thesis using palindrome by simp
-qed
-
 lemma strip_blank_tail_append_blank:
   assumes "\<forall>x\<in>set xs. x<19"
   shows "strip_blank_tail (xs@[19]) = xs"

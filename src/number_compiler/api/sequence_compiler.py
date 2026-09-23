@@ -133,7 +133,9 @@ class CanonicalSequenceCompiler:
                 spec, diagnostics=diagnostics
             )
         elif type(spec) is CollatzSequenceSpec:
-            out = self._compile_collatz(spec, diagnostics=diagnostics)
+            from number_compiler.api.collatz_compilation import _compile_collatz
+
+            out = _compile_collatz(spec, diagnostics=diagnostics)
         elif type(spec) is PrimeBlockSequenceSpec:
             # The residual-divisor set morphism is the sole semantic block
             # projection.  The packed congruence automaton, primary jets and
@@ -491,14 +493,6 @@ class CanonicalSequenceCompiler:
             carry_reset_max_bits,
             symmetry_modes,
         )
-
-    @staticmethod
-    def _compile_collatz(
-        spec: CollatzSequenceSpec, *, diagnostics: bool
-    ) -> CollatzCompilation:
-        from number_compiler.api.collatz_compilation import _compile_collatz
-
-        return _compile_collatz(spec, diagnostics=diagnostics)
 
     def resolve_special_theorem(
         self,

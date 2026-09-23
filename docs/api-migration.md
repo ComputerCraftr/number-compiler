@@ -27,21 +27,33 @@ production Fermat and Mersenne digits continue to use their sparse closed forms.
 Canonical ownership and public exports are tested against the source and installed
 package, replacing the former handwritten migration and export manifests.
 
-## Metrics schema 7
+## Metrics schema 8
 
-The public term/query APIs and CLI selectors are unchanged. Metrics now identify
-schema 7. Fixed reverse proof-machine populations, decimal T2 payload/loader
-fields and reverse-only compatibility aliases were removed together with their
-execution owner. They are not reported as zeros or recreated for old callers.
+Term/query APIs, CLI selectors, indices and budgets are unchanged. CLI
+`--info metrics` now emits a compact `execution_metrics` object with
+`schema_version: 8`. The detailed Python ledger report remains available to
+probes; its `metrics_schema_version` is also 8.
 
-Use the current ledger inventory, `source_image_*` work counters and public term
-metrics. Collatz's independent finite kernel resources and generic
-`FiniteBlockEffect` remain. Removing the obsolete 757/179 machine does not
-complete reverse/add temporal grammar construction.
+- `action`, `application` and `projection` keep separate reuse populations.
+  Action counts describe the current admitted action arena; they do not certify
+  a saturated extensional macrocell or count its semantic equivalence classes.
+- `construction` reports scheduler operations; finite source discovery is
+  reported separately under `family_work`.
+- `demand` and `stream` distinguish query counts, spatial visits and emitted
+  symbols. A stream visit is not a temporal jump.
+- `observations` exposes measured observer work; `resources` reports entries,
+  nodes, peaks and accounting status.
+- `null` means the exact counter is unavailable. Only an instrumented zero is
+  emitted as `0`. Antihydra snapshot capture leaves `audit_complete=false`;
+  unknown inventory comparisons remain `null`. No bootstrap bound or constructor success is inferred from
+  missing counters, cache hits or a zero primitive count.
 
-The schema also retains diagnostic counters such as
-`temporal_leaf_diamond_descents`, its parent counters, and
-`reverse_temporal_leaf_substitutions` for bounded developer experiments and
-forbidden-path assertions. Production has no emitters for these retired paths.
-A zero value records no observed use; it is not evidence that the powered
-constructor exists or meets its cost bound.
+The detailed `power_metrics()` APIs retain the per-owner inventory and raw
+work counters for audit tooling. Obsolete tile fields are not copied into
+compact CLI output. Their removal from presentation does not close the
+reverse/add constructor or Collatz cold-discovery obligations.
+
+The schema-7 presentation assertions map to the same captured ledger's
+`temporal_diagnostics` and `resources`; detailed inventory checks remain in
+API tests. Positive temporal cutover assertions remain enabled and unchanged
+apart from their schema version.

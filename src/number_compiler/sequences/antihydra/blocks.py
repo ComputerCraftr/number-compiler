@@ -9,7 +9,33 @@ from __future__ import annotations
 from dataclasses import dataclass
 from operator import add, mul
 
+from number_compiler.arithmetic.fields.consumer_pullback import PrefixSafety
 from number_compiler.arithmetic.fields.skew_transfer import SkewTransfer
+
+
+def _join_source_cylinders(
+    before_width: int,
+    before_residue: int,
+    before_output: int,
+    before_skew: SkewTransfer[int],
+    after_width: int,
+    after_residue: int,
+    after_skew: SkewTransfer[int],
+) -> tuple[int, int, int, int]:
+    """Transport the second cylinder through the first source chart.
+
+    Both the total arithmetic and guarded physical roof must use this same
+    CRT lift, chronological skew, and output occurrence. The physical roof's
+    translated high coordinate is deliberately computed only on demand.
+    The tuple is ``(lift, joined_residue, joined_output, 3**width)``.
+    """
+    modulus = 1 << after_width
+    first_gain = 3**before_width
+    lift = ((after_residue - before_output) * pow(first_gain, -1, modulus)) % modulus
+    residue = before_residue + (lift << before_width)
+    transfer = before_skew.then(after_skew, multiply=mul, add=add)
+    output = (transfer.upper * residue + transfer.offset) // transfer.lower
+    return lift, residue, output, first_gain
 
 
 @dataclass(frozen=True, slots=True)
@@ -56,18 +82,19 @@ class ArithmeticCylinder:
         return 3**self.width * (h >> self.width) + self.output, ledger + self.delta
 
     def then(self, after: ArithmeticCylinder) -> ArithmeticCylinder:
+        safety = PrefixSafety(self.delta, self.minimum).then(
+            PrefixSafety(after.delta, after.minimum)
+        )
         k, ell = self.width, after.width
-        modulus = 1 << ell
-        lift = ((after.residue - self.output) * pow(3**k, -1, modulus)) % modulus
-        residue = self.residue + (lift << k)
-        transfer = self.skew.then(after.skew, multiply=mul, add=add)
-        output = (transfer.upper * residue + transfer.offset) // transfer.lower
+        _lift, residue, output, _first_gain = _join_source_cylinders(
+            k, self.residue, self.output, self.skew, ell, after.residue, after.skew
+        )
         return ArithmeticCylinder(
             k + ell,
             residue,
             output,
-            self.delta + after.delta,
-            min(self.minimum, self.delta + after.minimum),
+            safety.delta,
+            safety.minimum,
             self.parity_word | (after.parity_word << k),
         )
 
@@ -125,12 +152,15 @@ class Cylinder:
 
     def then(self, after: Cylinder) -> Cylinder:
         """Compose full cylinders; derive the required incoming source lift."""
+        safety = PrefixSafety(self.delta, self.minimum).then(
+            PrefixSafety(after.delta, after.minimum)
+        )
         k, ell = self.width, after.width
-        modulus = 1 << ell
-        p3 = 3**k
-        lift = ((after.residue - self.output) * pow(p3, -1, modulus)) % modulus
+        lift, residue, output, p3 = _join_source_cylinders(
+            k, self.residue, self.output, self.skew, ell, after.residue, after.skew
+        )
         # x_first = 2^ell*x + lift, x_after = 3^k*x + translated.
-        translated = (p3 * lift + self.output - after.residue) // modulus
+        translated = (p3 * lift + self.output - after.residue) // (1 << ell)
         a, b = 1 << ell, p3
         q = self.quadratic * a * a + after.quadratic * b * b
         linear = (2 * self.quadratic * lift + self.linear) * a + (
@@ -143,15 +173,12 @@ class Cylinder:
             + after.constant
             + after.ledger_coefficient * self.delta
         )
-        residue = self.residue + (lift << k)
-        transfer = self.skew.then(after.skew, multiply=mul, add=add)
-        output = (transfer.upper * residue + transfer.offset) // transfer.lower
         return Cylinder(
             k + ell,
             residue,
             output,
-            self.delta + after.delta,
-            min(self.minimum, self.delta + after.minimum),
+            safety.delta,
+            safety.minimum,
             q,
             linear,
             self.ledger_coefficient + after.ledger_coefficient,

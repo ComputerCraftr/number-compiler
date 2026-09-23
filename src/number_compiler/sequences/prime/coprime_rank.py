@@ -10,6 +10,7 @@ from __future__ import annotations
 
 from bisect import bisect_right
 from collections.abc import MutableMapping
+from itertools import islice
 from math import gcd
 
 from number_compiler.resources.ledger import OwnedMemo, ResourceLedger
@@ -46,6 +47,12 @@ class CoprimeRankDAG:
         )
         self.progression_memo: OwnedMemo[tuple[int, int, int, int], int] = OwnedMemo(
             self.ledger, progression_owner
+        )
+        inverse_owner = self.ledger.register(
+            "prime.rank.inverse_workspace", "query-local progression inverses"
+        )
+        self._progression_inverses: OwnedMemo[int, int] = OwnedMemo(
+            self.ledger, inverse_owner
         )
         self.retain_queries = retain_queries
         self.shared_lease = shared_lease
@@ -232,7 +239,7 @@ class CoprimeRankDAG:
             # conservative bound from the largest factor in the sorted prefix.
             bits = key[0] * self._primes[key[0] - 1].bit_length()
             self.charge_many(key[0], bits + abs(key[1]).bit_length())
-            return "phi", tuple(self._primes[: key[0]]), key[1]
+            return "phi", tuple(islice(self._primes, key[0])), key[1]
 
         def shared_value(key: tuple[int, int]) -> int | None:
             if self.shared_lease is None or not 0 < key[0] <= MAX_SHARED_FACTOR_STAGES:
@@ -355,7 +362,7 @@ class CoprimeRankDAG:
         residue %= modulus
         if modulus == 1:
             return self.count(limit, depth)
-        if any(gcd(modulus, p) != 1 for p in self._primes[:depth]):
+        if any(gcd(modulus, p) != 1 for p in islice(self._primes, depth)):
             raise ValueError("progression modulus must be coprime to wheel factors")
         if limit < 1:
             self.charge()
@@ -363,12 +370,14 @@ class CoprimeRankDAG:
 
         root = (depth, limit, modulus, residue)
         memo = self.progression_memo
-        stack = [(depth, limit, residue, False)]
+        # A returning frame retains the already computed right-child residue.
+        # Zero is a valid residue; None alone denotes an unopened node.
+        stack: list[tuple[int, int, int, int | None]] = [(depth, limit, residue, None)]
         try:
             while stack:
                 self.pending_frames = len(stack)
                 self.peak_pending_frames = max(self.peak_pending_frames, len(stack))
-                d, x, r, ready = stack.pop()
+                d, x, r, child_residue = stack.pop()
                 self.charge()
                 key = (d, x, modulus, r)
                 if key in memo:
@@ -382,25 +391,46 @@ class CoprimeRankDAG:
                         x.bit_length() + modulus.bit_length() + r.bit_length()
                     )
                 else:
-                    p = self._primes[d - 1]
-                    inverse = pow(p, -1, modulus)
-                    child_residue = r * inverse % modulus
-                    left = (d - 1, x, modulus, r)
-                    right = (d - 1, x // p, modulus, child_residue)
-                    self.arithmetic_bit_work += (
-                        x.bit_length() + p.bit_length() + modulus.bit_length()
-                    )
-                    if not ready:
-                        stack.append((d, x, r, True))
+                    if child_residue is None:
+                        p = self._primes[d - 1]
+                        child_residue = 0
+                        if r:
+                            inverse = self._progression_inverses.get(d)
+                            if inverse is None:
+                                if (
+                                    self.max_states is not None
+                                    and self.ledger.entries - self.factor_count
+                                    >= self.max_states
+                                ):
+                                    raise ValueError(
+                                        "prime state budget exceeded (--max-prime-states)"
+                                    )
+                                self.charge(p.bit_length() + modulus.bit_length())
+                                inverse = pow(p, -1, modulus)
+                                self._progression_inverses[d] = inverse
+                                self.ledger.bump(
+                                    "prime_progression_inverse_evaluations"
+                                )
+                            child_residue = r * inverse % modulus
+                        self.arithmetic_bit_work += (
+                            x.bit_length() + p.bit_length() + modulus.bit_length()
+                        )
+                        stack.append((d, x, r, child_residue))
+                        right = (d - 1, x // p, modulus, child_residue)
+                        left = (d - 1, x, modulus, r)
                         if right not in memo:
-                            stack.append((d - 1, x // p, child_residue, False))
+                            stack.append((d - 1, x // p, child_residue, None))
                         else:
                             self.cache_hits += 1
                         if left not in memo:
-                            stack.append((d - 1, x, r, False))
+                            stack.append((d - 1, x, r, None))
                         else:
                             self.cache_hits += 1
                         continue
+                    p = self._primes[d - 1]
+                    left = (d - 1, x, modulus, r)
+                    right = (d - 1, x // p, modulus, child_residue)
+                    self.arithmetic_bit_work += x.bit_length() + p.bit_length()
                     try:
                         left_value, right_value = memo[left], memo[right]
                     except KeyError as error:
@@ -426,6 +456,7 @@ class CoprimeRankDAG:
         finally:
             stack.clear()
             self.pending_frames = 0
+            self._progression_inverses.clear()
             if not self.retain_queries:
                 memo.clear()
 
@@ -449,6 +480,7 @@ class CoprimeRankDAG:
         if self._closed:
             return
         self.progression_memo.dispose()
+        self._progression_inverses.dispose()
         self.memo.dispose()
         size = len(self._primes)
         if size:
