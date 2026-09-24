@@ -55,7 +55,7 @@ class QueryContext:
 
             if q.no_value and not set(q.info) - {"metrics", "certificate"}:
                 # Metadata never initiates a certificate forest or trajectory.
-                # An explicit certificate observer performs its own check.
+                # Certificate information also reports only existing evidence.
                 if q.index > CERTIFIED_MAX_INDEX:
                     self.unresolved_boundary = unresolved_boundary(q.index)
                 return

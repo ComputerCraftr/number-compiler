@@ -21,6 +21,9 @@ from number_compiler.sequences.antihydra.arithmetic_images import (
     ANTIHYDRA_ARITHMETIC_LAW,
 )
 from number_compiler.sequences.collatz.physical_images import COLLATZ_PHYSICAL_LAW
+from number_compiler.sequences.collatz.physical_images import (
+    CollatzPhysicalImageWorkspace,
+)
 
 
 def test_short_residue_transport_charges_operands_not_requested_precision() -> None:
@@ -196,6 +199,49 @@ def test_temporal_squares_reuse_complete_high_fiber_effects(
         for b in images
     )
     workspace.validate()
+
+
+@pytest.mark.parametrize("retain_chronology", (False, True))
+def test_direct_composite_reuses_exact_homogeneous_subcylinders(
+    retain_chronology: bool,
+) -> None:
+    """The production constructor shares effects, not source occurrences."""
+    ledger = ResourceLedger()
+    steps, source = 1024, 1 << 4096
+    workspace = CollatzPhysicalImageWorkspace(
+        ledger, source, steps, retain_chronology=retain_chronology
+    )
+    prefix = workspace.counter_prefix + "_"
+    assert workspace.endpoint() == source >> steps
+    assert ledger.counters[prefix + "balanced_effect_memo_hits"] > 0
+    assert ledger.counters[prefix + "reused_temporal_extent"] == steps - 64
+    classified = ledger.counters.get(
+        prefix + "transient_leaf_steps", 0
+    ) + ledger.counters.get(prefix + "macro_bounded_base_steps", 0)
+    assert 0 < classified <= 64
+    assert len(workspace.images) == 2
+    assert len(workspace.support) <= steps.bit_length()
+    assert not workspace.balanced_stack
+    workspace.validate()
+    workspace.dispose()
+    assert ledger.nodes == ledger.entries == 0
+
+
+def test_direct_composite_memo_does_not_merge_changed_source_or_duration() -> None:
+    """Same zero-heavy high fiber cannot authorize a different low cylinder."""
+    for steps, low in ((128, 5), (256, 7)):
+        source = (1 << 4096) + low
+        expected = source
+        for _ in range(steps):
+            expected = 3 * expected + 1 if expected & 1 else expected // 2
+        ledger = ResourceLedger()
+        workspace = CollatzPhysicalImageWorkspace(
+            ledger, source, steps, retain_chronology=False
+        )
+        assert workspace.endpoint() == expected
+        workspace.validate()
+        workspace.dispose()
+        assert ledger.nodes == ledger.entries == 0
 
 
 @pytest.mark.parametrize(

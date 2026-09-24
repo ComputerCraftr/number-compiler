@@ -7,6 +7,7 @@ not authorize equality of projections as equality of successor occurrences.
 from __future__ import annotations
 
 from collections.abc import Hashable
+from contextlib import AbstractContextManager, nullcontext
 from typing import Protocol, runtime_checkable
 
 from number_compiler.hashlife.execution.source_bound_images import (
@@ -48,6 +49,13 @@ class SourceBoundSplitContextAdapter(Protocol):
         before_result: SourceImageView,
         after_action: Hashable,
     ) -> Hashable: ...
+
+
+@runtime_checkable
+class SourceBoundCompositeTransactionalAdapter(Protocol):
+    """Keep adapter candidate records provisional through scheduler publication."""
+
+    def composite_transaction(self) -> AbstractContextManager[None]: ...
 
 
 def apply_source_image(
@@ -212,26 +220,35 @@ def apply_source_image(
                         "source image children do not compose to their parent"
                     )
                 if isinstance(adapter, SourceBoundCompositeAdapter):
-                    composite_candidate = adapter.apply_composite(
-                        frame.action, source_view, demand
+                    transaction = (
+                        adapter.composite_transaction()
+                        if isinstance(adapter, SourceBoundCompositeTransactionalAdapter)
+                        else nullcontext()
                     )
+                    with transaction:
+                        composite_candidate = adapter.apply_composite(
+                            frame.action, source_view, demand
+                        )
+                        if composite_candidate is not None:
+                            if (
+                                split is not None
+                                and composite_candidate.failure_prefix is not None
+                            ):
+                                raise ValueError(
+                                    "split contexts require total arithmetic"
+                                )
+                            cumulative = adapter.compose_actions(
+                                source_view.binding.action, frame.action
+                            )
+                            composite_result = self._publish_application_result(
+                                apply_key,
+                                source_view.binding.source,
+                                cumulative,
+                                composite_candidate,
+                                relative_key=relative_key,
+                            )
                     if composite_candidate is not None:
-                        if (
-                            split is not None
-                            and composite_candidate.failure_prefix is not None
-                        ):
-                            raise ValueError("split contexts require total arithmetic")
-                        cumulative = adapter.compose_actions(
-                            source_view.binding.action, frame.action
-                        )
-                        result = self._publish_application_result(
-                            apply_key,
-                            source_view.binding.source,
-                            cumulative,
-                            composite_candidate,
-                            relative_key=relative_key,
-                        )
-                        push_value(result)
+                        push_value(composite_result)
                         self.ledger.bump(
                             "source_image_composite_applications"
                             if demand is None

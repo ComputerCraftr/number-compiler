@@ -2,6 +2,170 @@ theory Dyadic_Source_Lift
   imports S_Arithmetic_Skew
 begin
 
+text \<open>The production split is the largest power of two strictly below
+the represented span.  This executable halving recursion has logarithmic
+depth; it never enumerates the span or its candidate powers.\<close>
+
+function power_floor :: "nat \<Rightarrow> nat" where
+  "power_floor n = (if n < 2 then 1 else 2 * power_floor (n div 2))"
+  by pat_completeness auto
+termination
+  by (relation "measure id") auto
+
+declare power_floor.simps [simp del]
+
+definition balanced_left_span :: "nat \<Rightarrow> nat" where
+  "balanced_left_span n = power_floor (n-1)"
+
+lemma power_floor_positive [simp]: "0 < power_floor n"
+proof (induction n rule: less_induct)
+  case (less n)
+  show ?case
+  proof (cases "n < 2")
+    case True
+    then show ?thesis by (subst power_floor.simps) simp
+  next
+    case False
+    have q_less: "n div 2 < n" using False by simp
+    then have "power_floor n = 2 * power_floor (n div 2)"
+      using False by (subst power_floor.simps) simp
+    with less.IH[OF q_less] show ?thesis by simp
+  qed
+qed
+
+lemma power_floor_bounds_aux:
+  "0 < n \<longrightarrow> power_floor n \<le> n \<and> n < 2 * power_floor n"
+proof (induction n rule: less_induct)
+  case (less n)
+  show ?case
+  proof (cases "0 < n")
+    case False
+    then show ?thesis by simp
+  next
+    case True
+    show ?thesis
+    proof (cases "n < 2")
+      case True
+      with \<open>0 < n\<close> show ?thesis
+        by (simp add: power_floor.simps)
+    next
+      case False
+      then have q: "0 < n div 2" by simp
+      have lessq: "n div 2 < n" using False by simp
+      have unfold: "power_floor n = 2 * power_floor (n div 2)"
+        using False by (subst power_floor.simps) simp
+      have bounds: "power_floor (n div 2) \<le> n div 2"
+        "n div 2 < 2 * power_floor (n div 2)"
+        using less.IH[OF lessq] q by auto
+      have decomp: "n = 2 * (n div 2) + n mod 2" by simp
+      have remainder: "n mod 2 < 2" by simp
+      have first: "power_floor n \<le> n"
+        using unfold bounds(1) decomp by linarith
+      have second: "n < 2 * power_floor n"
+        using unfold bounds(2) decomp remainder by linarith
+      show ?thesis using True first second by simp
+    qed
+  qed
+qed
+
+lemma power_floor_bounds:
+  assumes "0 < n"
+  shows "power_floor n \<le> n" "n < 2 * power_floor n"
+  using power_floor_bounds_aux[of n] assms by auto
+
+lemma power_floor_is_power: "\<exists>e. power_floor n = 2^e"
+proof (induction n rule: less_induct)
+  case (less n)
+  show ?case
+  proof (cases "n < 2")
+    case True
+    have "power_floor n = 2^0"
+      using True by (subst power_floor.simps) simp
+    then show ?thesis by blast
+  next
+    case False
+    have q_less: "n div 2 < n" using False by simp
+    obtain e where ih: "power_floor (n div 2) = 2^e"
+      using less.IH[OF q_less] by auto
+    have "power_floor n = 2 * power_floor (n div 2)"
+      using False by (subst power_floor.simps) simp
+    then show ?thesis using ih
+      by (auto simp: power_Suc intro!: exI[of _ "Suc e"])
+  qed
+qed
+
+lemma power_floor_dominates_power_aux:
+  "2^e \<le> n \<longrightarrow> 2^e \<le> power_floor n"
+proof (induction n arbitrary: e rule: less_induct)
+  case (less n)
+  show ?case
+  proof (cases "2^e \<le> n")
+    case False
+    then show ?thesis by simp
+  next
+    case True
+    show ?thesis
+    proof (cases "n < 2")
+      case True
+      with \<open>2^e \<le> n\<close> show ?thesis
+        by (simp add: power_floor.simps)
+    next
+      case False
+      have unfold: "power_floor n = 2 * power_floor (n div 2)"
+        using False by (subst power_floor.simps) simp
+      show ?thesis
+      proof (cases e)
+        case 0
+        then have one: "(2::nat)^e = 1" by simp
+        show ?thesis using one power_floor_positive[of n] by arith
+      next
+        case (Suc predecessor)
+        have q_less: "n div 2 < n" using False by simp
+        have q_bound: "2^predecessor \<le> n div 2"
+          using True by (simp add: Suc power_Suc)
+        have "2^predecessor \<le> power_floor (n div 2)"
+          using less.IH[OF q_less, of predecessor] q_bound by auto
+        with unfold Suc True show ?thesis
+          by (simp add: power_Suc)
+      qed
+    qed
+  qed
+qed
+
+lemma power_floor_dominates_power:
+  assumes "2^e \<le> n"
+  shows "2^e \<le> power_floor n"
+  using power_floor_dominates_power_aux[of e n] assms by simp
+
+lemma balanced_left_span_bounds:
+  assumes "1 < n"
+  shows "0 < balanced_left_span n" "balanced_left_span n < n"
+proof -
+  have "0 < n-1" using assms by simp
+  then have "power_floor (n-1) \<le> n-1"
+    by (rule power_floor_bounds)
+  show "0 < balanced_left_span n"
+    by (simp add: balanced_left_span_def)
+  show "balanced_left_span n < n"
+    using assms \<open>power_floor (n-1) \<le> n-1\<close>
+    by (simp add: balanced_left_span_def)
+qed
+
+lemma balanced_left_span_largest:
+  assumes "1 < n" "k < n" "k = 2^e"
+  shows "k \<le> balanced_left_span n"
+  using assms power_floor_dominates_power[of e "n-1"]
+  by (simp add: balanced_left_span_def)
+
+lemma balanced_left_span_large_pos [simp]:
+  "64 < n \<Longrightarrow> 0 < balanced_left_span n"
+  using balanced_left_span_bounds[of n] by simp
+
+lemma balanced_left_span_large_lt [simp]:
+  "64 < n \<Longrightarrow> balanced_left_span n < n"
+  using balanced_left_span_bounds[of n] by simp
+
+
 text \<open>A shared finite source-cylinder induction.  A family must prove
 only its concrete one-step label stability and one-step dyadic translation.
 The locale does not assume an orbit lift, a branch itinerary, or a powered
@@ -307,7 +471,8 @@ construction and retained storage.\<close>
 
 ML \<open>
   val _ = if null (Thm_Deps.all_oracles
-    @{thms dyadic_source_orbit_funpow dyadic_source_orbit_add dyadic_source_word_append
+    @{thms balanced_left_span_bounds balanced_left_span_largest
+      dyadic_source_orbit_funpow dyadic_source_orbit_add dyadic_source_word_append
       dyadic_source_word_length
       dyadic_source_orbit_lower_bound dyadic_high_fiber_excludes_small_states
       dyadic_constant_gain_product

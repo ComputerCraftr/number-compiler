@@ -167,6 +167,35 @@ def audit_source_bound_payloads(
                     approved.update(prime_approved)
                     recognized.update(prime_recognized)
                     invalid.update(prime_invalid)
+                elif (
+                    type(adapter).__module__ == "number_compiler.sequences.comma.power"
+                ):
+                    from number_compiler.resources.comma_source_payload_audit import (
+                        audit_comma_source_adapter,
+                    )
+
+                    try:
+                        comma_approved, comma_recognized, comma_invalid = (
+                            audit_comma_source_adapter(
+                                adapter,
+                                ledger,
+                                containers,
+                                core._node_owner,
+                            )
+                        )
+                    except (
+                        AttributeError,
+                        TypeError,
+                        ValueError,
+                        IndexError,
+                        KeyError,
+                        RuntimeError,
+                    ):
+                        invalid.add((core._adapter_owner, id(adapter)))
+                        continue
+                    approved.update(comma_approved)
+                    recognized.update(comma_recognized)
+                    invalid.update(comma_invalid)
         valid_nodes: dict[int, _ImageRecord] = {}
         linked_nodes: set[int] = set()
         for local_id, record in enumerate(core._nodes):

@@ -6,8 +6,8 @@ from number_compiler.arithmetic.contracts.scoped_handles import ArenaToken
 from number_compiler.hashlife.execution.dyadic_return_images import (
     DyadicCycleSummary,
     DyadicReturnCycle,
-    DyadicReturnImageID,
     DyadicReturnImageWorkspace,
+    DyadicReturnSourceID,
     DyadicReturnLaw,
 )
 from number_compiler.resources.dyadic_return_payload_audit import (
@@ -65,47 +65,51 @@ def test_collatz_and_antihydra_share_one_independently_audited_schema() -> None:
     _assert_clean(ledger)
 
 
-def test_audit_rejects_mutated_second_child_residue_and_stale_image() -> None:
+def test_audit_rejects_mutated_composite_source_and_stale_image() -> None:
     ledger = ResourceLedger()
     workspace = CollatzPhysicalImageWorkspace(ledger, 27, 129)
-    child = next(node for node in workspace.sources if node.side == 2)
-    old_residue = child.residue
-    object.__setattr__(child, "residue", old_residue ^ 1)
+    # Generic temporal cutover publishes no chronological second-child source.
+    assert not any(node.side == 2 for node in workspace.sources)
+
+    source = workspace.sources[workspace.root_source.local_id]
+    old_residue = source.residue
+    object.__setattr__(source, "residue", old_residue ^ 1)
     try:
         result = audit_dyadic_return_payloads(ledger)
         assert (workspace.image_owner, id(workspace)) in result.invalid
         assert id(workspace) not in result.approved
         assert audit_registered_payloads(ledger).forbidden_future_payloads > 0
     finally:
-        object.__setattr__(child, "residue", old_residue)
+        object.__setattr__(source, "residue", old_residue)
 
-    old_image = child.before_image
+    image = workspace.images[workspace.root_payload.local_id]
+    old_source = image.source
     object.__setattr__(
-        child,
-        "before_image",
-        DyadicReturnImageID(
-            workspace.owner, workspace._IMAGE_KIND, len(workspace.images)
+        image,
+        "source",
+        DyadicReturnSourceID(
+            workspace.owner, workspace._SOURCE_KIND, len(workspace.sources)
         ),
     )
     try:
         assert audit_registered_payloads(ledger).forbidden_future_payloads > 0
     finally:
-        object.__setattr__(child, "before_image", old_image)
+        object.__setattr__(image, "source", old_source)
 
 
-def test_audit_rejects_foreign_second_child_parent_authority() -> None:
+def test_audit_rejects_foreign_composite_source_authority() -> None:
     ledger = ResourceLedger()
     workspace = CollatzPhysicalImageWorkspace(ledger, 27, 129)
     foreign = CollatzPhysicalImageWorkspace(ledger, 31, 129)
-    child = next(node for node in workspace.sources if node.side == 2)
-    old_parent = child.parent
-    object.__setattr__(child, "parent", foreign.root_source)
+    image = workspace.images[workspace.root_payload.local_id]
+    old_source = image.source
+    object.__setattr__(image, "source", foreign.root_source)
     try:
         result = audit_dyadic_return_payloads(ledger)
         assert (workspace.image_owner, id(workspace)) in result.invalid
         assert id(foreign) in result.approved
     finally:
-        object.__setattr__(child, "parent", old_parent)
+        object.__setattr__(image, "source", old_source)
 
 
 def test_audit_reconstructs_transfer_and_rejects_law_mutation() -> None:
@@ -169,18 +173,17 @@ def test_audit_preserves_images_and_charges_its_bounded_recomputation() -> None:
 def test_foreign_handle_with_equal_shape_is_not_local_authority() -> None:
     ledger = ResourceLedger()
     workspace = CollatzPhysicalImageWorkspace(ledger, 27, 65)
-    child = next(node for node in workspace.sources if node.side == 2)
-    old = child.before_image
-    assert old is not None
+    image = workspace.images[workspace.root_payload.local_id]
+    old = image.source
     object.__setattr__(
-        child,
-        "before_image",
-        DyadicReturnImageID(ArenaToken("foreign"), old.kind, old.local_id),
+        image,
+        "source",
+        DyadicReturnSourceID(ArenaToken("foreign"), old.kind, old.local_id),
     )
     try:
         assert audit_registered_payloads(ledger).forbidden_future_payloads > 0
     finally:
-        object.__setattr__(child, "before_image", old)
+        object.__setattr__(image, "source", old)
 
 
 def test_cycle_compression_is_bound_to_a_reachable_exact_source() -> None:

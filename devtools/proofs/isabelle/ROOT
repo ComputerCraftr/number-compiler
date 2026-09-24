@@ -3,6 +3,10 @@ session Shared_S_Arithmetic in shared = HOL +
   theories
     S_Arithmetic_Skew
     Dyadic_Source_Lift
+    Dyadic_Prefix_Summary
+    Dyadic_Support_Descent
+    Dyadic_Balanced_Worklist
+    Dyadic_Balanced_Arithmetic
 
 session Reverse_Residuals = HOL +
   options [document = false, quick_and_dirty = false, threads = 1]
@@ -26,6 +30,7 @@ session Reverse_Residuals = HOL +
     Port_Valued_Mealy
     Hensel_Cylinders
     Reverse_Contextual_Fixed_Point
+    Reverse_Boundary_Germ_Local
 
 session Reverse_Cylinder_Length_Refinement in reverse_length = Reverse_Residuals +
   options [document = false, quick_and_dirty = false, threads = 1]
@@ -164,6 +169,15 @@ session Antihydra_Mahler_Integration in integration_mahler = Associated_Action_C
   theories
     Antihydra_Mahler_Associated_Action
 
+session Balanced_Dyadic_Integration in integration_dyadic = Shared_S_Arithmetic +
+  options [document = false, quick_and_dirty = false, threads = 1]
+  sessions Collatz_Cylinder_Refinement Antihydra Antihydra_Mahler_Integration
+  theories
+    Balanced_Dyadic_Families
+    Collatz_Reduced_Precision
+    Collatz_Parity_Shift_Germ
+    Dyadic_Parity_Inverse_Arithmetic
+
 
 session Mahler_Safety_Cylinders in mahler_safety = Antihydra +
   options [document = false, quick_and_dirty = false, threads = 1]
@@ -186,9 +200,25 @@ session Reverse_Growth_Admission in reverse_growth = Reverse_Residuals +
   theories
     Reverse_Growth_Run_Admission
 
-session Comma_Cylinder in comma = Shared_S_Arithmetic +
+session Comma_Arithmetic in comma = "HOL-Number_Theory" +
   options [document = false, quick_and_dirty = false, threads = 1]
   theories
     Comma_Child_Cylinder
     Comma_Decimal_Parent
     Comma_Root_Forest
+    Comma_Boundary_Quotient
+    Comma_Affine_Ray
+    Comma_Child_Classification
+    Comma_Exact_Phase_Guard
+    Comma_Period_Guard
+    Comma_Finite_Period
+
+session Comma_Cylinder in comma_cutover = Comma_Arithmetic +
+  options [document = false, quick_and_dirty = false, threads = 1]
+  theories
+    Comma_Macro_Constructor
+    Comma_Macro_Refinement
+    Comma_Weighted_Macro
+    Comma_Finite_Transition
+    Comma_Future_Safety
+    Comma_Checked_Ranks

@@ -91,6 +91,15 @@ def collect_ledger_metrics(ledger: ResourceLedger) -> LedgerMetrics:
         "dyadic_payload_audit_cycle_checks",
         "dyadic_payload_audit_compositions",
         "dyadic_payload_audit_prefix_additions",
+        "source_image_seal_validation_visits",
+        "mahler_source_validation_operand_bits",
+        "antihydra_payload_audit_branch_steps",
+        "antihydra_payload_audit_arithmetic_branch_steps",
+        "antihydra_payload_audit_compositions",
+        "antihydra_payload_audit_physical_steps",
+        "antihydra_payload_audit_endpoint_operand_bits",
+        "antihydra_payload_audit_projection_fragment_operand_bits",
+        "antihydra_payload_audit_projection_fragment_steps",
     }
     if ledger.mutation_version != source_version or any(
         ledger.counters.get(key, 0) != snapshot.counters.get(key, 0)

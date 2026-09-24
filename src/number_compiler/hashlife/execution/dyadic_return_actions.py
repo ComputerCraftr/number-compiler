@@ -7,6 +7,10 @@ from typing import TYPE_CHECKING
 from number_compiler.arithmetic.contracts.scoped_handles import ArenaToken
 from number_compiler.hashlife.execution.dyadic_return_records import (
     DyadicReturnActionID,
+    DyadicReturnImageID,
+    DyadicReturnSupportID,
+    _ImageNode,
+    _SupportNode,
     _ActionNode,
 )
 from number_compiler.resources.stores import LedgerDict
@@ -26,6 +30,7 @@ def rollback_construction(workspace: DyadicReturnImageWorkspace) -> None:
         (workspace.image_owner, workspace.images, 1),
         (workspace.construction_owner, workspace.construction_stack, 1),
         (workspace.macro_stack_owner, workspace.macro_stack, 1),
+        (workspace.balanced_stack_owner, workspace.balanced_stack, 1),
     ):
         retained = len(store)
         store.clear()
@@ -36,6 +41,9 @@ def rollback_construction(workspace: DyadicReturnImageWorkspace) -> None:
     macros = len(workspace.macros)
     workspace.macros.clear()
     workspace.ledger.release(workspace.macro_owner, entries=macros, nodes=macros)
+    demanded = len(workspace.demanded_support)
+    workspace.demanded_support.clear()
+    workspace.ledger.release(workspace.demanded_support_owner, entries=demanded)
     snapshot_stores: tuple[tuple[int, LedgerDict[int, object]], ...] = (
         (workspace.action_snapshot_owner, workspace.action_snapshots),
         (workspace.source_snapshot_owner, workspace.source_snapshots),
@@ -136,3 +144,96 @@ def build_action(
             workspace.construction_owner, entries=remaining, nodes=remaining
         )
     return workspace.by_width[width]
+
+
+def rollback_new_publications(
+    self: DyadicReturnImageWorkspace, support_start: int, image_start: int
+) -> None:
+    """Discard an unpublished candidate's records after failed construction."""
+    image_count = len(self.images) - image_start
+    support_count = len(self.support) - support_start
+    if image_count:
+        for index in range(image_start, len(self.images)):
+            self.image_snapshots.pop(index, None)
+        self.images._rollback_unpublished(image_start)
+        self.ledger.release(self.image_owner, entries=image_count, nodes=image_count)
+        self.ledger.release(
+            self.image_snapshot_owner, entries=image_count, nodes=image_count
+        )
+    if support_count:
+        for index in range(support_start, len(self.support)):
+            self.support_snapshots.pop(index, None)
+        self.support._rollback_unpublished(support_start)
+        self.ledger.release(
+            self.support_owner, entries=support_count, nodes=support_count
+        )
+        self.ledger.release(
+            self.support_snapshot_owner, entries=support_count, nodes=support_count
+        )
+
+
+def append_support(
+    self: DyadicReturnImageWorkspace, node: _SupportNode
+) -> DyadicReturnSupportID:
+    previous = len(self.support)
+    self.ledger.reserve_many(
+        ((self.support_owner, 1, 1), (self.support_snapshot_owner, 1, 1))
+    )
+    identity = DyadicReturnSupportID(self.owner, self._SUPPORT_KIND, len(self.support))
+    try:
+        self.support.append(node)
+        self.support_snapshots[identity.local_id] = (
+            node.width,
+            node.residue,
+            node.transfer.upper,
+            node.transfer.offset,
+            node.transfer.lower,
+            node.odd_steps,
+            node.delta,
+            node.minimum,
+            node.branch_word,
+            node.children,
+            node.cycle,
+            node.saturated,
+        )
+    except BaseException:
+        self.support_snapshots.pop(identity.local_id, None)
+        self.support._rollback_unpublished(previous)
+        self.ledger.release(self.support_owner, entries=1, nodes=1)
+        self.ledger.release(self.support_snapshot_owner, entries=1, nodes=1)
+        raise
+    return identity
+
+
+def append_image(
+    self: DyadicReturnImageWorkspace, node: _ImageNode
+) -> DyadicReturnImageID:
+    previous = len(self.images)
+    self.ledger.reserve_many(
+        ((self.image_owner, 1, 1), (self.image_snapshot_owner, 1, 1))
+    )
+    identity = DyadicReturnImageID(self.owner, self._IMAGE_KIND, len(self.images))
+    try:
+        self.images.append(node)
+        summary = node.summary
+        self.image_snapshots[identity.local_id] = (
+            node.source,
+            node.action,
+            summary.width,
+            summary.residue,
+            summary.transfer.upper,
+            summary.transfer.offset,
+            summary.transfer.lower,
+            summary.delta,
+            summary.minimum,
+            summary.odd_steps,
+            summary.support,
+            summary.cycle,
+        )
+    except BaseException:
+        self.image_snapshots.pop(identity.local_id, None)
+        self.images._rollback_unpublished(previous)
+        self.ledger.release(self.image_owner, entries=1, nodes=1)
+        self.ledger.release(self.image_snapshot_owner, entries=1, nodes=1)
+        raise
+    return identity

@@ -2,18 +2,29 @@
 
 from __future__ import annotations
 
+import argparse
 import itertools
 import json
 from dataclasses import asdict
+from importlib import import_module
+from random import Random
 from time import perf_counter
 
 from devtools.benchmarks.tile_projection_accounting import (
     projection_accounting,
 )
 from devtools.checks.dependency_graph import source_syntax
+from devtools.checks.test_run_evidence import source_fingerprint
 from devtools.paths import repository_root
-from number_compiler.api.number_api import NumberCompiler
+from number_compiler.api.cli_context import QueryContext
+from number_compiler.api.cli_requests import parse_request
+from number_compiler.api.number_api import (
+    AntihydraTermPayload,
+    NumberCompiler,
+    PoweredCollatzTermPayload,
+)
 from number_compiler.resources.collatz_power_metrics import CollatzPhysicalBlockMetrics
+from number_compiler.resources.metric_collection import collect_ledger_metrics
 from number_compiler.sequences.collatz.block_power import PoweredCollatzTerm
 
 ROOT = repository_root()
@@ -115,11 +126,7 @@ def _projection_rows() -> list[dict[str, object]]:
             name: _required_work(metrics, name)
             for name in (
                 "collatz_physical_action_publications",
-                "collatz_physical_macro_requests",
-                "collatz_physical_macro_bounded_base_steps",
-                "collatz_physical_macro_compositions",
                 "source_image_postorder_frames",
-                "source_image_primitive_applications",
                 "source_image_publications",
                 "source_image_projection_publications",
                 "collatz_image_radix_demands",
@@ -129,6 +136,23 @@ def _projection_rows() -> list[dict[str, object]]:
             raise AssertionError(
                 ("source-image-construction-not-observed", steps, image_work)
             )
+        for name in (
+            "collatz_physical_macro_requests",
+            "collatz_physical_macro_bounded_base_steps",
+            "collatz_physical_macro_compositions",
+            "collatz_physical_transient_leaf_steps",
+            "source_image_primitive_applications",
+        ):
+            # These are mutually exclusive construction paths. An unexecuted
+            # path contributes zero here, while required publication above
+            # must still have an explicit measurement.
+            image_work[name] = metrics.resource_work_counters.get(name, 0)
+        discovery_steps = (
+            image_work["collatz_physical_macro_bounded_base_steps"]
+            + image_work["collatz_physical_transient_leaf_steps"]
+        )
+        if discovery_steps <= 0:
+            raise AssertionError(("source-discovery-measurement-missing", steps))
         family_work = tuple(
             work
             for work in diagnostic.family_work
@@ -137,7 +161,9 @@ def _projection_rows() -> list[dict[str, object]]:
         if (
             len(family_work) != 1
             or family_work[0].bounded_base_steps
-            != image_work["collatz_physical_macro_bounded_base_steps"]
+            != metrics.resource_work_counters.get(
+                "collatz_physical_macro_bounded_base_steps"
+            )
             or diagnostic.construction.source_image_publications
             != image_work["source_image_publications"]
             or diagnostic.projection.publications
@@ -154,8 +180,15 @@ def _projection_rows() -> list[dict[str, object]]:
         )
         if type(chronological) is not int or chronological < 0:
             raise AssertionError(("invalid-chronological-work", steps, chronological))
-        if steps > 64 and chronological == 0:
-            raise AssertionError(("missing-chronological-composition", steps))
+        if steps > 64 and (
+            chronological != 0
+            or image_work["source_image_primitive_applications"] != 0
+            or metrics.resource_work_counters.get(
+                "collatz_physical_composite_cutover_publications", 0
+            )
+            <= 0
+        ):
+            raise AssertionError(("direct-composite-cutover-missing", steps))
         if metrics.direct_powered_point_queries != 1:
             raise AssertionError(("not-direct-point", steps, metrics))
         if not metrics.resource_audit_complete or metrics.resource_accounting_mismatch:
@@ -174,9 +207,7 @@ def _projection_rows() -> list[dict[str, object]]:
                 "source_image_operand_bits": image_operand_bits,
                 "source_image_seal_bytes": image_seal_bytes,
                 "source_image_operation_work": image_action_work,
-                "source_image_bounded_base_steps": image_work[
-                    "collatz_physical_macro_bounded_base_steps"
-                ],
+                "source_image_bounded_base_steps": discovery_steps,
                 "steps": steps,
                 "index_bits": max(1, steps.bit_length()),
                 "schema_version": metrics.metrics_schema_version,
@@ -457,7 +488,407 @@ def run_probe() -> dict[str, object]:
     }
 
 
+def balanced_scaling(
+    family: str,
+    indices: tuple[int, ...],
+    trials: int,
+    mode: str,
+    pattern: str,
+    mahler: bool,
+) -> dict[str, object]:
+    """Measure public construction, read-only reporting and full audit separately.
+
+    The independent scalar reference runs outside all reported timings. Its
+    cost is test-oracle work, not evidence for the production construction.
+    """
+    fingerprint = source_fingerprint(ROOT)
+    rows: list[dict[str, object]] = []
+    for steps in indices:
+        seed = (
+            (Random(407 + steps).getrandbits(steps) | (1 << (steps - 1)) | 1)
+            if pattern == "random"
+            else ((1 << steps) - 1) // 3 | (1 << (steps - 1)) | 1
+            if pattern == "repeating"
+            else 27
+        )
+        if family == "antihydra":
+            seed = 8
+        expected = seed
+        for _ in range(steps):
+            expected = (
+                _physical(expected) if family == "collatz" else expected + expected // 2
+            )
+        arguments = [family, "--nth", str(steps), "--info", "metrics"]
+        if family == "collatz":
+            arguments += ["--seed", str(seed)]
+        else:
+            arguments += [
+                "--max-steps",
+                str(max(4096, steps)),
+                "--max-state-bits",
+                str(max(4096, 2 * steps)),
+            ]
+            if mahler:
+                arguments += ["--info", "mahler"]
+        request = parse_request(arguments)
+        assert request is not None
+        retained = NumberCompiler()
+        if mode == "repeat":
+            warm = QueryContext(request, retained)
+            warm.term.materialize(max_bits=1_000_000)
+            warm.information()
+            warm_payload = warm.term.payload
+            assert isinstance(
+                warm_payload, (AntihydraTermPayload, PoweredCollatzTermPayload)
+            )
+            collect_ledger_metrics(
+                warm_payload.term.ledger
+                if isinstance(warm_payload, AntihydraTermPayload)
+                else warm_payload.term._ledger
+            )
+        for trial in range(trials):
+            if mode == "cold":
+                NumberCompiler.clear_shared_cache()
+            compiler = (
+                retained
+                if mode == "repeat"
+                else NumberCompiler(
+                    shared_cache=mode != "bypass",
+                    max_cached_terms=0 if mode == "bypass" else 8,
+                )
+            )
+            start = perf_counter()
+            query = QueryContext(request, compiler)
+            projected = query.term
+            payload = projected.payload
+            assert isinstance(
+                payload, (AntihydraTermPayload, PoweredCollatzTermPayload)
+            )
+            ledger = (
+                payload.term.ledger
+                if isinstance(payload, AntihydraTermPayload)
+                else payload.term._ledger
+            )
+            before = dict(ledger.counters)
+            described = perf_counter()
+            value = projected.materialize(max_bits=1_000_000)
+            constructed = perf_counter()
+            information = query.information()
+            observed = perf_counter()
+            rendered = str(value)
+            emitted = perf_counter()
+            audit = collect_ledger_metrics(ledger)
+            audited = perf_counter()
+            if value != expected or not audit.resource_audit_complete:
+                raise AssertionError(
+                    (family, steps, "endpoint or resource audit mismatch")
+                )
+            if audit.resource_accounting_mismatch:
+                raise AssertionError((family, steps, "resource accounting mismatch"))
+            counters = dict(ledger.counters)
+            rows.append(
+                {
+                    "family": family,
+                    "index": steps,
+                    "index_unit": request.index_unit,
+                    "seed_bits": seed.bit_length(),
+                    "pattern": pattern if family == "collatz" else "source8",
+                    "mode": mode,
+                    "trial": trial,
+                    "mahler_requested": mahler,
+                    "value_bits": value.bit_length(),
+                    "emitted_decimal_digits": len(rendered),
+                    "descriptor_seconds": described - start,
+                    "construction_seconds": constructed - described,
+                    "observation_seconds": observed - constructed,
+                    "render_seconds": emitted - observed,
+                    "explicit_audit_seconds": audited - emitted,
+                    "metrics": information["metrics"],
+                    "work": counters,
+                    "incremental_work": {
+                        k: v - before.get(k, 0) for k, v in counters.items()
+                    },
+                    "entries": ledger.entries,
+                    "nodes": ledger.nodes,
+                    "peak_entries": ledger.peak_entries,
+                    "peak_nodes": ledger.peak_nodes,
+                }
+            )
+    after = source_fingerprint(ROOT)
+    if after != fingerprint:
+        raise AssertionError("source changed during temporal scaling probe")
+    return {
+        "source_before": fingerprint,
+        "source_after": after,
+        "scope": "public query in warm interpreter; full audit timed separately; finite workload evidence",
+        "timing_scope": {
+            "construction_seconds": "source-image construction plus exact endpoint demand",
+            "render_seconds": "decimal conversion of the demanded integer",
+            "incremental_work": "after descriptor creation; cumulative work includes descriptor costs",
+        },
+        "rows": rows,
+    }
+
+
+def limb_projection(
+    indices: tuple[int, ...],
+    trials: int,
+    pattern: str,
+    limb_widths: tuple[int, ...],
+    limb_index: int,
+) -> dict[str, object]:
+    """Compare the public batched limb against independent binary payloads.
+
+    Each timed side owns a fresh term and source image. The bounded scalar
+    reference is evaluated before timing. These observations measure demand
+    work after construction; they do not certify a faster source constructor.
+    """
+    # The payload imports the radix provider lazily. Exclude one-time Python
+    # module loading from per-term demand work without warming any term/cache.
+    import_module("number_compiler.projection.lazy_radix")
+    fingerprint = source_fingerprint(ROOT)
+    rows: list[dict[str, object]] = []
+    for steps in indices:
+        seed_bits = max(256, steps)
+        seed = (
+            (Random(407 + steps).getrandbits(seed_bits) | (1 << (seed_bits - 1)) | 1)
+            if pattern == "random"
+            else (1 << seed_bits) - 1
+        )
+        expected = _scalar(seed, steps)
+        if expected in (1, 2, 4):
+            raise AssertionError(("limb-probe-entered-cycle", steps, seed))
+        for limb_bits in limb_widths:
+            radix = 1 << limb_bits
+            if limb_index * limb_bits >= expected.bit_length():
+                raise ValueError(
+                    "limb index must address an active digit for every requested width"
+                )
+            expected_limb = (expected >> (limb_bits * limb_index)) & (radix - 1)
+            for trial in range(trials):
+                # Direct PoweredCollatzTerm instances own distinct ledgers and
+                # bypass the NumberCompiler process term cache by construction.
+                started = perf_counter()
+                limb_term = PoweredCollatzTerm(seed, steps)
+                limb_payload = PoweredCollatzTermPayload(limb_term, radix)
+                limb_described = perf_counter()
+                limb_term._source_image()
+                limb_constructed = perf_counter()
+                limb_before = dict(limb_term._ledger.counters)
+                limb_value = limb_payload.digit(limb_index)
+                limb_observed = perf_counter()
+                limb_cold = dict(limb_term._ledger.counters)
+                limb_warm_value = limb_payload.digit(limb_index)
+                limb_warmed = perf_counter()
+                limb_warm = dict(limb_term._ledger.counters)
+
+                bit_started = perf_counter()
+                bit_term = PoweredCollatzTerm(seed, steps)
+                bit_payload = PoweredCollatzTermPayload(bit_term, 2)
+                bit_described = perf_counter()
+                bit_term._source_image()
+                bit_constructed = perf_counter()
+                bit_before = dict(bit_term._ledger.counters)
+
+                def bit_assembly() -> int:
+                    value = 0
+                    for local_bit in range(limb_bits):
+                        position = limb_index * limb_bits + local_bit
+                        try:
+                            bit = bit_payload.digit(position)
+                        except IndexError:
+                            bit = 0
+                        value |= bit << local_bit
+                    return value
+
+                bit_value = bit_assembly()
+                bit_observed = perf_counter()
+                bit_cold = dict(bit_term._ledger.counters)
+                bit_warm_value = bit_assembly()
+                bit_warmed = perf_counter()
+                bit_warm = dict(bit_term._ledger.counters)
+                if (
+                    limb_value != expected_limb
+                    or bit_value != expected_limb
+                    or limb_warm_value != expected_limb
+                    or bit_warm_value != expected_limb
+                ):
+                    raise AssertionError(
+                        (
+                            steps,
+                            limb_bits,
+                            limb_index,
+                            expected_limb,
+                            limb_value,
+                            bit_value,
+                        )
+                    )
+
+                def delta(
+                    before: dict[str, int], after: dict[str, int], name: str
+                ) -> int:
+                    if name not in after:
+                        raise AssertionError(("missing-limb-work-counter", name))
+                    return after[name] - before.get(name, 0)
+
+                limb_requests = delta(
+                    limb_before, limb_cold, "direct_powered_point_queries"
+                )
+                bit_requests = delta(
+                    bit_before, bit_cold, "direct_powered_point_queries"
+                )
+                if limb_requests != 1 or bit_requests != limb_bits:
+                    raise AssertionError(
+                        (
+                            "limb-probe-missing-demand-work",
+                            steps,
+                            limb_requests,
+                            bit_requests,
+                        )
+                    )
+                rows.append(
+                    {
+                        "family": "collatz",
+                        "index": steps,
+                        "index_unit": "physical_step",
+                        "seed_bits": seed.bit_length(),
+                        "pattern": pattern,
+                        "trial": trial,
+                        "limb_bits": limb_bits,
+                        "limb_index": limb_index,
+                        "radix": radix,
+                        "expected_limb": expected_limb,
+                        "value_bits": expected.bit_length(),
+                        "cache_mode": "independent_fresh_terms_no_process_cache",
+                        "limb_descriptor_seconds": limb_described - started,
+                        "limb_construction_seconds": limb_constructed - limb_described,
+                        "limb_cold_projection_seconds": limb_observed
+                        - limb_constructed,
+                        "limb_warm_projection_seconds": limb_warmed - limb_observed,
+                        "binary_descriptor_seconds": bit_described - bit_started,
+                        "binary_construction_seconds": bit_constructed - bit_described,
+                        "binary_cold_assembly_seconds": bit_observed - bit_constructed,
+                        "binary_warm_assembly_seconds": bit_warmed - bit_observed,
+                        "limb_cold_projection_requests": limb_requests,
+                        "limb_warm_projection_requests": delta(
+                            limb_cold, limb_warm, "direct_powered_point_queries"
+                        ),
+                        "limb_cold_radix_evaluations": delta(
+                            limb_before, limb_cold, "collatz_image_radix_demands"
+                        ),
+                        "limb_warm_radix_evaluations": delta(
+                            limb_cold, limb_warm, "collatz_image_radix_demands"
+                        ),
+                        "limb_cold_operand_bits": delta(
+                            limb_before,
+                            limb_cold,
+                            "collatz_image_projection_operand_bits",
+                        ),
+                        "limb_warm_operand_bits": delta(
+                            limb_cold,
+                            limb_warm,
+                            "collatz_image_projection_operand_bits",
+                        ),
+                        "binary_cold_point_requests": bit_requests,
+                        "binary_warm_point_requests": delta(
+                            bit_cold, bit_warm, "direct_powered_point_queries"
+                        ),
+                        "binary_cold_operand_bits": delta(
+                            bit_before,
+                            bit_cold,
+                            "collatz_image_projection_operand_bits",
+                        ),
+                        "binary_warm_operand_bits": delta(
+                            bit_cold,
+                            bit_warm,
+                            "collatz_image_projection_operand_bits",
+                        ),
+                        "limb_construction_work": {
+                            key: value
+                            for key, value in limb_before.items()
+                            if key.startswith(("collatz_physical_", "source_image_"))
+                        },
+                        "binary_construction_work": {
+                            key: value
+                            for key, value in bit_before.items()
+                            if key.startswith(("collatz_physical_", "source_image_"))
+                        },
+                    }
+                )
+    after = source_fingerprint(ROOT)
+    if after != fingerprint:
+        raise AssertionError("source changed during limb projection probe")
+    return {
+        "source_before": fingerprint,
+        "source_after": after,
+        "scope": "fresh public Collatz payloads; independent literal oracle outside timings",
+        "construction_note": "source images constructed before projection timing; no CLI constructor speedup inferred",
+        "rows": rows,
+    }
+
+
 def main() -> int:
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("--balanced-scaling", action="store_true")
+    parser.add_argument("--limb-projection", action="store_true")
+    parser.add_argument("--family", choices=("collatz", "antihydra"), default="collatz")
+    parser.add_argument(
+        "--indices", nargs="+", type=int, default=(16, 32, 64, 128, 256, 512, 1024)
+    )
+    parser.add_argument("--trials", type=int, default=5)
+    parser.add_argument("--mode", choices=("cold", "repeat", "bypass"), default="cold")
+    parser.add_argument(
+        "--pattern", choices=("random", "repeating", "cycle"), default="random"
+    )
+    parser.add_argument("--mahler", action="store_true")
+    parser.add_argument("--limb-widths", nargs="+", type=int, default=(4, 32, 63))
+    parser.add_argument("--limb-index", type=int, default=0)
+    args = parser.parse_args()
+    if args.trials < 1 or any(n < 1 or n > 8192 for n in args.indices):
+        parser.error("positive trials and indices 1..8192 required")
+    if args.mahler and args.family != "antihydra":
+        parser.error("--mahler requires --family antihydra")
+    if args.limb_projection:
+        if args.balanced_scaling:
+            parser.error("--limb-projection conflicts with --balanced-scaling")
+        if args.family != "collatz" or args.mahler:
+            parser.error("--limb-projection requires Collatz without Mahler")
+        if args.pattern == "cycle":
+            parser.error("--limb-projection requires a noncycle source pattern")
+        if args.mode != "cold":
+            parser.error("--limb-projection always uses independent fresh terms")
+        if args.limb_index < 0 or args.limb_index > 8192:
+            parser.error("--limb-index must be in 0..8192")
+        if any(width < 1 or width > 63 for width in args.limb_widths):
+            parser.error("--limb-widths must be in 1..63")
+        print(
+            json.dumps(
+                limb_projection(
+                    tuple(args.indices),
+                    args.trials,
+                    args.pattern,
+                    tuple(dict.fromkeys(args.limb_widths)),
+                    args.limb_index,
+                ),
+                indent=2,
+            )
+        )
+        return 0
+    if args.balanced_scaling:
+        print(
+            json.dumps(
+                balanced_scaling(
+                    args.family,
+                    tuple(args.indices),
+                    args.trials,
+                    args.mode,
+                    args.pattern,
+                    args.mahler,
+                ),
+                indent=2,
+            )
+        )
+        return 0
     result = run_probe()
     out = ROOT / "results" / "collatz_temporal_power_metrics.json"
     out.parent.mkdir(exist_ok=True)

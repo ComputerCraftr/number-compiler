@@ -57,3 +57,21 @@ The schema-7 presentation assertions map to the same captured ledger's
 `temporal_diagnostics` and `resources`; detailed inventory checks remain in
 API tests. Positive temporal cutover assertions remain enabled and unchanged
 apart from their schema version.
+
+Comma metrics distinguish `cycle_rule_evaluations` (closed-form arithmetic)
+from represented literal transitions, and boundary-template publications from
+source-bound applications. `evaluated_transitions` counts actual scalar step
+evaluations, including failed attempts; a powered application or relative cache
+hit never increments it by its represented duration. `seam_predicate_check_bound` is a conservative count
+of candidate checks, not an observed branch count. Streaming reports emitted
+digits and peak logical workspace slots/integer bits; those bits are not a
+Python heap-byte measurement. Reading metrics never constructs a macro or
+verifies a certificate.
+
+For A367620, `--no-value --info certificate` reports evidence availability
+without checking the current forest. `runtime_verified` describes admission
+already performed by that query; a metadata-only request reports false. Value
+admission remains mandatory and separate until the boundary-quotient cutover
+passes its proof and consumer gates.
+Digit-stream admission runs at first consumption. Resetting the shared cache
+during consumption invalidates that stream before its next digit is emitted.

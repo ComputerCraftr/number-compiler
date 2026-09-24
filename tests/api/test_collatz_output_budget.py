@@ -100,7 +100,7 @@ def test_symbolic_cycle_extent_is_not_charged_as_allocated_operand_bits() -> Non
     counters = term._ledger.counters
     assert 0 < counters["collatz_physical_leaf_steps"] <= 256
     for name in (
-        "transport_operand_bits",
+        "transient_leaf_operand_bits",
         "transport_exact_operand_bits",
         "cycle_repeat_operand_bits",
     ):

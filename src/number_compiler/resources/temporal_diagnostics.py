@@ -89,6 +89,17 @@ class TemporalFamilyWork:
     bounded_base_steps: int | None
     macro_compositions: int | None
     operand_bits: tuple[tuple[str, int], ...]
+    transient_leaf_steps: int | None = None
+    balanced_effect_compositions: int | None = None
+    balanced_macro_compositions: int | None = None
+    saturated_support_publications: int | None = None
+    composite_cutover_chunks: int | None = None
+    composite_cutover_publications: int | None = None
+    balanced_effect_memo_lookups: int | None = None
+    balanced_effect_memo_hits: int | None = None
+    balanced_effect_memo_misses: int | None = None
+    balanced_effect_memo_publications: int | None = None
+    balanced_effect_memo_evictions: int | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -99,13 +110,30 @@ class TemporalCommaWork:
     binary_compositions: int | None = None
     transfer_constructions: int | None = None
     transfer_phase_terms: int | None = None
+    cycle_rule_evaluations: int | None = None
     child_candidate_checks: int | None = None
+    seam_predicate_check_bound: int | None = None
     operand_bits: int | None = None
     represented_phase_cycles: int | None = None
     powered_image_applications: int | None = None
     represented_transitions: int | None = None
     evaluated_transitions: int | None = None
     seam_steps: int | None = None
+    relative_guard_checks: int | None = None
+    relative_cycle_rebindings: int | None = None
+    boundary_template_hits: int | None = None
+    boundary_template_misses: int | None = None
+    boundary_template_publications: int | None = None
+    boundary_template_retained_nodes: int | None = None
+    boundary_seal_checks: int | None = None
+    boundary_seal_retained_slots: int | None = None
+    boundary_seal_retained_integer_bits: int | None = None
+    boundary_prefix_applications: int | None = None
+    boundary_represented_transitions: int | None = None
+    stream_requests: int | None = None
+    stream_emitted_digits: int | None = None
+    stream_workspace_peak_slots: int | None = None
+    stream_workspace_peak_integer_bits: int | None = None
     certificate_operations: int | None = None
     certificate_sector_entries: int | None = None
     certificate_boundary_classifications: int | None = None
@@ -248,6 +276,17 @@ def collect_temporal_diagnostics(
                 _count(counters, f"{prefix}_macro_bounded_base_steps"),
                 _count(counters, f"{prefix}_macro_compositions"),
                 family_bits,
+                _count(counters, f"{prefix}_transient_leaf_steps"),
+                _count(counters, f"{prefix}_balanced_effect_compositions"),
+                _count(counters, f"{prefix}_balanced_macro_compositions"),
+                _count(counters, f"{prefix}_saturated_support_publications"),
+                _count(counters, f"{prefix}_composite_cutover_chunks"),
+                _count(counters, f"{prefix}_composite_cutover_publications"),
+                _count(counters, f"{prefix}_balanced_effect_memo_lookups"),
+                _count(counters, f"{prefix}_balanced_effect_memo_hits"),
+                _count(counters, f"{prefix}_balanced_effect_memo_misses"),
+                _count(counters, f"{prefix}_balanced_effect_memo_publications"),
+                _count(counters, f"{prefix}_balanced_effect_memo_evictions"),
             )
         )
 
@@ -348,7 +387,9 @@ def collect_temporal_diagnostics(
             binary_compositions=_count(counters, "comma_binary_composition_work"),
             transfer_constructions=_count(counters, "comma_transfer_constructions"),
             transfer_phase_terms=_count(counters, "comma_transfer_phase_terms"),
+            cycle_rule_evaluations=_count(counters, "comma_cycle_rule_evaluations"),
             child_candidate_checks=_count(counters, "comma_child_candidate_checks"),
+            seam_predicate_check_bound=_count(counters, "comma_seam_predicate_checks"),
             operand_bits=_count(counters, "comma_operand_bit_work"),
             represented_phase_cycles=_count(counters, "comma_phase_cycles"),
             powered_image_applications=_count(
@@ -357,6 +398,39 @@ def collect_temporal_diagnostics(
             represented_transitions=_count(counters, "comma_represented_transitions"),
             evaluated_transitions=_count(counters, "comma_evaluated_transitions"),
             seam_steps=_count(counters, "comma_scalar_seam_steps"),
+            relative_guard_checks=_count(counters, "comma_relative_guard_checks"),
+            relative_cycle_rebindings=_count(
+                counters, "comma_relative_cycle_rebindings"
+            ),
+            boundary_template_hits=_count(counters, "comma_boundary_template_hits"),
+            boundary_template_misses=_count(counters, "comma_boundary_template_misses"),
+            boundary_template_publications=_count(
+                counters, "comma_boundary_template_publications"
+            ),
+            boundary_template_retained_nodes=_count(
+                counters, "comma_boundary_template_retained_nodes"
+            ),
+            boundary_seal_checks=_count(counters, "comma_boundary_seal_checks"),
+            boundary_seal_retained_slots=_count(
+                counters, "comma_boundary_seal_retained_slots"
+            ),
+            boundary_seal_retained_integer_bits=_count(
+                counters, "comma_boundary_seal_retained_integer_bits"
+            ),
+            boundary_prefix_applications=_count(
+                counters, "comma_boundary_prefix_applications"
+            ),
+            boundary_represented_transitions=_count(
+                counters, "comma_boundary_represented_transitions"
+            ),
+            stream_requests=_count(counters, "comma_stream_requests"),
+            stream_emitted_digits=_count(counters, "comma_stream_emitted_digits"),
+            stream_workspace_peak_slots=_count(
+                counters, "comma_stream_workspace_peak_slots"
+            ),
+            stream_workspace_peak_integer_bits=_count(
+                counters, "comma_stream_workspace_peak_integer_bits"
+            ),
             certificate_operations=_count(counters, "comma_certificate_work"),
             certificate_sector_entries=_count(
                 counters, "comma_certificate_sector_entries"

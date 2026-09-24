@@ -99,7 +99,7 @@ def test_public_certificate_rejects_beyond_checked_prefix() -> None:
     with pytest.raises(UnresolvedCommaTerm) as error:
         require_certified_index(beyond, ledger, 1_000_000)
     assert error.value.diagnostic()["requested_index"] == beyond
-    assert ledger.counters == {"comma_certificate_work": 2}
+    assert ledger.counters == {"comma_certificate_work": 1}
 
 
 def test_right_fork_closed_region_certificate_is_independently_checked(

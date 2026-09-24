@@ -44,15 +44,16 @@ def test_former_134m_request_fixture_is_bounded_block_work() -> None:
     assert counters.get("radix_provider_digit_evaluations", 0) == 13
     assert counters.get("radix_provider_digit_requests", 0) == 14
     assert counters.get("radix_source_bit_visits", 0) == 0
-    assert counters.get("tile_radix_interface_observations", 0) > 0
+    assert counters.get("collatz_image_radix_demands", 0) > 0
+    assert counters.get("collatz_image_projection_operand_bits", 0) > 0
+    assert counters.get("source_image_publications", 0) > 0
     assert counters.get("concrete_virtual_interface_evaluations", 0) == 0
     assert counters.get("higher_runtime_summary_publications", 0) == 0
     observation = term._radix_projections[3]._tile_observation
-    assert observation is not None
-    assert all(application._root is None for application in observation._apps.values())
-    assert counters.get("radix_limb_operations", 0) > counters.get(
-        "radix_source_bit_visits", 0
-    )
+    assert observation is None
+    assert term._power is None
+    assert len(term._compiler.nodes) == 1
+    assert counters.get("source_image_primitive_applications", 0) > 0
     assert counters.get("microblock_entry_high_water", 0) <= 64
     assert term._microblocks.payload_bytes <= term._microblocks.MAX_PAYLOAD_BYTES
     assert term.metrics().resource_audit_complete == 1

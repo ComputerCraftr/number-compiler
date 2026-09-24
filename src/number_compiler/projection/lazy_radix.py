@@ -76,10 +76,8 @@ class RadixProjection:
             OwnedMemo(ledger, fused_owner, evictable=True)
         )
 
-    def _block_program(self, term: PoweredCollatzTerm) -> ActionProgramID:
-        if term.effect is None:
-            raise ValueError("block radix projection requires a positive powered term")
-        return term._compiler.reference(term.effect)
+    def _source_image_program(self, term: PoweredCollatzTerm) -> ActionProgramID:
+        return term._source_image_program()
 
     def _provider_digit(self, term: PoweredCollatzTerm, index: int) -> int:
         """Observe one digit through a division action in the shared scheduler.
@@ -88,8 +86,14 @@ class RadixProjection:
         reused by adjacent observations. No continuation/provider backend or
         separate flat quotient word is available here.
         """
+        workspace = term._source_image()
         key = MicroblockKey(
-            self._block_program(term), self.radix, index + 1, 0, "remainder"
+            self._source_image_program(term),
+            self.radix,
+            index + 1,
+            0,
+            "remainder",
+            source_scope=workspace.owner,
         )
         self.ledger.bump("radix_provider_digit_requests")
         cached = self._microblocks.get(key)
@@ -297,21 +301,10 @@ def collatz_radix_digit(term: PoweredCollatzTerm, radix: int, index: int) -> int
         raise IndexError(index)
     term._ledger.bump("radix_observations")
     if radix & (radix - 1) == 0:
-        limb_bits = radix.bit_length() - 1
-        start = index * limb_bits
-        if start >= width:
+        symbol = term._point_radix_symbol(radix, index)
+        if symbol == radix:
             raise IndexError(index)
-        result = 0
-        for position in range(min(limb_bits, width - start)):
-            symbol = term._point_symbol(start + position)
-            if symbol == 2:
-                if position == 0:
-                    raise IndexError(index)
-                # The limb starts inside the value; its high blank cells are
-                # zero padding. No complete-width observation is necessary.
-                break
-            result = term._ledger.observe_arithmetic(result | (symbol << position))
-        return result
+        return term._ledger.observe_arithmetic(symbol)
     projection = term._radix_projections.get(radix)
     if projection is None:
         owner = term._ledger.register(

@@ -256,22 +256,19 @@ class AntihydraTermPayload:
 
     def materialize(self, *, max_bits: int) -> int:
         max_bits = require_integer(max_bits, "output bit cap", 0)
-        value = self.term.result().h
+        value = self.term.value()
         if value.bit_length() > max_bits:
             raise ValueError((value.bit_length(), max_bits))
         return value
 
     def digits(self) -> tuple[int, ...]:
-        value = self.term.result().h
+        value = self.term.value()
         return digits_lsd(value, 2)
 
     @source_reads_only
     def digit(self, index: int) -> int:
         index = require_integer(index, "digit coordinate")
-        value = self.term.result().h
-        if not 0 <= index < max(1, value.bit_length()):
-            raise IndexError(index)
-        return (value >> index) & 1
+        return self.term.digit(index)
 
     def info(self) -> dict[str, object]:
         result = self.term.result()

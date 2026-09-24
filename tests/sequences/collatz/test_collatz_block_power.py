@@ -35,18 +35,25 @@ def test_collatz_powered_point_uses_admitted_source_image_without_replay() -> No
     metrics = term.metrics()
     assert metrics.temporal_leaf_applications == 0
     assert metrics.direct_powered_point_queries == 1
-    assert metrics.operator_nodes <= 2 * (256).bit_length()
-    assert metrics.compose_operations <= 2 * (256).bit_length()
-    # The compatibility descriptor above is not the executor. Check actual
-    # source-image construction and bounded-base work as well as the digit.
+    assert metrics.operator_nodes == 0
+    assert metrics.compose_operations == 0
+    assert term._power is None
+    assert len(term._compiler.nodes) == 1
+    # The exact digit is owned by the source image; no compatibility
+    # BlockPower descriptor or scheduler child traversal is constructed.
     pairs = 256 // 2
     assert term.maximum_width == (
         (term.seed + 2).bit_length() + (19 * pairs + 31) // 32 + 2
     )
     counters = term._ledger.snapshot().counters
-    assert counters["collatz_physical_macro_bounded_base_steps"] > 0
+    assert counters["collatz_physical_transient_leaf_steps"] > 0
     assert counters["source_image_postorder_frames"] > 0
-    assert counters["source_image_primitive_applications"] > 0
+    assert counters.get("source_image_primitive_applications", 0) == 0
+    assert counters.get("source_image_demanded_composite_applications", 0) == 1
+    workspace = term._workspace
+    assert workspace is not None
+    assert len(workspace.support) == 1
+    assert workspace.support[0].saturated
     from devtools.benchmarks.collatz_temporal_power_probe import _source_image_work
 
     source_work, operand_bits, seal_bytes = _source_image_work(metrics)
@@ -105,6 +112,33 @@ def test_collatz_recursive_images_do_not_use_retired_spatial_or_replay_paths(
     counters = term._ledger.snapshot().counters
     assert counters.get("higher_observation_fallback", 0) == 0
     assert counters.get("whole_word_symbol_visits", 0) == 0
+
+
+@pytest.mark.validation
+def test_high_entropy_collatz_point_uses_balanced_source_cylinder() -> None:
+    """A cold N-bit source publishes one root and charges balanced precision."""
+    steps = 4096
+    rng = random.Random(0xF50B1A)
+    seed = (1 << (steps - 1)) | rng.getrandbits(steps - 1) | 1
+    term = PoweredCollatzTerm(seed, steps)
+    assert term.digit(0) in (0, 1)
+    counters = term._ledger.counters
+    leaves = (steps + 63) // 64
+    assert counters.get("collatz_physical_composite_cutover_chunks", 0) == 0
+    assert counters["collatz_physical_balanced_effect_compositions"] <= leaves
+    assert counters["collatz_physical_balanced_effect_composition_operand_bits"] <= (
+        2 * steps * steps.bit_length()
+    )
+    assert counters["collatz_physical_transient_leaf_steps"] == steps
+    assert counters["collatz_physical_transient_leaf_operand_bits"] > 0
+    assert counters["collatz_physical_balanced_stack_frames"] > 0
+    assert term._power is None
+    assert len(term._compiler.nodes) == 1
+    workspace = term._workspace
+    assert workspace is not None
+    assert len(workspace.support) == 1
+    assert workspace.support[0].saturated
+    assert not workspace.balanced_stack
 
 
 @pytest.mark.validation

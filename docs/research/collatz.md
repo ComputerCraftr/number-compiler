@@ -1,7 +1,8 @@
 # Collatz physical time, events, and Hensel cylinders
 
-Status: **Finite physical/event laws are checked; general source-discovery and
-executable refinement bounds remain open.**
+Status: **Finite physical/event laws and the numerical balanced worklist are
+checked; Python publication refinement and general construction-cost bounds
+remain open.**
 
 ## Reading guide
 
@@ -9,6 +10,106 @@ executable refinement bounds remain open.**
 - **Checked theorem:** finite source cylinders, Hensel transport and physical/event refinements use the specified source, precision and action.
 - **Implemented construction:** physical terms and event observations consume authenticated source images.
 - **Open obligation:** exact finite output does not establish convergence or cheap construction at arbitrary horizons.
+
+## Balanced physical source-image construction
+
+**Implemented:** a composed physical action applies directly to its admitted
+source cylinder. Balanced low-residue substitution transports the right child
+through the left affine effect. Digit-only publication retains one saturated
+support root; requested branch support remains a separate charged demand.
+Antihydra uses the same constructor with its own law and retains the support
+needed by guarded consumers. Mahler reads that admitted Antihydra image.
+
+**Cost scope:** bounded leaves still classify source-dependent branches.
+Balanced composition removes growing-prefix recomposition; the sum of operand
+bit lengths is distinct from Python integer multiplication complexity and
+wall time. Constant root count does not imply constant transient work/storage.
+Cold, repeated, cache-bypassed and explicit audit costs must be measured apart.
+
+**Proof scope:** the [balanced dyadic refinement map](../proofs/balanced-dyadic-refinement.md)
+connects the executable postorder model, exact bounded memo and numerical
+source transport to their production counterparts. The same arithmetic owner
+supplies finite Collatz endpoints, Antihydra minimum-prefix safety and Mahler's
+demanded associated action. Python handle publication, retained-support IDs,
+exact-cycle admission and bit/storage cost refinement remain separate.
+The finite parity bijection concerns normalized odd steps `(3*x+1)/2`,
+not ordinary physical steps, whose branch words cannot contain `11`.
+
+[Integration, patch provenance and measured scope](../../results/current/2026-W39/README.md#balanced-dyadic-temporal-cutover).
+
+### Shifted parity germs
+
+For the normalized map `H(x) = x/2` (even) or `(3*x+1)/2` (odd),
+let `W` be an **already source-bound** shifted parity cursor. At ordinary
+physical phase zero, low `w` bits equal `Q_inverse(W mod 2^w)`.
+After the odd tick but before its forced division, they equal
+`2 * Q_inverse((W >> 1) mod 2^(w-1)) mod 2^w` for `w > 0`.
+Width zero returns zero; phase one's least significant bit is forced zero.
+Consequently the phase-zero bit at position `p` needs `p+1` parity symbols;
+phase one needs the pending symbol plus `p` tail symbols for `p >= 1`.
+
+- **Implemented arithmetic:** `collatz_shifted_parity_residue` masks before
+  shifting and uses the shared odd-gain modular inverse. It consumes a supplied
+  finite cursor; it does not admit that cursor as a production source image.
+- **Separate guard:** a low residue cannot distinguish an active zero cell
+  from exterior blank. Sources `1` and `33` have the same five-symbol germ
+  and residue, but position four is blank only for source `1`.
+- **Open constructor obligation:** source-to-shifted-cursor construction,
+  physical weighted selection and the Archimedean exterior guard must all be
+  obtained without rebuilding the full transfer or replaying source branches.
+  Calling the scalar `collatz_parity_word` helper would not discharge this.
+- **Family distinction:** Antihydra's arithmetic has gains `(3,3)`, offsets
+  `(0,-1)`, so its inverse uses position-dependent powers of three, unlike
+  Collatz's popcount powers. Centered Mahler uses `(3,3)` and `(0,1)`;
+  its positivity consumer remains distinct from physical ledger safety.
+
+The [refinement map](../proofs/balanced-dyadic-refinement.md) and
+[implementation record](../../results/current/2026-W39/README.md#shifted-parity-germs-and-batched-limbs)
+separate numeric proof, projection savings and remaining source construction.
+
+### Powered boundary germs and precision
+
+**Implemented spatial consumer:** the shared
+[affine point germ](../../src/number_compiler/arithmetic/fields/point_germ.py)
+represents blank below a cutoff and the top bit of an affine residue above it.
+Normalization removes even multiplier factors and identifies the exact
+reflection `(a,c) ~ (-a, 2^(w-1)-1-c)` modulo `2^w`.
+Positive affine pullback transports both the periodic bit and the cutoff;
+`2Y`, `2Y+1` and `6Y+3` require no enumerated alphabet or source-reading DFA.
+Collatz and Antihydra point consumers derive this observation from their
+authenticated dyadic images. It neither replaces those images nor admits a
+future action. Independent bounded tests cover normalization and pullback;
+an Isabelle refinement of this normalizer remains open.
+
+**Counterexample scope:** `27Y+2` and `27Y+14` have the same current bit-one
+germ, but their next physical images at `Y=0` are `1` and `7`, respectively
+blank and one at that coordinate. This rejects current-point equality as
+temporal identity, not recursive source-parameterized demand grammars.
+The downloaded flat future DFA and reverse finite-reader experiments remain
+references; their state growth is not imported into production.
+The later recursive patch avoids that flat DFA but permits appending time
+after source information has been erased into a terminal point leaf. The
+weekly record gives an exact failing call and distinguishes it from the
+still-open source-bound recursive construction.
+
+[Selective import, input fingerprints and demand measurements](../../results/current/2026-W39/README.md#affine-point-germ-consumers).
+
+- **Checked theorem:** `Collatz_Reduced_Precision` proves that, for `n` physical
+  steps containing `e` even steps, adding `2^min(n,e+1) * h` to the source
+  (`h` natural) preserves its complete finite branch/effect and safety fields.
+  Odd physical steps consume no source parity bit. This is a high-fiber law,
+  not a minimal quotient or an implementation of reduced-domain memo reuse.
+- **Finite experiment:** actual production D2–D64 effects pass chronological
+  square, high-fiber and safety checks. A candidate retaining counts, minimum
+  and three edge bits loses skew-offset information. Distinct exact source
+  occurrences remain inputs to any shared transformer; their different future
+  effects alone are not a failure of occurrence-parameterized composition.
+- **Performance scope:** a bounded leaf-only sample found no additional reuse
+  from reduced precision. A proposed linear scan was therefore not installed.
+  Exact memo keys remain source-cylinder bound; no production minimality or
+  new asymptotic bound is claimed.
+
+[Corpora, collision witnesses and cost measurements](../../results/current/2026-W39/README.md#powered-boundary-germ-audit).
 
 ## Saturated finite safety and source binding
 

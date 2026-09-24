@@ -15,9 +15,10 @@ is a finite two-sided digit transducer on an LSD-first binary tape:
 * blank padding is a third alphabet symbol and is never part of semantic digit
   content.
 
-Consequently the atom is source-independent and can be squared by the same
-canonical compiler algebra used by reverse/add.  No parity itinerary or
-whole-state successor chain is discovered while constructing ``C**n``.
+The atom and its compatibility power descriptor are source-independent.
+Term observations use the admitted physical source-image constructor, whose
+balanced low-residue leaves still perform source-dependent branch discovery.
+Descriptor construction alone is not evidence of a cheap observed endpoint.
 """
 
 from __future__ import annotations
@@ -37,7 +38,10 @@ from number_compiler.arithmetic.contracts.exact_tree_context import (
     source_reads_only,
 )
 from number_compiler.arithmetic.contracts.input_validation import require_integer
-from number_compiler.arithmetic.contracts.scoped_handles import ExactSource
+from number_compiler.arithmetic.contracts.scoped_handles import (
+    ActionProgramID,
+    ExactSource,
+)
 from number_compiler.arithmetic.fields.radix import (
     bit_width,
     digits_lsd,
@@ -276,9 +280,12 @@ class PoweredCollatzTerm:
         "_max_context_nodes",
         "_microblocks",
         "_power",
+        "_point_program",
         "_radix_projections",
         "_source_construction",
         "_workspace",
+        "_workspace_binding",
+        "_width_bound",
         "compose_operations",
         "seed",
         "seed_digits",
@@ -302,16 +309,28 @@ class PoweredCollatzTerm:
         self.seed = seed
         self.steps = steps
         self.seed_digits = tuple(map(int, digits_lsd(seed, 2)))
+        pairs, remainder = divmod(steps, 2)
+        pair_growth = (19 * pairs + 31) // 32
+        bound = (
+            min(
+                len(self.seed_digits) + pairs,
+                (seed + 2).bit_length() + pair_growth,
+            )
+            + 2 * remainder
+            + 2
+        )
+        self._width_bound = (seed, steps, bound)
+        self._ledger.bump("collatz_width_bound_constructions")
+        self._ledger.bump("collatz_width_bound_operand_bits", seed.bit_length() + 2)
         self._source_construction = OriginalSourceConstruction(
-            ExactSource(
-                self.seed_digits, 2, blank=2, extent=self.maximum_width, alphabet_size=2
-            ),
+            ExactSource(self.seed_digits, 2, blank=2, extent=bound, alphabet_size=2),
         )
         self._ledger.register_execution_root(self)
         self._compiler = LazyCompiler(self._ledger)
         self._max_context_nodes = max_context_nodes
         self._max_cache_entries = max_cache_entries
         self._workspace: CollatzPhysicalImageWorkspace | None = None
+        self._workspace_binding: tuple[object, object, object] | None = None
         radix_owner = self._ledger.register(
             "radix-applications", "application_index", "INDEX_OWNED"
         )
@@ -327,6 +346,7 @@ class PoweredCollatzTerm:
             self._compiler.resolve,
         )
         self._power: BlockPower | None = None
+        self._point_program: ActionProgramID | None = None
         self._effect: BlockEffect | None = None
         self.compose_operations = 0
         self.syntax_depth_bound = 0
@@ -364,13 +384,16 @@ class PoweredCollatzTerm:
         # resulting rational exponent bound is exact integer metadata: it
         # avoids both materializing ``3**pairs`` and allocating the much looser
         # half-step padding that used to dominate cold point observations.
-        pairs, remainder = divmod(self.steps, 2)
-        pair_growth = (19 * pairs + 31) // 32
-        paired_bound = min(
-            len(self.seed_digits) + pairs,
-            (self.seed + 2).bit_length() + pair_growth,
-        )
-        return paired_bound + 2 * remainder + 2
+        # Compute the source-sized addition once at admission, not once per
+        # emitted point. Preserve the original source/action binding on reuse.
+        seed, steps, bound = self._width_bound
+        if (
+            self.seed != seed
+            or self.steps != steps
+            or bound != self._source_construction.source.extent
+        ):
+            raise ValueError("Collatz width bound belongs to another source/action")
+        return bound
 
     @property
     def operator_nodes(self) -> int:
@@ -393,7 +416,12 @@ class PoweredCollatzTerm:
         workspace = self._workspace
         if workspace is None:
             workspace = CollatzPhysicalImageWorkspace(
-                self._ledger, self.seed, self.steps
+                self._ledger, self.seed, self.steps, retain_chronology=False
+            )
+            self._workspace_binding = (
+                workspace.root_source,
+                workspace.root_action,
+                workspace.root_payload,
             )
             self._workspace = workspace
         if (
@@ -402,8 +430,20 @@ class PoweredCollatzTerm:
             or workspace.seed != self.seed
             or workspace.steps != self.steps
             or workspace.law != COLLATZ_PHYSICAL_LAW
+            or workspace.retain_chronological_support()
         ):
             raise ValueError("Collatz source image belongs to another term")
+        workspace.validate_source(workspace.root_source)
+        workspace.validate_action(workspace.root_action)
+        image = workspace.image_node(workspace.root_payload)
+        if (
+            self._workspace_binding
+            != (workspace.root_source, workspace.root_action, workspace.root_payload)
+            or image.source != workspace.root_source
+            or image.action != workspace.root_action
+            or image.summary.width != self.steps
+        ):
+            raise ValueError("Collatz image belongs to another source/action")
         return workspace
 
     def _source_numerator(self) -> tuple[int, int]:
@@ -436,6 +476,15 @@ class PoweredCollatzTerm:
 
     def _admitted_radix_digit(self, radix: int, position: int) -> int:
         """Extract an active digit without constructing the affine numerator."""
+        if radix == 2:
+            from number_compiler.hashlife.execution.dyadic_return_observers import (
+                binary_cell,
+            )
+
+            symbol = binary_cell(self._source_image(), position)
+            if symbol == 2:
+                raise _ExteriorRadixCoordinate(position)
+            return symbol
         transfer = self._source_image().saturated_summary().transfer
         numerator_bits = (
             max(
@@ -476,13 +525,33 @@ class PoweredCollatzTerm:
     @source_reads_only
     def _point_symbol(self, position: int) -> int:
         """Observe a binary cell, preserving the kernel's explicit blank symbol."""
+        return self._point_radix_symbol(2, position)
+
+    @source_reads_only
+    def _point_radix_symbol(self, radix: int, position: int) -> int:
+        """Observe a whole binary limb once; ``radix`` denotes exterior blank.
+
+        The shared affine threshold supplies the Archimedean guard. This
+        batches demanded bits without claiming a new shifted-Q constructor.
+        """
+        radix = require_integer(radix, "binary limb radix", 2, 1 << 63)
+        if radix & (radix - 1):
+            raise ValueError("binary limb radix must be a power of two")
         position = require_integer(position, "digit coordinate")
-        if not 0 <= position < self.maximum_width:
+        limb_bits = radix.bit_length() - 1
+        start = position * limb_bits
+        if position < 0 or start >= self.maximum_width:
             raise IndexError(position)
         if self.steps == 0:
-            if position >= len(self.seed_digits):
-                return 2
-            return int(self.seed_digits[position])
+            if start >= len(self.seed_digits):
+                return radix
+            value = 0
+            for offset in range(min(limb_bits, len(self.seed_digits) - start)):
+                value = self._ledger.observe_arithmetic(
+                    value | (self.seed_digits[start + offset] << offset)
+                )
+                self._ledger.bump("collatz_original_limb_source_reads")
+            return value
         from number_compiler.projection.microblock_cache import (
             ExactMicroblock,
             MicroblockKey,
@@ -490,12 +559,9 @@ class PoweredCollatzTerm:
 
         self._ledger.bump("direct_powered_point_queries")
         workspace = self._source_image()
-        effect = self.effect
-        if effect is None:
-            raise AssertionError("positive point without an action descriptor")
         key = MicroblockKey(
-            self._compiler.reference(effect),
-            2,
+            self._source_image_program(),
+            radix,
             0,
             position,
             "output",
@@ -503,19 +569,31 @@ class PoweredCollatzTerm:
         )
         cached = self._microblocks.get(key)
         if cached is not None:
-            if cached.encoded not in (0, 1, 2):
+            # Source/action/image authority was checked before the cache lookup.
+            if not 0 <= cached.encoded <= radix:
                 raise ValueError("cached Collatz point belongs to another alphabet")
             return cached.encoded
         try:
-            symbol = self._admitted_radix_digit(2, position)
+            symbol = self._admitted_radix_digit(radix, position)
         except _ExteriorRadixCoordinate:
-            symbol = 2
+            symbol = radix
         else:
             self._ledger.bump("collatz_image_radix_demands")
-            if symbol not in (0, 1):
-                raise AssertionError("binary source image produced an invalid symbol")
-        self._microblocks.put(key, ExactMicroblock(symbol, 2))
+            if not 0 <= symbol < radix:
+                raise AssertionError("source image produced an invalid limb")
+        self._microblocks.put(key, ExactMicroblock(symbol, limb_bits + 1))
         return symbol
+
+    def _source_image_program(self) -> ActionProgramID:
+        """Name cached digits without compiling a compatibility power DAG."""
+        if self.steps <= 0:
+            raise ValueError("source-image program requires a positive Collatz term")
+        program = self._point_program
+        if program is None:
+            atom = self._compiler.atom(CollatzPhysicalBlockEffect())
+            program = self._compiler.reference(atom)
+            self._point_program = program
+        return program
 
     @source_reads_only
     def digit(self, position: int) -> int:
@@ -528,6 +606,7 @@ class PoweredCollatzTerm:
     @source_reads_only
     def width(self) -> int:
         self._ledger.bump("temporal_length_requests")
+        _ = self.maximum_width  # Validate the original source/action binding.
         if self.steps == 0:
             return len(self.seed_digits)
         found = self._active_width
@@ -535,6 +614,8 @@ class PoweredCollatzTerm:
             numerator, divisor = self._source_numerator()
             found = max(1, numerator.bit_length() - (divisor.bit_length() - 1))
             self._active_width = found
+        else:
+            self._source_image()  # Cached extent is not live image authority.
         return found
 
     @property
@@ -612,6 +693,12 @@ class PoweredCollatzTerm:
             compose_operations=self.compose_operations,
             syntax_depth_bound=self.syntax_depth_bound,
             descriptor_bits=self.descriptor_bits,
+            # The source-image point path is intentionally index-free.  Export
+            # its explicit query counter directly instead of relying on the
+            # legacy HashLife index alias.
+            direct_powered_point_queries=self._ledger.counters.get(
+                "direct_powered_point_queries", 0
+            ),
             collatz_physical_factored_output_compilations=point.resource_work_counters.get(
                 "collatz_physical_factored_output_compilations", 0
             ),

@@ -11,6 +11,10 @@ from __future__ import annotations
 from dataclasses import fields
 from typing import TYPE_CHECKING
 
+from number_compiler.arithmetic.fields.skew_transfer import (
+    integer_dyadic_fiber_action,
+)
+
 if TYPE_CHECKING:
     from number_compiler.sequences.antihydra.projection_fragments import (
         ProjectionFragmentCache,
@@ -440,7 +444,25 @@ def audit_antihydra_payloads(
                             if root._segments_ready
                             else ()
                         )
-                        h = arithmetic_workspace.endpoint()
+                        # Audit the sealed image directly. Calling endpoint()
+                        # here would register an ordinary consumer demand and
+                        # repeat its aggregate projection during a read-only
+                        # payload audit.
+                        source_node = arithmetic_workspace.source_node(
+                            arithmetic_workspace.root_source
+                        )
+                        chart = integer_dyadic_fiber_action(
+                            summary.transfer,
+                            source_node.residue,
+                            source_node.precision,
+                        )
+                        ledger.bump(
+                            "antihydra_payload_audit_endpoint_operand_bits",
+                            max(1, abs(chart.multiplier).bit_length())
+                            + max(1, abs(chart.addend).bit_length())
+                            + max(1, source_node.lift.bit_length()),
+                        )
+                        h = chart.addend + chart.multiplier * source_node.lift
                         balance, minimum, start = (
                             summary.delta,
                             summary.minimum,

@@ -7,7 +7,7 @@ and converts demanded bounded leaves to the existing guarded roof consumer.
 
 from __future__ import annotations
 
-from collections.abc import Iterator
+from collections.abc import Hashable, Iterator
 
 from number_compiler.arithmetic.fields.consumer_pullback import (
     ExactRational,
@@ -25,6 +25,7 @@ from number_compiler.hashlife.execution.dyadic_return_images import (
 )
 from number_compiler.resources.ledger import ResourceLedger
 from number_compiler.hashlife.execution.source_bound_images import (
+    SourceImageCandidate,
     SourceImageDemand,
     SourceImageProjection,
     SourceImageView,
@@ -57,6 +58,31 @@ class AntihydraArithmeticImageWorkspace(DyadicReturnImageWorkspace):
                 raise ValueError("another source law")
         except (ValueError, TypeError, AttributeError) as error:
             raise ValueError("Antihydra arithmetic source image was changed") from error
+
+    def apply_composite(
+        self,
+        action: Hashable,
+        source: SourceImageView,
+        demand: SourceImageDemand | None,
+    ) -> SourceImageCandidate | None:
+        """Publish a complete return image from the admitted source cylinder.
+
+        The shared direct constructor retains chronological support for this
+        law. Guarded TM and directional consumers still need its bounded
+        branch words, while ordinary arithmetic and Mahler consume the same
+        complete image without asking the scheduler for midpoint images.
+        """
+        self.validate_action(action)
+        self.validate_payload(source.payload)
+        if (
+            demand not in (None, SourceImageDemand("physical-summary"))
+            or source.binding.action != self.identity
+            or type(action) is not DyadicReturnActionID
+        ):
+            return super().apply_composite(action, source, demand)
+        if self.action_node(action).width <= self.MAX_LEAF_STEPS:
+            return super().apply_composite(action, source, demand)
+        return self.complete_composite_candidate(action, source)
 
     def project(
         self, image: SourceImageView, demand: SourceImageDemand

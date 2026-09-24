@@ -18,15 +18,26 @@ and ledger queries. The skew and pinned centered `11` prefix determine the
 finite cap law. Source, action, extent, law and tail-offset checks remain
 required. Hensel is a separate observation; neither requests physical roofs.
 
+Binary point requests use the shared affine point germ with its independent
+blank cutoff, without materializing the arithmetic endpoint or requesting
+first-failure descent. Ordinary value output requests the endpoint directly;
+ledger, physical and Mahler information still consume the same admitted image
+through their own safety predicates. A current-point germ is not sufficient
+to replace that support or prove future safety. The
+[integration record](../../results/current/2026-W39/README.md#affine-point-germ-consumers)
+separates these demand savings from unchanged cold source discovery.
+
 The public aggregate omits support handles, while the scheduler retains support
 needed by physical consumers. The pinned source's Mahler margin fails at return
 two, where its Antihydra ledger remains safe. These predicates are distinct.
 
-**Proof scope:** finite associated-action laws and the pinned consumer are
-checked in `Associated_Action_Core` and `Antihydra_Mahler_Integration`; see the
-[proof index](../proofs.md#finite-saturated-threshold-actions).
-Python worklist/resource refinement and a source-global invariant remain open.
-Dated build and incremental-observation results are recorded separately.
+**Proof scope:** finite associated-action laws are checked in
+`Associated_Action_Core` and `Antihydra_Mahler_Integration`. The downstream
+`Balanced_Dyadic_Integration` connects the shared numerical worklist to actual
+Antihydra source bits, finite ledger guards and Mahler's demanded coefficients;
+see the [executable refinement map](../proofs/balanced-dyadic-refinement.md).
+Python publication/retained-ID refinement, resource bounds and a source-global
+invariant remain open. Dated validation belongs in the weekly record.
 
 [Implementation and validation record](../../results/current/2026-W39/README.md#one-scheduler-for-arithmetic-and-finite-mahler-safety).
 

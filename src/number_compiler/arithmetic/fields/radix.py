@@ -6,7 +6,7 @@ sequence transition and therefore cannot become a parallel semantic state.
 
 from __future__ import annotations
 
-from collections.abc import Iterable, Sequence
+from collections.abc import Callable, Generator, Iterable, Sequence
 
 
 def bit_width(value: int) -> int:
@@ -17,53 +17,113 @@ def bit_width(value: int) -> int:
     return max(1, value.bit_length())
 
 
-def digits_lsd(value: int, base: int, width: int | None = None) -> tuple[int, ...]:
-    """Canonical least-significant-first radix digits with optional zero extension."""
+def iter_digits_lsd(
+    value: int,
+    base: int,
+    *,
+    charge: Callable[[int], None] | None = None,
+    charge_bits: Callable[[int], None] | None = None,
+    observe_workspace: Callable[[int, int], None] | None = None,
+) -> Generator[int, None, None]:
+    """Stream canonical digits using balanced radix splits and bounded leaves.
+
+    Optional callbacks charge operations and operand-bit work before arithmetic.
+    Workspace observations give live helper slots and integer payload bits;
+    these are logical sizes, not Python heap-byte measurements. Closing the
+    generator releases its worklists and reports zero live helper storage.
+    """
     value, base = int(value), int(base)
     if value < 0 or base < 2:
         raise ValueError((value, base))
-    out: list[int] = []
-    if value < base:
-        out.append(value)
-    elif base & (base - 1) == 0:
-        digit_bits = base.bit_length() - 1
-        accumulator = available = 0
-        for byte in value.to_bytes((value.bit_length() + 7) // 8, "little"):
-            accumulator |= byte << available
-            available += 8
-            while available >= digit_bits:
-                out.append(accumulator & (base - 1))
-                accumulator >>= digit_bits
-                available -= digit_bits
-        if available:
-            out.append(accumulator)
-        while len(out) > 1 and out[-1] == 0:
-            out.pop()
-    else:
-        # Split at radix powers before extracting bounded leaves. A digit
-        # extraction never divides the entire remaining endpoint integer.
-        powers = [base**32]
-        while powers[-1] <= value:
-            powers.append(powers[-1] * powers[-1])
-        pending = [(value, len(powers) - 1, False)]
-        while pending:
-            part, level, padded = pending.pop()
-            if level:
-                high, low = divmod(part, powers[level - 1])
-                if high or padded:
-                    pending.append((high, level - 1, padded))
-                    pending.append((low, level - 1, True))
+
+    def work(bits: int, operations: int = 1) -> None:
+        if charge is not None:
+            charge(operations)
+        if charge_bits is not None:
+            charge_bits(bits)
+
+    powers: list[int] = []
+    pending: list[tuple[int, int, bool]] = []
+    try:
+        work(value.bit_length() + base.bit_length())
+        if value < base:
+            if observe_workspace is not None:
+                observe_workspace(1, value.bit_length())
+            yield value
+        elif base & (base - 1) == 0:
+            digit_bits = base.bit_length() - 1
+            remaining = (value.bit_length() + digit_bits - 1) // digit_bits
+            work(value.bit_length())
+            encoded = value.to_bytes((value.bit_length() + 7) // 8, "little")
+            if observe_workspace is not None:
+                observe_workspace(1, len(encoded) * 8 + 2 * digit_bits)
+            accumulator = available = 0
+            for byte in encoded:
+                work(available + 8)
+                accumulator |= byte << available
+                available += 8
+                while available >= digit_bits and remaining:
+                    work(available + digit_bits)
+                    digit = accumulator & (base - 1)
+                    accumulator >>= digit_bits
+                    available -= digit_bits
+                    remaining -= 1
+                    yield digit
+            if remaining:
+                work(available)
+                yield accumulator
+        else:
+            # The only single-digit divisions operate on at most 32 digits.
+            work(32 * base.bit_length())
+            powers.append(base**32)
+            power_bits = powers[0].bit_length()
+            while powers[-1] <= value:
+                work(2 * powers[-1].bit_length())
+                powers.append(powers[-1] * powers[-1])
+                power_bits += powers[-1].bit_length()
+            pending.append((value, len(powers) - 1, False))
+            pending_bits = value.bit_length()
+            while pending:
+                part, level, padded = pending.pop()
+                pending_bits -= part.bit_length()
+                if observe_workspace is not None:
+                    observe_workspace(
+                        len(powers) + len(pending) + 1,
+                        power_bits + pending_bits + part.bit_length(),
+                    )
+                work(part.bit_length() + level.bit_length())
+                if level:
+                    divisor = powers[level - 1]
+                    work(part.bit_length() + divisor.bit_length())
+                    high, low = divmod(part, divisor)
+                    if high or padded:
+                        pending.append((high, level - 1, padded))
+                        pending.append((low, level - 1, True))
+                        pending_bits += high.bit_length() + low.bit_length()
+                    else:
+                        pending.append((low, level - 1, False))
+                        pending_bits += low.bit_length()
                 else:
-                    pending.append((low, level - 1, False))
-            else:
-                start = len(out)
-                while part:
-                    part, digit = divmod(part, base)
-                    out.append(digit)
-                if padded:
-                    out.extend([0] * (32 - (len(out) - start)))
-    if not out:
-        out.append(0)
+                    emitted = 0
+                    while part:
+                        work(part.bit_length() + base.bit_length())
+                        part, digit = divmod(part, base)
+                        emitted += 1
+                        yield digit
+                    if padded:
+                        for _ in range(32 - emitted):
+                            work(1)
+                            yield 0
+    finally:
+        powers.clear()
+        pending.clear()
+        if observe_workspace is not None:
+            observe_workspace(0, 0)
+
+
+def digits_lsd(value: int, base: int, width: int | None = None) -> tuple[int, ...]:
+    """Canonical least-significant-first radix digits with optional zero extension."""
+    out = list(iter_digits_lsd(value, base))
     if width is not None:
         width = int(width)
         if width < len(out):

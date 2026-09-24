@@ -2,6 +2,8 @@ from random import Random
 
 import pytest
 
+from number_compiler.arithmetic.fields.two_adic import inverse_dyadic_parity_word
+from number_compiler.resources.ledger import ResourceLedger
 from number_compiler.sequences.collatz.parity import (
     CollatzParityCursor,
     CollatzParityTimeOperator,
@@ -9,12 +11,167 @@ from number_compiler.sequences.collatz.parity import (
     collatz_parity_inverse_residue,
     collatz_parity_inverse_residue_binomial,
     collatz_parity_word,
+    collatz_shifted_parity_residue,
     normalized_collatz,
     physical_collatz,
     pow3_mod_pow2_binomial,
     summarize_parity_word,
     valid_physical_branch_count,
 )
+
+
+def test_shared_odd_gain_inverse_covers_collatz_antihydra_and_centered_mahler() -> None:
+    for gains, offsets in (
+        ((1, 3), (0, 1)),
+        ((3, 3), (0, -1)),
+        ((3, 3), (0, 1)),
+    ):
+        for width in range(9):
+            seen = set()
+            for source in range(1 << width):
+                value = source
+                word = 0
+                for index in range(width):
+                    bit = value & 1
+                    word |= bit << index
+                    numerator = gains[bit] * value + offsets[bit]
+                    assert numerator % 2 == 0
+                    value = numerator // 2
+                seen.add(word)
+                assert (
+                    inverse_dyadic_parity_word(
+                        word, width, gains=gains, offsets=offsets
+                    )
+                    == source
+                )
+            assert len(seen) == 1 << width
+    with pytest.raises(ValueError, match="odd units"):
+        inverse_dyadic_parity_word(0, 1, gains=(2, 3), offsets=(0, 1))
+    with pytest.raises(ValueError, match="even"):
+        inverse_dyadic_parity_word(0, 1, gains=(1, 3), offsets=(1, 1))
+
+
+def test_shifted_parity_germ_matches_literal_physical_collatz() -> None:
+    rng = Random(0x6E4D)
+    ledger = ResourceLedger()
+    saw_phase_one = False
+    for _ in range(256):
+        seed = rng.randrange(1, 1 << 24)
+        ticks = rng.randrange(0, 128)
+        precision = rng.randrange(0, 17)
+        width = ticks + precision + 3
+        word = collatz_parity_word(seed, width)
+        cursor = advance_collatz_parity(CollatzParityCursor(word, width), ticks).cursor
+        saw_phase_one |= cursor.phase == 1
+        value = seed
+        for _ in range(ticks):
+            value = physical_collatz(value)
+        assert collatz_shifted_parity_residue(
+            cursor, precision, ledger=ledger
+        ) == value % (1 << precision)
+    assert saw_phase_one
+    assert ledger.counters["collatz_shifted_parity_germ_demands"] == 256
+    assert ledger.counters["collatz_shifted_parity_germ_symbol_reads"] > 0
+    assert ledger.counters["collatz_shifted_parity_germ_operand_bits"] > 0
+
+
+def test_supplied_parity_cursor_does_not_allocate_its_zero_padding() -> None:
+    cursor = CollatzParityCursor(3, 1 << 100)
+    assert collatz_shifted_parity_residue(cursor, 2, ledger=ResourceLedger()) == 3
+    with pytest.raises(TypeError, match="exact integers"):
+        CollatzParityCursor(1, True)
+
+
+def test_shifted_parity_germ_phase_and_precision_are_exact() -> None:
+    ledger = ResourceLedger()
+    assert (
+        collatz_shifted_parity_residue(CollatzParityCursor(0, 0), 0, ledger=ledger) == 0
+    )
+    assert (
+        collatz_shifted_parity_residue(CollatzParityCursor(1, 1, 1), 1, ledger=ledger)
+        == 0
+    )
+    phase_zero_reads = ledger.counters.get(
+        "collatz_shifted_parity_germ_symbol_reads", 0
+    )
+    assert (
+        collatz_shifted_parity_residue(CollatzParityCursor(1, 1, 1), 0, ledger=ledger)
+        == 0
+    )
+    assert ledger.counters["collatz_shifted_parity_germ_symbol_reads"] == (
+        phase_zero_reads + 1
+    )
+    # A long supplied prefix contributes only its demanded low germ.
+    assert collatz_shifted_parity_residue(
+        CollatzParityCursor((1 << 200_000) | 0b1011, 200_001, 1),
+        4,
+        ledger=ledger,
+    ) == collatz_shifted_parity_residue(
+        CollatzParityCursor(0b1011, 4, 1), 4, ledger=ledger
+    )
+    with pytest.raises(ValueError, match="precision"):
+        collatz_shifted_parity_residue(CollatzParityCursor(1, 1, 1), 2, ledger=ledger)
+    for bit in range(9):
+        width = bit + 1
+        zero = collatz_shifted_parity_residue(
+            CollatzParityCursor(0, width), width, ledger=ledger
+        )
+        flipped = collatz_shifted_parity_residue(
+            CollatzParityCursor(1 << bit, width), width, ledger=ledger
+        )
+        assert ((zero ^ flipped) >> bit) & 1
+        if bit:
+            assert (1 & ((1 << bit) - 1)) == ((1 | (1 << bit)) & ((1 << bit) - 1))
+            pending = collatz_shifted_parity_residue(
+                CollatzParityCursor(1, width, 1), width, ledger=ledger
+            )
+            pending_flipped = collatz_shifted_parity_residue(
+                CollatzParityCursor(1 | (1 << bit), width, 1),
+                width,
+                ledger=ledger,
+            )
+            assert ((pending ^ pending_flipped) >> bit) & 1
+
+
+def test_shifted_parity_germ_cannot_decide_exterior_blank_from_low_bits() -> None:
+    p = 4
+    low, high = 1, 1 + (1 << (p + 1))
+    low_word = collatz_parity_word(low, p + 1)
+    high_word = collatz_parity_word(high, p + 1)
+    assert low_word == high_word
+    ledger = ResourceLedger()
+    assert collatz_shifted_parity_residue(
+        CollatzParityCursor(low_word, p + 1), p + 1, ledger=ledger
+    ) == collatz_shifted_parity_residue(
+        CollatzParityCursor(high_word, p + 1), p + 1, ledger=ledger
+    )
+    assert low.bit_length() <= p < high.bit_length()
+    assert ((low >> p) & 1) == ((high >> p) & 1) == 0
+
+
+def test_shifted_parity_germ_rejects_mutated_cursor_at_call_time() -> None:
+    ledger = ResourceLedger()
+    for field, forged in (
+        ("word", True),
+        ("width", True),
+        ("phase", True),
+        ("word", 1.0),
+        ("width", 1.0),
+    ):
+        cursor = CollatzParityCursor(1, 1, 1)
+        object.__setattr__(cursor, field, forged)
+        with pytest.raises(TypeError, match="exact integers"):
+            collatz_shifted_parity_residue(cursor, 1, ledger=ledger)
+    for field, forged in (
+        ("word", 2),
+        ("width", -1),
+        ("phase", 2),
+        ("word", 0),
+    ):
+        cursor = CollatzParityCursor(1, 1, 1)
+        object.__setattr__(cursor, field, forged)
+        with pytest.raises(ValueError, match="not canonical"):
+            collatz_shifted_parity_residue(cursor, 1, ledger=ledger)
 
 
 @pytest.mark.validation  # Exhaustive 2,046-residue dyadic-prefix bijection.

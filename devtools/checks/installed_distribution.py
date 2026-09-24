@@ -10,6 +10,7 @@ import sys
 import tempfile
 import zipfile
 from pathlib import Path
+from time import perf_counter
 
 
 def validate_wheel_contents(wheel: Path, source: Path) -> list[str]:
@@ -150,13 +151,15 @@ assert not any(name == 'devtools' or name.startswith('devtools.') for name in sy
 from number_compiler.api.cli import main
 from number_compiler.sequences.comma.power import CommaTerm
 assert CommaTerm(20000).materialize() == 1039404
+from unittest.mock import patch
 captured = StringIO()
-with redirect_stdout(captured):
-    assert main(['a367620', '--nth', '20000', '--no-value', '--info', 'certificate', '--format', 'json']) == 0
+with patch('number_compiler.sequences.comma.certificates._verify', side_effect=AssertionError('report replayed admission')):
+    with redirect_stdout(captured):
+        assert main(['a367620', '--nth', '20000', '--no-value', '--info', 'certificate', '--format', 'json']) == 0
 comma_status = json.loads(captured.getvalue())
 assert comma_status['index_unit'] == 'oeis_index'
 assert comma_status['value'] is None
-assert comma_status['info']['certificate']['runtime_verified'] is True
+assert comma_status['info']['certificate']['runtime_verified'] is False
 assert comma_status['info']['certificate']['isabelle_instance_checked'] is False
 captured = StringIO()
 with redirect_stdout(captured):
@@ -220,21 +223,45 @@ try:
 finally:
     CollatzSourcePublisher.publish = original_publish
 from number_compiler.hashlife.execution.dyadic_return_images import DyadicReturnImageWorkspace as Images
-original_reuse = Images.transport_reuse
+original_summary = Images.saturated_summary
 reuse_calls = []
-def traced_reuse(self, *args, **kwargs):
-    reuse_calls.append(1)
-    return original_reuse(self, *args, **kwargs)
-Images.transport_reuse = traced_reuse
+def traced_summary(self):
+    summary = original_summary(self)
+    reuse_calls.append(dict(self.ledger.counters))
+    return summary
+Images.saturated_summary = traced_summary
 try:
     captured = StringIO()
     with redirect_stdout(captured):
         assert main(['collatz', '--nth', '1024', '--seed', str(1 << 4096)]) == 0
     assert captured.getvalue().strip() == str(1 << 3072)
     assert reuse_calls
+    reuse = reuse_calls[-1]
+    assert reuse['collatz_physical_balanced_effect_memo_hits'] > 0
+    assert reuse['collatz_physical_reused_temporal_extent'] >= 960
+    assert reuse['collatz_physical_transient_leaf_steps'] <= 64
+    assert reuse.get('source_image_primitive_applications', 0) == 0
 finally:
-    Images.transport_reuse = original_reuse
-print(json.dumps({'public_exports': len(api.__all__), 'kernel_left_states': kernel.left_count, 'kernel_right_states': kernel.right_count, 'installed_path': api.__file__, 'arithmetic_cli_roof_poison': 'passed', 'complete_effect_cli_reuses': len(reuse_calls), 'mahler_composed_image': 'passed'}))
+    Images.saturated_summary = original_summary
+from number_compiler.api.number_api import PoweredCollatzTermPayload
+from number_compiler.sequences.collatz.block_power import PoweredCollatzTerm
+limb_seed = (1 << 512) + 27
+limb_expected = limb_seed
+for _ in range(129):
+    limb_expected = 3 * limb_expected + 1 if limb_expected & 1 else limb_expected // 2
+limb_term = PoweredCollatzTerm(limb_seed, 129)
+limb_payload = PoweredCollatzTermPayload(limb_term, 1 << 63)
+original_point = PoweredCollatzTerm._point_symbol
+def forbidden_binary_point(*args, **kwargs):
+    raise AssertionError('installed limb expanded into binary point queries')
+PoweredCollatzTerm._point_symbol = forbidden_binary_point
+try:
+    assert limb_payload.digit(0) == limb_expected % (1 << 63)
+    assert limb_payload.digit(0) == limb_expected % (1 << 63)
+    assert limb_term._ledger.counters['collatz_image_radix_demands'] == 1
+finally:
+    PoweredCollatzTerm._point_symbol = original_point
+print(json.dumps({'public_exports': len(api.__all__), 'kernel_left_states': kernel.left_count, 'kernel_right_states': kernel.right_count, 'installed_path': api.__file__, 'arithmetic_cli_roof_poison': 'passed', 'complete_effect_cli_reuses': reuse['collatz_physical_balanced_effect_memo_hits'], 'mahler_composed_image': 'passed'}))
 """,
             ],
             cwd=work,
@@ -304,6 +331,9 @@ print(json.dumps({'public_exports': len(api.__all__), 'kernel_left_states': kern
             (["196", "--nth", "0"], 0, "196"),
             (["196", "--nth", "2"], 0, "1675"),
             (["reverse-add", "--nth", "0", "--seed", "0"], 0, "0"),
+            (["a367620", "--nth", "1"], 0, "20"),
+            (["a367620", "--nth", "412987860"], 0, "19999999999"),
+            (["a367620", "--nth", "412987861"], 3, ""),
             (["collatz", "--nth", "4", "--seed", "27"], 0, "62"),
             (["collatz", "--events", "5", "--seed", "27", "--info", "safety"], 0, ""),
             (["collatz", "--nth", "1000000", "--seed", "27"], 0, "4"),
@@ -357,7 +387,9 @@ print(json.dumps({'public_exports': len(api.__all__), 'kernel_left_states': kern
             (["fermat", "--nth", "4", "--no-value", "--info", "primality"], 3, ""),
             (["nth", "prime", "0"], 2, ""),
         ]
+        cold_processes: list[dict[str, object]] = []
         for arguments, status, value in commands:
+            started = perf_counter()
             observed = subprocess.run(
                 [str(python), "-I", "-m", "number_compiler", *arguments],
                 cwd=work,
@@ -365,6 +397,15 @@ print(json.dumps({'public_exports': len(api.__all__), 'kernel_left_states': kern
                 capture_output=True,
                 text=True,
                 check=False,
+            )
+            cold_processes.append(
+                {
+                    "arguments": arguments,
+                    "seconds": perf_counter() - started,
+                    "exit_code": observed.returncode,
+                    "stdout_bytes": len(observed.stdout.encode()),
+                    "stderr_bytes": len(observed.stderr.encode()),
+                }
             )
             if observed.returncode != status or observed.stdout.strip() != value:
                 raise ValueError(
@@ -426,6 +467,7 @@ print(json.dumps({'public_exports': len(api.__all__), 'kernel_left_states': kern
             "cli_value": "2",
             "cli_m11_factor": 23,
             "family_first_contract_cases": len(commands),
+            "cold_process_samples": cold_processes,
         }
 
 

@@ -15,10 +15,11 @@
   through index 412987860. Published branch bits are cross-checks, not selectors.
 - **Checked theorem:** predecessor descent covers all positive integers by the
   classified 50 roots.
-- **Open formal release obligation:** refine the executable certificate parser
-  and checker, check the concrete instance in Isabelle and finish the
-  infinite-path/prefix and scheduler cost chain. Runtime certificate admission
-  does not claim that those proof gates are closed.
+- **Replacement proof target:** prove the executable boundary macro, its
+  periodic lifting, the complete finite losing/winning classification, and the
+  repeating source-20 path. The forest remains the current admission route until
+  this replacement and its weighted scheduler consumers pass. Completing the
+  forest parser proof is no longer the cutover objective.
 
 ## Arithmetic and admission
 
@@ -75,7 +76,11 @@ The development [forest checker](../../devtools/experiments/comma/forest_certifi
 uses exact integer sectors. Production imports no generator or fixture.
 [Production admission](../../src/number_compiler/sequences/comma/certificates.py)
 requires the independent streaming checker to exhaust the exact source forest.
-It reports `runtime_verified=true` and `isabelle_instance_checked=false`.
+Successful admission records `runtime_verified=true` and
+`isabelle_instance_checked=false`. Certificate information is a read-only
+snapshot: requesting it alone performs no asset verification and reports
+`runtime_verified=false`. Reporting available evidence does not authorize a
+value request.
 A checksum authenticates the artifact; the complete child-closure checks
 supply its finite-termination argument. Missing or forged records are rejected.
 
@@ -86,6 +91,67 @@ certified by this method. [Published branch-pruning method](https://oeis.org/A39
 **Research only:** `(p mod 924,f,s)` and the proposed 314-fork period are not
 proved right-congruences. A surviving abstract SCC cannot establish a concrete
 infinite path without a lifting theorem preserving every child alternative.
+
+## Boundary quotient and weighted returns
+
+The replacement candidate uses `Q=(N/Z,a,p mod 924)`, where
+`N(a,p)=a*10^p-1`, `Z(a,p)=a*10^p`, `2<=a<=9` and `p>=5`.
+The concrete exponent remains part of the source occurrence.
+
+- **Exact arithmetic construction:** a macro terminates at the next fork or
+  landmine. Its weight is `(A*10^p+B)/D`; it excludes the next fork-choice tick.
+  Both children remain in its output. Selecting an infinite child is a separate
+  obligation, even when that child is the smaller one.
+- **Executable lifting checks:** every affine sector and guard inequality must
+  hold on the entire exponent ray. The period of `10^p mod P` alone is
+  insufficient. The [development checker](../../devtools/experiments/comma/macro_lifting.py)
+  checks these inequalities, fixed floor remainders, complete alternatives and
+  the weighted index used for partial selection.
+- **Weighted composition:** a return with exponent gain `delta` transports the
+  next coefficient by `10^delta`. Repetition gives an exact geometric sum;
+  capped evaluation can compare it with a requested term index without expanding
+  the sum. Capped binary descent selects a complete repetition prefix and a
+  residual literal offset, including negative affine offsets. This arithmetic
+  law does not prove that a return is source-admitted.
+- **Production local integration:** production and the boundary constructor use
+  one tropical child classifier in the arithmetic owner for exponents at least
+  two. The nine-candidate search remains only for small startup values. Tests
+  retain an independent literal child enumerator.
+- **Checked local theorems:** the
+  [complete child classification](../../devtools/proofs/isabelle/comma/Comma_Child_Classification.thy)
+  proves both candidate directions for every decimal sector at exponent at least
+  two. The boundary theory proves the 17 displacement catalog and the 924-period
+  modular law; the affine-ray theory proves transport of sign guards. These
+  statements establish local arithmetic, not the full macro checker.
+- **Checked conditional constructor:** a successful HOL macro run from an
+  admitted sector has an exact literal path with `weight=initial_weight+steps`,
+  the correct terminal chart and the complete ordered child set. This is an
+  induction over the executable constructor, not merely a composition law.
+  [Exact weighted refinement](../../devtools/proofs/isabelle/comma_cutover/Comma_Weighted_Macro.thy)
+- **Formal frontier:** discharge successful evaluation for every admitted
+  boundary state, connect the finite and affine weighted constructors, then
+  kernel-check the losing-rank/winning-cycle instance and partial selection.
+  The Python ray checker is an independent oracle, not a theorem premise. The
+  [boundary theory](../../devtools/proofs/isabelle/comma/Comma_Boundary_Quotient.thy)
+  develops the seam and modular ingredients; it does not certify the complete
+  constructor or authorize removing production forest admission.
+
+The finite safety graph and weighted macro have different result types. A finite
+`Entry(f,delta,x)` represents `f*10^(p+delta)+x`; a `Near(f,delta,H)` represents
+`(f+1)*10^(p+delta)-H`. The entry reduction retains the exact remainder
+
+\[
+H=1+e+((10^{p+\delta}-x-1-e)\bmod P),\qquad e=[f<9].
+\]
+
+Its weighted refinement must also retain the removed cycle count and account
+for the initial literal step from an N-boundary. A landmine outcome with only
+an exponent change suffices for termination classification, but cannot recover
+its exact endpoint. Thus a checked finite classification alone does not justify
+partial weighted selection or endpoint publication.
+
+Constructor measurements and the cutover disposition are recorded in the
+[weekly boundary-quotient work](../../results/current/2026-W39/README.md#comma-boundary-quotient).
 
 ## First-fork index discrepancy
 

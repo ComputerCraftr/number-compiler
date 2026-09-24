@@ -25,6 +25,41 @@ ISABELLE = ROOT / "devtools/proofs/isabelle"
 # empty mapping is deliberate: a standalone mathematical theory must not be
 # presented as a production refinement merely because it is registered.
 COUNTERPARTS: dict[str, tuple[str, ...]] = {
+    "Comma_Macro_Constructor": (
+        "src/number_compiler/sequences/comma/boundary_quotient.py",
+        "tests/sequences/comma/test_boundary_quotient.py",
+    ),
+    "Comma_Finite_Transition": (),
+    "Comma_Finite_Period": (
+        "src/number_compiler/sequences/comma/boundary_quotient.py",
+    ),
+    "Comma_Macro_Refinement": (),
+    "Comma_Weighted_Macro": (),
+    "Comma_Future_Safety": (),
+    "Comma_Checked_Ranks": (),
+    "Comma_Period_Guard": (
+        "src/number_compiler/sequences/comma/arithmetic.py",
+        "devtools/experiments/comma/macro_lifting.py",
+    ),
+    "Comma_Exact_Phase_Guard": (
+        "src/number_compiler/sequences/comma/arithmetic.py",
+        "devtools/experiments/comma/macro_lifting.py",
+        "tests/sequences/comma/test_macro_lifting.py",
+    ),
+    "Comma_Child_Classification": (
+        "src/number_compiler/sequences/comma/arithmetic.py",
+        "src/number_compiler/sequences/comma/boundary_quotient.py",
+        "tests/sequences/comma/test_boundary_quotient.py",
+    ),
+    "Comma_Affine_Ray": (
+        "devtools/experiments/comma/macro_lifting.py",
+        "tests/sequences/comma/test_macro_lifting.py",
+    ),
+    "Comma_Boundary_Quotient": (
+        "src/number_compiler/sequences/comma/boundary_quotient.py",
+        "devtools/experiments/comma/macro_lifting.py",
+        "tests/sequences/comma/test_macro_lifting.py",
+    ),
     "Comma_Child_Cylinder": (
         "src/number_compiler/sequences/comma/arithmetic.py",
         "tests/sequences/comma/test_comma_power.py",
@@ -45,10 +80,51 @@ COUNTERPARTS: dict[str, tuple[str, ...]] = {
         "tests/hashlife/execution/test_dyadic_effect_reuse.py",
         "tests/arithmetic/fields/test_integer_cylinder_chart.py",
     ),
+    "Dyadic_Balanced_Worklist": (
+        "src/number_compiler/hashlife/execution/dyadic_return_transport.py",
+        "tests/hashlife/execution/test_balanced_proof_refinement.py",
+    ),
+    "Dyadic_Balanced_Arithmetic": (
+        "src/number_compiler/hashlife/execution/dyadic_return_transport.py",
+        "src/number_compiler/hashlife/execution/dyadic_return_reuse.py",
+        "tests/hashlife/execution/test_balanced_proof_refinement.py",
+    ),
+    "Dyadic_Prefix_Summary": (
+        "src/number_compiler/hashlife/execution/dyadic_return_transport.py",
+        "tests/hashlife/execution/test_balanced_proof_refinement.py",
+    ),
+    "Dyadic_Support_Descent": (
+        "src/number_compiler/hashlife/execution/dyadic_return_observers.py",
+        "tests/hashlife/execution/test_balanced_proof_refinement.py",
+    ),
+    "Balanced_Dyadic_Families": (
+        "src/number_compiler/sequences/collatz/physical_images.py",
+        "src/number_compiler/sequences/antihydra/arithmetic_images.py",
+        "src/number_compiler/sequences/antihydra/mahler_action.py",
+        "tests/hashlife/execution/test_balanced_proof_refinement.py",
+    ),
+    "Collatz_Reduced_Precision": (
+        "devtools/experiments/collatz/powered_boundary_germs.py",
+        "tests/hashlife/execution/test_powered_boundary_germs.py",
+    ),
+    "Collatz_Parity_Shift_Germ": (
+        "src/number_compiler/arithmetic/fields/two_adic.py",
+        "src/number_compiler/sequences/collatz/parity.py",
+        "tests/sequences/collatz/test_collatz_parity.py",
+    ),
+    "Dyadic_Parity_Inverse_Arithmetic": (
+        "src/number_compiler/arithmetic/fields/two_adic.py",
+        "tests/sequences/collatz/test_collatz_parity.py",
+    ),
     "Reverse_Threshold_Cocycle": (
         "devtools/experiments/reverse_add/cocycle_carrier.py",
         "devtools/experiments/reverse_add/factored_power.py",
         "tests/sequences/reverse_add/test_cocycle_carrier.py",
+    ),
+    "Reverse_Boundary_Germ_Local": (
+        "src/number_compiler/arithmetic/formula/decimal_pair_coordinates.py",
+        "devtools/experiments/reverse_add/temporal_boundary_germ.py",
+        "tests/validation/proofs/reverse_add/test_temporal_boundary_germ.py",
     ),
     "Mahler_Spatial_Carry_Pump": (
         "devtools/experiments/antihydra/spatial_carry.py",

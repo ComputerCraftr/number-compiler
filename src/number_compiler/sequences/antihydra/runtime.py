@@ -5,6 +5,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import TYPE_CHECKING
 
+from number_compiler.arithmetic.contracts.exact_tree_context import source_reads_only
 from number_compiler.arithmetic.contracts.input_validation import require_integer
 from number_compiler.resources.ledger import OwnedMemo, ResourceLedger
 from number_compiler.resources.stores import LedgerList
@@ -295,6 +296,61 @@ class AntihydraArithmeticTerm:
         self.engine.count("arithmetic_block_applications", len(self._segments))
         return self._segments
 
+    def _arithmetic_image(self) -> AntihydraArithmeticImageWorkspace:
+        """One admitted source image shared by arithmetic and safety demands."""
+        from number_compiler.sequences.antihydra.arithmetic_images import (
+            ANTIHYDRA_ARITHMETIC_LAW,
+            AntihydraArithmeticImageWorkspace,
+        )
+
+        workspace = self.arithmetic_workspace
+        if workspace is None:
+            workspace = AntihydraArithmeticImageWorkspace(self.ledger, self.requested)
+            self.arithmetic_workspace = workspace
+        if (
+            type(workspace) is not AntihydraArithmeticImageWorkspace
+            or workspace.ledger is not self.ledger
+            or workspace.returns != self.requested
+            or workspace.seed != 8
+            or workspace.law != ANTIHYDRA_ARITHMETIC_LAW
+        ):
+            raise ValueError("Antihydra arithmetic has another source image")
+        workspace.validate_source(workspace.root_source)
+        workspace.validate_action(workspace.root_action)
+        image = workspace.image_node(workspace.root_payload)
+        if (
+            image.source != workspace.root_source
+            or image.action != workspace.root_action
+            or image.summary.width != self.requested
+        ):
+            raise ValueError("Antihydra arithmetic image has another source/action")
+        return workspace
+
+    def value(self) -> int:
+        """Demand total arithmetic only; guarded safety remains an observer."""
+        if self._result is not None:
+            self._result.require_source()
+            return self._result.h
+        value = self._arithmetic_image().endpoint()
+        if value.bit_length() > self.max_state_bits:
+            raise ValueError("Antihydra arithmetic state exceeds bit budget")
+        return value
+
+    @source_reads_only
+    def digit(self, index: int) -> int:
+        """Read one binary cell without demanding ledger safety or the endpoint."""
+        from number_compiler.hashlife.execution.dyadic_return_observers import (
+            binary_cell,
+        )
+
+        index = require_integer(index, "digit coordinate")
+        if index < 0:
+            raise IndexError(index)
+        symbol = binary_cell(self._arithmetic_image(), index)
+        if symbol == 2:
+            raise IndexError(index)
+        return symbol
+
     def result(self) -> ArithmeticResult:
         if self._result is not None:
             self._result.require_source()
@@ -302,17 +358,8 @@ class AntihydraArithmeticTerm:
             return self._result
         if self._segments or self._segments_ready:
             raise ValueError("partial Antihydra arithmetic publication")
-        from number_compiler.sequences.antihydra.arithmetic_images import (
-            AntihydraArithmeticImageWorkspace,
-        )
-
         try:
-            workspace = self.arithmetic_workspace
-            if workspace is None:
-                workspace = AntihydraArithmeticImageWorkspace(
-                    self.ledger, self.requested
-                )
-                self.arithmetic_workspace = workspace
+            workspace = self._arithmetic_image()
             summary = workspace.saturated_summary()
             h = workspace.endpoint()
             balance = summary.delta
@@ -332,9 +379,9 @@ class AntihydraArithmeticTerm:
             retained = len(self._segments)
             self._segments.clear()
             self.ledger.release(self.segment_owner, entries=retained, nodes=retained)
-            workspace = self.arithmetic_workspace
-            if workspace is not None:
-                workspace.dispose()
+            failed_workspace = self.arithmetic_workspace
+            if failed_workspace is not None:
+                failed_workspace.dispose()
                 self.arithmetic_workspace = None
             self.engine.count("arithmetic_publication_rollbacks")
             raise

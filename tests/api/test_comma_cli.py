@@ -64,10 +64,15 @@ def test_unchecked_infinite_prefix_is_never_guessed(
 def test_certificate_and_metrics_do_not_compute_finite_orbit(
     monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
 ) -> None:
+    from number_compiler.sequences.comma import certificates
+
     def forbidden(*_args: object, **_kwargs: object) -> Never:
         raise AssertionError("certificate/reporting unexpectedly evaluated a term")
 
     monkeypatch.setattr(CommaTerm, "_resolve", forbidden)
+    monkeypatch.setattr(certificates, "_verify", forbidden)
+    monkeypatch.setattr(certificates, "files", forbidden)
+    monkeypatch.setattr(certificates, "sha256", forbidden)
     assert (
         main(
             [
@@ -98,7 +103,7 @@ def test_certificate_and_metrics_do_not_compute_finite_orbit(
     assert metrics["width"] is None
     assert metrics["execution_metrics"]["schema_version"] == 8
     assert metrics["execution_metrics"]["reporting"]["inspected_inventory_rows"] == 0
-    assert payload["info"]["certificate"]["runtime_verified"] is True
+    assert payload["info"]["certificate"]["runtime_verified"] is False
     assert payload["info"]["certificate"]["isabelle_instance_checked"] is False
 
 

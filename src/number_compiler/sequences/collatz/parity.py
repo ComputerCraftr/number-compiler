@@ -30,6 +30,8 @@ from number_compiler.arithmetic.fields.morphism_core import DyadicAffineCocycle
 from number_compiler.arithmetic.polynomials.binomial_pow2 import (
     scaled_binomial_mod_pow2,
 )
+from number_compiler.arithmetic.fields.two_adic import inverse_dyadic_parity_word
+from number_compiler.resources.ledger import ResourceLedger
 
 
 def normalized_collatz(n: int) -> int:
@@ -130,19 +132,9 @@ def collatz_parity_inverse_residue(word: int, width: int) -> int:
         n == -sum_m 2**d_m / 3**(m+1)        (mod 2**width).
     """
     word, width = int(word), int(width)
-    if width < 0 or word < 0 or word >= (1 << width):
+    if width < 0 or word < 0 or word.bit_length() > width:
         raise ValueError((word, width))
-    if width == 0:
-        return 0
-    modulus = 1 << width
-    inv3 = pow(3, -1, modulus)
-    inv_power = 1
-    residue = 0
-    for j in range(width):
-        if (word >> j) & 1:
-            inv_power = (inv_power * inv3) % modulus
-            residue = (residue - ((1 << j) * inv_power)) % modulus
-    return residue
+    return inverse_dyadic_parity_word(word, width, gains=(1, 3), offsets=(0, 1))
 
 
 def collatz_parity_inverse_residue_binomial(word: int, width: int) -> int:
@@ -678,12 +670,75 @@ class CollatzParityCursor:
     phase: int = 0
 
     def __post_init__(self) -> None:
-        if self.width < 0 or self.word < 0 or self.word >= (1 << self.width):
+        if any(type(value) is not int for value in (self.word, self.width, self.phase)):
+            raise TypeError("parity cursor fields must be exact integers")
+        if self.width < 0 or self.word < 0 or self.word.bit_length() > self.width:
             raise ValueError(self)
         if self.phase not in (0, 1):
             raise ValueError(self.phase)
         if self.phase and (self.width == 0 or (self.word & 1) == 0):
             raise ValueError("phase 1 requires a pending odd parity symbol")
+
+
+def collatz_shifted_parity_residue(
+    cursor: CollatzParityCursor, precision: int, *, ledger: ResourceLedger
+) -> int:
+    """Read a low state residue from an already admitted shifted-Q cursor.
+
+    Phase zero is the normalized state ``Q^-1(W)``. Phase one is the even
+    intermediate ``3*n+1`` after the odd physical tick, so the pending one
+    symbol is discarded and the inverse of the remaining word is doubled.
+    This finite arithmetic does not construct ``W``, certify its source or
+    decide whether a requested digit lies beyond the integer's high end.
+    """
+    if type(cursor) is not CollatzParityCursor:
+        raise TypeError("shifted parity germ requires a finite cursor")
+    # Frozen dataclasses can still be forged with object.__setattr__. Validate
+    # at the arithmetic boundary before shifting or trusting a phase claim.
+    if any(
+        type(value) is not int for value in (cursor.word, cursor.width, cursor.phase)
+    ):
+        raise TypeError("shifted parity cursor fields must be exact integers")
+    if (
+        cursor.word < 0
+        or cursor.width < 0
+        or cursor.word.bit_length() > cursor.width
+        or cursor.phase not in (0, 1)
+        or cursor.phase == 1
+        and (cursor.width == 0 or not cursor.word & 1)
+    ):
+        raise ValueError("shifted parity cursor is not canonical")
+    if type(precision) is not int or precision < 0:
+        raise ValueError("shifted parity germ precision must be natural")
+    if type(ledger) is not ResourceLedger:
+        raise TypeError("shifted parity germ requires a resource ledger")
+    if precision > cursor.width:
+        raise ValueError("shifted parity cursor lacks demanded precision")
+    ledger.bump("collatz_shifted_parity_germ_demands")
+    if precision == 0:
+        # The pending odd symbol was checked even though the requested output
+        # contains no bits; charge that admission read.
+        if cursor.phase:
+            ledger.bump("collatz_shifted_parity_germ_symbol_reads")
+            ledger.bump("collatz_shifted_parity_germ_operand_bits")
+        return 0
+    inverse_width = precision - cursor.phase
+    # Mask first: shifting the entire supplied Q word would allocate a copy
+    # proportional to its temporal horizon for a one-bit point demand.
+    word = (cursor.word & ((1 << precision) - 1)) >> cursor.phase
+    ones = word.bit_count()
+    # The inverse routine performs at most one inverse-three setup and one
+    # modular contribution per one symbol. Account for the precision
+    # of those operands as well as the bits selected from the cursor.
+    ledger.bump("collatz_shifted_parity_germ_symbol_reads", precision)
+    ledger.bump("collatz_shifted_parity_germ_inverse_setups", int(inverse_width > 0))
+    ledger.bump("collatz_shifted_parity_germ_modular_terms", ones)
+    ledger.bump(
+        "collatz_shifted_parity_germ_operand_bits",
+        max(1, precision) + inverse_width * (2 * ones + 1),
+    )
+    residue = collatz_parity_inverse_residue(word, inverse_width)
+    return (residue << cursor.phase) & ((1 << precision) - 1)
 
 
 @dataclass(frozen=True, slots=True)

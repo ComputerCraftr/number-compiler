@@ -280,14 +280,14 @@ def test_certificate_and_arithmetic_share_one_work_budget() -> None:
 def test_discovery_phase_transfer_is_charged_before_evaluation(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    from number_compiler.sequences.comma import power
+    from number_compiler.sequences.comma import action_arena
 
     term = CommaTerm(2, max_work=2)
 
     def forbidden(*_args: object) -> None:
         pytest.fail("phase transfer evaluated after its budget admission failed")
 
-    monkeypatch.setattr(power, "cycle_transfer", forbidden)
+    monkeypatch.setattr(action_arena, "cycle_transfer", forbidden)
     with pytest.raises(ValueError, match="max-comma-work"):
         term.materialize()
     assert term.ledger.counters.get("comma_transfer_constructions", 0) == 0
@@ -297,7 +297,8 @@ def test_phase_transfer_work_includes_discovery_and_validation() -> None:
     term = CommaTerm(4)
     assert term.materialize() == 107
     assert term.ledger.counters["comma_transfer_constructions"] >= 3
-    assert term.ledger.counters["comma_transfer_phase_terms"] >= 3
+    assert term.ledger.counters["comma_cycle_rule_evaluations"] >= 3
+    assert term.ledger.counters["comma_transfer_phase_terms"] == 0
 
 
 def test_certificate_budget_refusal_is_not_a_failed_certificate() -> None:
@@ -307,11 +308,11 @@ def test_certificate_budget_refusal_is_not_a_failed_certificate() -> None:
     from number_compiler.resources.temporal_diagnostics import (
         collect_temporal_diagnostics_snapshot,
     )
-    from number_compiler.sequences.comma.certificates import certificate_status
+    from number_compiler.sequences.comma.certificates import require_certified_index
 
     term = CommaTerm(1, max_work=1)
     with pytest.raises(BlockContextBudgetExceeded, match="certificate work budget"):
-        certificate_status(1, term.ledger, term.max_work)
+        require_certified_index(1, term.ledger, term.max_work)
     report = collect_temporal_diagnostics_snapshot(term.ledger)
     assert report.comma.certificate_budget_refusals == 1
     assert report.comma.budget_refusals == 1

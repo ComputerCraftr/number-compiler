@@ -7,6 +7,16 @@ because it exists in the tree or is imported by an editor session.
 
 ## Canonical spatial and finite-clock lemmas
 
+[`Reverse_Boundary_Germ_Local`](../devtools/proofs/isabelle/Reverse_Boundary_Germ_Local.thy)
+in `Reverse_Residuals` checks the finite Q95 boundary encoding, blank rejection,
+threshold carry, equality wire, reflected edge ordering and symbol-complement
+carry conjugacy. Its successor-factor theorem requires agreement on every
+admitted pair of occurrences; finite doubled-clock agreement is insufficient.
+The explicit pair-field counterexample concerns a bare three-cell observation,
+not an occurrence-parameterized temporal transformer. See the
+[candidate audit](research/reverse-add.md#three-cell-temporal-boundary-candidate)
+for the separate seed-196 clock/germ experiment.
+
 [`Mirror_Pair_Step`](../devtools/proofs/isabelle/Mirror_Pair_Step.thy) owns
 `palindrome_nth_reflect`; both publisher and growth branches import it. Its
 assumptions are palindrome admission and an in-range index. It is a spatial
@@ -153,6 +163,14 @@ import firewall in `tests/repository/test_proof_production_boundary.py` prevents
 those references from becoming runtime dependencies. Failed powered-construction
 and cutover tests remain release blockers; the proof index does not reinterpret
 an arithmetic lemma as successful construction.
+
+The shared balanced dyadic constructor now has an executable postorder model,
+bounded exact memo, numerical source refinement and finite safety bridge.
+The [theorem-to-runtime map](proofs/balanced-dyadic-refinement.md) identifies
+each checked statement and the Python publication, retained-ID and cost
+obligations it does not discharge. Its downstream family session is
+`Balanced_Dyadic_Integration`; validation evidence is recorded by source
+fingerprint in the weekly sprint.
 
 The shared `Dyadic_Source_Lift` theory additionally proves
 `dyadic_source_orbit_lower_bound` and `dyadic_high_fiber_excludes_small_states`.
@@ -339,21 +357,36 @@ The macrocell integration guard is 60 seconds / 4 GiB. `-d ... -a` instead
 selects every installed session, including unrelated Isabelle examples; a
 result from that broader invocation is not the repository aggregate check.
 
-## Comma-child prefix certificate
+## Comma arithmetic and boundary cutover
 
-The focused `Comma_Cylinder` session keeps literal child arithmetic separate
-from infinite-path admission:
+`Comma_Arithmetic` checks the local arithmetic. Its child session
+`Comma_Cylinder` retains the complete boundary-cutover acceptance target.
+The split allows focused feedback without omitting parent obligations:
 
 | Theory | Statement and assumptions | Implementation connection |
 | --- | --- | --- |
 | `Comma_Child_Cylinder` | Decimal carry/phase equations; fixed-leading-digit iteration and displacement; phase closure; a guarded block stays in its sector and refines a literal child path. | Local laws in `sequences/comma/arithmetic.py`; not yet full Python scheduler/worklist refinement. |
 | `Comma_Decimal_Parent` | Decimal leading digit, predecessor descent and the finite root classification. | Independent root-forest tooling; does not check the compressed termination forest instance. |
 | `Comma_Root_Forest` | Finite child-closed regions for excluded roots plus global root coverage imply infinitely many descendants of root 20; finite compressed-region closure is sound. | Runtime certificate specification; the concrete production certificate instance is not yet kernel-checked. |
+| `Comma_Boundary_Quotient` | Fork/landmine normal forms under the stated seam hypotheses; the 17 possible cycle displacements; `10^(p+924) mod P = 10^p mod P` for `p>=5` and every catalog displacement. | Arithmetic ingredients of `boundary_quotient.py`; modular periodicity alone is not macro or successor refinement. |
+| `Comma_Affine_Ray` | Sign and zero guards for affine expressions on an entire increasing decimal-exponent ray. | Inequality obligations checked by `macro_lifting.py`; does not yet connect its fragment worklist to literal paths or elapsed weights. |
+| `Comma_Child_Classification` | For every `p>=2`, the two adjacent leading-digit candidates are all literal children; exact iff headroom conditions cover interiors, forks, crossings and 9-sector landmines. | Complete alternatives used by production `comma_children`, the boundary constructor and development ray checker, not merely correctness of a selected child. |
+| `Comma_Exact_Phase_Guard` | A strict maximum-prefix guard admits the exact fixed-phase endpoint and its displacement; each represented step has exactly one literal child. | Exact safety condition used by the bounded cycle transfer. Repeated-cycle floor count and affine-fragment worklist refinement remain separate. |
+| `Comma_Period_Guard` | Phase periodicity, displacement transport, the repeated maximum guard, maximal floor/clamp count, and refinement of every admitted cycle prefix to the unique literal path. Zero repetitions are handled separately. | `safe_complete_cycles` arithmetic; does not by itself refine the cross-sector constructor or select an infinite fork child. |
+| `Comma_Finite_Period` | Numerical cycle-period formula, catalog membership, repeated 924-period transport and exact modular entry headroom. | Arithmetic used by the finite transition model. Does not establish that all boundary macros terminate within their fuel. |
+| `Comma_Macro_Constructor` | Boundary-state enumeration and complete ordered large-decimal children; defines a fuelled executable macro. | Model for `boundary_quotient.py`. Its constructor definition is not yet a proof of totality, elapsed weight or partial selection. |
+| `Comma_Macro_Refinement` | Complete-cycle displacement and singleton-step chart transport, including decimal crossings. | Local refinement lemmas for the executable macro, without a source-20 or infinite-continuation conclusion. |
+| `Comma_Weighted_Macro` | Given an admitted sector with exponent at least two and a successful macro result, `comma_macro_run_literal_refinement` proves an exact literal path with `weight=w+n`, terminal chart and complete ordered children. Also proves exact cycle weights and valid-state set cardinality 14,784. | Successful evaluation is still a premise: totality within the fuel bound, affine fragment selection and the Python consumer are not discharged by this induction. |
+| `Comma_Finite_Transition` | Executable entry/near-boundary transitions, fuel monotonicity, trace-checker soundness, Near delta transport and Entry phase transport. A 92-position trace checks the macro from `N(2,10)` to the next fork at `(7,12)`. | Those are abstract positions, not literal steps. Its outcome omits literal weight and the landmine's exact endpoint; no all-state classification or weighted-model equality follows from this example. |
+| `Comma_Future_Safety` | Losing-level induction and an infinite selected path in a closed, stable finite complement. | Conditional graph lemmas; no concrete comma classification is assumed or certified by these statements. |
+| `Comma_Checked_Ranks` | A checked rank witness proves all-branch termination of ranked states, unique unranked continuation and the bounded losing fixed point. | Checker soundness only. A concrete instance must check every outcome of the executable transition; a generated rank table alone supplies no theorem. |
 
 Build with `isabelle build -d devtools/proofs/isabelle -o threads=1 Comma_Cylinder`.
-Each theory audits exported theorems for oracles. The executable cycle-checker
-refinement, finite certificate instance, infinite-path/lexicographic-prefix
-bridge and scheduler cost proof remain distinct obligations. The generated
+Each theorem-owning theory audits its exported results for oracles. The
+executable boundary constructor, finite classification instance,
+infinite-path/lexicographic-prefix bridge and scheduler cost proof remain
+distinct obligations. The current forest route is scheduled for deletion only
+after these replacement obligations pass. The generated
 [proof inventory](../devtools/checks/isabelle_proof_index.py) records imports
 and exact theorem names; registration alone never certifies a successful build.
 See the [research scope](research/comma.md) and the

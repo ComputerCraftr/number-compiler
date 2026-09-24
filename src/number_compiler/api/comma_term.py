@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from collections.abc import Iterator
+from collections.abc import Generator
 from dataclasses import dataclass
 from typing import TYPE_CHECKING
 
@@ -56,9 +56,27 @@ class CommaTermPayload:
         self.require_certified()
         return self.term.digit(index)
 
-    def iter_digits(self) -> Iterator[int]:
+    def iter_digits(self) -> Generator[int, None, None]:
+        from number_compiler.resources.process_cache import get_process_cache
+
+        # Admission is deferred with the stream, so reset before the first pull
+        # cannot leave a pre-admitted but unevaluated iterator behind.
         self.require_certified()
-        return self.term.iter_digits()
+        cache = get_process_cache() if self.term.shared_cache else None
+        generation = cache.generation if cache is not None else None
+        stream = self.term.iter_digits()
+        try:
+            while True:
+                self.term.arena.charge()
+                if cache is not None and cache.generation != generation:
+                    raise ValueError("stale comma stream admission after cache reset")
+                try:
+                    digit = next(stream)
+                except StopIteration:
+                    return
+                yield digit
+        finally:
+            stream.close()
 
     def digits(self) -> tuple[int, ...]:
         return tuple(self.iter_digits())

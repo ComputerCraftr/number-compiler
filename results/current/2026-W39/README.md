@@ -1,6 +1,6 @@
 # 2026-W39 implementation and validation record
 
-Period: 2026-09-21 through 2026-09-27. Updated through September 22.
+Period: 2026-09-21 through 2026-09-27. Updated through September 23.
 Status: finite integrations and audits advanced; production release remains blocked.
 
 ## Sprint summary
@@ -41,6 +41,216 @@ this weekly summary navigable.
 | Reverse/add | [Temporal construction](../../../docs/research/reverse-add.md) | [Integration records](#reverseadd) |
 
 ## Shared execution
+
+### Shifted parity germs and batched limbs
+
+Record period: 2026-09-23. This increment implements the supplied-germ
+arithmetic and repairs production point-demand costs and cache validation.
+It does not replace the balanced source constructor.
+
+<details>
+<summary>Germ semantics, production fixes, validation and remaining constructor</summary>
+
+**Input.** The attachment `df0e7f24-5e0c-4b35-a8e9-0862f17a063a/Pasted text.txt`
+has SHA-256 `c2675360712a03b3eadfd4226eb07a8f066dfdaa61a6230bb94e43f3d8ef031d` and
+describes the normalized Collatz parity conjugacy and two-phase physical
+suspension. Its cursor is a supplied shifted parity word. The report explicitly
+separates cursor construction from finite-residue observation.
+
+**Implemented.** The shared odd-gain inverse in `arithmetic/fields/two_adic.py`
+covers normalized Collatz, total Antihydra arithmetic and the centered Mahler
+source with distinct branch laws. It decodes a bounded byte stream once,
+avoiding a full integer shift for each supplied symbol. The Collatz germ
+helper validates cursor fields at use, masks before shifting, handles width
+zero and the pending odd phase, and records demanded precision/inverse work.
+It grants no source authority and supplies no physical exterior predicate.
+
+Power-of-two public Collatz limb queries now make one guarded modular
+projection instead of up to 63 binary projections. Their cache binds radix,
+position, source owner and action program. Warm hits validate the live source,
+action and image record plus the root's source/action/extent binding. The
+original root handles are pinned, so even a coherent alternate source/image
+in the same workspace cannot authorize a cached value. The width bound is
+pinned to the original source extent, calculated and charged once. Point
+queries no longer recompute `seed + 2`, which copied the complete input integer
+on every demand.
+
+**Independent review.** Review found alternate-root-image and coherent-root
+replacement holes, repeated width-bound allocation and mutable bound metadata.
+After the repairs, read-only review found no residual concrete defect in those
+changes. Regressions retain disposed, forged and
+changed-source rejection, distinguish partial limbs from blank, poison
+per-bit limb expansion and compare independent literal physical trajectories.
+
+**Exact scope.** At phase zero a bit at position `p` requires `p+1` Q symbols.
+At pending phase one the low bit is zero and higher bits use the shifted tail.
+Sources 1 and 33 demonstrate that equal low germs do not decide blank versus
+active zero. Antihydra uses gains `(3,3)` and offsets `(0,-1)`, while centered
+Mahler uses `(3,3)` and `(0,1)`; neither inherits Collatz's popcount inverse or
+its physical two-tick suspension unchanged.
+
+**Remaining obligation.** The CLI still constructs the complete admitted
+balanced source image. No authenticated producer of the shifted Q cursor and
+exterior guard with a better construction bound has been supplied. Generating
+that cursor through scalar parity replay is explicitly excluded. The modular
+inverse loop and its source-word equations are now checked; cursor admission,
+output activity, runtime refinement and safety transport
+remain separate proof obligations; finite germ inversion alone proves no global
+Collatz, Mahler or Antihydra safety claim.
+
+Frozen authored source:
+`fb6ece37a8b85b55f34514249233f688bcdf2fdd3750fb1c7acbf26fc0b6f98a`.
+Local evidence lives under `results/current/parity-germ-projection/`; these are
+local evidence stems, not portable downloads. The proof-to-runtime mapping
+lists explicit modular-unit assumptions and unverified Python operations.
+No new axioms, skipped proofs or theorem oracles were introduced.
+
+The 105 samples cover horizons 16–1024, five trials and limb widths 4/32/63.
+Each row creates fresh terms with process reuse bypassed, compares independent
+literal output, and records construction separately from cold/warm projection.
+Median whole-limb projection versus binary assembly was 46.50/121.46 µs,
+47.42/736.75 µs and 48.62/1426.71 µs respectively. This establishes one radix
+projection instead of 4/32/63 point projections on those demands. It is not an
+end-to-end CLI timing or a constructor-complexity improvement. Warm projections
+perform zero additional modular operand work but still validate authority.
+
+Reproduce the projection measurement:
+
+```console
+python -m devtools.benchmarks.collatz_temporal_power_probe --limb-projection --indices 16 32 64 128 256 512 1024 --trials 5 --limb-widths 4 32 63
+```
+
+| Validation on frozen source | Result | Local evidence |
+| --- | --- | --- |
+| Focused parity, limbs, authority, resource and shared-image regressions | 134 PASS | `focused-frozen` |
+| Strict mypy, Ruff, formatting, policy, docs and proof inventory | PASS; 1,503 Python files; 21 sessions / 118 theories | `quality-final.json`, `proof-index-final.json` |
+| Affected Isabelle session | PASS, 22.38 s / 1,272,483,680 sampled bytes | `proofs-v32` |
+| All registered Isabelle sessions | Checked after two 60-second timeouts and a 15.14-second incremental completion; aggregate rebuild deadline remains failed | `isabelle-all-final`, `isabelle-all-resume`, `isabelle-all-resume2` |
+| Fresh wheel and installed CLI | PASS; 15 fresh-process contract cases plus limb-path poison smoke | `wheel-build-final`, `installed-final`; 11.46 s / 117,966,912 sampled bytes |
+| Projection measurements | All 105 samples complete; exact literal agreement; construction separately reported | `limb-probe-final.json`, `limb-summary-final.json` |
+| Full unit selection | 6,776 PASS / same 42 FAIL; 17 added tests, no removed tests or changed failing IDs | `unit-final`, `unit-comparison.json`; 219.53 s / 810,206,312 sampled bytes under 300 s / 1 GiB |
+| Explicit P0 selection | Same 13 PASS / 50 FAIL; identical selection and failing IDs | `p0-final`, `p0-comparison.json` |
+| Independent review | Accepted for finite arithmetic, projections and cache-binding scope | `independent-review.json` |
+
+Limits and positive release assertions are unchanged. No release hold closes
+from these projection timings. The exact source-to-cursor/exterior constructor,
+existing reverse/add and special-number obligations, full Python refinement
+and global safety remain open. Interim failed proof attempts remain local and
+are not release evidence.
+
+</details>
+
+### Powered boundary germ audit
+
+Record period: 2026-09-23. This is a new finite audit and proof increment,
+not a production cutover or a minimality certificate.
+
+<details>
+<summary>Candidate, exact counterexamples, measured work and proof scope</summary>
+
+**Input provenance.** The supplied
+`/Users/john/Downloads/196_temporal_boundary_frobenius_candidate.md` has SHA-256
+`17751bcf4045ee8a77c8b334559fe5ea3a35da435b12e28e2392ac8281c36cfc`.
+It supplies a candidate and finite doubled-clock evidence, not an executable
+complete-transformer patch or a universal closure proof.
+
+**Reverse/add findings.** The new `temporal_boundary_germ` experiment preserves
+coupled Q95 cells, distinct absent-cell markers, reflected coordinate order
+and exclusively LSD-to-MSD physical carry. All 95 cells and both incoming
+carries are checked. Default seed-196 runs through index 256 give:
+
+| Half horizon | Checked occurrences | Repeated keys | Singleton keys | Differing doubled germs | Differing doubled clocks |
+| --- | --- | --- | --- | --- | --- |
+| D4 | 249 | 1 | 247 | 1 | 0 |
+| D8 | 241 | 2 | 237 | 2 | 0 |
+| D16 | 225 | 0 | 225 | 0 | 0 |
+| D32 | 193 | 0 | 193 | 0 | 0 |
+| D64 | 129 | 0 | 129 | 0 | 0 |
+
+D4 starts 77 and 86 have identical key
+`(q mod 4=2, r=2, (21,25,26), (21,25,26))`. Their doubled clocks both equal
+`(1,3)`, but their doubled low germs are `(82,94,41)` and `(82,94,34)`.
+Independent literal reverse/add verifies the source terms used by the witness.
+This refutes a standalone key-to-next-germ table. It does **not** refute an
+action applied to distinct recursive source occurrences. Consequently neither
+erasing `pair_steps` nor introducing a finite transition table is authorized
+by these data. D16 and larger zero-conflict rows have no repeated-key evidence.
+
+**Dyadic findings.** The `powered_boundary_germs` experiment applies the actual
+production balanced constructor at D2, D4, D8, D16, D32 and D64, including
+non-root, random and high-fiber occurrences. It checks full transfer
+composition, branch concatenation, odd counts, delta and minimum prefixes.
+At D16 the Collatz sample has 384 occurrences and 299 complete retained-effect
+classes; Antihydra has 377 and 329 respectively. Each has 68 conflicts when
+only counts, minimum and three branch bits at each edge predict the scalar
+effect. For example, Collatz sources 983252 and 15912724 share that edge key
+but have offsets 19744 and 18208; Antihydra sources 49 and 8141841 have offsets
+-37172081 and -37128017. These are insufficient-observer witnesses, not a
+counterexample to the complete source-bound cylinder.
+
+The tested dyadic edge key is deliberately a separate candidate; it is not
+the decimal Q95 germ or a transported F5/F2 rule. In production, exact residue
+is a source-cylinder binding, skew is the output function, and counts and
+minimum prefixes are derived consumer summaries. Retained branch support
+serves demanded chronology. This audit gives no reason to conflate those
+roles or discard authority fields. F5/F2 and harmonic projection equality
+has not been promoted to a successor identity.
+
+The Mahler test obtains its action from the admitted Antihydra image and
+compares it to an independent literal source-8/Fraction fold. It preserves the
+distinction between Mahler margin positivity and Antihydra ledger safety.
+
+**Rejected optimization.** Physical Collatz admits redundant source bits:
+an odd `3*x+1` step does not consume precision. However, a leaf-only sample of
+128 random sources and 2,048 D64 leaf requests found zero exact repeats and
+zero additional verified reduced-domain aliases. An unindexed search would
+add 15,360 comparisons. The sample does not model parent publications or FIFO
+eviction. Production memo keys, budgets and source authorities remain unchanged;
+the experiment does not prove that every possible memo improvement is useless.
+
+**Checked proofs.** `Reverse_Boundary_Germ_Local` checks local Q95, blank,
+equality, reflection and symbol-complement laws plus a conditional successor
+factorization criterion. Its total mathematical edge extractor includes the
+empty list; the Python observer admits only nonempty words. The standalone
+pair-field witness is not claimed to be a temporal source constructor.
+`Collatz_Reduced_Precision` proves the upward high-fiber identity at
+`p=min(n,even_count+1)` for the actual physical law, including complete effect
+and safety fields. Arbitrary congruent-peer tests are finite evidence beyond
+that theorem's upward-lift statement. Neither proof claims runtime memo
+canonicalization, arbitrary-horizon compression, or global safety.
+
+Reproduction commands:
+
+```console
+python -m devtools.experiments.reverse_add.temporal_boundary_germ
+python -m devtools.experiments.collatz.powered_boundary_germs
+python -m pytest -q -o addopts='' tests/validation/proofs/reverse_add/test_temporal_boundary_germ.py tests/hashlife/execution/test_powered_boundary_germs.py
+isabelle build -d devtools/proofs/isabelle -j 1 -o threads=1 -o parallel_proofs=0 Reverse_Residuals Balanced_Dyadic_Integration
+```
+
+Raw evidence remains local under `results/current/powered-boundary-germs/`;
+it is not a portable download. Frozen authored-source fingerprint:
+`d6cfd866933125aee9ec6f2226e0ea9289843dd2483dc8ca74dd10337d937b90`.
+Independent peer findings and their disposition are in `independent-review.json`.
+
+| Validation | Result | Evidence and scope |
+| --- | --- | --- |
+| Focused new/dependent checks | 111 PASS | `focused.xml`; all 14 new tests plus retained local/dyadic/Mahler coverage |
+| Default units | 6,759 PASS / same 42 FAIL | `unit.xml`, `unit-comparison.json`; seven new ordinary tests, zero removed tests, identical failing IDs; 214.753 s / 830,653,544 sampled bytes under 300 s / 1 GiB |
+| Explicit P0 selection | Same 13 PASS / 50 FAIL | `p0.xml`, `p0-comparison.json`; identical 63-case selection and failing IDs |
+| Strict quality | PASS | `quality-final.json`; mypy/Ruff/format cover 1,503 Python files; policy, docs and 21-session/116-theory inventory pass |
+| New local Isabelle theory | PASS | `isabelle-local-v2`; registered `Reverse_Residuals`, 27.082 s / 1,269,222,736 sampled bytes |
+| New dyadic precision theory | PASS | `isabelle-dyadic-v2`; registered `Balanced_Dyadic_Integration`, 17.656 s / 1,229,180,744 sampled bytes |
+| Bounded experiments | PASS | `reverse-audit-final.json`, `dyadic-audit-final.jsonl`; 0.543 s and 2.023 s under separate 35 s / 1 GiB guards |
+
+Failed initial proof attempts remain in the local evidence; the repaired
+theories pass without skipped proofs or new axioms/oracles. Final registered
+session recheck is `isabelle-final`. The 60 s / 4 GiB guard is unchanged.
+No production Python changed in this increment, so new wheel, aggregate
+Isabelle and five-trial growth claims are not made. Existing positive release
+assertions remain active and the release remains blocked.
+
+</details>
 
 ### Profiler and cache authority audit
 
@@ -2136,3 +2346,556 @@ all authored `src tests devtools`; non-isolated wheel building lacked a local
 setuptools backend, so the final build used standard isolated build dependency
 installation. The benchmark boundary edit was formatted before the final
 fingerprint and full-suite run. Failed/intermediate logs remain local evidence.
+
+
+## Balanced dyadic temporal cutover
+
+Objective: apply the downloaded Collatz temporal/performance patches to the
+shared production constructor and transfer the applicable balanced composition
+to Antihydra/Mahler while preserving their distinct retained consumers.
+
+| Input | SHA256 / scope |
+| --- | --- |
+| Baseline commit | `fda53bddbc2167c651fe7f88059e0d6cfc1193ed` |
+| `collatz_generic_temporal_cutover_fix.patch` | `760bebe8228656e2eca54a2420ea5bc83834fac337c21772b607ad9602938529` |
+| `collatz_digit_temporal_performance_fix.patch` | `2856a962c6ab4cd880e1e9325677afab7c4c042db05a0d59786edca879bee1ed` |
+
+Downloaded reports are research inputs, not evidence for the live tree.
+The performance delta targets the generic patch's left-deep affine accumulation.
+An independent baseline checkout at `fda53bd` already showed roughly doubling
+aggregate charged operand-bit work at random-source horizons 128–1024:
+25,885 / 55,875 / 110,496 / 237,868. It is therefore incorrect to label that
+live baseline's measured total work quadratic. Its retained ledger nodes were
+620 / 1,370 / 2,868 / 5,862; source authority and support remain separately
+accounted from semantic action interning.
+
+Implementation and adversarial scope:
+
+- The existing scheduler owns direct composed application to an admitted
+  recursive source. The shared constructor uses balanced low-residue transport.
+- Collatz digit-only requests avoid compatibility power compilation and publish
+  a saturated root. Explicit support demands preserve branch semantics.
+- Antihydra retains chronological support for guarded TM and first-failure
+  consumers. Mahler reuses its source image; neither the Collatz recurrence nor
+  its nonnegative safety weights are substituted for Antihydra's law.
+- Audit found the supplied saturation patch replayed whole trajectories during
+  full Python payload/metrics audits and broke branch observers. These were
+  implementation defects, not evidence that a new semantic variable is needed.
+  The current CLI metrics collector was already read-only; full audits are a
+  separate measured and charged operation.
+- The supplied normalized parity-bijection argument does not apply verbatim to
+  physical indexing. Tests already distinguish normalized words from physical
+  no-`11` words. No finite F5 exact-endpoint closure is inferred here.
+- Existing Isabelle source transport, low-residue lift, affine composition,
+  cycle and minimum-prefix lemmas are reused as semantic specifications. Full
+  executable constructor and asymptotic cost refinement remains a separate
+  obligation; no duplicate selector-only theorem was added as a substitute.
+
+Frozen authored source: `91edc25e7d990807835db367d20ca58801712d76faf04f5070686aa33c278d5e`.
+Local raw evidence stays under `results/current/collatz-balanced-cutover/`;
+these are local evidence stems, not portable downloads.
+
+The shared constructor's exact memo is local to one pinned law and retention
+mode, keyed by `(span, residue)`, bounded to 64 entries and ledger-charged.
+It is released before publication. Lookup/hash operand sizes, publications,
+hits and eviction are separate from semantic-action interning. Independent
+review checked source authority, cycle phases, changed demands, shared support
+IDs and failed-publication cleanup on this fingerprint.
+
+The installed positive reuse gate checks source `2^4096` at physical index
+1,024: exact value `2^3072`, positive memo hits, at least 960 reused steps,
+at most 64 classified steps and zero scheduler primitive applications. Four
+hits were measured. Retained-support mode further reduces classifications to
+four via the existing bounded leaf algebra. This is exact low-cylinder reuse,
+not a claimed F5 merge of unequal future continuations.
+
+Assertion-to-replacement mapping:
+
+| Previous private contract | Retained production assertion |
+| --- | --- |
+| A chronological second-child source must exist | Direct publication has no second-child source; altered root residue, foreign source and stale image handles are rejected |
+| Tile/field parent counters establish Collatz execution | Source-image publication, action work and exact-cycle compression establish the active owner; exact outputs and resource ceilings remain |
+| Radix conversion builds an old power program/tile observation | Scoped source-image atom owns binary and radix-3 queries; compatibility power and tile observation remain absent |
+| Installed reuse invokes `transport_reuse` | Public CLI meets the exact reuse/classification bound above through the balanced memo |
+| Full metrics validate the live endpoint by demanding it again | Independent sealed-fiber validation charges audit work without endpoint or aggregate demands |
+
+Positive `bounded_temporal_runtime_cutover_complete` assertions, reverse/add
+construction assertions and special-number resolution assertions remain active.
+No skips or expected failures were introduced.
+
+Five-trial median construction **plus exact endpoint demand**, in a warm
+interpreter with API/process caches bypassed (milliseconds):
+
+| Collatz seeded random source bits / physical steps | Baseline `fda53bd` | Current | Baseline retained ledger nodes | Current nodes |
+| --- | ---: | ---: | ---: | ---: |
+| 128 / 128 | 2.541 | 1.122 | 620 | 246 |
+| 1,024 / 1,024 | 22.965 | 2.733 | 5,862 | 252 |
+| 8,192 / 8,192 | 199.181 | 17.846 | 47,756 | 258 |
+
+The deterministic random and repeating-bit inputs use the same benchmark
+harness against both trees. At 8,192 the repeating-bit case measured 1.282 ms
+and 12 exact memo hits. Explicit decimal conversion and full payload audit
+are timed separately. Cumulative operand counters now include newly charged
+memo hashing and independent audit work; raw totals are not a like-for-like
+work-saving comparison against the baseline's narrower instrumentation.
+
+All 210 five-trial growth samples completed over 16–1,024, with separate
+cold, repeated and cache-bypassed modes for Collatz and Antihydra. Antihydra
+samples also request Mahler from the same support. Another 70 current-tree
+queries cover random/repeating Collatz inputs through 8,192; the same 70
+baseline queries completed. Every endpoint is checked against a bounded
+independent recurrence. These finite measurements do not prove an arbitrary
+source construction bound or Python integer-multiplication complexity.
+
+| Validation | Result | Local evidence |
+| --- | --- | --- |
+| Focused semantic, authority, rollback, laziness and reuse checks | 224 PASS | `focused-final` |
+| Six growth modes and two larger workloads | All samples complete under 35 s / 1 GiB per probe | `growth-*`, `large-*`, `measurement-summary.json` |
+| Original temporal probe | PASS; unresolved proof flags remain false | `original-probe-final` |
+| Clean installed wheel | PASS; 15 fresh-process CLI cases, package inventory and traced reuse/Mahler checks | `installed-final` |
+| Strict mypy, Ruff, formatting, policy, docs, proof index | PASS; 1,498 Python files, 20 sessions / 109 theories | `quality-final.json`, `quality-*` |
+| Registered Isabelle aggregate | PASS, 12.18 s / 1,730,514,160 sampled bytes under 60 s / 4 GiB | `isabelle-final`; existing statements only |
+| Explicit P0 selection | 13 PASS / same 50 FAIL; no new failing test IDs | `p0-final`, `p0-comparison.json` |
+| Final full unit selection | 6,716 PASS / same 42 FAIL, no new failing test IDs; 232.34 s / 804,930,688 sampled bytes under 300 s / 1 GiB | `unit-final`, `unit-comparison.json` |
+
+Reproduce the measured public query workload:
+
+```console
+python -m devtools.benchmarks.collatz_temporal_power_probe --balanced-scaling --family collatz --mode bypass --indices 128 256 512 1024 2048 4096 8192 --trials 5
+python -m devtools.benchmarks.collatz_temporal_power_probe --balanced-scaling --family antihydra --mode cold --mahler --indices 16 32 64 128 256 512 1024 --trials 5
+python -m pytest -q tests/hashlife/execution/test_dyadic_effect_reuse.py tests/sequences/collatz/test_temporal_patch_adversarial.py tests/sequences/collatz/test_temporal_budget_rollback.py
+```
+
+Release remains blocked by the existing constructor/proof obligations. Cold
+noncycle discovery still consumes required source bits; Antihydra retains
+chronological support for guarded consumers. No global Collatz convergence,
+Mahler safety or Antihydra non-halting theorem is claimed.
+
+## Balanced dyadic executable and finite safety refinement
+
+- **Objective:** connect the balanced production constructor to an executable
+  Isabelle worklist, then derive finite Collatz, Antihydra and Mahler results
+  from that same arithmetic owner.
+- **Changes:** added deterministic postorder execution, the actual split rule,
+  bounded branch leaves, transported right-child residues, exact memo lookup,
+  FIFO eviction before optional cache admission, and early completion. The
+  recursive specification and work potential are proof objects, never execution
+  oracles. Added 36 independent differential cases and registered the new
+  downstream family session in the existing proof inventory.
+- **Established results:** numerical constructor correctness for arbitrary
+  finite horizons; exact high-fiber endpoints; Antihydra finite ledger guards;
+  chronological support-summary descent; Mahler action equality for the actual
+  source-8 centered branch fold. Its cap is nonpositive exactly at horizons
+  at least two, with first failure at one-based return two. This does not imply
+  Antihydra ledger failure or TM halting.
+- **Rejected shortcuts:** supplied branch itineraries as source proofs,
+  recursive specifications as executable constructors, unbounded memo tables,
+  discarded cache entries surviving a failed reservation, and semantic-cycle
+  theorems presented as verification of Python cycle admission.
+- **Remaining work:** Python image/support-ID publication and allocator
+  refinement, complete bit/storage construction bounds, the existing reverse
+  and special-number constructors, and source-global mathematical obligations.
+  The worklist's linear abstract control bound is not an integer-arithmetic or
+  arbitrary-source sublinear runtime bound.
+
+Frozen authored source:
+`a28ef398fb9d4744a30d8e21a795a48918c9560c5729d95d8b144d8b8a934a81`.
+Local evidence is under `results/current/balanced-proof-refinement/`; these are
+local evidence stems, not portable download links. The maintained
+[refinement map](../../../docs/proofs/balanced-dyadic-refinement.md) separates
+checked statements, Python counterparts and unresolved publication/cost work.
+The earlier timing measurements retain their own `91edc25e7d99` fingerprint;
+this proof pass changes no production Python execution path.
+
+Independent review checked the actual source/parity binding, absence of
+execution oracles, memo eviction/refusal, and theorem scope. It found and
+corrected an overstatement about runtime cycle admission in the mapping
+document. The added eviction regression forces optional cache refusal
+immediately after removing the oldest entry from a full 64-entry memo.
+
+The pre-layout family build (`9454a8f4daee`, `families-v39`) passed in
+17.001 seconds / 1,256,967,576 sampled bytes. Policy then caught the worklist
+at 1,065 lines against the existing 1,000-line limit. Its unchanged split
+arithmetic moved into the existing `Dyadic_Source_Lift` owner, leaving 902
+worklist lines and 494 source-lift lines, without an exception or new fragment
+theory. The final fingerprint above includes that move.
+
+The affected-session rebuild hit the unchanged 60-second limit after the
+shared and family theories passed (`isabelle-refreeze`). An incremental
+aggregate continuation checked the remaining sessions in 27.686 seconds /
+1,240,665,952 sampled bytes (`isabelle-resume`). Thus all registered sessions
+are checked, but a one-invocation rebuild of all affected sessions missed the
+deadline. The initial default-heap development build also exceeded 4 GiB;
+subsequent checks used smaller JVM/PolyML heaps under the same guard. Failed
+development logs remain local.
+
+Reproduce the guarded aggregate with the normal Isabelle installation path:
+
+```console
+python -m devtools.checks.process_guard --timeout 60 --memory-mib 4096 --output /tmp/balanced-isabelle.log --report /tmp/balanced-isabelle-guard.json -- isabelle env 'ML_OPTIONS=--minheap 256 --maxheap 1600' 'ISABELLE_TOOL_JAVA_OPTIONS=-Djava.awt.headless=true -Xms256m -Xmx1024m -Xss16m' isabelle build -D devtools/proofs/isabelle -j 1 -o threads=1 -o parallel_proofs=0
+python -m pytest -q tests/hashlife/execution/test_balanced_proof_refinement.py
+```
+
+
+| Validation on final fingerprint | Result | Local evidence |
+| --- | --- | --- |
+| Focused arithmetic, authority, memo and safety checks | 260 PASS, including 36 new differential cases | `focused-final` |
+| Strict mypy, Ruff, formatting, policy, docs and proof inventory | PASS; 1,499 Python files; 21 registered sessions / 114 theories | `quality-final.json`, `quality-*`, `proof-index.json` |
+| All registered Isabelle sessions | Checked after incremental continuation; affected-session one-invocation rebuild exceeded 60 s | `isabelle-refreeze`, `isabelle-resume`; limits unchanged |
+| Fresh isolated wheel and CLI | PASS; 15 fresh-process cases and package/source equality | `wheel-build-isolated`, `installed-final`; 10.080 s / 116,983,848 sampled bytes |
+| Explicit P0 selection | Same 13 PASS / 50 FAIL; no added or removed failing IDs | `p0-final`, `p0-comparison.json` |
+| Full unit selection | 6,752 PASS / same 42 FAIL; no added or removed failing IDs | `unit-final`, `unit-comparison.json`; 214.379 s / 829,883,544 sampled bytes under 300 s / 1 GiB |
+| Independent review | Accepted for numerical constructor and finite safety scope | `independent-review.json` |
+
+No release gate was skipped or weakened. Existing reverse/add and F4 unit
+failures remain active, as do the broader architectural/primality P0 failures.
+The release hold also retains the affected-session rebuild deadline failure.
+This work finishes the shared numerical constructor and finite-safety bridge;
+it does not certify all Python objects, global non-halting, or arbitrary cold
+construction complexity.
+
+## Comma boundary quotient
+
+The 2026-09-23 cutover work targets the boundary state
+`(N/Z,a,p mod 924)`, with the actual exponent and literal-term weights retained
+outside the shared phase identity. Its acceptance target is polylogarithmic
+construction/selection in the term index; integer arithmetic and rendering are
+reported separately. This is not a claim of linear bit complexity.
+
+### Changes and scope
+
+- Added symbolic boundary macros with exact affine weights, both fork children,
+  landmine outcomes and indexed fragment prefixes. A partial term demand uses
+  binary prefix descent and at most one bounded decimal phase.
+- Added chronological weighted returns through the shared skew-transfer owner,
+  with capped geometric repetition through shared binary powering. Arithmetic
+  descriptors cannot authorize infinite-branch selection.
+- Added a development lifting checker for every affine sector/guard predicate,
+  residue-fixed floor division, complete child alternatives and weighted prefix.
+  It checks the entire exponent ray, rather than testing only two exponents.
+  Its Isabelle refinement remains an independent gate.
+- Removed certificate file access and SHA256 work before authenticated memo/cache
+  hits. Cold misses still run the existing finite-forest verifier. The auditor
+  caught a reset race; shared local hits now validate a generation-bound lease.
+- Rejected forged negative/nonintegral return weights, incomplete child coverage,
+  altered cycle phases/guards and sample-only weight substitutions. Production
+  still uses the certified prefix until lifting, the finite instance and the
+  scheduler/consumer refinement are checked.
+- The independent follow-up audit found and fixed zero literal progress paired
+  with positive exponent transport, and stale local retention after a reset
+  during publication. Failed local publication now removes its memo entry.
+  Bit-work admission precedes large power allocations.
+- Moved the now-checked large-sector child rule into the existing arithmetic
+  owner. Production and symbolic macro construction share it; only startup
+  values below 100 perform nine leading-digit checks. Independent literal tests
+  cover all values 100 through 10,000, both sides of seams and candidate-search
+  poisoning. This local integration does not choose infinite fork branches.
+- Repeated-return selection builds capped geometric summaries and descends their
+  binary levels. It handles negative affine offsets and exact endpoint equality;
+  tests include a trillion repetitions with oversized powers poisoned. This is
+  arithmetic support for future scheduler integration, not branch admission.
+
+### Quotient reproduction
+
+The symbolic checker was run over every boundary state in 16 serialized shards
+of 924 states, each under 35 seconds / 1 GiB. The full finite graph has 14,470
+losing states, maximum losing rank 136, and 314 surviving states on one cycle.
+Every cycle state has exactly one surviving child; the accumulated exponent
+gain is 924. These are executable whole-ray checks and finite enumeration,
+not a kernel-checked graph certificate.
+
+`python -m devtools.experiments.comma.boundary_quotient_audit --start 0 --stop 924`
+produces the first shard; successive disjoint intervals cover all 14,784 states.
+`--merge PATHS --weighted-return` rejects incomplete/duplicate state coverage
+and malformed alternatives, then reconstructs and rechecks all 314 cycle macros
+before composing their exact weight. The composed denominator is 721080360;
+its numerator offset is 107598294880. Full coefficients and constructor counters
+are retained in local JSON evidence. Checker work is explicitly excluded from
+those constructor counters; wall time includes it.
+
+The reported cycle choice prefix begins **after** the initial choice at the
+first root-20 fork. Prepend that initial zero when comparing it with A399179.
+
+### Remaining cutover obligations
+
+1. Complete the repeated maximum-guard/floor-count result and prove the
+   executable affine-ray fragment checker refines exact-length unique-child
+   paths, including partial selection. The local seam, sign, displacement,
+   unique-edge and period-transport ingredients are now kernel-checked.
+2. Check the losing-rank and unique winning-cycle instance in Isabelle, including
+   the source-20 prelude and exclusion of smaller initial values.
+3. Publish those admitted weighted returns through `TileScheduler`, implement
+   weighted cycle/fragment descent, and connect API/CLI admission together.
+4. Validate cold/warm/bypassed production costs before removing the forest asset,
+   runtime verifier and finite-prefix boundary. Existing cross-family holds stay.
+
+Raw evidence is local under `results/current/comma-boundary-quotient/`.
+
+The full table contains 1,965,763 fragments (maximum 1,188 per macro). This
+identifies a concrete checking-cost concern; it is not a timed impossibility
+result. The planned finite certificate must tie every child/gain row to the
+HOL evaluator, then check losing ranks and the winning cycle. Merely importing
+the Python edge table as a premise would leave the main theorem unproved.
+
+### Frozen validation and disposition
+
+Final authored-source fingerprint:
+`af813617bfaebf9de84c91ed6782c6cf921844d5a2f3779cea1e051dbfa33d9f`.
+All evidence below is local under `results/current/comma-boundary-quotient/`.
+The full plan remains incomplete; this checkpoint does not enable an unbounded
+comma prefix or remove the runtime forest.
+
+| Check | Result and scope | Evidence stem |
+| --- | --- | --- |
+| Focused comma/API checks | 207 PASS; four explicit validation cases separately PASS | `focused-final`, `cli-validation-final` |
+| Full default unit selection | 6,827 PASS / same 42 FAIL; 51 added passing tests, no removed tests or new failing IDs; 243.29 s / 812,745,856 sampled bytes under 300 s / 1 GiB | `unit-final`, `unit-comparison.json` |
+| Explicit P0 selection | Same 13 PASS / 50 FAIL; identical test and failing-ID sets | `p0-final`, `p0-comparison.json` |
+| Strict quality | Mypy, Ruff, formatting, repository policy, docs and proof inventory PASS; 1,511 Python files | `quality-*` |
+| Isabelle | Five new local theories pass with oracle audits; focused rebuild 31.44 s / 1.21 GB. All 21 sessions / 123 theories pass the incremental aggregate in 10.74 s; existing heaps reused | `proof-v38`, `isabelle-all-final`, `proof-index-final.json` |
+| Clean installed wheel | PASS; 18 fresh CLI cases include comma startup, last admitted index and first unresolved index; 21.10 s under 35 s / 1 GiB | `wheel-build-isolated`, `installed-final` |
+| Entire quotient and weighted return | All 14,784 macros pass the executable whole-ray checker; counts reproduce 14,470 losing / 314 winning / rank 136 / exponent gain 924 | `final-shard-00` through `final-shard-15`, `quotient-weighted-final.json` |
+| Production prefix measurements | 135 samples: five trials for nine indices in each cold/repeat/bypass mode. One initial five-trial bypass-16 probe timed out at 35.03 s; the same workload's retry passed at 26.34 s | `probe-*`, `measurement-summary.json` |
+| Independent review | Literal alternatives, weighted descent, affine guards, source binding, memo generation and rollback reviewed; full quotient theorem/cutover excluded | `independent-review.json` |
+
+The initial non-isolated wheel build lacked `setuptools.build_meta` in the
+validation environment. The isolated build succeeded; no dependency or source
+change was needed. Both attempts remain recorded.
+
+The timing inputs are `16,32,64,128,256,512,1024,20000,412987860`. Reproduce each
+five-trial packet with the canonical probe, wrapped in the unchanged guard:
+
+```console
+python -m devtools.checks.process_guard --timeout 35 --memory-mib 1024 --output /tmp/comma-probe.json --report /tmp/comma-guard.json -- python -m devtools.benchmarks.production_p0_probe --family a367620 --mode cold --trials 5 --indices 1024
+```
+
+Use `repeat` and `bypass` for their respective modes. The interpreter is warm;
+cold mode clears shared caches, repeat retains the owner, and bypass disables
+process/API reuse while retaining normal within-request memoization. Installed
+fresh-process CLI measurements are separate.
+
+## Comma executable refinement and runtime audit
+
+**Objective:** replace forest-backed prefix admission with the complete weighted
+boundary quotient. **Disposition: incomplete; no global CLI cutover or forest
+deletion.** Source fingerprint for this increment:
+`02e9e3612534a4dbf3881a3755c9c27fffb437f171de0e0ca205d03444f566ee`.
+The preceding checkpoint retains its own fingerprint and measurements.
+
+### Established results
+
+- The repeated strict cycle guard and maximal floor/clamp count are checked.
+  The new executable macro induction proves exact literal transition weight,
+  terminal chart and complete ordered children **conditional on a successful
+  HOL macro return**. It does not discharge fuel totality.
+- The finite transition model has checked modular headroom, delta/phase
+  transport and a checked 92-position trace from `N(2,10)` to the next fork at
+  `(7,12)`. These are abstract positions, not 92 literal transitions. The
+  14,784-state cardinality is proved; the complete rank/cycle instance is not.
+- Certificate reporting is read-only. It neither verifies nor hashes the asset;
+  a query that has not admitted its value reports `runtime_verified=false`.
+  Cold value admission still uses the forest. Warm admission checks memo
+  authority before asset hashing.
+- Interior-cycle transport rebinds the receiving source and index. Weighted
+  boundary fragments support charged partial selection, but cross-exponent
+  publication remains refused until its lifting proof is complete.
+- Decimal streaming uses the shared balanced radix conversion with charged
+  workspace and cleanup. Admission occurs at the first pull; reset during a
+  stream rejects the next emission. No separate decimal conversion owner was
+  introduced.
+- Boundary templates now have ledger-owned immutable component snapshots.
+  An adversarial nested-payload mutation exposed insufficient validation;
+  header checks and demanded component checks now reject it. Sealing failures
+  roll back retained stores. Actual scalar transitions are counted separately
+  from represented transitions, including on cache hits.
+
+### Assertion mapping and independent review
+
+No genuine construction assertion was removed or weakened. The reporting test
+now expects an unverified metadata snapshot and poisons asset access, hashing
+and verification. Budget-refusal checks invoke value admission rather than the
+read-only reporter. Phase-enumeration counters were replaced by charged closed
+cycle-rule evaluations. Two poison hooks moved to their canonical owner in
+`action_arena.py`; their assertions remain unchanged. The rejected-prefix test
+charges its one performed admission operation rather than an absent second
+verification call.
+
+The independent HOL/Python audit found no local arithmetic counterexample. It
+identified the exact remaining bridge: the finite Entry/Near model omits
+literal weights and landmine endpoints, while production retains affine
+weighted fragments and a partial selector. Their equality, all-state totality
+and exponent-shifted execution are not established by the local periodic law.
+The initial N-boundary tick must be included in that bridge.
+
+### Validation and remaining work
+
+Raw evidence is local under
+`results/current/comma-boundary-quotient/cutover-2026-09-23/`; these paths are not
+portable artifact links. Failed builds and timeouts are retained there.
+Runs 47, 52 and 57 temporarily excluded the finite-transition theory for
+diagnostics; they are not aggregate acceptance. Run 64 includes every
+registered comma theory with the complete session list restored.
+
+| Check | Result and scope | Evidence |
+| --- | --- | --- |
+| Focused runtime checks | 345 PASS, 4 separately selected validation cases excluded; 32.39 s / 99.1 MB under 35 s / 1 GiB | `comma-cutover-focused-verified.*` |
+| Full default units | 6,849 PASS / same 42 FAIL; 22 added passing tests, no removed tests or new failing IDs; 249.55 s / 811.6 MB under 300 s / 1 GiB; identical before/after source fingerprint | `comma-cutover-unit.*`, `unit-comparison.json` |
+| Explicit P0 selection | Same 13 PASS / 50 FAIL, identical selection and failing IDs; 2.49 s / 88.7 MB | `comma-cutover-p0.*`, `p0-comparison.json` |
+| Registered comma Isabelle session | PASS, 21.36 s / 1.21 GB, with oracle audits; checked parent heap reused | `comma-cutover-isabelle-64.*` |
+| Repository aggregate Isabelle | All 22 registered sessions PASS, 11.18 s / 1.17 GB, incremental checked-heap reuse | `comma-cutover-isabelle-repository.*` |
+| Arithmetic parent | PASS including finite-period laws; the combined parent/child invocation hit 60 s before child completion | `comma-cutover-isabelle-54.*` |
+| Installed wheel | 18 CLI cases PASS, 21.38 s / 117.4 MB; runtime files match frozen source; forest module and asset still present | `comma-cutover-installed.*`, `wheel-source-inventory.json` |
+| Strict quality | PASS: mypy, Ruff and format checks on 1,516 Python files; policy, docs and proof inventory; 11.23 s / 631.4 MB | `comma-cutover-quality-final.*`, `comma-cutover-proof-index.json` |
+| Targeted production latency | Five trials each at index 1,024 in cold/repeat/bypass modes; all guarded packets completed | `comma-cutover-probe-*`, `targeted-latency-summary.json` |
+
+An earlier `-a` aggregate command unintentionally selected Isabelle's entire
+distribution, including Codegen, and timed out at 60 seconds. It is retained as
+`comma-cutover-isabelle-all.*`, not counted as repository aggregate evidence.
+The corrected command obtains all 22 names from the shared ROOT parser.
+
+At index 1,024, median cold admission was 5.095 s and arithmetic construction
+41.19 ms. Warm admission was 34.12 microseconds; cache-bypassed admission was
+5.077 s with 40.92 ms construction. These 15 samples isolate the remaining
+forest cost; they do not replace the full growth manifest or prove an
+asymptotic bound. A preliminary quality invocation supplied its script through
+stdin, which the process guard deliberately closes; its empty log is not
+validation evidence. The recorded final quality invocation passes the script
+as an explicit argument and requires output from every check.
+
+Still required: total boundary construction within its bound; equality between
+the finite and weighted constructors; checked losing classification, winning
+cycle and repeating literal path; source-20/prelude and earlier-root exclusion;
+partial weighted-selection and scheduler refinement; then global CLI admission
+and deletion of the forest. The untrusted generated rank candidate remains
+outside the repository and outside Isabelle admission. No new public branch
+decision was taken from it. The full new growth/cross-fork acceptance run is
+not claimed while this construction gate remains open.
+
+At index 16, median cold certificate admission was 4.97 s, compared with
+40.8 microseconds for repeated admission; each cold request reread 813,641
+certificate bytes and each measured repeated request reread zero. At the
+certified boundary, cold construction after admission was 0.184 s. These are
+measured mode differences, not a proved constructor speedup or an asymptotic
+bound. The initial timeout remains a performance hold, and cold forest removal
+still depends on the missing global proof and production cutover.
+
+## Affine point-germ consumers
+
+**Objective:** selectively integrate the corrected downloaded alphabets and
+cursors without installing exponentially growing flat future automata.
+**Implemented:** shared spatial affine point normalization and pullback,
+Collatz/Antihydra admitted-image point consumers, and lazy Antihydra CLI values.
+**Still open:** recursive future-demand construction/closure, reverse temporal
+cutover, and a checked Isabelle refinement of the imported point normalizer.
+No current-output equivalence is used as successor authority or a safety proof.
+
+### Input disposition
+
+| Downloaded input | SHA-256 | Disposition |
+| --- | --- | --- |
+| `number-compiler-main-collatz-future-demand-research.zip` | `5300828f44a744befb607efc10bc424ee406faac9d6527dd34eb2ad26cccc156` | Selected point-germ arithmetic ported to the shared arithmetic owner. The independent scalar cold cursor and alphabet enumerators are not production executors. |
+| `collatz_cold_cursor_minimal_germ.patch` | `cdee2da67405252825698c17cf5e644a31df2355537f1d02976daf7912d70c5c` | Reference for the periodic bit/blank semantics. Existing scheduler source admission is retained. |
+| `collatz_future_demand_quotient.patch` | `08f1ab3d429c77040e51916185bf924756184d37dbc092e6d68a49e168ac1ade` | Flat future-reader compilation is not imported as a performance optimization. Current-point collision retained as a regression. |
+| `196_future_response_quotient_search.zip` | `32be2736cf37244103f204384b78865d6e37a61ffae9fb75e8736be2758b85e0` | Bounded future-response reference. Its D4 interior reader has 45,592 minimized states; it does not supply the missing compact source-relative recursive constructor. |
+| `196_future_response_quotient_search.patch` | `dbcf30e87362610c4ab071f5d4cf28602c66b43c1fb60f18ba3ab01d2b3910f2` | No production cutover or weakening of reverse positive assertions. |
+
+The two pasted corrections propose recursive affine/branch residuals and
+source-relative reverse responses. Neither includes a completed closure or
+construction-bound proof. A finite leaf alphabet is not a finite temporal
+state set. Their rejected flat representations are not counterexamples to
+the proposed recursive grammar.
+
+### Changes and scope
+
+- One `AffinePointGerm` implements exact even-factor reduction, reflection
+  normalization, positive affine spatial pullback and threshold transport.
+  Evaluation masks the high coordinate before multiplication; no truth table
+  or alphabet enumeration runs in production.
+- The shared dyadic point consumer authenticates source/action/image bindings,
+  reduces the affine numerator before multiplication and retains the exterior
+  cutoff independently. Remote exterior queries compare bit lengths before
+  constructing a power. Zero retains its canonical single zero digit.
+- Collatz retains its existing demanded microblock cache and whole-limb path.
+  Antihydra point requests no longer call `result()`; they reuse the arithmetic
+  image without endpoint construction, physical roofs or first-failure descent.
+  Antihydra ordinary CLI values similarly do not request the safety result.
+- Mahler still consumes the same exact Antihydra support. Its positivity
+  predicate and the physical ledger are unchanged. No finite point quotient
+  substitutes for their source-dependent safety information.
+- New work is counted under family-prefixed `point_germ_*` counters. There is
+  no new retained germ cache or global DFA. Descriptor bit counts measure
+  summed construction work, not retained storage or saved work.
+
+### Validation scope
+
+The focused consumer checks poison endpoint and safety evaluation, test public
+CLI value laziness, compare both laws against independent bounded recurrences,
+check warm discovery reuse, foreign/disposed authority and huge exterior
+coordinates, and retain the equal-point/different-future witness. Exhaustive
+normalization checks cover widths one through five, not every temporal action.
+
+Five-trial paired request measurements at 16–1,024 returns compare the old
+Antihydra `result().h` point consumer with the admitted germ consumer. Cold
+construction remains approximately unchanged; at 1,024 returns the initial
+run measured about 5 ms for both. Warm point demand dropped from roughly
+0.16 ms to 0.014 ms. These are same-process demand measurements, not evidence
+of a new cold temporal bound or faster full-output conversion. Raw input
+manifest, guarded tests and measurements are local under
+`results/current/point-germ-integration-2026-09-23/`; they are not portable
+artifact links. Final frozen-source results follow below.
+
+### New recursive archive audit
+
+During integration, `number-compiler-main-collatz-recursive-future-quotient.zip`
+arrived with SHA-256
+`5bd6d2a95cabac66d480173752ceda7c99fa0eacd8dacf112d96dcb4931e3bf1`.
+Its `future_recursive.py` has no flat source DFA. The valid local affine
+pullback is already represented by the shared `AffinePointGerm.pullback` port.
+The complete proposed CLI replacement was not accepted:
+
+- **Exact API counterexample:**
+  `RecursivePointDemand.initial(0).source_digit(0).advance(CollatzFutureTimeAction(1)).at_high(0)`
+  returns `1`. The specialized source is `x=1+2Y`; at `Y=0`, one physical
+  Collatz tick gives `4`, whose bit zero is `0`. Terminal normalization erased
+  the source occurrence, so later `advance` applies time to the wrong object.
+  Appending time belongs to the source-bound action owner, not a saturated
+  point leaf. This witness does not refute recursive source grammar closure.
+- **Demand cost:** instrumenting `_source_step` shows 901 scalar tail steps
+  for source `931386509544713451`, horizon 1,000, bit zero. Source 27 at
+  horizon `10^12` takes 100 scalar tail steps before the cycle shortcut.
+  A one-node duration descriptor does not eliminate this charged discovery.
+- **Other integration hazards:** unbounded global `lru_cache` alphabet tables,
+  a new point-specific authority token disconnected from the admitted image,
+  and per-bit limb traversal conflict with the live bounded caches, shared
+  scheduler authority and batched limb implementation.
+
+The imported production consumer keeps source/action/image authority separate
+from the point germ and exposes no operation for advancing a saturated leaf.
+The archive's independent scalar executor and eager alphabet-ID tables are
+not imported. Generalizing its scalar continuation to Antihydra/Mahler would
+still require their distinct recurrence and safety laws; it supplies no
+reverse/add complete-return constructor. The all-family future-quotient
+cutover is therefore incomplete. The exact reproduction and counted tails
+are retained in the local input-audit evidence directory above.
+
+### Frozen-source validation
+
+Final source fingerprint:
+`6101fa556de9250f7277ec31dbdd4031709ba9c8159b353cb2ea29d1b17ef2d7`.
+
+| Check | Result | Scope/evidence |
+| --- | --- | --- |
+| Focused consumer, Antihydra/Mahler and Collatz checks | 147 PASS, 1.20 s | Exact output, poison guards, safety separation, shared discovery and lifecycle |
+| Full default units | 6,867 PASS / same 42 FAIL; 255.44 s / 816.7 MB | `accepted-unit.*`; 18 added passing tests, no removed tests or new failing IDs; identical before/after fingerprint |
+| Explicit P0 selection | Same 13 PASS / 50 FAIL; 3.70 s / 88.1 MB | `p0-final.*`; identical selected and failing IDs |
+| Strict quality | mypy, Ruff and formatting PASS on 1,518 Python files | No new suppressions or exclusions |
+| Clean installed wheel | 18 CLI cases PASS; 22.43 s / 115.8 MB | `installed-final.*`; changed packaged modules match frozen source byte-for-byte |
+| Existing dyadic Isabelle integration | PASS, incremental checked-heap reuse; 5.85 s / 1.22 GB | `isabelle-existing.*`; unchanged numeric/safety theories, not a proof of the newly imported normalizer |
+| Five-trial demand probes | Cold discovery unchanged within these samples; at 1,024 returns median warm demand 0.157 ms via `result().h`, 0.021 ms via point germ | `benchmark-final.*`, `point-germ-bench.json`; same-process fresh/repeated requests, not fresh-process latency or an asymptotic constructor proof |
+
+The initial full suite found two extra failures because the new binary consumer
+bypassed the canonical summary hook. That boundary was restored; assertions
+were unchanged. A later in-progress run was deliberately interrupted to add
+the same exact-tree guard to direct Antihydra term points. Both runs remain in
+the raw evidence; neither is final acceptance. The replacement wheel was
+rebuilt after the guard fix. No Isabelle theory was changed, and the spatial
+normalizer's executable proof remains a separate obligation.

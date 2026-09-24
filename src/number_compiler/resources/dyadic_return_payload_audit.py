@@ -6,6 +6,12 @@ from itertools import accumulate
 from operator import add, mul
 
 from number_compiler.arithmetic.fields.skew_transfer import SkewTransfer
+from number_compiler.hashlife.execution.dyadic_return_transport import (
+    cycle_phase_summaries,
+)
+from number_compiler.resources.dyadic_return_balanced_audit import (
+    _balanced_saturated_audit,
+)
 from number_compiler.resources.ledger import ResourceLedger
 from number_compiler.resources.physical_support_payload_audit import (
     PhysicalSupportPayloadAudit,
@@ -139,6 +145,13 @@ def audit_dyadic_return_payloads(
                 (root.image_snapshot_owner, root.image_snapshots, "workspace", 1),
                 (root.macro_owner, root.macros, "dyadic_return_macro_index", 1),
                 (root.macro_stack_owner, root.macro_stack, "workspace", 1),
+                (root.balanced_stack_owner, root.balanced_stack, "workspace", 1),
+                (
+                    root.demanded_support_owner,
+                    root.demanded_support,
+                    "dyadic_return_support_demand_index",
+                    0,
+                ),
             )
             scheduler_valid, core = valid_source_only_scheduler(
                 root.scheduler, ledger, containers, roots
@@ -166,6 +179,7 @@ def audit_dyadic_return_payloads(
                 and all(type(store_owner) is int for store_owner in owners)
                 and not root.construction_stack
                 and not root.macro_stack
+                and not root.balanced_stack
                 and not root.macros
                 and all(
                     containers.get(store_owner) is store
@@ -369,8 +383,18 @@ def audit_dyadic_return_payloads(
                         and type(support_record.children) in (tuple, type(None))
                         and type(support_record.cycle)
                         in (DyadicCycleSummary, type(None))
+                        and type(support_record.saturated) is bool
                     )
-                if bound and support_record.branch_word is not None:
+                if bound and support_record.saturated:
+                    bound &= (
+                        root.law.family.startswith("collatz")
+                        and support_record.branch_word is None
+                        and support_record.children is None
+                        and support_record.width > 0
+                        and 0 <= support_record.odd_steps <= support_record.width
+                        and support_record.minimum <= min(0, support_record.delta)
+                    )
+                elif bound and support_record.branch_word is not None:
                     bound &= 0 < support_record.width <= root.MAX_LEAF_STEPS
                     if not bound:
                         valid = False
@@ -649,6 +673,102 @@ def audit_dyadic_return_payloads(
                             and summary.odd_steps == retained.odd_steps
                             and summary.cycle == retained.cycle
                         )
+                        if bound and retained.saturated:
+                            if retained.cycle is None:
+                                expected = _balanced_saturated_audit(
+                                    root.law,
+                                    image_source.residue,
+                                    retained.width,
+                                    ledger,
+                                )
+                            else:
+                                metadata = retained.cycle
+                                law_cycle = root.law.cycle
+                                bound &= (
+                                    image_source.exact
+                                    and law_cycle is not None
+                                    and 0 < metadata.entry_steps <= 4096
+                                    and metadata.entry_steps <= retained.width
+                                )
+                                if bound:
+                                    assert law_cycle is not None
+                                    prefix = _balanced_saturated_audit(
+                                        root.law,
+                                        image_source.residue,
+                                        metadata.entry_steps,
+                                        ledger,
+                                    )
+                                    source_value = image_source.residue
+                                    if image_source.lift:
+                                        source_value += (
+                                            1 << image_source.precision
+                                        ) * image_source.lift
+                                    numerator = (
+                                        prefix[0].upper * source_value
+                                        + prefix[0].offset
+                                    )
+                                    bound &= numerator % prefix[0].lower == 0
+                                if bound:
+                                    assert law_cycle is not None
+                                    assert metadata is not None
+                                    entry_value = numerator // prefix[0].lower
+                                    length = len(law_cycle.states)
+                                    bound &= (
+                                        0 <= metadata.cycle_phase < length
+                                        and entry_value
+                                        == law_cycle.states[metadata.cycle_phase]
+                                        and metadata.cycles >= 0
+                                        and 0 <= metadata.remainder < length
+                                        and metadata.entry_steps
+                                        + metadata.cycles * length
+                                        + metadata.remainder
+                                        == retained.width
+                                    )
+                                if bound:
+                                    assert law_cycle is not None
+                                    (
+                                        safety,
+                                        cycle_odd,
+                                        remainder_safety,
+                                        remainder_odd,
+                                    ) = cycle_phase_summaries(
+                                        root.law,
+                                        metadata.cycle_phase,
+                                        metadata.remainder,
+                                    )
+                                    tail = safety.repeat(metadata.cycles).then(
+                                        remainder_safety
+                                    )
+                                    tail_odd = (
+                                        metadata.cycles * cycle_odd + remainder_odd
+                                    )
+                                    terminal_phase = (
+                                        metadata.cycle_phase + metadata.remainder
+                                    ) % length
+                                    bound &= (
+                                        metadata.terminal_phase == terminal_phase
+                                        and metadata.odd_steps == tail_odd
+                                        and metadata.delta == tail.delta
+                                        and metadata.minimum == tail.minimum
+                                    )
+                                    expected = (
+                                        SkewTransfer(
+                                            0, law_cycle.states[terminal_phase], 1
+                                        ),
+                                        prefix[1] + tail_odd,
+                                        prefix[2] + tail.delta,
+                                        min(prefix[3], prefix[2] + tail.minimum),
+                                    )
+                            if bound:
+                                bound &= (
+                                    retained.transfer.upper * expected[0].lower
+                                    == expected[0].upper * retained.transfer.lower
+                                    and retained.transfer.offset * expected[0].lower
+                                    == expected[0].offset * retained.transfer.lower
+                                    and retained.odd_steps == expected[1]
+                                    and retained.delta == expected[2]
+                                    and retained.minimum == expected[3]
+                                )
                         if summary.cycle is not None:
                             cycle_length = (
                                 len(root.law.cycle.states)
@@ -680,6 +800,23 @@ def audit_dyadic_return_payloads(
                         root_approved.add(id(image_record.summary.support))
                     if image_record.summary.cycle is not None:
                         root_approved.add(id(image_record.summary.cycle))
+
+            for image_id, support_id in root.demanded_support.items():
+                image = image_node(image_id)
+                original = image.summary.support
+                completed = support_node(support_id)
+                valid &= (
+                    original is not None
+                    and support_node(original).saturated
+                    and completed.width == image.summary.width
+                    and completed.residue == image.summary.residue
+                    and completed.transfer == image.summary.transfer
+                    and completed.odd_steps == image.summary.odd_steps
+                    and completed.delta == image.summary.delta
+                    and completed.minimum == image.summary.minimum
+                    and completed.cycle == image.summary.cycle
+                )
+                root_approved.update((id(image_id), id(support_id)))
 
             root_precision = root.steps
             root_residue = _low_bits(root.seed, root_precision)

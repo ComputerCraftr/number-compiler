@@ -10,6 +10,7 @@ discovery still costs linear work in the requested physical extent.
 from __future__ import annotations
 
 from collections.abc import Hashable, Iterator
+from contextlib import contextmanager
 from operator import add, mul
 
 from number_compiler.arithmetic.contracts.scoped_handles import ArenaToken
@@ -146,6 +147,15 @@ class DyadicReturnImageWorkspace(
             prefix + "-macros", "dyadic_return_macro_index"
         )
         self.macro_stack_owner = ledger.register(prefix + "-macro-stack", "workspace")
+        self.balanced_stack_owner = ledger.register(
+            prefix + "-balanced-stack", "workspace"
+        )
+        self.demanded_support_owner = ledger.register(
+            prefix + "-demanded-support", "dyadic_return_support_demand_index"
+        )
+        self.demanded_support: LedgerDict[
+            DyadicReturnImageID, DyadicReturnSupportID
+        ] = ledger.make_dict(self.demanded_support_owner, nodes_per_entry=0)
         self.macros: LedgerDict[tuple[int, int], _SupportNode] = ledger.make_dict(
             self.macro_owner, nodes_per_entry=1
         )
@@ -153,6 +163,11 @@ class DyadicReturnImageWorkspace(
             ledger.make_list(
                 self.macro_stack_owner, nodes_per_entry=1, append_only=False
             )
+        )
+        self.balanced_stack: LedgerList[
+            tuple[int, int, tuple[_SupportNode, DyadicReturnSupportID | None] | None]
+        ] = ledger.make_list(
+            self.balanced_stack_owner, nodes_per_entry=1, append_only=False
         )
         self.actions: LedgerList[_ActionNode] = ledger.make_list(
             self.action_owner, nodes_per_entry=1, append_only=False
@@ -270,60 +285,25 @@ class DyadicReturnImageWorkspace(
         return identity
 
     def _append_support(self, node: _SupportNode) -> DyadicReturnSupportID:
-        self.ledger.reserve_many(
-            ((self.support_owner, 1, 1), (self.support_snapshot_owner, 1, 1))
+        from number_compiler.hashlife.execution.dyadic_return_actions import (
+            append_support,
         )
-        identity = DyadicReturnSupportID(
-            self.owner, self._SUPPORT_KIND, len(self.support)
-        )
-        try:
-            self.support.append(node)
-            self.support_snapshots[identity.local_id] = (
-                node.width,
-                node.residue,
-                node.transfer.upper,
-                node.transfer.offset,
-                node.transfer.lower,
-                node.odd_steps,
-                node.delta,
-                node.minimum,
-                node.branch_word,
-                node.children,
-                node.cycle,
-            )
-        except BaseException:
-            self.ledger.release(self.support_owner, entries=1, nodes=1)
-            self.ledger.release(self.support_snapshot_owner, entries=1, nodes=1)
-            raise
-        return identity
+
+        return append_support(self, node)
 
     def _append_image(self, node: _ImageNode) -> DyadicReturnImageID:
-        self.ledger.reserve_many(
-            ((self.image_owner, 1, 1), (self.image_snapshot_owner, 1, 1))
+        from number_compiler.hashlife.execution.dyadic_return_actions import (
+            append_image,
         )
-        identity = DyadicReturnImageID(self.owner, self._IMAGE_KIND, len(self.images))
-        try:
-            self.images.append(node)
-            summary = node.summary
-            self.image_snapshots[identity.local_id] = (
-                node.source,
-                node.action,
-                summary.width,
-                summary.residue,
-                summary.transfer.upper,
-                summary.transfer.offset,
-                summary.transfer.lower,
-                summary.delta,
-                summary.minimum,
-                summary.odd_steps,
-                summary.support,
-                summary.cycle,
-            )
-        except BaseException:
-            self.ledger.release(self.image_owner, entries=1, nodes=1)
-            self.ledger.release(self.image_snapshot_owner, entries=1, nodes=1)
-            raise
-        return identity
+
+        return append_image(self, node)
+
+    def _rollback_new_publications(self, support_start: int, image_start: int) -> None:
+        from number_compiler.hashlife.execution.dyadic_return_actions import (
+            rollback_new_publications,
+        )
+
+        rollback_new_publications(self, support_start, image_start)
 
     def action_node(self, action: DyadicReturnActionID) -> _ActionNode:
         from number_compiler.hashlife.execution.dyadic_return_validation import (
@@ -383,6 +363,10 @@ class DyadicReturnImageWorkspace(
 
     def _bump(self, suffix: str, amount: int = 1) -> None:
         self.ledger.bump(f"{self.counter_prefix}_{suffix}", amount)
+
+    def retain_chronological_support(self) -> bool:
+        """Whether complete composite publication retains its support tree."""
+        return True
 
     def identity_action(self, source: Hashable) -> DyadicReturnActionID:
         self.validate_source(source)
@@ -554,6 +538,28 @@ class DyadicReturnImageWorkspace(
             ),
             precision=source_node.precision,
         )
+
+    def complete_composite_candidate(
+        self, action: Hashable, source: SourceImageView
+    ) -> SourceImageCandidate:
+        from number_compiler.hashlife.execution.dyadic_return_composite import (
+            complete_composite_candidate,
+        )
+
+        with self.composite_transaction():
+            return complete_composite_candidate(self, action, source)
+
+    @contextmanager
+    def composite_transaction(self) -> Iterator[None]:
+        """Keep adapter records provisional until the scheduler publishes them."""
+        support_start, image_start = len(self.support), len(self.images)
+        try:
+            yield
+        except BaseException:
+            if len(self.support) > support_start or len(self.images) > image_start:
+                self._rollback_new_publications(support_start, image_start)
+                self._bump("composite_cutover_rollbacks")
+            raise
 
     def apply_primitive(
         self, action: Hashable, source: SourceImageView

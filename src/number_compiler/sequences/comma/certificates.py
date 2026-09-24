@@ -36,6 +36,16 @@ def new_certificate_memo(ledger: ResourceLedger) -> CertificateMemo:
     return OwnedMemo(ledger, owner, nodes_per_entry=1, evictable=True)
 
 
+def _admission_marker(generation: int) -> tuple[tuple[str, str], str]:
+    local_key = (CERTIFICATE_ID, f"{CERTIFICATE_SHA256}:{generation}")
+    tag = blake2b(
+        repr((local_key, 20, 10, CERTIFIED_MAX_INDEX, FIRST_FORK_CHILDREN)).encode(),
+        key=_CACHE_AUTHORITY,
+        digest_size=32,
+    ).hexdigest()
+    return local_key, tag
+
+
 class UnresolvedCommaTerm(UnresolvedSequenceTerm):
     """The requested index is beyond currently admitted prefix evidence."""
 
@@ -102,55 +112,72 @@ def _verify(
                 "comma certificate verifier omitted required source coverage"
             )
 
-    asset = files("number_compiler").joinpath("kernels", CERTIFICATE_ASSET)
-    with as_file(asset) as path:
-        _checked_asset(path, ledger, max_work)
-        generation = get_process_cache().generation if shared_cache else -1
-        local_key = (CERTIFICATE_ID, f"{CERTIFICATE_SHA256}:{generation}")
-        tag = blake2b(
-            repr(
-                (local_key, 20, 10, CERTIFIED_MAX_INDEX, FIRST_FORK_CHILDREN)
-            ).encode(),
-            key=_CACHE_AUTHORITY,
-            digest_size=32,
-        ).hexdigest()
+    if memo is not None and memo.ledger is not ledger:
+        raise ValueError("foreign comma certificate admission owner")
+
+    def local_hit(local_key: tuple[str, str], tag: str) -> bool:
         _charge(ledger, max_work)
-        if memo is not None:
-            if memo.ledger is not ledger:
-                raise ValueError("foreign comma certificate admission owner")
-            previous = memo.get(local_key)
-            if previous is not None:
-                if type(previous) is not str or not compare_digest(previous, tag):
-                    raise ValueError("forged comma certificate admission marker")
-                ledger.bump("comma_certificate_local_hits")
-                return
-        if not shared_cache:
-            ledger.bump("comma_certificate_cache_bypasses")
+        previous = memo.get(local_key) if memo is not None else None
+        if previous is None:
+            return False
+        if type(previous) is not str or not compare_digest(previous, tag):
+            raise ValueError("forged comma certificate admission marker")
+        return True
+
+    def check_asset() -> None:
+        asset = files("number_compiler").joinpath("kernels", CERTIFICATE_ASSET)
+        with as_file(asset) as path:
+            _checked_asset(path, ledger, max_work)
             check(path)
-            if memo is not None:
-                memo[local_key] = tag
+
+    # Bypassed queries keep only their own admission, independent of process
+    # resets. Shared admissions instead consume a generation-bound lease even
+    # on query-local hits; a reset during lookup must invalidate that authority.
+    if not shared_cache:
+        local_key, tag = _admission_marker(-1)
+        if local_hit(local_key, tag):
+            ledger.bump("comma_certificate_local_hits")
             return
-        with get_process_cache().acquire(
-            "comma-prefix-certificate", CERTIFICATE_ID, (20, 10, CERTIFICATE_SHA256)
-        ) as lease:
-            key = (CERTIFIED_MAX_INDEX, FIRST_FORK_INDEX, FIRST_FORK_VALUE)
-            expected = (CERTIFICATE_SHA256, tag)
-            _charge(ledger, max_work)
-            cached = lease.get(key)
-            if cached is not MISSING:
-                if cached != expected or type(cached) is not tuple:
-                    raise ValueError("foreign comma certificate cache payload")
-                ledger.bump("comma_certificate_cache_hits")
+        ledger.bump("comma_certificate_cache_bypasses")
+        check_asset()
+        if memo is not None:
+            memo[local_key] = tag
+        return
+    with get_process_cache().acquire(
+        "comma-prefix-certificate", CERTIFICATE_ID, (20, 10, CERTIFICATE_SHA256)
+    ) as lease:
+        local_key, tag = _admission_marker(lease.stats().generation)
+
+        def publish_local() -> None:
+            try:
                 if memo is not None:
                     memo[local_key] = tag
-                return
-            ledger.bump("comma_certificate_cache_misses")
-            check(path)
-            _charge(ledger, max_work)
-            if lease.put(key, expected):
-                ledger.bump("comma_certificate_cache_publications")
-            if memo is not None:
-                memo[local_key] = tag
+                lease.stats()
+            except Exception:
+                if memo is not None:
+                    memo.pop(local_key, None)
+                raise
+
+        if local_hit(local_key, tag):
+            lease.stats()  # Recheck authority after the query-local lookup.
+            ledger.bump("comma_certificate_local_hits")
+            return
+        key = (CERTIFIED_MAX_INDEX, FIRST_FORK_INDEX, FIRST_FORK_VALUE)
+        expected = (CERTIFICATE_SHA256, tag)
+        _charge(ledger, max_work)
+        cached = lease.get(key)
+        if cached is not MISSING:
+            if cached != expected or type(cached) is not tuple:
+                raise ValueError("foreign comma certificate cache payload")
+            publish_local()
+            ledger.bump("comma_certificate_cache_hits")
+            return
+        ledger.bump("comma_certificate_cache_misses")
+        check_asset()
+        _charge(ledger, max_work)
+        if lease.put(key, expected):
+            ledger.bump("comma_certificate_cache_publications")
+        publish_local()
 
 
 def certificate_status(
@@ -161,14 +188,27 @@ def certificate_status(
     shared_cache: bool = True,
     memo: CertificateMemo | None = None,
 ) -> dict[str, object]:
+    """Report existing query evidence without initiating admission or asset I/O.
+
+    This snapshot is never an authorization token. Value consumers must call
+    ``require_certified_index``, including after a process-cache reset.
+    """
     index = require_integer(index, "comma index", 1)
-    max_work = require_integer(max_work, "comma work budget", 1)
+    require_integer(max_work, "comma work budget", 1)
     if type(shared_cache) is not bool:
         raise TypeError("shared_cache must be a bool")
-    _charge(ledger, max_work)
+    if memo is not None and memo.ledger is not ledger:
+        raise ValueError("foreign comma certificate admission owner")
     admitted = index <= CERTIFIED_MAX_INDEX
-    if admitted:
-        _verify(ledger, max_work, shared_cache, memo)
+    verified = False
+    if admitted and memo is not None and len(memo):
+        generation = get_process_cache().generation if shared_cache else -1
+        local_key, tag = _admission_marker(generation)
+        previous = memo.get(local_key)
+        if previous is not None:
+            if type(previous) is not str or not compare_digest(previous, tag):
+                raise ValueError("forged comma certificate admission marker")
+            verified = not shared_cache or get_process_cache().generation == generation
     return {
         "family": "a367620",
         "status": "available" if admitted else "unknown",
@@ -176,11 +216,13 @@ def certificate_status(
         "certificate_sha256": CERTIFICATE_SHA256,
         "certified_max_index": CERTIFIED_MAX_INDEX,
         "requested_index": index,
-        "runtime_verified": admitted,
+        "runtime_verified": verified,
         "isabelle_instance_checked": False,
         "proof_scope": "finite_root_and_first_fork_branch_closure",
         "reason": (
-            "runtime-checked finite regions; complete Isabelle instance remains open"
+            "query has checked finite regions; complete Isabelle instance remains open"
+            if verified
+            else "prefix evidence available; this query has not verified it"
             if admitted
             else "the requested index exceeds the checked comma prefix"
         ),
@@ -195,11 +237,14 @@ def require_certified_index(
     shared_cache: bool = True,
     memo: CertificateMemo | None = None,
 ) -> None:
-    status = certificate_status(
-        index, ledger, max_work, shared_cache=shared_cache, memo=memo
-    )
-    if status["status"] != "available":
+    index = require_integer(index, "comma index", 1)
+    max_work = require_integer(max_work, "comma work budget", 1)
+    if type(shared_cache) is not bool:
+        raise TypeError("shared_cache must be a bool")
+    _charge(ledger, max_work)
+    if index > CERTIFIED_MAX_INDEX:
         raise unresolved_boundary(index)
+    _verify(ledger, max_work, shared_cache, memo)
 
 
 def require_selected_child(

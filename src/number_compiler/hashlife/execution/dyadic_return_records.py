@@ -147,6 +147,7 @@ class _SupportNode:
     branch_word: int | None
     children: tuple[DyadicReturnSupportID, DyadicReturnSupportID] | None
     cycle: DyadicCycleSummary | None = None
+    saturated: bool = False
 
 
 @dataclass(frozen=True, slots=True)

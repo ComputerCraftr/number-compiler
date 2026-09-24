@@ -79,6 +79,7 @@ def support_node(
         node.branch_word,
         node.children,
         node.cycle,
+        node.saturated,
     ):
         raise ValueError("dyadic return support publication was altered")
     return node
@@ -235,7 +236,7 @@ def validate_workspace(workspace: DyadicReturnImageWorkspace) -> None:
         or root_view.binding.extent != workspace.steps
         or root_view.payload != workspace.root_payload
         or workspace.action_node(workspace.root_action).width != workspace.steps
-        or workspace.summary().width != workspace.steps
+        or workspace.image_node(workspace.root_payload).summary.width != workspace.steps
     ):
         raise ValueError("dyadic return root image binding was changed")
     for index in range(len(workspace.images)):
@@ -304,7 +305,18 @@ def validate_workspace(workspace: DyadicReturnImageWorkspace) -> None:
             workspace.owner, workspace._SUPPORT_KIND, support_index
         )
         current = workspace.support_node(support_id)
-        if current.branch_word is not None:
+        if current.saturated:
+            if (
+                not workspace.law.family.startswith("collatz")
+                or current.branch_word is not None
+                or current.children is not None
+                or current.width <= 0
+                or current.odd_steps < 0
+                or current.odd_steps > current.width
+                or current.minimum > min(0, current.delta)
+            ):
+                raise ValueError("invalid saturated Collatz support")
+        elif current.branch_word is not None:
             if (
                 current.children is not None
                 or current.width < 0

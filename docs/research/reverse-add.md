@@ -825,3 +825,23 @@ Reproduce the interface and authority checks with:
 python -m pytest -q -o addopts='' tests/arithmetic/functions/test_complete_finite_transform.py tests/sequences/reverse_add/test_active_output_morphisms.py tests/sequences/reverse_add/test_threshold_cocycle.py
 isabelle build -d devtools/proofs/isabelle Temporal_Clock_Jumps
 ```
+
+### Three-cell temporal boundary candidate
+
+- **Finite experiment:** the proposed `(q mod 4, r, left/right Q95 halo)`
+  predicts the doubled clock in the supplied seed-196 sample. It does not
+  determine the full doubled halo: D4 blocks at starts 77 and 86 share
+  `(2,2,(21,25,26),(21,25,26))`, but their D8 third cells are 41 and 34.
+  At D16, D32 and D64 all sampled full keys are singletons, so zero conflicts
+  there supplies no repeated-key evidence.
+- **Scope:** this disproves a standalone key-to-successor-halo table, not an
+  occurrence-parameterized action. A shared transformer can correctly return
+  different results from different recursive source occurrences. The complete
+  recursive application and its construction bound remain to be established.
+- **Checked local laws:** `Reverse_Boundary_Germ_Local` proves Q95/blank
+  separation, exact threshold carry, equality at 9, edge reflection and
+  symbol-complement carry conjugacy. Complementing a pair symbol does not
+  supply a transformation of its F5 forcing. These results do not authorize
+  erasing temporal program identity or independently quotienting F5 phases.
+
+[Reproduction, precise witnesses and validation](../../results/current/2026-W39/README.md#powered-boundary-germ-audit).

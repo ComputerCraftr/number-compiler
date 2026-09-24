@@ -62,3 +62,54 @@ def test_single_digit_large_base_does_not_build_power_tree(
 
     monkeypatch.setattr(radix, "divmod", forbidden_division, raising=False)
     assert radix.digits_lsd(value, (1 << 100_000) + 1, 2) == (value, 0)
+
+
+def test_balanced_stream_is_lazy_charged_and_releases_workspace(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    value = 10**4097 + 10**2048 + 1
+    operations: list[int] = []
+    bit_work: list[int] = []
+    workspace: list[tuple[int, int]] = []
+    leaves = 0
+
+    def bounded_divmod(numerator: int, denominator: int) -> tuple[int, int]:
+        nonlocal leaves
+        if denominator == 10:
+            assert numerator < 10**32
+            leaves += 1
+        return builtins.divmod(numerator, denominator)
+
+    monkeypatch.setattr(radix, "divmod", bounded_divmod, raising=False)
+    stream = radix.iter_digits_lsd(
+        value,
+        10,
+        charge=operations.append,
+        charge_bits=bit_work.append,
+        observe_workspace=lambda slots, bits: workspace.append((slots, bits)),
+    )
+    assert not operations and not workspace
+    assert next(stream) == 1
+    assert leaves == 1
+    assert 0 < sum(operations) < 32
+    assert sum(bit_work) > value.bit_length()
+    assert workspace[-1][0] > 0
+    stream.close()
+    assert workspace[-1] == (0, 0)
+
+
+def test_stream_budget_failure_cleans_up_before_any_digit() -> None:
+    workspace: list[tuple[int, int]] = []
+
+    def refuse(_: int) -> None:
+        raise ValueError("stream work budget")
+
+    stream = radix.iter_digits_lsd(
+        10**100,
+        10,
+        charge=refuse,
+        observe_workspace=lambda slots, bits: workspace.append((slots, bits)),
+    )
+    with pytest.raises(ValueError, match="stream work budget"):
+        next(stream)
+    assert workspace == [(0, 0)]

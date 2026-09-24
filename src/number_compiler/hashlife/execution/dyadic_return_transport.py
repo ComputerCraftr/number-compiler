@@ -5,6 +5,9 @@ from __future__ import annotations
 from operator import add, mul
 from typing import TYPE_CHECKING
 
+from number_compiler.arithmetic.contracts.block_effect import (
+    BlockContextBudgetExceeded,
+)
 from number_compiler.arithmetic.fields.consumer_pullback import PrefixSafety
 from number_compiler.arithmetic.fields.skew_transfer import SkewTransfer
 from number_compiler.hashlife.execution.dyadic_return_records import (
@@ -136,6 +139,282 @@ def transport_low(
         ),
     )
     return _low_bits(residue_numerator // transfer.lower, after_width)
+
+
+def _residue_effect(
+    workspace: DyadicReturnImageWorkspace, width: int, residue: int
+) -> _SupportNode:
+    """Return one exact bounded effect without publishing chronological support."""
+    if not 0 < width <= workspace.MAX_LEAF_STEPS:
+        raise ValueError("transient dyadic leaf exceeds the bounded leaf width")
+    state = residue
+    transfer = SkewTransfer(1, 0, 1)
+    odd_steps = 0
+    delta = 0
+    minimum = 0
+    branch_word = 0
+    for index in range(width):
+        bit = state & 1
+        branch_word |= bit << index
+        gain = workspace.law.gains[bit]
+        offset = workspace.law.offsets[bit]
+        numerator = gain * state + offset
+        if numerator % 2:
+            raise ArithmeticError("dyadic transient leaf was not integral")
+        state = numerator // 2
+        transfer = transfer.then(SkewTransfer(gain, offset, 2), multiply=mul, add=add)
+        workspace._bump(
+            "transient_leaf_operand_bits",
+            sum(
+                abs(value).bit_length()
+                for value in (
+                    state,
+                    numerator,
+                    gain,
+                    offset,
+                    transfer.upper,
+                    transfer.offset,
+                    transfer.lower,
+                )
+            ),
+        )
+        odd_steps += bit
+        delta += workspace.law.weights[bit]
+        minimum = min(minimum, delta)
+    workspace._bump("transient_leaf_steps", width)
+    return _SupportNode(
+        width, residue, transfer, odd_steps, delta, minimum, branch_word, None
+    )
+
+
+def _balanced_residue_build(
+    workspace: DyadicReturnImageWorkspace,
+    width: int,
+    residue: int,
+    *,
+    retain: bool,
+) -> tuple[_SupportNode, DyadicReturnSupportID | None]:
+    """Construct one balanced effect using a charged postorder work stack."""
+    workspace._validate_law()
+    if (
+        type(width) is not int
+        or width <= 0
+        or type(residue) is not int
+        or residue < 0
+        or residue.bit_length() > width
+    ):
+        raise ValueError("balanced effect requires one exact dyadic source cylinder")
+    stack = workspace.balanced_stack
+    if workspace._closed or stack:
+        raise RuntimeError("nested or disposed balanced dyadic construction")
+    # This is an exact semantic cache for this one construction, never an
+    # occurrence cache.  It is bounded independently of the represented
+    # extent and released before publication.  Equal low cylinders at a
+    # fixed span have identical complete effects under the pinned law.
+    memo: dict[tuple[int, int], tuple[_SupportNode, DyadicReturnSupportID | None]] = {}
+    MAX_MEMO = 64
+
+    def remember(result: tuple[_SupportNode, DyadicReturnSupportID | None]) -> None:
+        key = (result[0].width, result[0].residue)
+        workspace._bump(
+            "balanced_effect_memo_lookup_operand_bits",
+            key[0].bit_length() + key[1].bit_length(),
+        )
+        if key in memo:
+            return
+        if len(memo) >= MAX_MEMO:
+            evicted = next(iter(memo))
+            workspace._bump(
+                "balanced_effect_memo_lookup_operand_bits",
+                evicted[0].bit_length() + evicted[1].bit_length(),
+            )
+            memo.pop(evicted)
+            workspace.ledger.release(workspace.balanced_stack_owner, entries=1, nodes=1)
+            workspace._bump("balanced_effect_memo_evictions")
+        try:
+            workspace.ledger.reserve(workspace.balanced_stack_owner, entries=1, nodes=1)
+        except BlockContextBudgetExceeded:
+            # A cache hit may save work, but its retention is never required
+            # for a valid computation under a stricter request budget.
+            return
+        try:
+            memo[key] = result
+        except BaseException:
+            workspace.ledger.release(workspace.balanced_stack_owner, entries=1, nodes=1)
+            raise
+        transfer = result[0].transfer
+        workspace._bump("balanced_effect_memo_publications")
+        workspace._bump(
+            "balanced_effect_memo_operand_bits",
+            sum(
+                abs(value).bit_length()
+                for value in (
+                    result[0].residue,
+                    transfer.upper,
+                    transfer.offset,
+                    transfer.lower,
+                    result[0].delta,
+                    result[0].minimum,
+                )
+            ),
+        )
+
+    def push(
+        span: int,
+        source: int,
+        left: tuple[_SupportNode, DyadicReturnSupportID | None] | None,
+    ) -> None:
+        workspace.ledger.reserve(workspace.balanced_stack_owner, entries=1, nodes=1)
+        try:
+            stack.append((span, source, left))
+        except BaseException:
+            workspace.ledger.release(workspace.balanced_stack_owner, entries=1, nodes=1)
+            raise
+        workspace._bump("balanced_stack_frames")
+        left_bits = (
+            0
+            if left is None
+            else sum(
+                abs(value).bit_length()
+                for value in (
+                    left[0].residue,
+                    left[0].transfer.upper,
+                    left[0].transfer.offset,
+                    left[0].transfer.lower,
+                    left[0].delta,
+                    left[0].minimum,
+                )
+            )
+        )
+        workspace._bump(
+            "balanced_stack_operand_bits",
+            source.bit_length() + span.bit_length() + left_bits,
+        )
+
+    span, source = width, residue
+    result: tuple[_SupportNode, DyadicReturnSupportID | None]
+    try:
+        while True:
+            cached = memo.get((span, source))
+            workspace._bump("balanced_effect_memo_lookups")
+            workspace._bump(
+                "balanced_effect_memo_lookup_operand_bits",
+                span.bit_length() + source.bit_length(),
+            )
+            if cached is not None:
+                result = cached
+                workspace._bump("balanced_effect_memo_hits")
+                workspace._bump("reused_temporal_extent", span)
+            else:
+                workspace._bump("balanced_effect_memo_misses")
+            if cached is None and span <= workspace.MAX_LEAF_STEPS:
+                if retain:
+                    identity = residue_macro(workspace, span, source)
+                    result = (
+                        workspace.support_node(identity),
+                        identity,
+                    )
+                else:
+                    result = (_residue_effect(workspace, span, source), None)
+                remember(result)
+            elif cached is None:
+                push(span, source, None)
+                span = 1 << ((span - 1).bit_length() - 1)
+                source = _low_bits(source, span)
+                continue
+
+            while stack:
+                parent_span, parent_source, left = stack.pop()
+                workspace.ledger.release(
+                    workspace.balanced_stack_owner, entries=1, nodes=1
+                )
+                if left is None:
+                    push(parent_span, parent_source, result)
+                    span = parent_span - result[0].width
+                    source = transport_low(
+                        workspace, result[0].transfer, parent_source, span
+                    )
+                    break
+                right = result
+                left_node, left_id = left
+                right_node, right_id = right
+                transfer = left_node.transfer.then(
+                    right_node.transfer, multiply=mul, add=add
+                )
+                operand_bits = sum(
+                    abs(value).bit_length()
+                    for value in (
+                        left_node.transfer.upper,
+                        left_node.transfer.offset,
+                        left_node.transfer.lower,
+                        right_node.transfer.upper,
+                        right_node.transfer.offset,
+                        right_node.transfer.lower,
+                    )
+                )
+                if retain:
+                    assert left_id is not None and right_id is not None
+                    children = (left_id, right_id)
+                else:
+                    children = None
+                node = _SupportNode(
+                    parent_span,
+                    parent_source,
+                    transfer,
+                    left_node.odd_steps + right_node.odd_steps,
+                    left_node.delta + right_node.delta,
+                    min(left_node.minimum, left_node.delta + right_node.minimum),
+                    None,
+                    children,
+                    None,
+                    not retain,
+                )
+                if retain:
+                    node_id = workspace._append_support(node)
+                    suffix = "balanced_macro"
+                else:
+                    node_id = None
+                    suffix = "balanced_effect"
+                workspace._bump(f"{suffix}_compositions")
+                workspace._bump(f"{suffix}_composed_extent", parent_span)
+                workspace._bump(f"{suffix}_composition_operand_bits", operand_bits)
+                result = (node, node_id)
+                remember(result)
+            else:
+                return result
+    finally:
+        pending = len(stack)
+        if pending:
+            stack.clear()
+            workspace.ledger.release(
+                workspace.balanced_stack_owner, entries=pending, nodes=pending
+            )
+        retained = len(memo)
+        if retained:
+            memo.clear()
+            workspace.ledger.release(
+                workspace.balanced_stack_owner, entries=retained, nodes=retained
+            )
+
+
+def balanced_residue_effect(
+    workspace: DyadicReturnImageWorkspace, width: int, residue: int
+) -> _SupportNode:
+    """Build an exact effect with logarithmic charged transient stack depth."""
+    workspace._bump("balanced_effect_requests")
+    node, identity = _balanced_residue_build(workspace, width, residue, retain=False)
+    assert identity is None
+    return node
+
+
+def balanced_residue_macro(
+    workspace: DyadicReturnImageWorkspace, width: int, residue: int
+) -> DyadicReturnSupportID:
+    """Publish exact chronological support through the same balanced worklist."""
+    workspace._bump("balanced_macro_requests")
+    _node, identity = _balanced_residue_build(workspace, width, residue, retain=True)
+    assert identity is not None
+    return identity
 
 
 def residue_macro(

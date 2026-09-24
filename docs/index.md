@@ -31,6 +31,7 @@ records below; see the [placement guide](development.md#documentation-placement)
 ## Proofs and development
 
 - [Formal proof index, assumptions and build commands](proofs.md)
+- [Balanced dyadic constructor: production refinement map](proofs/balanced-dyadic-refinement.md)
 - [Development, validation and resource limits](development.md)
 
 ## Current status

@@ -25,6 +25,34 @@ def _collect(counters: dict[str, int]) -> TemporalExecutionDiagnostics:
     )
 
 
+def test_explicit_mahler_audit_does_not_reconstruct_endpoint() -> None:
+    from number_compiler.api.cli_context import QueryContext
+    from number_compiler.api.cli_requests import parse_request
+    from number_compiler.api.number_api import AntihydraTermPayload, NumberCompiler
+
+    request = parse_request(["antihydra", "--nth", "65", "--info", "mahler"])
+    assert request is not None
+    query = QueryContext(request, NumberCompiler())
+    query.information()
+    payload = query.term.payload
+    assert isinstance(payload, AntihydraTermPayload)
+    ledger = payload.term.ledger
+    before = dict(ledger.counters)
+    version = ledger.mutation_version
+    metrics = collect_ledger_metrics(ledger)
+    assert metrics.resource_audit_complete
+    assert metrics.resource_accounting_mismatch == 0
+    assert ledger.mutation_version == version
+    assert ledger.counters["mahler_source_validation_operand_bits"] > before.get(
+        "mahler_source_validation_operand_bits", 0
+    )
+    for name in (
+        "antihydra_arithmetic_fiber_endpoint_demands",
+        "antihydra_arithmetic_aggregate_demands",
+    ):
+        assert ledger.counters.get(name, 0) == before.get(name, 0)
+
+
 def test_uninstrumented_lanes_are_unavailable_not_zero() -> None:
     record = _collect({})
     assert record.schema_version == 8
@@ -46,6 +74,70 @@ def test_uninstrumented_lanes_are_unavailable_not_zero() -> None:
     assert record.observations.mahler_source_composed_image_reads is None
     assert record.observations.mahler_associated_action_demands is None
     assert (record.resources.entries, record.resources.nodes) == (3, 4)
+
+
+def test_comma_macro_reuse_is_distinct_from_represented_steps() -> None:
+    ledger = ResourceLedger()
+    ledger.bump("comma_boundary_prefix_applications", 2)
+    ledger.bump("comma_boundary_represented_transitions", 10**12)
+    ledger.bump("comma_boundary_template_hits", 1)
+    ledger.bump("comma_relative_guard_checks", 4)
+    ledger.bump("comma_relative_cycle_rebindings", 1)
+    ledger.bump("comma_boundary_seal_checks", 9)
+    ledger.bump("comma_boundary_seal_retained_slots", 30)
+    ledger.bump("comma_boundary_seal_retained_integer_bits", 1500)
+    before = dict(ledger.counters)
+    version = ledger.mutation_version
+    report = collect_temporal_diagnostics_snapshot(ledger)
+    assert report.comma.boundary_prefix_applications == 2
+    assert report.comma.boundary_represented_transitions == 10**12
+    assert report.comma.boundary_template_hits == 1
+    assert report.comma.relative_guard_checks == 4
+    assert report.comma.relative_cycle_rebindings == 1
+    assert report.comma.boundary_seal_checks == 9
+    assert report.comma.boundary_seal_retained_slots == 30
+    assert report.comma.boundary_seal_retained_integer_bits == 1500
+    assert report.comma.boundary_template_retained_nodes is None
+    assert report.comma.operations is None
+    assert ledger.counters == before
+    assert ledger.mutation_version == version
+
+
+@pytest.mark.parametrize("prefix", ("collatz_physical", "antihydra_arithmetic"))
+def test_balanced_work_is_distinct_from_scheduler_and_interner_hits(
+    prefix: str,
+) -> None:
+    counters = {
+        f"{prefix}_action_publications": 1,
+        f"{prefix}_action_hits": 9,
+        f"{prefix}_transient_leaf_steps": 512,
+        f"{prefix}_balanced_effect_compositions": 7,
+        f"{prefix}_balanced_effect_composition_operand_bits": 18000,
+        f"{prefix}_composite_cutover_chunks": 0,
+        f"{prefix}_composite_cutover_publications": 1,
+        f"{prefix}_saturated_support_publications": 1,
+        f"{prefix}_balanced_effect_memo_lookups": 10,
+        f"{prefix}_balanced_effect_memo_hits": 3,
+        f"{prefix}_balanced_effect_memo_misses": 7,
+        f"{prefix}_balanced_effect_memo_publications": 7,
+    }
+    family = _collect(counters).family_work[0]
+    assert family.transient_leaf_steps == 512
+    assert family.balanced_effect_compositions == 7
+    assert family.balanced_macro_compositions is None
+    assert family.composite_cutover_chunks == 0
+    assert family.composite_cutover_publications == 1
+    assert family.saturated_support_publications == 1
+    assert family.action_hits == 9
+    assert family.balanced_effect_memo_lookups == 10
+    assert family.balanced_effect_memo_hits == 3
+    assert family.balanced_effect_memo_misses == 7
+    assert family.balanced_effect_memo_publications == 7
+    assert family.balanced_effect_memo_evictions is None
+    assert family.operand_bits == (
+        (f"{prefix}_balanced_effect_composition_operand_bits", 18000),
+    )
+    assert counters[f"{prefix}_action_hits"] == 9
 
 
 def test_source_image_lanes_preserve_distinct_reuse_and_work_units() -> None:

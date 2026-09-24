@@ -2,12 +2,13 @@
 
 from __future__ import annotations
 
-from collections.abc import Hashable, Iterator
+from collections.abc import Generator, Hashable
 from dataclasses import dataclass
 from typing import cast
 
 from number_compiler.arithmetic.contracts.scoped_handles import ArenaHandle, ArenaToken
 from number_compiler.arithmetic.fields.consumer_pullback import PrefixSafety
+from number_compiler.arithmetic.fields.radix import iter_digits_lsd
 from number_compiler.hashlife.execution.source_bound_images import (
     SourceBoundImageAdapter,
     SourceImageCandidate,
@@ -18,16 +19,21 @@ from number_compiler.hashlife.execution.source_bound_images import (
 )
 from number_compiler.hashlife.execution.tile_scheduler import TileScheduler
 from number_compiler.resources.ledger import ResourceLedger
-from number_compiler.resources.stores import LedgerDict, LedgerList
+from number_compiler.resources.stores import LedgerList
 from number_compiler.sequences.comma.arithmetic import (
-    CycleTransfer,
+    _large_sector_children,
     comma_children,
-    cycle_transfer,
     decimal_sector,
     safe_complete_cycles,
 )
+from number_compiler.sequences.comma.action_arena import (
+    CommaActionArena,
+    CommaActionID,
+    _Action,
+)
+from number_compiler.sequences.comma.boundary_quotient import PERIOD
 
-SEMANTIC_VERSION = "comma-source-cylinder-v1"
+SEMANTIC_VERSION = "comma-source-cylinder-v2"
 SOURCE = 20
 FIRST_FORK_VALUE = 19_999_999_918
 # Independently checked by full nine-candidate literal enumeration. OEIS and
@@ -38,11 +44,6 @@ FIRST_FORK_INDEX = 412_987_859
 
 class UnresolvedCommaBranch(ValueError):
     """The next term requires certified infinite-future branch selection."""
-
-
-@dataclass(frozen=True, slots=True)
-class CommaActionID(ArenaHandle):
-    pass
 
 
 @dataclass(frozen=True, slots=True)
@@ -69,196 +70,6 @@ class CommaImagePayload:
     value: int
     absolute_index: int
     certificate_version: str = "uncertified-arithmetic"
-
-
-@dataclass(frozen=True, slots=True)
-class _Action:
-    kind: str
-    steps: int
-    leading: int = 0
-    entering_digit: int = 0
-    cycles: int = 0
-    displacement: int = 0
-    maximum_guard: int = 0
-    child_digit: int = 0
-    before: CommaActionID | None = None
-    after: CommaActionID | None = None
-
-
-class CommaActionArena:
-    """Ledger-owned, scoped binary action DAG for admitted phase cycles."""
-
-    def __init__(self, ledger: ResourceLedger, max_work: int) -> None:
-        self.ledger = ledger
-        self.max_work = max_work
-        self.token = ArenaToken("comma-actions")
-        self.kind = "comma-action"
-        self._owner = ledger.register("comma-actions", "temporal_action")
-        self._key_owner = ledger.register("comma-action-keys", "action_interning")
-        self._nodes: LedgerList[_Action] = ledger.make_list(
-            self._owner, append_only=False
-        )
-        self._keys: LedgerDict[tuple[object, ...], CommaActionID] = ledger.make_dict(
-            self._key_owner
-        )
-        self.identity = self._intern(("identity",), _Action("identity", 0))
-
-    def charge(self, amount: int = 1) -> None:
-        used = self.ledger.counters.get("comma_work", 0) + self.ledger.counters.get(
-            "comma_certificate_work", 0
-        )
-        if amount > self.max_work - used:
-            self.ledger.bump("comma_budget_refusals")
-            raise ValueError("comma construction exceeds --max-comma-work")
-        self.ledger.bump("comma_work", amount)
-
-    def charge_bits(self, bits: int) -> None:
-        self.ledger.bump("comma_operand_bit_work", bits)
-
-    def _intern(self, key: tuple[object, ...], node: _Action) -> CommaActionID:
-        self.ledger.bump("comma_action_requests")
-        old = self._keys.get(key)
-        if old is not None:
-            self.charge()
-            self.charge_bits(max(1, node.steps.bit_length()))
-            self.ledger.bump("comma_action_hits")
-            return old
-        self.ledger.bump("comma_action_misses")
-        self.charge()
-        self.charge_bits(
-            max(1, node.steps.bit_length())
-            + max(1, node.displacement.bit_length())
-            + max(1, node.maximum_guard.bit_length())
-        )
-        self.ledger.reserve_many(((self._owner, 1, 1), (self._key_owner, 1, 0)))
-        try:
-            identifier = CommaActionID(self.token, self.kind, len(self._nodes))
-            self._nodes.append(node)
-            self._keys[key] = identifier
-        except BaseException:
-            if len(self._nodes) and self._nodes[-1] is node:
-                self._nodes.pop()
-            self.ledger.release(self._owner, entries=1, nodes=1)
-            self.ledger.release(self._key_owner, entries=1)
-            raise
-        self.ledger.bump("comma_action_publications")
-        return identifier
-
-    def node(self, identifier: CommaActionID) -> _Action:
-        if type(identifier) is not CommaActionID:
-            raise TypeError("expected a scoped comma action")
-        identifier.validate(self.token, self.kind, size=len(self._nodes))
-        return self._nodes[identifier.local_id]
-
-    def step(self, child_digit: int) -> CommaActionID:
-        if type(child_digit) is not int or not 1 <= child_digit <= 9:
-            raise ValueError("comma child digit must be 1 through 9")
-        return self._intern(
-            ("step", child_digit), _Action("step", 1, child_digit=child_digit)
-        )
-
-    def transfer(self, leading: int, digit: int) -> CycleTransfer:
-        """Charge every bounded phase fold, including discovery and validation.
-
-        Ten slots conservatively admit any decimal period. Each fold's scalar
-        operands are below 1024; 128 bits covers its additions and comparisons.
-        These charged widths are not a runtime or bit-operation measurement.
-        """
-        self.charge(10)
-        transfer = cycle_transfer(leading, digit)
-        self.charge_bits(transfer.period * 128)
-        self.ledger.bump("comma_transfer_constructions")
-        self.ledger.bump("comma_transfer_phase_terms", transfer.period)
-        return transfer
-
-    def one_cycle(self, leading: int, digit: int) -> CommaActionID:
-        transfer = self.transfer(leading, digit)
-        return self._intern(
-            ("cycle", leading, digit, 1),
-            _Action(
-                "cycle",
-                transfer.period,
-                leading,
-                digit,
-                1,
-                transfer.displacement,
-                transfer.maximum_guard,
-            ),
-        )
-
-    def compose(self, before: CommaActionID, after: CommaActionID) -> CommaActionID:
-        self.charge()
-        left, right = self.node(before), self.node(after)
-        if left.kind == "identity":
-            return after
-        if right.kind == "identity":
-            return before
-        self.charge_bits(left.steps.bit_length() + right.steps.bit_length())
-        if (
-            left.kind == right.kind == "cycle"
-            and left.leading == right.leading
-            and left.entering_digit == right.entering_digit
-        ):
-            # Cycle count addition and the two additions / minimum comparison
-            # in PrefixSafety.then use both source operands, not just the
-            # normalized descriptor subsequently passed to the interner.
-            self.charge(4)
-            self.charge_bits(
-                left.cycles.bit_length()
-                + right.cycles.bit_length()
-                + 2 * left.displacement.bit_length()
-                + right.displacement.bit_length()
-                + right.maximum_guard.bit_length()
-                + left.maximum_guard.bit_length()
-                + max(left.displacement.bit_length(), right.maximum_guard.bit_length())
-                + 1
-            )
-            cycles = left.cycles + right.cycles
-            safety = PrefixSafety(-left.displacement, -left.maximum_guard).then(
-                PrefixSafety(-right.displacement, -right.maximum_guard)
-            )
-            return self._intern(
-                ("cycle", left.leading, left.entering_digit, cycles),
-                _Action(
-                    "cycle",
-                    left.steps + right.steps,
-                    left.leading,
-                    left.entering_digit,
-                    cycles,
-                    -safety.delta,
-                    -safety.minimum,
-                    before=before,
-                    after=after,
-                ),
-            )
-        # Mixed effects retain chronological children. Equal durations alone
-        # do not imply equal future output or admission at a seam.
-        return self._intern(
-            ("sequence", before, after),
-            _Action(
-                "sequence",
-                left.steps + right.steps,
-                before=before,
-                after=after,
-            ),
-        )
-
-    def cycles(self, leading: int, digit: int, count: int) -> CommaActionID:
-        if type(count) is not int or count < 1:
-            raise ValueError("powered comma cycle count must be positive")
-        power = self.one_cycle(leading, digit)
-        result = self.identity
-        remaining = count
-        while remaining:
-            self.charge()
-            self.charge_bits(remaining.bit_length())
-            if remaining & 1:
-                result = self.compose(result, power)
-            remaining >>= 1
-            if remaining:
-                power = self.compose(power, power)
-            self.ledger.bump("comma_binary_composition_work")
-        return result
 
 
 class _CommaImageAdapter(SourceBoundImageAdapter):
@@ -395,11 +206,43 @@ class _CommaImageAdapter(SourceBoundImageAdapter):
             return self._candidate(
                 payload.value, payload.absolute_index, source.binding.extent
             )
-        if node.kind == "step":
-            self.arena.charge(9)
-            self.arena.charge_bits(18 * payload.value.bit_length())
-            children = comma_children(payload.value)
-            self.ledger.bump("comma_child_candidate_checks", 9)
+        if node.kind == "boundary-prefix":
+            state = node.boundary_source
+            if state is None or node.boundary_exponent < 5:
+                raise ValueError("comma boundary action is incomplete")
+            representative = state.exponent_residue
+            if representative < 5:
+                representative += PERIOD
+            if node.boundary_exponent != representative:
+                raise ValueError("comma boundary lifting is not yet admitted")
+            expected = state.value(
+                node.boundary_exponent, charge_bits=self.arena.charge_bits
+            )
+            if payload.value != expected:
+                raise ValueError("comma boundary action has another source occurrence")
+            template = self.arena._boundary_template(state)
+            value = template.point(
+                node.boundary_exponent,
+                node.steps,
+                charge=self.arena.charge,
+                charge_bits=self.arena.charge_bits,
+                validate_read=self.arena._boundary_read_guard(state, template),
+            )
+            self.ledger.bump("comma_boundary_prefix_applications")
+            self.ledger.bump("comma_boundary_represented_transitions", node.steps)
+        elif node.kind == "step":
+            self.ledger.bump("comma_evaluated_transitions")
+            sector = decimal_sector(payload.value)
+            if sector.exponent < 2:
+                self.arena.charge(9)
+                self.arena.charge_bits(18 * payload.value.bit_length())
+                children = comma_children(payload.value)
+                self.ledger.bump("comma_child_candidate_checks", 9)
+            else:
+                self.arena.charge(2)
+                self.arena.charge_bits(4 * payload.value.bit_length())
+                children = _large_sector_children(payload.value, sector)
+                self.ledger.bump("comma_seam_predicate_checks", 2)
             if not children:
                 raise UnresolvedCommaBranch(
                     f"comma landmine at index {payload.absolute_index} has no child"
@@ -441,7 +284,6 @@ class _CommaImageAdapter(SourceBoundImageAdapter):
             self.ledger.bump("comma_powered_image_applications")
         else:
             raise ValueError("composite comma action needs chronological children")
-        self.ledger.bump("comma_evaluated_transitions", node.steps)
         self.ledger.bump("comma_operand_bit_work", value.bit_length())
         return self._candidate(
             value,
@@ -497,10 +339,40 @@ class _CommaImageAdapter(SourceBoundImageAdapter):
             raise ValueError("comma chronological image disagrees with transfer")
         return expected
 
-    def admitted_input_key(self, action: Hashable, source: SourceImageView) -> None:
-        del action, source
-        # Relative phase alone does not authorize reuse across a decimal seam.
-        return None
+    def admitted_input_key(
+        self, action: Hashable, source: SourceImageView
+    ) -> tuple[str, int, int, str] | None:
+        """Share a completed interior phase only after checking this source.
+
+        The source-image core includes the exact action and adapter version in
+        its relative key.  The relative state adds the source's phase and
+        certificate binding.  A different headroom is admitted only after the
+        complete cycle's strict seam guard has been checked at that source.
+        """
+        node = self.arena.node(cast(CommaActionID, action))
+        if node.kind != "cycle":
+            return None
+        payload = cast(CommaImagePayload, source.payload)
+        self.arena.charge_bits(3 * payload.value.bit_length())
+        sector = decimal_sector(payload.value)
+        if sector.leading != node.leading or sector.digit != node.entering_digit:
+            return None
+        self.arena.charge()
+        self.arena.charge_bits(
+            sector.headroom.bit_length() + node.maximum_guard.bit_length()
+        )
+        self.ledger.bump("comma_relative_guard_checks")
+        # The action's normalized maximum guard covers every chronological
+        # phase prefix.  A source admits the whole action exactly when the
+        # strict interior margin remains positive.
+        if node.cycles < 1 or sector.headroom <= node.maximum_guard:
+            return None
+        return (
+            payload.certificate_version,
+            sector.leading,
+            sector.digit,
+            "strict-interior-cycle-v1",
+        )
 
     def transport_reuse(
         self,
@@ -509,8 +381,32 @@ class _CommaImageAdapter(SourceBoundImageAdapter):
         cached_result: SourceImageView,
         source: SourceImageView,
     ) -> SourceImageCandidate:
-        del action, cached_source, cached_result, source
-        raise ValueError("comma actions have no unproved relative transport")
+        node = self.arena.node(cast(CommaActionID, action))
+        if node.kind != "cycle":
+            raise ValueError("comma relative transport requires an interior cycle")
+        cached_payload = cast(CommaImagePayload, cached_source.payload)
+        result_payload = cast(CommaImagePayload, cached_result.payload)
+        payload = cast(CommaImagePayload, source.payload)
+        admitted = self.admitted_input_key(action, source)
+        if (
+            admitted is None
+            or admitted != self.admitted_input_key(action, cached_source)
+            or result_payload.value != cached_payload.value + node.displacement
+            or result_payload.absolute_index
+            != cached_payload.absolute_index + node.steps
+            or cached_result.binding.extent != cached_source.binding.extent + node.steps
+        ):
+            raise ValueError("comma relative cycle has another source or effect")
+        value = payload.value + node.displacement
+        self.ledger.bump("comma_relative_cycle_rebindings")
+        self.ledger.bump("comma_phase_cycles", node.cycles)
+        self.ledger.bump("comma_powered_image_applications")
+        self.arena.charge_bits(value.bit_length())
+        return self._candidate(
+            value,
+            payload.absolute_index + node.steps,
+            source.binding.extent + node.steps,
+        )
 
     def project(
         self, image: SourceImageView, demand: SourceImageDemand
@@ -673,12 +569,6 @@ class CommaTerm:
         )
         try:
             image = self.scheduler.source_image(self.adapter, self._source, action)
-            value = cast(
-                int,
-                self.scheduler.source_projection(
-                    self.adapter, image, SourceImageDemand("value")
-                ).value,
-            )
             payload = cast(
                 CommaImagePayload,
                 self.scheduler._source_image_core().view(image).payload,
@@ -709,9 +599,9 @@ class CommaTerm:
             "comma_represented_transitions",
             payload.absolute_index - self._current_index,
         )
-        self._current_value = value
+        self._current_value = payload.value
         self._current_index = payload.absolute_index
-        return value
+        return payload.value
 
     def _resolve(self) -> int:
         if self._value is not None:
@@ -729,10 +619,16 @@ class CommaTerm:
                 value = self._publish(action)
                 remaining -= cycles * transfer.period
                 continue
-            self._charge(9)
-            self.arena.charge_bits(18 * value.bit_length())
-            children = comma_children(value)
-            self.ledger.bump("comma_child_candidate_checks", 9)
+            if sector.exponent < 2:
+                self._charge(9)
+                self.arena.charge_bits(18 * value.bit_length())
+                children = comma_children(value)
+                self.ledger.bump("comma_child_candidate_checks", 9)
+            else:
+                self._charge(2)
+                self.arena.charge_bits(4 * value.bit_length())
+                children = _large_sector_children(value, sector)
+                self.ledger.bump("comma_seam_predicate_checks", 2)
             if not children:
                 raise UnresolvedCommaBranch(
                     f"comma source 20 reaches a landmine at value {value} "
@@ -777,13 +673,32 @@ class CommaTerm:
             ).value,
         )
 
-    def iter_digits(self) -> Iterator[int]:
+    def iter_digits(self) -> Generator[int, None, None]:
         value = self._resolve()
-        while value:
-            self.arena.charge()
-            self.arena.charge_bits(value.bit_length())
-            value, digit = divmod(value, 10)
-            yield digit
+        self.ledger.bump("comma_stream_requests")
+
+        def workspace(slots: int, bits: int) -> None:
+            for name, current in (
+                ("comma_stream_workspace_peak_slots", slots),
+                ("comma_stream_workspace_peak_integer_bits", bits),
+            ):
+                peak = self.ledger.counters.get(name, 0)
+                if current > peak:
+                    self.ledger.bump(name, current - peak)
+
+        stream = iter_digits_lsd(
+            value,
+            10,
+            charge=self.arena.charge,
+            charge_bits=self.arena.charge_bits,
+            observe_workspace=workspace,
+        )
+        try:
+            for digit in stream:
+                self.ledger.bump("comma_stream_emitted_digits")
+                yield digit
+        finally:
+            stream.close()
 
     def clock(self) -> dict[str, int]:
         value = self._resolve()
