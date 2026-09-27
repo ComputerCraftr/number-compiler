@@ -15,13 +15,15 @@ from devtools.experiments.antihydra.event_domain import (
     source_event_exponent_domain,
 )
 from devtools.experiments.antihydra.future_grammar import ReachableFutureGrammar
+from number_compiler.arithmetic.fields.consumer_pullback import (
+    HalfOpenInterval as Interval,
+)
 from number_compiler.arithmetic.fields.branch_quotients import (
     BranchChoiceSuffix,
     PrimeBucketWorkspace,
 )
 from devtools.experiments.antihydra.source_safety import (
     PRIME_BANK,
-    Interval,
     SourceBlockID,
     SourceSafetyWorkspace,
     event_prime_lanes,

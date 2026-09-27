@@ -10,6 +10,7 @@ from pathlib import Path
 from devtools.checks.isabelle_syntax import (
     executable_text,
     first_documentation_scope,
+    global_simp_registrations,
     ml_cartouches,
     navigation_text,
     parse_sessions,
@@ -25,15 +26,72 @@ ISABELLE = ROOT / "devtools/proofs/isabelle"
 # empty mapping is deliberate: a standalone mathematical theory must not be
 # presented as a production refinement merely because it is registered.
 COUNTERPARTS: dict[str, tuple[str, ...]] = {
-    "Comma_Macro_Constructor": (
+    "Comma_Macro_Constructor": (),
+    "Comma_Finite_Transition": (
+        "src/number_compiler/sequences/comma/boundary_chart.py",
         "src/number_compiler/sequences/comma/boundary_quotient.py",
+        "tests/sequences/comma/test_boundary_chart.py",
+    ),
+    "Comma_Power_Residue": (
+        "src/number_compiler/sequences/comma/arithmetic.py",
+        "tests/sequences/comma/test_boundary_chart.py",
+    ),
+    "Comma_Chart_Refinement": (
+        "src/number_compiler/sequences/comma/boundary_chart.py",
+        "tests/sequences/comma/test_boundary_chart.py",
+    ),
+    "Comma_Weighted_Selection": (
+        "src/number_compiler/sequences/comma/boundary_quotient.py",
+        "tests/sequences/comma/test_boundary_scheduler.py",
+    ),
+    "Comma_Macro_Selection": (
+        "src/number_compiler/sequences/comma/boundary_quotient.py",
+        "tests/sequences/comma/test_boundary_scheduler.py",
+    ),
+    "Comma_Trace_Regression": (
+        "tests/sequences/comma/test_boundary_chart.py",
         "tests/sequences/comma/test_boundary_quotient.py",
     ),
-    "Comma_Finite_Transition": (),
+    "Comma_Quotient_Totality": (),
+    "Comma_Source_Entry_Witness": (),
+    "Comma_Source_Unique": (),
+    "Comma_Round_Closure": (),
+    "Comma_Decade_Control": (),
+    "Comma_Round_Witness": (),
+    "Comma_Decade_Observation": (),
+    "Comma_Decade_Rank_Check": (),
+    "Comma_Decade_Rank_Rules": (),
+    "Comma_Decade_Rank_Data": (),
+    "Comma_Decade_Rank_Smoke": (),
+    "Comma_Decade_Rank_Instance": (),
+    "Comma_Total_Macro": (),
+    "Comma_Short_Phase": (),
+    "Comma_Entry_Arithmetic": (),
+    "Comma_Round_Phase_Slice": (),
+    "Comma_Round_Weights": (),
+    "Comma_Weighted_Run_Germ": (),
+    "Comma_Weighted_Round": (),
+    "Comma_Run_Germ": (
+        "src/number_compiler/sequences/comma/boundary_quotient.py",
+        "tests/sequences/comma/test_boundary_chart.py",
+    ),
+    "Comma_Chart_Action": (
+        "src/number_compiler/sequences/comma/boundary_chart.py",
+        "tests/sequences/comma/test_boundary_chart.py",
+    ),
+    "Comma_Terminal_Event": (
+        "src/number_compiler/sequences/comma/boundary_chart.py",
+        "tests/sequences/comma/test_boundary_chart.py",
+    ),
+    "Comma_Source_Entry": (
+        "src/number_compiler/sequences/comma/power.py",
+        "tests/sequences/comma/test_comma_power.py",
+    ),
     "Comma_Finite_Period": (
         "src/number_compiler/sequences/comma/boundary_quotient.py",
     ),
-    "Comma_Macro_Refinement": (),
+    "Comma_Boundary_Primitives": (),
+    "Comma_Literal_Path": (),
     "Comma_Weighted_Macro": (),
     "Comma_Future_Safety": (),
     "Comma_Checked_Ranks": (),
@@ -89,6 +147,7 @@ COUNTERPARTS: dict[str, tuple[str, ...]] = {
         "src/number_compiler/hashlife/execution/dyadic_return_reuse.py",
         "tests/hashlife/execution/test_balanced_proof_refinement.py",
     ),
+    "Prefix_Effect": (),
     "Dyadic_Prefix_Summary": (
         "src/number_compiler/hashlife/execution/dyadic_return_transport.py",
         "tests/hashlife/execution/test_balanced_proof_refinement.py",
@@ -149,6 +208,8 @@ COUNTERPARTS: dict[str, tuple[str, ...]] = {
         "tests/validation/proofs/test_mahler_source_transport.py",
     ),
     "Mahler_Source_Event_Safety": (
+        "src/number_compiler/sequences/antihydra/mahler_action.py",
+        "tests/api/test_antihydra_mahler_action.py",
         "devtools/experiments/antihydra/source_safety.py",
         "devtools/experiments/antihydra/source_observers.py",
         "tests/validation/proofs/test_mahler_source_observers.py",
@@ -254,6 +315,12 @@ def build_index() -> dict[str, object]:
     for path in sorted(ISABELLE.rglob("*.thy")):
         text = path.read_text()
         name, imports = parse_theory_header(text, path)
+        dangerous = global_simp_registrations(text, "gcd_nat.simps")
+        if dangerous:
+            raise ValueError(
+                f"{path}: recursive gcd rule globally registered as simp at "
+                f"lines {dangerous}; use closed ground equations"
+            )
         if name in declared:
             raise ValueError(f"duplicate theory declaration: {name}")
         declared[name] = (path, imports, _scope(text), _audited_theorems(text))
@@ -290,10 +357,10 @@ def build_index() -> dict[str, object]:
     unreachable = sorted(set(declared) - reachable)
     if unreachable:
         raise ValueError(f"unregistered and unreachable theories: {unreachable}")
-    missing_audits = sorted(name for name in registered if not declared[name][3])
+    missing_audits = sorted(name for name in reachable if not declared[name][3])
     if missing_audits:
         raise ValueError(
-            f"registered theories without an oracle audit: {missing_audits}"
+            f"reachable theories without an oracle audit: {missing_audits}"
         )
     for theory, paths in COUNTERPARTS.items():
         if theory not in declared:
@@ -329,7 +396,7 @@ def build_index() -> dict[str, object]:
                 "declarations": declarations,
                 "lexical_uses_including_ML_and_attributes": uses,
                 "verification_command": (
-                    f"isabelle build -d devtools/proofs/isabelle {registered[name]}"
+                    f"isabelle build -b -d devtools/proofs/isabelle {registered[name]}"
                     if name in registered
                     else "build an importing session"
                 ),

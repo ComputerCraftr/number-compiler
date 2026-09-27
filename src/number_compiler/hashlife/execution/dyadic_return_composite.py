@@ -6,6 +6,9 @@ from collections.abc import Hashable
 from operator import add, mul
 from typing import TYPE_CHECKING
 
+from number_compiler.arithmetic.fields.consumer_pullback import (
+    compose_prefix_safety_values,
+)
 from number_compiler.arithmetic.fields.skew_transfer import SkewTransfer
 from number_compiler.hashlife.execution.dyadic_return_records import (
     DyadicCycleSummary,
@@ -32,6 +35,23 @@ def _identity_transfer() -> SkewTransfer[int]:
 
 
 def complete_composite_candidate(
+    self: DyadicReturnImageWorkspace, action: Hashable, source: SourceImageView
+) -> SourceImageCandidate:
+    """Scope finite arithmetic reuse to this one authenticated application."""
+    from number_compiler.hashlife.execution.dyadic_return_transport import (
+        _clear_finite_memo,
+    )
+
+    self._validate_law()
+    if self._closed or self.macros or self.macro_stack or self.balanced_stack:
+        raise RuntimeError("nested or disposed dyadic finite construction")
+    try:
+        return _complete_composite_candidate(self, action, source)
+    finally:
+        _clear_finite_memo(self)
+
+
+def _complete_composite_candidate(
     self: DyadicReturnImageWorkspace, action: Hashable, source: SourceImageView
 ) -> SourceImageCandidate:
     """Apply one composed action directly to one admitted source cylinder.
@@ -153,11 +173,11 @@ def complete_composite_candidate(
                         local_cycle,
                     )
                 )
-            before_delta = delta
             transfer = transfer.then(tail_transfer, multiply=mul, add=add)
             odd_steps += tail_odd
-            minimum = min(minimum, before_delta + tail_minimum)
-            delta = before_delta + tail_delta
+            delta, minimum = compose_prefix_safety_values(
+                delta, minimum, tail_delta, tail_minimum
+            )
             published_cycle = DyadicCycleSummary(
                 width - remaining,
                 entry_phase,
@@ -203,13 +223,16 @@ def complete_composite_candidate(
         )
         chunk_residue = transport_low_bits(tracked_value, chunk_width)
         if retain_support:
-            chunk_support = residue_macro(self, chunk_width, chunk_residue)
+            chunk_support = residue_macro(
+                self, chunk_width, chunk_residue, _keep_memo=True
+            )
             chunk = self.support_node(chunk_support)
         else:
             chunk_support = None
-            chunk = balanced_residue_effect(self, chunk_width, chunk_residue)
+            chunk = balanced_residue_effect(
+                self, chunk_width, chunk_residue, _keep_memo=True
+            )
 
-        before_delta = delta
         before_transfer = transfer
         transfer = before_transfer.then(chunk.transfer, multiply=mul, add=add)
         self._bump(
@@ -225,8 +248,9 @@ def complete_composite_candidate(
             ),
         )
         odd_steps += chunk.odd_steps
-        minimum = min(minimum, before_delta + chunk.minimum)
-        delta = before_delta + chunk.delta
+        delta, minimum = compose_prefix_safety_values(
+            delta, minimum, chunk.delta, chunk.minimum
+        )
         total_width = width - remaining + chunk_width
         if retain_support:
             assert chunk_support is not None
@@ -281,17 +305,21 @@ def complete_composite_candidate(
         else:
             tail_residue = transport_low_bits(source_node.residue, remaining)
         if retain_support:
-            tail_support = balanced_residue_macro(self, remaining, tail_residue)
+            tail_support = balanced_residue_macro(
+                self, remaining, tail_residue, _keep_memo=True
+            )
             tail = self.support_node(tail_support)
         else:
             tail_support = None
-            tail = balanced_residue_effect(self, remaining, tail_residue)
-        before_delta = delta
+            tail = balanced_residue_effect(
+                self, remaining, tail_residue, _keep_memo=True
+            )
         before_transfer = transfer
         transfer = before_transfer.then(tail.transfer, multiply=mul, add=add)
         odd_steps += tail.odd_steps
-        minimum = min(minimum, before_delta + tail.minimum)
-        delta = before_delta + tail.delta
+        delta, minimum = compose_prefix_safety_values(
+            delta, minimum, tail.delta, tail.minimum
+        )
         if retain_support:
             assert tail_support is not None
             if support is None:

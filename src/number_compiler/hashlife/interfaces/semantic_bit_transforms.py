@@ -18,6 +18,7 @@ from number_compiler.arithmetic.functions.finite_function_types import (
 from number_compiler.hashlife.interfaces.semantic_bits import (
     BitFunctionArena,
     FactoredFunctionID,
+    _Circuit,
 )
 
 
@@ -127,3 +128,23 @@ def compose(
     return normalize(
         arena, before.ports, pulled[1 : 1 + count], admitted, pulled[1 + count :]
     )
+
+
+def differs_from_constant(
+    arena: BitFunctionArena, function: FactoredFunctionID, value: int
+) -> FactoredFunctionID:
+    """Compare an admitted finite output without enumerating its input alphabet."""
+    node = arena.resolve(function)
+    circuit = _Circuit(arena.functions, node.signature.inputs)
+    roots, valid = circuit.imported(node)
+    equal = circuit.one
+    for bit, root in enumerate(roots):
+        equal = circuit.conjunction(
+            equal, root if value & (1 << bit) else circuit.negate(root)
+        )
+    pending = circuit.normalized(
+        FunctionSignature(node.signature.inputs, BOOL),
+        (circuit.negate(equal),),
+        valid,
+    )
+    return arena._publish(circuit, (pending,))[0]

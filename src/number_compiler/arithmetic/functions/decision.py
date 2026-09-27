@@ -69,6 +69,16 @@ class DecisionMetrics:
     normalized_boxes: int = 0
 
 
+@dataclass(frozen=True, slots=True)
+class DecisionStructureMetrics:
+    """Root-reachable decision structure independent of terminal serialization."""
+
+    terminals: int
+    internal_nodes: int
+    dependency_groups: int
+    selector_bits: int
+
+
 class MultiTerminalDecisionArena:
     """Canonical reduced ordered finite-domain decision DAG."""
 
@@ -467,6 +477,52 @@ class MultiTerminalDecisionArena:
             memo[key] = out._node(level, by_child)
         return out, memo[start]
 
+    def relabel_terminals(
+        self, root: int, relabel: Callable[[object], object]
+    ) -> tuple[MultiTerminalDecisionArena, int]:
+        """Relabel terminal observations and canonically reduce the same DAG.
+
+        This is the exact Moore-projection operation for a fixed ordered input
+        language.  Internal source predicates are preserved, while terminal
+        distinctions hidden by ``relabel`` disappear immediately through the
+        destination arena's hash-consed reducer.  No Cartesian input row is
+        enumerated and no source/output evaluator is called.
+
+        In particular, callers can keep a rich audit terminal in one relation
+        and derive a smaller consumer quotient (for example endpoint-only or
+        endpoint-plus-clock) without allowing audit provenance to become part
+        of semantic action identity.
+        """
+        if not callable(relabel):
+            raise TypeError("terminal relabeler must be callable")
+        if type(root) is not int:
+            raise TypeError("decision root must be an exact integer")
+        if not 0 <= root < len(self._nodes):
+            raise ValueError("decision root lies outside this arena")
+        out = MultiTerminalDecisionArena(self.domains, self.order)
+        memo: dict[int, int] = {}
+        stack: list[tuple[int, bool]] = [(root, False)]
+        while stack:
+            node, ready = stack.pop()
+            if node in memo:
+                continue
+            record = self._nodes[node]
+            if record[0] == "T":
+                memo[node] = out.terminal(relabel(record[1]))
+                continue
+            if not ready:
+                stack.append((node, True))
+                for child, _mask in reversed(record[2]):
+                    if child not in memo:
+                        stack.append((child, False))
+                continue
+            by_child: dict[int, int] = {}
+            for child, mask in record[2]:
+                mapped = memo[child]
+                by_child[mapped] = by_child.get(mapped, 0) | mask
+            memo[node] = out._node(record[1], by_child)
+        return out, memo[root]
+
     def _select(self, node: int, ordered_level: int, value: int) -> int:
         n = self._nodes[int(node)]
         if n[0] == "T":
@@ -585,6 +641,41 @@ class MultiTerminalDecisionArena:
                     break
             else:
                 raise AssertionError((node, value))
+
+    def terminal_value(self, root: int) -> object:
+        """Return a terminal value, rejecting a root with unresolved inputs."""
+        if type(root) is not int:
+            raise TypeError("decision root must be an exact integer")
+        if not 0 <= root < len(self._nodes):
+            raise ValueError("decision root lies outside this arena")
+        node = self._nodes[root]
+        if node[0] != "T":
+            raise ValueError("decision root still depends on input coordinates")
+        return node[1]
+
+    def structural_metrics(self, root: int) -> DecisionStructureMetrics:
+        """Measure the root-reachable DAG without interpreting terminal values."""
+        if type(root) is not int:
+            raise TypeError("decision root must be an exact integer")
+        if not 0 <= root < len(self._nodes):
+            raise ValueError("decision root lies outside this arena")
+        pending = [root]
+        seen: set[int] = set()
+        terminals = internal = groups = selector_bits = 0
+        while pending:
+            node = pending.pop()
+            if node in seen:
+                continue
+            seen.add(node)
+            record = self._nodes[node]
+            if record[0] == "T":
+                terminals += 1
+                continue
+            internal += 1
+            groups += len(record[2])
+            selector_bits += sum(_selector_bits(mask) for _child, mask in record[2])
+            pending.extend(child for child, _mask in record[2])
+        return DecisionStructureMetrics(terminals, internal, groups, selector_bits)
 
     def min_output_length(self, root: int) -> int | None:
         root = int(root)
@@ -783,4 +874,9 @@ class CanonicalOutputRelation:
         )
 
 
-__all__ = ["CanonicalOutputRelation", "DecisionMetrics", "MultiTerminalDecisionArena"]
+__all__ = [
+    "CanonicalOutputRelation",
+    "DecisionMetrics",
+    "DecisionStructureMetrics",
+    "MultiTerminalDecisionArena",
+]

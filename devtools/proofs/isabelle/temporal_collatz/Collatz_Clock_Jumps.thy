@@ -1,5 +1,5 @@
 theory Collatz_Clock_Jumps
-  imports "Reverse_Residuals.Hensel_Cylinders" "HOL.Rat" "Shared_S_Arithmetic.S_Arithmetic_Skew"
+  imports "Shared_S_Arithmetic.Hensel_Cylinders" "HOL.Rat" "Shared_S_Arithmetic.S_Arithmetic_Skew"
 begin
 
 text \<open>Exact composition laws for a caller-supplied accelerated Collatz

@@ -18,6 +18,14 @@ and ledger queries. The skew and pinned centered `11` prefix determine the
 finite cap law. Source, action, extent, law and tail-offset checks remain
 required. Hensel is a separate observation; neither requests physical roofs.
 
+**Checked finite root chart:** with `theta=2t=r²`, the source-selected action is
+`theta'=(3/2)^n theta-2C`. The root-shell lemmas in
+[Mahler_Source_Event_Safety](../../devtools/proofs/isabelle/mahler_transport/Mahler_Source_Event_Safety.thy)
+preserve chronological guards and the event interval `1 ≤ (3/2)^q theta < 3/2`.
+The CLI Mahler packet exposes exact rational radicand coefficients and guards
+from its admitted image. This is an observer, not a new source constructor or
+an all-time safety proof. [Implementation evidence](../../results/current/2026-W39/README.md#root-shell-and-consumer-relative-moore-integration).
+
 Binary point requests use the shared affine point germ with its independent
 blank cutoff, without materializing the arithmetic endpoint or requesting
 first-failure descent. Ordinary value output requests the endpoint directly;

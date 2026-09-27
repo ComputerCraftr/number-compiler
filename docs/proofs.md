@@ -91,9 +91,13 @@ python -m devtools.checks.isabelle_proof_index
 
 The checker reads the actual session graph and theory headers. It rejects a
 missing or duplicate registered theory, a theory unreachable from registered
-session roots (including a disconnected import cycle),
-a registered theory without an explicit `Thm_Deps.all_oracles` audit, and stale
-counterpart paths. This static inventory recognizes the repository’s explicit null-oracle/error audit form; it does not execute ML or certify a proof. Only a successful Isabelle build supplies that evidence. `--json PATH` writes the complete generated index, including
+session roots (including a disconnected import cycle), local session dependency
+cycles, a reachable local theory (including imported helpers) without an
+explicit `Thm_Deps.all_oracles` audit, and stale counterpart paths. External
+Isabelle session parents remain allowed. This static inventory recognizes the
+repository’s explicit null-oracle/error audit form; it does not execute ML or
+certify a proof. Only a successful Isabelle build supplies that evidence.
+`--json PATH` writes the complete generated index, including
 direct imports, reverse imports, audited theorem names, each theory's first
 scope statement, and the deliberately small set of implementation or executable
 reference mappings. An empty counterpart list means that the theory is retained
@@ -150,7 +154,9 @@ suite:
 
 - `Collatz_Cylinder_Refinement` contains the finite cylinder, physical lift,
   cycle, source Hensel and inverse-three branches without the decimal temporal
-  constructor dependency. Its source/admission assumptions remain unchanged.
+  constructor dependency. `Hensel_Cylinders` belongs to `Shared_S_Arithmetic`;
+  Collatz no longer inherits `Reverse_Residuals` just to access that generic
+  theory. Its source/admission assumptions remain unchanged.
 
 `Temporal_Clock_Jumps` depends on all three sessions, so its aggregate build retains
 their acceptance coverage. A proof change should build its smallest owning
@@ -171,6 +177,12 @@ each checked statement and the Python publication, retained-ID and cost
 obligations it does not discharge. Its downstream family session is
 `Balanced_Dyadic_Integration`; validation evidence is recorded by source
 fingerprint in the weekly sprint.
+
+`Dyadic_Balanced_Arithmetic.arithmetic_leaf_same_cylinder` and
+`arithmetic_leaf_block_compose` justify the finite arithmetic memo and its
+transported block composition. They preserve complete finite effects, including
+prefix minima. The shared production mapping above separates these numerical
+laws from Python cache authority and general temporal pumping.
 
 The shared `Dyadic_Source_Lift` theory additionally proves
 `dyadic_source_orbit_lower_bound` and `dyadic_high_fiber_excludes_small_states`.
@@ -360,28 +372,94 @@ result from that broader invocation is not the repository aggregate check.
 ## Comma arithmetic and boundary cutover
 
 `Comma_Arithmetic` checks the local arithmetic. Its child session
-`Comma_Cylinder` retains the complete boundary-cutover acceptance target.
-The split allows focused feedback without omitting parent obligations:
+`Comma_Cylinder` checks the weighted/control model. Its literal bridge and
+the separate source-prelude session are also required; a core pass is not the complete
+boundary-cutover acceptance target. The split provides focused feedback:
 
 | Theory | Statement and assumptions | Implementation connection |
 | --- | --- | --- |
 | `Comma_Child_Cylinder` | Decimal carry/phase equations; fixed-leading-digit iteration and displacement; phase closure; a guarded block stays in its sector and refines a literal child path. | Local laws in `sequences/comma/arithmetic.py`; not yet full Python scheduler/worklist refinement. |
 | `Comma_Decimal_Parent` | Decimal leading digit, predecessor descent and the finite root classification. | Independent root-forest tooling; does not check the compressed termination forest instance. |
 | `Comma_Root_Forest` | Finite child-closed regions for excluded roots plus global root coverage imply infinitely many descendants of root 20; finite compressed-region closure is sound. | Runtime certificate specification; the concrete production certificate instance is not yet kernel-checked. |
-| `Comma_Boundary_Quotient` | Fork/landmine normal forms under the stated seam hypotheses; the 17 possible cycle displacements; `10^(p+924) mod P = 10^p mod P` for `p>=5` and every catalog displacement. | Arithmetic ingredients of `boundary_quotient.py`; modular periodicity alone is not macro or successor refinement. |
+| `Comma_Boundary_Quotient` | Fork/landmine normal forms under the stated seam hypotheses and definitions of the finite displacement catalog. | Arithmetic ingredients of `boundary_quotient.py`; these local laws do not establish macro or successor refinement. |
 | `Comma_Affine_Ray` | Sign and zero guards for affine expressions on an entire increasing decimal-exponent ray. | Inequality obligations checked by `macro_lifting.py`; does not yet connect its fragment worklist to literal paths or elapsed weights. |
 | `Comma_Child_Classification` | For every `p>=2`, the two adjacent leading-digit candidates are all literal children; exact iff headroom conditions cover interiors, forks, crossings and 9-sector landmines. | Complete alternatives used by production `comma_children`, the boundary constructor and development ray checker, not merely correctness of a selected child. |
 | `Comma_Exact_Phase_Guard` | A strict maximum-prefix guard admits the exact fixed-phase endpoint and its displacement; each represented step has exactly one literal child. | Exact safety condition used by the bounded cycle transfer. Repeated-cycle floor count and affine-fragment worklist refinement remain separate. |
 | `Comma_Period_Guard` | Phase periodicity, displacement transport, the repeated maximum guard, maximal floor/clamp count, and refinement of every admitted cycle prefix to the unique literal path. Zero repetitions are handled separately. | `safe_complete_cycles` arithmetic; does not by itself refine the cross-sector constructor or select an infinite fork child. |
-| `Comma_Finite_Period` | Numerical cycle-period formula, catalog membership, repeated 924-period transport and exact modular entry headroom. | Arithmetic used by the finite transition model. Does not establish that all boundary macros terminate within their fuel. |
-| `Comma_Macro_Constructor` | Boundary-state enumeration and complete ordered large-decimal children; defines a fuelled executable macro. | Model for `boundary_quotient.py`. Its constructor definition is not yet a proof of totality, elapsed weight or partial selection. |
-| `Comma_Macro_Refinement` | Complete-cycle displacement and singleton-step chart transport, including decimal crossings. | Local refinement lemmas for the executable macro, without a source-20 or infinite-continuation conclusion. |
+| `Comma_Power_Residue` | `comma_power_residue_correct` proves the catalog-specific exponent reduction to 5–32 equals `10^p mod P` for every `p>=5`; periods divide 924. | `cycle_power_residue` in `arithmetic.py`, used by Entry. Kernel-checked arithmetic only; no all-state totality or branch-safety claim. |
+| `Comma_Finite_Period` | Numerical cycle-period formula, the complete 17-displacement catalog derived through that formula, repeated 924-period transport and exact modular entry headroom. | Arithmetic used by the finite transition model. Does not establish that all boundary macros terminate within their fuel. |
+| `Comma_Macro_Constructor` | Defines the older fuelled scalar macro using the neutral boundary arithmetic. | Bounded scalar reference, outside the weighted constructor's dependency chain. |
+| `Comma_Boundary_Primitives` | Canonical boundary states, complete ordered children, cycle admission and singleton chart transport. | Neutral arithmetic shared by weighted and scalar reference models; no scalar run owner. |
+| `Comma_Literal_Path` | Literal paths, append/snoc, fixed iteration and guarded-cycle path refinement. | Neutral path lemmas used by both constructor proofs, defined once. |
 | `Comma_Weighted_Macro` | Given an admitted sector with exponent at least two and a successful macro result, `comma_macro_run_literal_refinement` proves an exact literal path with `weight=w+n`, terminal chart and complete ordered children. Also proves exact cycle weights and valid-state set cardinality 14,784. | Successful evaluation is still a premise: totality within the fuel bound, affine fragment selection and the Python consumer are not discharged by this induction. |
-| `Comma_Finite_Transition` | Executable entry/near-boundary transitions, fuel monotonicity, trace-checker soundness, Near delta transport and Entry phase transport. A 92-position trace checks the macro from `N(2,10)` to the next fork at `(7,12)`. | Those are abstract positions, not literal steps. Its outcome omits literal weight and the landmine's exact endpoint; no all-state classification or weighted-model equality follows from this example. |
+| `Comma_Finite_Transition` | One weighted Entry/Near constructor; control erasure, exact chart interpretation, closed repeated guard and maximal cycle count, symbolic weight evaluation, and terminal-chart retention. | `boundary_chart.py` owns the corresponding Python moves. `boundary_quotient.py` consumes their emitted weights; finite-graph tooling erases them. Successful bounded evaluation remains a premise of general run results; this theory does not establish all-state totality or the winning-cycle instance. |
+| `Comma_Round_Closure` | A well-founded, fuel-free decimal-round constructor. Non-crossing chart moves strictly decrease `(9-f)*1024+600` for Entry and `(9-f)*1024+H` for Near; the result refines an exact canonical trace to a fork, landmine, crossing or invalid input. | Derived control over the same weighted owner. A round stops at the first 9-to-1 crossing; this theorem does not prove termination of repeated rounds, exclude invalid results for all admitted inputs, or justify branch pruning. |
+| `Comma_Decade_Control` | Admitted rounds exclude Invalid, preserve the source exponent until crossing, and normalize the crossing target to its residue phase and bounded offset. A checked decreasing rank implies repeated-round termination. | `comma_decade_control` returns only an outcome; operation counts are separate diagnostics. Build `isabelle-163-decade` checks these generic results, not the 84,084-state rank instance or future branch safety. |
+| `Comma_Decade_Control`: history congruence | Equal normalized Entry-1 occurrence states give equal observed round outcomes. Fork/landmine gains are normalized to terminal residue phase; raw gains remain unchanged. | `comma_decade_state_future_congruent` passes build `isabelle-196-decade-future`. It derives the observation from actual `comma_round_close` through phase transport. It does not equate absolute endpoints, weights or scheduler authority. |
+| `Comma_Decade_Observation` | The demanded decade outcome is the weighted round's terminal projection. On admitted states it equals the existing decade control, so checking the observed rank obligations checks that same rank. | Downstream bridge avoids a dependency cycle. The direct evaluator preserves the source equation without reconstructing a scalar round or full weighted certificate per row. |
+| `Comma_Decade_Rank_Rules` / `Comma_Decade_Rank_Check` | Exact Continue/Fork/Landmine rules and adjacent-interval composition establish a rank rectangle from closed row proofs. Source and target states share numeral canonicalization. | The proof-producing checker derives successors from the weighted observation, selects only demanded rank-table branches and aggregates balanced intervals. Candidate numbers supply no transition or totality premise. |
+| `Comma_Decade_Rank_Data` / `Comma_Decade_Rank_Smoke` | Typed, shared construction defines a candidate rank; the smoke checks all 91 offsets of phase zero and the `1`/`Suc 0` alias regression. | Finite diagnostic only. The separate `Comma_Decade_Rank_Instance` checks all 924 phases; it remains a failing acceptance target until its full theorem builds under the existing resource limit. |
+| `Comma_Total_Macro` | Successful finite runs are unique and stable under added fuel. `comma_boundary_macro_exists` derives successful boundary construction from a checked decade rank; weighted existence follows by erasure. Definite descriptions give fuel-independent semantic macros on that proved domain. | Checked generic implications, not a concrete rank instance. `THE` is not a runtime constructor or evidence of admission outside the proved domain. No forest removal follows from these definitions alone. |
+| `Comma_Short_Phase` | Entry headroom depends only on the displacement's short cyclotomic phase. Exact move transport restores the original exponent gain after reuse of a delta-zero representative. | Build `isabelle-195-short-phase` passes. Power observations use the rotated index `(r+919) mod T`; the Entry cache phase and power-table index must not be confused. |
+| `Comma_Entry_Arithmetic` | Kernel-checked compilation of 90 period equations, 17 short periods and 116 modular powers from the arithmetic definitions. | Proof-evaluator data, not a production transition table. Cache facts must have no premises, hypotheses or oracle dependencies. |
+| `Comma_Round_Phase_Slice` | Exact round equations for all 91 offsets at phase five, including complete terminal charts and gains. | Bounded regression only. Its retained round equations do not supply the full 84,084-state rank check or the separate branch-safety classification. Timings and cache measurements belong to the weekly record. |
+| `Comma_Round_Weights` | A canonical control prefix has a weighted prefix over the same edges. With matching residue/exponent phase, exponent at least five and an admitted source chart, that prefix refines a literal path. Crossing adds one literal transition; fork and landmine inspections add none. | Build `isabelle-178-round-weights` checks the observation and admitted literal-path corollaries. Entry edges may represent many literal transitions, so control-operation counts cannot be substituted for CLI indices. This does not establish global constructor totality. |
+| `Comma_Chart_Action` | Chronological affine chart composition reuses the shared skew action. Guard pullback preserves all five comparison relations, ordered event decorations and the first matching decoration. Canonical Entry, internal Near and seam transitions refine chart coordinates; ordinary and power-of-ten seam regressions are checked. | `Comma_Chart_Action` is a focused session. These are chart and guard laws, not the complete guarded/weighted round constructor, totality instance or infinite-branch theorem. Guards cannot be replaced by a scalar minimum without a further reduction proof. |
+| `Comma_Terminal_Event` | Exact Near-event guard classification, canonical chart action, complete ordered children, and zero/unit literal weights. The source digit is derived from admitted headroom. | The focused child session reuses the checked chart heap. Fork/landmine inspection consumes no edge; landmine admission conjoins both walls. This does not establish a complete round or future branch safety. |
+| `Comma_Run_Germ` | An executable `(sector, headroom)` Near germ refines the canonical prefix, literal count and first decisive event. Actual signed headroom displacement telescopes to `t-h`. Sector composition refines `comma_round_close` and terminates within nine sector calls on admitted sources. | This is exact control refinement. Its round literal-prefix result provides an existential weight; it is not the complete guarded/weighted constructor or a production weighted selector. |
+| `Comma_Weighted_Run_Germ` | Source-bound sector and terminal payloads retain exact Entry weight expressions, unit weights, affine chart transport and ordered guards. Compatible chronological append refines the canonical weighted prefix. | The source and target include the actual exponent gain. Guard truth at the bound source is proved; admission equivalence across sources, full-round selection and global branch safety are separate obligations. |
+| `Comma_Weighted_Round` | The complete round composes weighted sector and terminal germs, agrees with the canonical first decisive event and retains at most nine Entry weight pieces. Matching phase, an admitted source and exponent at least five imply an exact literal path. Closed occurrence certificates and a compositional frontier support a forward proof evaluator. A definitionally derived control observation has checked sector, append and stop rules, retaining exact counts without instantiating full weighted records. | These are source-bound round theorems, with checked termination and no fuel premise. They do not establish the all-state decade rank, losing/winning classification, infinite return or public CLI cutover. |
+| `Comma_Trace_Regression` | Preserved numeric first-macro examples and trace checks: 93 positions from `N(2,10)`, with the old 92-position trace as its suffix after the first literal edge. | Independent regression session; its witness tables are not prerequisites of the constructor or literal bridge. |
 | `Comma_Future_Safety` | Losing-level induction and an infinite selected path in a closed, stable finite complement. | Conditional graph lemmas; no concrete comma classification is assumed or certified by these statements. |
 | `Comma_Checked_Ranks` | A checked rank witness proves all-branch termination of ranked states, unique unranked continuation and the bounded losing fixed point. | Checker soundness only. A concrete instance must check every outcome of the executable transition; a generated rank table alone supplies no theorem. |
 
-Build with `isabelle build -d devtools/proofs/isabelle -o threads=1 Comma_Cylinder`.
+Build the core with `isabelle build -b -d devtools/proofs/isabelle -o threads=1 Comma_Cylinder`.
+The `-b` option saves the checked heap for subsequent child builds. The forest
+is isolated in `Comma_Forest_Legacy`; the older scalar macro and its refinement
+are isolated in `Comma_Scalar_Reference`. Neither is an ancestor of the weighted
+literal bridge. Boundary and literal-path primitives have one neutral owner;
+the obsolete `Comma_Macro_Refinement` wrapper has been deleted.
+Concrete trace fixtures live in the sibling `Comma_Trace_Regression` session;
+moving them does not remove their acceptance assertions.
+`Comma_Chart_Bridge` owns Entry/Near refinement and saves that checked heap for
+selection development. Its child `Comma_Literal_Bridge` checks
+`Comma_Weighted_Selection` and `Comma_Macro_Selection`.
+`comma_indexed_trace_whole_macro_point` composes fragment refinement
+with binary prefix selection, including both endpoints, conditional on a
+successful canonical trace. This remains distinct
+from total construction and the Python fragment encoding refinement.
+The unused, unbuilt `Comma_Source_Prelude` draft and its 42 scalar checkpoint
+rows have been deleted. Its intended literal-path and terminal-child assertions
+remain in `Comma_Source_Entry`, which inherits the canonical literal bridge.
+Its parent `Comma_Source_Entry_Witness` checks the 230 candidate chart positions
+and their exact weights (build `isabelle-170-entry-witness`). Saving that parent
+heap avoids repeating those checks during repairs to the downstream source proof.
+Build `isabelle-187-source-entry` checks the small-exponent-to-weighted handoff
+and a literal path of 412,987,858 transitions from 20 to 19,999,999,918, together
+with its complete two-child set. Build `isabelle-201-source-unique` additionally
+checks `comma_source20_to_fork_unique`: every preceding transition has exactly
+one child, with no remaining premises. Neither result selects the infinite
+child at that fork or retires the scalar reference.
+`Comma_Quotient_Totality` checks the control projection and uses erasure to
+transfer successful evaluation to weighted execution. Its checked witness
+theorem binds the initial chart, every local edge and the terminal outcome;
+coverage of every boundary state is required before the maximum witness depth
+becomes a global bound. The tiny `Z(7,5)` instance and corrupted-witness
+rejections are checked. No all-state instance or fuel removal follows from
+this generic checker alone.
+The literal bridge passes build `isabelle-132-selection`; the local witness
+checker and preserved regression pass `isabelle-128-witness-regression`.
+`Comma_Round_Totality` passes build `isabelle-144-round` and imports the chart
+bridge directly, without forest or scalar-reference ancestry. Repeated-round
+totality still needs the concrete internal-rank instance; that rank concerns
+constructor termination, separately from the losing rank for literal branches.
+Source entry and prefix uniqueness are checked; global totality and future
+safety are still pending.
+Unchecked downstream statements must not be read as release results.
+The [weekly review](../results/current/2026-W39/README.md#independent-forest-cutover-review)
+separates local arithmetic checks, exact-prefix refinement, totality and
+unconditional future safety. A cached-parent focused build does not discharge
+the aggregate time limit.
 Each theorem-owning theory audits its exported results for oracles. The
 executable boundary constructor, finite classification instance,
 infinite-path/lexicographic-prefix bridge and scheduler cost proof remain

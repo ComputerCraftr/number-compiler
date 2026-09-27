@@ -185,7 +185,13 @@ assert arithmetic['value'] is None
 for name in ('hensel', 'mahler'):
     packet = arithmetic['info'][name]
     assert packet['guarded_physical_status'] == 'not_requested'
-assert arithmetic['info']['mahler']['value']['associated_action']['first_failure'] == 2
+mahler_action = arithmetic['info']['mahler']['value']['associated_action']
+assert mahler_action['first_failure'] == 2
+root_shell = mahler_action['root_shell']
+assert root_shell['coordinate'] == 'r_squared=theta=2*fractional_offset'
+assert root_shell['guard_squared']['empty']
+assert root_shell['radicand_offset']['numerator'] < 0
+assert not mahler_action['all_time_claim']
 assert arithmetic_terms and all(term is arithmetic_terms[0] for term in arithmetic_terms)
 mahler_work = arithmetic_terms[0].ledger.counters
 assert mahler_work.get('physical_roof_construction_requests', 0) == 0
@@ -199,6 +205,8 @@ assert mahler_metrics['projection']['publications'] >= 2
 assert mahler_metrics['observations']['physical_roof_evaluations'] is None
 assert mahler_metrics['observations']['mahler_source_composed_image_reads'] == 1
 assert mahler_metrics['observations']['mahler_associated_action_demands'] == 1
+assert mahler_metrics['observations']['mahler_root_shell_projections'] == 1
+assert mahler_metrics['observations']['mahler_root_shell_operand_bits'] > 0
 from number_compiler.sequences.collatz.source_publisher import CollatzSourcePublisher
 original_publish = CollatzSourcePublisher.publish
 published_sources = []

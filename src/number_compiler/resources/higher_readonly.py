@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from collections.abc import Callable
+from collections.abc import Callable, Mapping
 from typing import Any, cast
 
 
@@ -16,4 +16,18 @@ def audit_schema_call(schema: object, operation: str, *arguments: object) -> Any
     return cast(Callable[..., Any], method)(*arguments)
 
 
-__all__ = ["audit_schema_call"]
+def audit_identity_index(mapping: object, record: object, index: int) -> bool:
+    """Check an interner entry without mutating it, even after record corruption."""
+    if not isinstance(mapping, Mapping):
+        return False
+    try:
+        found = mapping.get(record)
+        return type(found) is int and found == index
+    except (KeyError, TypeError, AttributeError):
+        return any(
+            key is record and type(value) is int and value == index
+            for key, value in mapping.items()
+        )
+
+
+__all__ = ["audit_identity_index", "audit_schema_call"]

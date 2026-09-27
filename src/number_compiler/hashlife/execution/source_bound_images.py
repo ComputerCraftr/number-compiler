@@ -189,7 +189,12 @@ class SourceBoundImageAdapter(Protocol):
 
 @runtime_checkable
 class SourceBoundCompositeAdapter(Protocol):
-    """Construct a complete image, optionally specialized to an output demand.
+    """Construct a complete image using a demand to select the construction.
+
+    Every returned candidate must support subsequent actions, projections and
+    failure descent, independently of the demand that selected this constructor.
+    Applications are memoized by source and action, not observer demand: a
+    demand-specific projection alone must never be published as an image.
 
     ``None`` requests the image itself. Returning ``None`` delegates to the
     scheduler's child traversal; a family may refuse instead if that traversal
@@ -724,7 +729,7 @@ class SourceBoundSchedulerCore:
         action: Hashable,
         demand: SourceImageDemand,
     ) -> SourceImageID:
-        """Apply while accepting composites certified sufficient for one demand."""
+        """Apply a complete image, letting the demand choose its construction route."""
         if type(demand) is not SourceImageDemand:
             raise TypeError(
                 "source image demanded application requires an exact demand"

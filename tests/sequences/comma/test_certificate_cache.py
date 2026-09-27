@@ -2,6 +2,9 @@
 
 from __future__ import annotations
 
+import builtins
+from collections.abc import Mapping, Sequence
+
 import pytest
 
 from number_compiler.resources.ledger import OwnedMemo, ResourceLedger
@@ -26,8 +29,22 @@ def test_verified_admission_does_not_reopen_or_hash_asset(
         def forbidden(*args: object, **kwargs: object) -> None:
             raise AssertionError("cached admission attempted package I/O or hashing")
 
+        original_import = builtins.__import__
+
+        def no_forest_import(
+            name: str,
+            globals: Mapping[str, object] | None = None,
+            locals: Mapping[str, object] | None = None,
+            fromlist: Sequence[str] | None = None,
+            level: int = 0,
+        ) -> object:
+            if name == "number_compiler.sequences.comma.forest_verifier":
+                raise AssertionError("cached admission imported the forest verifier")
+            return original_import(name, globals, locals, fromlist, level)
+
         monkeypatch.setattr(certificates, "files", forbidden)
         monkeypatch.setattr(certificates, "sha256", forbidden)
+        monkeypatch.setattr(builtins, "__import__", no_forest_import)
         certificates.require_certified_index(
             20, ledger, 1_000_000, shared_cache=shared_cache, memo=memo
         )
@@ -96,8 +113,10 @@ def test_foreign_admission_is_rejected_before_asset_access(
         certificates.require_certified_index(1, ResourceLedger(), 1_000_000, memo=memo)
 
 
+@pytest.mark.parametrize("marker", ["forged", "é" * 64, "x" * 100_000])
 def test_forged_local_marker_is_rejected_before_asset_access(
     monkeypatch: pytest.MonkeyPatch,
+    marker: str,
 ) -> None:
     def forbidden(*args: object, **kwargs: object) -> None:
         raise AssertionError("forged authority reached package I/O")
@@ -106,9 +125,43 @@ def test_forged_local_marker_is_rejected_before_asset_access(
     ledger = ResourceLedger()
     memo = certificates.new_certificate_memo(ledger)
     memo[(certificates.CERTIFICATE_ID, f"{certificates.CERTIFICATE_SHA256}:-1")] = (
-        "forged"
+        marker
     )
     with pytest.raises(ValueError, match="forged comma certificate admission"):
         certificates.require_certified_index(
             1, ledger, 1_000_000, shared_cache=False, memo=memo
         )
+    with pytest.raises(ValueError, match="forged comma certificate admission"):
+        certificates.certificate_status(
+            1, ledger, 1_000_000, shared_cache=False, memo=memo
+        )
+
+
+@pytest.mark.parametrize("marker", ["é" * 64, "x" * 100_000])
+def test_malformed_shared_marker_is_rejected_before_asset_access(
+    monkeypatch: pytest.MonkeyPatch, marker: str
+) -> None:
+    def forbidden(*args: object, **kwargs: object) -> None:
+        raise AssertionError("forged shared authority reached package I/O")
+
+    monkeypatch.setattr(certificates, "files", forbidden)
+    cache = get_process_cache()
+    cache.reset()
+    try:
+        with cache.acquire(
+            "comma-prefix-certificate",
+            certificates.CERTIFICATE_ID,
+            (20, 10, certificates.CERTIFICATE_SHA256),
+        ) as lease:
+            assert lease.put(
+                (
+                    certificates.CERTIFIED_MAX_INDEX,
+                    certificates.FIRST_FORK_INDEX,
+                    certificates.FIRST_FORK_VALUE,
+                ),
+                (certificates.CERTIFICATE_SHA256, marker),
+            )
+        with pytest.raises(ValueError, match="foreign comma certificate cache"):
+            certificates.require_certified_index(1, ResourceLedger(), 1_000_000)
+    finally:
+        cache.reset()

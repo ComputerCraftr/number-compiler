@@ -236,13 +236,7 @@ def arithmetic_from_word(
         raise ValueError("noncanonical cylinder residue")
     if type(parity_word) is not int or not 0 <= parity_word < 1 << width:
         raise ValueError("noncanonical arithmetic parity word")
-    q, delta, minimum = residue, 0, 0
-    for index in range(width):
-        odd = (parity_word >> index) & 1
-        delta += -1 if odd else 2
-        minimum = min(minimum, delta)
-        q = (3 * q - odd) // 2
-    return ArithmeticCylinder(width, residue, q, delta, minimum, parity_word)
+    return _arithmetic_scan(residue, width, parity_word)
 
 
 def admitted_arithmetic_cylinder(residue: int, width: int) -> ArithmeticCylinder:
@@ -251,14 +245,29 @@ def admitted_arithmetic_cylinder(residue: int, width: int) -> ArithmeticCylinder
         raise ValueError("admitted arithmetic width must be 1..64")
     if type(residue) is not int or not 0 <= residue < 1 << width:
         raise ValueError("noncanonical cylinder residue")
+    return _arithmetic_scan(residue, width, None)
+
+
+def _arithmetic_scan(
+    residue: int, width: int, supplied_word: int | None
+) -> ArithmeticCylinder:
+    """One bounded recurrence for discovered or already admitted branch words."""
     q, delta, minimum, parity_word = residue, 0, 0, 0
     for index in range(width):
-        odd = q & 1
-        parity_word |= odd << index
+        odd = q & 1 if supplied_word is None else (supplied_word >> index) & 1
+        if supplied_word is None:
+            parity_word |= odd << index
         delta += -1 if odd else 2
         minimum = min(minimum, delta)
         q = (3 * q - odd) // 2
-    return ArithmeticCylinder(width, residue, q, delta, minimum, parity_word)
+    return ArithmeticCylinder(
+        width,
+        residue,
+        q,
+        delta,
+        minimum,
+        parity_word if supplied_word is None else supplied_word,
+    )
 
 
 def arithmetic_kernel(residue: int, width: int) -> ArithmeticCylinder:

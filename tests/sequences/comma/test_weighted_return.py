@@ -227,6 +227,39 @@ def test_zero_identity_repetition_has_exact_endpoint() -> None:
         repeated.split_at(10, 1)
 
 
+def test_identity_composition_reuses_action_after_binding_and_budget_checks(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    q = BoundaryState("N", 2, 10)
+    live = WeightedBoundaryAction(q, q, 924, AffineWeight(1, 1, 1))
+    identity = WeightedBoundaryAction.identity(q)
+    foreign = WeightedBoundaryAction.identity(BoundaryState("Z", 2, 10))
+
+    def forbidden_pow(*_args: int) -> int:
+        raise AssertionError("identity composition allocated a decimal power")
+
+    monkeypatch.setattr(weighted_return, "pow", forbidden_pow, raising=False)
+    work: list[int] = []
+    bits: list[int] = []
+    assert identity.then(live, charge=work.append, charge_bits=bits.append) is live
+    assert live.then(identity, charge=work.append, charge_bits=bits.append) is live
+    assert sum(work) == 2 and sum(bits) > 0
+    with pytest.raises(ValueError, match="different boundary bindings"):
+        foreign.then(live)
+
+    def refused(_bits: int) -> None:
+        raise ValueError("bit budget")
+
+    with pytest.raises(ValueError, match="bit budget"):
+        identity.then(live, charge_bits=refused)
+    with pytest.raises(ValueError, match="bit budget"):
+        live.then(identity, charge_bits=refused)
+    with pytest.raises(ValueError, match="bit budget"):
+        identity.then(live, charge=refused)
+    with pytest.raises(ValueError, match="bit budget"):
+        live.then(identity, charge=refused)
+
+
 def test_zero_offset_and_zero_cap_do_not_construct_exponent_powers(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:

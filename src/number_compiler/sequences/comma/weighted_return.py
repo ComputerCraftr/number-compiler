@@ -137,6 +137,12 @@ class WeightedBoundaryAction:
                 + self.weight.denominator.bit_length()
                 + after.weight.denominator.bit_length()
             )
+        # Constructor invariants make zero weight exactly the identity at its
+        # bound state. Bindings and work admission are checked before reuse.
+        if self.weight.numerator_scale == 0 and self.weight.numerator_offset == 0:
+            return after
+        if after.weight.numerator_scale == 0 and after.weight.numerator_offset == 0:
+            return self
         left_scale = Q(self.weight.numerator_scale, self.weight.denominator)
         right_scale = Q(after.weight.numerator_scale, after.weight.denominator)
         # Only the offset projection is consumed: right.lower affects only

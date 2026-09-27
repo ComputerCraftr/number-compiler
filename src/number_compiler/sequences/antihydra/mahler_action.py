@@ -11,6 +11,8 @@ from typing import TYPE_CHECKING
 
 from number_compiler.arithmetic.fields.consumer_pullback import (
     ExactRational,
+    GuardedAffineAction,
+    HalfOpenInterval,
     SaturatingAffineAction,
     ThresholdDemand,
 )
@@ -33,11 +35,35 @@ def rational_packet(value: ExactRational | None) -> dict[str, int] | None:
     return {"numerator": value.numerator, "denominator": value.denominator}
 
 
-def action_packet(
+def _action_packet(
     result: ArithmeticResult,
     semantic: SaturatingAffineAction,
     first_failure: int | None,
 ) -> dict[str, object]:
+    # The authenticated centered source is 7, whose first two bits are 11.
+    # Their exact theta guards are [2/3,1) then empty. The root chart uses
+    # r^2=theta=2t, while the existing margin action has offset -3*C.
+    root_offset = ExactRational(2, 3) * semantic.offset
+    root = GuardedAffineAction(
+        SaturatingAffineAction(semantic.scale, root_offset),
+        HalfOpenInterval(
+            ExactRational(0) if result.returns != 1 else ExactRational(2, 3),
+            ExactRational(1) if result.returns < 2 else ExactRational(0),
+        ),
+    )
+    result.ledger.bump("mahler_root_shell_projections")
+    result.ledger.bump(
+        "mahler_root_shell_operand_bits",
+        sum(
+            abs(value.numerator).bit_length() + value.denominator.bit_length()
+            for value in (
+                root.action.scale,
+                root_offset,
+                root.domain.lower,
+                root.domain.upper,
+            )
+        ),
+    )
     demand = semantic.pullback(ThresholdDemand())
     return {
         "source_binding": result.source_binding,
@@ -55,6 +81,18 @@ def action_packet(
         "first_failure": first_failure,
         "first_failure_index_unit": "one_based_macro_return",
         "predicate": "Mahler_strict_margin_positivity",
+        "root_shell": {
+            "coordinate": "r_squared=theta=2*fractional_offset",
+            "radicand_scale": rational_packet(root.action.scale),
+            "radicand_offset": rational_packet(root_offset),
+            "guard_squared": {
+                "lower": rational_packet(root.domain.lower),
+                "upper": rational_packet(root.domain.upper),
+                "lower_closed": True,
+                "upper_closed": False,
+                "empty": root.domain.empty,
+            },
+        },
         "all_time_claim": False,
     }
 
@@ -112,7 +150,7 @@ class MahlerWorkspace:
         ):
             raise ArithmeticError("Mahler source projection lost first failure")
         result.ledger.bump("mahler_associated_action_demands")
-        return action_packet(result, projected, failure)
+        return _action_packet(result, projected, failure)
 
 
 def associated_action(result: Run | ArithmeticResult) -> dict[str, object]:

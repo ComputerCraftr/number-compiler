@@ -117,6 +117,55 @@ def executable_text(text: str) -> str:
     return "".join(output)
 
 
+def global_simp_registrations(text: str, fact: str) -> tuple[int, ...]:
+    """Locate authored declare/lemmas registrations of a specified fact.
+
+    This is a lexical policy check, not a theorem dependency analysis. Local
+    ``simp add:`` use remains allowed. Reuse the navigation masks so comments,
+    documentation, ML and quoted propositions cannot masquerade as commands.
+    """
+    clean = navigation_text(text)
+    name = r"[A-Za-z_][A-Za-z0-9_'.]*"
+    commands = unquoted_matches(re.compile(r"(?m)^[ \t]*(declare|lemmas)\b"), clean)
+
+    def adds_simp(attributes: str) -> bool:
+        return any(
+            re.match(r"\s*simp(?:\s|$)", attribute)
+            and not re.match(r"\s*simp\s+del\b", attribute)
+            for attribute in attributes.split(",")
+        )
+
+    def matches(reference: str) -> bool:
+        return reference == fact or reference.endswith("." + fact)
+
+    lines: list[int] = []
+    for command in commands:
+        rest = clean[command.end() :]
+        if command.group(1) == "declare":
+            # Each declaration item has its own attributes. Stop when the next
+            # token is not such an item, rather than consuming another command.
+            offset = 0
+            while item := re.match(rf"\s*({name})\s*\[([^\]]*)\]", rest[offset:]):
+                if matches(item.group(1)) and adds_simp(item.group(2)):
+                    lines.append(clean.count("\n", 0, command.start()) + 1)
+                offset += item.end()
+        else:
+            alias = re.match(rf"\s*{name}\s*\[([^\]]*)\]\s*=\s*({name})\b", rest)
+            if alias and adds_simp(alias.group(1)) and matches(alias.group(2)):
+                lines.append(clean.count("\n", 0, command.start()) + 1)
+            reference = re.match(
+                rf"\s*{name}\s*(?:\[[^\]]*\])?\s*=\s*({name})\s*\[([^\]]*)\]",
+                rest,
+            )
+            if (
+                reference
+                and matches(reference.group(1))
+                and adds_simp(reference.group(2))
+            ):
+                lines.append(clean.count("\n", 0, command.start()) + 1)
+    return tuple(dict.fromkeys(lines))
+
+
 _SESSION = re.compile(
     r'(?m)^session\s+(\w+)(?:\s+in\s+("[^"]+"|[^\s=]+))?\s*='
     r'\s+("[^"]+"|[^\s+]+)\s*\+'
@@ -214,6 +263,28 @@ def parse_sessions(text: str) -> tuple[Session, ...]:
         )
     if len({session.name for session in sessions}) != len(sessions):
         raise ValueError("duplicate Isabelle session declaration")
+    # External parents are supplied by the Isabelle installation. Only local
+    # ancestry can be checked here; neither parent nor session edges may cycle.
+    local = {session.name: session for session in sessions}
+    completed: set[str] = set()
+    visiting: set[str] = set()
+    for name in local:
+        pending = [(name, False)]
+        while pending:
+            current, returning = pending.pop()
+            if returning:
+                visiting.remove(current)
+                completed.add(current)
+            elif current in local and current not in completed:
+                if current in visiting:
+                    raise ValueError(f"cyclic Isabelle session dependency: {current}")
+                visiting.add(current)
+                pending.append((current, True))
+                session = local[current]
+                pending.extend(
+                    (dependency, False)
+                    for dependency in (session.parent, *session.dependencies)
+                )
     return tuple(sessions)
 
 

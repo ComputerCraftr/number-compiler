@@ -2899,3 +2899,1068 @@ the same exact-tree guard to direct Antihydra term points. Both runs remain in
 the raw evidence; neither is final acceptance. The replacement wheel was
 rebuilt after the guard fix. No Isabelle theory was changed, and the spatial
 normalizer's executable proof remains a separate obligation.
+
+
+## Comma chart unification
+
+**Objective.** Replace the divergent finite and sampled-integer boundary
+constructors with one Entry/Near transition owner, retaining the proof gates
+required before deleting forest-backed production admission.
+
+**Changes and assertion mapping.**
+
+- Corrected the formal N-boundary origin to `Near(a−1,0,1)`; the old
+  92-position checked trace remains an Entry suffix, and the complete trace
+  has 93 positions. The first edge contributes one literal tick.
+- The weighted chart transition is the canonical constructor in Python and
+  HOL. Finite control erases its weight; it has no independent transition
+  semantics. Entry moves emit `(L*10^(p+delta)-L*(x+h))/P`, Near moves emit one
+  tick, and terminal moves retain the exact chart. The macro builder consumes
+  emitted weights; a poison test rejects an altered weight instead of silently
+  recomputing it. Entry guard/count arithmetic reuses the existing cycle laws.
+- Python macro control no longer builds a representative `10**p` or evaluates
+  sampled endpoints. The rank-candidate generator's duplicate transition
+  implementation was removed. Literal values and charts share the arithmetic
+  owner's complete child-alternative classifier.
+- Replaced the obsolete test requiring one representative power allocation
+  with a poison test requiring zero such allocations. Existing output,
+  weighted-selection, authority, budget and branch assertions remain active.
+- Independent review found and repaired unbounded forged Near inputs and
+  missing operand-size charges during prefix-index construction. The exact
+  local headroom cap is 540; this is not an all-state termination proof.
+- Fixed the independent phase oracle at source `199079`: a second nominal
+  phase crosses the fork at `199918`, whose children are `199999,200000`.
+  The oracle now checks the final proposed phase by bounded literal enumeration.
+- Warm certificate admission no longer imports the forest verifier; it still
+  validates generation-bound authority before reuse. Cold verification and
+  the existing finite prefix remain until replacement safety is established.
+
+**Initial measurements (before the short-period integration).** The finite Python audit reproduces 14,784 states, 14,470
+losing states, 314 survivors, maximum rank 136, and the 314-fork/+924 return.
+Maximum observed chart moves are 1,189; maximum reachable headroom is 519.
+These are experiment results, not kernel-checked totality or cycle instances.
+A five-trial comparison on 32 boundary states produced identical complete
+weighted templates; median constructor batch time fell from 166 ms to 89 ms.
+This is neither an end-to-end CLI measurement nor proof of global admission.
+
+Raw commands, failed proof attempts, test output and measurements remain local
+under `results/current/comma-chart-unification-2026-09-23/`. Individual guard reports record the checked scope and failures. A complete
+frozen-source release validation has not yet passed for this work.
+
+**Remaining release boundary.** Prove every admitted macro completes; connect
+all Entry/Near transitions and partial selection to literal paths; kernel-check
+the losing-rank and winning-cycle instances; prove source-20 entry and earlier
+root exclusion; then enable weighted scheduler admission and delete the forest.
+No forest deletion or unconditional repeating-branch theorem is claimed here.
+
+### Independent forest-cutover review
+
+The supplied review dated 2026-09-23 has SHA-256
+`8b67af10662119f7cb761a32665302a1c32b4ff7879510a5341070a167acf9c7`.
+Its attachment is a local external input, not portable release evidence.
+
+- **Accepted finding:** successful fuelled evaluation implies soundness; it
+  does not prove that every admitted boundary state successfully evaluates.
+  Local lemmas and finite Python enumeration cannot certify the cutover.
+- **Implemented response:** Entry uses a catalog-specific power period at
+  most 28, reducing the modular exponent to 5–32. The Python constructor and
+  HOL headroom definition share this reduction. The standalone theorem
+  `comma_power_residue_correct` was kernel-checked without oracle dependencies;
+  registered integration validation is recorded separately.
+- **Next proof gate:** a total weighted boundary macro, including every
+  partial literal prefix, with no successful-run/fuel premise. Internal fuel
+  is permitted only after a sufficient bound is proved for all inputs.
+- **Subsequent gates:** shared suffix evaluation, checked losing ranks, the
+  314-fork/+924 winning return, source-20 entry and earlier-root exclusion.
+  The finite graph must erase the weights of that same constructor.
+- **Additional independent finding, fixed:** a terminal move could forge or
+  erase its fork label while preserving weight and endpoint. Publication now
+  checks the complete terminal alternatives through the shared arithmetic
+  classifier, with charged validation and explicit forged-child tests.
+- **Admission decision:** forest-backed prefix admission remains in production.
+  No rank table, sampled trajectory or local residue theorem replaces the
+  missing unconditional repeating-branch theorem.
+
+The earlier integrated attempt (`isabelle-47-bridge`) exhausted its
+60-second limit rebuilding prerequisites, before the literal bridge ran.
+It is not evidence that the bridge or the complete proof chain passed.
+
+### Weighted proof ownership and follow-up review
+
+The two follow-up attachment hashes are
+`e6f353024988ecf7fa6f8b569521911b5f61306effeab4cc1e236e1b5663b37c`
+and `2f135adfaeaf4d3b5603e25bb6fd6a2202cf7187ea10271b45e1d4f31e937123`.
+They are external review inputs, not checked evidence.
+
+- Moved boundary definitions and literal-path lemmas into neutral theories.
+  The weighted constructor no longer imports the scalar macro implementation.
+  Removed the superseded `Comma_Macro_Refinement` wrapper after moving its
+  retained lemmas. A parser-based ancestry test protects this separation.
+- Isolated the forest and scalar reference in sibling sessions. The source-20
+  numeric prelude still uses the scalar reference and remains an obligation;
+  it is not smuggled into the weighted model's prerequisites.
+- Removed the 17 duplicate exponent-929 computations. The same 924-period
+  statement now follows from the checked short-period laws and divisibility.
+  The universal Entry headroom bridge uses proved modular identities opaquely.
+- Reused the closed period refinement to establish sector displacement sets,
+  eliminating the second set of semantic phase-sum reductions. The preserved
+  catalog statements now live with their arithmetic refinement in
+  `Comma_Finite_Period`.
+- Saved prerequisite heaps with `build -b`; generated proof-index commands
+  now do the same. This avoids rebuilding an already checked focused parent.
+- Added the whole-macro selection development above the fragment proof,
+  explicitly covering zero, terminal weight and an interior fragment. Its
+  closed point expression matches cycle displacement plus a bounded phase
+  remainder. Registration is not evidence that this new development builds.
+- The proposed exact normalized-suffix memo does not provide the hoped-for
+  reduction in the finite sizing experiment: 14,784 starts visit 1,980,547
+  distinct chart states (415,800 Entry and 1,564,747 Near evaluations), with
+  maximum depth 1,189. This is local Python evidence, not a totality proof.
+  It rejects that cache-reuse argument, not the finite boundary quotient.
+
+Build `isabelle-63-neutral` hit the unchanged 4-GiB cap. With smaller internal
+JVM/ML heaps and sequential proof execution, `isabelle-64-neutral` passed in
+58.02 seconds at 1,219,596,944 sampled bytes under the same 60-second/4-GiB
+guard. The failed attempt remains recorded. This checks the reordered neutral
+arithmetic only; downstream validation is separate.
+
+After catalog consolidation, `isabelle-67-neutral` passed in 57.13 seconds
+at 1,205,637,776 sampled bytes. These two single runs do not establish a
+statistically significant latency improvement. The structural result is the
+removal of redundant evaluation with the same theorem statements.
+The independent changed-path audit found no further authority defect. It
+confirmed that warm certificate hits remain generation-bound and avoid the
+verifier import, while cold forest admission remains. Modular powering charges
+operand-bit work with an executable exponent bounded by 32; its internal
+multiplies are not separate `comma_work` operations.
+
+The reordered core passed again (`isabelle-68-core`, 35.58 seconds / 1.17 GB).
+Both relocated reference sessions passed together (`isabelle-69-references`,
+22.89 seconds / 1.17 GB). In `isabelle-71-bridge`, Entry/Near refinement and
+its oracle audit completed (29.49 seconds theory time), before a proof
+application error in weighted selection failed the session. Entry now proves
+the actual emitted descriptor and divisibility, not a recomputed weight.
+No complete literal-bridge or global branch-safety pass is claimed.
+
+### Scalar-free cutover refinement, September 24
+
+The next external review has SHA-256
+`afe49ea02797342536aa6a1a90f51122e5f68e90f57763377ad72981c07af871`.
+It identifies five remaining acceptance steps: total weighted construction,
+runtime partial selection, concrete ranks, the lifted winning return, and
+source-20 entry without scalar/forest ancestry.
+
+- Moved every first-winning-trace fixture, its chunk checks and 92/93/4096
+  examples to `Comma_Trace_Regression`. Their assertions are preserved in a
+  separate registered regression session. Core now has 630 lines and passed
+  `isabelle-76-core` in 27.52 seconds / 1.17 GB.
+- Extended ancestry tests to exclude both legacy execution and numeric trace
+  fixtures from the canonical proof chain.
+- Stopped optimizing the scalar prelude after two 60-second timeouts
+  (`isabelle-73-prelude`, `isabelle-75-prelude`). Independent review then
+  confirmed that this unbuilt draft had no importing theory or checked result.
+  Deleted its 42 scalar checkpoint rows and session. Its path-to-fork and
+  complete-child assertions remain obligations in `Comma_Source_Entry`;
+  deleting the draft does not establish them. The already-checked scalar
+  reference and forest sessions remain separate.
+- Added a local-edge totality checker using the already-proved control erasure
+  to avoid computing representative literal weights. Sixteen slice obligations
+  cover all 14,784 starts. Checker soundness and a one-state cost probe are
+  separate from an all-state instance; no total constructor or fuel removal is
+  claimed from those definitions.
+- Weighted selection progressed through partial Entry refinement. Subsequent
+  errors in prefix-index proof syntax and its missing executable list scan are
+  being corrected. Whole-macro/CLI refinement remains unaccepted until the
+  complete session builds.
+
+The local-edge witness refinement has SHA-256
+`5b9e80e7d9c62f4e1a73983de311fc77c83cbbab3f82302e3eb78cba563832b9`.
+It changes the evaluation boundary, not the accepted graph:
+
+- The control trace checker and its generic soundness theorem have one owner
+  in `Comma_Finite_Transition`. Regression fixtures consume that owner; they
+  do not supply premises to totality.
+- Retired recursive-run simplification probes timed out under the original
+  60-second limit. Their exact 93/4096 semantic assertions remain in the
+  checked regression session. No failed attempt is counted as proof evidence.
+- The replacement totality development checks exact-depth witnesses and
+  derives a common maximum bound. A checked covering instance is still needed
+  before removing fuel from semantic admission.
+- Partial Python selection now uses the bounded phase-residue sum instead of
+  reclassifying full decimal endpoints. The focused boundary tests pass
+  (`python-phase-selection`, 26 cases), and the broader comma/inventory check
+  passes (`python-chart-final`, 278 cases). These intermediate runs precede the
+  final proof-source freeze.
+- Independent review caught a scope gap in source entry: a literal path does
+  not establish absence of earlier forks. The draft path theorem is therefore
+  named `comma_source20_to_fork`; unbranched-prefix safety remains explicit.
+
+Local-edge evaluation now passes its bounded probe (`isabelle-118-totality`,
+12.74 seconds / 1.17 GB sampled process-group footprint). The 12-position
+`Z(7,5)` witness is stored once, checked against canonical moves, and tested
+against wrong-start and truncated inputs. The original regression assertions
+also pass (`isabelle-114-regression`, 17.49 seconds / 1.18 GB). These are
+focused builds with saved parent heaps, not complete release acceptance or
+an all-state classification instance. The failed recursive evaluations remain
+in the evidence directory.
+
+The normalized-control commuting law and oracle audit pass in
+`isabelle-125-core` (54.76 seconds / 1.20 GB sampled group footprint).
+Normalization retains the local residue phase and explicitly forgets absolute
+exponent gain; it must not authorize copying weights between exponents.
+This build does not show a core latency improvement over the earlier focused
+builds. The proof adds the requested semantic connection.
+
+The existing rank-candidate tool now also streams untrusted witness slices;
+`--witness-only` avoids full rank discovery and keeps one macro in memory.
+All 16 slices generated in 4.44 seconds / 16,859,640 sampled bytes, with
+14,784 starts, 1,980,547 position rows and maximum depth 1,189. The 36.6-MB
+JSONL candidates remain ignored local evidence, not versioned theory tables
+or accepted certificate instances. Six focused generator tests pass, including
+wrong-content rejection and rank-construction poisoning.
+
+Independent cache review also found the read-only certificate observer still
+bypassed malformed-marker validation. Admission and reporting now share an
+exact-type, bounded-length, ASCII check before constant-time comparison.
+Non-ASCII and oversized forged markers must raise the intended rejection
+without asset access; cold forest verification is unchanged.
+
+The complete conditional selection session passes `isabelle-132-selection`
+(19.64 seconds / 1.18 GB sampled group footprint), including zero, terminal
+weight and every interior selected fragment. The formula consumed by partial
+Python selection is the checked cycle-count/remainder expression. Successful
+canonical trace construction remains a premise; this pass does not remove
+fuel or authorize the global CLI route.
+
+### Decimal-round totality refinement
+
+External review SHA-256
+`a3662a51b907252b9b73a9183f6ed9dca2df0c4da46be456f71e268995f9dbde`
+replaces the proposed full trace bundle with a derived decimal-round closure.
+Its 84,084-state claim is reproduced by the canonical Python chart owner,
+not yet by a checked Isabelle instance. A round stops at a fork, landmine or 9-to-1 crossing;
+Near headroom decreases inside a sector, and other crossings advance the
+sector. The proposed well-founded measure uses sector spacing 1,024, which
+also dominates the Entry offset 600 (merely exceeding 540 is insufficient).
+The constructor's decade rank must remain separate from the boundary
+losing rank used to justify sibling pruning. The older local trace checker
+retains its soundness/regression role, without becoming the all-state artifact.
+
+The convention matters: terminal states have rank zero, so the measured maximum
+rank is **26**, representing **27 round evaluations including the terminal
+round**. The first maximum chain starts at `(42,68)` and terminates at the fork
+from `(68,10)`. Generation checked every successor/rank equation and emitted a
+193,394-byte phase/rank candidate in 6.65 seconds, with 38.3 MB sampled footprint.
+This compact candidate replaces the proposed 36.6 MB trace bundle as research
+input; neither artifact authorizes production admission. Reproduction:
+`python -m devtools.experiments.comma.generate_rank_candidate --decade-rank-only --decade-rank-output PATH`.
+Ignored local evidence: `comma-chart-unification-2026-09-23/decade-ranks.{log,json}`
+and `decade-rank-candidate.jsonl` (relative to `results/current`).
+
+Builds 137 and 139 exhausted the source-entry budget at the first 37-edge
+trace chunk, using broad simplification and then `code_simp`, respectively.
+They provide no source-entry theorem. Round builds 138 and 140 reached further
+into the well-founded definition but failed on explicit proof/type obligations;
+they do not certify the full round theory. Failed build records remain in the
+same ignored evidence directory.
+
+`isabelle-144-round` passes in 25.46 seconds / 1.17 GB sampled footprint:
+`comma_round_close` is a well-founded HOL function with no fuel parameter,
+and `comma_round_close_refines_trace` connects it to canonical chart edges.
+Fork, landmine and crossing results preserve their exact finite-prefix meaning.
+This is a **single-round** theorem; admissible-input validity, repeated-round
+rank checking, winning-cycle safety and production fuel removal remain separate.
+
+The subsequent reviews (SHA-256
+`cd85a031748ce051b870b3a7dc9b298ae5a118189cbd2e0c237136bcd11287ec`
+and `1c324d7bc22cf7ac2204f31c0a7a17908fde7723a4c2d80a1b6f99609c941f59`)
+separate chart-operation counts from literal term weights. Cross witnesses now
+retain the pre-crossing Near chart as terminal and the new Entry chart as target.
+The normalized successor/rank table is unchanged by this witness correction.
+
+`isabelle-163-decade` passes in 41.89 seconds / 1.15 GB sampled footprint.
+It checks admitted-round validity, phase normalization, source-exponent transport,
+crossing closure and the generic decreasing-rank implication. Semantic decade
+control returns only the outcome; chart-operation diagnostics have a separate
+function. The concrete 84,084-state instance remains unchecked. The source-entry
+draft's presence in an upload is not evidence of a successful local build.
+
+Source-entry builds 149 and 155 exposed broad simplification of recursive gcd
+and symbolic nested-let arithmetic. Closed gcd equations and staged substitution
+let build 161 check the first 37-edge chunk without the previous timeout.
+It then failed on an inapplicable intermediate rewrite for a Near-only seam;
+the final numeric check remains mandatory. A repository policy check now rejects
+direct global `gcd_nat.simps [simp]` registration and simp aliases to that rule,
+while allowing closed local proofs. It uses the shared Isabelle source lexer.
+
+`isabelle-166-round-weights` passes in 15.63 seconds / 1.17 GB sampled footprint.
+It proves weighted-prefix existence through canonical erasure, crossing weight
+`+1`, and zero literal weight for terminal fork/landmine inspections. Weights
+remain outside the control constructor and rank checker. Source-entry build 165
+checks all 230 edges and six weight chunks, then fails on final concatenated
+`butlast` sum rewriting; it is not a completed source-entry session.
+
+### Review follow-through: control counts and literal indices
+
+The latest review's changes are separated from the global cutover gate:
+
+- The Python crossing witness retains the pre-crossing Near chart and the
+  distinct Entry target. A forged `terminal=target` witness is rejected.
+- Semantic decade control returns only its outcome. Internal edge counts and
+  terminal inspections remain separate diagnostics, never literal indices.
+- Build `isabelle-170-entry-witness` checks the 230 source-tail positions and
+  six weight chunks in 39.26 seconds / 1.12 GB. Its saved parent heap avoids
+  repeating that evaluation during downstream source-entry repairs.
+- Build `isabelle-178-round-weights` checks the literal-path bridge in
+  15.35 seconds / 1.17 GB: admitted source, exponent at least five, and matching
+  residue/exponent phase are explicit assumptions. Crossing adds one literal
+  transition; fork/landmine inspection adds zero.
+- Adversarial review invalidated the interpretation of build 175's smoke as
+  an unconditional round result: its Boolean elimination could leave a premise.
+  Build `isabelle-182-round-witness` passes the repaired elimination and explicit
+  zero-premise/zero-hypothesis checks at every memo insertion and publication
+  (13.82 seconds / 1.17 GB). It covers one state, not all 84,084 states.
+
+The shared Isabelle lexer now rejects direct and aliased global recursive gcd
+simplifier registrations, while allowing local closed arithmetic proofs.
+The focused review selection passes 51 tests with validation markers enabled;
+all 255 comma sequence tests pass in 23.80 seconds. Strict mypy checks 1,522
+files; authored-code Ruff and formatting checks pass. Repository-wide Ruff also
+required formatting the existing point-germ benchmark script; its computation
+and workloads are unchanged.
+
+Source-entry build 181 checks the small-exponent prefix but fails its generic
+terminal trace lemma. Build 183 times out while repairing that lemma; neither
+certifies the full source-entry theorem. The concrete 84,084-state rank,
+14,470/314 future-safety classification, infinite return and CLI forest removal
+remain uncompleted obligations. The Python rank experiment does not replace
+those proofs. All referenced build records are ignored local evidence under
+`results/current/comma-chart-unification-2026-09-23`, not portable artifacts.
+
+### Proof-history reliability and short-phase reuse
+
+The September 26 reviews narrow the optimization to proof construction and
+memoization. They do not supply a checked global rank instance.
+
+| Review | SHA-256 | Applied scope |
+| --- | --- | --- |
+| Constructor history erasure | `4ad0d70f6bd533ebdc7225598313846cced9d5022c137e67848ee63010445e90` | Normalized control congruence; absolute gains and weights remain occurrence data |
+| Short-period compilation | `d38c0534f24175b0ed267dc67949f8ad39a0ed3f1fbc7acf46a7491f7f6ec356` | Checked period/power facts and persistent Entry representatives |
+| Memo lookup and proof dependency costs | `955fbbdc48b661afb6744533407ea98bd44e61d2323b5d9a1080e38ca228f64b` | Incremental dependency auditing and lookup-before-normalization review |
+
+Established results:
+
+- `isabelle-187-source-entry` checks the source-20 path to the first fork;
+  `isabelle-201-source-unique` checks uniqueness of every preceding edge
+  (18.70 seconds / 1.17 GB). The exact total is 412,987,858 transitions, with
+  terminal children 19,999,999,999 and 20,000,000,000. There are no remaining
+  premises on these concrete prefix theorems.
+- `isabelle-195-short-phase` checks Entry phase transport (12.90 seconds /
+  1.13 GB). Its key uses `(r+delta) mod T`; the power table separately uses the
+  rotated index `(r+delta+919) mod T`.
+- `isabelle-196-decade-future` checks history congruence (45.07 seconds /
+  1.16 GB). Raw fork/landmine gains are **not** equated: outcomes are compared
+  after normalization to the terminal residue phase.
+- `isabelle-204-round-weights` rebuilds the weighted literal bridge against
+  that checked parent (15.91 seconds / 1.14 GB).
+- The compiled arithmetic contains 90 period equations, 17 short periods
+  and 116 exact modular-power equations. Build `isabelle-202-compiled-entry`
+  checks compilation and the local witness smoke (17.90 seconds / 1.17 GB).
+
+The first 91-offset baseline, `isabelle-184-round-phase-five`, passed in
+52.39 seconds overall, with 39.664 seconds of theory evaluation. The initial
+short-phase integration, `isabelle-199-short-phase-slice`, timed out under the
+unchanged session limit; its source fingerprints matched. It is retained as a
+failed optimization attempt.
+
+Independent inspection of Isabelle's `Thm_Deps.all_oracles` showed that each
+call starts a fresh dependency traversal. The evaluator now certifies
+immutable proof-node serials locally, checking every root's direct oracles and
+every theorem's premises/hypotheses on each insertion. It commits audited node
+identities only after successful traversal. A final built-in oracle audit
+remains mandatory. The cache is not transferable between unrelated heaps and
+is never keyed by proposition equality.
+
+With that change, `isabelle-203-short-phase-slice` passes in 42.60 seconds /
+1.19 GB, with 28.808 seconds of theory evaluation. Before/after authored-source
+fingerprints both equal
+`45bf5bd2d904da8f26d51949e2b74d0955c69859a4cebfd59450d64eca90579e`.
+Exported evaluator measurements record 423 Entry representatives, 1,095 Near
+and sector facts, and 846 round results. Incremental oracle checking used
+188 ms over 6,870 calls and 26,928 distinct dependency nodes. This single-run
+comparison is not an all-state throughput or release-performance result.
+
+The shared process guard now optionally records before/after authored-source
+fingerprints with `--source-root`. A changed fingerprint invalidates an
+otherwise successful run. This checks the two snapshots; it does not claim to
+detect mutations reverted before the final snapshot. No production asset
+hashing was introduced.
+
+The remaining totality interface must consume certified round equations into
+rank-decrease statements, cover every index below 84,084, and prove the rank
+bound 26 before deriving the 27-round bound. Complete round equalities are a
+bounded regression artifact, not the intended full-rank output. The separate
+14,784-state branch classification, winning return and public forest/fuel
+cutover remain unproved. Entry and history results do not close them.
+
+The follow-up memo review found that representative lookup still followed
+normalization. Entry now reads the numeric right-hand sides of the checked
+period facts to choose `(f,x,k)` first. This ML key is untrusted: a certified
+phase reduction must equal it, and the cached equation must compose back to
+the exact requesting source. On a hit, no headroom or power conversion runs;
+`comma_shift_move` restores the requesting exponent gain. Independent review
+checked that `+919` occurs only in power evaluation, never in this Entry key.
+
+Build `isabelle-205-key-first-entry` passes the repaired owner and negative
+certifier tests (17.57 seconds / 1.17 GB). A theorem with an open premise and
+a theorem with a hidden hypothesis are both rejected without changing the
+certificate cache; `TrueI` is accepted. A request shifted from phase 5 to 929
+retains its exact source equation, increases representative hits, and performs
+no additional representative construction or power evaluation.
+
+Build `isabelle-206-key-first-slice` passes in 39.03 seconds, with 25.544 seconds
+of theory evaluation. Its counters included inherited parent setup; the final
+report corrects that scope. Build `isabelle-207-final-slice` passes in
+**38.01 seconds / 1.18 GB**, with **24.818 seconds** of theory evaluation.
+Both source snapshots equal
+`f1e661a69943b51ac1e35c25c11021d5a7cf0f5a8a223aa4b1110ca36c2f44ef`.
+
+| Final slice measurement | Value | Scope |
+| --- | --- | --- |
+| Evaluator plus final oracle audit | 22,785 ms | Child session only; whole guarded build reported above |
+| Entry representatives | 9 initially; 423 finally | Parent setup retained explicitly |
+| Representative hits / misses | 9 / 414 | New child work; 414 power conversions, exactly one per miss |
+| Near / sector facts | 28 initially; 1,095 finally | Retained proof structure, not temporal rank coverage |
+| Sector hits / misses | 54 / 1,067 | New child work |
+| Short-key reduction / composition | 1,475 / 700 ms | Child work, distinct from full evaluation |
+| Incremental / final oracle audit | 115 / 49 ms | Full final built-in audit retained |
+| Audited dependency nodes | 26,815 initially; 26,928 finally | Immutable proof identities; root oracles still checked on every call |
+
+The plain `key=value` export is available from the session database:
+
+```console
+isabelle export -n -d devtools/proofs/isabelle -O OUTPUT -x '*:comma-phase-metrics.txt' Comma_Round_Phase_Slice
+```
+
+These are recorded individual runs, not five-trial performance acceptance or
+evidence that all-state evaluation fits the same limit. The optimized slice
+still exports only 91 exact equations. No rank coverage or global safety
+assertion has been weakened or replaced by a successful refusal.
+
+Final frozen validation on `f1e661a69943`:
+
+- `final-history-tests`: 74 passed, 14.96 seconds; guard 15.34 seconds /
+  62.2 MB, with matching source snapshots.
+- `final-comma-tests`: 255 passed; guard 22.56 seconds / 88.5 MB, with matching
+  source snapshots. Both selections explicitly include validation markers.
+- Strict mypy: 1,523 files passed. Ruff, formatting, repository policy,
+  documentation links and the proof inventory (37 sessions / 147 theories)
+  passed. The generated 91-row regression fixture reproduces exactly.
+- The final built-in oracle audit remains enabled. No skipped proof, new
+  axiom or theorem oracle was introduced. Independent review checked the
+  incremental audit's node identity and transaction semantics and the Entry
+  transport's source/gain preservation.
+
+No full-unit, P0, installed-wheel, aggregate Isabelle or growth acceptance was
+rerun for this proof-checker increment. Their historical failures and scope
+remain recorded in the release ledger.
+
+## September 26 — adversarial shared-owner and memo audit
+
+**Objective.** Remove duplicated arithmetic and authority encodings without
+merging source occurrences, weakening admission, or claiming temporal grammar
+closure. Three read-only explorers reviewed shared mathematics, proof ownership,
+and memo/grammar identity. The coordinator implemented and validated changes.
+
+**Changes and established scope.**
+
+- `consumer_pullback.compose_prefix_safety_values` owns the ALL/min join used by
+  `PrefixSafety` and all dyadic image, transport, support and cycle-tail joins.
+  Image and support publication reuse one computed summary. Family branch laws
+  and ledger charges are unchanged.
+- Antihydra's admitted-word and discovered-word constructors use one bounded
+  arithmetic scan. Supplied words are retained directly; the review caught and
+  removed an intermediate version that rebuilt them unnecessarily. Physical
+  roofs remain optional and mathematically distinct.
+- The three finite-output blank predicates use one admitted Boolean circuit in
+  `semantic_bit_transforms`. Output signatures, validity and ledger publication
+  are unchanged; no input-domain table is introduced.
+- Tile publication and validation share the neutral record snapshot owner.
+  Memo modules no longer import private serializers from the causal executor.
+  Antihydra's eleven-field projection-key snapshot has one owner rather than
+  three. Mutation tests retain independent forged-record encodings.
+- Higher-record audit helpers share a read-only interner check, preserving the
+  identity fallback on corrupted keys and each caller's separate ownership
+  checks.
+- `Hensel_Cylinders` moved unchanged to `Shared_S_Arithmetic`. Collatz no longer
+  inherits the reverse/add session solely to import it. The unused
+  `collatz_one_cycle_returning_action` alias was removed; its exact canonical
+  theorem, `collatz_cycle_chunks`, remains checked and documented.
+- The live `Reverse_Two_Cell_Equations` helper is now registered and explicitly
+  audits all three exported theorem groups. Proof inventory checks cover
+  reachable helpers, including unregistered imports, and reject local session
+  dependency cycles without rejecting external Isabelle parents.
+
+**Audit conclusions.** No current stale integer-ID or changed-consumer memo
+failure was reproduced in the reviewed production paths. Demand-specific
+construction currently publishes complete images for all reviewed families.
+The adapter documentation incorrectly suggested that sufficiency for one demand
+was enough; the contract now states that later projections, actions and failure
+descent must remain supported. Both demand orders are regression-tested. Demand
+was deliberately not added to application keys, which would fragment valid
+source/action reuse. Projection equality still cannot authorize source merging.
+
+The audit did not merge full-polynomial arithmetic with truncated primary jets,
+or streaming carry normalization with APIs retaining complete carry boundaries.
+Those representations have different contracts. A fixed leaf alphabet and
+matching formulas remain insufficient to justify complete future-action
+identity, so no new grammar merge or speed bound was asserted.
+
+**Evidence location.** Commands, bounded output and guard reports are local
+under `results/current/shared-owner-audit-2026-09-26/`. The initial snapshots
+selection contained a nonexistent test path and was corrected; its failed log
+is retained. The first shared-math selection exposed an obsolete test fixture
+that supplied an unaudited helper; the fixture now supplies a real audit and a
+separate negative test enforces rejection. No positive production assertion was
+removed or weakened.
+
+**Independent review.** The proof explorer checked import ancestry and unchanged
+theorem statements. The math explorer checked the safety join, supplied-word
+semantics and exact Boolean circuit ownership. The memo explorer checked every
+snapshot field, ledger-local identity, corruption fallback and demand-order
+reuse. These reviews do not certify all repository paths or complete executable
+refinement of Python.
+
+**Validation and provenance.** Final authored-source fingerprint:
+`32e6212b1c5c9459409ff8316bf643d9a60ae05ebac15ae4735f67cdec445ad5`.
+Documentation is outside this fingerprint and checked separately.
+
+| Evidence | Result and scope | Guard elapsed / sampled peak |
+| --- | --- | --- |
+| `snapshots-2` | 53 authority and memo tests passed | 1.94 s / approximately 80 MB |
+| `antihydra-seals` | 60 projection/cache tests passed | 2.40 s / approximately 60 MB |
+| `shared-math-2` | 169 arithmetic, family and proof-inventory tests passed | 9.45 s / 70,156,888 bytes |
+| `shared-interfaces` | 191 interface, mutation and lifecycle tests passed | 3.75 s / 93,356,632 bytes |
+| `shared-proof` | `Shared_S_Arithmetic` built, including moved Hensel theory | 26.43 s / 1,219,235,128 bytes |
+| `collatz-proof` | `Collatz_Cylinder_Refinement` built with shared parent | 15.78 s / 1,203,703,552 bytes |
+| `reverse-proof` | `Reverse_Residuals` built with helper oracle audit | 38.61 s / 1,265,553,128 bytes |
+| `dyadic-integration-proof` | `Balanced_Dyadic_Integration` built | 24.81 s / 1,267,043,640 bytes |
+| `temporal-integration-proof` | Downstream `Temporal_Clock_Jumps` built on final fingerprint | 36.66 s / 1,274,744,480 bytes |
+| `full-unit` | 6,942 passed, 43 failed; 42 exact historical failures plus one introduced test-file line-cap violation | 249.25 s / 825,345,176 bytes |
+| `repair-tests-2` | All 80 scheduler and repository-policy checks passed after repair | 6.09 s / 657,163,224 bytes |
+| `quality-final` | Strict mypy (1,523 files), Ruff, formatting, policy, docs and proof index (37 sessions / 147 theories) passed | 10.15 s / 633,619,872 bytes |
+| `p0` | 13 passed, 50 failed; exact failure set matches the previous selection | 2.17 s / 89,129,584 bytes |
+| `wheel-build`, `installed-wheel` | Clean isolated build and installed CLI/authority checks passed | 2.65 s / 96,027,680 bytes; 20.89 s / 115,476,568 bytes |
+
+The full-unit run used `261d1ea48034`, before the test-only line-cap repair. Its
+new two-order regression was folded into the existing complete-image test;
+original output, child-poison, publication and zero-primitive assertions remain.
+The demanded branch uses its correctly named demanded-composite counter. The
+final file meets the unchanged 1,000-line cap. Full units were not repeated after
+this test-only consolidation; `repair-tests-2`, quality, P0 and installed-wheel
+checks carry matching final source snapshots. The first wheel attempt lacked a
+local setuptools backend; normal isolated build dependencies resolved it.
+
+`failure-disposition.json` maps every full-unit failure against
+`results/current/point-germ-integration-2026-09-23/accepted-unit.xml`;
+`p0-disposition.json` compares the exact previous P0 selection. The only new
+full-unit failure was the repaired file-size violation. The 41 existing
+reverse/add unit obligations, one F4 unit obligation and 50 P0 failures remain
+active. No skips, expected failures or success-on-refusal replacements were
+introduced. All five Isabelle builds kept the existing theorem statements,
+explicit oracle audits and 60-second/4-GiB limits.
+
+**Remaining work.** This audit supplies shared owners and checked session
+boundaries, not a general temporal grammar, its construction bound, an étale
+terminal extractor, or a source-global safety proof. The comma all-state rank,
+winning return and forest/fuel cutover remain separate obligations. All-session
+Isabelle and the five-trial growth manifest were not rerun for this cleanup;
+their recorded release holds remain in force.
+
+## Root-shell and consumer-relative Moore integration
+
+**Objective (September 26).** Audit the downloaded compiler3 Collatz patches and
+root-shell notes, reuse finite algebra through the existing source owner, and
+separate observable-state reduction from source construction cost.
+
+**Implemented.** The shared consumer-pullback module now owns canonical exact
+half-open guards and guarded affine composition. Research Mahler source blocks
+reuse this owner instead of defining another interval algebra. Their root chart
+is `theta=2t=r²`; coefficients and guards remain rational. The existing production
+`antihydra --info mahler` projection reports signed radicand coefficients and the
+complete root guard from its admitted source image. It performs no new source
+scan, segment fold, physical-roof request or floating-point square root. Schema
+8 reports root-projection calls and operand bits; absent measurements remain
+null. The private packet formatter is not a source-admission API.
+
+**Checked mathematics.** `Mahler_Source_Event_Safety` now transports actual
+source-cylinder endpoint and guard composition into the root chart. It proves
+the source-selected event law and exact interval `1 ≤ (3/2)^q theta < 3/2`,
+including intermediate safety. The source-7 first guard is `[2/3,1)` and every
+prefix of length at least two has an empty guard. This is Mahler fractional
+safety, not Antihydra ledger halting. The same session's oracle audit covers the
+new results. These real-valued theorems plus independent rational differential
+checks are not a completed extraction/refinement proof of the Python scheduler.
+
+**Selective patch integration.** Iterative decision-terminal relabeling and
+structural metrics share the existing decision arena. The bounded Collatz
+experiment can request support, endpoint-plus-clock or endpoint observations,
+then independently minimize their derivatives. Derivatives honor the declared
+coordinate order. Projection construction is capped at 12 bits and uses a
+conservative aggregate retention preflight; derivative certificates have an
+explicit state budget. Failed publication retains no new cached projection.
+Full support validation remains in `bind/select`; weaker observer equality
+cannot identify authenticated source occurrences.
+
+| Source bits / physical ticks | Support DAG | Endpoint + clock DAG | Endpoint DAG | Explicit Moore states, same order |
+| --- | ---: | ---: | ---: | --- |
+| 5 / 16 | 61 | 32 | 29 | 62 / 35 / 32 |
+| 8 / 16 | 511 | 250 | 235 | 511 / 250 / 236 |
+| 5 / 1024 | 61 | 28 | 21 | 62 / 31 / 24 |
+
+The one-shot local construction times were approximately 0.009, 0.023 and
+0.080 seconds. They are reproduction measurements, not five-trial performance
+gates. DAG and explicit Moore counts differ because the latter consumes every
+source position, including skipped coordinates. The 1024-tick experiment still
+reports 471 endpoint consumptions and 972 constant bindings: projection size
+must not conceal that discovery work.
+
+**Independent findings.** The imported Hensel cursor is disconnected from the
+production scheduler and performs full-width modular updates per source bit
+without corresponding operand accounting. It also introduces a 16,384-bit cap
+and inconsistent budget-exception handling. It was not enabled in production.
+The old Moore patch weakened support validation in `bind`, had unbounded
+projection retention, and assumed identity variable order; this integration
+preserves validation and corrects the latter two issues. No action/source memo
+collision was reproduced in the reviewed cursor. The root review confirmed
+coordinate scaling and identified an ambiguous offset name; the public field
+is now explicitly the signed `radicand_offset` in `A*r²+B`.
+
+**Pinned input checksums (SHA-256).** Files remain external research inputs.
+
+| Download | SHA-256 |
+| --- | --- |
+| `collatz_compiler3_moore_quotient.patch` | `0d8d2d6acba595cf625c618f29da8638bf219dfa066a644cac7bf6f2890b995e` |
+| `collatz_compiler3_hensel_temporal_quotient.patch` | `de75fd3781ce76c2fbd446d104810d7415b42e0edff9727c2907cb13c9e1c31a` |
+| `collatz_compiler3_frobenius_occurrence_fix.patch` | `d0c1f18c37509dfa9c0e97a3ea09c887a9ad162da9fe9efbd0b9b64d6a3f8139` |
+| `collatz_compiler3_moore_quotient_report.md` | `c4d48c6bbc7ec1e2b545addaa5b8ab6676cae514b289778db94344bf2f22f30d` |
+
+**Remaining obligation.** Root/Vieta/tropical projection has not supplied an
+algebraic source constructor with a proved construction bound. The full Hensel
+source owner remains distinct from a selected observer's minimal machine.
+Neither a repeating future quotient nor global Collatz/Mahler safety or
+Antihydra non-halting follows from this integration. Existing reverse/add,
+Fermat/Mersenne and comma forest/fuel release holds remain unchanged.
+
+
+**Validation and provenance.** Final authored-source fingerprint:
+`d350d0399a9ac725fdd416ba636ee851bad58b7ec2140bfdd2c4e3646367cd01`.
+Local raw evidence is under `results/current/root-shell-moore-2026-09-26/`.
+
+| Evidence | Result | Guard elapsed / sampled peak |
+| --- | --- | --- |
+| `focused-final-2` | 207 arithmetic, observer, source-guard and Moore tests passed; before final diagnostics fields at `1f0a479f798f` | 2.2 s / under 80 MB |
+| `family-regressions-2` | 1,614 passed, five historical reverse/add constructor failures, 50 deselected | 31.20 s / 132,612,768 bytes |
+| `isabelle-final` | Clean `Mahler_Source_Transport` session build; seven added root-chart theorems in the oracle audit | 13.56 s / 1,192,709,768 bytes |
+| `quality-final` | Strict mypy on 1,524 files, Ruff, formatting, policy, proof inventory and docs passed | 13.76 s / 634,357,176 bytes |
+| `wheel-build-2` | Isolated wheel build passed | 2.46 s / 96,388,152 bytes |
+| `installed-wheel` | Existing CLI checks plus signed root radicand, guard, shared source and lazy accounting passed | 20.96 s / 118,261,896 bytes |
+
+The five selected failures are matched by exact test name against the earlier
+`point-germ-integration-2026-09-23/accepted-unit.xml` in local
+`failure-disposition.json`; every one is historical and reaches the existing
+reverse/add powered-constructor refusal. No positive assertion was weakened.
+The broad family tests, proof rebuild, wheel and final quality share the final
+fingerprint. Full units, P0, all-session Isabelle and the growth manifest were
+not rerun; their historical failures and release holds remain in force.
+
+Failed exploratory runs are retained: an unavailable build frontend was replaced
+by the existing pip wheel workflow; a nonexistent Antihydra test directory was
+replaced with its actual API test files; proof syntax errors were repaired before
+the checked build. One new test initially confused a 29-node reduced DAG with
+its 32-state explicit Moore machine; the final test checks both independently.
+The node retention limit bounds the bounded research projection structure, not
+all referenced terminal bytes. It is not a production memory certificate.
+
+## Comma chart germs and proof-generation ownership
+
+**Objective.** Replace eager round-proof reconstruction with exact local run,
+chart and weighted-germ composition under the existing 60-second/4-GiB guard.
+Constructor totality, future branch safety and CLI cutover remain separate
+acceptance gates.
+
+**Established local mathematics.** The neutral `Prefix_Effect` theory now owns
+the generic signed-prefix lemmas reused by dyadic and comma proofs. A Near
+germ retains its internal unit count and terminal headroom; its actual
+headroom summary is `(t-h,t-h)`, not minus the unit count. The checked chart
+action retains decimal rebasing and ordered, relation-preserving guard
+pullback. Terminal-event lemmas prove the complete child set and exact zero
+or unit literal weight. Landmine admission is the conjunction of its two
+walls. Control-round construction refines the canonical round and uses at
+most nine sector calls. Its sector-control view is definitionally projected
+from the weighted sector owner, with the old case equation retained only as
+a derived theorem.
+
+**Rejected simplifications.** Headroom cannot be added across chart seams:
+`199991 → 200003` changes 9 to 99997, not -3. Positive headroom does not exclude
+a fork. Control equality cannot erase actual exponent gain or evaluated
+weight. A guard true at one bound source is not a complete admission
+equivalence. No whole-round scalar tropical reduction or normalized future
+merge is authorized by these local results.
+
+**Timeout diagnosis.** The first new witness build spent about 30.8 seconds
+reproving decade control, then rebuilt weights and run germs before reaching
+its evaluator; it timed out. Changing its heap parent first to `Comma_Run_Germ`, then to the checked
+`Comma_Weighted_Round`, avoids those repeated proofs. Chart and terminal sessions are separately
+cached so terminal repairs do not reprove the checked chart algebra. Focused
+session reuse does not replace aggregate release validation.
+
+**Evidence ownership.** Each guarded source-bound run receives a fresh proof
+generation associated with its authored-source fingerprint. The shared source
+inventory also supplies file and directory revision checks. These reject
+changed/restored bytes and transient source creation/deletion, even if final
+content hashes agree. The child receives the generation token and disables
+bytecode writes; output directories are created before binding. Checks occur
+at evidence boundaries, never by hashing files on a theorem memo hit.
+The evaluator owner becomes permanently invalid after a token mismatch;
+restoring the token cannot revive it. A fresh owner has separate theorem and
+oracle-audit caches. The token alone does not watch the filesystem: acceptance
+depends on the external source-revision envelope.
+
+The independent cache review did not reproduce a wrong short-phase memo hit.
+It confirmed that successful transport must restore the exact requested chart,
+and that actual exponent gain cannot be reused as a residue-only output.
+Certification precedes memo insertion. Smoke-test owners are now local ML
+bindings, so their tables do not remain in the saved theory heap. The phase
+slice creates its own owner rather than borrowing a smoke-test closure.
+
+The old evaluator's two-pass structure was reproduced directly: after proving
+local sectors it timed out in the whole control-round conversion. The replacement composes weighted payloads and a first-event frontier in one
+pass. Publication retains a closed all-exponent occurrence certificate, exact
+source and symbolic literal weight. The separate complete-round theorem also
+connects the constructor to literal execution for admitted exponents at least
+five; this is stronger than merely evaluating a record. Terminal payload reuse keeps the actual exponent gain and
+derives crossing from the same complete event. These are distinct from the
+still-required global rank and branch-safety instances.
+
+An independent simplifier audit found an actual self-loop hazard: using
+terminal phase erasure as a general rewrite can rewrite phase zero to itself.
+The evaluator now unfolds the payload, erases phase and applies the cached
+canonical payload with three one-shot checked conversions. Its key preserves
+actual exponent gain. This fix removed the observed timeout at that stage;
+no timeout or oracle-audit limit was raised.
+
+**Follow-up review.** The first checked one-pass evaluator still normalized
+its growing weighted record after every append, and the rank slice discarded
+most of that result. Its source-bound smoke passed at fingerprint
+`74b928d78a2cb602e17856c9491e7d0377ec7e458efeaa2bc9f1fcadfe172600`
+(`final-witness`: 28.86 s / 1,054,461,168 bytes), but that does not establish
+rank-evaluation performance. The subsequent refinement separates the demanded
+control observation from the full weighted payload while keeping both tied to
+the same proved constructor. It also replaces repeated prefix normalization
+with symbolic composition and moves finite cycle-length arithmetic out of the
+instance evaluator. Final evidence below must distinguish these revisions.
+
+The first projected slice (`observation-slice-1`, fingerprint
+`04054f8b82154a4bffde167dbb500f3b55afd1c2776a08ed91070f2d849c576a`)
+checked all 91 unchanged count/chart/event equations in 46.83 guarded seconds,
+with 1,210,650,872 sampled peak bytes. Its inner observation work was 28.66 s:
+754 sectors, 1,326 lightweight links, 423 Entry misses/331 hits and 1,095 Near
+germ misses/376 hits. Weighted exports, terminal payload construction, full
+weighted normalization, field projections and weighted compatibility work
+were all measured zero. Observation normalization took 484 ms, phase-key
+reduction 3,239 ms and incremental proof-node auditing 318 ms. Thus removing
+eager weighted proof construction did not make the remaining arithmetic and first-use
+Near-class discovery negligible. This slice is not an 84,084-state performance
+certificate. It explicitly retains 91 diagnostic equations; the eventual rank
+instance must stream compact rank evidence instead.
+
+**Production scope.** Boundary-macro construction aggregates deterministic
+Near moves and evaluates periodic displacement with quotient/remainder
+arithmetic. Constant affine weights avoid constructing an unnecessary power
+of ten; identity composition still checks bindings and budgets. Independent
+tests retain every canonical endpoint and reject hidden crossings. These
+private boundary actions are not yet the public `CommaTerm._resolve` owner,
+so no public CLI speedup or forest removal follows from this change.
+
+**Final validation scope.** Authored-source fingerprint:
+`fd9753f0a088342fda226a643bb771eeabe63dbd13dd2cf04a8f67c1bc7f1438`.
+Local evidence is under `results/current/comma-run-germ-2026-09-26/`.
+Source-bound guards verify both content and revision stability; each run has
+its own generation. Earlier failed and successful exploratory runs retain
+their original scope.
+
+| Evidence | Result | Guard elapsed / sampled peak |
+| --- | --- | --- |
+| `final-observation-witness` | Full symbolic-action and lightweight-observation smoke checks, source/delta transport, failed publication and owner invalidation PASS | 25.77 s / 1,155,583,168 bytes |
+| `final-observation-slice` | All 91 exact control-count/chart/event equations and oracle audit PASS; eager weighted-work assertions remain zero | 48.62 s / 1,157,074,112 bytes |
+| `final-focused` | 343 comma arithmetic, API, cache, source-generation and evidence tests PASS | 37.96 s / 89,883,248 bytes |
+| `final-quality` | Strict mypy (1,524 files), Ruff, formatting, policy, documentation, proof inventory (43 sessions/153 theories) and diff checks PASS | 12.14 s / 636,814,752 bytes |
+
+The final slice measured 8,851 ms in 423 Entry conversions, 15,017 ms in
+1,095 Near conversions, 3,017 ms in short-key reduction, 599 ms in observation
+normalization and 320 ms in incremental proof-node auditing. The timing
+categories are diagnostic and may nest; they must not be summed as disjoint
+wall-clock work. The exported generation matches the accepted guard report.
+These measurements isolate finite arithmetic/first-use discovery as the
+remaining dominant work, rather than full weighted-record normalization.
+
+Full weighted joins propagate cached source/target equations with single
+selector rewrites and use theorem transitivity for compatibility. They retain
+symbolic composition; only a demanded terminal consumer traverses the composed
+controls or weights. Independent review found no per-append accumulated-record
+simplification. This is not a constant-time bound for kernel term construction
+or an asymptotic theorem for arbitrary longer compositions.
+
+The complete 84,084-state rank instance still needs a streamed checked
+implementation and acceptable measurements. The boundary losing/winning
+instance, infinite return, fuel removal and public forest cutover remain open.
+No Python oracle result is promoted to a checked instance. Full units, P0,
+all-session Isabelle, installed-wheel and growth validation were not rerun
+for this proof/evaluator increment; existing release holds remain active.
+
+## Comma canonical rank checking and bounded sector reuse
+
+**Objective (September 26–27).** Repair the concrete constructor-rank proof
+without treating it as the separate future-branch theorem or authorizing the
+forest cutover prematurely.
+
+**Changes and checked scope.**
+
+- Added a downstream observation bridge from the weighted round, and proved
+  successful macro uniqueness plus boundary existence conditional on a checked
+  decade rank. The `THE` interface has no executable code equation and does not
+  discharge that condition.
+- Defined the untrusted rank candidate through typed, shared list blocks.
+  This replaces a giant textual HOL definition whose type inference timed out.
+  No generated transition, successor or successful-check flag is assumed.
+- Centralized numeral canonicalization at source, observed target and lookup
+  boundaries. The `1`/`Suc 0` regression proves equal, closed, oracle-free rank
+  equations. Added the missing closed-natural subtraction rules.
+- Replaced per-row generic proof search with Continue/Fork/Landmine rules and
+  balanced adjacent-interval aggregation. The checker still proves every row;
+  its candidate numbers are not a proof.
+- Reused exact completed sector links through an 8,192-entry owner-local cache.
+  Keys preserve the complete phase/source chart; binding and oracle checks
+  precede publication. Changed-source, changed-phase, repeat and invalidation
+  checks pass. Admission predicates also use a bounded exact-proposition memo.
+- Removed duplicated sector-link certification, narrowed closed key arithmetic,
+  and rechecked generation after the final rank oracle audit. Optional progress
+  output survives watchdog termination and is never consumed as proof input.
+
+**Independent review.** The old aggregation was a two-level chain, not a flat
+84,084-link conjunction; no quadratic aggregation claim is supported. Current
+balanced aggregation is checked. The new cache does not equate occurrences
+merely because their arithmetic representatives agree. There is no unconditional
+constructor-totality or infinite-branch theorem in this increment.
+
+**Performance provenance.** Local evidence lives under
+`results/current/comma-total-cutover-2026-09-26/`; these are local evidence names,
+not portable downloads. All Isabelle runs retain the 60-second/4-GiB guard,
+50-second internal timeout, one ML thread and the five-second local diagnostic.
+
+| Revision / evidence | Result and scope |
+| --- | --- |
+| `balanced-rank-smoke-2` | All 91 phase-zero rows PASS; observation 13,186 ms, lookup 174 ms, comparison 8 ms, aggregation 12 ms. |
+| `full-rank-2`, `e80999674c0c` | Full-instance TIMEOUT at 60.10 s; fingerprint and revision unchanged. Buffered progress is unavailable, not zero. |
+| `sector-cache-rank-smoke`, `e796af4bbd27` | All 91 rows PASS; observation 11,212 ms, lookup 159 ms, comparison 10 ms, aggregation 12 ms. This is one trial, not a general speed bound. |
+| Final source | `a8cf618a84a53929fc7cef687bee86bb662a40c2ff648cd65d525781857bd23b`; final validation recorded below. |
+
+**Remaining obligations.** Complete the 84,084-state constructor rank, then
+check the distinct 14,784-state boundary classification (14,470 losing, 314
+winning), the lifted 314-fork/+924 return with positive literal weight, and
+termination of the 17 decimal roots below 20. The source-20 unique prelude is
+already proved; joining it to the winning classification remains necessary.
+Executable weighted selection and public CLI refinement must agree with those
+results. Production forest admission and its budget boundary remain in place;
+no positive acceptance assertion was removed or converted into a refusal test.
+
+The final full-instance attempt (`final-full-rank`) timed out at **60.112 s**
+with **1,150,389,464 sampled bytes**; content and revision were unchanged. Its
+append-only diagnostic records four completed phases (364 rows) at 39,926 ms:
+38,911 ms observation, 805 ms lookup, 40 ms comparison and 58 ms aggregation.
+It had constructed 1,349 Entry and 2,357 Near conversions by that checkpoint.
+The remaining interval before termination is unclassified work, not zero work.
+No complete rank theorem was exported. This demonstrates the next bottleneck
+in the actual all-state run; the small regression improvement does not close it.
+
+Final validation on the fingerprint above:
+
+| Evidence | Result | Guard elapsed / sampled peak |
+| --- | --- | --- |
+| `final-witness` | Weighted/projection agreement, exact cache binding, repeat/phase/source changes and invalidation PASS | 28.66 s / 1,167,363,288 bytes |
+| `final-rank-smoke` | Canonical alias and all 91 phase-zero rank rows PASS; generic total-macro session current | 40.07 s / 1,176,767,704 bytes |
+| `final-observation-slice` | All 91 unchanged phase-five count/chart/event fixtures and forbidden-eager-work assertions PASS | 28.93 s / 1,170,181,264 bytes |
+| `final-focused` | 409 arithmetic, CLI, cache, candidate-generation, history, evidence and proof-inventory tests PASS | 50.07 s / 89,408,112 bytes |
+| `final-full-rank` | TIMEOUT; no complete rank theorem | 60.11 s / 1,150,389,464 bytes |
+| `final-quality` | Strict mypy, Ruff, formatting (1,524 files), policy, documentation, proof inventory (47 sessions/160 theories) and diff checks PASS | 11.07 s / 636,224,880 bytes |
+
+The final phase-zero rank profile records 10,999 ms observation, 167 ms lookup,
+8 ms comparison and 15 ms aggregation. These are scoped measurements, not an
+arbitrary-size verification bound. The 91-row regression and the failed full
+instance remain separate acceptance results. No public CLI behavior changed.
+Full units, P0, installed-wheel, growth and all-session acceptance were not
+rerun for this proof-only increment; their existing holds remain active.
+
+
+## Shared finite-cylinder block integration
+
+**2026-09-27. Objective:** reuse the downloaded Collatz block-selector work
+through the existing production scheduler for Collatz and Antihydra, with
+Mahler consuming Antihydra's admitted support. This increment does not close
+arbitrary-source pumping or all-time safety.
+
+### Changes and independent review
+
+- Two independent explorers audited the downloaded implementation and the live
+  shared constructor. The downloaded ordinary CLI route bypasses scheduler
+  publication and uses unregistered run/table storage. Its zero fallback count
+  is not an instrumented proof of ownership. Its root-semifield consumer is
+  outside that constructor, and its run grammar is discarded after summary.
+- Ported the useful finite-cylinder arithmetic into
+  `dyadic_return_transport.py`, `dyadic_return_images.py` and
+  `dyadic_return_composite.py`; no new scheduler or source owner. Cold atoms
+  classify at most four branches. Chronological composition builds eight-bit
+  effects; bounded leaves and the existing balanced outer constructor reuse
+  them. The complete effect preserves affine transfer, branch word, odd count,
+  signed delta and minimum prefix.
+- The existing ledger-owned macro store holds at most 256 effects. Keys include
+  owner, full law descriptor, width and residue. Construction transactions
+  share the memo across bounded cycle discovery and the balanced tail; finally
+  cleanup releases all entries. Direct helpers also clean up. Optional cache
+  reservation failure does not defeat a valid stricter-budget computation.
+- A separate final explorer found no production blocker in authority, law
+  binding, safety composition or normal/failure cleanup. The memo is strictly
+  construction-private; it is not an externally authenticated source store.
+- Schema eight adds shared `finite_block_*` counters for cold work and cache
+  activity. Metrics do not evaluate a new observer. These hits are distinct
+  from action, occurrence and outer balanced-effect reuse.
+
+### Established mathematics and assertion mapping
+
+`arithmetic_leaf_same_cylinder` proves complete finite-effect equality on one
+low source cylinder. `arithmetic_leaf_block_compose` proves composition with
+the right block using the transported left image. Both are audited for theorem
+oracles and reuse the existing branch-law semantics. See the
+[production refinement map](../../../docs/proofs/balanced-dyadic-refinement.md).
+They do not prove Python cache authority, arbitrary-source grammar closure,
+root-semifield successor congruence or global safety.
+
+The high-entropy Collatz test formerly required exactly 4,096 cold scalar
+classifications. Its replacement requires strictly fewer classifications,
+matching the new cold-work counter, measured finite-cache hits and consistent
+lookup totals. Its scheduler, composition/operand ceilings, single saturated
+root and empty-stack assertions are preserved. No positive construction gate
+was removed or converted to a refusal test.
+
+New tests independently enumerate every residue at widths one through eight
+for both family laws, including large high-fiber lifts and signed prefix
+minima. Additional tests cover repeated blocks, foreign/law/disposed authority,
+failed publication, cap saturation, eviction and exact reservation cleanup.
+
+### Patch provenance and bounded measurements
+
+| Input | SHA-256 | Disposition |
+| --- | --- | --- |
+| `number-compiler-main3-collatz-production-cli-block-quotient.zip` | `7357eb5b9f6e991255203b99cdeb6fe3b42da6496b3d0742e2db738aef67c07a` | Local reference only; alternate executor not imported |
+| `collatz_compiler3_production_cli_block_quotient.patch` | `aa93637d0902f7e6f9ad64ebc051bb9ce99c24fb3e5cb5d35e5d839f9af98055` | Finite-block idea selectively integrated into shared owner |
+
+Five-trial medians below call the actual CLI parser/executor in a warm Python
+interpreter, clearing the process cache before each query. They include JSON
+value and metrics output, exclude interpreter startup, and are finite timing
+observations, not asymptotic or paired-baseline release closure.
+
+| Query | Before ms | After ms |
+| --- | ---: | ---: |
+| Collatz seed `931386509544713451`, 256 physical ticks | 2.495 | 2.490 |
+| Same seed, 1,000 ticks | 3.805 | 3.674 |
+| Deterministic 4,096-bit source, 4,096 ticks | 12.017 | 8.176 |
+| Collatz seed 27, 10,000 ticks | 2.204 | 2.145 |
+| Antihydra source 8, 256 returns | 3.022 | 2.715 |
+| Antihydra source 8, 1,024 returns | 6.618 | 4.925 |
+
+Before fingerprint: `a8cf618a84a53929fc7cef687bee86bb662a40c2ff648cd65d525781857bd23b`.
+After timing fingerprint: `d423e508d613601928f32c67f19c3bc56b7010aa2f589cb3813675f7644d5ac1`.
+Later changes add tests and metric assertions, plus formatting; production
+arithmetic is unchanged. An initial implementation regressed the 1,000-tick
+query to 5.073 ms by clearing the cache between bounded discovery chunks; the
+transaction-wide lifetime fixes that regression. All compared values agree.
+
+Raw evidence is local under `results/current/collatz-block-quotient-2026-09-27/`;
+the downloaded reference is outside the checkout and timing scripts remain local artifacts. The
+canonical growth tool is `devtools.benchmarks.collatz_temporal_power_probe`.
+With `--balanced-scaling --trials 5`, all seven horizons 16–1,024 passed in
+cold/repeat/bypass modes for Collatz, Antihydra and Antihydra `--mahler`: 315
+samples, independent literal references and full accounting audits. Each job
+used 35 seconds/1 GiB. Work, rendering, reporting and full audit are separate.
+At the 1,024-step cold sample, Collatz records 64 cold branch classifications
+and 216 finite-block hits; Antihydra/Mahler records 64 and 209 respectively.
+Transport, larger compositions and observer work are still charged separately:
+these counts do not mean the complete query costs 64 operations.
+These samples use public queries in a warm interpreter; installed-process
+checks are recorded separately.
+
+At `e8736ec57e5e9942257a91f4531c04c2cdb75f4109ba518d861145252c744328`:
+
+- Focused tests: 843 PASS, three existing reverse/add construction failures;
+  47 validation-marked tests deselected by the standard unit selection.
+- Explicit relevant validation: 40 PASS, one missing source-seven non-halting
+  certificate failure, two non-validation tests deselected.
+- `Balanced_Dyadic_Integration` and its dependencies: PASS, 33.214 seconds,
+  sampled peak 1,264,962,992 bytes within 60 seconds/4 GiB. The shared session
+  had separately passed in 29.986 seconds. These are incremental builds.
+- Strict mypy and Ruff passed; formatting found one test-only layout issue,
+  subsequently corrected. Policy, docs and proof inventory passed.
+
+The four focused failures remain active. Their exact cases are
+`test_query_eviction_does_not_replay_bounded_primitive_kernel[<lambda>-3]`,
+`test_public_point_never_creates_lowering_capability[reverse]`,
+`test_certified_powered_observation_poison_generic_state_codec[<lambda>-0-8]`,
+and `test_source7_has_installed_cli_nonhalting_certificate`.
+
+Remaining obligations: general cold source discovery, authenticated parametric
+pumping/right-congruence, complete Python publication/cost refinement, and the
+existing reverse, special-number, comma and source-global safety gates.
+
+Final validation fingerprint (test-formatting repair only):
+`f20f067bc79f4a3aff7480f483fdd7614b594da6d541ebd49782b3e3dcc83c04`.
+The clean staged wheel build and isolated installation passed in 25.627 seconds
+with sampled peak 127,027,792 bytes; this includes separate CLI processes and
+Mahler composed-image verification, not a cold-process speedup comparison.
+The explicit unchanged P0 selection has 13 PASS / 50 FAIL; exact failure IDs
+match the prior balanced-refinement baseline.
+
+The first full-unit attempt hit the 1-GiB guard at 176.012 seconds, without a
+complete JUnit result. Collection-order alignment puts its last output at the
+repository call-graph policy check. The downloaded reference had been extracted
+under `results/`; that checker traverses the directory despite Git ignoring it,
+so it was parsing a second codebase. The reference was moved outside the
+checkout without changing the checker, assertions or resource limit; the full
+suite was rerun. The failed attempt remains local evidence as `full-unit`.
+
+### Local-output tracking repair
+
+The old `.gitignore` re-included every Markdown and Python file anywhere below
+`results/`. Replaced those broad exceptions with the policy README and weekly
+`results/current/YYYY-Www/README.md` summaries only. Git had one tracked local
+benchmark, `point-germ-bench.py`; it was removed from the index while preserving
+its existing working copy and edits. No history rewrite, commit, push or upload
+was performed. `git ls-files results` now contains only four reviewed documents.
+`git check-ignore --no-index` verifies local Markdown, Python and JSON stay
+ignored even inside a weekly directory; the policy and next-week summary remain
+eligible. Raw run evidence remains local and no longer appears as candidate
+source changes because of its extension.
+
+After moving the external reference, the complete standard unit command finished
+at the final fingerprint: **6,971 PASS / the same 42 FAIL**, 1,928 validation
+cases deselected by the unchanged default. Guard: 290.528 seconds / sampled
+peak 832,423,064 bytes under 300 seconds/1 GiB. Exact failing node IDs match
+`balanced-proof-refinement/unit-final.xml`; no new unit failure was found.
+This successful completion supersedes the incomplete first attempt, without
+turning those 42 failures green.
+
+Final strict mypy, Ruff, formatting (1,525 files), policy, documentation,
+proof inventory (47 sessions/160 theories) and diff checks all PASS at the
+final fingerprint in 11.793 seconds / 638,240,112 sampled bytes. Ignore-rule
+verification and the preserved local benchmark were checked separately because
+Git tracking policy is outside the authored-source fingerprint.

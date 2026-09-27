@@ -32,3 +32,33 @@ def test_prefix_validation_is_not_hidden_by_subsumption() -> None:
     for invalid in ((2,), (True,), (0, 0, 0)):
         with pytest.raises(ValueError, match="prefix"):
             arena.build_prefix_union(((), invalid))
+
+
+def test_terminal_relabeling_reduces_exact_moore_projection_structurally() -> None:
+    arena = MultiTerminalDecisionArena((2, 2))
+    root = arena.build(lambda values: (f"endpoint-{values[0]}", f"support-{values[1]}"))
+    full = arena.structural_metrics(root)
+
+    def endpoint(value: object) -> object:
+        assert isinstance(value, tuple)
+        return value[0]
+
+    projected, projected_root = arena.relabel_terminals(root, endpoint)
+    reduced = projected.structural_metrics(projected_root)
+    assert full.terminals == 4
+    assert full.internal_nodes == 3
+    assert reduced.terminals == 2
+    assert reduced.internal_nodes == 1
+    for left, right in product(range(2), repeat=2):
+        assert projected.evaluate(projected_root, (left, right)) == f"endpoint-{left}"
+
+
+def test_projection_roots_reject_numeric_coercion() -> None:
+    arena = MultiTerminalDecisionArena((2,))
+    arena.terminal(0)
+    with pytest.raises(TypeError, match="exact integer"):
+        arena.terminal_value(True)
+    with pytest.raises(TypeError, match="exact integer"):
+        arena.structural_metrics(False)
+    with pytest.raises(TypeError, match="exact integer"):
+        arena.relabel_terminals(True, lambda value: value)

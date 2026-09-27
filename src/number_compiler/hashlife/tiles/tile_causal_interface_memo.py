@@ -10,6 +10,8 @@ from number_compiler.hashlife.tiles.tile_result_records import (
     CausalInterfaceKey,
     CompletedInterfaceResult,
     PoweredResultKey,
+    causal_interface_snapshot,
+    execution_request_snapshot,
 )
 from number_compiler.hashlife.tiles.tile_results import CompletedResultArena
 from number_compiler.projection.digit_terminal import DigitNormalizeBlockEffect
@@ -17,134 +19,6 @@ from number_compiler.resources.cache_gc_metrics import record_cache_event, tempo
 from number_compiler.resources.result_cache_kinds import (
     record_unattributed_post_eviction_miss,
 )
-
-
-def _handle_snapshot(value: object) -> tuple[object, ...]:
-    return (
-        type(value),
-        getattr(value, "owner", None),
-        getattr(value, "kind", None),
-        getattr(value, "local_id", None),
-    )
-
-
-def _wiring_snapshot(value: object) -> tuple[object, ...]:
-    return (
-        type(value),
-        _handle_snapshot(getattr(value, "signature", None)),
-        getattr(value, "orientation", None),
-        getattr(value, "phase", None),
-    )
-
-
-def _view_snapshot(value: object) -> tuple[object, ...] | None:
-    if value is None:
-        return None
-    return (
-        type(value),
-        _handle_snapshot(getattr(value, "tile", None)),
-        getattr(value, "source_offset", None),
-        getattr(value, "relative_origin", None),
-        getattr(value, "relative_extent", None),
-        getattr(value, "orientation", None),
-    )
-
-
-def _boundaries_snapshot(value: object) -> tuple[object, ...]:
-    return (
-        type(value),
-        _view_snapshot(getattr(value, "left", None)),
-        _view_snapshot(getattr(value, "right", None)),
-    )
-
-
-def _context_snapshot(value: object) -> tuple[object, ...]:
-    return (
-        type(value),
-        tuple(getattr(value, "ports", ())),
-        _wiring_snapshot(getattr(value, "wiring", None)),
-        _boundaries_snapshot(getattr(value, "boundaries", None)),
-    )
-
-
-def _fusion_snapshot(value: object) -> tuple[object, ...] | None:
-    if value is None:
-        return None
-    return (
-        type(value),
-        _context_snapshot(getattr(value, "producer", None)),
-        _context_snapshot(getattr(value, "consumer", None)),
-    )
-
-
-def _execution_request_snapshot(key: object) -> tuple[object, ...]:
-    """Detach all request scalars from caller-owned frozen record objects."""
-    return (
-        type(key),
-        _handle_snapshot(getattr(key, "action", None)),
-        _handle_snapshot(getattr(key, "input", None)),
-        tuple(getattr(key, "ports", ())),
-        _wiring_snapshot(getattr(key, "wiring", None)),
-        _boundaries_snapshot(getattr(key, "boundaries", None)),
-        _fusion_snapshot(getattr(key, "fusion", None)),
-        getattr(key, "region", None),
-        getattr(key, "observation", None),
-    )
-
-
-def _reverse_output_snapshot(value: object) -> tuple[object, ...] | None:
-    if value is None:
-        return None
-    left, right = getattr(value, "left", None), getattr(value, "right", None)
-    return (
-        type(value),
-        type(left),
-        getattr(left, "base", None),
-        getattr(left, "has_active", None),
-        getattr(left, "has_blank", None),
-        getattr(left, "sinks", None),
-        getattr(left, "carry", None),
-        getattr(left, "last_symbol", None),
-        type(right),
-        getattr(right, "base", None),
-        getattr(right, "forward", None),
-        getattr(right, "backward", None),
-    )
-
-
-def _physical_support_snapshot(value: object) -> tuple[object, ...] | None:
-    if value is None:
-        return None
-    return (
-        type(value),
-        getattr(value, "owner", None),
-        getattr(value, "node_id", None),
-        getattr(value, "ticks", None),
-        getattr(value, "odd_ticks", None),
-        getattr(value, "parity", None),
-        id(getattr(value, "left", None)),
-        id(getattr(value, "right", None)),
-    )
-
-
-def _publication_snapshot(
-    key: CausalInterfaceKey,
-    value: CompletedInterfaceResult,
-) -> tuple[object, ...]:
-    """Copy every identity/semantic scalar; never trust a retained key object."""
-    return (
-        _execution_request_snapshot(key),
-        _handle_snapshot(value.interface),
-        tuple(value.observed_input_ports),
-        tuple(value.outgoing_ports),
-        value.level,
-        value.active,
-        value.physical_ticks,
-        value.event_weight,
-        value.frame_shift,
-        _physical_support_snapshot(value.physical_support),
-        _reverse_output_snapshot(value.bound_reverse_output),
-    )
 
 
 def causal_interface_key(
@@ -229,7 +103,7 @@ def _seal_record(
         value.event_weight,
         value.frame_shift,
         arena._interface_publication_seal,
-        _publication_snapshot(key, value),
+        causal_interface_snapshot(key, value),
         physical_support=value.physical_support,
         bound_reverse_output=value.bound_reverse_output,
     )
@@ -262,7 +136,7 @@ def _payload(
         return payload
     return _bind_bound_reverse_output_request(
         _attach_bound_reverse_output(payload, value.bound_reverse_output),
-        _execution_request_snapshot(key),
+        execution_request_snapshot(key),
     )
 
 
@@ -281,7 +155,7 @@ def _bind_reverse_output_request(
         raise TypeError("active output proof requires a causal interface payload")
     return _bind_bound_reverse_output_request(
         payload,
-        _execution_request_snapshot(key),
+        execution_request_snapshot(key),
     )
 
 
@@ -376,7 +250,7 @@ def _validate_published_value(
     _validate_reverse_output_profile(arena, key, value)
     if value._publication_owner is not arena._interface_publication_seal:
         raise ValueError("causal interface result was not issued by this arena")
-    if value._publication_snapshot != _publication_snapshot(key, value):
+    if value._publication_snapshot != causal_interface_snapshot(key, value):
         raise ValueError("causal interface publication metadata was modified")
     if arena.interfaces.resolve(value.interface).signature != key.wiring.signature:
         raise ValueError("causal interface result has another signature")
@@ -431,7 +305,7 @@ def publish_causal_interface(
     """Publish one complete interface binding under atomic ledger reservation."""
     _validate_key(arena, key)
     if payload.bound_reverse_output is not None and (
-        payload._bound_output_request_snapshot != _execution_request_snapshot(key)
+        payload._bound_output_request_snapshot != execution_request_snapshot(key)
     ):
         raise ValueError("causal active behavior belongs to another request")
     value = _record(payload)

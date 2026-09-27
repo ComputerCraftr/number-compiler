@@ -17,11 +17,13 @@ from devtools.experiments.antihydra.source_observers import (
 )
 from devtools.experiments.antihydra.source_safety import (
     PRIME_BANK,
-    Interval,
     SourceBlockID,
     SourceEvent,
     SourceSafetyWorkspace,
     source_event,
+)
+from number_compiler.arithmetic.fields.consumer_pullback import (
+    HalfOpenInterval as Interval,
 )
 from number_compiler.arithmetic.contracts.block_effect import BlockContextBudgetExceeded
 from number_compiler.arithmetic.fields.consumer_pullback import ExactRational as Q

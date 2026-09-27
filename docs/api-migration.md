@@ -39,6 +39,11 @@ probes; its `metrics_schema_version` is also 8.
   a saturated extensional macrocell or count its semantic equivalence classes.
 - `construction` reports scheduler operations; finite source discovery is
   reported separately under `family_work`.
+- `family_work.finite_block_*` separates finite-cylinder lookups, hits, misses,
+  publications, evictions and cold arithmetic (atoms and transitions) from
+  action interning and the outer balanced-effect memo. These are read-only
+  counters shared by Collatz and Antihydra; Mahler consumes the latter's support.
+  Repeated finite-cylinder hits do not certify a temporal pumping theorem.
 - `demand` and `stream` distinguish query counts, spatial visits and emitted
   symbols. A stream visit is not a temporal jump.
 - `observations` exposes measured observer work; `resources` reports entries,

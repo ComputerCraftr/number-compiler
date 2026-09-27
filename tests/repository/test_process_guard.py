@@ -3,14 +3,112 @@
 from __future__ import annotations
 
 import fcntl
+import json
 import os
 import subprocess
 import sys
+from functools import partial
 from pathlib import Path
+from collections.abc import Mapping
 
 import pytest
 
 from devtools.checks import process_guard
+
+
+@pytest.mark.parametrize(
+    "mutation", ["none", "change", "restore", "restore_mtime", "transient"]
+)
+@pytest.mark.parametrize("child_outcome", ["completed", "child_failed"])
+def test_guarded_cli_binds_evidence_to_unchanged_sources(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    mutation: str,
+    child_outcome: str,
+) -> None:
+    source = tmp_path / "src"
+    source.mkdir()
+    authored = source / "sample.py"
+    authored.write_text("value = 1\n")
+    original_mtime = authored.stat().st_mtime_ns
+    monkeypatch.setenv(process_guard.PROOF_GENERATION_ENV, "foreign-generation")
+    report = tmp_path / "report.json"
+    monkeypatch.setattr(
+        sys,
+        "argv",
+        [
+            "process_guard",
+            "--source-root",
+            str(tmp_path),
+            "--output",
+            str(tmp_path / "output.log"),
+            "--report",
+            str(report),
+            "--",
+            "unused-test-command",
+        ],
+    )
+
+    def run(
+        command: tuple[str, ...],
+        *,
+        output: Path,
+        timeout: float,
+        memory_bytes: int,
+        environment: Mapping[str, str],
+    ) -> process_guard.GuardResult:
+        assert command == ("unused-test-command",)
+        generation = environment[process_guard.PROOF_GENERATION_ENV]
+        assert generation != "foreign-generation"
+        assert len(generation.split(":")) == 2
+        if mutation == "transient":
+            transient = source / "transient.py"
+            transient.write_text("value = 2\n")
+            transient.unlink()
+            directory = source.stat()
+            os.utime(
+                source, ns=(directory.st_atime_ns, directory.st_mtime_ns + 1_000_000)
+            )
+        elif mutation != "none":
+            authored.write_text("value = 2\n")
+            if mutation in {"restore", "restore_mtime"}:
+                authored.write_text("value = 1\n")
+            restored_mtime = (
+                original_mtime
+                if mutation == "restore_mtime"
+                else original_mtime + 1_000_000
+            )
+            os.utime(authored, ns=(original_mtime, restored_mtime))
+        return process_guard.GuardResult(
+            1,
+            child_outcome,
+            int(child_outcome != "completed"),
+            0.1,
+            1,
+            memory_bytes,
+            "test",
+            0.05,
+            1,
+            0,
+            "",
+        )
+
+    monkeypatch.setattr(process_guard, "run_guarded", run)
+    mutate = mutation != "none"
+    assert process_guard.main() == int(mutate or child_outcome != "completed")
+    evidence = json.loads(report.read_text())
+    assert evidence["source_unchanged"] is not mutate
+    assert (
+        evidence["source_fingerprint_before"] == evidence["source_fingerprint_after"]
+    ) is (mutation != "change")
+    assert evidence["source_revision_unchanged"] is not mutate
+    assert evidence["proof_generation"].endswith(evidence["source_fingerprint_before"])
+    assert len(evidence["source_fingerprint_before"]) == 64
+    expected = (
+        "source_changed" if mutate and child_outcome == "completed" else child_outcome
+    )
+    assert evidence["outcome"] == expected
+    assert evidence["child_returncode"] == int(child_outcome != "completed")
 
 
 def test_completed_child_has_real_footprint_and_log(tmp_path: Path) -> None:
@@ -25,6 +123,49 @@ def test_completed_child_has_real_footprint_and_log(tmp_path: Path) -> None:
     assert result.sampled_peak_bytes is not None
     assert result.sampled_peak_bytes > 0
     assert (tmp_path / "worker.log").read_text().strip() == "done"
+
+
+def test_proof_generation_reaches_child_without_mutating_source_cache(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    source = tmp_path / "src"
+    source.mkdir()
+    (source / "sample.py").write_text("value = 1\n")
+    output = tmp_path / "results" / "child.log"
+    report = output.with_suffix(".json")
+    child_lock = tmp_path / "child.lock"
+    child_lock.touch()
+    monkeypatch.setattr(
+        process_guard,
+        "run_guarded",
+        partial(process_guard.run_guarded, lock_path=child_lock),
+    )
+    monkeypatch.setenv(process_guard.PROOF_GENERATION_ENV, "foreign-owner")
+    monkeypatch.setattr(
+        sys,
+        "argv",
+        [
+            "process_guard",
+            "--source-root",
+            str(tmp_path),
+            "--output",
+            str(output),
+            "--report",
+            str(report),
+            "--",
+            sys.executable,
+            "-c",
+            "import os, sys; sys.path.insert(0, sys.argv[1]); import sample; "
+            "print(os.environ['NUMBER_COMPILER_PROOF_GENERATION'])",
+            str(source),
+        ],
+    )
+    assert process_guard.main() == 0
+    evidence = json.loads(report.read_text())
+    assert output.read_text().strip() == evidence["proof_generation"]
+    assert evidence["proof_generation"] != "foreign-owner"
+    assert evidence["source_revision_unchanged"]
+    assert not (source / "__pycache__").exists()
 
 
 def test_worker_uses_explicit_working_directory(tmp_path: Path) -> None:

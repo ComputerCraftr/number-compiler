@@ -1,9 +1,6 @@
 theory Comma_Finite_Period
-  imports Comma_Period_Guard
+  imports Comma_Period_Guard Comma_Power_Residue
 begin
-
-definition comma_residue_exponent :: "nat \<Rightarrow> nat" where
-  "comma_residue_exponent r = (if r < 5 then r + 924 else r)"
 
 definition comma_finite_period :: "nat \<Rightarrow> nat \<Rightarrow> nat" where
   "comma_finite_period f d =
@@ -109,6 +106,115 @@ lemma comma_finite_period_refines:
     comma_period_displacement f d (comma_cycle_length f)"
   using comma_finite_period_catalog assms by auto
 
+lemma comma_sector_displacements_eq_finite:
+  assumes sector: "1 \<le> f" "f \<le> 9"
+  shows "comma_sector_displacements f =
+    set (map (comma_finite_period f) [0..<10])"
+proof -
+  have point: "comma_period_displacement f d (comma_cycle_length f) =
+      comma_finite_period f d" if "d \<in> set [0..<10]" for d
+    using comma_finite_period_refines[OF sector] that by simp
+  have mapped: "map (\<lambda>d. comma_period_displacement f d
+      (comma_cycle_length f)) [0..<10] =
+      map (comma_finite_period f) [0..<10]"
+    using point by (intro map_cong refl) auto
+  show ?thesis by (simp add: comma_sector_displacements_def mapped)
+qed
+
+lemma comma_sector_displacements_1: "comma_sector_displacements 1 = {460}"
+proof -
+  have bridge: "comma_sector_displacements 1 =
+      set (map (comma_finite_period 1) [0..<10])"
+    using comma_sector_displacements_eq_finite[of 1] by simp
+  show ?thesis unfolding bridge comma_finite_period_def by code_simp
+qed
+
+lemma comma_sector_displacements_2: "comma_sector_displacements 2 = {210,260}"
+proof -
+  have bridge: "comma_sector_displacements 2 =
+      set (map (comma_finite_period 2) [0..<10])"
+    using comma_sector_displacements_eq_finite[of 2] by simp
+  show ?thesis unfolding bridge comma_finite_period_def by code_simp
+qed
+
+lemma comma_sector_displacements_3: "comma_sector_displacements 3 = {480}"
+proof -
+  have bridge: "comma_sector_displacements 3 =
+      set (map (comma_finite_period 3) [0..<10])"
+    using comma_sector_displacements_eq_finite[of 3] by simp
+  show ?thesis unfolding bridge comma_finite_period_def by code_simp
+qed
+
+lemma comma_sector_displacements_4: "comma_sector_displacements 4 = {220,270}"
+proof -
+  have bridge: "comma_sector_displacements 4 =
+      set (map (comma_finite_period 4) [0..<10])"
+    using comma_sector_displacements_eq_finite[of 4] by simp
+  show ?thesis unfolding bridge comma_finite_period_def by code_simp
+qed
+
+lemma comma_sector_displacements_5: "comma_sector_displacements 5 = {60,80,100,120,140}"
+proof -
+  have bridge: "comma_sector_displacements 5 =
+      set (map (comma_finite_period 5) [0..<10])"
+    using comma_sector_displacements_eq_finite[of 5] by simp
+  show ?thesis unfolding bridge comma_finite_period_def by code_simp
+qed
+
+lemma comma_sector_displacements_6: "comma_sector_displacements 6 = {230,280}"
+proof -
+  have bridge: "comma_sector_displacements 6 =
+      set (map (comma_finite_period 6) [0..<10])"
+    using comma_sector_displacements_eq_finite[of 6] by simp
+  show ?thesis unfolding bridge comma_finite_period_def by code_simp
+qed
+
+lemma comma_sector_displacements_7: "comma_sector_displacements 7 = {520}"
+proof -
+  have bridge: "comma_sector_displacements 7 =
+      set (map (comma_finite_period 7) [0..<10])"
+    using comma_sector_displacements_eq_finite[of 7] by simp
+  show ?thesis unfolding bridge comma_finite_period_def by code_simp
+qed
+
+lemma comma_sector_displacements_8: "comma_sector_displacements 8 = {240,290}"
+proof -
+  have bridge: "comma_sector_displacements 8 =
+      set (map (comma_finite_period 8) [0..<10])"
+    using comma_sector_displacements_eq_finite[of 8] by simp
+  show ?thesis unfolding bridge comma_finite_period_def by code_simp
+qed
+
+lemma comma_sector_displacements_9: "comma_sector_displacements 9 = {540}"
+proof -
+  have bridge: "comma_sector_displacements 9 =
+      set (map (comma_finite_period 9) [0..<10])"
+    using comma_sector_displacements_eq_finite[of 9] by simp
+  show ?thesis unfolding bridge comma_finite_period_def by code_simp
+qed
+
+lemma comma_cycle_displacement_catalog:
+  "set (concat (map (\<lambda>f. map
+      (\<lambda>d. comma_period_displacement f d (comma_cycle_length f))
+      [(0::nat)..<10]) [(1::nat)..<10])) =
+    comma_cycle_displacements"
+proof -
+  have source: "[(1::nat)..<10] = [1,2,3,4,5,6,7,8,9]"
+    by code_simp
+  have lifted: "\<And>f. (\<lambda>d. comma_period_displacement f d
+      (comma_cycle_length f)) ` {0..<10} = comma_sector_displacements f"
+    by (simp add: comma_sector_displacements_def)
+  have first: "comma_sector_displacements (Suc 0) = {460}"
+    using comma_sector_displacements_1 by simp
+  show ?thesis
+    unfolding source comma_cycle_displacements_def
+    by (auto simp: lifted first
+      comma_sector_displacements_2 comma_sector_displacements_3
+      comma_sector_displacements_4 comma_sector_displacements_5
+      comma_sector_displacements_6 comma_sector_displacements_7
+      comma_sector_displacements_8 comma_sector_displacements_9)
+qed
+
 lemma comma_finite_period_in_catalog:
   "\<forall>f \<in> {1..<10}. \<forall>d \<in> {0..<10}.
     comma_finite_period f d \<in> comma_cycle_displacements"
@@ -143,82 +249,16 @@ proof (intro ballI)
     using period in_catalog by simp
 qed
 
-lemma comma_power_period_924_repeated:
-  assumes period: "P \<in> comma_cycle_displacements"
-    and start: "5 \<le> u"
-  shows "10 ^ (u + 924 * t) mod P = (10::nat) ^ u mod P"
-proof (induction t)
-  case 0
-  then show ?case by simp
-next
-  case (Suc t)
-  have exponent: "u + 924 * Suc t = (u + 924 * t) + 924"
-    by simp
-  have lower: "5 \<le> u + 924 * t"
-    using start by simp
-  have period_at:
-    "10 ^ ((u + 924 * t) + 924) mod P =
-      (10::nat) ^ (u + 924 * t) mod P"
-    using comma_power_period_924[OF period lower] .
-  have "10 ^ (u + 924 * Suc t) mod P =
-      (10::nat) ^ ((u + 924 * t) + 924) mod P"
-    by (simp only: exponent)
-  also have "... = (10::nat) ^ (u + 924 * t) mod P"
-    using period_at .
-  also have "... = (10::nat) ^ u mod P"
-    using Suc.IH .
-  finally show ?case .
-qed
-
-lemma comma_residue_exponent_decomposition:
-  assumes "5 \<le> p"
-  shows "\<exists>t. p = comma_residue_exponent (p mod 924) + 924 * t"
-proof -
-  let ?r = "p mod 924"
-  let ?k = "p div 924"
-  have split: "p = ?r + 924 * ?k"
-    by (simp add: mod_mult_div_eq)
-  show ?thesis
-  proof (cases "?r < 5")
-    case True
-    have nonzero: "?k \<noteq> 0"
-      using assms split True by arith
-    then obtain t where k: "?k = Suc t"
-      by (cases ?k) auto
-    show ?thesis
-      using split True k
-      by (intro exI[of _ t])
-        (simp add: comma_residue_exponent_def algebra_simps)
-  next
-    case False
-    show ?thesis
-      using split False
-      by (intro exI[of _ ?k])
-        (simp add: comma_residue_exponent_def algebra_simps)
-  qed
-qed
+lemmas comma_power_period_924_repeated = comma_short_period_924_repeated
+lemmas comma_residue_exponent_decomposition = comma_short_representative_decomposition
 
 lemma comma_residue_power_refines:
   assumes period: "P \<in> comma_cycle_displacements"
     and exponent: "5 \<le> p"
   shows "10 ^ p mod P =
     mod_exp (10::nat) (comma_residue_exponent (p mod 924)) P"
-proof -
-  obtain t where p: "p = comma_residue_exponent (p mod 924) + 924 * t"
-    using comma_residue_exponent_decomposition[OF exponent] by blast
-  have lower: "5 \<le> comma_residue_exponent (p mod 924)"
-    by (simp add: comma_residue_exponent_def)
-  have repeated: "10 ^ (comma_residue_exponent (p mod 924) + 924 * t) mod P =
-    (10::nat) ^ comma_residue_exponent (p mod 924) mod P"
-    using comma_power_period_924_repeated[OF period lower] .
-  have as_power: "10 ^ p mod P =
-    (10::nat) ^ (comma_residue_exponent (p mod 924) + 924 * t) mod P"
-    using p by (rule arg_cong)
-  have "10 ^ p mod P =
-      (10::nat) ^ comma_residue_exponent (p mod 924) mod P"
-    using as_power repeated by simp
-  then show ?thesis by (simp only: mod_exp_def)
-qed
+  using comma_short_representative_correct[OF period exponent]
+  by (simp only: mod_exp_def)
 
 definition comma_finite_guard_extra :: "nat \<Rightarrow> nat" where
   "comma_finite_guard_extra f = (if f < 9 then 1 else 0)"
@@ -229,7 +269,7 @@ definition comma_finite_headroom ::
     (let P = comma_finite_period f (offset mod 10);
          e = comma_finite_guard_extra f;
          r = (residue + delta) mod 924;
-         power = mod_exp (10::nat) (comma_residue_exponent r) P
+         power = comma_power_residue P r
      in 1 + e + nat ((int power - int offset - int (1 + e)) mod int P))"
 
 lemma comma_finite_headroom_refines:
@@ -249,10 +289,9 @@ proof -
     using exponent by simp
   have residue: "(p mod 924 + delta) mod 924 = (p + delta) mod 924"
     by (simp add: mod_simps)
-  have power: "mod_exp (10::nat)
-      (comma_residue_exponent ((p mod 924 + delta) mod 924)) P =
-      10 ^ (p + delta) mod P"
-    using comma_residue_power_refines[OF period lower] residue
+  have power: "comma_power_residue P
+      ((p mod 924 + delta) mod 924) = 10 ^ (p + delta) mod P"
+    using comma_power_residue_correct[OF period lower] residue
     by simp
   show ?thesis
     unfolding comma_finite_headroom_def P_def e_def
@@ -263,7 +302,13 @@ qed
 ML \<open>
   val _ = if null (Thm_Deps.all_oracles
     @{thms comma_finite_period_catalog comma_finite_period_refines
-      comma_finite_period_in_catalog comma_power_period_924_repeated
+      comma_finite_period_in_catalog comma_sector_displacements_eq_finite
+      comma_sector_displacements_1 comma_sector_displacements_2
+      comma_sector_displacements_3 comma_sector_displacements_4
+      comma_sector_displacements_5 comma_sector_displacements_6
+      comma_sector_displacements_7 comma_sector_displacements_8
+      comma_sector_displacements_9 comma_cycle_displacement_catalog
+      comma_power_period_924_repeated
       comma_residue_exponent_decomposition comma_residue_power_refines
       comma_finite_headroom_refines})
     then () else error "Comma finite-period proof depends on an oracle";

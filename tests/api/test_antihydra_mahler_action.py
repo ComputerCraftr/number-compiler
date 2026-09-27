@@ -290,3 +290,35 @@ def test_mahler_rejects_foreign_occurrence_workspace() -> None:
     second._term.mahler_workspace = first._term.mahler_workspace
     with pytest.raises(ValueError, match="another source occurrence"):
         associated_action(second)
+
+
+@pytest.mark.parametrize("returns", (0, 1, 2, 8, 64))
+def test_root_shell_is_source_bound_exact_squared_coordinate(returns: int) -> None:
+    term = AntihydraArithmeticTerm(returns)
+    result = term.result()
+    packet = associated_action(result)
+    root = packet["root_shell"]
+    assert isinstance(root, dict)
+    # Independent bounded source trajectory, used only as a test oracle.
+    d, scale, offset = 7, Fraction(1), Fraction(0)
+    lower, upper = Fraction(0), Fraction(1)
+    for _ in range(returns):
+        parity = d % 2
+        scale *= Fraction(3, 2)
+        offset = Fraction(3, 2) * offset - parity
+        lower = max(lower, -offset / scale)
+        upper = min(upper, (1 - offset) / scale)
+        d = (3 * d + parity) // 2
+    assert _rational(root["radicand_scale"]) == scale
+    assert _rational(root["radicand_offset"]) == offset
+    guard = root["guard_squared"]
+    assert isinstance(guard, dict)
+    if lower >= upper:
+        lower = upper = Fraction(0)
+    assert _rational(guard["lower"]) == lower
+    assert _rational(guard["upper"]) == upper
+    assert guard["empty"] == (lower == upper)
+    assert guard["lower_closed"] and not guard["upper_closed"]
+    assert not term._segments_ready and not term.physical_publications
+    assert term.ledger.counters["mahler_root_shell_projections"] == 1
+    assert term.ledger.counters["mahler_root_shell_operand_bits"] > 0

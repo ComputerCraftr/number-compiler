@@ -6,10 +6,50 @@ It is never used to decide which child of a fork has an infinite future.
 
 from __future__ import annotations
 
+from collections.abc import Callable
 from dataclasses import dataclass
 from math import gcd
 
 from number_compiler.arithmetic.fields.consumer_pullback import PrefixSafety
+
+
+def cycle_power_residue(
+    displacement: int,
+    residue: int,
+    *,
+    charge_bits: Callable[[int], None] | None = None,
+) -> int:
+    """Return ``10**p mod displacement`` for ``p >= 5, p % 924 == residue``.
+
+    These are the eventual power periods of the 17 admitted cycle
+    displacements. After exponent five the 2/5-primary factors are stable;
+    the remaining period divides 924. The evaluated exponent is at most 32.
+    This arithmetic identity supplies no infinite-branch admission.
+    """
+    if (
+        type(displacement) is not int
+        or type(residue) is not int
+        or not 0 <= residue < 924
+    ):
+        raise ValueError("invalid comma power residue")
+    if displacement in (60, 80, 100, 120, 240, 480):
+        period = 1
+    elif displacement in (140, 210, 260, 280, 520):
+        period = 6
+    elif displacement == 220:
+        period = 2
+    elif displacement in (230, 460):
+        period = 22
+    elif displacement in (270, 540):
+        period = 3
+    elif displacement == 290:
+        period = 28
+    else:
+        raise ValueError("unsupported comma cycle displacement")
+    exponent = 5 + (residue - 5) % period
+    if charge_bits is not None:
+        charge_bits(2 * exponent.bit_length() * displacement.bit_length())
+    return pow(10, exponent, displacement)
 
 
 @dataclass(frozen=True, slots=True)
@@ -81,9 +121,22 @@ def _large_sector_children(value: int, sector: DecimalSector) -> tuple[int, ...]
     Callers must obtain ``sector`` from :func:`decimal_sector` for this value.
     This internal primitive avoids nine candidate leading-digit decompositions.
     """
-    f, d, h = sector.leading, sector.digit, sector.headroom
+    return tuple(
+        value + increment
+        for increment in _sector_child_increments(
+            sector.leading, sector.digit, sector.headroom
+        )
+    )
+
+
+def _sector_child_increments(f: int, d: int, h: int) -> tuple[int, ...]:
+    """Complete ordered seam alternatives for an admitted large sector.
+
+    Both literal values and symbolic Near charts consume this classifier.
+    The caller supplies the authenticated leading digit, phase and headroom.
+    """
     if f < 9:
-        low = value + 10 * d + f
+        low = 10 * d + f
         high = low + 1
         if h > 10 * d + f + 1:
             return (low,)
@@ -91,9 +144,9 @@ def _large_sector_children(value: int, sector: DecimalSector) -> tuple[int, ...]
             return (low, high)
         return (high,)
     if h > 10 * d + 9:
-        return (value + 10 * d + 9,)
+        return (10 * d + 9,)
     if h <= 10 * d + 1:
-        return (value + 10 * d + 1,)
+        return (10 * d + 1,)
     return ()
 
 
@@ -141,6 +194,41 @@ def cycle_transfer(leading: int, entering_digit: int) -> CycleTransfer:
     )
 
 
+def phase_prefix_displacement(leading: int, entering_digit: int, steps: int) -> int:
+    """Exact displacement along an admitted fixed-sector phase orbit.
+
+    This is ``comma_period_displacement`` in HOL. Admission belongs to the
+    enclosing cycle guard; this function neither examines an endpoint nor
+    selects a child at a seam. Complete periods use their exact displacement;
+    at most two periods of small residue terms are evaluated, independently
+    of the decimal scale and requested run length.
+    """
+    if (
+        type(leading) is not int
+        or not 1 <= leading <= 9
+        or type(entering_digit) is not int
+        or not 0 <= entering_digit <= 9
+        or type(steps) is not int
+        or steps < 0
+    ):
+        raise ValueError("invalid comma phase prefix")
+    period = 10 // gcd(leading, 10)
+    complete, tail = divmod(steps, period)
+    displacement = (
+        complete
+        * sum(
+            10 * ((entering_digit + index * leading) % 10) + leading
+            for index in range(period)
+        )
+        if complete
+        else 0
+    )
+    return displacement + sum(
+        10 * ((entering_digit + index * leading) % 10) + leading
+        for index in range(tail)
+    )
+
+
 def safe_complete_cycles(
     value: int, transfer: CycleTransfer, remaining_steps: int
 ) -> int:
@@ -164,8 +252,10 @@ __all__ = [
     "CycleTransfer",
     "DecimalSector",
     "comma_children",
+    "cycle_power_residue",
     "cycle_transfer",
     "decimal_sector",
     "leading_digit",
+    "phase_prefix_displacement",
     "safe_complete_cycles",
 ]

@@ -502,7 +502,139 @@ class _ReverseLinks:
     )
 
 
+def handle_snapshot(value: object) -> tuple[object, ...]:
+    return (
+        type(value),
+        getattr(value, "owner", None),
+        getattr(value, "kind", None),
+        getattr(value, "local_id", None),
+    )
+
+
+def _wiring_snapshot(value: object) -> tuple[object, ...]:
+    return (
+        type(value),
+        handle_snapshot(getattr(value, "signature", None)),
+        getattr(value, "orientation", None),
+        getattr(value, "phase", None),
+    )
+
+
+def boundary_view_snapshot(value: object) -> tuple[object, ...] | None:
+    if value is None:
+        return None
+    return (
+        type(value),
+        handle_snapshot(getattr(value, "tile", None)),
+        getattr(value, "source_offset", None),
+        getattr(value, "relative_origin", None),
+        getattr(value, "relative_extent", None),
+        getattr(value, "orientation", None),
+    )
+
+
+def _boundaries_snapshot(value: object) -> tuple[object, ...]:
+    return (
+        type(value),
+        boundary_view_snapshot(getattr(value, "left", None)),
+        boundary_view_snapshot(getattr(value, "right", None)),
+    )
+
+
+def _context_snapshot(value: object) -> tuple[object, ...]:
+    return (
+        type(value),
+        tuple(getattr(value, "ports", ())),
+        _wiring_snapshot(getattr(value, "wiring", None)),
+        _boundaries_snapshot(getattr(value, "boundaries", None)),
+    )
+
+
+def _fusion_snapshot(value: object) -> tuple[object, ...] | None:
+    if value is None:
+        return None
+    return (
+        type(value),
+        _context_snapshot(getattr(value, "producer", None)),
+        _context_snapshot(getattr(value, "consumer", None)),
+    )
+
+
+def execution_request_snapshot(key: object) -> tuple[object, ...]:
+    """Detach all request scalars from caller-owned frozen record objects."""
+    return (
+        type(key),
+        handle_snapshot(getattr(key, "action", None)),
+        handle_snapshot(getattr(key, "input", None)),
+        tuple(getattr(key, "ports", ())),
+        _wiring_snapshot(getattr(key, "wiring", None)),
+        _boundaries_snapshot(getattr(key, "boundaries", None)),
+        _fusion_snapshot(getattr(key, "fusion", None)),
+        getattr(key, "region", None),
+        getattr(key, "observation", None),
+    )
+
+
+def _reverse_output_snapshot(value: object) -> tuple[object, ...] | None:
+    if value is None:
+        return None
+    left, right = getattr(value, "left", None), getattr(value, "right", None)
+    return (
+        type(value),
+        type(left),
+        getattr(left, "base", None),
+        getattr(left, "has_active", None),
+        getattr(left, "has_blank", None),
+        getattr(left, "sinks", None),
+        getattr(left, "carry", None),
+        getattr(left, "last_symbol", None),
+        type(right),
+        getattr(right, "base", None),
+        getattr(right, "forward", None),
+        getattr(right, "backward", None),
+    )
+
+
+def _physical_support_snapshot(value: object) -> tuple[object, ...] | None:
+    if value is None:
+        return None
+    return (
+        type(value),
+        getattr(value, "owner", None),
+        getattr(value, "node_id", None),
+        getattr(value, "ticks", None),
+        getattr(value, "odd_ticks", None),
+        getattr(value, "parity", None),
+        id(getattr(value, "left", None)),
+        id(getattr(value, "right", None)),
+    )
+
+
+def causal_interface_snapshot(
+    key: CausalInterfaceKey,
+    value: CompletedInterfaceResult,
+) -> tuple[object, ...]:
+    """Copy every identity/semantic scalar; never trust a retained key object."""
+    return (
+        execution_request_snapshot(key),
+        handle_snapshot(value.interface),
+        tuple(value.observed_input_ports),
+        tuple(value.outgoing_ports),
+        value.level,
+        value.active,
+        value.physical_ticks,
+        value.event_weight,
+        value.frame_shift,
+        _physical_support_snapshot(value.physical_support),
+        _reverse_output_snapshot(value.bound_reverse_output),
+    )
+
+
 __all__ = [
+    "handle_snapshot",
+    "boundary_view_snapshot",
+    "execution_request_snapshot",
+    "causal_interface_snapshot",
     "BehaviorBindingKey",
     "BoundaryConcatKey",
     "BoundaryConcatResult",

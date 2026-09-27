@@ -72,15 +72,20 @@ def minimal_selectors(selectors: tuple[str, ...]) -> tuple[str, ...]:
     )
 
 
-def source_fingerprint(root: Path) -> str:
-    digest = hashlib.sha256()
-    digest.update(b"number-compiler-authored-source-v4\0")
+def authored_source_paths(
+    root: Path, *, include_directories: bool = False
+) -> tuple[Path, ...]:
+    """Canonical semantic inputs shared by fingerprints and revision guards."""
     paths = {root / "pyproject.toml"}
+    if include_directories:
+        paths.add(root)
     for folder in ("src", "tests", "devtools"):
+        if include_directories and (root / folder).is_dir():
+            paths.add(root / folder)
         paths.update(
             path
             for path in (root / folder).rglob("*")
-            if path.is_file()
+            if (path.is_file() or (include_directories and path.is_dir()))
             and path.name != ".DS_Store"
             and not any(
                 part in {"__pycache__", ".mypy_cache", ".ruff_cache", ".pytest_cache"}
@@ -88,9 +93,17 @@ def source_fingerprint(root: Path) -> str:
             )
             and not any(part.endswith(".egg-info") for part in path.parts)
         )
-    for path in sorted(paths):
-        if not path.is_file():
-            continue
+    return tuple(
+        path
+        for path in sorted(paths)
+        if path.is_file() or (include_directories and path.is_dir())
+    )
+
+
+def source_fingerprint(root: Path) -> str:
+    digest = hashlib.sha256()
+    digest.update(b"number-compiler-authored-source-v4\0")
+    for path in authored_source_paths(root):
         name, data = path.relative_to(root).as_posix().encode(), path.read_bytes()
         digest.update(len(name).to_bytes(8, "big"))
         digest.update(name)

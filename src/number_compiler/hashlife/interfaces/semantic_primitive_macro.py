@@ -40,6 +40,9 @@ from number_compiler.hashlife.interfaces.diamond_quotient import (
     MacroComponents,
     MacroInterface,
 )
+from number_compiler.hashlife.interfaces.semantic_bit_transforms import (
+    differs_from_constant,
+)
 from number_compiler.hashlife.interfaces.semantic_bits import (
     FactoredFunctionID,
     _Circuit,
@@ -170,20 +173,7 @@ class PrimitiveMacroArena:
         )
 
     def _nonblank(self, function: FactoredFunctionID, blank: int) -> FactoredFunctionID:
-        node = self.bits.resolve(function)
-        circuit = _Circuit(self.quotients.functions, node.signature.inputs)
-        roots, valid = circuit.imported(node)
-        equal = circuit.one
-        for bit, root in enumerate(roots):
-            equal = circuit.conjunction(
-                equal, root if blank & (1 << bit) else circuit.negate(root)
-            )
-        value = circuit.normalized(
-            FunctionSignature(node.signature.inputs, BOOL),
-            (circuit.negate(equal),),
-            valid,
-        )
-        return self.bits._publish(circuit, (value,))[0]
+        return differs_from_constant(self.bits, function, blank)
 
     def _components(
         self, quotient: DiamondQuotientID

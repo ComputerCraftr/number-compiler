@@ -89,17 +89,28 @@ def _checked_asset(path: Path, ledger: ResourceLedger, max_work: int) -> None:
         raise ValueError("comma certificate checksum differs from its admitted version")
 
 
+def _matches_marker(value: object, expected: str) -> bool:
+    return (
+        type(value) is str
+        and len(value) == len(expected)
+        and value.isascii()
+        and compare_digest(value, expected)
+    )
+
+
 def _verify(
     ledger: ResourceLedger,
     max_work: int,
     shared_cache: bool,
     memo: CertificateMemo | None,
 ) -> None:
-    from number_compiler.sequences.comma.forest_verifier import (
-        verify_forest_certificate,
-    )
-
     def check(path: Path) -> None:
+        # The verifier is needed only on a cold admission. A warm process-cache
+        # hit must not import the forest parser or its gzip/JSON dependencies.
+        from number_compiler.sequences.comma.forest_verifier import (
+            verify_forest_certificate,
+        )
+
         result = verify_forest_certificate(path, ledger, max_work)
         if (
             result.roots_exhausted != 49
@@ -120,7 +131,7 @@ def _verify(
         previous = memo.get(local_key) if memo is not None else None
         if previous is None:
             return False
-        if type(previous) is not str or not compare_digest(previous, tag):
+        if not _matches_marker(previous, tag):
             raise ValueError("forged comma certificate admission marker")
         return True
 
@@ -167,7 +178,12 @@ def _verify(
         _charge(ledger, max_work)
         cached = lease.get(key)
         if cached is not MISSING:
-            if cached != expected or type(cached) is not tuple:
+            if (
+                type(cached) is not tuple
+                or len(cached) != 2
+                or not _matches_marker(cached[0], expected[0])
+                or not _matches_marker(cached[1], expected[1])
+            ):
                 raise ValueError("foreign comma certificate cache payload")
             publish_local()
             ledger.bump("comma_certificate_cache_hits")
@@ -206,7 +222,7 @@ def certificate_status(
         local_key, tag = _admission_marker(generation)
         previous = memo.get(local_key)
         if previous is not None:
-            if type(previous) is not str or not compare_digest(previous, tag):
+            if not _matches_marker(previous, tag):
                 raise ValueError("forged comma certificate admission marker")
             verified = not shared_cache or get_process_cache().generation == generation
     return {

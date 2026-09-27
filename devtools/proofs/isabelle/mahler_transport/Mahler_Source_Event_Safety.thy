@@ -98,10 +98,95 @@ text \<open>The positive-prefix witnesses depend on the horizon. They do not
 supply one positive real safe at every horizon. They rule out a uniform finite
 exhaustion bound over all positive sources.\<close>
 
+
+text \<open>The root-shell coordinate is theta=2t=r^2. These definitions
+transport the actual source-selected guard, not an anonymous branch word.
+They are the real-valued specification of the exact rational guarded affine
+consumer; they assert neither a finite future quotient nor all-time safety.\<close>
+
+definition root_shell_endpoint :: "nat \<Rightarrow> nat \<Rightarrow> real \<Rightarrow> real" where
+  "root_shell_endpoint D n theta = 2*fractional_endpoint D n (theta/2)"
+
+definition root_shell_guard :: "nat \<Rightarrow> nat \<Rightarrow> real \<Rightarrow> bool" where
+  "root_shell_guard D n theta = cylinder_guard D n (theta/2)"
+
+theorem root_shell_chronological_endpoint:
+  "root_shell_endpoint D (m+n) theta =
+    root_shell_endpoint (mahler_orbit D m) n (root_shell_endpoint D m theta)"
+  unfolding root_shell_endpoint_def
+  by (simp add: fractional_endpoint_composition)
+
+theorem root_shell_chronological_guard:
+  "root_shell_guard D (m+n) theta \<longleftrightarrow>
+    root_shell_guard D m theta \<and>
+    root_shell_guard (mahler_orbit D m) n (root_shell_endpoint D m theta)"
+  unfolding root_shell_guard_def root_shell_endpoint_def
+  by (simp add: source_guard_composition)
+
+theorem root_shell_source_step:
+  "root_shell_endpoint D 1 theta = (3/2)*theta - of_nat (D mod 2)"
+  using fractional_step_diamond_action[of D "theta/2"]
+  unfolding root_shell_endpoint_def by linarith
+
+theorem root_shell_source_event:
+  assumes "odd u"
+  shows "root_shell_endpoint (2^k*u) (Suc k) theta =
+    (3/2)^(Suc k)*theta - 1"
+  using source_selected_diamond_event[OF assms, of k "theta/2"]
+  unfolding root_shell_endpoint_def by linarith
+
+theorem root_shell_event_guard:
+  assumes "odd u" "0 \<le> theta" "theta < 1"
+  shows "root_shell_guard (2^k*u) (Suc k) theta \<longleftrightarrow>
+    1 \<le> (3/2)^(Suc k)*theta \<and> (3/2)^(Suc k)*theta < 3/2"
+proof -
+  have t: "0 \<le> theta/2" "theta/2 < 1/2" using assms by linarith+
+  show ?thesis
+    using source_event_exact_guard[OF assms(1) t, of k]
+    unfolding root_shell_guard_def by (simp add: algebra_simps; linarith)
+qed
+
+
+theorem root_shell_source7_first_guard:
+  "root_shell_guard 7 1 theta \<longleftrightarrow> 2/3 \<le> theta \<and> theta < 1"
+proof -
+  have initial: "root_shell_guard 7 1 theta \<Longrightarrow> 0 \<le> theta \<and> theta < 1"
+    unfolding root_shell_guard_def cylinder_guard_def by linarith
+  show ?thesis
+  proof (cases "0 \<le> theta \<and> theta < 1")
+    case True
+    note guard = root_shell_event_guard[of 7 theta 0]
+    show ?thesis using guard True by (simp_all; linarith)
+  next
+    case False
+    show ?thesis using initial False by linarith
+  qed
+qed
+
+theorem root_shell_source7_empty_after_two:
+  "\<not> root_shell_guard 7 (2+n) theta"
+proof -
+  have impossible: "\<not> root_shell_guard 7 2 theta"
+  proof
+    assume guard: "root_shell_guard 7 2 theta"
+    have t: "0 \<le> theta/2" "theta/2 < 1/2"
+      using guard unfolding root_shell_guard_def cylinder_guard_def by auto
+    have bounds: "0 \<le> fractional_endpoint 7 2 (theta/2)"
+      using guard_endpoint_bounds(1) guard unfolding root_shell_guard_def by blast
+    have endpoint: "fractional_endpoint 7 2 (theta/2) = 9*theta/8 - 5/4"
+      by (simp add: fractional_endpoint_def mahler_D_step_def power2_eq_square algebra_simps)
+    show False using bounds endpoint t(2) by linarith
+  qed
+  show ?thesis using impossible root_shell_chronological_guard[of 7 2 n theta] by blast
+qed
+
 ML \<open>
   val _ = if null (Thm_Deps.all_oracles
     @{thms even_run_fraction guard_iff_endpoint_bounds source_event_exact_guard
-      positive_prefix_at_every_horizon})
+      positive_prefix_at_every_horizon root_shell_chronological_endpoint
+      root_shell_chronological_guard root_shell_source_step root_shell_source_event
+      root_shell_event_guard root_shell_source7_first_guard
+      root_shell_source7_empty_after_two})
     then () else error "Source event safety depends on an oracle";
 \<close>
 

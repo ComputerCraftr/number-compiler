@@ -108,6 +108,17 @@ def affine_threshold_preimage(
     return (threshold - offset) / scale
 
 
+def compose_prefix_safety_values(
+    before_delta: int, before_minimum: int, after_delta: int, after_minimum: int
+) -> tuple[int, int]:
+    """Chronological ALL/min composition of already admitted integer summaries.
+
+    Value-level kernel for both PrefixSafety and ledger-owned support records;
+    callers retain their own admission checks and resource accounting.
+    """
+    return before_delta + after_delta, min(before_minimum, before_delta + after_minimum)
+
+
 @dataclass(frozen=True, slots=True)
 class PrefixSafety:
     """Integer specialization of the ALL/min affine safety transformer.
@@ -129,7 +140,9 @@ class PrefixSafety:
         if type(after) is not PrefixSafety:
             raise TypeError("prefix safety requires another prefix transformer")
         return PrefixSafety(
-            self.delta + after.delta, min(self.minimum, self.delta + after.minimum)
+            *compose_prefix_safety_values(
+                self.delta, self.minimum, after.delta, after.minimum
+            )
         )
 
     def repeat(self, copies: int) -> PrefixSafety:
@@ -257,6 +270,89 @@ class SaturatingAffineAction:
         # Rebuilding a singleton hull here adds work without adding information.
         threshold = affine_threshold_preimage(self.scale, self.offset, demand.threshold)
         return ThresholdDemand(True, threshold, demand.strict)
+
+
+@dataclass(frozen=True, slots=True)
+class HalfOpenInterval:
+    """Exact [lower, upper) guard; default is the Mahler fractional cell.
+
+    Empty guards have one canonical representation. Endpoints are coordinates,
+    not source authority, and may also be used as squared root coordinates.
+    """
+
+    lower: ExactRational = ZERO
+    upper: ExactRational = ExactRational(1, 2)
+
+    def __post_init__(self) -> None:
+        if (
+            type(self.lower) is not ExactRational
+            or type(self.upper) is not ExactRational
+        ):
+            raise TypeError("interval bounds require exact rationals")
+        self.lower.validate()
+        self.upper.validate()
+        if self.lower >= self.upper:
+            object.__setattr__(self, "lower", ZERO)
+            object.__setattr__(self, "upper", ZERO)
+
+    @property
+    def empty(self) -> bool:
+        return self.lower == self.upper
+
+    def contains(self, value: ExactRational) -> bool:
+        return self.lower <= value < self.upper
+
+    def intersect(self, other: HalfOpenInterval) -> HalfOpenInterval:
+        if type(other) is not HalfOpenInterval:
+            raise TypeError("interval intersection requires an exact guard")
+        return HalfOpenInterval(
+            max(self.lower, other.lower), min(self.upper, other.upper)
+        )
+
+    def pullback(self, action: SaturatingAffineAction) -> HalfOpenInterval:
+        if type(action) is not SaturatingAffineAction or action.cap is not None:
+            raise ValueError("interval transport requires an uncapped affine action")
+        return HalfOpenInterval(
+            affine_threshold_preimage(action.scale, action.offset, self.lower),
+            affine_threshold_preimage(action.scale, action.offset, self.upper),
+        )
+
+
+@dataclass(frozen=True, slots=True)
+class GuardedAffineAction:
+    """Affine transport with its entire chronological domain.
+
+    In a root chart x=r^2, these rational coefficients represent
+    r -> sqrt(scale*r^2 + offset); no irrational arithmetic is necessary.
+    This is a partial consumer action, not a source-cylinder constructor.
+    """
+
+    action: SaturatingAffineAction
+    domain: HalfOpenInterval
+
+    def __post_init__(self) -> None:
+        if (
+            type(self.action) is not SaturatingAffineAction
+            or self.action.cap is not None
+        ):
+            raise ValueError("guarded affine transport must be uncapped")
+        if type(self.domain) is not HalfOpenInterval:
+            raise TypeError("guarded affine transport requires an exact interval")
+
+    def then(self, after: GuardedAffineAction) -> GuardedAffineAction:
+        if type(after) is not GuardedAffineAction:
+            raise TypeError("guarded composition requires a guarded affine action")
+        return GuardedAffineAction(
+            self.action.then(after.action),
+            self.domain.intersect(after.domain.pullback(self.action)),
+        )
+
+    def apply(self, value: ExactRational) -> ExactRational:
+        if not self.domain.contains(value):
+            raise ValueError("value is outside the complete chronological guard")
+        result = self.action.apply(value)
+        assert result is not None
+        return result
 
 
 def power_action(base: SaturatingAffineAction, copies: int) -> SaturatingAffineAction:
@@ -628,9 +724,12 @@ __all__ = [
     "AssociatedActionID",
     "AssociatedActionRecord",
     "ExactRational",
+    "GuardedAffineAction",
+    "HalfOpenInterval",
     "MonotoneSurvivalClock",
     "SaturatingAffineAction",
     "SurvivalAggregation",
     "ThresholdDemand",
     "power_action",
+    "compose_prefix_safety_values",
 ]

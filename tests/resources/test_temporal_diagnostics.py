@@ -120,6 +120,13 @@ def test_balanced_work_is_distinct_from_scheduler_and_interner_hits(
         f"{prefix}_balanced_effect_memo_hits": 3,
         f"{prefix}_balanced_effect_memo_misses": 7,
         f"{prefix}_balanced_effect_memo_publications": 7,
+        f"{prefix}_finite_block_lookups": 23,
+        f"{prefix}_finite_block_hits": 12,
+        f"{prefix}_finite_block_misses": 11,
+        f"{prefix}_finite_block_publications": 10,
+        f"{prefix}_finite_block_evictions": 2,
+        f"{prefix}_finite_block_cold_atoms": 4,
+        f"{prefix}_finite_block_cold_steps": 16,
     }
     family = _collect(counters).family_work[0]
     assert family.transient_leaf_steps == 512
@@ -134,6 +141,13 @@ def test_balanced_work_is_distinct_from_scheduler_and_interner_hits(
     assert family.balanced_effect_memo_misses == 7
     assert family.balanced_effect_memo_publications == 7
     assert family.balanced_effect_memo_evictions is None
+    assert family.finite_block_lookups == 23
+    assert family.finite_block_hits == 12
+    assert family.finite_block_misses == 11
+    assert family.finite_block_publications == 10
+    assert family.finite_block_evictions == 2
+    assert family.finite_block_cold_atoms == 4
+    assert family.finite_block_cold_steps == 16
     assert family.operand_bits == (
         (f"{prefix}_balanced_effect_composition_operand_bits", 18000),
     )

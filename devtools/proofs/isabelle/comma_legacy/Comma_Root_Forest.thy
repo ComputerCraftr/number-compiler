@@ -1,5 +1,5 @@
 theory Comma_Root_Forest
-  imports Comma_Decimal_Parent
+  imports Comma_Arithmetic.Comma_Decimal_Parent
 begin
 
 text \<open>These root lemmas state the exact missing bridge for the decimal

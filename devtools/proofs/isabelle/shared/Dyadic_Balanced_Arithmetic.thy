@@ -178,6 +178,25 @@ proof -
     by (simp add: arithmetic_leaf_def effect_then_identity source_effect_def)
 qed
 
+text \<open>Finite-block memo keys retain the full source residue and width.
+These equations apply to the complete effect, including event counts and
+signed prefix safety; a residue of an observer alone is not a cache key.
+The second bounded block receives the transported first-block image.\<close>
+
+lemma arithmetic_leaf_same_cylinder:
+  assumes "x mod 2^n = y mod 2^n"
+  shows "arithmetic_leaf n x = arithmetic_leaf n y"
+  using assms source_effect_low[of n x] source_effect_low[of n y]
+  by (simp only: arithmetic_leaf_correct)
+
+lemma arithmetic_leaf_block_compose:
+  "arithmetic_leaf (a+b) x =
+    effect_then (arithmetic_leaf a (x mod 2^a))
+      (arithmetic_leaf b
+        (effect_apply (arithmetic_leaf a (x mod 2^a)) x mod 2^b))"
+  by (simp only: arithmetic_leaf_correct source_effect_low source_effect_apply
+      source_effect_append)
+
 definition arithmetic_transport :: "dyadic_effect \<Rightarrow> nat \<Rightarrow> nat \<Rightarrow> nat" where
   "arithmetic_transport E x width = effect_apply E x mod 2^width"
 
@@ -311,6 +330,8 @@ ML \<open>
   val _ = if null (Thm_Deps.all_oracles
     @{thms effect_then_assoc effect_then_identity effect_then_admitted
       dyadic_arithmetic_constructor.arithmetic_leaf_correct
+      dyadic_arithmetic_constructor.arithmetic_leaf_same_cylinder
+      dyadic_arithmetic_constructor.arithmetic_leaf_block_compose
       dyadic_arithmetic_constructor.balanced_spec_source_effect
       dyadic_arithmetic_constructor.execute_balanced_source_effect
       dyadic_arithmetic_constructor.construct_source_effect_correct

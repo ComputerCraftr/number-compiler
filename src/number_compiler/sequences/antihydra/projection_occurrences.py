@@ -15,6 +15,7 @@ from number_compiler.sequences.antihydra.blocks import (
 )
 from number_compiler.sequences.antihydra.projection_fragments import (
     ProjectionFragmentKey,
+    projection_key_snapshot,
 )
 from number_compiler.sequences.antihydra.runtime import (
     AntihydraArithmeticTerm,
@@ -310,23 +311,7 @@ class ProjectionOccurrenceCursor:
         return cls._STATE_SEAL_NODES + cls._SEGMENT_SEAL_NODES * count
 
     @staticmethod
-    def _key_seal(key: ProjectionFragmentKey) -> tuple[object, ...]:
-        return (
-            key.source_owner,
-            key.requested,
-            key.start,
-            key.cylinder,
-            key.spatial_width,
-            key.temporal_width,
-            key.spatial_sign,
-            key.temporal_sign,
-            key.modulus,
-            key.head_phase,
-            key.time_phase,
-        )
-
-    @classmethod
-    def _occurrence_seal(cls, record: ProjectionOccurrence) -> tuple[object, ...]:
+    def _occurrence_seal(record: ProjectionOccurrence) -> tuple[object, ...]:
         block = record.block
         return (
             block.width,
@@ -340,7 +325,7 @@ class ProjectionOccurrenceCursor:
             record.balance,
             record.head,
             record.time,
-            cls._key_seal(record.key),
+            projection_key_snapshot(record.key),
             None
             if record.image is None
             else (

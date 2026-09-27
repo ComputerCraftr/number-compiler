@@ -148,17 +148,38 @@ def check_macro_lifting(macro: MacroTemplate) -> int:
         else:
             _require(_positive(-ma, -mb, x0), "literal path skips an admitted cycle")
             _require(
-                fragment.literal_steps == 1
-                and fragment.literal_increment == children[0]
+                type(fragment.literal_steps) is int
+                and 1 <= fragment.literal_steps <= 540
                 and fragment.complete_cycles == zero
                 and fragment.displacement == fragment.maximum_guard == 0,
                 "incorrect literal seam fragment",
             )
-            next_weight = _sum(macro.prefix_weights[index], AffineWeight(0, 1, 1))
-            next_displacement = _sum(
-                macro.prefix_displacements[index], AffineWeight(0, children[0], 1)
+            # Independently check every local inequality on the entire
+            # exponent ray. The production fragment has erased this trace;
+            # a multi-edge fragment must remain inside one decimal sector.
+            run_increment = 0
+            for _ in range(fragment.literal_steps):
+                rf, rd, rdelta = _sector(a, b, p0, x0)
+                _require((rf, rdelta) == (f, delta), "Near run crosses a sector")
+                run_children = _children(f, rd, ha, -b, x0)
+                _require(len(run_children) == 1, "Near run hides a terminal event")
+                if fragment.literal_steps > 1:
+                    _require(
+                        run_children[0] == 10 * rd + f
+                        and _positive(ha, -b - run_children[0], x0),
+                        "Near run contains a crossing",
+                    )
+                b += run_children[0]
+                run_increment += run_children[0]
+            _require(
+                run_increment == fragment.literal_increment, "Near run displacement"
             )
-            b += children[0]
+            next_weight = _sum(
+                macro.prefix_weights[index], AffineWeight(0, fragment.literal_steps, 1)
+            )
+            next_displacement = _sum(
+                macro.prefix_displacements[index], AffineWeight(0, run_increment, 1)
+            )
         _require(
             macro.prefix_weights[index + 1] == next_weight
             and macro.prefix_displacements[index + 1] == next_displacement,

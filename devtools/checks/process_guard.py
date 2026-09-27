@@ -18,11 +18,38 @@ import subprocess
 import sys
 import tempfile
 import time
-from collections.abc import Callable
-from dataclasses import asdict, dataclass
+from collections.abc import Callable, Mapping
+from dataclasses import asdict, dataclass, replace
 from pathlib import Path
 from types import FrameType
 from typing import BinaryIO
+from uuid import uuid4
+
+PROOF_GENERATION_ENV = "NUMBER_COMPILER_PROOF_GENERATION"
+
+
+def source_revision(root: Path) -> tuple[tuple[str, int, int, int, int, int], ...]:
+    """Detect source edits, including content restored during a proof run.
+
+    Sample only at evidence boundaries, never on a theorem memo hit. The
+    content fingerprint remains authoritative for the bytes being certified.
+    """
+    from devtools.checks.test_run_evidence import authored_source_paths
+
+    rows = []
+    for path in authored_source_paths(root, include_directories=True):
+        status = path.stat()
+        rows.append(
+            (
+                path.relative_to(root).as_posix(),
+                status.st_dev,
+                status.st_ino,
+                status.st_size,
+                status.st_mtime_ns,
+                status.st_ctime_ns,
+            )
+        )
+    return tuple(rows)
 
 
 class _DarwinUsage(ctypes.Structure):
@@ -190,6 +217,7 @@ def run_guarded(
     output_bytes: int = 8 * 1024**2,
     interval: float = 0.05,
     lock_path: Path | None = None,
+    environment: Mapping[str, str] | None = None,
 ) -> GuardResult:
     """Supervise cooperative workers that do not detach from their group."""
     if not command or any(not math.isfinite(n) or n <= 0 for n in (timeout, interval)):
@@ -211,6 +239,7 @@ def run_guarded(
             child = subprocess.Popen(
                 command,
                 cwd=cwd,
+                env=environment,
                 stdin=subprocess.DEVNULL,
                 stdout=subprocess.PIPE,
                 stderr=subprocess.STDOUT,
@@ -283,11 +312,38 @@ def main() -> int:
     parser.add_argument("--report", type=Path, required=True)
     parser.add_argument("--timeout", type=float, default=35)
     parser.add_argument("--memory-mib", type=int, default=1024)
+    parser.add_argument(
+        "--source-root",
+        type=Path,
+        help="reject successful evidence if authored sources change during the run",
+    )
     parser.add_argument("command", nargs=argparse.REMAINDER)
     arguments = parser.parse_args()
     command = tuple(arguments.command)
     if command[:1] == ("--",):
         command = command[1:]
+    source_before: str | None = None
+    revision_before: tuple[tuple[str, int, int, int, int, int], ...] | None = None
+    generation = ""
+    environment = dict(os.environ)
+    # A nested or unbound run must not inherit another memo owner's authority.
+    environment.pop(PROOF_GENERATION_ENV, None)
+    source_root: Path | None = arguments.source_root
+    if source_root is not None:
+        from devtools.checks.test_run_evidence import source_fingerprint
+
+        source_root = source_root.resolve(strict=True)
+        # Create output directories before binding the revision. Put artifacts
+        # below non-source directories (normally results/), not in src/tests.
+        arguments.output.parent.mkdir(parents=True, exist_ok=True)
+        arguments.report.parent.mkdir(parents=True, exist_ok=True)
+        revision_before = source_revision(source_root)
+        source_before = source_fingerprint(source_root)
+        if revision_before != source_revision(source_root):
+            parser.error("authored sources changed while binding the proof generation")
+        generation = f"{uuid4().hex}:{source_before}"
+        environment[PROOF_GENERATION_ENV] = generation
+        environment["PYTHONDONTWRITEBYTECODE"] = "1"
     previous = signal.signal(signal.SIGTERM, _interrupted)
     try:
         result = run_guarded(
@@ -295,12 +351,34 @@ def main() -> int:
             output=arguments.output,
             timeout=arguments.timeout,
             memory_bytes=arguments.memory_mib * 1024**2,
+            environment=environment,
         )
     finally:
         signal.signal(signal.SIGTERM, previous)
+    provenance: dict[str, str | bool] = {}
+    if source_root is not None:
+        assert source_before is not None
+        source_after = source_fingerprint(source_root)
+        revision_unchanged = revision_before == source_revision(source_root)
+        unchanged = source_before == source_after and revision_unchanged
+        provenance = {
+            "source_root": str(source_root),
+            "source_fingerprint_before": source_before,
+            "source_fingerprint_after": source_after,
+            "source_unchanged": unchanged,
+            "source_revision_unchanged": revision_unchanged,
+            "proof_generation": generation,
+        }
+        if not unchanged and result.outcome == "completed":
+            result = replace(
+                result,
+                outcome="source_changed",
+                detail="authored sources changed during guarded execution",
+            )
+    report = asdict(result) | provenance
     arguments.report.parent.mkdir(parents=True, exist_ok=True)
-    arguments.report.write_text(json.dumps(asdict(result), indent=2) + "\n")
-    print(json.dumps(asdict(result)))
+    arguments.report.write_text(json.dumps(report, indent=2) + "\n")
+    print(json.dumps(report))
     return 0 if result.outcome == "completed" else 1
 
 

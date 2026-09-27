@@ -60,4 +60,10 @@ lemma first_four_runs:
   "run step 4 ss = step (step (step (step ss)))"
   by (simp_all add: eval_nat_numeral)
 
+ML \<open>
+  val _ = if null (Thm_Deps.all_oracles
+    @{thms two_cell_steps observation_intervals first_four_runs}) then ()
+    else error "Reverse two-cell equations depend on an oracle";
+\<close>
+
 end

@@ -67,6 +67,24 @@ def test_landmine_certificate_cannot_publish_a_child() -> None:
         )
 
 
+def test_near_run_lifting_rejects_hidden_crossing_and_wrong_weight() -> None:
+    macro = construct_macro(BoundaryState("Z", 2, 10))
+    assert check_macro_lifting(macro) > 0
+    index = next(i for i, f in enumerate(macro.sector_fragments) if f.literal_steps > 1)
+    fragment = macro.sector_fragments[index]
+    for forged in (
+        replace(fragment, literal_increment=fragment.literal_increment + 1),
+        replace(fragment, literal_steps=fragment.literal_steps + 10),
+    ):
+        fragments = (
+            macro.sector_fragments[:index]
+            + (forged,)
+            + macro.sector_fragments[index + 1 :]
+        )
+        with pytest.raises(ValueError, match="Near run"):
+            check_macro_lifting(replace(macro, sector_fragments=fragments))
+
+
 @pytest.mark.parametrize(
     "row,reason",
     [

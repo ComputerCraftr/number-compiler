@@ -22,7 +22,6 @@ from number_compiler.hashlife.tiles.tile_boundaries import (
     BoundaryTileView,
 )
 from number_compiler.hashlife.tiles.tile_causal_interface_memo import (
-    _publication_snapshot,
     _validate_published_value,
     causal_interface_key,
     lookup_causal_interface,
@@ -38,6 +37,7 @@ from number_compiler.hashlife.tiles.tile_result_records import (
     CausalInterfaceKey,
     CompletedInterfaceResult,
     PoweredResultKey,
+    causal_interface_snapshot,
 )
 from number_compiler.hashlife.tiles.tile_results import CompletedResultArena
 from number_compiler.hashlife.tiles.tiles import TileArena, TileID, TileLease
@@ -194,11 +194,11 @@ def test_publication_snapshot_covers_producer_and_consumer_orientations() -> Non
                 BoundPorts(key.ports, key.wiring, mirrored),
             ),
         )
-        assert _publication_snapshot(base, record) != _publication_snapshot(
+        assert causal_interface_snapshot(base, record) != causal_interface_snapshot(
             producer_changed,
             record,
         )
-        assert _publication_snapshot(base, record) != _publication_snapshot(
+        assert causal_interface_snapshot(base, record) != causal_interface_snapshot(
             consumer_changed,
             record,
         )

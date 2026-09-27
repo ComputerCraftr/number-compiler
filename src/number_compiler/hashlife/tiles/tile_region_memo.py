@@ -9,10 +9,10 @@ from number_compiler.hashlife.tiles.tile_boundaries import (
     BoundaryTileView,
     normalize_boundary_view,
 )
-from number_compiler.hashlife.tiles.tile_causal_interface_memo import _view_snapshot
 from number_compiler.hashlife.tiles.tile_result_records import (
     NormalizedRegionKey,
     NormalizedRegionResult,
+    boundary_view_snapshot,
 )
 from number_compiler.hashlife.tiles.tile_result_validation import (
     validate_boundary_operands,
@@ -34,7 +34,7 @@ def _snapshot(
     key: NormalizedRegionKey,
     value: NormalizedRegionResult,
 ) -> tuple[object, ...]:
-    return (_view_snapshot(key.view), _view_snapshot(value.view))
+    return (boundary_view_snapshot(key.view), boundary_view_snapshot(value.view))
 
 
 def _detached_view(view: BoundaryTileView) -> BoundaryTileView:

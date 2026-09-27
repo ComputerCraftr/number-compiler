@@ -56,6 +56,12 @@ def test_complete_cylinder_census_against_independent_intersection(width: int) -
         if lo < hi:
             assert (_f(block.guard.lower), _f(block.guard.upper)) == (lo, hi)
             survivors.add(r)
+        shell = block.root_shell
+        assert _f(shell.action.scale) == Fraction(3, 2) ** width
+        assert _f(shell.action.offset) == 2 * (Fraction(3, 2) ** width * r - d)
+        assert shell.domain.empty == (lo >= hi)
+        if lo < hi:
+            assert (_f(shell.domain.lower), _f(shell.domain.upper)) == (2 * lo, 2 * hi)
         assert _f(block.fractional.scale) == Fraction(3, 2) ** width
         assert _f(block.fractional.offset) == Fraction(3, 2) ** width * r - d
     if width == 12:

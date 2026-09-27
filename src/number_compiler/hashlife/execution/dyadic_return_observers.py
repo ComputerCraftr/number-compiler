@@ -6,6 +6,9 @@ from collections.abc import Iterator
 from operator import add, mul
 from typing import TYPE_CHECKING
 
+from number_compiler.arithmetic.fields.consumer_pullback import (
+    compose_prefix_safety_values,
+)
 from number_compiler.arithmetic.fields.point_germ import AffinePointGerm
 from number_compiler.arithmetic.fields.skew_transfer import (
     SkewTransfer,
@@ -263,14 +266,17 @@ def _expanded_saturated_support(
             composed = prefix_node.transfer.then(
                 workspace.support_node(tail_id).transfer, multiply=mul, add=add
             )
+            safety_delta, safety_minimum = compose_prefix_safety_values(
+                prefix_node.delta, prefix_node.minimum, cycle.delta, cycle.minimum
+            )
             completed_id = workspace._append_support(
                 _SupportNode(
                     summary.width,
                     summary.residue,
                     composed,
                     prefix_node.odd_steps + cycle.odd_steps,
-                    prefix_node.delta + cycle.delta,
-                    min(prefix_node.minimum, prefix_node.delta + cycle.minimum),
+                    safety_delta,
+                    safety_minimum,
                     None,
                     (prefix_id, tail_id),
                     cycle,

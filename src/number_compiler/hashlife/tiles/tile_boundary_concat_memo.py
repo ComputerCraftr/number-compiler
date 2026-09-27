@@ -10,10 +10,10 @@ from number_compiler.hashlife.tiles.tile_boundaries import (
     concat_boundary_views,
     normalize_boundary_view,
 )
-from number_compiler.hashlife.tiles.tile_causal_interface_memo import _view_snapshot
 from number_compiler.hashlife.tiles.tile_result_records import (
     BoundaryConcatKey,
     BoundaryConcatResult,
+    boundary_view_snapshot,
 )
 from number_compiler.hashlife.tiles.tile_result_validation import (
     validate_boundary_operands,
@@ -65,9 +65,9 @@ def _snapshot(
             key.alphabet.kind,
             key.alphabet.local_id,
         ),
-        _view_snapshot(key.first),
-        _view_snapshot(key.second),
-        _view_snapshot(value.view),
+        boundary_view_snapshot(key.first),
+        boundary_view_snapshot(key.second),
+        boundary_view_snapshot(value.view),
     )
 
 

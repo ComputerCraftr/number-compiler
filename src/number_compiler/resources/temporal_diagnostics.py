@@ -70,6 +70,8 @@ class TemporalObservations:
     arithmetic_result_validation_operand_bits: int | None = None
     mahler_source_composed_image_reads: int | None = None
     mahler_associated_action_demands: int | None = None
+    mahler_root_shell_projections: int | None = None
+    mahler_root_shell_operand_bits: int | None = None
     physical_roof_evaluations: int | None = None
     query_observer_reuses: int | None = None
     higher_concrete_operation_evaluations: int | None = None
@@ -100,6 +102,13 @@ class TemporalFamilyWork:
     balanced_effect_memo_misses: int | None = None
     balanced_effect_memo_publications: int | None = None
     balanced_effect_memo_evictions: int | None = None
+    finite_block_lookups: int | None = None
+    finite_block_hits: int | None = None
+    finite_block_misses: int | None = None
+    finite_block_publications: int | None = None
+    finite_block_evictions: int | None = None
+    finite_block_cold_atoms: int | None = None
+    finite_block_cold_steps: int | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -287,6 +296,13 @@ def collect_temporal_diagnostics(
                 _count(counters, f"{prefix}_balanced_effect_memo_misses"),
                 _count(counters, f"{prefix}_balanced_effect_memo_publications"),
                 _count(counters, f"{prefix}_balanced_effect_memo_evictions"),
+                _count(counters, f"{prefix}_finite_block_lookups"),
+                _count(counters, f"{prefix}_finite_block_hits"),
+                _count(counters, f"{prefix}_finite_block_misses"),
+                _count(counters, f"{prefix}_finite_block_publications"),
+                _count(counters, f"{prefix}_finite_block_evictions"),
+                _count(counters, f"{prefix}_finite_block_cold_atoms"),
+                _count(counters, f"{prefix}_finite_block_cold_steps"),
             )
         )
 
@@ -371,6 +387,12 @@ def collect_temporal_diagnostics(
             ),
             mahler_associated_action_demands=_count(
                 counters, "mahler_associated_action_demands"
+            ),
+            mahler_root_shell_projections=_count(
+                counters, "mahler_root_shell_projections"
+            ),
+            mahler_root_shell_operand_bits=_count(
+                counters, "mahler_root_shell_operand_bits"
             ),
             physical_roof_evaluations=_count(counters, "physical_roof_evaluations"),
             query_observer_reuses=_count(counters, "query_observer_reuses"),

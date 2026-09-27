@@ -129,7 +129,16 @@ def test_high_entropy_collatz_point_uses_balanced_source_cylinder() -> None:
     assert counters["collatz_physical_balanced_effect_composition_operand_bits"] <= (
         2 * steps * steps.bit_length()
     )
-    assert counters["collatz_physical_transient_leaf_steps"] == steps
+    assert 0 < counters["collatz_physical_transient_leaf_steps"] < steps
+    assert (
+        counters["collatz_physical_transient_leaf_steps"]
+        == counters["collatz_physical_finite_block_cold_steps"]
+    )
+    assert counters["collatz_physical_finite_block_hits"] > 0
+    assert counters["collatz_physical_finite_block_lookups"] == (
+        counters["collatz_physical_finite_block_hits"]
+        + counters["collatz_physical_finite_block_misses"]
+    )
     assert counters["collatz_physical_transient_leaf_operand_bits"] > 0
     assert counters["collatz_physical_balanced_stack_frames"] > 0
     assert term._power is None

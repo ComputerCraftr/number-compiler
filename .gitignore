@@ -217,11 +217,13 @@ __marimo__/
 # Streamlit
 .streamlit/secrets.toml
 
-# Number Compiler: generated evidence stays local; review summaries and scripts.
+# Number Compiler: only the policy and reviewed weekly summaries are versioned.
+# Run-local Markdown and Python are artifacts too, not blanket exceptions.
 /results/**
-!/results/**/
-!/results/**/*.md
-!/results/**/*.py
+!/results/README.md
+!/results/current/
+!/results/current/20[0-9][0-9]-W[0-5][0-9]/
+!/results/current/20[0-9][0-9]-W[0-5][0-9]/README.md
 /results/**/__pycache__/
 .DS_Store
 *.pstats

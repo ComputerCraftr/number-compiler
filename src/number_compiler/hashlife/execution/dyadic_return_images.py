@@ -13,6 +13,9 @@ from collections.abc import Hashable, Iterator
 from contextlib import contextmanager
 from operator import add, mul
 
+from number_compiler.arithmetic.fields.consumer_pullback import (
+    compose_prefix_safety_values,
+)
 from number_compiler.arithmetic.contracts.scoped_handles import ArenaToken
 from number_compiler.arithmetic.fields.skew_transfer import SkewTransfer
 from number_compiler.hashlife.execution.dyadic_return_records import (
@@ -156,7 +159,7 @@ class DyadicReturnImageWorkspace(
         self.demanded_support: LedgerDict[
             DyadicReturnImageID, DyadicReturnSupportID
         ] = ledger.make_dict(self.demanded_support_owner, nodes_per_entry=0)
-        self.macros: LedgerDict[tuple[int, int], _SupportNode] = ledger.make_dict(
+        self.macros: LedgerDict[tuple[object, ...], _SupportNode] = ledger.make_dict(
             self.macro_owner, nodes_per_entry=1
         )
         self.macro_stack: LedgerList[tuple[int, int, _SupportNode | None]] = (
@@ -796,14 +799,17 @@ class DyadicReturnImageWorkspace(
                 right.cycle.minimum,
             )
         )
+        safety_delta, safety_minimum = compose_prefix_safety_values(
+            left.delta, left.minimum, right.delta, right.minimum
+        )
         support = self._append_support(
             _SupportNode(
                 left.width + right.width,
                 parent.residue,
                 transfer,
                 left.odd_steps + right.odd_steps,
-                left.delta + right.delta,
-                min(left.minimum, left.delta + right.minimum),
+                safety_delta,
+                safety_minimum,
                 None,
                 (left.support, right.support),
                 cycle,
@@ -813,8 +819,8 @@ class DyadicReturnImageWorkspace(
             left.width + right.width,
             parent.residue,
             transfer,
-            left.delta + right.delta,
-            min(left.minimum, left.delta + right.minimum),
+            safety_delta,
+            safety_minimum,
             left.odd_steps + right.odd_steps,
             support,
             cycle,

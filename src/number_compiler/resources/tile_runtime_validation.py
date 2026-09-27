@@ -17,6 +17,7 @@ from number_compiler.hashlife.tiles.tile_result_records import (
     PoweredResultKey,
     RootMatchResult,
     SourceRootMatchKey,
+    causal_interface_snapshot,
 )
 from number_compiler.hashlife.tiles.tiles import TileAlphabet, TileID
 
@@ -25,129 +26,6 @@ if TYPE_CHECKING:
         PrimitiveTileKernelAdapter,
     )
     from number_compiler.hashlife.execution.tile_scheduler import TileScheduler
-
-
-def _handle_snapshot(value: object) -> tuple[object, ...]:
-    return (
-        type(value),
-        getattr(value, "owner", None),
-        getattr(value, "kind", None),
-        getattr(value, "local_id", None),
-    )
-
-
-def _view_snapshot(value: object) -> tuple[object, ...] | None:
-    if value is None:
-        return None
-    return (
-        type(value),
-        _handle_snapshot(getattr(value, "tile", None)),
-        getattr(value, "source_offset", None),
-        getattr(value, "relative_origin", None),
-        getattr(value, "relative_extent", None),
-        getattr(value, "orientation", None),
-    )
-
-
-def _boundaries_snapshot(value: object) -> tuple[object, ...]:
-    return (
-        type(value),
-        _view_snapshot(getattr(value, "left", None)),
-        _view_snapshot(getattr(value, "right", None)),
-    )
-
-
-def _wiring_snapshot(value: object) -> tuple[object, ...]:
-    return (
-        type(value),
-        _handle_snapshot(getattr(value, "signature", None)),
-        getattr(value, "orientation", None),
-        getattr(value, "phase", None),
-    )
-
-
-def _context_snapshot(value: object) -> tuple[object, ...]:
-    return (
-        type(value),
-        tuple(getattr(value, "ports", ())),
-        _wiring_snapshot(getattr(value, "wiring", None)),
-        _boundaries_snapshot(getattr(value, "boundaries", None)),
-    )
-
-
-def _fusion_snapshot(value: object) -> tuple[object, ...] | None:
-    if value is None:
-        return None
-    return (
-        type(value),
-        _context_snapshot(getattr(value, "producer", None)),
-        _context_snapshot(getattr(value, "consumer", None)),
-    )
-
-
-def _reverse_output_snapshot(value: object) -> tuple[object, ...] | None:
-    if value is None:
-        return None
-    left, right = getattr(value, "left", None), getattr(value, "right", None)
-    return (
-        type(value),
-        type(left),
-        getattr(left, "base", None),
-        getattr(left, "has_active", None),
-        getattr(left, "has_blank", None),
-        getattr(left, "sinks", None),
-        getattr(left, "carry", None),
-        getattr(left, "last_symbol", None),
-        type(right),
-        getattr(right, "base", None),
-        getattr(right, "forward", None),
-        getattr(right, "backward", None),
-    )
-
-
-def _physical_support_snapshot(value: object) -> tuple[object, ...] | None:
-    if value is None:
-        return None
-    return (
-        type(value),
-        getattr(value, "owner", None),
-        getattr(value, "node_id", None),
-        getattr(value, "ticks", None),
-        getattr(value, "odd_ticks", None),
-        getattr(value, "parity", None),
-        id(getattr(value, "left", None)),
-        id(getattr(value, "right", None)),
-    )
-
-
-def _causal_interface_snapshot(
-    key: CausalInterfaceKey,
-    value: CompletedInterfaceResult,
-) -> tuple[object, ...]:
-    request = (
-        type(key),
-        _handle_snapshot(key.action),
-        _handle_snapshot(key.input),
-        tuple(key.ports),
-        _wiring_snapshot(key.wiring),
-        _boundaries_snapshot(key.boundaries),
-        _fusion_snapshot(key.fusion),
-        None,
-        key.observation,
-    )
-    return (
-        request,
-        _handle_snapshot(value.interface),
-        tuple(value.observed_input_ports),
-        tuple(value.outgoing_ports),
-        value.level,
-        value.active,
-        value.physical_ticks,
-        value.event_weight,
-        value.frame_shift,
-        _physical_support_snapshot(value.physical_support),
-        _reverse_output_snapshot(value.bound_reverse_output),
-    )
 
 
 def valid_ports(
@@ -282,7 +160,7 @@ def valid_causal_interface_record(
             and key.observation in ("interface", "reverse-output-carry")
             and observed_reverse == (result.bound_reverse_output is not None)
             and result._publication_owner is results._interface_publication_seal
-            and result._publication_snapshot == _causal_interface_snapshot(key, result)
+            and result._publication_snapshot == causal_interface_snapshot(key, result)
             and result.level == adapter.tiles.resolve(key.input).level
             and adapter.quotients.resolve(result.interface).signature
             == key.wiring.signature

@@ -2,9 +2,11 @@ from __future__ import annotations
 
 import pytest
 
+from devtools.experiments.collatz.free_cylinder_consumers import _ConsumerAction
 from devtools.experiments.collatz.free_cylinder_residual import (
     FreeCylinderResidualArena,
 )
+from number_compiler.arithmetic.contracts.block_effect import BlockContextBudgetExceeded
 from number_compiler.sequences.collatz.hensel_cylinders import HenselAffineBlock
 
 
@@ -171,6 +173,41 @@ def test_guard_consumption_preserves_output_and_clock_projection_aliases() -> No
     assert metrics["support_consumer_ids"] == 31
 
 
+def test_consumer_relative_moore_projection_removes_support_only_distinctions() -> None:
+    arena = FreeCylinderResidualArena(max_precision=64)
+    action = arena.power_physical(16, 5)
+    support = arena.moore_projection(action, "support")
+    weighted = arena.moore_projection(action, "endpoint-clock")
+    endpoint = arena.moore_projection(action, "endpoint")
+
+    assert endpoint.dag_nodes < weighted.dag_nodes < support.dag_nodes
+    assert endpoint.metrics.terminals == 8
+    assert weighted.metrics.terminals == 10
+    assert support.metrics.terminals == 31
+    assert endpoint.certificate().classes < weighted.certificate().classes
+    assert weighted.certificate().classes < support.certificate().classes
+
+    for source in range(1, 1 << 5):
+        full = support.evaluate(source)
+        assert type(full) is _ConsumerAction
+        assert endpoint.evaluate(source) == full.output
+        assert weighted.evaluate(source) == (
+            full.output,
+            full.event_weight,
+            full.physical_ticks,
+        )
+
+
+def test_spatial_moore_projection_is_already_derivative_minimal() -> None:
+    arena = FreeCylinderResidualArena(max_precision=64)
+    action = arena.power_physical(16, 5)
+    for observation in ("endpoint", "endpoint-clock", "support"):
+        projection = arena.moore_projection(action, observation)
+        certificate = projection.certificate()
+        assert certificate.classes == certificate.reachable_states
+        assert projection.derivative(0b101, 3)[0] == 3
+
+
 def test_sparse_constant_image_powers_without_rebuilding_the_primitive(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -195,3 +232,36 @@ def test_sparse_constant_image_powers_without_rebuilding_the_primitive(
         expected, events = _advance_physical(source, 1024)
         bound = arena.bind(action, source)
         assert (bound.target, bound.accelerated_events) == (expected, events)
+
+
+def test_moore_certificate_limits_and_failed_publication() -> None:
+    arena = FreeCylinderResidualArena(max_precision=64)
+    action = arena.power_physical(16, 5)
+    projection = arena.moore_projection(action, "endpoint")
+    assert projection is arena.moore_projection(action, "endpoint")
+    with pytest.raises(BlockContextBudgetExceeded, match="state budget"):
+        projection.certificate(max_states=1)
+    assert projection.dag_nodes == 29
+    assert projection.certificate().classes == 32
+    retained = arena._moore_retained_nodes
+    arena.max_branches = retained
+    with pytest.raises(BlockContextBudgetExceeded, match="retention budget"):
+        arena.moore_projection(action, "endpoint-clock")
+    assert arena._moore_retained_nodes == retained
+    assert len(arena._moore_projections) == 1
+
+
+def test_moore_derivative_respects_declared_coordinate_order() -> None:
+    from devtools.experiments.collatz.free_cylinder_moore import (
+        CollatzSpatialMooreProjection,
+    )
+    from number_compiler.arithmetic.functions.decision import MultiTerminalDecisionArena
+
+    arena = MultiTerminalDecisionArena((2, 2), order=(1, 0))
+    root = arena.build(lambda values: 2 * values[0] + values[1])
+    projection = CollatzSpatialMooreProjection("endpoint", arena, root)
+    depth, derivative = projection.derivative(1, 1)
+    assert depth == 1
+    assert arena.evaluate(derivative, (0, 0)) == 1
+    assert arena.evaluate(derivative, (1, 0)) == 3
+    assert projection.certificate().classes == 7

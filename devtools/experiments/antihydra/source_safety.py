@@ -19,8 +19,9 @@ from number_compiler.arithmetic.fields.consumer_pullback import (
     ExactRational as Q,
 )
 from number_compiler.arithmetic.fields.consumer_pullback import (
+    HalfOpenInterval as Interval,
+    GuardedAffineAction,
     SaturatingAffineAction,
-    ThresholdDemand,
 )
 from number_compiler.arithmetic.fields.skew_transfer import SkewTransfer
 from number_compiler.resources.ledger import ResourceLedger
@@ -28,32 +29,6 @@ from number_compiler.resources.stores import LedgerDict, LedgerList
 from number_compiler.sequences.antihydra.blocks import arithmetic_kernel
 
 ZERO, HALF = Q(0), Q(1, 2)
-
-
-@dataclass(frozen=True, slots=True)
-class Interval:
-    """Closed lower, open upper; disjoint intersections normalize to [0,0)."""
-
-    lower: Q = ZERO
-    upper: Q = HALF
-
-    @property
-    def empty(self) -> bool:
-        return self.lower >= self.upper
-
-    def contains(self, value: Q) -> bool:
-        return self.lower <= value < self.upper
-
-    def intersect(self, other: Interval) -> Interval:
-        lo, hi = max(self.lower, other.lower), min(self.upper, other.upper)
-        return Interval(lo, hi) if lo < hi else Interval(ZERO, ZERO)
-
-    def pullback(self, action: SaturatingAffineAction) -> Interval:
-        if action.cap is not None:
-            raise ValueError("fractional transport requires an uncapped affine action")
-        lo = action.pullback(ThresholdDemand(threshold=self.lower, strict=False))
-        hi = action.pullback(ThresholdDemand(threshold=self.upper, strict=True))
-        return Interval(lo.threshold, hi.threshold)
 
 
 @dataclass(frozen=True, slots=True)
@@ -84,6 +59,15 @@ class SourceBlock:
         return SaturatingAffineAction(
             Q(transfer.upper, transfer.lower),
             Q(-transfer.offset, transfer.lower),
+        )
+
+    @property
+    def root_shell(self) -> GuardedAffineAction:
+        """The same source guard in theta=2t=r^2 coordinates, without a new scan."""
+        fractional = self.fractional
+        return GuardedAffineAction(
+            SaturatingAffineAction(fractional.scale, Q(2) * fractional.offset),
+            Interval(Q(2) * self.guard.lower, Q(2) * self.guard.upper),
         )
 
 

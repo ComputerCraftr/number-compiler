@@ -12,6 +12,7 @@ from number_compiler.sequences.comma.arithmetic import (
     comma_children,
     cycle_transfer,
     decimal_sector,
+    phase_prefix_displacement,
     safe_complete_cycles,
 )
 from number_compiler.sequences.comma.boundary_quotient import (
@@ -52,7 +53,22 @@ def _literal_phase_jump(value: int) -> tuple[int, int]:
     count = (headroom - 1 - maximum) // displacement + 1
     if count <= 0:
         return value, 0
+    # Being inside the sector does not imply uniqueness: the last edge of
+    # the last candidate cycle can be a fork. Check that bounded phase by
+    # independent child enumeration, without the production guard formula.
+    last_cursor = value + (count - 1) * displacement
+    for _ in range(period):
+        children = _literal_children(last_cursor)
+        if len(children) != 1 or decimal_sector(children[0]).leading != sector.leading:
+            count -= 1
+            break
+        last_cursor = children[0]
     return value + count * displacement, count * period
+
+
+def test_independent_phase_oracle_does_not_jump_over_a_fork() -> None:
+    assert _literal_phase_jump(199_079) == (199_539, 10)
+    assert _literal_children(199_918) == (199_999, 200_000)
 
 
 def _reference_macro(value: int) -> tuple[int, int, tuple[int, ...]]:
@@ -133,6 +149,28 @@ def test_affine_weight_refuses_nonintegral_or_forged_components() -> None:
         AffineWeight(1, 0, 0)
 
 
+def test_constant_weight_never_allocates_receiving_exponent(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    def forbidden_pow(*_args: int) -> int:
+        raise AssertionError("constant weight allocated an endpoint scale")
+
+    monkeypatch.setattr(boundary_quotient, "pow", forbidden_pow, raising=False)
+    work: list[int] = []
+    assert AffineWeight(0, 7, 1).evaluate(10**100, charge_bits=work.append) == 7
+    assert work and sum(work) < 16
+    with pytest.raises(ValueError, match="not integral"):
+        AffineWeight(0, 1, 2).evaluate(10**100)
+    with pytest.raises(ValueError, match="invalid comma weight exponent"):
+        AffineWeight(0, 7, 1).evaluate(True)
+
+    def refused(_bits: int) -> None:
+        raise ValueError("bit budget")
+
+    with pytest.raises(ValueError, match="bit budget"):
+        AffineWeight(0, 7, 1).evaluate(10**100, charge_bits=refused)
+
+
 def test_boundary_state_rejects_wrong_residue_and_range() -> None:
     state = BoundaryState("N", 2, 10)
     assert state.value(10) == 19_999_999_999
@@ -194,6 +232,64 @@ def test_weighted_partial_descent_matches_independent_reference(
         macro.point(exponent, total + 1)
 
 
+def test_phase_prefix_matches_independent_children_for_every_phase() -> None:
+    for leading in range(1, 10):
+        for digit in range(10):
+            source = leading * 10_000 + digit
+            cursor = source
+            for steps in range(4 * (10 // math.gcd(leading, 10)) + 1):
+                assert (
+                    phase_prefix_displacement(leading, digit, steps) == cursor - source
+                )
+                children = _literal_children(cursor)
+                assert len(children) == 1
+                cursor = children[0]
+
+
+def test_long_phase_prefix_uses_bounded_residue_work(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from number_compiler.sequences.comma import arithmetic
+
+    visited: list[int] = []
+
+    def bounded_range(count: int) -> range:
+        assert 0 <= count <= 10
+        visited.append(count)
+        return range(count)
+
+    monkeypatch.setattr(arithmetic, "range", bounded_range, raising=False)
+    count = 10**100
+    assert phase_prefix_displacement(5, 0, count + 1) == 30 * count + 5
+    assert sum(visited) == 3
+
+
+def test_partial_selection_never_reclassifies_literal_children(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from number_compiler.sequences.comma import arithmetic
+
+    macro = construct_macro(BoundaryState("N", 2, 10))
+    queries: dict[int, int] = {}
+    for index, fragment in enumerate(macro.sector_fragments[:8]):
+        start = macro.prefix_weights[index].evaluate(10)
+        count = fragment.period or fragment.literal_steps
+        for tail in range(1, count + 1):
+            queries[start + tail] = _reference_point(
+                macro.source.value(10), start + tail
+            )
+
+    def forbidden(*_: object) -> int:
+        raise AssertionError("partial selector reopened literal child classification")
+
+    monkeypatch.setattr(arithmetic, "decimal_sector", forbidden)
+    monkeypatch.setattr(arithmetic, "_large_sector_children", forbidden)
+    monkeypatch.setattr(arithmetic, "_sector_child_increments", forbidden)
+    monkeypatch.setattr(arithmetic, "comma_children", forbidden)
+    for index, expected in queries.items():
+        assert macro.point(10, index) == expected
+
+
 def test_partial_selection_charges_logarithmic_fragment_search() -> None:
     construction: list[int] = []
     state = BoundaryState("N", 3, 5)
@@ -231,20 +327,35 @@ def test_partial_selection_reuses_one_power_and_rejects_invalid_before_it(
     assert sum(bit_work) > 0
 
 
-def test_macro_constructor_pins_sample_scale_once(
+def test_macro_constructor_never_materializes_a_representative_scale(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    powers: list[int] = []
+    from number_compiler.sequences.comma import arithmetic
+
+    powers: list[tuple[int, int]] = []
     actual_pow = pow
 
-    def counted_pow(base: int, exponent: int) -> int:
-        powers.append(exponent)
-        return int(actual_pow(base, exponent))
+    def modular_only(base: int, exponent: int, modulus: int | None = None) -> int:
+        if modulus is None:
+            raise AssertionError("constructor materialized a representative endpoint")
+        powers.append((exponent, modulus))
+        return int(actual_pow(base, exponent, modulus))
 
-    monkeypatch.setattr(boundary_quotient, "pow", counted_pow, raising=False)
-    macro = construct_macro(BoundaryState("N", 3, 5))
-    assert macro.outcome == "landmine"
-    assert powers == [5]
+    def forbidden_value(*_args: object, **_kwargs: object) -> int:
+        raise AssertionError("constructor evaluated an absolute endpoint")
+
+    monkeypatch.setattr(boundary_quotient, "pow", modular_only, raising=False)
+    monkeypatch.setattr(arithmetic, "pow", modular_only, raising=False)
+    monkeypatch.setattr(
+        boundary_quotient._Affine, "at_scale", forbidden_value, raising=False
+    )
+    monkeypatch.setattr(BoundaryState, "value", forbidden_value)
+    for state in (BoundaryState("N", 3, 5), BoundaryState("N", 2, 0)):
+        macro = construct_macro(state)
+        assert macro.outcome in ("fork", "landmine")
+    assert powers and all(
+        5 <= exponent <= 32 and modulus <= 540 for exponent, modulus in powers
+    )
 
 
 def test_bit_budget_rejects_before_boundary_power_allocations(
@@ -302,12 +413,30 @@ def test_macro_fragments_transport_over_one_exponent_period(
             value += count * transfer.displacement
             steps += count * transfer.period
         else:
-            assert fragment.literal_steps == 1
-            children = _literal_children(value)
-            assert len(children) == 1
-            assert fragment.literal_increment == children[0] - value
-            value = children[0]
-            steps += 1
+            before = value
+            for _ in range(fragment.literal_steps):
+                children = _literal_children(value)
+                assert len(children) == 1
+                value = children[0]
+                steps += 1
+            assert fragment.literal_increment == value - before
     assert steps == macro.weight.evaluate(exponent)
     assert value == macro.endpoint.evaluate(exponent)
     assert len(_literal_children(value)) == (2 if macro.outcome == "fork" else 0)
+
+
+def test_near_runs_publish_one_fragment_and_preserve_every_partial_point() -> None:
+    macro = construct_macro(BoundaryState("Z", 2, 10))
+    runs = [(i, f) for i, f in enumerate(macro.sector_fragments) if f.literal_steps > 1]
+    assert runs
+    for index, fragment in runs:
+        offset = macro.prefix_weights[index].evaluate(10)
+        start = macro.source.value(10) + macro.prefix_displacements[index].evaluate(10)
+        cursor = start
+        for j in range(fragment.literal_steps + 1):
+            assert macro.point(10, offset + j) == cursor
+            if j < fragment.literal_steps:
+                children = _literal_children(cursor)
+                assert len(children) == 1
+                cursor = children[0]
+        assert cursor - start == fragment.literal_increment

@@ -23,20 +23,8 @@ from number_compiler.hashlife.execution.continuations.higher_summaries import (
     _ContextBinding,
     _UnaryBinding,
 )
+from number_compiler.resources.higher_readonly import audit_identity_index
 from number_compiler.resources.ledger import ResourceLedger
-
-
-def _identity_index(mapping: object, record: object, index: int) -> bool:
-    if not isinstance(mapping, Mapping):
-        return False
-    try:
-        found = mapping.get(record)
-        return type(found) is int and found == index
-    except (KeyError, TypeError, AttributeError):
-        return any(
-            key is record and type(value) is int and value == index
-            for key, value in mapping.items()
-        )
 
 
 def _summary_reference(
@@ -300,7 +288,7 @@ def audit_higher_summary_arena(
                 runtime=runtime,
             )
             valid &= arena.resolve(arena._handle(index, record)) is record
-            valid &= _identity_index(arena._keys, record, index)
+            valid &= audit_identity_index(arena._keys, record, index)
         except (TypeError, ValueError, IndexError, KeyError, AttributeError):
             valid = False
         if valid:

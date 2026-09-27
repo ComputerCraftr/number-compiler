@@ -17,10 +17,6 @@ from number_compiler.hashlife.tiles.tile_boundaries import (
     BoundaryTileOperands,
     BoundaryTileView,
 )
-from number_compiler.hashlife.tiles.tile_causal_interface_memo import (
-    _execution_request_snapshot,
-    _handle_snapshot,
-)
 from number_compiler.hashlife.tiles.tile_ports import (
     BoundPorts,
     FusedBoundaryContract,
@@ -30,6 +26,8 @@ from number_compiler.hashlife.tiles.tile_result_records import (
     BehaviorBindingKey,
     CompletedBehaviorClassification,
     PoweredResultKey,
+    execution_request_snapshot,
+    handle_snapshot,
 )
 from number_compiler.hashlife.tiles.tile_results import CompletedResultArena
 from number_compiler.resources.cache_gc_metrics import (
@@ -187,9 +185,9 @@ def _snapshot(
     value: CompletedBehaviorClassification,
 ) -> tuple[object, ...]:
     return (
-        _execution_request_snapshot(key.request),
-        _handle_snapshot(key.profile),
-        _handle_snapshot(value.behavior),
+        execution_request_snapshot(key.request),
+        handle_snapshot(key.profile),
+        handle_snapshot(value.behavior),
     )
 
 

@@ -23,6 +23,7 @@ from number_compiler.sequences.antihydra.projection_fragments import (
     ProjectionFragment,
     ProjectionFragmentCache,
     ProjectionFragmentKey,
+    projection_key_snapshot,
 )
 from number_compiler.sequences.antihydra.projection_occurrences import (
     ProjectionBlockImage,
@@ -118,22 +119,6 @@ class _AntihydraFragmentAdapter(SourceBoundImageAdapter):
             payloads=self._source_seals.__iter__,
         )
 
-    @staticmethod
-    def _key_seal(key: ProjectionFragmentKey) -> tuple[object, ...]:
-        return (
-            key.source_owner,
-            key.requested,
-            key.start,
-            key.cylinder,
-            key.spatial_width,
-            key.temporal_width,
-            key.spatial_sign,
-            key.temporal_sign,
-            key.modulus,
-            key.head_phase,
-            key.time_phase,
-        )
-
     def configure(
         self,
         cursor: ProjectionOccurrenceCursor,
@@ -153,7 +138,7 @@ class _AntihydraFragmentAdapter(SourceBoundImageAdapter):
         key, block, h, balance = record.key, record.block, record.h, record.balance
         self.ledger.reserve(self._source_seal_owner, entries=1, nodes=20)
         try:
-            self._source_seals.append((*self._key_seal(key), h, balance))
+            self._source_seals.append((*projection_key_snapshot(key), h, balance))
         except BaseException:
             self.ledger.release(self._source_seal_owner, entries=1, nodes=20)
             raise
@@ -272,7 +257,7 @@ class _AntihydraFragmentAdapter(SourceBoundImageAdapter):
             raise ValueError("Antihydra fragment has another source authority")
         source.validate(self._source_token, self._source_kind, size=1)
         if len(self._source_seals) != 1 or self._source_seals[0] != (
-            *self._key_seal(key),
+            *projection_key_snapshot(key),
             self._source_h,
             self._source_balance,
         ):

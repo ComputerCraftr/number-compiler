@@ -217,7 +217,19 @@ def test_mutated_boundary_template_and_action_fail_closed() -> None:
     assert audit.forbidden_future_payloads > 0
 
 
-@pytest.mark.parametrize("component", ["fragment", "phase", "prefix"])
+@pytest.mark.parametrize(
+    "component",
+    [
+        "fragment",
+        "phase",
+        "prefix",
+        "weight_prefix",
+        "children",
+        "child_order",
+        "exponent_gain",
+        "endpoint",
+    ],
+)
 def test_mutated_boundary_component_fails_before_private_scheduler_demand(
     monkeypatch: pytest.MonkeyPatch, component: str
 ) -> None:
@@ -237,9 +249,26 @@ def test_mutated_boundary_component_fails_before_private_scheduler_demand(
     elif component == "phase":
         fragment = template.sector_fragments[1]
         object.__setattr__(fragment, "entering_digit", fragment.entering_digit + 1)
-    else:
+    elif component == "prefix":
         prefix = template.prefix_displacements[1]
         object.__setattr__(prefix, "numerator_offset", prefix.numerator_offset + 1)
+    elif component == "weight_prefix":
+        prefix = template.prefix_weights[1]
+        object.__setattr__(prefix, "numerator_offset", prefix.numerator_offset + 1)
+    elif component == "children":
+        object.__setattr__(template, "ordered_children", template.ordered_children[:1])
+    elif component == "child_order":
+        object.__setattr__(
+            template, "ordered_children", template.ordered_children[::-1]
+        )
+    elif component == "exponent_gain":
+        object.__setattr__(template, "exponent_delta", template.exponent_delta + 1)
+    else:
+        object.__setattr__(
+            template.endpoint,
+            "numerator_offset",
+            template.endpoint.numerator_offset + 1,
+        )
     with pytest.raises(ValueError, match="template publication was altered"):
         term.scheduler.source_image(term.adapter, term._source, action)
     assert audit_registered_payloads(term.ledger).forbidden_future_payloads > 0

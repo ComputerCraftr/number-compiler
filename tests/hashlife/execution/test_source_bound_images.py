@@ -434,7 +434,10 @@ def test_relative_cache_distinguishes_boolean_and_integer_inputs() -> None:
     assert not _source_audit(ledger, core).invalid
 
 
-def test_complete_image_constructor_precedes_undemanded_child_traversal() -> None:
+@pytest.mark.parametrize("demanded_first", [False, True])
+def test_complete_image_constructor_precedes_child_traversal(
+    demanded_first: bool,
+) -> None:
     class CompleteAdapter(_DecimalAdapter):
         def apply_composite(
             self,
@@ -442,7 +445,7 @@ def test_complete_image_constructor_precedes_undemanded_child_traversal() -> Non
             source: SourceImageView,
             demand: SourceImageDemand | None,
         ) -> SourceImageCandidate:
-            assert demand is None
+            assert demand is None or demand.name == "last-digit"
             assert action == _Action((8, 9))
             assert source.payload == 7
             return SourceImageCandidate(789, 1, (1, 0), radix=10)
@@ -458,11 +461,22 @@ def test_complete_image_constructor_precedes_undemanded_child_traversal() -> Non
     core = SourceBoundSchedulerCore(ledger)
     adapter = CompleteAdapter(ledger)
     core.register(adapter)
-    image = core.apply(adapter, 7, _Action((8, 9)))
+    action, demand = _Action((8, 9)), SourceImageDemand("last-digit")
+    if demanded_first:
+        image = core.apply_demanded(adapter, 7, action, demand)
+        repeated = core.apply(adapter, 7, action)
+    else:
+        image = core.apply(adapter, 7, action)
+        repeated = core.apply_demanded(adapter, 7, action, demand)
+    assert repeated == image
+    assert ledger.counters["source_image_application_hits"] == 1
     assert core.view(image).payload == 789
     assert len(core._nodes) == 2  # Original source and final image only.
     assert adapter.projection_calls == 0
-    assert ledger.counters["source_image_composite_applications"] == 1
+    assert core.projection(adapter, repeated, SourceImageDemand("value")).value == 789
+    assert core.first_failure(adapter, repeated) is None
+    kind = "demanded_composite" if demanded_first else "composite"
+    assert ledger.counters[f"source_image_{kind}_applications"] == 1
     assert ledger.counters.get("source_image_primitive_applications", 0) == 0
 
 

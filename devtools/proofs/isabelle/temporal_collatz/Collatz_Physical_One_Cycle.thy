@@ -435,11 +435,6 @@ corollary collatz_physical_one_cycle_odd_count:
   using collatz_physical_cycle_odd_count[of 1 n]
   by (simp add: collatz_cycle_admitted_def collatz_cycle_odd_count_def)
 
-theorem collatz_one_cycle_returning_action:
-  assumes "collatz_cycle_admitted source"
-  shows "(physical_collatz ^^ (3*q)) source = source"
-  by (rule collatz_cycle_chunks[OF assms])
-
 lemma collatz_one_cycle_low_residue_is_not_admission:
   "(9::nat) mod 8 = 1 mod 8 \<and>
    (physical_collatz ^^ 3) 9 \<noteq> 9"
@@ -465,7 +460,6 @@ ML \<open>
       collatz_cycle_three_steps collatz_cycle_chunks
       collatz_cycle_literal_odd_counts
       collatz_cycle_chunk_odd_count collatz_physical_cycle_odd_count
-      collatz_one_cycle_returning_action
       collatz_one_cycle_low_residue_is_not_admission})
     then () else error "Physical Collatz one-cycle proof depends on an oracle";
 \<close>

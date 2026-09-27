@@ -5,6 +5,8 @@ import pytest
 from number_compiler.arithmetic.fields.consumer_pullback import (
     AssociatedActionArena,
     ExactRational,
+    GuardedAffineAction,
+    HalfOpenInterval,
     MonotoneSurvivalClock,
     SaturatingAffineAction,
     SurvivalAggregation,
@@ -89,3 +91,24 @@ def test_arena_close_releases_resources_and_invalidates_ids() -> None:
     assert ledger.entries == ledger.nodes == 0
     with pytest.raises(ValueError, match="disposed"):
         arena.record(identity)
+
+
+def test_root_shell_guarded_composition_preserves_strict_seams() -> None:
+    q = ExactRational
+    even = GuardedAffineAction(
+        SaturatingAffineAction(q(3, 2)), HalfOpenInterval(q(0), q(2, 3))
+    )
+    odd = GuardedAffineAction(
+        SaturatingAffineAction(q(3, 2), q(-1)),
+        HalfOpenInterval(q(2, 3), q(1)),
+    )
+    event = even.then(odd)
+    assert event.domain == HalfOpenInterval(q(4, 9), q(2, 3))
+    assert event.apply(q(4, 9)) == q(0)
+    with pytest.raises(ValueError, match="guard"):
+        event.apply(q(2, 3))
+    assert odd.then(odd).domain.empty
+    assert even.then(odd).then(even) == even.then(odd.then(even))
+    assert HalfOpenInterval(q(5), q(-1)) == HalfOpenInterval(q(0), q(0))
+    with pytest.raises(ValueError, match="uncapped"):
+        HalfOpenInterval().pullback(SaturatingAffineAction(cap=q(1)))

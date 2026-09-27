@@ -10,9 +10,11 @@ from devtools.experiments.antihydra.future_grammar import (
     ReachableFutureGrammar,
 )
 from devtools.experiments.antihydra.source_safety import (
-    Interval,
     SourceBlockID,
     SourceSafetyWorkspace,
+)
+from number_compiler.arithmetic.fields.consumer_pullback import (
+    HalfOpenInterval as Interval,
 )
 from number_compiler.arithmetic.contracts.block_effect import (
     BlockContextBudgetExceeded,

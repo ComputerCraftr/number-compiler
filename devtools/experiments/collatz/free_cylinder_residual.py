@@ -30,6 +30,11 @@ from devtools.experiments.collatz.free_cylinder_consumers import (
     _FreeCylinderResidual,
     _GuardTrieNode,
 )
+from devtools.experiments.collatz.free_cylinder_moore import (
+    CollatzMooreObservation,
+    CollatzSpatialMooreProjection,
+    project_collatz_spatial_moore,
+)
 from devtools.experiments.collatz.physical_support import (
     PhysicalSupport,
     PhysicalSupportArena,
@@ -76,6 +81,10 @@ class FreeCylinderResidualArena:
         self._keys: dict[tuple[object, ...], FreeCylinderResidualID] = {}
         self._decisions: dict[int, MultiTerminalDecisionArena] = {}
         self._guard_tries: dict[int, tuple[tuple[_GuardTrieNode, ...], int]] = {}
+        self._moore_projections: dict[
+            tuple[int, CollatzMooreObservation], CollatzSpatialMooreProjection
+        ] = {}
+        self._moore_retained_nodes = 0
         self._physical_powers: dict[tuple[int, int], FreeCylinderResidualID] = {}
         self._constant_powers: dict[
             tuple[int, tuple[int, ...]], dict[int, _ConsumerAction]
@@ -724,6 +733,8 @@ class FreeCylinderResidualArena:
         node = self.resolve(residual)
         if type(source) is not int or source <= 0:
             raise ValueError("cylinder residual source must be positive")
+        if source.bit_length() > node.max_source_bits:
+            raise ValueError("source exceeds the residual's proved bit bound")
         if node.accelerated_events is not None and not source & 1:
             raise ValueError("accelerated cylinder residual source must be odd")
         selected = self.select(
@@ -739,6 +750,39 @@ class FreeCylinderResidualArena:
             selected.accelerated_events,
             selected.physical_ticks,
         )
+
+    def moore_projection(
+        self,
+        residual: FreeCylinderResidualID,
+        observation: CollatzMooreObservation = "endpoint-clock",
+    ) -> CollatzSpatialMooreProjection:
+        """Return the exact consumer-relative Moore quotient of source prefixes.
+
+        The stored residual retains full ordered physical support for audit
+        consumers.  Moore projection is deliberately downstream: endpoint-only
+        and endpoint-plus-clock consumers can merge support-distinct branches
+        without changing the authenticated source action or the audit relation.
+        """
+        node = self.resolve(residual)
+        key = residual.index, observation
+        found = self._moore_projections.get(key)
+        if found is not None:
+            return found
+        # A bounded research certificate, never a production source constructor.
+        if node.predicate_bits > 12:
+            raise BlockContextBudgetExceeded("Moore audit is limited to 12 source bits")
+        available = self.max_branches - self._moore_retained_nodes
+        # Binary relations at q bits contain at most 2^(q+1)-1 nodes.
+        if (1 << (node.predicate_bits + 1)) - 1 > available:
+            raise BlockContextBudgetExceeded("Moore projection retention budget")
+        result = project_collatz_spatial_moore(
+            self._decision_arena(node.predicate_bits),
+            node.decision_root,
+            observation,
+        )
+        self._moore_retained_nodes += result.dag_nodes
+        self._moore_projections[key] = result
+        return result
 
     def metrics(self, residual: FreeCylinderResidualID) -> dict[str, int]:
         node = self.resolve(residual)
@@ -832,6 +876,8 @@ class FreeCylinderResidualArena:
 __all__ = [
     "BoundCylinderAction",
     "BoundCylinderEndpoint",
+    "CollatzMooreObservation",
+    "CollatzSpatialMooreProjection",
     "FreeCylinderResidualArena",
     "FreeCylinderResidualID",
 ]

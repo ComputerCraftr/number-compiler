@@ -2,11 +2,13 @@
 
 from __future__ import annotations
 
-from collections.abc import Mapping
 from dataclasses import dataclass
 from typing import cast
 
-from number_compiler.resources.higher_readonly import audit_schema_call
+from number_compiler.resources.higher_readonly import (
+    audit_identity_index,
+    audit_schema_call,
+)
 from number_compiler.resources.ledger import ResourceLedger
 
 
@@ -105,19 +107,6 @@ def audit_higher_payloads(ledger: ResourceLedger) -> HigherPayloadAudit:
     def store(owner: int, value: object) -> bool:
         return containers.get(owner) is value
 
-    def identity_index(mapping: object, record: object, index: int) -> bool:
-        """Use the canonical hash path, with a mutation-safe audit fallback."""
-        if not isinstance(mapping, Mapping):
-            return False
-        try:
-            found = mapping.get(record)
-            return type(found) is int and found == index
-        except (KeyError, TypeError, AttributeError):
-            return any(
-                key is record and type(value) is int and value == index
-                for key, value in mapping.items()
-            )
-
     for root in ledger.iter_execution_roots():
         if type(root) is HigherSemanticArena:
             valid_root = root.ledger is ledger and all(
@@ -158,7 +147,7 @@ def audit_higher_payloads(ledger: ResourceLedger) -> HigherPayloadAudit:
                         )
                     if expression_record.function is not None:
                         root.function_record(expression_record.function)
-                    valid &= identity_index(
+                    valid &= audit_identity_index(
                         root._expression_keys,
                         expression_record,
                         index,
@@ -196,7 +185,7 @@ def audit_higher_payloads(ledger: ResourceLedger) -> HigherPayloadAudit:
                     for variable in function_record.free_variables:
                         root.expression(variable)
                     valid &= type(function_record.parameter_used) is bool
-                    valid &= identity_index(
+                    valid &= audit_identity_index(
                         root._function_keys,
                         function_record,
                         index,

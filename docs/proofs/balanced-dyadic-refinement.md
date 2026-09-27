@@ -22,7 +22,9 @@ and a reviewed Python mapping are distinct from verification of Python itself.
   `(upper, offset, lower)`, odd-bit count, weighted sum `delta`, and minimum
   prefix including the initial zero. A parent composes transfer left then
   right, adds counts and deltas, and sets its minimum to
-  `min(left.minimum, left.delta + right.minimum)`.
+  `min(left.minimum, left.delta + right.minimum)`. Production uses
+  `consumer_pullback.compose_prefix_safety_values` for both object-level
+  safety actions and the dyadic support/image joins.
 - `retain=False` publishes no chronological support: the returned root is a
   saturated effect. `retain=True` publishes bounded leaf words and composed
   support nodes. The local `(span, residue)` memo reuses a semantic effect and,
@@ -30,6 +32,13 @@ and a reviewed Python mapping are distinct from verification of Python itself.
   has at most 64 entries, shares the ledger's transient stack owner, and is
   cleared on every return or exception. A memo hit does not merge source-image
   identities.
+- Bounded leaves now share a finite arithmetic memo: cold atoms classify at
+  most four branches, and chronological composition constructs effects of at
+  most eight source bits. Keys include owner, the complete pinned law, width
+  and residue. The existing ledger-owned macro store admits at most 256
+  entries and clears at the end of each composite transaction (or failure).
+  It is distinct from the outer 64-entry memo. Optional retention refusal
+  preserves exact computation under stricter request limits.
 - `complete_composite_candidate` checks the action, payload, identity-bound
   source, and exact source precision. It may consume a bounded exact prefix
   while seeking the law's pinned cycle; otherwise it applies the balanced
@@ -42,6 +51,7 @@ and a reviewed Python mapping are distinct from verification of Python itself.
 | Runtime field or operation | Executable model / theorem | Scope of the Python mapping |
 |---|---|---|
 | Bounded leaf and high-fiber effect | `Dyadic_Balanced_Arithmetic.arithmetic_leaf_loop_correct`, `arithmetic_leaf_correct`, `construct_source_effect_endpoint` | Actual branch gains, offsets, physical odd-bit counts, signed delta and minimum match the Python fields. The mathematical leaf accumulator executes branches; a source word appears only in its specification. |
+| Finite-cylinder memo and atom composition | `arithmetic_leaf_same_cylinder`, `arithmetic_leaf_block_compose` | Equal low cylinders give the complete arithmetic effect, including prefix safety; the right block consumes the transported first-block image. Cache authority, transaction lifetime and allocation are Python checks, not consequences of observer equality. |
 | Right low-residue transport and chronological composition | `balanced_spec_source_effect`, `source_effect_reduced_numerator` | Exact non-power splits and transported right sources are modeled. The reduced-numerator equation justifies modular transport; Python's allocation shortcuts and bit charges are independently reviewed/tested. |
 | Postorder execution and exact memo | `Dyadic_Balanced_Worklist.machine_step_preserves_invariant`, `execute_balanced_correct`, `machine_steps_memo_bound` | Models pinned functions, `(span,residue)` keys, duplicate no-op, oldest-entry eviction before optional reservation, and early completion. Numeric validity does not certify Python support IDs or ledger authority. |
 | Antihydra `delta`, `minimum`, and guarded returns | `Balanced_Dyadic_Families.antihydra_balanced_finite_ledger`, `antihydra_constructed_guarded_finite_apply` | Applies the constructed source effect to the existing finite arithmetic/ledger semantics. Physical TM roofs and tape require their separate refinement. |
@@ -49,7 +59,7 @@ and a reviewed Python mapping are distinct from verification of Python itself.
 | Collatz physical output and prefix safety | `collatz_balanced_constructed_endpoint`, `collatz_balanced_finite_minimum_zero`, `collatz_physical_first_negative_unreachable` | Applies to every finite physical horizon. Nonnegative bookkeeping weights do not prove convergence. |
 | Mahler demanded associated action | `mahler_centered_source_fold_all_prefixes` | Binds the actual source-8 centered branch fold to coefficients from the constructed Antihydra transfer, including lengths zero and one. This is finite action equality, not all-time positivity or ledger safety. |
 | Mahler finite cap and first failure | `mahler_constructed_source_eight_cap_failure_iff`, `mahler_source_eight_first_failure_index` | For the fixed source-8 consumer, a nonpositive cap occurs exactly at horizons at least two; the first failing one-based return is two. This is a different predicate from Antihydra's ledger and does not prove TM halting. |
-| Exact cycle suffix | `Collatz_Physical_One_Cycle.collatz_physical_cycle_odd_count` and `collatz_one_cycle_returning_action` | Prove the semantic `(1, 4, 2)` cycle and its odd-count law. Python exact-source admission, cached cycle IDs and cycle-compressed support descent are covered by runtime checks/tests; their executable refinement remains separate. |
+| Exact cycle suffix | `Collatz_Physical_One_Cycle.collatz_physical_cycle_odd_count` and `collatz_cycle_chunks` | Prove the semantic `(1, 4, 2)` cycle and its odd-count law. Python exact-source admission, cached cycle IDs and cycle-compressed support descent are covered by runtime checks/tests; their executable refinement remains separate. |
 | Control work and transient stack | `tree_nodes_linear_bound`, `machine_completes_within_work`, `reachable_stack_linear_bound` | At most a linear number of abstract transitions, a certified linear stack envelope, and at most 64 memo entries. These are not bounds on integer multiplication, retained bytes or wall time. |
 | Support/image publication and resource ledger | Runtime authority checks and adversarial tests | Formal refinement of `ArenaHandle` ownership/generation, retained-ID publication, rollback and allocator charges remains separate from the numeric executor theorem. |
 

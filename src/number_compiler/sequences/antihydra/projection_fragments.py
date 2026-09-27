@@ -14,7 +14,7 @@ ProjectionFragmentSeal = tuple[
 ]
 
 
-def _key_snapshot(
+def projection_key_snapshot(
     key: ProjectionFragmentKey,
 ) -> tuple[int | tuple[int, int, int, int, int, int], ...]:
     return (
@@ -173,7 +173,7 @@ class ProjectionFragmentCache:
         try:
             self.fragments[key] = fragment
             self.seals[key] = (
-                _key_snapshot(fragment.key),
+                projection_key_snapshot(fragment.key),
                 fragment.typed_ports,
                 fragment.sampled_sweep_classes,
             )
@@ -199,7 +199,7 @@ class ProjectionFragmentCache:
     ) -> bool:
         """Check an independent field snapshot, never the publication identity."""
         return self.seals.get(key) == (
-            _key_snapshot(fragment.key),
+            projection_key_snapshot(fragment.key),
             fragment.typed_ports,
             fragment.sampled_sweep_classes,
         )
@@ -210,6 +210,7 @@ class ProjectionFragmentCache:
 
 
 __all__ = [
+    "projection_key_snapshot",
     "ProjectionFragment",
     "ProjectionFragmentCache",
     "ProjectionFragmentKey",

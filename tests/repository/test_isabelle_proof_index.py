@@ -67,6 +67,37 @@ def test_registered_proof_inventory_is_consistent() -> None:
     assert index.build_index()["schema_version"] == 1
 
 
+@pytest.mark.parametrize(
+    "declaration",
+    [
+        "declare gcd_nat.simps [simp]",
+        "declare gcd_nat.simps\n  [simp, intro]",
+        "declare harmless [simp]\n  GCD.gcd_nat.simps [simp]",
+        "lemmas recursive_gcd [simp] = gcd_nat.simps",
+        "lemmas recursive_gcd = gcd_nat.simps [simp]",
+    ],
+)
+def test_recursive_gcd_cannot_enter_global_simplifier(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, declaration: str
+) -> None:
+    directory = _fixture(tmp_path, monkeypatch)
+    path = directory / "Sample.thy"
+    path.write_text(path.read_text().replace("\nend\n", f"\n{declaration}\nend\n"))
+    with pytest.raises(ValueError, match="recursive gcd rule globally registered"):
+        index.build_index()
+
+
+def test_recursive_gcd_policy_allows_ground_proofs_and_ignores_quoted_text() -> None:
+    source = (
+        "(* declare gcd_nat.simps [simp] *)\n"
+        "text \\<open>declare gcd_nat.simps [simp]\\<close>\n"
+        'ML \\<open>val note = "declare gcd_nat.simps [simp]";\\<close>\n'
+        'lemma ground: "gcd (2::nat) 10 = 2" by (simp add: gcd_nat.simps)\n'
+        "declare gcd_nat.simps [simp del]\n"
+    )
+    assert syntax.global_simp_registrations(source, "gcd_nat.simps") == ()
+
+
 def test_index_rejects_unregistered_import_cycle(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
@@ -83,7 +114,11 @@ def test_index_accepts_unregistered_theory_reached_from_registered_root(
     directory = _fixture(tmp_path, monkeypatch)
     sample = directory / "Sample.thy"
     sample.write_text(sample.read_text().replace("imports Main", "imports Helper"))
-    (directory / "Helper.thy").write_text("theory Helper imports Main begin end\n")
+    (directory / "Helper.thy").write_text(
+        'theory Helper imports Main begin lemma helper: "True" by simp\n'
+        'ML \\<open>val _ = if null (Thm_Deps.all_oracles @{thms helper}) then () else error "oracle";\\<close>\n'
+        "end\n"
+    )
     result = index.build_index()
     theories = result["theories"]
     assert isinstance(theories, list)
@@ -244,3 +279,118 @@ def test_documentation_and_string_cannot_forge_theory_header() -> None:
         "Actual",
         ("Library/Real", "Main"),
     )
+
+
+@pytest.mark.parametrize(
+    "target",
+    [
+        "Comma_Cylinder",
+        "Comma_Literal_Bridge",
+        "Comma_Quotient_Totality",
+        "Comma_Round_Totality",
+        "Comma_Decade_Totality",
+        "Comma_Round_Witness_Check",
+        "Comma_Round_Weights",
+        "Comma_Short_Phase",
+        "Comma_Round_Phase_Slice",
+        "Comma_Source_Entry",
+        "Comma_Source_Entry_Witness",
+        "Comma_Source_Uniqueness",
+    ],
+)
+def test_weighted_comma_ancestry_excludes_legacy_execution(target: str) -> None:
+    """Heap ancestry and direct imports must both follow the weighted owner."""
+    sessions = {
+        session.name: session
+        for session in syntax.parse_sessions((index.ISABELLE / "ROOT").read_text())
+    }
+    ancestors: set[str] = set()
+    pending = [target]
+    while pending:
+        name = pending.pop()
+        if name in ancestors or name not in sessions:
+            continue
+        ancestors.add(name)
+        session = sessions[name]
+        pending.extend((session.parent, *session.dependencies))
+    assert "Comma_Forest_Legacy" not in ancestors
+    assert "Comma_Scalar_Reference" not in ancestors
+    assert "Comma_Trace_Regression" not in ancestors
+    headers = dict(
+        syntax.parse_theory_header(path.read_text(), path)
+        for path in index.ISABELLE.rglob("*.thy")
+    )
+    reached: set[str] = set()
+    pending_theories = [
+        theory for name in ancestors for theory in sessions[name].theories
+    ]
+    while pending_theories:
+        name = pending_theories.pop()
+        if name in reached or name not in headers:
+            continue
+        reached.add(name)
+        pending_theories.extend(
+            Path(imported.split(".")[-1]).name for imported in headers[name]
+        )
+    assert "Comma_Finite_Transition" in reached
+    assert "Comma_Literal_Path" in reached
+    assert reached.isdisjoint(
+        {
+            "Comma_Root_Forest",
+            "Comma_Macro_Constructor",
+            "Comma_Weighted_Macro",
+            "Comma_Trace_Regression",
+        }
+    )
+
+
+def test_imported_helper_requires_oracle_audit(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    directory = _fixture(tmp_path, monkeypatch)
+    sample = directory / "Sample.thy"
+    sample.write_text(sample.read_text().replace("imports Main", "imports Helper"))
+    (directory / "Helper.thy").write_text(
+        'theory Helper imports Main begin lemma helper: "True" by simp end\n'
+    )
+    with pytest.raises(
+        ValueError, match="reachable theories without an oracle audit.*Helper"
+    ):
+        index.build_index()
+
+
+@pytest.mark.parametrize(
+    "source",
+    [
+        "session A = B +\nsession B = A +\n",
+        "session A = HOL +\n  sessions B\nsession B = HOL +\n  sessions A\n",
+        "session A = A +\n",
+    ],
+)
+def test_local_session_cycles_are_rejected(source: str) -> None:
+    with pytest.raises(ValueError, match="cyclic Isabelle session dependency"):
+        syntax.parse_sessions(source)
+
+
+def test_external_session_parents_remain_allowed() -> None:
+    sessions = syntax.parse_sessions('session A = "HOL-Number_Theory" +\n')
+    assert sessions[0].parent == "HOL-Number_Theory"
+
+
+def test_collatz_hensel_owner_has_no_reverse_ancestry() -> None:
+    sessions = syntax.parse_sessions((index.ISABELLE / "ROOT").read_text())
+    local = {session.name: session for session in sessions}
+    reached: set[str] = set()
+    pending = ["Collatz_Cylinder_Refinement"]
+    while pending:
+        name = pending.pop()
+        if name in reached or name not in local:
+            continue
+        reached.add(name)
+        session = local[name]
+        pending.extend((session.parent, *session.dependencies))
+    assert "Shared_S_Arithmetic" in reached
+    assert "Reverse_Residuals" not in reached
+    assert "Hensel_Cylinders" in local["Shared_S_Arithmetic"].theories
+    # Reverse temporal carry proofs retain their genuinely required ancestry.
+    assert local["Temporal_Clock_Jumps"].parent == "Reverse_Residuals"

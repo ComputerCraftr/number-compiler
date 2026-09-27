@@ -34,6 +34,9 @@ from number_compiler.hashlife.interfaces.diamond_quotient import (
     LocalInterfaceID,
     MacroInterface,
 )
+from number_compiler.hashlife.interfaces.semantic_bit_transforms import (
+    differs_from_constant,
+)
 from number_compiler.hashlife.interfaces.semantic_bits import (
     FactoredFunctionID,
     _Circuit,
@@ -428,21 +431,7 @@ def _nonblank(
     function: FactoredFunctionID,
     blank: int,
 ) -> FactoredFunctionID:
-    node = self.bits.resolve(function)
-    circuit = _Circuit(self.quotients.functions, node.signature.inputs)
-    roots, valid = circuit.imported(node)
-    equal = circuit.one
-    for bit, root in enumerate(roots):
-        equal = circuit.conjunction(
-            equal,
-            root if blank & (1 << bit) else circuit.negate(root),
-        )
-    pending = circuit.normalized(
-        FunctionSignature(node.signature.inputs, BOOL),
-        (circuit.negate(equal),),
-        valid,
-    )
-    return self.bits._publish(circuit, (pending,))[0]
+    return differs_from_constant(self.bits, function, blank)
 
 
 def _finish(
