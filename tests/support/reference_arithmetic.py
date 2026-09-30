@@ -2,17 +2,53 @@
 
 from __future__ import annotations
 
-from devtools.verification.oracles.sequence_arithmetic import (
-    collatz_literal as collatz_literal,
-)
-from number_compiler.hashlife.execution.dyadic_return_records import DyadicReturnLaw
-
 import random
 from collections.abc import Sequence
+from fractions import Fraction
 
+from devtools.verification.oracles.sequence_arithmetic import (
+    collatz_literal,
+)
 from number_compiler.arithmetic.carry.reverse_sector_transfer import (
     ReverseCarrySectorTransfer,
 )
+from number_compiler.arithmetic.fields.consumer_pullback import SaturatingAffineAction
+from number_compiler.hashlife.execution.dyadic_return_records import DyadicReturnLaw
+
+__all__ = ("collatz_literal",)
+
+
+def rational_action_components(
+    action: SaturatingAffineAction,
+) -> tuple[Fraction, Fraction, Fraction | None]:
+    """Read production coefficients as independent standard-library rationals."""
+    return (
+        Fraction(action.scale.numerator, action.scale.denominator),
+        Fraction(action.offset.numerator, action.offset.denominator),
+        None
+        if action.cap is None
+        else Fraction(action.cap.numerator, action.cap.denominator),
+    )
+
+
+def literal_mahler_step(
+    source: int, scale: Fraction, offset: Fraction, cap: Fraction | None
+) -> tuple[int, Fraction, Fraction, Fraction | None]:
+    """Fold one centered scalar branch with independent rational arithmetic.
+
+    The centered source is one less than the arithmetic image source, so its
+    odd bit is the complement of that image's parity bit.
+    """
+    bit = source & 1
+    local_offset = Fraction(-3 * bit, 2)
+    local_cap = Fraction(3 if bit else 9, 4)
+    offset = Fraction(3, 2) * offset + local_offset
+    cap = (
+        local_cap
+        if cap is None
+        else min(Fraction(3, 2) * cap + local_offset, local_cap)
+    )
+    return (3 * source + bit) // 2, scale * Fraction(3, 2), offset, cap
 
 
 def negacyclic_reduce(values: Sequence[int], classes: int) -> tuple[int, ...]:

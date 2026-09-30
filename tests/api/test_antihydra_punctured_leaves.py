@@ -11,7 +11,7 @@ from number_compiler.hashlife.execution.dyadic_return_runs import RunArithmeticW
 from number_compiler.resources.dyadic_return_payload_audit import (
     audit_dyadic_return_payloads,
 )
-from number_compiler.sequences.antihydra import arithmetic_images
+from number_compiler.sequences.antihydra import mahler_cache
 from number_compiler.sequences.antihydra.mahler_action import associated_action
 from number_compiler.sequences.antihydra.runtime import AntihydraArithmeticTerm
 
@@ -87,8 +87,8 @@ def test_public_source_and_lazy_mahler_share_closed_leaf_publication(
 
     monkeypatch.setattr(workspace, "_runs", forbidden)
     with monkeypatch.context() as optional:
-        optional.setattr(arithmetic_images, "ExactRational", forbidden)
-        optional.setattr(arithmetic_images, "SaturatingAffineAction", forbidden)
+        optional.setattr(mahler_cache, "ExactRational", forbidden)
+        optional.setattr(mahler_cache, "SaturatingAffineAction", forbidden)
         result = term.result()
     assert (result.h, result.balance, result.minimum, result.first_failure_index) == (
         _literal(8, 64)
@@ -138,8 +138,7 @@ def test_punctured_power_budget_releases_transient_workspace() -> None:
     scratch = RunArithmeticWorkspace.for_ledger(ledger, workspace.counter_prefix)
     before = ledger.entries, ledger.nodes
     ledger.max_nodes = ledger.nodes + 23
-    with pytest.raises(BlockContextBudgetExceeded):
-        with scratch.scope():
-            tuple(workspace._punctured_steps((5 << 31) + 1, 32, scratch))
+    with pytest.raises(BlockContextBudgetExceeded), scratch.scope():
+        tuple(workspace._punctured_steps((5 << 31) + 1, 32, scratch))
     assert (ledger.entries, ledger.nodes) == before
     assert scratch.nodes == 0 and not scratch.active

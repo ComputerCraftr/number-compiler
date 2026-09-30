@@ -6,13 +6,13 @@ selection read it without expanding its word or evaluating a Collatz source.
 """
 
 from __future__ import annotations
-from number_compiler.arithmetic.fields.morphism_core import canonical_uniform_power
 
 from collections.abc import MutableMapping, MutableSequence
 from dataclasses import dataclass, field
 from typing import cast
 
 from number_compiler.arithmetic.contracts.block_effect import BlockContextBudgetExceeded
+from number_compiler.arithmetic.fields.morphism_core import canonical_uniform_power
 from number_compiler.arithmetic.fields.skew_transfer import SkewTransfer
 from number_compiler.arithmetic.functions.word_concatenation import concatenate_words
 from number_compiler.resources.ledger import ResourceLedger

@@ -1,9 +1,7 @@
 """Complete primitive transfer functions reuse a parent across bound states."""
 
-from tests.support.assertions import assert_rejected_atomically
-
-
 from dataclasses import replace
+from functools import partial
 from typing import Never
 
 import pytest
@@ -14,6 +12,7 @@ from number_compiler.hashlife.execution.continuations.diamond_tasks import (
     SpatialSummary,
 )
 from number_compiler.sequences.collatz.block_power import CollatzPhysicalBlockEffect
+from tests.support.assertions import assert_rejected_atomically
 from tests.support.diamond_runtime import build
 
 
@@ -72,5 +71,5 @@ def test_invalid_primitive_summary_scope_rejects_before_warm_lookup() -> None:
         replace(request, side=True),
     ):
         assert_rejected_atomically(
-            runtime.ledger, lambda: runtime.execute(invalid), (ValueError, TypeError)
+            runtime.ledger, partial(runtime.execute, invalid), (ValueError, TypeError)
         )

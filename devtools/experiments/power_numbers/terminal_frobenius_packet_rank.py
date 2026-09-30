@@ -23,8 +23,8 @@ packet.
 from __future__ import annotations
 
 from dataclasses import dataclass
-from devtools.verification.fraction_linear_algebra import fraction_matrix_rank
 
+from devtools.verification.fraction_linear_algebra import fraction_matrix_rank
 from number_compiler.sequences.power_numbers.terminal_threshold import (
     terminal_threshold_spec,
 )

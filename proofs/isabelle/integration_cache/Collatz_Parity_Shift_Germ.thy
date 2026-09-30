@@ -1,5 +1,6 @@
 theory Collatz_Parity_Shift_Germ
-  imports Collatz_Reduced_Precision
+  imports "Collatz_Cylinder_Refinement.Collatz_Cylinder_Constructor"
+    "Shared_S_Arithmetic.Dyadic_Source_Lift"
 begin
 
 text \<open>The normalized map consumes one parity symbol per step.  The

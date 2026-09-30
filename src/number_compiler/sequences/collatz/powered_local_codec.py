@@ -8,13 +8,6 @@ successor implementation.
 """
 
 from __future__ import annotations
-from number_compiler.arithmetic.contracts.iterative_queries import defer_binary_children
-from number_compiler.arithmetic.contracts.local_action_codec import (
-    initialize_local_stores,
-    publish_oriented_action,
-    local_cache_hit,
-    compile_source_cell,
-)
 
 from collections.abc import MutableMapping, MutableSequence
 from dataclasses import dataclass
@@ -24,6 +17,13 @@ from number_compiler.arithmetic.automata.symmetry_powering import (
     FiniteKernel,
 )
 from number_compiler.arithmetic.carry.carry_symmetry import collatz_mul3_carry_kernel
+from number_compiler.arithmetic.contracts.iterative_queries import defer_binary_children
+from number_compiler.arithmetic.contracts.local_action_codec import (
+    compile_source_cell,
+    initialize_local_stores,
+    local_cache_hit,
+    publish_oriented_action,
+)
 from number_compiler.arithmetic.contracts.scoped_handles import ArenaHandle, ArenaToken
 from number_compiler.hashlife.execution.field_images import (
     SourceCellArena,

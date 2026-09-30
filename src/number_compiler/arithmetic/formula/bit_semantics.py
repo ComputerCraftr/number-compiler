@@ -5,13 +5,15 @@ they neither grant execution authority nor own caches or semantic state.
 """
 
 from __future__ import annotations
+
 from collections.abc import Callable
-from number_compiler.arithmetic.formula.types import Expr
+
 from number_compiler.arithmetic.formula.skew_residue_laws import (
     pair_growth_edge,
     pair_growth_interior,
     pair_no_growth,
 )
+from number_compiler.arithmetic.formula.types import Expr
 
 
 def constant_bit(node: Expr, position: int) -> int | None:

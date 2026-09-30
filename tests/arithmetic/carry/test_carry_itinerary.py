@@ -1,5 +1,5 @@
-from devtools.verification.consumer_fixtures import carry_seed_rows
 from devtools.benchmarks.pair_encoding import pair_from_int as _pair_from_int
+from devtools.verification.consumer_fixtures import carry_seed_rows
 from number_compiler.arithmetic.carry.carry_itinerary import (
     LiveCarryItinerary,
     PairParityChannels,

@@ -20,18 +20,18 @@ from number_compiler.hashlife.execution.source_bound_images import (
 from number_compiler.hashlife.execution.tile_scheduler import TileScheduler
 from number_compiler.resources.ledger import ResourceLedger
 from number_compiler.resources.stores import LedgerList
-from number_compiler.sequences.comma.arithmetic import (
-    _large_sector_children,
-    comma_children,
-    classify_near_port,
-    decimal_sector,
-    phase_prefix_displacement,
-    safe_complete_cycles,
-)
 from number_compiler.sequences.comma.action_arena import (
     CommaActionArena,
     CommaActionID,
     _Action,
+)
+from number_compiler.sequences.comma.arithmetic import (
+    _large_sector_children,
+    classify_near_port,
+    comma_children,
+    decimal_sector,
+    phase_prefix_displacement,
+    safe_complete_cycles,
 )
 from number_compiler.sequences.comma.boundary_quotient import PERIOD
 
@@ -456,7 +456,6 @@ class _CommaImageAdapter(SourceBoundImageAdapter):
 
     def first_failure(self, image: SourceImageView) -> None:
         del image
-        return None
 
 
 class CommaTerm:
@@ -785,10 +784,10 @@ class CommaTerm:
 
 
 __all__ = [
-    "CommaTerm",
     "FIRST_FORK_INDEX",
     "FIRST_FORK_VALUE",
     "SEMANTIC_VERSION",
     "SOURCE",
+    "CommaTerm",
     "UnresolvedCommaBranch",
 ]

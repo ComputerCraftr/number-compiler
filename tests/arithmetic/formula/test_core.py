@@ -4,14 +4,13 @@ import random
 
 import pytest
 
-from tests.support.reverse_pair_oracle import (
-    symmetric_reference_successor as reference_successor,
-)
-
 from number_compiler.arithmetic.formula.derived import carry_out, growth_bit, successor
 from number_compiler.arithmetic.formula.formula import FormulaArena, root_from_values
 from number_compiler.arithmetic.formula.types import RadixSpec
 from number_compiler.hashlife.execution.evaluator import materialize_values
+from tests.support.reverse_pair_oracle import (
+    symmetric_reference_successor as reference_successor,
+)
 
 
 def test_canonical_state_has_no_duplicate_state() -> None:

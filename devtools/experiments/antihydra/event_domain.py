@@ -16,13 +16,13 @@ from __future__ import annotations
 from collections.abc import Callable
 from dataclasses import dataclass
 
-from number_compiler.arithmetic.fields.consumer_pullback import (
-    HalfOpenInterval as Interval,
-)
 from number_compiler.arithmetic.contracts.block_effect import (
     BlockContextBudgetExceeded,
 )
 from number_compiler.arithmetic.fields.consumer_pullback import ExactRational as Q
+from number_compiler.arithmetic.fields.consumer_pullback import (
+    HalfOpenInterval as Interval,
+)
 from number_compiler.resources.ledger import ResourceLedger
 
 from .source_safety import SourceBlockID, SourceSafetyWorkspace

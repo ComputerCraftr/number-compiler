@@ -5,8 +5,6 @@ flattened into proof-machine Cartesian domains. Evaluation is iterative.
 
 from __future__ import annotations
 
-from number_compiler.resources.stores import append_indexed_node
-
 from collections.abc import Mapping, MutableMapping, MutableSequence
 from dataclasses import dataclass
 from typing import TYPE_CHECKING
@@ -27,6 +25,7 @@ from number_compiler.hashlife.execution.continuations.higher_types import (
     HigherSort,
 )
 from number_compiler.resources.ledger import ResourceLedger
+from number_compiler.resources.stores import append_indexed_node
 
 if TYPE_CHECKING:
     from number_compiler.hashlife.execution.continuations.higher_summaries import (

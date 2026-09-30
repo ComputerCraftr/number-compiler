@@ -2,8 +2,6 @@
 
 from __future__ import annotations
 
-from tests.support.comma_oracles import literal_children as _literal_children
-
 import math
 from typing import Literal
 
@@ -22,6 +20,7 @@ from number_compiler.sequences.comma.boundary_quotient import (
     BoundaryState,
     construct_macro,
 )
+from tests.support.comma_oracles import literal_children as _literal_children
 
 
 def _literal_phase_jump(value: int) -> tuple[int, int]:

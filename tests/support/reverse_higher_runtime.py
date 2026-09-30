@@ -22,29 +22,29 @@ from number_compiler.hashlife.actions.field_actions import FieldCellActionID
 from number_compiler.hashlife.execution.continuations.higher_bimachine import (
     HigherBimachineRuntime,
 )
+from number_compiler.hashlife.execution.continuations.higher_interfaces import (
+    HigherLocalInterfaceArena,
+)
 from number_compiler.hashlife.execution.continuations.higher_macro_composer import (
     HigherSpatialMacroComposer,
     SourceBoundHigherMacro,
 )
-from number_compiler.hashlife.execution.recursive_outputs import (
-    RecursiveCoordinateMorphismArena,
-)
-from number_compiler.hashlife.execution.continuations.higher_interfaces import (
-    HigherLocalInterfaceArena,
-)
 from number_compiler.hashlife.execution.continuations.higher_semantic import (
     HigherSemanticArena,
 )
-from number_compiler.hashlife.execution.field_images import (
-    SourceCellArena,
-    SourceForestID,
-    SourceForestRecord,
-    SourceCellID,
-)
-from number_compiler.resources.ledger import ResourceLedger
 from number_compiler.hashlife.execution.continuations.higher_summaries import (
     HigherSummaryID,
 )
+from number_compiler.hashlife.execution.field_images import (
+    SourceCellArena,
+    SourceCellID,
+    SourceForestID,
+    SourceForestRecord,
+)
+from number_compiler.hashlife.execution.recursive_outputs import (
+    RecursiveCoordinateMorphismArena,
+)
+from number_compiler.resources.ledger import ResourceLedger
 
 if TYPE_CHECKING:
     from number_compiler.hashlife.actions.field_actions import FieldCellActionID

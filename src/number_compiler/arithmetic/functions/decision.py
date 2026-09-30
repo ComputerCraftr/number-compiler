@@ -9,10 +9,6 @@ integer root comparison rather than a materialized Cartesian row/column vector.
 """
 
 from __future__ import annotations
-from number_compiler.arithmetic.contracts.iterative_queries import (
-    defer_dependencies,
-    defer_indexed_dependencies,
-)
 
 import itertools
 from collections.abc import (
@@ -29,6 +25,10 @@ from typing import (
     cast,
 )
 
+from number_compiler.arithmetic.contracts.iterative_queries import (
+    defer_dependencies,
+    defer_indexed_dependencies,
+)
 from number_compiler.arithmetic.fields.radix import bit_width
 
 

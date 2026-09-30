@@ -11,15 +11,15 @@ from collections.abc import Iterator, Mapping
 from typing import Any
 
 from number_compiler.arithmetic.automata.guard import forbid_in_powered_jump
+from number_compiler.arithmetic.formula.bit_semantics import (
+    coefficient_bit,
+    coefficient_dependencies,
+    constant_bit,
+    predicate_bit,
+    shift_position,
+)
 from number_compiler.arithmetic.formula.formula import FormulaArena, FormulaRoot
 from number_compiler.arithmetic.formula.types import Expr
-from number_compiler.arithmetic.formula.bit_semantics import (
-    constant_bit,
-    shift_position,
-    coefficient_dependencies,
-    coefficient_bit,
-    predicate_bit,
-)
 
 
 def eval_bit(

@@ -19,13 +19,7 @@ def audit_comma_source_adapter(
     A well-shaped template remains an arithmetic descriptor.  This audit does
     not assert the periodic lifting theorem or authorize a fork child.
     """
-    from number_compiler.sequences.comma.boundary_quotient import (
-        PERIOD,
-        AffineWeight,
-        BoundaryState,
-        MacroTemplate,
-        SectorFragment,
-    )
+    from number_compiler.resources.source_bound_payload_audit import _resolve_readonly
     from number_compiler.sequences.comma.action_arena import (
         CommaActionArena,
         CommaActionID,
@@ -33,12 +27,18 @@ def audit_comma_source_adapter(
         _action_snapshot,
         _template_seal,
     )
+    from number_compiler.sequences.comma.boundary_quotient import (
+        PERIOD,
+        AffineWeight,
+        BoundaryState,
+        MacroTemplate,
+        SectorFragment,
+    )
     from number_compiler.sequences.comma.power import (
         CommaImagePayload,
         _CommaImageAdapter,
         _Occurrence,
     )
-    from number_compiler.resources.source_bound_payload_audit import _resolve_readonly
 
     if type(adapter) is not _CommaImageAdapter:
         return frozenset(), frozenset(), frozenset()

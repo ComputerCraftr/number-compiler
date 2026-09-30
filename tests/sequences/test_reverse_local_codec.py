@@ -1,7 +1,5 @@
 from __future__ import annotations
 
-from tests.support.local_codec_assertions import assert_publication_refused
-
 from typing import Never, cast
 
 import pytest
@@ -29,6 +27,7 @@ from number_compiler.sequences.reverse_add.powered_local_codec import (
     ReverseLocalActionID,
     ReversePoweredLocalCodec,
 )
+from tests.support.local_codec_assertions import assert_publication_refused
 from tests.support.reverse_field_action import _source_cells
 
 

@@ -5,18 +5,18 @@ from __future__ import annotations
 from array import array
 
 from number_compiler.arithmetic.contracts.block_kernel import FiniteBlockEffect
+from number_compiler.arithmetic.contracts.scoped_handles import ActionProgramID
+from number_compiler.hashlife.execution.continuations.diamond_runtime import (
+    DiamondRuntime,
+)
 from number_compiler.hashlife.interfaces.diamond_boundary_expr import (
     BoundaryExpressionArena,
     ExprID,
     StateSort,
 )
-from number_compiler.resources.ledger import ResourceLedger
-from number_compiler.arithmetic.contracts.scoped_handles import ActionProgramID
-from number_compiler.hashlife.execution.continuations.diamond_runtime import (
-    DiamondRuntime,
-)
-from tests.support.diamond_query import build
 from number_compiler.hashlife.observation.diamond_query import DiamondApplication
+from number_compiler.resources.ledger import ResourceLedger
+from tests.support.diamond_query import build
 
 
 def neighbor_xor() -> FiniteBlockEffect:

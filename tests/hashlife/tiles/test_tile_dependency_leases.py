@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-from tests.support.tile_kernel import _runtime_source
 import gc
 import subprocess
 import sys
@@ -30,7 +29,7 @@ from number_compiler.resources.stores import LedgerDict
 from number_compiler.resources.tile_dependency_leases import (
     audit_tile_dependency_leases,
 )
-from tests.support.tile_kernel import _runtime, _tile
+from tests.support.tile_kernel import _runtime, _runtime_source, _tile
 
 if TYPE_CHECKING:
     from number_compiler.hashlife.execution.tile_scheduler import (

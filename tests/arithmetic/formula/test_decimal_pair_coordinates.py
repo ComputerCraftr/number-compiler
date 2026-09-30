@@ -218,7 +218,8 @@ def test_threshold_residue_saturation_requires_the_admitted_pair_range() -> None
         alpha, epsilon, nu = symbol % 5, symbol % 2, int(symbol > 9)
         beta = epsilon ^ (alpha % 2)
         assert decimal_pair_value((alpha, beta, nu)) == symbol
-    assert (10 % 5, 10 % 2, int(10 > 9)) == (20 % 5, 20 % 2, int(20 > 9))
+    collision = [(value % 5, value % 2, int(value > 9)) for value in (10, 20)]
+    assert collision[0] == collision[1]
     with pytest.raises(ValueError):
         decimal_pair_coordinates(20)
 

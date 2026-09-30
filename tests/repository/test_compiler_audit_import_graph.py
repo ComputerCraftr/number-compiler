@@ -132,8 +132,10 @@ def test_temporal_probe_source_audits_use_executable_syntax(
     router = "src/number_compiler/sequences/runtime_router.py"
     for statement in (
         "from number_compiler.hashlife.execution import diamond_runtime as Fast\n",
-        "from importlib import import_module as load\n"
-        'runtime = load("number_compiler.hashlife.execution.diamond_runtime")\n',
+        (
+            "from importlib import import_module as load\n"
+            'runtime = load("number_compiler.hashlife.execution.diamond_runtime")\n'
+        ),
         "from importlib import import_module as load\nruntime = load(module_name)\n",
     ):
         _write(tmp_path, router, statement)

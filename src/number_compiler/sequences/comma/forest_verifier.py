@@ -8,18 +8,17 @@ the checked arithmetic progressions inside a sector.
 
 from __future__ import annotations
 
-from number_compiler.sequences.comma.arithmetic import phase_period
-from number_compiler.sequences.comma.certificates import _charge
-
-from dataclasses import dataclass
 import gzip
 import hashlib
 import json
+from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
 from number_compiler.resources.ledger import ResourceLedger
 from number_compiler.resources.stores import LedgerList
+from number_compiler.sequences.comma.arithmetic import phase_period
+from number_compiler.sequences.comma.certificates import _charge
 
 _SCHEMA = "a367620-closed-sector-forest-v1"
 _MAX_LINE_BYTES = 8192

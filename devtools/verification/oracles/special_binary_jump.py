@@ -257,7 +257,7 @@ def build_mersenne_binary_jump(
     p = int(exponent)
     max_exponent = int(max_exponent)
     proof = _mersenne_carrier_proof(p, max_exponent=max_exponent)
-    minimized, machine, source_class = _minimized_carrier(proof)
+    _unused_minimized_binding, machine, source_class = _minimized_carrier(proof)
     return SpecialBinaryJumpProgram(
         "mersenne",
         p,
@@ -408,7 +408,7 @@ def build_fermat_binary_jump(
     n = int(index)
     max_width = int(max_width)
     proof = _fermat_carrier_proof(n, max_width=max_width)
-    minimized, machine, source_class = _minimized_carrier(proof)
+    _unused_minimized_binding, machine, source_class = _minimized_carrier(proof)
     return SpecialBinaryJumpProgram(
         "fermat",
         n,

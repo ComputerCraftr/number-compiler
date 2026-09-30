@@ -2,11 +2,10 @@
 
 from __future__ import annotations
 
-from tests.support.semantic_oracles import macro_oracle as oracle
-
 from typing import TYPE_CHECKING, cast
 
 from number_compiler.hashlife.interfaces.diamond_quotient import LocalInterfaceID
+from tests.support.semantic_oracles import macro_oracle as oracle
 
 if TYPE_CHECKING:
     import number_compiler.hashlife.execution.continuations.diamond_runtime

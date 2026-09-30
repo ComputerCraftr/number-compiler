@@ -1,7 +1,6 @@
 """Universal interface facts cache no source-dependent argument observations."""
 
-from tests.support.assertions import assert_rejected_atomically
-
+from functools import partial
 
 import pytest
 
@@ -18,6 +17,7 @@ from number_compiler.hashlife.interfaces.diamond_finite_admission import (
 )
 from number_compiler.hashlife.interfaces.diamond_kernel import FiniteExpression
 from number_compiler.hashlife.interfaces.diamond_kernel_bridge import input_expression
+from tests.support.assertions import assert_rejected_atomically
 from tests.support.diamond_continuation_reduction import machine
 
 
@@ -65,7 +65,7 @@ def test_foreign_and_wrong_port_reject_before_telemetry_or_retention(
     for source, target, function in cases:
         assert_rejected_atomically(
             runtime.ledger,
-            lambda: admission.validate(source, target, function),
+            partial(admission.validate, source, target, function),
             ValueError,
         )
 

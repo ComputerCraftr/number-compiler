@@ -1,6 +1,5 @@
 """Atomic causal probes validate authority before touching result storage."""
 
-from tests.support.tile_kernel import _runtime_source
 from dataclasses import replace
 
 import pytest
@@ -17,7 +16,7 @@ from number_compiler.hashlife.execution.tile_causal_results import (
 from number_compiler.hashlife.execution.tile_kernel import PrimitiveTileKernelAdapter
 from number_compiler.resources.ledger import ResourceLedger
 from number_compiler.resources.stores import LedgerDict
-from tests.support.tile_kernel import _runtime, _tile
+from tests.support.tile_kernel import _runtime, _runtime_source, _tile
 
 
 def test_atomic_probe_rejects_malformed_key_before_memo_access(
@@ -96,8 +95,8 @@ def test_atomic_probe_rejects_changed_admitted_action_before_memo_access(
 def test_public_causal_lookup_retains_deep_action_validation(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    _ledger, tiles, adapter, action, scheduler, source = _runtime_source(
-        BaseBlockEffect(3), (0,)
+    _ledger, _unused_tiles_binding, adapter, action, scheduler, source = (
+        _runtime_source(BaseBlockEffect(3), (0,))
     )
     key = causal_result_key(
         scheduler.results,

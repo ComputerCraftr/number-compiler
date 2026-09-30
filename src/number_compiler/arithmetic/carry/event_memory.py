@@ -25,15 +25,16 @@ reverse/add has an exact order-20 nonlinear recurrence on binary carry fields.
 """
 
 from __future__ import annotations
-from number_compiler.arithmetic.formula.skew_residue_laws import (
-    pair_no_growth,
-    pair_growth_interior,
-    pair_growth_edge,
-)
 
 import itertools
 from collections.abc import Sequence
 from math import comb
+
+from number_compiler.arithmetic.formula.skew_residue_laws import (
+    pair_growth_edge,
+    pair_growth_interior,
+    pair_no_growth,
+)
 
 
 def pair_plane_bits(base: int) -> int:

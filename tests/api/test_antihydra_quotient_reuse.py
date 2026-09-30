@@ -2,15 +2,15 @@
 
 import pytest
 
+from number_compiler.arithmetic.fields.skew_transfer import integer_dyadic_fiber_action
 from number_compiler.hashlife.execution.dyadic_return_records import (
     DyadicReturnImageID,
     _SourceNode,
 )
-from number_compiler.arithmetic.fields.skew_transfer import integer_dyadic_fiber_action
-from number_compiler.sequences.antihydra.mahler_action import associated_action
 from number_compiler.sequences.antihydra.arithmetic_images import (
     AntihydraArithmeticImageWorkspace,
 )
+from number_compiler.sequences.antihydra.mahler_action import associated_action
 from number_compiler.sequences.antihydra.runtime import AntihydraArithmeticTerm
 
 

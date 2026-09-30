@@ -1,7 +1,5 @@
 from __future__ import annotations
 
-from tests.support.power_assertions import assert_collatz_radices
-
 import json
 from typing import Never
 
@@ -10,6 +8,7 @@ import pytest
 import number_compiler.sequences.reverse_add.digits as reverse_digits
 from number_compiler.api.cli import main as cli_main
 from number_compiler.api.number_api import NumberCompiler
+from tests.support.power_assertions import assert_collatz_radices
 
 
 def test_nth_terms_are_exact_across_all_canonical_families() -> None:

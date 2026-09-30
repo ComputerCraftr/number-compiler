@@ -11,10 +11,10 @@ exact position.  No seed-196 assumption appears here.
 """
 
 from __future__ import annotations
+
 from number_compiler.arithmetic.contracts.input_validation import (
     normalized_integer_pair,
 )
-
 from number_compiler.arithmetic.fields.digit_formula import (
     DigitSpec,
     digit_root_from_values,

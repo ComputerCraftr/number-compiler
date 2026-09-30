@@ -7,10 +7,6 @@ syntactically, not claimed to be an extensional quotient of higher functions.
 
 from __future__ import annotations
 
-from number_compiler.hashlife.interfaces.diamond_kernel_bridge import (
-    evaluate_primitive_bits,
-)
-
 from collections.abc import Mapping, MutableMapping, MutableSequence, Sequence
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, Literal, TypeAlias
@@ -33,6 +29,7 @@ from number_compiler.hashlife.interfaces.diamond_boundary import (
 )
 from number_compiler.hashlife.interfaces.diamond_kernel import PrimitiveKernel
 from number_compiler.hashlife.interfaces.diamond_kernel_bridge import (
+    evaluate_primitive_bits,
     input_expression,
 )
 from number_compiler.hashlife.interfaces.diamond_unary import PrimitiveUnaryFunctions

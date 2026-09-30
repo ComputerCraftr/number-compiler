@@ -17,7 +17,6 @@ from number_compiler.resources.metric_registry import (
     ALGEBRAIC_FIELD_WORK_COUNTERS,
     DIAMOND_MEMO_ROLES,
     DIAMOND_WORK_COUNTERS,
-    PROOF_CERTIFICATE_POPULATIONS,
     QUOTIENT_WORK_COUNTERS,
     SEMANTIC_ADAPTER_WORK_COUNTERS,
     observed_node_partition,
@@ -37,7 +36,15 @@ from number_compiler.resources.temporal_diagnostics import (
 )
 
 
-def collect_ledger_metrics(ledger: ResourceLedger) -> LedgerMetrics:
+def collect_ledger_metrics(
+    ledger: ResourceLedger, *, audit_payloads: bool = True
+) -> LedgerMetrics:
+    """Collect resource counts, optionally performing explicit graph audits.
+
+    Public runtime metric snapshots pass ``audit_payloads=False``. Deep payload
+    and ownership walks remain available to callers that explicitly request a
+    ledger audit.
+    """
     from number_compiler.arithmetic.carry.reverse_port_functions import (
         ReversePortFunction,
     )
@@ -80,11 +87,22 @@ def collect_ledger_metrics(ledger: ResourceLedger) -> LedgerMetrics:
     )
     from number_compiler.hashlife.tiles.tiles import TileArena, TileID
     from number_compiler.projection.point_response import PointResponse
+    from number_compiler.resources.ownership import OwnershipAudit
+    from number_compiler.resources.payload_policy import PayloadAudit
 
     source_version = ledger.mutation_version
     snapshot = ledger.snapshot()
-    # Audits charge their bounded arithmetic; the retained inventory stays fixed.
-    audit = audit_registered_payloads(ledger, snapshot=snapshot, fresh=False)
+    root_signature = ledger.audit_root_signature() if not audit_payloads else None
+    cached_audit = ledger.cached_payload_audit(root_signature)
+    audit_is_current = type(cached_audit) is PayloadAudit
+    if audit_payloads:
+        # Audits charge their bounded arithmetic; the retained inventory stays fixed.
+        audit = audit_registered_payloads(ledger, snapshot=snapshot, fresh=False)
+        audit_is_current = True
+    elif type(cached_audit) is PayloadAudit:
+        audit = cached_audit
+    else:
+        audit = PayloadAudit(0, 0, 0)
     audit_counters = {
         "collatz_d8_payload_audit_local_symbols",
         "dyadic_payload_audit_branch_steps",
@@ -92,6 +110,7 @@ def collect_ledger_metrics(ledger: ResourceLedger) -> LedgerMetrics:
         "dyadic_payload_audit_cycle_checks",
         "dyadic_payload_audit_compositions",
         "dyadic_payload_audit_prefix_additions",
+        "dyadic_payload_audit_reconstruction_hits",
         "source_image_seal_validation_visits",
         "mahler_source_validation_operand_bits",
         "antihydra_payload_audit_branch_steps",
@@ -121,7 +140,15 @@ def collect_ledger_metrics(ledger: ResourceLedger) -> LedgerMetrics:
     ):
         raise RuntimeError("execution resources changed during metric capture")
     inventory = snapshot.inventory
-    ownership = audit_execution_ownership(ledger, fresh=False)
+    cached_ownership = ledger.cached_ownership_audit(root_signature)
+    ownership_is_current = type(cached_ownership) is OwnershipAudit
+    if audit_payloads:
+        ownership = audit_execution_ownership(ledger, fresh=False)
+        ownership_is_current = True
+    elif type(cached_ownership) is OwnershipAudit:
+        ownership = cached_ownership
+    else:
+        ownership = OwnershipAudit(0, 0, ())
     # A zero-population scope is an accounting namespace, not a retained
     # container.  Require inventory and payload callbacks as soon as the owner
     # retains entries, nodes, or roots; do not mark an unused observation scope
@@ -433,7 +460,9 @@ def collect_ledger_metrics(ledger: ResourceLedger) -> LedgerMetrics:
             "reverse_carry_function_classifications", 0
         ),
         representation_boundary_complete=int(
-            not (
+            audit_is_current
+            and ownership_is_current
+            and not (
                 unregistered
                 or unresolved_payloads
                 or unknown_nodes
@@ -461,7 +490,9 @@ def collect_ledger_metrics(ledger: ResourceLedger) -> LedgerMetrics:
         retained_unbounded_future_integers=audit.unbounded_future_integers,
         resource_audit_unknown_payloads=audit.unknown_payloads,
         resource_audit_complete=int(
-            not (
+            audit_is_current
+            and ownership_is_current
+            and not (
                 unregistered
                 or unresolved_payloads
                 or unknown_nodes
@@ -639,18 +670,9 @@ def collect_ledger_metrics(ledger: ResourceLedger) -> LedgerMetrics:
                 )
                 for name, role in DIAMOND_MEMO_ROLES
             },
-            "diamond_instrumentation_complete": int(
-                set(DIAMOND_WORK_COUNTERS) <= counters.keys()
-            ),
             "algebraic_instrumentation_complete": int(
                 set(ALGEBRAIC_FIELD_WORK_COUNTERS) <= counters.keys()
             ),
-            "collatz_c4_proof_left_state_classes": PROOF_CERTIFICATE_POPULATIONS[
-                "collatz_c4_left"
-            ],
-            "collatz_c4_proof_right_state_classes": PROOF_CERTIFICATE_POPULATIONS[
-                "collatz_c4_right"
-            ],
             "canonical_parent_identity_entries": sum(
                 record.left is not None and record.right is not None
                 for root in execution_roots
@@ -701,7 +723,10 @@ def ledger_fields_from(metrics: LedgerMetrics) -> dict[str, object]:
 
 
 def collect_unindexed_metrics(ledger: ResourceLedger) -> HashLifeProjectionMetrics:
-    """Report compiler resources without constructing an index or doing queries."""
+    """Collect explicitly audited detailed diagnostics for unindexed terms.
+
+    CLI metrics use the separate schema-eight snapshot collector.
+    """
     report = collect_ledger_metrics(ledger)
     values = ledger_fields_from(report)
     values.update(

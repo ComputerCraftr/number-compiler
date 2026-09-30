@@ -7,7 +7,6 @@ dimension, including when several slots refer to the same canonical node.
 from __future__ import annotations
 
 from collections.abc import Iterable, Mapping, Sequence
-from types import MappingProxyType
 
 from number_compiler.resources import semantic_metric_registry
 from number_compiler.resources.ledger import ResourceInventory
@@ -298,9 +297,6 @@ TILE_WORK_COUNTERS = (
 # Counts are forwarded only from runtime instrumentation. Presence is reported
 # separately, so a missing instrument cannot masquerade as a measured zero.
 DIAMOND_WORK_COUNTERS = (
-    "diamond_requests",
-    "diamond_cache_hits",
-    "diamond_evaluations",
     "macro_transfer_requests",
     "macro_transfer_cache_hits",
     "macro_transfer_evaluations",
@@ -861,14 +857,6 @@ def schema7_inventory_values(inventory: Iterable[ResourceInventory]) -> dict[str
             "coordinate_output_morphism",
         ),
     }
-
-
-PROOF_CERTIFICATE_POPULATIONS: Mapping[str, int] = MappingProxyType(
-    {
-        "collatz_c4_left": 50,
-        "collatz_c4_right": 90,
-    }
-)
 
 
 def normalized_role(role: str) -> str:

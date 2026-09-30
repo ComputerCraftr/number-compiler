@@ -488,3 +488,171 @@ def test_comma_action_reuse_uses_the_common_lane() -> None:
     assert record.action.exact_hits == 2
     assert record.action.misses == record.action.publications == 2
     assert record.family_work[0].operand_bits == (("comma_operand_bit_work", 120),)
+
+
+@pytest.mark.parametrize("family", ("reverse", "collatz", "antihydra", "mahler"))
+def test_macrocell_metrics_separate_semantic_and_occurrence_reuse(family: str) -> None:
+    ledger = ResourceLedger()
+    prefix = f"{family}_hashlife_"
+    for name, count in (
+        ("semantic_lookups", 4),
+        ("semantic_exact_hits", 3),
+        ("semantic_transported_hits", 0),
+        ("semantic_local_hits", 3),
+        ("semantic_process_hits", 0),
+        ("semantic_misses", 1),
+        ("occurrence_lookups", 4),
+        ("occurrence_exact_hits", 0),
+        ("occurrence_transported_hits", 0),
+        ("occurrence_local_hits", 0),
+        ("occurrence_process_hits", 0),
+        ("occurrence_misses", 4),
+        ("max_level", 7),
+        ("primitive_steps", 8),
+        ("key_operand_bits", 256),
+        ("occurrence_bypasses", 2),
+    ):
+        ledger.bump(prefix + name, count)
+    before = dict(ledger.counters)
+    record = collect_temporal_diagnostics_snapshot(ledger).macrocells[0]
+    assert record.family == family
+    assert (
+        record.index_unit
+        == {
+            "collatz": "normalized_symbol",
+            "reverse": "reverse_add_iteration",
+            "antihydra": "macro_return",
+            "mahler": "macro_return",
+        }[family]
+    )
+    assert record.cache_scope == (
+        "complete_associated_observer" if family == "mahler" else "source_cylinder"
+    )
+    assert record.semantic.requests == 4
+    assert record.semantic.exact_hits == 3
+    assert record.semantic.publications is None
+    assert record.semantic.transported_hits == 0
+    assert record.semantic.local_hits == 3
+    assert record.semantic.process_hits == 0
+    assert record.semantic.unclassified_hits is None
+    if family == "mahler":
+        assert record.occurrence.requests is None
+        assert record.outer_observer.requests == 4
+        assert record.outer_observer.exact_hits == 0
+        assert record.outer_observer.transported_hits == 0
+        assert record.outer_observer.local_hits == 0
+        assert record.outer_observer.process_hits == 0
+        assert record.outer_observer.misses == 4
+        assert record.outer_observer.applied_hits is None
+        assert record.outer_observer.unclassified_hits is None
+    else:
+        assert record.occurrence.requests == 4
+        assert record.occurrence.exact_hits == 0
+        assert record.occurrence.transported_hits == 0
+        assert record.occurrence.local_hits == record.occurrence.process_hits == 0
+        assert record.occurrence.unclassified_hits is None
+    assert (record.max_level, record.primitive_steps) == (7, 8)
+    assert record.key_operand_bits == 256
+    assert record.capacity_bypasses == 2
+    assert record.cold_child_discoveries is None
+    assert record.coefficient_compositions is None
+    assert record.output_region_visits is None
+    assert record.emitted_digits is None
+    assert record.failed_work is None
+    assert dict(ledger.counters) == before
+
+
+def test_absent_macrocell_instrumentation_is_not_a_measured_zero() -> None:
+    assert collect_temporal_diagnostics_snapshot(ResourceLedger()).macrocells == ()
+
+
+def test_mahler_capacity_refusals_are_counted_once_across_stores() -> None:
+    ledger = ResourceLedger()
+    ledger.bump("mahler_hashlife_source_action_bypasses", 2)
+    ledger.bump("mahler_hashlife_occurrence_bypasses", 1)
+    before = dict(ledger.counters)
+    record = collect_temporal_diagnostics_snapshot(ledger).macrocells[0]
+    assert record.capacity_bypasses == 3
+    assert record.source_action.bypasses == 2
+    assert record.outer_observer.bypasses == 1
+    assert record.occurrence.bypasses is None
+    assert dict(ledger.counters) == before
+
+
+def test_rejected_occurrence_is_reportable_without_becoming_a_hit() -> None:
+    ledger = ResourceLedger()
+    for suffix, count in (
+        ("lookups", 1),
+        ("exact_hits", 0),
+        ("transported_hits", 0),
+        ("local_hits", 0),
+        ("process_hits", 0),
+        ("misses", 0),
+        ("admission_rejections", 1),
+        ("applied_hits", 0),
+    ):
+        ledger.bump("collatz_hashlife_occurrence_" + suffix, count)
+    before = dict(ledger.counters)
+    lane = collect_temporal_diagnostics_snapshot(ledger).macrocells[0].occurrence
+    assert lane.requests == lane.admission_rejections == 1
+    assert lane.exact_hits == lane.transported_hits == lane.applied_hits == 0
+    assert ledger.counters == before
+
+
+def test_one_retrieval_cannot_be_both_applied_and_rejected_for_fit() -> None:
+    ledger = ResourceLedger()
+    for suffix, count in (
+        ("lookups", 1),
+        ("exact_hits", 1),
+        ("transported_hits", 0),
+        ("applied_hits", 1),
+        ("rejected_fit", 1),
+    ):
+        ledger.bump("collatz_hashlife_occurrence_" + suffix, count)
+    with pytest.raises(ValueError, match="fit rejections and applications"):
+        collect_temporal_diagnostics_snapshot(ledger)
+
+
+def test_mahler_source_action_and_outer_observer_reuse_are_separate_lanes() -> None:
+    ledger = ResourceLedger()
+    ledger.bump("mahler_hashlife_source_action_active")
+    ledger.bump("mahler_hashlife_source_action_lookups", 3)
+    ledger.bump("mahler_hashlife_source_action_exact_hits", 2)
+    ledger.bump("mahler_hashlife_source_action_transported_hits", 1)
+    ledger.bump("mahler_hashlife_source_action_local_hits", 2)
+    ledger.bump("mahler_hashlife_source_action_process_hits", 1)
+    ledger.bump("mahler_hashlife_source_action_misses", 0)
+    ledger.bump("mahler_hashlife_source_action_applied_hits", 2)
+    ledger.bump("mahler_hashlife_source_action_applied_parent_hits", 1)
+    ledger.bump("mahler_hashlife_occurrence_lookups", 5)
+    ledger.bump("mahler_hashlife_occurrence_exact_hits", 2)
+    ledger.bump("mahler_hashlife_occurrence_transported_hits", 0)
+    ledger.bump("mahler_hashlife_occurrence_local_hits", 0)
+    ledger.bump("mahler_hashlife_occurrence_process_hits", 2)
+    ledger.bump("mahler_hashlife_occurrence_misses", 3)
+    ledger.bump("mahler_hashlife_occurrence_publications", 2)
+    ledger.bump("mahler_hashlife_occurrence_applied_hits", 2)
+    ledger.bump("mahler_hashlife_occurrence_key_operand_bits", 73)
+    before = dict(ledger.counters)
+    record = collect_temporal_diagnostics_snapshot(ledger).macrocells[0]
+    assert record.cache_scope == "source_occurrence_associated_action"
+    assert record.occurrence.requests is None
+    assert record.source_action.requests == 3
+    assert record.source_action.exact_hits == 2
+    assert record.source_action.transported_hits == 1
+    assert record.source_action.local_hits == 2
+    assert record.source_action.process_hits == 1
+    assert record.source_action.applied_hits == 2
+    assert record.source_action.applied_parent_hits == 1
+    assert record.source_action.rejected_fit is None
+    assert record.outer_observer.requests == 5
+    assert record.outer_observer.exact_hits == 2
+    assert record.outer_observer.transported_hits == 0
+    assert record.outer_observer.process_hits == 2
+    assert record.outer_observer.applied_hits == 2
+    assert record.outer_observer.applied_parent_hits is None
+    assert record.outer_observer.rejected_fit is None
+    assert record.outer_observer.key_operand_bits == 73
+    assert record.outer_observer_scope == "process_complete_associated_observer"
+    assert record.outer_observer.unclassified_hits is None
+    assert ledger.counters == before

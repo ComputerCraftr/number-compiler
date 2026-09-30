@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-from tests.support.reference_arithmetic import symmetric_word as symmetric_word
 import random
 
 from devtools.verification.block_power import (
@@ -15,7 +14,10 @@ from number_compiler.arithmetic.contracts.block_effect import (
 from number_compiler.arithmetic.contracts.block_kernel import (
     BaseBlockEffect,
 )
+from tests.support.reference_arithmetic import symmetric_word
 from tests.support.reverse_pair_oracle import reference_successor
+
+__all__ = ("symmetric_word",)
 
 
 def test_block_power_exact_multibase_without_intermediate_generations() -> None:

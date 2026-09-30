@@ -4,7 +4,6 @@ from __future__ import annotations
 
 from collections.abc import Sequence
 
-
 from number_compiler.arithmetic.contracts.block_effect import BlockEffect, BoundarySide
 from number_compiler.arithmetic.functions.semantic_functions import (
     SemanticFunctionArena,
@@ -12,11 +11,12 @@ from number_compiler.arithmetic.functions.semantic_functions import (
 from number_compiler.hashlife.actions.field_actions import FieldCellActionID
 from number_compiler.hashlife.execution.tile_kernel import PrimitiveTileKernelAdapter
 from number_compiler.hashlife.execution.tile_scheduler import (
-    TileScheduler,
     ChildContext,
+    TileScheduler,
 )
 from number_compiler.hashlife.interfaces.diamond_kernel import DiamondKernelArena
 from number_compiler.hashlife.interfaces.diamond_quotient import DiamondQuotientArena
+from number_compiler.hashlife.tiles.tile_ports import ResultWiring
 from number_compiler.hashlife.tiles.tile_results import CompletedResultArena
 from number_compiler.hashlife.tiles.tiles import (
     TileArena,
@@ -25,7 +25,6 @@ from number_compiler.hashlife.tiles.tiles import (
     TileRecord,
 )
 from number_compiler.resources.ledger import ResourceLedger
-from number_compiler.hashlife.tiles.tile_ports import ResultWiring
 
 
 def _runtime(

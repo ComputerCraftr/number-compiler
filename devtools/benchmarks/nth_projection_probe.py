@@ -7,12 +7,10 @@ ratio.  The release guard requires substantial headroom below that boundary.
 
 from __future__ import annotations
 
-from devtools.paths import report_directory
-
 import json
 from typing import TypedDict, Unpack
 
-from devtools.paths import repository_root
+from devtools.paths import report_directory, repository_root
 from devtools.runs import run_reported
 from number_compiler.api.number_api import NumberCompiler
 from number_compiler.arithmetic.fields.symbolic_extent import extent_json_value

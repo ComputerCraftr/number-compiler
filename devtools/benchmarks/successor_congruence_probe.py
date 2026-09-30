@@ -4,9 +4,9 @@ from __future__ import annotations
 
 from typing import TypedDict
 
+from devtools.benchmarks.reporting import write_json_report
 from devtools.paths import project_version, report_output, repository_root
 from devtools.runs import run_reported
-from devtools.benchmarks.reporting import write_json_report
 from devtools.verification import exact_oracle
 from devtools.verification.collatz_spacetime import (
     CollatzCausalSpacetimeEngine,

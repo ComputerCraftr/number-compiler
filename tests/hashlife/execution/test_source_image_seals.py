@@ -7,20 +7,20 @@ from enum import Enum
 
 import pytest
 
+from number_compiler.arithmetic.automata.symmetry_powering import ActionTransform
+from number_compiler.arithmetic.contracts.scoped_handles import ArenaHandle, ArenaToken
+from number_compiler.arithmetic.fields.symbolic_innovation import InnovationID
 from number_compiler.hashlife.execution.source_image_seals import (
     PublicationSeals,
     _TypedKey,
     publication_matches,
     publication_seal,
 )
-from number_compiler.arithmetic.contracts.scoped_handles import ArenaHandle, ArenaToken
-from number_compiler.arithmetic.automata.symmetry_powering import ActionTransform
-from number_compiler.arithmetic.fields.symbolic_innovation import InnovationID
+from number_compiler.resources.ledger import ResourceLedger
 from number_compiler.sequences.collatz.powered_local_codec import CollatzLocalActionID
 from number_compiler.sequences.reverse_add.powered_local_codec import (
     ReverseLocalActionID,
 )
-from number_compiler.resources.ledger import ResourceLedger
 
 
 @dataclass(frozen=True, slots=True, weakref_slot=True)
@@ -43,8 +43,7 @@ class _MutablePayloadHandle(ArenaHandle):
     payload: object = None
 
 
-class _MutableEnum(Enum):
-    ITEM = [1]
+_MutableEnum = Enum("_MutableEnum", {"ITEM": [1]})
 
 
 def test_warm_validation_skips_large_immutable_primitive_tuple() -> None:
@@ -86,7 +85,7 @@ def test_flat_guard_keeps_the_original_untraversed_owner_type() -> None:
 
 @pytest.mark.parametrize("handle_type", (ReverseLocalActionID, CollatzLocalActionID))
 def test_subclass_transform_is_sealed_and_part_of_typed_identity(
-    handle_type: type[ReverseLocalActionID] | type[CollatzLocalActionID],
+    handle_type: type[ReverseLocalActionID | CollatzLocalActionID],
 ) -> None:
     owner = ArenaToken("source")
     original = handle_type(owner, "action", 0, ActionTransform.IDENTITY)

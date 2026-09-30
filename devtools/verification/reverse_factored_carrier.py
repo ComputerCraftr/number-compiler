@@ -9,10 +9,10 @@ from pathlib import Path
 from time import perf_counter
 from unittest.mock import patch
 
+from devtools.experiments.reverse_add.cocycle_carrier import CocycleReverseCarrier
 from devtools.experiments.reverse_add.factored_carrier import (
     FactoredReverseCarrier,
 )
-from devtools.experiments.reverse_add.cocycle_carrier import CocycleReverseCarrier
 from devtools.experiments.reverse_add.factored_power import FactoredTemporalPower
 from devtools.verification import exact_oracle, require_exact_oracle
 from devtools.verification.reverse_plane_checkpoint import export_planes, import_planes

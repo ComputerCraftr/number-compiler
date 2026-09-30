@@ -15,13 +15,14 @@ import time
 from collections import defaultdict, deque
 from collections.abc import Sequence
 from dataclasses import dataclass
+from typing import Literal
 
-from devtools.verification.random_inputs import random_half
-from devtools.verification.reverse_pair_reference import reference_pair_half
 from devtools.verification.partition_refinement import (
     partition_representatives,
     stable_partition,
 )
+from devtools.verification.random_inputs import random_half
+from devtools.verification.reverse_pair_reference import reference_pair_half
 from devtools.verification.transducer_graph import (
     DenseInterner,
     append_reachable_edge,
@@ -31,7 +32,6 @@ from devtools.verification.transducer_graph import (
     quotient_graph,
     trim_ids,
 )
-from typing import Literal
 
 # parity tags live above the pair alphabet
 HalfState = tuple[Literal["S"]] | tuple[Literal["B"], int, int, int, int, int, int, int]

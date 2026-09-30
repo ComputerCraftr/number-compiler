@@ -2,8 +2,6 @@
 
 from __future__ import annotations
 
-from tests.support.assertions import assert_rejected_atomically
-
 from typing import TYPE_CHECKING, Never, TypedDict
 
 import pytest
@@ -28,6 +26,7 @@ from number_compiler.projection.point_response import PointResponseRegister
 from number_compiler.resources.ledger import ResourceLedger
 from number_compiler.sequences.collatz.block_power import PoweredCollatzTerm
 from number_compiler.sequences.reverse_add.power import ReverseAddPoweredTerm
+from tests.support.assertions import assert_rejected_atomically
 
 if TYPE_CHECKING:
     from number_compiler.arithmetic.fields.dyadic_tile import DyadicTile

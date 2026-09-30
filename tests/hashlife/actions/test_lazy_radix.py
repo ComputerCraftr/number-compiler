@@ -1,4 +1,3 @@
-from tests.support.reference_arithmetic import collatz_literal as _collatz
 from random import Random
 from typing import cast
 
@@ -9,6 +8,7 @@ from number_compiler.arithmetic.fields.radix import digits_lsd
 from number_compiler.projection.lazy_radix import RadixProjection, collatz_radix_digit
 from number_compiler.resources.ledger import ResourceLedger
 from number_compiler.sequences.collatz.block_power import PoweredCollatzTerm
+from tests.support.reference_arithmetic import collatz_literal as _collatz
 from tests.support.runtime_limits import deadline
 
 

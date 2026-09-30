@@ -4,8 +4,6 @@ from dataclasses import replace
 
 import pytest
 
-from number_compiler.resources.ledger import ResourceLedger, ResourceInventory
-
 from devtools.experiments.reverse_add.cocycle_temporal import (
     CocycleAction,
     CocycleTemporalArena,
@@ -20,7 +18,11 @@ from number_compiler.arithmetic.contracts.block_effect import (
     BlockContextBudgetExceeded,
 )
 from number_compiler.hashlife.interfaces.semantic_bits import FactoredFunctionID
-from number_compiler.resources.ledger import OwnedMemo
+from number_compiler.resources.ledger import (
+    OwnedMemo,
+    ResourceInventory,
+    ResourceLedger,
+)
 from number_compiler.resources.payload_audit import audit_registered_payloads
 
 

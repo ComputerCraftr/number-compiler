@@ -7,7 +7,6 @@ lowering boundary; they can never enter a field-action record.
 """
 
 from __future__ import annotations
-from number_compiler.arithmetic.fields.morphism_core import semigroup_power
 
 from collections.abc import Mapping, MutableMapping, MutableSequence
 from dataclasses import dataclass
@@ -25,6 +24,7 @@ from number_compiler.arithmetic.fields.adic_morphism import (
     PadicAffineMorphism,
     PadicRadialQuotient,
 )
+from number_compiler.arithmetic.fields.morphism_core import semigroup_power
 from number_compiler.hashlife.actions.field_actions import (
     CoordinateOutputMorphismID,
     FieldCellActionID,

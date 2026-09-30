@@ -1,6 +1,5 @@
 """Public scheduler demand must enter the arbitrary-depth causal recurrence."""
 
-from tests.support.tile_kernel import _runtime_source
 from typing import Never
 
 import pytest
@@ -9,7 +8,7 @@ from number_compiler.arithmetic.contracts.block_kernel import BaseBlockEffect
 from number_compiler.hashlife.execution.tile_causal import CausalTileEngine
 from number_compiler.hashlife.tiles.tile_results import ResultLease
 from number_compiler.hashlife.tiles.tiles import TileLease
-from tests.support.tile_kernel import _runtime, _tile
+from tests.support.tile_kernel import _runtime, _runtime_source, _tile
 
 
 @pytest.mark.parametrize(
@@ -24,8 +23,8 @@ def test_scheduler_deep_point_uses_causal_tiles_without_complete_midpoint(
     exponent: int,
     expected: tuple[int, int, int, int],
 ) -> None:
-    ledger, tiles, adapter, primitive, scheduler, source = _runtime_source(
-        BaseBlockEffect(3), (0, 0, 0, 1)
+    ledger, _unused_tiles_binding, adapter, primitive, scheduler, source = (
+        _runtime_source(BaseBlockEffect(3), (0, 0, 0, 1))
     )
     action = adapter.power(primitive, exponent)
 

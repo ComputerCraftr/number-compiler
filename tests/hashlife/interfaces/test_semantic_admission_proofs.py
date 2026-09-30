@@ -2,8 +2,6 @@
 
 from __future__ import annotations
 
-from tests.support.assertions import assert_rejected_atomically
-
 from dataclasses import fields
 from typing import TYPE_CHECKING
 
@@ -17,6 +15,7 @@ from number_compiler.hashlife.interfaces.semantic_expression_compiler import (
 from number_compiler.hashlife.interfaces.semantic_expression_tasks import (
     CompileStructuredExpression,
 )
+from tests.support.assertions import assert_rejected_atomically
 from tests.support.diamond_continuation_reduction import machine
 
 if TYPE_CHECKING:

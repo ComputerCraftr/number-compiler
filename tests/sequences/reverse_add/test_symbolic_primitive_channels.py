@@ -147,7 +147,9 @@ def test_foreign_or_wrong_sort_arguments_are_rejected_before_template_constructi
 
 @pytest.mark.parametrize("allowance", (0, 50))
 def test_budget_refusal_publishes_no_partial_channel_template(allowance: int) -> None:
-    ledger, bits, arena, symbol, left, right = _constant_channel_fixture()
+    ledger, _unused_bits_binding, arena, symbol, left, right = (
+        _constant_channel_fixture()
+    )
     ledger.max_nodes = ledger.nodes + allowance
     with pytest.raises(BlockContextBudgetExceeded):
         arena.pullback_channels(symbol, left, right)

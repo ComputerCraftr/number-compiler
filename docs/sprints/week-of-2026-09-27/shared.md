@@ -40,6 +40,8 @@ Open obligations retain their recorded scope; consult [current release gates](..
 - [Powered Vieta review and saturated failure descent](#powered-vieta-review-and-saturated-failure-descent)
 - [Anchored source suffix and eager-work review](#anchored-source-suffix-and-eager-work-review)
 
+- [September 29 — all-level HashLife patch integration audit](#september-29--all-level-hashlife-patch-integration-audit)
+
 ## Provenance
 
 Original records and caveats follow. Their evidence certifies only its recorded
@@ -900,3 +902,454 @@ succeeded. Failures and retries remain in ignored local evidence.
 No full-unit, aggregate Isabelle, growth matrix or explicit P0 completion is
 claimed. The remaining concrete classifier, weighted lifting, cold-construction
 and all-time safety obligations remain active.
+
+
+## September 29 — all-level HashLife patch integration audit
+
+**Objective.** Port the downloaded Q11/Q17/Mahler experiments into the live
+scheduler without replacing source authority with observer equality or hiding
+cold construction behind warm cache counts.
+
+**Inputs.** These external archive hashes pin research inputs, not evidence for
+this repository. Archives were inspected in temporary directories; obsolete
+proof paths, schema-nine diagnostics and global caches were not imported.
+
+| Archive | SHA-256 |
+| --- | --- |
+| `number-compiler-main4-196-all-level-q11-hashlife.zip` | `df1ea38b71e5a292e4bc37eb8b62494886700233c09967b9ed12d7a2244d3ee4` |
+| `number-compiler-main4-collatz-all-level-q17-hashlife-cli.zip` | `bc56c3262f4f5fefc9cb15dd9aa5135d6926363dd3f596edbd317c96c2ce7113` |
+| `number-compiler-main4-mahler-antihydra-0637-all-level-hashlife-rebase.zip` | `e2443c5661285c4de713c02994b36246704c3f359316f599eed07efc596242a5` |
+
+**Changes and established scope.** Collatz reuses complete low-source cylinder
+transfers through the bounded process cache. The receiving high fiber is
+applied separately. The scheduler's existing cold constructor remains the
+owner on a miss; dyadic coefficients are published from its observed counts
+and endpoint, without a second trajectory. The unused Q17 multiplier interner
+and its eager source scan were removed after independent review: neither was
+consumed by the actual transfer.
+Intermediate prefix records with no consumer and a synthetic compose-back
+operation were also removed. A cold request publishes only its selected reusable
+source cylinder; this is not all-level cold macro construction. Shared-cache
+disable/reset controls and exact physical-tick indexing remain.
+Mahler reuses the exact associated action of an already authenticated image for
+1,024 or more returns. This memo skips rational coefficient reconstruction; it
+does not construct an all-level temporal quotient or replace safety predicates.
+Schema-eight macrocell rows distinguish semantic/occurrence reuse and specify
+their index units. Reading those counters performs no construction.
+
+**Rejected approaches.** The first reverse port recomputed the entire terminal
+trajectory after a semantic hit and retained unaccounted global SLP storage.
+It was removed. The current live reverse image carries an action descriptor;
+it still lacks the completed recursive occurrence required by the downloaded
+terminal publisher. D20 must still produce `70446464506` through that owner
+before the positive cutover gate can close. Passing refusal tests were not
+added. Likewise, the initial Mahler port rebuilt D8 support already consumed by
+the live image; it was removed. The finite 251-class observer cannot replace
+exact predicate offsets and caps. Existing arithmetic and safety meanings were
+preserved.
+
+**Validation/provenance.** Frozen checks and measurements below use source v5
+`8f930ee6bdc97d9bfacf715ecf97c2dc6335bf4a9738d7dd893e2c37ae3e908e`. Preliminary timings showed why eager Q17
+scans on every merge must not be the default: they increased cold time by
+roughly two to three times. The revised owner removes those unused scans
+entirely. Warm cache hits alone establish no asymptotic bound.
+
+**Remaining obligations.** Reverse completed-source construction, source-global
+safety, executable Isabelle refinement and cold powered-construction bounds
+remain open. No release assertion, expected term, threshold or proof assumption
+was relaxed. Separate CLI processes remain cold; cross-seed process reuse is
+available only within one process.
+
+**Independent review.** Reviewers checked the complete source/extent/transfer
+cache bindings, physical versus normalized clocks, reset and lease cleanup,
+foreign germs, malformed payloads, lazy metrics, huge-cycle admission and warm
+F5 action equality. Mahler rejects invalid scale and missing/nonnegative caps
+before returning cached long actions. Exact coefficients remain trusted from
+the qualified internal publisher; arbitrary malicious writes to private cache
+stores are outside this check. The engine's public cache option is read-only.
+
+The interim full-unit run found one introduced stale poison target: the rational
+constructor had moved from `arithmetic_images` to `mahler_cache`. The test now
+poisons that actual owner with its original laziness assertions retained. The
+other 42 failures matched the baseline. No external positive cutover assertion
+was replaced; only new tests for unused semantic/merge counters were corrected
+to require actual occurrence publication and reduced source discovery.
+
+### Frozen integration validation
+
+| Check | Result | Time / sampled peak | Scope |
+| --- | --- | --- | --- |
+| Strict mypy / formatting | PASS | 4.083 s / 293,290,704 bytes; 0.106 s | Current Python tree |
+| Source policy | PASS: zero findings | 29.824 s / 793,068,576 bytes | Line, recursion, clone and package boundaries unchanged |
+| Docs / proof index | PASS | 0.516 s / 3.608 s | Index validation, not an Isabelle build |
+| Ruff 0.16.9 | BLOCKED: 776 inherited findings | 0.865 s | Frozen HEAD has 787 under this version; zero new normalized findings; changed files pass |
+| Installed wheel | PASS | 31.869 s / 125,831,232 bytes | 27 cold contracts plus actual public-CLI cross-seed cache reuse |
+| Full units | BLOCKED: 7,692 passed / 42 failed | 295.062 s / 996,246,824 bytes | Zero new failures; 40 added tests; no baseline tests removed |
+| Explicit P0 | BLOCKED: 13 passed / 50 failed | 2.090 s / 90,391,152 bytes | Same seven-module selection |
+| Five-trial query probe | BLOCKED overall: 315 successes / 105 reverse refusals | 1.820 s | All 420 samples retained; horizons 16–1024, cold/warm/bypassed |
+
+The required newer Ruff exposes existing findings missed by the earlier global
+0.15.22 installation. No exclusions or suppressions were added. The 42 unit
+failures remain 41 reverse construction obligations and one special-number
+concrete-resolution obligation. The explicit P0 failures remain active.
+
+For the paired 201-bit Collatz receiver at 1,024 physical ticks, warm reuse
+reduces run actions from 86 to 71 and the run-arithmetic operand-bit counter
+from 30,439 to 23,910. The warm query has one transported D128 occurrence hit.
+Its five-trial query/render/metrics median is 2.108 ms versus 2.294 ms with
+shared reuse bypassed on the identical receiving seed. Cold publication on the
+first seed is 2.258 ms. These finite measurements do not prove an arbitrary-size
+bound or a fresh-process speedup.
+
+At 1,024 returns, Antihydra medians are 3.588/3.778/3.583 ms and Mahler medians
+are 4.141/4.130/3.951 ms (cold/warm/bypassed). The Mahler observer memo is exact,
+but this query probe establishes no end-to-end latency improvement. The archive
+itself reports its all-level source-7 fold slower than its D8 predecessor; that
+fold was not installed in place of the live admitted-image consumer.
+
+Local evidence directories (ignored, not portable links):
+
+- `results/runs/20260930T055207Z-7488dd16a92743218f17b5525d597844`: final quality and wheel.
+- `results/runs/20260930T055426Z-a7c093137e9f41d3949b5b5465b94db3`: final units and per-test `failure-disposition.json`.
+- `results/runs/20260930T055406Z-fc536ebe55574f97be3ef71d752391c5`: unchanged P0 selection.
+- `results/runs/20260930T055948Z-1894526ea5ee40d3aa546102bee4516e`: paired receiver/bypass probe, full commands and samples.
+
+The complete all-family all-level cutover is **not complete**. No new Isabelle
+proof or aggregate build is claimed: formal sources were unchanged. Separate
+CLI processes remain cold; the implemented cross-seed reuse is process-local.
+
+## September 29 — parent-first occurrence reuse and repository quality
+
+**Objective.** Apply the production-reuse plan without treating finite quotient
+aliases, observer hits, or retained temporal recipes as complete occurrences.
+
+**Changes.** Collatz now retains useful admitted dyadic prefixes from its existing
+producer and tries the largest compatible prefix before smaller discovery. The
+frontier clears unmatched suffixes before joining blocks. Optional shared-cache
+capacity refusal falls back to exact construction; request limits remain strict.
+A public receiving-seed test reduces run actions from 19 to 12 using D64 reuse.
+
+Explicit Mahler CLI requests at 1,024 returns and above prepare one complete
+source-bound root action before arithmetic discovery. A warm record supplies its
+arithmetic and safety summaries plus integer `(R, B_hat, C_hat)` consumer. Cold
+misses keep the existing punctured arithmetic constructor. The projection uses
+the admitted gain; separately qualified gain constants avoid recomputing powers
+on a warm hit. Cap and gain mismatches fail before publication. Late Python
+observer requests retain the existing direct projection and outer memo.
+
+Metrics schema 8 distinguishes source-occurrence action reuse from the outer
+associated-observer memo. Parent hits, key work, coefficient work, capacity
+bypasses, region visits and emitted digits have common nullable fields. Missing
+instrumentation is not reported as zero. Read-only auditing checks the retained
+binding without recomputing its coefficients.
+
+**Established results.** The focused `Antihydra_Mahler_Integration` session checks
+integer identity and chronological composition against the rational min-plus
+action, including the optional cap. It does not establish the production
+worklist or a cold-construction bound. Independent rational checks cover extents
+0–512; the D16 actions at residues 1 and 41 remain unequal. Warm-parent poison
+checks cover 1,024, 1,025 and 4,096 returns and the public query context.
+
+Whole-tree Ruff 0.16.9 cleanup preserves all rules and policy thresholds. Safe
+import/binding fixes were followed by review of closure capture, immutable
+factories, mutable corruption fixtures and exception contracts. No production
+assertion was converted into a skip or expected failure.
+
+**Rejected approaches.** A reverse fallback advancing digit rows up to a fixed
+horizon was removed before cutover: it did not construct the requested temporal
+grammar. The initial Mahler per-child consumer prototype was also removed: it
+changed the cold constructor, retained excess nodes, and exposed a gain/admitted
+consumer mismatch. The final root reuse uses the original cold constructor.
+Reverse remains missing its complete temporal occurrence; the downloaded
+standalone SLP owner is not an accepted substitute for that construction.
+
+**Assertion migration.** The existing Mahler outer-memo tests retain their exact
+assertions through explicit late Python observer calls. New public CLI tests
+instead poison cold arithmetic and require the complete root occurrence hit.
+The reverse and Collatz positive P0 assertions remain unchanged.
+
+**Validation/provenance.** Frozen authored-source fingerprint v5:
+`43a7cb4c477afd6951dc83df40bb7514d1a260badea2629a1eb6ea12f069b4ec`.
+Detailed serialized outcomes are recorded below. Prior results above retain
+their historical fingerprints and do not certify this source.
+
+**Remaining obligations.** Reverse temporal closure and output publication,
+all-level Mahler child reuse, concrete Collatz worklist refinement and the
+claimed general cold bound remain open. Complete-root warm reuse is a measured
+improvement, not completion of the full plan. Special-number recovery, comma
+cutover and global non-halting remain separate release holds.
+
+The subsequently supplied `196_bounded_hashlife_lifetime_width_fix.patch`
+(SHA-256 `c8b8ad2b0dbf7488f5ae0a334c3ef55e68e9cd00a887ec49dea7f14941ff3f08`)
+remains an integration input. Independent review found useful epoch-wide
+reclamation and a finite width/carry audit. Its archived owner still uses a
+separate ledger with 524,288 entry capacity and no 32-MiB process-cache cap or
+lease-reset integration. Its width path probes extents and its level publisher
+streams pair halves before final emission. Neither patch is evidence that the
+live source-image constructor or single-pass output obligation has closed.
+The files were preserved; archived result artifacts were not imported.
+
+### Frozen validation on `43a7cb4c`
+
+| Check | Result | Time / sampled peak | Scope |
+| --- | --- | --- | --- |
+| Strict mypy | PASS | 3.795 s / 297,468,624 bytes | Whole declared tree |
+| Ruff 0.16.9 / formatting | PASS | 0.105 / 0.115 s | Zero findings; no new exceptions |
+| Source policy | PASS | 28.751 s / 797,738,016 bytes | Zero line, recursion, duplicate or package findings |
+| Docs / proof index | PASS | 0.382 / 3.827 s | Docs rechecked after generated topic-count refresh |
+| Installed wheel | PASS | 30.989 s / 126,240,856 bytes | 27 cold contracts, cross-seed CLI checks |
+| Full units | BLOCKED: 7,711 pass / 42 fail | 281.415 s / 1,012,286,760 bytes | No new or resolved baseline failures; no skips |
+| Explicit P0 | BLOCKED: 13 pass / 50 fail | 2.170 s / 90,079,832 bytes | Positive assertions unchanged |
+| Focused Mahler Isabelle | PASS | 4.871 s / 1,219,595,168 bytes | Checked session reused after its earlier successful compile |
+| Aggregate Isabelle | BLOCKED: timeout | 60.158 s / 2,740,213,064 bytes | Comma chart/round completed; decade started |
+| Five-trial growth probe | BLOCKED overall | 2.096 s / 27,640,312 bytes | 420 samples, 315 successes, 105 reverse refusals |
+| Compact-index equivalence | PASS for equivalence, incomplete construction | 5.474 s / 25,117,176 bytes | K=0..3 values/refusals match; cycle K=6/12 exact |
+
+The only replaced test ID is the outer-Mahler memo's renamed late-observer test;
+its assertions are retained, with a separate new public-CLI parent-hit test.
+Twenty test IDs were added including that rename, yielding nineteen net new
+unit tests. Each of the 42 failures is listed in the retained disposition.
+
+For 1,024 physical Collatz ticks, the paired receiving seed has warm/bypassed
+medians **2.296/2.522 ms**, with run actions **71/86** and operand-bit work
+**23,910/30,439**. Cold publication is **2.774 ms**. The added D64 public-path
+regression separately reduces run actions **19 to 12** on a shorter request.
+
+For Mahler at 1,024 returns, cold/warm/bypassed medians are
+**4.630/2.289/4.651 ms**. Warm execution consumes a complete root before child
+discovery; it does not build the cold balanced effect. Antihydra digit medians
+are **3.991/3.980/3.809 ms**; no new speedup is claimed for that route.
+Measurements include query, requested information and rendering where requested.
+They do not provide separately timed cold discovery, coefficient arithmetic and
+integer conversion, or establish an arbitrary-size bound. Missing counters
+remain null. All reverse samples remain failures, not timing successes.
+
+Local evidence (ignored, not portable links):
+
+- `results/runs/20260930T070152Z-6fda43799bd54a258a346317a8f6c3ab`: quality and wheel; docs initially detected the stale generated count.
+- `results/runs/20260930T070346Z-80bedeb29e984efebf20cf0343b6010f`: corrected docs, P0, focused/aggregate Isabelle, all growth samples, compact equivalence, units and `failure-disposition.json`.
+
+The initial 10,000-return stress request used a 10,000-bit state budget and was
+correctly refused by the existing `4 + returns` admission bound. A separately
+recorded stress run supplies 20,000 state bits; the original refusals remain in
+evidence. Neither this budget correction nor successful compact syntax closes
+the reverse constructor requirement.
+
+Supplemental installed-wheel validation imports from a fresh isolated
+installation, outside the checkout. A cold 1,024-return Mahler CLI process
+finishes in 121.512 ms; a second request inside one process has a checked parent
+hit and identical Mahler information. Its warm CLI time is 2.713 ms. This is a
+single installed-wheel connectivity sample, not the five-trial latency estimate.
+Evidence: `results/runs/20260930T071057Z-89a3ed0352824a4b9a3fd49b228c82e9`.
+
+The 10,000-return Antihydra value and Mahler information requests pass with
+explicit 20,000-bit state **and output** budgets. The value matches an
+independent literal reference. The whole checks take 72.095 and 31.724 ms;
+the value check includes its independent reference calculation. The earlier
+10,000-bit output request was rejected by existing conservative extent
+admission, even though the final value is smaller; no change to that admission
+policy is claimed here. All failed probe attempts remain retained. Successful
+stress evidence: `results/runs/20260930T071239Z-5cc9685ff3794fc3b79f80faf4fffa1f`.
+Reverse at 10,000 still fails its construction gate.
+
+
+## September 30 — runtime gates, applied reuse and provider contexts
+
+**Date range.** 2026-09-30.
+
+**Objective.** Separate runtime correctness, checked executable refinement and
+measured performance; repair occurrence reuse without declaring missing reverse
+construction complete.
+
+**Changes.** Removed the runtime completion/blocker declarations without aliases.
+Runtime tests now inspect actual admitted-image publication, exact outputs,
+repeat demands, resource accounting and absence of forbidden reconstruction.
+Exact/transported retrieval, local/process storage and consumed parent actions
+have separate schema-eight counters. Mahler's full observer memo has its own
+lane rather than being added to source-action reuse.
+
+**Established results.** The focused `Source_Cache_Integration` session checks
+Collatz cached high-fiber application, its physical-tick cost, and the shared
+worklist's parent-hit control path. The parity germ now imports its actual
+dependencies instead of the unused broader balanced-family proof branch.
+This changes no arithmetic definitions or theorem assumptions.
+
+The Mahler session also checks `mahler_centered_11_actual_tail_cap`: the actual
+capped action after `11` retains a negative transported cap under every finite
+legal bit continuation. This is a finite-action induction, not a non-halting
+theorem or a proof of the entire source constructor.
+
+Collatz retains at most 64 useful interior joins already produced by its cold
+constructor, in addition to source prefixes. A receiving query probes the
+largest compatible occurrence before D8 discovery. It consumes at most one
+such shared occurrence on this route; this is not an all-level cold-construction
+claim. Gain construction and revalidation remain charged. Mahler reuse remains
+complete-root/outer-observer reuse; generic child-action reuse is not claimed.
+
+**Independent cache review.** The reviewer reproduced Boolean/integer context
+aliasing and insertion of a plausible but false Collatz record through an
+ordinary process-cache lease. Typed keys now distinguish context types through
+root requests, provider bindings and child edges. Issued cache records retain
+their constructor's private object capability in the existing accounted store;
+ordinary or foreign publication fails before decoding. This protects the
+public cache interface, not arbitrary Python code deliberately importing a
+private constructor capability. Arithmetic admission still depends on the
+constructor's publication invariant.
+
+The final review also demonstrated that coordinated transfer/offset/minimum
+changes made with the private Mahler publisher capability can remain mutually
+consistent. The local checks do not prove that such a forged record follows the
+source recurrence. Production publication is confined to the admitted-image
+owner; ordinary cache writes cannot issue that capability. No production
+reassociation path was identified in this audit. This remains an explicit
+trusted-constructor boundary and executable-refinement obligation, not a claim
+that arbitrary private-internal mutation is detected or that cache admission
+proves the mathematics. Warm hits do not replay the recurrence to disguise that
+proof gap.
+
+**Rejected approaches.** The downloaded reverse parent joins ignore their
+completed child images and recompile the full action against the original
+source. They are not accepted as provider substitution. The existing primitive
+image executor's boundary sort cannot be assumed to close under arbitrary
+composite consumers. No primitive-only guard was removed on that assumption,
+and no scalar fallback, universal machine or passing refusal test was added.
+
+**Assertion disposition.**
+
+| Old assertion | Disposition and replacement |
+| --- | --- |
+| Runtime `bounded_temporal_runtime_cutover_complete == 1` and empty blocker | Removed; exact output, admitted image publication, stable replay, accounting and forbidden-work assertions remain. Missing concrete refinement is a separate proof gate. |
+| Fixed Diamond owner and 50/90 production populations | Replaced by the live source-image owner. Finite artifact checks remain with proof verification. |
+| Historical tile work must be positive before any demand | Replaced by lazy-before-demand and actual image/consumer work after demand. |
+| Metrics-only request must attest architecture | Replaced by snapshot equality and absence of source construction/rendering. |
+| Generic reverse D2/D4/D8 and seam output | Retained as positive construction assertions; refusals remain failures. |
+| Exact outputs, source authority, stale handles, budgets and accounting | Retained and extended; no skips or expected failures. |
+
+**Validation/provenance.** Diagnostic runs precede the final source freeze and
+do not certify later edits. Pinned archive inputs and initial dirty inventory:
+`results/runs/20260930T073710Z-951d476775464b4cabafd029db4415ae`.
+Focused cache proof: `results/runs/20260930T075218Z-5983f974df54443696fe0dec059997c6`,
+13.283 seconds and 2,353,238,168 sampled bytes under 60 seconds / 4 GiB.
+The earlier broad-session attempt exceeded 4 GiB before reaching this theory;
+its failed evidence is retained. The first focused Python diagnostic passed
+141 tests and failed 19, including incomplete metric migrations and unchanged
+reverse construction failures; those counts are not final acceptance.
+
+Pre-repair frozen source v5: `fa3548362a44117c7d56dd07541e507298730e760a107ac1c0863496421f4a74`.
+This snapshot exposed five migration regressions in the full unit run (7,717
+passed, 47 failed). Three concerned actual generic-image certification; two
+expected a metrics snapshot to certify a ledger containing research-only oracle
+records. Its evidence below does not certify the subsequent repairs. Independent
+review also required checking outer Mahler coefficients against the admitted
+transfer and counting refused cache publications.
+Quality evidence: `results/runs/20260930T083217Z-b14dfcb0477545628eba3f9ab1fca342`.
+Strict mypy, Ruff 0.16.9, formatting, source policy, documentation, proof inventory
+and clean installed-wheel checks all pass. Policy took 27.458 seconds and
+800,785,464 sampled bytes; packaging took 29.956 seconds. Both remain within the
+35-second / 1-GiB probe limits. No source changed during these checks.
+
+Serialized acceptance evidence:
+`results/runs/20260930T083345Z-2cdd5dbd589d41a29ff5347d238948ae`.
+The focused selection passes 263 tests. Revised P0 passes 17 and fails 43:
+34 reverse construction/consumer cases, eight shadow-primality recovery cases
+and the Antihydra source-7 non-halting certificate. The five parametrized Collatz
+cases and shared Collatz reporting now pass their behavioral checks. The
+remaining generic point test checks the actual `PointResponseRegister`, not
+completed-tile counters for a path which retains a scalar point response.
+`Source_Cache_Integration` and `Antihydra_Mahler_Integration` pass together.
+
+The complete five-trial 16–1024 manifest retained all 420 samples: 315 successful
+Collatz/Antihydra/Mahler queries and 105 reverse construction refusals. At 1,024,
+the same receiving Collatz seed uses 71 run actions warm versus 86 bypassed,
+and 23,910 versus 30,439 run operand bits, with one transported and applied
+parent hit. Mahler's warm complete-root action has one exact applied parent hit;
+the bypassed query performs 15 balanced effect compositions and 64 transient
+leaf steps. No reduction was measured for ordinary Antihydra digit construction.
+
+| Family at 1,024 | Cold median ms | Warm median ms | Same receiving seed, bypassed median ms |
+| --- | ---: | ---: | ---: |
+| Collatz | 3.036 | 2.228 | 2.389 |
+| Antihydra digits | 3.741 | 3.847 | 3.721 |
+| Mahler information | 4.388 | 2.257 | 4.376 |
+
+These are whole-query timings, including requested rendering/observation.
+Construction, observation and conversion are not separately timed by this
+manifest; unavailable phase measurements remain unavailable. The small Collatz
+timing difference is not a general speedup bound. Cold Collatz uses a different
+high fiber, so only warm versus bypassed is a same-receiving-seed comparison.
+Mahler reuse does not establish a cold-discovery bound or child-action reuse.
+
+Explicit and compact index requests agree through K=3. Reverse requests still
+refuse at K=1..3, and Fermat K=2/3 exceeds the existing output budget; agreement
+of refusals is not construction acceptance. Large Collatz cycle queries pass.
+Aggregate Isabelle exceeded 60 seconds after completing several comma sessions
+and starting `Comma_Chart_Action`; peak sampled memory was 2,445,120,576 bytes.
+The aggregate gate remains open. No timeout limit was changed or repeatedly
+warmed into a claimed cold result.
+
+**Remaining obligations.** Complete reverse consumer substitution, demanded
+output and temporal-construction performance; full Python cache/worklist
+refinement and aggregate proof validation. Unrelated comma, special-number
+recovery and global non-halting claims remain separate release holds.
+
+**Final frozen validation.** Source v5
+`622418f8010524e0e2297719e36e32b50d02969886379202dd901fea4eb068f2`
+supersedes the diagnostic snapshots above. Evidence is retained locally at
+`results/runs/20260930T090752Z-edc59e01aa77497fb1241519d00c5ab8`.
+Every guarded step reports an unchanged source fingerprint.
+
+The generic application check now validates the issued registry record and live
+lease; a copied projection cannot inherit its authority. Reverse behavior
+snapshots consume only current cached audit evidence and become incomplete when
+the ledger changes. Explicit detailed Python metric APIs retain their deep
+resource audit; CLI schema-eight metrics use the separate read-only collector.
+An intermediate attempt changed the shared detailed API too broadly, causing
+eight audit-expectation failures. That change was narrowed before this freeze.
+The diagnostic source `0a65e365` and its 7,720-pass/50-fail run remain at
+`results/runs/20260930T090011Z-84f5b67059034a5ca84fc47eddd151eb`.
+
+The outer Mahler observer now checks decoded scale, offset and cap against the
+already-admitted transfer by charged integer cross-products. Warm validation
+constructs no new `3^R` and does not call the cold action constructor. Source
+and observer cache capacity refusals are counted separately and summed once in
+the common summary. Shared test setup replaces duplicated capacity fixtures.
+
+- Strict mypy, Ruff 0.16.9, formatting, source policy, documentation and proof
+  inventory pass. Policy: 28.124 seconds / 798,114,872 sampled bytes.
+- Clean installed-wheel checks pass, including 27 CLI contracts, Collatz
+  cross-seed reuse and a Mahler warm-parent poison check: 31.746 seconds.
+- Focused acceptance: **292 passed**, with 11 validation-marked cases left to
+  their explicit selections.
+- Full units: **7,728 passed / 42 failed / 1,988 validation cases deselected**;
+  guarded time 287.536 seconds and 1,014,383,888 sampled bytes. The exact failure
+  comparison has no new obligations: 41 reverse cases and one F4 recovery case.
+  One cold reverse diagnostic test was renamed with equivalent positive output
+  coverage. `failure-disposition.json` records every failure, rename and removed
+  test's replacement; `assertion-disposition.json` records individual migrated
+  assertion groups.
+- Explicit P0: **17 passed / 43 failed**. `p0-disposition.json` identifies the
+  34 reverse, eight shadow-recovery and one Antihydra non-halting failures.
+  All former Collatz flag-only failures now pass behavioral checks.
+- Both focused Isabelle sessions pass together: 5.751 seconds /
+  1,262,816,208 sampled bytes. Aggregate validation times out after 60.196 seconds
+  at `Comma_Decade_Residual_Core`, using 3,822,442,616 sampled bytes. These are
+  incremental builds; reuse of checked dependency heaps is not evidence of a
+  cold aggregate construction bound.
+
+The final five-trial growth run contains all **420 samples**, with the same
+315 successes and 105 reverse construction failures. At 1,024 returns/steps:
+
+| Family | Cold median ms | Warm median ms | Same receiving seed, bypassed median ms |
+| --- | ---: | ---: | ---: |
+| Collatz | 3.179 | 2.344 | 2.455 |
+| Antihydra digits | 3.823 | 4.030 | 4.060 |
+| Mahler information | 4.534 | 2.262 | 4.685 |
+
+The structural comparisons remain 71 versus 86 Collatz run actions and
+23,910 versus 30,439 operand bits; Mahler's warm root avoids 15 balanced
+compositions and 64 transient leaf steps. The same scope limits stated above
+apply: no new Antihydra digit reduction, no general logarithmic cold bound, no
+all-level Mahler child reuse, and no separate per-phase latency measurements.
+Compact-index checks and separately budgeted 10,000-return Antihydra/Mahler
+stress checks pass their exact-reference assertions. Reverse refusals remain
+construction failures. No replacement reverse route was enabled.

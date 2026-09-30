@@ -19,8 +19,8 @@ from number_compiler.arithmetic.carry.carry_monoid import (
     apply_carry_fn,
     value_carry_fn,
 )
-from number_compiler.arithmetic.functions.finite_observer import canonical_partition
 from number_compiler.arithmetic.contracts.semantic_identity import SemanticIdentity
+from number_compiler.arithmetic.functions.finite_observer import canonical_partition
 from number_compiler.hashlife.behavior.future_behavior import (
     UnsupportedFutureBehaviorProfile,
 )

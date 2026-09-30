@@ -1,7 +1,5 @@
 from __future__ import annotations
 
-from tests.support.assertions import assert_rejected_atomically
-
 from typing import Never
 
 import pytest
@@ -12,10 +10,11 @@ from number_compiler.hashlife.execution.continuations.higher_macro_composer impo
     _MacroBindingKey,
 )
 from number_compiler.hashlife.execution.field_images import SourceForestID
+from tests.support.assertions import assert_rejected_atomically
 from tests.support.reverse_higher_runtime import (
+    _compiled_macro_fixture,
     _fixture,
     _macro_composer,
-    _compiled_macro_fixture,
 )
 
 
@@ -24,14 +23,14 @@ def test_reverse_macro_probes_the_source_parent_before_descending(
 ) -> None:
     (
         _actions,
-        primitive,
+        _unused_primitive_binding,
         semantics,
         _runtime,
-        interfaces,
-        compiler,
-        sources,
+        _unused_interfaces_binding,
+        _unused_compiler_binding,
+        _unused_sources_binding,
         binding,
-        outputs,
+        _unused_outputs_binding,
         composer,
         expected,
     ) = _compiled_macro_fixture((7, 18, 7, 19, 19, 19, 19, 19))
@@ -57,7 +56,7 @@ def test_reverse_macro_rejects_foreign_source_before_warm_binding_probe() -> Non
         sources,
         binding,
     ) = _fixture((7, 18, 7, 19, 19, 19, 19, 19))
-    outputs, composer = _macro_composer(
+    _unused_outputs_binding, composer = _macro_composer(
         semantics, interfaces, sources, primitive, compiler
     )
     composer.compile(binding)
@@ -97,14 +96,14 @@ def test_spatial_warm_binding_rejects_changed_consumer_declaration(
 ) -> None:
     (
         actions,
-        primitive,
+        _unused_primitive_binding,
         semantics,
         _runtime,
-        interfaces,
-        compiler,
-        sources,
+        _unused_interfaces_binding,
+        _unused_compiler_binding,
+        _unused_sources_binding,
         binding,
-        outputs,
+        _unused_outputs_binding,
         composer,
         macro,
     ) = _compiled_macro_fixture((7, 18, 7, 19))
@@ -132,11 +131,11 @@ def test_spatial_declaration_seal_blocks_coordinated_key_and_composer_mutation(
         primitive,
         semantics,
         _runtime,
-        interfaces,
-        compiler,
-        sources,
+        _unused_interfaces_binding,
+        _unused_compiler_binding,
+        _unused_sources_binding,
         binding,
-        outputs,
+        _unused_outputs_binding,
         composer,
         macro,
     ) = _compiled_macro_fixture((7, 18, 7, 19))
@@ -159,7 +158,7 @@ def test_spatial_binding_store_replacement_fails_before_warm_lookup() -> None:
     _actions, primitive, semantics, _runtime, interfaces, compiler, sources, binding = (
         _fixture((7, 18, 7, 19))
     )
-    outputs, composer = _macro_composer(
+    _unused_outputs_binding, composer = _macro_composer(
         semantics, interfaces, sources, primitive, compiler
     )
     composer.compile(binding)
@@ -172,13 +171,13 @@ def test_spatial_provider_binding_checks_source_action_and_output_together() -> 
     (
         actions,
         primitive,
-        semantics,
+        _unused_semantics_binding,
         _runtime,
-        interfaces,
-        compiler,
+        _unused_interfaces_binding,
+        _unused_compiler_binding,
         sources,
         binding,
-        outputs,
+        _unused_outputs_binding,
         composer,
         full,
     ) = _compiled_macro_fixture((7, 18, 7, 19, 19, 19, 19, 19))

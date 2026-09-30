@@ -2,8 +2,6 @@
 
 from __future__ import annotations
 
-from tests.support.assertions import assert_rejected_atomically
-
 from dataclasses import replace
 from typing import TYPE_CHECKING, Never
 
@@ -25,6 +23,7 @@ from number_compiler.hashlife.interfaces.semantic_reachable_profile import (
     SemanticProfileArena,
 )
 from number_compiler.hashlife.interfaces.semantic_structures import StructureArena
+from tests.support.assertions import assert_rejected_atomically
 from tests.support.diamond_query import build
 
 if TYPE_CHECKING:

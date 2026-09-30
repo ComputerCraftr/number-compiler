@@ -3,11 +3,11 @@
 from __future__ import annotations
 
 from collections.abc import Hashable
-from number_compiler.arithmetic.contracts.iterative_queries import enter_tuple_node
 from dataclasses import dataclass, fields, is_dataclass
 from typing import Self, cast
 
 from number_compiler.arithmetic.automata.symmetry_powering import ActionTransform
+from number_compiler.arithmetic.contracts.iterative_queries import enter_tuple_node
 from number_compiler.arithmetic.contracts.scoped_handles import ArenaHandle
 from number_compiler.resources.ledger import ResourceLedger
 from number_compiler.resources.stores import LedgerDict, LedgerList

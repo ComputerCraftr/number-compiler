@@ -2,10 +2,9 @@
 
 from __future__ import annotations
 
-from number_compiler.hashlife.actions.field_actions import FieldCellActionID
-
 from typing import TYPE_CHECKING
 
+from number_compiler.hashlife.actions.field_actions import FieldCellActionID
 from number_compiler.hashlife.actions.lazy_compiler import UnsupportedInterfaceError
 from number_compiler.hashlife.execution.tile_collatz_root import initial_event_shift
 from number_compiler.hashlife.tiles.tile_boundaries import EMPTY_BOUNDARY_TILES

@@ -10,15 +10,6 @@ this compiler.
 
 from __future__ import annotations
 
-from number_compiler.hashlife.interfaces.semantic_bit_transforms import (
-    MACRO_LEFT as _LEFT,
-    MACRO_RIGHT as _RIGHT,
-    primitive_leaf_channels,
-    retag_numeric,
-)
-
-from number_compiler.resources.stores import append_indexed_node
-
 from collections.abc import Callable, MutableMapping, MutableSequence
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING
@@ -64,13 +55,22 @@ from number_compiler.hashlife.interfaces.diamond_quotient import (
     MacroInterface,
 )
 from number_compiler.hashlife.interfaces.semantic_bit_transforms import (
+    MACRO_LEFT as _LEFT,
+)
+from number_compiler.hashlife.interfaces.semantic_bit_transforms import (
+    MACRO_RIGHT as _RIGHT,
+)
+from number_compiler.hashlife.interfaces.semantic_bit_transforms import (
     differs_from_constant,
+    primitive_leaf_channels,
+    retag_numeric,
 )
 from number_compiler.hashlife.interfaces.semantic_bits import (
     FactoredFunctionID,
 )
 from number_compiler.hashlife.interfaces.semantic_structures import StructureID
 from number_compiler.resources.ledger import ResourceLedger
+from number_compiler.resources.stores import append_indexed_node
 
 if TYPE_CHECKING:
     from number_compiler.hashlife.execution.field_transfers import FieldTransferArena

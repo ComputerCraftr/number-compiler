@@ -13,7 +13,6 @@ from number_compiler.resources.physical_support_payload_audit import (
     PhysicalSupportPayloadAudit,
 )
 
-
 AuditEffect: TypeAlias = tuple[SkewTransfer[int], int, int, int]
 
 

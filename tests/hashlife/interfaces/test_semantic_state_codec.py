@@ -2,8 +2,6 @@
 
 from __future__ import annotations
 
-from tests.support.assertions import assert_rejected_atomically
-
 from dataclasses import replace
 from itertools import product
 from typing import TYPE_CHECKING, Literal
@@ -29,6 +27,7 @@ from number_compiler.hashlife.interfaces.semantic_structures import (
     StructureArena,
     StructureID,
 )
+from tests.support.assertions import assert_rejected_atomically
 from tests.support.diamond_continuation_reduction import machine
 from tests.support.semantic_state_codec import tiny
 

@@ -20,8 +20,7 @@ from number_compiler.hashlife.tiles.tile_result_records import (
 )
 from number_compiler.resources.metric_collection import collect_ledger_metrics
 from number_compiler.resources.result_cache_kinds import result_cache_kind
-from tests.support.tile_kernel import powered_runtime
-from tests.support.tile_kernel import _tile
+from tests.support.tile_kernel import _tile, powered_runtime
 
 
 def test_eviction_and_unknown_recreation_are_attributed_by_cache_kind() -> None:

@@ -1,13 +1,6 @@
 """Completed tile results retain output roots without owning future content."""
 
 from __future__ import annotations
-from tests.support.tile_results import _published_setup
-from tests.support.tile_results import _incoming_setup
-
-from tests.support.tile_results import (
-    assert_valid_tile_payloads,
-    assert_result_stores_unchanged,
-)
 
 from dataclasses import replace
 from typing import cast
@@ -35,7 +28,14 @@ from number_compiler.hashlife.tiles.tile_result_types import (
 )
 from number_compiler.hashlife.tiles.tile_results import CompletedResultArena
 from number_compiler.hashlife.tiles.tiles import TileAlphabet, TileID
-from tests.support.tile_results import _ChangingAlphabetAuthority, _setup
+from tests.support.tile_results import (
+    _ChangingAlphabetAuthority,
+    _incoming_setup,
+    _published_setup,
+    _setup,
+    assert_result_stores_unchanged,
+    assert_valid_tile_payloads,
+)
 
 
 def test_boundary_operands_are_indexed_and_outgoing_tiles_are_leased() -> None:
@@ -136,9 +136,18 @@ def test_result_lease_reports_boundary_operands_after_memo_retirement() -> None:
 
 
 def test_boundary_operands_reject_wrong_scope_and_shape_before_warm_lookup() -> None:
-    ledger, _, _tiles, results, input_lease, output_lease, key, result, held, before = (
-        _published_setup()
-    )
+    (
+        ledger,
+        _,
+        _tiles,
+        results,
+        input_lease,
+        output_lease,
+        key,
+        _unused_result_binding,
+        held,
+        before,
+    ) = _published_setup()
     foreign = TileID(ArenaToken("foreign-boundary"), "canonical-tile", 0)
     bad_values = (
         BoundaryTileOperands(BoundaryTileView(foreign, 0, 1), None),

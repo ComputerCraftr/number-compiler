@@ -59,7 +59,15 @@ class CacheStats:
     enabled: bool
 
 
-CacheRecord = tuple[PartitionKey, ImmutableValue, int, int]
+CacheRecord = tuple[PartitionKey, ImmutableValue, int, int, object | None]
+
+
+class CacheRecordIssuerMismatch(ValueError):
+    """A cache payload was not issued by the expected owner capability.
+
+    Issuer identity records which trusted producer path published a value. It
+    is not a cryptographic seal or a proof of domain-specific correctness.
+    """
 
 
 def _validate_immutable(
@@ -151,6 +159,30 @@ class CacheLease:
             self._generation,
         )
 
+    def get_issued(
+        self,
+        key: tuple[ImmutableValue, ...],
+        issuer: object,
+        default: object = MISSING,
+    ) -> ImmutableValue | object:
+        """Read a record published with this exact owner capability.
+
+        Capability identity is an in-process trusted-code boundary only. It
+        does not authenticate semantic correctness of the stored payload.
+        """
+        self._check_live()
+        if type(issuer) is not object:
+            raise TypeError("cache record issuer must be an exact object capability")
+        return self._cache._get(
+            self._partition,
+            key,
+            default,
+            id(self),
+            self._token,
+            self._generation,
+            expected_issuer=issuer,
+        )
+
     def put(
         self,
         key: tuple[ImmutableValue, ...],
@@ -167,6 +199,32 @@ class CacheLease:
             lease_identity=id(self),
             token=self._token,
             generation=self._generation,
+        )
+
+    def put_issued(
+        self,
+        key: tuple[ImmutableValue, ...],
+        payload: ImmutableValue,
+        issuer: object,
+        *,
+        accounted_bytes: int | None = None,
+    ) -> bool:
+        """Publish a record with an owner capability retained by identity.
+
+        The caller remains responsible for proving the payload's semantics.
+        """
+        self._check_live()
+        if type(issuer) is not object:
+            raise TypeError("cache record issuer must be an exact object capability")
+        return self._cache._put(
+            self._partition,
+            key,
+            payload,
+            accounted_bytes=accounted_bytes,
+            lease_identity=id(self),
+            token=self._token,
+            generation=self._generation,
+            issuer=issuer,
         )
 
     def stats(self) -> CacheStats:
@@ -440,6 +498,8 @@ class ProcessCache:
         lease_identity: int,
         token: int,
         generation: int,
+        *,
+        expected_issuer: object | None = None,
     ) -> ImmutableValue | object:
         full_key = self._qualified_key(partition, key)
         with self._lock:
@@ -451,6 +511,10 @@ class ProcessCache:
             if record is None:
                 self._misses += 1
                 return default
+            if expected_issuer is not None and record[4] is not expected_issuer:
+                raise CacheRecordIssuerMismatch(
+                    "process-cache record has another publisher capability"
+                )
             self._hits += 1
             return record[1]
 
@@ -464,10 +528,11 @@ class ProcessCache:
         lease_identity: int,
         token: int,
         generation: int,
+        issuer: object | None = None,
     ) -> bool:
         full_key = self._qualified_key(partition, key)
         admitted_payload = _validate_immutable(payload, "cache payload")
-        estimate = _deep_size((full_key, admitted_payload)) + _ENTRY_OVERHEAD
+        estimate = _deep_size((full_key, admitted_payload, issuer)) + _ENTRY_OVERHEAD
         if accounted_bytes is not None:
             if type(accounted_bytes) is not int or accounted_bytes < estimate:
                 raise ValueError(
@@ -497,6 +562,7 @@ class ProcessCache:
                 admitted_payload,
                 cost,
                 tick if old is None else old[3],
+                issuer,
             )
             try:
                 self._entries[full_key] = record
@@ -595,6 +661,12 @@ def get_process_cache() -> ProcessCache:
         if _PROCESS_CACHE is None:
             _PROCESS_CACHE = ProcessCache()
         return _PROCESS_CACHE
+
+
+def process_cache_stats() -> CacheStats | None:
+    """Read aggregate retention without creating a cache or acquiring a lease."""
+    with _PROCESS_CACHE_LOCK:
+        return None if _PROCESS_CACHE is None else _PROCESS_CACHE.stats()
 
 
 def clear_process_cache() -> None:

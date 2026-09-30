@@ -207,7 +207,7 @@ def test_jump_recurrence_matches_both_physical_carry_ports() -> None:
 def test_event_successor_equals_centered_successor_on_bounded_sources(
     seed: int,
 ) -> None:
-    arena, digits, pairs, delta = centered_seed(seed)
+    arena, digits, _unused_pairs_binding, delta = centered_seed(seed)
     for _ in range(5):
         m = len(digits)
         carries: list[int] = []

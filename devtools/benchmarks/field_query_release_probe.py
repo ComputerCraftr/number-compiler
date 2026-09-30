@@ -6,8 +6,6 @@ makes no logarithmic claim from the number of compiler or image nodes.
 
 from __future__ import annotations
 
-from number_compiler.resources.temporal_diagnostics import METRICS_SCHEMA_VERSION
-
 import argparse
 import json
 import os
@@ -22,6 +20,7 @@ from unittest.mock import patch
 
 from devtools.checks.test_run_evidence import source_fingerprint
 from devtools.paths import repository_root
+from number_compiler.resources.temporal_diagnostics import METRICS_SCHEMA_VERSION
 
 
 class FamilyProbeReport(TypedDict):

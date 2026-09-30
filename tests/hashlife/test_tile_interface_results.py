@@ -1,10 +1,6 @@
 """Completed tile results retain output roots without owning future content."""
 
 from __future__ import annotations
-from tests.support.tile_results import assert_retention_and_peaks_unchanged
-from tests.support.tile_results import _incoming_setup
-
-from tests.support.assertions import assert_rejected_atomically
 
 from dataclasses import replace
 from typing import cast
@@ -47,10 +43,13 @@ from number_compiler.hashlife.tiles.tile_result_types import (
     ReverseValue as _ReverseValue,
 )
 from number_compiler.hashlife.tiles.tile_results import CompletedResultArena
+from tests.support.assertions import assert_rejected_atomically
 from tests.support.tile_results import (
-    _setup,
     _fused_setup,
+    _incoming_setup,
+    _setup,
     assert_result_stores_unchanged,
+    assert_retention_and_peaks_unchanged,
     assert_valid_tile_payloads,
 )
 
@@ -205,9 +204,17 @@ def test_spatial_interface_pair_validates_scoped_children_before_warm_hit() -> N
 
 def test_fused_interface_shares_memo_and_retires_with_input() -> None:
 
-    ledger, _, _, results, input_lease, output_lease, key, result, fused = _fused_setup(
-        publish=False
-    )
+    (
+        ledger,
+        _,
+        _,
+        results,
+        input_lease,
+        output_lease,
+        _unused_key_binding,
+        result,
+        fused,
+    ) = _fused_setup(publish=False)
     assert results.lookup_fused_interface(fused) is None
     assert results.publish_fused_interface(fused, result.outgoing) == result.outgoing
     assert results.lookup_fused_interface(fused) == result.outgoing
@@ -280,9 +287,17 @@ def test_fused_interface_keeps_producer_and_result_wirings_distinct() -> None:
 
 
 def test_warm_fused_lookup_rejects_tampered_normalization_without_repair() -> None:
-    ledger, _, _, results, input_lease, output_lease, key, result, fused = _fused_setup(
-        publish=True
-    )
+    (
+        ledger,
+        _,
+        _,
+        results,
+        input_lease,
+        output_lease,
+        _unused_key_binding,
+        _unused_result_binding,
+        fused,
+    ) = _fused_setup(publish=True)
     forged = replace(fused)
     object.__setattr__(forged, "producer_wiring", None)
     before = ledger.snapshot()
@@ -344,9 +359,17 @@ def test_fused_interface_reverse_publication_failure_rolls_back(
     monkeypatch: pytest.MonkeyPatch,
     fail_at: int,
 ) -> None:
-    ledger, _, _, results, input_lease, output_lease, key, result, fused = _fused_setup(
-        publish=False
-    )
+    (
+        ledger,
+        _,
+        _,
+        results,
+        input_lease,
+        output_lease,
+        _unused_key_binding,
+        result,
+        fused,
+    ) = _fused_setup(publish=False)
     before = ledger.entries, ledger.nodes, dict(results._memo), dict(results._reverse)
     calls = 0
     original = type(results)._write_reverse
@@ -370,9 +393,17 @@ def test_fused_interface_reverse_publication_failure_rolls_back(
 
 
 def test_fused_interface_budget_rejects_before_retained_mutation() -> None:
-    ledger, _, _, results, input_lease, output_lease, key, result, fused = _fused_setup(
-        publish=False
-    )
+    (
+        ledger,
+        _,
+        _,
+        results,
+        input_lease,
+        output_lease,
+        _unused_key_binding,
+        result,
+        fused,
+    ) = _fused_setup(publish=False)
     ledger.tighten_limits(None, ledger.entries)
     before = ledger.snapshot()
     with pytest.raises(Exception, match="cache budget exceeded"):
@@ -446,9 +477,17 @@ def test_spatial_interface_budget_counts_valid_publication_attempt_only() -> Non
 def test_fused_interface_inventory_rejects_boolean_variant_count() -> None:
     from number_compiler.resources.tile_result_inventory import audit_tile_results
 
-    ledger, _, _, results, input_lease, output_lease, key, result, fused = _fused_setup(
-        publish=True
-    )
+    (
+        ledger,
+        _,
+        _,
+        results,
+        input_lease,
+        output_lease,
+        _unused_key_binding,
+        _unused_result_binding,
+        _unused_fused_binding,
+    ) = _fused_setup(publish=True)
     variant = next(iter(results._variants))
     results._variants[variant] = True
     _, invalid = audit_tile_results(results, dict(ledger.iter_containers()))
@@ -461,9 +500,17 @@ def test_fused_interface_inventory_rejects_boolean_variant_count() -> None:
 def test_fused_interface_inventory_rejects_swapped_admission_authority() -> None:
     from number_compiler.resources.tile_result_inventory import audit_tile_results
 
-    ledger, _, _, results, input_lease, output_lease, key, result, fused = _fused_setup(
-        publish=True
-    )
+    (
+        ledger,
+        _,
+        _,
+        results,
+        input_lease,
+        output_lease,
+        _unused_key_binding,
+        _unused_result_binding,
+        _unused_fused_binding,
+    ) = _fused_setup(publish=True)
     original = results._validate_fused_action
     try:
         results._validate_fused_action = lambda _action: None

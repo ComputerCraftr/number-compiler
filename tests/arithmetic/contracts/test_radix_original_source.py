@@ -1,8 +1,6 @@
 """Native C1 ternary normal form may retain only certified ORIGINAL digits."""
 
-from tests.support.assertions import assert_rejected_atomically
-
-
+from functools import partial
 from typing import Never, cast
 
 import pytest
@@ -19,6 +17,7 @@ from number_compiler.projection.radix_original_source import (
 )
 from number_compiler.resources.ledger import ResourceLedger
 from number_compiler.sequences.collatz.block_power import PoweredCollatzTerm
+from tests.support.assertions import assert_rejected_atomically
 
 
 @pytest.mark.parametrize("radix", (3, 6, 12, 1 << 63))
@@ -352,7 +351,7 @@ def test_transient_shift_zero_and_invalid_requests_preserve_the_encoding() -> No
     for shift in (True, 0.0, -1, 63):
         before = assert_rejected_atomically(
             arena.ledger,
-            lambda: arena.shifted_width(encoding, cast("int", shift)),
+            partial(arena.shifted_width, encoding, cast("int", shift)),
             ValueError,
         )
     before = arena.ledger.snapshot()

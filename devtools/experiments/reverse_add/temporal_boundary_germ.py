@@ -9,22 +9,21 @@ an action that also consumes its authenticated recursive occurrence.
 
 from __future__ import annotations
 
+import json
 from collections import defaultdict
 from dataclasses import asdict, dataclass
-import json
 from typing import Final
-
-from number_compiler.arithmetic.carry.carry_monoid import CarryFn
-from number_compiler.arithmetic.formula.decimal_pair_coordinates import (
-    decimal_pair_carry_action,
-    decimal_q95_coordinates,
-)
 
 from devtools.experiments.reverse_add.powered_f5f2_carrier import (
     PairOrbitRow,
     cocycle_word,
     powered_block,
     reverse_add_pair_orbit,
+)
+from number_compiler.arithmetic.carry.carry_monoid import CarryFn
+from number_compiler.arithmetic.formula.decimal_pair_coordinates import (
+    decimal_pair_carry_action,
+    decimal_q95_coordinates,
 )
 
 # Blank is a boundary marker, not a twentieth pair symbol.  In particular it

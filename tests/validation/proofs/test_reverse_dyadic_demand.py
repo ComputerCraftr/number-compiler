@@ -1,8 +1,5 @@
 """Dyadic carry actions skip known parents without storing emitted words."""
 
-from tests.support.assertions import assert_rejected_atomically
-
-
 from collections import OrderedDict
 from typing import Never
 
@@ -17,6 +14,7 @@ from number_compiler.arithmetic.contracts.scoped_handles import ExactSource
 from number_compiler.arithmetic.contracts.source_geometry import SourceGeometry
 from number_compiler.arithmetic.functions.finite_port_action import PortVariable
 from number_compiler.resources.ledger import ResourceLedger
+from tests.support.assertions import assert_rejected_atomically
 
 
 def forbidden(*args: object, **kwargs: object) -> Never:

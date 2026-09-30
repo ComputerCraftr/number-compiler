@@ -7,12 +7,11 @@ interface.  Construction is iterative and never creates a future digit word.
 """
 
 from __future__ import annotations
-from number_compiler.arithmetic.contracts.iterative_queries import defer_binary_children
-from number_compiler.resources.stores import append_indexed_node
 
 from collections.abc import MutableMapping, MutableSequence
 from dataclasses import dataclass
 
+from number_compiler.arithmetic.contracts.iterative_queries import defer_binary_children
 from number_compiler.arithmetic.contracts.scoped_handles import ArenaHandle, ArenaToken
 from number_compiler.hashlife.execution.field_images import (
     SourceBindingID,
@@ -21,6 +20,7 @@ from number_compiler.hashlife.execution.field_images import (
     SourceForestID,
 )
 from number_compiler.resources.ledger import OwnedMemo, ResourceLedger
+from number_compiler.resources.stores import append_indexed_node
 
 
 @dataclass(frozen=True, slots=True)

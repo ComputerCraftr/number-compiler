@@ -62,6 +62,7 @@ def test_interrupted_and_changed_runs_never_pass(tmp_path: Path) -> None:
 
 def test_gitignore_allows_new_sprint_and_ignores_generated_paths() -> None:
     import subprocess
+
     from devtools.paths import repository_root
 
     root = repository_root()

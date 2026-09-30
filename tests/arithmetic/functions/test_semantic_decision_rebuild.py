@@ -1,8 +1,5 @@
 """Ordered reconstruction reuses nodes; moved variables still reorder exactly."""
 
-from tests.support.finite_port_fixtures import semantic_boolean_variable
-
-
 from itertools import product
 from typing import Never
 
@@ -23,6 +20,7 @@ from number_compiler.hashlife.interfaces.semantic_bits import (
     FactoredFunctionID,
 )
 from number_compiler.resources.ledger import ResourceLedger
+from tests.support.finite_port_fixtures import semantic_boolean_variable
 
 
 def test_unchanged_decision_rebuild_does_not_enter_generic_shannon_apply(
@@ -62,7 +60,7 @@ def test_replacement_that_moves_a_variable_earlier_keeps_shannon_reordering() ->
 def test_canonical_child_ids_hit_before_derived_support_work(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    bits, port, value = semantic_boolean_variable("x")
+    bits, _unused_port_binding, value = semantic_boolean_variable("x")
     identity, node = _decision_node(bits, value)
     tx = _Transaction(bits.functions)
 
@@ -84,7 +82,7 @@ def test_support_metadata_cannot_change_semantic_identity_but_is_audited() -> No
     )
     from number_compiler.resources.semantic_payload import SemanticPayloadRegistry
 
-    bits, port, value = semantic_boolean_variable("x")
+    bits, _unused_port_binding, value = semantic_boolean_variable("x")
     identity, node = _decision_node(bits, value)
     assert replace(node, support=()) == node
     original = node.support

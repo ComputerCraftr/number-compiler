@@ -2,14 +2,16 @@
 
 from __future__ import annotations
 
-from tests.support.comma_oracles import assert_phase_period
-
-import json
 import gzip
+import json
 from pathlib import Path
 
 import pytest
 
+from devtools.experiments.comma.closed_region_certificate import (
+    generate_closed_region,
+    verify_closed_region,
+)
 from devtools.experiments.comma.forest_certificate import (
     ROOTS,
     _boundary_children,
@@ -18,10 +20,6 @@ from devtools.experiments.comma.forest_certificate import (
     _phase_period,
     evidence_summary,
 )
-from devtools.experiments.comma.closed_region_certificate import (
-    generate_closed_region,
-    verify_closed_region,
-)
 from number_compiler.resources.ledger import ResourceLedger
 from number_compiler.sequences.comma.certificates import (
     CERTIFIED_MAX_INDEX,
@@ -29,6 +27,7 @@ from number_compiler.sequences.comma.certificates import (
     certificate_status,
     require_certified_index,
 )
+from tests.support.comma_oracles import assert_phase_period
 
 
 def test_finite_forest_and_first_fork_are_reproducible() -> None:

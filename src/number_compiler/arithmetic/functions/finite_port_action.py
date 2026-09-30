@@ -6,12 +6,12 @@ all cut states.  This algebra supplies no arithmetic successor-closure proof.
 """
 
 from __future__ import annotations
-from number_compiler.arithmetic.contracts.iterative_queries import split_choice
 
 from collections.abc import Mapping
 from dataclasses import dataclass
 
 from number_compiler.arithmetic.contracts.block_effect import BlockContextBudgetExceeded
+from number_compiler.arithmetic.contracts.iterative_queries import split_choice
 from number_compiler.arithmetic.contracts.scoped_handles import (
     ArenaToken,
     TransferSummaryID,

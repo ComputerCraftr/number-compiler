@@ -1,8 +1,7 @@
 from __future__ import annotations
 
-from tests.support.assertions import assert_rejected_atomically
-
 from dataclasses import replace
+from functools import partial
 from typing import Literal, Never, cast
 
 import pytest
@@ -27,6 +26,7 @@ from number_compiler.hashlife.actions.diamond_actions import (
 )
 from number_compiler.hashlife.actions.lazy_compiler import LazyCompiler
 from number_compiler.resources.ledger import ResourceLedger
+from tests.support.assertions import assert_rejected_atomically
 from tests.support.diamond_actions import arenas
 
 
@@ -50,7 +50,9 @@ def test_temporal_adapter_imports_binary_dag_and_keeps_real_identity() -> None:
 
 
 def test_nested_images_normalize_before_cell_lookup_without_emission() -> None:
-    ledger, actions, cells, first, second, source, combined = _composed_source()
+    ledger, _unused_actions_binding, cells, first, second, source, combined = (
+        _composed_source()
+    )
     expected = cells.image(combined, source)
     intermediate = cells.image(first, source)
     before = len(cells._nodes)
@@ -260,11 +262,11 @@ def test_formal_symbol_rejects_foreign_kind_and_domain_before_any_mutation() -> 
             FormalSymbolID(cells.formal_token, "diamond-cell", 0),
             FormalSymbolID(cells.formal_token, "diamond-formal-symbol", 20),
         ):
-            assert_rejected_atomically(ledger, lambda: method(invalid), ValueError)
+            assert_rejected_atomically(ledger, partial(method, invalid), ValueError)
     for invalid_symbol in (-1, 20, 10**100, True, 0.0):
         assert_rejected_atomically(
             ledger,
-            lambda: cells.formal_symbol(cast("int", invalid_symbol)),
+            partial(cells.formal_symbol, cast("int", invalid_symbol)),
             (TypeError, ValueError),
         )
 

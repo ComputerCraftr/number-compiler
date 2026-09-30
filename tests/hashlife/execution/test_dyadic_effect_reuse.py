@@ -5,11 +5,6 @@ from __future__ import annotations
 from dataclasses import replace
 
 import pytest
-from number_compiler.hashlife.execution.source_bound_images import (
-    SourceBoundSchedulerCore,
-    SourceImageView,
-)
-from tests.support.reference_arithmetic import literal_dyadic_orbit
 
 from number_compiler.arithmetic.contracts.block_effect import BlockContextBudgetExceeded
 from number_compiler.arithmetic.fields.skew_transfer import SkewTransfer
@@ -21,14 +16,19 @@ from number_compiler.hashlife.execution.dyadic_return_transport import (
     residue_macro,
     transport_low,
 )
+from number_compiler.hashlife.execution.source_bound_images import (
+    SourceBoundSchedulerCore,
+    SourceImageView,
+)
 from number_compiler.resources.ledger import ResourceLedger
 from number_compiler.sequences.antihydra.arithmetic_images import (
     ANTIHYDRA_ARITHMETIC_LAW,
 )
-from number_compiler.sequences.collatz.physical_images import COLLATZ_PHYSICAL_LAW
 from number_compiler.sequences.collatz.physical_images import (
+    COLLATZ_PHYSICAL_LAW,
     CollatzPhysicalImageWorkspace,
 )
+from tests.support.reference_arithmetic import literal_dyadic_orbit
 
 
 def test_short_residue_transport_charges_operands_not_requested_precision() -> None:
@@ -297,7 +297,9 @@ def test_collatz_cycle_shortcut_cannot_leak_to_a_different_high_fiber() -> None:
 
 def test_reuse_rejects_foreign_and_stale_sources() -> None:
     a = DyadicReturnImageWorkspace(ResourceLedger(), 8, 4, ANTIHYDRA_ARITHMETIC_LAW)
-    b, core, foreign = _origin_fixture(8, 4, ANTIHYDRA_ARITHMETIC_LAW)
+    _unused_b_binding, _unused_core_binding, foreign = _origin_fixture(
+        8, 4, ANTIHYDRA_ARITHMETIC_LAW
+    )
     with pytest.raises(ValueError):
         a.admitted_input_key(a.root_action, foreign)
     own_core = a.scheduler._source_image_core()
@@ -330,7 +332,9 @@ def test_reuse_construction_budget_refusal_cleans_all_partial_publications() -> 
 
 
 def test_reuse_rejects_a_forged_source_view_even_with_valid_local_handles() -> None:
-    workspace, core, original = _origin_fixture(8, 4, ANTIHYDRA_ARITHMETIC_LAW)
+    workspace, _unused_core_binding, original = _origin_fixture(
+        8, 4, ANTIHYDRA_ARITHMETIC_LAW
+    )
     another = workspace._append_source(workspace.source_node(workspace.root_source))
     forged = replace(original, binding=replace(original.binding, source=another))
     with pytest.raises(ValueError, match="differs from its publication"):
@@ -356,7 +360,9 @@ def test_reuse_rejects_forged_view_metadata_and_cached_result() -> None:
 
 @pytest.mark.parametrize("alias", (True, 0.0))
 def test_reuse_rejects_integer_aliases_and_disposed_epoch(alias: object) -> None:
-    workspace, core, source = _origin_fixture(1 << 128, 64, COLLATZ_PHYSICAL_LAW)
+    workspace, _unused_core_binding, source = _origin_fixture(
+        1 << 128, 64, COLLATZ_PHYSICAL_LAW
+    )
     forged_action = replace(workspace.root_action)
     object.__setattr__(forged_action, "local_id", alias)
     with pytest.raises(ValueError, match="malformed scoped handle"):

@@ -6,11 +6,11 @@ from typing import cast
 import pytest
 
 from number_compiler.arithmetic.contracts.block_effect import BlockContextBudgetExceeded
+from number_compiler.arithmetic.polynomials.centered_f5 import CenteredF5Transport
 from number_compiler.arithmetic.polynomials.f5_transport import (
     F5AffineTransport,
     F5SpatialTransport,
 )
-from number_compiler.arithmetic.polynomials.centered_f5 import CenteredF5Transport
 
 
 def _shift(values: tuple[int, ...], distance: int) -> tuple[int, ...]:

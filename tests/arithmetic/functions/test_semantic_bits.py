@@ -2,8 +2,6 @@
 
 from __future__ import annotations
 
-from tests.support.assertions import assert_rejected_atomically
-
 from itertools import product
 from typing import Literal
 
@@ -22,6 +20,7 @@ from number_compiler.hashlife.interfaces.semantic_bits import (
     FactoredFunctionID,
 )
 from number_compiler.resources.ledger import ResourceLedger
+from tests.support.assertions import assert_rejected_atomically
 
 
 def ports(

@@ -2,13 +2,12 @@
 
 from __future__ import annotations
 
-from tests.support.assertions import assert_rejected_atomically
-
 from itertools import product
 from typing import TYPE_CHECKING, Never, cast
 
 import pytest
 
+from devtools.verification.immutable_artifacts import ImmutableArtifactRegistry
 from number_compiler.arithmetic.functions.finite_function_types import (
     AtomSort,
     FunctionSignature,
@@ -22,12 +21,12 @@ from number_compiler.hashlife.interfaces.semantic_expression_tasks import (
     StructuredExpressionTask,
 )
 from number_compiler.hashlife.interfaces.semantic_structures import StructureArena
+from number_compiler.resources.ledger import LedgerSnapshot
+from tests.support.assertions import assert_rejected_atomically
 from tests.support.c4_summary_artifact import (
     C4FourthInput,
     fresh_c4_fourth_right_summary,
 )
-from devtools.verification.immutable_artifacts import ImmutableArtifactRegistry
-from number_compiler.resources.ledger import LedgerSnapshot
 from tests.support.diamond_continuation_reduction import literal
 from tests.support.runtime_limits import deadline
 from tests.support.semantic_state_codec import paired_tiny, tiny
@@ -118,7 +117,9 @@ def test_unknown_paired_continuation_uses_every_original_component(side: int) ->
 
 
 def test_lambda_over_a_paired_state_has_flat_codec_domain_and_exact_decoding() -> None:
-    runtime, primitive, arena, compiler, paired = paired_tiny()
+    _unused_runtime_binding, _unused_primitive_binding, arena, compiler, paired = (
+        paired_tiny()
+    )
     variable = arena.variable(arena.state_sort(paired, 1), "input-pair")
     function = arena.lambda_(variable, arena.anchor(variable))
     compiled = compiler.compile_structured(function)
@@ -142,7 +143,7 @@ def test_lambda_over_a_paired_state_has_flat_codec_domain_and_exact_decoding() -
 
 
 def test_composed_lambda_keeps_independent_outer_dependency() -> None:
-    runtime, primitive, arena, compiler, paired = paired_tiny()
+    _unused_runtime_binding, primitive, arena, compiler, paired = paired_tiny()
     outer = arena.variable(arena.state_sort(primitive, 1), "outer")
     argument = arena.variable(arena.state_sort(paired, 1), "bound")
     # Return outer: ignored paired inputs are still valid finite codec arguments.
@@ -415,7 +416,7 @@ def test_codec_environment_rejects_foreign_or_wrong_sort_before_work() -> None:
         StructuredExpressionTask,
     )
 
-    runtime, primitive, arena, compiler, paired = paired_tiny()
+    runtime, _unused_primitive_binding, arena, compiler, paired = paired_tiny()
     variable = arena.variable(arena.state_sort(paired, 0), "local")
     compiler.compile_structured(variable, (variable,))
     assert compiler.codecs is not None
@@ -442,7 +443,7 @@ def test_codec_environment_rejects_foreign_or_wrong_sort_before_work() -> None:
 def test_equal_decoded_state_and_rebuilt_identity_continuation_share_complete_id() -> (
     None
 ):
-    runtime, primitive, arena, compiler, paired = paired_tiny()
+    _unused_runtime_binding, primitive, arena, compiler, paired = paired_tiny()
     x = arena.variable(arena.state_sort(paired, 0), "arbitrary-state")
     q = arena.variable(arena.state_sort(primitive, 1), "opposite")
     applied = arena.apply(arena.continuation(x), q)

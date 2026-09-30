@@ -12,12 +12,6 @@ spatial word-action composition as temporal composition would be incorrect.
 """
 
 from __future__ import annotations
-from number_compiler.arithmetic.contracts.local_action_codec import (
-    initialize_local_stores,
-    publish_oriented_action,
-    local_cache_hit,
-    compile_source_cell,
-)
 
 from collections.abc import MutableMapping, MutableSequence
 from dataclasses import dataclass
@@ -28,6 +22,12 @@ from number_compiler.arithmetic.contracts.block_effect import (
     BoundaryState,
 )
 from number_compiler.arithmetic.contracts.block_kernel import BaseBlockEffect
+from number_compiler.arithmetic.contracts.local_action_codec import (
+    compile_source_cell,
+    initialize_local_stores,
+    local_cache_hit,
+    publish_oriented_action,
+)
 from number_compiler.arithmetic.contracts.scoped_handles import ArenaHandle, ArenaToken
 from number_compiler.hashlife.execution.field_images import (
     SourceCellArena,

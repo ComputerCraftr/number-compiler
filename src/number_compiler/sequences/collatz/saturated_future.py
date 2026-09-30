@@ -17,13 +17,13 @@ from number_compiler.arithmetic.fields.consumer_pullback import ExactRational as
 from number_compiler.arithmetic.fields.morphism_core import AffineCocycle
 from number_compiler.arithmetic.fields.skew_transfer import SkewTransfer
 from number_compiler.arithmetic.fields.threshold_envelope import ThresholdEnvelope
+from number_compiler.resources.ledger import ResourceLedger
 from number_compiler.sequences.collatz.hensel_cylinders import (
     MAX_CYLINDER_BITS,
     HenselCylinder,
 )
 from number_compiler.sequences.collatz.parity import collatz_parity_inverse_residue
 from number_compiler.sequences.collatz.radix64_transducer import compose_radix64_events
-from number_compiler.resources.ledger import ResourceLedger
 
 if TYPE_CHECKING:
     from number_compiler.sequences.collatz.source_publisher import (

@@ -1,6 +1,5 @@
 """Finite function reductions keep a live interface, not bound observations."""
 
-from tests.support.diamond_observation_adversarial import unsafe_capture
 from dataclasses import replace
 
 import pytest
@@ -15,6 +14,7 @@ from number_compiler.hashlife.interfaces.diamond_boundary_expr import (
 )
 from number_compiler.resources.metric_collection import collect_ledger_metrics
 from tests.support.diamond_continuation_payload import populated
+from tests.support.diamond_observation_adversarial import unsafe_capture
 
 
 def test_actual_primitive_function_map_has_a_live_domain_and_read_only_inventory() -> (

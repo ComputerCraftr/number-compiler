@@ -65,7 +65,10 @@ class GrowthRow(LedgerMetrics):
     unquotiented_recursive_application_state_nodes: int
     unquotiented_recursive_application_action_nodes: int
     unquotiented_recursive_application_description_nodes: int
-    bounded_temporal_runtime_cutover_complete: int
+    runtime_image_matches_oracle: bool
+    runtime_replay_publications_stable: bool
+    runtime_source_image_publications: int
+    runtime_completed_result_publications: int
     execution_memo_entries: int
     retained_effect_memo_entries: int
     recursive_spatial_residual_max_extent: int
@@ -132,6 +135,13 @@ def _reverse_widths(seed: int, generation: int, base: int) -> tuple[int, int]:
     return _digit_width(value, base), peak
 
 
+def _reverse_value(seed: int, generation: int, base: int) -> int:
+    value = int(seed)
+    for _ in range(int(generation)):
+        value += _reverse_in_base(value, base)
+    return value
+
+
 def _collatz_widths(seed: int, generation: int) -> tuple[int, int]:
     value = int(seed)
     peak = max(1, value.bit_length())
@@ -139,6 +149,13 @@ def _collatz_widths(seed: int, generation: int) -> tuple[int, int]:
         value = 3 * value + 1 if value & 1 else value // 2
         peak = max(peak, max(1, value.bit_length()))
     return max(1, value.bit_length()), peak
+
+
+def _collatz_value(seed: int, generation: int) -> int:
+    value = int(seed)
+    for _ in range(int(generation)):
+        value = 3 * value + 1 if value & 1 else value // 2
+    return value
 
 
 def _local_exponent(
@@ -163,11 +180,28 @@ def _build_rows(
             term = PoweredCollatzTerm(seed, generation)
             exact_width, peak_width = _collatz_widths(seed, generation)
 
-        # Measure one cold point without materializing the output tape.
-        # Widths above come from an independent
-        # scalar oracle and therefore do not mutate HashLife caches.
-        term.digit(0)
+        # Compare one public output point with an independent scalar oracle.
+        expected_output = (
+            _reverse_value(seed, generation, base)
+            if family == "reverse"
+            else _collatz_value(seed, generation)
+        )
+        expected_low = (
+            expected_output % base if family == "reverse" else expected_output & 1
+        )
+        observed_low = term.digit(0)
+        if observed_low != expected_low:
+            raise AssertionError((family, seed, generation, observed_low, expected_low))
+        before_replay = dict(term._ledger.counters)
+        if term.digit(0) != observed_low:
+            raise AssertionError(("runtime-image-replay-mismatch", family, generation))
+        after_replay = term._ledger.counters
         m = term.behavior_metrics()
+        replay_publications_stable = after_replay.get(
+            "source_image_publications", 0
+        ) == before_replay.get("source_image_publications", 0) and after_replay.get(
+            "completed_result_publications", 0
+        ) == before_replay.get("completed_result_publications", 0)
         spatial_occ = m.spatial_occurrence_description_nodes
         row = GrowthRow(
             generation=generation,
@@ -205,7 +239,12 @@ def _build_rows(
             unquotiented_recursive_application_state_nodes=m.unquotiented_recursive_application_state_nodes,
             unquotiented_recursive_application_action_nodes=m.unquotiented_recursive_application_action_nodes,
             unquotiented_recursive_application_description_nodes=m.unquotiented_recursive_application_description_nodes,
-            bounded_temporal_runtime_cutover_complete=m.bounded_temporal_runtime_cutover_complete,
+            runtime_image_matches_oracle=observed_low == expected_low,
+            runtime_replay_publications_stable=replay_publications_stable,
+            runtime_source_image_publications=(
+                m.temporal_diagnostics.construction.source_image_publications or 0
+            ),
+            runtime_completed_result_publications=m.completed_result_publications,
             execution_memo_entries=m.execution_memo_entries,
             retained_effect_memo_entries=m.retained_effect_memo_entries,
             recursive_spatial_residual_max_extent=m.recursive_spatial_residual_max_extent,
@@ -375,8 +414,17 @@ def main() -> None:
                 >= r.bounded_application_nonlinear_branch_evaluations
                 for r in rows
             ),
-            "bounded_temporal_runtime_cutover_complete": all(
-                r.bounded_temporal_runtime_cutover_complete == 1 for r in rows
+            "runtime_image_publication_contract_passes": all(
+                r.runtime_image_matches_oracle
+                and r.runtime_replay_publications_stable
+                and r.resource_audit_complete == 1
+                and r.resource_accounting_mismatch == 0
+                and (
+                    r.runtime_source_image_publications > 0
+                    if r.temporal_quotient_family == "collatz-dyadic-source-image"
+                    else r.runtime_completed_result_publications > 0
+                )
+                for r in rows
             ),
             "unquotiented_recursive_application_nodes_are_zero": all(
                 r.unquotiented_recursive_application_description_nodes == 0

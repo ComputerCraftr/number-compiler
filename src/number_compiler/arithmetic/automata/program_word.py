@@ -6,7 +6,6 @@ one node per symbol.
 """
 
 from __future__ import annotations
-from number_compiler.arithmetic.contracts.iterative_queries import defer_dependencies
 
 import weakref
 from collections.abc import Callable, Generator, Iterable, Iterator, MutableSequence
@@ -14,6 +13,7 @@ from dataclasses import dataclass
 from itertools import count
 from typing import Any, TypeVar
 
+from number_compiler.arithmetic.contracts.iterative_queries import defer_dependencies
 from number_compiler.arithmetic.fields.radix import bit_width
 
 _CacheKey = TypeVar("_CacheKey")
@@ -907,9 +907,9 @@ def prune_stale_program_word_memos(*, amortized: bool = False) -> int:
 __all__ = [
     "EMPTY",
     "CanonicalWord",
+    "RunTraversalMetrics",
     "SourceWord",
     "SourceWordSuffix",
-    "RunTraversalMetrics",
     "cap_symbol_runs",
     "clear_transient_program_word_caches",
     "concat",
@@ -926,8 +926,8 @@ __all__ = [
     "reverse",
     "run",
     "slice_runs",
-    "source_word_symbol_bounds",
     "source_word_key",
+    "source_word_symbol_bounds",
     "validate_source_word",
     "word_metrics",
 ]

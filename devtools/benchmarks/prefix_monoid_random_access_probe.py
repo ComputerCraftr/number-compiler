@@ -2,12 +2,10 @@
 
 from __future__ import annotations
 
-from devtools.paths import report_directory
-
 import json
 
 from devtools.experiments.reverse_add.domain import ReverseAddSpatialIndex
-from devtools.paths import repository_root
+from devtools.paths import report_directory, repository_root
 from number_compiler.api.number_api import NumberCompiler
 from number_compiler.arithmetic.formula.types import RadixSpec
 from number_compiler.hashlife.execution.evaluator import materialize_values

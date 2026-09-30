@@ -146,9 +146,10 @@ def test_digest_collisions_are_not_clone_evidence(
 def test_policy_command_fails_on_duplicates_without_allowlists(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
 ) -> None:
+    import json
+
     from devtools import paths
     from devtools.checks.repository_policy import main
-    import json
 
     assert clones(tmp_path, SOURCE, renamed(SOURCE)) > 0
     monkeypatch.setattr(paths, "repository_root", lambda: tmp_path)

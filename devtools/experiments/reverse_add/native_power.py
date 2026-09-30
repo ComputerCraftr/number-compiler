@@ -282,11 +282,11 @@ def compile_native_four_step(
         return cached
 
     (
-        (c1, tau1, g1, w1),
-        (c2, tau2, g2, w2),
-        (c3, tau3, g3, w3),
+        (_unused_c1_binding, _unused_tau1_binding, g1, w1),
+        (_unused_c2_binding, _unused_tau2_binding, g2, w2),
+        (_unused_c3_binding, _unused_tau3_binding, g3, w3),
         (
-            c4,
+            _unused_c4_binding,
             _tau4,
             g4,
             _w4,

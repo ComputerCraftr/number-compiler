@@ -1,10 +1,7 @@
 """Parent-first finite context programs never acquire future digit storage."""
 
-from tests.support.diamond_context_program import assert_context_inventory
-from tests.support.assertions import assert_rejected_atomically
-
-
 from dataclasses import replace
+from functools import partial
 from typing import Never
 
 import pytest
@@ -15,7 +12,8 @@ from number_compiler.hashlife.execution.continuations.diamond_context_program im
 )
 from number_compiler.hashlife.execution.diamond_payload import DiamondPayloadRegistry
 from number_compiler.resources.metric_collection import collect_ledger_metrics
-from tests.support.diamond_context_program import populated
+from tests.support.assertions import assert_rejected_atomically
+from tests.support.diamond_context_program import assert_context_inventory, populated
 
 
 def test_warm_context_parent_answers_with_all_child_and_primitive_evaluators_poisoned(
@@ -55,7 +53,8 @@ def test_foreign_context_ports_reject_before_warm_lookup_or_mutation() -> None:
     ):
         assert_rejected_atomically(
             runtime.ledger,
-            lambda: contexts.execute(
+            partial(
+                contexts.execute,
                 invalid.program,
                 invalid.left,
                 invalid.right,

@@ -2,8 +2,6 @@
 
 from __future__ import annotations
 
-from devtools.paths import report_directory
-
 import json
 
 from devtools.experiments.algebra.baby_giant_behavioral_bend import (
@@ -11,7 +9,7 @@ from devtools.experiments.algebra.baby_giant_behavioral_bend import (
     BabyGiantSupportPacketMemo,
 )
 from devtools.experiments.algebra.residue_refined_bend import fast_multipoint_bend_audit
-from devtools.paths import repository_root
+from devtools.paths import report_directory, repository_root
 from number_compiler.api.number_api import NumberCompiler
 
 ROOT = repository_root()

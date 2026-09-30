@@ -1,10 +1,5 @@
 """Inspect memo bindings independently of the production publication guard."""
 
-from tests.support.diamond_observation_adversarial import (
-    bound_observation_fixture,
-    structured_projection,
-    unsafe_capture,
-)
 import pytest
 
 from number_compiler.hashlife.execution.continuations.diamond_higher_tasks import (
@@ -18,6 +13,9 @@ from number_compiler.hashlife.interfaces.diamond_boundary_expr import (
 from number_compiler.resources.metric_collection import collect_ledger_metrics
 from tests.support.diamond_observation_adversarial import (
     _bound_projection_fixture,
+    bound_observation_fixture,
+    structured_projection,
+    unsafe_capture,
 )
 
 
@@ -47,7 +45,7 @@ def test_injected_bound_substitution_response_fails_independent_inventory(
 def test_injected_higher_bound_observation_response_fails_independent_inventory() -> (
     None
 ):
-    _app, runtime, arena, action, incoming = bound_observation_fixture()
+    _app, runtime, _unused_arena_binding, action, incoming = bound_observation_fixture()
     summary = runtime.execute(HigherUnarySummary(action, runtime.cells.source(0, 1), 1))
     request = HigherUnaryObserve(summary, incoming)
     result = runtime.execute(request)

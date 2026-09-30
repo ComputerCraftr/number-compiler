@@ -29,7 +29,6 @@ carry vector are never retained as semantic state.
 """
 
 from __future__ import annotations
-from number_compiler.arithmetic.contracts.iterative_queries import defer_dependencies
 
 from collections.abc import Iterable, Sequence
 from dataclasses import dataclass
@@ -39,6 +38,7 @@ from number_compiler.arithmetic.carry.carry_symmetry import (
     collatz_mul3_carry_action_arena,
     collatz_mul3_carry_word_action,
 )
+from number_compiler.arithmetic.contracts.iterative_queries import defer_dependencies
 from number_compiler.arithmetic.fields.radix import digits_lsd
 from number_compiler.arithmetic.fields.two_adic import v2_positive
 from number_compiler.arithmetic.formula.formula import FormulaArena, FormulaRoot

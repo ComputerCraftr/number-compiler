@@ -27,8 +27,8 @@ from number_compiler.arithmetic.fields.radix import bit_width, digits_lsd
 from number_compiler.arithmetic.formula.formula import (
     FormulaArena,
     FormulaRoot,
-    literal_planes,
     canonical_root_key,
+    literal_planes,
 )
 from number_compiler.arithmetic.formula.types import Expr
 

@@ -2,9 +2,9 @@
 
 from __future__ import annotations
 
-from tests.support.assertions import assert_rejected_atomically
-
 from typing import TYPE_CHECKING
+
+from tests.support.assertions import assert_rejected_atomically
 
 if TYPE_CHECKING:
     import number_compiler.arithmetic.functions.semantic_function_transactions

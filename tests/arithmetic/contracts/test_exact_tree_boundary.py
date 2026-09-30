@@ -1,8 +1,5 @@
 """Transient exact construction is rejected below every point/lowering facade."""
 
-from tests.support.assertions import assert_rejected_atomically
-
-
 import gc
 import weakref
 from collections.abc import Callable
@@ -39,6 +36,7 @@ from number_compiler.arithmetic.fields.dyadic_tile import (
 from number_compiler.resources.ledger import ResourceLedger
 from number_compiler.sequences.collatz.block_power import PoweredCollatzTerm
 from number_compiler.sequences.reverse_add.power import ReverseAddPoweredTerm
+from tests.support.assertions import assert_rejected_atomically
 
 
 def _builders() -> tuple[Callable[[], object], ...]:

@@ -24,7 +24,6 @@ from number_compiler.arithmetic.fields.dyadic_tile import (
     symbol_at,
 )
 
-
 _StencilKey = tuple[DyadicTile, DyadicTile, int, int]
 _StencilFrame = tuple[DyadicTile, DyadicTile, int, int, bool]
 

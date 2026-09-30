@@ -27,8 +27,8 @@ from number_compiler.sequences.antihydra.projection_fragments import (
 )
 from number_compiler.sequences.antihydra.projection_occurrences import (
     ProjectionBlockImage,
-    ProjectionOccurrenceCursor,
     ProjectionOccurrence,
+    ProjectionOccurrenceCursor,
     ProjectionOccurrenceID,
 )
 

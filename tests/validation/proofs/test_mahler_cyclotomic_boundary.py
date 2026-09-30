@@ -1,7 +1,7 @@
 """Independent bounded checks of the signed current-tail cylinder boundary."""
 
 from fractions import Fraction
-from itertools import product
+from itertools import pairwise, product
 
 import pytest
 
@@ -11,9 +11,9 @@ from devtools.experiments.antihydra.source_safety import (
     SourceBlockID,
     SourceSafetyWorkspace,
 )
-from number_compiler.resources.ledger import ResourceLedger
 from number_compiler.arithmetic.fields.consumer_pullback import ExactRational
 from number_compiler.arithmetic.fields.root_semifield import RootSemifieldElement
+from number_compiler.resources.ledger import ResourceLedger
 
 
 def _reference(source: int, width: int) -> tuple[tuple[int, ...], int, bool]:
@@ -68,7 +68,7 @@ def test_six_bit_no_adjacent_ones_boundary_is_exact() -> None:
         signed = sum((1 - 2 * e) * 3 ** (5 - j) * 2**j for j, e in enumerate(word))
         if -64 < signed <= 64:
             raw.append(word)
-            if all(a + b < 2 for a, b in zip(word, word[1:])):
+            if all(a + b < 2 for a, b in pairwise(word)):
                 admissible.append("".join(map(str, word)))
     assert len(raw) == 10
     assert admissible == ["100100", "100101", "101000"]

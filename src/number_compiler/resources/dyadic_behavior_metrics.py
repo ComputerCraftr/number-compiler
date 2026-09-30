@@ -60,10 +60,6 @@ def collatz_behavior_metrics(term: PoweredCollatzTerm) -> HashLifeBehaviorMetric
         unquotiented_recursive_application_state_nodes=0,
         unquotiented_recursive_application_action_nodes=0,
         unquotiented_recursive_application_description_nodes=0,
-        # The dyadic source-lift theorem alone does not check the executable
-        # worklist, publication/consumer refinement, or its construction bound.
-        bounded_temporal_runtime_cutover_complete=0,
-        bounded_temporal_runtime_cutover_blocker="dyadic_worklist_refinement_pending",
         execution_memo_entries=report.resource_ledger_entries,
         retained_effect_memo_entries=0,
         recursive_spatial_residual_max_extent=0,

@@ -2,8 +2,6 @@
 
 from __future__ import annotations
 
-from tests.support.local_codec_assertions import assert_publication_refused
-
 from dataclasses import fields
 from itertools import product
 from typing import TYPE_CHECKING, Never, cast
@@ -65,6 +63,7 @@ from number_compiler.sequences.collatz.powered_local_codec import (
     CollatzLocalActionID,
     CollatzPoweredLocalCodec,
 )
+from tests.support.local_codec_assertions import assert_publication_refused
 
 if TYPE_CHECKING:
     from number_compiler.hashlife.execution.field_transfer import (

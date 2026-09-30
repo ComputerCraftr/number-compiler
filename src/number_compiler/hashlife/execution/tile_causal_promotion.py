@@ -8,8 +8,6 @@ completed parent.  A missing child is a no-op; no partial image is retained.
 
 from __future__ import annotations
 
-from number_compiler.hashlife.execution.tile_causal_tasks import combine_spatial_outputs
-
 from typing import Any
 
 from number_compiler.hashlife.execution.tile_causal_results import (
@@ -19,6 +17,7 @@ from number_compiler.hashlife.execution.tile_causal_results import (
 from number_compiler.hashlife.execution.tile_causal_tasks import (
     CausalFrame,
     CausalPrefix,
+    combine_spatial_outputs,
     result_payload,
 )
 from number_compiler.resources.causal_workspace import CausalResults

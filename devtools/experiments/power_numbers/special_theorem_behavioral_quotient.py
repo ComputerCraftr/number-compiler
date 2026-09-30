@@ -33,6 +33,7 @@ special-form primality algorithms that may exploit additional number theory.
 from __future__ import annotations
 
 from dataclasses import dataclass
+
 from devtools.verification.fraction_linear_algebra import fraction_matrix_rank
 from devtools.verification.partition_refinement import parent_split_count
 

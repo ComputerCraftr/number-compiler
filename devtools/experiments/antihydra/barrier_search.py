@@ -19,8 +19,8 @@ from devtools.experiments.antihydra.joint_future_quotient import (
     audit_collatz_sources,
     audit_joint_future,
 )
-from devtools.experiments.antihydra.source_safety import PRIME_BANK
 from devtools.experiments.antihydra.source_safety import (
+    PRIME_BANK,
     SourceBlockID,
     SourceSafetyWorkspace,
 )

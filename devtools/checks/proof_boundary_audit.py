@@ -2,10 +2,10 @@
 
 from __future__ import annotations
 
-from devtools.checks.package_contracts import DEVELOPER_ROOTS
-
 import ast
 from pathlib import Path
+
+from devtools.checks.package_contracts import DEVELOPER_ROOTS
 
 LEGACY_MODULES = frozenset(
     {

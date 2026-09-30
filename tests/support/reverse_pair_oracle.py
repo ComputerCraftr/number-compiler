@@ -1,8 +1,10 @@
 """Exact scalar reverse-pair oracle shared by independent tests."""
 
 from devtools.verification.oracles.sequence_arithmetic import (
-    reference_successor as reference_successor,
+    reference_successor,
 )
+
+__all__ = ("reference_successor",)
 
 
 def symmetric_reference_successor(

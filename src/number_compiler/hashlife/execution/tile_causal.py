@@ -2,14 +2,6 @@
 
 from __future__ import annotations
 
-from number_compiler.hashlife.execution.tile_causal_tasks import (
-    publish_composite_output,
-)
-
-from number_compiler.hashlife.execution.tile_causal_tasks import combine_spatial_outputs
-
-from number_compiler.hashlife.execution.tile_causal_tasks import retain_completed
-
 from dataclasses import replace
 from typing import TYPE_CHECKING, Any
 
@@ -54,9 +46,12 @@ from number_compiler.hashlife.execution.tile_causal_tasks import (
 )
 from number_compiler.hashlife.execution.tile_causal_tasks import (
     append_prefix,
+    combine_spatial_outputs,
     composite_result_key,
     covered_chunks,
     primitive_advance,
+    publish_composite_output,
+    retain_completed,
     temporal_payload,
 )
 from number_compiler.hashlife.execution.tile_reverse_boundary import (

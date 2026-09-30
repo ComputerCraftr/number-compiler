@@ -7,13 +7,13 @@ from typing import Never
 
 import pytest
 
-from number_compiler.api.number_api import AntihydraTermPayload
 from number_compiler.api.cli import main
-from number_compiler.arithmetic.fields.point_germ import AffinePointGerm
+from number_compiler.api.number_api import AntihydraTermPayload
 from number_compiler.arithmetic.contracts.exact_tree_context import (
     ExactTreeConstructionForbidden,
 )
 from number_compiler.arithmetic.fields.dyadic_tile import DyadicSpan
+from number_compiler.arithmetic.fields.point_germ import AffinePointGerm
 from number_compiler.hashlife.execution.dyadic_return_images import (
     DyadicReturnImageWorkspace,
 )

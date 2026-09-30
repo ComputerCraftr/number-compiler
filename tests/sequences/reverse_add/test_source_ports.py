@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from itertools import pairwise
+
 import pytest
 
 from number_compiler.arithmetic.carry.carry_monoid import CarryFn
@@ -225,7 +227,7 @@ def test_regional_carry_stream_matches_forward_scan_in_both_coordinate_orders(
         raise AssertionError("stream reopened a point prefix")
 
     monkeypatch.setattr(SourceCarryPorts, "_first_prefix", forbidden)
-    pairs = tuple(zip(expected[:-1], expected[1:], strict=True))
+    pairs = tuple(pairwise(expected))
     assert tuple(ports.iter_first_ports()) == pairs
     assert tuple(ports.iter_first_ports(reflected=True)) == pairs[::-1]
     ports.dispose()

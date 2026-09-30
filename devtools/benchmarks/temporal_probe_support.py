@@ -2,7 +2,8 @@
 
 from __future__ import annotations
 
-from collections.abc import Callable, Mapping, Sequence, Set as AbstractSet
+from collections.abc import Callable, Mapping, Sequence
+from collections.abc import Set as AbstractSet
 from pathlib import Path
 
 from devtools.checks.dependency_graph import SourceSyntax, source_syntax

@@ -2,8 +2,6 @@
 
 from __future__ import annotations
 
-from devtools.paths import report_directory
-
 import json
 
 from devtools.experiments.power_numbers.terminal_projective_wreath import (
@@ -11,7 +9,7 @@ from devtools.experiments.power_numbers.terminal_projective_wreath import (
     local_frobenius_wreath_audit,
     projective_lucas_audit,
 )
-from devtools.paths import report_output, repository_root
+from devtools.paths import report_directory, report_output, repository_root
 from number_compiler.sequences.power_numbers.terminal_threshold import (
     prime_decision_chunk_spec,
     terminal_threshold_spec,

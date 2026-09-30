@@ -1,10 +1,5 @@
 from __future__ import annotations
 
-from tests.support.reverse_pair_oracle import (
-    symmetric_reference_successor as reference_successor,
-)
-from tests.support.reverse_pair_oracle import reference_power
-from tests.support.reference_arithmetic import symmetric_word as symmetric_word
 import random
 from typing import Never
 
@@ -22,6 +17,13 @@ from number_compiler.arithmetic.formula.derived import successor
 from number_compiler.arithmetic.formula.formula import FormulaArena, root_from_values
 from number_compiler.arithmetic.formula.types import RadixSpec
 from number_compiler.hashlife.execution.evaluator import materialize_values
+from tests.support.reference_arithmetic import symmetric_word
+from tests.support.reverse_pair_oracle import reference_power
+from tests.support.reverse_pair_oracle import (
+    symmetric_reference_successor as reference_successor,
+)
+
+__all__ = ("symmetric_word",)
 
 
 def normalize_pair_digits(full: tuple[int, ...], base: int) -> tuple[int, ...]:

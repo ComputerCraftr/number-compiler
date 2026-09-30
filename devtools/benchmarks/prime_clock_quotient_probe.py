@@ -2,15 +2,13 @@
 
 from __future__ import annotations
 
-from devtools.paths import report_directory
-
 import json
 
 from devtools.experiments.primes.prime_clock_quotients import (
     metrics_as_jsonable,
     prime_clock_wheel_audits,
 )
-from devtools.paths import report_output, repository_root
+from devtools.paths import report_directory, report_output, repository_root
 
 ROOT = repository_root()
 

@@ -2,12 +2,6 @@
 
 from __future__ import annotations
 
-from number_compiler.hashlife.execution.tile_causal_tasks import (
-    publish_composite_output,
-)
-
-from number_compiler.hashlife.execution.tile_causal_tasks import retain_completed
-
 from typing import Any
 
 from number_compiler.hashlife.actions.field_actions import FieldCellActionID
@@ -20,6 +14,8 @@ from number_compiler.hashlife.execution.tile_causal_results import (
 from number_compiler.hashlife.execution.tile_causal_tasks import (
     CausalFrame,
     CausalPrefix,
+    publish_composite_output,
+    retain_completed,
     temporal_payload,
 )
 from number_compiler.hashlife.tiles.tile_boundaries import BoundaryTileView

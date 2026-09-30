@@ -30,10 +30,11 @@ from devtools.experiments.power_numbers.special_successor_models import (
     StaticInjectionAudit,
     StructuredAutomatonAudit,
 )
+from devtools.verification.factorization_truth import factor_multiplicities_truth
 from devtools.verification.oracles.special_binary_jump import (
-    _minimized_carrier,
     _fermat_carrier_proof,
     _mersenne_carrier_proof,
+    _minimized_carrier,
     fermat_radix_orbit_representative,
     mersenne_sign_representative,
 )
@@ -41,11 +42,9 @@ from devtools.verification.quotient_synthesis import (
     ObserverFeature,
     synthesize_finite_target_observer,
 )
-from devtools.verification.factorization_truth import factor_multiplicities_truth
 from number_compiler.arithmetic.fields.congruence_automaton import (
     reinterpret_binary_digits,
 )
-from number_compiler.sequences.power_numbers.etale_factor import _quadratic_mul_pair
 from number_compiler.arithmetic.functions.finite_unary import (
     minimize_unary_moore,
     partition_equivalent,
@@ -54,6 +53,7 @@ from number_compiler.arithmetic.functions.finite_unary import (
 from number_compiler.arithmetic.polynomials.two_primary_filtration import (
     pure_two_primary_image_filtration,
 )
+from number_compiler.sequences.power_numbers.etale_factor import _quadratic_mul_pair
 from number_compiler.sequences.prime.automaton import boolean_anf_metrics
 from number_compiler.sequences.prime.set import jacobi_symbol
 

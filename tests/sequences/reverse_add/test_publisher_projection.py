@@ -1,7 +1,5 @@
 from __future__ import annotations
 
-from tests.support.assertions import assert_rejected_atomically
-
 from dataclasses import replace
 
 import pytest
@@ -22,11 +20,13 @@ from number_compiler.hashlife.actions.lazy_compiler import LazyCompiler
 from number_compiler.hashlife.observation.hashlife_projection import HashLifeBlockIndex
 from number_compiler.projection.digit_terminal import DigitNormalizeBlockEffect
 from number_compiler.resources.ledger import ResourceLedger
+from number_compiler.resources.metric_collection import collect_ledger_metrics
 from number_compiler.sequences.reverse_add.compilation import compile_reverse_pair_power
 from number_compiler.sequences.reverse_add.power import (
     ReverseAddPoweredTerm,
     pair_field_from_integer,
 )
+from tests.support.assertions import assert_rejected_atomically
 from tests.support.reverse_higher_interface import _direct_step
 
 
@@ -97,18 +97,25 @@ def test_source_bound_publisher_matches_literal_196(generation: int) -> None:
 
 def test_publisher_defers_reachable_image_until_first_output_demand() -> None:
     term = ReverseAddPoweredTerm(196, 32)
+    production_audit = collect_ledger_metrics(term._ledger)
+    assert production_audit.resource_audit_complete == 1
     publisher = _reference_publisher(term)
     assert type(publisher) is ReversePublisherProjection
     assert publisher._macro is None
     assert publisher._image_binding is None
     assert term._ledger.counters.get("higher_concrete_operation_evaluations", 0) == 0
     assert term._ledger.counters.get("higher_action_continuation_requests", 0) == 0
+    before = term._ledger.snapshot()
     report = term.behavior_metrics()
+    assert term._ledger.snapshot() == before
     assert publisher._macro is None
-    assert report.bounded_temporal_runtime_cutover_complete == 0
-    assert report.bounded_temporal_runtime_cutover_blocker == (
-        "reverse_cylinder_pullback_unconstructed"
-    )
+    # A runtime snapshot must not rewalk payloads after the independent oracle
+    # is attached, and it must not trigger image construction.
+    assert report.resource_audit_complete == 0
+    oracle_audit = collect_ledger_metrics(term._ledger)
+    assert oracle_audit.resource_audit_complete == 0
+    assert oracle_audit.resource_audit_unknown_payloads > 0
+    assert report.resource_accounting_mismatch == 0
 
     publisher.validate_execution()
     assert publisher._macro is None
@@ -402,15 +409,21 @@ def test_recursive_fold_matches_independent_literal_sheets(
     )
 
 
-def test_reference_publisher_does_not_exempt_higher_continuation_work() -> None:
+def test_reference_publisher_work_remains_visible_in_runtime_metrics() -> None:
     term = ReverseAddPoweredTerm(196, 8)
+    production_audit = collect_ledger_metrics(term._ledger)
+    assert production_audit.resource_audit_complete == 1
     _reference_publisher(term).point(0)
-    report = term.behavior_metrics()
-    assert term.metrics().higher_action_continuation_requests > 0
-    assert report.bounded_temporal_runtime_cutover_complete == 0
-    assert report.bounded_temporal_runtime_cutover_blocker == (
-        "reverse_cylinder_pullback_unconstructed"
-    )
+    metrics = term.metrics()
+    assert metrics.higher_action_continuation_requests > 0
+    assert metrics.higher_concrete_operation_evaluations > 0
+    # The explicit reference owner remains visible to an explicit ledger audit
+    # and is not silently certified by the production term's snapshot reporter.
+    assert metrics.resource_audit_complete == 0
+    oracle_audit = collect_ledger_metrics(term._ledger)
+    assert oracle_audit.resource_audit_complete == 0
+    assert oracle_audit.resource_audit_unknown_payloads > 0
+    assert metrics.resource_accounting_mismatch == 0
 
 
 def test_publisher_preserves_budget_refusal() -> None:

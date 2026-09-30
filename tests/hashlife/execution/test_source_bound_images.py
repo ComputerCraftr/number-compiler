@@ -1,14 +1,5 @@
 from __future__ import annotations
 
-from tests.support.source_bound_images import (
-    _Action,
-    _DecimalAdapter,
-    _runtime,
-    _source_audit,
-    one_image,
-    assert_budget_refusal,
-)
-
 from dataclasses import dataclass, replace
 from typing import cast
 
@@ -32,6 +23,14 @@ from number_compiler.resources.source_bound_payload_audit import (
     audit_source_bound_payloads,
 )
 from number_compiler.sequences.reverse_add.power import ReverseAddPoweredTerm
+from tests.support.source_bound_images import (
+    _Action,
+    _DecimalAdapter,
+    _runtime,
+    _source_audit,
+    assert_budget_refusal,
+    one_image,
+)
 
 
 def test_composite_applies_after_to_the_exact_before_image_and_reuses_it() -> None:
@@ -543,7 +542,7 @@ def test_same_family_image_record_mutation_is_rejected(field: str) -> None:
 
 
 def test_record_cannot_replace_its_data_and_self_carried_seal() -> None:
-    ledger, core, adapter, image, record = one_image()
+    ledger, core, _unused_adapter_binding, image, record = one_image()
     binding = replace(record.binding, extent=999)
     forged_seal = publication_seal((binding, record.payload, None), ledger)
     core._nodes[image.local_id] = replace(

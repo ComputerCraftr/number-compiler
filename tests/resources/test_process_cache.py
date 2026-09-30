@@ -1,8 +1,8 @@
 from __future__ import annotations
 
 import gc
-from weakref import ref
 from typing import cast
+from weakref import ref
 
 import pytest
 
@@ -13,6 +13,7 @@ from number_compiler.resources.ownership import audit_execution_ownership
 from number_compiler.resources.process_cache import (
     MISSING,
     CacheLease,
+    CacheRecordIssuerMismatch,
     ImmutableValue,
     ProcessCache,
 )
@@ -27,6 +28,37 @@ def test_source_qualified_lease_does_not_cross_partitions() -> None:
         assert foreign.get(("phi", 2, 100)) is MISSING
     with cache.acquire("prime", "2", ("source-a",)) as newer_version:
         assert newer_version.get(("phi", 2, 100)) is MISSING
+
+
+def test_record_issuer_is_identity_checked_and_included_in_retained_bytes() -> None:
+    issuer = object()
+    foreign = object()
+    ordinary_cache = ProcessCache(max_entries=8, max_bytes=100_000)
+    issued_cache = ProcessCache(max_entries=8, max_bytes=100_000)
+    with ordinary_cache.acquire("family", "1", ("source",)) as ordinary:
+        assert ordinary.put(("effect",), (1, 2, 3))
+        with pytest.raises(CacheRecordIssuerMismatch):
+            ordinary.get_issued(("effect",), issuer)
+    with issued_cache.acquire("family", "1", ("source",)) as issued:
+        assert issued.put_issued(("effect",), (1, 2, 3), issuer)
+        assert issued.get_issued(("effect",), issuer) == (1, 2, 3)
+        with pytest.raises(CacheRecordIssuerMismatch):
+            issued.get_issued(("effect",), foreign)
+        with pytest.raises(TypeError, match="exact object capability"):
+            issued.get_issued(("effect",), "family")
+    assert issued_cache.stats().bytes > 0
+    assert ordinary_cache.stats().bytes > 0
+
+
+def test_issued_record_capacity_refusal_is_bounded_and_nonmutating() -> None:
+    cache = ProcessCache(max_entries=8, max_bytes=2_000)
+    with cache.acquire("family", "1", ("source",)) as lease:
+        before = cache.stats()
+        assert not lease.put_issued(("large",), b"x" * 4_000, object())
+        after = cache.stats()
+        assert after.entries == before.entries == 0
+        assert after.bytes == before.bytes
+        assert lease.get_issued(("large",), object()) is MISSING
 
 
 def test_boolean_integer_aliases_cannot_cross_cache_authority_keys() -> None:
@@ -340,3 +372,30 @@ def test_cache_has_no_unregistered_persistent_stores() -> None:
         assert lease.put(("phi", 2, 10), 5)
         report = audit_execution_ownership(cache.ledger)
         assert not report.violations
+
+
+def test_cli_cache_snapshot_neither_constructs_nor_changes_cache(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from number_compiler.api.cli_render import _metrics_json
+    from number_compiler.api.number_api import NumberCompiler
+    from number_compiler.resources import process_cache
+
+    term = NumberCompiler(shared_cache=False).project_nth("fermat", 2)
+    monkeypatch.setattr(process_cache, "_PROCESS_CACHE", None)
+
+    def forbidden() -> ProcessCache:
+        raise AssertionError("metrics created a shared cache")
+
+    monkeypatch.setattr(process_cache, "get_process_cache", forbidden)
+    assert _metrics_json(term)["process_cache"] is None
+    cache = ProcessCache(max_entries=8, max_bytes=100_000)
+    with cache.acquire("snapshot-test", "1", ("source",)) as lease:
+        lease.put(("germ",), (1, 3))
+    monkeypatch.setattr(process_cache, "_PROCESS_CACHE", cache)
+    before = cache.stats()
+    payload = _metrics_json(term)
+    assert payload["process_cache_scope"] == "process_aggregate_not_query_work"
+    assert isinstance(payload["process_cache"], dict)
+    assert payload["process_cache"]["entries"] == 1
+    assert cache.stats() == before

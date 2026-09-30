@@ -2,8 +2,6 @@
 
 from __future__ import annotations
 
-from tests.support.assertions import assert_rejected_atomically
-
 from dataclasses import replace
 from typing import TYPE_CHECKING, cast
 
@@ -16,6 +14,7 @@ from number_compiler.hashlife.execution.continuations.generic_higher import (
     generic_higher_runtime,
 )
 from number_compiler.resources.metric_collection import collect_ledger_metrics
+from tests.support.assertions import assert_rejected_atomically
 from tests.support.diamond_query import build
 
 if TYPE_CHECKING:

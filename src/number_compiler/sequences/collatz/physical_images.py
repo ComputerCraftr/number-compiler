@@ -42,9 +42,13 @@ class CollatzPhysicalImageWorkspace(DyadicReturnImageWorkspace):
         steps: int,
         *,
         retain_chronology: bool = True,
+        shared_cache: bool = False,
     ) -> None:
         if type(retain_chronology) is not bool:
             raise TypeError("Collatz chronology choice must be Boolean")
+        if type(shared_cache) is not bool:
+            raise TypeError("shared cache flag must be Boolean")
+        self._shared_cache = shared_cache
         self._retain_chronology = retain_chronology
         super().__init__(ledger, seed, steps, COLLATZ_PHYSICAL_LAW)
 
@@ -165,6 +169,7 @@ class CollatzPhysicalImageWorkspace(DyadicReturnImageWorkspace):
         ):
             return None
         from number_compiler.arithmetic.fields.skew_transfer import SkewTransfer
+        from number_compiler.arithmetic.fields.two_adic import v2_positive
         from number_compiler.hashlife.execution.dyadic_return_runs import (
             RunArithmeticWorkspace,
             publish_exact_run_candidate,
@@ -172,8 +177,6 @@ class CollatzPhysicalImageWorkspace(DyadicReturnImageWorkspace):
         from number_compiler.sequences.collatz.temporal_run_quotient import (
             compile_collatz_temporal_run_quotient,
         )
-
-        from number_compiler.arithmetic.fields.two_adic import v2_positive
 
         # Pick the constructor before any orbit discovery. High-entropy wide
         # sources retain balanced source-cylinder substitution; direct run
@@ -212,6 +215,7 @@ class CollatzPhysicalImageWorkspace(DyadicReturnImageWorkspace):
             source_value,
             width,
             ledger=self.ledger,
+            shared_cache=self._shared_cache,
         )
         cycle = None
         if quotient.cycle_repetitions:

@@ -2,12 +2,9 @@
 
 from __future__ import annotations
 
-from devtools.paths import report_directory
-
-
-from devtools.paths import repository_root
-from devtools.runs import run_reported
 from devtools.benchmarks.reporting import write_json_report
+from devtools.paths import report_directory, repository_root
+from devtools.runs import run_reported
 from number_compiler.arithmetic.fields.digit_formula import (
     synthesize_divide,
     synthesize_function_monoid,

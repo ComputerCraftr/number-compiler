@@ -279,13 +279,14 @@ class PoweredCollatzTerm:
         "_max_cache_entries",
         "_max_context_nodes",
         "_microblocks",
-        "_power",
         "_point_program",
+        "_power",
         "_radix_projections",
+        "_shared_cache",
         "_source_construction",
+        "_width_bound",
         "_workspace",
         "_workspace_binding",
-        "_width_bound",
         "compose_operations",
         "seed",
         "seed_digits",
@@ -300,7 +301,11 @@ class PoweredCollatzTerm:
         *,
         max_context_nodes: int | None = None,
         max_cache_entries: int | None = None,
+        shared_cache: bool = True,
     ) -> None:
+        if type(shared_cache) is not bool:
+            raise TypeError("shared cache flag must be Boolean")
+        self._shared_cache = shared_cache
         seed = require_integer(seed, "seed", 1)
         steps = require_integer(steps, "steps", 0)
         self._ledger = ResourceLedger(max_context_nodes, max_cache_entries)
@@ -416,7 +421,11 @@ class PoweredCollatzTerm:
         workspace = self._workspace
         if workspace is None:
             workspace = CollatzPhysicalImageWorkspace(
-                self._ledger, self.seed, self.steps, retain_chronology=False
+                self._ledger,
+                self.seed,
+                self.steps,
+                retain_chronology=False,
+                shared_cache=self._shared_cache,
             )
             self._workspace_binding = (
                 workspace.root_source,

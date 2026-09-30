@@ -1,7 +1,5 @@
 """Distinguish syntactic programs, reduced functions, and work before aliasing."""
 
-from tests.support.assertions import measure_operation
-from tests.support.diamond_context_program import assert_context_inventory
 from dataclasses import replace
 from types import SimpleNamespace
 
@@ -12,8 +10,9 @@ from number_compiler.hashlife.execution.diamond_payload import DiamondPayloadReg
 from number_compiler.hashlife.interfaces.diamond_unary import UnaryComposition
 from number_compiler.resources.metric_collection import collect_ledger_metrics
 from number_compiler.resources.metric_registry import observed_node_partition
+from tests.support.assertions import measure_operation
 from tests.support.dataclass_records import replace_record
-from tests.support.diamond_context_program import populated
+from tests.support.diamond_context_program import assert_context_inventory, populated
 
 
 def test_spatial_context_programs_are_not_counted_as_extensional_functions() -> None:

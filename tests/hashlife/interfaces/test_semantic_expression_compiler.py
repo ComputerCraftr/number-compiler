@@ -2,8 +2,6 @@
 
 from __future__ import annotations
 
-from tests.support.assertions import assert_rejected_atomically
-
 from typing import TYPE_CHECKING
 
 import pytest
@@ -29,22 +27,23 @@ from number_compiler.hashlife.execution.continuations.diamond_tasks import Resul
 from number_compiler.hashlife.interfaces.semantic_expression_compiler import (
     SemanticExpressionCompiler,
 )
+from tests.support.assertions import assert_rejected_atomically
 from tests.support.diamond_continuation_reduction import (
+    advance_after_emit,
     literal,
     machine,
-    advance_after_emit,
 )
 
 if TYPE_CHECKING:
     from number_compiler.arithmetic.contracts.scoped_handles import ActionProgramID
+    from number_compiler.arithmetic.functions.finite_function_types import (
+        SemanticFunctionID,
+    )
     from number_compiler.hashlife.execution.continuations.diamond_runtime import (
         DiamondRuntime,
     )
     from number_compiler.hashlife.interfaces.diamond_boundary_expr import ExprID
     from number_compiler.hashlife.interfaces.diamond_kernel import PrimitiveKernel
-    from number_compiler.arithmetic.functions.finite_function_types import (
-        SemanticFunctionID,
-    )
 
 
 def _inner_function(

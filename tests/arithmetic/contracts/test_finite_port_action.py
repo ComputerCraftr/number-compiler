@@ -1,9 +1,5 @@
 from __future__ import annotations
 
-from tests.support.finite_port_fixtures import binary_carry_ports
-
-from tests.support.assertions import assert_rejected_atomically
-
 from itertools import product
 from typing import Literal, Never, cast
 
@@ -21,6 +17,8 @@ from number_compiler.arithmetic.functions.finite_port_action import (
 )
 from number_compiler.resources.ledger import ResourceLedger
 from number_compiler.resources.metric_collection import collect_ledger_metrics
+from tests.support.assertions import assert_rejected_atomically
+from tests.support.finite_port_fixtures import binary_carry_ports
 
 
 def test_reset_identity_functions_are_extensional_aliases_and_compose() -> None:
@@ -103,7 +101,7 @@ def test_twenty_row_cut_stays_factored_and_never_enumerates_joint_states() -> No
 
 
 def test_query_eviction_preserves_canonical_handles_and_live_inventory() -> None:
-    arena, xvar, yvar, x, y = binary_carry_ports()
+    arena, _unused_xvar_binding, _unused_yvar_binding, x, y = binary_carry_ports()
     first = arena.choose(x, y, arena.constant(False))
     assert len(arena._ite) > 0
     count = arena.node_count

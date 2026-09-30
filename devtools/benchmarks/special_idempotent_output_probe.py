@@ -2,8 +2,6 @@
 
 from __future__ import annotations
 
-from devtools.paths import report_directory
-
 import json
 from dataclasses import asdict
 
@@ -15,7 +13,7 @@ from devtools.experiments.power_numbers.special_idempotent_output import (
     raw_special_materialization_audit,
     terminal_idempotent_control_audit,
 )
-from devtools.paths import repository_root
+from devtools.paths import report_directory, repository_root
 
 ROOT = repository_root()
 

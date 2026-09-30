@@ -3,17 +3,17 @@
 import pytest
 
 from number_compiler.arithmetic.contracts.block_effect import BlockContextBudgetExceeded
+from number_compiler.arithmetic.contracts.scoped_handles import ActionProgramID
 from number_compiler.arithmetic.functions.finite_port_action import PortVariable
 from number_compiler.hashlife.execution.continuations.diamond_context_program import (
     LEFT_A,
     RIGHT_A,
 )
 from number_compiler.hashlife.interfaces.diamond_boundary_expr import (
-    StateSort,
     BoundaryExpressionArena,
     ExprID,
+    StateSort,
 )
-from number_compiler.arithmetic.contracts.scoped_handles import ActionProgramID
 from number_compiler.hashlife.interfaces.diamond_kernel import PrimitiveKernel
 from number_compiler.hashlife.interfaces.diamond_kernel_bridge import input_expression
 from tests.support.diamond_boundary_expr import context

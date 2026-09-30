@@ -8,12 +8,12 @@ independent of the represented digit width.
 from __future__ import annotations
 
 from collections import deque
-from collections.abc import MutableMapping, Callable, Sequence
+from collections.abc import Callable, MutableMapping, Sequence
 from dataclasses import dataclass, field
 from typing import (
-    Literal,
     TYPE_CHECKING,
     Generic,
+    Literal,
     TypeVar,
 )
 

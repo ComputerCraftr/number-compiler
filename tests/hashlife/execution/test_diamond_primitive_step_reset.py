@@ -2,9 +2,7 @@
 
 from __future__ import annotations
 
-from tests.support.assertions import assert_unallocated_hit
-from tests.support.assertions import assert_rejected_atomically
-
+from functools import partial
 from typing import Never
 
 import pytest
@@ -22,6 +20,7 @@ from number_compiler.hashlife.interfaces.diamond_boundary_expr import ExprID
 from number_compiler.hashlife.observation.diamond_parametric_query import (
     parametric_point,
 )
+from tests.support.assertions import assert_rejected_atomically, assert_unallocated_hit
 from tests.support.diamond_halos import suffix_parity
 from tests.support.diamond_observation_adversarial import neighbor_xor
 from tests.support.diamond_primitive_step_reset import machine
@@ -128,7 +127,7 @@ def test_foreign_or_malformed_state_is_rejected_before_reset_shortcuts(
         task = HigherStep(action, 1, invalid, symbol)
         for operation in (runtime.execute, runtime.higher.probe):
             assert_rejected_atomically(
-                runtime.ledger, lambda: operation(task), ValueError
+                runtime.ledger, partial(operation, task), ValueError
             )
 
 
@@ -230,7 +229,7 @@ def test_wrong_sort_or_foreign_published_result_rejects_before_reset_allocation(
     )
     for result in (wrong_sort, foreign):
         assert_rejected_atomically(
-            runtime.ledger, lambda: runtime.higher.publish(request, result), ValueError
+            runtime.ledger, partial(runtime.higher.publish, request, result), ValueError
         )
 
 
@@ -268,6 +267,6 @@ def test_singleton_right_port_erases_symbol_program_before_warm_lookup(
     for invalid in (wrong_sort, foreign_symbol):
         before = assert_rejected_atomically(
             runtime.ledger,
-            lambda: runtime.execute(HigherStep(action, 1, right, invalid)),
+            partial(runtime.execute, HigherStep(action, 1, right, invalid)),
             ValueError,
         )

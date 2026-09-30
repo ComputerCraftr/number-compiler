@@ -1,5 +1,6 @@
 """Canonical finite consumer fixtures shared by probes and adversarial tests."""
 
+from number_compiler.arithmetic.carry.event_memory import carry_field, pair_step
 from number_compiler.arithmetic.functions.finite_function_types import FinitePort
 from number_compiler.arithmetic.functions.finite_port_action import PortVariable
 from number_compiler.hashlife.interfaces.semantic_bits import (
@@ -11,7 +12,6 @@ from number_compiler.sequences.collatz.output_morphism import (
     DIGIT,
     RESIDUAL_SHIFT,
 )
-from number_compiler.arithmetic.carry.event_memory import carry_field, pair_step
 
 
 def free_collatz_variables(

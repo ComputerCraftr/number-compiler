@@ -2,10 +2,6 @@
 
 from __future__ import annotations
 
-from tests.support.tile_kernel import runtime_source_children
-from tests.support.tile_kernel import _spatial_inputs, _tile_inputs
-
-from tests.support.tile_kernel import _runtime_source
 from typing import Never
 
 import pytest
@@ -21,12 +17,22 @@ from number_compiler.hashlife.execution.tile_causal_results import PrimitiveCaus
 from number_compiler.hashlife.execution.tile_causal_tasks import CausalFrame
 from number_compiler.hashlife.tiles.tile_context import TemporalCocycle
 from number_compiler.sequences.collatz.block_power import CollatzPhysicalBlockEffect
-from tests.support.tile_kernel import _oracle, _runtime, _tile
+from tests.support.tile_kernel import (
+    _oracle,
+    _runtime,
+    _runtime_source,
+    _spatial_inputs,
+    _tile,
+    _tile_inputs,
+    runtime_source_children,
+)
 
 
 def test_primitive_interface_payload_observes_without_output_tile() -> None:
     effect = BaseBlockEffect(3)
-    ledger, tiles, adapter, action, scheduler, source = _runtime_source(effect, (1,))
+    ledger, _unused_tiles_binding, adapter, action, scheduler, source = _runtime_source(
+        effect, (1,)
+    )
     ports, wiring = adapter.initial_ports(action), adapter.wiring(action)
     before_tiles = ledger.counters.get("tile_publications", 0)
     try:
@@ -49,9 +55,15 @@ def test_primitive_interface_payload_observes_without_output_tile() -> None:
 def test_spatial_interface_payload_matches_complete_thirteen_channel_product() -> None:
     effect = BaseBlockEffect(3)
     _ledger, tiles, adapter, action, scheduler, source = _runtime_source(effect, (0, 1))
-    node, left_cell, right_cell, ports, wiring, left_context, right_context = (
-        _spatial_inputs(tiles, adapter, action, source)
-    )
+    (
+        _unused_node_binding,
+        left_cell,
+        right_cell,
+        ports,
+        wiring,
+        left_context,
+        right_context,
+    ) = _spatial_inputs(tiles, adapter, action, source)
     try:
         left = primitive_interface_payload(
             scheduler.results,
@@ -123,7 +135,9 @@ def test_collatz_primitive_parent_observes_only_the_low_edge_event(
     digits: tuple[int, ...], left_port: int, event_weight: int
 ) -> None:
     effect = CollatzPhysicalBlockEffect()
-    ledger, tiles, adapter, action, scheduler, source = _runtime_source(effect, digits)
+    ledger, _unused_tiles_binding, adapter, action, scheduler, source = _runtime_source(
+        effect, digits
+    )
     initial = adapter.initial_ports(action)
     application = scheduler.application(
         action,
@@ -178,7 +192,7 @@ def test_composite_interface_pins_completed_subresults_to_issued_application() -
 def test_interface_level_rejects_before_semantic_publication() -> None:
     effect = BaseBlockEffect(3)
     ledger, tiles, adapter, action, scheduler, source = _runtime_source(effect, (0, 1))
-    node, left_cell, right_cell, ports, wiring = _tile_inputs(
+    _unused_node_binding, left_cell, right_cell, ports, wiring = _tile_inputs(
         tiles, adapter, action, source
     )
     left = primitive_interface_payload(
@@ -217,7 +231,7 @@ def test_interface_level_rejects_before_semantic_publication() -> None:
 
 
 def test_collatz_interface_events_are_spatially_additive() -> None:
-    _ledger, tiles, adapter, primitive, scheduler, source, node = (
+    _ledger, _unused_tiles_binding, adapter, primitive, scheduler, source, node = (
         runtime_source_children(CollatzPhysicalBlockEffect(), (1, 1))
     )
     assert node.left is not None and node.right is not None

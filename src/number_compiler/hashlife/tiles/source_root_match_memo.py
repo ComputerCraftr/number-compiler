@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 from number_compiler.hashlife.tiles.result_reverse_indexes import publish_indexed_result
-
 from number_compiler.hashlife.tiles.tile_result_records import (
     RootMatchResult,
     SourceRootMatchKey,

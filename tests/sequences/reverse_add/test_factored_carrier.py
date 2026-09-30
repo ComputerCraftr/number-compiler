@@ -11,8 +11,8 @@ from devtools.experiments.reverse_add.factored_carrier import (
     OutputResidualID,
     TemporalCell,
 )
-from devtools.experiments.reverse_add.factored_power import FactoredTemporalPower
 from devtools.experiments.reverse_add.factored_planes import PlaneAlgebra, PlaneGate
+from devtools.experiments.reverse_add.factored_power import FactoredTemporalPower
 from devtools.verification import exact_oracle
 from number_compiler.arithmetic.automata import program_word as words
 from number_compiler.arithmetic.carry.carry_monoid import CarryFn

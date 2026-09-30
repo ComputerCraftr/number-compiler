@@ -142,6 +142,14 @@ proves source coefficients determine the defined Mahler action. It also proves
 that the centered word `11` has distinct Mahler and ledger outcomes, so a Mahler
 failure must not be reported as Antihydra halting.
 
+**Checked finite-action theorem:** `mahler_centered_11_actual_tail_cap`
+proves that every finite continuation by legal bit actions after `11` retains
+the cap `3/2 * scale + offset < 0`. Its induction uses
+`mahler_negative_cap_preserved`; it concerns the actual capped actions, rather
+than an uncapped replacement tail. This supports the root-action cap reduction.
+The source-to-action constructor and cache publication invariant still require
+their own refinement; the theorem makes no all-time safety claim.
+
 ## Shared Collatz F5 spatial action: checked transfer
 
 The shared [carry/F5 owner](../../src/number_compiler/arithmetic/carry/collatz_f5_quotient.py)

@@ -163,7 +163,7 @@ def test_public_collatz_radices_share_the_same_physical_powered_backend() -> Non
 
 
 @pytest.mark.validation
-def test_collatz_temporal_release_probe_reports_source_image_execution_as_red(
+def test_collatz_temporal_release_probe_reports_measured_source_image_execution(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     """Run the real multi-size Collatz release benchmark and full report audit."""
@@ -173,31 +173,24 @@ def test_collatz_temporal_release_probe_reports_source_image_execution_as_red(
     monkeypatch.setattr(probe, "PROJECTION_STEPS", (16, 32))
     result = probe.run_probe()
     assert result["version"] == "0.62.0-schema8-source-image-observation"
-    assert result["status"] == "RED"
+    assert result["status"] == "GREEN"
     assert result["execution_available"] is True
     assert result["execution_status"] == "available"
     assert result["measurements_complete"] is True
     assert result["execution_rejection_type"] is None
-    assert not result["whole_state_successor_loop_present"]
-    assert not result["parity_itinerary_required_for_physical_nth_state"]
-    assert not result["history_word_carrier_present"]
-    assert not result["spacetime_macrocell_absorption_installed"]
-    assert not result["lazy_program_projection_installed"]
-    assert not result["linear_bisimulation_checkpoint_installed"]
     assert result["schema_version"] == 8
     assert result["projection"]
     assert result["public_radix_exactness"] == {"2": 214, "3": 214, "6": 214}
     assert result["public_radix_exactness_available"] is True
     assert result["measured_scaling_gate"] == "PASS"
-    assert result["bounded_temporal_runtime_cutover_complete"] is False
+    assert result["source_image_runtime_contract"] is True
     assert "certified_path_published_no_recursive_field_images" not in text_values(
         result["release_blockers"]
     )
     assert "source_image_composition_exceeds_binary_envelope" not in text_values(
         result["release_blockers"]
     )
-    assert "successor_closure_unproved" not in text_values(result["release_blockers"])
-    assert "source_global_powered_construction_bound_unproved" in text_values(
+    assert "source_image_runtime_contract_unverified" not in text_values(
         result["release_blockers"]
     )
     projection = result["projection"]

@@ -1,7 +1,7 @@
 """Shared containment checks for retired reverse temporal execution paths."""
 
-from collections.abc import Callable
 import importlib.util
+from collections.abc import Callable
 from typing import Never
 
 import pytest

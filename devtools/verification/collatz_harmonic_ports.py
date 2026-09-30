@@ -16,8 +16,8 @@ from number_compiler.arithmetic.carry.carry_monoid import (
     carry_fn_from_outputs,
 )
 from number_compiler.arithmetic.carry.collatz_binary_forcing import (
-    binary_carry_birth as binary_carry_birth,
-    radix64_phi5 as radix64_phi5,
+    binary_carry_birth,
+    radix64_phi5,
 )
 from number_compiler.arithmetic.carry.collatz_carry_wires import (
     CollatzCarryWires,
@@ -35,6 +35,8 @@ from number_compiler.arithmetic.polynomials.primary_jet import (
     primary_jet_from_digits,
 )
 from number_compiler.sequences.collatz.hensel_cylinders import HenselCylinder
+
+__all__ = ("binary_carry_birth", "radix64_phi5")
 
 Jet = tuple[int, ...]
 ZERO: Jet = (0, 0, 0, 0, 0)

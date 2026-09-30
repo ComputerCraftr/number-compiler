@@ -2,16 +2,7 @@
 
 from __future__ import annotations
 
-from number_compiler.hashlife.execution.continuations.diamond_runtime import (
-    DiamondRuntime,
-)
-from number_compiler.arithmetic.contracts.scoped_handles import ActionProgramID
-from number_compiler.hashlife.interfaces.diamond_boundary_expr import (
-    BoundaryExpressionArena,
-)
-from number_compiler.hashlife.interfaces.diamond_boundary import BoundaryActionArena
-from tests.support.assertions import assert_rejected_atomically
-
+from functools import partial
 from typing import TYPE_CHECKING, Never
 
 import pytest
@@ -20,7 +11,10 @@ from number_compiler.arithmetic.contracts.block_effect import (
     BlockContextBudgetExceeded,
     BoundarySide,
 )
-from number_compiler.arithmetic.contracts.scoped_handles import TransferSummaryID
+from number_compiler.arithmetic.contracts.scoped_handles import (
+    ActionProgramID,
+    TransferSummaryID,
+)
 from number_compiler.hashlife.execution.continuations.diamond_higher_context import (
     HigherContextRecord,
     HigherUnaryRecord,
@@ -34,7 +28,15 @@ from number_compiler.hashlife.execution.continuations.diamond_higher_tasks impor
     HigherUnaryObserve,
     HigherUnarySummary,
 )
+from number_compiler.hashlife.execution.continuations.diamond_runtime import (
+    DiamondRuntime,
+)
 from number_compiler.hashlife.execution.continuations.diamond_tasks import Task
+from number_compiler.hashlife.interfaces.diamond_boundary import BoundaryActionArena
+from number_compiler.hashlife.interfaces.diamond_boundary_expr import (
+    BoundaryExpressionArena,
+)
+from tests.support.assertions import assert_rejected_atomically
 from tests.support.diamond_higher_context import expr, machine, point, scalar, summary
 
 if TYPE_CHECKING:
@@ -159,7 +161,7 @@ def test_higher_admission_rejects_foreign_and_wrong_side_before_warm_mutation() 
     )
     for request in bad:
         assert_rejected_atomically(
-            runtime.ledger, lambda: runtime.execute(request), (ValueError, TypeError)
+            runtime.ledger, partial(runtime.execute, request), (ValueError, TypeError)
         )
 
 

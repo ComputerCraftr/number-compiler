@@ -19,12 +19,12 @@ from dataclasses import dataclass
 from number_compiler.arithmetic.automata.program_word import (
     EMPTY,
     SourceWord,
-    source_word_key,
-    source_word_symbol_bounds,
-    validate_source_word,
     from_runs,
     from_values,
     iter_runs,
+    source_word_key,
+    source_word_symbol_bounds,
+    validate_source_word,
 )
 from number_compiler.arithmetic.contracts.block_effect import BlockContextBudgetExceeded
 from number_compiler.arithmetic.contracts.exact_tree_context import (

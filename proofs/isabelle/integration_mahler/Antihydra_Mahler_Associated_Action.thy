@@ -18,6 +18,83 @@ lemma mahler_bit_action_admitted:
   "associated_action_admitted (mahler_bit_action e)"
   by (simp add: associated_action_admitted_def mahler_bit_action_def)
 
+text \<open>
+  The integer normal form used by the Mahler consumer stores the denominator
+  and gain exponents separately from the affine numerator.  This keeps the
+  composition arithmetic integral until the final associated-action view:
+  denominator \<open>2^(R+2)\<close>, gain \<open>4*3^R\<close>, offset numerator
+  \<open>B\<close>, and optional cap numerator \<open>C\<close>.
+\<close>
+
+record mahler_nf =
+  nf_R :: nat
+  nf_B :: int
+  nf_C :: "int option"
+
+definition mahler_nf_den :: "nat \<Rightarrow> int" where
+  "mahler_nf_den R = 2^(R+2)"
+
+definition mahler_nf_gain :: "nat \<Rightarrow> int" where
+  "mahler_nf_gain R = 4*3^R"
+
+definition mahler_nf_action :: "mahler_nf \<Rightarrow> associated_action" where
+  "mahler_nf_action A =
+    \<lparr>action_scale = of_int (mahler_nf_gain (nf_R A)) /
+        of_int (mahler_nf_den (nf_R A)),
+     action_offset = of_int (nf_B A) /
+        of_int (mahler_nf_den (nf_R A)),
+     action_cap = map_option
+       (\<lambda>C. of_int C / of_int (mahler_nf_den (nf_R A))) (nf_C A)\<rparr>"
+
+definition mahler_nf_then :: "mahler_nf \<Rightarrow> mahler_nf \<Rightarrow> mahler_nf" where
+  "mahler_nf_then A B =
+    \<lparr>nf_R = nf_R A + nf_R B,
+     nf_B = 3^(nf_R B) * nf_B A + 2^(nf_R A) * nf_B B,
+     nf_C = (case (nf_C A, nf_C B) of
+       (None, None) \<Rightarrow> None
+     | (None, Some Cb) \<Rightarrow> Some (2^(nf_R A) * Cb)
+     | (Some Ca, None) \<Rightarrow>
+         Some (3^(nf_R B) * Ca + 2^(nf_R A) * nf_B B)
+     | (Some Ca, Some Cb) \<Rightarrow>
+         Some (min (3^(nf_R B) * Ca + 2^(nf_R A) * nf_B B)
+                    (2^(nf_R A) * Cb)))\<rparr>"
+
+definition mahler_nf_identity :: mahler_nf where
+  "mahler_nf_identity = \<lparr>nf_R=0, nf_B=0, nf_C=None\<rparr>"
+
+lemma mahler_nf_then_identity:
+  "mahler_nf_then mahler_nf_identity A = A"
+  "mahler_nf_then A mahler_nf_identity = A"
+proof -
+  show "mahler_nf_then mahler_nf_identity A = A"
+    by (cases A; cases "nf_C A";
+        simp_all add: mahler_nf_then_def mahler_nf_identity_def)
+  show "mahler_nf_then A mahler_nf_identity = A"
+    by (cases A; cases "nf_C A";
+        simp_all add: mahler_nf_then_def mahler_nf_identity_def)
+qed
+
+lemma mahler_nf_action_admitted:
+  "associated_action_admitted (mahler_nf_action A)"
+  by (simp add: associated_action_admitted_def mahler_nf_action_def
+      mahler_nf_gain_def mahler_nf_den_def)
+
+theorem mahler_nf_identity_action:
+  "mahler_nf_action mahler_nf_identity = associated_action_identity"
+  by (simp add: mahler_nf_action_def mahler_nf_identity_def
+      mahler_nf_gain_def mahler_nf_den_def associated_action_identity_def)
+
+theorem mahler_nf_action_then:
+  "mahler_nf_action (mahler_nf_then A B) =
+    associated_action_then (mahler_nf_action A) (mahler_nf_action B)"
+  by (cases A; cases B; cases "nf_C A"; cases "nf_C B";
+      simp add: mahler_nf_action_def mahler_nf_then_def
+        mahler_nf_gain_def mahler_nf_den_def associated_action_then_def
+        associated_cap_min_def power_add field_simps of_int_min
+        min_mult_distrib_left min_mult_distrib_right
+        min_divide_distrib_right
+        algebra_simps split: option.splits)
+
 lemma mahler_bit_action_negative_unsaturated:
   assumes "e < 2" "x < 0"
   shows "associated_action_apply (mahler_bit_action e) x =
@@ -231,9 +308,65 @@ checks still need a refinement map from the exact Python handles to these
 assumptions. The algebra does not turn ledger safety into Mahler margin
 positivity or establish an all-time invariant.\<close>
 
+
+text \<open>The complete centered-11 consumer has a negative cap. Every legal
+later bit has nonpositive offset and positive cap, so no later saturation can
+replace the transported negative cap. This induction concerns the actual bit
+actions, not an artificially chosen uncapped tail with matching coefficients.
+It justifies the cap reduction once the admitted source's affine coefficients
+and initial two centered bits have been established.\<close>
+
+definition mahler_negative_cap_invariant :: "associated_action \<Rightarrow> bool" where
+  "mahler_negative_cap_invariant A \<longleftrightarrow>
+    action_cap A = Some (3/2 * action_scale A + action_offset A) \<and>
+    3/2 * action_scale A + action_offset A < 0"
+
+lemma mahler_negative_cap_preserved:
+  assumes "mahler_negative_cap_invariant A" "e < 2"
+  shows "mahler_negative_cap_invariant
+    (associated_action_then A (mahler_bit_action e))"
+proof -
+  have bit: "e=0 \<or> e=1" using assms(2) by arith
+  show ?thesis using assms(1) bit
+    by (elim disjE; auto simp: mahler_negative_cap_invariant_def
+        associated_action_then_def mahler_bit_action_def
+        associated_cap_min_def min_def; linarith)
+qed
+
+lemma mahler_negative_cap_fold:
+  assumes "mahler_negative_cap_invariant A"
+    "list_all (\<lambda>e. e < 2) bits"
+  shows "mahler_negative_cap_invariant
+    (foldl associated_action_then A (map mahler_bit_action bits))"
+  using assms
+  by (induction bits arbitrary: A)
+    (auto intro: mahler_negative_cap_preserved)
+
+theorem mahler_centered_11_actual_tail_cap:
+  assumes "list_all (\<lambda>e. e < 2) bits"
+  defines "A \<equiv> foldl associated_action_then mahler_source_two_prefix
+    (map mahler_bit_action bits)"
+  shows "action_cap A = Some (3/2 * action_scale A + action_offset A)"
+    "3/2 * action_scale A + action_offset A < 0"
+proof -
+  have prefix: "mahler_negative_cap_invariant mahler_source_two_prefix"
+    by (simp add: mahler_negative_cap_invariant_def
+        mahler_source_two_prefix_exact)
+  have invariant: "mahler_negative_cap_invariant A"
+    using mahler_negative_cap_fold[OF prefix assms(1)]
+    by (simp only: A_def)
+  then show "action_cap A = Some (3/2 * action_scale A + action_offset A)"
+    "3/2 * action_scale A + action_offset A < 0"
+    by (simp_all add: mahler_negative_cap_invariant_def)
+qed
+
 ML \<open>
   val _ = if null (Thm_Deps.all_oracles
-    @{thms mahler_bit_action_admitted mahler_bit_action_negative_unsaturated
+    @{thms mahler_bit_action_admitted mahler_nf_action_admitted
+      mahler_nf_then_identity mahler_nf_identity_action mahler_nf_action_then
+      mahler_bit_action_negative_unsaturated
+      mahler_negative_cap_preserved mahler_negative_cap_fold
+      mahler_centered_11_actual_tail_cap
       mahler_odd_event_zero_tail_exact
       mahler_maximal_odd_event_identity mahler_maximal_odd_event_word_refinement
       mahler_maximal_odd_event_closed mahler_maximal_odd_event_closed_scale

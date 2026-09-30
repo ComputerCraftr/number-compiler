@@ -11,8 +11,8 @@ from datetime import date, timedelta
 from pathlib import Path
 from urllib.parse import unquote, urlsplit
 
-from devtools.paths import repository_root
 from devtools.checks.sprint_scaffold import HEADINGS, refresh_index
+from devtools.paths import repository_root
 
 _LINK = re.compile(r"!?\[[^\]\n]*\]\((<[^>]+>|[^)\s]+)(?:\s+[^)]*)?\)")
 _REFERENCE = re.compile(r"^\s*\[[^]]+\]:\s*(<[^>]+>|\S+)")

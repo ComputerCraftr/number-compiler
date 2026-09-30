@@ -2,8 +2,6 @@
 
 from __future__ import annotations
 
-from tests.support.assertions import assert_rejected_atomically
-
 from typing import Never
 
 import pytest
@@ -11,6 +9,7 @@ import pytest
 from number_compiler.arithmetic.contracts.block_kernel import BaseBlockEffect
 from number_compiler.hashlife.execution.diamond_cycles import physical_cycle
 from number_compiler.sequences.collatz.block_power import CollatzPhysicalBlockEffect
+from tests.support.assertions import assert_rejected_atomically
 from tests.support.diamond_runtime import build, oracle
 
 

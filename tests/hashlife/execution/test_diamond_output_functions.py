@@ -2,9 +2,8 @@
 
 from __future__ import annotations
 
-from tests.support.assertions import assert_rejected_atomically
-
 from dataclasses import fields, replace
+from functools import partial
 from typing import TYPE_CHECKING, Never
 
 import pytest
@@ -17,6 +16,7 @@ from number_compiler.hashlife.execution.continuations.diamond_tasks import (
 )
 from number_compiler.hashlife.interfaces.diamond_boundary import ImageBinding
 from number_compiler.sequences.collatz.block_power import CollatzPhysicalBlockEffect
+from tests.support.assertions import assert_rejected_atomically
 from tests.support.diamond_runtime import build
 
 if TYPE_CHECKING:
@@ -141,6 +141,6 @@ def test_foreign_and_nonprimitive_requests_reject_before_warm_lookup_or_mutation
         replace(request, action=pair, left=left, right=right),
     ):
         assert_rejected_atomically(
-            runtime.ledger, lambda: runtime.execute(invalid), (TypeError, ValueError)
+            runtime.ledger, partial(runtime.execute, invalid), (TypeError, ValueError)
         )
     assert foreign.outputs.bindings == {}

@@ -2,12 +2,10 @@
 
 from __future__ import annotations
 
-from devtools.paths import report_directory
-
 import json
 from typing import TypedDict
 
-from devtools.paths import report_output, repository_root
+from devtools.paths import report_directory, report_output, repository_root
 from devtools.verification import exact_oracle
 from devtools.verification.carry_action_quotient import analyze_carry_action_quotient
 from devtools.verification.oracles.digit_power import (

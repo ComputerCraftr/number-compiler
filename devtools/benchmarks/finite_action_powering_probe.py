@@ -11,10 +11,9 @@ normalized forcing classes are still charged on nonrepeating first-use paths.
 
 from __future__ import annotations
 
-
+from devtools.benchmarks.reporting import write_json_report
 from devtools.paths import project_version, report_output, repository_root
 from devtools.runs import run_reported
-from devtools.benchmarks.reporting import write_json_report
 from devtools.verification.collatz_spacetime import (
     CollatzCausalSpacetimeEngine,
     CollatzPhysicalField,
@@ -231,9 +230,7 @@ def run_probe() -> dict[str, object]:
         "reverse_add_history_residual_eliminated_in_production": True,
         "collatz_whole_germ_discovery_eliminated_in_concrete_power_path": True,
         "production_history_word_carrier_present": False,
-        "spacetime_macrocell_absorption_installed": True,
-        "reverse_add_spacetime_logarithmic_closure_proved": False,
-        "collatz_spacetime_logarithmic_closure_proved": False,
+        "scope": "Research probes exercise supplied finite actions, not source-wide temporal closure.",
         "reverse_add": reverse_rows,
         "collatz": collatz,
         "interpretation": (

@@ -92,7 +92,7 @@ def _evaluate(arena: SymbolicInnovationArena, root: InnovationID) -> dict[int, i
 
 @pytest.mark.parametrize("seed", [0, 1, 5, 6, 9, 18, 196, 292, 909, 1041, 1051, 1593])
 def test_centered_self_advance_matches_twenty_literal_steps(seed: int) -> None:
-    arena, digits, pair, residual = centered_seed(seed)
+    arena, digits, _unused_pair_binding, residual = centered_seed(seed)
     for _ in range(20):
         width = len(digits)
         carry = 0

@@ -2,8 +2,6 @@
 
 from __future__ import annotations
 
-from tests.support.assertions import assert_rejected_atomically
-
 from typing import Never
 
 import pytest
@@ -21,6 +19,7 @@ from number_compiler.hashlife.tiles.tiles import TileArena
 from number_compiler.projection.digit_terminal import DigitNormalizeBlockEffect
 from number_compiler.resources.ledger import ResourceLedger
 from number_compiler.sequences.collatz.block_power import CollatzPhysicalBlockEffect
+from tests.support.assertions import assert_rejected_atomically
 from tests.support.diamond_runtime import oracle
 
 

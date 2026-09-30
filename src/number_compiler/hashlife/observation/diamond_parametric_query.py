@@ -3,10 +3,10 @@
 from __future__ import annotations
 
 from typing import TYPE_CHECKING
-from number_compiler.arithmetic.fields.dyadic_tile import DyadicSpan
 
 from number_compiler.arithmetic.contracts.exact_tree_context import source_reads_only
 from number_compiler.arithmetic.contracts.scoped_handles import ActionProgramID
+from number_compiler.arithmetic.fields.dyadic_tile import DyadicSpan
 
 if TYPE_CHECKING:
     from number_compiler.hashlife.execution.continuations.diamond_runtime import (

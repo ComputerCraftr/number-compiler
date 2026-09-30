@@ -12,8 +12,10 @@ from dataclasses import dataclass
 from number_compiler.arithmetic.contracts.block_effect import BlockContextBudgetExceeded
 from number_compiler.arithmetic.fields.consumer_pullback import (
     ZERO,
-    ExactRational as Q,
     affine_threshold_preimage,
+)
+from number_compiler.arithmetic.fields.consumer_pullback import (
+    ExactRational as Q,
 )
 from number_compiler.arithmetic.fields.morphism_core import AffineCocycle
 from number_compiler.arithmetic.fields.skew_transfer import SkewTransfer

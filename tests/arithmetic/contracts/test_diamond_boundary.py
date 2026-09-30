@@ -1,5 +1,3 @@
-from tests.support.assertions import assert_rejected_atomically
-
 from dataclasses import replace
 
 import pytest
@@ -9,6 +7,7 @@ from number_compiler.hashlife.interfaces.diamond_boundary import (
     ContinuationStep,
     ImageBinding,
 )
+from tests.support.assertions import assert_rejected_atomically
 from tests.support.diamond_boundary import boundary, composed_anchor
 
 

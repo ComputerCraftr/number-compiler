@@ -7,8 +7,6 @@ processes; failed, missing, or skipped cases cannot produce a passing report.
 
 from __future__ import annotations
 
-from number_compiler.resources.temporal_diagnostics import METRICS_SCHEMA_VERSION
-
 import argparse
 import json
 import subprocess
@@ -23,6 +21,7 @@ from devtools.checks.test_run_evidence import (
     validate_evidence,
 )
 from devtools.paths import repository_root
+from number_compiler.resources.temporal_diagnostics import METRICS_SCHEMA_VERSION
 
 ROOT = repository_root()
 CASES = {

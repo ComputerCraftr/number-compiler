@@ -43,12 +43,12 @@ from math import comb, gcd
 from devtools.experiments.algebra.dyadic_difference_germ_core import (
     ambient_capacity_truth,
 )
+from number_compiler.sequences.power_numbers.etale_factor import _quadratic_mul_pair
 from number_compiler.sequences.power_numbers.numbers import (
     fermat_number,
     mersenne_composite_exponent_factor,
     mersenne_number,
 )
-from number_compiler.sequences.power_numbers.etale_factor import _quadratic_mul_pair
 
 
 @dataclass(frozen=True, slots=True)

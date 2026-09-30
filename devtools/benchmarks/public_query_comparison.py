@@ -14,8 +14,8 @@ from typing import Literal, TypedDict
 
 from devtools.paths import report_output
 from number_compiler.api.cli import main as cli_main
-from number_compiler.api.cli_requests import CAPABILITIES
 from number_compiler.api.cli_render import _radix_string
+from number_compiler.api.cli_requests import CAPABILITIES
 from number_compiler.api.number_api import NumberCompiler
 
 Mode = Literal["cold", "warm", "bypass"]
@@ -56,7 +56,7 @@ def cli_sample(arguments: list[str], *, fresh: bool) -> tuple[float, dict[str, o
         raise ValueError(f"CLI refused comparison: exit {code}: {error or output}")
     packet = json.loads(output)
     if not isinstance(packet, dict) or not isinstance(packet.get("value"), str):
-        raise ValueError("CLI did not emit an exact digit string")
+        raise TypeError("CLI did not emit an exact digit string")
     return elapsed, packet
 
 

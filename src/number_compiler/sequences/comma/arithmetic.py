@@ -10,7 +10,6 @@ from collections.abc import Callable
 from dataclasses import dataclass
 from math import gcd
 
-
 # The nine coprime kernels are shared. Each admitted physical displacement
 # retains its primary lift and exponent-five seed; those occurrence weights
 # cannot be identified merely because their cores agree.

@@ -100,9 +100,16 @@ def test_causal_interface_binding_preserves_complete_bounded_result() -> None:
 def test_warm_interface_parent_answers_before_child_construction(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    ledger, tiles, adapter, primitive, scheduler, source, action, engine = (
-        _powered_fixture()
-    )
+    (
+        ledger,
+        _unused_tiles_binding,
+        adapter,
+        _unused_primitive_binding,
+        scheduler,
+        source,
+        action,
+        engine,
+    ) = _powered_fixture()
     try:
         left, right = engine._initial(action, 0), engine._initial(action, 1)
         assert engine.interface(action, source.tile, left, right).active
@@ -363,9 +370,14 @@ def test_live_and_closed_causal_spatial_buffers_have_complete_inventory() -> Non
     )
     from number_compiler.resources.metric_collection import collect_ledger_metrics
 
-    ledger, tiles, _adapter, action, scheduler, source = _runtime_source(
-        BaseBlockEffect(3), (0, 1)
-    )
+    (
+        ledger,
+        _unused_tiles_binding,
+        _adapter,
+        _unused_action_binding,
+        scheduler,
+        source,
+    ) = _runtime_source(BaseBlockEffect(3), (0, 1))
     buffer = scheduler._causal_workspace.allocate(2)
     try:
         buffer.append(source.tile)
@@ -398,9 +410,16 @@ def test_failed_causal_interface_releases_all_transient_workspace(
 ) -> None:
     from number_compiler.resources.metric_collection import collect_ledger_metrics
 
-    ledger, tiles, adapter, primitive, scheduler, source, action, engine = (
-        _powered_fixture()
-    )
+    (
+        ledger,
+        _unused_tiles_binding,
+        adapter,
+        _unused_primitive_binding,
+        scheduler,
+        source,
+        action,
+        engine,
+    ) = _powered_fixture()
 
     def forbidden(*_args: object, **_kwargs: object) -> Never:
         raise RuntimeError("injected causal interface failure")
@@ -432,9 +451,16 @@ def test_suspended_causal_frame_stack_has_complete_live_inventory(
         audit_field_image_payloads,
     )
 
-    ledger, tiles, adapter, primitive, scheduler, source, action, engine = (
-        _powered_fixture()
-    )
+    (
+        ledger,
+        _unused_tiles_binding,
+        adapter,
+        _unused_primitive_binding,
+        scheduler,
+        source,
+        action,
+        engine,
+    ) = _powered_fixture()
     original = adapter.leaf_interface_symbol
     observed: list[int] = []
 

@@ -12,13 +12,13 @@ construction work is still larger than the irreducible factor-lane basis.
 """
 
 from __future__ import annotations
+
+from collections.abc import Callable
+from dataclasses import dataclass
+
 from number_compiler.arithmetic.contracts.iterative_queries import (
     defer_indexed_dependencies,
 )
-
-from dataclasses import dataclass
-from collections.abc import Callable
-
 from number_compiler.sequences.prime.set import (
     PrimeBlockSummary,
     canonical_multiplicative_lanes,

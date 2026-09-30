@@ -15,13 +15,13 @@ from typing import TYPE_CHECKING, Protocol, cast
 
 # Reuse exact one-step construction/helpers from the verified experiment.
 from devtools.verification.builders.bimachine_power import (
+    _FragmentMachine,
     build_step,
+    compose_contexts,
     decode,
     encode,
     fragment_states,
-    compose_contexts,
     ref,
-    _FragmentMachine,
 )
 
 if TYPE_CHECKING:

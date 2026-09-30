@@ -7,6 +7,9 @@ import pytest
 
 from number_compiler.api import cli
 from number_compiler.api.number_api import NumberCompiler
+from number_compiler.hashlife.execution.dyadic_return_records import (
+    DyadicAggregateSummary,
+)
 from number_compiler.hashlife.execution.source_bound_images import (
     SourceBoundImageAdapter,
     SourceImageCandidate,
@@ -14,11 +17,8 @@ from number_compiler.hashlife.execution.source_bound_images import (
     SourceImageID,
     SourceImageView,
 )
-from number_compiler.hashlife.execution.tile_scheduler import TileScheduler
 from number_compiler.hashlife.execution.tile_causal import CausalTileEngine
-from number_compiler.hashlife.execution.dyadic_return_records import (
-    DyadicAggregateSummary,
-)
+from number_compiler.hashlife.execution.tile_scheduler import TileScheduler
 from number_compiler.sequences.collatz.physical_images import (
     CollatzPhysicalImageWorkspace,
 )

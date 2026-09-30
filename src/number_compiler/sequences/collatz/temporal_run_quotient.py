@@ -29,6 +29,7 @@ authentication.
 from __future__ import annotations
 
 from collections.abc import Sequence
+from contextlib import nullcontext
 from dataclasses import dataclass
 from typing import overload
 
@@ -513,6 +514,7 @@ def compile_collatz_temporal_run_quotient(
     *,
     ledger: ResourceLedger,
     include_f5: bool = False,
+    shared_cache: bool = False,
 ) -> CollatzTemporalRunQuotient:
     """Compile the exact source-bound action without a parity itinerary.
 
@@ -531,8 +533,19 @@ def compile_collatz_temporal_run_quotient(
 
     if type(include_f5) is not bool:
         raise TypeError("F5 projection selection must be Boolean")
+    if type(shared_cache) is not bool:
+        raise TypeError("shared cache flag must be Boolean")
+    from number_compiler.sequences.collatz.source_cylinder_cache import (
+        CollatzDyadicMacros,
+    )
+
+    macros = (
+        CollatzDyadicMacros(ledger, shared_cache=True)
+        if shared_cache and seed.bit_length() >= 64
+        else None
+    )
     scratch = RunArithmeticWorkspace.for_ledger(ledger, "collatz_physical")
-    with scratch.scope():
+    with scratch.scope(), macros if macros is not None else nullcontext():
         control_bits = max(1, physical_ticks.bit_length())
         scratch.require_bits(8 * (seed.bit_length() + 4 * control_bits + 16))
         ledger.bump("collatz_physical_temporal_run_quotient_compilations")
@@ -545,9 +558,30 @@ def compile_collatz_temporal_run_quotient(
         odd_ticks = division_ticks = normalized = phase = 0
         run_actions = zero_symbols = one_symbols = cycle_repetitions = 0
         d8_table: D8TemporalTable | None = None
+        lookup_enabled = macros is not None
+        previous_source, previous_width, previous_ones = seed, 0, 0
+        share_width = 1 << (
+            min(max(8, seed.bit_length()), max(8, physical_ticks // 2)).bit_length() - 1
+        )
+        discovery_before = ledger.counters.get(
+            "collatz_physical_temporal_d8_discovery_symbols", 0
+        )
 
         while remaining:
             scratch.require_bits(8 * (current.bit_length() + 4 * control_bits + 16))
+            if macros is not None and previous_width < normalized <= share_width:
+                macros.observe(
+                    previous_source,
+                    normalized - previous_width,
+                    one_symbols - previous_ones,
+                    current,
+                    anchor=seed,
+                )
+            previous_source, previous_width, previous_ones = (
+                current,
+                normalized,
+                one_symbols,
+            )
             if current == 1 and remaining >= 3:
                 repetitions, tail = divmod(remaining, 3)
                 if repetitions:
@@ -569,6 +603,55 @@ def compile_collatz_temporal_run_quotient(
                     )
                     if not remaining:
                         break
+
+            if (
+                lookup_enabled
+                and macros is not None
+                and remaining >= 16
+                and current.bit_length() >= 64
+                and _bounded_run_length(current & 255) < 8
+            ):
+                # A normalized symbol costs at least one physical tick. Admit
+                # the exact retained odd count before applying a cached block.
+                # Endpoint >2 proves no earlier normalized cycle entry.
+                limit = min(remaining, max(8, current.bit_length()))
+                width = 1 << (limit.bit_length() - 1)
+                scratch.require_bits(16 * (current.bit_length() + 2 * width + 32))
+                cell = macros.lookup_largest(current, width, remaining)
+                if cell is None:
+                    lookup_enabled = False
+                endpoint = cell.apply(current) if cell is not None else 0
+                if cell is not None and endpoint > 2:
+                    width = cell.width
+                    # Consume at most one retained occurrence per query route;
+                    # subsequent discovery may publish bounded interior joins.
+                    lookup_enabled = False
+                    if normalized_f5 is not None and physical_f5 is not None:
+                        # Every admitted width is dyadic and >=8, hence a
+                        # multiple of four: 2**width == 1 in F5. Both the
+                        # centered gain and translated offset need no division.
+                        f5 = CollatzF5AffineAction(
+                            cell.multiplier % 5,
+                            (cell.target_origin - cell.multiplier * cell.residue) % 5,
+                        )
+                        normalized_f5 = normalized_f5.then(f5)
+                        physical_f5 = physical_f5.then(f5)
+                    current = endpoint
+                    odd_ticks += cell.odd_symbols
+                    division_ticks += width
+                    normalized += width
+                    one_symbols += cell.odd_symbols
+                    zero_symbols += width - cell.odd_symbols
+                    remaining -= width + cell.odd_symbols
+                    macros.applied()
+                    run_actions += 1
+                    ledger.bump(
+                        "collatz_physical_temporal_run_operand_bits",
+                        cell.multiplier.bit_length()
+                        + endpoint.bit_length()
+                        + cell.residue.bit_length(),
+                    )
+                    continue
 
             low = current & 255
             available = _bounded_run_length(low)
@@ -773,6 +856,20 @@ def compile_collatz_temporal_run_quotient(
                 run_actions += 1
                 ledger.bump("collatz_physical_temporal_odd_half_steps")
 
+        if macros is not None:
+            if phase == 0 and previous_width < normalized <= share_width:
+                macros.observe(
+                    previous_source,
+                    normalized - previous_width,
+                    one_symbols - previous_ones,
+                    current,
+                    anchor=seed,
+                )
+            macros._bump(
+                "primitive_steps",
+                ledger.counters.get("collatz_physical_temporal_d8_discovery_symbols", 0)
+                - discovery_before,
+            )
         certificate = None
         ledger.bump("collatz_physical_temporal_run_actions", run_actions)
         ledger.bump("collatz_physical_temporal_normalized_symbols", normalized)

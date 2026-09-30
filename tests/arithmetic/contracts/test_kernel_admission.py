@@ -1,8 +1,5 @@
 """Admission remains usable without the compatibility evaluator."""
 
-from tests.support.assertions import assert_rejected_atomically
-
-
 import ast
 
 import pytest
@@ -34,6 +31,7 @@ from number_compiler.hashlife.observation.diamond_observers import NonblankBlock
 from number_compiler.projection.digit_terminal import DigitNormalizeBlockEffect
 from number_compiler.resources.ledger import ResourceLedger
 from number_compiler.sequences.collatz.block_power import CollatzPhysicalBlockEffect
+from tests.support.assertions import assert_rejected_atomically
 
 
 @pytest.mark.parametrize(

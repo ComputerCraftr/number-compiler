@@ -2,9 +2,6 @@
 
 from __future__ import annotations
 
-from number_compiler.arithmetic.contracts.scoped_handles import TransferSummaryID
-from tests.support.assertions import assert_rejected_atomically
-
 from collections import OrderedDict
 from dataclasses import replace
 from itertools import product
@@ -15,8 +12,10 @@ import pytest
 from devtools.verification.carry_interval_effects import CarryActionQuotientArena
 from devtools.verification.lazy_collatz import LazyCollatzApplication
 from devtools.verification.lazy_reverse import LazyReverseApplication
+from number_compiler.arithmetic.contracts.scoped_handles import TransferSummaryID
 from number_compiler.arithmetic.functions.finite_port_action import PortVariable
 from number_compiler.resources.metric_collection import collect_ledger_metrics
+from tests.support.assertions import assert_rejected_atomically
 
 if TYPE_CHECKING:
     import typing
@@ -161,7 +160,7 @@ def _reflected_fixture() -> tuple[
 def test_reflection_is_an_involution_and_does_not_identify_different_boundary_functions() -> (
     None
 ):
-    arena, port, action, reflected = _reflected_fixture()
+    arena, _unused_port_binding, action, reflected = _reflected_fixture()
     assert reflected != action
     assert arena.reflect_interval(reflected) == action
     assert (

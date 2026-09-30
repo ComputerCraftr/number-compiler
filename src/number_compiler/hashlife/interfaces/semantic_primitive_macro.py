@@ -13,13 +13,6 @@ It never constructs an output word or evaluates a future symbol for a leaf.
 
 from __future__ import annotations
 
-from number_compiler.hashlife.interfaces.semantic_bit_transforms import (
-    MACRO_LEFT as _LEFT,
-    MACRO_RIGHT as _RIGHT,
-    primitive_leaf_channels,
-    retag_numeric,
-)
-
 from collections.abc import Generator
 from dataclasses import dataclass
 from typing import TYPE_CHECKING
@@ -48,7 +41,15 @@ from number_compiler.hashlife.interfaces.diamond_quotient import (
     MacroInterface,
 )
 from number_compiler.hashlife.interfaces.semantic_bit_transforms import (
+    MACRO_LEFT as _LEFT,
+)
+from number_compiler.hashlife.interfaces.semantic_bit_transforms import (
+    MACRO_RIGHT as _RIGHT,
+)
+from number_compiler.hashlife.interfaces.semantic_bit_transforms import (
     differs_from_constant,
+    primitive_leaf_channels,
+    retag_numeric,
 )
 from number_compiler.hashlife.interfaces.semantic_bits import (
     FactoredFunctionID,

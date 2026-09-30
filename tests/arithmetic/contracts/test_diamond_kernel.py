@@ -2,8 +2,6 @@
 
 from __future__ import annotations
 
-from tests.support.assertions import assert_rejected_atomically
-
 from array import array
 from itertools import product
 from typing import Never, cast
@@ -31,6 +29,7 @@ from number_compiler.hashlife.interfaces.diamond_kernel import (
 from number_compiler.projection.digit_terminal import DigitNormalizeBlockEffect
 from number_compiler.resources.ledger import ResourceLedger
 from number_compiler.sequences.collatz.block_power import CollatzPhysicalBlockEffect
+from tests.support.assertions import assert_rejected_atomically
 
 
 def finite_identity() -> FiniteBlockEffect:

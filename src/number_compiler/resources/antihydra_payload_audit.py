@@ -8,16 +8,16 @@ literal TM refinement of the arithmetic law.
 
 from __future__ import annotations
 
+from collections.abc import Callable
 from dataclasses import fields
 from typing import TYPE_CHECKING, TypeVar
-from collections.abc import Callable
 
 from number_compiler.arithmetic.fields.skew_transfer import (
     integer_dyadic_fiber_action,
 )
 
 if TYPE_CHECKING:
-    from number_compiler.sequences.antihydra.blocks import Cylinder, ArithmeticCylinder
+    from number_compiler.sequences.antihydra.blocks import ArithmeticCylinder, Cylinder
     from number_compiler.sequences.antihydra.projection_fragments import (
         ProjectionFragmentCache,
     )
@@ -27,7 +27,6 @@ from number_compiler.resources.ledger import ResourceLedger
 from number_compiler.resources.physical_support_payload_audit import (
     PhysicalSupportPayloadAudit,
 )
-
 
 _Cylinder = TypeVar("_Cylinder", "Cylinder", "ArithmeticCylinder")
 
@@ -268,6 +267,37 @@ def audit_antihydra_payloads(
     roots = tuple(ledger.iter_execution_roots())
     for root in roots:
         if isinstance(root, AntihydraArithmeticImageWorkspace):
+            owner = root.mahler_binding_owner
+            bindings = root.mahler_bindings
+            try:
+                valid = root._mahler_consumer is None
+                if bindings is None:
+                    valid &= owner is None
+                else:
+                    valid &= (
+                        type(owner) is int
+                        and containers.get(owner) is bindings
+                        and inventory[owner].role == "arithmetic_source_action"
+                        and inventory[owner].accounting_delta == 0
+                        and len(bindings) == 1
+                        and (root.root_source, root.root_action) in bindings
+                        and bindings[(root.root_source, root.root_action)]
+                        is root._mahler_wire
+                        and type(root._mahler_wire) is tuple
+                        and len(root._mahler_wire) == 3
+                        and all(type(part) is int for part in root._mahler_wire)
+                        and root._mahler_wire[0] == root.steps
+                        and root._mahler_wire[2] is not None
+                        and root._mahler_wire[2] < 0
+                    )
+                    if valid:
+                        approved.add(id(bindings))
+                        for binding, normal in bindings.items():
+                            approved.update((id(binding), id(normal)))
+                if not valid:
+                    invalid.add((owner if type(owner) is int else -1, id(root)))
+            except (AttributeError, TypeError, ValueError, KeyError):
+                invalid.add((owner if type(owner) is int else -1, id(root)))
             continue
         if type(root) is ProjectionOccurrenceCursor:
             owner = root._state_owner
@@ -379,6 +409,7 @@ def audit_antihydra_payloads(
                     set(vars(root))
                     == {
                         "requested",
+                        "_mahler_prepared",
                         "max_steps",
                         "max_state_bits",
                         "max_cache_entries",
@@ -396,6 +427,7 @@ def audit_antihydra_payloads(
                     and root.ledger is ledger
                     and root.engine.ledger is ledger
                     and type(root.requested) is int
+                    and type(root._mahler_prepared) is bool
                     and type(root.max_steps) is int
                     and type(root.max_state_bits) is int
                     and 0 <= root.requested <= root.max_steps
@@ -592,6 +624,7 @@ def audit_antihydra_payloads(
                     "stack",
                     "capacity",
                     "term_serial",
+                    "_shared_cache",
                     "projection_workspace",
                     "projection_fragments",
                     "projection_fragment_driver",
@@ -602,6 +635,7 @@ def audit_antihydra_payloads(
                 and root.projection_fragments.ledger is ledger
                 and type(root.capacity) is int
                 and root.capacity >= 32
+                and type(root.shared_cache) is bool
                 and type(root.term_serial) is int
                 and root.term_serial >= 0
                 and root.memo.nodes_per_entry == 1

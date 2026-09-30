@@ -8,8 +8,6 @@ never source digits, future words, or proof-machine states.
 
 from __future__ import annotations
 
-from number_compiler.resources.stores import append_indexed_node
-
 from collections.abc import MutableMapping, MutableSequence
 from dataclasses import dataclass, field
 
@@ -33,6 +31,7 @@ from number_compiler.hashlife.execution.field_images import (
     SourceCellID,
 )
 from number_compiler.resources.ledger import ResourceLedger
+from number_compiler.resources.stores import append_indexed_node
 
 
 @dataclass(frozen=True, slots=True)

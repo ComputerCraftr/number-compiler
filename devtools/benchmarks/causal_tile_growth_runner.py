@@ -2,8 +2,6 @@
 
 from __future__ import annotations
 
-from number_compiler.resources.temporal_diagnostics import METRICS_SCHEMA_VERSION
-
 import argparse
 import json
 import math
@@ -27,6 +25,7 @@ from devtools.benchmarks.causal_tile_growth_probe import (
 from devtools.checks.process_guard import run_guarded
 from devtools.checks.test_run_evidence import source_fingerprint
 from devtools.paths import repository_root
+from number_compiler.resources.temporal_diagnostics import METRICS_SCHEMA_VERSION
 
 
 class TrialRecord(TypedDict, total=False):

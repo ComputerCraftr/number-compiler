@@ -34,9 +34,9 @@ from number_compiler.arithmetic.polynomials.cyclotomic_factor import (
 )
 from number_compiler.arithmetic.polynomials.cyclotomic_ring import CyclotomicRing
 from number_compiler.arithmetic.polynomials.polynomial import (
-    trim_polynomial,
     evaluate_polynomial,
     polynomial_divide_exact,
+    trim_polynomial,
 )
 
 if TYPE_CHECKING:

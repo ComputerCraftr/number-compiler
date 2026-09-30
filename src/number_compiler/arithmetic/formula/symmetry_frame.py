@@ -30,13 +30,13 @@ closed orbit state unless a caller separately proves successor closure.
 """
 
 from __future__ import annotations
-from number_compiler.arithmetic.fields.radial_innovation import normalize_event_schedule
 
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 from functools import cache
 
 from number_compiler.arithmetic.fields.morphism_core import QuadraticPower, binary_power
+from number_compiler.arithmetic.fields.radial_innovation import normalize_event_schedule
 from number_compiler.arithmetic.fields.radix import bit_width
 from number_compiler.arithmetic.polynomials.cyclotomic_affine import (
     CyclotomicAffineMorphism,

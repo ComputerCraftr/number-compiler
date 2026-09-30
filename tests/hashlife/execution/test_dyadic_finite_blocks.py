@@ -3,7 +3,6 @@
 from dataclasses import replace
 
 import pytest
-from tests.support.reference_arithmetic import literal_dyadic_orbit
 
 from number_compiler.hashlife.execution.dyadic_return_images import (
     DyadicReturnImageWorkspace,
@@ -19,6 +18,7 @@ from number_compiler.sequences.antihydra.arithmetic_images import (
     ANTIHYDRA_ARITHMETIC_LAW,
 )
 from number_compiler.sequences.collatz.physical_images import COLLATZ_PHYSICAL_LAW
+from tests.support.reference_arithmetic import literal_dyadic_orbit
 
 
 @pytest.mark.parametrize("law", (COLLATZ_PHYSICAL_LAW, ANTIHYDRA_ARITHMETIC_LAW))

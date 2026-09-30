@@ -21,10 +21,10 @@ from number_compiler.arithmetic.functions.finite_function_types import (
     FunctionSignature,
 )
 from number_compiler.arithmetic.functions.finite_port_action import PortVariable
-from number_compiler.hashlife.interfaces.semantic_bits import FactoredFunctionID
 from number_compiler.hashlife.interfaces.semantic_bit_transforms import (
     CompleteFiniteTransform,
 )
+from number_compiler.hashlife.interfaces.semantic_bits import FactoredFunctionID
 from number_compiler.resources.ledger import OwnedMemo
 
 

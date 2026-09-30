@@ -1,7 +1,5 @@
 from __future__ import annotations
 
-from tests.support.assertions import assert_associative
-
 from dataclasses import replace
 from typing import cast
 
@@ -47,6 +45,7 @@ from number_compiler.sequences.reverse_add.compilation import compile_reverse_pa
 from number_compiler.sequences.reverse_add.powered_local_codec import (
     ReversePoweredLocalCodec,
 )
+from tests.support.assertions import assert_associative
 from tests.support.reverse_field_action import (
     _arena,
     _atom,

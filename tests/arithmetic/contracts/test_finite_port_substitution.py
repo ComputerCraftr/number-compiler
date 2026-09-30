@@ -1,7 +1,5 @@
 from __future__ import annotations
 
-from tests.support.finite_port_fixtures import three_input_ports
-
 from itertools import product
 from typing import TYPE_CHECKING, Never
 
@@ -13,6 +11,7 @@ from number_compiler.arithmetic.functions.finite_port_action import (
     FinitePortActionArena,
     PortVariable,
 )
+from tests.support.finite_port_fixtures import three_input_ports
 
 if TYPE_CHECKING:
     import number_compiler.arithmetic.contracts.scoped_handles
@@ -95,7 +94,7 @@ def test_effective_mapping_canonical_before_warm_lookup(
 
 
 def test_atomic_final_graph_publication_and_exhausted_fast_rejection() -> None:
-    arena, (px, py, pz), (x, y, z) = three_input_ports()
+    arena, (px, _unused_py_binding, _unused_pz_binding), (x, y, z) = three_input_ports()
     function = arena.choose(x, y, arena.constant(False))
     old = arena.ledger.snapshot()
     arena.ledger.max_cache_entries = (

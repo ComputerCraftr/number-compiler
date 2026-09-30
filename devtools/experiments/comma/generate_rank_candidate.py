@@ -576,30 +576,28 @@ def _render(codes: list[int]) -> str:
     """Render the shared lookup; semantic side data live in sibling theories."""
     if len(codes) != PADDED_COUNT:
         raise ValueError("invalid candidate length")
-    return "".join(
-        [
-            "theory Comma_Rank_Data\n  imports Comma_Rank_Data_N Comma_Rank_Data_Z\nbegin\n\n",
-            "text \\<open>Both side tables are untrusted candidate definitions.\n",
-            "The checked instance must compare every rank with complete children\n",
-            "computed from the executable HOL transition.\\<close>\n\n",
-            'definition comma_rank_code_at :: "nat \\<Rightarrow> nat" where\n',
-            '  "comma_rank_code_at i =\n',
-            "    (let codes = (if i < 8*924 then comma_rank_codes_N else comma_rank_codes_Z);\n",
-            "         j = i mod (8*924)\n",
-            "     in codes ! (j div 4096) ! ((j div 256) mod 16) !\n",
-            '       ((j div 16) mod 16) ! (j mod 16))"\n\n',
-            'definition comma_rank_candidate :: "comma_boundary_state \\<Rightarrow> nat option" where\n',
-            '  "comma_rank_candidate q =\n',
-            "    (case q of (kind,a,r) \\<Rightarrow>\n",
-            "      let index = (if kind = Comma_Z then 8 * 924 else 0) +\n",
-            "        (a - 2) * 924 + r; code = comma_rank_code_at index\n",
-            '      in if code = 0 then None else Some (code - 1))"\n\n',
-            "ML \\<open>\n",
-            "  val _ = if null (Thm_Deps.all_oracles\n",
-            "    @{thms comma_rank_code_at_def comma_rank_candidate_def})\n",
-            '    then () else error "Comma rank lookup depends on an oracle";\n',
-            "\\<close>\n\nend\n",
-        ]
+    return (
+        "theory Comma_Rank_Data\n  imports Comma_Rank_Data_N Comma_Rank_Data_Z\nbegin\n\n"
+        "text \\<open>Both side tables are untrusted candidate definitions.\n"
+        "The checked instance must compare every rank with complete children\n"
+        "computed from the executable HOL transition.\\<close>\n\n"
+        'definition comma_rank_code_at :: "nat \\<Rightarrow> nat" where\n'
+        '  "comma_rank_code_at i =\n'
+        "    (let codes = (if i < 8*924 then comma_rank_codes_N else comma_rank_codes_Z);\n"
+        "         j = i mod (8*924)\n"
+        "     in codes ! (j div 4096) ! ((j div 256) mod 16) !\n"
+        '       ((j div 16) mod 16) ! (j mod 16))"\n\n'
+        'definition comma_rank_candidate :: "comma_boundary_state \\<Rightarrow> nat option" where\n'
+        '  "comma_rank_candidate q =\n'
+        "    (case q of (kind,a,r) \\<Rightarrow>\n"
+        "      let index = (if kind = Comma_Z then 8 * 924 else 0) +\n"
+        "        (a - 2) * 924 + r; code = comma_rank_code_at index\n"
+        '      in if code = 0 then None else Some (code - 1))"\n\n'
+        "ML \\<open>\n"
+        "  val _ = if null (Thm_Deps.all_oracles\n"
+        "    @{thms comma_rank_code_at_def comma_rank_candidate_def})\n"
+        '    then () else error "Comma rank lookup depends on an oracle";\n'
+        "\\<close>\n\nend\n"
     )
 
 

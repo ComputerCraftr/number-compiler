@@ -8,6 +8,7 @@ from number_compiler.hashlife.execution.dyadic_return_images import (
     DyadicReturnImageWorkspace,
 )
 from number_compiler.hashlife.execution.tile_causal import CausalTileEngine
+from number_compiler.resources.ledger import ResourceLedger
 from number_compiler.sequences.antihydra.arithmetic_images import (
     AntihydraArithmeticImageWorkspace,
 )
@@ -16,7 +17,6 @@ from number_compiler.sequences.collatz.block_power import PoweredCollatzTerm
 from number_compiler.sequences.collatz.physical_images import (
     CollatzPhysicalImageWorkspace,
 )
-from number_compiler.resources.ledger import ResourceLedger
 
 
 @pytest.mark.parametrize("steps", (0, 1, 2, 63, 64, 65, 130, 257, 1024))

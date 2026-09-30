@@ -1,8 +1,5 @@
 from __future__ import annotations
 
-from tests.support.reference_arithmetic import (
-    physical_collatz_literal as _physical_oracle,
-)
 import random
 from typing import Never
 
@@ -18,6 +15,9 @@ from number_compiler.arithmetic.contracts.physical_collatz_kernel import (
 )
 from number_compiler.sequences.collatz.block_power import PoweredCollatzTerm
 from number_compiler.sequences.collatz.germ_cache import CollatzGermTransitionCache
+from tests.support.reference_arithmetic import (
+    physical_collatz_literal as _physical_oracle,
+)
 
 
 def _observed_value(term: PoweredCollatzTerm) -> int:

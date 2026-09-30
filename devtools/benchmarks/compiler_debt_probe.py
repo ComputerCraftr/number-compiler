@@ -8,11 +8,9 @@ measurements enter release artifacts.
 
 from __future__ import annotations
 
-from devtools.paths import report_directory
-
 import json
 
-from devtools.paths import report_output, repository_root
+from devtools.paths import report_directory, report_output, repository_root
 from devtools.verification import exact_oracle
 from devtools.verification.block_power import apply_block_power, power_block_effect
 from devtools.verification.quotient_synthesis import (

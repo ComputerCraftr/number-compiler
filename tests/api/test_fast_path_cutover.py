@@ -1,21 +1,16 @@
-"""Public API and lazy descriptor checks, not executable cutover evidence.
-
-Digit execution and absence of higher-continuation work are independently
-required by test_temporal_cutover_reporting. Passing this module does not
-establish those architectural obligations.
-"""
+"""Public API exactness and lazy-construction behavior."""
 
 from __future__ import annotations
-
-from tests.support.power_assertions import assert_collatz_radices
-
-from tests.support.power_assertions import assert_binary_power_bound
 
 import number_compiler
 from devtools.paths import repository_root
 from number_compiler.api.number_api import NumberCompiler, PoweredCollatzTermPayload
 from number_compiler.sequences.collatz.block_power import PoweredCollatzTerm
 from number_compiler.sequences.reverse_add.power import ReverseAddPoweredTerm
+from tests.support.power_assertions import (
+    assert_binary_power_bound,
+    assert_collatz_radices,
+)
 
 
 def test_public_api_excludes_retired_entrypoints() -> None:

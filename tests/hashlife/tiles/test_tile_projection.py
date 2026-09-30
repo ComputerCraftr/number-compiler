@@ -1,15 +1,11 @@
 """Lazy projection imports exact sources and delegates to one tile scheduler."""
 
 from __future__ import annotations
-from tests.support.finite_functions import carry_atoms
-
-from tests.support.assertions import assert_rejected_atomically
 
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, Never
 
 import pytest
-from tests.support.tile_kernel import _runtime as primitive_runtime
 
 from number_compiler.arithmetic.contracts.block_kernel import BaseBlockEffect
 from number_compiler.arithmetic.contracts.scoped_handles import ArenaToken, ExactSource
@@ -48,7 +44,10 @@ from number_compiler.hashlife.tiles.tiles import TileAlphabet, TileArena, TileID
 from number_compiler.resources.ledger import ResourceLedger
 from number_compiler.resources.stores import LedgerDict
 from number_compiler.sequences.collatz.block_power import CollatzPhysicalBlockEffect
+from tests.support.assertions import assert_rejected_atomically
 from tests.support.diamond_runtime import oracle
+from tests.support.finite_functions import carry_atoms
+from tests.support.tile_kernel import _runtime as primitive_runtime
 
 if TYPE_CHECKING:
     from number_compiler.hashlife.tiles.tiles import TileAlphabetID
@@ -226,7 +225,7 @@ def _runtime() -> tuple[
     ledger = ResourceLedger()
     functions = SemanticFunctionArena(ledger)
     quotient_arena = DiamondQuotientArena(functions)
-    port, signature, zero, one = carry_atoms(functions)
+    port, _unused_signature_binding, zero, one = carry_atoms(functions)
     declared = quotient_arena.intern_interface(
         MacroInterface(
             SemanticIdentity("tile-projection-test-v1", ("identity",)),

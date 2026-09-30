@@ -1,10 +1,10 @@
 """Fresh diamond test helpers extracted without changing their execution."""
 
 from __future__ import annotations
-from tests.support.diamond_runtime import build as build_runtime
 
 from number_compiler.arithmetic.contracts.block_effect import BlockEffect, BoundarySide
 from number_compiler.hashlife.observation.diamond_query import DiamondApplication
+from tests.support.diamond_runtime import build as build_runtime
 
 
 def build(

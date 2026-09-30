@@ -1,15 +1,15 @@
 from __future__ import annotations
 
-from tests.support.assertions import assert_rejected_atomically
-
 from collections.abc import MutableMapping
 from dataclasses import fields
 from typing import Never, cast
 
 import pytest
 
+from devtools.experiments.reverse_add.field_action import ReverseFieldActionArena
 from devtools.experiments.reverse_add.higher_interface import (
     ReverseHigherInterfaceCompilation,
+    ReverseHigherInterfaceCompiler,
 )
 from number_compiler.arithmetic.contracts.scoped_handles import ArenaHandle, ArenaToken
 from number_compiler.hashlife.actions.field_actions import (
@@ -22,9 +22,13 @@ from number_compiler.hashlife.execution.continuations.higher_bimachine import (
     _Step,
 )
 from number_compiler.hashlife.execution.continuations.higher_interfaces import (
+    HigherLocalInterfaceArena,
     HigherMacroComponents,
     HigherMacroInterface,
     HigherPort,
+)
+from number_compiler.hashlife.execution.continuations.higher_semantic import (
+    HigherSemanticArena,
 )
 from number_compiler.hashlife.execution.continuations.higher_temporal_provider import (
     HigherTemporalProviderEvaluator,
@@ -40,17 +44,8 @@ from number_compiler.hashlife.execution.recursive_outputs import (
     RecursiveOutputTemporal,
 )
 from number_compiler.hashlife.interfaces.diamond_quotient import LocalInterfaceID
+from tests.support.assertions import assert_rejected_atomically
 from tests.support.reverse_higher_interface import _direct_step
-from devtools.experiments.reverse_add.field_action import ReverseFieldActionArena
-from devtools.experiments.reverse_add.higher_interface import (
-    ReverseHigherInterfaceCompiler,
-)
-from number_compiler.hashlife.execution.continuations.higher_semantic import (
-    HigherSemanticArena,
-)
-from number_compiler.hashlife.execution.continuations.higher_interfaces import (
-    HigherLocalInterfaceArena,
-)
 from tests.support.reverse_higher_runtime import (
     _fixture,
     _macro_composer,
@@ -421,7 +416,7 @@ def test_higher_spatial_macro_composes_source_without_output_tape() -> None:
         sources,
         binding,
     ) = _fixture((7, 18, 7, 19, 19, 19, 19, 19))
-    outputs, composer, macro, left, right = _observed_macro(
+    outputs, _unused_composer_binding, macro, left, right = _observed_macro(
         semantics, interfaces, sources, primitive, compiler, runtime, binding
     )
     expected = _direct_step((7, 18, 7, 19, 19, 19, 19, 19), 10)
@@ -451,7 +446,7 @@ def test_reverse_macro_keeps_coordinate_magnitudes_outside_local_port_sorts() ->
         sources,
         binding,
     ) = _fixture(source)
-    outputs, composer = _macro_composer(
+    _unused_outputs_binding, composer = _macro_composer(
         semantics, interfaces, sources, primitive, compiler
     )
     macro = composer.compile(binding)

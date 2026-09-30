@@ -2,10 +2,6 @@
 
 from __future__ import annotations
 
-from number_compiler.hashlife.interfaces.diamond_kernel_bridge import (
-    scan_primitive_support,
-)
-
 from collections.abc import Generator
 from typing import TYPE_CHECKING
 
@@ -28,6 +24,7 @@ from number_compiler.hashlife.interfaces.diamond_boundary import BoundaryStateID
 from number_compiler.hashlife.interfaces.diamond_kernel_bridge import (
     input_expression,
     observation_inputs,
+    scan_primitive_support,
 )
 from number_compiler.hashlife.interfaces.diamond_output import _expression
 from number_compiler.resources.ledger import OwnedMemo

@@ -2,12 +2,10 @@
 
 from __future__ import annotations
 
-from devtools.paths import report_directory
-
 import json
 from typing import TYPE_CHECKING
 
-from devtools.paths import report_output, repository_root
+from devtools.paths import report_directory, report_output, repository_root
 from number_compiler.projection.radix_decision import bitmap_radix_decision_metrics
 from number_compiler.sequences.prime.coordinates import (
     prime_block_summary_hyperbolic_packed,

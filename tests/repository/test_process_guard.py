@@ -7,9 +7,9 @@ import json
 import os
 import subprocess
 import sys
+from collections.abc import Mapping
 from functools import partial
 from pathlib import Path
-from collections.abc import Mapping
 
 import pytest
 
@@ -155,8 +155,10 @@ def test_proof_generation_reaches_child_without_mutating_source_cache(
             "--",
             sys.executable,
             "-c",
-            "import os, sys; sys.path.insert(0, sys.argv[1]); import sample; "
-            "print(os.environ['NUMBER_COMPILER_PROOF_GENERATION'])",
+            (
+                "import os, sys; sys.path.insert(0, sys.argv[1]); import sample; "
+                "print(os.environ['NUMBER_COMPILER_PROOF_GENERATION'])"
+            ),
             str(source),
         ],
     )

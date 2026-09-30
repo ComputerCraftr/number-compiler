@@ -74,7 +74,9 @@ def test_arithmetic_interface_store_failure_rolls_back_publication(
     with build_tile_projection(
         CollatzPhysicalBlockEffect(), SourceGeometry(ledger, source)
     ) as projection:
-        adapter, action, interface_id, arena = division_interface(projection)
+        _unused_adapter_binding, _unused_action_binding, interface_id, arena = (
+            division_interface(projection)
+        )
         signature, components = _candidate(arena, interface_id)
         retained = _retained(ledger, arena)
         peak = ledger.peak_entries, ledger.peak_nodes
@@ -128,7 +130,9 @@ def test_arithmetic_interface_reservation_failure_cancels_before_publication(
     with build_tile_projection(
         CollatzPhysicalBlockEffect(), SourceGeometry(ledger, source)
     ) as projection:
-        adapter, action, interface_id, arena = division_interface(projection)
+        _unused_adapter_binding, _unused_action_binding, interface_id, arena = (
+            division_interface(projection)
+        )
         signature, components = _candidate(arena, interface_id)
         retained = _retained(ledger, arena)
         next_node = arena._next_node

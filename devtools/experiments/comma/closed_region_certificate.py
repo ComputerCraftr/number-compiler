@@ -9,12 +9,12 @@ This is development evidence until its checker is refined in Isabelle.
 from __future__ import annotations
 
 import argparse
-from collections import deque
-from dataclasses import asdict, dataclass
 import gzip
-from hashlib import sha256
 import io
 import json
+from collections import deque
+from dataclasses import asdict, dataclass
+from hashlib import sha256
 from math import gcd
 from pathlib import Path
 from typing import BinaryIO
@@ -167,7 +167,7 @@ def _read_record(line: str) -> dict[str, object]:
         raise ValueError("certificate record exceeds 8192 bytes")
     value = json.loads(line, object_pairs_hook=_no_duplicate_json_keys)
     if not isinstance(value, dict):
-        raise ValueError("certificate record must be an object")
+        raise TypeError("certificate record must be an object")
     if json.dumps(value, sort_keys=True, separators=(",", ":")) + "\n" != line:
         raise ValueError("certificate record is not canonical JSONL")
     return value
@@ -218,7 +218,7 @@ def _verify_prefix(raw_prefix: object) -> None:
     value = _decimal(raw_prefix["value"])
     children = raw_prefix["children"]
     if not isinstance(children, list):
-        raise ValueError("invalid first-fork children")
+        raise TypeError("invalid first-fork children")
     expected_children = tuple(_decimal(child) for child in children)
     k = 20
     actual_index = 1
@@ -345,7 +345,7 @@ def verify_closed_region(
                 raise ValueError("wrong boundary-step count")
             raw_exits = record["exits"]
             if not isinstance(raw_exits, list):
-                raise ValueError("missing outgoing entries")
+                raise TypeError("missing outgoing entries")
             parsed_exits = [_decimal(value) for value in raw_exits]
             if parsed_exits != exits:
                 raise ValueError("incomplete or forged outgoing entries")

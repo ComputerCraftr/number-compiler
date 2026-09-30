@@ -8,8 +8,8 @@ from typing import Never, cast
 import pytest
 
 from devtools.experiments.reverse_add.cocycle_temporal import (
-    CocycleTemporalArena,
     CocycleAction,
+    CocycleTemporalArena,
 )
 from devtools.experiments.reverse_add.threshold_cocycle import (
     ResidueMorphism,
@@ -140,7 +140,7 @@ def test_uninterned_cocycle_cannot_bypass_root_accounting() -> None:
 
 def test_temporal_composition_cache_is_complete_and_event_sensitive() -> None:
     bits = BitFunctionArena(ResourceLedger())
-    k, t, ports, action = _additive_action(bits, "cache-context")
+    _unused_k_binding, t, ports, action = _additive_action(bits, "cache-context")
 
     initial_requests = bits.ledger.counters.get("temporal_composition_requests", 0)
     initial_validations = bits.ledger.counters.get(

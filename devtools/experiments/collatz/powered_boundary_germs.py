@@ -9,12 +9,13 @@ the next chronological block.  Source occurrences remain separate throughout.
 from __future__ import annotations
 
 import json
-from operator import add, mul
 from collections import defaultdict
 from collections.abc import Iterable
 from dataclasses import dataclass
+from operator import add, mul
 from random import Random
 
+from number_compiler.arithmetic.fields.skew_transfer import SkewTransfer
 from number_compiler.hashlife.execution.dyadic_return_images import (
     DyadicReturnImageWorkspace,
 )
@@ -24,10 +25,9 @@ from number_compiler.hashlife.execution.dyadic_return_records import (
     _SupportNode,
 )
 from number_compiler.hashlife.execution.dyadic_return_transport import (
-    balanced_residue_macro,
     balanced_residue_effect,
+    balanced_residue_macro,
 )
-from number_compiler.arithmetic.fields.skew_transfer import SkewTransfer
 from number_compiler.resources.ledger import ResourceLedger
 from number_compiler.sequences.antihydra.arithmetic_images import (
     ANTIHYDRA_ARITHMETIC_LAW,
@@ -363,7 +363,7 @@ def main() -> None:
     rng = Random(0xC011A72)
     print(
         json.dumps(
-            memo_opportunity_audit((rng.getrandbits(256) | 1 for _ in range(128))),
+            memo_opportunity_audit(rng.getrandbits(256) | 1 for _ in range(128)),
             sort_keys=True,
         )
     )

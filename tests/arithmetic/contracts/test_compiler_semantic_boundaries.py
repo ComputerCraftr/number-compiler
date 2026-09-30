@@ -2,8 +2,6 @@
 
 from __future__ import annotations
 
-from tests.support.assertions import assert_rejected_atomically
-
 import pytest
 
 from devtools.verification.block_composed import ComposedBlockEffect
@@ -20,6 +18,7 @@ from number_compiler.hashlife.actions.lazy_compiler import (
 )
 from number_compiler.projection.digit_terminal import DigitNormalizeBlockEffect
 from number_compiler.resources.ledger import ResourceLedger
+from tests.support.assertions import assert_rejected_atomically
 
 
 class _Impostor(BaseBlockEffect):

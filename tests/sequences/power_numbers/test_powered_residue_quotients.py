@@ -1,4 +1,3 @@
-from tests.support.special_theorem_assertions import assert_unknown_resolution
 from random import Random
 
 import pytest
@@ -53,6 +52,7 @@ from number_compiler.sequences.power_numbers.factor_morphism import (
     mersenne_factor_witness,
 )
 from number_compiler.sequences.prime.lane_quotient import canonical_prime_base_period
+from tests.support.special_theorem_assertions import assert_unknown_resolution
 
 
 def test_radix_carry_block_is_exact_and_composes() -> None:

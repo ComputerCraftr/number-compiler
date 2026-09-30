@@ -8,8 +8,6 @@ diamond scheduler.
 
 from __future__ import annotations
 
-from number_compiler.resources.stores import append_indexed_node
-
 from collections.abc import MutableMapping, MutableSequence
 from dataclasses import dataclass, replace
 from typing import TYPE_CHECKING, Literal, TypeAlias
@@ -25,6 +23,7 @@ from number_compiler.hashlife.actions.lazy_compiler import (
     LazyCompiler,
     ProgramComposition,
 )
+from number_compiler.resources.stores import append_indexed_node
 
 if TYPE_CHECKING:
     from number_compiler.hashlife.interfaces.diamond_kernel import DiamondKernelArena

@@ -104,6 +104,7 @@ def audit_dyadic_return_payloads(
                 retained: SkewTransfer[int],
                 reconstructed: SkewTransfer[int],
                 admitted: _SourceNode,
+                workspace: DyadicReturnImageWorkspace = root,
             ) -> bool:
                 """Compare full affine laws or an authenticated Collatz singleton."""
                 if (
@@ -113,7 +114,11 @@ def audit_dyadic_return_payloads(
                     or reconstructed.lower <= 0
                 ):
                     return False
-                collatz = (root.law.gains, root.law.offsets, root.law.weights) == (
+                collatz = (
+                    workspace.law.gains,
+                    workspace.law.offsets,
+                    workspace.law.weights,
+                ) == (
                     (1, 6),
                     (0, 2),
                     (0, 1),

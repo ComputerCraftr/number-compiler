@@ -8,10 +8,6 @@ canonical IDs. No context program contains an emitted word or cell provenance.
 
 from __future__ import annotations
 
-from number_compiler.hashlife.interfaces.diamond_kernel_bridge import (
-    scan_primitive_support,
-)
-
 from collections.abc import MutableMapping, MutableSequence
 from dataclasses import dataclass
 from typing import Literal
@@ -26,6 +22,7 @@ from number_compiler.arithmetic.contracts.scoped_handles import (
 from number_compiler.arithmetic.functions.finite_port_action import PortVariable
 from number_compiler.hashlife.interfaces.diamond_boundary import BoundaryActionArena
 from number_compiler.hashlife.interfaces.diamond_kernel_bridge import (
+    scan_primitive_support,
     substitution_bindings,
 )
 from number_compiler.hashlife.interfaces.diamond_unary import PrimitiveUnaryFunctions

@@ -463,10 +463,9 @@ def _call_aliases(
             for target in node.targets:
                 for name, value in _assignment_bindings(target, node.value):
                     aliases.setdefault(name, []).append(value)
-        elif isinstance(node, ast.AnnAssign) and node.value is not None:
-            for name, value in _assignment_bindings(node.target, node.value):
-                aliases.setdefault(name, []).append(value)
-        elif isinstance(node, ast.NamedExpr):
+        elif (
+            isinstance(node, (ast.AnnAssign, ast.NamedExpr)) and node.value is not None
+        ):
             for name, value in _assignment_bindings(node.target, node.value):
                 aliases.setdefault(name, []).append(value)
         if isinstance(node, ast.Name) and isinstance(node.ctx, (ast.Store, ast.Del)):
@@ -719,8 +718,8 @@ def repository_policy_report(root: Path) -> dict[str, object]:
 
 __all__ = [
     "MAX_SOURCE_LINES",
-    "SOURCE_SUFFIXES",
     "SOURCE_FILENAMES",
+    "SOURCE_SUFFIXES",
     "physical_line_count",
     "recursion_cycles",
     "repository_policy_report",

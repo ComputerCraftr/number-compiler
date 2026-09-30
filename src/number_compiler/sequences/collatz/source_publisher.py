@@ -13,8 +13,8 @@ from dataclasses import dataclass, field
 
 from number_compiler.arithmetic.automata.program_word import (
     CanonicalWord,
-    SourceWord,
     RunTraversalMetrics,
+    SourceWord,
     from_values,
     iter_run_blocks_reverse,
 )

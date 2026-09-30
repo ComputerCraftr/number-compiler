@@ -2,17 +2,10 @@
 
 from __future__ import annotations
 
-from tests.support.recursive_field_images import (
-    _application_setup,
-    _completed_provider_setup,
-)
-from tests.support.assertions import assert_rejected_atomically
-
 from dataclasses import replace
 from typing import TYPE_CHECKING, Literal, Never
 
 import pytest
-from number_compiler.resources.ledger import ResourceLedger
 
 from number_compiler.arithmetic.contracts.scoped_handles import (
     ArenaToken,
@@ -39,19 +32,23 @@ from number_compiler.hashlife.execution.continuations.provider_image_input impor
     ProviderImageInput,
     ProviderImageInputArena,
 )
+from number_compiler.hashlife.execution.field_executor import FieldImageCandidate
 from number_compiler.hashlife.execution.field_images import (
     FieldImageID,
     FieldImageSummary,
     ImageRequestKey,
     SourceCellID,
 )
-from number_compiler.hashlife.execution.field_executor import FieldImageCandidate
 from number_compiler.hashlife.execution.field_provider import (
     PoweredFieldProviderView,
     validate_powered_provider_view,
 )
+from number_compiler.resources.ledger import ResourceLedger
+from tests.support.assertions import assert_rejected_atomically
 from tests.support.recursive_field_images import (
+    _application_setup,
     _completed_provider_input_setup,
+    _completed_provider_setup,
     _provider_setup,
     _setup,
 )
@@ -64,14 +61,14 @@ if TYPE_CHECKING:
 def test_powered_provider_view_is_sealed_scoped_and_observable() -> None:
     (
         ledger,
-        source,
-        signature,
-        geometry,
-        action,
+        _unused_source_binding,
+        _unused_signature_binding,
+        _unused_geometry_binding,
+        _unused_action_binding,
         _,
-        adapter,
-        executor,
-        incoming,
+        _unused_adapter_binding,
+        _unused_executor_binding,
+        _unused_incoming_binding,
         application,
     ) = _application_setup()
     view = application.provider_view()
@@ -103,7 +100,7 @@ def test_powered_provider_view_rejects_foreign_application_before_observation() 
         geometry,
         action,
         _,
-        adapter,
+        _unused_adapter_binding,
         executor,
         incoming,
         first,
@@ -185,7 +182,7 @@ def test_provider_occurrence_may_bind_validated_completed_image_atomically() -> 
         action,
         images,
         adapter,
-        executor,
+        _unused_executor_binding,
         image,
         providers,
         provider,
@@ -322,7 +319,7 @@ def test_provider_active_extent_is_occurrence_authority_not_semantic_action() ->
         inputs.children(scoped_input)
     assert ledger.snapshot() == before_split
     assert len(providers._bindings) == before_bindings
-    assert scoped_input.local_id not in inputs._children
+    assert not any(key[0] == scoped_input.local_id for key in inputs._children)
     left_source, right_source = images.sources.children(source)
     left_image, right_image = images.children(image)
     for child_source, child_image, child_extent in (
@@ -362,16 +359,17 @@ def test_provider_occurrence_rejects_mismatched_completed_image_before_warm_hit(
         ledger,
         source,
         signature,
-        geometry,
-        action,
+        _unused_geometry_binding,
+        _unused_action_binding,
         images,
         adapter,
-        executor,
+        _unused_executor_binding,
         image,
         providers,
         provider,
         valid,
     ) = _completed_provider_setup()
+    assert isinstance(source, SourceCellID)
     assert (
         providers.bind(
             provider,
@@ -705,14 +703,14 @@ def test_provider_extent_forgery_rejects_before_observation(
 ) -> None:
     (
         ledger,
-        source,
-        signature,
-        geometry,
-        action,
+        _unused_source_binding,
+        _unused_signature_binding,
+        _unused_geometry_binding,
+        _unused_action_binding,
         _,
         adapter,
-        executor,
-        incoming,
+        _unused_executor_binding,
+        _unused_incoming_binding,
         application,
     ) = _application_setup()
     view = application.provider_view()

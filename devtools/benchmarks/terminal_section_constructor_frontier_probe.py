@@ -2,8 +2,6 @@
 
 from __future__ import annotations
 
-from devtools.paths import report_directory
-
 import json
 
 from devtools.experiments.power_numbers.terminal_section_constructor_frontier import (
@@ -12,7 +10,7 @@ from devtools.experiments.power_numbers.terminal_section_constructor_frontier im
     fermat_high_two_adic_aks_tradeoff,
     section_constructor_frontier,
 )
-from devtools.paths import report_output, repository_root
+from devtools.paths import report_directory, report_output, repository_root
 
 ROOT = repository_root()
 

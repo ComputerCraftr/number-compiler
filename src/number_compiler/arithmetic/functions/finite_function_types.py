@@ -8,11 +8,10 @@ enter this arena. Reduced DAG size can still be exponential in the interface.
 
 from __future__ import annotations
 
-from number_compiler.arithmetic.contracts.iterative_queries import finish_postorder
-
 from dataclasses import dataclass, field
 from typing import Literal, TypeAlias
 
+from number_compiler.arithmetic.contracts.iterative_queries import finish_postorder
 from number_compiler.arithmetic.contracts.scoped_handles import ArenaHandle
 from number_compiler.arithmetic.functions.finite_port_action import PortVariable
 

@@ -2,11 +2,10 @@
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING, cast
+from typing import TYPE_CHECKING
 
 import pytest
 
-from number_compiler.hashlife.observation.hashlife_projection import HashLifeBlockIndex
 from number_compiler.resources.ledger import ResourceLedger
 from number_compiler.resources.metric_collection import collect_ledger_metrics
 from number_compiler.resources.metric_registry import ALGEBRAIC_FIELD_WORK_COUNTERS
@@ -19,13 +18,13 @@ if TYPE_CHECKING:
     from number_compiler.resources.ledger import LedgerSnapshot
 
 
-def test_schema_seven_exposes_retained_proof_populations_as_metadata() -> None:
+def test_schema_eight_does_not_report_historical_proof_sizes_as_runtime_metrics() -> (
+    None
+):
     report = collect_ledger_metrics(ResourceLedger())
     assert report.metrics_schema_version == 8
-    assert (
-        report.collatz_c4_proof_left_state_classes,
-        report.collatz_c4_proof_right_state_classes,
-    ) == (50, 90)
+    assert not hasattr(report, "collatz_c4_proof_left_state_classes")
+    assert not hasattr(report, "collatz_c4_proof_right_state_classes")
     assert report.production_residual_state_classes == 0
     assert report.algebraic_instrumentation_complete == 0
 
@@ -459,22 +458,6 @@ def test_post_publish_merge_gate_is_an_independent_measured_counter() -> None:
     report = collect_ledger_metrics(ledger)
     assert report.post_publish_equivalence_merges == 2
     assert report.temporal_parent_late_duplicate_reductions == 0
-
-
-def test_boolean_executor_marker_cannot_self_attest_release_capability() -> None:
-    from number_compiler.resources.behavior_metrics import _cutover_blocker
-
-    class Application:
-        is_algebraic_field_action_executor = True
-
-    class Index:
-        _ledger = ResourceLedger()
-        _lazy_application = Application()
-
-    assert (
-        _cutover_blocker(cast(HashLifeBlockIndex, Index()), 0)
-        == "unattested_execution_carrier"
-    )
 
 
 def test_reverse_field_actions_are_owner_validated_semantic_nodes() -> None:

@@ -188,7 +188,7 @@ class PuncturedCarryHarmonic:
     def idempotent_center(self) -> int:
         return (self.outgoing * (1 + self.decisive_parity)) % 5
 
-    def then_even(self, right: "PuncturedCarryHarmonic") -> "PuncturedCarryHarmonic":
+    def then_even(self, right: PuncturedCarryHarmonic) -> PuncturedCarryHarmonic:
         """Compose two nonidentity blocks when the left width is even.
 
         The first decisive domain remains in the left block, while the outgoing
@@ -208,10 +208,10 @@ class PuncturedCarryHarmonic:
             % 5,
         )
 
-    def square_even(self) -> "PuncturedCarryHarmonic":
+    def square_even(self) -> PuncturedCarryHarmonic:
         return self.then_even(self)
 
-    def power_even(self, exponent: int) -> "PuncturedCarryHarmonic":
+    def power_even(self, exponent: int) -> PuncturedCarryHarmonic:
         """Repeat one even-width punctured block without replaying its domains."""
         if type(exponent) is not int or exponent < 1:
             raise ValueError("punctured harmonic exponent must be positive")
@@ -221,7 +221,7 @@ class PuncturedCarryHarmonic:
         harmonic = (center + (exponent % 5) * self.centered) % 5
         return PuncturedCarryHarmonic(self.outgoing, self.decisive_parity, harmonic)
 
-    def vieta_with(self, reflected: "PuncturedCarryHarmonic") -> tuple[int, int]:
+    def vieta_with(self, reflected: PuncturedCarryHarmonic) -> tuple[int, int]:
         """Anonymous forward/reflection root pair over F5.
 
         Reflection-sheet metadata remains occurrence data outside this pair.
@@ -237,7 +237,7 @@ class PuncturedCarryHarmonic:
     def from_border_rows(
         cls,
         rows: tuple[tuple[int, int, int], tuple[int, int, int]],
-    ) -> "PuncturedCarryHarmonic":
+    ) -> PuncturedCarryHarmonic:
         """Decode the exact 20-class nonidentity border parameterization.
 
         The sole identity/no-decision row is deliberately rejected: it is the

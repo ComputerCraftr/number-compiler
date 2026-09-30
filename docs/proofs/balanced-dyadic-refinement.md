@@ -279,3 +279,27 @@ stays symbolic. This proves local transition arithmetic; bounded batching,
 source-window admission, allocation and physical weighted selection remain
 runtime obligations, and it does not establish a finite transition quotient
 closed under arbitrary temporal squaring.
+
+### Cache consumption and focused proof ownership
+
+[Source_Cache_Consumption](../../proofs/isabelle/integration_cache/Source_Cache_Consumption.thy)
+connects the cached Collatz width, residue, odd count, target origin and gain to
+the exact normalized orbit. `cached_occurrence_source_transport` proves
+application to any matching high fiber; `cached_occurrence_physical_consumer`
+proves its physical cost is width plus odd count. The record must satisfy the
+constructor's semantic publication invariant. Merely validating a gain or
+matching a finite quotient label does not discharge that invariant.
+
+`admitted_parent_lookup_returns_without_descent` and
+`admitted_root_hit_completes_in_two_control_steps` concern the existing
+`Dyadic_Balanced_Worklist.machine_step` implementation. They show the control
+work avoided by a valid memo hit. They do not erase key construction, admission,
+integer arithmetic or Python storage validation.
+
+The normalized parity germ has moved into the focused `Source_Cache_Integration`
+session. It imports its actual physical-map and dyadic-source dependencies,
+without the unused full physical-cylinder/balanced-family branch. The broader
+session imports this canonical owner; no arithmetic was copied. Build with
+`python -m devtools.checks.release --suite proofs --session Source_Cache_Integration`.
+Whole-constructor refinement, generation-qualified Python cache lifecycle,
+reverse output publication and cold construction bounds remain separate gates.

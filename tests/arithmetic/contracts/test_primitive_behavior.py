@@ -2,8 +2,6 @@
 
 from __future__ import annotations
 
-from tests.support.assertions import assert_rejected_atomically
-
 from array import array
 from collections.abc import Callable, MutableSequence
 from dataclasses import dataclass, replace
@@ -40,6 +38,7 @@ from number_compiler.resources.ledger import ResourceLedger
 from number_compiler.resources.metric_collection import collect_ledger_metrics
 from number_compiler.resources.ownership import audit_execution_ownership
 from number_compiler.sequences.collatz.block_power import CollatzPhysicalBlockEffect
+from tests.support.assertions import assert_rejected_atomically
 
 
 @dataclass(frozen=True, slots=True)

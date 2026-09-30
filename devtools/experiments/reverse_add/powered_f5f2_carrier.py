@@ -24,13 +24,13 @@ witnesses before any production claim is made.
 
 from __future__ import annotations
 
+from collections.abc import Iterable
 from dataclasses import dataclass
 from math import comb
-from collections.abc import Iterable
 
 from number_compiler.arithmetic.formula.decimal_pair_coordinates import (
-    decimal_q95,
     decimal_pair_coordinates,
+    decimal_q95,
 )
 from number_compiler.arithmetic.polynomials.f2_transport import F2SpatialTransport
 from number_compiler.arithmetic.polynomials.f5_transport import F5SpatialTransport

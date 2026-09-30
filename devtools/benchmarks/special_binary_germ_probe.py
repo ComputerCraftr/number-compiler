@@ -2,14 +2,11 @@
 
 from __future__ import annotations
 
-from devtools.paths import report_directory
-
-
+from devtools.benchmarks.reporting import write_json_report
 from devtools.experiments.power_numbers.special_binary_germ import (
     special_binary_germ_truth_audit,
 )
-from devtools.paths import repository_root
-from devtools.benchmarks.reporting import write_json_report
+from devtools.paths import report_directory, repository_root
 from number_compiler.sequences.power_numbers.germ import build_special_germ_plan
 from number_compiler.sequences.power_numbers.terminal_threshold import (
     prime_decision_chunk_spec,

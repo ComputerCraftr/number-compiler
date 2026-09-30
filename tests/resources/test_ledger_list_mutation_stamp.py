@@ -64,8 +64,9 @@ def test_revision_is_read_only_and_unrelated_stores_do_not_invalidate_it() -> No
     ledger.reserve(foreign_owner, entries=1, nodes=1)
     foreign.append(1)
     assert store.mutation_stamp == stamp
+    read_only_attribute = "mutation_stamp"
     with pytest.raises(AttributeError, match="immutable"):
-        setattr(store, "mutation_stamp", (object(), 0))
+        setattr(store, read_only_attribute, (object(), 0))
     with pytest.raises(TypeError, match="in-place sorting"):
         store._data.sort()
     with pytest.raises(TypeError, match="in-place addition"):

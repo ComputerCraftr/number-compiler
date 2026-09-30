@@ -2,11 +2,9 @@
 
 from __future__ import annotations
 
-from tests.support.assertions import assert_rejected_atomically
-from tests.support.semantic_oracles import macro_oracle as _oracle
-
 from array import array
 from dataclasses import replace
+from functools import partial
 from itertools import product
 from typing import TYPE_CHECKING, NamedTuple, Never, TypedDict, cast
 
@@ -46,6 +44,8 @@ from number_compiler.hashlife.interfaces.semantic_interfaces import (
     SemanticLocalInterfaceCompiler,
 )
 from number_compiler.resources.ledger import ResourceLedger
+from tests.support.assertions import assert_rejected_atomically
+from tests.support.semantic_oracles import macro_oracle as _oracle
 
 if TYPE_CHECKING:
     from number_compiler.arithmetic.contracts.scoped_handles import ActionProgramID
@@ -358,7 +358,7 @@ def test_transfer_request_rejects_scoped_aliases_before_warm_lookup_or_mutation(
     for forged in invalid:
         assert_rejected_atomically(
             fixture.ledger,
-            lambda: fixture.transfers.probe(forged),
+            partial(fixture.transfers.probe, forged),
             (TypeError, ValueError),
         )
 
@@ -482,7 +482,7 @@ def test_global_query_eviction_cannot_stale_semantic_transfer_ids() -> None:
 
 
 def test_semantic_alias_with_inconsistent_occurrence_bound_rejects_atomically() -> None:
-    effect, fixture, left, right = _alias_transfer_fixture()
+    _unused_effect_binding, fixture, left, right = _alias_transfer_fixture()
     first = fixture.executor.transfer(
         fixture.action, left, fixture.geometry, fixture.signature
     )
@@ -554,7 +554,7 @@ def test_transfer_publication_rejects_interface_from_another_signature() -> None
         FieldTransferRequestKey,
     )
 
-    fixture, transfer, record = _published_transfer_fixture()
+    fixture, _unused_transfer_binding, record = _published_transfer_fixture()
     other_signature = fixture.compiler.signature(fixture.kernel, 0)
     before = fixture.ledger.snapshot()
     with pytest.raises(ValueError, match="another port signature"):

@@ -210,8 +210,8 @@ class ProjectionFragmentCache:
 
 
 __all__ = [
-    "projection_key_snapshot",
     "ProjectionFragment",
     "ProjectionFragmentCache",
     "ProjectionFragmentKey",
+    "projection_key_snapshot",
 ]

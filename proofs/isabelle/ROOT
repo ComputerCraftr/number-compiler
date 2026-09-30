@@ -178,12 +178,19 @@ session Antihydra_Mahler_Integration in integration_mahler = Associated_Action_C
 session Balanced_Dyadic_Integration in integration_dyadic = Shared_S_Arithmetic +
   options [document = false, quick_and_dirty = false, threads = 1]
   sessions Collatz_Cylinder_Refinement Antihydra Antihydra_Mahler_Integration
+    Source_Cache_Integration
   theories
     Balanced_Dyadic_Families
     Maximal_Run_Arithmetic
     Collatz_Reduced_Precision
-    Collatz_Parity_Shift_Germ
     Dyadic_Parity_Inverse_Arithmetic
+
+session Source_Cache_Integration in integration_cache = Shared_S_Arithmetic +
+  options [document = false, quick_and_dirty = false, threads = 1]
+  sessions Collatz_Cylinder_Refinement
+  theories
+    Collatz_Parity_Shift_Germ
+    Source_Cache_Consumption
 
 
 session Mahler_Safety_Cylinders in mahler_safety = Antihydra +

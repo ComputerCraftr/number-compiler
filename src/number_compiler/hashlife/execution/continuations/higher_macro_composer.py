@@ -14,8 +14,8 @@ from number_compiler.hashlife.actions.field_actions import (
     FieldCellActionID,
 )
 from number_compiler.hashlife.execution.continuations.higher_interfaces import (
-    HigherLocalInterfaceArena,
     HigherInterfaceRecord,
+    HigherLocalInterfaceArena,
     HigherMacroComponents,
     HigherMacroInterface,
     HigherMorphismSort,

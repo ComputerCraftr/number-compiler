@@ -2,21 +2,20 @@
 
 from __future__ import annotations
 
-from tests.support.tile_kernel import _runtime_source
 from typing import Never, cast
 
 import pytest
 
 from number_compiler.arithmetic.contracts.block_kernel import BaseBlockEffect
+from number_compiler.hashlife.actions.field_actions import FieldCellActionID
 from number_compiler.hashlife.execution.tile_causal_interfaces import (
     CausalInterfacePayload,
 )
 from number_compiler.hashlife.execution.tile_causal_observation import causal_width
 from number_compiler.hashlife.interfaces.diamond_quotient import LocalInterfaceID
 from number_compiler.hashlife.tiles.tiles import TileArena, TileID, TileLease
-from number_compiler.hashlife.actions.field_actions import FieldCellActionID
 from number_compiler.resources.ledger import ResourceLedger
-from tests.support.tile_kernel import _runtime, _tile
+from tests.support.tile_kernel import _runtime, _runtime_source, _tile
 
 
 class _InterfaceEngine:
@@ -98,7 +97,7 @@ def test_causal_width_skips_inactive_siblings_without_point_or_output() -> None:
 
 
 def test_causal_width_clips_activity_outside_limit() -> None:
-    tiles, action, source, engine = _activity_fixture()
+    _unused_tiles_binding, action, source, engine = _activity_fixture()
     try:
         assert (
             causal_width(

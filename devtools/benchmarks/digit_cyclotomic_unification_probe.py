@@ -1,14 +1,12 @@
 from __future__ import annotations
 
-from devtools.paths import report_directory
-
 import json
 
 from devtools.experiments.algebra.digit_cyclotomic_unification import (
     metrics_as_jsonable,
     unified_digit_cyclotomic_metrics,
 )
-from devtools.paths import report_output, repository_root
+from devtools.paths import report_directory, report_output, repository_root
 
 ROOT = repository_root()
 

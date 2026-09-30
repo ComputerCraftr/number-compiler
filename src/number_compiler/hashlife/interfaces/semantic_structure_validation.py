@@ -1,11 +1,6 @@
 """Shared symbolic totality proofs for one quotient normalization."""
 
 from __future__ import annotations
-from number_compiler.arithmetic.functions.semantic_totality import (
-    require_semantic_total,
-    totality_predicate as _predicate,
-    split_semantic_pair as _split_pair,
-)
 
 from collections.abc import Iterable
 
@@ -17,6 +12,15 @@ from number_compiler.arithmetic.functions.finite_function_types import (
 )
 from number_compiler.arithmetic.functions.semantic_function_transactions import (
     _Transaction,
+)
+from number_compiler.arithmetic.functions.semantic_totality import (
+    require_semantic_total,
+)
+from number_compiler.arithmetic.functions.semantic_totality import (
+    split_semantic_pair as _split_pair,
+)
+from number_compiler.arithmetic.functions.semantic_totality import (
+    totality_predicate as _predicate,
 )
 from number_compiler.hashlife.interfaces.semantic_structures import (
     StructureArena,

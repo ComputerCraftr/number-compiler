@@ -8,19 +8,17 @@ from __future__ import annotations
 
 import argparse
 import json
+from collections import Counter
 from pathlib import Path
 from typing import Literal
 
 from devtools.experiments.comma.macro_lifting import check_macro_lifting
-from collections import Counter
-
 from number_compiler.sequences.comma.boundary_quotient import (
     PERIOD,
     BoundaryState,
     construct_macro,
 )
 from number_compiler.sequences.comma.weighted_return import WeightedBoundaryAction
-
 
 TOTAL_STATES = 16 * PERIOD
 

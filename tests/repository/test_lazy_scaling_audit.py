@@ -164,18 +164,23 @@ def test_last_point_register_cannot_hide_replay_after_another_coordinate() -> No
     assert report["status"] == "BLOCKED"
 
 
-def test_schema_four_requires_actual_diamond_instruments_not_legacy_counters() -> None:
-    from number_compiler.resources.metric_registry import DIAMOND_WORK_COUNTERS
-
+def test_schema_eight_requires_runtime_image_counters() -> None:
     data = rows()
     for row in data:
-        row["cold"]["metrics_schema_version"] = 4
+        row["cold"]["metrics_schema_version"] = 8
+        row["warm"]["metrics_schema_version"] = 8
     report = scaling_report(data)
     assert report["status"] == "BLOCKED"
-    assert (
-        "diamond_requests" in report["families"]["reverse"]["missing_instrumentation"]
-    )
+    assert report["families"]["reverse"]["missing_instrumentation"] == [
+        "completed_result_evaluations",
+        "completed_result_publications",
+    ]
     for row in data:
         for snapshot in (row["cold"], row["warm"]):
-            work_counters(snapshot).update(dict.fromkeys(DIAMOND_WORK_COUNTERS, 0))
+            work_counters(snapshot).update(
+                {
+                    "completed_result_evaluations": row["steps"].bit_length(),
+                    "completed_result_publications": row["steps"].bit_length(),
+                }
+            )
     assert scaling_report(data)["status"] == "PASS"

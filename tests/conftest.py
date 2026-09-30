@@ -17,9 +17,31 @@ from devtools.checks.test_run_evidence import (
     source_fingerprint,
 )
 from devtools.paths import repository_root
+from number_compiler.resources.process_cache import (
+    CacheLease,
+    ImmutableValue,
+    ProcessCache,
+)
 
 _ROOT = repository_root()
 _STAMP = pytest.StashKey[str]()
+
+
+@pytest.fixture
+def publication_blocked_cache(monkeypatch: pytest.MonkeyPatch) -> ProcessCache:
+    """Admit the lease but leave no retained-byte headroom for publications."""
+    cache = ProcessCache()
+    original_acquire = cache.acquire
+
+    def acquire_then_pin_budget(
+        namespace: str, version: str, source_key: tuple[ImmutableValue, ...]
+    ) -> CacheLease:
+        lease = original_acquire(namespace, version, source_key)
+        cache.max_bytes = cache.stats().bytes
+        return lease
+
+    monkeypatch.setattr(cache, "acquire", acquire_then_pin_budget)
+    return cache
 
 
 def pytest_sessionstart(session: pytest.Session) -> None:

@@ -15,12 +15,12 @@ from number_compiler.hashlife.execution.continuations.diamond_runtime import (
     DiamondRuntime,
 )
 from number_compiler.hashlife.execution.diamond_continuation_reduction import (
-    NormalizePrimitiveLambda,
     CompilePrimitiveFunction,
+    NormalizePrimitiveLambda,
 )
 from number_compiler.hashlife.interfaces.diamond_boundary_expr import (
-    ExprID,
     BoundaryExpressionArena,
+    ExprID,
 )
 from number_compiler.resources.ledger import ResourceLedger
 from number_compiler.sequences.collatz.block_power import CollatzPhysicalBlockEffect

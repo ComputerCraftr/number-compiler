@@ -2,14 +2,19 @@
 
 from __future__ import annotations
 
-from tests.support.tile_kernel import _runtime_source, powered_runtime_source
 from typing import TYPE_CHECKING, Never
 
 import pytest
 
 from number_compiler.arithmetic.contracts.block_kernel import BaseBlockEffect
 from number_compiler.hashlife.execution.tile_causal import CausalTileEngine
-from tests.support.tile_kernel import _runtime, _symbols, _tile
+from tests.support.tile_kernel import (
+    _runtime,
+    _runtime_source,
+    _symbols,
+    _tile,
+    powered_runtime_source,
+)
 
 if TYPE_CHECKING:
     from number_compiler.hashlife.interfaces.diamond_kernel import PrimitiveKernel
@@ -140,8 +145,8 @@ def test_repeated_point_reuses_completed_causal_leaf(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     effect = BaseBlockEffect(3)
-    ledger, tiles, adapter, primitive, scheduler, source = _runtime_source(
-        effect, (0, 0, 0, 1)
+    ledger, _unused_tiles_binding, adapter, primitive, scheduler, source = (
+        _runtime_source(effect, (0, 0, 0, 1))
     )
     action = adapter.power(primitive, 8)
     with (
@@ -189,8 +194,8 @@ def test_causal_width_uses_interfaces_without_output_tiles(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     effect = BaseBlockEffect(3)
-    _ledger, tiles, adapter, primitive, scheduler, source = _runtime_source(
-        effect, (0, 0, 0, 1)
+    _ledger, _unused_tiles_binding, adapter, primitive, scheduler, source = (
+        _runtime_source(effect, (0, 0, 0, 1))
     )
     engine = CausalTileEngine(scheduler)
 
@@ -209,9 +214,15 @@ def test_causal_width_uses_interfaces_without_output_tiles(
 def test_causal_width_probes_completed_parent_before_interface_children(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    ledger, tiles, adapter, primitive, scheduler, source, action = (
-        powered_runtime_source(BaseBlockEffect(3), (0, 0, 0, 1), 4)
-    )
+    (
+        ledger,
+        _unused_tiles_binding,
+        adapter,
+        _unused_primitive_binding,
+        scheduler,
+        source,
+        action,
+    ) = powered_runtime_source(BaseBlockEffect(3), (0, 0, 0, 1), 4)
     engine = CausalTileEngine(scheduler)
     try:
         with engine.output(action, source.tile):
@@ -233,9 +244,15 @@ def test_causal_width_preserves_noninitial_two_sided_edge() -> None:
         FusedBoundaryContract,
     )
 
-    _ledger, tiles, adapter, primitive, scheduler, source, action = (
-        powered_runtime_source(BaseBlockEffect(3), (0, 0, 0, 1), 4)
-    )
+    (
+        _ledger,
+        _unused_tiles_binding,
+        adapter,
+        _unused_primitive_binding,
+        scheduler,
+        source,
+        action,
+    ) = powered_runtime_source(BaseBlockEffect(3), (0, 0, 0, 1), 4)
     wiring = adapter.wiring(action)
     contract = FusedBoundaryContract(
         BoundPorts((1, 0), wiring),

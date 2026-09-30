@@ -6,8 +6,6 @@ primitive input tuples nor construct or publish replacement semantic functions.
 
 from __future__ import annotations
 
-from number_compiler.resources.semantic_declaration_payload import cofactor_cube
-
 from typing import TYPE_CHECKING
 
 from number_compiler.arithmetic.functions.finite_function_types import (
@@ -25,6 +23,7 @@ from number_compiler.hashlife.interfaces.semantic_bits import (
     FactoredFunctionID,
 )
 from number_compiler.resources.ledger import ResourceLedger
+from number_compiler.resources.semantic_declaration_payload import cofactor_cube
 from number_compiler.resources.stores import LedgerDict
 
 if TYPE_CHECKING:

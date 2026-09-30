@@ -2,8 +2,6 @@
 
 from __future__ import annotations
 
-from devtools.paths import report_directory
-
 import json
 
 from devtools.benchmarks.report_schema import record, records
@@ -15,7 +13,7 @@ from devtools.experiments.power_numbers.terminal_projective_wreath import (
     candidate_frobenius_section_probe,
     odometer_section_step,
 )
-from devtools.paths import report_output, repository_root
+from devtools.paths import report_directory, report_output, repository_root
 from number_compiler.arithmetic.fields.binary_piecewise import (
     BinaryBranchDecision,
     BinaryPiecewiseHandler,

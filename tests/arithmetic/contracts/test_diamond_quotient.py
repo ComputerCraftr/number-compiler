@@ -2,16 +2,9 @@
 
 from __future__ import annotations
 
-from tests.support.assertions import assert_rejected_atomically
-from tests.support.diamond_quotient import (
-    setup_arena,
-    parent_request,
-    restricted_setup,
-    zero_atoms,
-)
-
 from dataclasses import replace
-from typing import TYPE_CHECKING, Never, cast
+from functools import partial
+from typing import Never, cast
 
 import pytest
 
@@ -30,9 +23,13 @@ from number_compiler.hashlife.interfaces.diamond_quotient import (
     MacroComponents,
 )
 from number_compiler.resources.ownership import audit_execution_ownership
-
-if TYPE_CHECKING:
-    pass
+from tests.support.assertions import assert_rejected_atomically
+from tests.support.diamond_quotient import (
+    parent_request,
+    restricted_setup,
+    setup_arena,
+    zero_atoms,
+)
 
 
 def forbidden(*args: object, **kwargs: object) -> Never:
@@ -140,7 +137,7 @@ def test_pre_normalized_alias_memo_skips_repeat_reduction(
 
 
 def test_normalization_memo_eviction_preserves_semantic_identity() -> None:
-    ledger, arena, restricted, components, alias = restricted_setup()
+    ledger, arena, restricted, _unused_components_binding, alias = restricted_setup()
     quotient = arena.intern(restricted, alias)
     evicted = ledger.evict_query_memos()
     assert evicted
@@ -163,7 +160,9 @@ def test_parent_hit_skips_semantic_reduction_and_descendant_work(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     ledger, functions, arena, cells, _, signature, components, _, _, _ = setup_arena()
-    quotient, cell, request = parent_request(arena, cells, signature, components)
+    quotient, _unused_cell_binding, request = parent_request(
+        arena, cells, signature, components
+    )
     assert arena.probe(request) is None
     arena.publish(request, quotient)
     monkeypatch.setattr(functions, "ite", forbidden)
@@ -219,7 +218,9 @@ def test_only_complete_result_handles_can_enter_parent_cache() -> None:
     ledger, functions, arena, cells, _, signature, components, zero, _, _ = (
         setup_arena()
     )
-    quotient, cell, request = parent_request(arena, cells, signature, components)
+    quotient, _unused_cell_binding, request = parent_request(
+        arena, cells, signature, components
+    )
     invalid = (
         zero,
         ActionProgramID(quotient.owner, "diamond-quotient", quotient.local_id),
@@ -227,7 +228,7 @@ def test_only_complete_result_handles_can_enter_parent_cache() -> None:
     for value in invalid:
         assert_rejected_atomically(
             ledger,
-            lambda: arena.publish(request, cast("LocalInterfaceID", value)),
+            partial(arena.publish, request, cast("LocalInterfaceID", value)),
             (TypeError, ValueError),
         )
         assert not arena.parents
@@ -248,7 +249,9 @@ def test_forged_quotient_ids_reject_before_cold_and_warm_lookup(
     warm: bool, alias: bool | float
 ) -> None:
     ledger, _, arena, cells, _, signature, components, _, _, _ = setup_arena()
-    quotient, cell, request = parent_request(arena, cells, signature, components)
+    quotient, _unused_cell_binding, request = parent_request(
+        arena, cells, signature, components
+    )
     if warm:
         arena.publish(request, quotient)
     forged = DiamondQuotientID(quotient.owner, quotient.kind, quotient.local_id)
@@ -262,7 +265,9 @@ def test_forged_quotient_ids_reject_before_cold_and_warm_lookup(
 
 def test_eviction_preserves_canonical_quotients_and_reconciles_ownership() -> None:
     ledger, _, arena, cells, _, signature, components, _, _, _ = setup_arena()
-    quotient, cell, request = parent_request(arena, cells, signature, components)
+    quotient, _unused_cell_binding, request = parent_request(
+        arena, cells, signature, components
+    )
     arena.publish(request, quotient)
     entries = ledger.entries
     arena.clear_bindings()
@@ -275,7 +280,9 @@ def test_eviction_preserves_canonical_quotients_and_reconciles_ownership() -> No
 
 def test_atomic_parent_publication_rejects_exhausted_budget_without_mutation() -> None:
     ledger, _, arena, cells, _, signature, components, _, _, _ = setup_arena()
-    quotient, cell, request = parent_request(arena, cells, signature, components)
+    quotient, _unused_cell_binding, request = parent_request(
+        arena, cells, signature, components
+    )
     ledger.tighten_limits(None, ledger.entries)
     before = ledger.snapshot()
     with pytest.raises(BlockContextBudgetExceeded):

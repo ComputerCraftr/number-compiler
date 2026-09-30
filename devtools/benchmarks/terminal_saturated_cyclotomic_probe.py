@@ -2,8 +2,6 @@
 
 from __future__ import annotations
 
-from devtools.paths import report_directory
-
 import json
 
 from devtools.experiments.power_numbers.terminal_saturated_cyclotomic import (
@@ -11,7 +9,7 @@ from devtools.experiments.power_numbers.terminal_saturated_cyclotomic import (
     cyclotomic_factor_audit,
     cyclotomic_witness_cost_audit,
 )
-from devtools.paths import report_output, repository_root
+from devtools.paths import report_directory, report_output, repository_root
 
 ROOT = repository_root()
 

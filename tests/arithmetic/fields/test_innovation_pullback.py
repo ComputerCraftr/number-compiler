@@ -8,8 +8,8 @@ from number_compiler.arithmetic.contracts.block_effect import BlockContextBudget
 from number_compiler.arithmetic.contracts.cylinder_chart import CylinderChart
 from number_compiler.arithmetic.contracts.semantic_identity import SemanticIdentity
 from number_compiler.arithmetic.fields.symbolic_innovation import (
-    RadialMultiplier,
     InnovationID,
+    RadialMultiplier,
     SymbolicInnovationArena,
 )
 from number_compiler.resources.ledger import ResourceLedger

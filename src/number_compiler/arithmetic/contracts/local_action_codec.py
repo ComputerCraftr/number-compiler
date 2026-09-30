@@ -5,10 +5,12 @@ kernel does not publish future geometry or interpret temporal successors.
 """
 
 from __future__ import annotations
-from number_compiler.arithmetic.contracts.iterative_queries import defer_binary_children
+
 from collections.abc import MutableMapping, MutableSequence
 from typing import Protocol, TypeVar
+
 from number_compiler.arithmetic.automata.symmetry_powering import ActionTransform
+from number_compiler.arithmetic.contracts.iterative_queries import defer_binary_children
 from number_compiler.hashlife.execution.field_images import (
     SourceCellArena,
     SourceCellID,

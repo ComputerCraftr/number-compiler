@@ -12,18 +12,18 @@ import shutil
 import subprocess
 import sys
 from collections.abc import Callable, Mapping
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from importlib.metadata import PackageNotFoundError, version
 from pathlib import Path
 from types import TracebackType
-from typing import TextIO
+from typing import Self, TextIO
 from uuid import uuid4
 
 from devtools.paths import repository_root
 
 
 def utc_now() -> str:
-    return datetime.now(timezone.utc).isoformat()
+    return datetime.now(UTC).isoformat()
 
 
 def tool_versions() -> dict[str, str]:
@@ -79,7 +79,7 @@ class EvidenceRun:
         )
 
         self.root = (root or repository_root()).resolve()
-        stamp = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
+        stamp = datetime.now(UTC).strftime("%Y%m%dT%H%M%SZ")
         self.path = (
             output_dir or self.root / "results" / "runs" / f"{stamp}-{uuid4().hex}"
         )
@@ -147,7 +147,7 @@ class EvidenceRun:
         if not self.closed:
             self.finish("interrupted")
 
-    def __enter__(self) -> EvidenceRun:
+    def __enter__(self) -> Self:
         self._bytecode_before = sys.dont_write_bytecode
         sys.dont_write_bytecode = True
         return self

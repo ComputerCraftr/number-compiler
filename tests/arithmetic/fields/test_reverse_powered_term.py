@@ -1,7 +1,5 @@
 from __future__ import annotations
 
-from tests.support.power_assertions import assert_binary_power_bound
-
 import random
 from typing import Never
 
@@ -11,6 +9,7 @@ from number_compiler.api.number_api import NumberCompiler
 from number_compiler.arithmetic.fields.radix import digits_lsd, value_from_lsd_digits
 from number_compiler.arithmetic.fields.symbolic_extent import ReverseAddExtent
 from number_compiler.sequences.reverse_add.power import ReverseAddPoweredTerm
+from tests.support.power_assertions import assert_binary_power_bound
 
 
 def _reverse_add(value: int, base: int) -> int:

@@ -2,10 +2,10 @@
 
 from __future__ import annotations
 
-from number_compiler.hashlife.tiles.result_reverse_indexes import publish_indexed_result
-
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, cast
+
+from number_compiler.hashlife.tiles.result_reverse_indexes import publish_indexed_result
 
 if TYPE_CHECKING:
     from number_compiler.hashlife.execution.tile_kernel import (

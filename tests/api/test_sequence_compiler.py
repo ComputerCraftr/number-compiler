@@ -1,8 +1,5 @@
 from __future__ import annotations
 
-from tests.support.special_theorem_assertions import assert_unknown_resolution
-
-
 import ast
 import itertools
 from collections.abc import Callable
@@ -24,6 +21,7 @@ from number_compiler.arithmetic.contracts.block_effect import _effect_key, _stat
 from number_compiler.arithmetic.contracts.block_kernel import BaseBlockEffect
 from number_compiler.arithmetic.fields.radix import digits_lsd
 from number_compiler.arithmetic.fields.symbolic_extent import DyadicExtent
+from tests.support.special_theorem_assertions import assert_unknown_resolution
 
 
 @pytest.mark.parametrize(

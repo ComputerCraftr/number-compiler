@@ -20,20 +20,20 @@ not an enumeration of the Fibonacci family of legal E/O branch words.
 """
 
 from __future__ import annotations
-from number_compiler.arithmetic.contracts.input_validation import (
-    normalized_integer_pair,
-)
 
 from bisect import bisect_right
 from collections.abc import Iterable
 from dataclasses import dataclass, field
 from functools import lru_cache
 
+from number_compiler.arithmetic.contracts.input_validation import (
+    normalized_integer_pair,
+)
 from number_compiler.arithmetic.fields.morphism_core import DyadicAffineCocycle
+from number_compiler.arithmetic.fields.two_adic import inverse_dyadic_parity_word
 from number_compiler.arithmetic.polynomials.binomial_pow2 import (
     scaled_binomial_mod_pow2,
 )
-from number_compiler.arithmetic.fields.two_adic import inverse_dyadic_parity_word
 from number_compiler.resources.ledger import ResourceLedger
 
 

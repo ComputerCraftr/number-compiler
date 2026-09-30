@@ -37,8 +37,9 @@ sampled/endpoint quotient from being promoted as a theorem.
 
 from __future__ import annotations
 
+from collections.abc import Callable
 from dataclasses import dataclass
-from typing import Callable, TypeVar
+from typing import TypeVar
 
 from devtools.experiments.algebra.math_support import ceil_sqrt
 from devtools.experiments.algebra.residue_refined_bend import (
@@ -50,13 +51,12 @@ from devtools.experiments.power_numbers.special_transverse_jet import (
     SpecialJetProgressionSpec,
     first_special_transverse_singularity,
 )
+from devtools.verification.partition_refinement import parent_split_count
 from number_compiler.arithmetic.functions.finite_unary import (
     analyze_observer,
     minimize_unary_moore,
 )
 from number_compiler.sequences.prime.set import jacobi_symbol
-from devtools.verification.partition_refinement import parent_split_count
-
 
 PacketT = TypeVar("PacketT")
 

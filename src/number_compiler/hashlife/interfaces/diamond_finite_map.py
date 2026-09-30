@@ -2,10 +2,6 @@
 
 from __future__ import annotations
 
-from number_compiler.hashlife.interfaces.diamond_kernel_bridge import (
-    evaluate_primitive_bits,
-)
-
 from typing import TYPE_CHECKING
 
 from number_compiler.arithmetic.contracts.block_effect import BoundarySide
@@ -17,6 +13,7 @@ from number_compiler.hashlife.execution.continuations.diamond_context_program im
 )
 from number_compiler.hashlife.interfaces.diamond_kernel_bridge import (
     _valid_argument,
+    evaluate_primitive_bits,
     input_expression,
 )
 

@@ -1,5 +1,3 @@
-from tests.support.arithmetic_fixtures import wide_innovation_operators
-
 import pytest
 
 from number_compiler.arithmetic.contracts.block_effect import BlockContextBudgetExceeded
@@ -11,6 +9,7 @@ from number_compiler.arithmetic.fields.symbolic_innovation import (
     SymbolicInnovationArena,
 )
 from number_compiler.resources.ledger import ResourceLedger
+from tests.support.arithmetic_fixtures import wide_innovation_operators
 
 
 def _atom(name: str) -> SemanticIdentity:
@@ -128,7 +127,7 @@ def test_wide_interval_budget_refusal_publishes_no_node() -> None:
 
 
 def test_wide_operator_metadata_charges_exact_integer_limbs() -> None:
-    ledger, arena = wide_innovation_operators()
+    ledger, _unused_arena_binding = wide_innovation_operators()
 
     node_row = next(
         row for row in ledger.inventory() if row.role == "innovation_action"

@@ -14,6 +14,7 @@ from number_compiler.arithmetic.polynomials.twisted_observer import (
 from number_compiler.hashlife.observation.tile_cylinder import _sheet
 from number_compiler.hashlife.tiles.tiles import TileAlphabet, TileArena
 from number_compiler.resources.ledger import ResourceLedger
+from number_compiler.resources.metric_collection import collect_ledger_metrics
 from number_compiler.sequences.reverse_add.power import ReverseAddPoweredTerm
 
 
@@ -40,6 +41,7 @@ def test_powered_mirror_consumes_tiles_without_point_queries(
         if account.name.startswith("tile-cylinder-"):
             assert account.entries == account.nodes == 0
             assert account.observed_entries == account.observed_nodes == 0
+    assert collect_ledger_metrics(term._ledger).resource_audit_complete == 1
     assert term.metrics().resource_audit_complete == 1
     assert term.metrics().forbidden_future_payloads == 0
     owners = len(term._ledger.inventory())

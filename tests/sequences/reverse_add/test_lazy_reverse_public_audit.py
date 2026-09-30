@@ -2,6 +2,7 @@ from typing import Never
 
 import pytest
 
+from number_compiler.resources.metric_collection import collect_ledger_metrics
 from number_compiler.sequences.reverse_add.power import ReverseAddPoweredTerm
 
 
@@ -28,6 +29,7 @@ def test_public_reverse_point_has_no_exact_future_carrier_or_global_offset_cache
         assert term.digit(position) == int(expected[-1 - position])
     with pytest.raises(IndexError):
         term.digit(len(expected))
+    assert collect_ledger_metrics(term._ledger).resource_audit_complete == 1
     metrics = term.metrics()
     assert metrics.forbidden_future_payloads == 0
     assert metrics.retained_unbounded_future_integers == 0
@@ -83,4 +85,5 @@ def test_public_reverse_summary_eviction_preserves_result_and_program_identity()
     assert term._ledger.counters.get("microblock_hits", 0) > 0
     assert after.temporal_parent_compositions == before.temporal_parent_compositions
     assert after.resource_accounting_mismatch == 0
-    assert after.resource_audit_complete == 1
+    assert collect_ledger_metrics(term._ledger).resource_audit_complete == 1
+    assert term.metrics().resource_audit_complete == 1

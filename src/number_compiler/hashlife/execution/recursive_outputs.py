@@ -477,7 +477,7 @@ class RecursiveCoordinateMorphismArena:
             raise ValueError("output range requires 0 <= start <= stop")
         root = self.resolve(output)
         if not self._spatially_complete(root):
-            raise ValueError("streaming requires a completed spatial image")
+            raise TypeError("streaming requires a completed spatial image")
         self.ledger.bump("recursive_output_stream_requests")
         top: int | None = None
         try:
@@ -493,7 +493,7 @@ class RecursiveCoordinateMorphismArena:
                 node = self.resolve(current)
                 self.ledger.bump("recursive_output_stream_node_visits")
                 if isinstance(node, RecursiveOutputTemporal):
-                    raise ValueError("streaming requires a completed spatial image")
+                    raise TypeError("streaming requires a completed spatial image")
                 if isinstance(node, RecursiveOutputBranch):
                     # Keep the parent charged until both child frames finish.
                     # It also makes allocation failure cleanup transactional.

@@ -13,7 +13,6 @@ import pytest
 
 from devtools import paths, runs
 
-
 OUTPUT_MODULES = (
     "collatz_raw_field_probe",
     "compiler_debt_probe",

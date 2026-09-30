@@ -16,8 +16,8 @@ from number_compiler.hashlife.execution.source_bound_images import (
     _RelativeKey,
 )
 from number_compiler.hashlife.execution.source_image_seals import (
-    _TypedKey,
     _typed_equal,
+    _TypedKey,
     publication_matches_readonly,
 )
 from number_compiler.resources.ledger import ResourceLedger

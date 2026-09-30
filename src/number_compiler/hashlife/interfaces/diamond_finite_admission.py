@@ -6,10 +6,6 @@ no source, expression, occurrence, coordinate, or observed-argument component.
 
 from __future__ import annotations
 
-from number_compiler.hashlife.interfaces.diamond_kernel_bridge import (
-    evaluate_primitive_bits,
-)
-
 from dataclasses import dataclass
 
 from number_compiler.arithmetic.contracts.block_effect import BoundarySide
@@ -23,6 +19,9 @@ from number_compiler.hashlife.interfaces.diamond_boundary_expr import (
     BoundaryExpressionArena,
     StateSort,
     SymbolSort,
+)
+from number_compiler.hashlife.interfaces.diamond_kernel_bridge import (
+    evaluate_primitive_bits,
 )
 from number_compiler.resources.ledger import OwnedMemo
 

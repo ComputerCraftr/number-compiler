@@ -10,8 +10,8 @@ from __future__ import annotations
 import argparse
 import json
 from collections.abc import Callable
-from math import gcd
 from dataclasses import dataclass
+from math import gcd
 from time import perf_counter
 from typing import Literal
 

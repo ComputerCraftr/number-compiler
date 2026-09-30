@@ -7,8 +7,8 @@ from devtools.experiments.collatz.radix5_future_grammar import (
     compose_carrier,
     exact_length_states,
 )
-from number_compiler.arithmetic.carry.collatz_output_quotient import DOMAIN_ACTIONS
 from number_compiler.arithmetic.carry.collatz_f5_quotient import CollatzF5SpatialAction
+from number_compiler.arithmetic.carry.collatz_output_quotient import DOMAIN_ACTIONS
 
 
 def test_collatz_f5_leaf_alphabet_is_exactly_fifteen_classes() -> None:

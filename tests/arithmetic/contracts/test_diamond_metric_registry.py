@@ -79,25 +79,26 @@ def test_diamond_roles_cannot_reclassify_a_packed_history_as_an_action() -> None
         assert report.representation_boundary_complete == 0
 
 
-def test_uninstrumented_runtime_does_not_report_a_measured_diamond_zero() -> None:
-    from number_compiler.resources.metric_registry import DIAMOND_WORK_COUNTERS
-
-    ledger = ResourceLedger()
-    assert collect_ledger_metrics(ledger).diamond_instrumentation_complete == 0
-    for name in DIAMOND_WORK_COUNTERS:
-        ledger.bump(name, 0)
-    ledger.bump("diamond_requests", 3)
-    ledger.bump("diamond_cache_hits", 2)
-    ledger.bump("diamond_evaluations")
-    report = collect_ledger_metrics(ledger)
-    assert report.diamond_instrumentation_complete == 1
-    assert (
-        report.diamond_requests
-        == report.diamond_cache_hits + report.diamond_evaluations
-        == 3
+def test_runtime_image_publication_is_accounted_and_reused() -> None:
+    from number_compiler.sequences.collatz.block_power import PoweredCollatzTerm
+    from tests.support.source_image_assertions import (
+        assert_physical_publications,
+        assert_source_image_replay_stable,
     )
-    # Counters cannot confer an execution certificate.
-    assert report.bimachine_composition_certified == 0
+
+    term = PoweredCollatzTerm(27, 16)
+    assert term.digit(0) == 1
+    cold = term.metrics()
+    counters = dict(term._ledger.counters)
+    assert_physical_publications(counters)
+    assert cold.resource_audit_complete == 1
+    assert cold.resource_accounting_mismatch == 0
+    assert cold.whole_word_sweeps == cold.whole_word_symbol_visits == 0
+    assert cold.proof_machine_applications == 0
+
+    assert term.digit(0) == 1
+    warm = term._ledger.counters
+    assert_source_image_replay_stable(counters, warm)
 
 
 def test_original_source_record_is_charged_before_any_geometry_node() -> None:

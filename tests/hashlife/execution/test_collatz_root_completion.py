@@ -2,20 +2,20 @@
 
 from __future__ import annotations
 
-from number_compiler.hashlife.execution.tile_kernel import PrimitiveTileKernelAdapter
-from number_compiler.hashlife.actions.field_actions import FieldCellActionID
-from number_compiler.hashlife.tiles.tiles import TileID
 from itertools import product
 from typing import Any
 
 import pytest
 
+from number_compiler.hashlife.actions.field_actions import FieldCellActionID
 from number_compiler.hashlife.execution.tile_causal_entry import causal_complete
 from number_compiler.hashlife.execution.tile_collatz_root_completion import (
     complete_collatz_root,
 )
+from number_compiler.hashlife.execution.tile_kernel import PrimitiveTileKernelAdapter
 from number_compiler.hashlife.interfaces.diamond_quotient import COMPONENT_ROLES
 from number_compiler.hashlife.tiles.tile_result_records import PoweredResultKey
+from number_compiler.hashlife.tiles.tiles import TileID
 from number_compiler.sequences.collatz.block_power import CollatzPhysicalBlockEffect
 from tests.support.tile_kernel import _runtime, _tile
 

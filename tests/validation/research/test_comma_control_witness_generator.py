@@ -15,7 +15,7 @@ from devtools.experiments.comma.generate_rank_candidate import (
     _control_witness_from_chart,
     _witness_slices,
 )
-from number_compiler.sequences.comma.boundary_chart import BoundaryChart, PERIOD
+from number_compiler.sequences.comma.boundary_chart import PERIOD, BoundaryChart
 
 
 def test_first_winning_boundary_control_candidate() -> None:

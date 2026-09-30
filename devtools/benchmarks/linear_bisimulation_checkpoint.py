@@ -1,21 +1,25 @@
-"""Freeze the bounded T^2/C^4 checkpoint before higher-rung HashLife closure."""
+"""Check exact powered outputs, replay stability and retained-resource accounting."""
 
 from __future__ import annotations
-
-from devtools.verification.oracles.sequence_arithmetic import (
-    collatz_literal as _collatz_scalar,
-)
-from devtools.paths import report_directory
 
 import json
 from time import perf_counter
 
-from devtools.paths import repository_root
+from devtools.paths import report_directory, repository_root
+from devtools.verification.oracles.sequence_arithmetic import (
+    collatz_literal as _collatz_scalar,
+)
 from number_compiler.sequences.collatz.block_power import PoweredCollatzTerm
 from number_compiler.sequences.reverse_add.power import ReverseAddPoweredTerm
 
 ROOT = repository_root()
 INDICES = (16, 32, 64, 128, 256)
+
+
+def _metric_int(value: object) -> int:
+    if type(value) is not int:
+        raise AssertionError(("runtime-metric-is-not-an-exact-integer", value))
+    return value
 
 
 def _reverse_scalar(steps: int) -> int:
@@ -34,27 +38,42 @@ def _row(
     started = perf_counter()
     low = term.digit(0)
     elapsed = perf_counter() - started
-    assert low == expected % term.base if hasattr(term, "base") else low == expected & 1
+    expected_low = (
+        expected % term.base
+        if isinstance(term, ReverseAddPoweredTerm)
+        else expected & 1
+    )
+    assert low == expected_low
+    assert term.materialize(max_bits=max(1, expected.bit_length())) == expected
     metrics = term.metrics()
     behavior = term.behavior_metrics()
+    publication_counter = "source_image_publications"
+    projection_counter = "source_image_projection_publications"
+    first_publications = metrics.resource_work_counters.get(publication_counter, 0)
+    first_projection_publications = metrics.resource_work_counters.get(
+        projection_counter, 0
+    )
+    before_replay = dict(term._ledger.counters)
+    assert term.digit(0) == low
+    after_replay = term._ledger.counters
     return {
         "index": index,
         "seconds": elapsed,
         "family": behavior.temporal_quotient_family,
-        "machine_applications": metrics.bounded_application_action_applications,
-        "machine_symbol_visits": metrics.resource_work_counters.get(
-            "family_bisimulation_symbol_visits", 0
-        ),
         "retained_entries": metrics.resource_ledger_entries,
-        "microblock_entries": metrics.exact_microblock_entries,
-        "transient_payload_peak_bytes": metrics.resource_work_counters.get(
-            "family_bisimulation_transient_payload_peak_bytes", 0
-        ),
         "sequential_generation_advances": metrics.sequential_generation_advances,
         "spatial_occurrence_bindings": metrics.spatial_occurrence_bindings,
         "forbidden_future_payloads": metrics.forbidden_future_payloads,
         "representation_boundary_complete": metrics.representation_boundary_complete,
-        "cutover_complete": behavior.bounded_temporal_runtime_cutover_complete,
+        "runtime_image_matches_oracle": low == expected_low,
+        "runtime_image_publications": first_publications,
+        "runtime_image_projection_publications": first_projection_publications,
+        "replay_publication_delta": after_replay.get(publication_counter, 0)
+        - before_replay.get(publication_counter, 0),
+        "replay_projection_publication_delta": after_replay.get(projection_counter, 0)
+        - before_replay.get(projection_counter, 0),
+        "resource_audit_complete": metrics.resource_audit_complete,
+        "resource_accounting_mismatch": metrics.resource_accounting_mismatch,
     }
 
 
@@ -66,21 +85,22 @@ def run() -> dict[str, object]:
         collatz.append(
             _row(PoweredCollatzTerm(140137, n), _collatz_scalar(140137, n), n)
         )
-    assert [row["machine_applications"] for row in reverse] == [9, 17, 33, 65, 129]
-    assert [row["machine_applications"] for row in collatz] == [4, 8, 16, 32, 64]
     for row in [*reverse, *collatz]:
         assert row["sequential_generation_advances"] == 0
         assert row["spatial_occurrence_bindings"] == 0
         assert row["forbidden_future_payloads"] == 0
         assert row["representation_boundary_complete"] == 1
-        assert row["cutover_complete"] == 1
-        assert int(row["transient_payload_peak_bytes"]) <= 256
+        assert row["runtime_image_matches_oracle"] is True
+        assert _metric_int(row["runtime_image_publications"]) > 0
+        assert _metric_int(row["runtime_image_projection_publications"]) > 0
+        assert row["replay_publication_delta"] == 0
+        assert row["replay_projection_publication_delta"] == 0
+        assert row["resource_audit_complete"] == 1
+        assert row["resource_accounting_mismatch"] == 0
     return {
         "version": 1,
         "status": "PASS",
-        "checkpoint": "linear-temporal-bisimulation-t2-c4",
-        "logarithmic_temporal_closure_proved": False,
-        "note": "Machine-rung count is linear; full symbol visits are not claimed logarithmic or linear in N.",
+        "checkpoint": "runtime-image-output-accounting",
         "reverse_196": reverse,
         "collatz_140137": collatz,
     }

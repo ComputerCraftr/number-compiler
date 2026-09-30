@@ -2,12 +2,10 @@
 
 from __future__ import annotations
 
-from devtools.paths import report_directory
-
 import json
 from typing import TYPE_CHECKING
 
-from devtools.paths import repository_root
+from devtools.paths import report_directory, repository_root
 from number_compiler.api.sequence_compiler import CanonicalSequenceCompiler
 from number_compiler.api.sequence_types import FermatSequenceSpec, MersenneSequenceSpec
 from number_compiler.arithmetic.fields.symbolic_extent import extent_json_value

@@ -28,11 +28,13 @@ from number_compiler.arithmetic.carry.collatz_output_quotient import (
 )
 from number_compiler.arithmetic.contracts.block_effect import BlockContextBudgetExceeded
 from number_compiler.arithmetic.fields.branch_quotients import (
-    BranchChoiceSuffix as BranchChoiceSuffix,
+    BranchChoiceSuffix,
     possibility_partition,
 )
 from number_compiler.arithmetic.fields.consumer_pullback import ExactRational as Q
 from number_compiler.resources.ledger import ResourceLedger
+
+__all__ = ("BranchChoiceSuffix",)
 
 
 def prime_buckets(prime: int, ledger: ResourceLedger) -> tuple[int, ...]:

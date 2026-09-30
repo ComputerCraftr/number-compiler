@@ -2,15 +2,13 @@
 
 from __future__ import annotations
 
-from devtools.paths import report_directory
-
 import json
 
 from devtools.benchmarks.json_support import jsonable
 from devtools.experiments.algebra.projection_field_dynamics import (
     projection_field_metrics,
 )
-from devtools.paths import report_output, repository_root
+from devtools.paths import report_directory, report_output, repository_root
 
 ROOT = repository_root()
 

@@ -2,8 +2,6 @@
 
 from __future__ import annotations
 
-from number_compiler.resources.temporal_diagnostics import METRICS_SCHEMA_VERSION
-
 import argparse
 import json
 import os
@@ -27,8 +25,8 @@ from devtools.checks.lazy_scaling_audit import (
 from devtools.paths import repository_root
 from number_compiler.resources.metric_registry import (
     DIAMOND_MEMO_ROLES,
-    DIAMOND_WORK_COUNTERS,
 )
+from number_compiler.resources.temporal_diagnostics import METRICS_SCHEMA_VERSION
 
 
 class MeasuredPhase(TypedDict):
@@ -42,112 +40,107 @@ class MeasuredPhase(TypedDict):
 
 ROOT = repository_root()
 FIELDS = (
-    (
-        "metrics_schema_version",
-        "resource_ledger_entries",
-        "resource_ledger_nodes",
-        "cache_slots",
-        "exact_source_occurrences",
-        "spatial_occurrence_bindings",
-        "spatial_binding_nodes",
-        "canonical_transfer_nodes",
-        "temporal_program_nodes",
-        "spatial_action_program_nodes",
-        "context_program_nodes",
-        "boundary_expression_program_nodes",
-        "boundary_expression_free_port_references",
-        "boundary_expression_max_free_ports",
-        "higher_context_program_nodes",
-        "higher_unary_program_nodes",
-        "higher_observation_cache_entries",
-        "expression_closure_program_nodes",
-        "expression_closure_parameter_references",
-        "expression_call_argument_references",
-        "expression_head_cache_entries",
-        "context_observation_cache_entries",
-        "unary_function_cache_entries",
-        "image_action_nodes",
-        "diamond_cell_nodes",
-        "bimachine_composition_certified",
-        "boundary_state_nodes",
-        "boundary_function_nodes",
-        "primitive_kernel_nodes",
-        "finite_expression_nodes",
-        "macro_transfer_action_nodes",
-        "causal_geometry_nodes",
-        "right_reset_certificate_nodes",
-        "finite_cycle_certificate_nodes",
-        "diamond_instrumentation_complete",
-        "canonical_parent_identity_entries",
-        "reverse_leaf_binding_entries",
-        "reverse_parent_binding_entries",
-        "reverse_source_tile_binding_entries",
-        "collatz_range_binding_entries",
-        "collatz_source_tile_binding_entries",
-        "collatz_event_binding_entries",
-        "finite_port_state_nodes",
-        "other_retained_nodes",
-        "collatz_mul3_summary_requests",
-        "collatz_mul3_summary_cache_hits",
-        "collatz_mul3_summary_evaluations",
-        "joint_interval_composition_requests",
-        "joint_interval_composition_cache_hits",
-        "joint_interval_composition_evaluations",
-        "interval_effect_intern_hits",
-        "interval_effect_intern_misses",
-        "interval_literal_requests",
-        "interval_literal_cache_hits",
-        "interval_literal_evaluations",
-        "interval_reflection_requests",
-        "interval_reflection_cache_hits",
-        "interval_reflection_identity_hits",
-        "interval_reflection_evaluations",
-        "reverse_summary_lookup_requests",
-        "reverse_summary_lookup_hits",
-        "reverse_summary_lookup_misses",
-        "reverse_summary_reflection_hits",
-        "resource_observed_entries",
-        "resource_observed_nodes",
-        "resource_accounting_mismatch",
-        "resource_peak_entries",
-        "resource_peak_nodes",
-        "resource_audit_complete",
-        "resource_audit_unknown_payloads",
-        "resource_unregistered_containers",
-        "resource_unregistered_payload_resolvers",
-        "forbidden_future_payloads",
-        "retained_unbounded_future_integers",
-        "source_payload_nodes",
-        "compiler_program_nodes",
-        "application_program_nodes",
-        "transfer_summary_nodes",
-        "exact_endpoint_nodes",
-        "bounded_application_nonlinear_branch_evaluations",
-        "retained_point_response_scalars",
-        "bounded_application_primitive_step_evaluations",
-        "composition_requests",
-        "composition_cache_hits",
-        "composition_evaluations",
-        "retained_composition_entries",
-        "summary_evaluations",
-        "summary_cache_hits",
-        "symbolic_port_queries",
-        "symbolic_maximum_port_bits",
-        "bounded_limb_operations",
-        "maximum_arithmetic_bits",
-        "unbounded_arithmetic_observations",
-        "endpoint_lowering_requests",
-        "explicitly_materialized_endpoints",
-        "resource_work_counters",
-        "resource_workspace_peaks",
-        "representation_boundary_complete",
-        "finite_port_applications",
-        "finite_port_decision_visits",
-        "reverse_carry_function_classifications",
-    )
-    + DIAMOND_WORK_COUNTERS
-    + tuple(name for name, _ in DIAMOND_MEMO_ROLES)
-)
+    "metrics_schema_version",
+    "resource_ledger_entries",
+    "resource_ledger_nodes",
+    "cache_slots",
+    "exact_source_occurrences",
+    "spatial_occurrence_bindings",
+    "spatial_binding_nodes",
+    "canonical_transfer_nodes",
+    "temporal_program_nodes",
+    "spatial_action_program_nodes",
+    "context_program_nodes",
+    "boundary_expression_program_nodes",
+    "boundary_expression_free_port_references",
+    "boundary_expression_max_free_ports",
+    "higher_context_program_nodes",
+    "higher_unary_program_nodes",
+    "higher_observation_cache_entries",
+    "expression_closure_program_nodes",
+    "expression_closure_parameter_references",
+    "expression_call_argument_references",
+    "expression_head_cache_entries",
+    "context_observation_cache_entries",
+    "unary_function_cache_entries",
+    "image_action_nodes",
+    "diamond_cell_nodes",
+    "bimachine_composition_certified",
+    "boundary_state_nodes",
+    "boundary_function_nodes",
+    "primitive_kernel_nodes",
+    "finite_expression_nodes",
+    "macro_transfer_action_nodes",
+    "causal_geometry_nodes",
+    "right_reset_certificate_nodes",
+    "finite_cycle_certificate_nodes",
+    "canonical_parent_identity_entries",
+    "reverse_leaf_binding_entries",
+    "reverse_parent_binding_entries",
+    "reverse_source_tile_binding_entries",
+    "collatz_range_binding_entries",
+    "collatz_source_tile_binding_entries",
+    "collatz_event_binding_entries",
+    "finite_port_state_nodes",
+    "other_retained_nodes",
+    "collatz_mul3_summary_requests",
+    "collatz_mul3_summary_cache_hits",
+    "collatz_mul3_summary_evaluations",
+    "joint_interval_composition_requests",
+    "joint_interval_composition_cache_hits",
+    "joint_interval_composition_evaluations",
+    "interval_effect_intern_hits",
+    "interval_effect_intern_misses",
+    "interval_literal_requests",
+    "interval_literal_cache_hits",
+    "interval_literal_evaluations",
+    "interval_reflection_requests",
+    "interval_reflection_cache_hits",
+    "interval_reflection_identity_hits",
+    "interval_reflection_evaluations",
+    "reverse_summary_lookup_requests",
+    "reverse_summary_lookup_hits",
+    "reverse_summary_lookup_misses",
+    "reverse_summary_reflection_hits",
+    "resource_observed_entries",
+    "resource_observed_nodes",
+    "resource_accounting_mismatch",
+    "resource_peak_entries",
+    "resource_peak_nodes",
+    "resource_audit_complete",
+    "resource_audit_unknown_payloads",
+    "resource_unregistered_containers",
+    "resource_unregistered_payload_resolvers",
+    "forbidden_future_payloads",
+    "retained_unbounded_future_integers",
+    "source_payload_nodes",
+    "compiler_program_nodes",
+    "application_program_nodes",
+    "transfer_summary_nodes",
+    "exact_endpoint_nodes",
+    "bounded_application_nonlinear_branch_evaluations",
+    "retained_point_response_scalars",
+    "bounded_application_primitive_step_evaluations",
+    "composition_requests",
+    "composition_cache_hits",
+    "composition_evaluations",
+    "retained_composition_entries",
+    "summary_evaluations",
+    "summary_cache_hits",
+    "symbolic_port_queries",
+    "symbolic_maximum_port_bits",
+    "bounded_limb_operations",
+    "maximum_arithmetic_bits",
+    "unbounded_arithmetic_observations",
+    "endpoint_lowering_requests",
+    "explicitly_materialized_endpoints",
+    "resource_work_counters",
+    "resource_workspace_peaks",
+    "representation_boundary_complete",
+    "finite_port_applications",
+    "finite_port_decision_visits",
+    "reverse_carry_function_classifications",
+) + tuple(name for name, _ in DIAMOND_MEMO_ROLES)
 
 
 def worker(family: str, steps: int, seed: int | None = None) -> dict[str, object]:
@@ -272,16 +265,27 @@ def worker(family: str, steps: int, seed: int | None = None) -> dict[str, object
     assert cold["resource_accounting_mismatch"] == 0
     assert cold["resource_unregistered_containers"] == 0
     assert cold["exact_endpoint_nodes"] == cold["endpoint_lowering_requests"] == 0
-    assert cold["diamond_instrumentation_complete"] == 1
     assert cold["bimachine_composition_certified"] == 1
     assert cold["sequential_generation_advances"] == 0
+    cold_work = cold["resource_work_counters"]
+    warm_work = warm["resource_work_counters"]
+    if not isinstance(cold_work, dict) or not isinstance(warm_work, dict):
+        raise TypeError("resource work counters are not mappings")
+    publication_names = (
+        ("source_image_publications", "source_image_projection_publications")
+        if family == "collatz"
+        else ("completed_result_publications", "completed_result_evaluations")
+    )
+    assert all(cold_work.get(name, 0) > 0 for name in publication_names)
+    assert all(
+        warm_work.get(name, 0) == cold_work.get(name, 0) for name in publication_names
+    )
     for measured in (
         cold,
         warm,
         *(phase["metrics"] for phase in query_phases.values()),
     ):
         for prefix in (
-            "diamond",
             "macro_transfer",
             "image_program",
             "output_function",

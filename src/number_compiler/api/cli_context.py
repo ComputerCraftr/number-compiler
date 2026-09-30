@@ -15,7 +15,6 @@ from number_compiler.api.number_api import (
     PoweredReverseAddTermPayload,
     ProjectedNumberTerm,
 )
-
 from number_compiler.arithmetic.contracts.unresolved_term import UnresolvedSequenceTerm
 
 if TYPE_CHECKING:
@@ -99,6 +98,10 @@ class QueryContext:
                     max_steps=q.max_steps,
                     max_state_bits=q.max_state_bits,
                 )
+                if "mahler" in q.info:
+                    payload = self._term.payload
+                    assert isinstance(payload, AntihydraTermPayload)
+                    payload.term.prepare_mahler()
             elif q.family == "prime":
                 self._term = self.compiler.project_nth(
                     q.family,

@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from random import Random
-from typing import TYPE_CHECKING, Never
+from typing import Never
 
 import pytest
 
@@ -28,9 +28,6 @@ from tests.support.diamond_quotient import (
     capture_root_emissions,
     warmed_neighbor_application,
 )
-
-if TYPE_CHECKING:
-    pass
 
 
 @pytest.mark.parametrize("argument_matters", (False, True))

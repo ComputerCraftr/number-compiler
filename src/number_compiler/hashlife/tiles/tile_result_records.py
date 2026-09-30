@@ -631,10 +631,6 @@ def causal_interface_snapshot(
 
 
 __all__ = [
-    "handle_snapshot",
-    "boundary_view_snapshot",
-    "execution_request_snapshot",
-    "causal_interface_snapshot",
     "BehaviorBindingKey",
     "BoundaryConcatKey",
     "BoundaryConcatResult",
@@ -658,6 +654,10 @@ __all__ = [
     "_ReverseHead",
     "_ReverseLinks",
     "_ReverseMember",
+    "boundary_view_snapshot",
+    "causal_interface_snapshot",
+    "execution_request_snapshot",
+    "handle_snapshot",
 ]
 
 

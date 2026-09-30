@@ -15,7 +15,6 @@ in the canonical tile key.
 """
 
 from __future__ import annotations
-from number_compiler.arithmetic.contracts.iterative_queries import push_binary_children
 
 from collections.abc import Iterator, Sequence
 from dataclasses import dataclass
@@ -26,6 +25,7 @@ from number_compiler.arithmetic.contracts.exact_tree_context import (
     exact_constructor,
     require_exact_construction,
 )
+from number_compiler.arithmetic.contracts.iterative_queries import push_binary_children
 
 _IDS = count(1)
 

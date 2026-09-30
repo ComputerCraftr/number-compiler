@@ -21,7 +21,6 @@ from number_compiler.hashlife.execution.continuations.provider_image_input impor
     ProviderImageInputArena,
     ProviderImageInputID,
 )
-from number_compiler.resources.ledger import ResourceLedger
 from number_compiler.hashlife.execution.field_executor import FieldImageCandidate
 from number_compiler.hashlife.execution.field_images import (
     FieldImageID,
@@ -29,6 +28,10 @@ from number_compiler.hashlife.execution.field_images import (
     ImageRequestKey,
     RecursiveFieldImageArena,
 )
+from number_compiler.hashlife.execution.source_image_seals import (
+    _require_immutable_key,
+)
+from number_compiler.resources.ledger import ResourceLedger
 
 
 class ProviderFieldImageAdapter(Protocol):
@@ -73,12 +76,27 @@ class _ProviderImageWork:
 
     def __init__(self, ledger: ResourceLedger, owner: int) -> None:
         self.ledger, self.owner = ledger, owner
-        self.stack: list[tuple[ProviderImageInputID, FieldGeometryID, bool]] = []
+        self.stack: list[
+            tuple[
+                ProviderImageInputID,
+                FieldGeometryID,
+                bool,
+                tuple[object | None, object | None] | None,
+            ]
+        ] = []
         self.built: dict[
             tuple[ProviderImageInputID, FieldGeometryID], FieldImageID
         ] = {}
 
-    def push(self, frame: tuple[ProviderImageInputID, FieldGeometryID, bool]) -> None:
+    def push(
+        self,
+        frame: tuple[
+            ProviderImageInputID,
+            FieldGeometryID,
+            bool,
+            tuple[object | None, object | None] | None,
+        ],
+    ) -> None:
         self.ledger.reserve(self.owner, entries=1, nodes=1)
         try:
             self.stack.append(frame)
@@ -86,7 +104,14 @@ class _ProviderImageWork:
             self.ledger.release(self.owner, entries=1, nodes=1)
             raise
 
-    def pop(self) -> tuple[ProviderImageInputID, FieldGeometryID, bool]:
+    def pop(
+        self,
+    ) -> tuple[
+        ProviderImageInputID,
+        FieldGeometryID,
+        bool,
+        tuple[object | None, object | None] | None,
+    ]:
         frame = self.stack.pop()
         self.ledger.release(self.owner, entries=1, nodes=1)
         self.ledger.bump("provider_field_image_frame_visits")
@@ -160,8 +185,14 @@ class ProviderFieldImageExecutor:
         complete = self.adapter.compose_actions(before, consumer)
         self.adapter.validate_action(complete)
         signature = self.adapter.signature(complete, geometry)
+        self._validate_context(complete, root, geometry)
         root_key = ImageRequestKey(
-            complete, root.source, geometry, signature, root.active_extent
+            complete,
+            root.source,
+            geometry,
+            signature,
+            root.active_extent,
+            root.context,
         )
         cached = self.images.probe(root_key)
         self.ledger.bump("provider_field_image_requests")
@@ -171,10 +202,11 @@ class ProviderFieldImageExecutor:
 
         work = _ProviderImageWork(self.ledger, self._workspace_owner)
         try:
-            work.push((provider, geometry, False))
+            work.push((provider, geometry, False, None))
             while work.stack:
-                current, current_geometry, ready = work.pop()
+                current, current_geometry, ready, child_contexts = work.pop()
                 record = self.inputs.resolve(current)
+                self._validate_context(complete, record, current_geometry)
                 current_signature = self.adapter.signature(complete, current_geometry)
                 key = ImageRequestKey(
                     complete,
@@ -182,29 +214,51 @@ class ProviderFieldImageExecutor:
                     current_geometry,
                     current_signature,
                     record.active_extent,
+                    record.context,
                 )
                 found = self.images.probe(key)
                 if found is not None:
                     work.remember((current, current_geometry), found)
                     continue
                 if record.level and not ready:
-                    left, right = self.inputs.children(current)
-                    work.push((current, current_geometry, True))
+                    child_contexts = self._child_contexts(
+                        complete, record, current_geometry
+                    )
+                    left, right = self.inputs.children(
+                        current,
+                        child_contexts,
+                        complete=complete,
+                        geometry=current_geometry,
+                    )
+                    work.push((current, current_geometry, True, child_contexts))
                     work.push(
                         (
                             right,
                             self.images.geometries.child(current_geometry, 1),
                             False,
+                            None,
                         )
                     )
                     work.push(
-                        (left, self.images.geometries.child(current_geometry, 0), False)
+                        (
+                            left,
+                            self.images.geometries.child(current_geometry, 0),
+                            False,
+                            None,
+                        )
                     )
                     continue
                 left_image: FieldImageID | None
                 right_image: FieldImageID | None
                 if record.level:
-                    left, right = self.inputs.children(current)
+                    if child_contexts is None:
+                        raise ValueError("ready provider frame lost its child contexts")
+                    left, right = self.inputs.children(
+                        current,
+                        child_contexts,
+                        complete=complete,
+                        geometry=current_geometry,
+                    )
                     left_image = work.built[
                         left, self.images.geometries.child(current_geometry, 0)
                     ]
@@ -244,6 +298,60 @@ class ProviderFieldImageExecutor:
             return work.built[provider, geometry]
         finally:
             work.close()
+
+    def _validate_context(
+        self,
+        complete: FieldCellActionID,
+        provider: ProviderImageInput,
+        geometry: FieldGeometryID,
+    ) -> None:
+        context = provider.context
+        if context is None:
+            return
+        self.ledger.bump("provider_field_context_validation_attempts")
+        validator = getattr(self.adapter, "validate_context", None)
+        if not callable(validator):
+            self.ledger.bump("provider_field_context_validation_failures")
+            raise TypeError(
+                "context-qualified provider execution requires context validation"
+            )
+        try:
+            validator(context, complete, provider, geometry)
+        except BaseException:
+            self.ledger.bump("provider_field_context_validation_failures")
+            raise
+        self.ledger.bump("provider_field_context_validation_evaluations")
+
+    def _child_contexts(
+        self,
+        complete: FieldCellActionID,
+        provider: ProviderImageInput,
+        geometry: FieldGeometryID,
+    ) -> tuple[object | None, object | None]:
+        derive = getattr(self.adapter, "child_contexts", None)
+        if not callable(derive):
+            if provider.context is not None:
+                self.ledger.bump("provider_field_child_context_derivation_attempts")
+                self.ledger.bump("provider_field_child_context_derivation_failures")
+                raise TypeError(
+                    "context-qualified provider execution requires explicit child contexts"
+                )
+            return None, None
+        self.ledger.bump("provider_field_child_context_derivation_attempts")
+        try:
+            result = derive(complete, provider, geometry)
+            if type(result) is not tuple or len(result) != 2:
+                raise TypeError(
+                    "provider adapter must return an exact child context pair"
+                )
+            for context in result:
+                if context is not None:
+                    _require_immutable_key(context, "provider child image context")
+        except BaseException:
+            self.ledger.bump("provider_field_child_context_derivation_failures")
+            raise
+        self.ledger.bump("provider_field_child_context_derivation_evaluations")
+        return result
 
 
 __all__ = ["ProviderFieldImageAdapter", "ProviderFieldImageExecutor"]

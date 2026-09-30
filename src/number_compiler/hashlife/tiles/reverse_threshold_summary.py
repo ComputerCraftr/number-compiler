@@ -7,8 +7,6 @@ completed-result memo.  No carry row, digit word, or coordinate scan is used.
 
 from __future__ import annotations
 
-from number_compiler.hashlife.tiles.result_reverse_indexes import publish_indexed_result
-
 from dataclasses import dataclass
 from typing import TYPE_CHECKING
 
@@ -19,6 +17,7 @@ from number_compiler.arithmetic.formula.summary import (
     summary_from_values,
 )
 from number_compiler.arithmetic.formula.types import RadixSpec
+from number_compiler.hashlife.tiles.result_reverse_indexes import publish_indexed_result
 from number_compiler.hashlife.tiles.tile_boundaries import BoundaryTileOperands
 from number_compiler.hashlife.tiles.tile_ports import ResultWiring
 from number_compiler.hashlife.tiles.tile_result_records import (

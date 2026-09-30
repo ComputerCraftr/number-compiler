@@ -61,7 +61,14 @@ def _assert_threshold_failure(
 
 
 def test_source_only_scheduler_accepts_a_certified_safe_composite() -> None:
-    ledger, scheduler, arena, adapter, decrement, block = _decrement_fixture()
+    (
+        ledger,
+        scheduler,
+        _unused_arena_binding,
+        adapter,
+        _unused_decrement_binding,
+        block,
+    ) = _decrement_fixture()
     threshold = ThresholdDemand()
     demand = SourceImageDemand("threshold", (threshold,))
     image = scheduler.source_image_demanded(
@@ -77,7 +84,9 @@ def test_source_only_scheduler_accepts_a_certified_safe_composite() -> None:
 
 
 def test_failing_composite_descends_to_the_first_leaf() -> None:
-    _, scheduler, arena, adapter, decrement, block = _decrement_fixture()
+    _, scheduler, _unused_arena_binding, adapter, _unused_decrement_binding, block = (
+        _decrement_fixture()
+    )
     threshold = ThresholdDemand()
     demand = SourceImageDemand("threshold", (threshold,))
     image = scheduler.source_image_demanded(

@@ -26,6 +26,12 @@ ISABELLE = isabelle_root(ROOT)
 # empty mapping is deliberate: a standalone mathematical theory must not be
 # presented as a production refinement merely because it is registered.
 COUNTERPARTS: dict[str, tuple[str, ...]] = {
+    "Source_Cache_Consumption": (
+        "src/number_compiler/sequences/collatz/source_cylinder_cache.py",
+        "src/number_compiler/sequences/collatz/temporal_run_quotient.py",
+        "src/number_compiler/hashlife/execution/dyadic_return_transport.py",
+        "tests/sequences/collatz/test_source_cylinder_cache.py",
+    ),
     "Reverse_Uniform_Runs": (
         "devtools/experiments/reverse_add/factored_planes.py",
         "devtools/verification/reverse_run_successor.py",

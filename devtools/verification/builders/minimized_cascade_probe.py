@@ -12,13 +12,13 @@ from devtools.verification.builders.bimachine_power import (
     encode,
     ref,
 )
-from devtools.verification.random_inputs import random_half
 from devtools.verification.builders.grouped_cascade_power import (
     build_left,
     build_right,
     metrics,
 )
 from devtools.verification.builders.minimize_bimachine import minimize_eager
+from devtools.verification.random_inputs import random_half
 
 HERE = Path(__file__).resolve().parent
 ROOT = HERE.parent

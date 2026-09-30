@@ -18,8 +18,7 @@ from number_compiler.hashlife.tiles.tile_result_records import (
     BehaviorBindingKey,
     CompletedBehaviorClassification,
 )
-from tests.support.tile_kernel import powered_runtime
-from tests.support.tile_kernel import _runtime, _tile
+from tests.support.tile_kernel import _runtime, _tile, powered_runtime
 
 if TYPE_CHECKING:
     from number_compiler.hashlife.behavior.future_behavior import FutureBehaviorClassID

@@ -1,5 +1,3 @@
-from tests.support.assertions import assert_rejected_atomically
-
 import tracemalloc
 from typing import cast
 
@@ -19,6 +17,7 @@ from number_compiler.hashlife.actions.lazy_compiler import (
 from number_compiler.hashlife.observation.hashlife_projection import HashLifeBlockIndex
 from number_compiler.projection.digit_terminal import DigitNormalizeBlockEffect
 from number_compiler.resources.ledger import ResourceLedger
+from tests.support.assertions import assert_rejected_atomically
 
 
 def test_source_tile_rejects_oversized_level_without_expanding_its_power() -> None:

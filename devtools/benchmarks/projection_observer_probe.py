@@ -2,8 +2,6 @@
 
 from __future__ import annotations
 
-from devtools.paths import report_directory
-
 import json
 
 from devtools.experiments.algebra.projection_observer import (
@@ -15,7 +13,7 @@ from devtools.experiments.algebra.projection_observer import (
     reverse_add_admissible_growth_words,
     reverse_add_growth_observer_profile,
 )
-from devtools.paths import report_output, repository_root
+from devtools.paths import report_directory, report_output, repository_root
 from number_compiler.api.sequence_compiler import CanonicalSequenceCompiler
 from number_compiler.api.sequence_types import FermatSequenceSpec, MersenneSequenceSpec
 from number_compiler.arithmetic.fields.radix import digits_lsd

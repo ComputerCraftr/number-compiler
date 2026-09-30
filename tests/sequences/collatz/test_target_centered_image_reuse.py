@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-from tests.support.reference_arithmetic import collatz_literal as _literal
 import pytest
 
 from number_compiler.arithmetic.fields.skew_transfer import (
@@ -16,6 +15,7 @@ from number_compiler.resources.ledger import ResourceLedger
 from number_compiler.sequences.collatz.physical_images import (
     CollatzPhysicalImageWorkspace,
 )
+from tests.support.reference_arithmetic import collatz_literal as _literal
 
 
 def _apply(

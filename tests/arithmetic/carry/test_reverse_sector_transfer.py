@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-from tests.support.reference_arithmetic import negacyclic_reduce as _reduce
 from collections.abc import Callable, Sequence
 from itertools import product
 from typing import cast
@@ -17,6 +16,7 @@ from number_compiler.arithmetic.carry.event_memory import pair_step
 from number_compiler.arithmetic.carry.reverse_sector_transfer import (
     ReverseCarrySectorTransfer,
 )
+from tests.support.reference_arithmetic import negacyclic_reduce as _reduce
 
 
 def _summary(values: Sequence[int], base: int) -> ReverseCarrySectorTransfer:

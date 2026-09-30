@@ -2,13 +2,44 @@
 
 from __future__ import annotations
 
+from collections.abc import Callable
 from dataclasses import dataclass
 from enum import Enum
 from math import gcd
+from typing import TypeVar
 
 from number_compiler.arithmetic.contracts.scoped_handles import ArenaHandle, ArenaToken
 from number_compiler.resources.ledger import ResourceLedger
 from number_compiler.resources.stores import LedgerDict, LedgerList
+
+_MinPlusValue = TypeVar("_MinPlusValue")
+
+
+def compose_increasing_minplus_values(
+    before_offset: _MinPlusValue,
+    before_cap: _MinPlusValue | None,
+    after_scale: _MinPlusValue,
+    after_offset: _MinPlusValue,
+    after_cap: _MinPlusValue | None,
+    *,
+    multiply: Callable[[_MinPlusValue, _MinPlusValue], _MinPlusValue],
+    add: Callable[[_MinPlusValue, _MinPlusValue], _MinPlusValue],
+    less: Callable[[_MinPlusValue, _MinPlusValue], bool],
+) -> tuple[_MinPlusValue, _MinPlusValue | None]:
+    """Chronological increasing affine/min law; None is positive infinity."""
+    transported = (
+        None
+        if before_cap is None
+        else add(multiply(after_scale, before_cap), after_offset)
+    )
+    cap = (
+        transported
+        if after_cap is None
+        else after_cap
+        if transported is None or less(after_cap, transported)
+        else transported
+    )
+    return add(multiply(after_scale, before_offset), after_offset), cap
 
 
 @dataclass(frozen=True, slots=True)
@@ -236,20 +267,19 @@ class SaturatingAffineAction:
         """Compose in temporal order: this action first, then ``downstream``."""
         if type(downstream) is not SaturatingAffineAction:
             raise TypeError("associated action composition requires exact actions")
-        transported = (
-            None
-            if self.cap is None
-            else downstream.scale * self.cap + downstream.offset
+        offset, cap = compose_increasing_minplus_values(
+            self.offset,
+            self.cap,
+            downstream.scale,
+            downstream.offset,
+            downstream.cap,
+            multiply=lambda a, b: a * b,
+            add=lambda a, b: a + b,
+            less=lambda a, b: a < b,
         )
-        if downstream.cap is None:
-            cap = transported
-        elif transported is None or downstream.cap < transported:
-            cap = downstream.cap
-        else:
-            cap = transported
         return SaturatingAffineAction(
             downstream.scale * self.scale,
-            downstream.scale * self.offset + downstream.offset,
+            offset,
             cap,
         )
 
@@ -730,6 +760,6 @@ __all__ = [
     "SaturatingAffineAction",
     "SurvivalAggregation",
     "ThresholdDemand",
-    "power_action",
     "compose_prefix_safety_values",
+    "power_action",
 ]

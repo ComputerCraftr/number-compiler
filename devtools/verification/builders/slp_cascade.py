@@ -1,7 +1,5 @@
 from __future__ import annotations
 
-from number_compiler.arithmetic.automata.transducer import transduction_midpoints
-
 import json
 import random
 import time
@@ -23,6 +21,7 @@ from devtools.verification.builders.bimachine_power import (
     ref,
 )
 from devtools.verification.sequence_reduction import balanced_reduce
+from number_compiler.arithmetic.automata.transducer import transduction_midpoints
 
 HERE = Path(__file__).resolve().parent
 ROOT = HERE.parent

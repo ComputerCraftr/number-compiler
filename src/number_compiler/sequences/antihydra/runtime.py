@@ -2,9 +2,9 @@
 
 from __future__ import annotations
 
+from collections.abc import Callable, MutableMapping
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, TypeVar
-from collections.abc import Callable, MutableMapping
 
 from number_compiler.arithmetic.contracts.exact_tree_context import source_reads_only
 from number_compiler.arithmetic.contracts.input_validation import require_integer
@@ -201,8 +201,11 @@ class AntihydraArithmeticTerm:
         max_steps: int = 4096,
         max_state_bits: int = 4096,
         max_cache_entries: int = 8192,
+        shared_cache: bool = True,
         _engine: CylinderEngine | None = None,
     ) -> None:
+        if type(shared_cache) is not bool:
+            raise TypeError("shared_cache must be a bool")
         self.requested = require_integer(returns, "macro returns", 0)
         self.max_steps = require_integer(max_steps, "macro return budget", 0)
         self.max_state_bits = require_integer(max_state_bits, "integer bit budget", 4)
@@ -215,7 +218,9 @@ class AntihydraArithmeticTerm:
         ):
             raise ValueError("Antihydra term has another cylinder engine")
         self.engine = (
-            CylinderEngine(max_cache_entries=self.max_cache_entries)
+            CylinderEngine(
+                max_cache_entries=self.max_cache_entries, shared_cache=shared_cache
+            )
             if _engine is None
             else _engine
         )
@@ -229,6 +234,7 @@ class AntihydraArithmeticTerm:
         self._segments: LedgerList[ArithmeticSegment] = self.ledger.make_list(
             self.segment_owner, nodes_per_entry=1, append_only=False
         )
+        self._mahler_prepared = False
         self._segments_ready = False
         self.ledger.register_container(
             self.segment_owner,
@@ -300,6 +306,19 @@ class AntihydraArithmeticTerm:
         self.engine.count("arithmetic_block_applications", len(self._segments))
         return self._segments
 
+    def prepare_mahler(self) -> None:
+        """Declare a large requested consumer before arithmetic admission.
+
+        Existing images remain authoritative: a late demand uses their direct
+        associated projection, without reconstructing discarded chronology.
+        """
+        if (
+            self.arithmetic_workspace is None
+            and self._result is None
+            and self.requested >= 1024
+        ):
+            self._mahler_prepared = True
+
     def _arithmetic_image(self) -> AntihydraArithmeticImageWorkspace:
         """One admitted source image shared by arithmetic and safety demands."""
         from number_compiler.sequences.antihydra.arithmetic_images import (
@@ -309,7 +328,12 @@ class AntihydraArithmeticTerm:
 
         workspace = self.arithmetic_workspace
         if workspace is None:
-            workspace = AntihydraArithmeticImageWorkspace(self.ledger, self.requested)
+            workspace = AntihydraArithmeticImageWorkspace(
+                self.ledger,
+                self.requested,
+                shared_cache=self.engine.shared_cache,
+                prepare_mahler=self._mahler_prepared,
+            )
             self.arithmetic_workspace = workspace
         if (
             type(workspace) is not AntihydraArithmeticImageWorkspace
@@ -619,7 +643,12 @@ class AntihydraArithmeticTerm:
 class CylinderEngine:
     """One owned memo; no global tables and no hidden scalar physical replay."""
 
-    def __init__(self, *, max_cache_entries: int = 8192) -> None:
+    def __init__(
+        self, *, max_cache_entries: int = 8192, shared_cache: bool = True
+    ) -> None:
+        if type(shared_cache) is not bool:
+            raise TypeError("shared_cache must be a bool")
+        self._shared_cache = shared_cache
         require_integer(max_cache_entries, "cache budget", 32)
         self.ledger = ResourceLedger(
             max_nodes=max_cache_entries + 32, max_cache_entries=max_cache_entries
@@ -644,6 +673,11 @@ class CylinderEngine:
         self.projection_fragments = ProjectionFragmentCache(self.ledger)
         self.projection_fragment_driver: object | None = None
         self.ledger.register_execution_root(self)
+
+    @property
+    def shared_cache(self) -> bool:
+        """Construction-time cache policy, read-only through the public option."""
+        return self._shared_cache
 
     def count(self, name: str, amount: int = 1) -> None:
         counters = self.ledger.counters

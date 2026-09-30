@@ -33,7 +33,6 @@ if TYPE_CHECKING:
         ReverseAddGrowthState,
     )
     from number_compiler.sequences.antihydra.runtime import AntihydraArithmeticTerm, Run
-    from number_compiler.sequences.comma.power import CommaTerm
     from number_compiler.sequences.collatz.block_power import (
         CollatzPhysicalBlockMetrics,
         PoweredCollatzTerm,
@@ -42,6 +41,7 @@ if TYPE_CHECKING:
         CollatzGrowthCharacter,
         CollatzRadialCharacter,
     )
+    from number_compiler.sequences.comma.power import CommaTerm
     from number_compiler.sequences.reverse_add.power import (
         ReverseAddPoweredTerm,
         ReverseAddPowerMetrics,
@@ -587,12 +587,14 @@ class NumberCompiler:
             term = PoweredCollatzTerm(
                 source,
                 generation,
+                shared_cache=self._shared_cache,
                 max_context_nodes=self._max_context_nodes,
                 max_cache_entries=self._max_cache_entries,
             )
         elif family == "antihydra":
             term = AntihydraArithmeticTerm(
                 generation,
+                shared_cache=self._shared_cache,
                 max_steps=source,
                 max_state_bits=base,
                 max_cache_entries=(

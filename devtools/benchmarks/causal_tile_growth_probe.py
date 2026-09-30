@@ -2,8 +2,6 @@
 
 from __future__ import annotations
 
-from number_compiler.resources.temporal_diagnostics import METRICS_SCHEMA_VERSION
-
 import argparse
 import itertools
 import json
@@ -11,6 +9,8 @@ from collections.abc import Iterable
 from dataclasses import asdict, dataclass
 from time import perf_counter
 from typing import Any, TypedDict
+
+from number_compiler.resources.temporal_diagnostics import METRICS_SCHEMA_VERSION
 
 WORK_FIELDS = (
     "future_behavior_requests",

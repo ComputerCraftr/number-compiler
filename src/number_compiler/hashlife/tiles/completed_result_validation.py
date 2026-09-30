@@ -2,18 +2,15 @@
 
 from __future__ import annotations
 
-from number_compiler.hashlife.tiles.tiles import TileRecord
-
-from number_compiler.hashlife.execution.tile_kernel_validation import (
-    validate_kernel_alphabet,
-)
-
 from collections.abc import Callable
 from typing import TYPE_CHECKING, cast
 
 from number_compiler.arithmetic.formula.summary import BlockSummary
 from number_compiler.hashlife.actions.field_actions import FieldCellActionID
 from number_compiler.hashlife.behavior.reverse_bound_output import ReverseBoundOutput
+from number_compiler.hashlife.execution.tile_kernel_validation import (
+    validate_kernel_alphabet,
+)
 from number_compiler.hashlife.interfaces.diamond_quotient import LocalInterfaceID
 from number_compiler.hashlife.tiles.tile_boundaries import (
     BoundaryTileOperands,
@@ -47,7 +44,7 @@ from number_compiler.hashlife.tiles.tile_result_validation import (
     validate_output_region,
     validated_action_signature,
 )
-from number_compiler.hashlife.tiles.tiles import TileID, TileLease
+from number_compiler.hashlife.tiles.tiles import TileID, TileLease, TileRecord
 
 if TYPE_CHECKING:
     from number_compiler.hashlife.tiles.tile_result_types import (

@@ -6,13 +6,14 @@ they do not hide the cost of constructing that bitmap/map.
 """
 
 from __future__ import annotations
-from number_compiler.arithmetic.functions.decision import intern_binary_decision
-from number_compiler.arithmetic.contracts.iterative_queries import (
-    defer_binary_level,
-)
 
 from collections.abc import Sequence
 from dataclasses import dataclass
+
+from number_compiler.arithmetic.contracts.iterative_queries import (
+    defer_binary_level,
+)
+from number_compiler.arithmetic.functions.decision import intern_binary_decision
 
 
 @dataclass(frozen=True, slots=True)

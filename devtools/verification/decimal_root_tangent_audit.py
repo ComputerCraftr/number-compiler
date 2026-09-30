@@ -143,7 +143,12 @@ def audit_decimal_root_tangent(
                 fixed_failures += 1
             if block.cylinder.rows[port].outgoing != growth:
                 raise AssertionError((pair, port, growth))
-            next_target, next_growth, next_birth, next_root = _event_root(target, port)
+            (
+                _unused_next_target_binding,
+                _unused_next_growth_binding,
+                _unused_next_birth_binding,
+                next_root,
+            ) = _event_root(target, port)
             left = _poly_add(_jet(target), _poly_scale(next_root, -1, MODULUS), MODULUS)
             right = _poly_add(
                 _poly_mul(

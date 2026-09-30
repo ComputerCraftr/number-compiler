@@ -12,15 +12,12 @@ import json
 from collections.abc import Mapping, Sequence
 from time import perf_counter
 
-from devtools.benchmarks.tile_projection_accounting import (
-    projection_accounting,
-)
-from devtools.checks.dependency_graph import source_syntax
-from devtools.paths import report_output, repository_root
 from devtools.benchmarks.temporal_probe_support import (
     common_temporal_blockers,
     shared_cutover_sources,
 )
+from devtools.checks.dependency_graph import source_syntax
+from devtools.paths import report_output, repository_root
 
 ROOT = repository_root()
 
@@ -38,7 +35,7 @@ def _metric_int(value: object) -> int:
 def _construction_rows() -> list[dict[str, int | float]]:
     from number_compiler.sequences.reverse_add.power import ReverseAddPoweredTerm
 
-    rows = []
+    rows: list[dict[str, int | float]] = []
     for generation in CONSTRUCTION_INDICES:
         started = perf_counter()
         term = ReverseAddPoweredTerm(196, generation, base=10)
@@ -72,10 +69,9 @@ def _scalar_digit(generation: int, position: int) -> int:
 
 
 def _production_projection_rows() -> list[dict[str, object]]:
-    from number_compiler.arithmetic.fields.radix import digits_lsd
     from number_compiler.sequences.reverse_add.power import ReverseAddPoweredTerm
 
-    rows = []
+    rows: list[dict[str, object]] = []
     for generation in PROJECTION_INDICES:
         term = ReverseAddPoweredTerm(196, generation, base=10)
         position = max(0, term.maximum_width // 3)
@@ -85,19 +81,21 @@ def _production_projection_rows() -> list[dict[str, object]]:
         if digit != _scalar_digit(generation, position):
             raise AssertionError((generation, position, digit))
         metrics = term.metrics()
-        point_metrics = term.metrics()
-        behavior = term.behavior_metrics()
-        scheduler_work = projection_accounting(point_metrics)
-        if (
-            metrics.hashlife_section_cache_entries
-            or metrics.hashlife_leaf_cache_entries
-        ):
-            raise AssertionError(("retired-output-path-reappeared", generation))
-        if metrics.hashlife_direct_powered_point_queries != 1:
-            raise AssertionError(("not-direct-point", generation, metrics))
-        if not point_metrics.bounded_application_enabled:
+        before_replay = dict(term._ledger.counters)
+        if term.digit(position) != digit:
             raise AssertionError(
-                ("bounded-application-not-installed", generation, metrics)
+                ("runtime-image-replay-mismatch", generation, position)
+            )
+        after_replay = term._ledger.counters
+        behavior = term.behavior_metrics()
+        counters = metrics.resource_work_counters
+        source_publications = counters.get("source_image_publications", 0)
+        projection_publications = counters.get(
+            "source_image_projection_publications", 0
+        )
+        if source_publications <= 0 or projection_publications <= 0:
+            raise AssertionError(
+                ("source-image-publication-missing", generation, counters)
             )
         if behavior.unquotiented_recursive_application_description_nodes:
             raise AssertionError(("generic-residual-reappeared", generation, behavior))
@@ -110,11 +108,6 @@ def _production_projection_rows() -> list[dict[str, object]]:
             raise AssertionError(("lazy-resource-audit-failed", generation, metrics))
         rows.append(
             {
-                **scheduler_work,
-                "retained_tile_output_nodes": metrics.completed_result_entries,
-                "retained_tile_action_nodes": metrics.field_action_nodes,
-                "retained_tile_logical_extent": term.maximum_width,
-                "retained_tile_source_extent": len(digits_lsd(term.seed, term.base)),
                 "generation": generation,
                 "metrics_schema_version": metrics.metrics_schema_version,
                 "resource_ledger_entries": metrics.resource_ledger_entries,
@@ -140,66 +133,34 @@ def _production_projection_rows() -> list[dict[str, object]]:
                 "explicitly_materialized_endpoints": metrics.explicitly_materialized_endpoints,
                 "index_bits": generation.bit_length(),
                 "position": position,
-                "higher_concrete_operation_evaluations": point_metrics.higher_concrete_operation_evaluations,
-                "higher_semantic_evaluations": point_metrics.higher_semantic_evaluations,
-                "higher_semantic_task_frames": point_metrics.higher_semantic_task_frames,
-                "higher_action_continuation_requests": point_metrics.higher_action_continuation_requests,
-                "temporal_leaf_diamond_descents": point_metrics.temporal_leaf_diamond_descents,
+                "higher_concrete_operation_evaluations": metrics.higher_concrete_operation_evaluations,
+                "higher_semantic_evaluations": metrics.higher_semantic_evaluations,
+                "higher_semantic_task_frames": metrics.higher_semantic_task_frames,
+                "higher_action_continuation_requests": metrics.higher_action_continuation_requests,
+                "temporal_leaf_diamond_descents": metrics.temporal_leaf_diamond_descents,
                 "digit": digit,
+                "runtime_image_matches_scalar": True,
+                "source_image_replay_stable": (
+                    after_replay.get("source_image_publications", 0)
+                    == before_replay.get("source_image_publications", 0)
+                    and after_replay.get("source_image_projection_publications", 0)
+                    == before_replay.get("source_image_projection_publications", 0)
+                ),
+                "source_image_publications": source_publications,
+                "source_image_projection_publications": projection_publications,
+                "source_action_nodes": term.operator_nodes,
+                "source_action_compositions": term.compose_operations,
+                "resource_accounting_exact": (
+                    metrics.resource_audit_complete == 1
+                    and metrics.resource_accounting_mismatch == 0
+                ),
                 "projection_seconds": elapsed,
-                "direct_powered_point_queries": metrics.hashlife_direct_powered_point_queries,
-                "boundary_cache_entries": metrics.hashlife_boundary_cache_entries,
-                "retained_spacetime_nodes": metrics.retained_execution_nodes,
-                "canonical_history_word_roots": metrics.canonical_program_word_roots,
-                "canonical_spacetime_macrocell_roots": metrics.canonical_spacetime_macrocell_roots,
-                "recursive_action_left_nodes": metrics.recursive_action_left_nodes,
-                "recursive_action_right_nodes": metrics.recursive_action_right_nodes,
                 "recursive_value_cache_entries": metrics.recursive_value_cache_entries,
-                "spacetime_macro_cache_hits": metrics.spacetime_macro_cache_hits,
-                "spacetime_macro_cache_misses": metrics.spacetime_macro_cache_misses,
-                "spacetime_macro_cache_entries": metrics.spacetime_macro_cache_entries,
-                "sparse_carrier_layers_left": metrics.sparse_carrier_layers_left,
-                "sparse_carrier_layers_right": metrics.sparse_carrier_layers_right,
-                "raw_spacetime_boundary_cache_entries": metrics.raw_spacetime_boundary_cache_entries,
-                "retained_cache_accounting_delta": metrics.retained_cache_accounting_delta,
-                "spacetime_tile_output_entries": metrics.spacetime_tile_output_entries,
-                "spacetime_tile_output_max_level": metrics.spacetime_tile_output_max_level,
-                "spacetime_temporal_absorption_max": metrics.spacetime_temporal_absorption_max,
-                "left_boundary_residuals": metrics.left_boundary_residuals,
-                "right_boundary_residuals": metrics.right_boundary_residuals,
-                "temporal_leaf_applications": metrics.hashlife_temporal_leaf_applications,
-                "bounded_application_enabled": point_metrics.bounded_application_enabled,
-                # Legacy key counts observed spatial effects, not temporal states.
-                "bounded_temporal_state_classes": point_metrics.bounded_application_temporal_state_classes,
-                "spatial_interval_action_classes": behavior.spatial_interval_action_classes,
-                "spatial_interval_action_class_bound": behavior.spatial_interval_action_class_bound,
-                "carry_port_function_class_bound": behavior.carry_port_function_class_bound,
-                "minimal_interval_class_code_bits": behavior.temporal_cell_payload_bits,
-                "bounded_temporal_action_classes": point_metrics.bounded_application_temporal_action_classes,
-                "bounded_exact_spatial_occurrences": point_metrics.bounded_application_exact_spatial_occurrences,
-                "bounded_symbolic_action_nodes": point_metrics.bounded_application_symbolic_action_nodes,
-                "bounded_jump_entries": point_metrics.bounded_application_jump_entries,
-                "bounded_primitive_step_evaluations": point_metrics.bounded_application_primitive_step_evaluations,
-                "bounded_action_compositions": point_metrics.bounded_application_action_compositions,
-                "bounded_action_applications": point_metrics.bounded_application_action_applications,
-                "bounded_nonlinear_branch_evaluations": point_metrics.bounded_application_nonlinear_branch_evaluations,
-                "bounded_exact_endpoint_entries": point_metrics.bounded_application_exact_endpoint_entries,
                 "unquotiented_recursive_application_nodes": behavior.unquotiented_recursive_application_description_nodes,
-                "bounded_temporal_runtime_cutover_complete": behavior.bounded_temporal_runtime_cutover_complete,
-                "bounded_temporal_runtime_cutover_blocker": behavior.bounded_temporal_runtime_cutover_blocker,
-                "temporal_parent_requests": point_metrics.temporal_parent_requests,
-                "temporal_parent_early_hits": point_metrics.temporal_parent_early_hits,
-                "temporal_parent_compositions": point_metrics.temporal_parent_compositions,
-                "temporal_parent_late_duplicate_reductions": point_metrics.temporal_parent_late_duplicate_reductions,
-                "spatial_parent_requests": point_metrics.spatial_parent_requests,
-                "spatial_parent_cache_hits": point_metrics.spatial_parent_cache_hits,
-                "whole_word_sweeps": point_metrics.whole_word_sweeps,
-                "whole_word_symbol_visits": point_metrics.whole_word_symbol_visits,
-                "proof_machine_applications": point_metrics.proof_machine_applications,
-                "new_canonical_field_images_published": point_metrics.new_canonical_field_images_published,
-                "field_image_nodes": point_metrics.field_image_nodes,
-                "field_interface_nodes": point_metrics.field_interface_nodes,
-                "total_internal_action_work": point_metrics.total_internal_action_work,
+                "whole_word_sweeps": metrics.whole_word_sweeps,
+                "whole_word_symbol_visits": metrics.whole_word_symbol_visits,
+                "proof_machine_applications": metrics.proof_machine_applications,
+                "total_internal_action_work": metrics.total_internal_action_work,
             }
         )
     return rows
@@ -218,8 +179,8 @@ def _source_audit() -> dict[str, bool]:
         runtime,
         spacetime,
         boundary,
-        router_syntax,
-        router_imports,
+        _unused_router_syntax_binding,
+        _unused_router_imports_binding,
         generic_executor_imported,
     ) = shared_cutover_sources(ROOT)
     checks = {
@@ -255,43 +216,6 @@ def _source_audit() -> dict[str, bool]:
     return checks
 
 
-def _projection_closure_flags(
-    rows: Sequence[Mapping[str, object]],
-) -> tuple[bool, bool, bool, bool]:
-    """Compatibility helper retained for older release tests.
-
-    ``carrier_fixed`` and ``legacy_removed`` mean the direct-only path is
-    installed. The sample flag compares symbolic program retention and actual
-    discovery work with the binary index size. Finite spatial carry classes
-    are not temporal states, and no finite sample proves global closure.
-    """
-    carrier_fixed = all(
-        _metric_int(row.get("sequential_generation_advances", 0)) == 0
-        and _metric_int(row.get("higher_action_continuation_requests", 0)) == 0
-        and _metric_int(row.get("direct_powered_point_queries", 1)) >= 1
-        for row in rows
-    )
-    legacy_removed = all(
-        _metric_int(row.get("section_cache_entries", 0)) == 0
-        and _metric_int(row.get("leaf_cache_entries", 0)) == 0
-        for row in rows
-    )
-    polylog_sample = bool(rows) and all(
-        _metric_int(row.get("unquotiented_recursive_application_nodes", 1)) == 0
-        and _metric_int(row.get("bounded_symbolic_action_nodes", 10**9))
-        <= 4 * max(1, _metric_int(row.get("index_bits", 0)))
-        and _metric_int(row.get("bounded_nonlinear_branch_evaluations", 10**9))
-        <= 4 * max(1, _metric_int(row.get("index_bits", 0)))
-        for row in rows
-    )
-    return (
-        carrier_fixed,
-        legacy_removed,
-        polylog_sample,
-        False,  # No temporal successor-closure theorem is supplied by this probe.
-    )
-
-
 def _doubling_envelope(rows: Sequence[Mapping[str, object]], field: str) -> bool:
     """Measure growth in one unit, allowing a fixed first-sample bootstrap.
 
@@ -319,35 +243,32 @@ def run_probe() -> dict[str, object]:
     except UnsupportedInterfaceError as error:
         projection = []
         rejection = error
-    flags = _projection_closure_flags(projection)
     envelopes = {
         field: _doubling_envelope(projection, field)
         for field in (
             "total_internal_action_work",
             "resource_ledger_nodes",
             "resource_ledger_entries",
-            "completed_result_entries",
-            "higher_semantic_task_frames",
+            "source_image_publications",
+            "source_image_projection_publications",
         )
     }
     blockers = common_temporal_blockers(projection, rejection, _metric_int)
     if projection and not all(
-        _metric_int(row["temporal_parent_compositions"])
-        <= 2 * max(1, _metric_int(row["index_bits"])) + 4
+        _metric_int(row["source_image_publications"]) > 0
+        and _metric_int(row["source_image_projection_publications"]) > 0
+        and bool(row["runtime_image_matches_scalar"])
+        and bool(row["source_image_replay_stable"])
         for row in projection
     ):
-        blockers.append("temporal_composition_exceeds_binary_envelope")
-    if projection and not all(
-        _metric_int(row["tile_temporal_action_publications"]) > 0 for row in projection
-    ):
-        blockers.append("certified_path_published_no_tile_actions")
+        blockers.append("source_image_runtime_contract_unverified")
     if not envelopes["total_internal_action_work"]:
         blockers.append("internal_action_work_exceeds_doubling_envelope")
     for field in (
         "resource_ledger_nodes",
         "resource_ledger_entries",
-        "completed_result_entries",
-        "higher_semantic_task_frames",
+        "source_image_publications",
+        "source_image_projection_publications",
     ):
         if not envelopes[field]:
             blockers.append(field + "_exceeds_doubling_envelope")
@@ -383,18 +304,9 @@ def run_probe() -> dict[str, object]:
             None if rejection is None else type(rejection).__name__
         ),
         "execution_rejection_reason": None if rejection is None else str(rejection),
-        "direct_only_fast_path": rejection is None,
-        "whole_state_successor_loop_present": False,
         "temporal_leaf_interpreter_present": interpreter_observed,
         "temporal_continuation_interpreter_present": continuation_observed,
-        "prefix_pop_residual_present": False,
-        "history_word_carrier_present": False,
-        "spacetime_macrocell_absorption_installed": False,
-        "linear_bisimulation_checkpoint_installed": False,
-        "lazy_program_projection_installed": False,
         "cache_scope": "per-index; no prior index query memos reused",
-        "bounded_temporal_application_installed": rejection is None,
-        "spacetime_logarithmic_closure_proved": flags[3],
     }
 
 

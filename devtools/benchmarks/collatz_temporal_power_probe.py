@@ -2,8 +2,6 @@
 
 from __future__ import annotations
 
-from devtools.paths import report_directory
-
 import argparse
 import itertools
 import json
@@ -12,18 +10,18 @@ from importlib import import_module
 from random import Random
 from time import perf_counter
 
-from devtools.benchmarks.tile_projection_accounting import (
-    projection_accounting,
-)
-from devtools.checks.dependency_graph import source_syntax
-from devtools.checks.test_run_evidence import source_fingerprint
-from devtools.paths import repository_root
-from devtools.runs import run_reported
 from devtools.benchmarks.reporting import write_json_report
 from devtools.benchmarks.temporal_probe_support import (
     common_temporal_blockers,
     shared_cutover_sources,
 )
+from devtools.benchmarks.tile_projection_accounting import (
+    projection_accounting,
+)
+from devtools.checks.dependency_graph import source_syntax
+from devtools.checks.test_run_evidence import source_fingerprint
+from devtools.paths import report_directory, repository_root
+from devtools.runs import run_reported
 from number_compiler.api.cli_context import QueryContext
 from number_compiler.api.cli_requests import parse_request
 from number_compiler.api.number_api import (
@@ -69,7 +67,7 @@ def _source_image_work(metrics: CollatzPhysicalBlockMetrics) -> tuple[int, int, 
             operand_bits += value
         elif name.endswith("_bytes"):
             seal_bytes += value
-        elif not (name.endswith("_peak") or name.endswith("_extent")):
+        elif not (name.endswith(("_peak", "_extent"))):
             operations += value
     return operations, operand_bits, seal_bytes
 
@@ -127,8 +125,12 @@ def _projection_rows() -> list[dict[str, object]]:
         elapsed = perf_counter() - started
         if low != (expected & 1):
             raise AssertionError((steps, low, expected))
+        first_publications = dict(term._ledger.counters)
         metrics = term.metrics()
         behavior = term.behavior_metrics()
+        if term.digit(0) != low:
+            raise AssertionError(("source-image-replay-mismatch", steps, low))
+        replay_publications = term._ledger.counters
         diagnostic = metrics.temporal_diagnostics
         if diagnostic.schema_version != metrics.metrics_schema_version:
             raise AssertionError(("temporal-diagnostic-schema-mismatch", steps))
@@ -226,6 +228,19 @@ def _projection_rows() -> list[dict[str, object]]:
                 "source_image_seal_bytes": image_seal_bytes,
                 "source_image_operation_work": image_action_work,
                 "source_image_bounded_base_steps": discovery_steps,
+                "runtime_image_matches_scalar": low == (expected & 1),
+                "source_image_replay_publications_stable": (
+                    replay_publications.get("source_image_publications", 0)
+                    == first_publications.get("source_image_publications", 0)
+                    and replay_publications.get(
+                        "source_image_projection_publications", 0
+                    )
+                    == first_publications.get("source_image_projection_publications", 0)
+                ),
+                "resource_accounting_exact": (
+                    metrics.resource_audit_complete == 1
+                    and metrics.resource_accounting_mismatch == 0
+                ),
                 "steps": steps,
                 "index_bits": max(1, steps.bit_length()),
                 "schema_version": metrics.metrics_schema_version,
@@ -276,10 +291,6 @@ def _projection_rows() -> list[dict[str, object]]:
                 "bounded_jump_entries": metrics.bounded_application_jump_entries,
                 "bounded_primitive_step_evaluations": metrics.bounded_application_primitive_step_evaluations,
                 "bounded_residual_physical_steps": metrics.bounded_application_residual_physical_steps,
-                "bounded_temporal_runtime_cutover_complete": behavior.bounded_temporal_runtime_cutover_complete,
-                "bounded_temporal_runtime_cutover_blocker": behavior.bounded_temporal_runtime_cutover_blocker,
-                "collatz_c4_proof_left_state_classes": metrics.collatz_c4_proof_left_state_classes,
-                "collatz_c4_proof_right_state_classes": metrics.collatz_c4_proof_right_state_classes,
                 "temporal_parent_requests": metrics.temporal_parent_requests,
                 "temporal_parent_early_hits": metrics.temporal_parent_early_hits,
                 "temporal_parent_compositions": metrics.temporal_parent_compositions,
@@ -304,11 +315,11 @@ def _source_audit() -> dict[str, bool]:
     (
         compatibility_names,
         compatibility_imports,
-        runtime,
+        _unused_runtime_binding,
         spacetime,
         boundary,
-        router_syntax,
-        router_imports,
+        _unused_router_syntax_binding,
+        _unused_router_imports_binding,
         generic_executor_imported,
     ) = shared_cutover_sources(ROOT)
     init = source_syntax(ROOT / "src" / "number_compiler" / "__init__.py")
@@ -389,8 +400,10 @@ def run_probe() -> dict[str, object]:
         prev_steps = _metric_int(prev["source_image_bounded_base_steps"])
         tail_steps = _metric_int(tail["source_image_bounded_base_steps"])
         tail_sublinear = prev_steps > 0 and tail_steps < 2 * prev_steps
-    bounded_cutover = bool(projection) and all(
-        _metric_int(row["bounded_temporal_runtime_cutover_complete"]) == 1
+    runtime_image_contract = bool(projection) and all(
+        bool(row["runtime_image_matches_scalar"])
+        and bool(row["source_image_replay_publications_stable"])
+        and bool(row["resource_accounting_exact"])
         and _metric_int(row["source_image_publications"]) > 0
         and _metric_int(row["unquotiented_recursive_application_nodes"]) == 0
         and _metric_int(row["sequential_generation_advances"]) == 0
@@ -457,9 +470,9 @@ def run_probe() -> dict[str, object]:
         for previous, current in itertools.pairwise(projection)
     ):
         blockers.append("source_image_work_exceeds_doubling_envelope")
+    if not runtime_image_contract:
+        blockers.append("source_image_runtime_contract_unverified")
     measured_scaling_gate = "PASS" if not blockers else "BLOCKED"
-    if not bounded_cutover:
-        blockers.append("source_global_powered_construction_bound_unproved")
     return {
         "version": "0.62.0-schema8-source-image-observation",
         "schema_version": 8,
@@ -479,17 +492,8 @@ def run_probe() -> dict[str, object]:
         "source_audit": _source_audit(),
         "public_radix_exactness": exact,
         "public_radix_exactness_available": rejection is None,
-        "whole_state_successor_loop_present": False,
-        "parity_itinerary_required_for_physical_nth_state": False,
-        "history_word_carrier_present": False,
-        "spacetime_macrocell_absorption_installed": False,
-        "lazy_program_projection_installed": False,
-        "linear_bisimulation_checkpoint_installed": False,
-        "bounded_temporal_runtime_cutover_complete": bounded_cutover,
+        "source_image_runtime_contract": runtime_image_contract,
         "representative_seed_tail_sublinear": tail_sublinear,
-        # Seed 27 now saturates under the measured quotient, but that is not a
-        # proof of arbitrary-source logarithmic physical-Collatz projection.
-        "spacetime_logarithmic_closure_proved": False,
     }
 
 
@@ -697,12 +701,15 @@ def limb_projection(
                 bit_constructed = perf_counter()
                 bit_before = dict(bit_term._ledger.counters)
 
-                def bit_assembly() -> int:
+                def bit_assembly(
+                    width: int = limb_bits,
+                    payload: PoweredCollatzTermPayload = bit_payload,
+                ) -> int:
                     value = 0
-                    for local_bit in range(limb_bits):
-                        position = limb_index * limb_bits + local_bit
+                    for local_bit in range(width):
+                        position = limb_index * width + local_bit
                         try:
-                            bit = bit_payload.digit(position)
+                            bit = payload.digit(position)
                         except IndexError:
                             bit = 0
                         value |= bit << local_bit

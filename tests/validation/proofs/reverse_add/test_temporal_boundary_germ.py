@@ -2,8 +2,9 @@
 
 from __future__ import annotations
 
-import pytest
 from typing import cast
+
+import pytest
 
 from devtools.experiments.reverse_add.powered_f5f2_carrier import (
     cocycle_word,

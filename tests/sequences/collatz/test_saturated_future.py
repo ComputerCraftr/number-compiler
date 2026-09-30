@@ -9,8 +9,8 @@ import pytest
 from number_compiler.arithmetic.contracts.block_effect import BlockContextBudgetExceeded
 from number_compiler.sequences.collatz.radix64_transducer import compose_radix64_events
 from number_compiler.sequences.collatz.saturated_future import (
-    SourceFreeSaturatedCollatzProgram,
     SaturatedCollatzOccurrence,
+    SourceFreeSaturatedCollatzProgram,
     compose_occurrences,
     from_published_prefix,
     publish_valuation_block,

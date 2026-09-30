@@ -12,6 +12,8 @@ from dataclasses import dataclass
 
 from number_compiler.arithmetic.fields.consumer_pullback import (
     ExactRational as Q,
+)
+from number_compiler.arithmetic.fields.consumer_pullback import (
     SaturatingAffineAction,
 )
 
@@ -69,15 +71,15 @@ class MahlerPredicateState:
             raise ValueError("live Mahler margin must be positive")
 
     @classmethod
-    def initial(cls) -> "MahlerPredicateState":
+    def initial(cls) -> MahlerPredicateState:
         """Return the empty-prefix state, whose margin is positive infinity."""
         return cls(False, None)
 
     @classmethod
-    def failed(cls) -> "MahlerPredicateState":
+    def failed(cls) -> MahlerPredicateState:
         return cls(True, None)
 
-    def advance_action(self, action: SaturatingAffineAction) -> "MahlerPredicateState":
+    def advance_action(self, action: SaturatingAffineAction) -> MahlerPredicateState:
         """Consume one composed action without replaying its symbols."""
         if type(action) is not SaturatingAffineAction:
             raise TypeError("Mahler predicate requires an exact affine action")
@@ -96,7 +98,7 @@ class MahlerPredicateState:
             return self.failed()
         return MahlerPredicateState(False, value)
 
-    def advance_bit(self, epsilon: int) -> "MahlerPredicateState":
+    def advance_bit(self, epsilon: int) -> MahlerPredicateState:
         return self.advance_action(mahler_bit_action(epsilon))
 
     @property

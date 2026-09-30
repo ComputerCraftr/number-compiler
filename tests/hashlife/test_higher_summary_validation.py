@@ -109,8 +109,8 @@ def test_higher_summary_semantics_survive_source_binding_eviction() -> None:
         runtime,
         _interfaces,
         _compiler,
-        sources,
-        binding,
+        _unused_sources_binding,
+        _unused_binding_binding,
         forest,
     ) = _single_cell_fixture()
     action = actions.power(primitive, 4)
@@ -130,8 +130,8 @@ def test_higher_summary_rejects_foreign_and_integer_alias_handles() -> None:
         runtime,
         _interfaces,
         _compiler,
-        sources,
-        binding,
+        _unused_sources_binding,
+        _unused_binding_binding,
         forest,
     ) = _single_cell_fixture()
     valid = runtime.summaries.unary(primitive, forest.cells[0], 0)
@@ -189,14 +189,14 @@ def test_higher_summary_payload_audit_rejects_mutated_semantic_reference() -> No
 
     (
         _actions,
-        primitive,
+        _unused_primitive_binding,
         _semantics,
         runtime,
         _interfaces,
         _compiler,
-        sources,
-        binding,
-        cell,
+        _unused_sources_binding,
+        _unused_binding_binding,
+        _unused_cell_binding,
         summary,
     ) = _single_cell_summary_fixture()
     record = runtime.summaries.unary_record(summary)
@@ -227,8 +227,8 @@ def test_higher_summary_payload_audit_rejects_incompatible_binding_result() -> N
         runtime,
         _interfaces,
         _compiler,
-        sources,
-        binding,
+        _unused_sources_binding,
+        _unused_binding_binding,
         cell,
         left,
     ) = _single_cell_summary_fixture()

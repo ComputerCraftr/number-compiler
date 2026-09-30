@@ -17,7 +17,7 @@ if TYPE_CHECKING:
 
 def reverse_behavior_metrics(term: ReverseAddPoweredTerm) -> HashLifeBehaviorMetrics:
     """Do not start discovery or mistake refusal for a completed cutover."""
-    report = collect_ledger_metrics(term._ledger)
+    report = collect_ledger_metrics(term._ledger, audit_payloads=False)
     result = HashLifeBehaviorMetrics(
         effect_exponent=term.generation,
         logical_width_bound=term.maximum_width,
@@ -52,8 +52,6 @@ def reverse_behavior_metrics(term: ReverseAddPoweredTerm) -> HashLifeBehaviorMet
         unquotiented_recursive_application_state_nodes=0,
         unquotiented_recursive_application_action_nodes=0,
         unquotiented_recursive_application_description_nodes=0,
-        bounded_temporal_runtime_cutover_complete=0,
-        bounded_temporal_runtime_cutover_blocker="reverse_cylinder_pullback_unconstructed",
         execution_memo_entries=report.resource_ledger_entries,
         retained_effect_memo_entries=0,
         recursive_spatial_residual_max_extent=0,

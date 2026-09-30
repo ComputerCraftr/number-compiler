@@ -13,7 +13,7 @@ Period: 2026-09-27 through 2026-10-03 (Sunday–Saturday).
 | [Comma / A367620](comma.md) | 16 |
 | [Repository, tooling and validation](repository.md) | 4 |
 | [Reverse/add](reverse-add.md) | 1 |
-| [Shared execution and cross-family integration](shared.md) | 8 |
+| [Shared execution and cross-family integration](shared.md) | 11 |
 <!-- sprint-topics:end -->
 
 ## Provenance and reading guide

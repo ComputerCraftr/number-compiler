@@ -1,5 +1,4 @@
 from itertools import product
-from tests.support.reference_arithmetic import literal_events
 from typing import Never
 
 import pytest
@@ -10,6 +9,7 @@ from devtools.verification.collatz_spacetime import (
 )
 from devtools.verification.collatz_symbolic_action import CollatzSymbolicActionArena
 from number_compiler.arithmetic.automata.action_power import ActionPowerArena
+from tests.support.reference_arithmetic import literal_events
 
 
 def test_symbolic_composition_is_associative_on_action_ids() -> None:

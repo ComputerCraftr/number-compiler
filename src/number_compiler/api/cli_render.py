@@ -73,6 +73,11 @@ def _metrics_json(
     else:
         payload["execution_metrics"] = None
         payload["execution_metrics_scope"] = "unavailable_for_this_family"
+    from number_compiler.resources.process_cache import process_cache_stats
+
+    shared = process_cache_stats()
+    payload["process_cache"] = None if shared is None else asdict(shared)
+    payload["process_cache_scope"] = "process_aggregate_not_query_work"
     return payload
 
 

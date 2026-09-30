@@ -2,9 +2,6 @@
 
 from __future__ import annotations
 
-from tests.support.recursive_field_images import _application_setup
-from tests.support.assertions import assert_rejected_atomically
-
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass, fields, is_dataclass, replace
 
@@ -32,7 +29,12 @@ from number_compiler.hashlife.execution.field_images import (
     RecursiveFieldImageArena,
 )
 from number_compiler.resources.ledger import ResourceLedger
-from tests.support.recursive_field_images import _SecondDomainArena, _setup
+from tests.support.assertions import assert_rejected_atomically
+from tests.support.recursive_field_images import (
+    _application_setup,
+    _SecondDomainArena,
+    _setup,
+)
 
 
 def test_image_arena_rejects_callable_only_domain_before_registration() -> None:

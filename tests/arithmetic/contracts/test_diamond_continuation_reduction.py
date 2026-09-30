@@ -1,8 +1,5 @@
 """One original primitive port is quotiented extensionally, never a higher universe."""
 
-from tests.support.assertions import assert_rejected_atomically
-
-
 from typing import Never
 
 import pytest
@@ -18,12 +15,13 @@ from number_compiler.hashlife.execution.diamond_continuation_reduction import (
     CompilePrimitiveFunction,
     NormalizePrimitiveLambda,
 )
+from tests.support.assertions import assert_rejected_atomically
 from tests.support.diamond_continuation_reduction import (
+    advance_after_emit,
+    incoming_advance_task,
     literal,
     machine,
     normalize,
-    advance_after_emit,
-    incoming_advance_task,
 )
 
 
@@ -88,7 +86,9 @@ def test_extra_free_port_declines_normalization_and_foreign_input_is_atomic() ->
     arena = runtime.higher.expressions
     variable = arena.variable(arena.state_sort(action, 1), "input")
     other = arena.variable(arena.state_sort(action, 0), "other")
-    symbol, body, function = advance_after_emit(arena, action, other, variable)
+    _unused_symbol_binding, _unused_body_binding, function = advance_after_emit(
+        arena, action, other, variable
+    )
     assert normalize(runtime, function) == function
     assert (
         NormalizePrimitiveLambda(function)

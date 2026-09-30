@@ -2,10 +2,7 @@
 
 from __future__ import annotations
 
-from tests.support.arithmetic_fixtures import ternary_xy_ports
-
-from tests.support.assertions import assert_rejected_atomically
-
+from functools import partial
 from itertools import product
 from typing import Literal, cast
 
@@ -31,6 +28,8 @@ from number_compiler.arithmetic.functions.semantic_functions import (
     SemanticFunctionArena,
 )
 from number_compiler.resources.ledger import ResourceLedger
+from tests.support.arithmetic_fixtures import ternary_xy_ports
+from tests.support.assertions import assert_rejected_atomically
 
 
 def fixture() -> tuple[
@@ -269,7 +268,9 @@ def test_invalid_integer_evaluation_and_warm_sort_aliases_do_not_mutate() -> Non
     for value in (True, 0.0, float("nan"), "0"):
         before = assert_rejected_atomically(
             arena.ledger,
-            lambda: arena.evaluate(vx, {x.variable: cast("int", value), y.variable: 0}),
+            partial(
+                arena.evaluate, vx, {x.variable: cast("int", value), y.variable: 0}
+            ),
             ValueError,
         )
         forged = object.__new__(AtomSort)

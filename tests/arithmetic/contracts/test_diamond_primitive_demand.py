@@ -2,10 +2,7 @@
 
 from __future__ import annotations
 
-from tests.support.arithmetic_fixtures import nonblank_demand
-
-from tests.support.assertions import assert_rejected_atomically
-
+from functools import partial
 from itertools import product
 from typing import TYPE_CHECKING, Literal, cast
 
@@ -21,6 +18,8 @@ from number_compiler.hashlife.execution.diamond_primitive_demand import (
 from number_compiler.hashlife.interfaces.diamond_kernel import DiamondKernelArena
 from number_compiler.hashlife.observation.diamond_observers import NonblankBlockEffect
 from number_compiler.sequences.collatz.block_power import CollatzPhysicalBlockEffect
+from tests.support.arithmetic_fixtures import nonblank_demand
+from tests.support.assertions import assert_rejected_atomically
 
 if TYPE_CHECKING:
     from number_compiler.hashlife.interfaces.diamond_kernel import PrimitiveKernel
@@ -144,7 +143,8 @@ def test_foreign_domains_and_malformed_warm_patterns_do_not_mutate_ledger() -> N
     for kernel, operation, side, values in bad:
         assert_rejected_atomically(
             kernels.ledger,
-            lambda: demand.constant(
+            partial(
+                demand.constant,
                 kernel,
                 cast("Literal['advance', 'emit']", operation),
                 side,
@@ -155,7 +155,7 @@ def test_foreign_domains_and_malformed_warm_patterns_do_not_mutate_ledger() -> N
 
 
 def test_eviction_recomputes_the_universal_certificate() -> None:
-    ledger, kernels, handle, demand = nonblank_demand()
+    ledger, _unused_kernels_binding, handle, demand = nonblank_demand()
     assert demand.constant(handle, "advance", 0, (1, None)) == 1
     before = ledger.counters["primitive_demand_completion_tests"]
     ledger.evict_query_memos()

@@ -13,10 +13,10 @@ from collections.abc import Hashable, Iterator
 from contextlib import contextmanager
 from operator import add, mul
 
+from number_compiler.arithmetic.contracts.scoped_handles import ArenaToken
 from number_compiler.arithmetic.fields.consumer_pullback import (
     compose_prefix_safety_values,
 )
-from number_compiler.arithmetic.contracts.scoped_handles import ArenaToken
 from number_compiler.arithmetic.fields.skew_transfer import SkewTransfer
 from number_compiler.hashlife.execution.dyadic_return_records import (
     DyadicAggregateSummary,

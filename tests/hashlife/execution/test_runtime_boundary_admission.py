@@ -2,19 +2,17 @@
 
 from __future__ import annotations
 
+import pytest
+
+from number_compiler.hashlife.actions.field_actions import FieldCellActionID
 from number_compiler.hashlife.execution.continuations.higher_bimachine import (
     HigherBimachineRuntime,
 )
-from number_compiler.hashlife.execution.continuations.higher_semantic import (
-    HigherSemanticArena,
-)
-from number_compiler.hashlife.actions.field_actions import FieldCellActionID
-from number_compiler.hashlife.execution.field_images import SourceCellID
-from number_compiler.hashlife.execution.continuations.higher_values import RuntimeAtom
-import pytest
-
 from number_compiler.hashlife.execution.continuations.higher_operations import (
     evaluate_operation,
+)
+from number_compiler.hashlife.execution.continuations.higher_semantic import (
+    HigherSemanticArena,
 )
 from number_compiler.hashlife.execution.continuations.higher_summaries import (
     UnaryTemporal,
@@ -24,10 +22,12 @@ from number_compiler.hashlife.execution.continuations.higher_types import (
 )
 from number_compiler.hashlife.execution.continuations.higher_values import (
     RuntimeActionFunction,
+    RuntimeAtom,
     RuntimeContextState,
     RuntimeSummaryFunction,
     RuntimeTransferredState,
 )
+from number_compiler.hashlife.execution.field_images import SourceCellID
 from number_compiler.resources.higher_value_record_audit import (
     valid_runtime_value_record,
 )

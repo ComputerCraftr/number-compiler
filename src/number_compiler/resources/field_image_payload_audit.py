@@ -144,6 +144,37 @@ def audit_field_image_payloads(ledger: ResourceLedger) -> FieldImagePayloadAudit
     from number_compiler.resources.tile_result_inventory import audit_tile_results
     from number_compiler.resources.tile_runtime_inventory import audit_tile_runtime
 
+    def valid_provider_occurrence(
+        providers: ProviderAbsorptionArena, binding: ProviderBindingKey
+    ) -> bool:
+        if type(binding) is not ProviderBindingKey:
+            return False
+        try:
+            provider = providers.resolve(binding.provider)
+            source_extent = providers.sources.binding_extent(binding.source)
+            providers._validate_bound_output(binding.output)
+            providers._validate_bound_interface(binding.interface)
+            if binding.active_extent is not None and (
+                type(binding.active_extent) is not int
+                or not 0 <= binding.active_extent <= source_extent
+            ):
+                return False
+            if binding.image is not None:
+                providers._validate_image_binding(
+                    binding.image,
+                    binding.source,
+                    provider.action,
+                    binding.output,
+                    binding.interface,
+                    binding.active_extent,
+                    binding.context,
+                )
+            elif binding.active_extent is not None or binding.context is not None:
+                return False
+        except (TypeError, ValueError, IndexError, KeyError, AttributeError):
+            return False
+        return True
+
     approved: set[int] = set()
     invalid: set[tuple[int, int]] = set()
     runtime_approved, runtime_invalid = audit_tile_runtime(
@@ -739,29 +770,9 @@ def audit_field_image_payloads(ledger: ResourceLedger) -> FieldImagePayloadAudit
                 else:
                     invalid.add((root._key_owner, id(provider_key)))
             for provider_binding, marker in root._bindings.items():
-                valid = type(provider_binding) is ProviderBindingKey and marker is None
-                try:
-                    root.resolve(provider_binding.provider)
-                    source_extent = root.sources.binding_extent(provider_binding.source)
-                    root._validate_bound_output(provider_binding.output)
-                    root._validate_bound_interface(provider_binding.interface)
-                    valid &= provider_binding.active_extent is None or (
-                        type(provider_binding.active_extent) is int
-                        and 0 <= provider_binding.active_extent <= source_extent
-                    )
-                    if provider_binding.image is not None:
-                        root._validate_image_binding(
-                            provider_binding.image,
-                            provider_binding.source,
-                            root.resolve(provider_binding.provider).action,
-                            provider_binding.output,
-                            provider_binding.interface,
-                            provider_binding.active_extent,
-                        )
-                    else:
-                        valid &= provider_binding.active_extent is None
-                except (TypeError, ValueError, IndexError, KeyError, AttributeError):
-                    valid = False
+                valid = marker is None and valid_provider_occurrence(
+                    root, provider_binding
+                )
                 if valid:
                     approved.add(id(provider_binding))
                 else:
@@ -809,34 +820,7 @@ def audit_field_image_payloads(ledger: ResourceLedger) -> FieldImagePayloadAudit
                 if type(binding) is not FusedProviderBinding:
                     return False
                 occurrence = binding.occurrence
-                try:
-                    provider_record = current_root.providers.resolve(
-                        occurrence.provider
-                    )
-                    source_extent = current_root.sources.binding_extent(
-                        occurrence.source
-                    )
-                    current_root.providers._validate_bound_output(occurrence.output)
-                    current_root.providers._validate_bound_interface(
-                        occurrence.interface
-                    )
-                    if occurrence.active_extent is not None and (
-                        type(occurrence.active_extent) is not int
-                        or not 0 <= occurrence.active_extent <= source_extent
-                    ):
-                        return False
-                    if occurrence.image is not None:
-                        current_root.providers._validate_image_binding(
-                            occurrence.image,
-                            occurrence.source,
-                            provider_record.action,
-                            occurrence.output,
-                            occurrence.interface,
-                            occurrence.active_extent,
-                        )
-                    elif occurrence.active_extent is not None:
-                        return False
-                except (TypeError, ValueError, IndexError, KeyError, AttributeError):
+                if not valid_provider_occurrence(current_root.providers, occurrence):
                     return False
                 return occurrence in current_root.providers._bindings
 

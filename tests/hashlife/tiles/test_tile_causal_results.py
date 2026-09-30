@@ -2,12 +2,6 @@
 
 from __future__ import annotations
 
-from tests.support.tile_kernel import runtime_source_children
-from tests.support.tile_kernel import _spatial_inputs
-
-from tests.support.tile_kernel import _runtime_source
-from tests.support.assertions import assert_rejected_atomically
-
 from dataclasses import replace
 from typing import TYPE_CHECKING, cast
 
@@ -35,11 +29,15 @@ from number_compiler.hashlife.tiles.tile_context import ResultSemantics, Tempora
 from number_compiler.hashlife.tiles.tile_ports import BoundPorts, FusedBoundaryContract
 from number_compiler.hashlife.tiles.tiles import TileAlphabet
 from number_compiler.sequences.collatz.block_power import CollatzPhysicalBlockEffect
+from tests.support.assertions import assert_rejected_atomically
 from tests.support.tile_kernel import (
     _oracle,
     _runtime,
+    _runtime_source,
+    _spatial_inputs,
     _symbols,
     _tile,
+    runtime_source_children,
 )
 
 if TYPE_CHECKING:
@@ -95,8 +93,8 @@ def test_primitive_causal_output_publishes_complete_reusable_result() -> None:
 
 def test_composite_key_encodes_exact_input_prefixes_separately_from_ports() -> None:
     effect = BaseBlockEffect(3)
-    _ledger, tiles, adapter, primitive, scheduler, source = _runtime_source(
-        effect, (0, 0, 0, 1)
+    _ledger, _unused_tiles_binding, adapter, primitive, scheduler, source = (
+        _runtime_source(effect, (0, 0, 0, 1))
     )
     action = adapter.power(primitive, 4)
     ports, wiring = adapter.initial_ports(action), adapter.wiring(action)
@@ -157,7 +155,9 @@ def test_causal_finite_ports_reject_numeric_aliases_before_arena_work(
     bad: bool | float,
 ) -> None:
     effect = BaseBlockEffect(3)
-    ledger, tiles, adapter, action, scheduler, source = _runtime_source(effect, (0,))
+    ledger, _unused_tiles_binding, adapter, action, scheduler, source = _runtime_source(
+        effect, (0,)
+    )
     before = ledger.snapshot()
     try:
         with pytest.raises(TypeError, match="exact integers"):
@@ -227,8 +227,8 @@ def test_outgoing_boundaries_are_validated_in_output_space_before_mutation() -> 
 
 def test_causal_boundary_sorts_cannot_alias_across_temporal_depth() -> None:
     effect = BaseBlockEffect(3)
-    _ledger, tiles, adapter, primitive, scheduler, source = _runtime_source(
-        effect, (0,)
+    _ledger, _unused_tiles_binding, adapter, primitive, scheduler, source = (
+        _runtime_source(effect, (0,))
     )
     composite = adapter.power(primitive, 2)
     try:
@@ -279,9 +279,15 @@ def test_spatial_causal_composition_reuses_real_final_stage_interface() -> None:
     _ledger, tiles, adapter, action, scheduler, source = _runtime_source(
         effect, (0, 0, 0, 1)
     )
-    node, left_cell, right_cell, ports, wiring, left_context, right_context = (
-        _spatial_inputs(tiles, adapter, action, source)
-    )
+    (
+        _unused_node_binding,
+        left_cell,
+        right_cell,
+        _unused_ports_binding,
+        wiring,
+        left_context,
+        right_context,
+    ) = _spatial_inputs(tiles, adapter, action, source)
     left = scheduler.complete(
         action,
         left_cell,
@@ -367,7 +373,7 @@ def test_spatial_causal_composition_reuses_real_final_stage_interface() -> None:
 
 
 def test_collatz_causal_spatial_events_sum_beyond_one_tick_cap() -> None:
-    _ledger, tiles, adapter, primitive, scheduler, source, node = (
+    _ledger, _unused_tiles_binding, adapter, primitive, scheduler, source, node = (
         runtime_source_children(CollatzPhysicalBlockEffect(), (1, 1))
     )
     assert node.left is not None and node.right is not None

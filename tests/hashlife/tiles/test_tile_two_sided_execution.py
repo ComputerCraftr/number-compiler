@@ -2,8 +2,6 @@
 
 from __future__ import annotations
 
-from tests.support.assertions import assert_rejected_atomically
-
 from collections.abc import Callable, Iterator, Sequence
 from itertools import product
 from typing import Never
@@ -33,6 +31,7 @@ from number_compiler.hashlife.tiles.tile_causal_interface_memo import (
     causal_interface_key,
 )
 from number_compiler.hashlife.tiles.tile_ports import BoundPorts, FusedBoundaryContract
+from number_compiler.hashlife.tiles.tile_result_records import FusedInterfaceKey
 from number_compiler.hashlife.tiles.tile_results import (
     CompletedResultArena,
     ResultWiring,
@@ -44,7 +43,7 @@ from number_compiler.hashlife.tiles.tiles import (
     TileLease,
 )
 from number_compiler.resources.ledger import ResourceLedger
-from number_compiler.hashlife.tiles.tile_result_records import FusedInterfaceKey
+from tests.support.assertions import assert_rejected_atomically
 
 TileRuntime = tuple[
     ResourceLedger,
@@ -475,11 +474,11 @@ def test_fused_rejection_preserves_complete_ledger_snapshot_before_warm_lookup(
     (
         ledger,
         _tiles,
-        adapter,
+        _unused_adapter_binding,
         scheduler,
         _effect,
-        primitive,
-        tile,
+        _unused_primitive_binding,
+        _unused_tile_binding,
         source,
         square,
         wiring,
@@ -538,14 +537,14 @@ def test_fused_requests_retain_the_explicit_temporal_edge(runtime: TileRuntime) 
     (
         ledger,
         _tiles,
-        adapter,
+        _unused_adapter_binding,
         scheduler,
         _effect,
         primitive,
-        tile,
-        source,
-        square,
-        wiring,
+        _unused_tile_binding,
+        _unused_source_binding,
+        _unused_square_binding,
+        _unused_wiring_binding,
         _key,
     ) = _warm_fused_input(runtime)
     keys = [key for key in scheduler.results._memo if type(key) is FusedInterfaceKey]
@@ -574,7 +573,7 @@ def test_fused_children_use_combined_admission_without_retired_callbacks(
         scheduler,
         _effect,
         primitive,
-        tile,
+        _unused_tile_binding,
         source,
         square,
         wiring,
@@ -615,14 +614,14 @@ def test_fused_edge_validation_precedes_warm_cache_lookup(
     (
         ledger,
         _tiles,
-        adapter,
+        _unused_adapter_binding,
         scheduler,
         _effect,
         primitive,
-        tile,
-        source,
+        _unused_tile_binding,
+        _unused_source_binding,
         square,
-        wiring,
+        _unused_wiring_binding,
         key,
     ) = _warm_fused_input(runtime)
     forged = replace(key)
@@ -667,10 +666,10 @@ def test_consumer_operand_rejected_before_fused_warm_lookup(
         scheduler,
         _effect,
         primitive,
-        tile,
+        _unused_tile_binding,
         source,
-        square,
-        wiring,
+        _unused_square_binding,
+        _unused_wiring_binding,
         key,
     ) = _warm_fused_input(runtime)
     lease = None

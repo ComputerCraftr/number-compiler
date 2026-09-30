@@ -2,8 +2,6 @@
 
 from __future__ import annotations
 
-from devtools.paths import report_directory
-
 import json
 from collections.abc import Iterator
 
@@ -12,7 +10,7 @@ from devtools.experiments.collatz.collatz_word_transducer import (
     compose_subsequential,
     minimize_aligned_subsequential,
 )
-from devtools.paths import report_output, repository_root
+from devtools.paths import report_directory, report_output, repository_root
 from number_compiler.arithmetic.automata.program_word import from_runs, word_metrics
 from number_compiler.projection.collatz_orbits.binary import collatz_orbit_formulas
 from number_compiler.sequences.collatz.pair import (

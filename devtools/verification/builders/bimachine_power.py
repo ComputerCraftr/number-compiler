@@ -16,26 +16,26 @@ from dataclasses import dataclass
 from functools import partial
 from typing import Generic, Literal, Protocol, TypeVar, cast
 
-from number_compiler.arithmetic.carry.carry_labels import (
-    IDENTITY as I,
+from devtools.verification.partition_refinement import (
+    partition_representatives,
+    stable_partition,
 )
 from devtools.verification.random_inputs import random_half
 from devtools.verification.reverse_pair_reference import reference_pair_half
+from devtools.verification.transducer_graph import DenseInterner, determinize_subsets
+from number_compiler.arithmetic.automata.transducer import (
+    enqueue_pair_parity_transitions,
+    pair_half_coefficient,
+    pair_left_context,
+)
+from number_compiler.arithmetic.carry.carry_labels import (
+    IDENTITY as I,
+)
 from number_compiler.arithmetic.carry.carry_labels import (
     RESET_ONE as R1,
 )
 from number_compiler.arithmetic.carry.carry_labels import (
     RESET_ZERO as R0,
-)
-from devtools.verification.partition_refinement import (
-    partition_representatives,
-    stable_partition,
-)
-from devtools.verification.transducer_graph import DenseInterner, determinize_subsets
-from number_compiler.arithmetic.automata.transducer import (
-    pair_half_coefficient,
-    pair_left_context,
-    enqueue_pair_parity_transitions,
 )
 
 State_co = TypeVar("State_co", covariant=True)
@@ -343,10 +343,10 @@ def predecessor_index(
     """Index finite automaton predecessors by symbol and target state."""
     result: dict[int, dict[int, list[int]]] = {symbol: {} for symbol in alphabet}
     for state in states:
-        for symbol in result:
+        for symbol, targets in result.items():
             target = step(state, symbol)
             if target is not None:
-                result[symbol].setdefault(target, []).append(state)
+                targets.setdefault(target, []).append(state)
     return result
 
 

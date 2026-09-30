@@ -156,10 +156,13 @@ class _Bindings:
             elif isinstance(node, (ast.Import, ast.ImportFrom)):
                 for alias in node.names:
                     scope.bound.add(alias.asname or alias.name.split(".")[0])
-            elif isinstance(node, ast.ExceptHandler) and node.name is not None:
-                scope.bound.add(node.name)
             elif (
-                isinstance(node, (ast.MatchAs, ast.MatchStar)) and node.name is not None
+                isinstance(node, ast.ExceptHandler)
+                and node.name is not None
+                or (
+                    isinstance(node, (ast.MatchAs, ast.MatchStar))
+                    and node.name is not None
+                )
             ):
                 scope.bound.add(node.name)
             elif isinstance(node, ast.MatchMapping) and node.rest is not None:

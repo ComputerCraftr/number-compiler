@@ -2,8 +2,6 @@
 
 from __future__ import annotations
 
-from tests.support.finite_port_fixtures import binary_carry_ports
-
 from itertools import product
 from typing import TYPE_CHECKING
 
@@ -16,6 +14,7 @@ from number_compiler.arithmetic.functions.finite_port_action import (
 )
 from number_compiler.resources.metric_collection import collect_ledger_metrics
 from number_compiler.resources.stores import LedgerList
+from tests.support.finite_port_fixtures import binary_carry_ports
 
 if TYPE_CHECKING:
     from number_compiler.arithmetic.contracts.scoped_handles import TransferSummaryID

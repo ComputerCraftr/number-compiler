@@ -23,11 +23,12 @@ The transport helper exploits the extra factor ``2**q`` directly:
 """
 
 from __future__ import annotations
+
+from functools import cache
+
 from number_compiler.arithmetic.contracts.input_validation import (
     normalized_integer_pair,
 )
-
-from functools import cache
 
 
 def v2_factorial(n: int) -> int:

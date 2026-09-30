@@ -1,7 +1,5 @@
 from __future__ import annotations
 
-from tests.support.assertions import assert_rejected_atomically
-
 from typing import TYPE_CHECKING, Never
 
 import pytest
@@ -29,6 +27,7 @@ from number_compiler.hashlife.interfaces.diamond_boundary import BoundaryActionA
 from number_compiler.hashlife.interfaces.diamond_kernel import DiamondKernelArena
 from number_compiler.projection.digit_terminal import DigitNormalizeBlockEffect
 from number_compiler.resources.ledger import ResourceLedger
+from tests.support.assertions import assert_rejected_atomically
 
 if TYPE_CHECKING:
     from number_compiler.arithmetic.contracts.scoped_handles import ActionProgramID

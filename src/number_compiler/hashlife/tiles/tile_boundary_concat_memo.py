@@ -2,10 +2,9 @@
 
 from __future__ import annotations
 
-from number_compiler.hashlife.tiles.result_reverse_indexes import publish_indexed_result
-
 from typing import TYPE_CHECKING
 
+from number_compiler.hashlife.tiles.result_reverse_indexes import publish_indexed_result
 from number_compiler.hashlife.tiles.tile_boundaries import (
     BoundaryTileOperands,
     BoundaryTileView,

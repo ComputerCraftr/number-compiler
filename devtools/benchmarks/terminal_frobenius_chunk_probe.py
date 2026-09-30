@@ -2,8 +2,6 @@
 
 from __future__ import annotations
 
-from devtools.paths import report_directory
-
 import json
 from dataclasses import asdict
 
@@ -13,7 +11,7 @@ from devtools.experiments.power_numbers.terminal_frobenius_chunk import (
     special_frobenius_defect_crt_audit,
     special_local_frobenius_chunk_audit,
 )
-from devtools.paths import report_output, repository_root
+from devtools.paths import report_directory, report_output, repository_root
 from number_compiler.sequences.power_numbers.frobenius_chunk import (
     special_frobenius_chunk_probe,
 )

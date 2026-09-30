@@ -25,8 +25,6 @@ candidate-to-section map remains the theorem frontier.
 
 from __future__ import annotations
 
-from number_compiler.arithmetic.contracts.input_validation import normalized_odd_modulus
-
 from dataclasses import dataclass
 from math import gcd
 from typing import Never
@@ -34,6 +32,7 @@ from typing import Never
 from devtools.experiments.power_numbers.terminal_frobenius_chunk import (
     special_local_frobenius_chunk_audit,
 )
+from number_compiler.arithmetic.contracts.input_validation import normalized_odd_modulus
 from number_compiler.arithmetic.fields.binary_piecewise import (
     BinaryBranchDecision,
     BinaryPiecewiseHandler,

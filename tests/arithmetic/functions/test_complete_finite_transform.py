@@ -1,7 +1,5 @@
 """Complete finite output identity, simultaneous composition and domain retention."""
 
-from tests.support.finite_port_fixtures import semantic_boolean_variable
-
 from dataclasses import replace
 from itertools import product
 
@@ -14,13 +12,14 @@ from number_compiler.arithmetic.functions.finite_function_types import (
     FunctionSignature,
 )
 from number_compiler.arithmetic.functions.finite_port_action import PortVariable
-from number_compiler.hashlife.interfaces.semantic_bits import (
-    BitFunctionArena,
-)
 from number_compiler.hashlife.interfaces.semantic_bit_transforms import (
     CompleteFiniteTransform,
 )
+from number_compiler.hashlife.interfaces.semantic_bits import (
+    BitFunctionArena,
+)
 from number_compiler.resources.ledger import ResourceLedger
+from tests.support.finite_port_fixtures import semantic_boolean_variable
 
 
 @pytest.mark.parametrize("cardinality,divisor", ((1, 1), (7, 1), (95, 5), (19, 32)))

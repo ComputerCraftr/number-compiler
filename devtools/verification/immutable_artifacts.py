@@ -8,16 +8,17 @@ loading work there.
 
 from __future__ import annotations
 
-from number_compiler.arithmetic.contracts.iterative_queries import finish_postorder
-
 from collections.abc import Callable, Mapping
 from dataclasses import dataclass, fields, is_dataclass
 from sys import getsizeof
 from threading import RLock
 from typing import Protocol, TypeVar, cast
 
+from number_compiler.arithmetic.contracts.iterative_queries import (
+    enter_tuple_node,
+    finish_postorder,
+)
 from number_compiler.arithmetic.contracts.scoped_handles import ArenaHandle, ArenaToken
-from number_compiler.arithmetic.contracts.iterative_queries import enter_tuple_node
 
 _SCHEMA_VERSION = "proof-artifact-v1"
 T = TypeVar("T")

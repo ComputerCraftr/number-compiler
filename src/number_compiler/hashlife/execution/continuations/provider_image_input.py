@@ -6,7 +6,10 @@ from collections.abc import MutableMapping
 from dataclasses import dataclass
 
 from number_compiler.arithmetic.contracts.scoped_handles import ArenaHandle, ArenaToken
-from number_compiler.hashlife.actions.field_actions import FieldCellActionID
+from number_compiler.hashlife.actions.field_actions import (
+    FieldCellActionID,
+    FieldGeometryID,
+)
 from number_compiler.hashlife.execution.continuations.provider_absorption import (
     ProviderAbsorptionArena,
     ProviderAction,
@@ -19,6 +22,10 @@ from number_compiler.hashlife.execution.field_images import (
     RecursiveFieldImageArena,
     SourceCellID,
     SourceCellRecord,
+)
+from number_compiler.hashlife.execution.source_image_seals import (
+    _require_immutable_key,
+    _TypedKey,
 )
 
 
@@ -35,6 +42,7 @@ class ProviderImageInput:
     image: FieldImageID
     level: int
     active_extent: int
+    context: object | None = None
 
 
 class ProviderImageInputArena:
@@ -72,7 +80,13 @@ class ProviderImageInputArena:
             tuple[ProviderBindingKey, ImageRequestKey, int], int
         ] = self.ledger.make_dict(self._key_owner)
         self._children: MutableMapping[
-            int, tuple[ProviderImageInputID, ProviderImageInputID]
+            tuple[
+                int,
+                FieldCellActionID | None,
+                FieldGeometryID | None,
+                _TypedKey,
+            ],
+            tuple[ProviderImageInputID, ProviderImageInputID],
         ] = self.ledger.make_dict(self._child_owner)
         for owner, values, nodes in (
             (self._node_owner, self._nodes, True),
@@ -120,6 +134,8 @@ class ProviderImageInputArena:
             or record.request.action != provider.action
             or record.request.geometry != image.geometry
             or record.request.active_extent != record.binding.active_extent
+            or _TypedKey(record.context) != _TypedKey(record.binding.context)
+            or _TypedKey(record.request.context) != _TypedKey(record.context)
             or record.level != source.level
             or record.level != image.level
             or type(record.active_extent) is not int
@@ -176,6 +192,7 @@ class ProviderImageInputArena:
             image_record.geometry,
             interface_record.signature,
             binding.active_extent,
+            binding.context,
         )
         self.images.validate_binding(request, binding.image)
         if image_record.level != source_record.level:
@@ -195,6 +212,7 @@ class ProviderImageInputArena:
             binding.image,
             source_record.level,
             active_extent,
+            binding.context,
         )
 
     def _publish_prepared_input(
@@ -212,16 +230,42 @@ class ProviderImageInputArena:
     def children(
         self,
         value: ProviderImageInputID,
+        contexts: tuple[object | None, object | None] | None = None,
+        *,
+        complete: FieldCellActionID | None = None,
+        geometry: FieldGeometryID | None = None,
     ) -> tuple[ProviderImageInputID, ProviderImageInputID]:
         record = self.resolve(value)
         provider = self.providers.validate_occurrence(record.binding)
         self.images.validate_binding(record.request, record.image)
-        found = self._children.get(value.local_id)
+        if contexts is None:
+            if record.context is not None:
+                raise ValueError(
+                    "context-qualified provider inputs require explicit child contexts"
+                )
+            contexts = (None, None)
+        if type(contexts) is not tuple or len(contexts) != 2:
+            raise TypeError("provider child contexts must be an exact pair")
+        for context in contexts:
+            if context is not None:
+                _require_immutable_key(context, "provider child image context")
+        if (complete is None) != (geometry is None):
+            raise TypeError("provider child cache qualification is incomplete")
+        if complete is not None:
+            assert geometry is not None
+            self.images.validate_action(complete)
+            self.images.geometries.resolve(geometry)
+        child_key = value.local_id, complete, geometry, _TypedKey(contexts)
+        found = self._children.get(child_key)
         if found is not None:
-            for child in found:
+            for child, context in zip(found, contexts, strict=True):
                 child_record = self.resolve(child)
                 self.providers.validate_occurrence(child_record.binding)
                 self.images.validate_binding(child_record.request, child_record.image)
+                if _TypedKey(child_record.context) != _TypedKey(context):
+                    raise ValueError(
+                        "provider child context differs from its admission"
+                    )
             return found
         if not record.level:
             raise ValueError("provider input leaf has no children")
@@ -248,6 +292,7 @@ class ProviderImageInputArena:
                     left_image.interface,
                     image_record.left,
                     left_scope,
+                    contexts[0],
                 ),
                 (
                     provider_id,
@@ -256,6 +301,7 @@ class ProviderImageInputArena:
                     right_image.interface,
                     image_record.right,
                     right_scope,
+                    contexts[1],
                 ),
             )
         )
@@ -292,7 +338,8 @@ class ProviderImageInputArena:
         self.providers._publish_prepared_bindings(missing_bindings)
         records = {left_key: left_record, right_key: right_record}
         published: dict[
-            tuple[ProviderBindingKey, ImageRequestKey, int], ProviderImageInputID
+            tuple[ProviderBindingKey, ImageRequestKey, int],
+            ProviderImageInputID,
         ] = {}
         for key in (left_key, right_key):
             existing = self._keys.get(key)
@@ -302,7 +349,7 @@ class ProviderImageInputArena:
                 else self._publish_prepared_input(key, records[key])
             )
         left, right = published[left_key], published[right_key]
-        self._children[value.local_id] = left, right
+        self._children[child_key] = left, right
         return left, right
 
     def clear(self) -> None:

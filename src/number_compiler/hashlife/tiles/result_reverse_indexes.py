@@ -8,10 +8,10 @@ from number_compiler.hashlife.tiles.tile_result_records import (
     CompletedResult,
     PoweredResultKey,
     _FusedVariantKey,
+    _ResultVariantKey,
     _ReverseHead,
     _ReverseLinks,
     _ReverseMember,
-    _ResultVariantKey,
 )
 from number_compiler.hashlife.tiles.tile_result_types import is_execution_key
 from number_compiler.hashlife.tiles.tile_results import (

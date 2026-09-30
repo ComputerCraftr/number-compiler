@@ -2,8 +2,6 @@
 
 from __future__ import annotations
 
-from devtools.paths import report_output
-
 import json
 from dataclasses import asdict
 
@@ -18,6 +16,7 @@ from devtools.experiments.power_numbers.terminal_divisor_norm import (
     support_euler_coefficient_target,
     terminal_divisor_norm_truth_audit,
 )
+from devtools.paths import report_output
 
 
 def build_metrics() -> dict[str, object]:

@@ -2,8 +2,6 @@
 
 from __future__ import annotations
 
-from tests.support.reference_arithmetic import carry_summary as _carry_summary
-from tests.support.reference_arithmetic import negacyclic_reduce as _reduce
 from random import Random
 
 import pytest
@@ -19,6 +17,8 @@ from number_compiler.arithmetic.polynomials.frobenius_sector import (
     DECIMAL_REVERSE_GROWTH_CERTIFICATE,
     ReverseFrobeniusPlan,
 )
+from tests.support.reference_arithmetic import carry_summary as _carry_summary
+from tests.support.reference_arithmetic import negacyclic_reduce as _reduce
 from tests.support.reverse_sector_reference import (
     from_annihilated_source,
     from_endpoint_sectors,

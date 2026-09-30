@@ -2,15 +2,6 @@
 
 from __future__ import annotations
 
-from tests.support.tile_kernel import runtime_signature, _runtime_source
-from tests.support.assertions import assert_rejected_atomically
-from tests.support.tile_kernel import (
-    _runtime,
-    _tile,
-    _oracle,
-    _symbols,
-)
-
 from array import array
 from collections.abc import Mapping
 from typing import Never, cast
@@ -37,21 +28,30 @@ from number_compiler.hashlife.interfaces.semantic_bits import FactoredFunctionID
 from number_compiler.hashlife.tiles.tile_context import ChildContext
 from number_compiler.hashlife.tiles.tile_ports import ResultWiring
 from number_compiler.hashlife.tiles.tiles import (
-    TileLease,
     TileAlphabet,
     TileArena,
     TileID,
+    TileLease,
 )
 from number_compiler.projection.digit_terminal import DigitNormalizeBlockEffect
 from number_compiler.resources.ledger import ResourceLedger
 from number_compiler.sequences.collatz.block_power import CollatzPhysicalBlockEffect
+from tests.support.assertions import assert_rejected_atomically
+from tests.support.tile_kernel import (
+    _oracle,
+    _runtime,
+    _runtime_source,
+    _symbols,
+    _tile,
+    runtime_signature,
+)
 
 
 def test_fused_leaf_reuses_direct_kernel_symbol_before_compilation(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    ledger, tiles, adapter, primitive, _scheduler, source = _runtime_source(
-        BaseBlockEffect(3), (0,)
+    ledger, _unused_tiles_binding, adapter, primitive, _scheduler, source = (
+        _runtime_source(BaseBlockEffect(3), (0,))
     )
     action = adapter.power(primitive, 2)
     wiring = adapter.wiring(primitive)
@@ -246,7 +246,7 @@ def test_physical_collatz_primitive_complete_tile_matches_exact_bimachine() -> N
 
 def test_primitive_cold_point_materializes_only_one_output_leaf() -> None:
     effect = BaseBlockEffect(10)
-    ledger, tiles, adapter, action, scheduler, source = _runtime_source(
+    ledger, _unused_tiles_binding, adapter, action, scheduler, source = _runtime_source(
         effect, (2, 7, 11, effect.blank)
     )
     try:
@@ -271,8 +271,8 @@ def test_primitive_cold_point_materializes_only_one_output_leaf() -> None:
 
 def test_primitive_adapter_rejects_temporal_composition_instead_of_replay() -> None:
     effect = BaseBlockEffect(3)
-    _ledger, tiles, adapter, action, scheduler, source = _runtime_source(
-        effect, (0, effect.blank)
+    _ledger, _unused_tiles_binding, adapter, action, scheduler, source = (
+        _runtime_source(effect, (0, effect.blank))
     )
     try:
         result = scheduler.complete(
@@ -434,8 +434,8 @@ def test_bounded_reverse_parent_interface_composes_without_substitution(
     monkeypatch: pytest.MonkeyPatch,
     base: int,
 ) -> None:
-    _ledger, tiles, adapter, action, _scheduler, source = _runtime_source(
-        BaseBlockEffect(base), (base - 1, 2 * base - 2)
+    _ledger, _unused_tiles_binding, adapter, action, _scheduler, source = (
+        _runtime_source(BaseBlockEffect(base), (base - 1, 2 * base - 2))
     )
     substitutions = _substitution_counter(monkeypatch, adapter)
     try:
@@ -457,8 +457,8 @@ def test_bounded_reverse_parent_interface_composes_without_substitution(
 def test_uncertified_reverse_base_keeps_generic_finite_compiler(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    _ledger, tiles, adapter, action, _scheduler, source = _runtime_source(
-        BaseBlockEffect(16), (15, 30)
+    _ledger, _unused_tiles_binding, adapter, action, _scheduler, source = (
+        _runtime_source(BaseBlockEffect(16), (15, 30))
     )
     substitutions = _substitution_counter(monkeypatch, adapter)
     try:

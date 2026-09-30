@@ -9,9 +9,9 @@ from number_compiler.hashlife.execution.dyadic_return_records import (
     DyadicReturnActionID,
     DyadicReturnImageID,
     DyadicReturnSupportID,
+    _ActionNode,
     _ImageNode,
     _SupportNode,
-    _ActionNode,
 )
 from number_compiler.resources.stores import LedgerDict
 

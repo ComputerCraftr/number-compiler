@@ -20,7 +20,9 @@ class LedgerMetrics:
     """Schema-eight accounting with a typed temporal diagnostic view."""
 
     metrics_schema_version: int = METRICS_SCHEMA_VERSION
-    temporal_diagnostics: TemporalExecutionDiagnostics = TemporalExecutionDiagnostics()
+    temporal_diagnostics: TemporalExecutionDiagnostics = field(
+        default_factory=TemporalExecutionDiagnostics
+    )
     tile_representation_policy: str = "canonical-future-tiles-and-boundary-operands-v2"
     future_behavior_profile_nodes: int = 0
     future_behavior_class_nodes: int = 0
@@ -222,8 +224,6 @@ class LedgerMetrics:
     production_residual_state_nodes: int = 0
     production_residual_state_classes: int = 0
     algebraic_instrumentation_complete: int = 0
-    collatz_c4_proof_left_state_classes: int = 50
-    collatz_c4_proof_right_state_classes: int = 90
     temporal_parent_requests: int = 0
     temporal_parent_early_hits: int = 0
     temporal_parent_compositions: int = 0
@@ -557,10 +557,6 @@ class LedgerMetrics:
     reverse_carry_function_classifications: int = 0
     representation_boundary_complete: int = 0
     bimachine_composition_certified: int = 0
-    diamond_instrumentation_complete: int = 0
-    diamond_requests: int = 0
-    diamond_cache_hits: int = 0
-    diamond_evaluations: int = 0
     diamond_cache_entries: int = 0
     macro_transfer_requests: int = 0
     macro_transfer_cache_hits: int = 0
@@ -963,9 +959,6 @@ class HashLifeBehaviorMetrics(LedgerMetrics):
     unquotiented_recursive_application_state_nodes: int
     unquotiented_recursive_application_action_nodes: int
     unquotiented_recursive_application_description_nodes: int
-    # Execution evidence is distinct from representation safety. The blocker
-    # identifies the actual carrier when it still lacks extensional execution.
-    bounded_temporal_runtime_cutover_complete: int
     execution_memo_entries: int
     retained_effect_memo_entries: int
     recursive_spatial_residual_max_extent: int
@@ -976,7 +969,6 @@ class HashLifeBehaviorMetrics(LedgerMetrics):
     raw_temporal_span_fields: int
     raw_spatial_occurrence_scalar_extent_fields: int
     eager_spatial_observer_fields: int
-    bounded_temporal_runtime_cutover_blocker: str = ""
     carry_port_function_class_bound: int = 0
     spatial_interval_action_classes: int = 0
     spatial_interval_action_class_bound: int = 0

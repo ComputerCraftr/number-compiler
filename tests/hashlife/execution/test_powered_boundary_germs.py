@@ -28,6 +28,10 @@ from number_compiler.sequences.collatz.physical_images import (
     COLLATZ_PHYSICAL_LAW,
     CollatzPhysicalImageWorkspace,
 )
+from tests.support.reference_arithmetic import (
+    literal_mahler_step,
+    rational_action_components,
+)
 
 
 def test_actual_powered_germs_check_doubling_and_keep_occurrences_distinct() -> None:
@@ -156,38 +160,20 @@ def test_mahler_action_reads_same_admitted_antihydra_image() -> None:
             assert projected.scale == expected_scale
             assert projected.offset == expected_offset
             # Independent literal source recurrence and exact Fraction fold.
-            value = 8
+            value = 7  # Centered source: arithmetic source 8 minus one.
             scale = Fraction(1)
             offset = Fraction(0)
             cap: Fraction | None = None
             for _ in range(width):
-                centered_odd = 1 - (value & 1)
-                bit_offset = Fraction(-3 * centered_odd, 2)
-                bit_cap = Fraction(3, 4) if centered_odd else Fraction(9, 4)
-                transported_cap = (
-                    None if cap is None else Fraction(3, 2) * cap + bit_offset
+                value, scale, offset, cap = literal_mahler_step(
+                    value, scale, offset, cap
                 )
-                cap = (
-                    bit_cap
-                    if transported_cap is None
-                    else min(bit_cap, transported_cap)
-                )
-                offset = Fraction(3, 2) * offset + bit_offset
-                scale = Fraction(3, 2) * scale
-                value = (3 * value - (value & 1)) // 2
-            assert (
-                Fraction(projected.scale.numerator, projected.scale.denominator)
-                == scale
+            actual_scale, actual_offset, actual_cap = rational_action_components(
+                projected
             )
-            assert (
-                Fraction(projected.offset.numerator, projected.offset.denominator)
-                == offset
-            )
-            assert (
-                None
-                if projected.cap is None
-                else Fraction(projected.cap.numerator, projected.cap.denominator)
-            ) == cap
+            assert actual_scale == scale
+            assert actual_offset == offset
+            assert actual_cap == cap
             if width == 0:
                 assert projected.cap is None
             elif width == 1:

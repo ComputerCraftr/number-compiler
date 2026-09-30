@@ -1,8 +1,5 @@
 """The public tile authority owns scoped reverse source-sector bounds."""
 
-from tests.support.assertions import assert_rejected_atomically
-
-
 from collections.abc import MutableMapping
 from dataclasses import replace
 from typing import cast
@@ -28,6 +25,7 @@ from number_compiler.resources.field_image_payload_audit import (
     audit_field_image_payloads,
 )
 from number_compiler.resources.ledger import ResourceLedger
+from tests.support.assertions import assert_rejected_atomically
 
 
 def test_public_reverse_action_composes_sector_bounds_before_source_descent(

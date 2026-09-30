@@ -7,19 +7,19 @@ primality execution path.
 """
 
 from __future__ import annotations
-from number_compiler.arithmetic.functions.decision import intern_binary_decision
-from number_compiler.arithmetic.contracts.iterative_queries import (
-    defer_binary_level,
-)
-from number_compiler.sequences.prime.radix import (
-    progression_decision,
-    commutative_cache_pair,
-)
 
 from collections.abc import Sequence
 from dataclasses import dataclass
 from math import gcd
 
+from number_compiler.arithmetic.contracts.iterative_queries import (
+    defer_binary_level,
+)
+from number_compiler.arithmetic.functions.decision import intern_binary_decision
+from number_compiler.sequences.prime.radix import (
+    commutative_cache_pair,
+    progression_decision,
+)
 from number_compiler.sequences.prime.set import (
     canonical_multiplicative_lanes,
     finite_cover_lanes,

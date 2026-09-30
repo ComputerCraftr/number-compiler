@@ -3,7 +3,6 @@
 from itertools import product
 
 import pytest
-from tests.support.assertions import assert_clean_payloads
 
 from number_compiler.arithmetic.contracts.block_effect import (
     BlockContextBudgetExceeded,
@@ -26,6 +25,7 @@ from number_compiler.sequences.reverse_add.primitive_output_morphism import (
     RIGHT,
     ReversePrimitiveOutputMorphism,
 )
+from tests.support.assertions import assert_clean_payloads
 from tests.support.tile_kernel import _runtime, _tile
 
 

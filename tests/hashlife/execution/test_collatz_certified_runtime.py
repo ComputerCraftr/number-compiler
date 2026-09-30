@@ -2,9 +2,6 @@
 
 from __future__ import annotations
 
-from tests.support.source_image_assertions import assert_physical_publications
-from tests.support.tile_kernel import _runtime_source
-from tests.support.reference_arithmetic import physical_collatz_literal as _physical
 import importlib.util
 from typing import Never
 
@@ -25,7 +22,9 @@ from number_compiler.sequences.collatz.block_power import (
     CollatzPhysicalBlockEffect,
     PoweredCollatzTerm,
 )
-from tests.support.tile_kernel import _oracle, _runtime, _tile
+from tests.support.reference_arithmetic import physical_collatz_literal as _physical
+from tests.support.source_image_assertions import assert_physical_publications
+from tests.support.tile_kernel import _oracle, _runtime, _runtime_source, _tile
 
 
 @pytest.mark.parametrize("seed", (1, 2, 3, 7, 27))

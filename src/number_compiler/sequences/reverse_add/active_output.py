@@ -8,7 +8,6 @@ Spatial carry geometry and a closed consumer profile must still be supplied.
 """
 
 from __future__ import annotations
-from number_compiler.resources.stores import append_indexed_node
 
 from collections.abc import Callable, Mapping
 
@@ -33,7 +32,7 @@ from number_compiler.hashlife.interfaces.semantic_bits import (
     FactoredFunctionID,
 )
 from number_compiler.resources.ledger import ResourceLedger
-from number_compiler.resources.stores import LedgerDict, LedgerList
+from number_compiler.resources.stores import LedgerDict, LedgerList, append_indexed_node
 
 PAIR = AtomSort("reverse-decimal-pair", 19)
 F5 = AtomSort("reverse-F5", 5)

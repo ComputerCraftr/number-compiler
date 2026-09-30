@@ -22,6 +22,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from math import comb
 
+from devtools.verification.factorization_truth import factor_multiplicities_truth
 from number_compiler.arithmetic.fields.two_adic import v2_positive
 from number_compiler.sequences.power_numbers.numbers import (
     fermat_number,
@@ -30,7 +31,6 @@ from number_compiler.sequences.power_numbers.numbers import (
 from number_compiler.sequences.power_numbers.terminal_threshold import (
     terminal_threshold_spec,
 )
-from devtools.verification.factorization_truth import factor_multiplicities_truth
 
 
 def _factor_multiplicities_truth(value: int) -> tuple[tuple[int, int], ...]:

@@ -1,11 +1,11 @@
 """Transient reduced-function construction and atomic publication."""
 
 from __future__ import annotations
-from number_compiler.arithmetic.contracts.iterative_queries import split_choice
 
 from collections.abc import Callable
 from typing import TYPE_CHECKING, Self, TypeVar
 
+from number_compiler.arithmetic.contracts.iterative_queries import split_choice
 from number_compiler.arithmetic.functions.finite_function_types import (
     BOOL,
     FinitePort,

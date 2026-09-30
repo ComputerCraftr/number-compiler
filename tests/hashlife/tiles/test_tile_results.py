@@ -1,10 +1,6 @@
 """Completed tile results retain output roots without owning future content."""
 
 from __future__ import annotations
-from tests.support.tile_results import assert_retention_and_peaks_unchanged
-from tests.support.tile_results import _published_setup
-
-from tests.support.assertions import assert_rejected_atomically
 
 import pickle
 from copy import copy, deepcopy
@@ -29,7 +25,12 @@ from number_compiler.hashlife.tiles.tile_results import (
     ResultLease,
 )
 from number_compiler.hashlife.tiles.tiles import TileID
-from tests.support.tile_results import _setup
+from tests.support.assertions import assert_rejected_atomically
+from tests.support.tile_results import (
+    _published_setup,
+    _setup,
+    assert_retention_and_peaks_unchanged,
+)
 
 
 def test_completed_result_warm_lookup_pins_output_and_retires_with_input() -> None:
@@ -76,9 +77,18 @@ def test_observed_input_ports_validate_before_result_publication() -> None:
 
 
 def test_warm_result_port_admission_is_read_only_semantic_validation() -> None:
-    ledger, _, _, results, input_lease, output_lease, key, result, held, before = (
-        _published_setup()
-    )
+    (
+        ledger,
+        _,
+        _,
+        results,
+        input_lease,
+        output_lease,
+        key,
+        _unused_result_binding,
+        held,
+        before,
+    ) = _published_setup()
     warm = results.lookup(key)
     assert warm is not None
     after = ledger.snapshot()
@@ -98,9 +108,18 @@ def test_warm_result_port_admission_is_read_only_semantic_validation() -> None:
 
 
 def test_result_lease_inspection_is_counter_neutral_but_still_validates() -> None:
-    ledger, _, _, results, input_lease, output_lease, key, result, held, before = (
-        _published_setup()
-    )
+    (
+        ledger,
+        _,
+        _,
+        _unused_results_binding,
+        input_lease,
+        output_lease,
+        _unused_key_binding,
+        result,
+        held,
+        before,
+    ) = _published_setup()
     assert held.output == result.output
     assert held.result == result
     assert ledger.snapshot() == before
@@ -191,7 +210,7 @@ def test_foreign_action_and_signature_reject_before_lookup() -> None:
         input_lease,
         output_lease,
         key,
-        result,
+        _unused_result_binding,
         lease,
         before,
     ) = _published_setup()

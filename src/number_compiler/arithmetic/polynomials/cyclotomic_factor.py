@@ -16,6 +16,7 @@ from number_compiler.arithmetic.polynomials.cyclotomic import (
     cyclotomic_coefficients,
     cyclotomic_power_coefficients,
 )
+from number_compiler.arithmetic.polynomials.modular_linear import row_reduce_mod_prime
 from number_compiler.arithmetic.polynomials.polynomial import (
     MonicPolynomialRing,
     evaluate_polynomial,
@@ -25,7 +26,6 @@ from number_compiler.arithmetic.polynomials.polynomial import (
     trim_polynomial,
 )
 from number_compiler.sequences.prime.set import smallest_factor
-from number_compiler.arithmetic.polynomials.modular_linear import row_reduce_mod_prime
 
 
 def multiplicative_order_mod(value: int, modulus: int) -> int:

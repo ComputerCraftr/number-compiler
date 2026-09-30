@@ -5,7 +5,6 @@ from __future__ import annotations
 import pytest
 
 from number_compiler.hashlife.execution.source_bound_images import SourceImageView
-
 from number_compiler.resources.ledger import ResourceLedger
 from number_compiler.sequences.reverse_add.source_images import (
     ReverseActionID,
@@ -188,7 +187,7 @@ def test_count_only_d2_image_cannot_authorize_a_right_half() -> None:
 
     # Matching numeric action duration and seed do not transfer authority from
     # another occurrence arena. The right-half constructor must check both.
-    foreign, other_view = _two_step_view()
+    _unused_foreign_binding, other_view = _two_step_view()
     with pytest.raises(ValueError, match="different arena"):
         workspace.adapter.validate_payload(other_view.payload)
 

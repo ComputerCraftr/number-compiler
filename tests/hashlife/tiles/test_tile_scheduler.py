@@ -2,12 +2,6 @@
 
 from __future__ import annotations
 
-from number_compiler.hashlife.execution.tile_scheduler import TileApplication
-
-
-from tests.support.assertions import assert_rejected_atomically
-from tests.support.tile_kernel import join_four
-
 from collections.abc import Hashable
 from dataclasses import dataclass
 from typing import Never, TypeVar
@@ -27,7 +21,10 @@ from number_compiler.arithmetic.functions.semantic_functions import (
 )
 from number_compiler.hashlife.actions.diamond_actions import PortSignatureID
 from number_compiler.hashlife.actions.field_actions import FieldCellActionID
-from number_compiler.hashlife.execution.tile_scheduler import TileScheduler
+from number_compiler.hashlife.execution.tile_scheduler import (
+    TileApplication,
+    TileScheduler,
+)
 from number_compiler.hashlife.interfaces.diamond_quotient import (
     COMPONENT_ROLES,
     DiamondQuotientArena,
@@ -52,6 +49,8 @@ from number_compiler.hashlife.tiles.tiles import (
 )
 from number_compiler.resources.ledger import ResourceLedger
 from number_compiler.resources.stores import LedgerDict
+from tests.support.assertions import assert_rejected_atomically
+from tests.support.tile_kernel import join_four
 
 
 class _Actions:

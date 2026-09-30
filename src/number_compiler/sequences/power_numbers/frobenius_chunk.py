@@ -21,10 +21,10 @@ replay is permitted here.
 
 from __future__ import annotations
 
-from number_compiler.arithmetic.contracts.input_validation import normalized_odd_modulus
-
 from dataclasses import dataclass
 from math import gcd
+
+from number_compiler.arithmetic.contracts.input_validation import normalized_odd_modulus
 
 _VALID_STATUS = frozenset({"ALL_PASS", "ALL_FAIL", "SPLIT", "UNKNOWN"})
 

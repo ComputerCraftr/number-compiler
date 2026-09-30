@@ -11,7 +11,6 @@ repeat exponent, never the represented characters.
 """
 
 from __future__ import annotations
-from number_compiler.arithmetic.contracts.iterative_queries import push_binary_children
 
 from collections.abc import Iterable, Sequence
 from dataclasses import dataclass
@@ -21,6 +20,7 @@ from number_compiler.arithmetic.automata.transducer import (
     LazyBimachine,
     transduction_midpoints,
 )
+from number_compiler.arithmetic.contracts.iterative_queries import push_binary_children
 from number_compiler.arithmetic.fields.radix import bit_width
 
 _bits = bit_width

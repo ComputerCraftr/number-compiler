@@ -1,7 +1,5 @@
 from __future__ import annotations
 
-from tests.support.assertions import assert_associative
-
 from dataclasses import fields
 from typing import Never, cast
 
@@ -27,6 +25,7 @@ from number_compiler.sequences.collatz.field_action import (
     ProgramRole,
     bounded_3adic_innovation,
 )
+from tests.support.assertions import assert_associative
 
 
 class _FinitePrograms:
@@ -225,7 +224,7 @@ def test_composition_is_canonical_associative_and_ordered() -> None:
 def test_composition_cache_hits_before_symbolic_or_affine_work(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    arena, programs, defects, a, b = _noncommuting_actions()
+    arena, programs, _unused_defects_binding, a, b = _noncommuting_actions()
     expected = arena.compose(a, b)
     before = arena.metrics
     counters = arena.ledger.snapshot().counters
@@ -260,7 +259,9 @@ def test_composition_cache_hits_before_symbolic_or_affine_work(
 
 @pytest.mark.accounting
 def test_failed_composition_reservation_publishes_no_partial_state() -> None:
-    arena, programs, defects, a, b = _noncommuting_actions()
+    arena, _unused_programs_binding, _unused_defects_binding, a, b = (
+        _noncommuting_actions()
+    )
     ledger = arena.ledger
     ledger.tighten_limits(ledger.nodes, ledger.entries)
     before = (

@@ -4,8 +4,6 @@ from __future__ import annotations
 
 import pytest
 
-from tests.support.reference_arithmetic import reverse_add_digit_step as _step
-
 from number_compiler.arithmetic.contracts.scoped_handles import ExactSource
 from number_compiler.resources.ledger import ResourceLedger
 from number_compiler.sequences.reverse_add.source_chamber import (
@@ -15,6 +13,7 @@ from number_compiler.sequences.reverse_add.source_chamber import (
 from number_compiler.sequences.reverse_add.source_images import (
     ReverseSourceImageWorkspace,
 )
+from tests.support.reference_arithmetic import reverse_add_digit_step as _step
 
 
 def _digits(value: int, base: int) -> tuple[int, ...]:

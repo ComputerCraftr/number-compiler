@@ -2,8 +2,6 @@
 
 from __future__ import annotations
 
-from tests.support.comma_oracles import literal_children as _literal_children
-
 from dataclasses import replace
 from typing import cast
 
@@ -29,6 +27,7 @@ from number_compiler.sequences.comma.power import (
     CommaTerm,
     UnresolvedCommaBranch,
 )
+from tests.support.comma_oracles import literal_children as _literal_children
 
 
 def _literal_term(index: int) -> int:

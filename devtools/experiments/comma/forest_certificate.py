@@ -7,17 +7,16 @@ must be built before its result can enable public A367620 terms.
 
 from __future__ import annotations
 
-from number_compiler.sequences.comma.arithmetic import phase_period
-
+import json
 from collections import deque
 from dataclasses import dataclass
 from hashlib import sha256
-import json
 
 from number_compiler.arithmetic.contracts.block_effect import (
     BlockContextBudgetExceeded,
 )
 from number_compiler.resources.ledger import ResourceLedger
+from number_compiler.sequences.comma.arithmetic import phase_period
 
 CERTIFICATE_ID = "a367620-root-forest-phase-v1"
 FIRST_FORK_VALUE = 19_999_999_918

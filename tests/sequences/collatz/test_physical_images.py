@@ -2,8 +2,6 @@
 
 from __future__ import annotations
 
-from tests.support.collatz_images import assert_branch_segments
-
 import pytest
 
 from number_compiler.hashlife.execution.tile_causal import CausalTileEngine
@@ -12,6 +10,7 @@ from number_compiler.resources.payload_audit import audit_registered_payloads
 from number_compiler.sequences.collatz.physical_images import (
     CollatzPhysicalImageWorkspace,
 )
+from tests.support.collatz_images import assert_branch_segments
 
 
 def _reference(seed: int, steps: int) -> tuple[int, int, tuple[int, ...]]:

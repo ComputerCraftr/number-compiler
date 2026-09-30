@@ -123,7 +123,7 @@ def first_prime_lcm_wheel(
         raise ValueError((start, length))
     if length == 0:
         return LcmWheelFirstPrime(start, 0, None, 1, 1, 0, 0)
-    high, wheel = _admit_lcm_wheel(start, length, wheel)
+    _unused_high_binding, wheel = _admit_lcm_wheel(start, length, wheel)
     calls = 0
     first: int | None = None
     for j in range(length):
@@ -165,7 +165,7 @@ def project_odd_prime_block_lcm_wheel(
         raise ValueError((start, length))
     if length == 0:
         return LcmWheelBlockProjection(start, 0, PrimeBlockSummary.empty(), 1, 1, 0, 0)
-    high, wheel = _admit_lcm_wheel(start, length, wheel)
+    _unused_high_binding, wheel = _admit_lcm_wheel(start, length, wheel)
     count = 0
     first: int | None = None
     for j in range(length):

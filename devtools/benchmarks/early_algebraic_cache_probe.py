@@ -1,10 +1,9 @@
 from __future__ import annotations
 
-from devtools.paths import report_output
-
 import json
 
 from devtools.experiments.algebra.residue_refined_bend import fast_multipoint_bend_audit
+from devtools.paths import report_output
 from devtools.verification.collatz_frame_projection import (
     collatz_affine_suffix_event_power_word,
 )

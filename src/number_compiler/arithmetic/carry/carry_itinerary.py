@@ -32,10 +32,10 @@ from number_compiler.arithmetic.carry.event_memory import (
 )
 from number_compiler.arithmetic.fields.morphism_core import binary_power
 from number_compiler.arithmetic.polynomials.cyclotomic import is_power_of_two
-from number_compiler.arithmetic.polynomials.modular_linear import row_reduce_mod_prime
 from number_compiler.arithmetic.polynomials.cyclotomic_transport import (
     power_two_cyclotomic_annihilated,
 )
+from number_compiler.arithmetic.polynomials.modular_linear import row_reduce_mod_prime
 
 LOW = -1
 NEUTRAL = 0

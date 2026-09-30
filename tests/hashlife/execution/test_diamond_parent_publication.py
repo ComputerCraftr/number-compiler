@@ -2,9 +2,8 @@
 
 from __future__ import annotations
 
-from tests.support.assertions import assert_rejected_atomically
-
 from dataclasses import replace
+from functools import partial
 from typing import TYPE_CHECKING, Never
 
 import pytest
@@ -15,6 +14,7 @@ from number_compiler.hashlife.execution.continuations.diamond_tasks import (
 )
 from number_compiler.hashlife.execution.diamond_parent import publish_parent_identity
 from number_compiler.sequences.collatz.block_power import CollatzPhysicalBlockEffect
+from tests.support.assertions import assert_rejected_atomically
 from tests.support.diamond_runtime import build
 
 if TYPE_CHECKING:
@@ -91,8 +91,12 @@ def test_foreign_parent_handles_reject_before_work_or_publication(warm: bool) ->
     ):
         assert_rejected_atomically(
             runtime.ledger,
-            lambda: publish_parent_identity(
-                runtime.actions, runtime.cells, runtime.macros, invalid
+            partial(
+                publish_parent_identity,
+                runtime.actions,
+                runtime.cells,
+                runtime.macros,
+                invalid,
             ),
             (TypeError, ValueError),
         )

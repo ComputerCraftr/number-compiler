@@ -20,8 +20,8 @@ from number_compiler.hashlife.execution.continuations.higher_semantic import (
 from number_compiler.hashlife.interfaces.diamond_quotient import LocalInterfaceID
 from number_compiler.hashlife.tiles.tiles import TileID
 from number_compiler.sequences.reverse_add.power import ReverseAddPoweredTerm
-from tests.support.tile_kernel import _runtime, _tile
 from tests.support.reverse_higher_interface import _direct_step
+from tests.support.tile_kernel import _runtime, _tile
 
 
 @pytest.mark.validation  # Six temporal scales and all output coordinates.

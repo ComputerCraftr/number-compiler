@@ -2,12 +2,11 @@
 
 from __future__ import annotations
 
-from number_compiler.arithmetic.fields.morphism_core import semigroup_power
-
 from collections.abc import MutableMapping, MutableSequence
 from dataclasses import dataclass
 
 from number_compiler.arithmetic.contracts.scoped_handles import ArenaToken
+from number_compiler.arithmetic.fields.morphism_core import semigroup_power
 from number_compiler.arithmetic.functions.finite_function_types import FinitePort
 from number_compiler.arithmetic.functions.finite_port_action import PortVariable
 from number_compiler.hashlife.actions.field_actions import FieldCellActionID

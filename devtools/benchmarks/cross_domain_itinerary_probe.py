@@ -2,16 +2,15 @@
 
 from __future__ import annotations
 
-from devtools.verification.consumer_fixtures import carry_seed_rows
-from devtools.paths import report_directory
-
 import json
 from collections import Counter
+from collections.abc import Sequence
 from math import comb, log2
-from typing import Sequence, TypedDict
+from typing import TypedDict
 
-from devtools.paths import report_output, repository_root
 from devtools.benchmarks.pair_encoding import pair_from_int
+from devtools.paths import report_directory, report_output, repository_root
+from devtools.verification.consumer_fixtures import carry_seed_rows
 from number_compiler.arithmetic.carry.carry_itinerary import (
     LiveCarryItinerary,
     adaptive_cyclic_memory_horizon,

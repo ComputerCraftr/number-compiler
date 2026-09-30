@@ -2,11 +2,6 @@
 
 from __future__ import annotations
 
-from number_compiler.hashlife.actions.field_actions import FieldCellActionID
-
-from tests.support.tile_kernel import _oracle as _step
-from tests.support.tile_kernel import _tile as _canonical_tile
-
 from array import array
 from typing import Never, cast
 
@@ -22,6 +17,7 @@ from number_compiler.arithmetic.contracts.block_kernel import (
 from number_compiler.arithmetic.functions.semantic_functions import (
     SemanticFunctionArena,
 )
+from number_compiler.hashlife.actions.field_actions import FieldCellActionID
 from number_compiler.hashlife.execution.tile_kernel import PrimitiveTileKernelAdapter
 from number_compiler.hashlife.execution.tile_scheduler import TileScheduler
 from number_compiler.hashlife.interfaces.diamond_kernel import DiamondKernelArena
@@ -33,6 +29,8 @@ from number_compiler.hashlife.tiles.tiles import TileArena, TileID, TileLease
 from number_compiler.projection.digit_terminal import DigitNormalizeBlockEffect
 from number_compiler.resources.ledger import ResourceLedger
 from number_compiler.sequences.collatz.block_power import CollatzPhysicalBlockEffect
+from tests.support.tile_kernel import _oracle as _step
+from tests.support.tile_kernel import _tile as _canonical_tile
 
 
 def _runtime(
@@ -167,9 +165,16 @@ def test_complete_temporal_power_matches_repeated_primitive(
 
 
 def test_complete_temporal_power_reuses_published_root_and_midpoints() -> None:
-    effect, ledger, tiles, adapter, scheduler, primitive, action, source = (
-        _square_source()
-    )
+    (
+        _unused_effect_binding,
+        ledger,
+        _unused_tiles_binding,
+        adapter,
+        scheduler,
+        primitive,
+        action,
+        source,
+    ) = _square_source()
     try:
         first = scheduler.complete(
             action,
@@ -450,9 +455,16 @@ def test_noncommuting_heterogeneous_primitives_remain_distinct() -> None:
 
 
 def test_complete_temporal_power_rejects_noncanonical_exterior_ports() -> None:
-    effect, ledger, tiles, adapter, scheduler, primitive, action, source = (
-        _square_source()
-    )
+    (
+        _unused_effect_binding,
+        _unused_ledger_binding,
+        _unused_tiles_binding,
+        adapter,
+        scheduler,
+        _unused_primitive_binding,
+        action,
+        source,
+    ) = _square_source()
     try:
         with pytest.raises(ValueError, match="canonical exterior"):
             scheduler.complete(
@@ -498,9 +510,16 @@ def test_primitive_wiring_rejects_uncertified_automorphism_before_lookup(
 def test_temporal_context_failure_releases_completed_prefix(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    effect, ledger, tiles, adapter, scheduler, primitive, action, source = (
-        _square_source()
-    )
+    (
+        _unused_effect_binding,
+        _unused_ledger_binding,
+        tiles,
+        adapter,
+        scheduler,
+        primitive,
+        action,
+        source,
+    ) = _square_source()
     leases_before = len(tiles._leases)
 
     def fail_context(*_args: object, **_kwargs: object) -> Never:
@@ -531,9 +550,16 @@ def test_temporal_context_failure_releases_completed_prefix(
 def test_temporal_parent_publication_failure_releases_all_children(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    effect, ledger, tiles, adapter, scheduler, primitive, action, source = (
-        _square_source()
-    )
+    (
+        _unused_effect_binding,
+        _unused_ledger_binding,
+        tiles,
+        adapter,
+        scheduler,
+        primitive,
+        action,
+        source,
+    ) = _square_source()
     leases_before = len(tiles._leases)
     publish = scheduler.results.publish
 

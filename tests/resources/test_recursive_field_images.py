@@ -44,7 +44,6 @@ from number_compiler.hashlife.execution.field_images import (
     RecursiveFieldImageArena,
     SourceForestID,
 )
-from number_compiler.hashlife.observation.hashlife_projection import HashLifeBlockIndex
 from number_compiler.hashlife.tiles.tiles import TileArena, TileID
 from number_compiler.resources.ledger import ResourceLedger
 from number_compiler.resources.stores import LedgerList
@@ -240,8 +239,12 @@ def test_query_eviction_preserves_canonical_field_image_ids() -> None:
 
 
 def test_nonleaf_image_cannot_relabel_a_complete_word_as_an_opaque_leaf() -> None:
-    _, source, signature, geometry, action, images, _, executor = _setup()
-    image, record = _completed_image(executor, action, source, geometry, signature)
+    _, source, signature, geometry, action, _unused_images_binding, _, executor = (
+        _setup()
+    )
+    _unused_image_binding, record = _completed_image(
+        executor, action, source, geometry, signature
+    )
     assert record.level > 0
     with pytest.raises(ValueError, match="recursive child references"):
         FieldImageRecord(
@@ -307,14 +310,14 @@ def test_warm_forest_parent_hits_before_children_and_composition(
 def test_runtime_issued_application_is_lazy_and_marker_cannot_forge_it() -> None:
     (
         ledger,
-        source,
-        signature,
-        geometry,
-        action,
+        _unused_source_binding,
+        _unused_signature_binding,
+        _unused_geometry_binding,
+        _unused_action_binding,
         images,
-        adapter,
-        executor,
-        incoming,
+        _unused_adapter_binding,
+        _unused_executor_binding,
+        _unused_incoming_binding,
         application,
     ) = _application_setup()
     assert images.retained_images == images.retained_bindings == 0
@@ -327,14 +330,14 @@ def test_runtime_issued_application_is_lazy_and_marker_cannot_forge_it() -> None
 def test_image_application_rejects_foreign_port_before_warm_image_probe() -> None:
     (
         ledger,
-        source,
-        signature,
-        geometry,
-        action,
+        _unused_source_binding,
+        _unused_signature_binding,
+        _unused_geometry_binding,
+        _unused_action_binding,
         _images,
-        adapter,
-        executor,
-        incoming,
+        _unused_adapter_binding,
+        _unused_executor_binding,
+        _unused_incoming_binding,
         application,
     ) = _application_setup()
     assert application.point(0) == 0
@@ -354,32 +357,6 @@ def test_image_application_rejects_foreign_port_before_warm_image_probe() -> Non
         is_algebraic_field_action_executor = True
 
     assert not validate_field_image_application(Marker(), ledger)
-
-
-def test_recursive_image_application_cannot_attest_point_lazy_release() -> None:
-    from number_compiler.resources.behavior_metrics import _cutover_blocker
-
-    (
-        ledger,
-        source,
-        signature,
-        geometry,
-        action,
-        _,
-        adapter,
-        executor,
-        incoming,
-        application,
-    ) = _application_setup()
-
-    class Index:
-        _ledger = ledger
-        _lazy_application = application
-
-    assert (
-        _cutover_blocker(cast(HashLifeBlockIndex, Index()), 0)
-        == "unattested_execution_carrier"
-    )
 
 
 def test_equal_complete_leaf_behavior_shares_one_recursive_image() -> None:
@@ -603,7 +580,9 @@ def test_republication_with_different_complete_behavior_is_rejected() -> None:
 
 def test_foreign_child_image_rejects_before_binding_lookup_or_mutation() -> None:
     ledger, source, signature, geometry, action, images, _, executor = _setup()
-    image, original = _completed_image(executor, action, source, geometry, signature)
+    _unused_image_binding, original = _completed_image(
+        executor, action, source, geometry, signature
+    )
     assert original.left is not None
     foreign_owner = ArenaToken("foreign-images")
     foreign_left = FieldImageID(

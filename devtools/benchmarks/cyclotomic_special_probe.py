@@ -2,14 +2,12 @@
 
 from __future__ import annotations
 
-from devtools.paths import report_directory
-
 import json
 from math import isqrt, sqrt
 
-from devtools.benchmarks.report_schema import record, records
 from devtools.benchmarks.pair_encoding import pair_from_int
-from devtools.paths import report_output, repository_root
+from devtools.benchmarks.report_schema import record, records
+from devtools.paths import report_directory, report_output, repository_root
 from devtools.verification.oracles.special_primality import (
     lucas_lehmer_test,
     pepin_test,

@@ -2,12 +2,11 @@
 
 from __future__ import annotations
 
-from number_compiler.hashlife.tiles.result_reverse_indexes import publish_indexed_result
-
 from number_compiler.arithmetic.contracts.block_kernel import BaseBlockEffect
 from number_compiler.hashlife.execution.tile_causal_interfaces import (
     CausalInterfacePayload,
 )
+from number_compiler.hashlife.tiles.result_reverse_indexes import publish_indexed_result
 from number_compiler.hashlife.tiles.tile_result_records import (
     CausalInterfaceKey,
     CompletedInterfaceResult,

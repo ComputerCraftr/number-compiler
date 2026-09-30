@@ -1,14 +1,12 @@
 from __future__ import annotations
 
-from devtools.paths import report_directory
-
 import json
 
 from devtools.experiments.algebra.state_reduction import (
     metrics_as_jsonable,
     state_reduction_metrics,
 )
-from devtools.paths import report_output, repository_root
+from devtools.paths import report_directory, report_output, repository_root
 
 ROOT = repository_root()
 

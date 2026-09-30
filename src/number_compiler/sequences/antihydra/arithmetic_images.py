@@ -8,10 +8,9 @@ and converts demanded bounded leaves to the existing guarded roof consumer.
 from __future__ import annotations
 
 from collections.abc import Hashable, Iterator
+from typing import TYPE_CHECKING
 
 from number_compiler.arithmetic.fields.consumer_pullback import (
-    ExactRational,
-    SaturatingAffineAction,
     compose_prefix_safety_values,
 )
 from number_compiler.arithmetic.fields.skew_transfer import (
@@ -39,7 +38,14 @@ from number_compiler.hashlife.execution.source_bound_images import (
     SourceImageView,
 )
 from number_compiler.resources.ledger import ResourceLedger
+from number_compiler.resources.stores import LedgerDict
 from number_compiler.sequences.antihydra.blocks import ArithmeticCylinder
+
+if TYPE_CHECKING:
+    from number_compiler.sequences.antihydra.mahler_source_actions import (
+        MahlerOccurrenceConsumer,
+    )
+
 
 ANTIHYDRA_ARITHMETIC_LAW = DyadicReturnLaw(
     family="antihydra-arithmetic-source-image",
@@ -53,8 +59,121 @@ ANTIHYDRA_ARITHMETIC_LAW = DyadicReturnLaw(
 class AntihydraArithmeticImageWorkspace(DyadicReturnImageWorkspace):
     """Pinned blank-tape arithmetic source; physical roofs remain demanded."""
 
-    def __init__(self, ledger: ResourceLedger, returns: int) -> None:
-        super().__init__(ledger, 8, returns, ANTIHYDRA_ARITHMETIC_LAW)
+    def __init__(
+        self,
+        ledger: ResourceLedger,
+        returns: int,
+        *,
+        shared_cache: bool = True,
+        prepare_mahler: bool = False,
+    ) -> None:
+        if type(shared_cache) is not bool:
+            raise TypeError("shared_cache must be a bool")
+        if type(prepare_mahler) is not bool:
+            raise TypeError("Mahler preparation must be Boolean")
+        self.shared_cache = shared_cache
+        self.mahler_bindings: (
+            LedgerDict[
+                tuple[DyadicReturnSourceID, DyadicReturnActionID],
+                tuple[int, int, int | None],
+            ]
+            | None
+        ) = None
+        self._mahler_wire: tuple[int, int, int | None] | None = None
+        self.mahler_binding_owner: int | None = None
+        self._mahler_consumer: MahlerOccurrenceConsumer | None = None
+        if prepare_mahler and returns:
+            from number_compiler.sequences.antihydra.mahler_source_actions import (
+                MahlerOccurrenceConsumer,
+            )
+
+            self._mahler_consumer = MahlerOccurrenceConsumer(
+                ledger, ANTIHYDRA_ARITHMETIC_LAW, shared_cache=shared_cache
+            )
+        consumer = self._mahler_consumer
+        try:
+            super().__init__(ledger, 8, returns, ANTIHYDRA_ARITHMETIC_LAW)
+            if consumer is not None:
+                source = self.source_node(self.root_source)
+                record = consumer.records.get((returns, source.residue))
+                if record is None:
+                    raise ValueError("Mahler construction lost its root occurrence")
+                node, normal, _publisher = record
+                summary = self.image_node(self.root_payload).summary
+                if (node.transfer, node.delta, node.minimum, node.odd_steps) != (
+                    summary.transfer,
+                    summary.delta,
+                    summary.minimum,
+                    summary.odd_steps,
+                ):
+                    raise ValueError(
+                        "Mahler occurrence has another admitted root image"
+                    )
+                owner = ledger.register(
+                    f"mahler-root-action-{self.image_owner}", "arithmetic_source_action"
+                )
+                bindings: LedgerDict[
+                    tuple[DyadicReturnSourceID, DyadicReturnActionID],
+                    tuple[int, int, int | None],
+                ] = ledger.make_dict(owner, nodes_per_entry=3)
+                ledger.reserve(owner, entries=1, nodes=3)
+                try:
+                    wire = normal.wire()
+                    bindings[(self.root_source, self.root_action)] = wire
+                except BaseException:
+                    ledger.release(owner, entries=1, nodes=3)
+                    raise
+                self.mahler_binding_owner = owner
+                self.mahler_bindings = bindings
+                self._mahler_wire = wire
+                ledger.bump("mahler_hashlife_source_action_active")
+        except BaseException:
+            if hasattr(self, "_closed"):
+                self.dispose()
+            raise
+        finally:
+            self._mahler_consumer = None
+            if consumer is not None:
+                consumer.close()
+
+    def dispose(self) -> None:
+        bindings = self.mahler_bindings
+        owner = self.mahler_binding_owner
+        if bindings is not None and owner is not None:
+            size = len(bindings)
+            bindings.clear()
+            self.ledger.release(owner, entries=size, nodes=3 * size)
+            self.ledger.mark_disposed(owner)
+            self.mahler_bindings = None
+            self.mahler_binding_owner = None
+            self._mahler_wire = None
+        super().dispose()
+
+    def mahler_root_wire(self) -> tuple[int, int, int | None] | None:
+        """Read the exact companion of this already admitted source/action."""
+        if self.mahler_bindings is None:
+            return None
+        wire = self.mahler_bindings.get((self.root_source, self.root_action))
+        if wire is not self._mahler_wire or type(wire) is not tuple or len(wire) != 3:
+            raise ValueError("Mahler root lost its exact occurrence binding")
+        extent, offset, cap = wire
+        transfer = self.image_node(self.root_payload).summary.transfer
+        self.ledger.bump(
+            "mahler_hashlife_root_validation_operand_bits",
+            transfer.upper.bit_length()
+            + abs(transfer.offset).bit_length()
+            + transfer.lower.bit_length(),
+        )
+        if (
+            type(extent) is not int
+            or type(offset) is not int
+            or type(cap) is not int
+            or extent != self.steps
+            or offset != -12 * (transfer.upper + transfer.offset - transfer.lower)
+            or cap != (6 if extent == 1 else 6 * transfer.upper + offset)
+        ):
+            raise ValueError("Mahler root lost its source-bound predicate")
+        return wire
 
     @property
     def returns(self) -> int:
@@ -264,14 +383,46 @@ class AntihydraArithmeticImageWorkspace(DyadicReturnImageWorkspace):
         if type(source_id) is not DyadicReturnSourceID:
             raise TypeError("Antihydra source has another sort")
         width = self.action_node(action).width
+        consumer = self._mahler_consumer
+        if consumer is not None:
+            admitted = self.source_node(source_id)
+            source_value = admitted.residue + (admitted.lift << admitted.precision)
+            effect = consumer.lookup(width, admitted.residue, source=source_value)
+            if effect is not None:
+                candidate = publish_exact_run_candidate(
+                    self,
+                    action,
+                    source,
+                    effect.transfer,
+                    effect.odd_steps,
+                    effect.delta,
+                    effect.minimum,
+                )
+                consumer.applied(
+                    parent=(
+                        source_id == self.root_source
+                        and action == self.root_action
+                        and width == self.returns
+                    )
+                )
+                return candidate
         if self.source_node(source_id).exact and (
             width <= self.MAX_LEAF_STEPS or self._whole_initial_run(source, width)
         ):
-            return self._run_candidate(action, source)
-        # Mixed long sources use balanced coefficient composition. This keeps
-        # precision work bounded without retaining chronological branch words.
-        self._bump("temporal_balanced_routes")
-        return self.complete_composite_candidate(action, source)
+            candidate = self._run_candidate(action, source)
+        else:
+            self._bump("temporal_balanced_routes")
+            candidate = self.complete_composite_candidate(action, source)
+        if consumer is not None and candidate is not None:
+            payload = candidate.payload
+            if type(payload) is not DyadicReturnImageID:
+                raise TypeError("Mahler constructor returned another image sort")
+            root_source = self.source_node(self.root_source)
+            publisher = root_source.residue + (
+                root_source.lift << root_source.precision
+            )
+            consumer.publish_root(self.image_node(payload).summary, publisher=publisher)
+        return candidate
 
     def primitive_run_candidate(
         self, action: Hashable, source: SourceImageView
@@ -305,45 +456,11 @@ class AntihydraArithmeticImageWorkspace(DyadicReturnImageWorkspace):
                 or self.law != ANTIHYDRA_ARITHMETIC_LAW
             ):
                 raise ValueError("Mahler projection has another source image")
-            transfer = self.saturated_summary().transfer
-            source_residue = self.source_node(self.root_source).residue
-            if self.returns and source_residue & 1:
-                raise ValueError("Mahler source lost its centered odd first bit")
-            if self.returns >= 2 and source_residue & 3:
-                raise ValueError("Mahler source lost its centered 11 prefix")
-            scale = ExactRational(transfer.upper, transfer.lower)
-            centered_offset = ExactRational(
-                transfer.upper + transfer.offset - transfer.lower,
-                transfer.lower,
+            from number_compiler.sequences.antihydra.mahler_cache import (
+                cached_associated_action,
             )
-            offset = ExactRational(-3) * centered_offset
-            if self.returns >= 2:
-                # The first two odd associated steps have affine part
-                # (9/4)x - 15/4.  The remaining source-selected tail must
-                # retain nonpositive offset; then its positive cap is never
-                # active on the negative two-bit prefix image.
-                tail_offset = offset - (scale / ExactRational(9, 4)) * ExactRational(
-                    -15, 4
-                )
-                if tail_offset > ExactRational(0):
-                    raise ValueError("source Mahler tail lost its nonpositive offset")
-            cap = (
-                None
-                if self.returns == 0
-                else ExactRational(3, 4)
-                if self.returns == 1
-                else ExactRational(3, 2) * scale + offset
-            )
-            action = SaturatingAffineAction(scale, offset, cap)
-            if self.returns >= 2 and (cap is None or cap >= ExactRational(0)):
-                raise ArithmeticError("source Mahler cap lost its two-bit failure")
-            self.ledger.bump("mahler_source_composed_image_reads")
-            self.ledger.bump(
-                "mahler_source_arithmetic_operand_bits",
-                transfer.upper.bit_length()
-                + abs(transfer.offset).bit_length()
-                + transfer.lower.bit_length(),
-            )
+
+            action = cached_associated_action(self)
             return SourceImageProjection(action)
         return super().project(image, demand)
 

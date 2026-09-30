@@ -52,7 +52,7 @@ def primitive_mod9(context: ReverseGeometryContext) -> GeometryAction:
                 domain = e.select(condition, domain_inputs[min(i, m - 1 - i)], domain)
         domains.append(domain)
     source_geometry = context.geometry.from_domains(tuple(domains))
-    carry, growth, admitted, next_width = context.transport_extent(
+    carry, _unused_growth_binding, admitted, next_width = context.transport_extent(
         width, width_is, source_geometry, admitted
     )
     out_domain, out_value = (

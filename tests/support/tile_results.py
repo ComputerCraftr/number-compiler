@@ -28,8 +28,8 @@ from number_compiler.hashlife.tiles.tile_ports import (
 )
 from number_compiler.hashlife.tiles.tile_result_records import (
     CompletedResult,
-    PoweredResultKey,
     FusedInterfaceKey,
+    PoweredResultKey,
 )
 from number_compiler.hashlife.tiles.tile_results import (
     CompletedResultArena,
@@ -41,7 +41,7 @@ from number_compiler.hashlife.tiles.tiles import (
     TileArena,
     TileID,
 )
-from number_compiler.resources.ledger import ResourceLedger, LedgerSnapshot
+from number_compiler.resources.ledger import LedgerSnapshot, ResourceLedger
 from number_compiler.resources.stores import LedgerList
 
 if TYPE_CHECKING:
@@ -216,8 +216,8 @@ def _fused_setup(
 def assert_valid_tile_payloads(
     ledger: ResourceLedger, results: CompletedResultArena, key: object
 ) -> None:
-    from number_compiler.resources.tile_result_inventory import audit_tile_results
     from number_compiler.resources.payload_audit import audit_registered_payloads
+    from number_compiler.resources.tile_result_inventory import audit_tile_results
 
     approved, invalid = audit_tile_results(results, dict(ledger.iter_containers()))
     assert not invalid and id(key) in approved

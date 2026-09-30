@@ -2,8 +2,6 @@
 
 from __future__ import annotations
 
-from number_compiler.sequences.prime.set import normalize_jacobi_inputs
-
 from math import gcd
 
 from devtools.experiments.power_numbers.special_successor_factor import (
@@ -14,6 +12,7 @@ from devtools.experiments.power_numbers.special_successor_models import (
     PurityWorkCost,
     TwoPrimaryPurityProbe,
 )
+from number_compiler.sequences.prime.set import normalize_jacobi_inputs
 
 
 def _jacobi_counted(a: int, n: int) -> tuple[int, int]:

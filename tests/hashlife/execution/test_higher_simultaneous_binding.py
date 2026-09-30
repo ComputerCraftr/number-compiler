@@ -86,9 +86,16 @@ def test_simultaneous_binding_swaps_same_sort_ports() -> None:
 
 
 def test_simultaneous_binding_replacements_share_original_environment() -> None:
-    schema, arena, left, right, symbol, expression, literal, bound = (
-        _bound_replacement_fixture()
-    )
+    (
+        _unused_schema_binding,
+        arena,
+        left,
+        right,
+        symbol,
+        expression,
+        _unused_literal_binding,
+        bound,
+    ) = _bound_replacement_fixture()
 
     for left_value, right_value, selected in ((0, 2, 0), (1, 2, 1)):
         actual = arena.evaluate(
@@ -103,7 +110,7 @@ def test_simultaneous_binding_replacements_share_original_environment() -> None:
 
 
 def test_simultaneous_binding_is_order_independent_and_warm_reuses_handle() -> None:
-    schema, arena, left, right, symbol, expression, literal, forward = (
+    _unused_schema_binding, arena, left, right, symbol, expression, literal, forward = (
         _bound_replacement_fixture()
     )
     before = len(arena._expressions)
@@ -117,7 +124,9 @@ def test_simultaneous_binding_is_order_independent_and_warm_reuses_handle() -> N
 
 
 def test_sequential_rebind_keeps_its_defined_capture_semantics() -> None:
-    schema, arena, left, right, symbol, expression, literal = _replacement_fixture()
+    _unused_schema_binding, arena, left, right, symbol, expression, literal = (
+        _replacement_fixture()
+    )
     sequential = arena.bind_free(
         arena.bind_free(expression, left, right), right, literal
     )

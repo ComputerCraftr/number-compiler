@@ -1,15 +1,11 @@
 """Connected quotient control must keep exact values at downstream guards."""
 
-from devtools.verification.consumer_fixtures import free_collatz_variables
-from tests.support.reference_arithmetic import literal_events as _oracle
-
 import random
 from itertools import product
 
 import pytest
 
-from tests.support.assertions import assert_clean_payloads
-
+from devtools.verification.consumer_fixtures import free_collatz_variables
 from number_compiler.arithmetic.carry.collatz_output_quotient import (
     CORRECTIONS,
     radix64_domain,
@@ -38,6 +34,8 @@ from number_compiler.sequences.collatz.radix64_transducer import (
     Radix64CollatzStage,
     compose_radix64_events,
 )
+from tests.support.assertions import assert_clean_payloads
+from tests.support.reference_arithmetic import literal_events as _oracle
 
 
 def _digits(n: int) -> tuple[int, ...]:

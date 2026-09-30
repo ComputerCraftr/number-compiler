@@ -2,8 +2,6 @@
 
 from __future__ import annotations
 
-from tests.support.collatz_images import assert_branch_segments
-
 from random import Random
 
 from number_compiler.resources.ledger import ResourceLedger
@@ -15,6 +13,7 @@ from number_compiler.sequences.collatz.block_power import PoweredCollatzTerm
 from number_compiler.sequences.collatz.physical_images import (
     CollatzPhysicalImageWorkspace,
 )
+from tests.support.collatz_images import assert_branch_segments
 
 
 def _literal(seed: int, steps: int) -> tuple[int, tuple[int, ...]]:

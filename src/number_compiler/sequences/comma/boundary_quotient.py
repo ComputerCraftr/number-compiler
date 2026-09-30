@@ -7,9 +7,9 @@ lifting theorem are separate admission obligations.
 
 from __future__ import annotations
 
+from collections.abc import Callable
 from dataclasses import dataclass
 from math import gcd
-from collections.abc import Callable
 from typing import Literal
 
 from number_compiler.arithmetic.fields.consumer_pullback import ExactRational
@@ -17,7 +17,6 @@ from number_compiler.sequences.comma.arithmetic import (
     _sector_child_increments,
     phase_prefix_displacement,
 )
-
 from number_compiler.sequences.comma.boundary_chart import (
     PERIOD,
     ZERO_WEIGHT,
@@ -543,10 +542,10 @@ def construct_macro(
 
 
 __all__ = [
+    "PERIOD",
     "AffineWeight",
     "BoundaryState",
     "MacroTemplate",
-    "PERIOD",
     "SectorFragment",
     "construct_macro",
 ]

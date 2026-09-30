@@ -12,9 +12,9 @@ from devtools.paths import repository_root
 from number_compiler.api.number_api import (
     CommaTermPayload,
     NumberCompiler,
-    ProjectedNumberTerm,
     PoweredCollatzTermPayload,
     PoweredReverseAddTermPayload,
+    ProjectedNumberTerm,
 )
 
 
@@ -24,7 +24,7 @@ def _require_powered_payload(
     if not isinstance(
         payload, (PoweredReverseAddTermPayload, PoweredCollatzTermPayload)
     ):
-        raise AssertionError("expected a powered term payload")
+        raise TypeError("expected a powered term payload")
     return payload
 
 

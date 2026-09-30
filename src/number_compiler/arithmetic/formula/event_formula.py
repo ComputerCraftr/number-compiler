@@ -20,9 +20,9 @@ from number_compiler.arithmetic.formula.formula import (
     reachable,
 )
 from number_compiler.arithmetic.formula.pair_algebra import (
-    growth_carry_views,
     carry_plane_scan,
     check_pair_planes,
+    growth_carry_views,
 )
 from number_compiler.arithmetic.formula.types import Expr, RadixSpec
 

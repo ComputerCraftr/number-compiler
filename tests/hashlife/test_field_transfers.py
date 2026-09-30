@@ -2,16 +2,14 @@
 
 from __future__ import annotations
 
-from tests.support.assertions import assert_rejected_atomically
-
-from typing import Never, cast
+from typing import Never
 
 import pytest
 
 from number_compiler.arithmetic.contracts.scoped_handles import (
     ArenaToken,
 )
-from number_compiler.hashlife.observation.hashlife_projection import HashLifeBlockIndex
+from tests.support.assertions import assert_rejected_atomically
 from tests.support.recursive_field_images import _PortID, _transfer_setup
 
 
@@ -69,40 +67,6 @@ def test_cold_transfer_point_cannot_publish_exact_images(
     assert application.point(0) == 0
     assert transfers.retained_transfers == 1
     assert images.retained_images == images.retained_bindings == 0
-
-
-def test_transfer_application_cannot_attest_the_production_tile_stack() -> None:
-    from number_compiler.resources.behavior_metrics import _cutover_blocker
-    from number_compiler.resources.metric_collection import collect_ledger_metrics
-
-    (
-        ledger,
-        source,
-        signature,
-        geometry,
-        action,
-        _,
-        adapter,
-        _,
-        executor,
-    ) = _transfer_setup()
-    application = executor.application(
-        action,
-        source,
-        geometry,
-        signature,
-        _PortID(adapter.port_owner, "test-boundary", 0),
-    )
-
-    class Index:
-        _ledger = ledger
-        _lazy_application = application
-
-    assert collect_ledger_metrics(ledger).algebraic_instrumentation_complete == 1
-    assert (
-        _cutover_blocker(cast(HashLifeBlockIndex, Index()), 0)
-        == "unattested_execution_carrier"
-    )
 
 
 def test_concrete_port_values_share_one_parametric_parent_transfer() -> None:

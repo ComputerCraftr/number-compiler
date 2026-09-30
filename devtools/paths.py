@@ -1,7 +1,7 @@
 """Locate the developer checkout without modifying Python's module search path."""
 
-from pathlib import Path
 import tomllib
+from pathlib import Path
 
 
 def repository_root() -> Path:
@@ -21,7 +21,7 @@ def project_version() -> str:
     data = tomllib.loads((repository_root() / "pyproject.toml").read_text())
     value = data["project"]["version"]
     if not isinstance(value, str):
-        raise ValueError("project version must be a string")
+        raise TypeError("project version must be a string")
     return value
 
 

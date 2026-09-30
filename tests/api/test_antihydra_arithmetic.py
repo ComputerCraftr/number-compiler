@@ -9,13 +9,13 @@ import pytest
 
 from number_compiler.api.antihydra_observation import observe_run
 from number_compiler.api.number_api import AntihydraTermPayload, NumberCompiler
+from number_compiler.hashlife.execution.dyadic_return_records import (
+    DyadicReturnSourceID,
+)
 from number_compiler.hashlife.execution.tile_scheduler import TileScheduler
 from number_compiler.resources.payload_audit import audit_registered_payloads
 from number_compiler.sequences.antihydra.arithmetic_images import (
     AntihydraArithmeticImageWorkspace,
-)
-from number_compiler.hashlife.execution.dyadic_return_records import (
-    DyadicReturnSourceID,
 )
 from number_compiler.sequences.antihydra.blocks import (
     ArithmeticCylinder,
@@ -316,7 +316,7 @@ def test_failed_lazy_segment_publication_preserves_arithmetic_result(
     with monkeypatch.context() as patch:
         patch.setattr(AntihydraArithmeticImageWorkspace, "segments", partial)
         with pytest.raises(RuntimeError, match="injected lazy segment failure"):
-            term.segments
+            _ = term.segments
     assert term._result is result
     assert not term._segments and not term._segments_ready
     row = next(

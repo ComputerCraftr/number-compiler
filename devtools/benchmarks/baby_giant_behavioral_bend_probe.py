@@ -1,7 +1,5 @@
 from __future__ import annotations
 
-from devtools.paths import report_output
-
 import json
 from dataclasses import asdict
 
@@ -10,6 +8,7 @@ from devtools.experiments.algebra.baby_giant_behavioral_bend import (
     behavioral_bend_frontier,
     behavioral_bend_quotient_audit,
 )
+from devtools.paths import report_output
 
 
 def main() -> None:

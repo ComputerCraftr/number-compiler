@@ -1,8 +1,5 @@
 """Formal kernel constants and causal geometry never acquire future-tape authority."""
 
-from tests.support.assertions import assert_rejected_atomically
-
-
 from dataclasses import replace
 from typing import cast
 
@@ -26,6 +23,7 @@ from number_compiler.projection.digit_terminal import DigitNormalizeBlockEffect
 from number_compiler.resources.ledger import ResourceLedger
 from number_compiler.resources.metric_collection import collect_ledger_metrics
 from number_compiler.resources.stores import LedgerList
+from tests.support.assertions import assert_rejected_atomically
 from tests.support.diamond_geometry_payloads import runtime
 
 

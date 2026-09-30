@@ -2,8 +2,6 @@
 
 from __future__ import annotations
 
-from tests.support.assertions import assert_rejected_atomically
-
 from collections.abc import Callable, Hashable
 from dataclasses import replace
 from typing import TYPE_CHECKING, Never, TypeVar, cast
@@ -21,6 +19,7 @@ from number_compiler.hashlife.tiles.tiles import (
 )
 from number_compiler.resources.ledger import ResourceLedger
 from number_compiler.resources.stores import LedgerDict
+from tests.support.assertions import assert_rejected_atomically
 
 if TYPE_CHECKING:
     from number_compiler.hashlife.tiles.tiles import TileAlphabetID

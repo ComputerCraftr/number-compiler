@@ -9,9 +9,15 @@ import pytest
 
 from number_compiler.arithmetic.contracts.block_effect import BlockContextBudgetExceeded
 from number_compiler.hashlife.actions.field_actions import FieldCellActionID
+from number_compiler.hashlife.execution.continuations.higher_bimachine import (
+    HigherBimachineRuntime,
+)
 from number_compiler.hashlife.execution.continuations.higher_operations import (
     evaluate_operation,
     force_value,
+)
+from number_compiler.hashlife.execution.continuations.higher_semantic import (
+    HigherSemanticArena,
 )
 from number_compiler.hashlife.execution.continuations.higher_summaries import (
     HigherSummaryID,
@@ -25,18 +31,12 @@ from number_compiler.hashlife.execution.continuations.higher_values import (
     RuntimeFunction,
     RuntimeTableFunction,
 )
+from number_compiler.hashlife.execution.field_images import SourceCellArena
 from number_compiler.resources.higher_value_record_audit import (
     valid_runtime_value_record,
 )
 from number_compiler.sequences.collatz.block_power import PoweredCollatzTerm
 from tests.support.reverse_higher_runtime import _fixture
-from number_compiler.hashlife.execution.continuations.higher_bimachine import (
-    HigherBimachineRuntime,
-)
-from number_compiler.hashlife.execution.continuations.higher_semantic import (
-    HigherSemanticArena,
-)
-from number_compiler.hashlife.execution.field_images import SourceCellArena
 
 
 def _two_unary_fixture() -> tuple[
@@ -124,10 +124,10 @@ def test_equal_observed_exit_does_not_alias_a_different_complete_transfer() -> N
 
 def test_runtime_spatial_composition_preserves_noncommuting_order() -> None:
     (
-        primitive,
-        semantics,
+        _unused_primitive_binding,
+        _unused_semantics_binding,
         runtime,
-        sources,
+        _unused_sources_binding,
         constant_zero,
         constant_one,
         zero_then_one,
@@ -166,7 +166,14 @@ def test_runtime_spatial_composition_preserves_noncommuting_order() -> None:
 def test_normalized_finite_composition_matches_unreduced_spatial_semantics(
     reverse: bool,
 ) -> None:
-    primitive, semantics, runtime, sources, first, second = _two_unary_fixture()
+    (
+        primitive,
+        _unused_semantics_binding,
+        runtime,
+        _unused_sources_binding,
+        first,
+        second,
+    ) = _two_unary_fixture()
     if reverse:
         first, second = second, first
     normalized = runtime.summaries.combine_runtime_unary((first, second))
@@ -431,9 +438,16 @@ def test_production_collatz_shares_one_tile_execution_authority() -> None:
 def test_composition_inventory_rejects_wrong_same_interface_result() -> None:
     from number_compiler.resources.higher_payload_audit import audit_higher_payloads
 
-    primitive, semantics, runtime, sources, first, second, forward, reverse = (
-        _ordered_unary_fixture()
-    )
+    (
+        _unused_primitive_binding,
+        semantics,
+        runtime,
+        _unused_sources_binding,
+        first,
+        second,
+        forward,
+        reverse,
+    ) = _ordered_unary_fixture()
     assert forward != reverse
     # This experimental reverse fixture is not an admitted production graph.
     # Check the retained generic summary owner, without whitelisting the fixture.

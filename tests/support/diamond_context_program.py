@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-from number_compiler.resources.metric_records import LedgerMetrics
 from typing import TYPE_CHECKING
 
 from number_compiler.hashlife.execution.continuations.diamond_tasks import (
@@ -13,6 +12,7 @@ from number_compiler.hashlife.interfaces.diamond_boundary import (
     BoundaryStateID,
     ImageBinding,
 )
+from number_compiler.resources.metric_records import LedgerMetrics
 from number_compiler.sequences.collatz.block_power import CollatzPhysicalBlockEffect
 from tests.support.diamond_runtime import build
 

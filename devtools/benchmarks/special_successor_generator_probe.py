@@ -1,16 +1,14 @@
 from __future__ import annotations
 
-from devtools.paths import report_directory
-
 from typing import TYPE_CHECKING
 
+from devtools.benchmarks.reporting import write_markdown_json_report
 from devtools.experiments.power_numbers.special_successor_generators import (
     metrics_as_jsonable,
     special_successor_generator_metrics,
 )
-from devtools.paths import report_output, repository_root
+from devtools.paths import report_directory, report_output, repository_root
 from devtools.runs import run_reported
-from devtools.benchmarks.reporting import write_markdown_json_report
 
 if TYPE_CHECKING:
     from devtools.experiments.power_numbers.special_successor_models import (

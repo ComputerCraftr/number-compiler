@@ -14,7 +14,7 @@ from number_compiler.hashlife.observation.diamond_parametric_query import (
     parametric_width,
 )
 from number_compiler.sequences.collatz.block_power import CollatzPhysicalBlockEffect
-from tests.support.diamond_query import build, bounded_case
+from tests.support.diamond_query import bounded_case, build
 
 
 @pytest.mark.parametrize("steps", [0, 1, 2, 3, 4, 5])

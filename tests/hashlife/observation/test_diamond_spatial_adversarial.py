@@ -1,10 +1,8 @@
 """Primitive summary admission and public generic midpoint boundaries."""
 
-from tests.support.assertions import assert_rejected_atomically
-
-
 from array import array
 from dataclasses import replace
+from functools import partial
 from typing import Never
 
 import pytest
@@ -22,6 +20,7 @@ from number_compiler.hashlife.observation.hashlife_projection import HashLifeBlo
 from number_compiler.hashlife.observation.tile_projection import LazyProjection
 from number_compiler.resources.ledger import ResourceLedger
 from number_compiler.sequences.collatz.block_power import CollatzPhysicalBlockEffect
+from tests.support.assertions import assert_rejected_atomically
 from tests.support.diamond_runtime import build, oracle
 
 
@@ -72,7 +71,7 @@ def test_foreign_or_wrong_port_summary_rejects_before_cold_or_warm_kernel_memo()
         for invalid in (foreign, wrong_port, wrong_domain):
             assert_rejected_atomically(
                 runtime.ledger,
-                lambda: runtime.spatial.observe(action, 0, invalid, state),
+                partial(runtime.spatial.observe, action, 0, invalid, state),
                 ValueError,
             )
 

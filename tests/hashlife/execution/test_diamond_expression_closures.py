@@ -1,8 +1,5 @@
 """Opaque program bodies preserve the binary DAG and explicit capture scope."""
 
-from tests.support.assertions import assert_rejected_atomically
-
-
 from number_compiler.hashlife.execution.continuations.diamond_expression_eval import (
     LowerFinite,
 )
@@ -12,6 +9,7 @@ from number_compiler.hashlife.execution.continuations.diamond_higher_tasks impor
 from number_compiler.hashlife.interfaces.diamond_boundary_expr import (
     BoundaryExpressionArena,
 )
+from tests.support.assertions import assert_rejected_atomically
 from tests.support.diamond_higher_context import expr, machine, scalar
 
 

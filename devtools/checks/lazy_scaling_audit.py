@@ -7,8 +7,6 @@ from collections.abc import Mapping, Sequence
 from math import log2
 from typing import NotRequired, Required, TypedDict
 
-from number_compiler.resources.metric_registry import DIAMOND_WORK_COUNTERS
-
 MetricSnapshot = dict[str, int | dict[str, int]]
 
 
@@ -148,6 +146,10 @@ REQUIRED_COUNTERS = {
     "reverse": ("reverse_offset_dag_visits", "reverse_evaluator_transitions"),
     "collatz": ("collatz_dag_visits", "collatz_evaluator_transitions"),
 }
+RUNTIME_IMAGE_COUNTERS = {
+    "reverse": ("completed_result_publications", "completed_result_evaluations"),
+    "collatz": ("source_image_publications", "source_image_projection_publications"),
+}
 
 
 def assess_series(
@@ -273,12 +275,12 @@ def scaling_report(
                 other_query_metrics[phase + "." + name] = assess_series(
                     steps, values, slack=slack
                 )
+        current_schema = all(
+            metric_value(row["cold"], "metrics_schema_version") >= 8 for row in samples
+        )
         required = (
-            DIAMOND_WORK_COUNTERS
-            if all(
-                metric_value(row["cold"], "metrics_schema_version") >= 4
-                for row in samples
-            )
+            RUNTIME_IMAGE_COUNTERS.get(family, ())
+            if current_schema
             else REQUIRED_COUNTERS.get(family, ())
         )
         missing = sorted(set(required) - counter_names)

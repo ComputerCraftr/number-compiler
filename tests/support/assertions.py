@@ -10,7 +10,6 @@ import pytest
 from number_compiler.resources.ledger import LedgerSnapshot, ResourceLedger
 from number_compiler.resources.metric_records import LedgerMetrics
 
-
 T = TypeVar("T")
 
 

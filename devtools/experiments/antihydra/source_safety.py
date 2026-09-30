@@ -12,27 +12,36 @@ from dataclasses import dataclass, field
 from operator import add, mul
 from typing import Literal
 
-from number_compiler.arithmetic.contracts.block_effect import BlockContextBudgetExceeded
-from number_compiler.arithmetic.contracts.scoped_handles import ArenaHandle, ArenaToken
+from devtools.experiments.antihydra.mahler_predicate import (
+    MahlerPredicateState,
+    mahler_bit_action,
+    mahler_odd_event_action,
+)
 from number_compiler.arithmetic.automata.program_word import (
-    SourceWord,
     RunTraversalMetrics,
+    SourceWord,
     iter_runs,
     source_word_symbol_bounds,
 )
-from number_compiler.arithmetic.fields.branch_quotients import PRIME_BANK as PRIME_BANK
-from number_compiler.arithmetic.fields.branch_quotients import prime_lane_after
+from number_compiler.arithmetic.contracts.block_effect import BlockContextBudgetExceeded
+from number_compiler.arithmetic.contracts.scoped_handles import ArenaHandle, ArenaToken
+from number_compiler.arithmetic.fields.branch_quotients import (
+    PRIME_BANK,
+    prime_lane_after,
+)
 from number_compiler.arithmetic.fields.consumer_pullback import (
     ExactRational as Q,
 )
 from number_compiler.arithmetic.fields.consumer_pullback import (
-    HalfOpenInterval as Interval,
     GuardedAffineAction,
     SaturatingAffineAction,
 )
-from number_compiler.arithmetic.fields.skew_transfer import SkewTransfer
+from number_compiler.arithmetic.fields.consumer_pullback import (
+    HalfOpenInterval as Interval,
+)
 from number_compiler.arithmetic.fields.morphism_core import binary_power
 from number_compiler.arithmetic.fields.root_semifield import RootSemifieldElement
+from number_compiler.arithmetic.fields.skew_transfer import SkewTransfer
 from number_compiler.resources.ledger import ResourceLedger
 from number_compiler.resources.stores import LedgerDict, LedgerList
 from number_compiler.sequences.antihydra.blocks import arithmetic_kernel
@@ -41,11 +50,7 @@ from number_compiler.sequences.collatz.root_germs import (
     RationalPadicRootMismatch,
 )
 
-from devtools.experiments.antihydra.mahler_predicate import (
-    MahlerPredicateState,
-    mahler_bit_action,
-    mahler_odd_event_action,
-)
+__all__ = ("PRIME_BANK",)
 
 ZERO, HALF = Q(0), Q(1, 2)
 

@@ -276,7 +276,22 @@ try:
     assert limb_term._ledger.counters['collatz_image_radix_demands'] == 1
 finally:
     PoweredCollatzTerm._point_symbol = original_point
-print(json.dumps({'public_exports': len(api.__all__), 'kernel_left_states': kernel.left_count, 'kernel_right_states': kernel.right_count, 'installed_path': api.__file__, 'arithmetic_cli_roof_poison': 'passed', 'homogeneous_run_cli_actions': reuse['collatz_physical_temporal_run_actions'], 'mahler_composed_image': 'passed'}))
+api.NumberCompiler.clear_shared_cache()
+for high in (1, 3):
+    germ_seed = (high << 200) + 931386509544713451
+    germ_expected = germ_seed
+    for _ in range(1000):
+        germ_expected = 3 * germ_expected + 1 if germ_expected & 1 else germ_expected // 2
+    captured = StringIO()
+    with redirect_stdout(captured):
+        assert main(['collatz', '--seed', str(germ_seed), '--nth', '1000', '--info', 'metrics', '--format', 'json']) == 0
+    packet = json.loads(captured.getvalue())
+    assert packet['value'] == str(germ_expected)
+    macro = packet['info']['metrics']['execution_metrics']['macrocells'][0]
+    assert macro['index_unit'] == 'normalized_symbol'
+assert macro['occurrence']['transported_hits'] >= 1
+api.NumberCompiler.clear_shared_cache()
+print(json.dumps({'public_exports': len(api.__all__), 'kernel_left_states': kernel.left_count, 'kernel_right_states': kernel.right_count, 'installed_path': api.__file__, 'arithmetic_cli_roof_poison': 'passed', 'homogeneous_run_cli_actions': reuse['collatz_physical_temporal_run_actions'], 'mahler_composed_image': 'passed', 'cross_seed_macrocells': 'passed'}))
 """,
             ],
             cwd=work,

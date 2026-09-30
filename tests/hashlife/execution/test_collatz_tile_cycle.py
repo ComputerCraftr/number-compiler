@@ -2,8 +2,6 @@
 
 from __future__ import annotations
 
-from tests.support.assertions import assert_rejected_atomically
-
 from itertools import islice
 
 import pytest
@@ -11,6 +9,7 @@ import pytest
 from number_compiler.hashlife.execution.tile_causal import CausalTileEngine
 from number_compiler.resources.payload_audit import audit_registered_payloads
 from number_compiler.sequences.collatz.block_power import PoweredCollatzTerm
+from tests.support.assertions import assert_rejected_atomically
 
 
 @pytest.mark.parametrize("seed", (1, 2, 4))

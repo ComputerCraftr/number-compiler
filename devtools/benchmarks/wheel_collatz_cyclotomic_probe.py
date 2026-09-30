@@ -2,12 +2,10 @@
 
 from __future__ import annotations
 
-from devtools.paths import report_directory
-
 import json
 
 from devtools.benchmarks.report_schema import sequence
-from devtools.paths import report_output, repository_root
+from devtools.paths import report_directory, report_output, repository_root
 from number_compiler.api.sequence_compiler import CanonicalSequenceCompiler
 from number_compiler.api.sequence_types import PrimeBlockSequenceSpec
 from number_compiler.arithmetic.functions.finite_unary import analyze_observer

@@ -1,5 +1,6 @@
-"""Bounded warm-response evidence for the canonical 196 image runtime."""
+"""Source-image reuse evidence for the canonical 196 reverse/add runtime."""
 
+from number_compiler.resources.metric_collection import collect_ledger_metrics
 from number_compiler.sequences.reverse_add.power import ReverseAddPoweredTerm
 
 
@@ -35,15 +36,20 @@ def test_public_196_point_reuses_authenticated_scalar_without_replaying_image() 
         assert after.get(counter, 0) - before.get(counter, 0) == 0
 
 
-def test_cold_196_point_reports_the_canonical_powered_image_cutover() -> None:
+def test_cold_196_point_reports_published_runtime_image_work() -> None:
     term = ReverseAddPoweredTerm(196, 8)
-    term.digit(0)
+    expected = 196
+    for _ in range(8):
+        expected += int(str(expected)[::-1])
+    assert term.digits() == tuple(map(int, reversed(str(expected))))
+    assert collect_ledger_metrics(term._ledger).resource_audit_complete == 1
     metrics = term.metrics()
     behavior = term.behavior_metrics()
 
     assert metrics.higher_action_continuation_requests == 0
     assert metrics.higher_concrete_operation_evaluations == 0
-    assert metrics.primitive_transition_evaluations > 0
-    assert metrics.powered_absorption_successes > 0
-    assert behavior.bounded_temporal_runtime_cutover_complete == 1
-    assert behavior.bounded_temporal_runtime_cutover_blocker == ""
+    assert metrics.resource_work_counters["source_image_publications"] > 0
+    assert metrics.resource_work_counters["source_image_projection_publications"] > 0
+    assert metrics.resource_audit_complete == 1
+    assert metrics.resource_accounting_mismatch == 0
+    assert behavior.temporal_quotient_family == "reverse-add-source-cylinder"

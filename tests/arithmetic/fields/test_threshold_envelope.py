@@ -9,6 +9,8 @@ import pytest
 from number_compiler.arithmetic.contracts.block_effect import BlockContextBudgetExceeded
 from number_compiler.arithmetic.fields.consumer_pullback import (
     ExactRational as Q,
+)
+from number_compiler.arithmetic.fields.consumer_pullback import (
     PrefixSafety,
 )
 from number_compiler.arithmetic.fields.morphism_core import AffineCocycle
@@ -22,7 +24,7 @@ def test_complete_prefix_envelope_and_associative_chronological_pullback() -> No
         ThresholdEnvelope.affine(Q(a.upper, a.lower), Q(a.offset, a.lower))
         for a in actions
     )
-    a, b, c = actions
+    a, b, _unused_c_binding = actions
     ea, eb, ec = envelopes
     ab = a.then(b, multiply=mul, add=add)
     left = ea.then(a, eb).then(ab, ec)

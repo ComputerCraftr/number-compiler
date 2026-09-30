@@ -19,6 +19,94 @@ if TYPE_CHECKING:
     )
 
 
+def _has_registered_tile_application(index: HashLifeBlockIndex) -> bool:
+    """Validate the live application against its ledger-issued bound record.
+
+    This is an identity and lease check only. Metric collection must not replay
+    semantic admission or perform an observation to produce a certificate.
+    """
+    from number_compiler.arithmetic.contracts.scoped_handles import ArenaToken
+    from number_compiler.hashlife.actions.field_actions import FieldCellActionID
+    from number_compiler.hashlife.execution.tile_kernel import (
+        PrimitiveTileKernelAdapter,
+    )
+    from number_compiler.hashlife.execution.tile_scheduler import (
+        TileApplication,
+        TileScheduler,
+    )
+    from number_compiler.hashlife.observation.tile_projection import LazyProjection
+    from number_compiler.hashlife.tiles.tile_results import CompletedResultArena
+    from number_compiler.hashlife.tiles.tiles import TileArena, TileID, TileLease
+
+    def issued(value: object) -> bool:
+        reference = index._ledger._execution_roots.get(id(value))
+        return reference is not None and reference() is value
+
+    projection = index._lazy_application
+    if (
+        type(projection) is not LazyProjection
+        or projection.ledger is not index._ledger
+        or projection._closed is not False
+        or not issued(projection)
+    ):
+        return False
+    scheduler, application = projection.scheduler, projection._application
+    if (
+        type(scheduler) is not TileScheduler
+        or scheduler.ledger is not index._ledger
+        or not issued(scheduler)
+        or type(application) is not TileApplication
+        or application.scheduler is not scheduler
+        or application._closed is not False
+        or not issued(application)
+    ):
+        return False
+    tiles, results, adapter = scheduler.tiles, scheduler.results, scheduler.adapter
+    if (
+        type(tiles) is not TileArena
+        or tiles.ledger is not index._ledger
+        or not issued(tiles)
+        or type(results) is not CompletedResultArena
+        or results.ledger is not index._ledger
+        or results.tiles is not tiles
+        or results.action_authority is not adapter
+        or not issued(results)
+        or type(adapter) is not PrimitiveTileKernelAdapter
+        or adapter.ledger is not index._ledger
+        or not issued(adapter)
+        or type(adapter.owner) is not ArenaToken
+    ):
+        return False
+    action, identity, lease = (
+        application.action,
+        application.identity,
+        application._input,
+    )
+    if (
+        type(action) is not FieldCellActionID
+        or action.owner is not adapter.owner
+        or action.kind != "field-cell-action"
+        or type(action.local_id) is not int
+        or action.local_id not in adapter._actions
+        or type(identity) is not int
+        or not 0 <= identity < scheduler._next_application
+        or type(lease) is not TileLease
+        or lease._arena is not tiles
+        or lease._closed is not False
+    ):
+        return False
+    try:
+        source = lease.tile
+        if (
+            type(source) is not TileID
+            or scheduler._applications.application(identity) is not application
+        ):
+            return False
+    except (AttributeError, KeyError, TypeError, ValueError):
+        return False
+    return True
+
+
 def collect_projection_metrics(index: HashLifeBlockIndex) -> HashLifeProjectionMetrics:
     """Compiler snapshots and index-owned work have separate accounting scopes."""
     from number_compiler.arithmetic.fields.dyadic_tile import (
@@ -93,9 +181,6 @@ def collect_projection_metrics(index: HashLifeBlockIndex) -> HashLifeProjectionM
         from number_compiler.resources.application_metrics import (
             tile_application_compatibility_values,
         )
-        from number_compiler.resources.behavior_metrics import (
-            _tile_runtime_blocker,
-        )
 
         values.update(
             tile_application_compatibility_values(index, ledger, compiler_entries)
@@ -119,10 +204,10 @@ def collect_projection_metrics(index: HashLifeBlockIndex) -> HashLifeProjectionM
                 ledger.tile_fused_workspace_peak,
             ),
         )
-        # The issued action was compiled from immutable, admitted kernels into
-        # the executable tile action DAG.  Attest that sealed carrier from
-        # identities and leases; reporting must not re-run semantic admission.
+        # The certificate is the live ledger-bound application record, not a
+        # family annotation. The check validates that exact issued binding and
+        # its leases without replaying its semantics.
         values["bimachine_composition_certified"] = int(
-            not _tile_runtime_blocker(index)
+            _has_registered_tile_application(index)
         )
     return replace_metric(HashLifeProjectionMetrics(*([0] * 15)), values)

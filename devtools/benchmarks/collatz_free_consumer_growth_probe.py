@@ -2,12 +2,12 @@
 
 from __future__ import annotations
 
-from devtools.verification.consumer_fixtures import free_collatz_variables
 import argparse
 import json
 from pathlib import Path
 from typing import Protocol, cast
 
+from devtools.verification.consumer_fixtures import free_collatz_variables
 from number_compiler.arithmetic.carry.collatz_output_quotient import (
     RADIX64_FREE_CARRY_ACTIONS,
     RADIX64_FREE_GROWTH_TABLE,
@@ -107,7 +107,7 @@ def _free_function_metrics() -> dict[str, int]:
     ledger = ResourceLedger(max_nodes=200000)
     bits = BitFunctionArena(ledger)
     morphism = CollatzOutputMorphism(bits)
-    ports, digit, carry, shift = free_collatz_variables(bits)
+    _unused_ports_binding, digit, carry, shift = free_collatz_variables(bits)
     outputs = morphism.free_directional_actions(digit, carry, shift)
     return {
         "factored_function_nodes": len(bits.nodes),

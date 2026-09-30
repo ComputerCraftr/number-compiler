@@ -150,7 +150,7 @@ def test_live_mixed_dag_is_fully_audited_without_runtime_callbacks(
 
 
 def test_wide_operator_integer_metadata_is_accepted_with_exact_accounting() -> None:
-    ledger, arena = wide_innovation_operators()
+    ledger, _unused_arena_binding = wide_innovation_operators()
 
     report = audit_registered_payloads(ledger)
 

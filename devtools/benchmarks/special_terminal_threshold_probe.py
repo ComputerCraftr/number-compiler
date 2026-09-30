@@ -2,10 +2,9 @@
 
 from __future__ import annotations
 
-from devtools.paths import report_output
-
 from dataclasses import asdict
 
+from devtools.benchmarks.reporting import write_json_report
 from devtools.experiments.algebra.dyadic_difference_germ_terminal import (
     fermat_filtration_requirement_audit,
     fermat_sparse_candidate_quotient_audit,
@@ -13,8 +12,8 @@ from devtools.experiments.algebra.dyadic_difference_germ_terminal import (
     mersenne_sparse_candidate_quotient_audit,
     mersenne_sparse_torus_base_change_audit,
 )
+from devtools.paths import report_output
 from devtools.runs import run_reported
-from devtools.benchmarks.reporting import write_json_report
 from number_compiler.sequences.power_numbers.terminal_threshold import (
     terminal_threshold_probe,
     terminal_threshold_spec,

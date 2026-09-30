@@ -6,12 +6,11 @@ resource limits, and optional chronological support remain scheduler contracts.
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING
 from collections.abc import Iterator
 from contextlib import contextmanager
+from typing import TYPE_CHECKING
 
 from number_compiler.arithmetic.fields.skew_transfer import SkewTransfer
-from number_compiler.resources.ledger import ResourceLedger
 from number_compiler.hashlife.execution.dyadic_return_records import (
     DyadicCycleSummary,
     DyadicImageSummary,
@@ -24,6 +23,7 @@ from number_compiler.hashlife.execution.source_bound_images import (
     SourceImageCandidate,
     SourceImageView,
 )
+from number_compiler.resources.ledger import ResourceLedger
 
 if TYPE_CHECKING:
     from number_compiler.hashlife.execution.dyadic_return_images import (

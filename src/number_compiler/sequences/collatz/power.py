@@ -16,23 +16,25 @@ possible parity domains of a source-independent ``T**N`` have disappeared.
 """
 
 from __future__ import annotations
-from number_compiler.arithmetic.contracts.iterative_queries import push_binary_children
-from number_compiler.arithmetic.contracts.iterative_queries import defer_dependencies
-from number_compiler.arithmetic.contracts.input_validation import (
-    normalized_integer_pair,
-)
-from number_compiler.arithmetic.fields.morphism_core import canonical_uniform_power
 
 from collections.abc import Callable, Iterable, MutableMapping, MutableSequence
 from dataclasses import dataclass
 from typing import Literal, TypeVar, cast
 
+from number_compiler.arithmetic.contracts.input_validation import (
+    normalized_integer_pair,
+)
+from number_compiler.arithmetic.contracts.iterative_queries import (
+    defer_dependencies,
+    push_binary_children,
+)
 from number_compiler.arithmetic.fields.morphism_core import (
-    balanced_fold,
     DyadicAffineCocycle,
     InternedEffectNode,
     LazyLoweringCache,
+    balanced_fold,
     binary_power,
+    canonical_uniform_power,
 )
 from number_compiler.arithmetic.functions.word_concatenation import concatenate_words
 from number_compiler.resources.ledger import OwnedMemo, ResourceLedger

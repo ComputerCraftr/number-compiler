@@ -1,8 +1,5 @@
 """Transient causal storage is owned, budgeted, and released on every path."""
 
-from tests.support.assertions import assert_rejected_atomically
-
-
 from typing import Never
 
 import pytest
@@ -14,6 +11,7 @@ from number_compiler.resources.causal_workspace import (
 )
 from number_compiler.resources.ledger import ResourceLedger
 from number_compiler.resources.ownership import audit_execution_ownership
+from tests.support.assertions import assert_rejected_atomically
 
 
 def test_spatial_buffers_charge_full_capacity_and_share_one_inventory() -> None:

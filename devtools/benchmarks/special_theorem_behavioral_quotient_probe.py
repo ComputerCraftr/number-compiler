@@ -1,7 +1,5 @@
 from __future__ import annotations
 
-from devtools.paths import report_output
-
 import json
 from dataclasses import asdict
 
@@ -10,6 +8,7 @@ from devtools.experiments.power_numbers.special_theorem_behavioral_quotient impo
     theorem_behavioral_quotient_audit,
     two_primary_depth_comparison,
 )
+from devtools.paths import report_output
 
 
 def main() -> None:

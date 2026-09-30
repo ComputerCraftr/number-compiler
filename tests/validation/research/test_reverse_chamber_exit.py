@@ -2,13 +2,13 @@
 
 from __future__ import annotations
 
-from tests.support.reference_arithmetic import reverse_add_digit_step
 import pytest
 
 from devtools.experiments.reverse_add.chamber_exit import analyze_chamber_exit
 from number_compiler.arithmetic.contracts.scoped_handles import ExactSource
 from number_compiler.resources.ledger import ResourceLedger
 from number_compiler.sequences.reverse_add.source_ports import SourceCarryPorts
+from tests.support.reference_arithmetic import reverse_add_digit_step
 
 
 def _digits(seed: int, base: int) -> tuple[int, ...]:

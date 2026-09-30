@@ -1,8 +1,6 @@
 """Independent numeric-alias and original-source authority admission probes."""
 
-from tests.support.assertions import assert_rejected_atomically
-
-
+from functools import partial
 from typing import Never, TypedDict, cast
 
 import pytest
@@ -23,12 +21,17 @@ from number_compiler.sequences.collatz.block_power import (
     power_collatz_physical_effect,
 )
 from number_compiler.sequences.reverse_add.power import ReverseAddPoweredTerm
+from tests.support.assertions import assert_rejected_atomically
 
 
 class _OwnerArguments(TypedDict):
     name: str
     role: str
     scope: ResourceScope
+
+
+class _BudgetArguments(TypedDict, total=False):
+    max_cache_entries: int
 
 
 BAD = (True, False, 0.0, 1.0, float("nan"), float("inf"), "1")
@@ -194,7 +197,9 @@ def test_public_constructor_aliases_reject_before_source_work(
     )
     monkeypatch.setattr(module + ".digits_lsd", forbidden)
     constructor = ReverseAddPoweredTerm if family == "reverse" else PoweredCollatzTerm
-    arguments = {"max_cache_entries": value} if field == "budget" else {}
+    arguments: _BudgetArguments = (
+        {"max_cache_entries": value} if field == "budget" else {}
+    )
     with pytest.raises((TypeError, ValueError)):
         constructor(
             value if field == "seed" else 1,
@@ -268,7 +273,7 @@ def test_public_digit_aliases_reject_before_zero_or_warm_lookup(
     )
     for value in BAD:
         assert_rejected_atomically(
-            term._ledger, lambda: term.digit(cast(int, value)), TypeError
+            term._ledger, partial(term.digit, cast(int, value)), TypeError
         )
 
 

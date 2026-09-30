@@ -1,8 +1,5 @@
 """Structured boundary composition used by arbitrary-depth tile absorption."""
 
-from tests.support.assertions import assert_rejected_atomically
-
-
 from dataclasses import dataclass
 from itertools import product
 from typing import Literal
@@ -55,6 +52,7 @@ from number_compiler.hashlife.interfaces.semantic_structures import (
     StructureID,
 )
 from number_compiler.resources.ledger import ResourceLedger
+from tests.support.assertions import assert_rejected_atomically
 from tests.support.reverse_higher_runtime import _fixture
 
 

@@ -1,13 +1,11 @@
 """All result pin routes authenticate the live application before lookup."""
 
-from tests.support.assertions import assert_rejected_atomically
-
-
 from typing import cast
 
 import pytest
 
 from tests.hashlife.tiles.test_tile_dependency_leases import _request
+from tests.support.assertions import assert_rejected_atomically
 
 
 @pytest.mark.parametrize("alias", (True, False, 0.0, -1, 999))

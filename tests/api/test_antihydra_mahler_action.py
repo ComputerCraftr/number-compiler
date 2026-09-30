@@ -2,27 +2,26 @@
 
 import subprocess
 import sys
-from fractions import Fraction
 from dataclasses import fields
+from fractions import Fraction
 
 import pytest
-
-from tests.support.report_values import object_record
 
 from number_compiler.api.antihydra_observation import observe_run
 from number_compiler.api.number_api import NumberCompiler
 from number_compiler.arithmetic.contracts.block_effect import BlockContextBudgetExceeded
-from number_compiler.resources.payload_audit import audit_registered_payloads
 from number_compiler.hashlife.execution.dyadic_return_records import (
     DyadicAggregateSummary,
 )
+from number_compiler.resources.payload_audit import audit_registered_payloads
 from number_compiler.sequences.antihydra import runtime
-from number_compiler.sequences.antihydra.mahler import tangent
-from number_compiler.sequences.antihydra.mahler_action import associated_action
 from number_compiler.sequences.antihydra.arithmetic_images import (
     AntihydraArithmeticImageWorkspace,
 )
+from number_compiler.sequences.antihydra.mahler import tangent
+from number_compiler.sequences.antihydra.mahler_action import associated_action
 from number_compiler.sequences.antihydra.runtime import AntihydraArithmeticTerm, run
+from tests.support.report_values import object_record
 
 
 @pytest.mark.parametrize("kind", ("clock", "hensel"))

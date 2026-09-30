@@ -19,8 +19,12 @@ from random import Random
 from statistics import mean
 
 from number_compiler.arithmetic.carry.collatz_f5_quotient import (
-    CollatzF5SpatialAction as CollatzF5Carrier,
     RADIX64_F5_SPATIAL_LEAVES as LEAF_BY_DIGIT,
+)
+from number_compiler.arithmetic.carry.collatz_f5_quotient import (
+    CollatzF5SpatialAction as CollatzF5Carrier,
+)
+from number_compiler.arithmetic.carry.collatz_f5_quotient import (
     spatial_action_alphabet as exact_length_states,
 )
 from number_compiler.arithmetic.carry.collatz_output_quotient import (
@@ -29,7 +33,6 @@ from number_compiler.arithmetic.carry.collatz_output_quotient import (
 )
 from number_compiler.arithmetic.fields.radix import digits_lsd, value_from_lsd_digits
 from number_compiler.arithmetic.fields.two_adic import v2_positive
-
 
 LEAF_STATES = frozenset(LEAF_BY_DIGIT)
 
@@ -238,9 +241,9 @@ def leaf_class_rows() -> tuple[dict[str, object], ...]:
 
 
 __all__ = [
-    "CollatzF5Carrier",
     "LEAF_BY_DIGIT",
     "LEAF_STATES",
+    "CollatzF5Carrier",
     "RegionOccurrence",
     "carrier_from_digits",
     "compose_carrier",

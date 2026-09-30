@@ -2,8 +2,6 @@
 
 from __future__ import annotations
 
-from tests.support.arithmetic_fixtures import forge_growth
-
 from dataclasses import replace
 
 import pytest
@@ -27,6 +25,7 @@ from number_compiler.sequences.reverse_add.cylinder_innovation import (
     primitive_successor_clause,
 )
 from number_compiler.sequences.reverse_add.source_ports import SourceCarryPorts
+from tests.support.arithmetic_fixtures import forge_growth
 
 
 def _digits(value: int, base: int) -> tuple[int, ...]:

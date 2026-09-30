@@ -2,13 +2,11 @@
 
 from __future__ import annotations
 
-from devtools.paths import report_directory
-
 import json
 from typing import NotRequired, TypedDict, cast
 
 from devtools.benchmarks.json_support import jsonable
-from devtools.paths import report_output, repository_root
+from devtools.paths import report_directory, report_output, repository_root
 from devtools.verification import exact_oracle
 from devtools.verification.sequence_diagnostics import with_carry_diagnostics
 from number_compiler.api.sequence_compiler import CanonicalSequenceCompiler

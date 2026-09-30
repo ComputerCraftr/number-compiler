@@ -11,13 +11,13 @@ from number_compiler.arithmetic.carry.carry_monoid import (
 )
 from number_compiler.arithmetic.carry.event_memory import pair_step
 from number_compiler.arithmetic.contracts.block_effect import BlockContextBudgetExceeded
+from number_compiler.arithmetic.formula.decimal_pair_coordinates import decimal_q95
 from number_compiler.arithmetic.functions.finite_function_types import (
     BOOL,
     FinitePort,
     FunctionSignature,
 )
 from number_compiler.arithmetic.functions.finite_port_action import PortVariable
-from number_compiler.arithmetic.formula.decimal_pair_coordinates import decimal_q95
 from number_compiler.arithmetic.polynomials.centered_f5 import CenteredF5Transport
 from number_compiler.hashlife.actions.field_actions import CoordinateOutputMorphismID
 from number_compiler.hashlife.execution.tile_scheduler import TileScheduler

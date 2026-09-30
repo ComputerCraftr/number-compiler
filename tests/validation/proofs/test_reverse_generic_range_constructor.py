@@ -8,8 +8,6 @@ from typing import Never
 
 import pytest
 
-from tests.support.reverse_cutover import forbid_uniform_context_compilation
-
 from devtools.experiments.reverse_add import (
     chamber_exit,
     edge_interior_d4_regions,
@@ -33,6 +31,7 @@ from number_compiler.sequences.reverse_add.cylinder_innovation import (
 )
 from number_compiler.sequences.reverse_add.power import ReverseAddPoweredTerm
 from number_compiler.sequences.reverse_add.source_ports import SourceCarryPorts
+from tests.support.reverse_cutover import forbid_uniform_context_compilation
 
 pytestmark = pytest.mark.validation
 

@@ -1,14 +1,12 @@
 """Resource limits fail before allocation and retain an auditable owner inventory."""
 
-from tests.support.assertions import assert_rejected_atomically
-
-
 import pytest
 
 from number_compiler.arithmetic.contracts.block_effect import BlockContextBudgetExceeded
 from number_compiler.arithmetic.contracts.scoped_handles import ArenaHandle, ArenaToken
 from number_compiler.resources.ledger import OwnedMemo, ResourceLedger
 from number_compiler.resources.stores import LedgerDict
+from tests.support.assertions import assert_rejected_atomically
 
 
 @pytest.mark.parametrize("dimension", ["entries", "nodes"])

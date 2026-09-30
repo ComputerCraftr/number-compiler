@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-from devtools.verification.oracles.sequence_arithmetic import reference_successor
 import json
 import time
 from collections.abc import Sequence
@@ -8,6 +7,8 @@ from dataclasses import dataclass
 from pathlib import Path
 
 from devtools.paths import report_output
+from devtools.verification.oracles.sequence_arithmetic import reference_successor
+from devtools.verification.sequence_reduction import balanced_reduce
 from number_compiler.arithmetic.carry.carry_labels import (
     IDENTITY as I,
 )
@@ -19,7 +20,6 @@ from number_compiler.arithmetic.carry.carry_labels import (
 )
 from number_compiler.arithmetic.formula.summary import BlockSummary, compose_summaries
 from number_compiler.arithmetic.formula.types import RadixSpec
-from devtools.verification.sequence_reduction import balanced_reduce
 
 HERE = Path(__file__).resolve().parent
 ROOT = HERE.parent

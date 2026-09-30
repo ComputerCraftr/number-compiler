@@ -1,6 +1,7 @@
 """Canonical continuation scheduling for iterative binary and decision queries."""
 
 from __future__ import annotations
+
 from collections.abc import Callable, Container, MutableMapping, Sequence
 from typing import TypeVar
 

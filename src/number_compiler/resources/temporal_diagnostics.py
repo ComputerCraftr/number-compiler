@@ -22,10 +22,22 @@ class TemporalReuseLane:
 
     requests: int | None = None
     attempts: int | None = None
+    # Exact and transported hits are producer-classified disjoint outcomes.
     exact_hits: int | None = None
     transported_hits: int | None = None
+    local_hits: int | None = None
+    process_hits: int | None = None
+    applied_hits: int | None = None
+    applied_parent_hits: int | None = None
+    rejected_fit: int | None = None
+    admission_rejections: int | None = None
+    key_operand_bits: int | None = None
+    # Some older owner lanes have only a literal hit counter. Keep it separate
+    # until that producer classifies the returned value.
+    unclassified_hits: int | None = None
     misses: int | None = None
     publications: int | None = None
+    bypasses: int | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -195,6 +207,38 @@ class TemporalReportingWork:
 
 
 @dataclass(frozen=True, slots=True)
+class TemporalMacrocellWork:
+    """Semantic interning and occurrence application are separate reuse lanes.
+
+    ``max_level`` is log2 of represented family transitions (D8 is level 3),
+    never an archive-specific level relative to its bootstrap size. A semantic
+    hit alone makes no claim that occurrence construction was avoided.
+    """
+
+    family: str
+    index_unit: str
+    cache_scope: str
+    semantic: TemporalReuseLane
+    occurrence: TemporalReuseLane
+    source_action: TemporalReuseLane = TemporalReuseLane()
+    outer_observer: TemporalReuseLane = TemporalReuseLane()
+    outer_observer_scope: str | None = None
+    merges: int | None = None
+    max_level: int | None = None
+    primitive_steps: int | None = None
+    spatial_leaf_visits: int | None = None
+    operand_bits: int | None = None
+    key_operand_bits: int | None = None
+    cold_child_discoveries: int | None = None
+    coefficient_compositions: int | None = None
+    occurrence_frontier_joins: int | None = None
+    capacity_bypasses: int | None = None
+    output_region_visits: int | None = None
+    emitted_digits: int | None = None
+    failed_work: int | None = None
+
+
+@dataclass(frozen=True, slots=True)
 class TemporalExecutionDiagnostics:
     """Compact schema-eight view beside the preserved raw work counters."""
 
@@ -207,6 +251,7 @@ class TemporalExecutionDiagnostics:
     stream: TemporalStreamDemand = TemporalStreamDemand()
     observations: TemporalObservations = TemporalObservations()
     family_work: tuple[TemporalFamilyWork, ...] = ()
+    macrocells: tuple[TemporalMacrocellWork, ...] = ()
     comma: TemporalCommaWork = TemporalCommaWork()
     resources: TemporalResources = TemporalResources()
     reporting: TemporalReportingWork = TemporalReportingWork()
@@ -227,6 +272,137 @@ def _count(counters: Mapping[str, int], key: str) -> int | None:
     if type(value) is not int or value < 0:
         raise ValueError(f"temporal counter {key} is not a nonnegative integer")
     return value
+
+
+def _macrocell_reuse(
+    counters: Mapping[str, int], prefix: str, kind: str
+) -> TemporalReuseLane:
+    lane = TemporalReuseLane(
+        requests=_count(counters, f"{prefix}{kind}_lookups"),
+        exact_hits=_count(counters, f"{prefix}{kind}_exact_hits"),
+        transported_hits=_count(counters, f"{prefix}{kind}_transported_hits"),
+        local_hits=_count(counters, f"{prefix}{kind}_local_hits"),
+        process_hits=_count(counters, f"{prefix}{kind}_process_hits"),
+        applied_hits=_count(counters, f"{prefix}{kind}_applied_hits"),
+        applied_parent_hits=_count(counters, f"{prefix}{kind}_applied_parent_hits"),
+        rejected_fit=_count(counters, f"{prefix}{kind}_rejected_fit"),
+        admission_rejections=_count(counters, f"{prefix}{kind}_admission_rejections"),
+        key_operand_bits=_count(counters, f"{prefix}{kind}_key_operand_bits"),
+        unclassified_hits=_count(counters, f"{prefix}{kind}_hits"),
+        misses=_count(counters, f"{prefix}{kind}_misses"),
+        publications=_count(counters, f"{prefix}{kind}_publications"),
+        bypasses=_count(counters, f"{prefix}{kind}_bypasses"),
+    )
+    exact, transported = lane.exact_hits, lane.transported_hits
+    if exact is not None and transported is not None:
+        hits = exact + transported
+        if lane.requests is not None and hits > lane.requests:
+            raise ValueError(f"{prefix}{kind} classified more hits than lookups")
+        if (
+            lane.misses is not None
+            and lane.requests is not None
+            and hits + lane.misses + (lane.admission_rejections or 0) != lane.requests
+        ):
+            raise ValueError(
+                f"{prefix}{kind} hits, misses and rejections do not partition lookups"
+            )
+        located_hits = (lane.local_hits, lane.process_hits)
+        if (
+            all(value is not None for value in located_hits)
+            and sum(value for value in located_hits if value is not None) != hits
+        ):
+            raise ValueError(f"{prefix}{kind} cache locations do not partition hits")
+        if lane.applied_hits is not None and lane.applied_hits > hits:
+            raise ValueError(f"{prefix}{kind} applied more hits than it retrieved")
+        if lane.rejected_fit is not None and (
+            lane.rejected_fit + (lane.applied_hits or 0) > hits
+        ):
+            raise ValueError(
+                f"{prefix}{kind} fit rejections and applications exceed retrievals"
+            )
+        if (
+            lane.applied_parent_hits is not None
+            and lane.applied_hits is not None
+            and lane.applied_parent_hits > lane.applied_hits
+        ):
+            raise ValueError(f"{prefix}{kind} applied-parent hits exceed applied hits")
+    return lane
+
+
+def _capacity_bypasses(counters: Mapping[str, int], family: str) -> int | None:
+    """Sum refused publications from the instrumented stores, once per attempt."""
+    kinds = ("occurrence", "source_action") if family == "mahler" else ("occurrence",)
+    measured = [
+        value
+        for kind in kinds
+        if (value := _count(counters, f"{family}_hashlife_{kind}_bypasses")) is not None
+    ]
+    return sum(measured) if measured else None
+
+
+def _macrocell_work(counters: Mapping[str, int]) -> tuple[TemporalMacrocellWork, ...]:
+    rows = []
+    for family in ("reverse", "collatz", "antihydra", "mahler"):
+        prefix = f"{family}_hashlife_"
+        if not any(name.startswith(prefix) for name in counters):
+            continue
+        rows.append(
+            TemporalMacrocellWork(
+                family=family,
+                index_unit="normalized_symbol"
+                if family == "collatz"
+                else "reverse_add_iteration"
+                if family == "reverse"
+                else "macro_return",
+                cache_scope="source_occurrence_associated_action"
+                if family == "mahler"
+                and counters.get(f"{prefix}source_action_active", 0)
+                else "complete_associated_observer"
+                if family == "mahler"
+                else "source_cylinder",
+                semantic=_macrocell_reuse(counters, prefix, "semantic"),
+                occurrence=(
+                    TemporalReuseLane()
+                    if family == "mahler"
+                    else _macrocell_reuse(counters, prefix, "occurrence")
+                ),
+                source_action=(
+                    _macrocell_reuse(counters, prefix, "source_action")
+                    if family == "mahler"
+                    else TemporalReuseLane()
+                ),
+                outer_observer=(
+                    _macrocell_reuse(counters, prefix, "occurrence")
+                    if family == "mahler"
+                    else TemporalReuseLane()
+                ),
+                outer_observer_scope=(
+                    "process_complete_associated_observer"
+                    if family == "mahler"
+                    else None
+                ),
+                merges=_count(counters, f"{prefix}merges"),
+                max_level=_count(counters, f"{prefix}max_level"),
+                primitive_steps=_count(counters, f"{prefix}primitive_steps"),
+                spatial_leaf_visits=_count(counters, f"{prefix}spatial_leaf_visits"),
+                operand_bits=_count(counters, f"{prefix}operand_bits"),
+                key_operand_bits=_count(counters, f"{prefix}key_operand_bits"),
+                cold_child_discoveries=_count(
+                    counters, f"{prefix}cold_child_discoveries"
+                ),
+                coefficient_compositions=_count(
+                    counters, f"{prefix}coefficient_compositions"
+                ),
+                occurrence_frontier_joins=_count(
+                    counters, f"{prefix}occurrence_frontier_joins"
+                ),
+                capacity_bypasses=_capacity_bypasses(counters, family),
+                output_region_visits=_count(counters, f"{prefix}output_region_visits"),
+                emitted_digits=_count(counters, f"{prefix}emitted_digits"),
+                failed_work=_count(counters, f"{prefix}failed_work"),
+            )
+        )
+    return tuple(rows)
 
 
 def collect_temporal_diagnostics(
@@ -509,6 +685,7 @@ def collect_temporal_diagnostics(
                 counters, "comma_certificate_budget_refusals"
             ),
         ),
+        macrocells=_macrocell_work(counters),
         resources=TemporalResources(
             entries,
             nodes,

@@ -2,8 +2,6 @@
 
 from __future__ import annotations
 
-from tests.support.assertions import assert_rejected_atomically
-
 from collections.abc import Mapping
 from itertools import product
 from typing import Never
@@ -18,6 +16,7 @@ from number_compiler.projection.lazy_radix import collatz_radix_digit
 from number_compiler.projection.radix_fused_action import FusedRadixArena
 from number_compiler.resources.ledger import ResourceLedger
 from number_compiler.sequences.collatz.block_power import PoweredCollatzTerm
+from tests.support.assertions import assert_rejected_atomically
 
 
 @pytest.mark.parametrize("physical", (False, True))

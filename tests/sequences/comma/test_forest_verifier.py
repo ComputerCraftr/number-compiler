@@ -2,8 +2,6 @@
 
 from __future__ import annotations
 
-from tests.support.comma_oracles import assert_phase_period
-
 import gzip
 import json
 from pathlib import Path
@@ -14,14 +12,15 @@ import pytest
 from number_compiler.arithmetic.contracts.block_effect import BlockContextBudgetExceeded
 from number_compiler.resources.ledger import ResourceLedger
 from number_compiler.sequences.comma.forest_verifier import (
+    _check_forest_row,
     _literal_children,
     _parse_line,
     _phase_period,
     _prefix_to_first_fork,
-    _check_forest_row,
     _small_roots,
     verify_forest_certificate,
 )
+from tests.support.comma_oracles import assert_phase_period
 
 
 def _canonical_line(value: Any) -> bytes:

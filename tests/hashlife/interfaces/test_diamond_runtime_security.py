@@ -2,8 +2,6 @@
 
 from __future__ import annotations
 
-from tests.support.assertions import assert_rejected_atomically
-
 from dataclasses import replace
 from typing import TYPE_CHECKING, Never
 
@@ -34,6 +32,7 @@ from number_compiler.hashlife.observation.diamond_observers import NonblankBlock
 from number_compiler.projection.digit_terminal import DigitNormalizeBlockEffect
 from number_compiler.resources.ledger import ResourceLedger
 from number_compiler.sequences.collatz.block_power import CollatzPhysicalBlockEffect
+from tests.support.assertions import assert_rejected_atomically
 
 if TYPE_CHECKING:
     from number_compiler.arithmetic.contracts.scoped_handles import ActionProgramID

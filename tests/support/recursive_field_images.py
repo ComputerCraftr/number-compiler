@@ -1,7 +1,6 @@
 """Recursive field images with one canonical implementation owner."""
 
 from __future__ import annotations
-from tests.support.finite_functions import carry_atoms
 
 from collections.abc import Callable, MutableSequence
 from dataclasses import dataclass
@@ -66,10 +65,10 @@ from number_compiler.hashlife.interfaces.diamond_quotient import (
     MacroInterface,
 )
 from number_compiler.resources.ledger import ResourceLedger
+from tests.support.finite_functions import carry_atoms
 
 if TYPE_CHECKING:
     from number_compiler.hashlife.actions.diamond_actions import PortSignatureID
-    from number_compiler.hashlife.execution.field_executor import FieldImageApplication
     from number_compiler.hashlife.actions.field_actions import (
         FieldGeometryID,
     )
@@ -80,6 +79,7 @@ if TYPE_CHECKING:
     from number_compiler.hashlife.execution.continuations.provider_image_input import (
         ProviderImageInputID,
     )
+    from number_compiler.hashlife.execution.field_executor import FieldImageApplication
     from number_compiler.hashlife.execution.field_images import (
         SourceForestID,
     )
@@ -317,7 +317,7 @@ def _setup(
     )
     functions = SemanticFunctionArena(ledger)
     quotients = DiamondQuotientArena(functions)
-    port, signature, zero, one = carry_atoms(functions)
+    port, _unused_signature_binding, zero, one = carry_atoms(functions)
     declared = quotients.intern_interface(
         MacroInterface(
             SemanticIdentity("recursive-image-test-v1", ("kernel",)),
@@ -548,7 +548,16 @@ def _application_setup() -> tuple[
     FieldImageApplication,
 ]:
     fixture = _setup()
-    ledger, source, signature, geometry, action, images, adapter, executor = fixture
+    (
+        _unused_ledger_binding,
+        source,
+        signature,
+        geometry,
+        action,
+        _unused_images_binding,
+        adapter,
+        executor,
+    ) = fixture
     incoming = ArenaHandle(adapter.port_owner, "test-image-port", 0)
     return (
         *fixture,
@@ -588,6 +597,7 @@ def _completed_provider_setup(
         observe=lambda *_args: 0,
         validate_image=images.resolve,
         validate_image_occurrence=images.validate_occurrence,
+        validate_image_context_occurrence=images.validate_occurrence,
     )
     provider = providers.intern(
         ProviderAction(adapter.output, adapter.interface, action, 0, 0, 1)

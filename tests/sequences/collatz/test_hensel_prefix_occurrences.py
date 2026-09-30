@@ -5,20 +5,20 @@ from dataclasses import fields, replace
 
 import pytest
 
+import number_compiler.sequences.collatz.root_germs as root_module
+from number_compiler.arithmetic.automata import program_word
 from number_compiler.arithmetic.automata.program_word import (
     CanonicalWord,
     SourceWord,
     SourceWordSuffix,
-    drop_source_prefix,
-    source_word_key,
-    validate_source_word,
     concat,
+    drop_source_prefix,
     from_runs,
     from_values,
     iter_runs,
+    source_word_key,
+    validate_source_word,
 )
-import number_compiler.sequences.collatz.root_germs as root_module
-from number_compiler.arithmetic.automata import program_word
 from number_compiler.arithmetic.carry.collatz_output_quotient import radix64_domain
 from number_compiler.arithmetic.fields.radix import digits_lsd
 from number_compiler.arithmetic.fields.two_adic import v2_nonzero
@@ -101,7 +101,7 @@ def test_mismatch_retains_only_independent_event_coordinates() -> None:
         "constant_at_mismatch",
     )
     for h in range(1, 7):
-        root, digit, mismatch = _nonmatching_digit(h)
+        _unused_root_binding, digit, mismatch = _nonmatching_digit(h)
         expected_root = (-mismatch.constant_at_mismatch * pow(3**h, -1, 4)) % 4
         assert mismatch.root_digit == expected_root
         assert mismatch.digit_v2 == v2_nonzero(digit - expected_root)

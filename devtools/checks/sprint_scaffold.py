@@ -58,7 +58,7 @@ def refresh_index(folder: Path, start: date, *, check: bool = False) -> bool:
                 re.escape(START) + r".*?" + re.escape(END),
                 lambda _match: block,
                 text,
-                flags=re.S,
+                flags=re.DOTALL,
             )
         else:
             updated = re.sub(
@@ -66,7 +66,7 @@ def refresh_index(folder: Path, start: date, *, check: bool = False) -> bool:
                 lambda match: match.group(1) + "\n" + block + "\n",
                 text,
                 count=1,
-                flags=re.S,
+                flags=re.DOTALL,
             )
             if updated == text:
                 updated = text.rstrip() + "\n\n## Topics\n\n" + block + "\n"

@@ -1,7 +1,5 @@
 from __future__ import annotations
 
-from tests.support.assertions import assert_rejected_atomically
-
 from array import array
 from itertools import product
 from typing import TYPE_CHECKING, Literal
@@ -43,6 +41,7 @@ from number_compiler.hashlife.observation.diamond_observers import NonblankBlock
 from number_compiler.projection.digit_terminal import DigitNormalizeBlockEffect
 from number_compiler.resources.ledger import ResourceLedger
 from number_compiler.sequences.collatz.block_power import CollatzPhysicalBlockEffect
+from tests.support.assertions import assert_rejected_atomically
 
 if TYPE_CHECKING:
     from number_compiler.arithmetic.automata.primitive_semantics import (

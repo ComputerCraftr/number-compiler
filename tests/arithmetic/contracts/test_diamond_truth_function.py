@@ -2,8 +2,6 @@
 
 from __future__ import annotations
 
-from tests.support.assertions import assert_rejected_atomically
-
 from itertools import product
 from typing import TYPE_CHECKING, Literal
 
@@ -21,6 +19,7 @@ from number_compiler.hashlife.interfaces.diamond_truth_function import (
     compile_truth_function,
 )
 from number_compiler.sequences.collatz.block_power import CollatzPhysicalBlockEffect
+from tests.support.assertions import assert_rejected_atomically
 
 if TYPE_CHECKING:
     from number_compiler.arithmetic.contracts.scoped_handles import TransferSummaryID

@@ -2,9 +2,6 @@
 
 from __future__ import annotations
 
-from tests.support.tile_kernel import _runtime_source
-from tests.support.assertions import assert_rejected_atomically
-
 from dataclasses import replace
 from typing import TYPE_CHECKING
 
@@ -25,7 +22,9 @@ from number_compiler.hashlife.tiles.tile_directed_transfer_memo import (
 from number_compiler.hashlife.tiles.tile_ports import ResultWiring
 from number_compiler.hashlife.tiles.tile_result_records import DirectedTransferKey
 from number_compiler.resources.metric_collection import collect_ledger_metrics
+from tests.support.assertions import assert_rejected_atomically
 from tests.support.dataclass_records import replace_record
+from tests.support.tile_kernel import _runtime_source
 
 if TYPE_CHECKING:
     from number_compiler.hashlife.execution.tile_kernel import (
@@ -44,7 +43,7 @@ def _binding() -> tuple[
     DirectedTransferKey,
     int,
 ]:
-    ledger, tiles, adapter, action, scheduler, source = _runtime_source(
+    ledger, _unused_tiles_binding, adapter, action, scheduler, source = _runtime_source(
         BaseBlockEffect(3), (0, 1, 2, 3)
     )
     incoming = adapter.initial_ports(action)[0]

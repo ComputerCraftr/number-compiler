@@ -2,8 +2,8 @@
 
 from __future__ import annotations
 
-from typing import Never
 from collections.abc import Generator
+from typing import Never
 
 import pytest
 
@@ -30,7 +30,7 @@ def _spatial(
     _, primitive, semantics, runtime, interfaces, compiler, sources, binding = _fixture(
         word
     )
-    outputs, composer, macro, left, right = _observed_macro(
+    outputs, _unused_composer_binding, macro, left, right = _observed_macro(
         semantics, interfaces, sources, primitive, compiler, runtime, binding
     )
     return outputs, macro.output, left, right
@@ -137,7 +137,14 @@ def test_failed_second_stream_preserves_live_first_stream() -> None:
 
 
 def test_stream_callback_failure_after_yield_releases_frames() -> None:
-    word, outputs, root, left, right, stream = _started_stream()
+    (
+        _unused_word_binding,
+        outputs,
+        _unused_root_binding,
+        _unused_left_binding,
+        _unused_right_binding,
+        stream,
+    ) = _started_stream()
 
     def failed_boundary(*_args: object) -> Never:
         raise LookupError("boundary evaluation failed")
@@ -173,7 +180,7 @@ def test_stream_temporal_witness_is_never_observed() -> None:
     )
     interface = compiler.compile(primitive).interface
     temporal = outputs.temporal(outputs.leaf(interface), primitive, interface)
-    with pytest.raises(ValueError, match="completed spatial"):
+    with pytest.raises(TypeError, match="completed spatial"):
         tuple(outputs.iter_observe_range(temporal, 0, 1, 0, 0))
     assert not outputs._stream_frames
 
@@ -207,9 +214,9 @@ def test_partial_stream_rejects_temporal_sibling_without_traversing_it() -> None
     )
     left = semantics.evaluate(runtime.initial(primitive, 0))
     right = semantics.evaluate(runtime.initial(primitive, 1))
-    with pytest.raises(ValueError, match="completed spatial"):
+    with pytest.raises(TypeError, match="completed spatial"):
         tuple(outputs.iter_observe_range(root, 0, 1, left, right))
-    with pytest.raises(ValueError, match="completed spatial"):
+    with pytest.raises(TypeError, match="completed spatial"):
         tuple(outputs.iter_observe_range(nested, 0, 1, left, right))
     with pytest.raises(ValueError, match="completion disagrees"):
         outputs._intern(

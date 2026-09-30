@@ -2,8 +2,6 @@
 
 from __future__ import annotations
 
-from tests.support.semantic_oracles import scan_ports
-
 from collections.abc import Sequence
 from typing import TYPE_CHECKING
 
@@ -15,6 +13,7 @@ from number_compiler.hashlife.execution.continuations.diamond_runtime import (
     DiamondRuntime,
 )
 from number_compiler.resources.ledger import ResourceLedger
+from tests.support.semantic_oracles import scan_ports
 
 if TYPE_CHECKING:
     from number_compiler.arithmetic.contracts.scoped_handles import ActionProgramID

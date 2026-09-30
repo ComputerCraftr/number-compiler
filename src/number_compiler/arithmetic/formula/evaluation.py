@@ -4,11 +4,11 @@ from dataclasses import dataclass
 from typing import Any, TypeVar
 
 from number_compiler.arithmetic.formula.bit_semantics import (
-    constant_bit,
-    shift_position,
-    coefficient_dependencies,
     coefficient_bit,
+    coefficient_dependencies,
+    constant_bit,
     predicate_bit,
+    shift_position,
 )
 from number_compiler.arithmetic.formula.types import Expr, FormulaStorage
 

@@ -1,8 +1,4 @@
-"""The removed reverse executor cannot return through any public demand.
-
-These migration checks do not replace the powered-output P0 assertions. A
-constructor refusal is an explicit release hold, not a successful term query.
-"""
+"""Public reverse queries either return an exact image or refuse explicitly."""
 
 from __future__ import annotations
 
@@ -10,17 +6,17 @@ from typing import Never
 
 import pytest
 
-from tests.support.reverse_cutover import forbid_uniform_context_compilation
-
 from number_compiler.api.cli import main
 from number_compiler.arithmetic.functions import residual
 from number_compiler.hashlife.execution.tile_causal import CausalTileEngine
 from number_compiler.hashlife.observation.hashlife_projection import HashLifeBlockIndex
+from number_compiler.resources.metric_collection import collect_ledger_metrics
 from number_compiler.sequences.reverse_add.power import ReverseAddPoweredTerm
 from number_compiler.sequences.reverse_add.source_images import (
     ReverseCylinderConstructionUnavailable,
     _ReverseSourceImageAdapter,
 )
+from tests.support.reverse_cutover import forbid_uniform_context_compilation
 
 
 def _forbidden(*_args: object, **_kwargs: object) -> Never:
@@ -29,7 +25,7 @@ def _forbidden(*_args: object, **_kwargs: object) -> Never:
 
 @pytest.fixture(autouse=True)
 def forbid_universal_context_compilation(monkeypatch: pytest.MonkeyPatch) -> None:
-    """Containment only: missing-return refusals still leave the P0 gate red."""
+    """Ensure missing-return refusals do not fall back to the retired executor."""
     forbid_uniform_context_compilation(monkeypatch, _forbidden)
     monkeypatch.setattr(residual, "minimize_bimachine", _forbidden)
 
@@ -70,7 +66,8 @@ def test_missing_powered_constructor_refuses_without_legacy_work(
         with pytest.raises(ReverseCylinderConstructionUnavailable):
             demand()
     assert term._ledger.counters.get("tile_causal_point_parent_requests", 0) == 0
-    assert term.behavior_metrics().bounded_temporal_runtime_cutover_complete == 0
+    assert term._ledger.counters.get("whole_word_symbol_visits", 0) == 0
+    assert term._ledger.counters.get("sequential_generation_advances", 0) == 0
 
 
 def test_metrics_leave_missing_constructor_lazy(
@@ -78,8 +75,13 @@ def test_metrics_leave_missing_constructor_lazy(
 ) -> None:
     monkeypatch.setattr(ReverseAddPoweredTerm, "_source_workspace", _forbidden)
     term = ReverseAddPoweredTerm(196, 20)
+    assert collect_ledger_metrics(term._ledger).resource_audit_complete == 1
+    before = term._ledger.snapshot()
     assert term.metrics().generation == 20
-    assert term.behavior_metrics().bounded_temporal_runtime_cutover_complete == 0
+    report = term.behavior_metrics()
+    assert report.resource_audit_complete == 1
+    assert report.resource_accounting_mismatch == 0
+    assert term._ledger.snapshot() == before
     assert term._workspace is None
 
 

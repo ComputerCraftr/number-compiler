@@ -24,12 +24,11 @@ blocks by binary composition without expanding their coefficients.
 """
 
 from __future__ import annotations
-from number_compiler.arithmetic.fields.morphism_core import balanced_fold
 
 from collections.abc import Iterable
 from dataclasses import dataclass
 
-from number_compiler.arithmetic.fields.morphism_core import binary_power
+from number_compiler.arithmetic.fields.morphism_core import balanced_fold, binary_power
 from number_compiler.arithmetic.fields.radix import bit_width
 
 

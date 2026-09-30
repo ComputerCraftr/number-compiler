@@ -1,14 +1,11 @@
 from __future__ import annotations
 
-from devtools.paths import report_directory
-
-
+from devtools.benchmarks.reporting import write_markdown_json_report
 from devtools.experiments.power_numbers.bounded_jump_profile import (
     markdown,
     metrics_dict,
 )
-from devtools.paths import report_output, repository_root
-from devtools.benchmarks.reporting import write_markdown_json_report
+from devtools.paths import report_directory, report_output, repository_root
 from devtools.runs import run_reported
 
 ROOT = repository_root()

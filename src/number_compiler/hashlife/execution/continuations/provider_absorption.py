@@ -27,6 +27,10 @@ from number_compiler.hashlife.execution.field_images import (
     SourceBindingID,
     SourceCellArena,
 )
+from number_compiler.hashlife.execution.source_image_seals import (
+    _require_immutable_key,
+    _TypedKey,
+)
 from number_compiler.hashlife.interfaces.diamond_quotient import LocalInterfaceID
 from number_compiler.resources.ledger import ResourceLedger
 from number_compiler.resources.stores import (
@@ -63,7 +67,7 @@ class ProviderAction:
             raise ValueError("provider phase is outside its normalized domain")
 
 
-@dataclass(frozen=True, slots=True)
+@dataclass(frozen=True, slots=True, eq=False)
 class ProviderBindingKey:
     provider: ProviderActionID
     source: SourceBindingID
@@ -71,6 +75,53 @@ class ProviderBindingKey:
     interface: LocalInterfaceID
     image: FieldImageID | None = None
     active_extent: int | None = None
+    context: object | None = None
+
+    def __hash__(self) -> int:
+        return hash(
+            (
+                self.provider,
+                self.source,
+                self.output,
+                self.interface,
+                self.image,
+                self.active_extent,
+                _TypedKey(self.context),
+            )
+        )
+
+    def __eq__(self, other: object) -> bool:
+        return (
+            type(other) is ProviderBindingKey
+            and self.provider == other.provider
+            and self.source == other.source
+            and self.output == other.output
+            and self.interface == other.interface
+            and self.image == other.image
+            and self.active_extent == other.active_extent
+            and _TypedKey(self.context) == _TypedKey(other.context)
+        )
+
+
+ProviderBindingRequest: TypeAlias = (
+    tuple[
+        ProviderActionID,
+        SourceBindingID,
+        CoordinateOutputMorphismID,
+        LocalInterfaceID,
+        FieldImageID | None,
+        int | None,
+    ]
+    | tuple[
+        ProviderActionID,
+        SourceBindingID,
+        CoordinateOutputMorphismID,
+        LocalInterfaceID,
+        FieldImageID | None,
+        int | None,
+        object | None,
+    ]
+)
 
 
 @dataclass(frozen=True, slots=True)
@@ -106,6 +157,17 @@ class ProviderAbsorptionArena:
             [FieldImageID, SourceBindingID, FieldCellActionID, int | None], None
         ]
         | None = None,
+        validate_image_context_occurrence: Callable[
+            [
+                FieldImageID,
+                SourceBindingID,
+                FieldCellActionID,
+                int | None,
+                object,
+            ],
+            None,
+        ]
+        | None = None,
     ) -> None:
         if sources.ledger is not ledger:
             raise ValueError("provider absorption requires one index ledger")
@@ -136,12 +198,17 @@ class ProviderAbsorptionArena:
             validate_image_occurrence,
         ):
             raise TypeError("provider image occurrence validation must be executable")
+        if validate_image_context_occurrence is not None and not callable(
+            validate_image_context_occurrence,
+        ):
+            raise TypeError("provider image context validation must be executable")
         self._validate_image = validate_image
         if (validate_image is None) != (validate_image_occurrence is None):
             raise ValueError(
                 "provider image record and occurrence validation require one another"
             )
         self._validate_image_occurrence = validate_image_occurrence
+        self._validate_image_context_occurrence = validate_image_context_occurrence
         self.owner = ArenaToken("provider-actions")
         ledger.register_execution_root(self)
         prefix = f"provider-actions-{len(ledger.inventory())}"
@@ -181,6 +248,7 @@ class ProviderAbsorptionArena:
         output: CoordinateOutputMorphismID,
         interface: LocalInterfaceID,
         active_extent: int | None,
+        context: object | None,
     ) -> FieldImageRecord:
         """Prove that an occurrence names the supplied completed behavior."""
         if type(image) is not FieldImageID or self._validate_image is None:
@@ -193,7 +261,13 @@ class ProviderAbsorptionArena:
         occurrence = self._validate_image_occurrence
         if occurrence is None:
             raise TypeError("provider image occurrence validation is not configured")
-        occurrence(image, source, action, active_extent)
+        if context is None:
+            occurrence(image, source, action, active_extent)
+        else:
+            context_occurrence = self._validate_image_context_occurrence
+            if context_occurrence is None:
+                raise TypeError("provider image context validation is not configured")
+            context_occurrence(image, source, action, active_extent, context)
         return record
 
     def clear_observations(self) -> None:
@@ -261,24 +335,15 @@ class ProviderAbsorptionArena:
         interface: LocalInterfaceID,
         image: FieldImageID | None = None,
         active_extent: int | None = None,
+        context: object | None = None,
     ) -> ProviderBindingKey:
         return self.bind_many(
-            ((provider, source, output, interface, image, active_extent),)
+            ((provider, source, output, interface, image, active_extent, context),)
         )[0]
 
     def bind_many(
         self,
-        requests: tuple[
-            tuple[
-                ProviderActionID,
-                SourceBindingID,
-                CoordinateOutputMorphismID,
-                LocalInterfaceID,
-                FieldImageID | None,
-                int | None,
-            ],
-            ...,
-        ],
+        requests: tuple[ProviderBindingRequest, ...],
     ) -> tuple[ProviderBindingKey, ...]:
         """Validate and atomically publish several occurrence bindings."""
         keys = self._prepare_bindings(requests)
@@ -289,23 +354,28 @@ class ProviderAbsorptionArena:
 
     def _prepare_bindings(
         self,
-        requests: tuple[
-            tuple[
-                ProviderActionID,
-                SourceBindingID,
-                CoordinateOutputMorphismID,
-                LocalInterfaceID,
-                FieldImageID | None,
-                int | None,
-            ],
-            ...,
-        ],
+        requests: tuple[ProviderBindingRequest, ...],
     ) -> tuple[ProviderBindingKey, ...]:
         """Purely validate a batch before a caller reserves associated stores."""
         if type(requests) is not tuple:
             raise TypeError("provider binding batch must be canonical")
         keys: list[ProviderBindingKey] = []
-        for provider, source, output, interface, image, active_extent in requests:
+        for raw_request in requests:
+            if type(raw_request) is not tuple or len(raw_request) not in (6, 7):
+                raise TypeError("provider binding request has an invalid shape")
+            if len(raw_request) == 6:
+                provider, source, output, interface, image, active_extent = raw_request
+                context = None
+            else:
+                (
+                    provider,
+                    source,
+                    output,
+                    interface,
+                    image,
+                    active_extent,
+                    context,
+                ) = raw_request
             self.resolve(provider)
             self.sources.binding_extent(source)
             if type(output) is not CoordinateOutputMorphismID:
@@ -321,16 +391,20 @@ class ProviderAbsorptionArena:
                 or not 0 <= active_extent <= self.sources.binding_extent(source)
             ):
                 raise ValueError("provider active extent lies outside its source")
+            if context is not None:
+                _require_immutable_key(context, "provider image binding context")
             if image is not None:
                 action = self.resolve(provider).action
                 self._validate_image_binding(
-                    image, source, action, output, interface, active_extent
+                    image, source, action, output, interface, active_extent, context
                 )
-            elif active_extent is not None:
-                raise ValueError("scoped provider extent requires a completed image")
+            elif active_extent is not None or context is not None:
+                raise ValueError(
+                    "scoped provider occurrence requires a completed image"
+                )
             keys.append(
                 ProviderBindingKey(
-                    provider, source, output, interface, image, active_extent
+                    provider, source, output, interface, image, active_extent, context
                 )
             )
         return tuple(keys)
@@ -413,9 +487,10 @@ class ProviderAbsorptionArena:
                 binding.output,
                 binding.interface,
                 binding.active_extent,
+                binding.context,
             )
-        elif binding.active_extent is not None:
-            raise ValueError("scoped provider extent requires a completed image")
+        elif binding.active_extent is not None or binding.context is not None:
+            raise ValueError("scoped provider occurrence requires a completed image")
         self._validate_boundary(left)
         self._validate_boundary(right)
         if binding not in self._bindings:
@@ -436,6 +511,7 @@ class ProviderAbsorptionArena:
             binding.output,
             binding.interface,
             binding.active_extent,
+            binding.context,
         )
         if binding not in self._bindings:
             raise ValueError("provider occurrence was not published")

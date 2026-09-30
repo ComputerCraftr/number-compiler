@@ -3,7 +3,12 @@
 from __future__ import annotations
 
 from collections.abc import Mapping
+from typing import cast
 
+from number_compiler.hashlife.actions.field_actions import (
+    FieldCellActionID,
+    FieldGeometryID,
+)
 from number_compiler.hashlife.execution.continuations.provider_absorption import (
     ProviderBindingKey,
 )
@@ -13,6 +18,7 @@ from number_compiler.hashlife.execution.continuations.provider_image_input impor
     ProviderImageInputID,
 )
 from number_compiler.hashlife.execution.field_images import ImageRequestKey
+from number_compiler.hashlife.execution.source_image_seals import _TypedKey
 
 
 def audit_provider_image_inputs(
@@ -52,6 +58,8 @@ def audit_provider_image_inputs(
             valid &= record.request.action == provider.action
             valid &= record.request.geometry == image.geometry
             valid &= record.request.active_extent == record.binding.active_extent
+            valid &= _TypedKey(record.context) == _TypedKey(record.binding.context)
+            valid &= _TypedKey(record.request.context) == _TypedKey(record.context)
             valid &= (
                 record.request.signature
                 == root.images.resolve_interface(image.interface).signature
@@ -93,11 +101,22 @@ def audit_provider_image_inputs(
             approved.add(id(key))
         else:
             invalid.add((root._key_owner, id(key)))
-    for parent_id, children in root._children.items():
+    for edge_key, children in root._children.items():
         valid = (
             valid_root
-            and type(parent_id) is int
-            and parent_id in root._nodes
+            and type(edge_key) is tuple
+            and len(edge_key) == 4
+            and type(edge_key[0]) is int
+            and (edge_key[1] is None or type(edge_key[1]) is FieldCellActionID)
+            and (edge_key[2] is None or type(edge_key[2]) is FieldGeometryID)
+            and type(edge_key[3]) is _TypedKey
+            and type(edge_key[3].value) is tuple
+            and len(edge_key[3].value) == 2
+            and (edge_key[1] is None) == (edge_key[2] is None)
+        )
+        parent_id = edge_key[0] if type(edge_key) is tuple and edge_key else -1
+        valid &= (
+            parent_id in root._nodes
             and type(children) is tuple
             and len(children) == 2
             and all(type(child) is ProviderImageInputID for child in children)
@@ -109,6 +128,13 @@ def audit_provider_image_inputs(
             left, right = root.resolve(children[0]), root.resolve(children[1])
             valid &= left.source == source_left and right.source == source_right
             valid &= left.image == image_left and right.image == image_right
+            contexts = cast(tuple[object, ...], edge_key[3].value)
+            valid &= _TypedKey(left.context) == _TypedKey(contexts[0])
+            valid &= _TypedKey(right.context) == _TypedKey(contexts[1])
+            if edge_key[1] is not None:
+                root.images.validate_action(edge_key[1])
+                assert type(edge_key[2]) is FieldGeometryID
+                root.images.geometries.resolve(edge_key[2])
             valid &= left.binding.provider == parent.binding.provider
             valid &= right.binding.provider == parent.binding.provider
             left_width = root.sources.resolve(source_left).width

@@ -367,7 +367,7 @@ def test_higher_handles_reject_foreign_integer_bool_and_wrong_sort() -> None:
 
 
 def test_higher_records_contain_no_exact_future_payloads() -> None:
-    schema, arena = _issued_records()
+    _unused_schema_binding, arena = _issued_records()
     forbidden = {"digits", "tile", "span", "carry_rows", "future", "coefficient"}
     for record in arena._expressions:
         assert forbidden.isdisjoint(record.__dataclass_fields__)
@@ -380,7 +380,7 @@ def test_higher_payload_audit_validates_issued_records_and_rejects_mutation() ->
 
     from number_compiler.resources.payload_audit import audit_registered_payloads
 
-    schema, arena = _issued_records()
+    _unused_schema_binding, arena = _issued_records()
     assert audit_registered_payloads(arena.ledger).forbidden_future_payloads == 0
     assert audit_registered_payloads(arena.ledger).unknown_payloads == 0
 

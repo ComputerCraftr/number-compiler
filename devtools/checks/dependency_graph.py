@@ -77,9 +77,12 @@ def source_syntax(path: Path) -> SourceSyntax:
             exports.update(literal)
             export_modules.update(literal.values())
     for node in ast.walk(tree):
-        if isinstance(node, ast.AugAssign) and isinstance(node.target, ast.Name):
-            if node.target.id in export_tables:
-                raise ValueError(f"dynamic package export table: {path}")
+        if (
+            isinstance(node, ast.AugAssign)
+            and isinstance(node.target, ast.Name)
+            and node.target.id in export_tables
+        ):
+            raise ValueError(f"dynamic package export table: {path}")
         if isinstance(node, ast.Assign) and any(
             isinstance(target, ast.Subscript)
             and isinstance(target.value, ast.Name)
@@ -114,9 +117,12 @@ def source_syntax(path: Path) -> SourceSyntax:
             identifiers.add(node.name)
         elif isinstance(node, ast.Call):
             target = node.func
-            if isinstance(target, ast.Attribute) and isinstance(target.value, ast.Name):
-                if target.value.id in export_tables:
-                    raise ValueError(f"dynamic package export table: {path}")
+            if (
+                isinstance(target, ast.Attribute)
+                and isinstance(target.value, ast.Name)
+                and target.value.id in export_tables
+            ):
+                raise ValueError(f"dynamic package export table: {path}")
             if (
                 isinstance(target, ast.Name)
                 and target.id in dynamic_loaders

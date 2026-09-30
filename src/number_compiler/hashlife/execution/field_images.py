@@ -35,6 +35,10 @@ from number_compiler.hashlife.execution.field_image_domains import (
     register_field_image_domain,
     validate_field_image_authorities,
 )
+from number_compiler.hashlife.execution.source_image_seals import (
+    _require_immutable_key,
+    _TypedKey,
+)
 from number_compiler.hashlife.interfaces.diamond_quotient import (
     DiamondQuotientArena,
     LocalInterfaceID,
@@ -480,7 +484,7 @@ class FieldImageRecord:
             raise ValueError("parametric image summary has another local interface")
 
 
-@dataclass(frozen=True, slots=True)
+@dataclass(frozen=True, slots=True, eq=False)
 class ImageRequestKey:
     action: FieldCellActionID
     source: SourceBindingID
@@ -489,6 +493,33 @@ class ImageRequestKey:
     # An active boundary belongs to this source occurrence, not to the
     # canonical arithmetic action or the interned semantic image.
     active_extent: int | None = None
+    # Optional adapter-owned recurrence context. It is deliberately in the
+    # occurrence key, so a context-qualified request cannot hit an image
+    # produced for another temporal/geometry state.
+    context: object | None = None
+
+    def __hash__(self) -> int:
+        return hash(
+            (
+                self.action,
+                self.source,
+                self.geometry,
+                self.signature,
+                self.active_extent,
+                _TypedKey(self.context),
+            )
+        )
+
+    def __eq__(self, other: object) -> bool:
+        return (
+            type(other) is ImageRequestKey
+            and self.action == other.action
+            and self.source == other.source
+            and self.geometry == other.geometry
+            and self.signature == other.signature
+            and self.active_extent == other.active_extent
+            and _TypedKey(self.context) == _TypedKey(other.context)
+        )
 
 
 @dataclass(frozen=True, slots=True)
@@ -756,6 +787,8 @@ class RecursiveFieldImageArena:
             or not 0 <= key.active_extent <= self.sources.binding_extent(key.source)
         ):
             raise ValueError("image request active extent lies outside its source")
+        if key.context is not None:
+            _require_immutable_key(key.context, "provider image request context")
         geometry = self.geometries.resolve(key.geometry)
         # The quotient arena owns every production signature.  Validating its
         # allocated range closes the same-owner forged-integer hole before the
@@ -817,12 +850,15 @@ class RecursiveFieldImageArena:
         source: SourceBindingID,
         action: FieldCellActionID,
         active_extent: int | None = None,
+        context: object | None = None,
     ) -> None:
         """Prove an image's exact source/action occurrence without mutation."""
         record = self.resolve(image)
         signature = self.resolve_interface(record.interface).signature
         self.validate_binding(
-            ImageRequestKey(action, source, record.geometry, signature, active_extent),
+            ImageRequestKey(
+                action, source, record.geometry, signature, active_extent, context
+            ),
             image,
         )
 

@@ -1,14 +1,16 @@
 """Canonical symbolic totality proof over admitted semantic decision DAGs."""
 
 from __future__ import annotations
+
 from typing import TYPE_CHECKING
+
 from number_compiler.arithmetic.functions.finite_function_types import (
     BOOL,
     FinitePort,
     FunctionSignature,
     SemanticFunctionID,
-    SemanticTerminal,
     SemanticNode,
+    SemanticTerminal,
 )
 from number_compiler.arithmetic.functions.semantic_function_transactions import (
     _Transaction,

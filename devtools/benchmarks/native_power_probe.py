@@ -8,9 +8,6 @@ separate experiment.
 
 from __future__ import annotations
 
-from devtools.verification.oracles.sequence_arithmetic import (
-    reference_successor as reference_successor,
-)
 import json
 import random
 import time
@@ -22,6 +19,9 @@ from devtools.experiments.reverse_add.native_power import (
     native_two_step,
 )
 from devtools.paths import report_output, repository_root
+from devtools.verification.oracles.sequence_arithmetic import (
+    reference_successor,
+)
 from number_compiler.arithmetic.formula.derived import successor
 from number_compiler.arithmetic.formula.formula import (
     FormulaArena,
@@ -30,6 +30,8 @@ from number_compiler.arithmetic.formula.formula import (
 )
 from number_compiler.arithmetic.formula.types import RadixSpec
 from number_compiler.hashlife.execution.evaluator import materialize_values
+
+__all__ = ("reference_successor",)
 
 HERE = repository_root()
 

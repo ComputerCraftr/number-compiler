@@ -66,7 +66,7 @@ def test_declaration_preserves_outer_dependencies_padding_and_bound_capture() ->
 def test_warm_semantic_declaration_avoids_construction_and_validates_handles(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    ledger, structures, x, value, extra, inputs = _declaration_fixture()
+    ledger, structures, _unused_x_binding, value, extra, inputs = _declaration_fixture()
     result = structures.declare(value, inputs)
 
     def forbidden(*args: object, **kwargs: object) -> Never:
@@ -98,7 +98,9 @@ def test_warm_semantic_declaration_avoids_construction_and_validates_handles(
 def test_declaration_budget_rejection_is_atomic_and_eviction_preserves_ids(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    ledger, structures, x, value, extra, inputs = _declaration_fixture()
+    ledger, structures, _unused_x_binding, value, _unused_extra_binding, inputs = (
+        _declaration_fixture()
+    )
     before = ledger.snapshot()
     ledger.max_cache_entries = ledger.entries
 

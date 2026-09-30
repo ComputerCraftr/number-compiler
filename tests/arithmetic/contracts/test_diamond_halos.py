@@ -1,8 +1,5 @@
 """Right-context clipping is a certified dependency bound, not a width guess."""
 
-from tests.support.assertions import assert_rejected_atomically
-
-
 from itertools import product
 from random import Random
 
@@ -12,6 +9,7 @@ from number_compiler.arithmetic.contracts.block_effect import BlockEffect
 from number_compiler.arithmetic.contracts.block_kernel import BaseBlockEffect
 from number_compiler.projection.digit_terminal import DigitNormalizeBlockEffect
 from number_compiler.sequences.collatz.block_power import CollatzPhysicalBlockEffect
+from tests.support.assertions import assert_rejected_atomically
 from tests.support.diamond_halos import suffix_parity
 from tests.support.diamond_runtime import build, oracle
 

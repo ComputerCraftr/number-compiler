@@ -1,9 +1,7 @@
 """A completed required dyadic boundary is consumed before producer scans."""
 
-from dataclasses import replace
 from collections.abc import Callable
-from number_compiler.hashlife.tiles.tiles import TileArena
-from number_compiler.resources.ledger import ResourceLedger
+from dataclasses import replace
 from typing import Never, cast
 
 import pytest
@@ -16,7 +14,8 @@ from number_compiler.hashlife.execution.tile_causal_tasks import (
     primitive_advance,
 )
 from number_compiler.hashlife.tiles.tile_boundaries import BoundaryTileView
-from number_compiler.hashlife.tiles.tiles import TileID
+from number_compiler.hashlife.tiles.tiles import TileArena, TileID
+from number_compiler.resources.ledger import ResourceLedger
 from tests.support.tile_kernel import _runtime, _tile
 
 
@@ -411,7 +410,9 @@ def test_clipped_region_memo_hits_before_cross_observation_construction(
             assert isinstance(result, BoundaryTileView)
             return result
 
-        expected, expected_symbols, before = _warm_boundary(request, tiles, ledger)
+        _unused_expected_binding, expected_symbols, before = _warm_boundary(
+            request, tiles, ledger
+        )
 
         def forbidden(*_args: object, **_kwargs: object) -> Never:
             raise AssertionError("warm clipped boundary rebuilt spatial content")

@@ -249,10 +249,12 @@ def test_run_scratch_reuses_owner_and_rejects_nested_authority() -> None:
     assert len(owners) == 1
     assert owners[0].nodes == 0
     scratch = RunArithmeticWorkspace.for_ledger(ledger, "collatz_physical")
-    with scratch.scope():
-        with pytest.raises(RuntimeError, match="already active"):
-            with scratch.scope():
-                pass
+    with (
+        scratch.scope(),
+        pytest.raises(RuntimeError, match="already active"),
+        scratch.scope(),
+    ):
+        pass
     assert not scratch.active and scratch.nodes == 0
 
 

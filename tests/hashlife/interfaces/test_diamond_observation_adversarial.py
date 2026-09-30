@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 from random import Random
-from typing import TYPE_CHECKING
 
 import pytest
 
@@ -32,9 +31,6 @@ from tests.support.diamond_query import build, oracle
 from tests.support.diamond_quotient import (
     capture_root_emissions,
 )
-
-if TYPE_CHECKING:
-    pass
 
 
 def test_public_points_cannot_cache_intermediate_symbols_disguised_as_finite_states(

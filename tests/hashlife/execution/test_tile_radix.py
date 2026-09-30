@@ -2,8 +2,6 @@
 
 from __future__ import annotations
 
-from tests.support.assertions import assert_rejected_atomically
-
 from copy import copy
 from typing import cast
 
@@ -42,6 +40,7 @@ from number_compiler.projection.tile_radix import (
 from number_compiler.resources.ledger import ResourceLedger
 from number_compiler.resources.payload_audit import audit_registered_payloads
 from number_compiler.sequences.collatz.block_power import CollatzPhysicalBlockEffect
+from tests.support.assertions import assert_rejected_atomically
 
 
 def _digits(value: int, radix: int) -> tuple[int, ...]:

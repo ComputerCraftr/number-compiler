@@ -1,5 +1,5 @@
 theory Dyadic_Parity_Inverse_Arithmetic
-  imports Collatz_Parity_Shift_Germ
+  imports "Source_Cache_Integration.Collatz_Parity_Shift_Germ"
 begin
 
 text \<open>Executable arithmetic model of the shared odd-gain inverse_result loop.

@@ -15,13 +15,6 @@ from devtools.experiments.antihydra.event_domain import (
     source_event_exponent_domain,
 )
 from devtools.experiments.antihydra.future_grammar import ReachableFutureGrammar
-from number_compiler.arithmetic.fields.consumer_pullback import (
-    HalfOpenInterval as Interval,
-)
-from number_compiler.arithmetic.fields.branch_quotients import (
-    BranchChoiceSuffix,
-    PrimeBucketWorkspace,
-)
 from devtools.experiments.antihydra.source_safety import (
     PRIME_BANK,
     SourceBlockID,
@@ -29,8 +22,15 @@ from devtools.experiments.antihydra.source_safety import (
     event_prime_lanes,
     source_event,
 )
-from number_compiler.arithmetic.fields.consumer_pullback import ExactRational as Q
 from number_compiler.arithmetic.contracts.block_effect import BlockContextBudgetExceeded
+from number_compiler.arithmetic.fields.branch_quotients import (
+    BranchChoiceSuffix,
+    PrimeBucketWorkspace,
+)
+from number_compiler.arithmetic.fields.consumer_pullback import ExactRational as Q
+from number_compiler.arithmetic.fields.consumer_pullback import (
+    HalfOpenInterval as Interval,
+)
 from number_compiler.resources.ledger import ResourceLedger
 
 
@@ -779,4 +779,4 @@ def audit_collatz_sources(
     return report
 
 
-__all__ = ["JointRow", "audit_joint_future", "audit_collatz_sources"]
+__all__ = ["JointRow", "audit_collatz_sources", "audit_joint_future"]

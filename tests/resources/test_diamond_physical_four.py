@@ -1,8 +1,5 @@
 """The fixed C^4 interface is kernel data, with an exhaustive offline proof."""
 
-from tests.support.assertions import assert_rejected_atomically
-
-
 import hashlib
 from dataclasses import FrozenInstanceError
 from itertools import product
@@ -26,6 +23,7 @@ from number_compiler.hashlife.observation.hashlife_projection import HashLifeBlo
 from number_compiler.resources.ledger import ResourceLedger
 from number_compiler.resources.metric_collection import collect_ledger_metrics
 from number_compiler.sequences.collatz.block_power import CollatzPhysicalBlockEffect
+from tests.support.assertions import assert_rejected_atomically
 from tests.support.diamond_runtime import build, oracle
 
 

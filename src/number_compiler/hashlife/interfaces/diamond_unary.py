@@ -23,9 +23,9 @@ from number_compiler.hashlife.interfaces.diamond_kernel import (
 )
 from number_compiler.hashlife.interfaces.diamond_kernel_bridge import (
     _valid_argument,
-    scan_primitive_support,
     input_expression,
     observation_inputs,
+    scan_primitive_support,
     substitution_bindings,
 )
 from number_compiler.resources.ledger import OwnedMemo

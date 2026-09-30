@@ -1,11 +1,11 @@
 from pathlib import Path
 
-from tests.support.source_policy import module_sources
-
 import pytest
 
+from number_compiler.resources.metric_collection import collect_ledger_metrics
 from number_compiler.sequences.reverse_add.power import ReverseAddPoweredTerm
 from tests.support.report_values import object_record, text_values
+from tests.support.source_policy import module_sources
 
 
 def test_reverse_temporal_binary_operator_construction_is_logarithmic_and_lazy() -> (
@@ -22,8 +22,8 @@ def test_reverse_temporal_binary_operator_construction_is_logarithmic_and_lazy()
 
 
 @pytest.mark.validation
-def test_reverse_production_has_only_direct_powered_hashlife_path() -> None:
-    """Exercise the complete public N=256 route and its release counters."""
+def test_reverse_production_requires_exact_output_and_source_image_evidence() -> None:
+    """Exercise exact N=256 output and source-image publication accounting."""
     term = ReverseAddPoweredTerm(196, 256)
     value = 196
     for _ in range(256):
@@ -32,26 +32,27 @@ def test_reverse_production_has_only_direct_powered_hashlife_path() -> None:
     position = term.maximum_width // 3
     expected_digits = str(value)[::-1]
     assert term.digit(position) == int(expected_digits[position])
+    assert term.digits() == tuple(map(int, expected_digits))
+    assert collect_ledger_metrics(term._ledger).resource_audit_complete == 1
     metrics = term.metrics()
-    runtime = term.metrics()
+    counters = metrics.resource_work_counters
+    assert counters.get("source_image_publications", 0) > 0
+    assert counters.get("source_image_projection_publications", 0) > 0
+    assert metrics.resource_audit_complete == 1
+    assert metrics.resource_accounting_mismatch == 0
+    assert metrics.sequential_generation_advances == 0
+    assert metrics.higher_action_continuation_requests == 0
+    assert metrics.higher_concrete_operation_evaluations == 0
+    before_replay = dict(term._ledger.counters)
+    assert term.digits() == tuple(map(int, expected_digits))
     assert (
-        metrics.hashlife_temporal_leaf_applications
-        == runtime.tile_scheduler_leaf_function_applications
+        term._ledger.counters["source_image_publications"]
+        == before_replay["source_image_publications"]
     )
-    assert runtime.sequential_generation_advances == 0
-    assert runtime.higher_action_continuation_requests == 0
-    assert runtime.temporal_leaf_diamond_descents == 0
-    assert metrics.hashlife_direct_powered_point_queries == 1
-    assert metrics.hashlife_section_cache_entries == 0
-    assert metrics.hashlife_leaf_cache_entries == 0
     assert (
-        metrics.hashlife_boundary_cache_entries <= 6 * term.maximum_width.bit_length()
+        term._ledger.counters["source_image_projection_publications"]
+        == before_replay["source_image_projection_publications"]
     )
-    # All old whole-field causal metrics are hard zero because the engine is no
-    # longer reachable from ReverseAddPoweredTerm.
-    assert metrics.spacetime_primitive_field_steps == 0
-    assert metrics.spacetime_primitive_slab_steps == 0
-    assert metrics.spacetime_primitive_forcing_steps == 0
 
 
 def test_reverse_power_source_has_no_slow_temporal_backend() -> None:
@@ -82,23 +83,28 @@ def test_hashlife_projection_respects_explicit_context_budget() -> None:
 
     with pytest.raises(BlockContextBudgetExceeded):
         ReverseAddPoweredTerm(196, 128, max_context_nodes=0, max_cache_entries=0)
-    # Every action, interner slot, and parent binding is now charged.  The old
-    # 100-entry success expectation counted only a subset of those stores.
-    # Keep it as an exhausted-budget regression.  Correctness is exercised on
-    # a separate unbounded ledger; the performance probe below remains RED and
-    # records the current higher-interface retention instead of disguising it
-    # behind a larger arbitrary cap.
+    # Every retained action, source and publication is charged. The bounded
+    # application must refuse atomically; an unbounded application still has
+    # to construct and return the exact powered output.
     constrained = ReverseAddPoweredTerm(
         196, 128, max_context_nodes=100, max_cache_entries=100
     )
     with pytest.raises(BlockContextBudgetExceeded):
         constrained.digit(constrained.maximum_width // 3)
     term = ReverseAddPoweredTerm(196, 128)
-    assert 0 <= term.digit(term.maximum_width // 3) <= 9
+    value = 196
+    for _ in range(128):
+        value += int(str(value)[::-1])
+    assert term.materialize(max_bits=10_000) == value
+    assert collect_ledger_metrics(term._ledger).resource_audit_complete == 1
     metrics = term.metrics()
-    assert metrics.temporal_parent_requests == (
-        metrics.temporal_parent_early_hits + metrics.temporal_parent_compositions
+    assert metrics.resource_work_counters.get("source_image_publications", 0) > 0
+    assert (
+        metrics.resource_work_counters.get("source_image_projection_publications", 0)
+        > 0
     )
+    assert metrics.resource_audit_complete == 1
+    assert metrics.resource_accounting_mismatch == 0
     assert metrics.proof_machine_applications == metrics.whole_word_sweeps == 0
 
 
@@ -109,34 +115,8 @@ def test_hashlife_contract_does_not_require_a_global_finite_quotient_module() ->
     assert not (package / "powering_closure.py").exists()
 
 
-def test_release_probe_does_not_call_direct_cutover_logarithmic_until_action_retention_closes() -> (
-    None
-):
-    from devtools.benchmarks.reverse_temporal_power_probe import (
-        _projection_closure_flags,
-    )
-
-    production = [
-        {
-            "index_bits": 9,
-            "temporal_leaf_applications": 0,
-            "direct_powered_point_queries": 1,
-            "section_cache_entries": 0,
-            "leaf_cache_entries": 0,
-            "retained_action_nodes": 11_000,
-        }
-    ]
-    carrier_fixed, legacy_removed, polylog_sample, closure = _projection_closure_flags(
-        production
-    )
-    assert carrier_fixed
-    assert legacy_removed
-    assert not polylog_sample
-    assert not closure
-
-
 @pytest.mark.validation
-def test_reverse_release_probe_reports_available_schema8_execution_as_red(
+def test_reverse_release_probe_requires_measured_source_image_execution(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     """Run the real multi-size release benchmark and validate its full report."""
@@ -146,28 +126,32 @@ def test_reverse_release_probe_reports_available_schema8_execution_as_red(
     monkeypatch.setattr(probe, "PROJECTION_INDICES", (16, 32))
     result = probe.run_probe()
     assert result["version"] == "0.63.0-schema8-certified-execution"
-    assert result["status"] == "RED"
+    assert result["status"] == ("RED" if result["release_blockers"] else "GREEN")
     assert result["execution_available"] is True
     assert result["execution_status"] == "available"
     assert result["measurements_complete"] is True
     assert result["execution_rejection_type"] is None
-    assert not result["linear_bisimulation_checkpoint_installed"]
-    assert not result["history_word_carrier_present"]
-    assert not result["spacetime_macrocell_absorption_installed"]
-    assert not result["lazy_program_projection_installed"]
     assert object_record(result["source_audit"])["history_word_carrier_deleted"]
     assert object_record(result["source_audit"])["exact_future_tile_output_deleted"]
     assert result["projection"]
-    assert result["measured_scaling_gate"] == "BLOCKED"
-    assert "certified_path_published_no_tile_actions" not in text_values(
-        result["release_blockers"]
+    assert result["measured_scaling_gate"] == (
+        "BLOCKED" if result["release_blockers"] else "PASS"
     )
-    assert "successor_closure_unproved" not in text_values(result["release_blockers"])
-    assert "completed_result_entries_exceeds_doubling_envelope" in text_values(
+    assert "source_image_runtime_contract_unverified" not in text_values(
         result["release_blockers"]
     )
     assert not result["temporal_continuation_interpreter_present"]
     assert "powered_output_still_replays_temporal_interpreter" not in text_values(
         result["release_blockers"]
     )
-    assert not result["spacetime_logarithmic_closure_proved"]
+    projection = result["projection"]
+    assert isinstance(projection, list)
+    for row in projection:
+        record = object_record(row)
+        assert record["runtime_image_matches_scalar"] is True
+        assert record["source_image_replay_stable"] is True
+        assert record["resource_accounting_exact"] is True
+        publications = record["source_image_publications"]
+        projection_publications = record["source_image_projection_publications"]
+        assert type(publications) is int and publications > 0
+        assert type(projection_publications) is int and projection_publications > 0

@@ -2,8 +2,7 @@
 
 from __future__ import annotations
 
-from tests.support.assertions import assert_rejected_atomically
-
+from functools import partial
 from typing import TYPE_CHECKING
 
 import pytest
@@ -18,6 +17,7 @@ from number_compiler.hashlife.interfaces.diamond_boundary import (
     ImageBinding,
 )
 from number_compiler.sequences.collatz.block_power import CollatzPhysicalBlockEffect
+from tests.support.assertions import assert_rejected_atomically
 from tests.support.diamond_runtime import build
 
 if TYPE_CHECKING:
@@ -69,7 +69,7 @@ def test_foreign_incoming_state_cannot_disappear_into_warm_reset_key() -> None:
                 runtime._cached_transfer,
             ):
                 assert_rejected_atomically(
-                    runtime.ledger, lambda: method(task), ValueError
+                    runtime.ledger, partial(method, task), ValueError
                 )
 
 

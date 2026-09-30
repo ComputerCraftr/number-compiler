@@ -7,8 +7,8 @@ from collections.abc import Callable, Mapping
 from number_compiler.arithmetic.functions.finite_function_types import (
     BOOL,
     AtomSort,
-    FunctionSignature,
     FinitePort,
+    FunctionSignature,
     _union_inputs,
 )
 from number_compiler.arithmetic.functions.finite_port_action import PortVariable
@@ -17,8 +17,8 @@ from number_compiler.hashlife.interfaces.boolean_composition import (
 )
 from number_compiler.hashlife.interfaces.semantic_bits import (
     BitFunctionArena,
-    FactoredFunctionID,
     FactoredFunction,
+    FactoredFunctionID,
     _Circuit,
     substitute_boolean,
 )

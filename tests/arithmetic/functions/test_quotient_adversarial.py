@@ -2,9 +2,6 @@
 
 from __future__ import annotations
 
-from tests.support.assertions import assert_rejected_atomically
-from tests.support.diamond_quotient import parent_request, source_cells
-
 from collections.abc import Callable
 from dataclasses import replace
 from itertools import product
@@ -39,6 +36,8 @@ from number_compiler.hashlife.interfaces.diamond_quotient import (
     MacroInterface,
 )
 from number_compiler.resources.ledger import ResourceLedger
+from tests.support.assertions import assert_rejected_atomically
+from tests.support.diamond_quotient import parent_request, source_cells
 
 if TYPE_CHECKING:
     from number_compiler.arithmetic.functions.finite_function_types import (
@@ -142,7 +141,9 @@ def test_failed_complete_normalization_is_atomic_for_node_budget_too() -> None:
 
 def test_parent_normalization_failure_does_not_leave_a_successful_child_memo() -> None:
     ledger, functions, quotient, cells, signature, components, one = _fixture()
-    child, cell, key = parent_request(quotient, cells, signature, components)
+    _unused_child_binding, _unused_cell_binding, key = parent_request(
+        quotient, cells, signature, components
+    )
     ledger.tighten_limits(None, ledger.entries + 1)
     before = _retention(ledger, functions, quotient)
     with pytest.raises(BlockContextBudgetExceeded):

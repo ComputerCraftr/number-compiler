@@ -13,7 +13,7 @@ from number_compiler.hashlife.execution.continuations.diamond_runtime import (
 from number_compiler.hashlife.observation.diamond_observers import NonblankBlockEffect
 from number_compiler.resources.ledger import ResourceLedger
 from number_compiler.sequences.collatz.block_power import CollatzPhysicalBlockEffect
-from tests.support.diamond_query import build, oracle, bounded_case
+from tests.support.diamond_query import bounded_case, build, oracle
 
 
 def test_nonblank_observer_is_admitted_by_compiler_as_immutable_primitive() -> None:

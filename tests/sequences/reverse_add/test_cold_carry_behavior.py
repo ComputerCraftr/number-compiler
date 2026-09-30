@@ -1,11 +1,8 @@
 """Cold output-carry observations merge cancellation before exact successors exist."""
 
-from tests.support.reference_arithmetic import carry_summary as _sectors
 from typing import Never
 
 import pytest
-
-from tests.support.reverse_interface import reverse_interface_payload
 
 from number_compiler.arithmetic.contracts.block_kernel import BaseBlockEffect
 from number_compiler.hashlife.behavior.reverse_bound_output import ReverseBoundOutput
@@ -15,6 +12,8 @@ from number_compiler.hashlife.execution.tile_causal_interfaces import (
 )
 from number_compiler.hashlife.execution.tile_causal_tasks import CausalFrame
 from number_compiler.hashlife.tiles.tiles import TileAlphabetID, TileLease
+from tests.support.reference_arithmetic import carry_summary as _sectors
+from tests.support.reverse_interface import reverse_interface_payload
 from tests.support.tile_kernel import _runtime, _tile
 
 

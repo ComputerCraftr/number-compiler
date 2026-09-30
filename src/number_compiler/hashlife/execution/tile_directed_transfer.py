@@ -2,11 +2,6 @@
 
 from __future__ import annotations
 
-from number_compiler.resources.causal_workspace import (
-    CausalFrameStack,
-    CausalValueStack,
-)
-
 from dataclasses import dataclass
 from typing import Protocol
 
@@ -29,6 +24,10 @@ from number_compiler.hashlife.tiles.tile_result_records import (
 )
 from number_compiler.hashlife.tiles.tile_results import CompletedResultArena
 from number_compiler.hashlife.tiles.tiles import TileArena, TileID
+from number_compiler.resources.causal_workspace import (
+    CausalFrameStack,
+    CausalValueStack,
+)
 from number_compiler.resources.ledger import ResourceLedger
 
 

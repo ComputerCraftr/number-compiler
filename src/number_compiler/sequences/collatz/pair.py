@@ -11,15 +11,15 @@ valuation sequence is exactly a run-length encoding of the parity coordinate.
 """
 
 from __future__ import annotations
-from number_compiler.arithmetic.contracts.input_validation import (
-    normalized_integer_pair,
-)
 
 from collections.abc import Sequence
 from dataclasses import dataclass
 
 from number_compiler.arithmetic.carry.collatz_carry_wires import (
     collatz_digit_carry_wires,
+)
+from number_compiler.arithmetic.contracts.input_validation import (
+    normalized_integer_pair,
 )
 from number_compiler.arithmetic.fields.morphism_core import AffineCocycle, binary_power
 from number_compiler.arithmetic.fields.radix import bit_width, digits_lsd

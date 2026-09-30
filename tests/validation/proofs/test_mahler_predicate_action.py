@@ -15,6 +15,8 @@ from devtools.experiments.antihydra.mahler_predicate import (
 from devtools.experiments.antihydra.source_safety import SourceSafetyWorkspace
 from number_compiler.arithmetic.fields.consumer_pullback import (
     ExactRational as Q,
+)
+from number_compiler.arithmetic.fields.consumer_pullback import (
     SaturatingAffineAction,
 )
 from number_compiler.resources.ledger import ResourceLedger

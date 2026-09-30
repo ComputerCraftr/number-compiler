@@ -2,7 +2,6 @@ from __future__ import annotations
 
 import gc
 from pathlib import Path
-from tests.support.source_policy import module_sources
 
 from devtools.verification.block_composed import ComposedBlockEffect
 from number_compiler.arithmetic.contracts.block_effect import BoundarySide
@@ -16,6 +15,7 @@ from number_compiler.arithmetic.fields.dyadic_tile import (
 from number_compiler.hashlife.execution.tile_kernel import PrimitiveTileKernelAdapter
 from number_compiler.sequences.collatz.block_power import PoweredCollatzTerm
 from number_compiler.sequences.reverse_add.power import ReverseAddPoweredTerm
+from tests.support.source_policy import module_sources
 
 
 def test_persistent_macro_key_retains_canonical_tile_identity() -> None:

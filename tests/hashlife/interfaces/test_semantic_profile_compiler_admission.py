@@ -1,8 +1,5 @@
 """Profile encodings preserve binder scope before admission or cache work."""
 
-from tests.support.assertions import assert_rejected_atomically
-
-
 from number_compiler.arithmetic.contracts.physical_collatz_kernel import (
     PhysicalCollatzFourBlockEffect,
 )
@@ -12,6 +9,7 @@ from number_compiler.hashlife.interfaces.semantic_expression_tasks import (
     StructuredExpressionTask,
 )
 from number_compiler.hashlife.interfaces.semantic_structures import StructureArena
+from tests.support.assertions import assert_rejected_atomically
 from tests.support.diamond_query import build
 
 

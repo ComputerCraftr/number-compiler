@@ -67,7 +67,9 @@ def test_numeric_components_cannot_silently_narrow_admissibility() -> None:
     with build_tile_projection(
         CollatzPhysicalBlockEffect(), SourceGeometry(ledger, source)
     ) as projection:
-        adapter, action, interface_id, arena = division_interface(projection)
+        _unused_adapter_binding, _unused_action_binding, interface_id, arena = (
+            division_interface(projection)
+        )
         record = arena.resolve(interface_id)
         interface = arena.interface(record.signature)
         before = ledger.snapshot()

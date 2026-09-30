@@ -2,8 +2,6 @@
 
 from __future__ import annotations
 
-from number_compiler.resources.temporal_diagnostics import METRICS_SCHEMA_VERSION
-
 from types import SimpleNamespace
 from typing import TYPE_CHECKING
 
@@ -14,6 +12,7 @@ from devtools.benchmarks.field_image_growth_probe import (
     cold_rows,
     ordered_horizons,
 )
+from number_compiler.resources.temporal_diagnostics import METRICS_SCHEMA_VERSION
 from tests.support.report_values import object_record, text_values
 
 if TYPE_CHECKING:

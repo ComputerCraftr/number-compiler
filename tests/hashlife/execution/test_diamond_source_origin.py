@@ -2,9 +2,8 @@
 
 from __future__ import annotations
 
-from tests.support.assertions import assert_rejected_atomically
-
 from dataclasses import replace
+from functools import partial
 from typing import TYPE_CHECKING, Literal, Never, cast
 
 import pytest
@@ -22,6 +21,7 @@ from number_compiler.hashlife.execution.continuations.diamond_tasks import (
 )
 from number_compiler.hashlife.execution.diamond_payload import DiamondPayloadRegistry
 from number_compiler.hashlife.interfaces.diamond_boundary import ImageBinding
+from tests.support.assertions import assert_rejected_atomically
 from tests.support.diamond_higher_context import machine
 
 if TYPE_CHECKING:
@@ -125,7 +125,7 @@ def test_warm_admission_still_rejects_foreign_reflected_and_future_cells(
             else replace(request, cell=bad_cell)
         )
         assert_rejected_atomically(
-            runtime.ledger, lambda: runtime.execute(request), (TypeError, ValueError)
+            runtime.ledger, partial(runtime.execute, request), (TypeError, ValueError)
         )
 
 

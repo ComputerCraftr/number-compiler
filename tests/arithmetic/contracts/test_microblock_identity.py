@@ -1,7 +1,5 @@
 from __future__ import annotations
 
-from tests.support.assertions import assert_rejected_atomically
-
 from typing import cast
 
 import pytest
@@ -17,7 +15,8 @@ from number_compiler.projection.microblock_cache import (
     MicroblockCache,
     MicroblockKey,
 )
-from number_compiler.resources.ledger import ResourceLedger, LedgerSnapshot
+from number_compiler.resources.ledger import LedgerSnapshot, ResourceLedger
+from tests.support.assertions import assert_rejected_atomically
 
 
 def _fixture() -> tuple[

@@ -2,8 +2,6 @@
 
 from __future__ import annotations
 
-from tests.support.assertions import collect_counter_quantities
-
 from typing import TYPE_CHECKING
 
 from number_compiler.hashlife.observation.hashlife_projection import HashLifeBlockIndex
@@ -12,6 +10,7 @@ from number_compiler.resources.ledger import ResourceLedger
 from number_compiler.resources.metric_collection import collect_ledger_metrics
 from number_compiler.resources.stores import LedgerList
 from number_compiler.sequences.collatz.block_power import PoweredCollatzTerm
+from tests.support.assertions import collect_counter_quantities
 
 if TYPE_CHECKING:
     from number_compiler.resources.metric_records import LedgerMetrics
@@ -86,20 +85,20 @@ def test_collatz_query_eviction_preserves_canonical_temporal_compositions() -> N
     )
 
 
-def test_collatz_diamond_does_not_report_proof_states_as_runtime_classes() -> None:
+def test_collatz_source_image_metrics_do_not_report_proof_sizes_as_runtime_classes() -> (
+    None
+):
     term = PoweredCollatzTerm(27, 32)
     term.digit(0)
     metrics = term.metrics()
     assert_node_partition(metrics)
-    assert (
-        metrics.collatz_c4_proof_left_state_classes,
-        metrics.collatz_c4_proof_right_state_classes,
-    ) == (50, 90)
     assert metrics.local_interface_nodes == metrics.field_action_nodes == 0
     assert metrics.canonical_tile_nodes == 0
     assert metrics.bounded_application_exact_endpoint_entries == 0
     assert metrics.forbidden_future_payloads == 0
     assert metrics.whole_word_sweeps == metrics.proof_machine_applications == 0
+    assert metrics.resource_work_counters["source_image_publications"] > 0
+    assert metrics.resource_work_counters["source_image_projection_publications"] > 0
 
 
 def test_exact_spatial_population_does_not_add_work_visits_to_retained_nodes() -> None:

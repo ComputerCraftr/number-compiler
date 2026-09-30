@@ -22,11 +22,11 @@ from devtools.experiments.antihydra.source_safety import (
     SourceSafetyWorkspace,
     source_event,
 )
+from number_compiler.arithmetic.contracts.block_effect import BlockContextBudgetExceeded
+from number_compiler.arithmetic.fields.consumer_pullback import ExactRational as Q
 from number_compiler.arithmetic.fields.consumer_pullback import (
     HalfOpenInterval as Interval,
 )
-from number_compiler.arithmetic.contracts.block_effect import BlockContextBudgetExceeded
-from number_compiler.arithmetic.fields.consumer_pullback import ExactRational as Q
 from number_compiler.resources.stores import LedgerDict
 
 

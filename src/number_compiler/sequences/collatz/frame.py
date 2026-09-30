@@ -37,10 +37,10 @@ from typing import TYPE_CHECKING
 from number_compiler.arithmetic.automata.program_word import (
     EMPTY,
     SourceWord,
-    source_word_key,
     drop_source_prefix,
-    validate_source_word,
     iter_runs,
+    source_word_key,
+    validate_source_word,
     word_metrics,
 )
 from number_compiler.arithmetic.fields.adic_morphism import PadicRadialQuotient
