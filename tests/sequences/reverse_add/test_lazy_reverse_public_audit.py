@@ -75,14 +75,17 @@ def test_public_reverse_summary_eviction_preserves_result_and_program_identity()
     assert term.digit(3) == expected
     after = term.metrics()
     assert after.action_program_nodes == before.action_program_nodes
-    # Query summaries are evictable, while the separately budgeted exact leaf
-    # microblock survives and answers this one coordinate without semantic
-    # replay or another temporal publication.
+    # Query summaries are evictable, while the completed recursive occurrence
+    # remains the authoritative semantic result.  Re-answering the coordinate
+    # must not republish the occurrence or reapply another temporal provider.
     assert (
         after.bounded_application_nonlinear_branch_evaluations
         == before.bounded_application_nonlinear_branch_evaluations
     )
-    assert term._ledger.counters.get("microblock_hits", 0) > 0
+    counters = term._ledger.counters
+    assert counters.get("reverse_source_recursive_occurrence_publications", 0) == 1
+    assert counters.get("reverse_source_completed_child_publications", 0) == 1
+    assert counters.get("reverse_recursive_provider_applications", 0) == 5
     assert after.temporal_parent_compositions == before.temporal_parent_compositions
     assert after.resource_accounting_mismatch == 0
     assert collect_ledger_metrics(term._ledger).resource_audit_complete == 1

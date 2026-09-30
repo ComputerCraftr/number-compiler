@@ -9,7 +9,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from operator import add, lt, mul
-from typing import TYPE_CHECKING, Self, cast
+from typing import TYPE_CHECKING, Literal, Self, cast
 
 from number_compiler.arithmetic.contracts.block_effect import BlockContextBudgetExceeded
 from number_compiler.arithmetic.fields.consumer_pullback import (
@@ -100,14 +100,22 @@ class MahlerOccurrenceConsumer:
     """Owned transient results and bounded shared, complete occurrence records."""
 
     def __init__(
-        self, ledger: ResourceLedger, law: DyadicReturnLaw, *, shared_cache: bool
+        self,
+        ledger: ResourceLedger,
+        law: DyadicReturnLaw,
+        *,
+        shared_cache: bool,
+        counter_family: Literal["mahler", "antihydra"] = "mahler",
     ) -> None:
         if law.gains != (3, 3) or law.offsets != (0, -1):
             raise ValueError("Mahler consumer requires its pinned arithmetic law")
         if type(shared_cache) is not bool:
             raise TypeError("shared_cache must be a bool")
+        if counter_family not in ("mahler", "antihydra"):
+            raise ValueError("source-action counter family must be Mahler or Antihydra")
         self.ledger = ledger
         self.law = law
+        self.counter_prefix = f"{counter_family}_hashlife_"
         for metric in (
             "source_action_lookups",
             "source_action_exact_hits",
@@ -120,9 +128,10 @@ class MahlerOccurrenceConsumer:
             "source_action_applied_parent_hits",
             "source_action_admission_rejections",
             "source_action_bypasses",
+            "source_action_disabled_bypasses",
             "failed_work",
         ):
-            self.ledger.bump("mahler_hashlife_" + metric, 0)
+            self.ledger.bump(self.counter_prefix + metric, 0)
         owner = ledger.register(
             f"mahler-source-action-construction-{len(ledger.inventory())}",
             "arithmetic_workspace",
@@ -132,9 +141,10 @@ class MahlerOccurrenceConsumer:
             tuple[_SupportNode, MahlerSourceBoundSafetyAction, int],
         ] = OwnedMemo(ledger, owner, nodes_per_entry=3)
         self.lease: CacheLease | None = None
-        if shared_cache:
+        cache = get_process_cache() if shared_cache else None
+        if cache is not None and cache.enabled:
             try:
-                self.lease = get_process_cache().acquire(
+                self.lease = cache.acquire(
                     "mahler-source-bound-action",
                     "integer-root-v2-publisher-qualified",
                     cast(
@@ -148,6 +158,8 @@ class MahlerOccurrenceConsumer:
                 )
             except BlockContextBudgetExceeded:
                 self.count("source_action_bypasses")
+        else:
+            self.count("source_action_disabled_bypasses")
 
     def __enter__(self) -> Self:
         return self
@@ -156,12 +168,14 @@ class MahlerOccurrenceConsumer:
         self.close()
 
     def count(self, suffix: str, amount: int = 1) -> None:
-        self.ledger.bump("mahler_hashlife_" + suffix, amount)
+        self.ledger.bump(self.counter_prefix + suffix, amount)
 
     def close(self) -> None:
-        self.records.dispose()
-        if self.lease is not None:
-            self.lease.close()
+        try:
+            self.records.dispose()
+        finally:
+            if self.lease is not None:
+                self.lease.close()
 
     def _check(self, node: _SupportNode, action: MahlerSourceBoundSafetyAction) -> None:
         """Check consumer consistency, not re-prove the issued source recurrence.

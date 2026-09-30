@@ -9,6 +9,9 @@ from typing import TYPE_CHECKING, TypeVar
 from number_compiler.arithmetic.contracts.exact_tree_context import source_reads_only
 from number_compiler.arithmetic.contracts.input_validation import require_integer
 from number_compiler.resources.ledger import OwnedMemo, ResourceLedger
+from number_compiler.resources.output_stream_metrics import (
+    initialize_output_stream_metrics,
+)
 from number_compiler.resources.stores import LedgerList
 from number_compiler.sequences.antihydra.blocks import (
     ArithmeticCylinder,
@@ -225,6 +228,11 @@ class AntihydraArithmeticTerm:
             else _engine
         )
         self.ledger = self.engine.ledger
+        initialize_output_stream_metrics(self.ledger, "antihydra_output_stream")
+        self.ledger.bump("antihydra_digit_conversion_requests", 0)
+        self.ledger.bump("antihydra_digit_conversion_emitted_digits", 0)
+        self.ledger.bump("antihydra_digit_conversion_operand_bits", 0)
+        self.ledger.bump("antihydra_digit_conversion_failures", 0)
         term_serial = self.engine.term_serial
         self.engine.term_serial += 1
         self.segment_owner = self.ledger.register(
@@ -235,6 +243,7 @@ class AntihydraArithmeticTerm:
             self.segment_owner, nodes_per_entry=1, append_only=False
         )
         self._mahler_prepared = False
+        self._source_action_prepared = False
         self._segments_ready = False
         self.ledger.register_container(
             self.segment_owner,
@@ -306,6 +315,21 @@ class AntihydraArithmeticTerm:
         self.engine.count("arithmetic_block_applications", len(self._segments))
         return self._segments
 
+    def prepare_source_action(self) -> None:
+        """Enable complete-root occurrence reuse before cold arithmetic discovery.
+
+        The reusable record is the authenticated source-bound arithmetic action,
+        not a finite Mahler quotient class.  Point/value consumers may use its
+        exact affine transfer while Mahler keeps its separate safety binding.
+        """
+        if (
+            self.engine.shared_cache
+            and self.arithmetic_workspace is None
+            and self._result is None
+            and self.requested >= 1024
+        ):
+            self._source_action_prepared = True
+
     def prepare_mahler(self) -> None:
         """Declare a large requested consumer before arithmetic admission.
 
@@ -318,6 +342,8 @@ class AntihydraArithmeticTerm:
             and self.requested >= 1024
         ):
             self._mahler_prepared = True
+            if self.engine.shared_cache:
+                self._source_action_prepared = True
 
     def _arithmetic_image(self) -> AntihydraArithmeticImageWorkspace:
         """One admitted source image shared by arithmetic and safety demands."""
@@ -333,6 +359,7 @@ class AntihydraArithmeticTerm:
                 self.requested,
                 shared_cache=self.engine.shared_cache,
                 prepare_mahler=self._mahler_prepared,
+                prepare_source_action=self._source_action_prepared,
             )
             self.arithmetic_workspace = workspace
         if (
@@ -359,6 +386,7 @@ class AntihydraArithmeticTerm:
         if self._result is not None:
             self._result.require_source()
             return self._result.h
+        self.prepare_source_action()
         value = self._arithmetic_image().endpoint()
         if value.bit_length() > self.max_state_bits:
             raise ValueError("Antihydra arithmetic state exceeds bit budget")
@@ -374,6 +402,7 @@ class AntihydraArithmeticTerm:
         index = require_integer(index, "digit coordinate")
         if index < 0:
             raise IndexError(index)
+        self.prepare_source_action()
         symbol = binary_cell(self._arithmetic_image(), index)
         if symbol == 2:
             raise IndexError(index)

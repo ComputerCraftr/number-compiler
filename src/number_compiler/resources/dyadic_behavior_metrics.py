@@ -22,7 +22,7 @@ def collatz_behavior_metrics(term: PoweredCollatzTerm) -> HashLifeBehaviorMetric
     sources = 0 if workspace is None else len(workspace.sources)
     images = 0 if workspace is None else len(workspace.images)
     support = 0 if workspace is None else len(workspace.support)
-    report = collect_ledger_metrics(term._ledger)
+    report = collect_ledger_metrics(term._ledger, audit_payloads=False)
     result = HashLifeBehaviorMetrics(
         effect_exponent=term.steps,
         logical_width_bound=term.maximum_width,

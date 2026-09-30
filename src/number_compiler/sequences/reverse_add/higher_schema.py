@@ -6,7 +6,6 @@ from collections.abc import MutableMapping
 from dataclasses import dataclass
 from typing import Literal
 
-from devtools.experiments.reverse_add.field_action import ReverseFieldActionArena
 from number_compiler.arithmetic.contracts.block_effect import (
     BlockEffect,
     BoundarySide,
@@ -16,6 +15,7 @@ from number_compiler.arithmetic.contracts.block_kernel import BaseBlockEffect
 from number_compiler.hashlife.actions.field_actions import FieldCellActionID
 from number_compiler.projection.digit_terminal import DigitNormalizeBlockEffect
 from number_compiler.resources.ledger import ResourceLedger
+from number_compiler.sequences.reverse_add.field_action import ReverseFieldActionArena
 
 
 @dataclass(frozen=True, slots=True)

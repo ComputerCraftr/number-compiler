@@ -230,6 +230,11 @@ session Comma_Arithmetic in comma = "HOL-Number_Theory" +
     Comma_Boundary_Primitives
     Comma_Literal_Path
 
+session Comma_Interior_Cache in comma_interior_cache = Comma_Arithmetic +
+  options [document = false, quick_and_dirty = false, threads = 1]
+  theories
+    Comma_Normalized_Cycle
+
 session Comma_Frobenius_Recurrence in comma_frobenius_recurrence = Comma_Arithmetic +
   options [document = false, quick_and_dirty = false, threads = 1]
   theories
@@ -473,9 +478,9 @@ session Comma_Decade_Layer_Instance in comma_decade_layer_full = Comma_Decade_La
   theories
     Comma_Decade_Layer_Instance
 
-session Comma_Future_Check in comma_future_instance = Comma_Fast_Control +
+session Comma_Future_Check in comma_future_instance = Comma_Total_Macro +
   options [document = false, quick_and_dirty = false, threads = 1]
-  sessions Comma_Total_Macro Comma_Literal_Bridge
+  sessions Comma_Literal_Bridge
   theories
     Comma_Fast_Future_Check
     Comma_Future_Cycle_Check
@@ -514,6 +519,13 @@ session Comma_Future_Source in comma_future_source = Comma_Future_Check +
   sessions Comma_Source_Uniqueness
   theories
     Comma_Future_Source
+
+session Comma_Global_Future_Safety in comma_future_global = Comma_Future_Checked_Instance +
+  options [document = false, quick_and_dirty = false, threads = 1]
+  sessions Comma_Future_Source Comma_Decade_Summary_Transport
+  theories
+    Comma_Global_Future_Safety
+    Comma_Global_Root_Safety
 
 session Comma_Fast_Decade_Rank in comma_fast_rank = Comma_Decade_Residual_Core +
   options [document = false, quick_and_dirty = false, threads = 1]

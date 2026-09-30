@@ -1,7 +1,7 @@
 """Shared containment checks for retired reverse temporal execution paths."""
 
 import importlib.util
-from collections.abc import Callable
+from collections.abc import Callable, Mapping
 from typing import Never
 
 import pytest
@@ -31,3 +31,18 @@ def forbid_uniform_context_compilation(
     monkeypatch.setattr(
         uniform_projection_reference.ProjectionClause, "instantiate", forbidden
     )
+
+
+def assert_completed_child_work(counters: Mapping[str, int]) -> None:
+    """Require actual provider joins and reject causal/terminal reconstruction."""
+    for name in (
+        "reverse_recursive_completed_child_joins",
+        "reverse_provider_parent_substitutions",
+    ):
+        assert counters.get(name, 0) > 0
+    for name in (
+        "source_image_primitive_applications",
+        "reverse_recursive_direct_temporal_publications",
+        "reverse_recursive_terminal_publications",
+    ):
+        assert counters.get(name, 0) == 0

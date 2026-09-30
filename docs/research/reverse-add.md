@@ -40,6 +40,21 @@ bound with midpoint realization forbidden.
 
 [Measured spatial change and temporal boundary](../sprints/week-of-2026-09-27/reverse-add.md#demanded-reverse-carry-regions).
 
+### Bounded completed-child migration
+
+The decimal source-image adapter now has a bounded recursive fallback for rejected
+same-carry chambers through 128 steps. Spatial parents combine admitted child
+images; output consumes the resulting pair occurrence with forward carry.
+This restores bounded exact queries, including seed-196 D20, without restoring
+the deleted universal machine. The same-carry clause retains its existing scope.
+
+This is not the completed temporal quotient: higher-interface construction and
+observation still expand work, and the imported D32/D64/D128 controls show roughly
+fourfold higher-operation counts per doubling. The checked terminal-fold lemmas
+assume a valid pair stream; they do not refine the Python completed-child
+constructor. These performance and executable-refinement obligations remain open.
+[Integration and adversarial checks](../sprints/week-of-2026-09-27/reverse-add.md#september-30--bounded-completed-child-parent-joins).
+
 ## Source authority and publication
 
 ### Admitted source pair
@@ -901,3 +916,14 @@ research-only Frobenius patch are different inputs and must not be attributed
 the same scope.
 
 [Selective integration audit](../sprints/week-of-2026-09-27/shared.md#recursive-dyadic-report-integration).
+
+
+### Completed-image observation contract
+
+An exact terminal observer must derive its result from the admitted output
+morphism. Validating an image before independently powering the original seed
+does not establish that consumer refinement. The all-level Q11 observer candidate
+reproduces bounded 196 endpoints, but its new executor still performs one cold
+pair projection per represented step and retains uncharged global state. A
+converter-level repeated-word ordering defect is separately scoped from the
+Q11 leaf factorization. See the [integration audit and exact witnesses](../sprints/week-of-2026-09-27/reverse-add.md#september-30--all-level-terminal-observer-integration-audit).

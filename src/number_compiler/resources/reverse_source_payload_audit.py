@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from collections.abc import Mapping, Sized
 from dataclasses import dataclass
+from hashlib import sha256
 from typing import cast
 
 from number_compiler.resources.ledger import (
@@ -73,15 +74,56 @@ def audit_reverse_source_payloads(
     containers: Mapping[int, object],
 ) -> ReverseSourcePayloadAudit:
     """Validate reverse source records without constructing or evaluating images."""
+    # Keep unrelated ledgers independent of the reverse runtime imports below.
+    # This is only an import gate; every admitted root still passes the exact
+    # arena, owner, and authority checks in the audit body.
+    if not any(
+        type(root).__module__.startswith("number_compiler.sequences.reverse_add.")
+        for root in roots
+    ):
+        return ReverseSourcePayloadAudit(frozenset(), frozenset(), frozenset())
+
     from number_compiler.arithmetic.carry.carry_monoid import CarryFn
+    from number_compiler.arithmetic.contracts.exact_tree_context import (
+        OriginalSourceConstruction,
+    )
     from number_compiler.arithmetic.contracts.scoped_handles import ExactSource
+    from number_compiler.arithmetic.contracts.semantic_identity import SemanticIdentity
+    from number_compiler.hashlife.actions.diamond_actions import PortSignatureID
+    from number_compiler.hashlife.actions.field_actions import (
+        FieldCellActionID,
+        FieldGeometry,
+        FieldGeometryArena,
+    )
+    from number_compiler.hashlife.execution.continuations.higher_interfaces import (
+        HigherMorphismSort,
+        HigherPort,
+    )
+    from number_compiler.hashlife.execution.continuations.higher_macro_composer import (
+        HigherSpatialMacroComposer,
+    )
+    from number_compiler.hashlife.execution.continuations.higher_types import (
+        FieldStateSort,
+        FieldSymbolSort,
+    )
     from number_compiler.hashlife.execution.source_bound_images import (
         SourceBoundSchedulerCore,
         SourceImageID,
         _ImageRecord,
     )
     from number_compiler.hashlife.execution.tile_scheduler import TileScheduler
+    from number_compiler.sequences.reverse_add.higher_interface import (
+        ReverseHigherInterfaceCompilation,
+    )
+    from number_compiler.sequences.reverse_add.recursive_adapters import (
+        _ReverseRecursiveFieldAdapter,
+    )
+    from number_compiler.sequences.reverse_add.recursive_cutover import (
+        ReverseRecursiveOccurrence,
+        ReverseRecursiveTemporalCutover,
+    )
     from number_compiler.sequences.reverse_add.source_images import (
+        MAX_COMPLETED_CHILD_FALLBACK_STEPS,
         ReverseActionArena,
         ReverseActionID,
         ReverseActionNode,
@@ -170,7 +212,7 @@ def audit_reverse_source_payloads(
         authority = getattr(root, "_authority", None)
         valid &= (
             type(authority) is tuple
-            and len(authority) == 8
+            and len(authority) == 9
             and authority[0] is ledger
             and authority[1] is actions
             and authority[2] is root.source
@@ -179,6 +221,10 @@ def audit_reverse_source_payloads(
             and authority[5] is root.adapter
             and authority[6] == root.steps
             and authority[7] == root.base
+            and (
+                authority[8] is None
+                or authority[8] is root.adapter._recursive_construction
+            )
         )
         stores = (
             (actions._nodes, "reverse_source_action"),
@@ -257,6 +303,365 @@ def audit_reverse_source_payloads(
             or root.adapter.ledger is not ledger
         ):
             valid = False
+        recursive_store = getattr(root.adapter, "_recursive_occurrences", None)
+        recursive_owner = getattr(recursive_store, "owner", -1)
+        occurrence_memo = (
+            cast(OwnedMemo[int, ReverseRecursiveOccurrence], recursive_store)
+            if type(recursive_store) is OwnedMemo
+            else None
+        )
+        recursive_store_valid = _store_valid(
+            recursive_owner,
+            recursive_store,
+            "reverse_recursive_occurrence_binding",
+            containers,
+            inventory,
+        )
+        valid &= recursive_store_valid and occurrence_memo is not None
+        recursive = getattr(root.adapter, "_recursive", None)
+        construction = getattr(root.adapter, "_recursive_construction", None)
+        if construction is not None:
+            try:
+                if type(construction) is not OriginalSourceConstruction:
+                    raise TypeError("reverse source construction has another owner")
+                exact_pair_source = construction.validate_source()
+                original = actions.source(root.source)
+                maximum_steps = root.adapter._recursive_maximum_steps
+                bounded_horizon = (
+                    type(root.steps) is int
+                    and type(maximum_steps) is int
+                    and 3
+                    <= root.steps
+                    <= maximum_steps
+                    <= MAX_COMPLETED_CHILD_FALLBACK_STEPS
+                )
+                expected_extent = (
+                    1
+                    << ((max(1, len(original.digits) + maximum_steps) - 1).bit_length())
+                    if bounded_horizon
+                    else None
+                )
+                recursive_authority_valid = (
+                    exact_pair_source.base == original.base
+                    and exact_pair_source.orbit == "reverse-add-pair"
+                    and exact_pair_source.blank == 2 * original.base - 1
+                    and exact_pair_source.extent == expected_extent
+                    and exact_pair_source.alphabet_size == 2 * original.base
+                    and len(exact_pair_source.digits) == len(original.digits)
+                    and all(
+                        exact_pair_source.digits[index]
+                        == original.digits[index]
+                        + original.digits[len(original.digits) - index - 1]
+                        for index in range(len(original.digits))
+                    )
+                    and bounded_horizon
+                )
+            except (TypeError, ValueError, IndexError, AttributeError):
+                recursive_authority_valid = False
+            valid &= recursive_authority_valid
+        else:
+            valid &= recursive is None and not recursive_store
+        if recursive is not None:
+            recursive_valid = (
+                type(recursive) is ReverseRecursiveTemporalCutover
+                and recursive.ledger is ledger
+                and recursive.source.owner is recursive.sources.owner
+                and recursive.maximum_steps == root.adapter._recursive_maximum_steps
+                and recursive.maximum_steps >= root.steps
+                and root.adapter._recursive_source is actions.source(root.source)
+            )
+            if recursive_valid and construction is not None:
+                recursive_valid &= (
+                    recursive.source_geometry._construction.source
+                    == construction.validate_source()
+                    and recursive.extent == construction.validate_source().extent
+                )
+            if recursive_valid:
+                valid &= recursive_valid
+                recognized.add(id(recursive))
+                occurrence_items = (
+                    occurrence_memo.items() if occurrence_memo is not None else ()
+                )
+                for steps, occurrence in occurrence_items:
+                    recognized.add(id(occurrence))
+                    occurrence_valid = (
+                        type(steps) is int
+                        and type(occurrence) is ReverseRecursiveOccurrence
+                        and occurrence.temporal_steps == steps
+                        and occurrence.source is recursive.source
+                    )
+                    try:
+                        recursive.validate_occurrence(occurrence)
+                        expected_action = recursive._pair_actions.get(steps)
+                        occurrence_valid &= (
+                            expected_action is not None
+                            and occurrence.action == expected_action
+                            and occurrence._authority is recursive._occurrence_authority
+                        )
+                    except (
+                        TypeError,
+                        ValueError,
+                        IndexError,
+                        KeyError,
+                        AttributeError,
+                    ):
+                        occurrence_valid = False
+                    if occurrence_valid:
+                        approved.add(id(occurrence))
+                    else:
+                        valid = False
+                        invalid.add((recursive_owner, id(occurrence)))
+                core_adapter = recursive.adapter
+                composer_store = getattr(core_adapter, "_composers", None)
+                composer_owner = getattr(composer_store, "owner", -1)
+                composer_store_valid = (
+                    type(core_adapter) is _ReverseRecursiveFieldAdapter
+                    and core_adapter.ledger is ledger
+                    and core_adapter.actions is recursive.actions
+                    and core_adapter.semantics is recursive.semantics
+                    and core_adapter.interfaces is recursive.interfaces
+                    and core_adapter.outputs is recursive.outputs
+                    and core_adapter.sources is recursive.sources
+                    and _store_valid(
+                        composer_owner,
+                        composer_store,
+                        "reverse_recursive_composer_memo",
+                        containers,
+                        inventory,
+                    )
+                )
+                valid &= composer_store_valid
+                composer_items = (
+                    composer_store.items() if type(composer_store) is OwnedMemo else ()
+                )
+                published_kernels: dict[FieldCellActionID, str] = {}
+                published_morphism_sorts: dict[
+                    FieldCellActionID, HigherMorphismSort
+                ] = {}
+                for composer_action, composer in composer_items:
+                    recognized.add(id(composer))
+                    composer_valid = (
+                        type(composer_action) is FieldCellActionID
+                        and type(composer) is HigherSpatialMacroComposer
+                        and composer.action == composer_action
+                        and composer.ledger is ledger
+                        and composer.semantics is core_adapter.semantics
+                        and composer.interfaces is core_adapter.interfaces
+                        and composer.outputs is core_adapter.outputs
+                        and composer.sources is core_adapter.sources
+                        and not composer.source_backed_temporal
+                        and composer.blank == recursive.blank
+                    )
+                    try:
+                        recursive.actions.validate_action(composer_action)
+                        action_record = recursive.actions.resolve(composer_action)
+                        declaration = composer.declaration()
+                        interface_record = recursive.interfaces.resolve(
+                            composer.local_interface
+                        )
+                        interface = recursive.interfaces.interface(
+                            interface_record.signature
+                        )
+                        expected_ports = (
+                            HigherPort(composer.left, "left-boundary"),
+                            HigherPort(composer.symbol, "source-symbol"),
+                            HigherPort(composer.right, "right-boundary"),
+                        )
+                        composer_valid &= (
+                            declaration.action == composer_action
+                            and declaration.interface == composer.local_interface
+                            and declaration.left == composer.left
+                            and declaration.symbol == composer.symbol
+                            and declaration.right == composer.right
+                            and declaration.blank
+                            == recursive.semantics.schema.alphabet(composer_action)[1]
+                            and declaration.kernel_digest == interface.kernel.digest
+                            and declaration.morphism_sort.owner
+                            is recursive.outputs.owner
+                            and declaration.morphism_sort.kind == recursive.outputs.kind
+                            and interface.kernel
+                            == recursive.actions.semantic_identity(composer_action)
+                            and interface.inputs == expected_ports
+                            and interface.phase_count
+                            == action_record.geometry.phase_count
+                            and recursive.semantics.component_sort(composer.left)
+                            == FieldStateSort(composer_action, 0)
+                            and recursive.semantics.component_sort(composer.right)
+                            == FieldStateSort(composer_action, 1)
+                            and recursive.semantics.component_sort(composer.symbol)
+                            == FieldSymbolSort(
+                                *recursive.semantics.schema.alphabet(composer_action)
+                            )
+                        )
+                        compilation = core_adapter.compiler._cache.get(composer_action)
+                        if compilation is not None:
+                            composer_valid &= (
+                                type(compilation) is ReverseHigherInterfaceCompilation
+                                and composer.local_interface == compilation.interface
+                                and interface_record.signature == compilation.signature
+                                and composer.left == compilation.left
+                                and composer.symbol == compilation.symbol
+                                and composer.right == compilation.right
+                                and action_record.output == compilation.output_morphism
+                            )
+                    except (
+                        TypeError,
+                        ValueError,
+                        IndexError,
+                        KeyError,
+                        AttributeError,
+                    ):
+                        composer_valid = False
+                    if composer_store_valid and composer_valid:
+                        approved.add(id(composer))
+                        published_kernels[composer_action] = declaration.kernel_digest
+                        published_morphism_sorts[composer_action] = (
+                            declaration.morphism_sort
+                        )
+                    else:
+                        valid = False
+                        invalid.add((composer_owner, id(composer)))
+
+                signature_store = getattr(core_adapter, "_signatures", None)
+                signature_owner = getattr(signature_store, "owner", -1)
+                signature_store_valid = (
+                    type(core_adapter._geometries) is FieldGeometryArena
+                    and core_adapter._geometries.ledger is ledger
+                    and type(signature_store) is OwnedMemo
+                    and _store_valid(
+                        signature_owner,
+                        signature_store,
+                        "reverse_recursive_signature_memo",
+                        containers,
+                        inventory,
+                    )
+                )
+                valid &= signature_store_valid
+                geometries = (
+                    core_adapter._geometries._nodes
+                    if type(core_adapter._geometries) is FieldGeometryArena
+                    else ()
+                )
+                valid_geometry_domains = {
+                    (geometry.spatial_level, geometry.phase_count)
+                    for geometry in geometries
+                    if type(geometry) is FieldGeometry
+                }
+                signatures_valid = True
+                signature_items = (
+                    signature_store.items()
+                    if type(signature_store) is OwnedMemo
+                    else ()
+                )
+                for signature_key, signature in signature_items:
+                    recognized.update((id(signature_key), id(signature)))
+                    signature_valid = (
+                        type(signature_key) is tuple
+                        and len(signature_key) == 2
+                        and type(signature_key[0]) is FieldCellActionID
+                        and type(signature_key[1]) is int
+                        and signature_key[1] >= 0
+                        and type(signature) is PortSignatureID
+                    )
+                    try:
+                        if signature_valid:
+                            signature_action = cast(FieldCellActionID, signature_key[0])
+                            action_record = recursive.actions.resolve(signature_action)
+                            signature_contract = recursive.interfaces.interface(
+                                cast(PortSignatureID, signature)
+                            )
+                            kernel_digest = published_kernels.get(signature_action)
+                            expected_family = (
+                                "source-bound-higher-leaf"
+                                if signature_key[1] == 0
+                                else "source-bound-higher-parent"
+                            )
+                            expected_behavior = (
+                                expected_family,
+                                kernel_digest,
+                            )
+                            expected_identity = (
+                                SemanticIdentity(
+                                    sha256(
+                                        repr(expected_behavior).encode()
+                                    ).hexdigest(),
+                                    expected_behavior,
+                                )
+                                if kernel_digest is not None
+                                else None
+                            )
+                            expected_morphism = published_morphism_sorts.get(
+                                signature_action
+                            )
+                            expected_output_sort = (
+                                FieldSymbolSort(
+                                    *recursive.semantics.schema.alphabet(
+                                        signature_action
+                                    )
+                                )
+                                if signature_key[1] == 0
+                                else expected_morphism
+                            )
+                            signature_valid &= (
+                                expected_identity is not None
+                                and signature_contract.kernel == expected_identity
+                                and (
+                                    cast(int, signature_key[1]),
+                                    action_record.geometry.phase_count,
+                                )
+                                in valid_geometry_domains
+                                and signature_contract.phase_count
+                                == action_record.geometry.phase_count
+                                and tuple(
+                                    port.role for port in signature_contract.inputs
+                                )
+                                == (
+                                    "left-boundary",
+                                    "right-boundary",
+                                )
+                                and tuple(
+                                    recursive.semantics.component_sort(port.variable)
+                                    for port in signature_contract.inputs
+                                )
+                                == (
+                                    FieldStateSort(signature_action, 0),
+                                    FieldStateSort(signature_action, 1),
+                                )
+                                and expected_output_sort is not None
+                                and signature_contract.outputs[2]
+                                == expected_output_sort
+                                and signature_contract.outputs[11]
+                                == expected_output_sort
+                            )
+                    except (
+                        TypeError,
+                        ValueError,
+                        IndexError,
+                        KeyError,
+                        AttributeError,
+                    ):
+                        signature_valid = False
+                    if signature_store_valid and signature_valid:
+                        approved.update((id(signature_key), id(signature)))
+                    else:
+                        valid = False
+                        signatures_valid = False
+                        invalid.add((signature_owner, id(signature_key)))
+                if (
+                    type(signature_store) is OwnedMemo
+                    and signature_store_valid
+                    and signatures_valid
+                ):
+                    approved.add(id(signature_store._data))
+                else:
+                    invalid.add((signature_owner, id(signature_store)))
+            else:
+                valid = False
+                invalid.add((recursive_owner, id(recursive)))
+        if recursive_store_valid and recursive_store is not None:
+            approved.add(id(recursive_store._data))
+        else:
+            invalid.add((recursive_owner, id(recursive_store)))
         if type(source) is not ExactSource or source.orbit != "reverse-add":
             valid = False
         else:

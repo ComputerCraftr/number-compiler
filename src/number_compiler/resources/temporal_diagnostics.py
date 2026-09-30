@@ -38,6 +38,10 @@ class TemporalReuseLane:
     misses: int | None = None
     publications: int | None = None
     bypasses: int | None = None
+    disabled_bypasses: int | None = None
+    policy_bypasses: int | None = None
+    capacity_bypasses: int | None = None
+    evictions: int | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -64,6 +68,18 @@ class TemporalStreamDemand:
     emitted: int | None = None
     boundary_evaluations: int | None = None
     frame_peak: int | None = None
+    cancellations: int | None = None
+    failures: int | None = None
+
+
+@dataclass(frozen=True, slots=True)
+class TemporalRenderingWork:
+    """Complete CLI text rendering, separate from internal native digit streams."""
+
+    requests: int | None = None
+    emitted_digits: int | None = None
+    failures: int | None = None
+    integer_conversion_operand_bits: int | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -255,6 +271,7 @@ class TemporalExecutionDiagnostics:
     comma: TemporalCommaWork = TemporalCommaWork()
     resources: TemporalResources = TemporalResources()
     reporting: TemporalReportingWork = TemporalReportingWork()
+    rendering: TemporalRenderingWork = TemporalRenderingWork()
 
 
 _ACTION_PREFIXES = (
@@ -277,6 +294,15 @@ def _count(counters: Mapping[str, int], key: str) -> int | None:
 def _macrocell_reuse(
     counters: Mapping[str, int], prefix: str, kind: str
 ) -> TemporalReuseLane:
+    bypass_counts = {
+        reason: _count(counters, f"{prefix}{kind}_{suffix}")
+        for reason, suffix in (
+            ("capacity", "bypasses"),
+            ("disabled", "disabled_bypasses"),
+            ("policy", "policy_bypasses"),
+        )
+    }
+    observed_bypasses = [value for value in bypass_counts.values() if value is not None]
     lane = TemporalReuseLane(
         requests=_count(counters, f"{prefix}{kind}_lookups"),
         exact_hits=_count(counters, f"{prefix}{kind}_exact_hits"),
@@ -291,7 +317,15 @@ def _macrocell_reuse(
         unclassified_hits=_count(counters, f"{prefix}{kind}_hits"),
         misses=_count(counters, f"{prefix}{kind}_misses"),
         publications=_count(counters, f"{prefix}{kind}_publications"),
-        bypasses=_count(counters, f"{prefix}{kind}_bypasses"),
+        bypasses=sum(observed_bypasses) if observed_bypasses else None,
+        capacity_bypasses=(
+            bypass_counts["capacity"]
+            if kind in ("occurrence", "source_action")
+            else None
+        ),
+        disabled_bypasses=bypass_counts["disabled"],
+        policy_bypasses=bypass_counts["policy"],
+        evictions=_count(counters, f"{prefix}{kind}_evictions"),
     )
     exact, transported = lane.exact_hits, lane.transported_hits
     if exact is not None and transported is not None:
@@ -329,9 +363,52 @@ def _macrocell_reuse(
     return lane
 
 
+def _stream_demand(counters: Mapping[str, int]) -> TemporalStreamDemand:
+    # Final digit consumers take precedence over the underlying pair-symbol
+    # traversal. Counting both would double charge emissions and omit the
+    # distinction between a pair cell and a final terminal-carry digit.
+    prefixes = [
+        prefix
+        for prefix in (
+            "reverse_output_stream_",
+            "collatz_output_stream_",
+            "antihydra_output_stream_",
+            "comma_stream_",
+        )
+        if prefix + "requests" in counters
+    ]
+    if not prefixes:
+        prefixes = ["recursive_output_stream_"]
+    values: dict[str, int | None] = {}
+    for name in ("requests", "emitted_digits", "cancellations", "failures"):
+        counts = [_count(counters, prefix + name) for prefix in prefixes]
+        values[name] = (
+            sum(value for value in counts if value is not None)
+            if all(value is not None for value in counts)
+            else None
+        )
+    return TemporalStreamDemand(
+        requests=values["requests"],
+        emitted=values["emitted_digits"],
+        cancellations=values["cancellations"],
+        failures=values["failures"],
+        node_visits=_count(counters, "recursive_output_stream_node_visits"),
+        boundary_evaluations=_count(
+            counters, "recursive_output_stream_boundary_evaluations"
+        ),
+        frame_peak=_count(counters, "recursive_output_stream_frame_peak"),
+    )
+
+
 def _capacity_bypasses(counters: Mapping[str, int], family: str) -> int | None:
     """Sum refused publications from the instrumented stores, once per attempt."""
-    kinds = ("occurrence", "source_action") if family == "mahler" else ("occurrence",)
+    if family == "comma":
+        return _count(counters, "comma_hashlife_capacity_bypasses")
+    kinds = (
+        ("occurrence", "source_action")
+        if family in ("mahler", "antihydra")
+        else ("occurrence",)
+    )
     measured = [
         value
         for kind in kinds
@@ -342,7 +419,7 @@ def _capacity_bypasses(counters: Mapping[str, int], family: str) -> int | None:
 
 def _macrocell_work(counters: Mapping[str, int]) -> tuple[TemporalMacrocellWork, ...]:
     rows = []
-    for family in ("reverse", "collatz", "antihydra", "mahler"):
+    for family in ("reverse", "collatz", "antihydra", "mahler", "comma"):
         prefix = f"{family}_hashlife_"
         if not any(name.startswith(prefix) for name in counters):
             continue
@@ -353,8 +430,12 @@ def _macrocell_work(counters: Mapping[str, int]) -> tuple[TemporalMacrocellWork,
                 if family == "collatz"
                 else "reverse_add_iteration"
                 if family == "reverse"
+                else "oeis_transition"
+                if family == "comma"
                 else "macro_return",
-                cache_scope="source_occurrence_associated_action"
+                cache_scope="guarded_interior_cycle_action"
+                if family == "comma"
+                else "source_occurrence_associated_action"
                 if family == "mahler"
                 and counters.get(f"{prefix}source_action_active", 0)
                 else "complete_associated_observer"
@@ -368,7 +449,7 @@ def _macrocell_work(counters: Mapping[str, int]) -> tuple[TemporalMacrocellWork,
                 ),
                 source_action=(
                     _macrocell_reuse(counters, prefix, "source_action")
-                    if family == "mahler"
+                    if family in ("mahler", "antihydra")
                     else TemporalReuseLane()
                 ),
                 outer_observer=(
@@ -560,14 +641,14 @@ def collect_temporal_diagnostics(
             point_requests=_count(counters, "temporal_point_requests"),
             length_requests=_count(counters, "temporal_length_requests"),
         ),
-        stream=TemporalStreamDemand(
-            requests=_count(counters, "recursive_output_stream_requests"),
-            node_visits=_count(counters, "recursive_output_stream_node_visits"),
-            emitted=_count(counters, "recursive_output_stream_emitted_digits"),
-            boundary_evaluations=_count(
-                counters, "recursive_output_stream_boundary_evaluations"
+        stream=_stream_demand(counters),
+        rendering=TemporalRenderingWork(
+            requests=_count(counters, "cli_render_requests"),
+            emitted_digits=_count(counters, "cli_render_emitted_digits"),
+            failures=_count(counters, "cli_render_failures"),
+            integer_conversion_operand_bits=_count(
+                counters, "cli_render_integer_conversion_operand_bits"
             ),
-            frame_peak=_count(counters, "recursive_output_stream_frame_peak"),
         ),
         observations=TemporalObservations(
             arithmetic_returns=_count(counters, "arithmetic_returns"),

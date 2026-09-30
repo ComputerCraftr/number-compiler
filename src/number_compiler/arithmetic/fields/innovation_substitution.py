@@ -116,11 +116,8 @@ def substitute_innovations(
                 arena.ledger.bump("symbolic_innovation_pullback_nodes")
         # Charge the outgoing collection while materializing it; retained
         # ownership belongs to the caller, just as for existing projections.
-        arena.ledger.reserve(memo.owner, nodes=len(roots))
-        try:
+        with arena.ledger.reservation(memo.owner, nodes=len(roots)):
             return tuple(memo[root] for root in roots)
-        finally:
-            arena.ledger.release(memo.owner, nodes=len(roots))
     finally:
         frames.dispose()
         memo.dispose()

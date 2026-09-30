@@ -112,11 +112,11 @@ def test_current_compiler_audit_uses_semantic_scoped_ids_and_lazy_outputs() -> N
 
 def test_generic_admission_rejects_unadapted_proof_machine_handles() -> None:
     """A proof-state ID is never an executable generic kernel atom."""
-    from devtools.experiments.reverse_add.field_action import ProofMachineStateID
     from number_compiler.arithmetic.contracts.block_effect import BlockEffect
     from number_compiler.arithmetic.contracts.kernel_admission import immutable_atom
     from number_compiler.arithmetic.contracts.scoped_handles import ArenaToken
     from number_compiler.hashlife.actions.lazy_compiler import UnsupportedInterfaceError
+    from number_compiler.sequences.reverse_add.field_action import ProofMachineStateID
 
     proof_state = ProofMachineStateID(
         ArenaToken("proof-only-state"),

@@ -165,11 +165,8 @@ def test_composition_certification_requires_the_actual_registered_bound_record()
     index = HashLifeBlockIndex(DigitNormalizeBlockEffect(10), (2,), logical_length=4)
     ledger = index._ledger
     report = index.metrics()
-    assert (
-        report.bimachine_composition_certified
-        == report.representation_boundary_complete
-        == 1
-    )
+    assert report.bimachine_composition_certified == 1
+    assert collect_ledger_metrics(ledger).representation_boundary_complete == 1
     original = index._lazy_application
     from number_compiler.hashlife.observation.tile_projection import LazyProjection
 
@@ -185,8 +182,9 @@ def test_composition_certification_requires_the_actual_registered_bound_record()
     ledger.reserve(owner, entries=1, nodes=1)
     records.append(replace(action, kernel=replace(action.kernel, local_id=1 << 1000)))
     report = index.metrics()
-    assert report.forbidden_future_payloads > 0
-    assert report.representation_boundary_complete == 0
+    audit = collect_ledger_metrics(ledger)
+    assert audit.forbidden_future_payloads > 0
+    assert audit.representation_boundary_complete == 0
 
 
 def test_parametric_macro_bindings_and_extensional_functions_have_distinct_units() -> (
@@ -248,11 +246,8 @@ def test_projection_compatibility_fields_forward_actual_tile_work() -> None:
     assert type(index._lazy_application) is LazyProjection
     index.direct_powered_point(0)
     report = index.metrics()
-    assert (
-        report.bimachine_composition_certified
-        == report.representation_boundary_complete
-        == 1
-    )
+    assert report.bimachine_composition_certified == 1
+    assert collect_ledger_metrics(ledger).representation_boundary_complete == 1
     assert report.spacetime_macro_cache_entries == report.completed_result_entries
     assert (
         report.spacetime_tile_advance_cache_entries

@@ -55,12 +55,25 @@ def test_decimal_output_uses_charged_shared_radix_stream() -> None:
     assert next(stream) == 4
     stream.close()
     assert early.ledger.counters["comma_stream_emitted_digits"] == 1
+    assert early.ledger.counters["comma_stream_requests"] == 1
+    assert early.ledger.counters["comma_stream_cancellations"] == 1
+    assert early.ledger.counters["comma_stream_failures"] == 0
 
 
-def test_interior_cycle_relative_reuse_rebinds_the_exact_occurrence() -> None:
-    term = CommaTerm(22)
-    assert term.materialize() == 1024
-    action = term.arena.one_cycle(1, 4)
+@pytest.mark.parametrize(
+    ("index", "copies", "source", "first", "second"),
+    ((22, 1, 1024, 1484, 1944), (201, 2, 10057, 10977, 11897)),
+)
+def test_interior_cycle_relative_reuse_rebinds_the_exact_occurrence(
+    index: int,
+    copies: int,
+    source: int,
+    first: int,
+    second: int,
+) -> None:
+    term = CommaTerm(index)
+    assert term.materialize() == source
+    action = term.arena.cycles(1, source % 10, copies)
     evaluated = term.ledger.counters["comma_evaluated_transitions"]
     before = term.ledger.counters.get("source_image_relative_transfer_hits", 0)
     first_image = term.scheduler.source_image(term.adapter, term._source, action)
@@ -72,11 +85,14 @@ def test_interior_cycle_relative_reuse_rebinds_the_exact_occurrence() -> None:
         CommaImagePayload,
         term.scheduler._source_image_core().view(second_image).payload,
     )
-    assert first_payload == CommaImagePayload(1484, 32)
-    assert second_payload == CommaImagePayload(1944, 42)
+    assert first_payload == CommaImagePayload(first, index + 10 * copies)
+    assert second_payload == CommaImagePayload(second, index + 20 * copies)
     assert term.ledger.counters["source_image_relative_transfer_hits"] == before + 1
     assert term.ledger.counters["comma_relative_cycle_rebindings"] == 1
     assert term.ledger.counters["comma_evaluated_transitions"] == evaluated
+    huge = term.arena.cycles(1, source % 10, 10**20)
+    with pytest.raises(ValueError, match="unadmitted seam"):
+        term.scheduler.source_image(term.adapter, second_image, huge)
 
 
 def test_boundary_prefix_uses_exact_source_and_stops_before_fork(

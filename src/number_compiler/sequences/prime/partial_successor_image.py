@@ -50,10 +50,12 @@ class PrimePartialSuccessorQuery:
             raise ValueError("prime partial query lost its source authority")
 
     def _dispose_stage(self) -> None:
-        if self._scheduler is not None:
-            self._scheduler.dispose_source_images()
-        if self._arena is not None:
-            self._arena.close()
+        try:
+            if self._scheduler is not None:
+                self._scheduler.dispose_source_images()
+        finally:
+            if self._arena is not None:
+                self._arena.close()
         self._arena = None
         self._adapter = None
         self._scheduler = None
@@ -100,10 +102,12 @@ class PrimePartialSuccessorQuery:
             scheduler = TileScheduler.source_only(self.rank.ledger)
             scheduler.register_source_image_adapter(adapter)
         except BaseException:
-            if scheduler is not None:
-                scheduler.dispose_source_images()
-            if arena is not None:
-                arena.close()
+            try:
+                if scheduler is not None:
+                    scheduler.dispose_source_images()
+            finally:
+                if arena is not None:
+                    arena.close()
             raise
         if arena is None or scheduler is None:
             raise AssertionError("prime partial stage construction lost its owners")

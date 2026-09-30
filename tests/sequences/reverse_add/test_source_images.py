@@ -2,10 +2,21 @@
 
 from __future__ import annotations
 
+from dataclasses import replace
+
 import pytest
 
+from number_compiler.hashlife.actions.field_actions import FieldCellActionID
+from number_compiler.hashlife.execution.field_executor import FieldImageCandidate
+from number_compiler.hashlife.execution.field_images import SourceCellID
 from number_compiler.hashlife.execution.source_bound_images import SourceImageView
 from number_compiler.resources.ledger import ResourceLedger
+from number_compiler.sequences.reverse_add.recursive_adapters import (
+    _ReverseRecursiveFieldAdapter,
+)
+from number_compiler.sequences.reverse_add.recursive_cutover import (
+    ReverseRecursiveTemporalCutover,
+)
 from number_compiler.sequences.reverse_add.source_images import (
     ReverseActionID,
     ReverseCylinderConstructionUnavailable,
@@ -13,6 +24,7 @@ from number_compiler.sequences.reverse_add.source_images import (
     ReverseSourceImageWorkspace,
 )
 from number_compiler.sequences.reverse_add.source_ports import SourceCarryPorts
+from tests.support.reverse_cutover import assert_completed_child_work
 
 
 def _digits(value: int, base: int) -> tuple[int, ...]:
@@ -208,19 +220,131 @@ def test_powered_same_carry_chamber_is_exact(
     assert workspace.ledger.counters.get("source_image_primitive_applications", 0) == 0
 
 
-@pytest.mark.parametrize("seed,steps", ((1, 4), (196, 3), (111589511, 3)))
-def test_powered_chamber_rejects_growth_or_changed_carries_before_output(
-    seed: int, steps: int
+@pytest.mark.parametrize(
+    ("seed", "steps", "expected"),
+    (
+        (1, 4, (6, 1)),
+        (196, 3, (6, 3, 4, 7)),
+        (111589511, 3, (8, 9, 7, 0, 0, 1, 7, 9, 8)),
+    ),
+)
+def test_rejected_same_carry_uses_completed_child_recursive_occurrence(
+    seed: int, steps: int, expected: tuple[int, ...]
 ) -> None:
     workspace = ReverseSourceImageWorkspace(ResourceLedger(), seed, steps)
-    output = iter(workspace.iter_digits())
-    with pytest.raises(
-        ReverseCylinderConstructionUnavailable, match="same-carry no-growth"
+    assert tuple(workspace.iter_digits()) == expected
+    assert workspace.width() == len(expected)
+    assert tuple(workspace.digit(i) for i in range(len(expected))) == expected
+    counters = workspace.ledger.counters
+    assert_completed_child_work(counters)
+    assert counters["reverse_source_chamber_rejections"] >= 1
+    assert counters.get("reverse_source_completed_child_publications", 0) == 1
+    assert workspace._image is not None
+
+
+def test_completed_child_parent_join_never_recompiles_nonleaf_source(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    original_compile = _ReverseRecursiveFieldAdapter._compile
+
+    def leaf_only_compile(
+        self: _ReverseRecursiveFieldAdapter,
+        action: FieldCellActionID,
+        source: SourceCellID,
+    ) -> FieldImageCandidate:
+        if self.sources.resolve(source).level > 0:
+            raise AssertionError("completed parent was recompiled from source")
+        return original_compile(self, action, source)
+
+    def forbidden_terminal_image(*_args: object, **_kwargs: object) -> None:
+        raise AssertionError("direct output rebuilt a terminal field image")
+
+    monkeypatch.setattr(_ReverseRecursiveFieldAdapter, "_compile", leaf_only_compile)
+    monkeypatch.setattr(
+        ReverseRecursiveTemporalCutover, "digit_image", forbidden_terminal_image
+    )
+    workspace = ReverseSourceImageWorkspace(ResourceLedger(), 196, 20)
+    expected = _digits(_reverse_add(196, 20, 10), 10)
+    assert workspace.width() == len(expected)
+    assert tuple(workspace.iter_digits()) == expected
+    assert workspace.digit(0) == expected[0]
+    counters = workspace.ledger.counters
+    assert_completed_child_work(counters)
+
+
+def test_direct_pair_image_uses_joined_children_and_checks_occurrence_authority(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    ledger = ResourceLedger()
+    cutover = ReverseRecursiveTemporalCutover(
+        ledger, _digits(196, 10), base=10, maximum_steps=3
+    )
+    original_compile = _ReverseRecursiveFieldAdapter._compile
+
+    def leaf_only_compile(
+        self: _ReverseRecursiveFieldAdapter,
+        action: FieldCellActionID,
+        source: SourceCellID,
+    ) -> FieldImageCandidate:
+        if self.sources.resolve(source).level > 0:
+            raise AssertionError("direct pair image recompiled a nonleaf source")
+        return original_compile(self, action, source)
+
+    monkeypatch.setattr(_ReverseRecursiveFieldAdapter, "_compile", leaf_only_compile)
+    occurrence = cutover.pair_image(3)
+    assert occurrence.temporal_steps == 3
+    assert tuple(cutover.iter_digits(occurrence)) == (6, 3, 4, 7)
+    assert ledger.counters.get("reverse_recursive_completed_child_joins", 0) > 0
+
+    wrong_action = replace(occurrence, action=cutover.pair_action(2))
+    with pytest.raises(ValueError, match="authority/source/action|duration"):
+        cutover.validate_occurrence(wrong_action)
+    foreign = ReverseRecursiveTemporalCutover(
+        ResourceLedger(), _digits(89, 10), base=10, maximum_steps=3
+    )
+    wrong_source = replace(occurrence, source=foreign.source)
+    with pytest.raises(ValueError, match="authority/source/action"):
+        cutover.validate_occurrence(wrong_source)
+
+
+def test_terminal_digit_does_not_replay_prefix_and_partial_stream_is_charged() -> None:
+    cutover = ReverseRecursiveTemporalCutover(
+        ResourceLedger(), _digits(196, 10), base=10, maximum_steps=3
+    )
+    occurrence = cutover.pair_image(3)
+    descent_key = "reverse_recursive_pair_width_descents"
+    before_descents = cutover.ledger.counters.get(descent_key, 0)
+    pair_width = cutover.pair_width(occurrence)
+    one_width = cutover.ledger.counters[descent_key] - before_descents
+    before_descents = cutover.ledger.counters[descent_key]
+    before = cutover.ledger.counters.get("reverse_recursive_direct_carry_steps", 0)
+    try:
+        cutover.digit(occurrence, pair_width)
+    except IndexError:
+        pass
+    assert (
+        cutover.ledger.counters.get("reverse_recursive_direct_carry_steps", 0) - before
+        == pair_width
+    )
+
+    assert cutover.ledger.counters[descent_key] - before_descents == one_width
+
+    before_digits = cutover.ledger.counters.get("reverse_recursive_streamed_digits", 0)
+    stream = cutover.iter_digits(occurrence)
+    next(stream)
+    stream.close()
+    assert (
+        cutover.ledger.counters.get("reverse_recursive_streamed_digits", 0)
+        - before_digits
+        == 1
+    )
+    for demand in (
+        lambda: cutover.width(occurrence),
+        lambda: tuple(cutover.iter_digits(occurrence)),
     ):
-        next(output)
-    assert workspace.ledger.counters.get("source_image_primitive_applications", 0) == 0
-    assert workspace.ledger.counters["reverse_source_chamber_rejections"] >= 1
-    assert workspace._image is None
+        before_descents = cutover.ledger.counters[descent_key]
+        demand()
+        assert cutover.ledger.counters[descent_key] - before_descents == one_width
 
 
 def test_zero_source_admits_huge_power_without_constructing_the_power() -> None:
@@ -244,46 +368,43 @@ def test_two_step_small_sources_against_independent_arithmetic(base: int) -> Non
         assert workspace.ledger.nodes == workspace.ledger.entries == 0
 
 
-def test_composite_demand_refuses_before_primitive_and_retry_does_not_leak(
+def test_composite_demand_uses_completed_children_without_primitive_descent(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     workspace = ReverseSourceImageWorkspace(ResourceLedger(), 196, 20)
     adapter_type = type(workspace.adapter)
 
     def forbidden(*_args: object, **_kwargs: object) -> None:
-        raise AssertionError("composite demand descended to a primitive")
+        raise AssertionError("composite demand descended to a source-image primitive")
 
     monkeypatch.setattr(adapter_type, "apply_primitive", forbidden)
-    with pytest.raises(ReverseCylinderConstructionUnavailable, match="20 temporal"):
-        workspace.width()
-    retained = workspace.ledger.entries, workspace.ledger.nodes
-    with pytest.raises(ReverseCylinderConstructionUnavailable, match="20 temporal"):
-        workspace.digit(0)
-    assert (workspace.ledger.entries, workspace.ledger.nodes) == retained
-    assert workspace.ledger.counters.get("source_image_primitive_applications", 0) == 0
+    assert workspace.width() == 11
+    assert workspace.digit(0) == 6
+    counters = workspace.ledger.counters
+    assert_completed_child_work(counters)
 
 
-def test_undemanded_scheduler_entry_cannot_bypass_composite_gate(
+def test_undemanded_scheduler_entry_publishes_completed_child_image_without_primitive(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     workspace = ReverseSourceImageWorkspace(ResourceLedger(), 196, 8)
     adapter_type = type(workspace.adapter)
 
     def forbidden(*_args: object, **_kwargs: object) -> None:
-        raise AssertionError("undemanded image descended to a primitive")
+        raise AssertionError("undemanded image descended to a source-image primitive")
 
     monkeypatch.setattr(adapter_type, "apply_primitive", forbidden)
-    with pytest.raises(ReverseCylinderConstructionUnavailable, match="8 temporal"):
-        workspace.scheduler.source_image(
-            workspace.adapter, workspace.source, workspace.root_action
-        )
-    retained = workspace.ledger.entries, workspace.ledger.nodes
-    with pytest.raises(ReverseCylinderConstructionUnavailable, match="8 temporal"):
-        workspace.scheduler.source_image(
-            workspace.adapter, workspace.source, workspace.root_action
-        )
-    assert (workspace.ledger.entries, workspace.ledger.nodes) == retained
+    first = workspace.scheduler.source_image(
+        workspace.adapter, workspace.source, workspace.root_action
+    )
+    second = workspace.scheduler.source_image(
+        workspace.adapter, workspace.source, workspace.root_action
+    )
+    assert first == second
     assert workspace.ledger.counters.get("source_image_primitive_applications", 0) == 0
+    assert (
+        workspace.ledger.counters.get("reverse_recursive_completed_child_joins", 0) > 0
+    )
 
 
 def test_descriptor_is_lazy_logarithmic_and_handles_are_scoped() -> None:
@@ -349,3 +470,20 @@ def _two_step_view() -> tuple[ReverseSourceImageWorkspace, SourceImageView]:
     )
     view = workspace.scheduler._source_image_core().view(image)
     return workspace, view
+
+
+def test_disposed_recursive_constructor_refuses_before_allocating() -> None:
+    cutover = ReverseRecursiveTemporalCutover(
+        ResourceLedger(), (6, 9, 1), base=10, maximum_steps=8
+    )
+    cutover.pair_image(3)
+    before = cutover.ledger.snapshot()
+    with pytest.raises(ValueError, match="horizon"):
+        cutover.pair_action(9)
+    assert cutover.ledger.snapshot() == before
+    cutover.dispose()
+    before = cutover.ledger.snapshot()
+    for constructor in (cutover.pair_action, cutover.pair_image):
+        with pytest.raises(ValueError, match="disposed"):
+            constructor(8)
+        assert cutover.ledger.snapshot() == before

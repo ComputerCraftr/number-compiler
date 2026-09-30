@@ -3,6 +3,7 @@ from __future__ import annotations
 import pytest
 
 from number_compiler.api.number_api import NumberCompiler, PoweredCollatzTermPayload
+from number_compiler.resources.metric_collection import collect_ledger_metrics
 from number_compiler.sequences.collatz.block_power import PoweredCollatzTerm
 from number_compiler.sequences.reverse_add.power import ReverseAddPoweredTerm
 from tests.support.source_image_assertions import assert_physical_source_work
@@ -28,6 +29,7 @@ def _assert_runtime_image_bridge(
     first = term.digit(0)
     metrics = term.metrics()
     behavior = term.behavior_metrics()
+    audit = collect_ledger_metrics(term._ledger)
     assert metrics.metrics_schema_version == 8
     collatz = isinstance(term, PoweredCollatzTerm)
     if collatz:
@@ -47,8 +49,8 @@ def _assert_runtime_image_bridge(
     assert metrics.proof_machine_applications == 0
     assert metrics.sequential_generation_advances == 0
     assert metrics.exact_endpoint_nodes == 0
-    assert metrics.forbidden_future_payloads == 0
-    assert metrics.representation_boundary_complete == 1
+    assert audit.forbidden_future_payloads == 0
+    assert audit.representation_boundary_complete == 1
     assert behavior.temporal_quotient_family == family
     if collatz:
         assert behavior.temporal_quotient_state_class_bound == 0
@@ -69,7 +71,7 @@ def _assert_runtime_image_bridge(
     after = term._ledger.counters
     assert after.get(publication_counter, 0) == before.get(publication_counter, 0)
     assert after.get(projection_counter, 0) == before.get(projection_counter, 0)
-    assert metrics.resource_audit_complete == 1
+    assert audit.resource_audit_complete == 1
     assert metrics.resource_accounting_mismatch == 0
 
 
@@ -116,7 +118,7 @@ def test_former_collatz_radix_timeout_reports_actual_diamond_work() -> None:
     assert projected_term._power is None
     assert metrics.whole_word_sweeps == metrics.proof_machine_applications == 0
     assert metrics.sequential_generation_advances == 0
-    assert metrics.forbidden_future_payloads == 0
+    assert collect_ledger_metrics(projected_term._ledger).forbidden_future_payloads == 0
 
 
 def test_identical_warm_point_does_not_rebuild_temporal_parents() -> None:

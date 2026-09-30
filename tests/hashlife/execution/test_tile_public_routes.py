@@ -18,6 +18,7 @@ from number_compiler.hashlife.observation.tile_projection import LazyProjection
 from number_compiler.hashlife.tiles.tiles import TileArena
 from number_compiler.projection.digit_terminal import DigitNormalizeBlockEffect
 from number_compiler.resources.ledger import ResourceLedger
+from number_compiler.resources.metric_collection import collect_ledger_metrics
 from number_compiler.sequences.collatz.block_power import CollatzPhysicalBlockEffect
 from tests.support.assertions import assert_rejected_atomically
 from tests.support.diamond_runtime import oracle
@@ -70,10 +71,11 @@ def test_public_primitive_square_fuses_points_and_width_without_midpoint(
             assert index.direct_powered_point(coordinate) == expected[coordinate]
         assert index.direct_active_width() == extent
     metrics = index.metrics()
+    audit = collect_ledger_metrics(index._ledger)
     assert metrics.fused_interface_entries > 0
     assert metrics.tile_fused_observation_descents > 0
     assert metrics.resource_accounting_mismatch == 0
-    assert metrics.forbidden_future_payloads == 0
+    assert audit.forbidden_future_payloads == 0
     assert index._ledger.counters.get("tile_publications", 0) == source_tiles
     # Explicit lowering may now request complete canonical outputs. Its root
     # is retained across subsequent observations, including unseen positions.
@@ -177,6 +179,7 @@ def test_public_metrics_forward_canonical_tile_runtime_inventory() -> None:
     index.direct_active_width()
     tuple(index.iter_direct_active())
     metrics = index.metrics()
+    audit = collect_ledger_metrics(index._ledger)
     assert metrics.bounded_application_enabled == 1
     assert metrics.canonical_tile_nodes > 0
     assert metrics.canonical_tile_arena_nodes == metrics.canonical_tile_nodes
@@ -244,7 +247,7 @@ def test_public_metrics_forward_canonical_tile_runtime_inventory() -> None:
         metrics.resource_work_counters.get("quotient_semantic_interner_hits", 0)
     )
     assert metrics.resource_accounting_mismatch == 0
-    assert metrics.forbidden_future_payloads == 0
+    assert audit.forbidden_future_payloads == 0
 
 
 def test_application_rejects_other_request_root_before_warm_hit() -> None:

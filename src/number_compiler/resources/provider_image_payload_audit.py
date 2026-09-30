@@ -93,8 +93,8 @@ def audit_provider_image_inputs(
                 type(key[0]) is ProviderBindingKey
                 and type(key[1]) is ImageRequestKey
                 and type(key[2]) is int
-                and key[0] is record.binding
-                and key[1] is record.request
+                and key[0] == record.binding
+                and key[1] == record.request
                 and key[2] == record.active_extent
             )
         if valid:
@@ -150,6 +150,7 @@ def audit_provider_image_inputs(
             valid = False
         if valid:
             approved.add(id(children))
+            approved.add(id(edge_key[3]))
         else:
             invalid.add((root._child_owner, id(children)))
     return approved, invalid

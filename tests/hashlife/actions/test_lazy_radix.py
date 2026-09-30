@@ -7,6 +7,7 @@ from number_compiler.api.number_api import PoweredCollatzTermPayload
 from number_compiler.arithmetic.fields.radix import digits_lsd
 from number_compiler.projection.lazy_radix import RadixProjection, collatz_radix_digit
 from number_compiler.resources.ledger import ResourceLedger
+from number_compiler.resources.metric_collection import collect_ledger_metrics
 from number_compiler.sequences.collatz.block_power import PoweredCollatzTerm
 from tests.support.reference_arithmetic import collatz_literal as _collatz
 from tests.support.runtime_limits import deadline
@@ -42,8 +43,9 @@ def test_nonbinary_public_point_queries_never_lower_binary_endpoints(
                     payload.digit(1 << 100)
             metrics = payload.term.metrics()
             assert metrics.explicitly_materialized_endpoints == 0
-            assert metrics.forbidden_future_payloads == 0
-            assert metrics.resource_audit_complete == 1
+            audit = collect_ledger_metrics(payload.term._ledger)
+            assert audit.forbidden_future_payloads == 0
+            assert audit.resource_audit_complete == 1
             assert metrics.resource_accounting_mismatch == 0
             assert metrics.maximum_arithmetic_bits <= 64
 
@@ -63,9 +65,10 @@ def test_radix_microblocks_are_one_capped_index_owned_leaf_cache() -> None:
         hasattr(projection, name)
         for name in ("_point", "_range", "_evaluate", "_programs", "_ranges")
     )
-    metrics = term.metrics()
-    assert metrics.resource_audit_complete == 1
-    assert metrics.forbidden_future_payloads == 0
+    term.metrics()
+    audit = collect_ledger_metrics(term._ledger)
+    assert audit.resource_audit_complete == 1
+    assert audit.forbidden_future_payloads == 0
 
 
 def test_radix_registry_reuses_projection_and_microblocks_without_replay_state() -> (

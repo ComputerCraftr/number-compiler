@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from collections.abc import Callable, Iterable, Iterator, MutableMapping, Sized
+from contextlib import contextmanager
 from dataclasses import dataclass, field
 from typing import Generic, Literal, TypeVar
 from weakref import ReferenceType, ref
@@ -291,6 +292,21 @@ class ResourceLedger:
 
     def reserve(self, owner: int, entries: int = 0, nodes: int = 0) -> None:
         self.reserve_many(((owner, entries, nodes),))
+
+    @contextmanager
+    def reservation(
+        self, owner: int, *, entries: int = 0, nodes: int = 0
+    ) -> Iterator[None]:
+        """Temporarily reserve capacity on an existing owner, without retiring it.
+
+        The body must drop any storage using this capacity before exit. Failed
+        admission acquires nothing; nested scopes release only their own charge.
+        """
+        self.reserve(owner, entries=entries, nodes=nodes)
+        try:
+            yield
+        finally:
+            self.release(owner, entries=entries, nodes=nodes)
 
     def check_store_capacity(self, owner: int, entries: int, nodes: int) -> None:
         """Enforce pre-publication reservations at the actual store boundary."""

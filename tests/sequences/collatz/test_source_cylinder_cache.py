@@ -56,7 +56,9 @@ def test_production_cross_seed_reuse_reduces_observed_source_work() -> None:
         expected = literal_dyadic_orbit(seed, 1000, COLLATZ_PHYSICAL_LAW)[0]
         assert term.materialize(max_bits=1000) == expected
         metrics = term.metrics()
-        assert metrics.resource_audit_complete
+        from number_compiler.resources.metric_collection import collect_ledger_metrics
+
+        assert collect_ledger_metrics(term._ledger).resource_audit_complete
         assert metrics.resource_accounting_mismatch == 0
         observations.append(term._ledger.snapshot().counters)
     cold, warm = observations

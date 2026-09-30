@@ -69,11 +69,17 @@ def test_unknown_powered_metadata_is_not_silently_dropped() -> None:
 def test_unindexed_metrics_preserve_actual_point_work_without_new_queries() -> None:
     ledger = ResourceLedger()
     ledger.bump("direct_powered_point_queries", 7)
+    ledger.bump("temporal_point_requests", 11)
     before = dict(ledger.counters)
     report = collect_unindexed_metrics(ledger)
     assert report.direct_powered_point_queries == 7
+    assert report.point_queries == 11
     assert report.resource_work_counters["direct_powered_point_queries"] == 7
     assert dict(ledger.counters) == before
     ledger.bump("direct_powered_point_queries", 2)
+    ledger.bump("temporal_point_requests", 3)
     assert report.direct_powered_point_queries == 7
-    assert collect_unindexed_metrics(ledger).direct_powered_point_queries == 9
+    assert report.point_queries == 11
+    after = collect_unindexed_metrics(ledger)
+    assert after.direct_powered_point_queries == 9
+    assert after.point_queries == 14

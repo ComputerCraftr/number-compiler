@@ -6,6 +6,9 @@ from collections.abc import Hashable, Iterator
 from dataclasses import dataclass
 from typing import cast
 
+from number_compiler.arithmetic.contracts.exact_tree_context import (
+    OriginalSourceConstruction,
+)
 from number_compiler.arithmetic.contracts.input_validation import require_integer
 from number_compiler.arithmetic.contracts.scoped_handles import (
     ArenaHandle,
@@ -26,6 +29,10 @@ from number_compiler.hashlife.execution.source_bound_images import (
 from number_compiler.hashlife.execution.tile_scheduler import TileScheduler
 from number_compiler.resources.ledger import OwnedMemo, ResourceLedger
 from number_compiler.resources.stores import LedgerList
+from number_compiler.sequences.reverse_add.recursive_cutover import (
+    ReverseRecursiveOccurrence,
+    ReverseRecursiveTemporalCutover,
+)
 from number_compiler.sequences.reverse_add.source_chamber import (
     SameCarryChamberRejected,
     iter_admitted_same_carry_digits,
@@ -37,6 +44,12 @@ from number_compiler.sequences.reverse_add.source_ports import SourceCarryPorts
 
 class ReverseCylinderConstructionUnavailable(ValueError):
     """The requested temporal image needs the unbuilt successor cylinder."""
+
+
+# Cold completed-child migration is deliberately bounded.  Same-carry chambers
+# retain their existing arbitrary-horizon path; rejected chambers above this
+# horizon remain fail-closed until the higher semantic emission path is wired.
+MAX_COMPLETED_CHILD_FALLBACK_STEPS = 128
 
 
 @dataclass(frozen=True, slots=True)
@@ -305,6 +318,17 @@ class _ReverseSourceImageAdapter(SourceBoundImageAdapter):
         self.actions = actions
         self.ledger = actions.ledger
         self._ports: SourceCarryPorts | None = None
+        self._recursive: ReverseRecursiveTemporalCutover | None = None
+        self._recursive_construction: OriginalSourceConstruction | None = None
+        self._recursive_maximum_steps = 0
+        recursive_owner = self.ledger.register(
+            f"reverse-source-recursive-occurrences-{self.ledger.owner_count}",
+            "reverse_recursive_occurrence_binding",
+        )
+        self._recursive_occurrences: OwnedMemo[int, ReverseRecursiveOccurrence] = (
+            OwnedMemo(self.ledger, recursive_owner)
+        )
+        self._recursive_source: ExactSource | None = None
 
     def ports(self, source: ExactSource) -> SourceCarryPorts:
         """One source-bound spatial projection shared by every consumer."""
@@ -315,10 +339,134 @@ class _ReverseSourceImageAdapter(SourceBoundImageAdapter):
         ports.check_source(source)
         return ports
 
+    def prepare_recursive_authority(
+        self,
+        source: ExactSource,
+        steps: int,
+        construction: OriginalSourceConstruction | None = None,
+    ) -> None:
+        """Authorize the immutable padded pair source before any point demand.
+
+        This allocates no source tree.  It only captures caller-supplied source
+        authority so a later rejected same-carry demand can construct its exact
+        pair geometry without minting authority inside the point callback.
+        """
+        if type(source) is not ExactSource or type(steps) is not int or steps < 1:
+            raise ValueError("reverse recursive authority requires source and horizon")
+        if self._recursive_construction is not None:
+            self._recursive_construction.validate_source()
+            if self._recursive_maximum_steps != steps:
+                raise ValueError("reverse recursive authority horizon changed")
+            return
+        digits = source.digits
+        width = len(digits)
+        blank = 2 * source.base - 1
+        required = max(1, width + steps)
+        extent = 1 << ((required - 1).bit_length())
+        if construction is None:
+            self.ledger.bump(
+                "reverse_source_pair_authority_construction_symbols", width
+            )
+            pair = tuple(digits[i] + digits[width - 1 - i] for i in range(width))
+            construction = OriginalSourceConstruction(
+                ExactSource(
+                    pair,
+                    source.base,
+                    "reverse-add-pair",
+                    blank,
+                    extent,
+                    2 * source.base,
+                )
+            )
+        else:
+            self.ledger.bump("reverse_source_pair_authority_validation_symbols", width)
+            pair_source = construction.validate_source()
+            if (
+                pair_source.base != source.base
+                or pair_source.orbit != "reverse-add-pair"
+                or pair_source.blank != blank
+                or pair_source.extent != extent
+                or pair_source.alphabet_size != 2 * source.base
+                or len(pair_source.digits) != width
+                or any(
+                    pair_source.digits[i] != digits[i] + digits[width - 1 - i]
+                    for i in range(width)
+                )
+            ):
+                raise ValueError(
+                    "recursive source authority differs from original digits"
+                )
+        self._recursive_construction = construction
+        self._recursive_maximum_steps = steps
+
     def dispose(self) -> None:
         if self._ports is not None:
             self._ports.dispose()
             self._ports = None
+        if self._recursive is not None:
+            self._recursive.dispose()
+            self._recursive = None
+            self._recursive_source = None
+        self._recursive_construction = None
+        self._recursive_occurrences.dispose()
+
+    def _recursive_occurrence(
+        self, source: ExactSource, steps: int
+    ) -> ReverseRecursiveOccurrence:
+        """Construct the rejected-cylinder target from an authenticated pair occurrence.
+
+        The initial D1 pair occurrence is compiled once.  Every later temporal
+        block is applied through provider substitution, whose spatial parent joins
+        are functions of their two completed child images.
+        """
+        found = self._recursive_occurrences.get(steps)
+        if found is not None:
+            self.ledger.bump("reverse_source_recursive_occurrence_hits")
+            return found
+        cutover = self._recursive
+        if cutover is None:
+            construction = self._recursive_construction
+            if construction is None or self._recursive_maximum_steps < steps:
+                raise ReverseCylinderConstructionUnavailable(
+                    "reverse recursive fallback was not authorized before the point request"
+                )
+            cutover = ReverseRecursiveTemporalCutover(
+                self.ledger,
+                source.digits,
+                base=source.base,
+                maximum_steps=self._recursive_maximum_steps,
+                source_construction=construction,
+            )
+            self._recursive = cutover
+            self._recursive_source = source
+        else:
+            authority = self._recursive_source
+            if (
+                authority is not source
+                or authority.digits is not source.digits
+                or authority.base != source.base
+            ):
+                raise ValueError("reverse recursive fallback source changed")
+            if steps > cutover.maximum_steps:
+                raise ReverseCylinderConstructionUnavailable(
+                    "reverse recursive fallback exceeded its admitted temporal horizon"
+                )
+        occurrence = cutover.pair_image(steps)
+        if occurrence.temporal_steps != steps:
+            raise AssertionError((occurrence.temporal_steps, steps))
+        self._recursive_occurrences[steps] = occurrence
+        self.ledger.bump("reverse_source_recursive_occurrence_publications")
+        return occurrence
+
+    def _recursive_for_steps(
+        self, steps: int
+    ) -> tuple[ReverseRecursiveTemporalCutover, ReverseRecursiveOccurrence] | None:
+        occurrence = self._recursive_occurrences.get(steps)
+        cutover = self._recursive
+        if occurrence is None or cutover is None:
+            return None
+        cutover.validate_occurrence(occurrence)
+        return cutover, occurrence
 
     def validate_source(self, source: Hashable) -> None:
         if type(source) is not ReverseSource:
@@ -432,12 +580,25 @@ class _ReverseSourceImageAdapter(SourceBoundImageAdapter):
                 validate_same_carry_chamber(
                     origin, steps, self.ledger, ports=self.ports(origin)
                 )
-            except SameCarryChamberRejected as error:
-                self.ledger.bump("reverse_cylinder_construction_failures")
-                raise ReverseCylinderConstructionUnavailable(
-                    f"reverse/add powered action for {steps} temporal steps left "
-                    "the bounded same-carry no-growth cylinder"
-                ) from error
+            except SameCarryChamberRejected as exc:
+                if steps > MAX_COMPLETED_CHILD_FALLBACK_STEPS:
+                    raise ReverseCylinderConstructionUnavailable(
+                        "reverse/add source cylinder completed-child fallback is "
+                        f"bounded to {MAX_COMPLETED_CHILD_FALLBACK_STEPS} temporal steps"
+                    ) from exc
+                self._recursive_occurrence(origin, steps)
+                cumulative = self.actions.compose(
+                    cast(ReverseImagePayload, source.payload).action,
+                    cast(ReverseActionID, action),
+                )
+                self.ledger.bump("reverse_source_completed_child_publications")
+                return SourceImageCandidate(
+                    ReverseImagePayload(cumulative),
+                    source.binding.extent + steps,
+                    boundary_ports=(),
+                    radix=origin.base,
+                    precision=None,
+                )
             cumulative = self.actions.compose(
                 cast(ReverseImagePayload, source.payload).action,
                 cast(ReverseActionID, action),
@@ -571,6 +732,11 @@ class _ReverseSourceImageAdapter(SourceBoundImageAdapter):
                 self.ledger.bump("reverse_source_two_step_width_demands")
                 return SourceImageProjection(self.ports(source).second_width())
             if steps >= 3:
+                recursive = self._recursive_for_steps(steps)
+                if recursive is not None:
+                    cutover, occurrence = recursive
+                    self.ledger.bump("reverse_source_recursive_width_demands")
+                    return SourceImageProjection(cutover.width(occurrence))
                 self.ledger.bump("reverse_source_same_carry_width_demands")
                 return SourceImageProjection(source_width)
             return SourceImageProjection(self._width(source))
@@ -582,6 +748,11 @@ class _ReverseSourceImageAdapter(SourceBoundImageAdapter):
         if position < 0:
             raise IndexError(position)
         if steps >= 3:
+            recursive = self._recursive_for_steps(steps)
+            if recursive is not None:
+                cutover, occurrence = recursive
+                self.ledger.bump("reverse_source_recursive_digit_demands")
+                return SourceImageProjection(cutover.digit(occurrence, position))
             if position >= source_width:
                 raise IndexError(position)
             self.ledger.bump("reverse_source_same_carry_digit_demands")
@@ -629,7 +800,13 @@ class ReverseSourceImageWorkspace:
     """Demanded reverse/add image bound to one original source and one action."""
 
     def __init__(
-        self, ledger: ResourceLedger, seed: int, steps: int, *, base: int = 10
+        self,
+        ledger: ResourceLedger,
+        seed: int,
+        steps: int,
+        *,
+        base: int = 10,
+        source_construction: OriginalSourceConstruction | None = None,
     ) -> None:
         if type(ledger) is not ResourceLedger:
             raise TypeError("reverse source workspace requires a resource ledger")
@@ -646,6 +823,10 @@ class ReverseSourceImageWorkspace:
             root_action = actions.action(steps)
             scheduler = TileScheduler.source_only(ledger)
             adapter = _ReverseSourceImageAdapter(actions)
+            if 3 <= steps <= MAX_COMPLETED_CHILD_FALLBACK_STEPS:
+                adapter.prepare_recursive_authority(
+                    actions.source(source), steps, source_construction
+                )
             scheduler.register_source_image_adapter(adapter)
         except BaseException:
             if scheduler is not None:
@@ -670,6 +851,7 @@ class ReverseSourceImageWorkspace:
             adapter,
             steps,
             base,
+            source_construction,
         )
         ledger.register_execution_root(self)
 
@@ -685,6 +867,7 @@ class ReverseSourceImageWorkspace:
             adapter,
             steps,
             base,
+            source_construction,
         ) = self._authority
         if (
             self.ledger is not ledger
@@ -695,6 +878,10 @@ class ReverseSourceImageWorkspace:
             or self.adapter is not adapter
             or self.steps != steps
             or self.base != base
+            or (
+                source_construction is not None
+                and adapter._recursive_construction is not source_construction
+            )
             or adapter.actions is not actions
             or adapter.ledger is not ledger
             or scheduler.ledger is not ledger
@@ -759,6 +946,11 @@ class ReverseSourceImageWorkspace:
             yield from self.adapter.iter_second_digits(self.actions.source(self.source))
             return
         if self.steps >= 3:
+            recursive = self.adapter._recursive_for_steps(self.steps)
+            if recursive is not None:
+                cutover, occurrence = recursive
+                yield from cutover.iter_digits(occurrence)
+                return
             yield from self.adapter.iter_same_carry_digits(
                 self.actions.source(self.source), self.steps
             )

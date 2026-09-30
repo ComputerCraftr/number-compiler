@@ -16,6 +16,7 @@ from number_compiler.projection.radix_original_source import (
     OriginalRadixSource,
 )
 from number_compiler.resources.ledger import ResourceLedger
+from number_compiler.resources.metric_collection import collect_ledger_metrics
 from number_compiler.sequences.collatz.block_power import PoweredCollatzTerm
 from tests.support.assertions import assert_rejected_atomically
 
@@ -248,7 +249,7 @@ def test_fixed_two_step_radix_uses_only_original_source_and_finite_carry(
             hasattr(projection, item) for item in ("_programs", "_ranges", "_transfers")
         )
         assert term._ledger.counters.get("maximum_arithmetic_bits", 0) <= 64
-        assert term.metrics().forbidden_future_payloads == 0
+        assert collect_ledger_metrics(term._ledger).forbidden_future_payloads == 0
 
 
 @pytest.mark.parametrize("radix", (2, 10, (1 << 63) - 25))
@@ -318,7 +319,9 @@ def test_affine_source_digits_reuse_hierarchical_three_carry_summaries(
         assert read_digit(index) == digit
     assert term._ledger.counters["original_affine_summary_source_cells"] == source_cells
     assert term._ledger.counters["original_affine_summary_hits"] > 0
-    report = term.metrics()
+    from number_compiler.resources.metric_collection import collect_ledger_metrics
+
+    report = collect_ledger_metrics(term._ledger)
     assert report.forbidden_future_payloads == 0
     assert report.resource_accounting_mismatch == 0
 

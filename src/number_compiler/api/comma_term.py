@@ -7,6 +7,7 @@ from dataclasses import dataclass
 from typing import TYPE_CHECKING
 
 from number_compiler.arithmetic.contracts.input_validation import require_integer
+from number_compiler.resources.output_stream_metrics import closing_output_stream
 
 if TYPE_CHECKING:
     from number_compiler.sequences.comma.power import CommaTerm
@@ -64,8 +65,7 @@ class CommaTermPayload:
         self.require_certified()
         cache = get_process_cache() if self.term.shared_cache else None
         generation = cache.generation if cache is not None else None
-        stream = self.term.iter_digits()
-        try:
+        with closing_output_stream(self.term.iter_digits()) as stream:
             while True:
                 self.term.arena.charge()
                 if cache is not None and cache.generation != generation:
@@ -75,8 +75,6 @@ class CommaTermPayload:
                 except StopIteration:
                     return
                 yield digit
-        finally:
-            stream.close()
 
     def digits(self) -> tuple[int, ...]:
         return tuple(self.iter_digits())

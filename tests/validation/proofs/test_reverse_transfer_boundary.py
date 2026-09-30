@@ -324,7 +324,9 @@ def test_public_reverse_point_and_width_cannot_use_oracle_packing_or_output_tape
     assert term.width() == len(digits)
     for position in (0, 3, len(digits) - 1):
         assert term.digit(position) == int(digits[-1 - position])
-    assert term.metrics().forbidden_future_payloads == 0
+    from number_compiler.resources.metric_collection import collect_ledger_metrics
+
+    assert collect_ledger_metrics(term._ledger).forbidden_future_payloads == 0
 
 
 def test_production_workspace_never_memoizes_a_complete_future_carry_row() -> None:

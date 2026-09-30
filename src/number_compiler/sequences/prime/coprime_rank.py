@@ -9,7 +9,8 @@ in ``select`` discharges it by selecting the least remaining positive survivor.
 from __future__ import annotations
 
 from bisect import bisect_right
-from collections.abc import MutableMapping
+from collections.abc import Iterator, MutableMapping
+from contextlib import ExitStack, contextmanager
 from itertools import islice
 from math import gcd
 
@@ -531,13 +532,28 @@ class CoprimeRankDAG:
             upper - 1, modulus, residue, depth
         ) - self.count_progression(lower - 1, modulus, residue, depth)
 
+    @contextmanager
+    def suspend_shared_publication(self) -> Iterator[None]:
+        """Keep temporary discovery ranks local, preserving the caller's mode."""
+        previous = self.shared_publication_enabled
+        self.shared_publication_enabled = False
+        try:
+            yield
+        finally:
+            self.shared_publication_enabled = previous
+
     def close(self) -> None:
         """Release query retention, including on budget refusal."""
         if self._closed:
             return
-        self.progression_memo.dispose()
-        self._progression_inverses.dispose()
-        self.memo.dispose()
+        with ExitStack() as cleanup:
+            cleanup.callback(self._close_factors)
+            cleanup.callback(self.memo.dispose)
+            cleanup.callback(self._progression_inverses.dispose)
+            self.progression_memo.dispose()
+        self._closed = True
+
+    def _close_factors(self) -> None:
         size = len(self._primes)
         if size:
             # Factor positions are source authorities while the query is live,
@@ -547,7 +563,6 @@ class CoprimeRankDAG:
             self.ledger.release(self._factor_owner, entries=size, nodes=size)
         self._issued_factor_stamp = self._primes.mutation_stamp
         self.ledger.mark_disposed(self._factor_owner)
-        self._closed = True
 
 
 __all__ = ["CoprimeRankDAG"]

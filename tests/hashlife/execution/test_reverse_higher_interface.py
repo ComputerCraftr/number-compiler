@@ -6,11 +6,6 @@ from typing import Never, cast
 
 import pytest
 
-from devtools.experiments.reverse_add.field_action import ReverseFieldActionArena
-from devtools.experiments.reverse_add.higher_interface import (
-    ReverseHigherInterfaceCompilation,
-    ReverseHigherInterfaceCompiler,
-)
 from number_compiler.arithmetic.contracts.scoped_handles import ArenaHandle, ArenaToken
 from number_compiler.hashlife.actions.field_actions import (
     CoordinateOutputMorphismID,
@@ -44,6 +39,11 @@ from number_compiler.hashlife.execution.recursive_outputs import (
     RecursiveOutputTemporal,
 )
 from number_compiler.hashlife.interfaces.diamond_quotient import LocalInterfaceID
+from number_compiler.sequences.reverse_add.field_action import ReverseFieldActionArena
+from number_compiler.sequences.reverse_add.higher_interface import (
+    ReverseHigherInterfaceCompilation,
+    ReverseHigherInterfaceCompiler,
+)
 from tests.support.assertions import assert_rejected_atomically
 from tests.support.reverse_higher_interface import _direct_step
 from tests.support.reverse_higher_runtime import (
@@ -97,7 +97,7 @@ def test_reverse_schema_cache_cannot_be_entered_by_hash_equality_spoof() -> None
 
 
 def test_reverse_schema_readonly_validation_does_not_publish_cache_entries() -> None:
-    from devtools.experiments.reverse_add.higher_schema import (
+    from number_compiler.sequences.reverse_add.higher_schema import (
         ReverseHigherActionSchema,
     )
 
@@ -591,8 +591,8 @@ def test_runtime_k_u_carrier_observes_power_without_syntax_replay(
 
 
 def test_higher_compiler_payload_audit_rejects_integer_cache_key_alias() -> None:
-    from devtools.experiments.reverse_add.temporal_payload_audit import (
-        audit_reverse_temporal_experiment,
+    from number_compiler.resources.higher_payload_audit import (
+        audit_higher_payloads,
     )
 
     (
@@ -613,7 +613,7 @@ def test_higher_compiler_payload_audit_rejects_integer_cache_key_alias() -> None
     )
     del cache[primitive]
     cache[primitive.local_id] = compiled
-    damaged = audit_reverse_temporal_experiment(runtime.ledger)
+    damaged = audit_higher_payloads(runtime.ledger)
     assert damaged.invalid
 
 

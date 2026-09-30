@@ -37,6 +37,8 @@ def audit_field_action_payloads(ledger: ResourceLedger) -> FieldActionPayloadAud
         "number_compiler.sequences.collatz.field_action",
         "number_compiler.sequences.collatz.powered_local_codec",
         "number_compiler.sequences.reverse_add.powered_local_codec",
+        "number_compiler.sequences.reverse_add.coordinate_program",
+        "number_compiler.sequences.reverse_add.field_action",
     )
     if not any(
         type(root).__module__.startswith(legacy_prefixes)
@@ -45,7 +47,9 @@ def audit_field_action_payloads(ledger: ResourceLedger) -> FieldActionPayloadAud
         return FieldActionPayloadAudit(scoped_approved, scoped_invalid)
 
     from number_compiler.arithmetic.contracts.block_effect import BoundarySide
-    from number_compiler.arithmetic.contracts.scoped_handles import ActionProgramID
+    from number_compiler.arithmetic.contracts.scoped_handles import (
+        ActionProgramID,
+    )
     from number_compiler.arithmetic.contracts.semantic_identity import SemanticIdentity
     from number_compiler.hashlife.actions.field_actions import (
         FieldCellActionID,
@@ -71,6 +75,12 @@ def audit_field_action_payloads(ledger: ResourceLedger) -> FieldActionPayloadAud
         CollatzRuntimeProgram,
         CollatzRuntimeProgramArena,
     )
+    from number_compiler.sequences.reverse_add.coordinate_program import (
+        ReverseCoordinateProgramArena,
+    )
+    from number_compiler.sequences.reverse_add.field_action import (
+        ReverseFieldActionArena,
+    )
     from number_compiler.sequences.reverse_add.powered_local_codec import (
         ReverseLocalAction,
         ReverseLocalActionID,
@@ -82,7 +92,17 @@ def audit_field_action_payloads(ledger: ResourceLedger) -> FieldActionPayloadAud
     approved: set[int] = set(scoped_approved)
     invalid: set[tuple[int, int]] = set(scoped_invalid)
     for root in ledger.iter_execution_roots():
-        if type(root) is GenericHigherActionSchema:
+        if type(root) in (ReverseCoordinateProgramArena, ReverseFieldActionArena):
+            from number_compiler.resources.reverse_field_action_payload_audit import (
+                audit_reverse_field_action_root,
+            )
+
+            reverse_approved, reverse_invalid = audit_reverse_field_action_root(
+                root, ledger, containers
+            )
+            approved.update(reverse_approved)
+            invalid.update(reverse_invalid)
+        elif type(root) is GenericHigherActionSchema:
             stores = root._nodes, root._keys
             all_valid = (
                 root.ledger is ledger

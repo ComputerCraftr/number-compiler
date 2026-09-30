@@ -14,6 +14,7 @@ from number_compiler.arithmetic.contracts.scoped_handles import (
     LoweringCapability,
 )
 from number_compiler.resources.ledger import ResourceLedger
+from number_compiler.resources.output_stream_metrics import closing_output_stream
 
 if TYPE_CHECKING:
     from number_compiler.hashlife.observation.tile_projection import LazyProjection
@@ -30,8 +31,7 @@ def iter_canonical_endpoint_digits(
         if capability.owner is not owner:
             raise ValueError("foreign endpoint lowering capability")
         projection.ledger.bump("endpoint_lowering_requests")
-        leaves = projection.iter_endpoint_tiles()
-        try:
+        with closing_output_stream(projection.iter_endpoint_tiles()) as leaves:
             for tile in leaves:
                 record = projection.scheduler.tiles.resolve(tile)
                 if record.level or record.symbol is None:
@@ -43,8 +43,6 @@ def iter_canonical_endpoint_digits(
                     )
                 projection.ledger.bump("explicitly_lowered_digits")
                 yield record.symbol
-        finally:
-            leaves.close()
         projection.ledger.bump("explicitly_materialized_endpoints")
 
 

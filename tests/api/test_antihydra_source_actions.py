@@ -16,6 +16,9 @@ from number_compiler.resources.process_cache import (
     ImmutableValue,
     ProcessCache,
 )
+from number_compiler.resources.temporal_diagnostics import (
+    collect_temporal_diagnostics_snapshot,
+)
 from number_compiler.sequences.antihydra import mahler_cache, mahler_source_actions
 from number_compiler.sequences.antihydra.arithmetic_images import (
     ANTIHYDRA_ARITHMETIC_LAW,
@@ -285,3 +288,121 @@ def test_closed_occurrence_consumer_invalidates_its_local_store() -> None:
         consumer.lookup(1024, 8)
     row = next(row for row in term.ledger.inventory() if row.owner == owner)
     assert row.disposed and row.entries == row.nodes == 0
+
+
+@pytest.mark.parametrize("extent", (1024, 1025, 2048))
+@pytest.mark.parametrize("consumer", ("digit", "value"))
+def test_public_arithmetic_warm_root_reuses_complete_source_action_before_cold_discovery(
+    extent: int,
+    consumer: str,
+    source_cache: ProcessCache,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    def observe(term: AntihydraArithmeticTerm) -> int:
+        return term.digit(2) if consumer == "digit" else term.value()
+
+    cold = AntihydraArithmeticTerm(extent, max_state_bits=8192, shared_cache=True)
+    expected = observe(cold)
+    assert cold.ledger.counters["antihydra_hashlife_source_action_publications"] == 1
+    assert cold.ledger.counters["antihydra_hashlife_source_action_active"] == 1
+    assert cold.arithmetic_workspace is not None
+    assert cold.arithmetic_workspace.mahler_bindings is None
+
+    monkeypatch.setattr(
+        AntihydraArithmeticImageWorkspace, "complete_composite_candidate", _unexpected
+    )
+    monkeypatch.setattr(
+        AntihydraArithmeticImageWorkspace, "_run_candidate", _unexpected
+    )
+    warm = AntihydraArithmeticTerm(extent, max_state_bits=8192, shared_cache=True)
+    assert observe(warm) == expected
+    counters = warm.ledger.counters
+    assert counters["antihydra_hashlife_source_action_process_hits"] == 1
+    assert counters["antihydra_hashlife_source_action_exact_hits"] == 1
+    assert counters["antihydra_hashlife_source_action_applied_hits"] == 1
+    assert counters["antihydra_hashlife_source_action_applied_parent_hits"] == 1
+    assert counters.get("antihydra_arithmetic_temporal_balanced_routes", 0) == 0
+    assert warm.arithmetic_workspace is not None
+    assert warm.arithmetic_workspace.mahler_bindings is None
+    if consumer == "digit":
+        assert counters["antihydra_arithmetic_point_germ_demands"] == 1
+        assert counters.get("antihydra_arithmetic_fiber_endpoint_demands", 0) == 0
+
+    before = warm.ledger.mutation_version
+    row = next(
+        row
+        for row in collect_temporal_diagnostics_snapshot(warm.ledger).macrocells
+        if row.family == "antihydra"
+    )
+    assert row.source_action.process_hits == row.source_action.applied_parent_hits == 1
+    assert row.source_action.transported_hits == 0
+    assert row.cache_scope == "source_cylinder"
+    assert warm.ledger.mutation_version == before
+    metrics = collect_ledger_metrics(warm.ledger)
+    assert metrics.resource_audit_complete
+    assert (
+        metrics.resource_accounting_mismatch == metrics.forbidden_future_payloads == 0
+    )
+    assert source_cache.stats().active_leases == 0
+
+
+def test_digit_source_action_reuse_keeps_small_and_bypass_paths_cold(
+    source_cache: ProcessCache,
+) -> None:
+    small = AntihydraArithmeticTerm(256, max_state_bits=8192, shared_cache=True)
+    _ = small.digit(2)
+    assert "antihydra_hashlife_source_action_lookups" not in small.ledger.counters
+
+    bypass = AntihydraArithmeticTerm(1024, max_state_bits=8192, shared_cache=False)
+    _ = bypass.digit(2)
+    assert "antihydra_hashlife_source_action_lookups" not in bypass.ledger.counters
+    assert source_cache.stats().active_leases == 0
+
+
+def test_digit_publication_is_reused_by_later_mahler_consumer(
+    source_cache: ProcessCache, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    digit_term = AntihydraArithmeticTerm(1024, max_state_bits=8192, shared_cache=True)
+    expected_digit = digit_term.digit(2)
+    assert (
+        digit_term.ledger.counters["antihydra_hashlife_source_action_publications"] == 1
+    )
+
+    reference = _prepared(1024, shared_cache=False)
+    expected_action = associated_action(reference.result())
+    monkeypatch.setattr(
+        AntihydraArithmeticImageWorkspace, "complete_composite_candidate", _unexpected
+    )
+    monkeypatch.setattr(
+        AntihydraArithmeticImageWorkspace, "_run_candidate", _unexpected
+    )
+    warm = _prepared(1024)
+    assert associated_action(warm.result()) == expected_action
+    assert warm.ledger.counters["mahler_hashlife_source_action_process_hits"] == 1
+    assert (
+        warm.ledger.counters["mahler_hashlife_source_action_applied_parent_hits"] == 1
+    )
+    assert expected_digit in (0, 1)
+    assert source_cache.stats().active_leases == 0
+
+
+def test_digit_cache_reset_and_changed_extent_require_new_admission(
+    source_cache: ProcessCache,
+) -> None:
+    first = AntihydraArithmeticTerm(1024)
+    expected = first.digit(2)
+    source_cache.reset()
+    for extent in (1024, 1025):
+        term = AntihydraArithmeticTerm(extent)
+        assert term.digit(2) == AntihydraArithmeticTerm(
+            extent, shared_cache=False
+        ).digit(2)
+        assert term.ledger.counters["antihydra_hashlife_source_action_misses"] == 1
+        assert (
+            term.ledger.counters["antihydra_hashlife_source_action_applied_hits"] == 0
+        )
+    # Reset invalidates process authority, not an independently admitted local image.
+    assert first.digit(2) == expected
+    with pytest.raises(ValueError, match="budget exceeded"):
+        AntihydraArithmeticTerm(1024, max_state_bits=1024).digit(2)
+    assert source_cache.stats().active_leases == 0

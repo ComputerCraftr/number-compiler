@@ -533,6 +533,7 @@ def verify_forest_certificate(
                 store.clear()
             if reserved:
                 ledger.release(owner, entries=reserved, nodes=reserved)
+            ledger.mark_disposed(owner)
 
 
 def _phase_period(leading: int, last_digit: int) -> tuple[int, int]:

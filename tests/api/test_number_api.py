@@ -7,7 +7,7 @@ import pytest
 
 import number_compiler.sequences.reverse_add.digits as reverse_digits
 from number_compiler.api.cli import main as cli_main
-from number_compiler.api.number_api import NumberCompiler
+from number_compiler.api.number_api import NumberCompiler, PoweredReverseAddTermPayload
 from tests.support.power_assertions import assert_collatz_radices
 
 
@@ -128,8 +128,43 @@ def test_single_digit_projection_never_materializes_the_full_word(
     # Formula families evaluate only the requested position rather than calling
     # materialize_values on the complete term.
     term = c.project_nth("reverse-add", 5, seed=196, base=10)
+    assert isinstance(term.payload, PoweredReverseAddTermPayload)
+    assert term.payload.term._source_construction is None
     assert term.digit(0) == 4
+    assert term.payload.term._source_construction is not None
     assert c.project_digit("reverse-add", 5, 0, seed=196, base=10) == 4
+
+
+def test_reverse_payload_digit_prepares_authority_before_readonly_observation() -> None:
+    projected = NumberCompiler().project_nth("reverse-add", 5, seed=196, base=10)
+    assert isinstance(projected.payload, PoweredReverseAddTermPayload)
+    payload = projected.payload
+    assert payload.term._source_construction is None
+    payload.power_metrics()
+    assert payload.term._source_construction is None
+
+    assert payload.digit(0) == 4
+    assert payload.term._source_construction is not None
+
+
+@pytest.mark.parametrize("through_payload", [False, True])
+def test_negative_reverse_digit_rejects_before_authority_or_workspace_allocation(
+    through_payload: bool,
+) -> None:
+    projected = NumberCompiler().project_nth("reverse-add", 5, seed=196, base=10)
+    assert isinstance(projected.payload, PoweredReverseAddTermPayload)
+    term = projected.payload.term
+    ledger_version = term._ledger.mutation_version
+    counters = dict(term._ledger.counters)
+
+    observer = projected.payload.digit if through_payload else projected.digit
+    with pytest.raises(IndexError):
+        observer(-1)
+
+    assert term._source_construction is None
+    assert term._workspace is None
+    assert term._ledger.mutation_version == ledger_version
+    assert term._ledger.counters == counters
 
 
 def test_large_fermat_projection_keeps_public_width_symbolic(

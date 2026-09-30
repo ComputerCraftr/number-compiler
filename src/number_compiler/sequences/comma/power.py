@@ -7,7 +7,6 @@ from dataclasses import dataclass
 from typing import cast
 
 from number_compiler.arithmetic.contracts.scoped_handles import ArenaHandle, ArenaToken
-from number_compiler.arithmetic.fields.consumer_pullback import PrefixSafety
 from number_compiler.arithmetic.fields.radix import iter_digits_lsd
 from number_compiler.hashlife.execution.source_bound_images import (
     SourceBoundImageAdapter,
@@ -19,6 +18,10 @@ from number_compiler.hashlife.execution.source_bound_images import (
 )
 from number_compiler.hashlife.execution.tile_scheduler import TileScheduler
 from number_compiler.resources.ledger import ResourceLedger
+from number_compiler.resources.output_stream_metrics import (
+    initialize_output_stream_metrics,
+    measured_output_stream,
+)
 from number_compiler.resources.stores import LedgerList
 from number_compiler.sequences.comma.action_arena import (
     CommaActionArena,
@@ -295,13 +298,11 @@ class _CommaImageAdapter(SourceBoundImageAdapter):
                 + 4 * node.steps.bit_length()
             )
             transfer = self.arena.transfer(node.leading, node.entering_digit)
-            safety = PrefixSafety(
-                -transfer.displacement, -transfer.maximum_guard
-            ).repeat(node.cycles)
             if (
-                node.steps != node.cycles * transfer.period
-                or node.displacement != -safety.delta
-                or node.maximum_guard != -safety.minimum
+                node.cycles < 1
+                or node.steps != node.cycles * transfer.period
+                or node.displacement != node.cycles * transfer.displacement
+                or node.maximum_guard != node.displacement + int(node.leading < 9)
                 or safe_complete_cycles(payload.value, transfer, node.steps)
                 < node.cycles
             ):
@@ -510,10 +511,11 @@ class CommaTerm:
                 max_cache_entries if max_cache_entries is not None else max_states,
             ),
         )
+        initialize_output_stream_metrics(self.ledger, "comma_stream")
         from number_compiler.sequences.comma.certificates import new_certificate_memo
 
         self.certificate_memo = new_certificate_memo(self.ledger)
-        self.arena = CommaActionArena(self.ledger, max_work)
+        self.arena = CommaActionArena(self.ledger, max_work, shared_cache=shared_cache)
         self.scheduler = TileScheduler.source_only(self.ledger)
         self.adapter = _CommaImageAdapter(self.arena, self.scheduler)
         self.adapter._term = self
@@ -641,8 +643,18 @@ class CommaTerm:
             transfer = self.arena.transfer(sector.leading, sector.digit)
             cycles = safe_complete_cycles(value, transfer, remaining)
             if cycles:
-                action = self.arena.cycles(sector.leading, sector.digit, cycles)
-                value = self._publish(action)
+                try:
+                    action, reused = self.arena.cycle_request(
+                        sector.leading, sector.digit, cycles
+                    )
+                    value = self._publish(action)
+                except Exception:
+                    self.ledger.bump("comma_hashlife_failed_work")
+                    raise
+                if reused:
+                    self.arena.cycle_reuse.count("applied_hits")
+                    if cycles > 1:
+                        self.arena.cycle_reuse.count("applied_parent_hits")
                 remaining -= cycles * transfer.period
                 continue
             if (
@@ -722,31 +734,31 @@ class CommaTerm:
         )
 
     def iter_digits(self) -> Generator[int, None, None]:
-        value = self._resolve()
-        self.ledger.bump("comma_stream_requests")
+        def source() -> Generator[int, None, None]:
+            value = self._resolve()
 
-        def workspace(slots: int, bits: int) -> None:
-            for name, current in (
-                ("comma_stream_workspace_peak_slots", slots),
-                ("comma_stream_workspace_peak_integer_bits", bits),
-            ):
-                peak = self.ledger.counters.get(name, 0)
-                if current > peak:
-                    self.ledger.bump(name, current - peak)
+            def workspace(slots: int, bits: int) -> None:
+                for name, current in (
+                    ("comma_stream_workspace_peak_slots", slots),
+                    ("comma_stream_workspace_peak_integer_bits", bits),
+                ):
+                    peak = self.ledger.counters.get(name, 0)
+                    if current > peak:
+                        self.ledger.bump(name, current - peak)
 
-        stream = iter_digits_lsd(
-            value,
-            10,
-            charge=self.arena.charge,
-            charge_bits=self.arena.charge_bits,
-            observe_workspace=workspace,
-        )
-        try:
-            for digit in stream:
-                self.ledger.bump("comma_stream_emitted_digits")
-                yield digit
-        finally:
-            stream.close()
+            stream = iter_digits_lsd(
+                value,
+                10,
+                charge=self.arena.charge,
+                charge_bits=self.arena.charge_bits,
+                observe_workspace=workspace,
+            )
+            try:
+                yield from stream
+            finally:
+                stream.close()
+
+        return measured_output_stream(self.ledger, "comma_stream", source)
 
     def clock(self) -> dict[str, int]:
         value = self._resolve()

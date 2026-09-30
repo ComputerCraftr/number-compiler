@@ -48,6 +48,10 @@ from number_compiler.arithmetic.fields.radix import (
 )
 from number_compiler.hashlife.actions.lazy_compiler import LazyCompiler
 from number_compiler.resources.ledger import ResourceLedger
+from number_compiler.resources.output_stream_metrics import (
+    initialize_output_stream_metrics,
+    measured_output_stream,
+)
 
 if TYPE_CHECKING:
     from number_compiler.projection.lazy_radix import RadixProjection
@@ -309,6 +313,14 @@ class PoweredCollatzTerm:
         seed = require_integer(seed, "seed", 1)
         steps = require_integer(steps, "steps", 0)
         self._ledger = ResourceLedger(max_context_nodes, max_cache_entries)
+        initialize_output_stream_metrics(self._ledger, "collatz_output_stream")
+        for suffix in (
+            "requests",
+            "emitted_digits",
+            "operand_bits",
+            "failures",
+        ):
+            self._ledger.bump(f"collatz_radix_conversion_{suffix}", 0)
         self._ledger.bump("temporal_point_requests", 0)
         self._ledger.bump("temporal_length_requests", 0)
         self.seed = seed
@@ -649,11 +661,14 @@ class PoweredCollatzTerm:
         return SArithmeticClock(odd, self.steps - odd)
 
     def iter_digits(self) -> Iterator[int]:
-        if self.steps == 0:
-            yield from self.seed_digits
-            return
-        numerator, divisor = self._source_numerator()
-        yield from digits_lsd(numerator // divisor, 2)
+        def source() -> Iterator[int]:
+            if self.steps == 0:
+                yield from self.seed_digits
+                return
+            numerator, divisor = self._source_numerator()
+            yield from digits_lsd(numerator // divisor, 2)
+
+        return measured_output_stream(self._ledger, "collatz_output_stream", source)
 
     def digits(self) -> tuple[int, ...]:
         return tuple(map(int, self.iter_digits()))

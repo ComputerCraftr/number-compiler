@@ -511,6 +511,7 @@ def _transfer_setup() -> tuple[
 ]:
     ledger, source, signature, geometry, action, images, adapter, _ = _setup()
     transfer_adapter = _TransferAdapter(action, adapter.interface, adapter.output)
+    assert isinstance(images.interfaces, DiamondQuotientArena)
     transfers = FieldTransferArena(
         ledger,
         images.sources,

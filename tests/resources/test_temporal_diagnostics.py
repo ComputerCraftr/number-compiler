@@ -566,16 +566,21 @@ def test_absent_macrocell_instrumentation_is_not_a_measured_zero() -> None:
     assert collect_temporal_diagnostics_snapshot(ResourceLedger()).macrocells == ()
 
 
-def test_mahler_capacity_refusals_are_counted_once_across_stores() -> None:
+@pytest.mark.parametrize("family", ("mahler", "antihydra"))
+def test_capacity_refusals_are_counted_once_across_stores(family: str) -> None:
     ledger = ResourceLedger()
-    ledger.bump("mahler_hashlife_source_action_bypasses", 2)
-    ledger.bump("mahler_hashlife_occurrence_bypasses", 1)
+    ledger.bump(f"{family}_hashlife_source_action_bypasses", 2)
+    ledger.bump(f"{family}_hashlife_occurrence_bypasses", 1)
     before = dict(ledger.counters)
     record = collect_temporal_diagnostics_snapshot(ledger).macrocells[0]
     assert record.capacity_bypasses == 3
     assert record.source_action.bypasses == 2
-    assert record.outer_observer.bypasses == 1
-    assert record.occurrence.bypasses is None
+    if family == "mahler":
+        assert record.outer_observer.bypasses == 1
+        assert record.occurrence.bypasses is None
+    else:
+        assert record.occurrence.bypasses == 1
+        assert record.outer_observer.bypasses is None
     assert dict(ledger.counters) == before
 
 

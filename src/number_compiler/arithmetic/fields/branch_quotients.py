@@ -221,4 +221,5 @@ class PrimeBucketWorkspace:
     def close(self) -> None:
         if not self._closed:
             self._partitions.dispose()
+            self.ledger.mark_disposed(self._scratch)
             self._closed = True

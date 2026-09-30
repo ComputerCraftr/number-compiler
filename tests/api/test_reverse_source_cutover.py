@@ -16,7 +16,10 @@ from number_compiler.sequences.reverse_add.source_images import (
     ReverseCylinderConstructionUnavailable,
     _ReverseSourceImageAdapter,
 )
-from tests.support.reverse_cutover import forbid_uniform_context_compilation
+from tests.support.reverse_cutover import (
+    assert_completed_child_work,
+    forbid_uniform_context_compilation,
+)
 
 
 def _forbidden(*_args: object, **_kwargs: object) -> Never:
@@ -30,13 +33,12 @@ def forbid_universal_context_compilation(monkeypatch: pytest.MonkeyPatch) -> Non
     monkeypatch.setattr(residual, "minimize_bimachine", _forbidden)
 
 
-@pytest.mark.parametrize("steps,expected", [(0, "196"), (1, "887"), (2, "1675")])
-def test_available_cli_terms_use_source_only_scheduler(
+def _checked_cli_term(
     steps: int,
     expected: str,
     monkeypatch: pytest.MonkeyPatch,
     capsys: pytest.CaptureFixture[str],
-) -> None:
+) -> ReverseAddPoweredTerm:
     monkeypatch.setattr(CausalTileEngine, "__init__", _forbidden)
     monkeypatch.setattr(HashLifeBlockIndex, "__init__", _forbidden)
     assert main(["196", "--nth", str(steps)]) == 0
@@ -45,12 +47,42 @@ def test_available_cli_terms_use_source_only_scheduler(
     assert captured.err == ""
     term = ReverseAddPoweredTerm(196, steps)
     assert term.digits() == tuple(map(int, reversed(expected)))
+    return term
+
+
+@pytest.mark.parametrize("steps,expected", [(0, "196"), (1, "887"), (2, "1675")])
+def test_available_cli_terms_use_source_only_scheduler(
+    steps: int,
+    expected: str,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    term = _checked_cli_term(steps, expected, monkeypatch, capsys)
     assert term._workspace is not None
     assert term._workspace.scheduler._source_only
 
 
-@pytest.mark.parametrize("steps", [3, 20, 1024, 10**9])
-def test_missing_powered_constructor_refuses_without_legacy_work(
+@pytest.mark.parametrize(
+    ("steps", "expected"),
+    [(3, "7436"), (20, "70446464506")],
+)
+def test_completed_child_constructor_answers_rejected_same_carry_without_legacy_work(
+    steps: int,
+    expected: str,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    term = _checked_cli_term(steps, expected, monkeypatch, capsys)
+    counters = term._ledger.counters
+    assert_completed_child_work(counters)
+    assert counters.get("reverse_source_completed_child_publications", 0) == 1
+    assert counters.get("tile_causal_point_parent_requests", 0) == 0
+    assert counters.get("whole_word_symbol_visits", 0) == 0
+    assert counters.get("sequential_generation_advances", 0) == 0
+
+
+@pytest.mark.parametrize("steps", [1024, 10**9])
+def test_unmigrated_large_power_still_refuses_without_legacy_work(
     steps: int,
     monkeypatch: pytest.MonkeyPatch,
     capsys: pytest.CaptureFixture[str],
@@ -65,8 +97,7 @@ def test_missing_powered_constructor_refuses_without_legacy_work(
     for demand in (lambda: term.digit(0), term.width, term.digits):
         with pytest.raises(ReverseCylinderConstructionUnavailable):
             demand()
-    assert term._ledger.counters.get("tile_causal_point_parent_requests", 0) == 0
-    assert term._ledger.counters.get("whole_word_symbol_visits", 0) == 0
+    assert term._ledger.counters.get("source_image_primitive_applications", 0) == 0
     assert term._ledger.counters.get("sequential_generation_advances", 0) == 0
 
 
@@ -131,10 +162,29 @@ def test_admitted_no_growth_cli_powers_do_not_replay_steps(
     assert captured.err == ""
 
 
-def test_no_growth_power_refuses_at_the_first_unadmitted_growth(
+def test_first_unadmitted_growth_uses_completed_child_constructor(
     capsys: pytest.CaptureFixture[str],
 ) -> None:
-    assert main(["196", "--seed", "1", "--nth", "4"]) == 2
+    assert main(["196", "--seed", "1", "--nth", "4"]) == 0
     captured = capsys.readouterr()
-    assert captured.out == ""
-    assert "cylinder" in captured.err.lower()
+    assert captured.out == "16\n"
+    assert captured.err == ""
+    term = ReverseAddPoweredTerm(1, 4)
+    assert term.digits() == (6, 1)
+    counters = term._ledger.counters
+    assert counters.get("reverse_source_completed_child_publications", 0) == 1
+    assert counters.get("reverse_recursive_completed_child_joins", 0) > 0
+    assert counters.get("source_image_primitive_applications", 0) == 0
+
+
+def test_mutated_seed_rejects_before_recursive_authority_or_workspace_allocation() -> (
+    None
+):
+    term = ReverseAddPoweredTerm(196, 20)
+    term.seed = 295
+    before = term._ledger.snapshot()
+    with pytest.raises(ValueError, match="binding changed"):
+        term.digit(0)
+    assert term._source_construction is None
+    assert term._workspace is None
+    assert term._ledger.snapshot() == before

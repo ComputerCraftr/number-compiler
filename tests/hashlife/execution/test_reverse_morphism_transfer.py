@@ -276,4 +276,6 @@ def test_public_reverse_uses_directional_future_quotient(generation: int) -> Non
     )
     assert metrics.sequential_generation_advances == 0
     assert metrics.resource_accounting_mismatch == 0
-    assert metrics.forbidden_future_payloads == 0
+    from number_compiler.resources.metric_collection import collect_ledger_metrics
+
+    assert collect_ledger_metrics(term._ledger).forbidden_future_payloads == 0

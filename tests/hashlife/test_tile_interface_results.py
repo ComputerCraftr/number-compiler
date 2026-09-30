@@ -529,10 +529,20 @@ def test_parametric_interface_shares_memo_and_retires_with_input() -> None:
     assert results.lookup_interface(interface_key) is None
     assert results.publish_interface(interface_key, result.outgoing) == result.outgoing
     assert results.lookup_interface(interface_key) == result.outgoing
+    assert results.publish_interface(interface_key, result.outgoing) == result.outgoing
     result_lease = results.publish(key, result)
     assert results.retained_entries == 2
     assert results.retained_results == results.retained_interfaces == 1
+    assert ledger.counters["powered_interface_requests"] == 2
     assert ledger.counters["powered_interface_early_hits"] == 1
+    assert (
+        ledger.counters["powered_interface_requests"]
+        - ledger.counters["powered_interface_early_hits"]
+        == 1
+    )
+    assert ledger.counters["powered_interface_publication_requests"] == 2
+    assert ledger.counters["powered_interface_publications"] == 1
+    assert ledger.counters["powered_interface_late_aliases"] == 1
     input_lease.close()
     assert results.retained_entries == 0
     result_lease.close()

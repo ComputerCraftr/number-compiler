@@ -435,7 +435,8 @@ in the packed recurrence.
   dwell is observed. Moving dwell into a cocycle requires a joint refinement,
   not erasing it. The 29 homogeneous-run actions are not established as a
   monoid closed under mixed runs: the reported two-run experiment has 44
-  distinct transformations. None of these counts is an Isabelle premise.
+  distinct transformations. Those historical counts are superseded for the
+  NC5 future alphabet by the executable audit below. None is an Isabelle premise.
 - **Checked forwarding:** a period-one, noncrossing sector clause preserves
   the entire existing `comma_round_result` function at every phase. Its child
   masks can therefore be reused after exact source rebinding. The theorem
@@ -477,3 +478,73 @@ Reproduction and frozen measurements belong in the
 [weekly implementation record](../sprints/week-of-2026-09-20/comma.md#a367620-integration).
 Public acceptance, finite arithmetic, certificate soundness and performance
 remain separate gates.
+
+
+### Normalized interior-cycle return
+
+**Checked arithmetic refinement.** For an admitted decimal phase `(f,d)`,
+let `L=10/gcd(f,10)` and let `P` be its complete-cycle displacement.
+For positive `c`, the complete repeated action has the normal form
+`(c L, c P, c P + [f<9])`: literal duration, displacement and strict guard.
+[Comma_Normalized_Cycle](../../proofs/isabelle/comma_interior_cache/Comma_Normalized_Cycle.thy)
+proves equality with the exact phase displacement and maximum prefix guard,
+chronological joining and receiving-headroom admission. Zero repetitions use
+the separate identity action.
+Its `comma_normalized_cycle_gcd_normalization` theorem also proves that
+complete-cycle summaries depend on the entering digit only through its residue
+modulo `gcd(f,10)`. Actual phase admission remains occurrence-specific.
+
+The formula takes a fixed number of integer operations; operand sizes remain
+part of its cost. It does not establish a finite future-branch quotient,
+all-source macro termination, or infinite continuation. The implementation and
+measurements are recorded in the
+[September 30 sprint](../sprints/week-of-2026-09-27/comma.md#september-30--normalized-cycle-reuse-and-proof-memos).
+
+### Executable future-observer audit
+
+**Finite experiment, not runtime branch authority.** The explicit
+[quotient checker](../../devtools/verification/comma_semantic_quotients.py)
+reproduces Q15 (81 nonzero ports), Q19 (90 zero-inclusive ports), T3279
+(3,279 future classes) and M4986 (4,986 classes retaining Q19 observations).
+The complete 14,784-state graph has 14,470 losing states, maximum rank 136,
+and 314 survivors. The selected cycle advances the exponent by 924.
+Homogeneous runs yield 31 distinct actions, including identity and common dead
+action: `0^13` and `1^18` are dead. This is not a closure claim for arbitrary
+mixed runs. Physical child slots remain ordered `(N,Z)`; the experiment's
+logical symbols map `0` to Z and `1` to N.
+
+These partitions erase exact weights and guards; equal classes cannot transfer
+an occurrence's displacement. Tables are built only by explicit developer
+checks, never by package import or CLI execution. M4175/R29 were not reproduced.
+
+**Unchecked global theorem layer.**
+[Comma_Global_Future_Safety](../../proofs/isabelle/comma_future_global/Comma_Global_Future_Safety.thy)
+specializes the rank and cycle checker to source-20 infinite existence and
+first-fork uniqueness. Its concrete checked-instance prerequisite still times
+out; registration does not establish those statements. Earlier-root exclusion,
+the replacement executable macro owner and weighted production admission remain
+separate obligations. See the
+[integration evidence](../sprints/week-of-2026-09-27/comma.md#september-30--executable-future-quotients-and-phase-reuse).
+
+### First-crossing global-root reduction
+
+- **Proposed checked theorem:** every infinite path from a listed decimal root
+  first crosses `10^5` at `100000+x` for `0 <= x <= 90`. Strict child growth
+  guarantees a crossing; the receiving leading digit is 1, tightening the
+  increment bound to 91 and hence the offset bound to 90.
+- **Finite experiment:** the existing chart arithmetic and least-rank audit leave
+  exactly offsets `{3,34,75}` open. Both children are retained in the check; their
+  ranks are `(None,7)` after exponent gain 5 at `a=2`. Literal source-20 controls
+  contain all three entries consecutively.
+- **Pending kernel proof:**
+  [Comma_Global_Root_Safety](../../proofs/isabelle/comma_future_global/Comma_Global_Root_Safety.thy)
+  combines the 91-entry B32 check, deterministic parent descent and imported
+  rank/literal-path theorems. Its `comma_global_release_safety` statement is about
+  listed decimal roots and source 20's first choice. The imported global rank
+  checker must finish before this result can authorize forest deletion.
+- **Scope:** the reduction removes the need for 49 separate root-tree arguments.
+  It does not itself remove finite-run fuel, extend emitted indices, establish
+  all-exponent runtime refinement, or make the 14,784-state rank check redundant.
+
+Implementation and build evidence belongs to the
+[September 30 root-entry record](../sprints/week-of-2026-09-27/comma.md#september-30--global-root-entry-reduction-and-forest-cutover-audit).

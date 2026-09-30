@@ -51,17 +51,27 @@ ML \<open>
     val comma_failed_memo = Unsynchronized.ref Termtab.empty;
     val (comma_smoke_certify, _) = Comma_Entry_Arithmetic.make_certifier @{context};
     val comma_memo_key = @{term "(0::nat)"};
+    val comma_memo_hits = Unsynchronized.ref 0;
+    val comma_memo_misses = Unsynchronized.ref 0;
+    val comma_memo_observe =
+      {hit = fn () => comma_memo_hits := !comma_memo_hits + 1,
+       miss = fn () => comma_memo_misses := !comma_memo_misses + 1};
     val _ = (case Exn.capture (fn () => Comma_Round_Witness.memo_certified
-        (fn () => ()) comma_smoke_certify comma_failed_memo comma_memo_key
+        (fn () => ()) comma_smoke_certify comma_memo_observe comma_failed_memo comma_memo_key
         (fn () => Thm.assume @{cprop True})) () of
         Exn.Exn (ERROR _) => ()
       | _ => error "Hypothesis-bearing theorem was accepted into memo");
     val _ = if Termtab.is_empty (!comma_failed_memo) then ()
       else error "Failed certification polluted the memo";
     val _ = Comma_Round_Witness.memo_certified (fn () => ()) comma_smoke_certify
-      comma_failed_memo comma_memo_key (fn () => Thm.reflexive @{cterm "(0::nat)"});
+      comma_memo_observe comma_failed_memo comma_memo_key (fn () => Thm.reflexive @{cterm "(0::nat)"});
     val _ = if Termtab.size (!comma_failed_memo) = 1 then ()
       else error "Certified memo insertion failed after rejected publication";
+    val _ = Comma_Round_Witness.memo_certified (fn () => ())
+      (fn _ => error "Memo hit repeated theorem certification") comma_memo_observe
+      comma_failed_memo comma_memo_key (fn () => error "Memo hit repeated construction");
+    val _ = if !comma_memo_hits = 1 andalso !comma_memo_misses = 2 then ()
+      else error "Memo hit/miss counters do not match actual lookups";
     val comma_smoke_generation = Unsynchronized.ref 1;
     val (comma_source_smoke_close, comma_round_smoke_stats) =
       Comma_Round_Witness.make_source_owned @{context}

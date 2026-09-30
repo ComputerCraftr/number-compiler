@@ -178,10 +178,6 @@ def cached_associated_action(
     )
     if type(workspace.shared_cache) is not bool:
         raise TypeError("shared_cache must be a bool")
-    # Measurements put the lease/decode cost above the direct constructor for
-    # small actions. This dispatch boundary has no mathematical significance.
-    if not workspace.shared_cache or workspace.returns < 1024:
-        return _build_action(*args)
     for metric in (
         "occurrence_lookups",
         "occurrence_exact_hits",
@@ -194,9 +190,21 @@ def cached_associated_action(
         "occurrence_applied_parent_hits",
         "occurrence_admission_rejections",
         "occurrence_bypasses",
+        "occurrence_disabled_bypasses",
+        "occurrence_policy_bypasses",
         "failed_work",
     ):
         ledger.bump("mahler_hashlife_" + metric, 0)
+    # These are decisions not to look up an outer-cache record, not misses
+    # or capacity refusals. Disabled reuse takes precedence over size policy.
+    if not workspace.shared_cache or workspace.returns < 1024:
+        reason = "disabled" if not workspace.shared_cache else "policy"
+        ledger.bump(f"mahler_hashlife_occurrence_{reason}_bypasses")
+        return _build_action(*args)
+    cache = get_process_cache()
+    if not cache.enabled:
+        ledger.bump("mahler_hashlife_occurrence_disabled_bypasses")
+        return _build_action(*args)
     qualification = cast(
         tuple[ImmutableValue, ...],
         (
@@ -225,7 +233,7 @@ def cached_associated_action(
         + transfer.lower.bit_length(),
     )
     try:
-        lease = get_process_cache().acquire(
+        lease = cache.acquire(
             "mahler-associated-action", "complete-occurrence-v1", qualification
         )
     except BlockContextBudgetExceeded:

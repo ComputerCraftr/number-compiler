@@ -123,6 +123,16 @@ Exit codes are 0 for successful requests, 2 for invalid input or budget refusal,
 rejected non-halting certificate. Certificate acceptance requires an actual
 checked certificate; a finite trace cannot supply it.
 
+## Decimal reverse/add availability
+
+Decimal reverse/add supports a bounded completed-child fallback through 128
+iterations when the existing same-carry clause does not apply. For example,
+`number-compiler 196 --nth 20` emits `70446464506`. Larger rejected-chamber queries
+still refuse with exit 2; raising an output budget does not construct the missing
+generic temporal action. Other admitted clauses and radices keep their existing
+behavior. This bounded availability does not close the powered-construction or
+performance release gates.
+
 ## Antihydra arithmetic and physical observations
 
 The arithmetic endpoint is the total sequence

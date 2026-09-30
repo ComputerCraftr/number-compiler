@@ -5,6 +5,7 @@ from typing import cast
 import pytest
 
 from number_compiler.projection.lazy_radix import RadixProjection, collatz_radix_digit
+from number_compiler.resources.metric_collection import collect_ledger_metrics
 from number_compiler.sequences.collatz.block_power import PoweredCollatzTerm
 from tests.support.runtime_limits import deadline
 
@@ -56,7 +57,7 @@ def test_former_134m_request_fixture_is_bounded_block_work() -> None:
     assert counters.get("source_image_primitive_applications", 0) > 0
     assert counters.get("microblock_entry_high_water", 0) <= 64
     assert term._microblocks.payload_bytes <= term._microblocks.MAX_PAYLOAD_BYTES
-    assert term.metrics().resource_audit_complete == 1
+    assert collect_ledger_metrics(term._ledger).resource_audit_complete == 1
 
 
 def test_repeat_digit_is_a_microblock_hit_without_stage_replay() -> None:

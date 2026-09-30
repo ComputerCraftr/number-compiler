@@ -27,6 +27,7 @@ from number_compiler.hashlife.actions.field_actions import (
     FieldGeometryID,
 )
 from number_compiler.hashlife.execution.field_image_domains import (
+    FieldInterfaceArena,
     _DomainEntry,
     _DomainLookupKey,
     _FieldImageDomain,
@@ -40,7 +41,6 @@ from number_compiler.hashlife.execution.source_image_seals import (
     _TypedKey,
 )
 from number_compiler.hashlife.interfaces.diamond_quotient import (
-    DiamondQuotientArena,
     LocalInterfaceID,
 )
 from number_compiler.resources.ledger import ResourceLedger
@@ -556,7 +556,7 @@ class RecursiveFieldImageArena:
         ledger: ResourceLedger,
         sources: SourceCellArena,
         geometries: FieldGeometryArena,
-        interfaces: DiamondQuotientArena,
+        interfaces: FieldInterfaceArena,
         *,
         action_owner: ArenaToken,
         output_owner: ArenaToken,
@@ -692,7 +692,7 @@ class RecursiveFieldImageArena:
 
     def admit_domain(
         self,
-        interfaces: DiamondQuotientArena,
+        interfaces: FieldInterfaceArena,
         *,
         action_owner: ArenaToken,
         action_kind: str,

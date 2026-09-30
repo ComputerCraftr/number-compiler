@@ -5,7 +5,6 @@ from typing import Never
 
 import pytest
 
-from devtools.experiments.reverse_add.field_action import ReverseFieldActionArena
 from number_compiler.arithmetic.contracts.block_effect import BoundarySide
 from number_compiler.arithmetic.contracts.block_kernel import BaseBlockEffect
 from number_compiler.arithmetic.contracts.scoped_handles import ArenaToken
@@ -37,6 +36,7 @@ from number_compiler.hashlife.execution.recursive_outputs import (
 )
 from number_compiler.resources.higher_payload_audit import audit_higher_payloads
 from number_compiler.resources.stores import LedgerDict
+from number_compiler.sequences.reverse_add.field_action import ReverseFieldActionArena
 from tests.support.reverse_higher_runtime import _fixture, _macro_composer
 
 

@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 from collections.abc import Iterator
-from contextlib import closing
 from dataclasses import dataclass
 
 from number_compiler.arithmetic.contracts.scoped_handles import ExactSource
@@ -12,6 +11,7 @@ from number_compiler.arithmetic.formula.skew_residue_laws import (
     skew_normalized_digit,
 )
 from number_compiler.resources.ledger import ResourceLedger
+from number_compiler.resources.output_stream_metrics import closing_output_stream
 from number_compiler.sequences.reverse_add.source_ports import SourceCarryPorts
 
 
@@ -72,8 +72,8 @@ def _validate_ports(ports: SourceCarryPorts, steps: int) -> SameCarryChamberCert
     exponent = steps - 1
     all_zero = True
     with (
-        closing(ports.iter_first_ports()) as forward,
-        closing(ports.iter_first_ports(reflected=True)) as reflected,
+        closing_output_stream(ports.iter_first_ports()) as forward,
+        closing_output_stream(ports.iter_first_ports(reflected=True)) as reflected,
     ):
         for position, (left, right) in enumerate(zip(forward, reflected, strict=True)):
             pair = ports.pair(position)
@@ -139,14 +139,12 @@ def iter_admitted_same_carry_digits(
     ports: SourceCarryPorts, steps: int
 ) -> Iterator[int]:
     """Consume admitted output with shared regional carry contexts."""
-    forward = ports.iter_first_ports()
-    reflected = ports.iter_first_ports(reflected=True)
-    try:
+    with (
+        closing_output_stream(ports.iter_first_ports()) as forward,
+        closing_output_stream(ports.iter_first_ports(reflected=True)) as reflected,
+    ):
         for position, (left, right) in enumerate(zip(forward, reflected, strict=True)):
             yield _same_carry_digit(ports, steps, position, left, right)
-    finally:
-        forward.close()
-        reflected.close()
 
 
 def iter_same_carry_digits(

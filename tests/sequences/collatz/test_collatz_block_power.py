@@ -56,6 +56,7 @@ def test_collatz_powered_point_uses_admitted_source_image_without_replay() -> No
     assert len(workspace.support) == 1
     assert workspace.support[0].saturated
     from devtools.benchmarks.collatz_temporal_power_probe import _source_image_work
+    from number_compiler.resources.metric_collection import collect_ledger_metrics
 
     source_work, operand_bits, seal_bytes = _source_image_work(metrics)
     assert source_work < 25_000
@@ -64,7 +65,7 @@ def test_collatz_powered_point_uses_admitted_source_image_without_replay() -> No
     assert counters["source_image_publications"] > 0
     assert counters["source_image_projection_publications"] > 0
     assert counters.get("higher_concrete_operation_evaluations", 0) == 0
-    assert metrics.resource_audit_complete
+    assert collect_ledger_metrics(term._ledger).resource_audit_complete
     assert metrics.resource_accounting_mismatch == 0
 
 

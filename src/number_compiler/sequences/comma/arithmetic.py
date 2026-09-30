@@ -536,7 +536,7 @@ def punctured_digit_port(
         digit,
         (digit + leading + extra) % 10,
         digit + int(9 - leading <= digit < 9) if extra else digit + 1,
-        (digit - leading) % 10 or 10 - leading,
+        comma_port_next(leading, digit),
     )
 
 
@@ -695,6 +695,28 @@ def safe_complete_cycles(
     return min(by_target, by_guard)
 
 
+def comma_port_previous(leading: int, digit: int) -> int:
+    """Previous decimal digit in the local comma-port cycle."""
+    if (
+        type(leading) is not int
+        or type(digit) is not int
+        or not 1 <= leading <= 9
+        or not 0 <= digit <= 9
+    ):
+        raise ValueError("invalid comma port")
+    return (digit + 10 - leading) % 10
+
+
+def comma_port_next(leading: int, digit: int) -> int:
+    """Next nonzero port digit, skipping a physical zero once."""
+    previous = comma_port_previous(leading, digit)
+    if previous == 0:
+        previous = comma_port_previous(leading, previous)
+    if not 1 <= previous <= 9:
+        raise ArithmeticError("comma punctured port escaped the nonzero alphabet")
+    return previous
+
+
 __all__ = [
     "CycleTransfer",
     "DecimalSector",
@@ -702,6 +724,8 @@ __all__ = [
     "PuncturedDigitPort",
     "classify_near_port",
     "comma_children",
+    "comma_port_next",
+    "comma_port_previous",
     "cycle_power_residue",
     "cycle_residue_period",
     "cycle_transfer",

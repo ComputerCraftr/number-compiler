@@ -461,12 +461,12 @@ def test_post_publish_merge_gate_is_an_independent_measured_counter() -> None:
 
 
 def test_reverse_field_actions_are_owner_validated_semantic_nodes() -> None:
-    from devtools.experiments.reverse_add.field_action import (
+    from number_compiler.resources.field_action_payload_audit import (
+        audit_field_action_payloads,
+    )
+    from number_compiler.sequences.reverse_add.field_action import (
         ReverseActionAutomorphisms,
         ReverseFieldActionArena,
-    )
-    from devtools.experiments.reverse_add.temporal_payload_audit import (
-        audit_reverse_temporal_experiment,
     )
 
     arena = ReverseFieldActionArena(
@@ -482,14 +482,13 @@ def test_reverse_field_actions_are_owner_validated_semantic_nodes() -> None:
     assert report.field_action_nodes == 1
     assert report.production_residual_state_nodes == 1
     assert report.algebraic_component_nodes == 1
-    # The experiment has its own auditor; production no longer grants its
-    # residue-based action records complete semantic-payload authority.
-    assert report.resource_audit_unknown_payloads > 0
-    assert not audit_reverse_temporal_experiment(arena.ledger).invalid
+    # The migrated action arena is validated by its canonical production owner.
+    assert report.resource_audit_unknown_payloads == 0
+    assert not audit_field_action_payloads(arena.ledger).invalid
 
 
 def test_unbounded_reverse_semantic_key_rejects_before_publication() -> None:
-    from devtools.experiments.reverse_add.field_action import (
+    from number_compiler.sequences.reverse_add.field_action import (
         ReverseActionAutomorphisms,
         ReverseFieldActionArena,
     )

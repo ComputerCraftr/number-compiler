@@ -13,10 +13,6 @@ from collections.abc import MutableMapping
 from dataclasses import dataclass
 from typing import cast
 
-from devtools.experiments.reverse_add.field_action import ReverseFieldActionArena
-from devtools.experiments.reverse_add.higher_schema import (
-    ReverseHigherActionSchema,
-)
 from number_compiler.hashlife.actions.diamond_actions import PortSignatureID
 from number_compiler.hashlife.actions.field_actions import (
     CoordinateOutputMorphismID,
@@ -40,6 +36,10 @@ from number_compiler.hashlife.execution.continuations.higher_types import (
 )
 from number_compiler.hashlife.interfaces.diamond_quotient import LocalInterfaceID
 from number_compiler.resources.ledger import ResourceLedger
+from number_compiler.sequences.reverse_add.field_action import ReverseFieldActionArena
+from number_compiler.sequences.reverse_add.higher_schema import (
+    ReverseHigherActionSchema,
+)
 
 
 @dataclass(frozen=True, slots=True)

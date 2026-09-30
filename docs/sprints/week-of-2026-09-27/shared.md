@@ -42,6 +42,10 @@ Open obligations retain their recorded scope; consult [current release gates](..
 
 - [September 29 — all-level HashLife patch integration audit](#september-29--all-level-hashlife-patch-integration-audit)
 
+- [September 29 — parent-first occurrence reuse and repository quality](#september-29--parent-first-occurrence-reuse-and-repository-quality)
+- [September 30 — runtime gates, applied reuse and provider contexts](#september-30--runtime-gates-applied-reuse-and-provider-contexts)
+- [September 30 — adversarial metrics and cache-bypass audit](#september-30--adversarial-metrics-and-cache-bypass-audit)
+
 ## Provenance
 
 Original records and caveats follow. Their evidence certifies only its recorded
@@ -1353,3 +1357,134 @@ all-level Mahler child reuse, and no separate per-phase latency measurements.
 Compact-index checks and separately budgeted 10,000-return Antihydra/Mahler
 stress checks pass their exact-reference assertions. Reverse refusals remain
 construction failures. No replacement reverse route was enabled.
+
+
+## September 30 — adversarial metrics and cache-bypass audit
+
+**Objective.** Audit live reporting, bypass behavior and payload validation
+independently; fix confirmed bugs without relabeling unresolved constructors.
+
+**Changes and established results.** Three explorer audits separated lookup,
+publication, application and reporting work. The fixes:
+
+- Validate shared immutable payload tuples as a depth-aware DAG; retain the
+  nesting-limit check when a shared node is reached through a deeper path.
+- Skip conservative retention sizing on disabled ordinary cache publication,
+  while retaining payload, lease and explicit accounting-claim validation.
+- Separate interface lookups from publication attempts and late aliases.
+- Report disabled and small-action-policy bypasses separately from capacity
+  refusals. Preserve local Collatz reuse when process reuse is disabled.
+- Count local occurrence evictions; replacing an existing key at capacity no
+  longer removes an unrelated occurrence.
+- Keep public metric snapshots from initiating deep payload/ownership audits;
+  audit-specific tests invoke the explicit ledger audit instead.
+- Count final digit emissions and interrupted streams separately from internal
+  pair-symbol traversal; reverse terminal carry is part of final output.
+
+**Rejected interpretations.** Missing reverse process reuse and higher-runtime
+reconstruction remain existing constructor obligations. A repeated, charged
+Mahler projection is not automatically a false cache hit: source authority must
+still be checked, and packet construction is distinct from action retrieval.
+The shared-image audit found no omitted source/action/precision binding. None of
+these audits establishes a universal cache or temporal-construction bound.
+
+**Validation/provenance.** Focused regressions cover shared payload aliases,
+deeper nesting, disabled sizing poison, explicit accounting claims, local reuse,
+bypass reasons, publication aliases and final stream accounting. Final guarded
+results and the source fingerprint are recorded below.
+
+**Remaining obligations.** Reverse higher-runtime reconstruction, comma
+forest/fuel cutover, special-number recovery and global non-halting remain
+separate release holds. No mathematical theorem or positive construction gate
+was removed in this audit.
+
+
+**Independent follow-up.** The reviewer found that a globally disabled process
+store was still classified as capacity refusal. Collatz lookup/publication,
+Mahler outer/source-action admission and comma cycle reuse now check disabled
+storage before requesting a lease. A separate review caught native CLI
+conversion failures leaving the source iterator open; both native converters
+now close it immediately and preserve the original consumer exception. Native
+stream counts measure the producer consumed by reversal/conversion, while CLI
+render counts measure completed text output; the two are not added together.
+
+**Frozen validation.** Source v5
+`51a9fa45fd212b8121d5988ad5ece12cb724b0b14b411ec5df76265708cb8f31`.
+Evidence: local `results/runs/20260930T164116Z-c0bf2aee31a24209b4954346d850b019`.
+Strict mypy (1,624 sources), Ruff 0.16.9, formatting (1,766 files), source policy,
+documentation, proof inventory and clean installed-wheel checks pass.
+Source policy took 28.852 seconds / 809,059,408 sampled bytes; the wheel check
+passed in 33.990 seconds / 124,700,760 sampled bytes. Focused checks: **688 pass**,
+19.544 guarded seconds / 131,171,480 sampled bytes. Limits remain unchanged.
+The full-unit run timed out at **300.099 seconds**, with 1,016,366,352 sampled
+bytes and progress through approximately 72%; it produced no complete JUnit
+result. P0 finished with **33 pass / 27 fail** in 22.02 pytest seconds. The same
+18 reverse, eight shadow-recovery and one Antihydra non-halting failures remain
+active. No full-unit pass is claimed for this fingerprint.
+
+The broader historical `test_spacetime_cache_integrity.py` selection still has
+nine failures, including retired tile ownership/population expectations and
+independently unobserved inventory rows. All nine reproduce when these collectors
+are forced back to their previous eager-audit behavior: **9 pass / 9 fail** in
+5.35 seconds, local evidence
+`results/runs/20260930T163722Z-e553a00782f34d5f8632ef0eb7f50485/old-auditing-behavior-control.log`.
+This control isolates the reporting change; it does not certify those older
+assertions as correct or authorize their deletion. Explicit audit assertions
+remain active.
+
+Earlier diagnostic evidence is retained: the first broad selection had
+695 pass / nine historical validation failures; subsequent quality checks
+caught an unused binding and a newly introduced `digits`/`iter_digits` call
+cycle. Both were repaired before the final freeze. Exploratory unit runs were
+interrupted before completion when those issues and consumer-close cleanup
+were found; no full-unit pass is attributed to them. Early packaging timeouts
+remain recorded and are not converted to passes by the final successful build.
+
+**Resource-scope follow-up.** Three read-only explorers audited process leases,
+iterator ownership and temporary workspaces. Scoped changes use the existing
+context protocols, `closing`/`ExitStack`, and shared `@contextmanager` helpers:
+
+- `ResourceLedger.reservation` scopes temporary capacity while preserving its
+  reusable owner. Collatz safety construction and innovation output scratch use
+  it; nested reservations release only their own charges.
+- Prime discovery suspends shared publication with a context that restores the
+  previous mode, including an already-disabled mode and exceptional exits.
+- Prime query/DAG teardown and Mahler consumer teardown attempt remaining cleanup
+  after a child fails, so a process-cache lease is not stranded. Standard
+  `ExitStack` exception chaining keeps multiple teardown failures visible.
+- Stream consumers share `closing_output_stream`; cleanup cannot mask the
+  consumer's failure or inherit an unrelated exception from the caller. Paired
+  reverse carry streams both close even when one cleanup raises.
+- Dyadic stack append failure rolls back both mutation and reservation, including
+  the first push. Fused/closed workspace scopes protect setup bookkeeping as well
+  as their yielded bodies.
+- Radix construction uses the existing unpublished-construction scope. Failed
+  allocations and execution roots are retired, and a retry gets a fresh owner.
+- Unique comma frontier and prime-bucket scratch owners are retired after use.
+  Reusable named scratch owners are deliberately not retired between requests.
+
+The tests inject setup, append, child-disposal and stream-close failures; they
+also cover retries, nested reservations, partial consumption and budget refusal.
+These are lifecycle fixes, not changes to arithmetic or forest admission.
+
+An intermediate scope-validation freeze (`947a0484`) passed 841 focused tests,
+all quality checks and the installed wheel; its P0 selection remained
+**33 pass / 27 fail** (14.32 pytest seconds). Local provenance:
+`results/runs/20260930T171013Z-0268afab3b074a848299b96f006c2228`.
+The preceding diagnostic run caught missing type narrowing in the new cleanup
+test; the assertion was corrected before that freeze. Final paired-stream
+cleanup validation follows on its own fingerprint.
+
+**Final scope validation.** Source v5
+`792413ee17f97522d888501c470cfaac73058a64dcee50e6cebeb098e06bbfc7`;
+local evidence `results/runs/20260930T171256Z-0e099553f7d84dc58ee828f6159809df`.
+**906 focused tests pass** (19.86 pytest seconds), including reverse source ports
+and chambers, prime selection, Mahler actions, comma verification, reporting and
+resource lifecycle tests. Strict mypy (1,627 sources), Ruff 0.16.9, formatting,
+source policy, documentation, proof inventory and installed-wheel checks pass.
+Source policy took 29.343 seconds / 810,026,040 sampled bytes; the wheel check
+passed in 33.070 seconds / 126,158,960 sampled bytes. Every guarded check retained
+its 35-second/1-GiB limit and unchanged source fingerprint. No Isabelle source
+changed; inventory validation is not a new checked proof build. Full units were
+not rerun after the scoped follow-up; their timed-out earlier attempt and the
+preceding P0 failures remain explicit above.

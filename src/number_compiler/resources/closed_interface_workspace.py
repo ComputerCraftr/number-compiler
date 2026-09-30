@@ -46,11 +46,15 @@ class ClosedInterfaceWorkspace:
             raise ValueError("unknown closed interface construction kind")
         nodes = _LEAF_NODES if kind == "leaf" else _PARENT_NODES
         self.ledger.reserve(self.owner, nodes=nodes)
-        self.nodes = nodes
-        peak = self.ledger.counters.get("reverse_port_construction_workspace_peak", 0)
-        if nodes > peak:
-            self.ledger.bump("reverse_port_construction_workspace_peak", nodes - peak)
         try:
+            self.nodes = nodes
+            peak = self.ledger.counters.get(
+                "reverse_port_construction_workspace_peak", 0
+            )
+            if nodes > peak:
+                self.ledger.bump(
+                    "reverse_port_construction_workspace_peak", nodes - peak
+                )
             yield
         finally:
             self.ledger.release(self.owner, nodes=nodes)

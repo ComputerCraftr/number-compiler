@@ -29,6 +29,7 @@ from number_compiler.projection.radix_original_source import OriginalRadixArena
 from number_compiler.projection.tile_radix import (
     TileRadixObservation,
 )
+from number_compiler.resources.construction_scope import RuntimeConstruction
 from number_compiler.resources.ledger import OwnedMemo, ResourceLedger
 from number_compiler.sequences.collatz.block_power import PoweredCollatzTerm
 from number_compiler.sequences.collatz.cycle import fixed_cycle_target
@@ -70,7 +71,7 @@ class RadixProjection:
         self._bound_source: ExactSource | None = None
         self._bound_steps: int | None = None
         fused_owner = ledger.register(
-            f"radix-{radix}-fused-bindings", "spatial_binding"
+            f"radix-{radix}-fused-bindings-{ledger.owner_count}", "spatial_binding"
         )
         self._fused_actions: OwnedMemo[FusedRadixBindingKey, FusedDivisionAction] = (
             OwnedMemo(ledger, fused_owner, evictable=True)
@@ -312,17 +313,18 @@ def collatz_radix_digit(term: PoweredCollatzTerm, radix: int, index: int) -> int
         )
         term._ledger.reserve(owner, entries=1)
         try:
-            projection = RadixProjection(
-                radix,
-                width,
-                term._ledger,
-                term._microblocks,
-                width_is_upper_bound=True,
-            )
+            with RuntimeConstruction(term._ledger):
+                projection = RadixProjection(
+                    radix,
+                    width,
+                    term._ledger,
+                    term._microblocks,
+                    width_is_upper_bound=True,
+                )
+                term._radix_projections[radix] = projection
         except BaseException:
             term._ledger.release(owner, entries=1)
             raise
-        term._radix_projections[radix] = projection
     return projection.digit(term, index)
 
 

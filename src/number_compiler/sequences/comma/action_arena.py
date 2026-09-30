@@ -27,6 +27,7 @@ from number_compiler.sequences.comma.boundary_quotient import (
     SectorFragment,
     construct_macro,
 )
+from number_compiler.sequences.comma.cycle_actions import CycleActionReuse
 
 
 @dataclass(frozen=True, slots=True)
@@ -155,7 +156,9 @@ def _seal_integer_bits(value: object) -> int:
 class CommaActionArena:
     """Ledger-owned, scoped binary action DAG for admitted phase cycles."""
 
-    def __init__(self, ledger: ResourceLedger, max_work: int) -> None:
+    def __init__(
+        self, ledger: ResourceLedger, max_work: int, *, shared_cache: bool = True
+    ) -> None:
         self.ledger = ledger
         self.max_work = max_work
         self.token = ArenaToken("comma-actions")
@@ -202,6 +205,9 @@ class CommaActionArena:
         self.ledger.bump("comma_cycle_rule_evaluations", 0)
         self.ledger.bump("comma_evaluated_transitions", 0)
         self.identity = self._intern(("identity",), _Action("identity", 0))
+        self.cycle_reuse = CycleActionReuse(
+            ledger, self.charge, self.charge_bits, shared=shared_cache
+        )
 
     def charge(self, amount: int = 1) -> None:
         used = self.ledger.counters.get("comma_work", 0) + self.ledger.counters.get(
@@ -381,21 +387,34 @@ class CommaActionArena:
         )
 
     def cycles(self, leading: int, digit: int, count: int) -> CommaActionID:
-        if type(count) is not int or count < 1:
-            raise ValueError("powered comma cycle count must be positive")
-        power = self.one_cycle(leading, digit)
-        result = self.identity
-        remaining = count
-        while remaining:
-            self.charge()
-            self.charge_bits(remaining.bit_length())
-            if remaining & 1:
-                result = self.compose(result, power)
-            remaining >>= 1
-            if remaining:
-                power = self.compose(power, power)
-            self.ledger.bump("comma_binary_composition_work")
-        return result
+        return self.cycle_request(leading, digit, count)[0]
+
+    def cycle_request(
+        self, leading: int, digit: int, count: int
+    ) -> tuple[CommaActionID, bool]:
+        """Read a complete parent before constructing its arithmetic payload.
+
+        The Boolean reports retrieval only. The CLI records an applied hit
+        after the scheduler admits and publishes the receiving occurrence.
+        """
+        reuse = self.cycle_reuse
+        reuse.request(leading, digit, count)
+        key = ("cycle", leading, digit, count)
+        old = self._keys.get(key)
+        if old is not None:
+            try:
+                self.node(old)
+            except Exception:
+                reuse.count("admission_rejections")
+                raise
+            reuse.count("exact_hits")
+            reuse.count("local_hits")
+            return old, True
+        (steps, displacement, guard), hit = reuse.resolve(leading, digit, count)
+        return self._intern(
+            key,
+            _Action("cycle", steps, leading, digit, count, displacement, guard),
+        ), hit
 
     def _boundary_template(self, state: BoundaryState) -> MacroTemplate:
         """Retain one complete constructor result per exact quotient state.

@@ -119,16 +119,16 @@ class FusedTraversalWorkspace:
         transient_slots = 4 * port_count + 32
         nodes = frame_slots + value_slots + transient_slots
         self.ledger.reserve(self.owner, nodes=nodes)
-        self.nodes, self.active = nodes, True
-        self.max_frames, self.max_values = 2 * level + 1, level + 1
-        peak = self.ledger.counters.get(
-            "tile_fused_workspace_reserved_reference_peak", 0
-        )
-        if nodes > peak:
-            self.ledger.bump(
-                "tile_fused_workspace_reserved_reference_peak", nodes - peak
-            )
         try:
+            self.nodes, self.active = nodes, True
+            self.max_frames, self.max_values = 2 * level + 1, level + 1
+            peak = self.ledger.counters.get(
+                "tile_fused_workspace_reserved_reference_peak", 0
+            )
+            if nodes > peak:
+                self.ledger.bump(
+                    "tile_fused_workspace_reserved_reference_peak", nodes - peak
+                )
             yield
         finally:
             frame_count, value_count = len(self.frames), len(self.values)

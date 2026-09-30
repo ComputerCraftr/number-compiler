@@ -75,11 +75,19 @@ def _validate_immutable(
 ) -> ImmutableValue:
     """Validate the explicit cache wire domain without recursive Python calls."""
     pending = [(value, 0)]
+    deepest: dict[int, int] = {}
     while pending:
         current, depth = pending.pop()
         if type(current) is tuple:
             if depth >= _MAX_IMMUTABLE_DEPTH:
                 raise ValueError(f"{name} exceeds the immutable nesting limit")
+            # Immutable tuples form a DAG. Revisit a shared tuple only when a
+            # deeper path can strengthen the nesting check; a plain seen-set
+            # would incorrectly accept over-deep aliases.
+            identity = id(current)
+            if deepest.get(identity, -1) >= depth:
+                continue
+            deepest[identity] = depth
             pending.extend((item, depth + 1) for item in current)
         elif type(current) is bool and not allow_bool:
             # bool compares and hashes like 0/1, so allowing it in an
@@ -532,17 +540,24 @@ class ProcessCache:
     ) -> bool:
         full_key = self._qualified_key(partition, key)
         admitted_payload = _validate_immutable(payload, "cache payload")
-        estimate = _deep_size((full_key, admitted_payload, issuer)) + _ENTRY_OVERHEAD
-        if accounted_bytes is not None:
-            if type(accounted_bytes) is not int or accounted_bytes < estimate:
-                raise ValueError(
-                    "accounted cache bytes must cover the internal conservative estimate"
-                )
-            cost = accounted_bytes
-        else:
-            cost = estimate
         with self._lock:
             self._validate_lease(lease_identity, token, partition, generation)
+            # A disabled store needs no retention estimate. Explicit accounting
+            # claims still receive the same validation as enabled publications.
+            if not self.enabled and accounted_bytes is None:
+                self._bypasses += 1
+                return False
+            estimate = (
+                _deep_size((full_key, admitted_payload, issuer)) + _ENTRY_OVERHEAD
+            )
+            if accounted_bytes is not None:
+                if type(accounted_bytes) is not int or accounted_bytes < estimate:
+                    raise ValueError(
+                        "accounted cache bytes must cover the internal conservative estimate"
+                    )
+                cost = accounted_bytes
+            else:
+                cost = estimate
             if not self.enabled:
                 self._bypasses += 1
                 return False

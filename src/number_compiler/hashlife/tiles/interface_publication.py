@@ -55,12 +55,12 @@ def publish_interface(
 ) -> LocalInterfaceID:
     self._validate_interface_key(key)
     self._validate_interface(key, interface)
+    self.ledger.bump("powered_interface_publication_requests")
     found = self._memo.get(key)
-    self.ledger.bump("powered_interface_requests")
     if found is not None:
         if type(found) is not LocalInterfaceID or found != interface:
             raise ValueError("powered interface already has another complete value")
-        self.ledger.bump("powered_interface_early_hits")
+        self.ledger.bump("powered_interface_late_aliases")
         return found
     publish_indexed_result(self, key, interface)
     self.ledger.bump("powered_interface_publications")

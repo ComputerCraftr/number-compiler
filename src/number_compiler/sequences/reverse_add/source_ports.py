@@ -27,6 +27,7 @@ from number_compiler.arithmetic.formula.skew_residue_laws import (
     pair_no_growth,
 )
 from number_compiler.resources.ledger import OwnedMemo, ResourceLedger
+from number_compiler.resources.output_stream_metrics import closing_output_stream
 
 
 @dataclass(slots=True)
@@ -555,8 +556,9 @@ class SourceCarryPorts:
         self, growth: int, *, reflected: bool = False
     ) -> Generator[tuple[int, int], None, None]:
         """Consume the original carry tree without a midpoint digit word."""
-        physical = self.iter_first_ports(reflected=reflected)
-        try:
+        with closing_output_stream(
+            self.iter_first_ports(reflected=reflected)
+        ) as physical:
             if growth and reflected:
                 yield 1, 1
             for index, (incoming, _) in enumerate(physical):
@@ -566,8 +568,6 @@ class SourceCarryPorts:
                 yield decimal_normalize_cocycle(pair % 5, pair % 2, incoming)
             if growth and not reflected:
                 yield 1, 1
-        finally:
-            physical.close()
 
     def iter_second_pairs(self) -> Iterator[int]:
         """Stream the pulled pair field with one authenticated growth choice.
@@ -582,9 +582,12 @@ class SourceCarryPorts:
                 self._check_open()
                 yield self._raw_second_pair(position, growth)
             return
-        forward = self._iter_first_decimal_channels(growth)
-        reflected = self._iter_first_decimal_channels(growth, reflected=True)
-        try:
+        with (
+            closing_output_stream(self._iter_first_decimal_channels(growth)) as forward,
+            closing_output_stream(
+                self._iter_first_decimal_channels(growth, reflected=True)
+            ) as reflected,
+        ):
             for left, right in zip(forward, reflected, strict=True):
                 self._check_open()
                 domain, alpha, epsilon, _ = decimal_add_cocycle(left, right)
@@ -592,9 +595,6 @@ class SourceCarryPorts:
                 self._ledger.bump("reverse_source_ports_crt_threshold_queries")
                 self._ledger.bump("reverse_source_ports_second_pair_queries")
                 yield decimal_cocycle_value(domain, alpha, epsilon)
-        finally:
-            forward.close()
-            reflected.close()
 
     def _second_interval(self, start: int, span: int, extent: int) -> CarryFn:
         growth = extent - self._width

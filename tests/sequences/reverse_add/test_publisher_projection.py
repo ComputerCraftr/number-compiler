@@ -31,7 +31,7 @@ from tests.support.reverse_higher_interface import _direct_step
 
 
 def _reference_publisher(term: ReverseAddPoweredTerm) -> ReversePublisherProjection:
-    """Construct the retired publisher only as a bounded differential oracle."""
+    """Construct the compatibility harness; scalar references are independent."""
     if term.generation < 1:
         raise AssertionError("publisher reference requires a positive generation")
     ledger = term._ledger
@@ -112,9 +112,10 @@ def test_publisher_defers_reachable_image_until_first_output_demand() -> None:
     # A runtime snapshot must not rewalk payloads after the independent oracle
     # is attached, and it must not trigger image construction.
     assert report.resource_audit_complete == 0
+    # The reference now shares canonical production arithmetic and its auditor.
     oracle_audit = collect_ledger_metrics(term._ledger)
-    assert oracle_audit.resource_audit_complete == 0
-    assert oracle_audit.resource_audit_unknown_payloads > 0
+    assert oracle_audit.resource_audit_complete == 1
+    assert oracle_audit.resource_audit_unknown_payloads == 0
     assert report.resource_accounting_mismatch == 0
 
     publisher.validate_execution()
@@ -197,11 +198,11 @@ def test_pending_publisher_rejects_coordinated_action_and_schema_mutation() -> N
 def test_failed_lazy_image_demand_is_terminal_and_auditable(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    from devtools.experiments.reverse_add.higher_interface import (
-        ReverseHigherInterfaceCompiler,
+    from number_compiler.resources.higher_payload_audit import (
+        audit_higher_payloads,
     )
-    from devtools.experiments.reverse_add.temporal_payload_audit import (
-        audit_reverse_temporal_experiment,
+    from number_compiler.sequences.reverse_add.higher_interface import (
+        ReverseHigherInterfaceCompiler,
     )
 
     publisher = _reference_publisher(ReverseAddPoweredTerm(196, 8))
@@ -216,7 +217,7 @@ def test_failed_lazy_image_demand_is_terminal_and_auditable(
     assert publisher._macro is None
     assert publisher._image_binding is None
     assert publisher._image_failure is not None
-    assert not audit_reverse_temporal_experiment(publisher.ledger).invalid
+    assert not audit_higher_payloads(publisher.ledger).invalid
     assert_rejected_atomically(
         publisher.ledger,
         lambda: publisher.point(0),
@@ -384,7 +385,7 @@ def test_publisher_uses_reachable_image_for_point_width_and_mirror(
     monkeypatch.setattr(ReverseAddPoweredTerm, "digits", forbidden)
     obstruction = term.mirror_obstruction()
     assert obstruction is not None
-    assert term.metrics().completed_result_entries > 0
+    assert term.metrics().resource_work_counters["source_image_publications"] > 0
 
 
 @pytest.mark.parametrize("seed,generation", ((1, 1), (89, 7), (196, 12), (999, 9)))
@@ -417,12 +418,13 @@ def test_reference_publisher_work_remains_visible_in_runtime_metrics() -> None:
     metrics = term.metrics()
     assert metrics.higher_action_continuation_requests > 0
     assert metrics.higher_concrete_operation_evaluations > 0
-    # The explicit reference owner remains visible to an explicit ledger audit
-    # and is not silently certified by the production term's snapshot reporter.
-    assert metrics.resource_audit_complete == 0
+    # Detailed Python metrics explicitly audit the shared canonical owner;
+    # CLI snapshot reporting is tested separately for demand laziness.
+    assert metrics.resource_audit_complete == 1
+    # The reference now shares canonical production arithmetic and its auditor.
     oracle_audit = collect_ledger_metrics(term._ledger)
-    assert oracle_audit.resource_audit_complete == 0
-    assert oracle_audit.resource_audit_unknown_payloads > 0
+    assert oracle_audit.resource_audit_complete == 1
+    assert oracle_audit.resource_audit_unknown_payloads == 0
     assert metrics.resource_accounting_mismatch == 0
 
 

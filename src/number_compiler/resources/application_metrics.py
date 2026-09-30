@@ -35,6 +35,9 @@ def tile_application_compatibility_values(
     boundary_hits = work.get("tile_causal_boundary_output_hits", 0)
     tile_records = application.scheduler.tiles._nodes.values()
     maximum_tile_level = max((record.level for record in tile_records), default=0)
+    powered_interface_lookup_misses = (
+        ledger.powered_interface_requests - ledger.powered_interface_early_hits
+    )
     return {
         "bounded_application_enabled": 1,
         "bounded_application_temporal_state_classes": ledger.local_interface_nodes,
@@ -72,9 +75,17 @@ def tile_application_compatibility_values(
         ),
         "spacetime_tile_advance_cache_entries": ledger.spatial_interface_composition_entries,
         "spacetime_boundary_advance_cache_hits": ledger.powered_interface_early_hits,
-        "spacetime_boundary_advance_cache_misses": ledger.powered_interface_requests
-        - ledger.powered_interface_early_hits,
+        "spacetime_boundary_advance_cache_misses": powered_interface_lookup_misses,
         "spacetime_boundary_advance_cache_entries": ledger.powered_interface_entries,
+        "spacetime_boundary_advance_cache_publication_requests": (
+            ledger.powered_interface_publication_requests
+        ),
+        "spacetime_boundary_advance_cache_publications": (
+            ledger.powered_interface_publications
+        ),
+        "spacetime_boundary_advance_cache_late_aliases": (
+            ledger.powered_interface_late_aliases
+        ),
         "spacetime_tile_output_cache_hits": ledger.completed_result_early_hits,
         "spacetime_tile_output_cache_misses": completed_misses,
         "spacetime_tile_output_entries": ledger.completed_result_entries,

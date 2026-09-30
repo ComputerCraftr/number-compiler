@@ -7,6 +7,7 @@ this is not a claim of logarithmic source discovery for unbounded prime queries.
 
 from __future__ import annotations
 
+from contextlib import ExitStack, closing
 from dataclasses import dataclass
 from math import isqrt
 from os import urandom
@@ -225,8 +226,7 @@ class PrimePrefixRank:
         # discovery. Publishing every internal discovery rank adds cold latency
         # and retains states that a warm query never consumes.
         self._coverage_publishable = False
-        self.dag.shared_publication_enabled = False
-        try:
+        with self.dag.suspend_shared_publication():
             while True:
                 self.discovery_queries += 1
                 if self.dag.count(root) == 1:
@@ -248,8 +248,6 @@ class PrimePrefixRank:
                     else:
                         lo = mid + 1
                 self.dag.append_consecutive_factor(lo)
-        finally:
-            self.dag.shared_publication_enabled = True
 
     def count_leq(self, value: int) -> int:
         if value < 2:
@@ -290,20 +288,23 @@ class PrimePrefixRank:
         return query.count_primes(lower, upper, self.dag.factor_count)
 
     def close(self) -> None:
-        if self._partial_query is not None:
-            from number_compiler.sequences.prime.partial_successor_image import (
-                PrimePartialSuccessorQuery,
-            )
+        # The process pin must be released even if a local owner rejects cleanup.
+        # Register in reverse ownership order; ExitStack runs every callback.
+        with ExitStack() as cleanup:
+            if self._lease is not None:
+                cleanup.callback(self._lease.close)
+            cleanup.callback(self.dag.close)
+            if self._partial_query is not None:
+                from number_compiler.sequences.prime.partial_successor_image import (
+                    PrimePartialSuccessorQuery,
+                )
 
-            query = self._partial_query
-            if type(query) is not PrimePartialSuccessorQuery:
-                raise RuntimeError("prime query contains another image owner")
-            query.close()
-            self._partial_query = None
-        self.dag.close()
-        if self._lease is not None:
-            self._lease.close()
-            self._lease = None
+                query = self._partial_query
+                if type(query) is not PrimePartialSuccessorQuery:
+                    raise RuntimeError("prime query contains another image owner")
+                query.close()
+                self._partial_query = None
+        self._lease = None
 
     def publish(self) -> None:
         """Publish only admitted source metadata; selected endpoints stay local."""
@@ -397,7 +398,7 @@ def nth_prime_at_or_after(
         high = block_start + 2 * (block_length - 1)
         return context.count_prime_interval(block_start, high + 1)
 
-    try:
+    with closing(context):
         while True:
             count = compile_count(odd_start, length)
             if count > remaining:
@@ -476,8 +477,6 @@ def nth_prime_at_or_after(
                 )
             ),
         )
-    finally:
-        context.close()
 
 
 __all__ = ["PrimeRankSelectMetrics", "nth_prime_at_or_after"]

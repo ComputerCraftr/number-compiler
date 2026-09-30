@@ -5,6 +5,7 @@ from typing import TYPE_CHECKING
 import pytest
 
 from number_compiler.arithmetic.carry.event_memory import event_memory_horizon
+from number_compiler.resources.metric_collection import collect_ledger_metrics
 from number_compiler.sequences.collatz.block_power import PoweredCollatzTerm
 from number_compiler.sequences.reverse_add.power import ReverseAddPoweredTerm
 from tests.support.source_image_assertions import assert_physical_publications
@@ -18,16 +19,17 @@ def _exercise(
 ) -> tuple[HashLifeBehaviorMetrics, HashLifeBehaviorMetrics]:
     assert not hasattr(term, "_diamond_runtime")
     before = term.behavior_metrics()
+    before_audit = collect_ledger_metrics(term._ledger)
     collatz = isinstance(term, PoweredCollatzTerm)
     if collatz:
         assert before.field_action_nodes == 0
         assert before.temporal_quotient_family == "collatz-dyadic-source-image"
     else:
         assert before.field_action_nodes == 0
-    assert before.resource_audit_complete == 1
+    assert before_audit.resource_audit_complete == 1
     assert before.resource_accounting_mismatch == 0
     assert before.unquotiented_recursive_application_description_nodes == 0
-    assert before.representation_boundary_complete == 1
+    assert before_audit.representation_boundary_complete == 1
     if collatz:
         assert before.seed_payload_tile_nodes == 0
     else:
@@ -36,10 +38,13 @@ def _exercise(
     term.digit(0)
     after = term.behavior_metrics()
     runtime = term.metrics()
-    assert after.resource_audit_complete == 1
+    after_audit = collect_ledger_metrics(term._ledger)
+    assert after_audit.resource_audit_complete == 1
     assert after.resource_accounting_mismatch == 0
     assert (
-        after.forbidden_future_payloads == after.retained_unbounded_future_integers == 0
+        after_audit.forbidden_future_payloads
+        == after_audit.retained_unbounded_future_integers
+        == 0
     )
     assert after.unquotiented_recursive_application_description_nodes == 0
     if collatz:

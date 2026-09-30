@@ -88,6 +88,9 @@ class CollatzDyadicMacros:
             "occurrence_process_hits",
             "occurrence_misses",
             "occurrence_publications",
+            "occurrence_bypasses",
+            "occurrence_disabled_bypasses",
+            "occurrence_evictions",
             "occurrence_applied_hits",
             "occurrence_applied_parent_hits",
             "occurrence_rejected_fit",
@@ -144,8 +147,11 @@ class CollatzDyadicMacros:
             + occurrence.multiplier.bit_length()
             + publisher_fiber.bit_length(),
         )
-        if len(self.occurrences) >= self.LIMIT:
+        if (occurrence.width, occurrence.residue) not in self.occurrences and len(
+            self.occurrences
+        ) >= self.LIMIT:
             del self.occurrences[next(iter(self.occurrences))]
+            self._bump("occurrence_evictions")
         self.occurrences[occurrence.width, occurrence.residue] = (
             occurrence,
             publisher_fiber,
@@ -172,8 +178,13 @@ class CollatzDyadicMacros:
             self._retrieved(source, width, publisher_fiber, "local")
             return found
         if self.shared_cache:
+            cache = get_process_cache()
+            if not cache.enabled:
+                self._bump("occurrence_disabled_bypasses")
+                self._bump("occurrence_misses")
+                return None
             try:
-                lease = get_process_cache().acquire(
+                lease = cache.acquire(
                     "collatz-dyadic-occurrence", self.VERSION, (width, residue)
                 )
             except BlockContextBudgetExceeded:
@@ -235,6 +246,8 @@ class CollatzDyadicMacros:
                         raise
                     self._retrieved(source, width, publisher_fiber, "process")
                     return result
+        else:
+            self._bump("occurrence_disabled_bypasses")
         self._bump("occurrence_misses")
         return None
 
@@ -258,8 +271,12 @@ class CollatzDyadicMacros:
 
     def _share(self, source: int, found: CollatzDyadicOccurrence) -> None:
         if self.shared_cache:
+            cache = get_process_cache()
+            if not cache.enabled:
+                self._bump("occurrence_disabled_bypasses")
+                return
             try:
-                lease = get_process_cache().acquire(
+                lease = cache.acquire(
                     "collatz-dyadic-occurrence",
                     self.VERSION,
                     (found.width, found.residue),

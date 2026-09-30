@@ -89,9 +89,11 @@ def test_runtime_image_publication_is_accounted_and_reused() -> None:
     term = PoweredCollatzTerm(27, 16)
     assert term.digit(0) == 1
     cold = term.metrics()
+    from number_compiler.resources.metric_collection import collect_ledger_metrics
+
     counters = dict(term._ledger.counters)
     assert_physical_publications(counters)
-    assert cold.resource_audit_complete == 1
+    assert collect_ledger_metrics(term._ledger).resource_audit_complete == 1
     assert cold.resource_accounting_mismatch == 0
     assert cold.whole_word_sweeps == cold.whole_word_symbol_visits == 0
     assert cold.proof_machine_applications == 0

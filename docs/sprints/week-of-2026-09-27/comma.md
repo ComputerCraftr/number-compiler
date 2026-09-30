@@ -30,6 +30,10 @@ Open obligations retain their recorded scope; consult [current release gates](..
 
 ## Records
 
+- [September 30: executable future quotients and phase reuse](#september-30--executable-future-quotients-and-phase-reuse)
+
+- [September 30: normalized cycle reuse and proof memos](#september-30--normalized-cycle-reuse-and-proof-memos)
+
 - [Weighted tree locator and shared control proofs](#weighted-tree-locator-and-shared-control-proofs)
 
 - [Comma canonical rank checking and bounded sector reuse](#comma-canonical-rank-checking-and-bounded-sector-reuse)
@@ -1427,3 +1431,307 @@ Source fingerprint:
 All measured source fingerprints remained unchanged. The current runtime path
 was preserved; installed-wheel success does not mean forest removal. Aggregate
 Isabelle and unrelated production release gates are outside this validation.
+
+
+## September 30 — normalized cycle reuse and proof memos
+
+**Objective.** Apply the NC5 proposal where executable semantics are available,
+remove redundant production cycle construction, and preserve branch authority
+until the replacement theorem chain is checked.
+
+**Input provenance.** The supplied patch contains only an index link and a
+581-line planning document. It contains no Python or Isabelle implementation.
+The local inputs are research/planning evidence, not passing release evidence:
+
+| Local input | SHA-256 |
+| --- | --- |
+| `A367620_NC5_CLI_ISABELLE_CUTOVER_PLAN.md` | `7b3e70a28048eac50112ef957d6fefa297f756431f321282a029c28b0dc9a6ea` |
+| `A367620_number_compiler5_cli_isabelle_plan.patch` | `1d8e315c1217e083c76c9dc87d14773be82307bc1279f700ea4db66cf9e95996` |
+
+Both inputs were read from `/Users/john/Downloads/`; these are machine-local
+provenance paths, not portable evidence links.
+
+**Changes.** Complete interior cycles now publish their exact duration,
+displacement and guard directly. The action arena checks a complete local
+parent first, then the existing bounded process cache, before construction.
+Process entries carry the pinned arithmetic law and exact `(f,d,copies)` key;
+local arena IDs, endpoints, absolute indices and branch evidence are not stored
+there. The scheduler still checks receiving-source phase and strict headroom.
+The process cache keeps its existing 131,072-entry / 32-MiB limits and issued
+records; refused retention falls back to exact constant-operation construction.
+
+Schema-eight comma rows count retrieval and actual application separately.
+Warm applied-parent hits require successful publication. Unmeasured future
+quotient/occurrence/tree metrics remain null. Metrics and certificate-only
+queries remain read-only. Explicit bypass is distinct from capacity refusal.
+
+The Isabelle counted memo now performs one `Termtab.lookup` instead of a
+`Termtab.defined` probe followed by another lookup. Its callbacks count actual
+outcomes. Closed-theorem certification and generation checks remain on
+publication; a warm-hit poison test rejects reconstruction or recertification.
+
+**Established results.** `Comma_Interior_Cache` checks
+`comma_normalized_cycle_refines`, joining, parenthesization and receiving-guard
+lemmas, reusing the existing phase/period proofs. This is a production
+arithmetic mapping, not a proof of the complete Python cache lifecycle or the
+future-branch constructor. `Comma_Round_Witness_Check` passed its updated memo
+smoke tests, including rejected open-theorem publication and generation
+invalidation.
+
+**Measured scope.** Five-trial arithmetic-only runs compare parent commit
+`d58bdfc41dc16936708fe1967cfa50efcc65468d` with the new implementation. The
+comparison checkout is a temporary extraction of tracked `src/`, with no code
+imported back into production. Certificate verification is excluded from these
+timings and measured separately by fresh public CLI checks.
+
+| Index | Old/new counted work, cold | Old/new binary construction iterations | New warm applied parent hits | Old/new cold median ms |
+| --- | --- | --- | --- | --- |
+| 1,024 | 3,092 / 2,781 | 41 / 0 | 11 | 25.949 / 25.820 |
+| 20,000 | 6,330 / 4,993 | 155 / 0 | 26 | 48.039 / 46.443 |
+| 100,000,000 | 15,419 / 9,274 | 655 / 0 | 56 | 101.675 / 87.892 |
+| 412,987,859 | 17,644 / 10,164 | 790 / 0 | 62 | 106.276 / 104.559 |
+
+All 150 old and 150 new cold/warm/bypassed samples agree exactly. Warm requests
+construct zero cycle coefficient summaries. These finite timings do not imply
+logarithmic cold discovery through arbitrary future forks. The first-fork
+speed improvement is modest despite the clear construction-work reduction.
+
+**Validation provenance.** Raw paths below are local ignored evidence.
+
+| Scope | Evidence | Result / limits |
+| --- | --- | --- |
+| Initial normalized-cycle proof | `results/runs/20260930T095031Z-bd7f3a775f244029b232bccaa9595cea` | PASS, focused session; 60 s / 4 GiB limit |
+| Memo proof and comma tests | `results/runs/20260930T095123Z-f3e9f42d8fa1463a88bdb67ce298a406` | 634 tests PASS; focused proof including rebuilt dependencies PASS in about 57 s; 35 s / 1 GiB tests and 60 s / 4 GiB proof limits |
+| Duplicate-policy repair | `results/runs/20260930T095553Z-39114f0b71ce42739e695fd561d29984` | Policy PASS; 664 focused tests PASS; duplicate test logic consolidated into parameterized source-image coverage |
+| Five-trial comparison and fresh CLI | `results/runs/20260930T095730Z-bf89201f8b214ca5b29206fe9eda70cc` | Both probes and both public CLI checks PASS under individual 35 s / 1 GiB limits |
+
+Fresh CLI `--nth 412987859` emits `19999999918`; `--nth-power10 8` emits
+`4627626552`. Later changes separate explicit bypass from capacity-refusal
+reporting; the timing run retains its own source fingerprint in its manifest.
+
+**Rejected shortcut and remaining obligations.** The Q15/Q19, T50/M204/M111,
+future 3279/4175 and R29 counts in the input are not executable semantic
+definitions or checked lifting theorems. No independent all-level constructor
+or future-branch authority has been inferred from them. The exact M111
+occurrence refinement, B32 completeness, losing/winning bridge and authenticated
+puncture remain required. Forest admission, finite-prefix refusal and fuel in
+the unresolved proof owner remain in place. This change does not complete the
+requested forest/fuel cutover and does not reclassify those gates as green.
+
+
+**Final source freeze.** Fingerprint v5
+`3b002884b825e36eef76b71fc9cd67e180bdbb34ffae133307b94f16cf555e67`.
+Local evidence: `results/runs/20260930T095846Z-a74519f50a3b4f0ca254e63f84e673cf`.
+Strict mypy, Ruff, formatting, source policy, documentation, proof inventory and
+installed-wheel checks pass. The final focused run has 664 passes and four
+existing validation deselections (33.470 s / 99,009,136 sampled bytes), under
+35 s / 1 GiB. Both selected Isabelle sessions pass on the same fingerprint
+(9.312 s / 1,493,388,456 sampled bytes), under 60 s / 4 GiB; this final run
+reuses the previously checked theory builds. No skipped proofs, axioms,
+new theorem oracles or weakened test assertions were added. Whole-unit,
+aggregate Isabelle and unrelated P0 results remain those of the preceding
+release freeze; they were not rerun or reattributed to this comma change.
+
+## September 30 — executable future quotients and phase reuse
+
+**Objective.** Integrate the NC5 executable-quotient and global future-safety
+inputs, test their actual scope, and remove forest/fuel authority only after
+checked replacement admission exists.
+
+**Changes.** Ported the explicit finite audits into
+`devtools/verification/comma_semantic_quotients.py`, using the shared finite
+observer minimizer. Production now has one strict predecessor/successor port
+arithmetic owner. Finite graph construction is opt-in development work; no
+runtime import, global table cache or new scheduler was introduced.
+
+Complete interior-cycle arithmetic now uses the canonical phase
+`digit mod gcd(leading,10)` in its versioned issued-cache key. The receiving
+arena still retains and validates its actual phase and headroom. This shares
+complete-cycle sums and guards across rotations; it does not merge partial
+prefixes, exact endpoints or future branch decisions. Key normalization is
+charged, and a poisoned cold constructor verifies that a compatible warm
+rotation consumes the cached summary without recomposition.
+
+The new `Comma_Global_Future_Safety` session specializes the existing literal
+lift. Its statement covers source-20 infinite existence and first-fork
+uniqueness. It does not prove least-root ownership or authorize a production
+weighted transfer. Reparenting `Comma_Future_Check` to its already required
+`Comma_Total_Macro` ancestor avoids rebuilding that branch as a non-parent
+session import. No imports or theorem assumptions were removed. The concrete
+checker is separated into named clauses of the same original conjunction for
+bounded diagnosis; no state, assertion or arithmetic check is omitted.
+
+**Established results and scope.**
+
+- Q15: 81 nonzero ports reduce to 15 stable observer classes.
+- Q19: 90 zero-inclusive ports reduce to 19 classes. Equal classes can still
+  have unequal exact displacements; a regression asserts that distinction.
+- The 14,784-state future graph yields T3279 and a Q19-observed M4986.
+  The earlier M4175 claim is not reproduced.
+- The finite losing audit finds 14,470 losing states, rank at most 136, and
+  314 survivors on one cycle with exponent gain 924.
+- Homogeneous powers yield 31 actions, including identity and common dead:
+  `0^13` and `1^18` saturate. This is not closure under arbitrary mixed words.
+  The API was renamed to say “homogeneous run,” following independent review.
+- `comma_normalized_cycle_gcd_normalization` passed Isabelle. It justifies
+  the production complete-cycle cache key, not global future safety.
+
+**Rejected approaches.** No Q19/T3279 class is used as exact weight authority.
+No full graph is constructed by the CLI, and no runtime table is accepted as
+an Isabelle premise. Registration of the supplied theorem is not reported as
+a successful build. A finite phase period does not remove constructor totality
+or earlier-root exclusion obligations.
+
+**Input provenance.** Downloaded inputs remain external research material.
+
+| Input | SHA-256 | Disposition |
+| --- | --- | --- |
+| `A367620_NC5_executable_quotients.patch` | `69cd133f53d085a1e15b078244e00b9053f96ad263932fd7a62405daf14fc7eb` | Selective arithmetic/audit port; no production future authority |
+| `A367620_NC5_GLOBAL_FUTURE_SAFETY.patch` | `f5890eb73cfa1581e85738ad1f662c9d53d402d6a44492abbb88280223a11e69` | Theorem layer registered; concrete prerequisite remains a release gate |
+
+**Validation provenance.** Raw paths below are ignored local evidence, not
+portable downloads. All commands and tool versions are retained in manifests.
+
+| Scope | Local evidence | Result |
+| --- | --- | --- |
+| Phase-coset theorem | `results/runs/20260930T110508Z-487ff5835a6743fb8402b6d8276682ce` | Focused build PASS; subsequent duplicate log-name invocation was rejected without overwriting evidence |
+| Initial global build | `results/runs/20260930T110542Z-686ac1b9144c4e129dacf19eaf1263f7` | 4-GiB memory limit in the prerequisite; no global theorem established |
+| Reparented prerequisite, quotients, runtime and quality | `results/runs/20260930T111007Z-f79fa972f85b437b8d7680260b8de169` | 99 quotient tests PASS; 779 runtime tests PASS, eight validation deselections; all quality/package checks PASS; `Comma_Total_Macro` PASS in 24.395 s; global build times out in `Comma_Future_Checked_Instance` at 60.206 s |
+
+The four new full-graph validation tests ran explicitly in the 99-test job;
+the runtime job's deselections are not counted as proof or construction passes.
+That run's source fingerprint is
+`34838789bd2feee430acded1deda9120a3e4a439e858af0bb28ad23260a95160`.
+Later independent-oracle, API-naming and named-clause changes require their own
+final evidence; historical results above are not attributed to those edits.
+
+**Remaining obligations.** The full concrete rank/cycle instance must check
+within the proof budget, then the global literal layer must check. The current
+semantic macro still depends on successful finite-run existence. Fuel-free
+constructor refinement, complete future branch admission, earlier-root
+exclusion and occurrence-weighted scheduler integration remain required before
+removing the forest, certified-prefix refusal or fuel owner. The requested
+cutover is incomplete.
+
+**Isolated checker result.** After splitting the exact conjunction into named
+clauses, `Comma_Future_Checked_Instance` still times out at 60.203 s /
+2,725,746,016 sampled bytes. The verbose log identifies the first clause,
+`comma_future_instance_rank_check_computed`, as the running command; the other
+clauses and new global theory were not reached. Local evidence:
+`results/runs/20260930T111759Z-ea89934c0b4345d6bd7eadbd2ef11d64`, fingerprint
+`03e0da740125142018be7dff38dcab0ae0ab825239644153e8769b02e80273a5`.
+This diagnosis supplies no successful aggregate cost claim.
+
+
+**Final focused freeze.** Fingerprint v5
+`c581c215be2da8bfcbedfaa12d2823e3c38dc33ee65397f3f52d65cef0b43480`.
+Local evidence `results/runs/20260930T112047Z-f810a9f60bce433591127b43f755e9b2`
+records 99 quotient checks and 779 runtime passes (eight validation deselections),
+strict mypy, Ruff, formatting, policy, documentation, proof inventory and clean
+installed-wheel checks. The focused cycle proof passes with cached prerequisites
+in 5.664 s / 1,432,145,016 sampled bytes. No global theorem passed. The initial
+measurement command used an obsolete `arena.work` attribute and failed; it was
+corrected to read the canonical `comma_work` counter, with no production edit.
+
+**Reuse measurements.** The corrected probe is
+`results/runs/20260930T112257Z-768e9612f99c45018c2f1251dcb23b54` on the same
+fingerprint. All 120 cold/warm/bypassed samples agree with independent bounded
+child enumeration: horizons 16–1024 plus 20,000, five trials per mode. This is
+arithmetic construction plus demanded integer timing; certificate verification
+and CLI startup are excluded. Construction and observation are not separately
+timed, so this is not full release-performance acceptance.
+
+| Index | Cold / warm / bypassed median ms | Cold / warm coefficient constructions | Warm applied parent hits |
+| --- | --- | --- | --- |
+| 16 | 5.336 / 5.520 / 5.312 | 0 / 0 | 0 |
+| 1,024 | 25.796 / 25.390 / 25.072 | 13 / 0 | 11 |
+| 20,000 | 46.594 / 46.506 / 45.480 | 28 / 0 | 26 |
+
+A separate fixed-count sweep across all 90 sector/digit pairs constructs only
+17 complete-cycle summaries and retrieves 73 compatible rotations. It does
+not exercise 90 distinct full source trajectories. Warm reuse removes the
+measured coefficient work, but these timings show no substantial end-to-end
+latency gain; bypass remains slightly faster on these cases. No speedup claim
+is inferred from cache-hit counts. The forest/fuel cutover remains red.
+
+## September 30 — global-root entry reduction and forest cutover audit
+
+**Objective.** Replace the remaining root-exclusion forest obligation with the
+first-`10^5` entry boundary, while requiring checked theorem authority before
+changing production admission.
+
+**Inputs and provenance.** The downloaded report is
+`A367620_NC5_GLOBAL_ROOT_FOREST_DELETION_REPORT.md`. Incremental patch
+`A367620_NC5_GLOBAL_ROOT_AND_PRODUCTION_FOREST_DELETION.patch` has SHA-256
+`a5ffbf3cc3dafa940640faa3ed7361750a684e899360d6a413750425de7b64dc`;
+archive `number-compiler-main5-a367620-global-root-forest-free.zip` has SHA-256
+`bd635fb74ff01c484c4426d661a0037c0458644cfceaa2939603dbc20cd8313d`.
+The author explicitly did not have Isabelle and did not claim a kernel build.
+
+**Changes.** Registered `Comma_Global_Root_Safety` in the existing global session.
+Its argument bounds every first crossing by `100000+x`, `0 <= x <= 90`, checks
+all B32 outcomes and uses deterministic parent descent to identify the open
+entries with root 20. Fixed the imported unsupported `code_simp [definition]`
+syntax by unfolding before `code_simp`. The finite Python cross-check shares the
+existing chart arithmetic and least-rank computation; it is development-only
+and cannot grant production admission.
+
+**Established finite result.** All 91 entries are examined, including both
+children at every terminal fork. Exactly offsets `3`, `34`, `75` are unranked
+under the finite audit. Each reaches the exponent-gain-5 fork at `a=2`, with
+ordered child ranks `(None,7)`. Independent literal child enumeration confirms
+`100003 -> 100034 -> 100075` on the unbranched source-20 prefix. The new controls
+and existing finite quotient suite report **102 passed** in 19.15 seconds.
+
+**Rejected claims.** The 91-entry check reduces the additional root obligation;
+it does not replace the imported 14,784-state rank/cycle check. The new theorem
+also retains `Comma_Total_Macro`/finite-run lifting. The downloaded runtime sets
+`isabelle_instance_checked=true` although its author could not build Isabelle;
+that assignment is not evidence. The patch still emits only through index
+412987860 and changes the certificate schema to a nullable digest. Those changes
+cannot silently be described as a fuel-free all-index production cutover.
+
+**Initial proof gate.** Local run
+`results/runs/20260930T135954Z-96b342aa0e4d41f7b2eba85bc858b0ff`
+passes the finite tests, then times out after 60.193 seconds /
+1,809,257,176 sampled bytes while building `Comma_Future_Checked_Instance`.
+The new root theory is not reached. This is local provenance, not a portable
+evidence download. The unchanged limit is 60 seconds / 4 GiB; no successful
+kernel result is inferred from the Python check or the supplied source text.
+
+**Evaluator repair.** The concrete rank gate now uses the existing
+`Comma_Fast_Kernel` arithmetic caches and a proof-producing selected-table
+lookup. It keeps both untrusted rank tables opaque to ordinary simplification;
+cache entries are local closed theorem equalities. Fixed the missing kernel
+import, numeric loop simplification, tactic return type and required datatype
+simplification rules. A returned tactic state with subgoals is logged as
+incomplete, never proved. The exact first row `(N,2,0)` was kernel checked in
+0.467 seconds during integration; this is not the aggregate theorem.
+Independent review found no oracle, foreign-context cache or unchecked Boolean
+publication. The existing full theorem and final oracle audit remain intact.
+
+**Final proof attempt.** Run
+`results/runs/20260930T142233Z-e2983813cbdd4a069f8e0d85a5f97f90`
+on fingerprint
+`f9b6f0bf4de1c4df3d1eccb1ad06657dd722dd4f81c7fb438af0e4bd82508650`
+still times out in `Comma_Future_Checked_Instance`: 60.187 seconds /
+2,473,088,136 sampled bytes. Its captured output does not expose the last
+completed row, so no row count or aggregate speedup is inferred. The root
+session remains unbuilt; neither forest deletion nor fuel deletion is enabled.
+The intermediate compilation and simplification failures are local diagnostic
+runs, not successful proof evidence.
+
+**Final quality validation.** Run
+`results/runs/20260930T142405Z-e0ef1aacd01d4d8590732499e99c849e`
+uses the same `f9b6f0bf` source. Strict mypy (1,618 source files), pinned Ruff
+0.16.9, formatting, repository policy, documentation, proof inventory and clean
+installed-wheel checks all pass. The finite root/quotient selection passes
+again: **102 tests**, 17.75 seconds pytest time (18.080 guarded seconds /
+49,431,080 sampled bytes). Runtime production files were not changed by this
+root-proof port. The previous full-suite/P0 results retain their original
+`f33da115` fingerprint; they were not rerun or relabeled as current evidence.
+
+**Remaining obligations.** Complete the unchanged rank-instance computation,
+then build the new root theorem and its production refinement before replacing
+forest admission. Separately discharge the fuel-dependent constructor/weighted
+lifting and extend the bounded prefix only after its consumer gates pass.

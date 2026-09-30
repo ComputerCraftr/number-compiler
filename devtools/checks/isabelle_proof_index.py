@@ -26,6 +26,12 @@ ISABELLE = isabelle_root(ROOT)
 # empty mapping is deliberate: a standalone mathematical theory must not be
 # presented as a production refinement merely because it is registered.
 COUNTERPARTS: dict[str, tuple[str, ...]] = {
+    "Comma_Normalized_Cycle": (
+        "src/number_compiler/sequences/comma/cycle_actions.py",
+        "src/number_compiler/sequences/comma/action_arena.py",
+        "src/number_compiler/sequences/comma/power.py",
+        "tests/sequences/comma/test_cycle_action_reuse.py",
+    ),
     "Source_Cache_Consumption": (
         "src/number_compiler/sequences/collatz/source_cylinder_cache.py",
         "src/number_compiler/sequences/collatz/temporal_run_quotient.py",
@@ -138,6 +144,11 @@ COUNTERPARTS: dict[str, tuple[str, ...]] = {
     "Comma_Future_Infinite_Lift": (),
     "Comma_Future_Checked_Instance": (),
     "Comma_Future_Source": (),
+    "Comma_Global_Future_Safety": (),
+    "Comma_Global_Root_Safety": (
+        "devtools/verification/comma_root_entries.py",
+        "tests/sequences/comma/test_root_entries.py",
+    ),
     "Comma_Round_Phase_Slice": (),
     "Comma_Round_Weights": (),
     "Comma_Weighted_Run_Germ": (),

@@ -95,6 +95,8 @@ class LedgerMetrics:
     powered_interface_requests: int = 0
     powered_interface_early_hits: int = 0
     powered_interface_publications: int = 0
+    powered_interface_publication_requests: int = 0
+    powered_interface_late_aliases: int = 0
     completed_result_reverse_index_entries: int = 0
     completed_result_variant_entries: int = 0
     completed_result_port_variants_peak: int = 0
@@ -775,6 +777,9 @@ class HashLifeProjectionMetrics(LedgerMetrics):
     spacetime_boundary_advance_cache_hits: int = 0
     spacetime_boundary_advance_cache_misses: int = 0
     spacetime_boundary_advance_cache_entries: int = 0
+    spacetime_boundary_advance_cache_publication_requests: int = 0
+    spacetime_boundary_advance_cache_publications: int = 0
+    spacetime_boundary_advance_cache_late_aliases: int = 0
     spacetime_reverse_boundary_advance_cache_hits: int = 0
     spacetime_reverse_boundary_advance_cache_misses: int = 0
     spacetime_reverse_boundary_advance_cache_entries: int = 0

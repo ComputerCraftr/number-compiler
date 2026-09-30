@@ -410,6 +410,7 @@ def audit_antihydra_payloads(
                     == {
                         "requested",
                         "_mahler_prepared",
+                        "_source_action_prepared",
                         "max_steps",
                         "max_state_bits",
                         "max_cache_entries",
@@ -428,6 +429,7 @@ def audit_antihydra_payloads(
                     and root.engine.ledger is ledger
                     and type(root.requested) is int
                     and type(root._mahler_prepared) is bool
+                    and type(root._source_action_prepared) is bool
                     and type(root.max_steps) is int
                     and type(root.max_state_bits) is int
                     and 0 <= root.requested <= root.max_steps

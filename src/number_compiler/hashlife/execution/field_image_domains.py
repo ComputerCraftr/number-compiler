@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from collections.abc import Callable, MutableMapping
 from dataclasses import dataclass
+from typing import TYPE_CHECKING, TypeAlias
 
 from number_compiler.arithmetic.contracts.scoped_handles import ArenaToken
 from number_compiler.hashlife.actions.diamond_actions import PortSignatureID
@@ -15,6 +16,16 @@ from number_compiler.hashlife.actions.field_actions import (
 from number_compiler.hashlife.interfaces.diamond_quotient import DiamondQuotientArena
 from number_compiler.resources.ledger import ResourceLedger
 
+if TYPE_CHECKING:
+    from number_compiler.hashlife.execution.continuations.higher_interfaces import (
+        HigherLocalInterfaceArena,
+    )
+
+# Both owners validate allocated signatures and complete local interfaces.
+# The sum type preserves their distinct records without coercing higher ports
+# into the finite Diamond representation.
+FieldInterfaceArena: TypeAlias = "DiamondQuotientArena | HigherLocalInterfaceArena"
+
 
 @dataclass(frozen=True, slots=True)
 class _FieldImageDomain:
@@ -22,7 +33,7 @@ class _FieldImageDomain:
     action_kind: str
     action_validate: Callable[[FieldCellActionID], object]
     action_authority: object | None
-    interfaces: DiamondQuotientArena
+    interfaces: FieldInterfaceArena
     signature_kind: str
     output_owner: ArenaToken
     output_kind: str
@@ -40,7 +51,7 @@ class _DomainLookupKey:
 
 @dataclass(frozen=True, slots=True)
 class _InterfaceAuthority:
-    arena: DiamondQuotientArena
+    arena: FieldInterfaceArena
     signature_kind: str
 
 
@@ -93,7 +104,7 @@ def register_field_image_domain(
     ledger: ResourceLedger,
     owner: int,
     domains: MutableMapping[_DomainLookupKey, _DomainEntry],
-    interfaces: DiamondQuotientArena,
+    interfaces: FieldInterfaceArena,
     *,
     action_owner: ArenaToken,
     action_kind: str,

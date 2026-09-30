@@ -26,9 +26,21 @@ from number_compiler.arithmetic.fields.symbolic_extent import (
     ReverseAddExtent,
     extent_json_value,
 )
+from number_compiler.resources.ledger import ResourceLedger
+from number_compiler.resources.output_stream_metrics import closing_output_stream
 
 _DIGITS = "0123456789abcdefghijklmnopqrstuvwxyz"
 _DIGIT_BYTES = _DIGITS.encode("ascii")
+
+
+def _term_ledger(term: ProjectedNumberTerm) -> ResourceLedger | None:
+    """Return an existing runtime ledger without constructing an execution owner."""
+    owner = term.payload
+    if isinstance(owner, (PoweredReverseAddTermPayload, PoweredCollatzTermPayload)):
+        return owner.term._ledger
+    if isinstance(owner, (AntihydraTermPayload, CommaTermPayload)):
+        return owner.term.ledger
+    return None
 
 
 def _metrics_json(
@@ -58,13 +70,7 @@ def _metrics_json(
         collect_temporal_diagnostics_snapshot,
     )
 
-    owner = term.payload
-    if isinstance(owner, (PoweredReverseAddTermPayload, PoweredCollatzTermPayload)):
-        ledger = owner.term._ledger
-    elif isinstance(owner, (AntihydraTermPayload, CommaTermPayload)):
-        ledger = owner.term.ledger
-    else:
-        ledger = None
+    ledger = _term_ledger(term)
     if ledger is not None:
         payload["execution_metrics"] = asdict(
             collect_temporal_diagnostics_snapshot(ledger)
@@ -83,9 +89,10 @@ def _metrics_json(
 
 def _radix_string_from_lsd(digits: Iterable[int], base: int) -> str:
     base = _integer(base, "text output base", 2, len(_DIGITS))
-    encoded = bytearray(
-        _DIGIT_BYTES[_integer(d, "output digit", 0, base - 1)] for d in digits
-    )
+    with closing_output_stream(digits) as stream:
+        encoded = bytearray(
+            _DIGIT_BYTES[_integer(d, "output digit", 0, base - 1)] for d in stream
+        )
     encoded.reverse()
     return encoded.decode("ascii") or "0"
 
@@ -106,13 +113,16 @@ def _power_of_two_radix_string(
     )
     accumulator = available = 0
     encoded = bytearray()
-    for digit in digits:
-        accumulator |= _integer(digit, "output digit", 0, source_base - 1) << available
-        available += source_bits
-        while available >= target_bits:
-            encoded.append(_DIGIT_BYTES[accumulator & (output_base - 1)])
-            accumulator >>= target_bits
-            available -= target_bits
+    with closing_output_stream(digits) as stream:
+        for digit in stream:
+            accumulator |= (
+                _integer(digit, "output digit", 0, source_base - 1) << available
+            )
+            available += source_bits
+            while available >= target_bits:
+                encoded.append(_DIGIT_BYTES[accumulator & (output_base - 1)])
+                accumulator >>= target_bits
+                available -= target_bits
     if available:
         encoded.append(_DIGIT_BYTES[accumulator])
     while len(encoded) > 1 and encoded[-1] == ord("0"):
@@ -141,6 +151,24 @@ def _radix_string(value: int, base: int) -> str:
 
 
 def _render_value(term: ProjectedNumberTerm, *, output_base: int, max_bits: int) -> str:
+    ledger = _term_ledger(term)
+    if ledger is None:
+        return _render_value_body(term, output_base=output_base, max_bits=max_bits)
+    for name in ("emitted_digits", "failures", "integer_conversion_operand_bits"):
+        ledger.bump("cli_render_" + name, 0)
+    ledger.bump("cli_render_requests")
+    try:
+        result = _render_value_body(term, output_base=output_base, max_bits=max_bits)
+    except BaseException:
+        ledger.bump("cli_render_failures")
+        raise
+    ledger.bump("cli_render_emitted_digits", len(result))
+    return result
+
+
+def _render_value_body(
+    term: ProjectedNumberTerm, *, output_base: int, max_bits: int
+) -> str:
     output_base = _integer(output_base, "--output-base", 2, len(_DIGITS))
     max_bits = _integer(max_bits, "--max-output-bits", 1)
     bit_extent: Extent
@@ -214,4 +242,8 @@ def _render_value(term: ProjectedNumberTerm, *, output_base: int, max_bits: int)
                 term.payload.iter_digits(), source_base, output_base
             )
 
-    return _radix_string(term.materialize(max_bits=max_bits), output_base)
+    value = term.materialize(max_bits=max_bits)
+    ledger = _term_ledger(term)
+    if ledger is not None:
+        ledger.bump("cli_render_integer_conversion_operand_bits", value.bit_length())
+    return _radix_string(value, output_base)

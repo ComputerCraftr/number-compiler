@@ -43,6 +43,7 @@ from number_compiler.hashlife.execution.field_provider import (
     PoweredFieldProviderView,
     validate_powered_provider_view,
 )
+from number_compiler.hashlife.interfaces.diamond_quotient import DiamondQuotientArena
 from number_compiler.resources.ledger import ResourceLedger
 from tests.support.assertions import assert_rejected_atomically
 from tests.support.recursive_field_images import (
@@ -381,6 +382,7 @@ def test_provider_occurrence_rejects_mismatched_completed_image_before_warm_hit(
         == valid
     )
 
+    assert isinstance(images.interfaces, DiamondQuotientArena)
     quotient = images.interfaces.resolve(adapter.interface)
     admissible = images.interfaces.interface(signature).admissible
     mismatched_interface = images.interfaces.intern(

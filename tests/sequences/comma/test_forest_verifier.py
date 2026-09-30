@@ -102,6 +102,7 @@ def test_failed_header_check_releases_frontier_reservations(tmp_path: Path) -> N
     assert ledger.entries == 0
     assert ledger.nodes == 0
     assert all(not row.entries and not row.nodes for row in ledger.inventory())
+    assert all(row.disposed for row in ledger.inventory())
 
 
 def test_truncated_forest_after_header_releases_seed_frontier(tmp_path: Path) -> None:

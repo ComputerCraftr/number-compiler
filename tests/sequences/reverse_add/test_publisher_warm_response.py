@@ -15,23 +15,26 @@ def test_public_196_point_reuses_authenticated_scalar_without_replaying_image() 
     assert (
         after.get("source_image_projection_requests", 0)
         - before.get("source_image_projection_requests", 0)
-        == 0
+        == 1
     )
     assert (
         after.get("source_image_projection_hits", 0)
         - before.get("source_image_projection_hits", 0)
         == 1
     )
-    assert (
-        after.get("source_image_projection_evaluations", 0)
-        - before.get("source_image_projection_evaluations", 0)
-        == 0
-    )
+    # The cached projection is reused without reconstructing the recursive
+    # occurrence or applying another temporal provider.
     for counter in (
+        "source_image_projection_evaluations",
+        "reverse_source_recursive_occurrence_publications",
+        "reverse_source_completed_child_publications",
+        "reverse_recursive_provider_applications",
+        "reverse_recursive_completed_child_joins",
+        "reverse_provider_parent_substitutions",
         "higher_action_continuation_requests",
         "higher_concrete_operation_evaluations",
-        "reverse_source_bound_image_first_demands",
-        "reverse_source_bound_publisher_point_observations",
+        "sequential_generation_advances",
+        "source_image_primitive_applications",
     ):
         assert after.get(counter, 0) - before.get(counter, 0) == 0
 
@@ -49,7 +52,23 @@ def test_cold_196_point_reports_published_runtime_image_work() -> None:
     assert metrics.higher_action_continuation_requests == 0
     assert metrics.higher_concrete_operation_evaluations == 0
     assert metrics.resource_work_counters["source_image_publications"] > 0
-    assert metrics.resource_work_counters["source_image_projection_publications"] > 0
+    assert metrics.resource_work_counters["reverse_recursive_completed_child_joins"] > 0
+    assert metrics.resource_work_counters["reverse_provider_parent_substitutions"] > 0
+    assert (
+        metrics.resource_work_counters.get("source_image_primitive_applications", 0)
+        == 0
+    )
+    assert metrics.resource_work_counters.get("sequential_generation_advances", 0) == 0
+    assert (
+        metrics.resource_work_counters.get(
+            "reverse_recursive_direct_temporal_publications", 0
+        )
+        == 0
+    )
+    assert (
+        metrics.resource_work_counters.get("reverse_recursive_terminal_publications", 0)
+        == 0
+    )
     assert metrics.resource_audit_complete == 1
     assert metrics.resource_accounting_mismatch == 0
     assert behavior.temporal_quotient_family == "reverse-add-source-cylinder"

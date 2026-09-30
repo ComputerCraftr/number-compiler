@@ -28,6 +28,7 @@ from number_compiler.hashlife.execution.field_images import (
     ImageRequestKey,
     RecursiveFieldImageArena,
 )
+from number_compiler.hashlife.interfaces.diamond_quotient import DiamondQuotientArena
 from number_compiler.resources.ledger import ResourceLedger
 from tests.support.assertions import assert_rejected_atomically
 from tests.support.recursive_field_images import (
@@ -252,6 +253,7 @@ def test_same_arena_wrong_signature_cannot_reach_parent_observer(
         incoming,
         application,
     ) = _application_setup()
+    assert isinstance(images.interfaces, DiamondQuotientArena)
     other = images.interfaces.intern_interface(
         replace(
             images.interfaces.interface(signature),
@@ -296,6 +298,7 @@ def test_image_publication_rejects_interface_from_another_signature() -> None:
     ledger, source, signature, geometry, action, images, _adapter, executor = _setup()
     image = executor.image(action, source, geometry, signature)
     record = images.resolve(image)
+    assert isinstance(images.interfaces, DiamondQuotientArena)
     declared = images.interfaces.interface(signature)
     other_signature = images.interfaces.intern_interface(
         replace(

@@ -5,15 +5,6 @@ from typing import cast
 
 import pytest
 
-from devtools.experiments.reverse_add.coordinate_program import (
-    ReverseCoordinateProgramArena,
-)
-from devtools.experiments.reverse_add.field_action import (
-    ProofMachineStateID,
-    ReverseActionAutomorphisms,
-    ReverseFieldActionArena,
-    ReverseGeometry,
-)
 from devtools.experiments.reverse_add.local_interface import (
     ReverseLocalInterfaceArena,
 )
@@ -42,6 +33,15 @@ from number_compiler.hashlife.actions.field_actions import (
 from number_compiler.hashlife.actions.lazy_compiler import LazyCompiler
 from number_compiler.resources.ledger import ResourceLedger
 from number_compiler.sequences.reverse_add.compilation import compile_reverse_pair_power
+from number_compiler.sequences.reverse_add.coordinate_program import (
+    ReverseCoordinateProgramArena,
+)
+from number_compiler.sequences.reverse_add.field_action import (
+    ProofMachineStateID,
+    ReverseActionAutomorphisms,
+    ReverseFieldActionArena,
+    ReverseGeometry,
+)
 from number_compiler.sequences.reverse_add.powered_local_codec import (
     ReversePoweredLocalCodec,
 )

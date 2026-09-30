@@ -30,6 +30,7 @@ from number_compiler.arithmetic.contracts.semantic_identity import SemanticIdent
 from number_compiler.arithmetic.fields.radial_innovation import (
     ReverseAddCyclotomicInnovationBlock,
 )
+from number_compiler.arithmetic.fields.symbolic_innovation import RadialMultiplier
 from number_compiler.arithmetic.polynomials.cyclotomic_transport import (
     PowerTwoCyclotomicRadialQuotient,
 )
@@ -40,7 +41,7 @@ from number_compiler.hashlife.actions.field_actions import (
 from number_compiler.resources.ledger import ResourceLedger
 
 if TYPE_CHECKING:
-    from devtools.experiments.reverse_add.coordinate_program import (
+    from number_compiler.sequences.reverse_add.coordinate_program import (
         ReverseCoordinateProgramArena,
     )
 
@@ -429,23 +430,52 @@ class ReverseFieldActionArena:
         """Return the bounded canonical program key, never an emitted tape."""
         return self._output_key(reference)
 
-    def semantic_identity(self, reference: FieldCellActionID) -> SemanticIdentity:
-        """Return a source-free identity for one complete algebraic action.
+    def temporal_action(self, reference: FieldCellActionID) -> RadialMultiplier:
+        """Return the exact centered temporal action ``(q, r)``.
 
-        Scoped local IDs deliberately do not enter the behavior.  This lets a
-        higher local-interface compiler canonicalize equal action behavior
-        without retaining construction witnesses or source occurrence data.
+        Reverse/add occurrence selection may carry innovation, carry, output,
+        admission and geometric data, but after rebasing an authenticated
+        source occurrence to its target origin the linear action is exactly
+        ``U -> 2**q * (1+z)**r * U``.  Therefore only the no-growth and growth
+        counts belong to temporal ActionID.
+        """
+        action = self.resolve(reference)
+        return RadialMultiplier(action.radial.no_growth, action.radial.growth)
+
+    def semantic_identity(self, reference: FieldCellActionID) -> SemanticIdentity:
+        """Return the centered temporal semantic identity, never occurrence data.
+
+        The complete field-action record is an occurrence/interface carrier.
+        Its innovation, carry summaries, residual/output bindings and geometry
+        deliberately do not split this identity.
+        """
+        radial = self.temporal_action(reference)
+        return SemanticIdentity(
+            "reverse-centered-radial-action-v1",
+            (
+                "reverse-centered-radial-action-v1",
+                f"no-growth:{radial.no_growth}",
+                f"growth:{radial.growth}",
+            ),
+        )
+
+    def occurrence_identity(self, reference: FieldCellActionID) -> SemanticIdentity:
+        """Return the complete source-free occurrence/interface identity.
+
+        This is the old pre-rebase semantic payload under an explicit name.
+        Consumers that must authenticate a particular published interface may
+        use it; temporal equality and powering must use :meth:`temporal_action`
+        or :meth:`semantic_identity` instead.
         """
         action = self.resolve(reference)
 
         def component(role: str, value: object) -> SemanticIdentity:
-            behavior = (role, value)
-            return SemanticIdentity(role, behavior)
+            return SemanticIdentity(role, (role, value))
 
         behavior = (
-            "reverse-field-action-v2",
+            "reverse-field-occurrence-v1",
             component("base", action.base),
-            component("radial", action.radial.canonical_key),
+            component("radial-derived", action.radial.canonical_key),
             component("innovation", action.innovation),
             f"carry-forward:{action.carry_forward.value}",
             f"carry-backward:{action.carry_backward.value}",
@@ -463,7 +493,7 @@ class ReverseFieldActionArena:
                 ),
             ),
         )
-        return SemanticIdentity("reverse-field-action", behavior)
+        return SemanticIdentity("reverse-field-occurrence", behavior)
 
     def _canonical_block(
         self,
@@ -700,6 +730,37 @@ class ReverseFieldActionArena:
             return CarryFn.ID
         raise AssertionError(value)
 
+    def _transformed_components(
+        self, action: ReverseFieldAction, transform: ActionTransform
+    ) -> tuple[
+        ReverseAddCyclotomicInnovationBlock,
+        SemanticKey,
+        SemanticKey,
+        CarryFn,
+        CarryFn,
+        ReverseGeometry,
+    ]:
+        """Compute transform semantics without interning or changing arena state."""
+        block = self._block(action)
+        residual_key = self._residual_key(action.residual)
+        output_key = self._output_key(action.output)
+        forward, backward = action.carry_forward, action.carry_backward
+        geometry = action.geometry
+        hooks = self._automorphisms
+        if transform & ActionTransform.CONJUGATE:
+            block = self._canonical_block(hooks.conjugate_innovation(block))
+            residual_key = hooks.conjugate_residual(residual_key)
+            output_key = hooks.conjugate_output(output_key)
+            forward = self._conjugate_carry(forward)
+            backward = self._conjugate_carry(backward)
+        if transform & ActionTransform.MIRROR:
+            block = self._canonical_block(hooks.mirror_innovation(block))
+            residual_key = hooks.mirror_residual(residual_key)
+            output_key = hooks.mirror_output(output_key)
+            forward, backward = backward, forward
+            geometry = geometry.mirrored()
+        return block, residual_key, output_key, forward, backward, geometry
+
     def transformed(
         self,
         reference: FieldCellActionID,
@@ -719,24 +780,9 @@ class ReverseFieldActionArena:
         if found is not None:
             self.transform_hits += 1
             return found
-        block = self._block(action)
-        residual_key = self._residual_key(action.residual)
-        output_key = self._output_key(action.output)
-        forward, backward = action.carry_forward, action.carry_backward
-        geometry = action.geometry
-        hooks = self._automorphisms
-        if transform & ActionTransform.CONJUGATE:
-            block = self._canonical_block(hooks.conjugate_innovation(block))
-            residual_key = hooks.conjugate_residual(residual_key)
-            output_key = hooks.conjugate_output(output_key)
-            forward = self._conjugate_carry(forward)
-            backward = self._conjugate_carry(backward)
-        if transform & ActionTransform.MIRROR:
-            block = self._canonical_block(hooks.mirror_innovation(block))
-            residual_key = hooks.mirror_residual(residual_key)
-            output_key = hooks.mirror_output(output_key)
-            forward, backward = backward, forward
-            geometry = geometry.mirrored()
+        block, residual_key, output_key, forward, backward, geometry = (
+            self._transformed_components(action, transform)
+        )
         self._validate_semantic_key(residual_key)
         self._validate_semantic_key(output_key)
         result = self.intern(

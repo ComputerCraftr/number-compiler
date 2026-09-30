@@ -95,7 +95,7 @@ def test_collatz_source_image_metrics_do_not_report_proof_sizes_as_runtime_class
     assert metrics.local_interface_nodes == metrics.field_action_nodes == 0
     assert metrics.canonical_tile_nodes == 0
     assert metrics.bounded_application_exact_endpoint_entries == 0
-    assert metrics.forbidden_future_payloads == 0
+    assert collect_ledger_metrics(term._ledger).forbidden_future_payloads == 0
     assert metrics.whole_word_sweeps == metrics.proof_machine_applications == 0
     assert metrics.resource_work_counters["source_image_publications"] > 0
     assert metrics.resource_work_counters["source_image_projection_publications"] > 0
@@ -161,6 +161,38 @@ def test_generic_diamond_bindings_are_counted_by_their_actual_runtime_roles() ->
     assert metrics.completed_result_entries == results.retained_results > 0
     assert metrics.local_interface_nodes > 0
     assert metrics.canonical_tile_nodes == len(runtime.scheduler.tiles._nodes) > 0
+
+
+def test_public_projection_metrics_do_not_run_deep_audits() -> None:
+    from unittest.mock import patch
+
+    ledger = ResourceLedger()
+    application = HashLifeBlockIndex(
+        DigitNormalizeBlockEffect(10),
+        (2,) * 16,
+        logical_length=16,
+        ledger=ledger,
+    )
+    application.direct_powered_point(12)
+    before = dict(ledger.counters)
+
+    def forbidden(*_args: object, **_kwargs: object) -> object:
+        raise AssertionError("projection metrics invoked a deep audit")
+
+    with (
+        patch(
+            "number_compiler.resources.metric_collection.audit_registered_payloads",
+            forbidden,
+        ),
+        patch(
+            "number_compiler.resources.metric_collection.audit_execution_ownership",
+            forbidden,
+        ),
+    ):
+        report = application.metrics()
+
+    assert report.resource_accounting_mismatch == 0
+    assert dict(ledger.counters) == before
 
 
 def test_node_categories_follow_observed_records_not_unpublished_reservations() -> None:

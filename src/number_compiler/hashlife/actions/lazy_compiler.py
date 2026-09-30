@@ -147,11 +147,15 @@ class LazyCompiler:
     def __init__(self, ledger: ResourceLedger) -> None:
         self.ledger, self.token = ledger, ArenaToken("operator-compiler")
         ledger.register_execution_root(self)
+        # A ledger can host several independent compilers.  Use its next
+        # registration ordinal only as a human-readable namespace; all
+        # authority checks still use the returned owner IDs and arena token.
+        namespace = f"compiler-{ledger.owner_count}"
         self.owner = ledger.register(
-            "compiler-programs", "compiled_action_program", "INDEX_OWNED"
+            f"{namespace}-programs", "compiled_action_program", "INDEX_OWNED"
         )
         self.index_owner = ledger.register(
-            "compiler-interner", "compiled_action_interner", "INDEX_OWNED"
+            f"{namespace}-interner", "compiled_action_interner", "INDEX_OWNED"
         )
         self._nodes: MutableSequence[BlockEffect] = ledger.make_list(self.owner)
         self._ids: MutableMapping[object, int] = ledger.make_dict(self.index_owner)

@@ -81,7 +81,9 @@ def test_small_mahler_actions_never_acquire_process_cache(
     monkeypatch.setattr(mahler_cache, "get_process_cache", _forbidden)
     term, actual = _query(extent)
     assert actual == expected
-    assert "mahler_hashlife_occurrence_lookups" not in term.ledger.counters
+    assert term.ledger.counters["mahler_hashlife_occurrence_lookups"] == 0
+    assert term.ledger.counters["mahler_hashlife_occurrence_policy_bypasses"] == 1
+    assert term.ledger.counters["mahler_hashlife_occurrence_bypasses"] == 0
 
 
 def test_changed_public_source_rejected_before_warm_cache_use(

@@ -66,11 +66,14 @@ class AntihydraArithmeticImageWorkspace(DyadicReturnImageWorkspace):
         *,
         shared_cache: bool = True,
         prepare_mahler: bool = False,
+        prepare_source_action: bool = False,
     ) -> None:
         if type(shared_cache) is not bool:
             raise TypeError("shared_cache must be a bool")
         if type(prepare_mahler) is not bool:
             raise TypeError("Mahler preparation must be Boolean")
+        if type(prepare_source_action) is not bool:
+            raise TypeError("source-action preparation must be Boolean")
         self.shared_cache = shared_cache
         self.mahler_bindings: (
             LedgerDict[
@@ -82,13 +85,16 @@ class AntihydraArithmeticImageWorkspace(DyadicReturnImageWorkspace):
         self._mahler_wire: tuple[int, int, int | None] | None = None
         self.mahler_binding_owner: int | None = None
         self._mahler_consumer: MahlerOccurrenceConsumer | None = None
-        if prepare_mahler and returns:
+        if (prepare_mahler or prepare_source_action) and returns:
             from number_compiler.sequences.antihydra.mahler_source_actions import (
                 MahlerOccurrenceConsumer,
             )
 
             self._mahler_consumer = MahlerOccurrenceConsumer(
-                ledger, ANTIHYDRA_ARITHMETIC_LAW, shared_cache=shared_cache
+                ledger,
+                ANTIHYDRA_ARITHMETIC_LAW,
+                shared_cache=shared_cache,
+                counter_family="mahler" if prepare_mahler else "antihydra",
             )
         consumer = self._mahler_consumer
         try:
@@ -97,7 +103,9 @@ class AntihydraArithmeticImageWorkspace(DyadicReturnImageWorkspace):
                 source = self.source_node(self.root_source)
                 record = consumer.records.get((returns, source.residue))
                 if record is None:
-                    raise ValueError("Mahler construction lost its root occurrence")
+                    raise ValueError(
+                        "source-action construction lost its root occurrence"
+                    )
                 node, normal, _publisher = record
                 summary = self.image_node(self.root_payload).summary
                 if (node.transfer, node.delta, node.minimum, node.odd_steps) != (
@@ -107,26 +115,28 @@ class AntihydraArithmeticImageWorkspace(DyadicReturnImageWorkspace):
                     summary.odd_steps,
                 ):
                     raise ValueError(
-                        "Mahler occurrence has another admitted root image"
+                        "source-action occurrence has another admitted root image"
                     )
-                owner = ledger.register(
-                    f"mahler-root-action-{self.image_owner}", "arithmetic_source_action"
-                )
-                bindings: LedgerDict[
-                    tuple[DyadicReturnSourceID, DyadicReturnActionID],
-                    tuple[int, int, int | None],
-                ] = ledger.make_dict(owner, nodes_per_entry=3)
-                ledger.reserve(owner, entries=1, nodes=3)
-                try:
-                    wire = normal.wire()
-                    bindings[(self.root_source, self.root_action)] = wire
-                except BaseException:
-                    ledger.release(owner, entries=1, nodes=3)
-                    raise
-                self.mahler_binding_owner = owner
-                self.mahler_bindings = bindings
-                self._mahler_wire = wire
-                ledger.bump("mahler_hashlife_source_action_active")
+                consumer.count("source_action_active")
+                if prepare_mahler:
+                    owner = ledger.register(
+                        f"mahler-root-action-{self.image_owner}",
+                        "arithmetic_source_action",
+                    )
+                    bindings: LedgerDict[
+                        tuple[DyadicReturnSourceID, DyadicReturnActionID],
+                        tuple[int, int, int | None],
+                    ] = ledger.make_dict(owner, nodes_per_entry=3)
+                    ledger.reserve(owner, entries=1, nodes=3)
+                    try:
+                        wire = normal.wire()
+                        bindings[(self.root_source, self.root_action)] = wire
+                    except BaseException:
+                        ledger.release(owner, entries=1, nodes=3)
+                        raise
+                    self.mahler_binding_owner = owner
+                    self.mahler_bindings = bindings
+                    self._mahler_wire = wire
         except BaseException:
             if hasattr(self, "_closed"):
                 self.dispose()

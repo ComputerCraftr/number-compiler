@@ -50,9 +50,28 @@ from key construction (`key_operand_bits`), `cold_child_discoveries`, and
 observed adjacent block metadata; it is not a count of skipped transitions.
 `capacity_bypasses` records optional cache admission failures, once per refused
 publication or lease. For Mahler it sums the measured source-action and outer
-observer lanes; each lane retains its own `bypasses` counter. Output-region
+observer lanes; Antihydra sums source-action and arithmetic-occurrence lanes.
+Each lane retains its own `bypasses` total for instrumented reasons. Collatz
+occurrence and Mahler outer-observer lanes additionally distinguish
+`disabled_bypasses`, `policy_bypasses` and `capacity_bypasses`; disabling shared
+reuse or choosing the small-action constructor does not imply a capacity
+refusal. A local Collatz hit does not bypass a process lookup that was never
+needed. Local occurrence root removals are counted as `evictions`. Output-region
 visits, emitted digits and failed work remain nullable until their owners measure
 them. Reading these columns does not run a constructor or a storage audit.
+
+Comma's `macrocells` row uses `index_unit="oeis_transition"` and
+`cache_scope="guarded_interior_cycle_action"`. Its semantic lane measures exact
+complete-cycle action retrieval, followed by separately counted successful
+scheduler application. Source value, absolute index and headroom are rebound
+and checked at application. This is not a Q19/M111 future-branch quotient.
+Complete-cycle arithmetic keys use `digit mod gcd(leading,10)`; the local
+application retains its actual entering digit. A process hit across rotations
+therefore shares an equal complete-cycle summary, not a partial phase prefix
+or a different source endpoint. The extra key-normalization operation is charged.
+Occurrence-lane and tree-depth measurements remain `null`; no depth or merge
+count is inferred from a large represented duration. Explicit cache bypass is
+reported in the semantic lane but does not count as a capacity refusal.
 
 Shared reuse is process-local: separate CLI processes start cold. Same-process
 API requests may reuse compatible admitted germs; `shared_cache=False` bypasses
@@ -62,7 +81,28 @@ process retention and reuse, explicitly labeled `process_aggregate_not_query_wor
 reading it never creates the cache or a lease. Descriptor-era `shared_cache_*`
 fields describe the prime query snapshot, not these later macrocell operations.
 
-The detailed `power_metrics()` APIs retain per-owner inventory and raw work counters for explicit audit tooling.
+Public Python metric reports retain per-owner inventory and raw counters, but
+do not initiate deep payload or ownership audits. Explicit
+`collect_ledger_metrics(ledger)` remains the audit entry point; callers can use
+`audit_payloads=False` to reuse only still-current audit evidence. Inventory
+reporting is separate from the CLI snapshot collector, which never traverses
+retained payloads.
+
+Powered interface `requests`/`early_hits` measure lookups only.
+`publication_requests`, successful `publications` and `late_aliases` are
+separate; publishing an already-known interface is not an execution cache hit.
+Final digit-stream emissions include reverse/add's terminal carry. Underlying
+recursive pair-symbol visits remain separate from final output. Stream requests,
+emissions, cancellations and failures are charged at consumption, including
+partial streams; unavailable measurements stay null. The separate `rendering`
+record counts complete CLI render attempts, produced output digits, failures and
+the bit sizes passed to integer-to-text conversion. It covers decimal conversion
+that bypasses a native binary stream, without counting those two layers as the
+same work. Native stream counts describe consumption at that producer boundary;
+a reverse-order API adapter that first buffers the complete forward stream
+therefore reports that complete native work. It does not claim that the caller
+has already pulled every digit from the returned reversed iterator. CLI
+converters close partially consumed native streams immediately on failure.
 The legacy `bimachine_composition_certified` field checks the live registered
 generic application and its ownership/lease binding. It is not an Isabelle
 completion declaration or a certificate for a different family executor.
@@ -111,3 +151,12 @@ present. The first measures admitted complete source actions; the second
 measures exact whole-observation memo retrieval. Their hits are not added.
 No number of semantic interning hits or temporal depth is converted into
 occurrence applications or estimated work saved.
+
+
+Ordinary Antihydra digit/value requests of at least 1,024 returns consult the
+same authenticated complete-source-action store as Mahler when shared caching
+is enabled. Their counters use `antihydra_hashlife_source_action_*` and appear
+in the Antihydra row's `source_action` lane, separate from its `occurrence` lane.
+A parent hit skips cold arithmetic discovery; it does not mean a Mahler observer
+was requested. No Mahler binding is published for digit-only requests. Small
+and cache-bypassed digit requests leave this lane uninstrumented (`null`).

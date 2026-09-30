@@ -30,6 +30,8 @@ Open obligations retain their recorded scope; consult [current release gates](..
 
 ## Records
 
+- [September 30 — ordinary arithmetic source-action reuse](#september-30--ordinary-arithmetic-source-action-reuse)
+
 - [Signed Mahler current-tail boundary](#signed-mahler-current-tail-boundary)
 - [Mahler recursive source pullback review](#mahler-recursive-source-pullback-review)
 - [Nine-carry re-entry and tangent demand](#nine-carry-re-entry-and-tangent-demand)
@@ -267,3 +269,74 @@ mathematical boundary is recorded in the maintained research paper. Scheduler
 integration, complete resource/lifecycle accounting, executable Isabelle
 refinement and the all-width crossing theorem remain separate work; this
 review does not close the production or non-halting gates.
+
+
+## September 30 — ordinary arithmetic source-action reuse
+
+**Objective.** Apply the downloaded NC5 optimization to ordinary Antihydra
+point/value construction without introducing another scheduler or observer.
+
+**Changes.** For shared-cache queries of at least 1,024 returns, digit/value
+consumers now use the existing complete source-action lookup before either cold
+arithmetic constructor. The exact record remains qualified by the pinned law,
+source cylinder and private producer authority. Mahler can reuse digit-published
+records; ordinary queries do not publish Mahler observer bindings or evaluate
+physical roofs. Small and cache-bypassed queries preserve their cold path.
+
+Schema 8 exposes `antihydra_hashlife_source_action_*` through a separate
+source-action lane, with actual applied parent hits and read-only reporting.
+The counter family is restricted to Antihydra/Mahler. Collatz's different gain
+law and existing source transport are unchanged and covered by regression tests.
+The downloaded root report and machine-local JSON were not copied into source.
+
+**Established results.** Poison tests prevent both cold constructors on warm
+point/value requests at 1,024, 1,025 and 2,048 returns. They check exact output,
+no Mahler binding, point projection without endpoint rendering, source-action
+admission and complete ledger accounting. Reset and changed extents require
+fresh admission; reduced state budgets still refuse. Digit-to-Mahler reuse and
+the installed public CLI pass the same cold-construction poison checks.
+
+Five trials of 21 fresh term objects per mode/extent compare tracked parent
+`d58bdfc41dc16936708fe1967cfa50efcc65468d` with this source. Timings include
+term creation and `digit(2)`, exclude process startup, and use separate priming
+outside warm samples. Every requested bit agrees with a bounded literal
+recurrence. Values below are medians of trial medians, in milliseconds.
+
+| Returns | Old/new cold | Old/new warm | Old/new bypass |
+| --- | --- | --- | --- |
+| 1,024 | 2.831 / 2.998 | 2.797 / 0.949 | 2.845 / 2.784 |
+| 2,048 | 4.409 / 4.433 | 4.269 / 0.963 | 4.771 / 4.294 |
+
+Each new warm request consumes one exact process parent hit before discovery.
+The cold balanced route is absent on these warm queries, independently enforced
+by poison tests. Point requests do not demand an endpoint. Cold construction
+is not claimed to improve; separate CLI processes still start cold.
+
+**Validation provenance.** Authored-source fingerprint v5:
+`555ecb474050812bd83e8360150e09c445de11f8567481eda1680aa8daa16b88`.
+The following raw evidence is local and ignored, not portable download links.
+
+| Scope | Local evidence | Result / limits |
+| --- | --- | --- |
+| Focused families and whole-tree quality | `results/runs/20260930T100814Z-c249b196f698498ebe60e6749cdf21c8` | 626 pass / two existing reverse D16 failures, 9.978 s / 97,338,472 bytes; mypy, Ruff, format, source policy, docs, proof index and installed wheel PASS; each under 35 s / 1 GiB |
+| Five-trial old/new point comparison | `results/runs/20260930T101007Z-18800a2cf24947aeb40dfa4294cbcde6` | 630 samples per source; baseline/current probes PASS under 35 s / 1 GiB |
+| Applicable unchanged refinements | Same comparison run | `Source_Cache_Integration` and `Antihydra_Mahler_Integration` PASS, cached build 5.522 s / 1,281,248,232 bytes; 60 s / 4 GiB |
+| Public 16–1024 five-trial comparison | `results/runs/20260930T101108Z-b7164aaa073d48098cc53525bae057ed` | 210 measured + 14 priming CLI/point rows PASS, 5.421 s / 59,918,472 bytes; 35 s / 1 GiB |
+
+The public probe separates fresh-process CLI, same-process CLI and cleared-cache
+CLI modes; its API bypass uses `shared_cache=False`. Its warm API point samples
+reuse a compiler, whereas the old/new comparison above deliberately creates
+fresh term objects. Neither measurement substitutes semantic interning hits
+for actual parent applications. No test was skipped to hide a new failure.
+
+Input SHA256: report
+`82966c93873c16cfcd8c9e81971d01c7fa4fe9435935b649d828f71aba2e9048`;
+patch `922e6dafed99ffbdb990faf61a12fef713a170634b1b3e7dd89253ffcd30a5e7`.
+
+**Rejected claims and remaining work.** This change does not prove cheap cold
+arbitrary-horizon construction, complete constructor refinement or global
+non-halting. Existing Isabelle cache transport still assumes constructor
+admission. No new theorem, axiom or oracle was introduced. Reverse D16 still
+refuses outside its bounded same-carry cylinder in both value and JSON tests;
+those assertions remain active. Full-unit/P0/aggregate-proof results retain
+the earlier release fingerprints and were not relabeled by this focused pass.

@@ -108,11 +108,17 @@ def build_action(
         raise RuntimeError("nested dyadic return action construction")
 
     def push(value: int) -> None:
+        previous = len(workspace.construction_stack)
         workspace.ledger.reserve(workspace.construction_owner, entries=1, nodes=1)
-        workspace.construction_stack.append(value)
+        try:
+            workspace.construction_stack.append(value)
+        except BaseException:
+            workspace.construction_stack._rollback_unpublished(previous)
+            workspace.ledger.release(workspace.construction_owner, entries=1, nodes=1)
+            raise
 
-    push(width)
     try:
+        push(width)
         while workspace.construction_stack:
             current = workspace.construction_stack[-1]
             found = workspace.by_width.get(current)

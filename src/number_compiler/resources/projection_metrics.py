@@ -117,7 +117,7 @@ def collect_projection_metrics(index: HashLifeBlockIndex) -> HashLifeProjectionM
         LazyProjection as TileProjection,
     )
 
-    ledger = collect_ledger_metrics(index._ledger)
+    ledger = collect_ledger_metrics(index._ledger, audit_payloads=False)
     baseline = dict(index._effect_metric_baseline)
     geometry = tile_metrics(index.evaluation_root)
     tile_nodes = index._retained_tile_node_count()

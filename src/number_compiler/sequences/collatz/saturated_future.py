@@ -509,17 +509,11 @@ def from_published_prefix(
     temporary = 2 * published.discovered_events + 1
     ledger.bump("collatz_saturated_attempts")
     try:
-        ledger.reserve(owner, entries=temporary, nodes=temporary)
+        with ledger.reservation(owner, entries=temporary, nodes=temporary):
+            return _from_published_prefix_reserved(published, leaf_events=leaf_events)
     except BaseException:
         ledger.bump("collatz_saturated_failed_constructions")
         raise
-    try:
-        return _from_published_prefix_reserved(published, leaf_events=leaf_events)
-    except BaseException:
-        ledger.bump("collatz_saturated_failed_constructions")
-        raise
-    finally:
-        ledger.release(owner, entries=temporary, nodes=temporary)
 
 
 def _from_published_prefix_reserved(

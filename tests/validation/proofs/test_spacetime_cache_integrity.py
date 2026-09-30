@@ -13,6 +13,7 @@ from number_compiler.arithmetic.fields.dyadic_tile import (
     mirror_tile,
 )
 from number_compiler.hashlife.execution.tile_kernel import PrimitiveTileKernelAdapter
+from number_compiler.resources.metric_collection import collect_ledger_metrics
 from number_compiler.sequences.collatz.block_power import PoweredCollatzTerm
 from number_compiler.sequences.reverse_add.power import ReverseAddPoweredTerm
 from tests.support.source_policy import module_sources
@@ -86,7 +87,28 @@ def test_lazy_range_hit_is_not_counted_on_computed_miss() -> None:
         after_second.counters["powered_interface_publications"]
         == after_first.counters["powered_interface_publications"]
     )
-    assert index.metrics().resource_accounting_mismatch == 0
+    metrics = index.metrics()
+    assert metrics.resource_accounting_mismatch == 0
+    assert (
+        metrics.spacetime_boundary_advance_cache_hits
+        == after_second.counters["powered_interface_early_hits"]
+    )
+    assert metrics.spacetime_boundary_advance_cache_misses == (
+        after_second.counters["powered_interface_requests"]
+        - after_second.counters["powered_interface_early_hits"]
+    )
+    assert (
+        metrics.spacetime_boundary_advance_cache_publication_requests
+        == after_second.counters["powered_interface_publication_requests"]
+    )
+    assert (
+        metrics.spacetime_boundary_advance_cache_publications
+        == after_second.counters["powered_interface_publications"]
+    )
+    assert (
+        metrics.spacetime_boundary_advance_cache_late_aliases
+        == after_second.counters.get("powered_interface_late_aliases", 0)
+    )
 
 
 def test_public_metrics_separate_bounded_production_from_generic_spacetime_caches() -> (
@@ -141,16 +163,17 @@ def test_lazy_production_retains_only_registered_scoped_programs_and_summaries()
 
     term = ReverseAddPoweredTerm(196, 32)
     term.digit(0)
-    metrics = term.metrics()
-    assert metrics.resource_audit_complete == 1
-    assert metrics.forbidden_future_payloads == 0
-    assert metrics.resource_inventory
+    term.metrics()
+    audit = collect_ledger_metrics(term._ledger)
+    assert audit.resource_audit_complete == 1
+    assert audit.forbidden_future_payloads == 0
+    assert audit.resource_inventory
     assert all(
-        item.observed_entries == item.entries for item in metrics.resource_inventory
+        item.observed_entries == item.entries for item in audit.resource_inventory
     )
     assert all(
         isinstance(root, ArenaHandle)
-        for item in metrics.resource_inventory
+        for item in audit.resource_inventory
         for root in item.roots
     )
 
@@ -192,7 +215,10 @@ def test_mirror_is_a_canonical_involutive_tile_action() -> None:
 def test_composed_hashlife_has_one_registered_owner_per_retained_container() -> None:
     for term in (ReverseAddPoweredTerm(196, 32), PoweredCollatzTerm(27, 32)):
         term.digit(0)
-        inventory = term._ledger.inventory()
+        audit = collect_ledger_metrics(term._ledger)
+        assert audit.resource_audit_complete == 1
+        assert audit.forbidden_future_payloads == 0
+        inventory = audit.resource_inventory
         assert len({item.owner for item in inventory}) == len(inventory)
         assert len({item.name for item in inventory}) == len(inventory)
         assert all(item.accounting_delta == 0 for item in inventory)
@@ -246,8 +272,9 @@ def test_lazy_carrier_metrics_expose_programs_without_duplicate_finite_domains()
     assert metrics.action_program_nodes == (
         metrics.compiler_program_nodes + metrics.application_program_nodes
     )
-    assert metrics.resource_audit_complete == 1
-    assert metrics.retained_unbounded_future_integers == 0
+    audit = collect_ledger_metrics(term._ledger)
+    assert audit.resource_audit_complete == 1
+    assert audit.retained_unbounded_future_integers == 0
 
 
 def test_higher_carrier_has_no_eager_composed_universe_cutoff() -> None:
@@ -295,13 +322,16 @@ def test_retained_cache_accounting_matches_independently_observed_containers() -
     for term in (ReverseAddPoweredTerm(196, 32), PoweredCollatzTerm(27, 32)):
         term.digit(0)
         metrics = term.metrics()
+        audit = collect_ledger_metrics(term._ledger)
+        assert audit.resource_audit_complete == 1
+        assert audit.forbidden_future_payloads == 0
         assert metrics.raw_spacetime_boundary_cache_entries == 0
         assert metrics.retained_cache_accounting_delta == 0
-        entries = tuple(item.observed_entries for item in metrics.resource_inventory)
+        entries = tuple(item.observed_entries for item in audit.resource_inventory)
         assert all(value is not None for value in entries)
         actual_entries = sum(value for value in entries if value is not None)
         actual_nodes = sum(
-            item.observed_nodes or 0 for item in metrics.resource_inventory
+            item.observed_nodes or 0 for item in audit.resource_inventory
         )
         assert (
             metrics.retained_cache_entries
@@ -344,7 +374,7 @@ def test_metrics_do_not_attribute_other_indices_work_to_an_existing_index() -> N
     assert other.compiler_retained_execution_nodes > 0
     assert other.query_retained_execution_nodes > 0
     assert other.resource_accounting_mismatch == 0
-    assert other.resource_audit_complete == 1
+    assert collect_ledger_metrics(collatz._ledger).resource_audit_complete == 1
 
 
 def test_cold_miss_counters_match_new_entries_without_late_reinsertion() -> None:

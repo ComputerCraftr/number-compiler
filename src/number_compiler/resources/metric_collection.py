@@ -569,7 +569,11 @@ def collect_ledger_metrics(
             peak_entries=snapshot.peak_entries,
             peak_nodes=snapshot.peak_nodes,
             audit_complete=bool(report.resource_audit_complete),
-            accounting_mismatch=report.resource_accounting_mismatch,
+            accounting_mismatch=(
+                report.resource_accounting_mismatch
+                if report.resource_audit_complete
+                else None
+            ),
         ),
     )
     projected = replace_metric(
@@ -723,13 +727,15 @@ def ledger_fields_from(metrics: LedgerMetrics) -> dict[str, object]:
 
 
 def collect_unindexed_metrics(ledger: ResourceLedger) -> HashLifeProjectionMetrics:
-    """Collect explicitly audited detailed diagnostics for unindexed terms.
+    """Collect a read-only metric snapshot for unindexed terms.
 
-    CLI metrics use the separate schema-eight snapshot collector.
+    Call :func:`collect_ledger_metrics` directly when a payload and ownership
+    audit is required. Runtime reporting must not run those deep audits.
     """
-    report = collect_ledger_metrics(ledger)
+    report = collect_ledger_metrics(ledger, audit_payloads=False)
     values = ledger_fields_from(report)
     values.update(
+        point_queries=report.resource_work_counters.get("temporal_point_requests", 0),
         retained_execution_nodes=report.resource_ledger_nodes,
         compiler_retained_execution_nodes=report.compiler_program_nodes,
         compiler_retained_cache_entries=sum(

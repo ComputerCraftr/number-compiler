@@ -133,9 +133,6 @@ for removed in (
     'sequences.reverse_add.factored_carrier',
     'sequences.reverse_add.factored_power',
     'sequences.reverse_add.cocycle_carrier',
-    'sequences.reverse_add.coordinate_program',
-    'sequences.reverse_add.field_action',
-    'sequences.reverse_add.higher_schema',
     'sequences.reverse_add.cocycle_temporal',
     'sequences.reverse_add.threshold_cocycle',
     'sequences.reverse_add.domain',
@@ -143,7 +140,6 @@ for removed in (
     'sequences.reverse_add.frobenius_sectors',
     'sequences.reverse_add.tile_sector_observation',
     'resources.cocycle_temporal_payload_audit',
-    'sequences.reverse_add.higher_interface',
 ):
     assert find_spec('number_compiler.' + removed) is None
 assert not any(name == 'devtools' or name.startswith('devtools.') for name in sys.modules)
@@ -151,6 +147,19 @@ from number_compiler.api.cli import main
 from number_compiler.sequences.comma.power import CommaTerm
 assert CommaTerm(20000).materialize() == 1039404
 from unittest.mock import patch
+from number_compiler.sequences.reverse_add.recursive_cutover import (
+    ReverseRecursiveTemporalCutover,
+)
+from number_compiler.sequences.reverse_add.recursive_adapters import _ReverseRecursiveFieldAdapter
+leaf_compile = _ReverseRecursiveFieldAdapter._compile
+def require_completed_children(self, action, source):
+    assert self.sources.resolve(source).level == 0, 'parent recompiled original source'
+    return leaf_compile(self, action, source)
+with patch.object(_ReverseRecursiveFieldAdapter, '_compile', require_completed_children):
+    with patch.object(ReverseRecursiveTemporalCutover, 'digit_image', side_effect=AssertionError('terminal image rebuilt')):
+        reverse = api.ReverseAddPoweredTerm(196, 20)
+        assert ''.join(map(str, reversed(reverse.digits()))) == '70446464506'
+assert not any(name == 'devtools' or name.startswith('devtools.') for name in sys.modules)
 captured = StringIO()
 with patch('number_compiler.sequences.comma.certificates._verify', side_effect=AssertionError('report replayed admission')):
     with redirect_stdout(captured):
@@ -291,7 +300,29 @@ for high in (1, 3):
     assert macro['index_unit'] == 'normalized_symbol'
 assert macro['occurrence']['transported_hits'] >= 1
 api.NumberCompiler.clear_shared_cache()
-print(json.dumps({'public_exports': len(api.__all__), 'kernel_left_states': kernel.left_count, 'kernel_right_states': kernel.right_count, 'installed_path': api.__file__, 'arithmetic_cli_roof_poison': 'passed', 'homogeneous_run_cli_actions': reuse['collatz_physical_temporal_run_actions'], 'mahler_composed_image': 'passed', 'cross_seed_macrocells': 'passed'}))
+from number_compiler.sequences.antihydra.arithmetic_images import AntihydraArithmeticImageWorkspace
+cold_cli = StringIO()
+arguments = ['antihydra', '--nth', '1024', '--info', 'metrics', '--format', 'json']
+with redirect_stdout(cold_cli):
+    assert main(arguments) == 0
+expected_cli = json.loads(cold_cli.getvalue())['value']
+original_candidate = AntihydraArithmeticImageWorkspace.complete_composite_candidate
+original_run = AntihydraArithmeticImageWorkspace._run_candidate
+AntihydraArithmeticImageWorkspace.complete_composite_candidate = forbidden_binary_point
+AntihydraArithmeticImageWorkspace._run_candidate = forbidden_binary_point
+try:
+    warm_cli = StringIO()
+    with redirect_stdout(warm_cli):
+        assert main(arguments) == 0
+    warm_packet = json.loads(warm_cli.getvalue())
+    assert warm_packet['value'] == expected_cli
+    warm_row = next(row for row in warm_packet['info']['metrics']['execution_metrics']['macrocells'] if row['family'] == 'antihydra')
+    assert warm_row['source_action']['applied_parent_hits'] == 1
+finally:
+    AntihydraArithmeticImageWorkspace.complete_composite_candidate = original_candidate
+    AntihydraArithmeticImageWorkspace._run_candidate = original_run
+api.NumberCompiler.clear_shared_cache()
+print(json.dumps({'public_exports': len(api.__all__), 'kernel_left_states': kernel.left_count, 'kernel_right_states': kernel.right_count, 'installed_path': api.__file__, 'arithmetic_cli_roof_poison': 'passed', 'homogeneous_run_cli_actions': reuse['collatz_physical_temporal_run_actions'], 'mahler_composed_image': 'passed', 'cross_seed_macrocells': 'passed', 'antihydra_digit_parent_reuse': 'passed'}))
 """,
             ],
             cwd=work,
@@ -373,6 +404,14 @@ print(json.dumps({'public_exports': len(api.__all__), 'kernel_left_states': kern
             (["prime", "--nth", "10", "--max-prime-states", "1"], 2, ""),
             (["196", "--nth", "0"], 0, "196"),
             (["196", "--nth", "2"], 0, "1675"),
+            (["196", "--nth", "20"], 0, "70446464506"),
+            (
+                ["196", "--nth", "128"],
+                0,
+                "4431637520621652749397876519890256677940462572161148460244",
+            ),
+            (["196", "--seed", "1", "--nth", "4"], 0, "16"),
+            (["196", "--nth", "129"], 2, ""),
             (["reverse-add", "--nth", "0", "--seed", "0"], 0, "0"),
             (["a367620", "--nth", "1"], 0, "20"),
             (["a367620", "--nth", "412987860"], 0, "19999999999"),

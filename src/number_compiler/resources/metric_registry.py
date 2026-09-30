@@ -264,6 +264,8 @@ TILE_WORK_COUNTERS = (
     "powered_interface_requests",
     "powered_interface_early_hits",
     "powered_interface_publications",
+    "powered_interface_publication_requests",
+    "powered_interface_late_aliases",
     "tile_width_descents",
     "completed_result_port_variants_peak",
     "completed_result_port_validation_requests",

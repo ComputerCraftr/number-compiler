@@ -172,17 +172,31 @@ def test_observer_cli_consumes_dispatch(monkeypatch: pytest.MonkeyPatch) -> None
 def test_mirror_and_supplied_root_cli(capsys: pytest.CaptureFixture[str]) -> None:
     assert (
         main(
-            ["196", "--nth", "3", "--no-value", "--info", "mirror", "--format", "json"]
+            [
+                "196",
+                "--nth",
+                "3",
+                "--no-value",
+                "--info",
+                "mirror",
+                "--info",
+                "metrics",
+                "--format",
+                "json",
+            ]
         )
         == 0
     )
-    row = json.loads(capsys.readouterr().out)["info"]["mirror"]
+    info = json.loads(capsys.readouterr().out)["info"]
+    row = info["mirror"]
     assert row["palindrome"] is False and any(row["value"]["coefficients"])
-    assert row["work_counters"]["tile_cylinder_node_evaluations"] > 0
-    assert row["work_counters"]["tile_cylinder_compositions"] > 0
-    assert row["work_counters"]["tile_cylinder_leaf_reads"] > 0
-    assert row["work_counters"].get("point_response_requests", 0) == 0
-    assert row["peak_nodes"] >= row["retained_nodes"] > 0
+    assert "work_counters" not in row  # Work belongs to the requested metrics packet.
+    work = info["metrics"]["execution_metrics"]
+    assert work["schema_version"] == 8
+    assert work["construction"]["source_image_publications"] > 0
+    assert work["projection"]["publications"] > 0
+    assert work["resources"]["peak_nodes"] >= work["resources"]["nodes"] > 0
+    assert work["reporting"]["inspected_inventory_rows"] == 0
     assert (
         main(
             [

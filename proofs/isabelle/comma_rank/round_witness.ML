@@ -36,12 +36,13 @@ struct
     Timeout.apply (Time.fromSeconds 5) f x
       handle Timeout.TIMEOUT _ => error ("Round witness timeout: " ^ label)
 
-  fun memo_certified require_generation certify table key compute =
+  fun memo_certified require_generation certify {hit, miss} table key compute =
     (require_generation ();
      case Termtab.lookup (!table) key of
-       SOME th => th
+       SOME th => (hit (); th)
      | NONE =>
-         let val th = compute ()
+         let val _ = miss ()
+             val th = compute ()
              val _ = certify th
              val _ = require_generation ()
          in table := Termtab.update (key, th) (!table); th end)
@@ -102,12 +103,12 @@ struct
       val numeral_ctxt = Comma_Entry_Arithmetic.numeral_context ctxt
       fun normalize_numeral_fact th = Simplifier.full_simplify numeral_ctxt th
       fun memo table key compute =
-        memo_certified require_generation certify table key compute
+        memo_certified require_generation certify
+          {hit = fn () => (), miss = fn () => ()} table key compute
       fun counted_memo hits misses table key compute =
-        (require_generation ();
-         if Termtab.defined (!table) key then hits := !hits + 1
-         else misses := !misses + 1;
-         memo table key compute)
+        memo_certified require_generation certify
+          {hit = fn () => hits := !hits + 1,
+           miss = fn () => misses := !misses + 1} table key compute
       fun number term = snd (HOLogic.dest_number term)
         handle TERM _ => HOLogic.dest_nat term
       fun value th = number (rhs th)

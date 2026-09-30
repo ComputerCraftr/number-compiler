@@ -6,6 +6,7 @@ import pytest
 
 from number_compiler.projection.lazy_radix import collatz_radix_digit
 from number_compiler.projection.microblock_cache import MicroblockKey
+from number_compiler.resources.metric_collection import collect_ledger_metrics
 from number_compiler.sequences.collatz.block_power import PoweredCollatzTerm
 from tests.support.reference_arithmetic import collatz_literal as _collatz
 
@@ -43,7 +44,7 @@ def test_collective_radices_share_one_accounted_exact_cache() -> None:
     assert term._ledger.counters.get("radix_microblock_source_bits", 0) == 0
     assert term._ledger.counters.get("radix_microblock_source_fills", 0) == 0
     assert not {key for key in cache.blocks if key.kind == "binary"}
-    assert term.metrics().resource_audit_complete == 1
+    assert collect_ledger_metrics(term._ledger).resource_audit_complete == 1
 
 
 def test_scalar_radix_observation_does_not_compute_the_complete_width(

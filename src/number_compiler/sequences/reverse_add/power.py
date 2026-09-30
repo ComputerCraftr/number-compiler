@@ -12,8 +12,12 @@ from collections.abc import Iterator
 from math import ceil, log2
 from typing import TYPE_CHECKING, Any
 
-from number_compiler.arithmetic.contracts.exact_tree_context import source_reads_only
+from number_compiler.arithmetic.contracts.exact_tree_context import (
+    OriginalSourceConstruction,
+    source_reads_only,
+)
 from number_compiler.arithmetic.contracts.input_validation import require_integer
+from number_compiler.arithmetic.contracts.scoped_handles import ExactSource
 from number_compiler.arithmetic.fields.radix import (
     bit_width,
     digits_lsd,
@@ -23,6 +27,10 @@ from number_compiler.arithmetic.polynomials.twisted_observer import (
     TwistedCylinderProjection,
 )
 from number_compiler.resources.ledger import ResourceLedger
+from number_compiler.resources.output_stream_metrics import (
+    initialize_output_stream_metrics,
+    measured_output_stream,
+)
 
 if TYPE_CHECKING:
     from number_compiler.resources.metric_records import HashLifeBehaviorMetrics
@@ -36,7 +44,12 @@ def pair_field_from_integer(value: int, base: int) -> tuple[int, ...]:
     """Original-source encoding retained for independent kernel consumers."""
     value = require_integer(value, "seed", 0)
     base = require_integer(base, "base", 2)
-    digits = digits_lsd(value, base)
+    return _pair_field_from_digits(digits_lsd(value, base))
+
+
+def _pair_field_from_digits(digits: tuple[int, ...]) -> tuple[int, ...]:
+    if type(digits) is not tuple or not digits:
+        raise ValueError("reverse pair source requires original digits")
     return tuple(digits[i] + digits[-1 - i] for i in range(len(digits)))
 
 
@@ -47,6 +60,7 @@ class ReverseAddPoweredTerm:
         "__weakref__",
         "_binding",
         "_ledger",
+        "_source_construction",
         "_workspace",
         "_workspace_identity",
         "base",
@@ -68,8 +82,10 @@ class ReverseAddPoweredTerm:
         self.base = require_integer(base, "base", 2)
         self._binding = (self.seed, self.generation, self.base)
         self._ledger = ResourceLedger(max_context_nodes, max_cache_entries)
+        initialize_output_stream_metrics(self._ledger, "reverse_output_stream")
         self._workspace: ReverseSourceImageWorkspace | None = None
         self._workspace_identity: ReverseSourceImageWorkspace | None = None
+        self._source_construction: OriginalSourceConstruction | None = None
         self._ledger.register_execution_root(self)
 
     def _source_workspace(self) -> ReverseSourceImageWorkspace:
@@ -82,13 +98,44 @@ class ReverseAddPoweredTerm:
         found = self._workspace
         if found is None:
             found = ReverseSourceImageWorkspace(
-                self._ledger, self.seed, self.generation, base=self.base
+                self._ledger,
+                self.seed,
+                self.generation,
+                base=self.base,
+                source_construction=self._source_construction,
             )
             self._workspace = found
             self._workspace_identity = found
         elif found is not self._workspace_identity or found.ledger is not self._ledger:
             raise ValueError("reverse/add term workspace binding changed")
         return found
+
+    def _prepare_recursive_source_authority(self) -> None:
+        if (self.seed, self.generation, self.base) != self._binding:
+            raise ValueError("reverse/add term source/action binding changed")
+        from number_compiler.sequences.reverse_add.source_images import (
+            MAX_COMPLETED_CHILD_FALLBACK_STEPS,
+        )
+
+        if not 3 <= self.generation <= MAX_COMPLETED_CHILD_FALLBACK_STEPS:
+            return
+        if self._source_construction is not None:
+            return
+        pair = pair_field_from_integer(self.seed, self.base)
+        blank = 2 * self.base - 1
+        required = max(1, len(pair) + self.generation)
+        extent = 1 << ((required - 1).bit_length())
+        self._source_construction = OriginalSourceConstruction(
+            ExactSource(
+                pair,
+                self.base,
+                "reverse-add-pair",
+                blank,
+                extent,
+                2 * self.base,
+            )
+        )
+        self._ledger.bump("reverse_source_pair_authority_symbols", len(pair))
 
     @property
     def operator_nodes(self) -> int:
@@ -112,8 +159,15 @@ class ReverseAddPoweredTerm:
     def maximum_width(self) -> int:
         return len(digits_lsd(self.seed, self.base)) + self.generation
 
-    @source_reads_only
     def digit(self, position: int) -> int:
+        position = require_integer(position, "digit coordinate")
+        if position < 0:
+            raise IndexError(position)
+        self._prepare_recursive_source_authority()
+        return self._digit_source_only(position)
+
+    @source_reads_only
+    def _digit_source_only(self, position: int) -> int:
         position = require_integer(position, "digit coordinate")
         if position < 0:
             raise IndexError(position)
@@ -123,8 +177,12 @@ class ReverseAddPoweredTerm:
         """Compatibility alias; does not select another execution path."""
         return self.digit(position)
 
-    @source_reads_only
     def width(self) -> int:
+        self._prepare_recursive_source_authority()
+        return self._width_source_only()
+
+    @source_reads_only
+    def _width_source_only(self) -> int:
         return self._source_workspace().width()
 
     @property
@@ -133,7 +191,11 @@ class ReverseAddPoweredTerm:
         return width if self.base == 2 else max(1, ceil(width * log2(self.base)))
 
     def iter_digits(self) -> Iterator[int]:
-        yield from self._source_workspace().iter_digits()
+        def source() -> Iterator[int]:
+            self._prepare_recursive_source_authority()
+            yield from self._source_workspace().iter_digits()
+
+        return measured_output_stream(self._ledger, "reverse_output_stream", source)
 
     def digits(self) -> tuple[int, ...]:
         return tuple(self.iter_digits())

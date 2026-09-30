@@ -480,7 +480,7 @@ def test_digit_generation_observers_stop_before_heavier_carriers() -> None:
 
     # Sparse special-source digit projection must remain a direct descriptor
     # lookup, not a materialization/certificate path.
-    api = (src / "api/number_api.py").read_text()
+    api = (src / "api/elementary_payloads.py").read_text()
     assert "def digit(self, index: int)" in api
     assert "return int(index == 0 or self.spec.exponent_extent == index)" in api
     assert "index == self.spec.exponent)" not in api
