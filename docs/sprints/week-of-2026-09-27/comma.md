@@ -1735,3 +1735,512 @@ root-proof port. The previous full-suite/P0 results retain their original
 then build the new root theorem and its production refinement before replacing
 forest admission. Separately discharge the fuel-dependent constructor/weighted
 lifting and extend the bounded prefix only after its consumer gates pass.
+
+## September 30 — structural future checker integration
+
+**Objective.** Integrate the complete downloaded structural checker, audit proof
+ownership, and retain forest admission until the concrete safety gate passes.
+
+**Input provenance.** `A367620_NC5_STRUCTURAL_FUTURE_CHECK_COMPLETE.patch`, SHA-256
+`0e743d14811c2b0790932d54fc474bf68205263a975cc12deafee61a4553425c`.
+The earlier test-only patch omitted three prerequisite theories and the summary
+kernel. These files were absent from this checkout, not orphaned live proofs.
+The initial inventory had 80 sessions and 218 theories; no existing theory or
+comma ML file was found to be unused.
+
+**Changes.** Registered the terminal data, checked summary, structural checker
+and concrete instance. Moved the N/Z candidate tables to one shared rank-data
+session; the legacy and structural consumers no longer register them twice.
+Separated the two structural session directories. Shared the selected-table ML
+lookup without loading the legacy 28-round evaluator into the new checker.
+Added the missing strict-descent witness and generic termination/literal-path
+bridges; the latter retain a cycle premise where a cycle is used. Fixed proof
+specialization, tuple-state membership and numeral terminal decoding.
+
+The structural instance inherits the checked-summary heap. A `sessions` import
+alone had reprocessed its `local_setup` inside the receiver; it did not cache the
+expensive certificate. The proof inventory now validates canonical theory and
+session paths and authored `ML_file` targets. It lists unreferenced ML files for
+review rather than deleting them automatically. Phase checking reuses the
+existing local proof-dependency certifier; exported results still receive the
+full oracle audit.
+
+**Established results.** The generic structural laws and descent bridge pass
+Isabelle with `quick_and_dirty=false`. No premise was added to hide the missing
+concrete check, and no exact-rank assertion was relabeled as strict descent.
+The initial focused inventory/rank-data selection passed 71 tests.
+
+**Validation provenance.** All paths below are local evidence, not portable
+artifact links. Limits remain 60 seconds / 4 GiB for proofs.
+
+| Run | Source fingerprint | Outcome |
+| --- | --- | --- |
+| `results/runs/20260930T175605Z-3e1bd6d42ee14514ac854a8db34e5604` | `77d421e62e1253f4d6c22be7fd55c15e6bac9a62bb51f38af8c3dde11462da21` | Structural laws PASS, 20.938 guarded seconds, 2,756,612,680 sampled bytes; prerequisites already built. |
+| `results/runs/20260930T175848Z-c7ced54f354b47bf8b374b685b2c647e` | `9ab5c8d028eab5fb8903ea2ffef9dd039e06bb09b8d6781c7032e7668ab8b142` | Summary TIMEOUT, 60.213 seconds, 2,547,750,096 sampled bytes; 11/924 phase slices completed (1,001/84,084 states). |
+
+**Rejected approaches.** Registration is not a kernel build. The supplied patch
+was not build-ready: duplicate directories, duplicate data ownership, a missing
+witness definition and evaluator/proof errors were repaired before measuring it.
+Earlier isolated/live attempts rebuilt prerequisites and cannot measure the
+new checker. Completed phase slices are not an aggregate certificate. The new
+summary still performs scalar one-step sector/decade evaluation; removing the
+old 28-round future replay does not remove that cost.
+
+**Remaining work.** Complete the summary certificate under the release limit,
+then check the 14,784 future rows. Rebase global safety onto the structural
+witness, check source-20 entry and the 91-entry root theorem, and discharge
+weighted production selection before deleting forest/fuel authority. Infinite
+path existence can use unique-survivor continuation; the particular 314-cycle
+remains a separate weighted-return obligation. Production admission is unchanged.
+
+**Final validation.** Run
+`results/runs/20260930T180252Z-b836bf616ee543d1a6573992ec9055b6`
+at `b54496f386399526bc4395c5d057bac1ec773567bd7a45b3873a0920dd02fc0a`
+passes all 838 comma/API/inventory/candidate tests in 75.653 guarded seconds.
+The requested structural-instance target still times out at 60.139 seconds /
+1,628,475,952 sampled bytes while evaluating its summary parent; only 8/924
+summary phase slices finish in this run. The future rows are not reached.
+The wheel probe timed out at 35.019 seconds after wheel construction, and strict
+mypy found eight inventory-variable type collisions; neither is recorded green.
+
+After replacing those colliding local names, the final authored-source freeze is
+`9ac65c1943bacd426ac9a86aa55d51c22a7c6050cdcf0fc993479ca6fa3aa324`.
+Run `results/runs/20260930T182917Z-79054a6dfeb94f6db6b2e3447e4f1bbd`
+passes strict mypy (1,627 files), Ruff 0.16.9, formatting, source policy,
+documentation, proof inventory (85 sessions / 223 theories), and installed-wheel
+checks (33.173 seconds / 127,043,624 sampled bytes). All 71 focused inventory and
+rank-data tests pass again. The generic structural session passes its cached
+build in 9.483 guarded seconds / 1,608,600,816 sampled bytes. The full comma
+selection and concrete timeout retain their preceding fingerprint; the only
+subsequent source change is the inventory tool's local-variable repair.
+No full-unit/P0 rerun or successful concrete certificate is claimed.
+
+
+## September 30 — survivor induction and quotient proof reuse
+
+**Objective.** Prove future survival and structural losing descent before
+concrete enumeration, and make the summary evaluator consume the checked offset
+quotient rather than rediscover equivalent decade controls.
+
+**Changes.** Added a literal-prefix induction for every structurally surviving
+boundary state. Every induction step transports the actual exponent and adds
+positive literal weight. Infinitude follows without a 314-cycle premise.
+Factored the losing literal-path proof into a shared strict-descent theorem;
+the legacy exact-rank checker and structural checker now instantiate that same
+proof. Source-20 entry and first-choice lemmas share their common prefix proof
+and accept the structural witness. Their concrete witness remains a required
+premise until the full checker passes.
+
+The fast kernel now accepts closed kernel-proved key transport, checks the
+receiving left side, and restores the original occurrence before returning a
+memoized theorem. Summary evaluation preproves 91 symbolic coordinate lenses
+and uses the 46 offset representatives for control memoization. Candidate
+height and terminal labels remain independently checked. A focused kernel
+session tests phase-zero evaluation, repeated evaluation and rejection of a
+foreign proof key. The full summary inherits that session's heap; the structural
+instance continues to inherit the full summary heap.
+
+**Established results.** The new survivor induction, shared losing lift,
+source-20 structural bridge and quotient evaluator pass Isabelle without skipped
+proofs or new oracles. In the focused phase check, 91 requests construct 46
+controls and consume 45 transported hits. Repeating the phase adds no control
+construction. This is spatial reuse, not a proof that all temporal phases share
+one outcome.
+
+**Rejected approaches.** Comparing a long finite branch against observed tree
+depths does not prove infinitude. Exact maximum ranks, a cycle census and repeated
+decimal-tree traversal are not premises of the new survivor induction. Equal
+control outcomes do not certify arbitrary supplied height or terminal labels.
+The 314/924 return remains a separate weighted-powering claim.
+
+**Validation/provenance.** Final authored-source fingerprint:
+`d08360c7db4ce080c0f36dee26a9786d6e85a079ddbee3c6415905c8c9465a6f`.
+The frozen run is local evidence at
+`results/runs/20260930T190101Z-9bfeeb007bc14455b6ef346f3c024709`.
+Limits are 60 seconds / 4 GiB per proof build and 300 seconds / 1 GiB for units.
+The focused proof targets pass in 9.318 guarded seconds with their dependencies
+already built; fresh development builds also checked the changed proofs.
+Aggregate results are recorded in the run manifest; partial phase coverage
+never certifies the full structural instance.
+
+**Remaining obligations.** Complete phase coverage and future structural
+checking under the release limit, discharge the existing 91-entry root
+classification and weighted selection, then switch global proof and production
+admission. Runtime forest/fuel admission is unchanged. The symbolic phase
+partition is still not the concrete summary evaluator's execution owner.
+
+**Frozen outcomes.** Strict mypy, pinned Ruff, formatting, source policy,
+documentation, the 86-session/224-theory inventory and installed-wheel checks
+pass. All 79 focused inventory/candidate tests pass (19.55 pytest seconds).
+The structural-instance build times out after 60.149 seconds / 1,706,201,672
+sampled bytes in its summary parent: 20/924 phase slices complete, covering
+1,820/84,084 states with 920 control constructions and 900 transported hits.
+The future rows are not reached. This improves measured reuse but does not
+close the release gate; full-unit/P0/aggregate-proof acceptance was not rerun
+for this proof-only change.
+
+## September 30 — complete jump identities and proof-cache audit
+
+**Objective.** Share the complete guarded Entry jump before restoring a
+receiving round occurrence, and audit semantic, occurrence and proof-audit keys.
+
+**Changes.** `comma_entry_jump f x k` retains the exact seam result or successor
+from the existing short-phase endpoint arithmetic. The checked
+`comma_fast_entry_round_jump` equation connects it to the executable round for
+all depths, including zero and invalid Entry admission. Round evaluation
+rewrites one root and demands these cached local actions. It no longer rebuilds
+the phase-specific sector-target wrapper on this route. Complete decade results
+remain occurrence-bound; weighted evidence remains with its existing owner.
+
+The mask constructor's template cache now uses the leading sector and complete
+theorem proposition instead of an independent numeric rule tag. Successful
+receiving-theorem restoration precedes cache publication and hit accounting.
+The [proof-cache identity audit](../../proofs.md#comma-proof-cache-identity-layers)
+covers arithmetic, guards, complete rows, occurrences, local data arenas,
+selected table lookups, theory publication and dependency certification. Proof
+serials remain provenance identities: equal conclusions do not imply equal
+oracle dependencies.
+
+**Established results.** Registered executable Isabelle checks compare against
+the old sector equations. They poison sector-wrapper evaluation and warm-parent
+child access, compare phases 0 and 924 without new jump construction, and cover
+changed phase, source and remaining depth. Exported theorem dependencies receive
+an explicit oracle audit. The summary kernel's foreign-transport test remains
+active. The final measured prefix has 4,465 complete-jump hits, 2,773 jump
+constructions, 874 decade constructions, 855 transported decade hits and zero
+sector-target constructions. No temporal-continuation memo remains.
+
+**Rejected approaches.** The complete guarded-row constructor was tested before
+integration. Its 40-second internal bound expired after partial construction;
+no complete symbolic row table was claimed. An intermediate continuation memo
+retained 7,238 phase-specific suffix proofs with zero release-path hits. It was
+removed rather than described as useful reuse. A combined downstream build on
+that intermediate source exceeded 4 GiB. The final focused builds below are
+separate evidence, not an aggregate cold-build pass. Real local reuse does not
+establish an end-to-end latency improvement: the full checker still times out.
+
+**Validation provenance.** Final authored-source fingerprint v5:
+`cf2377d19b7243346bae05405e5894a08eb4b0333279862c51424a6856cd020c`.
+Raw evidence is local at
+`results/runs/20260930T193342Z-8b04c5b23429430eaa3799ae9b919c33/`.
+The intermediate source was `e8141418`, with separate local evidence at
+`results/runs/20260930T192743Z-3ef68de058554fb8aa2cc8c7a10e736e/`;
+its results do not certify the final source.
+
+| Final command / scope | Limit | Outcome |
+| --- | --- | --- |
+| `isabelle build -b -d proofs/isabelle Comma_Fast_Control` | 60 s / 4 GiB | PASS, 8.037 s / 1,484,868,776 sampled bytes; cached after the fresh local refinement/poison build. |
+| `isabelle build -b -d proofs/isabelle Comma_Decade_Summary_Kernel` | 60 s / 4 GiB | PASS, 57.379 s / 3,026,916,056 bytes, including changed dependencies. |
+| `isabelle build -b -d proofs/isabelle Comma_Decade_Masks` | 60 s / 4 GiB | PASS, 38.082 s / 2,841,661,568 bytes; template, guard, rejection and retry checks. |
+| `isabelle build -b -d proofs/isabelle Comma_Future_Structural_Instance` | 60 s / 4 GiB | TIMEOUT, 60.179 s / 1,798,886,104 bytes; 19/924 summary slices (1,729/84,084 states); future rows not reached. |
+| `isabelle build -b -d proofs/isabelle Comma_Future_Source` | 60 s / 4 GiB | TIMEOUT, 60.175 s / 3,358,545,680 bytes; changed prerequisite sessions completed, source session started. |
+| Strict mypy, Ruff 0.16.9, formatting, source/documentation policy | Existing quality limits | PASS, no new suppressions or exclusions. |
+| Proof inventory | 35 s / 1 GiB | PASS, 86 sessions / 225 theories; registration is not global proof closure. |
+| Clean wheel / installed CLI | 35 s / 1 GiB | PASS, 34.155 s / 126,044,248 bytes. |
+| Candidate and proof-inventory regressions | 300 s / 1 GiB | 79 PASS, 19.48 pytest seconds / 19.824 guarded seconds. |
+
+The source-only follow-up on the same fingerprint passes in
+47.723 s / 2,574,749,656 sampled bytes, after its
+prerequisites were built. Its local evidence is
+`results/runs/20260930T193931Z-afe26a881cf84c2db7fb698ede30cfa7/`.
+This validates the conditional source bridge; it does not supply the missing
+concrete structural witness or turn the earlier timed-out command into a pass.
+
+**Remaining work.** Bulk phase-guard and candidate-label certification still
+needs to replace the slow 84,084-instance evaluation. Full structural admission,
+global-safety rebase, root/weighted refinement and production forest/fuel removal
+remain blocked. Full-unit, P0 and aggregate Isabelle acceptance were not rerun
+for this proof-cache change. No production branch authority was changed.
+
+## September 30 — rank-free nine-tail return induction
+
+### Objective
+
+Prove infinite continuation by accumulating the exact exponent displacement of
+one legal return, without making the 84,084-row decade summary or global losing
+classification a prerequisite. Keep least-root and rejected-sibling obligations
+separate.
+
+### Changes
+
+- `Comma_Return_Induction` defines finite completed-round witnesses and selected
+  return paths. There is no supplied outer fuel or candidate height. Induction
+  composes actual offsets and positive literal lengths.
+- `Comma_Return_Instance` checks the 314-edge candidate return directly against
+  the HOL arithmetic. The binary word is an untrusted search hint; a landmine,
+  invalid edge, wrong destination, or wrong exact displacement rejects it.
+- `comma_nine_ray_returns` transports the checked return to every repetition:
+  the endpoint exponent is `10 + 924*k`, with at least `314*k` literal edges.
+- `Comma_Return_Source` connects this result to the existing checked source-20
+  prelude. The global safety theory uses this independent infinitude theorem;
+  its losing-branch obligations retain their existing unresolved checker.
+- The old source-20 infinitude wrapper requiring a global exact-rank certificate
+  is removed. The proof inventory tests the new session dependency boundary.
+- Nonzero Entry offsets are normalized into the receiving phase before local
+  evaluation, using `comma_fast_entry_round_phase_normalized`. The shared fast
+  kernel restores the exact result offset; it records actual round transports.
+
+### Established results
+
+The return induction and local offset-transport theorem build without new
+axioms, skipped proofs or theorem oracles. An initial complete concrete return
+build passed in 55.851 seconds under the 60-second/4-GiB process guard, before
+moving its offset normalization into the shared kernel. Final-source results
+are recorded below; the earlier run does not certify later edits. The final
+concrete return and source-20 theorem both pass, and neither statement assumes
+a candidate rank or forest certificate. Each focused build has its own bound;
+this is not a claim that their aggregate clean rebuild fits 60 seconds.
+
+### Rejected approaches
+
+- The first direct return checker still used the old Entry wrapper after an
+  exponent crossing; it timed out after 288 edges. Keeping offsets in that
+  evaluation syntax missed local semantic reuse.
+- Registering unrestricted offset normalization as a recursive simplifier rule
+  reintroduced normalization at offset zero. The implementation instead uses
+  one checked root rewrite on positive offsets and restores the occurrence.
+- A combined dependency rebuild exceeded 4 GiB. Focused prerequisite builds
+  remain distinct from aggregate acceptance.
+- A longer finite path alone is not an infinity proof, and an infinite return
+  does not prove that every rejected smaller sibling terminates.
+
+### Validation and provenance
+
+| Source / scope | Command or local evidence | Outcome |
+| --- | --- | --- |
+| Initial concrete return; before shared-kernel migration | `results/runs/20260930T201758Z-7ae262f1dcc64da4a8fc4b291f585f47/`; `isabelle build -b -d proofs/isabelle Comma_Return_Instance` | PASS, 55.851 s; guard sampled 1,561,267,440 bytes; 5,939 local jump hits / 2,377 constructions |
+| Final source `df2cd1bb1f5bbf07f116f9a62500013fa90545c2838ae1e5316d4b9b9a634b18` | `results/runs/20260930T202927Z-9a2411b487b04061a876573b1c9b54c5/`; focused sessions built serially with `isabelle build -b -d proofs/isabelle SESSION` | All ten scoped builds PASS under 60 seconds / 4 GiB per invocation |
+| Concrete return, same final source | `Comma_Return_Instance` | PASS, 56.749 s; guard sampled 1,801,096,960 bytes; 5,939 jump hits / 2,377 constructions; 924 offset transports; 2,724 guard hits / 48 guard entries |
+| Root connection, same final source | `Comma_Return_Source` | PASS, 58.457 s; guard sampled 3,495,137,936 bytes; unconditional `comma_source20_return_infinite` |
+| Local transport, same final source | `Comma_Fast_Control` | PASS, 31.791 s; guard sampled 2,338,640,024 bytes |
+| Quality and regression checks, same final source | Pinned mypy/Ruff/formatting, repository policy, docs, proof inventory, installed wheel; existing focused candidate/inventory pytest selection | All PASS; 80 tests in 19.99 pytest seconds; 89 sessions / 228 theories inventoried |
+
+### Remaining obligations
+
+The exact weighted runtime locator, termination of rejected siblings, earlier
+root exclusion and production forest/fuel cutover remain separate release
+requirements. This change does not authorize a new CLI branch choice or claim
+an aggregate clean-build bound.
+
+## September 30 — local branch induction and semantic cache audit
+
+### Objective
+
+Prove rejected-branch termination independently of the global rank table, and
+remove repeated construction from canonical action and theorem lookup paths.
+
+### Changes
+
+- `Comma_Branch_Induction` interprets a local certificate containing the checked
+  macro and both ordered children. Induction proves literal termination at every
+  admitted exponent with the same phase; no exact rank is a premise.
+- `Comma_Branch_Instance` checks the first rejected zero-tail subtree directly.
+  Its 17 states comprise eight forks and nine landmines. The fork introduction
+  theorem is shared instead of reproved with proof search at each node.
+- `comma_round_reaches_entry_rebased` transports a complete future tail from
+  `(phase + delta) mod 924, Entry f 0 x` to the requested occurrence, restoring
+  the exact fork/landmine offset. Equal phases alone never authorize copying an
+  absolute endpoint.
+- Complete comma cycles use their phase coset as an action key; partial prefixes
+  retain the exact entering digit. Receiving source, strict guard, certificate,
+  extent and output ports remain checked independently.
+- Collatz runtime-program IDs retain their exact duration, but use bounded binary
+  limbs and an arena-owned identity memo instead of repeated decimal conversion.
+  Warm identity retrieval checks immutable seals without rescanning the limbs.
+- Reverse centered-radial identities reuse issued ledger-owned records without
+  rebuilding their radial objects or digest; this does not merge complete
+  occurrences by radial equality. Coherent forged-record and interrupted
+  publication tests cover the new identity caches.
+- `COMMA_PROFILE_LOG=1` no longer creates a file named `1` in a proof source
+  directory. Existing generated logs were moved to their ignored evidence runs.
+
+### Established results
+
+The local branch induction, concrete first rejected subtree, literal termination
+corollary and complete-tail transport theorem have each passed focused Isabelle
+builds. The safe-return append/repeat lemmas and the Collatz duration-separation
+corollary also compile. These are narrower results than termination of every
+rejected sibling through the complete 314-choice period.
+
+### Rejected approaches
+
+- Deleting Collatz's duration from the source-independent action identity would
+  identify distinct functions: for `n < m`, input `2^m` distinguishes `C^n` from
+  `C^m`. Source-bound cycle transport remains a different reuse mechanism.
+- A phase cache must restore its occurrence offset. Reusing an unshifted theorem
+  conclusion or absolute output is invalid even when the semantic phase agrees.
+- One development dependency rebuild exceeded the 4-GiB guard. Focused successes
+  do not reclassify that combined rebuild as passing aggregate acceptance.
+
+### Validation and provenance
+
+Development evidence is distinguished below from the final authored-source freeze
+`07a14712a50de184fd31212939175f8885be5634b2b89fdbb0a889055cd7f136`. The frozen run is
+`results/runs/20260930T221850Z-2862930fd9b54e05a2c77f9e50eea89b/`.
+
+| Scope | Local evidence | Result |
+| --- | --- | --- |
+| First rejected subtree and literal corollary | `results/runs/20260930T211516Z-b5ac757cabd5458ea1ebdd9d598e4644/` | Session PASS, 11 s; other authored files changed during the run |
+| Shared binary fork rule | `results/runs/20260930T212149Z-d19244c724fd4949a09fb359a398d17b/` | Session PASS, 4 s; other authored files changed during the run |
+| Completed-tail phase transport | `results/runs/20260930T212730Z-a2d2f9d85c9a4ce6a955317009286e49/` | PASS, 27 s including `Comma_Future_Check`; source unchanged during the command |
+| Combined cache/runtime regression slice | `results/runs/20260930T211956Z-bd878930374345b589fe2121151b6f49/` | 471 tests PASS, 18.13 s; subsequent edits require revalidation |
+| Combined dependency rebuild | `results/runs/20260930T212625Z-3fe0e80fede14516a961ed58bcf69067/` | Stopped above 4 GiB before return induction; concurrent edits also invalidate the source fingerprint |
+| Safe append/repeat | `results/runs/20260930T215914Z-4a7e1eb6554f4758bc8afb3355e60803/` | PASS; 5 s session / 12 s build |
+| Return with completed-tail memo | `results/runs/20260930T220124Z-e18bf3fbd9ba4df293cd0db6668fb5e1/` | Session compiled in 45 s; 54.63 s guard; source changed elsewhere. 1,238 tail misses, zero tail hits, 5,939 local jump hits |
+| Concrete safe-period profile | `results/runs/20260930T220755Z-7c7415249ec142fd90fa9adf80cda5cd/` | TIMEOUT at 60.13 s; 312 selected edges checked, 170 rejected N roots collected for later termination checking; no 128-node DFS checkpoint. This is not 170 termination proofs |
+| Source-20 first-choice and periodic zero-sibling corollaries | `results/runs/20260930T220928Z-6c4d7e26a79b4e2981de6da64ebbda31/` | Session compiled in 50 s; complete guarded process still timed out at 60 s; timing gate remains red |
+| Final frozen runtime/ledger selection | Same frozen run; canonical pytest paths and JUnit XML recorded in its manifest | 658 PASS, 22.24 pytest seconds; includes before/after authority-publication failures and coherent forged cache records |
+| Final focused proof validation | Same frozen run; `Collatz_Cylinder_Refinement`, `Comma_Branch_Induction`, `Comma_Return_Induction`, `Comma_Branch_Instance`, `Comma_Branch_Period`, `Comma_Return_Instance`, `Comma_Return_Source` | All seven selected sessions PASS with cached dependencies; concrete `Comma_Branch_Period_Instance` remains blocked and is not included |
+| Final quality checks | Same frozen run; pinned strict mypy, Ruff 0.16.9, formatting, source policy, documentation and proof inventory | PASS; 93 sessions / 232 theories inventoried. No policy threshold or suppression changed |
+| Final installed wheel | Same frozen run; clean build/install and CLI smoke checks | PASS, 33.284 s / 126,224,448 sampled bytes; seven focused proof sessions use 11.865 s / 1,837,780,424 sampled bytes with cached dependencies |
+
+### Remaining obligations
+
+Check the smaller rejected siblings at every selected `1` in the repeating
+period, connect that certificate to lexicographic minimality, and retain the
+separate earlier-root and exact weighted-runtime obligations. Production forest
+admission has not been removed. Cold constructor bounds and aggregate release
+validation remain separate from warm cache reuse.
+
+
+## September 30 — Shared boundary proofs and selected-return blocks
+
+### Date range
+
+2026-09-30.
+
+### Objective
+
+Remove repeated arithmetic proofs from the selected-period checker and compose
+completed branch certificates without repeatedly expanding their choice words.
+
+### Changes
+
+- `Comma_Return_Engine` owns boundary construction and a context-owned catalog of
+  checked complete traces. The period session inherits the return-instance heap;
+  a session import alone can replay a theory's ML setup.
+- Selected-period lookup precedes source expansion. Its gate requires 314 applied
+  imported-boundary hits and zero new rounds before rejected-sibling checking.
+- The selected-block builder combines adjacent certified children in a balanced
+  tree. Joins leave descendant choice trees opaque; only explicit observation
+  expands the fixed base-period word.
+- Canonical cache validation checks closed source/phase/outcome terms, rejects
+  conflicting publications and separates retrievals from successful applications.
+- Incremental retained/completed counters replace repeated `Termtab.size` scans
+  during boundary publication and losing-subtree construction.
+
+### Established results
+
+The actual builder proves two adjacent selected edges, rejects a mismatched join,
+then reuses both imported boundaries with zero cold rounds. Generic certified
+composition, loop repetition and literal-path application compile. The literal
+application theorem gives an existential weight, not the exact weighted locator.
+No production forest admission changed.
+
+### Rejected approaches
+
+- Affine composition does not prove termination of a rejected smaller child.
+- An imported session does not guarantee that its setup work is retained in the
+  receiving process; the relevant certificate producer must be in the parent heap.
+- A completed oracle audit or session banner is not a passing guarded build when
+  the entire command still exceeds 60 seconds.
+- A measured cache retrieval is not an applied hit until transport and admission
+  succeed. Removing exact phase/source binding would be unsound.
+
+### Validation and provenance
+
+Final authored-source fingerprint v5:
+`e9878ad51f8c4892a6fbac620d30fcc6bab741d97da1e8115745c732d1f11a08`.
+Raw evidence paths below are local provenance, not portable download links.
+
+| Scope | Local evidence | Result |
+| --- | --- | --- |
+| Final focused runtime/inventory regression selection | `results/runs/20260930T231212Z-3fe82b7e26044eee9d278f3d72aa2c57/` | 465 PASS, 17.85 pytest seconds; canonical selections and JUnit recorded |
+| Engine, selected blocks/smoke and first rejected subtree | Same final run | PASS, 37.492 guarded seconds / 2,746,159,616 sampled bytes; all under the 60-second/4-GiB limit with existing dependencies |
+| Whole-tree quality and clean installed wheel | Same final run | Strict mypy, Ruff 0.16.9, formatting, source policy, documentation and proof inventory PASS; 95 sessions / 235 theories. Clean wheel/install/CLI checks PASS in 34.383 s |
+| Actual block reuse smoke | Same final run | Two applied imported-boundary hits, zero cold rounds; adjacent join and nonadjacent rejection checked |
+| Cold return producer profile before final validator hardening | `results/runs/20260930T230802Z-ab032e9bc9ef4467b63ccb54362d1d3c/`; source `851f4d6662842526c684374e87f88e2da608ade03f1f54c1c336d787afe0a0fa` | TIMEOUT, 60.223 s / 1,719,046,776 bytes; 314 boundaries and final oracle audit reached, but no passing guarded build |
+
+The cold producer recorded 8,459 round expansions, 314 boundary misses, 1,238
+completed-tail misses and zero tail hits, plus 5,939 local entry-jump hits.
+These are measured construction costs, not a successful period-safety proof.
+The 314-hit consumer gate is implemented but has not yet passed the complete
+concrete period session; only the two-boundary smoke is checked here.
+
+### Remaining obligations
+
+Complete the cold return build within the limit, then measure the imported
+314-boundary path and prove all rejected smaller siblings. Connect the selected
+literal trace, earlier-root exclusion and exact weighted runtime refinement
+before removing production forest/fuel admission. Full unit, P0, growth probes
+and aggregate Isabelle acceptance were not rerun in this scope.
+
+
+## September 30 — Restore lean cold return construction
+
+### Date range
+
+2026-09-30.
+
+### Objective
+
+Restore the passing 314-edge/source-20 proof timing without discarding checked
+boundary certificates needed by the later selected-branch proof.
+
+### Changes
+
+- Deleted the completed-tail memo, its offset-restoration pipeline, FIFO storage
+  and counters. Its 1,238 publications had yielded zero cold-return hits.
+- The explicit cold worklist again uses the kernel's local phase transport and
+  composes checked round facts directly. Completed boundary publication and
+  canonical imported-source validation remain intact.
+- Added `comma_checked_return_edge`: child membership and empty-suffix structure
+  are proved once generically. Each concrete use still discharges target
+  admission and retains the exact source, selected child and exponent gain.
+
+### Established results
+
+The full 314-edge return builds again within the unchanged 60-second/4-GiB gate,
+including publication of all 314 completed boundary certificates. The generic
+edge lemma and adjacent/mismatched block smoke checks compile without oracles.
+This restores the existence-proof timing gate; it does not close all smaller
+sibling termination or lexicographic minimality.
+
+### Rejected approaches
+
+Removing the suffix memo alone was insufficient: that intermediate build still
+completed its oracle audit but exceeded 60 seconds. No timing limit, theorem
+assumption or proof-audit requirement was relaxed. A passing return theorem does
+not by itself prove that the selected infinite sequence is the earliest one.
+
+### Validation and provenance
+
+Authored-source fingerprint v5:
+`34f1998ae36230e6ebbe4e127664d3ab37acd3ebb97eac118d6cc44805250c65`.
+Raw evidence paths are local provenance, not portable downloads.
+
+| Scope | Local evidence | Result |
+| --- | --- | --- |
+| Memo removal alone | `results/runs/20260930T232229Z-b4ddadfa02674a299338d47dde8344d1/`; earlier intermediate source | TIMEOUT, 60.131 s; all edges and final oracle audit reached |
+| Generic edge lemma and actual block smoke | `results/runs/20260930T232459Z-8daa7e1a1dc149e19b7b8bdb8435d6fa/` | PASS; warm boundaries=2, cold rounds=0 |
+| Full return construction and catalog publication | `results/runs/20260930T232528Z-3965a04864384ba9bd733a59734ce81d/` | PASS, 56.163 s / 1,744,506,336 sampled bytes; Return_Instance rebuilt with dependencies already available |
+| Source-20 bridge including first rejected zero subtree | `results/runs/20260930T232633Z-d59a3cf3779742cea8d4f9c931765a46/` | PASS, 59.526 s / 3,593,327,656 sampled bytes; Return_Source rebuilt, with the checked return heap available |
+| Stronger selected-period/sibling profile | `results/runs/20260930T232750Z-ef2399a7726c416d858610fada4ed348/` | TIMEOUT, 60.121 s / 1,846,350,552 bytes; selected 314-hit/zero-round gate passed, then reached the 128-completed-losing-state checkpoint |
+| Final focused regression and proof selection | `results/runs/20260930T232906Z-008cf1d8d73f4a078edf19eafd542b0c/` | 465 tests PASS, 17.54 pytest seconds; five focused proof targets PASS, 21.670 guarded seconds with cached dependencies |
+| Final repository quality and installed wheel | Same final run | Strict mypy, Ruff 0.16.9, formatting, policy, docs and proof inventory PASS; clean installed-wheel checks PASS, 34.203 s |
+
+The stronger period checker now reaches its selected-boundary gate with **314
+applied hits, zero boundary misses and zero round expansions**. This is direct
+consumer evidence for retaining completed boundary certificates; it is not a
+completed rejected-sibling or earliest-branch proof.
+
+The passing return records 8,459 round expansions, 924 local round transports,
+2,724 guard hits and 5,939 entry-jump hits. It constructs 314 boundaries and
+retains them for later proof consumers; no complete suffix cache remains.
+The earlier 56.749-second baseline and this run are not a paired latency study.
+
+### Remaining obligations
+
+Complete the checked rejected-sibling proof and selected literal-path/weighted
+runtime integration before forest/fuel deletion. Warm boundary reuse and the
+restored focused build do not establish a cold aggregate proof bound.

@@ -10,7 +10,7 @@ Period: 2026-09-27 through 2026-10-03 (Sunday–Saturday).
 | Topic | Records |
 | --- | ---: |
 | [Antihydra and Mahler](antihydra-mahler.md) | 5 |
-| [Comma / A367620](comma.md) | 19 |
+| [Comma / A367620](comma.md) | 26 |
 | [Repository, tooling and validation](repository.md) | 4 |
 | [Reverse/add](reverse-add.md) | 3 |
 | [Shared execution and cross-family integration](shared.md) | 12 |

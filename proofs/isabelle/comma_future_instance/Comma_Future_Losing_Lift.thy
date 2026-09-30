@@ -71,9 +71,12 @@ next
   show ?case by (rule comma_literal_path_snoc[OF Suc.IH edges])
 qed
 
-theorem comma_checked_loser_no_infinite_literal_path:
-  assumes checked: "comma_future_rank_check rounds rank"
-    and valid: "comma_boundary_valid q" and ranked: "rank q = Some n"
+theorem comma_descending_loser_no_infinite_literal_path:
+  assumes defined_all: "\<And>q. comma_boundary_valid q \<Longrightarrow> comma_macro_defined q"
+    and lower: "\<And>q n child. comma_boundary_valid q \<Longrightarrow> rank q=Some n \<Longrightarrow>
+      child\<in>set (comma_total_children q) \<Longrightarrow>
+      comma_boundary_valid child \<and> (\<exists>m<n. rank child=Some m)"
+    and valid: "comma_boundary_valid q" and ranked: "rank q = Some (n::nat)"
     and exponent: "5\<le>p" and phase: "p mod 924 = snd (snd q)"
   shows "\<not>(\<exists>path :: nat \<Rightarrow> nat.
     path 0 = comma_boundary_value q p \<and>
@@ -81,12 +84,8 @@ theorem comma_checked_loser_no_infinite_literal_path:
   using valid ranked exponent phase
 proof (induction n arbitrary: q p rule: less_induct)
   case (less n)
-  have cert: "comma_rank_witness comma_total_children (set comma_boundary_states) rank"
-    by (rule comma_future_rank_check_sound[OF checked])
-  have state: "q \<in> set comma_boundary_states"
-    using less.prems(1) by (simp add: comma_boundary_states_set)
   have defined: "comma_macro_defined q"
-    by (rule comma_future_rank_check_defined[OF checked less.prems(1)])
+    by (rule defined_all[OF less.prems(1)])
   show ?case
   proof
     assume "\<exists>path :: nat \<Rightarrow> nat.
@@ -145,16 +144,10 @@ proof (induction n arbitrary: q p rule: less_induct)
       obtain target where child: "target \<in> set (comma_total_children q)"
         and successor_value: "path (Suc weight) = comma_boundary_value target (p+d)"
         using target_exists by blast
-      have nonempty: "comma_total_children q \<noteq> []" using child by auto
-      have positive: "0<n"
-        using comma_rank_zero_terminal[OF cert state] less.prems(2) nonempty
-        by (cases n) auto
       obtain m where below: "m<n" and ranked: "rank target = Some m"
-        using comma_rank_positive_children(2)[OF cert state less.prems(2) positive] child
-        by blast
+        using lower[OF less.prems(1,2) child] by blast
       have valid: "comma_boundary_valid target"
-        using comma_rank_witness_closed[OF cert state] child
-        by (auto simp: comma_boundary_states_set)
+        using lower[OF less.prems(1,2) child] by blast
       have exponent: "5\<le>p+d" using less.prems(3) by arith
       have phase: "(p+d) mod 924 = snd (snd target)"
         by (rule comma_total_macro_selected_literal_path(2)
@@ -173,9 +166,43 @@ proof (induction n arbitrary: q p rule: less_induct)
   qed
 qed
 
+corollary comma_checked_loser_no_infinite_literal_path:
+  assumes checked: "comma_future_rank_check rounds rank"
+    and valid: "comma_boundary_valid q" and ranked: "rank q = Some n"
+    and exponent: "5\<le>p" and phase: "p mod 924 = snd (snd q)"
+  shows "\<not>(\<exists>path :: nat \<Rightarrow> nat.
+    path 0 = comma_boundary_value q p \<and>
+    (\<forall>j. comma_child (path j) (path (Suc j))))"
+proof -
+  have cert: "comma_rank_witness comma_total_children (set comma_boundary_states) rank"
+    by (rule comma_future_rank_check_sound[OF checked])
+  have lower: "\<And>q n child. comma_boundary_valid q \<Longrightarrow> rank q=Some n \<Longrightarrow>
+      child\<in>set (comma_total_children q) \<Longrightarrow>
+      comma_boundary_valid child \<and> (\<exists>m<n. rank child=Some m)"
+  proof -
+    fix q n child
+    assume valid: "comma_boundary_valid q" and ranked: "rank q=Some n"
+      and child: "child\<in>set (comma_total_children q)"
+    have state: "q\<in>set comma_boundary_states"
+      using valid by (simp add: comma_boundary_states_set)
+    have positive: "0<n"
+      using comma_rank_zero_terminal[OF cert state] ranked child by (cases n) auto
+    have descent: "\<exists>m<n. rank child=Some m"
+      using comma_rank_positive_children(2)[OF cert state ranked positive] child by blast
+    have closed: "comma_boundary_valid child"
+      using comma_rank_witness_closed[OF cert state] child
+      by (auto simp: comma_boundary_states_set)
+    show "comma_boundary_valid child \<and> (\<exists>m<n. rank child=Some m)"
+      using descent closed by blast
+  qed
+  show ?thesis by (rule comma_descending_loser_no_infinite_literal_path
+    [OF comma_future_rank_check_defined[OF checked] lower valid ranked exponent phase])
+qed
+
 ML \<open>
   val _ = if null (Thm_Deps.all_oracles
-    @{thms comma_total_macro_unique_landmine_prefix
+    @{thms comma_descending_loser_no_infinite_literal_path
+      comma_total_macro_unique_landmine_prefix
       comma_checked_loser_no_infinite_literal_path})
     then () else error "Comma losing lift depends on an oracle";
 \<close>

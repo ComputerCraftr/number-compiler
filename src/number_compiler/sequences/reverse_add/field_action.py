@@ -18,10 +18,13 @@ from __future__ import annotations
 
 from collections.abc import Callable, Hashable, MutableMapping, MutableSequence
 from dataclasses import dataclass
-from typing import TYPE_CHECKING, TypeAlias
+from typing import TYPE_CHECKING, TypeAlias, cast
 
 from number_compiler.arithmetic.automata.symmetry_powering import ActionTransform
 from number_compiler.arithmetic.carry.carry_monoid import CarryFn, compose_carry_fn
+from number_compiler.arithmetic.contracts.block_effect import (
+    BlockContextBudgetExceeded,
+)
 from number_compiler.arithmetic.contracts.canonical_payload import (
     validate_bounded_semantic_key,
 )
@@ -39,6 +42,12 @@ from number_compiler.hashlife.actions.field_actions import (
     FieldCellActionID,
 )
 from number_compiler.resources.ledger import ResourceLedger
+from number_compiler.resources.stores import LedgerDict
+from number_compiler.sequences.reverse_add.semantic_identity_cache import (
+    SemanticIdentityMemoRecord,
+    build_radial_identity,
+    valid_radial_memo,
+)
 
 if TYPE_CHECKING:
     from number_compiler.sequences.reverse_add.coordinate_program import (
@@ -306,6 +315,14 @@ class ReverseFieldActionArena:
             prefix + "-construction-witnesses",
             "reverse_action_construction_witness",
         )
+        self._semantic_identity_owner = self.ledger.register(
+            prefix + "-semantic-identities",
+            "reverse_action_semantic_identity",
+        )
+        self._semantic_identity_issued_owner = self.ledger.register(
+            prefix + "-semantic-identity-issued",
+            "reverse_action_semantic_identity_authority",
+        )
         self._residual_keys: MutableMapping[SemanticKey, ReverseDefectClassID] = (
             self.ledger.make_dict(self._residual_key_owner)
         )
@@ -333,11 +350,35 @@ class ReverseFieldActionArena:
         self._witnesses: MutableMapping[
             FieldCellActionID, tuple[FieldCellActionID, FieldCellActionID]
         ] = self.ledger.make_dict(self._witness_owner)
+        self._semantic_identities: LedgerDict[
+            FieldCellActionID, SemanticIdentityMemoRecord
+        ] = self.ledger.make_dict(
+            self._semantic_identity_owner,
+            nodes_per_entry=1,
+            write_once=True,
+        )
+        self._semantic_identity_issued: LedgerDict[
+            FieldCellActionID, SemanticIdentityMemoRecord
+        ] = self.ledger.make_dict(
+            self._semantic_identity_issued_owner,
+            write_once=True,
+        )
         self.ledger.register_container(
             self._compose_owner,
             self._compose,
             payloads=self._compose.items,
             composition_count=lambda: len(self._compose),
+        )
+        self.ledger.register_container(
+            self._semantic_identity_owner,
+            self._semantic_identities,
+            node_count=lambda: len(self._semantic_identities),
+            payloads=self._semantic_identities.items,
+        )
+        self.ledger.register_container(
+            self._semantic_identity_issued_owner,
+            self._semantic_identity_issued,
+            payloads=self._semantic_identity_issued.items,
         )
         self.compose_requests = 0
         self.compose_early_hits = 0
@@ -449,15 +490,116 @@ class ReverseFieldActionArena:
         Its innovation, carry summaries, residual/output bindings and geometry
         deliberately do not split this identity.
         """
-        radial = self.temporal_action(reference)
-        return SemanticIdentity(
-            "reverse-centered-radial-action-v1",
-            (
-                "reverse-centered-radial-action-v1",
-                f"no-growth:{radial.no_growth}",
-                f"growth:{radial.growth}",
-            ),
+        action = self.resolve(reference)
+        if type(action.radial) is not PowerTwoCyclotomicRadialQuotient:
+            raise ValueError("reverse action radial coordinates changed")
+        try:
+            action.radial.__post_init__()
+        except (TypeError, ValueError) as error:
+            raise ValueError("reverse action radial coordinates changed") from error
+        self.ledger.bump("reverse_field_action_semantic_identity_requests")
+        if reference in self._semantic_identities:
+            cached = self._semantic_identities[reference]
+            self.ledger.bump(
+                "reverse_field_action_identity_validation_radial_bit_work",
+                max(1, action.radial.no_growth.bit_length())
+                + max(1, action.radial.growth.bit_length()),
+            )
+            issued = self._semantic_identity_issued.get(reference)
+            if not valid_radial_memo(
+                reference,
+                id(action),
+                action.radial,
+                cached,
+                issued,
+                self.owner,
+                self._ACTION_KIND,
+                len(self._actions),
+            ):
+                raise ValueError("cached reverse semantic identity lost its seal")
+            self.ledger.bump("reverse_field_action_semantic_identity_cache_hits")
+            return cached[3]
+        if reference in self._semantic_identity_issued:
+            raise ValueError("reverse semantic identity lost its issued cache record")
+
+        self.ledger.bump("reverse_field_action_semantic_identity_cache_misses")
+        radial = action.radial
+        self.ledger.bump(
+            "reverse_field_action_identity_radial_bit_work",
+            max(1, radial.no_growth.bit_length()) + max(1, radial.growth.bit_length()),
         )
+        try:
+            self.ledger.reserve_many(
+                (
+                    (self._semantic_identity_owner, 1, 1),
+                    (self._semantic_identity_issued_owner, 1, 0),
+                )
+            )
+        except BlockContextBudgetExceeded:
+            # Identity construction remains exact when the optional memo has
+            # no room under a stricter request budget.
+            self.ledger.bump("reverse_field_action_semantic_identity_cache_bypasses")
+            return self._compute_semantic_identity(radial)
+
+        record: SemanticIdentityMemoRecord | None = None
+        try:
+            identity = self._compute_semantic_identity(radial)
+            record = (
+                reference,
+                id(action),
+                (radial.no_growth, radial.growth),
+                identity,
+                identity.digest,
+                identity.behavior,
+            )
+            self._semantic_identities[reference] = record
+            self._semantic_identity_issued[reference] = record
+        except BaseException:
+            issued_removed = (
+                self._semantic_identity_issued._rollback_unpublished(reference, record)
+                if record is not None
+                else False
+            )
+            if not issued_removed:
+                self.ledger.release(self._semantic_identity_issued_owner, entries=1)
+            identity_removed = (
+                self._semantic_identities._rollback_unpublished(reference, record)
+                if record is not None
+                else False
+            )
+            if not identity_removed:
+                self.ledger.release(self._semantic_identity_owner, entries=1, nodes=1)
+            raise
+        self.ledger.bump(
+            "reverse_field_action_identity_retained_payload_bytes",
+            len(cast(str, identity.behavior[1]))
+            + len(cast(str, identity.behavior[2]))
+            + len(identity.digest),
+        )
+        self.ledger.bump("reverse_field_action_semantic_identity_publications")
+        return identity
+
+    def _compute_semantic_identity(
+        self,
+        radial: PowerTwoCyclotomicRadialQuotient,
+    ) -> SemanticIdentity:
+        try:
+            identity = build_radial_identity(radial)
+        except BaseException:
+            self.ledger.bump("reverse_field_action_semantic_identity_failed_work")
+            raise
+        radial_chars = len(cast(str, identity.behavior[1])) + len(
+            cast(str, identity.behavior[2])
+        )
+        self.ledger.bump(
+            "reverse_field_action_identity_radial_decimal_digit_work",
+            radial_chars,
+        )
+        self.ledger.bump(
+            "reverse_field_action_identity_transient_payload_bytes",
+            radial_chars + len(identity.digest),
+        )
+        return identity
 
     def occurrence_identity(self, reference: FieldCellActionID) -> SemanticIdentity:
         """Return the complete source-free occurrence/interface identity.

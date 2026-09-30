@@ -1,5 +1,6 @@
 theory Comma_Decade_Orbit_Quotient
   imports Comma_Fast_Control.Comma_Fast_Kernel
+    Comma_Decade_Residual_Core.Comma_Decade_Residual_Core
 begin
 
 text \<open>Subtraction is signed before reduction modulo 460. Natural
@@ -167,9 +168,29 @@ proof -
   show ?thesis by (simp only: comma_fast_decade_control.simps rounds)
 qed
 
+lemma comma_decade_control_orbit_representative:
+  assumes "x\<le>90"
+  shows "comma_fast_decade_control (Comma_Decade r x)=
+    comma_fast_decade_control (Comma_Decade r (comma_offset_representative x))"
+  by (rule comma_decade_control_orbit_congruent[OF assms
+    comma_offset_representative_admitted(1)])
+    (simp only: comma_offset_representative_admitted(2))
+
+text \<open>Candidate summaries may be transported only when both labels agree.
+Control equality alone never authenticates a supplied height or terminal table.\<close>
+lemma comma_decade_summary_step_orbit_transport:
+  assumes offset: "x\<le>90"
+    and height: "h (Comma_Decade r x)=h (Comma_Decade r (comma_offset_representative x))"
+    and terminal: "t (Comma_Decade r x)=t (Comma_Decade r (comma_offset_representative x))"
+  shows "comma_fast_decade_summary_step h t (Comma_Decade r x)=
+    comma_fast_decade_summary_step h t (Comma_Decade r (comma_offset_representative x))"
+  by (simp only: comma_fast_decade_summary_step_def
+    comma_decade_control_orbit_representative[OF offset] height terminal)
+
 ML \<open>
   val _ = if null (Thm_Deps.all_oracles
-    @{thms comma_offset_orbit_bound comma_offset_orbit_step
+    @{thms comma_decade_control_orbit_representative
+      comma_decade_summary_step_orbit_transport comma_offset_orbit_bound comma_offset_orbit_step
       comma_offset_representatives_checked comma_offset_endpoint_checked
       comma_decade_control_orbit_congruent})
     then () else error "Decade orbit quotient depends on an oracle";

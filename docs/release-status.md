@@ -2,13 +2,18 @@
 
 Version **0.60.0 is prepared; release remains blocked**. The gate and cache repairs are validated, but the full reverse/add HashLife cutover is incomplete. No release was tagged or published.
 
-Current authored-source fingerprint v5:
-`792413ee17f97522d888501c470cfaac73058a64dcee50e6cebeb098e06bbfc7`
-(abbreviated `792413ee`). This freeze adds the
-[metrics, bypass and resource-scope audit](sprints/week-of-2026-09-27/shared.md#september-30--adversarial-metrics-and-cache-bypass-audit):
-measured lookup/publication separation, read-only snapshots, output accounting,
-exception-safe leases, scoped reservations and stream cleanup. These changes do
-not complete a temporal constructor or mathematical proof.
+Current authored-source fingerprint (v5):
+`34f1998ae36230e6ebbe4e127664d3ab37acd3ebb97eac118d6cc44805250c65`
+(short `34f1998a`). This freeze removes the unused completed-tail proof cache and
+shares the generic return-edge proof while retaining checked boundary publication.
+See the [lean return constructor record](sprints/week-of-2026-09-27/comma.md#september-30--restore-lean-cold-return-construction).
+The full 314-edge return builds in 56.163 seconds and its source-20 bridge in
+59.526 seconds, both within 60 seconds / 4 GiB with existing dependencies.
+The stronger concrete safe-period gate remains incomplete: rejected smaller
+siblings, selected literal-path integration, lexicographic minimality,
+earlier-root exclusion and exact weighted runtime refinement remain open.
+Production forest admission is unchanged. Earlier measurements retain their
+own source fingerprints.
 
 The [downloaded reverse observer](sprints/week-of-2026-09-27/reverse-add.md#september-30--all-level-terminal-observer-integration-audit)
 remains rejected. The [completed-child reverse migration](sprints/week-of-2026-09-27/reverse-add.md#september-30--bounded-completed-child-parent-joins)
@@ -21,9 +26,14 @@ special-number recovery and global non-halting obligations remain separate.
 
 | Scope | Result | Source | Evidence | Remaining obligation |
 | --- | --- | --- | --- | --- |
-| Strict mypy, Ruff 0.16.9 and formatting | PASS: zero findings | `792413ee` | Resource-scope audit validation | No suppressions, exclusions or thresholds changed. |
-| Source policy, documentation and proof inventory | PASS | `792413ee` | Pinned source-policy, documentation and inventory checks | Inventory status is not checked production refinement. |
-| Clean installed wheel | PASS | `792413ee` | 33.070 s / 126,158,960 sampled bytes; exact D20/D128 output, ownership poisons and retained family checks | Separate CLI processes remain cold; bounded reverse fallback stops at 128. |
+| Strict mypy, Ruff 0.16.9 and formatting | PASS: zero findings | `34f1998a` | Final lean-return validation | No suppressions, exclusions or thresholds changed. |
+| Source policy, documentation and proof inventory | PASS | `34f1998a` | 95 sessions / 235 theories; canonical theory/session paths and ML-file ownership checks | Inventory status is not checked production refinement. |
+| Clean installed wheel | PASS | `34f1998a` | 34.203 s; installed CLI smoke checks pass | Separate CLI processes remain cold; bounded reverse fallback stops at 128. |
+| Selected-cycle boundary reuse | PASS for all 314 selected edges; stronger safety proof BLOCKED | `34f1998a` | Actual period checker: 314 applied hits, zero misses, zero round expansions; subsequently timed out at 60.121 s after the 128-completed-losing-state checkpoint | Rejected-sibling termination remains incomplete. The partial profile is not a successful period theorem build. |
+| Restored 314-edge return and source-20 bridge | PASS | `34f1998a` | Return: 56.163 s / 1,744,506,336 bytes; source bridge: 59.526 s / 3,593,327,656 bytes; both rebuilt with existing dependencies | Source bridge has little timing margin. Complete safe-period/sibling checking and exact weighted refinement remain open; this is not a cold aggregate build. |
+| Shared boundary proofs and selected blocks | 465 focused tests PASS; three focused Isabelle sessions PASS | `e9878ad5` | 17.85 pytest seconds; proofs 37.492 s / 2,746,159,616 bytes. Actual builder: adjacent join, rejected mismatched join, two imported hits and zero cold rounds | The 314-hit concrete consumer gate has not completed. Cold base producer still times out; exact literal weights and all rejected siblings remain open. |
+| Semantic identity / publication audit | 658 focused tests PASS; seven focused Isabelle sessions PASS | `07a14712` | Frozen cache/branch audit: 22.24 pytest seconds; includes forged records, interrupted publication, ledger and higher-image checks | Full unit, P0, all growth workloads and aggregate proof acceptance were not rerun. Cached focused builds do not establish a cold aggregate bound. |
+| Comma local branch and periodic safety | First zero-tail branch and generic safe-return induction PASS; concrete period BLOCKED | `07a14712` / individual profile provenance | First subtree: 17 states, 8 forks, 9 landmines. Profile reached 312 selected rows and collected 170 rejected N roots before timeout | Collected roots are not termination proofs. Complete rejected-sibling checking and selected-choice literal refinement remain open. |
 | Focused runtime, cache, reporting and lifecycle checks | 906 PASS | `792413ee` | 19.86 pytest seconds; explicit cleanup failures, source ports/chambers, prime selection, family caches and metric snapshots | This focused selection does not replace full-unit, P0 or performance acceptance. |
 | Collatz runtime and occurrence reuse | PASS for measured cases | `622418f8` | Five former flag-only cases and shared runtime checks pass; at N=1,024, same receiving seed uses 71 run actions warm versus 86 bypassed | At most one shared occurrence is consumed on this route. Complete constructor/lifecycle refinement and cold-construction bounds remain open. |
 | Mahler complete-root and observer reuse | PASS for measured cases | `622418f8` | Warm parent skips cold construction; outer cached coefficients checked against admitted transfer; refused publications counted | Child-action reuse and complete source-constructor refinement remain open. A private producer capability does not prove a fabricated source record correct. |
@@ -40,6 +50,11 @@ special-number recovery and global non-halting obligations remain separate.
 | Comma normalized interior-cycle reuse | PASS within admitted sectors | `c581c215` | 779 focused runtime tests; rotated-cycle poison tests preserve receiving phase and skip coefficient construction | Global branch authority remains forest-backed. Exact complete cycles may share a phase coset; partial prefixes and future branches are not merged. |
 | Comma executable observer quotients | Finite audit PASS | `c581c215` | 99 tests, including explicit full-graph validation: Q15/Q19, T3279/M4986, 14,470 losing and 314 surviving states | R31 covers homogeneous powers only. Python partition checks do not certify weights, all-exponent lifting or infinite admission. |
 | Comma 91-entry global-root reduction | Finite audit PASS; theorem PENDING | `f9b6f0bf` | Exactly offsets 3, 34 and 75 remain open in the independent entry audit; new root theory registered | The 91-entry reduction still uses the existing checked global rank/lifting chain. |
+| Comma rank-free nine-tail return and source-20 infinitude | PASS, unconditional existence | `df2cd1bb` | Concrete 314-edge / +924 return: 56.749 s; source-20 bridge: 58.457 s; 5,939 jump hits, 924 offset transports, 2,724 closed-guard hits | Rejected smaller siblings, least-root proof, exact weighted runtime refinement and forest/fuel cutover remain open. Focused builds do not certify an aggregate cold build. |
+| Comma structural induction and source-20 bridge | PASS, conditional on the concrete witness | `cf2377d1` | Local jump/kernel/mask sessions pass; source-only follow-up 47.723 s / 2,574,749,656 bytes with built dependencies; 79 focused tests pass | Combined source dependency build timed out. Concrete admission is still unproved; focused success does not establish aggregate acceptance. |
+| Comma complete-jump proof reuse | PASS for local semantics and measured reuse | `cf2377d1` | 4,465 complete-jump hits, 2,773 constructions; zero sector-wrapper calls; warm-parent and foreign-key rejection checks pass | Phase-specific continuation memo removed after zero useful hits. Full phase-guard/candidate-label certification and end-to-end speedup remain open. |
+| Comma concrete structural-instance build | BLOCKED: summary timeout | `cf2377d1` | 60.179 s / 1,798,886,104 sampled bytes; 19/924 slices (1,729/84,084 states), 874 control constructions and 855 transported hits; future rows not reached | Complete summary and structural checks, global-safety rebase, root/weighted refinement, then production cutover. |
+| Comma runtime and proof-tool regression selection | 838 PASS | `b54496f3` | Complete comma/API/candidate/inventory selection, 75.653 guarded seconds | Historical runtime selection; later proof changes have separate focused evidence. Runtime forest admission remains unchanged. |
 | Comma global-root proof build | BLOCKED: 60.187-second timeout | `f9b6f0bf` | 2,473,088,136 sampled bytes; stopped in prerequisite `Comma_Future_Checked_Instance` | Root theorem not reached. Production forest and bounded prefix remain; fuel is a separate obligation. |
 | Comma focused Isabelle | PARTIAL | `c581c215` / `34838789` / `03e0da74` | Normalized-cycle theorem passes on current source (5.664 s cached build), required macro session passes on its earlier fingerprint; isolated concrete rank check times out after 60.203 s / 2,725,746,016 sampled bytes | New global theorem not reached. The exact 14,784-row check, executable fuel-free owner, earlier-root exclusion and weighted cutover remain open. |
 | Comma phase reuse measurements | Construction reuse PASS; latency improvement not established | `c581c215` | 90 complete-cycle phase requests: 17 constructions, 73 shared retrievals; 120 five-trial cold/warm/bypassed samples agree | Warm queries eliminate coefficient construction, but 1,024/20,000-term medians remain about 25/46 ms. Certificate cost excluded; cross-fork construction remains blocked. |

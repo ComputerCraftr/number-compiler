@@ -113,7 +113,9 @@ class CycleActionReuse:
         return result
 
     def _lookup(
-        self, lease: CacheLease, key: tuple[int, int, int]
+        self,
+        lease: CacheLease,
+        key: tuple[int, int, int],
     ) -> tuple[CycleSummary, bool]:
         try:
             value = lease.get_issued(key, _CYCLE_PUBLISHER)
@@ -129,6 +131,9 @@ class CycleActionReuse:
                     raise ValueError("malformed comma cycle action")
                 self.charge(1)
                 self.charge_bits(sum(field.bit_length() for field in value))
+                # The process key is already the canonical (leading, phase
+                # coset, copies) semantic action. Source transport is reported
+                # by the source-image application lane after admission.
                 self.count("exact_hits")
                 self.count("process_hits")
                 return cast(CycleSummary, value), True
@@ -165,11 +170,15 @@ class CycleActionReuse:
                 with lease:
                     # Complete phase rotations have the same duration, sum and
                     # strict guard. The arena retains the actual entering digit
-                    # and checks it against the receiving source independently.
-                    # HOL: comma_normalized_cycle_gcd_normalization.
+                    # coset as the semantic ID and checks the receiving
+                    # occurrence against that coset independently. HOL:
+                    # comma_normalized_cycle_gcd_normalization.
                     self.charge(1)
                     phase = digit % gcd(leading, 10)
-                    return self._lookup(lease, (leading, phase, copies))
+                    return self._lookup(
+                        lease,
+                        (leading, phase, copies),
+                    )
         else:
             self.count("bypasses")
         self.count("misses")

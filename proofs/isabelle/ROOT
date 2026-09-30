@@ -394,6 +394,7 @@ session Comma_Fast_Control in comma_fast_control = Comma_Closed_Near +
     Comma_Fast_Control
     Comma_Sector_Alphabet
     Comma_Fast_Kernel
+    Comma_Fast_Kernel_Smoke
 
 session Comma_Decade_Helix in comma_decade_helix = Comma_Fast_Control +
   options [document = false, quick_and_dirty = false, threads = 1]
@@ -488,6 +489,52 @@ session Comma_Future_Check in comma_future_instance = Comma_Total_Macro +
     Comma_Future_Losing_Lift
     Comma_Future_Infinite_Lift
 
+session Comma_Branch_Induction in comma_branch_induction = Comma_Future_Check +
+  options [quick_and_dirty = false]
+  theories
+    Comma_Branch_Induction
+
+session Comma_Return_Induction in comma_return_induction = Comma_Future_Check +
+  options [document = false, quick_and_dirty = false, threads = 1]
+  theories
+    Comma_Return_Induction
+
+session Comma_Branch_Period in comma_branch_period = Comma_Branch_Induction +
+  options [document = false, quick_and_dirty = false, threads = 1]
+  sessions Comma_Return_Induction
+  theories
+    Comma_Branch_Period
+
+session Comma_Selected_Return_Blocks in comma_selected_return_blocks = Comma_Return_Engine +
+  options [document = false, quick_and_dirty = false, threads = 1]
+  sessions Comma_Branch_Period
+  theories
+    Comma_Selected_Return_Blocks
+    Comma_Selected_Block_Smoke
+
+session Comma_Return_Engine in comma_return_engine = Comma_Return_Induction +
+  options [document = false, quick_and_dirty = false, threads = 1]
+  sessions Comma_Fast_Control
+  theories
+    Comma_Return_Engine
+
+session Comma_Branch_Instance in comma_branch_instance = Comma_Branch_Induction +
+  options [quick_and_dirty = false]
+  sessions Comma_Return_Engine
+  theories
+    Comma_Branch_Instance
+
+session Comma_Branch_Period_Instance in comma_branch_period_instance = Comma_Return_Instance +
+  options [document = false, quick_and_dirty = false, threads = 1]
+  sessions Comma_Selected_Return_Blocks Comma_Branch_Instance
+  theories
+    Comma_Branch_Period_Instance
+
+session Comma_Return_Instance in comma_return_instance = Comma_Return_Engine +
+  options [document = false, quick_and_dirty = false, threads = 1]
+  theories
+    Comma_Return_Instance
+
 session Comma_Fast_Totality_Check in comma_fast_totality = Comma_Fast_Control +
   options [document = false, quick_and_dirty = false, threads = 1]
   sessions Comma_Total_Macro
@@ -505,24 +552,65 @@ session Comma_Fast_Totality in comma_fast_totality_full = Comma_Fast_Rank_Check 
   theories
     Comma_Fast_Totality
 
-session Comma_Future_Checked_Instance in comma_future_checked = Comma_Future_Check +
+session Comma_Future_Rank_Data in comma_future_rank_data = Comma_Arithmetic +
   options [document = false, quick_and_dirty = false, threads = 1]
   theories
     Comma_Rank_Data_N
     Comma_Rank_Data_Z
     Comma_Rank_Data
+
+session Comma_Decade_Terminal_Data in comma_decade_terminal_data = Comma_Decade_Rank_Data +
+  options [document = false, quick_and_dirty = false, threads = 1]
+  sessions Comma_Decade_Residual_Core
+  theories
+    Comma_Decade_Terminal_Data
+
+session Comma_Decade_Summary_Kernel in comma_decade_summary_kernel = Comma_Decade_Orbit +
+  options [document = false, quick_and_dirty = false, threads = 1]
+  sessions Comma_Decade_Summary_Transport Comma_Decade_Terminal_Data
+  theories
+    Comma_Decade_Summary_Kernel
+
+session Comma_Decade_Summary_Checked in comma_decade_summary_checked = Comma_Decade_Summary_Kernel +
+  options [document = false, quick_and_dirty = false, threads = 1]
+  theories
+    Comma_Decade_Summary_Checked
+
+session Comma_Future_Structural_Check in comma_future_structural = Comma_Future_Check +
+  options [document = false, quick_and_dirty = false, threads = 1]
+  sessions Comma_Decade_Summary_Transport
+  theories
+    Comma_Future_Structural_Check
+    Comma_Future_Descent_Lift
+
+session Comma_Future_Structural_Instance in comma_future_structural_instance = Comma_Decade_Summary_Checked +
+  options [document = false, quick_and_dirty = false, threads = 1]
+  sessions Comma_Future_Structural_Check Comma_Future_Rank_Data
+  theories
+    Comma_Future_Structural_Instance
+
+session Comma_Future_Checked_Instance in comma_future_checked = Comma_Future_Check +
+  options [document = false, quick_and_dirty = false, threads = 1]
+  sessions Comma_Future_Rank_Data
+  theories
     Comma_Future_Instance
     Comma_Future_Checked_Instance
 
-session Comma_Future_Source in comma_future_source = Comma_Future_Check +
+session Comma_Future_Source in comma_future_source = Comma_Future_Structural_Check +
   options [document = false, quick_and_dirty = false, threads = 1]
   sessions Comma_Source_Uniqueness
   theories
     Comma_Future_Source
 
+session Comma_Return_Source in comma_return_source = Comma_Return_Instance +
+  options [document = false, quick_and_dirty = false, threads = 1]
+  sessions Comma_Future_Source Comma_Branch_Instance
+  theories
+    Comma_Return_Source
+
 session Comma_Global_Future_Safety in comma_future_global = Comma_Future_Checked_Instance +
   options [document = false, quick_and_dirty = false, threads = 1]
-  sessions Comma_Future_Source Comma_Decade_Summary_Transport
+  sessions Comma_Return_Source Comma_Decade_Summary_Transport
   theories
     Comma_Global_Future_Safety
     Comma_Global_Root_Safety

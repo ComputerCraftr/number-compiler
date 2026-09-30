@@ -1,11 +1,11 @@
 theory Comma_Global_Future_Safety
   imports Comma_Future_Checked_Instance.Comma_Future_Checked_Instance
-    Comma_Future_Source.Comma_Future_Source
+    Comma_Return_Source.Comma_Return_Source
 begin
 
 text \<open>
 This theory discharges the source-20 infinite-path and first-fork obligations
-from the concrete checked boundary instance.  The source-20 claims below have
+from the independent return induction and concrete losing-branch instance.  The source-20 claims below have
 no certificate or checker assumptions in their exported statements.
 
 The finite checker still uses 28 rounds as an evaluation bound for each
@@ -82,22 +82,12 @@ lemma comma_source20_near_child_has_infinite_literal_path:
   "\<exists>path :: nat \<Rightarrow> nat.
     path 0 = 19999999999 \<and>
     (\<forall>j. comma_child (path j) (path (Suc j)))"
-proof -
-  have path: "\<exists>path :: nat \<Rightarrow> nat.
-      path 0 = comma_boundary_value (Comma_N,2,10) 10 \<and>
-      (\<forall>j. comma_child (path j) (path (Suc j)))"
-    by (rule comma_checked_cycle_infinite_literal_path
-        [OF comma_future_concrete_rank_checked comma_future_concrete_cycle_checked])
-      (simp_all add: comma_boundary_valid_def)
-  show ?thesis using path
-    by (simp add: comma_boundary_value_def comma_near_boundary_def)
-qed
+  by (rule comma_nine_ray_infinite)
 
 theorem comma_source20_global_infinite_literal_path:
   "\<exists>path :: nat \<Rightarrow> nat. path 0 = 20 \<and>
     (\<forall>j. comma_child (path j) (path (Suc j)))"
-  by (rule comma_source20_checked_infinite_path
-      [OF comma_future_concrete_rank_checked comma_future_concrete_cycle_checked])
+  by (rule comma_source20_return_infinite)
 
 theorem comma_source20_global_first_choice_unique:
   assumes initial: "path 0 = 20"

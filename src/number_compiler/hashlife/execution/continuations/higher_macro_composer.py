@@ -4,7 +4,6 @@ from __future__ import annotations
 
 from collections.abc import MutableMapping
 from dataclasses import dataclass, fields
-from hashlib import sha256
 from typing import cast
 
 from number_compiler.arithmetic.contracts.scoped_handles import ArenaHandle, ArenaToken
@@ -360,14 +359,7 @@ class HigherSpatialMacroComposer:
         components = HigherMacroComponents(*values)
         signature = self.interfaces.interface(local.signature)
         identity = SemanticIdentity(
-            sha256(
-                repr(
-                    (
-                        "source-bound-higher-leaf",
-                        signature.kernel.digest,
-                    )
-                ).encode()
-            ).hexdigest(),
+            "",
             ("source-bound-higher-leaf", signature.kernel.digest),
         )
         interface = self._publish(
@@ -565,14 +557,7 @@ class HigherSpatialMacroComposer:
             arena.component_sort(a("frame")),
         )
         identity = SemanticIdentity(
-            sha256(
-                repr(
-                    (
-                        "source-bound-higher-parent",
-                        self.kernel_digest,
-                    )
-                ).encode()
-            ).hexdigest(),
+            "",
             (
                 "source-bound-higher-parent",
                 self.kernel_digest,

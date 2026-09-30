@@ -33,7 +33,7 @@ from number_compiler.sequences.comma.boundary_chart import (
 
 STATE_COUNT = 16 * PERIOD
 PADDED_COUNT = 16_384
-DEFAULT_OUTPUT = isabelle_root() / "comma_future_checked/Comma_Rank_Data.thy"
+DEFAULT_OUTPUT = isabelle_root() / "comma_future_rank_data/Comma_Rank_Data.thy"
 CONTROL_WITNESS_SCHEMA = 1
 DECADE_RANK_SCHEMA = 1
 DECADE_OFFSETS = 91

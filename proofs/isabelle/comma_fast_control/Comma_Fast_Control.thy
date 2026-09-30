@@ -175,6 +175,31 @@ next
       prod.case comma_finite_move.case snd_conv\<close>)
 qed
 
+text \<open>Offset belongs to the occurrence, not the local round action.
+Normalize it into the phase before evaluation, then restore the exact result.\<close>
+
+lemma comma_fast_entry_round_phase_normalized:
+  assumes "1\<le>f" "f\<le>9" "x\<le>98"
+  shows "comma_fast_round_aux 9 r (Comma_Entry f d x)=
+    comma_shift_round_result d
+      (comma_fast_round_aux 9 ((r+d) mod 924) (Comma_Entry f 0 x))"
+proof -
+  have left: "comma_fast_round_aux 9 r (Comma_Entry f d x)=
+      snd (snd (comma_round_close r (Comma_Entry f d x)))"
+    by (rule comma_fast_round_aux_correct) (use assms in auto)
+  have right: "comma_fast_round_aux 9 ((r+d) mod 924) (Comma_Entry f 0 x)=
+      snd (snd (comma_round_close ((r+d) mod 924) (Comma_Entry f 0 x)))"
+    by (rule comma_fast_round_aux_correct) (use assms in auto)
+  obtain n t result where canonical:
+    "comma_round_close ((r+d) mod 924) (Comma_Entry f 0 x)=(n,t,result)"
+    by (cases "comma_round_close ((r+d) mod 924) (Comma_Entry f 0 x)") auto
+  have transported: "comma_round_close r (Comma_Entry f d x)=
+      (n,comma_shift_position d t,comma_shift_round_result d result)"
+    using comma_round_close_phase_normalized[of r f d x]
+    by (simp only: canonical comma_shift_round_close_def prod.case)
+  show ?thesis by (simp only: left right transported canonical snd_conv)
+qed
+
 fun comma_fast_decade_control :: "comma_decade_state \<Rightarrow> comma_decade_outcome" where
   "comma_fast_decade_control (Comma_Decade r x)=
     comma_decade_decode r (comma_fast_round_aux 9 r (Comma_Entry 1 0 x))"
@@ -198,7 +223,7 @@ qed
 
 ML \<open>
   val _ = if null (Thm_Deps.all_oracles
-    @{thms comma_fast_step_correct comma_fast_sector_target_correct comma_fast_sector_refines
+    @{thms comma_fast_entry_round_phase_normalized comma_fast_step_correct comma_fast_sector_target_correct comma_fast_sector_refines
       comma_fast_round_aux_correct comma_fast_decade_control_correct})
     then () else error "Fast comma control depends on an oracle";
 \<close>

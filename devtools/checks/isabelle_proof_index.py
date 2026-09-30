@@ -22,6 +22,11 @@ from devtools.paths import isabelle_root, repository_root
 ROOT = repository_root()
 ISABELLE = isabelle_root(ROOT)
 
+_ML_FILE_COMMAND = re.compile(r"(?m)^[ \t]*ML_file\b")
+_ML_FILE_ARGUMENT = re.compile(
+    r"""^[ \t]*(?:"((?:\\.|[^"\\])*)"|([^ \t\r\n]+))[ \t]*$"""
+)
+
 # These links describe implementation or executable-reference counterparts.  An
 # empty mapping is deliberate: a standalone mathematical theory must not be
 # presented as a production refinement merely because it is registered.
@@ -103,6 +108,7 @@ COUNTERPARTS: dict[str, tuple[str, ...]] = {
     "Comma_Fast_Arithmetic": (),
     "Comma_Fast_Control": (),
     "Comma_Fast_Kernel": (),
+    "Comma_Fast_Kernel_Smoke": (),
     "Comma_Sector_Alphabet": (),
     "Comma_Decade_Helix": (),
     "Comma_Decade_Orbit_Quotient": ("devtools/experiments/comma/temporal_masks.py",),
@@ -142,6 +148,16 @@ COUNTERPARTS: dict[str, tuple[str, ...]] = {
     "Comma_Future_Literal_Bridge": (),
     "Comma_Future_Losing_Lift": (),
     "Comma_Future_Infinite_Lift": (),
+    "Comma_Branch_Induction": (),
+    "Comma_Branch_Instance": (),
+    "Comma_Branch_Period": (),
+    "Comma_Selected_Return_Blocks": (),
+    "Comma_Selected_Block_Smoke": (),
+    "Comma_Branch_Period_Instance": (),
+    "Comma_Return_Induction": (),
+    "Comma_Return_Engine": (),
+    "Comma_Return_Instance": (),
+    "Comma_Return_Source": (),
     "Comma_Future_Checked_Instance": (),
     "Comma_Future_Source": (),
     "Comma_Global_Future_Safety": (),
@@ -399,9 +415,29 @@ def _declarations(text: str) -> tuple[dict[str, object], ...]:
     return tuple(rows)
 
 
+def _ml_file_references(text: str, path: Path) -> tuple[str, ...]:
+    """Read authored ``ML_file`` paths while ignoring quoted fake commands."""
+    clean = navigation_text(text)
+    references: list[str] = []
+    for command in unquoted_matches(_ML_FILE_COMMAND, clean):
+        line_end = clean.find("\n", command.start())
+        if line_end < 0:
+            line_end = len(clean)
+        argument = _ML_FILE_ARGUMENT.fullmatch(clean[command.end() : line_end])
+        if argument is None:
+            raise ValueError(f"{path}: unsupported ML_file target")
+        reference = argument.group(1) or argument.group(2)
+        if not reference or "\\" in reference:
+            raise ValueError(f"{path}: unsupported ML_file target")
+        references.append(reference)
+    return tuple(references)
+
+
 def build_index() -> dict[str, object]:
     sessions = parse_sessions((ISABELLE / "ROOT").read_text())
-    declared: dict[str, tuple[Path, tuple[str, ...], str, tuple[str, ...]]] = {}
+    declared: dict[
+        str, tuple[Path, tuple[str, ...], str, tuple[str, ...], tuple[str, ...]]
+    ] = {}
     for path in sorted(ISABELLE.rglob("*.thy")):
         text = path.read_text()
         name, imports = parse_theory_header(text, path)
@@ -413,22 +449,82 @@ def build_index() -> dict[str, object]:
             )
         if name in declared:
             raise ValueError(f"duplicate theory declaration: {name}")
-        declared[name] = (path, imports, _scope(text), _audited_theorems(text))
+        declared[name] = (
+            path,
+            imports,
+            _scope(text),
+            _audited_theorems(text),
+            _ml_file_references(text, path),
+        )
+
+    isabelle_path = ISABELLE.resolve()
+    ml_references: dict[Path, list[str]] = {}
+    for theory, (path, _, _, _, references) in declared.items():
+        for reference in references:
+            ml_target = (path.parent / reference).resolve()
+            if not ml_target.is_relative_to(isabelle_path):
+                raise ValueError(
+                    f"{path}: ML_file target escapes theory root: {reference}"
+                )
+            if not ml_target.is_file():
+                raise ValueError(f"{path}: missing ML_file target {ml_target}")
+            ml_references.setdefault(ml_target, []).append(theory)
+
+    authored_ml: set[Path] = set()
+    for path in ISABELLE.rglob("*.ML"):
+        ml_target = path.resolve()
+        if not ml_target.is_relative_to(isabelle_path):
+            raise ValueError(f"authored ML path escapes theory root: {path}")
+        authored_ml.add(ml_target)
+    ml_paths = sorted(authored_ml | set(ml_references))
+    ml_entries = [
+        {
+            "path": path.relative_to(ROOT).as_posix(),
+            "referenced_by": tuple(sorted(ml_references.get(path, []))),
+        }
+        for path in ml_paths
+    ]
+
+    canonical_session_dirs: dict[Path, str] = {}
+    for session in sessions:
+        session_path = (isabelle_path / session.directory).resolve()
+        if not session_path.is_relative_to(isabelle_path):
+            raise ValueError(
+                f"{session.name}: session directory escapes theory root: "
+                f"{session.directory}"
+            )
+        previous = canonical_session_dirs.get(session_path)
+        if previous is not None:
+            raise ValueError(
+                f"duplicate canonical Isabelle session directory {session_path}: "
+                f"{previous} and {session.name}"
+            )
+        canonical_session_dirs[session_path] = session.name
 
     registered: dict[str, str] = {}
+    declared_paths = {row[0].resolve(): name for name, row in declared.items()}
     for session in sessions:
-        for name in session.theories:
-            if name in registered:
+        for reference in session.theories:
+            path = (ISABELLE / session.directory / f"{reference}.thy").resolve()
+            if not path.is_relative_to(ISABELLE.resolve()):
                 raise ValueError(
-                    f"theory {name} registered in {registered[name]} and {session.name}"
+                    f"{session.name}: theory path escapes theory root: {reference}"
                 )
-            path = ISABELLE / session.directory / f"{name}.thy"
             if not path.is_file():
                 raise ValueError(f"{session.name}: missing registered theory {path}")
-            registered[name] = session.name
+            registered_name = declared_paths.get(path)
+            if registered_name is None or registered_name != path.stem:
+                raise ValueError(
+                    f"{session.name}: theory declaration differs from file {path}"
+                )
+            if registered_name in registered:
+                raise ValueError(
+                    f"theory {registered_name} registered in {registered[registered_name]} and {session.name}"
+                )
+            registered[registered_name] = session.name
 
     reverse: dict[str, list[str]] = {name: [] for name in declared}
-    for source, (_, imports, _, _) in declared.items():
+    for source, (_, imports, _, _, _) in declared.items():
         for imported in imports:
             target = Path(imported.split(".")[-1]).name
             if target in reverse:
@@ -467,7 +563,7 @@ def build_index() -> dict[str, object]:
         for token in set(re.findall(r"[A-Za-z][A-Za-z0-9_']*", contents)):
             token_uses.setdefault(token, set()).add(theory)
     for name in sorted(declared):
-        path, imports, scope, audit = declared[name]
+        path, imports, scope, audit, _ = declared[name]
         text = source_texts[name]
         declarations = _declarations(text)
         uses = {}
@@ -496,6 +592,7 @@ def build_index() -> dict[str, object]:
     return {
         "schema_version": 1,
         "root": "proofs/isabelle/ROOT",
+        "ml_files": ml_entries,
         "sessions": [
             {
                 "session": session.name,

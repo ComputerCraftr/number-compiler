@@ -654,6 +654,34 @@ def safe_complete_cycles(
     Strict inequality keeps every child in the same sector throughout the
     skipped block, including at a potential fork equality.
     """
+    sector = decimal_sector(value)
+    return safe_complete_cycles_from_sector(
+        sector.leading, sector.digit, sector.headroom, transfer, remaining_steps
+    )
+
+
+def safe_complete_cycles_from_sector(
+    leading: int,
+    digit: int,
+    headroom: int,
+    transfer: CycleTransfer,
+    remaining_steps: int,
+) -> int:
+    """Admit full cycles from an already authenticated decimal-sector port.
+
+    Source-image bindings retain these three exact port fields. Reusing them
+    avoids recomputing the decimal scale when the scheduler has already
+    authenticated the occurrence and its boundary ports.
+    """
+    if (
+        type(leading) is not int
+        or type(digit) is not int
+        or type(headroom) is not int
+        or not 1 <= leading <= 9
+        or not 0 <= digit <= 9
+        or headroom <= 0
+    ):
+        raise ValueError("invalid authenticated comma sector port")
     if type(remaining_steps) is not int or remaining_steps < 0:
         raise ValueError("remaining steps must be nonnegative")
     if type(transfer) is not CycleTransfer or any(
@@ -680,18 +708,15 @@ def safe_complete_cycles(
         or transfer.maximum_guard != displacement + int(transfer.leading < 9)
     ):
         raise ValueError("cycle transfer does not match its phase arithmetic")
-    sector = decimal_sector(value)
-    if sector.leading != transfer.leading or sector.digit != transfer.entering_digit:
+    if leading != transfer.leading or digit != transfer.entering_digit:
         raise ValueError("cycle transfer has another entering cylinder")
     by_target = remaining_steps // transfer.period
     # comma_safe_cycle_count_maximal: c positive copies have guard
     # G + (c-1)*D < H. Solve this once rather than allocating and evaluating
     # a generic prefix-safety action for every receiving sector occurrence.
-    if by_target == 0 or sector.headroom <= transfer.maximum_guard:
+    if by_target == 0 or headroom <= transfer.maximum_guard:
         return 0
-    by_guard = (sector.headroom - 1 - transfer.maximum_guard) // (
-        transfer.displacement
-    ) + 1
+    by_guard = (headroom - 1 - transfer.maximum_guard) // (transfer.displacement) + 1
     return min(by_target, by_guard)
 
 

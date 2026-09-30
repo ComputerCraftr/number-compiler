@@ -8,6 +8,7 @@ from __future__ import annotations
 
 from collections.abc import Callable, Iterator
 from dataclasses import dataclass
+from math import gcd
 from typing import cast
 
 from number_compiler.arithmetic.contracts.scoped_handles import ArenaHandle, ArenaToken
@@ -225,6 +226,18 @@ class CommaActionArena:
         self.ledger.bump("comma_action_requests")
         old = self._keys.get(key)
         if old is not None:
+            existing = self.node(old)
+            requested_snapshot = _action_snapshot(node)
+            existing_snapshot = _action_snapshot(existing)
+            # Complete cycles may arrive through either direct construction or
+            # chronological squaring. Their decomposition children are a
+            # construction route, not part of the normalized extensional
+            # action. Every other action retains its full binding.
+            if node.kind == existing.kind == "cycle":
+                requested_snapshot = requested_snapshot[:-2]
+                existing_snapshot = existing_snapshot[:-2]
+            if requested_snapshot != existing_snapshot:
+                raise ValueError("comma action key aliases a different effect")
             self.charge()
             self.charge_bits(max(1, node.steps.bit_length()))
             self.ledger.bump("comma_action_hits")
@@ -291,19 +304,9 @@ class CommaActionArena:
         return transfer
 
     def one_cycle(self, leading: int, digit: int) -> CommaActionID:
-        transfer = self.transfer(leading, digit)
-        return self._intern(
-            ("cycle", leading, digit, 1),
-            _Action(
-                "cycle",
-                transfer.period,
-                leading,
-                digit,
-                1,
-                transfer.displacement,
-                transfer.maximum_guard,
-            ),
-        )
+        # cycle_request checks the complete local parent before deriving the
+        # transfer and then consults the process cache on a local miss.
+        return self.cycle_request(leading, digit, 1)[0]
 
     def phase_prefix(self, leading: int, digit: int, steps: int) -> CommaActionID:
         """An incomplete physical phase orbit, with its strict interior guard.
@@ -399,7 +402,13 @@ class CommaActionArena:
         """
         reuse = self.cycle_reuse
         reuse.request(leading, digit, count)
-        key = ("cycle", leading, digit, count)
+        # A complete phase orbit visits every digit in one gcd coset. Its
+        # displacement and strict guard therefore depend on the coset, not on
+        # the particular entering digit. Keep the canonical coset in the
+        # semantic action ID; the receiving occurrence still proves that it
+        # belongs to this input domain before application.
+        phase = digit % gcd(leading, 10)
+        key = ("cycle", leading, phase, count)
         old = self._keys.get(key)
         if old is not None:
             try:
@@ -407,13 +416,13 @@ class CommaActionArena:
             except Exception:
                 reuse.count("admission_rejections")
                 raise
-            reuse.count("exact_hits")
             reuse.count("local_hits")
+            reuse.count("exact_hits")
             return old, True
         (steps, displacement, guard), hit = reuse.resolve(leading, digit, count)
         return self._intern(
             key,
-            _Action("cycle", steps, leading, digit, count, displacement, guard),
+            _Action("cycle", steps, leading, phase, count, displacement, guard),
         ), hit
 
     def _boundary_template(self, state: BoundaryState) -> MacroTemplate:

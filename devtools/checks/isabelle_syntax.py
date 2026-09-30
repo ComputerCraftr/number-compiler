@@ -226,6 +226,27 @@ def navigation_text(text: str) -> str:
     return "".join(output)
 
 
+def _theory_entries(block: str, session: str) -> tuple[str, ...]:
+    """Keep every ROOT theory entry, or reject syntax we cannot interpret."""
+    entries: list[str] = []
+    cursor = 0
+    for token in _TOKEN.finditer(block):
+        value = token.group(0)
+        quoted = value.startswith('"')
+        if block[cursor : token.start()].strip() or (
+            not quoted and re.fullmatch(r"[A-Za-z0-9_]+", value) is None
+        ):
+            raise ValueError(f"{session}: unsupported ROOT theory entry")
+        name = value[1:-1] if quoted else value
+        if not name or "\\" in name:
+            raise ValueError(f"{session}: unsupported ROOT theory entry")
+        entries.append(name)
+        cursor = token.end()
+    if block[cursor:].strip():
+        raise ValueError(f"{session}: unsupported ROOT theory entry")
+    return tuple(entries)
+
+
 def parse_sessions(text: str) -> tuple[Session, ...]:
     clean = mask_comments(text)
     starts = unquoted_matches(_SESSION, clean)
@@ -245,7 +266,7 @@ def parse_sessions(text: str) -> tuple[Session, ...]:
         dependency_match = dependencies[0] if dependencies else None
         theory_match = theory_blocks[0] if theory_blocks else None
         theories = (
-            tuple(re.findall(r"(?m)^\s{4}([A-Za-z0-9_]+)\s*$", theory_match.group(1)))
+            _theory_entries(theory_match.group(1), match.group(1))
             if theory_match
             else ()
         )
@@ -263,6 +284,8 @@ def parse_sessions(text: str) -> tuple[Session, ...]:
         )
     if len({session.name for session in sessions}) != len(sessions):
         raise ValueError("duplicate Isabelle session declaration")
+    if len({session.directory for session in sessions}) != len(sessions):
+        raise ValueError("duplicate Isabelle session directory")
     # External parents are supplied by the Isabelle installation. Only local
     # ancestry can be checked here; neither parent nor session edges may cycle.
     local = {session.name: session for session in sessions}

@@ -108,6 +108,35 @@ next
       add: physical_collatz_def funpow_Suc_right power_Suc)
 qed
 
+text \<open>Whole time actions retain their duration even when local cylinder
+arithmetic is shared. A dyadic source distinguishes any two unequal durations;
+this does not prohibit source-bound cycle or high-fiber transport.\<close>
+
+lemma physical_collatz_partial_dyadic_prefix:
+  assumes "n \<le> m"
+  shows "(physical_collatz ^^ n) (2^m) = 2^(m-n)"
+proof -
+  have split: "m = n + (m-n)" using assms by arith
+  have source: "(2::nat)^m = 2^n * 2^(m-n)"
+    using split by (metis power_add)
+  show ?thesis
+    using physical_collatz_removes_dyadic_prefix[of n "2^(m-n)"] source by simp
+qed
+
+theorem physical_collatz_distinct_time_actions:
+  assumes "n < m"
+  shows "(physical_collatz ^^ n) (2^m) \<noteq> (physical_collatz ^^ m) (2^m)"
+proof -
+  have left: "(physical_collatz ^^ n) (2^m) = 2^(m-n)"
+    by (rule physical_collatz_partial_dyadic_prefix) (use assms in arith)
+  have right: "(physical_collatz ^^ m) (2^m) = 1"
+    using physical_collatz_removes_dyadic_prefix[of m 1] by simp
+  have positive: "0 < m-n" using assms by arith
+  have "1 < (2::nat)^(m-n)"
+    by (rule one_less_power[OF _ positive]) simp
+  then show ?thesis using left right by arith
+qed
+
 lemma physical_collatz_three_cycle:
   "(physical_collatz ^^ 3) 1 = 1"
 proof -
@@ -404,7 +433,8 @@ ML \<open>
   val _ = if null (Thm_Deps.all_oracles
     @{thms cylinder_prefix_projection_identity cylinder_prefix_projection_then strip_twos_spec collatz_source_split_exact
       collatz_accelerated_target_odd odd_source_has_positive_valuation
-      physical_collatz_removes_dyadic_prefix physical_collatz_three_cycle
+      physical_collatz_removes_dyadic_prefix physical_collatz_partial_dyadic_prefix
+      physical_collatz_distinct_time_actions physical_collatz_three_cycle
       physical_collatz_power_two_cycle_tail source_split_embeds_physical_ticks
       collatz_source_derived_cylinder_step
       cylinder_prefix_then_identity cylinder_prefix_then_associative

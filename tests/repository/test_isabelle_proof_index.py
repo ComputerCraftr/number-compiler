@@ -131,6 +131,65 @@ def test_index_accepts_unregistered_theory_reached_from_registered_root(
     assert helper["session"] is None
 
 
+def test_index_validates_ml_file_targets(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    directory = _fixture(tmp_path, monkeypatch)
+    sample = directory / "Sample.thy"
+    sample.write_text(
+        sample.read_text().replace("\nend\n", '\nML_file "missing.ML"\nend\n')
+    )
+    with pytest.raises(ValueError, match="missing ML_file target"):
+        index.build_index()
+
+
+def test_index_rejects_ml_file_targets_outside_theory_root(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    directory = _fixture(tmp_path, monkeypatch)
+    sample = directory / "Sample.thy"
+    sample.write_text(
+        sample.read_text().replace("\nend\n", '\nML_file "../../outside.ML"\nend\n')
+    )
+    with pytest.raises(ValueError, match="ML_file target escapes theory root"):
+        index.build_index()
+
+
+def test_ml_file_inventory_resolves_relative_to_theory_source(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    directory = _fixture(tmp_path, monkeypatch)
+    (directory / "child").mkdir()
+    (directory / "helper.ML").write_text("val helper = ()\n")
+    (directory / "child" / "helper.ML").write_text("val other = ()\n")
+    (directory / "ROOT").write_text(
+        'session Example in child = HOL +\n  theories\n    "../Sample"\n'
+    )
+    sample = directory / "Sample.thy"
+    sample.write_text(
+        sample.read_text().replace("\nend\n", '\nML_file "helper.ML"\nend\n')
+    )
+    rows = index.build_index()["ml_files"]
+    assert isinstance(rows, list)
+    by_path = {row["path"]: row for row in rows}
+    assert by_path["proofs/isabelle/helper.ML"]["referenced_by"] == ("Sample",)
+    assert by_path["proofs/isabelle/child/helper.ML"]["referenced_by"] == ()
+
+
+def test_ml_file_lexer_ignores_comments_documentation_and_ml_strings() -> None:
+    source = (
+        '(* ML_file "missing.ML" *)\n'
+        'text \\<open>ML_file "missing.ML"\\<close>\n'
+        'ML \\<open>val fake = "ML_file \\"missing.ML\\"";\\<close>\n'
+    )
+    assert index._ml_file_references(source, Path("Sample.thy")) == ()
+
+
+def test_ml_file_without_a_target_is_rejected() -> None:
+    with pytest.raises(ValueError, match="unsupported ML_file target"):
+        index._ml_file_references("ML_file\n", Path("Sample.thy"))
+
+
 @pytest.mark.parametrize(
     "wrapper", ["(* {} *)", "(* outer (* {} *) *)", "text \\<open>{}\\<close>"]
 )
@@ -213,6 +272,66 @@ def test_session_path_and_malformed_declarations_fail_closed() -> None:
         syntax.parse_sessions('session Escape in "../outside" = HOL +\n')
     with pytest.raises(ValueError, match="unsupported session"):
         syntax.parse_sessions("session Good = HOL +\nsession Bad =\n")
+
+
+@pytest.mark.parametrize(
+    "entry", ("../other/Sample", "Sample ???", '""', "[condition=true] Sample")
+)
+def test_root_cannot_silently_drop_unparsed_theory_entries(entry: str) -> None:
+    with pytest.raises(ValueError, match="unsupported ROOT theory entry"):
+        syntax.parse_sessions(f"session Example = HOL +\n  theories\n    {entry}\n")
+
+
+def test_sessions_cannot_share_the_same_directory() -> None:
+    with pytest.raises(ValueError, match="duplicate Isabelle session directory"):
+        syntax.parse_sessions(
+            "session Check in shared = HOL +\n  theories\n    Check\n"
+            "session Instance in shared = Check +\n  theories\n    Instance\n"
+        )
+
+
+def test_quoted_relative_theory_path_resolves_to_its_declared_owner(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    directory = _fixture(tmp_path, monkeypatch)
+    (directory / "child").mkdir()
+    (directory / "ROOT").write_text(
+        'session Example in child = HOL +\n  theories\n    "../Sample"\n'
+    )
+    rows = index.build_index()["theories"]
+    assert isinstance(rows, list)
+    assert rows[0]["theory"] == "Sample" and rows[0]["session"] == "Example"
+
+
+@pytest.mark.parametrize("entry", ('"../Sample"', '"../../outside"'))
+def test_aliased_duplicate_and_escaping_theory_paths_are_rejected(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, entry: str
+) -> None:
+    directory = _fixture(tmp_path, monkeypatch)
+    (directory / "child").mkdir()
+    with (directory / "ROOT").open("a") as out:
+        out.write(f"session Alias in child = HOL +\n  theories\n    {entry}\n")
+    with pytest.raises(ValueError, match="registered in|escapes theory root"):
+        index.build_index()
+
+
+def test_canonical_session_directory_aliases_are_rejected(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    directory = _fixture(tmp_path, monkeypatch)
+    (directory / "child").mkdir()
+    try:
+        (directory / "alias").symlink_to("child", target_is_directory=True)
+    except OSError as error:
+        pytest.skip(f"cannot create session-directory symlink: {error}")
+    (directory / "ROOT").write_text(
+        'session Example in child = HOL +\n  theories\n    "../Sample"\n'
+        "session Alias in alias = HOL +\n"
+    )
+    with pytest.raises(
+        ValueError, match="duplicate canonical Isabelle session directory"
+    ):
+        index.build_index()
 
 
 def test_quoted_comment_markers_leave_later_theorems_visible() -> None:
@@ -376,8 +495,8 @@ def test_imported_helper_requires_oracle_audit(
 @pytest.mark.parametrize(
     "source",
     [
-        "session A = B +\nsession B = A +\n",
-        "session A = HOL +\n  sessions B\nsession B = HOL +\n  sessions A\n",
+        "session A in a = B +\nsession B in b = A +\n",
+        "session A in a = HOL +\n  sessions B\nsession B in b = HOL +\n  sessions A\n",
         "session A = A +\n",
     ],
 )
@@ -402,6 +521,32 @@ def test_collatz_hensel_owner_has_no_reverse_ancestry() -> None:
     assert local["Temporal_Clock_Jumps"].parent == "Reverse_Residuals"
 
 
+def test_structural_future_instance_avoids_legacy_checked_instance() -> None:
+    sessions = {
+        session.name: session
+        for session in syntax.parse_sessions((index.ISABELLE / "ROOT").read_text())
+    }
+    assert "Comma_Fast_Kernel_Smoke" in sessions["Comma_Fast_Control"].theories
+    structural = sessions["Comma_Future_Structural_Instance"]
+    assert structural.parent == "Comma_Decade_Summary_Checked"
+    assert (
+        sessions["Comma_Decade_Summary_Checked"].parent == "Comma_Decade_Summary_Kernel"
+    )
+    assert sessions["Comma_Decade_Summary_Kernel"].parent == "Comma_Decade_Orbit"
+    assert sessions["Comma_Future_Source"].parent == "Comma_Future_Structural_Check"
+    assert "Comma_Future_Structural_Check" in structural.dependencies
+    assert "Comma_Decade_Summary_Checked" not in structural.dependencies
+    ancestors = _session_ancestors(sessions, "Comma_Future_Structural_Instance")
+    assert {
+        "Comma_Future_Structural_Instance",
+        "Comma_Future_Structural_Check",
+        "Comma_Decade_Summary_Checked",
+        "Comma_Decade_Summary_Transport",
+        "Comma_Future_Rank_Data",
+    } <= ancestors
+    assert "Comma_Future_Checked_Instance" not in ancestors
+
+
 def _session_ancestors(sessions: dict[str, syntax.Session], target: str) -> set[str]:
     ancestors: set[str] = set()
     pending = [target]
@@ -413,3 +558,58 @@ def _session_ancestors(sessions: dict[str, syntax.Session], target: str) -> set[
         session = sessions[name]
         pending.extend((session.parent, *session.dependencies))
     return ancestors
+
+
+@pytest.mark.parametrize(
+    ("target", "required"),
+    [
+        (
+            "Comma_Return_Source",
+            {"Comma_Return_Induction", "Comma_Return_Instance", "Comma_Future_Source"},
+        ),
+        ("Comma_Branch_Induction", {"Comma_Future_Check"}),
+        ("Comma_Branch_Instance", {"Comma_Branch_Induction", "Comma_Return_Induction"}),
+        ("Comma_Branch_Period", {"Comma_Branch_Induction", "Comma_Return_Induction"}),
+        ("Comma_Selected_Return_Blocks", {"Comma_Branch_Period"}),
+        (
+            "Comma_Branch_Period_Instance",
+            {"Comma_Branch_Period", "Comma_Branch_Instance", "Comma_Return_Instance"},
+        ),
+    ],
+)
+def test_local_induction_does_not_require_global_rank_or_summary_instances(
+    target: str, required: set[str]
+) -> None:
+    sessions = {
+        row.name: row
+        for row in syntax.parse_sessions((index.ISABELLE / "ROOT").read_text())
+    }
+    ancestors = _session_ancestors(sessions, target)
+    assert required <= ancestors
+    assert ancestors.isdisjoint(
+        {
+            "Comma_Future_Rank_Data",
+            "Comma_Decade_Summary_Checked",
+            "Comma_Future_Structural_Instance",
+            "Comma_Future_Checked_Instance",
+            "Comma_Forest_Legacy",
+        }
+    )
+
+
+def test_period_inherits_checked_return_instead_of_replaying_imported_setup() -> None:
+    sessions = {
+        row.name: row
+        for row in syntax.parse_sessions((index.ISABELLE / "ROOT").read_text())
+    }
+    # A `sessions` dependency grants theory access but reloads its ML setup;
+    # only the parent heap preserves the concrete producer's checked catalog.
+    assert sessions["Comma_Branch_Period_Instance"].parent == "Comma_Return_Instance"
+    assert sessions["Comma_Return_Instance"].parent == "Comma_Return_Engine"
+    for relative in (
+        "comma_return_instance/Comma_Return_Instance.thy",
+        "comma_branch_instance/Comma_Branch_Instance.thy",
+    ):
+        path = index.ISABELLE / relative
+        _, imports = syntax.parse_theory_header(path.read_text(), path)
+        assert "Comma_Return_Engine.Comma_Return_Engine" in imports

@@ -61,8 +61,8 @@ def test_decimal_output_uses_charged_shared_radix_stream() -> None:
 
 
 @pytest.mark.parametrize(
-    ("index", "copies", "source", "first", "second"),
-    ((22, 1, 1024, 1484, 1944), (201, 2, 10057, 10977, 11897)),
+    ("index", "copies", "source", "first", "second", "prior_compatible_hit"),
+    ((22, 1, 1024, 1484, 1944, 0), (201, 2, 10057, 10977, 11897, 1)),
 )
 def test_interior_cycle_relative_reuse_rebinds_the_exact_occurrence(
     index: int,
@@ -70,6 +70,7 @@ def test_interior_cycle_relative_reuse_rebinds_the_exact_occurrence(
     source: int,
     first: int,
     second: int,
+    prior_compatible_hit: int,
 ) -> None:
     term = CommaTerm(index)
     assert term.materialize() == source
@@ -77,6 +78,14 @@ def test_interior_cycle_relative_reuse_rebinds_the_exact_occurrence(
     evaluated = term.ledger.counters["comma_evaluated_transitions"]
     before = term.ledger.counters.get("source_image_relative_transfer_hits", 0)
     first_image = term.scheduler.source_image(term.adapter, term._source, action)
+    after_first = term.ledger.counters.get("source_image_relative_transfer_hits", 0)
+    first_application_hits = after_first - before
+    # A source-compatible earlier occurrence may already have supplied this
+    # exact relative transfer, especially after complete-cycle IDs are
+    # canonicalized by phase coset. Count the second application separately.
+    rebindings_before_second = term.ledger.counters.get(
+        "comma_relative_cycle_rebindings", 0
+    )
     second_image = term.scheduler.source_image(term.adapter, first_image, action)
     first_payload = cast(
         CommaImagePayload, term.scheduler._source_image_core().view(first_image).payload
@@ -87,8 +96,13 @@ def test_interior_cycle_relative_reuse_rebinds_the_exact_occurrence(
     )
     assert first_payload == CommaImagePayload(first, index + 10 * copies)
     assert second_payload == CommaImagePayload(second, index + 20 * copies)
-    assert term.ledger.counters["source_image_relative_transfer_hits"] == before + 1
-    assert term.ledger.counters["comma_relative_cycle_rebindings"] == 1
+    after_second = term.ledger.counters["source_image_relative_transfer_hits"]
+    second_application_hits = after_second - after_first
+    assert first_application_hits == prior_compatible_hit
+    assert second_application_hits == 1
+    assert term.ledger.counters["comma_relative_cycle_rebindings"] == (
+        rebindings_before_second + 1
+    )
     assert term.ledger.counters["comma_evaluated_transitions"] == evaluated
     huge = term.arena.cycles(1, source % 10, 10**20)
     with pytest.raises(ValueError, match="unadmitted seam"):

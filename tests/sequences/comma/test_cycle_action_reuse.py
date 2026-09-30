@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from math import gcd
+
 import pytest
 
 from number_compiler.arithmetic.fields.consumer_pullback import PrefixSafety
@@ -10,8 +12,8 @@ from number_compiler.resources.temporal_diagnostics import (
     collect_temporal_diagnostics_snapshot,
 )
 from number_compiler.sequences.comma import cycle_actions
-from number_compiler.sequences.comma.action_arena import CommaActionArena
-from number_compiler.sequences.comma.power import CommaTerm
+from number_compiler.sequences.comma.action_arena import CommaActionArena, _Action
+from number_compiler.sequences.comma.power import CommaImagePayload, CommaTerm
 from tests.support.comma_oracles import literal_children
 
 
@@ -63,6 +65,43 @@ def test_parent_lookup_precedes_any_cold_composition_and_children(
         .capacity_bypasses
         == 0
     )
+
+
+def test_complete_cycle_id_is_canonical_but_partial_prefix_keeps_its_phase(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    arena = CommaTerm(1, shared_cache=False).arena
+    canonical = arena.cycles(2, 0, 3)
+    rotated = arena.cycles(2, 2, 3)
+    assert canonical == rotated
+    assert arena.node(canonical).entering_digit == 0
+
+    # Equal full-period effects do not imply equal prefixes. The one-step
+    # displacement changes with the actual entering digit and remains in the
+    # action identity used for partial selection.
+    prefix_zero = arena.phase_prefix(2, 0, 1)
+    prefix_two = arena.phase_prefix(2, 2, 1)
+    assert prefix_zero != prefix_two
+    assert arena.node(prefix_zero).displacement == 2
+    assert arena.node(prefix_two).displacement == 22
+
+    # A warm one-cycle lookup must find the normalized parent before trying to
+    # rebuild even the small closed-form transfer.
+    one = arena.one_cycle(2, 0)
+
+    def forbidden(*_args: object, **_kwargs: object) -> object:
+        pytest.fail("warm one-cycle lookup recomputed the phase transfer")
+
+    monkeypatch.setattr(arena, "transfer", forbidden)
+    assert arena.one_cycle(2, 2) == one
+
+
+def test_canonical_cycle_key_rejects_a_different_extensional_effect() -> None:
+    arena = CommaTerm(1, shared_cache=False).arena
+    arena.one_cycle(1, 4)
+    forged = _Action("cycle", 10, 1, 0, 1, 461, 462)
+    with pytest.raises(ValueError, match="aliases a different effect"):
+        arena._intern(("cycle", 1, 0, 1), forged)
 
 
 def test_public_arithmetic_warm_parent_avoids_cold_constructor(
@@ -160,8 +199,9 @@ def test_complete_cycle_rotation_shares_summary_but_retains_receiving_phase(
     warm = CommaTerm(1)
     after = warm.arena.node(warm.arena.cycles(leading, receiving_digit, 11))
     assert receiving_digit != digit
-    assert after.entering_digit == receiving_digit
-    assert before.entering_digit == digit
+    canonical_phase = digit % gcd(leading, 10)
+    assert after.entering_digit == canonical_phase
+    assert before.entering_digit == canonical_phase
     assert (after.steps, after.displacement, after.maximum_guard) == (
         before.steps,
         before.displacement,
@@ -169,9 +209,74 @@ def test_complete_cycle_rotation_shares_summary_but_retains_receiving_phase(
     )
     counters = warm.ledger.counters
     assert counters["comma_hashlife_semantic_process_hits"] == 1
+    assert counters["comma_hashlife_semantic_exact_hits"] == 1
+    assert counters["comma_hashlife_semantic_transported_hits"] == 0
     assert counters["comma_hashlife_coefficient_compositions"] == 0
     assert counters["comma_hashlife_semantic_applied_hits"] == 0
     assert cache.stats().active_leases == 0
+
+
+def test_cycle_occurrence_reuse_rebinds_another_phase_in_the_same_coset() -> None:
+    term = CommaTerm(22, shared_cache=False)
+    assert term.materialize() == 1024
+    source = term._source
+    action = term.arena.cycles(1, 4, 1)
+    first_image = term.scheduler.source_image(term.adapter, source, action)
+
+    prefix = term.arena.phase_prefix(1, 4, 1)
+    shifted_source = term.scheduler.source_image(term.adapter, source, prefix)
+    shifted_view = term.scheduler._source_image_core().view(shifted_source)
+    shifted_payload = shifted_view.payload
+    assert type(shifted_payload) is CommaImagePayload
+    assert shifted_payload.value == 1065
+    shifted_action = term.arena.cycles(1, 5, 1)
+    assert shifted_action == action
+
+    # Complete-cycle identity is phase-coset invariant, but every partial
+    # observation must use the receiving occurrence's actual digit. Compare
+    # all proper prefixes against independent literal children.
+    for prefix_steps in range(1, 10):
+        prefix = term.arena.phase_prefix(1, 5, prefix_steps)
+        prefix_image = term.scheduler.source_image(term.adapter, shifted_source, prefix)
+        prefix_payload = term.scheduler._source_image_core().view(prefix_image).payload
+        assert type(prefix_payload) is CommaImagePayload
+        literal = shifted_payload.value
+        for _ in range(prefix_steps):
+            children = literal_children(literal)
+            assert len(children) == 1
+            literal = children[0]
+        assert prefix_payload.value == literal
+
+    relative_before = term.ledger.counters.get("source_image_relative_transfer_hits", 0)
+    evaluated_before = term.ledger.counters["comma_evaluated_transitions"]
+    second_image = term.scheduler.source_image(
+        term.adapter, shifted_source, shifted_action
+    )
+    second = term.scheduler._source_image_core().view(second_image)
+    second_payload = second.payload
+    assert type(second_payload) is CommaImagePayload
+    assert second_payload.value == 1525
+    assert second_payload.absolute_index == shifted_payload.absolute_index + 10
+    # Each comma occurrence is a fresh provider source, so extent is measured
+    # from this receiving occurrence rather than inherited absolute history.
+    assert second.binding.extent == 10
+    assert second.binding.source == shifted_source
+    assert term.ledger.counters["source_image_relative_transfer_hits"] == (
+        relative_before + 1
+    )
+    assert term.ledger.counters["comma_relative_cycle_rebindings"] == 1
+    assert term.ledger.counters["comma_evaluated_transitions"] == evaluated_before
+    # The scheduler reports the actual transported application separately
+    # from semantic action interning and retrieval.
+    diagnostics = collect_temporal_diagnostics_snapshot(term.ledger)
+    assert diagnostics.application.transported_hits == relative_before + 1
+    # The cached result was consumed only after exact source/certificate and
+    # strict headroom admission; no absolute index or endpoint was copied.
+    first = term.scheduler._source_image_core().view(first_image)
+    first_payload = first.payload
+    assert type(first_payload) is CommaImagePayload
+    assert first_payload.value == 1484
+    assert first_payload.absolute_index == 32
 
 
 def test_distinct_cycle_cosets_keep_distinct_displacements(

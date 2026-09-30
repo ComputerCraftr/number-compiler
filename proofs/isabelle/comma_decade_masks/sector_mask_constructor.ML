@@ -4,6 +4,8 @@
 structure Comma_Sector_Mask_Constructor =
 struct
   structure Key = Table(type key = int * int val ord = prod_ord int_ord int_ord)
+  structure Rule_Key = Table(type key = int * term
+    val ord = prod_ord int_ord Term_Ord.fast_term_ord)
   type part = {outcome: term, bits: term, value: IntInf.int, width: int, theorem: thm}
   type row = {source: int * int, rows: term, count: int, parts: part list, theorem: thm}
   datatype destination = Stop | Cross of thm | Child of int * int * thm
@@ -48,7 +50,7 @@ struct
       val scheduled_omissions = Unsynchronized.ref 0
       val omission_budget = Unsynchronized.ref 0
       val injected_omissions = Unsynchronized.ref 0
-      val template_memo = Unsynchronized.ref (Inttab.empty: thm Inttab.table)
+      val template_memo = Unsynchronized.ref (Rule_Key.empty: thm Rule_Key.table)
       val template_attempts = Unsynchronized.ref 0
       val template_hits = Unsynchronized.ref 0
       val template_failures = Unsynchronized.ref 0
@@ -85,10 +87,12 @@ struct
       fun instantiate bindings theorem = Drule.infer_instantiate ctxt
         (map (fn (name,value) => ((name,0),Thm.cterm_of ctxt value)) bindings) theorem
       (* At most four checked rule templates per leading sector. Normalize
-         Suc/numeral syntax before inserting any 924-bit guard or source offset. *)
-      fun rule_template f tag theorem =
-        let val key=4*(f-1)+tag in
-          case Inttab.lookup (!template_memo) key of
+         Suc/numeral syntax before inserting any 924-bit guard or source offset.
+         The statement, including its assumptions and types, owns the template;
+         a caller-selected numeric tag cannot authorize another rule. *)
+      fun rule_template f theorem =
+        let val key=(f,Thm.prop_of theorem) in
+          case Rule_Key.lookup (!template_memo) key of
             SOME template => (template_hits := !template_hits+1; template)
           | NONE =>
               let
@@ -99,7 +103,7 @@ struct
                   (instantiate [("f",nat f)] theorem)) ()
                 val _ = if Exn.is_exn result then template_failures := !template_failures+1 else ()
                 val template = Exn.release result
-                val _ = template_memo := Inttab.update (key,template) (!template_memo)
+                val _ = template_memo := Rule_Key.update (key,template) (!template_memo)
               in template end
         end
       fun evaluate expression = (step (); certify
@@ -277,21 +281,21 @@ struct
               val phase = instantiate
                 [("f",nat f),("x",nat x),("period",nat period),("k",nat k),("bits",bits)]
                 @{thm comma_sector_guard_phase_checked} OF [period_fact,object guard_eq]
-              fun rule tag th = instantiate [("x",nat x),("k",nat k),("bits",bits)]
-                (rule_template f tag th)
+              fun rule th = instantiate [("x",nat x),("k",nat k),("bits",bits)]
+                (rule_template f th)
               val premises = sector @ [phase,object (#equation clause)]
             in case #destination clause of
               Stop =>
                 let val (Const(name,_),_) = strip_comb (#move clause)
-                    val (tag,th) = if name = @{const_name Comma_Fork}
-                      then (0,@{thm comma_sector_mask_fork}) else (1,@{thm comma_sector_mask_landmine})
-                in [singleton (admit (rule tag th OF premises))] end
-            | Cross fact => [singleton (admit (rule 2 @{thm comma_sector_mask_cross} OF (premises@[fact])))]
+                    val th = if name = @{const_name Comma_Fork}
+                      then @{thm comma_sector_mask_fork} else @{thm comma_sector_mask_landmine}
+                in [singleton (admit (rule th OF premises))] end
+            | Cross fact => [singleton (admit (rule @{thm comma_sector_mask_cross} OF (premises@[fact])))]
             | Child (tf,tx,fact) =>
                 let
                   val child = (case Key.lookup (!memo) (tf,tx) of SOME row => row
                     | NONE => error "Bottom-up publication lacks a checked child row")
-                  val transport_rule = rule 3 @{thm comma_sector_mask_successor_singleton}
+                  val transport_rule = rule @{thm comma_sector_mask_successor_singleton}
                   fun selected (component: part) =
                     let
                       val _ = intersection_tests := !intersection_tests + 1
@@ -457,7 +461,7 @@ struct
         intersection_tests= !intersection_tests,intersection_operand_bits= !intersection_operand_bits,
         scheduled_omissions= !scheduled_omissions,injected_omissions= !injected_omissions,
         template_attempts= !template_attempts,template_hits= !template_hits,
-        template_failures= !template_failures,template_retained=Inttab.size(!template_memo),
+        template_failures= !template_failures,template_retained=Rule_Key.size(!template_memo),
         assembly_input_rows= !assembly_input_rows,assembly_max_input_rows= !assembly_max_input_rows,
         admissions= !admissions,
         admission_milliseconds=Time.toMilliseconds (!admission_elapsed),
@@ -484,7 +488,7 @@ struct
         " sector_template_attempts=" ^ Int.toString(!template_attempts) ^
         " sector_template_hits=" ^ Int.toString(!template_hits) ^
         " sector_template_failures=" ^ Int.toString(!template_failures) ^
-        " sector_template_retained=" ^ Int.toString(Inttab.size(!template_memo)) ^
+        " sector_template_retained=" ^ Int.toString(Rule_Key.size(!template_memo)) ^
         " sector_merges=" ^ Int.toString(!merges) ^
         " sector_assembly_input_rows=" ^ Int.toString(!assembly_input_rows) ^
         " sector_assembly_max_input_rows=" ^ Int.toString(!assembly_max_input_rows) ^

@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from collections.abc import Generator, Hashable
 from dataclasses import dataclass
+from math import gcd
 from typing import cast
 
 from number_compiler.arithmetic.contracts.scoped_handles import ArenaHandle, ArenaToken
@@ -34,11 +35,11 @@ from number_compiler.sequences.comma.arithmetic import (
     comma_children,
     decimal_sector,
     phase_prefix_displacement,
-    safe_complete_cycles,
+    safe_complete_cycles_from_sector,
 )
 from number_compiler.sequences.comma.boundary_quotient import PERIOD
 
-SEMANTIC_VERSION = "comma-source-cylinder-v3"
+SEMANTIC_VERSION = "comma-source-cylinder-v4-cycle-phase-coset"
 SOURCE = 20
 FIRST_FORK_VALUE = 19_999_999_918
 # Independently checked by full nine-candidate literal enumeration. OEIS and
@@ -201,12 +202,54 @@ class _CommaImageAdapter(SourceBoundImageAdapter):
             radix=10,
         )
 
+    def _authenticated_cycle_ports(
+        self,
+        node: _Action,
+        source: SourceImageView,
+        *,
+        malformed_message: str,
+    ) -> tuple[int, int, int] | None:
+        ports = source.binding.boundary_ports
+        if len(ports) != 3 or any(type(value) is not int for value in ports):
+            raise ValueError(malformed_message)
+        leading, digit, headroom = cast(tuple[int, int, int], ports)
+        phase_class = gcd(node.leading, 10)
+        if leading != node.leading or digit % phase_class != node.entering_digit:
+            return None
+        return leading, digit, headroom
+
     def admit_source(self, source: Hashable) -> SourceImageCandidate:
         payload = self._source_payload(source)
-        return self._candidate(payload.value, payload.absolute_index, 0)
+        if type(source) is CommaSource:
+            return self._candidate(payload.value, payload.absolute_index, 0)
+        if type(source) is SourceImageID:
+            record = self.scheduler._source_image_core().resolve(source)
+            return SourceImageCandidate(
+                payload,
+                0,
+                record.binding.boundary_ports,
+                orientation=record.binding.orientation,
+                radix=record.binding.radix,
+                precision=record.binding.precision,
+            )
+        occurrence = cast(CommaOccurrenceID, source)
+        owner = self._term
+        if owner is None:
+            raise ValueError("comma adapter has no source owner")
+        occurrence_record = owner._occurrences[occurrence.local_id]
+        image = self.scheduler._source_image_core().resolve(occurrence_record.image)
+        return SourceImageCandidate(
+            payload,
+            0,
+            image.binding.boundary_ports,
+            orientation=image.binding.orientation,
+            radix=image.binding.radix,
+            precision=image.binding.precision,
+        )
 
     def _apply(self, node: _Action, source: SourceImageView) -> SourceImageCandidate:
         payload = cast(CommaImagePayload, source.payload)
+        output_ports: tuple[int, int, int] | None = None
         if node.kind == "identity":
             return self._candidate(
                 payload.value, payload.absolute_index, source.binding.extent
@@ -297,22 +340,55 @@ class _CommaImageAdapter(SourceBoundImageAdapter):
                 + 6 * node.cycles.bit_length()
                 + 4 * node.steps.bit_length()
             )
-            transfer = self.arena.transfer(node.leading, node.entering_digit)
+            ports = self._authenticated_cycle_ports(
+                node,
+                source,
+                malformed_message="comma image lost its authenticated sector ports",
+            )
+            if ports is None or node.cycles < 1:
+                raise ValueError("comma powered action has another phase coset")
+            leading, digit, headroom = ports
+            # Validate seam safety at the actual receiving phase. The complete
+            # orbit's total displacement and maximum guard are invariant under
+            # rotation within this gcd coset, while source authority remains
+            # bound to the exact image above.
+            transfer = self.arena.transfer(node.leading, digit)
             if (
-                node.cycles < 1
-                or node.steps != node.cycles * transfer.period
+                node.steps != node.cycles * transfer.period
                 or node.displacement != node.cycles * transfer.displacement
                 or node.maximum_guard != node.displacement + int(node.leading < 9)
-                or safe_complete_cycles(payload.value, transfer, node.steps)
+                or safe_complete_cycles_from_sector(
+                    leading, digit, headroom, transfer, node.steps
+                )
                 < node.cycles
             ):
                 raise ValueError("comma powered action crosses an unadmitted seam")
             value = payload.value + node.displacement
+            output_headroom = headroom - node.displacement
+            if output_headroom <= int(leading < 9):
+                raise ValueError("comma powered output lost its strict seam margin")
+            output_ports = (leading, digit, output_headroom)
             self.ledger.bump("comma_phase_cycles", node.cycles)
             self.ledger.bump("comma_powered_image_applications")
         else:
             raise ValueError("composite comma action needs chronological children")
         self.ledger.bump("comma_operand_bit_work", value.bit_length())
+        if output_ports is not None:
+            self.arena.charge_bits(
+                value.bit_length()
+                + payload.absolute_index.bit_length()
+                + node.steps.bit_length()
+            )
+            return SourceImageCandidate(
+                CommaImagePayload(
+                    value,
+                    payload.absolute_index + node.steps,
+                    payload.certificate_version,
+                ),
+                source.binding.extent + node.steps,
+                output_ports,
+                radix=10,
+            )
         return self._candidate(
             value,
             payload.absolute_index + node.steps,
@@ -381,25 +457,34 @@ class _CommaImageAdapter(SourceBoundImageAdapter):
         if node.kind != "cycle":
             return None
         payload = cast(CommaImagePayload, source.payload)
-        self.arena.charge_bits(3 * payload.value.bit_length())
-        sector = decimal_sector(payload.value)
-        if sector.leading != node.leading or sector.digit != node.entering_digit:
+        ports = self._authenticated_cycle_ports(
+            node,
+            source,
+            malformed_message="comma image lost its authenticated sector ports",
+        )
+        if ports is None:
             return None
+        leading, digit, headroom = ports
+        phase_class = gcd(node.leading, 10)
         self.arena.charge()
         self.arena.charge_bits(
-            sector.headroom.bit_length() + node.maximum_guard.bit_length()
+            leading.bit_length()
+            + digit.bit_length()
+            + headroom.bit_length()
+            + node.maximum_guard.bit_length()
+            + len(payload.certificate_version) * 8
         )
         self.ledger.bump("comma_relative_guard_checks")
         # The action's normalized maximum guard covers every chronological
         # phase prefix.  A source admits the whole action exactly when the
         # strict interior margin remains positive.
-        if node.cycles < 1 or sector.headroom <= node.maximum_guard:
+        if node.cycles < 1 or headroom <= node.maximum_guard:
             return None
         return (
             payload.certificate_version,
-            sector.leading,
-            sector.digit,
-            "strict-interior-cycle-v1",
+            leading,
+            digit % phase_class,
+            "strict-interior-cycle-v2-phase-coset",
         )
 
     def transport_reuse(
@@ -415,10 +500,31 @@ class _CommaImageAdapter(SourceBoundImageAdapter):
         cached_payload = cast(CommaImagePayload, cached_source.payload)
         result_payload = cast(CommaImagePayload, cached_result.payload)
         payload = cast(CommaImagePayload, source.payload)
-        admitted = self.admitted_input_key(action, source)
+        source_ports = self._authenticated_cycle_ports(
+            node,
+            source,
+            malformed_message="comma relative transfer lost authenticated ports",
+        )
+        cached_ports = self._authenticated_cycle_ports(
+            node,
+            cached_source,
+            malformed_message="comma relative transfer lost authenticated ports",
+        )
+        if source_ports is None or cached_ports is None:
+            raise ValueError("comma relative cycle has another source or effect")
+        source_leading, source_digit, source_headroom = source_ports
+        cached_leading, cached_digit, cached_headroom = cached_ports
+        cached_output_headroom = cached_headroom - node.displacement
+        # The scheduler has authenticated both relative input keys immediately
+        # before this hook. Check the compact source binding again without
+        # rediscovering either decimal scale.
         if (
-            admitted is None
-            or admitted != self.admitted_input_key(action, cached_source)
+            source_headroom <= node.maximum_guard
+            or cached_headroom <= node.maximum_guard
+            or cached_output_headroom <= int(node.leading < 9)
+            or cached_result.binding.boundary_ports
+            != (cached_leading, cached_digit, cached_output_headroom)
+            or payload.certificate_version != cached_payload.certificate_version
             or result_payload.value != cached_payload.value + node.displacement
             or result_payload.absolute_index
             != cached_payload.absolute_index + node.steps
@@ -429,11 +535,24 @@ class _CommaImageAdapter(SourceBoundImageAdapter):
         self.ledger.bump("comma_relative_cycle_rebindings")
         self.ledger.bump("comma_phase_cycles", node.cycles)
         self.ledger.bump("comma_powered_image_applications")
-        self.arena.charge_bits(value.bit_length())
-        return self._candidate(
-            value,
-            payload.absolute_index + node.steps,
+        output_headroom = source_headroom - node.displacement
+        if output_headroom <= int(node.leading < 9):
+            raise ValueError("comma relative result lost its strict seam margin")
+        self.arena.charge_bits(
+            value.bit_length()
+            + payload.absolute_index.bit_length()
+            + node.steps.bit_length()
+            + output_headroom.bit_length()
+        )
+        return SourceImageCandidate(
+            CommaImagePayload(
+                value,
+                payload.absolute_index + node.steps,
+                payload.certificate_version,
+            ),
             source.binding.extent + node.steps,
+            (source_leading, source_digit, output_headroom),
+            radix=10,
         )
 
     def project(
@@ -641,7 +760,13 @@ class CommaTerm:
             self.arena.charge_bits(8 * value.bit_length() + 4 * remaining.bit_length())
             sector = decimal_sector(value)
             transfer = self.arena.transfer(sector.leading, sector.digit)
-            cycles = safe_complete_cycles(value, transfer, remaining)
+            cycles = safe_complete_cycles_from_sector(
+                sector.leading,
+                sector.digit,
+                sector.headroom,
+                transfer,
+                remaining,
+            )
             if cycles:
                 try:
                     action, reused = self.arena.cycle_request(

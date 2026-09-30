@@ -229,6 +229,29 @@ class LedgerDict(_StoreSerializationBoundary, MutableMapping[K, V]):
         self._check(len(self) + int(key not in self))
         self._data[key] = value
 
+    def _rollback_unpublished(self, key: K, expected: V) -> bool:
+        """Remove one exact object inserted by a failed publication transaction.
+
+        Normal write-once mutation rules remain unchanged. The caller must
+        still hold the reservation made before insertion; this method only
+        releases that entry when the current value is the exact object it
+        attempted to publish. It also handles a backing-store hook that raises
+        after insertion but before ``__setitem__`` returns.
+        """
+        if not self.ledger.is_factory_container(self):
+            raise RuntimeError("retained stores require their ledger factory")
+        if not self.write_once:
+            raise TypeError("unpublished rollback requires a write-once mapping")
+        try:
+            current = self._data[key]
+        except KeyError:
+            return False
+        if current is not expected:
+            raise RuntimeError("unpublished rollback found a different object")
+        del self._data[key]
+        self.ledger.release(self.owner, entries=1, nodes=self.nodes_per_entry)
+        return True
+
     def __delitem__(self, key: K) -> None:
         if self.write_once:
             raise TypeError("canonical mapping entries cannot be deleted")

@@ -22,7 +22,7 @@ def _side_values(text: str) -> list[int]:
 def test_rank_default_output_has_concrete_check_owner() -> None:
     assert generator.DEFAULT_OUTPUT == (
         isabelle_root(Path(__file__).resolve().parents[3])
-        / "comma_future_checked/Comma_Rank_Data.thy"
+        / "comma_future_rank_data/Comma_Rank_Data.thy"
     )
 
 

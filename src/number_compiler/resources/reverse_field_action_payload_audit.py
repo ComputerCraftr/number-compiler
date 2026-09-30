@@ -82,6 +82,7 @@ def audit_reverse_field_action_root(
     from number_compiler.arithmetic.automata.symmetry_powering import ActionTransform
     from number_compiler.arithmetic.carry.carry_monoid import compose_carry_fn
     from number_compiler.arithmetic.contracts.scoped_handles import ArenaToken
+    from number_compiler.arithmetic.contracts.semantic_identity import SemanticIdentity
     from number_compiler.hashlife.actions.field_actions import FieldCellActionID
     from number_compiler.sequences.reverse_add.coordinate_program import (
         ReverseCoordinateProgram,
@@ -93,6 +94,9 @@ def audit_reverse_field_action_root(
         ReverseFieldAction,
         ReverseFieldActionArena,
         ReverseGeometry,
+    )
+    from number_compiler.sequences.reverse_add.semantic_identity_cache import (
+        build_radial_identity,
     )
 
     approved: set[int] = set()
@@ -261,6 +265,18 @@ def audit_reverse_field_action_root(
                 root._witness_owner,
                 root._witnesses,
                 "reverse_action_construction_witness",
+                False,
+            ),
+            (
+                root._semantic_identity_owner,
+                root._semantic_identities,
+                "reverse_action_semantic_identity",
+                True,
+            ),
+            (
+                root._semantic_identity_issued_owner,
+                root._semantic_identity_issued,
+                "reverse_action_semantic_identity_authority",
                 False,
             ),
         )
@@ -443,6 +459,65 @@ def audit_reverse_field_action_root(
                 invalid.add((root._action_key_owner, id(action_key)))
                 actions_valid = False
         all_valid &= actions_valid
+
+        identities_valid = (
+            len(root._semantic_identities)
+            == len(root._semantic_identity_issued)
+            <= len(root._actions)
+        )
+        for identity_source, record in root._semantic_identities.items():
+            valid = (
+                action_handle(identity_source)
+                and type(record) is tuple
+                and root._semantic_identity_issued.get(identity_source) is record
+            )
+            try:
+                if not valid:
+                    raise TypeError("invalid reverse semantic identity cache entry")
+                (
+                    source,
+                    action_seal,
+                    radial_seal,
+                    radial_identity,
+                    digest,
+                    behavior,
+                ) = record
+                action = action_record(identity_source)
+                expected_identity = build_radial_identity(action.radial)
+                valid &= (
+                    type(source) is FieldCellActionID
+                    and action_handle(source)
+                    and source == identity_source
+                    and type(action_seal) is int
+                    and action_seal == id(action)
+                    and type(radial_seal) is tuple
+                    and len(radial_seal) == 2
+                    and type(radial_seal[0]) is int
+                    and type(radial_seal[1]) is int
+                    and radial_seal == (action.radial.no_growth, action.radial.growth)
+                    and type(radial_identity) is SemanticIdentity
+                    and type(digest) is str
+                    and radial_identity.digest == digest
+                    and type(behavior) is tuple
+                    and radial_identity.behavior is behavior
+                    and radial_identity == expected_identity
+                )
+            except (TypeError, ValueError, IndexError, KeyError, AttributeError):
+                valid = False
+            if valid:
+                approved.update(
+                    (
+                        id(identity_source),
+                        id(record),
+                        id(radial_identity),
+                        id(digest),
+                        id(behavior),
+                    )
+                )
+            else:
+                invalid.add((root._semantic_identity_owner, id(record)))
+                identities_valid = False
+        all_valid &= identities_valid
 
         def composition_valid(key: object, result: object) -> bool:
             if (

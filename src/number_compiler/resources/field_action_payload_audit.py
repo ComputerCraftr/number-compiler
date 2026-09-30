@@ -89,6 +89,7 @@ def audit_field_action_payloads(ledger: ResourceLedger) -> FieldActionPayloadAud
 
     containers = dict(ledger.iter_containers())
     container_owners = {id(value): owner for owner, value in containers.items()}
+    inventory = {item.owner: item for item in ledger.inventory()}
     approved: set[int] = set(scoped_approved)
     invalid: set[tuple[int, int]] = set(scoped_invalid)
     for root in ledger.iter_execution_roots():
@@ -520,10 +521,93 @@ def audit_field_action_payloads(ledger: ResourceLedger) -> FieldActionPayloadAud
             if all_valid:
                 approved.update(id(value) for value in collatz_local_stores)
         elif type(root) is CollatzRuntimeProgramArena:
-            program_stores = root._nodes, root._keys, root._compositions
+            program_stores = (
+                root._nodes,
+                root._keys,
+                root._compositions,
+                root._semantic_identities,
+                root._semantic_identity_authority,
+            )
             all_valid = root.ledger is ledger and all(
                 id(value) in container_owners for value in program_stores
             )
+            identity_row = inventory.get(root._identity_owner)
+            authority_row = inventory.get(root._identity_authority_owner)
+            all_valid &= (
+                identity_row is not None
+                and identity_row.role == "semantic_identity_cache"
+                and identity_row.entries == len(root._semantic_identities)
+                and identity_row.nodes == root._identity_storage_nodes
+                and authority_row is not None
+                and authority_row.role == "semantic_identity_cache_authority"
+                and authority_row.entries == len(root._semantic_identity_authority)
+                and authority_row.nodes == 0
+                and len(root._semantic_identities)
+                == len(root._semantic_identity_authority)
+            )
+            for identity_key, identity_record in root._semantic_identities.items():
+                valid = (
+                    type(identity_key) is tuple
+                    and len(identity_key) == 2
+                    and type(identity_key[0]) is str
+                    and type(identity_key[1]) is int
+                    and identity_key[0]
+                    in {
+                        "root",
+                        "affine",
+                        "output",
+                        "physical-tick",
+                        "valuation",
+                        "frame",
+                    }
+                    and identity_key[1] >= 0
+                    and root._semantic_identity_authority.get(identity_key)
+                    is identity_record
+                    and type(identity_record) is tuple
+                    and len(identity_record) == 4
+                )
+                try:
+                    identity, digest, behavior, exponent = identity_record
+                    if type(behavior) is not tuple or len(behavior) != 3:
+                        raise ValueError("malformed Collatz identity behavior")
+                    descriptor = behavior[2]
+                    if type(descriptor) is not tuple or len(descriptor) != 3:
+                        raise ValueError("malformed Collatz exponent descriptor")
+                    limbs = descriptor[2]
+                    valid &= (
+                        type(identity) is SemanticIdentity
+                        and type(digest) is str
+                        and identity.digest == digest
+                        and identity.behavior is behavior
+                        and type(exponent) is int
+                        and exponent == identity_key[1]
+                        and type(behavior) is tuple
+                        and len(behavior) == 3
+                        and behavior[0] == "collatz-runtime-program-v2-binary-exponent"
+                        and behavior[1] == identity_key[0]
+                        and type(descriptor) is tuple
+                        and len(descriptor) == 3
+                        and descriptor[0] == "exact-exponent-u64-v1"
+                        and descriptor[1] == exponent.bit_length()
+                        and type(limbs) is tuple
+                        and all(
+                            type(limb) is int and 0 <= limb < 1 << 64 for limb in limbs
+                        )
+                        and sum(
+                            limb << (64 * index) for index, limb in enumerate(limbs)
+                        )
+                        == exponent
+                    )
+                    identity.validate()
+                except (TypeError, ValueError, IndexError, KeyError, AttributeError):
+                    valid = False
+                if valid:
+                    approved.update(
+                        (id(identity_key), id(identity_record), id(identity))
+                    )
+                else:
+                    invalid.add((root._identity_owner, id(identity_key)))
+                    all_valid = False
             for index, runtime_program in enumerate(root._nodes):
                 valid = type(runtime_program) is CollatzRuntimeProgram
                 stored_handle = None

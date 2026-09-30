@@ -32,6 +32,7 @@ from number_compiler.hashlife.actions.field_actions import (
 )
 from number_compiler.hashlife.actions.lazy_compiler import LazyCompiler
 from number_compiler.resources.ledger import ResourceLedger
+from number_compiler.resources.stores import LedgerDict
 from number_compiler.sequences.reverse_add.compilation import compile_reverse_pair_power
 from number_compiler.sequences.reverse_add.coordinate_program import (
     ReverseCoordinateProgramArena,
@@ -133,6 +134,209 @@ def test_reverse_field_composition_is_associative_and_chronological() -> None:
         expected.innovation,
     )
     assert arena.action_children(left) == (arena.compose(a, b), c)
+
+
+def test_reverse_semantic_identity_memo_hits_after_validating_action_handle(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from number_compiler.arithmetic.contracts.semantic_identity import SemanticIdentity
+
+    arena = _arena()
+    action = _atom(
+        arena,
+        "m",
+        growth=1,
+        forward=CarryFn.ID,
+        backward=CarryFn.ID,
+    )
+    identity = arena.semantic_identity(action)
+    after_cold = arena.ledger.snapshot()
+    assert (
+        after_cold.counters["reverse_field_action_semantic_identity_cache_misses"] == 1
+    )
+    assert (
+        after_cold.counters["reverse_field_action_semantic_identity_publications"] == 1
+    )
+    assert (
+        after_cold.counters["reverse_field_action_identity_radial_decimal_digit_work"]
+        > 0
+    )
+    retained_bytes = after_cold.counters[
+        "reverse_field_action_identity_retained_payload_bytes"
+    ]
+
+    def forbidden(*_args: object, **_kwargs: object) -> str:
+        pytest.fail("warm reverse semantic identity recomputed its digest")
+
+    monkeypatch.setattr(SemanticIdentity, "_canonical_digest", forbidden)
+    assert arena.semantic_identity(action) is identity
+    after_warm = arena.ledger.snapshot()
+    assert after_warm.counters["reverse_field_action_semantic_identity_cache_hits"] == 1
+    assert (
+        after_warm.counters["reverse_field_action_identity_radial_decimal_digit_work"]
+        == after_cold.counters[
+            "reverse_field_action_identity_radial_decimal_digit_work"
+        ]
+    )
+    assert (
+        after_warm.counters["reverse_field_action_identity_retained_payload_bytes"]
+        == retained_bytes
+    )
+    assert (after_warm.entries, after_warm.nodes) == (
+        after_cold.entries,
+        after_cold.nodes,
+    )
+
+
+def test_reverse_semantic_identity_cache_seals_exact_radial_coordinates() -> None:
+    from number_compiler.resources.field_action_payload_audit import (
+        audit_field_action_payloads,
+    )
+
+    arena = _arena()
+    reference = _atom(
+        arena,
+        "r",
+        growth=1,
+        forward=CarryFn.ID,
+        backward=CarryFn.ID,
+    )
+    arena.semantic_identity(reference)
+    assert not audit_field_action_payloads(arena.ledger).invalid
+
+    action = arena.resolve(reference)
+    object.__setattr__(action.radial, "growth", action.radial.growth + 1)
+    with pytest.raises(
+        ValueError, match="cached reverse semantic identity lost its seal"
+    ):
+        arena.semantic_identity(reference)
+
+
+def test_reverse_semantic_identity_cache_rejects_foreign_stale_and_swapped_handles() -> (
+    None
+):
+    from number_compiler.arithmetic.contracts.semantic_identity import SemanticIdentity
+
+    arena = _arena()
+    first = _atom(
+        arena,
+        "a",
+        growth=0,
+        forward=CarryFn.ID,
+        backward=CarryFn.ID,
+    )
+    second = _atom(
+        arena,
+        "b",
+        growth=1,
+        forward=CarryFn.ID,
+        backward=CarryFn.ID,
+    )
+    arena.semantic_identity(first)
+    second_identity = arena.semantic_identity(second)
+    foreign = _arena()
+    with pytest.raises(ValueError):
+        arena.semantic_identity(foreign.identity)
+    stale = FieldCellActionID(arena.owner, arena._ACTION_KIND, len(arena._actions))
+    with pytest.raises(ValueError):
+        arena.semantic_identity(stale)
+
+    records = arena._semantic_identities
+    assert isinstance(records, LedgerDict)
+    records._data[first] = records[second]
+    with pytest.raises(
+        ValueError, match="cached reverse semantic identity lost its seal"
+    ):
+        arena.semantic_identity(first)
+    assert arena.semantic_identity(second) is second_identity
+
+    action = arena.resolve(second)
+    forged_identity = SemanticIdentity(
+        "", ("reverse-centered-radial-action-v1", "no-growth:0", "growth:0")
+    )
+    forged_record = (
+        second,
+        id(action),
+        (action.radial.no_growth, action.radial.growth),
+        forged_identity,
+        forged_identity.digest,
+        forged_identity.behavior,
+    )
+    records._data[second] = forged_record
+    with pytest.raises(
+        ValueError, match="cached reverse semantic identity lost its seal"
+    ):
+        arena.semantic_identity(second)
+
+
+@pytest.mark.parametrize("after_insert", (False, True))
+def test_reverse_semantic_identity_publication_rolls_back_both_stores(
+    monkeypatch: pytest.MonkeyPatch,
+    after_insert: bool,
+) -> None:
+    from tests.support.ledger_failures import inject_write_once_failure
+
+    arena = _arena()
+    reference = _atom(
+        arena,
+        "r",
+        growth=1,
+        forward=CarryFn.ID,
+        backward=CarryFn.ID,
+    )
+    before = arena.ledger.snapshot()
+    inject_write_once_failure(
+        monkeypatch, arena._semantic_identity_issued, after_insert=after_insert
+    )
+
+    with pytest.raises(RuntimeError, match="issued-store publication failure"):
+        arena.semantic_identity(reference)
+
+    after = arena.ledger.snapshot()
+    assert (after.entries, after.nodes) == (before.entries, before.nodes)
+    assert not arena._semantic_identities
+    assert not arena._semantic_identity_issued
+
+
+def test_reverse_semantic_identity_memo_bypasses_when_optional_storage_is_full() -> (
+    None
+):
+    ledger = ResourceLedger()
+    arena = _arena(ledger=ledger)
+    before = ledger.snapshot()
+    ledger.tighten_limits(max_nodes=before.nodes, max_cache_entries=before.entries)
+
+    identity = arena.semantic_identity(arena.identity)
+
+    after = ledger.snapshot()
+    assert identity == arena.semantic_identity(arena.identity)
+    assert not arena._semantic_identities
+    assert after.counters["reverse_field_action_semantic_identity_cache_bypasses"] == 1
+    assert (after.entries, after.nodes) == (before.entries, before.nodes)
+
+
+def test_reverse_semantic_identity_keeps_geometry_in_occurrence_authority() -> None:
+    arena = _arena()
+    first = _atom(
+        arena,
+        "x",
+        growth=1,
+        forward=CarryFn.ID,
+        backward=CarryFn.ID,
+        geometry=ReverseGeometry(0, orientation=0),
+    )
+    second = _atom(
+        arena,
+        "x",
+        growth=1,
+        forward=CarryFn.ID,
+        backward=CarryFn.ID,
+        geometry=ReverseGeometry(0, orientation=1),
+    )
+
+    assert first != second
+    assert arena.semantic_identity(first) == arena.semantic_identity(second)
+    assert arena.occurrence_identity(first) != arena.occurrence_identity(second)
 
 
 @pytest.mark.algebra
