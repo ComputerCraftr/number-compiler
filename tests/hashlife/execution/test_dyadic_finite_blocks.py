@@ -3,6 +3,7 @@
 from dataclasses import replace
 
 import pytest
+from tests.support.reference_arithmetic import literal_dyadic_orbit
 
 from number_compiler.hashlife.execution.dyadic_return_images import (
     DyadicReturnImageWorkspace,
@@ -38,14 +39,9 @@ def test_all_finite_residues_match_every_branch_and_high_fiber(
             assert transient == retained
             for lift in (0, 1, (1 << 97) + 5):
                 source = residue + (lift << width)
-                value, word, odd, delta, minimum = source, 0, 0, 0, 0
-                for index in range(width):
-                    bit = value & 1
-                    word |= bit << index
-                    odd += bit
-                    delta += law.weights[bit]
-                    minimum = min(minimum, delta)
-                    value = (law.gains[bit] * value + law.offsets[bit]) // 2
+                value, word, odd, delta, minimum = literal_dyadic_orbit(
+                    source, width, law
+                )
                 transfer = transient.transfer
                 numerator = transfer.upper * source + transfer.offset
                 assert numerator % transfer.lower == 0

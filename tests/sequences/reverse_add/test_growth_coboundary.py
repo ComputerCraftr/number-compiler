@@ -4,13 +4,13 @@ from itertools import product
 
 import pytest
 
-from devtools.proofs.growth_coboundary import (
+from devtools.verification.growth_coboundary import (
     GROWTH_SYMBOLS,
     GrowthCoboundaryHalf,
     growth_symbol_value,
 )
-from devtools.proofs.reverse_geometry_context import ReverseGeometryContext
-from devtools.proofs.threshold_expressions import ThresholdExpressions
+from devtools.verification.reverse_geometry_context import ReverseGeometryContext
+from devtools.verification.threshold_expressions import ThresholdExpressions
 from number_compiler.arithmetic.carry.event_memory import carry_field, pair_step
 
 

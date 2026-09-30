@@ -2,7 +2,7 @@
 
 import pytest
 
-from devtools.proofs.block_power import apply_block_power, power_block_effect
+from devtools.verification.block_power import apply_block_power, power_block_effect
 from tests.support.reverse_pair_oracle import reference_successor
 
 

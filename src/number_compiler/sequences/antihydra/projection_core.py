@@ -28,6 +28,7 @@ from number_compiler.sequences.antihydra.projection_fragments import (
 from number_compiler.sequences.antihydra.projection_occurrences import (
     ProjectionBlockImage,
     ProjectionOccurrenceCursor,
+    ProjectionOccurrence,
     ProjectionOccurrenceID,
 )
 
@@ -153,6 +154,11 @@ class _AntihydraFragmentAdapter(SourceBoundImageAdapter):
         if self._source_token is None:
             raise RuntimeError("Antihydra fragment source authority is inactive")
         return AntihydraFragmentSourceID(self._source_token, self._source_kind, 0)
+
+    def _active_occurrence(self) -> ProjectionOccurrence:
+        if self._cursor is None or self._occurrence is None:
+            raise ValueError("Antihydra fragment lost its source occurrence")
+        return self._cursor.resolve(self._occurrence)
 
     def _context(
         self,
@@ -323,9 +329,7 @@ class _AntihydraFragmentAdapter(SourceBoundImageAdapter):
         if prior.consumed != 0 or prior.image is not None:
             raise ValueError("Antihydra primitive requires its admitted source")
         _projection, _key, block = self._context()
-        if self._cursor is None or self._occurrence is None:
-            raise ValueError("Antihydra fragment lost its source occurrence")
-        occurrence = self._cursor.resolve(self._occurrence)
+        occurrence = self._active_occurrence()
         if exact.offset != 0 or exact.width != block.width or occurrence.image is None:
             raise ValueError("Antihydra primitive requires the admitted block image")
         payload = self._handle(_FragmentRecord(block.width, occurrence.image))
@@ -371,9 +375,7 @@ class _AntihydraFragmentAdapter(SourceBoundImageAdapter):
     def finish(self, payload: AntihydraFragmentID) -> ProjectionFragment:
         record = self.resolve(payload)
         projection, key, block = self._context()
-        if self._cursor is None or self._occurrence is None:
-            raise ValueError("Antihydra fragment lost its source occurrence")
-        occurrence = self._cursor.resolve(self._occurrence)
+        occurrence = self._active_occurrence()
         image = record.image
         if (
             record.consumed != block.width

@@ -2,11 +2,11 @@
 
 from __future__ import annotations
 
+from tests.support.tile_kernel import _runtime_source
 import pytest
 
 from number_compiler.hashlife.tiles.source_root_match_memo import source_root_match
 from number_compiler.sequences.collatz.block_power import CollatzPhysicalBlockEffect
-from tests.arithmetic.contracts.test_tile_kernel import _runtime, _tile
 
 
 @pytest.mark.parametrize(
@@ -20,8 +20,9 @@ from tests.arithmetic.contracts.test_tile_kernel import _runtime, _tile
 def test_source_root_match_composes_both_alternating_phases(
     digits: tuple[int, ...], phase0: int | None, phase1: int | None
 ) -> None:
-    _ledger, tiles, adapter, action, scheduler = _runtime(CollatzPhysicalBlockEffect())
-    source = _tile(tiles, adapter, action, digits)
+    _ledger, tiles, adapter, action, scheduler, source = _runtime_source(
+        CollatzPhysicalBlockEffect(), digits
+    )
     try:
         result = source_root_match(scheduler.results, source.tile)
         assert result.phase0_first_mismatch == phase0
@@ -31,8 +32,9 @@ def test_source_root_match_composes_both_alternating_phases(
 
 
 def test_source_root_match_reuses_the_parent_before_child_work() -> None:
-    ledger, tiles, adapter, action, scheduler = _runtime(CollatzPhysicalBlockEffect())
-    source = _tile(tiles, adapter, action, (1, 0, 1, 0, 1, 0, 0, 0))
+    ledger, tiles, adapter, action, scheduler, source = _runtime_source(
+        CollatzPhysicalBlockEffect(), (1, 0, 1, 0, 1, 0, 0, 0)
+    )
     try:
         expected = source_root_match(scheduler.results, source.tile)
         evaluations = ledger.counters["collatz_source_root_match_evaluations"]

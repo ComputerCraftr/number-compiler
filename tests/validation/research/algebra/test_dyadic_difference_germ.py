@@ -249,16 +249,28 @@ def test_second_fermat_lift_is_a_real_relative_norm_preimage_not_a_product_chara
     assert fermat_second_lift_local_truth(4) == (True, (True,))
 
 
+def _assert_negative_controls(
+    found: tuple[bool, bool], certificates: tuple[bool, bool]
+) -> None:
+    assert not any(found)
+    assert not any(certificates)
+
+
+def _assert_negative_local_truth() -> None:
+    assert fermat_second_lift_local_truth(2) == (False, (False,))
+    assert fermat_second_lift_local_truth(5) == (False, (False, False))
+
+
 def test_bounded_relative_norm_search_is_fail_closed_on_negative_controls() -> None:
     f2 = fermat_second_lift_norm_search(2, coefficient_bound=4)
     f5 = fermat_second_lift_norm_search(5, coefficient_bound=4)
 
     # The finite box finds no preimage, agreeing with audit truth, but this is
     # deliberately *not* promoted to a negative certificate.
-    assert not f2.found and not f5.found
-    assert not f2.negative_certificate and not f5.negative_certificate
-    assert fermat_second_lift_local_truth(2) == (False, (False,))
-    assert fermat_second_lift_local_truth(5) == (False, (False, False))
+    _assert_negative_controls(
+        (f2.found, f5.found), (f2.negative_certificate, f5.negative_certificate)
+    )
+    _assert_negative_local_truth()
 
 
 def test_old_current_phase_order_character_is_not_the_missing_germ_bit() -> None:
@@ -360,13 +372,13 @@ def test_fixed_trace_shortcut_constructs_f3_f4_norm_witness_without_box_search()
 def test_fixed_trace_shortcut_miss_is_not_promoted_to_negative_certificate() -> None:
     f2 = fermat_fixed_trace_norm_shortcut(2)
     f5 = fermat_fixed_trace_norm_shortcut(5)
-    assert not f2.found and not f5.found
-    assert not f2.negative_certificate and not f5.negative_certificate
+    _assert_negative_controls(
+        (f2.found, f5.found), (f2.negative_certificate, f5.negative_certificate)
+    )
     # These misses agree with the bounded Fermat audit controls but remain only
     # misses of one fixed trace section, not a proof that the full norm conic
     # has no point.
-    assert fermat_second_lift_local_truth(2) == (False, (False,))
-    assert fermat_second_lift_local_truth(5) == (False, (False, False))
+    _assert_negative_local_truth()
 
 
 def test_four_auxiliary_quartic_phase_fit_fails_on_generalized_holdout_controls() -> (

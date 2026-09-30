@@ -1,5 +1,8 @@
 """Primitive summary admission and public generic midpoint boundaries."""
 
+from tests.support.assertions import assert_rejected_atomically
+
+
 from array import array
 from dataclasses import replace
 from typing import Never
@@ -67,10 +70,11 @@ def test_foreign_or_wrong_port_summary_rejects_before_cold_or_warm_kernel_memo()
             )
             runtime.spatial.observe(action, 0, summary, state)
         for invalid in (foreign, wrong_port, wrong_domain):
-            before = runtime.ledger.snapshot()
-            with pytest.raises(ValueError):
-                runtime.spatial.observe(action, 0, invalid, state)
-            assert runtime.ledger.snapshot() == before
+            assert_rejected_atomically(
+                runtime.ledger,
+                lambda: runtime.spatial.observe(action, 0, invalid, state),
+                ValueError,
+            )
 
 
 def test_public_custom_finite_composition_uses_diamonds_without_future_tiles(

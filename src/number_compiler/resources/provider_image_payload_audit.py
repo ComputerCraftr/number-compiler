@@ -44,9 +44,7 @@ def audit_provider_image_inputs(
             and type(record) is ProviderImageInput
         )
         try:
-            provider = root.providers.validate_occurrence(record.binding)
-            source = root.sources.resolve(record.source)
-            image = root.images.resolve(record.image)
+            provider, source, image = root._components(record)
             valid &= record.binding.source == record.source
             valid &= record.binding.image == record.image
             root.images.validate_binding(record.request, record.image)

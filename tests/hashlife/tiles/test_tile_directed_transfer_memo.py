@@ -2,6 +2,9 @@
 
 from __future__ import annotations
 
+from tests.support.tile_kernel import _runtime_source
+from tests.support.assertions import assert_rejected_atomically
+
 from dataclasses import replace
 from typing import TYPE_CHECKING
 
@@ -22,7 +25,6 @@ from number_compiler.hashlife.tiles.tile_directed_transfer_memo import (
 from number_compiler.hashlife.tiles.tile_ports import ResultWiring
 from number_compiler.hashlife.tiles.tile_result_records import DirectedTransferKey
 from number_compiler.resources.metric_collection import collect_ledger_metrics
-from tests.arithmetic.contracts.test_tile_kernel import _runtime, _tile
 from tests.support.dataclass_records import replace_record
 
 if TYPE_CHECKING:
@@ -42,8 +44,9 @@ def _binding() -> tuple[
     DirectedTransferKey,
     int,
 ]:
-    ledger, tiles, adapter, action, scheduler = _runtime(BaseBlockEffect(3))
-    source = _tile(tiles, adapter, action, (0, 1, 2, 3))
+    ledger, tiles, adapter, action, scheduler, source = _runtime_source(
+        BaseBlockEffect(3), (0, 1, 2, 3)
+    )
     incoming = adapter.initial_ports(action)[0]
     state = incoming
     law = adapter.primitive_law(action)
@@ -208,10 +211,12 @@ def test_prepared_directed_transfer_rejects_foreign_arena() -> None:
     _other_ledger, other, _other_adapter, other_source, _other_key, _ = _binding()
     try:
         request = prepare_directed_transfer(results, key)
-        before = other.ledger.snapshot()
-        with pytest.raises(ValueError, match="another result arena"):
-            lookup_prepared_directed_transfer(other, request)
-        assert other.ledger.snapshot() == before
+        assert_rejected_atomically(
+            other.ledger,
+            lambda: lookup_prepared_directed_transfer(other, request),
+            ValueError,
+            match="another result arena",
+        )
     finally:
         source.close()
         other_source.close()

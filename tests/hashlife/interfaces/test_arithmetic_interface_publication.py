@@ -10,10 +10,8 @@ import pytest
 from number_compiler.arithmetic.contracts.block_effect import BlockContextBudgetExceeded
 from number_compiler.arithmetic.contracts.scoped_handles import ExactSource
 from number_compiler.arithmetic.contracts.source_geometry import SourceGeometry
-from number_compiler.arithmetic.radix_division import SymbolicBinaryDivisionEffect
 from number_compiler.arithmetic.radix_port_functions import RadixPortFunction
 from number_compiler.hashlife.actions.diamond_actions import PortSignatureID
-from number_compiler.hashlife.execution.tile_kernel import PrimitiveTileKernelAdapter
 from number_compiler.hashlife.interfaces.diamond_quotient import (
     DiamondQuotientArena,
     LocalInterfaceID,
@@ -21,13 +19,13 @@ from number_compiler.hashlife.interfaces.diamond_quotient import (
     QuotientRecord,
 )
 from number_compiler.hashlife.observation.tile_projection import build_tile_projection
-from number_compiler.hashlife.tiles.tile_context import TemporalCocycle
 from number_compiler.resources.ledger import ResourceLedger
 from number_compiler.resources.stores import (
     LedgerDict,
     _TrackedDict,
 )
 from number_compiler.sequences.collatz.block_power import CollatzPhysicalBlockEffect
+from tests.support.diamond_quotient import division_interface
 
 
 def _retained(
@@ -76,15 +74,7 @@ def test_arithmetic_interface_store_failure_rolls_back_publication(
     with build_tile_projection(
         CollatzPhysicalBlockEffect(), SourceGeometry(ledger, source)
     ) as projection:
-        adapter = projection.scheduler.adapter
-        assert type(adapter) is PrimitiveTileKernelAdapter
-        action = adapter.admit(
-            SymbolicBinaryDivisionEffect(257), cocycle=TemporalCocycle()
-        )
-        interface_id = adapter._compile_interface(
-            action, projection._application.source, adapter.wiring(action)
-        )
-        arena = projection.scheduler.results.interfaces
+        adapter, action, interface_id, arena = division_interface(projection)
         signature, components = _candidate(arena, interface_id)
         retained = _retained(ledger, arena)
         peak = ledger.peak_entries, ledger.peak_nodes
@@ -138,15 +128,7 @@ def test_arithmetic_interface_reservation_failure_cancels_before_publication(
     with build_tile_projection(
         CollatzPhysicalBlockEffect(), SourceGeometry(ledger, source)
     ) as projection:
-        adapter = projection.scheduler.adapter
-        assert type(adapter) is PrimitiveTileKernelAdapter
-        action = adapter.admit(
-            SymbolicBinaryDivisionEffect(257), cocycle=TemporalCocycle()
-        )
-        interface_id = adapter._compile_interface(
-            action, projection._application.source, adapter.wiring(action)
-        )
-        arena = projection.scheduler.results.interfaces
+        adapter, action, interface_id, arena = division_interface(projection)
         signature, components = _candidate(arena, interface_id)
         retained = _retained(ledger, arena)
         next_node = arena._next_node

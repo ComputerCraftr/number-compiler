@@ -77,13 +77,7 @@ def decimal_leaf_output(
             )
             continue
         if ready:
-            high, low = values.pop(), values.pop()
-            values.append(
-                tuple(
-                    circuit.tx.decision(circuit.signature, variables[depth], a, b)
-                    for a, b in zip(low, high, strict=True)
-                )
-            )
+            circuit.join_branch(values, variables[depth])
             continue
         variable = variables[depth]
         if variable.side == left_port.variable.side:

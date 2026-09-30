@@ -7,7 +7,7 @@ from typing import Never, cast
 
 import pytest
 
-from devtools.proofs.lazy_collatz import (
+from devtools.verification.lazy_collatz import (
     CarryRangeTransfer,
     CollatzLazyView,
     LazyCollatzApplication,

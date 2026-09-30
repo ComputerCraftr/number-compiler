@@ -609,26 +609,7 @@ def test_antihydra_equivalent_information_reuses_the_demand(
 
     monkeypatch.setattr(antihydra_observation, "observe_run", counted)
     monkeypatch.setattr(cli, "_render_value", forbidden)
-    assert (
-        cli.main(
-            [
-                "antihydra",
-                "--nth",
-                "16",
-                "--no-value",
-                "--info",
-                names[0],
-                "--info",
-                names[1],
-                "--info",
-                "metrics",
-                "--format",
-                "json",
-            ]
-        )
-        == 0
-    )
-    row = json.loads(capsys.readouterr().out)
+    row = _antihydra_info_pair(names, capsys)
     first, second = (row["info"][name] for name in names)
     assert calls == [names[0]]
     assert first["kind"] == names[0] and second["kind"] == names[1]
@@ -666,26 +647,7 @@ def test_antihydra_mahler_extends_shared_tangent_without_aliasing(
     monkeypatch.setattr(AntihydraArithmeticTerm, "physical_run", forbidden)
     monkeypatch.setattr(runtime, "physical_roof", forbidden)
     monkeypatch.setattr(cli, "_render_value", forbidden)
-    assert (
-        cli.main(
-            [
-                "antihydra",
-                "--nth",
-                "16",
-                "--no-value",
-                "--info",
-                names[0],
-                "--info",
-                names[1],
-                "--info",
-                "metrics",
-                "--format",
-                "json",
-            ]
-        )
-        == 0
-    )
-    row = json.loads(capsys.readouterr().out)
+    row = _antihydra_info_pair(names, capsys)
     assert calls == 1
     mahler = row["info"]["mahler"]["value"]
     hensel = row["info"]["hensel"]["value"]
@@ -740,3 +702,30 @@ def test_family_output_bases_preserve_values_and_json_units(
     assert row["output_base"] == base
     assert int(row["value"], base) == expected
     assert not capture.err
+
+
+def _antihydra_info_pair(
+    names: tuple[str, str],
+    capsys: pytest.CaptureFixture[str],
+) -> Any:
+    assert (
+        cli.main(
+            [
+                "antihydra",
+                "--nth",
+                "16",
+                "--no-value",
+                "--info",
+                names[0],
+                "--info",
+                names[1],
+                "--info",
+                "metrics",
+                "--format",
+                "json",
+            ]
+        )
+        == 0
+    )
+    row = json.loads(capsys.readouterr().out)
+    return row

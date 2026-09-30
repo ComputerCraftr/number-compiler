@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from tests.support.power_assertions import assert_collatz_radices
+
 import json
 from typing import Never
 
@@ -15,9 +17,7 @@ def test_nth_terms_are_exact_across_all_canonical_families() -> None:
     assert c.nth("196", 0) == 196
     assert c.nth("196", 5) == 52514
     assert c.nth("reverse-add", 5, seed=196, base=10) == 52514
-    assert c.nth("collatz", 10, seed=27, radix=2) == 214
-    assert c.nth("collatz", 10, seed=27, radix=3) == 214
-    assert c.nth("collatz", 10, seed=27, radix=6) == 214
+    assert_collatz_radices(c)
     assert c.nth("prime", 10, start=2) == 31
     assert c.nth("prime", 0, start=100) == 101
     assert c.nth("prime", 3, start=100) == 109

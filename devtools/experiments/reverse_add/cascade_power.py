@@ -25,6 +25,7 @@ from typing import (
 from devtools.experiments.reverse_add.cascade import (
     CascadeRelation,
     GroupedDependencyCascadeArena,
+    group_left_behavior,
 )
 from devtools.experiments.reverse_add.power import _fragment
 from number_compiler.arithmetic.automata.transducer import DFA, LazyBimachine
@@ -275,15 +276,9 @@ class _Behavior:
         old = self.left_classes.get(k)
         if old is not None:
             return old
-        groups: defaultdict[tuple[_Word, int], int] = defaultdict(int)
-        for left_state in self.first.left.states:
-            ln = self.first.left.step(left_state, a)
-            if ln is None:
-                continue
-            v = self.E(left_state, a, right_after)
-            if v is not None:
-                groups[(v, ln)] |= 1 << left_state
-        out = tuple((mask, v, ln) for (v, ln), mask in groups.items())
+        out = group_left_behavior(
+            self.first.left.states, self.first.left.step, self.E, a, right_after
+        )
         self.left_classes[k] = out
         return out
 
@@ -359,6 +354,75 @@ def _limit(
     )
 
 
+def _walk_context(
+    S: _RelationStates,
+    C: _Behavior,
+    alphabet: Sequence[int],
+    start: int,
+    *,
+    state_cap: int | None,
+    time_cap: float | None,
+    right: bool,
+) -> tuple[dict[tuple[int, int], int], bool, float]:
+    trans: dict[tuple[int, int], int] = {}
+    todo = deque([start])
+    seen: set[int] = set()
+    t0 = perf_counter()
+    capped = False
+    while todo:
+        if _limit(t0, len(S.relations), state_cap, time_cap):
+            capped = True
+            break
+        q = todo.popleft()
+        if q in seen:
+            continue
+        seen.add(q)
+        boxes = tuple(S.boxes(q))
+        for a in alphabet:
+            out = []
+            regions = C.canonical_output_regions(a)
+            if right:
+                for l_after_mask, r2_after_mask, r_after_mask in boxes:
+                    pre_l = C._preimage_left_mask(a, l_after_mask)
+                    if not pre_l:
+                        continue
+                    for v, emit_lmask, emit_rmask in regions:
+                        l_before = pre_l & emit_lmask
+                        src_r = r_after_mask & emit_rmask
+                        if not l_before or not src_r:
+                            continue
+                        r_before = C.image_right_symbol_mask(a, src_r)
+                        r2_before = C.image_right(r2_after_mask, v)
+                        if r_before and r2_before:
+                            out.append((l_before, r2_before, r_before))
+            else:
+                for l1mask, l2mask, r_before_mask in boxes:
+                    compatible_r = C.predecessor_right_mask(a, r_before_mask)
+                    if not compatible_r:
+                        continue
+                    for v, emit_lmask, emit_rmask in regions:
+                        src_l = l1mask & emit_lmask
+                        r_after = compatible_r & emit_rmask
+                        if not src_l or not r_after:
+                            continue
+                        l1_after = C.image_left_symbol_mask(a, src_l)
+                        l2_after = C.image_left(l2mask, v)
+                        if l1_after and l2_after:
+                            out.append((l1_after, l2_after, r_after))
+            if not out:
+                continue
+            z = S.intern(out)
+            trans[q, a] = z
+            if z not in seen:
+                todo.append(z)
+            if _limit(t0, len(S.relations), state_cap, time_cap):
+                capped = True
+                break
+        if capped:
+            break
+    return trans, capped, perf_counter() - t0
+
+
 def build_left_context(
     first: LazyBimachine,
     second: LazyBimachine,
@@ -377,48 +441,10 @@ def build_left_context(
     C = _Behavior(first, second)
     all_right = (1 << len(first.right.states)) - 1
     start = S.intern(((1 << first.left.start, 1 << second.left.start, all_right),))
-    trans = {}
-    todo = deque([start])
-    seen = set()
-    t0 = perf_counter()
-    capped = False
-    while todo:
-        if _limit(t0, len(S.relations), state_cap, time_cap):
-            capped = True
-            break
-        q = todo.popleft()
-        if q in seen:
-            continue
-        seen.add(q)
-        boxes = tuple(S.boxes(q))
-        for a in A:
-            out = []
-            regions = C.canonical_output_regions(a)
-            for l1mask, l2mask, r_before_mask in boxes:
-                compatible_r = C.predecessor_right_mask(a, r_before_mask)
-                if not compatible_r:
-                    continue
-                for v, emit_lmask, emit_rmask in regions:
-                    src_l = l1mask & emit_lmask
-                    r_after = compatible_r & emit_rmask
-                    if not src_l or not r_after:
-                        continue
-                    l1_after = C.image_left_symbol_mask(a, src_l)
-                    l2_after = C.image_left(l2mask, v)
-                    if l1_after and l2_after:
-                        out.append((l1_after, l2_after, r_after))
-            if not out:
-                continue
-            z = S.intern(out)
-            trans[q, a] = z
-            if z not in seen:
-                todo.append(z)
-            if _limit(t0, len(S.relations), state_cap, time_cap):
-                capped = True
-                break
-        if capped:
-            break
-    complete = not capped and not todo
+    trans, capped, elapsed = _walk_context(
+        S, C, A, start, state_cap=state_cap, time_cap=time_cap, right=False
+    )
+    complete = not capped
     return CascadeContextDFA(
         A,
         start,
@@ -428,7 +454,7 @@ def build_left_context(
         S.arena,
         False,
         complete,
-        perf_counter() - t0,
+        elapsed,
     )
 
 
@@ -450,48 +476,10 @@ def build_right_context(
     C = _Behavior(first, second)
     all_left = (1 << len(first.left.states)) - 1
     start = S.intern(((all_left, 1 << second.right.start, 1 << first.right.start),))
-    trans = {}
-    todo = deque([start])
-    seen = set()
-    t0 = perf_counter()
-    capped = False
-    while todo:
-        if _limit(t0, len(S.relations), state_cap, time_cap):
-            capped = True
-            break
-        q = todo.popleft()
-        if q in seen:
-            continue
-        seen.add(q)
-        boxes = tuple(S.boxes(q))
-        for a in A:
-            out = []
-            regions = C.canonical_output_regions(a)
-            for l_after_mask, r2_after_mask, r_after_mask in boxes:
-                pre_l = C._preimage_left_mask(a, l_after_mask)
-                if not pre_l:
-                    continue
-                for v, emit_lmask, emit_rmask in regions:
-                    l_before = pre_l & emit_lmask
-                    src_r = r_after_mask & emit_rmask
-                    if not l_before or not src_r:
-                        continue
-                    r_before = C.image_right_symbol_mask(a, src_r)
-                    r2_before = C.image_right(r2_after_mask, v)
-                    if r_before and r2_before:
-                        out.append((l_before, r2_before, r_before))
-            if not out:
-                continue
-            z = S.intern(out)
-            trans[q, a] = z
-            if z not in seen:
-                todo.append(z)
-            if _limit(t0, len(S.relations), state_cap, time_cap):
-                capped = True
-                break
-        if capped:
-            break
-    complete = not capped and not todo
+    trans, capped, elapsed = _walk_context(
+        S, C, A, start, state_cap=state_cap, time_cap=time_cap, right=True
+    )
+    complete = not capped
     return CascadeContextDFA(
         A,
         start,
@@ -501,7 +489,7 @@ def build_right_context(
         S.arena,
         True,
         complete,
-        perf_counter() - t0,
+        elapsed,
     )
 
 

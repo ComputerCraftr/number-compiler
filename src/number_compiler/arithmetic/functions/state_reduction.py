@@ -6,7 +6,7 @@ keeps an explicit distinction between:
 
 * local/action reductions, which may not determine their own next reduced
   state (reverse-add growth and one accelerated Collatz action); and
-Bounded special-number carrier proofs live under ``devtools.proofs``; this module
+Bounded special-number carrier proofs live under ``devtools.verification``; this module
 contains only the two production local/action reductions that remain useful to
 reverse-add and Collatz.
 

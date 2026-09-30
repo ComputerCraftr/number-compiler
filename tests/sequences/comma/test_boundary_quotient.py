@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from tests.support.comma_oracles import literal_children as _literal_children
+
 import math
 from typing import Literal
 
@@ -20,17 +22,6 @@ from number_compiler.sequences.comma.boundary_quotient import (
     BoundaryState,
     construct_macro,
 )
-
-
-def _literal_children(value: int) -> tuple[int, ...]:
-    """Small independent nine-candidate oracle, never used by production."""
-    digit = value % 10
-    children: list[int] = []
-    for child_digit in range(1, 10):
-        candidate = value + 10 * digit + child_digit
-        if int(str(candidate)[0]) == child_digit:
-            children.append(candidate)
-    return tuple(children)
 
 
 def _literal_phase_jump(value: int) -> tuple[int, int]:

@@ -3,21 +3,23 @@
 from __future__ import annotations
 
 from typing import Never
+from collections.abc import Generator
 
 import pytest
 
 from number_compiler.arithmetic.contracts.block_effect import BlockContextBudgetExceeded
 from number_compiler.hashlife.actions.field_actions import CoordinateOutputMorphismID
-from number_compiler.hashlife.execution.continuations.higher_macro_composer import (
-    HigherSpatialMacroComposer,
-)
 from number_compiler.hashlife.execution.recursive_outputs import (
     RecursiveCoordinateMorphismArena,
     RecursiveOutputBranch,
 )
 from number_compiler.resources.higher_payload_audit import audit_higher_payloads
 from tests.support.reverse_higher_interface import _direct_step
-from tests.support.reverse_higher_runtime import _fixture
+from tests.support.reverse_higher_runtime import (
+    _fixture,
+    _macro_composer,
+    _observed_macro,
+)
 
 
 def _spatial(
@@ -28,22 +30,9 @@ def _spatial(
     _, primitive, semantics, runtime, interfaces, compiler, sources, binding = _fixture(
         word
     )
-    compiled = compiler.compile(primitive)
-    outputs = RecursiveCoordinateMorphismArena(interfaces, evaluate=semantics.evaluate)
-    composer = HigherSpatialMacroComposer(
-        semantics,
-        interfaces,
-        outputs,
-        sources,
-        primitive,
-        compiled.interface,
-        compiled.left,
-        compiled.symbol,
-        compiled.right,
+    outputs, composer, macro, left, right = _observed_macro(
+        semantics, interfaces, sources, primitive, compiler, runtime, binding
     )
-    macro = composer.compile(binding)
-    left = semantics.evaluate(runtime.initial(primitive, 0))
-    right = semantics.evaluate(runtime.initial(primitive, 1))
     return outputs, macro.output, left, right
 
 
@@ -119,11 +108,23 @@ def test_stream_failed_allocation_releases_pending_frames() -> None:
     assert all(item.accounting_delta == 0 for item in outputs.ledger.inventory())
 
 
-def test_failed_second_stream_preserves_live_first_stream() -> None:
+def _started_stream() -> tuple[
+    tuple[int, ...],
+    RecursiveCoordinateMorphismArena,
+    CoordinateOutputMorphismID,
+    object,
+    object,
+    Generator[int, None, None],
+]:
     word = (7, 18, 7, 19)
     outputs, root, left, right = _spatial(word)
     first = outputs.iter_observe_range(root, 0, len(word), left, right)
     assert next(first) == _direct_step(word, 10)[0]
+    return word, outputs, root, left, right, first
+
+
+def test_failed_second_stream_preserves_live_first_stream() -> None:
+    word, outputs, root, left, right, first = _started_stream()
     live_keys = set(outputs._stream_frames)
     assert live_keys
     outputs.ledger.max_nodes = outputs.ledger.nodes
@@ -136,10 +137,7 @@ def test_failed_second_stream_preserves_live_first_stream() -> None:
 
 
 def test_stream_callback_failure_after_yield_releases_frames() -> None:
-    word = (7, 18, 7, 19)
-    outputs, root, left, right = _spatial(word)
-    stream = outputs.iter_observe_range(root, 0, len(word), left, right)
-    assert next(stream) == _direct_step(word, 10)[0]
+    word, outputs, root, left, right, stream = _started_stream()
 
     def failed_boundary(*_args: object) -> Never:
         raise LookupError("boundary evaluation failed")
@@ -188,7 +186,6 @@ def test_partial_stream_rejects_temporal_sibling_without_traversing_it() -> None
     def forbidden(*_args: object) -> Never:
         pytest.fail("stream reopened a temporal witness")
 
-    compiled = compiler.compile(primitive)
     outputs = RecursiveCoordinateMorphismArena(
         interfaces,
         evaluate=semantics.evaluate,
@@ -197,16 +194,8 @@ def test_partial_stream_rejects_temporal_sibling_without_traversing_it() -> None
         complete_temporal_action=lambda _provider, action: action,
         evaluate_temporal=forbidden,
     )
-    composer = HigherSpatialMacroComposer(
-        semantics,
-        interfaces,
-        outputs,
-        sources,
-        primitive,
-        compiled.interface,
-        compiled.left,
-        compiled.symbol,
-        compiled.right,
+    outputs, composer = _macro_composer(
+        semantics, interfaces, sources, primitive, compiler, outputs
     )
     macro = composer.compile(binding)
     temporal = outputs.temporal(macro.output, primitive, macro.interface)

@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from number_compiler.resources.temporal_diagnostics import METRICS_SCHEMA_VERSION
+
 import argparse
 import itertools
 import json
@@ -35,6 +37,14 @@ class ColdFieldImageRow:
     resource_accounting_mismatch: int
 
 
+def _validated_measurement_inputs(seed: int, horizon: int) -> tuple[int, int]:
+    if type(seed) is not int or seed < 0 or seed.bit_length() > 1024:
+        raise ValueError("research source must be nonnegative and at most 1024 bits")
+    if type(horizon) is not int or not 0 <= horizon <= 1024:
+        raise ValueError("research horizon must lie in 0..1024")
+    return seed, horizon
+
+
 def ordered_horizons(horizons: Iterable[int], order: str) -> tuple[int, ...]:
     values = tuple(horizons)
     if any(type(value) is not int or value < 0 for value in values):
@@ -65,7 +75,10 @@ def cold_rows(
         ledgers.append(term._ledger)
         digit = term.digit(0)
         metrics = term.metrics()
-        if metrics.metrics_schema_version != 7 or metrics.forbidden_future_payloads:
+        if (
+            metrics.metrics_schema_version != METRICS_SCHEMA_VERSION
+            or metrics.forbidden_future_payloads
+        ):
             raise AssertionError(("invalid-schema7-cold-snapshot", horizon, metrics))
         rows.append(
             ColdFieldImageRow(
@@ -210,7 +223,7 @@ def run_probe(
         if isinstance(family, dict)
     )
     return {
-        "metrics_schema_version": 7,
+        "metrics_schema_version": METRICS_SCHEMA_VERSION,
         "cold_index_scope": "fresh-per-row",
         "orders": results,
         "status": "GREEN" if green else ("RED" if complete else "unavailable"),
@@ -231,10 +244,7 @@ def research_pair_measurement(seed: int, horizon: int) -> dict[str, object]:
     from devtools.experiments.reverse_add.pair_slp_transducer import PairSLPTransducer
     from number_compiler.resources.ledger import ResourceLedger
 
-    if type(seed) is not int or seed < 0 or seed.bit_length() > 1024:
-        raise ValueError("research source must be nonnegative and at most 1024 bits")
-    if type(horizon) is not int or not 0 <= horizon <= 1024:
-        raise ValueError("research horizon must lie in 0..1024")
+    seed, horizon = _validated_measurement_inputs(seed, horizon)
     ledger = ResourceLedger()
     grammar = PairSLPTransducer(ledger)
     try:
@@ -331,10 +341,7 @@ def research_event_measurement(seed: int, horizon: int) -> dict[str, object]:
     from number_compiler.arithmetic.contracts.scoped_handles import ExactSource
     from number_compiler.resources.ledger import ResourceLedger
 
-    if type(seed) is not int or seed < 0 or seed.bit_length() > 1024:
-        raise ValueError("research source must be nonnegative and at most 1024 bits")
-    if type(horizon) is not int or not 0 <= horizon <= 1024:
-        raise ValueError("research horizon must lie in 0..1024")
+    seed, horizon = _validated_measurement_inputs(seed, horizon)
     ledger = ResourceLedger()
     started = perf_counter()
     grammar = CenteredFutureGrammar(
@@ -407,4 +414,6 @@ def main(argv: list[str] | None = None) -> int:
 
 
 if __name__ == "__main__":
-    raise SystemExit(main())
+    from devtools.runs import run_reported
+
+    raise SystemExit(run_reported(main))

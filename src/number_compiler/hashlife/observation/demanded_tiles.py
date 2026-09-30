@@ -20,6 +20,7 @@ from number_compiler.hashlife.tiles.tile_ports import (
     ResultWiring,
 )
 from number_compiler.hashlife.tiles.tile_results import (
+    PoweredResultKey,
     ResultLease,
 )
 from number_compiler.hashlife.tiles.tiles import TileID
@@ -52,25 +53,17 @@ def point(
             key = self._key(
                 action_now, tile_now, ports_now, wiring_now, boundaries, fusion
             )
-            found = self._lookup_execution_key(key)
-            self._workspace_peak(len(held) + 1)
-            self.ledger.bump("tile_scheduler_demand_descents")
+            found = _probe_demand(
+                self, key, len(held), "tile_scheduler_demand_descents"
+            )
             if found is not None:
                 self.ledger.bump("tile_scheduler_demand_parent_hits")
-                output = found.output
-                if _application is None:
-                    held.append(found)
-                else:
-                    self._pin(_application, key, found)
+                output = _retain_output(self, key, found, held, _application)
                 return self.tiles.point(output, coordinate)
             self.ledger.bump("tile_scheduler_demand_parent_misses")
             clock = complete_clock(self, key, whole_output=False)
             if clock is not None:
-                output = clock.output
-                if _application is None:
-                    held.append(clock)
-                else:
-                    self._pin(_application, key, clock)
+                output = _retain_output(self, key, clock, held, _application)
                 return self.tiles.point(output, coordinate)
             from number_compiler.hashlife.execution.tile_causal_entry import (
                 causal_point,
@@ -79,33 +72,12 @@ def point(
             causal = causal_point(self, key, coordinate, application=_application)
             if causal is not None:
                 return causal
-            children = self._children(action_now)
+            children, admitted = _probe_midpoint(self, key, held, _application)
+            if admitted is not None:
+                action_now, tile_now, ports_now, wiring_now, boundaries = admitted
+                fusion = None
+                continue
             if children is not None:
-                producer = before_context(self, key, children[0])
-                before_key = self._key(
-                    children[0],
-                    tile_now,
-                    producer.ports,
-                    producer.wiring,
-                    producer.boundaries,
-                )
-                midpoint = self._lookup_execution_key(before_key)
-                if midpoint is not None:
-                    self.ledger.bump("tile_scheduler_midpoint_hits")
-                    context = after_context(self, key, children[1], midpoint.result)
-                    output = midpoint.output
-                    if _application is None:
-                        held.append(midpoint)
-                    else:
-                        self._pin(
-                            _application,
-                            before_key,
-                            midpoint,
-                        )
-                    action_now, tile_now = children[1], output
-                    ports_now, wiring_now = context.ports, context.wiring
-                    boundaries, fusion = context.boundaries, None
-                    continue
                 from number_compiler.hashlife.execution.tile_fused import (
                     demanded_fused_point,
                 )
@@ -116,11 +88,7 @@ def point(
             node = self.tiles.resolve(tile_now)
             if not node.level:
                 result = self._complete_leaf(key)
-                output = result.output
-                if _application is None:
-                    held.append(result)
-                else:
-                    self._pin(_application, key, result)
+                output = _retain_output(self, key, result, held, _application)
                 return self.tiles.point(output, 0)
             if node.left is None or node.right is None:
                 raise ValueError("malformed canonical parent")
@@ -179,16 +147,10 @@ def width(
             key = self._key(
                 action_now, tile_now, ports_now, wiring_now, boundaries, fusion
             )
-            found = self._lookup_execution_key(key)
-            self._workspace_peak(len(held) + 1)
-            self.ledger.bump("tile_scheduler_width_descents")
+            found = _probe_demand(self, key, len(held), "tile_scheduler_width_descents")
             if found is not None:
                 self.ledger.bump("tile_scheduler_demand_parent_hits")
-                output = found.output
-                if _application is None:
-                    held.append(found)
-                else:
-                    self._pin(_application, key, found)
+                output = _retain_output(self, key, found, held, _application)
                 return offset + self.tiles.active_width(output, remaining)
             self.ledger.bump("tile_scheduler_demand_parent_misses")
             if initial_request and fusion is None:
@@ -212,11 +174,7 @@ def width(
             initial_request = False
             clock = complete_clock(self, key, whole_output=False)
             if clock is not None:
-                output = clock.output
-                if _application is None:
-                    held.append(clock)
-                else:
-                    self._pin(_application, key, clock)
+                output = _retain_output(self, key, clock, held, _application)
                 return offset + self.tiles.active_width(output, remaining)
             from number_compiler.hashlife.execution.tile_causal_entry import (
                 causal_width_query,
@@ -225,33 +183,12 @@ def width(
             causal = causal_width_query(self, key, remaining, application=_application)
             if causal is not None:
                 return offset + causal
-            children = self._children(action_now)
+            children, admitted = _probe_midpoint(self, key, held, _application)
+            if admitted is not None:
+                action_now, tile_now, ports_now, wiring_now, boundaries = admitted
+                fusion = None
+                continue
             if children is not None:
-                producer = before_context(self, key, children[0])
-                before_key = self._key(
-                    children[0],
-                    tile_now,
-                    producer.ports,
-                    producer.wiring,
-                    producer.boundaries,
-                )
-                midpoint = self._lookup_execution_key(before_key)
-                if midpoint is not None:
-                    self.ledger.bump("tile_scheduler_midpoint_hits")
-                    context = after_context(self, key, children[1], midpoint.result)
-                    output = midpoint.output
-                    if _application is None:
-                        held.append(midpoint)
-                    else:
-                        self._pin(
-                            _application,
-                            before_key,
-                            midpoint,
-                        )
-                    action_now, tile_now = children[1], output
-                    ports_now, wiring_now = context.ports, context.wiring
-                    boundaries, fusion = context.boundaries, None
-                    continue
                 from number_compiler.hashlife.execution.tile_fused import (
                     demanded_fused_width,
                 )
@@ -262,11 +199,7 @@ def width(
             node = self.tiles.resolve(tile_now)
             if not node.level:
                 result = self._complete_leaf(key)
-                output = result.output
-                if _application is None:
-                    held.append(result)
-                else:
-                    self._pin(_application, key, result)
+                output = _retain_output(self, key, result, held, _application)
                 return offset + self.tiles.resolve(output).extent
             if node.left is None or node.right is None:
                 raise ValueError("malformed canonical parent")
@@ -382,3 +315,77 @@ def _prefix_active(
             )
             pending.append((node.right, right, remaining - half))
     return False
+
+
+def _retain_output(
+    scheduler: TileScheduler,
+    key: PoweredResultKey,
+    result: ResultLease,
+    held: list[ResultLease],
+    application: int | None,
+) -> TileID:
+    """Keep the result alive for the observation or its application owner."""
+    output = result.output
+    if application is None:
+        held.append(result)
+    else:
+        scheduler._pin(application, key, result)
+    return output
+
+
+def _admitted_midpoint(
+    scheduler: TileScheduler,
+    key: PoweredResultKey,
+    children: tuple[FieldCellActionID, FieldCellActionID],
+    held: list[ResultLease],
+    application: int | None,
+) -> (
+    tuple[
+        FieldCellActionID, TileID, tuple[int, ...], ResultWiring, BoundaryTileOperands
+    ]
+    | None
+):
+    """Transport the consumer only when the producer image is already admitted."""
+    producer = before_context(scheduler, key, children[0])
+    before_key = scheduler._key(
+        children[0], key.input, producer.ports, producer.wiring, producer.boundaries
+    )
+    midpoint = scheduler._lookup_execution_key(before_key)
+    if midpoint is None:
+        return None
+    scheduler.ledger.bump("tile_scheduler_midpoint_hits")
+    context = after_context(scheduler, key, children[1], midpoint.result)
+    return (
+        children[1],
+        _retain_output(scheduler, before_key, midpoint, held, application),
+        context.ports,
+        context.wiring,
+        context.boundaries,
+    )
+
+
+def _probe_demand(
+    scheduler: TileScheduler, key: PoweredResultKey, held_count: int, counter: str
+) -> ResultLease | None:
+    result = scheduler._lookup_execution_key(key)
+    scheduler._workspace_peak(held_count + 1)
+    scheduler.ledger.bump(counter)
+    return result
+
+
+def _probe_midpoint(
+    scheduler: TileScheduler,
+    key: PoweredResultKey,
+    held: list[ResultLease],
+    application: int | None,
+) -> tuple[
+    tuple[FieldCellActionID, FieldCellActionID] | None,
+    tuple[
+        FieldCellActionID, TileID, tuple[int, ...], ResultWiring, BoundaryTileOperands
+    ]
+    | None,
+]:
+    children = scheduler._children(key.action)
+    return children, None if children is None else _admitted_midpoint(
+        scheduler, key, children, held, application
+    )

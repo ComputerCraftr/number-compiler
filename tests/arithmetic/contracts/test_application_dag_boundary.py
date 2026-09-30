@@ -2,11 +2,13 @@
 
 from __future__ import annotations
 
+from tests.support.assertions import assert_rejected_atomically
+
 from typing import TYPE_CHECKING, Never, TypedDict
 
 import pytest
 
-from devtools.proofs.carry_interval_effects import CarryActionQuotientArena
+from devtools.verification.carry_interval_effects import CarryActionQuotientArena
 from number_compiler.arithmetic.contracts.block_effect import BlockContextBudgetExceeded
 from number_compiler.arithmetic.contracts.block_kernel import BaseBlockEffect
 from number_compiler.arithmetic.contracts.scoped_handles import (
@@ -287,10 +289,12 @@ def test_certificate_issuer_checks_actual_kernel_language() -> None:
 
 def test_source_geometry_rejects_another_input_before_application_retention() -> None:
     index = HashLifeBlockIndex(DigitNormalizeBlockEffect(10), (2, 2), logical_length=8)
-    before = index._ledger.snapshot()
-    with pytest.raises(ValueError, match="original input"):
-        index._source_geometry.require_source((4, 4), index.effect.blank)
-    assert index._ledger.snapshot() == before
+    assert_rejected_atomically(
+        index._ledger,
+        lambda: index._source_geometry.require_source((4, 4), index.effect.blank),
+        ValueError,
+        match="original input",
+    )
 
 
 def test_import_admits_entire_dag_before_publishing_siblings() -> None:
@@ -302,10 +306,9 @@ def test_import_admits_entire_dag_before_publishing_siblings() -> None:
     compiler = LazyCompiler(ResourceLedger())
     handle = ActionProgramID(ArenaToken(), "action-program", 0)
     bad = ProgramComposition(BaseBlockEffect(10), Impostor(10), handle)
-    before = compiler.ledger.snapshot()
-    with pytest.raises(UnsupportedInterfaceError):
-        compiler.import_effect(bad)
-    assert compiler.ledger.snapshot() == before
+    before = assert_rejected_atomically(
+        compiler.ledger, lambda: compiler.import_effect(bad), UnsupportedInterfaceError
+    )
     object.__setattr__(bad, "second", bad)
     with pytest.raises(UnsupportedInterfaceError, match="cyclic"):
         compiler.import_effect(bad)
@@ -341,10 +344,9 @@ def test_failed_limit_tightening_does_not_mutate_existing_limits_or_inventory() 
     ledger = ResourceLedger()
     compiler = LazyCompiler(ledger)
     compiler.atom(BaseBlockEffect(10))
-    before = ledger.snapshot()
-    with pytest.raises(BlockContextBudgetExceeded):
-        ledger.tighten_limits(0, 0)
-    assert ledger.snapshot() == before
+    assert_rejected_atomically(
+        ledger, lambda: ledger.tighten_limits(0, 0), BlockContextBudgetExceeded
+    )
     assert ledger.max_nodes is ledger.max_cache_entries is None
 
 
@@ -370,12 +372,10 @@ def test_preexisting_source_authority_cannot_lend_an_unrestricted_point_scope() 
 
 def test_invalid_generic_source_rejects_before_ledger_mutation() -> None:
     ledger = ResourceLedger()
-    before = ledger.snapshot()
-    with pytest.raises(ValueError):
-        HashLifeBlockIndex(
-            DigitNormalizeBlockEffect(10),
-            (-1,),
-            logical_length=1,
-            ledger=ledger,
-        )
-    assert ledger.snapshot() == before
+    assert_rejected_atomically(
+        ledger,
+        lambda: HashLifeBlockIndex(
+            DigitNormalizeBlockEffect(10), (-1,), logical_length=1, ledger=ledger
+        ),
+        ValueError,
+    )

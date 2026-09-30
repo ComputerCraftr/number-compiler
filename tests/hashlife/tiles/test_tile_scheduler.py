@@ -2,6 +2,12 @@
 
 from __future__ import annotations
 
+from number_compiler.hashlife.execution.tile_scheduler import TileApplication
+
+
+from tests.support.assertions import assert_rejected_atomically
+from tests.support.tile_kernel import join_four
+
 from collections.abc import Hashable
 from dataclasses import dataclass
 from typing import Never, TypeVar
@@ -353,9 +359,7 @@ def _runtime() -> _Runtime:
     tiles = TileArena(ledger)
     alphabet = tiles.intern_alphabet(TileAlphabet(4, 3, 4, 2, "test", "v1"))
     leaves = [tiles.leaf(alphabet, symbol) for symbol in (0, 1, 2, 3)]
-    left = tiles.join(leaves[0].tile, leaves[1].tile)
-    right = tiles.join(leaves[2].tile, leaves[3].tile)
-    root = tiles.join(left.tile, right.tile)
+    left, right, root = join_four(tiles, leaves)
     for lease in (*leaves, left, right):
         lease.close()
     actions = _Actions(ledger)
@@ -385,6 +389,20 @@ def _runtime() -> _Runtime:
         ResultWiring(interface),
         root,
     )
+
+
+def _application_fixture() -> tuple[_Runtime, TileApplication, int]:
+    runtime = _runtime()
+    application = runtime.scheduler.application(
+        runtime.actions.action(2), runtime.root.tile, (0,), runtime.wiring
+    )
+    return runtime, application, len(runtime.tiles._leases)
+
+
+def _assert_pin_rollback(runtime: _Runtime, leases_before: int) -> None:
+    assert len(runtime.tiles._leases) == leases_before
+    account = runtime.ledger.inventory()[runtime.scheduler._pin_owner]
+    assert (account.entries, account.nodes, account.accounting_delta) == (0, 0, 0)
 
 
 def test_physical_constructor_installs_deferred_scheduler_dependencies() -> None:
@@ -756,9 +774,7 @@ def test_clipped_width_does_not_invent_activity_in_a_padding_gap() -> None:
     runtime = _runtime()
     alphabet = runtime.tiles.resolve(runtime.root.tile).alphabet
     leaves = [runtime.tiles.leaf(alphabet, symbol) for symbol in (0, 3, 3, 0)]
-    left = runtime.tiles.join(leaves[0].tile, leaves[1].tile)
-    right = runtime.tiles.join(leaves[2].tile, leaves[3].tile)
-    source = runtime.tiles.join(left.tile, right.tile)
+    left, right, source = join_four(runtime.tiles, leaves)
     for lease in (*leaves, left, right):
         lease.close()
     application = runtime.scheduler.application(
@@ -786,16 +802,13 @@ def test_direct_observations_reject_foreign_action_before_accounting() -> None:
         0,
     )
     try:
-        before = runtime.ledger.snapshot()
-        with pytest.raises(ValueError):
-            runtime.scheduler.point(
-                foreign,
-                runtime.root.tile,
-                (0,),
-                runtime.wiring,
-                0,
-            )
-        assert runtime.ledger.snapshot() == before
+        before = assert_rejected_atomically(
+            runtime.ledger,
+            lambda: runtime.scheduler.point(
+                foreign, runtime.root.tile, (0,), runtime.wiring, 0
+            ),
+            ValueError,
+        )
         with pytest.raises(ValueError):
             runtime.scheduler.width(
                 foreign,
@@ -876,14 +889,7 @@ def test_failed_demanded_pin_reservation_releases_result_lease(
         BlockContextBudgetExceeded,
     )
 
-    runtime = _runtime()
-    application = runtime.scheduler.application(
-        runtime.actions.action(2),
-        runtime.root.tile,
-        (0,),
-        runtime.wiring,
-    )
-    leases_before = len(runtime.tiles._leases)
+    runtime, application, leases_before = _application_fixture()
     reserve = runtime.ledger.reserve
 
     def reject_pin(owner: int, entries: int = 0, nodes: int = 0) -> None:
@@ -896,9 +902,7 @@ def test_failed_demanded_pin_reservation_releases_result_lease(
         with pytest.raises(BlockContextBudgetExceeded, match="pin reservation"):
             application.point(2)
         assert not runtime.scheduler._pins
-        assert len(runtime.tiles._leases) == leases_before
-        account = runtime.ledger.inventory()[runtime.scheduler._pin_owner]
-        assert (account.entries, account.nodes, account.accounting_delta) == (0, 0, 0)
+        _assert_pin_rollback(runtime, leases_before)
     finally:
         application.close()
         runtime.close()
@@ -907,14 +911,7 @@ def test_failed_demanded_pin_reservation_releases_result_lease(
 def test_partial_demanded_pin_publication_rolls_back(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    runtime = _runtime()
-    application = runtime.scheduler.application(
-        runtime.actions.action(2),
-        runtime.root.tile,
-        (0,),
-        runtime.wiring,
-    )
-    leases_before = len(runtime.tiles._leases)
+    runtime, application, leases_before = _application_fixture()
     write = LedgerDict.__setitem__
 
     def fail_after_write(
@@ -929,9 +926,7 @@ def test_partial_demanded_pin_publication_rolls_back(
         with pytest.raises(RuntimeError, match="partial pin publication"):
             application.point(2)
         assert not runtime.scheduler._pins
-        assert len(runtime.tiles._leases) == leases_before
-        account = runtime.ledger.inventory()[runtime.scheduler._pin_owner]
-        assert (account.entries, account.nodes, account.accounting_delta) == (0, 0, 0)
+        _assert_pin_rollback(runtime, leases_before)
     finally:
         application.close()
         runtime.close()

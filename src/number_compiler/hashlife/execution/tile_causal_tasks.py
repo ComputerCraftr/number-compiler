@@ -14,8 +14,15 @@ from number_compiler.hashlife.tiles.tile_boundaries import (
     concat_boundary_views,
 )
 from number_compiler.hashlife.tiles.tiles import TileArena, TileID, TileLease
+from number_compiler.resources.causal_workspace import (
+    CausalFrameStack,
+    CausalResults,
+    CausalSpatialWorkspace,
+    SpatialReferenceBuffer,
+)
 
 if TYPE_CHECKING:
+    from number_compiler.hashlife.execution.tile_causal import CausalTileEngine
     from number_compiler.hashlife.execution.tile_causal_results import (
         CausalCompletedOutput,
     )
@@ -529,3 +536,96 @@ __all__ = [
     "result_payload",
     "temporal_payload",
 ]
+
+
+def retain_completed(
+    engine: CausalTileEngine, key: PoweredResultKey, completed: ResultLease
+) -> CausalCompletedOutput:
+    """Retain a completed result for this observation or its application."""
+    payload = result_payload(engine.tiles, completed)
+    if engine._application is None:
+        engine._result_leases.append(completed)
+    else:
+        engine.scheduler._pin_causal(engine._application, key, completed)
+    return payload
+
+
+def combine_spatial_outputs(
+    engine: CausalTileEngine,
+    action: FieldCellActionID,
+    left: CausalCompletedOutput,
+    right: CausalCompletedOutput,
+) -> CausalCompletedOutput:
+    """Join leased child outputs with the same causal producer transport."""
+    from number_compiler.hashlife.execution.tile_causal_results import (
+        combine_causal_outputs,
+    )
+
+    producer = producer_parent(engine.tiles, engine._leases, left, right)
+    joined = engine.tiles.join(left.output, right.output)
+    engine._leases.append(joined)
+    return combine_causal_outputs(
+        engine.scheduler.results,
+        action,
+        joined.tile,
+        left,
+        right,
+        engine._wiring(action),
+        producer_output=producer,
+    )
+
+
+def publish_composite_output(
+    engine: CausalTileEngine,
+    action: FieldCellActionID,
+    tile: TileID,
+    left: int | CausalPrefix,
+    right: int | CausalPrefix,
+    payload: CausalCompletedOutput,
+) -> CausalCompletedOutput:
+    """Publish a complete temporal result through its admitted composite key."""
+    from number_compiler.hashlife.execution.tile_causal_results import (
+        publish_causal_completed,
+    )
+
+    key = engine._composite_key(action, tile, left, right)
+    if key is None:
+        return payload
+    completed = publish_causal_completed(engine.scheduler.results, key, payload)
+    result = retain_completed(engine, key, completed)
+    engine.ledger.bump("tile_causal_result_evaluations")
+    engine.ledger.bump("tile_temporal_complete_compositions")
+    return result
+
+
+def schedule_spatial_scan(
+    workspace: CausalSpatialWorkspace,
+    frames: CausalFrameStack,
+    frame: CausalFrame,
+    action: FieldCellActionID,
+    side: int,
+    chunks: SpatialReferenceBuffer,
+    incoming: int | CausalPrefix,
+    saved: tuple[object, ...],
+) -> None:
+    """Schedule one directional scan with a single charged endpoint buffer."""
+    states = workspace.allocate(len(chunks) + 1)
+    states.append(incoming)
+    frame.stage, frame.saved = side + 1, saved
+    frames.extend(
+        (frame, CausalFrame("scan_chunks", (action, side, chunks, incoming, 0, states)))
+    )
+
+
+def schedule_reflected_scan(
+    workspace: CausalSpatialWorkspace,
+    frames: CausalFrameStack,
+    frame: CausalFrame,
+    action: FieldCellActionID,
+    values: CausalResults,
+) -> None:
+    anchors = values.pop()
+    chunks, argument = frame.saved
+    schedule_spatial_scan(
+        workspace, frames, frame, action, 1, chunks, argument, (chunks, anchors)
+    )

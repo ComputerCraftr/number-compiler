@@ -298,14 +298,7 @@ def _task(self: DiamondPayloadRegistry, value: object) -> bool:
             return proof.radius == 0 or level >= (proof.radius - 1).bit_length()
         return False
     if type(value) is PairSummary:
-        return (
-            type(value.action) is ActionProgramID
-            and value.action.kind == "diamond-action"
-            and self._handle(value.action)
-            and type(value.cell) is CellID
-            and self._handle(value.cell)
-            and self._original_cell(value.cell)
-        )
+        return self._original_action_cell(value.action, value.cell)
     if type(value) is OutputFunction:
         if not all(
             type(action) is ActionProgramID

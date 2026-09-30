@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from tests.support.reference_arithmetic import carry_summary as _carry_summary
+from tests.support.reference_arithmetic import negacyclic_reduce as _reduce
 from random import Random
 
 import pytest
@@ -10,9 +12,6 @@ from devtools.experiments.reverse_add.frobenius_sectors import (
     ReverseFrobeniusSectorProduct,
 )
 from number_compiler.arithmetic.carry.event_memory import pair_step
-from number_compiler.arithmetic.carry.reverse_sector_transfer import (
-    ReverseCarrySectorTransfer,
-)
 from number_compiler.arithmetic.fields.radial_innovation import (
     ReverseAddCyclotomicInnovationBlock,
 )
@@ -128,21 +127,6 @@ def _multiply(left: tuple[int, ...], right: tuple[int, ...]) -> tuple[int, ...]:
             degree = i + j
             result[degree % width] += first * second * (-1 if degree >= width else 1)
     return tuple(value % 32 for value in result)
-
-
-def _carry_summary(values: tuple[int, ...]) -> ReverseCarrySectorTransfer:
-    result = ReverseCarrySectorTransfer.leaf(10, values[0])
-    for value in values[1:]:
-        result = result.then(ReverseCarrySectorTransfer.leaf(10, value))
-    return result
-
-
-def _reduce(values: tuple[int, ...], classes: int) -> tuple[int, ...]:
-    result = [0] * classes
-    for index, value in enumerate(values):
-        quotient, target = divmod(index, classes)
-        result[target] = (result[target] + (-value if quotient & 1 else value)) % 32
-    return tuple(result)
 
 
 def test_carry_transfer_constructs_one_step_product_without_event_input() -> None:

@@ -713,3 +713,13 @@ __all__ = [
     "recursive_core_residue",
     "safe_complete_cycles",
 ]
+
+
+def phase_period(leading: int, last_digit: int) -> tuple[int, int]:
+    common = gcd(leading, 10)
+    period = 10 // common
+    residue = last_digit % common
+    displacement = (
+        10 * (period * residue + common * period * (period - 1) // 2) + period * leading
+    )
+    return period, displacement

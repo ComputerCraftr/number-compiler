@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from devtools.checks.package_contracts import DEVELOPER_ROOTS
+
 import ast
 from pathlib import Path
 
@@ -57,7 +59,7 @@ def proof_import_violations(source: str, module: str) -> tuple[str, ...]:
         for target in targets:
             parts = target.split(".")
             if (
-                parts[0] in {"devtools", "tests", "bench", "research"}
+                parts[0] in DEVELOPER_ROOTS
                 or len(parts) >= 2
                 and parts[0] == "number_compiler"
                 and ("proof" in parts or parts[1] in LEGACY_MODULES)

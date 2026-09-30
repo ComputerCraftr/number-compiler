@@ -1,5 +1,8 @@
 """Right-context clipping is a certified dependency bound, not a width guess."""
 
+from tests.support.assertions import assert_rejected_atomically
+
+
 from itertools import product
 from random import Random
 
@@ -62,8 +65,7 @@ def test_halo_rejects_foreign_root_before_any_observation() -> None:
     runtime, action = build(CollatzPhysicalBlockEffect(), (1,), 8, 4)
     foreign, other = build(CollatzPhysicalBlockEffect(), (1,), 8, 4)
     assert runtime.halos.right(action) == 4
-    before = runtime.ledger.snapshot()
-    with pytest.raises(ValueError):
-        runtime.halos.right(other)
-    assert runtime.ledger.snapshot() == before
+    assert_rejected_atomically(
+        runtime.ledger, lambda: runtime.halos.right(other), ValueError
+    )
     assert foreign.halos.right(other) == 4

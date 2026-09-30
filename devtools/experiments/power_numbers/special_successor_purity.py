@@ -30,30 +30,32 @@ from devtools.experiments.power_numbers.special_successor_models import (
     StaticInjectionAudit,
     StructuredAutomatonAudit,
 )
-from devtools.proofs.oracles.special_binary_jump import (
+from devtools.verification.oracles.special_binary_jump import (
+    _minimized_carrier,
     _fermat_carrier_proof,
     _mersenne_carrier_proof,
     fermat_radix_orbit_representative,
     mersenne_sign_representative,
 )
-from devtools.proofs.quotient_synthesis import (
+from devtools.verification.quotient_synthesis import (
     ObserverFeature,
     synthesize_finite_target_observer,
 )
+from devtools.verification.factorization_truth import factor_multiplicities_truth
 from number_compiler.arithmetic.fields.congruence_automaton import (
     reinterpret_binary_digits,
 )
+from number_compiler.sequences.power_numbers.etale_factor import _quadratic_mul_pair
 from number_compiler.arithmetic.functions.finite_unary import (
     minimize_unary_moore,
     partition_equivalent,
-    quotient_machine_from_moore,
     unary_image_filtration,
 )
 from number_compiler.arithmetic.polynomials.two_primary_filtration import (
     pure_two_primary_image_filtration,
 )
 from number_compiler.sequences.prime.automaton import boolean_anf_metrics
-from number_compiler.sequences.prime.set import jacobi_symbol, smallest_factor
+from number_compiler.sequences.prime.set import jacobi_symbol
 
 
 def _target_conflicts(values: tuple[object, ...], labels: tuple[bool, ...]) -> int:
@@ -436,11 +438,7 @@ def boolean_set_audits() -> tuple[BooleanSetAudit, ...]:
     proof = _mersenne_carrier_proof(p)
     filt = unary_image_filtration(proof.transition)
     level = 6
-    target = {
-        state
-        for state, depth in enumerate(filt.depth_ids)
-        if depth < 0 or depth >= level
-    }
+    target = _filtration_target(filt.depth_ids, level)
     mask = sum(1 << state for state in target)
     anf = boolean_anf_metrics(mask, p - 1)
     rows.append(
@@ -452,11 +450,7 @@ def boolean_set_audits() -> tuple[BooleanSetAudit, ...]:
     proof = _fermat_carrier_proof(n)
     filt = unary_image_filtration(proof.transition)
     level = 6
-    target_carriers = {
-        state
-        for state, depth in enumerate(filt.depth_ids)
-        if depth < 0 or depth >= level
-    }
+    target_carriers = _filtration_target(filt.depth_ids, level)
     by_rep = {rep: state for state, rep in enumerate(proof.representatives)}
     mask = 0
     count = 0
@@ -470,6 +464,12 @@ def boolean_set_audits() -> tuple[BooleanSetAudit, ...]:
         BooleanSetAudit("fermat", n, level, width, count, anf.degree, anf.terms)
     )
     return tuple(rows)
+
+
+def _filtration_target(depth_ids: tuple[int, ...], level: int) -> set[int]:
+    return {
+        state for state, depth in enumerate(depth_ids) if depth < 0 or depth >= level
+    }
 
 
 def _exact_target_hitting_times(
@@ -530,11 +530,7 @@ def prime_group_depth_audits() -> tuple[PrimeGroupDepthAudit, ...]:
             if family == "fermat"
             else _mersenne_carrier_proof(parameter, max_exponent=max(19, parameter))
         )
-        moore = minimize_unary_moore(proof.transition, proof.outputs)
-        bounded_machine = quotient_machine_from_moore(
-            proof.transition, proof.outputs, moore.class_ids
-        )
-        bounded_source = moore.class_ids[proof.source_carrier]
+        moore, bounded_machine, bounded_source = _minimized_carrier(proof)
         filtration = unary_image_filtration(proof.transition)
         hitting_times = _exact_target_hitting_times(proof.transition, proof.outputs)
         target_depths = {
@@ -613,19 +609,7 @@ def _v2_odd(value: int) -> tuple[int, int]:
 
 def _factorization(value: int) -> tuple[tuple[int, int], ...]:
     """Complete bounded factorization for research truth labels only."""
-    remaining = int(value)
-    if remaining < 2:
-        return ()
-    out: list[tuple[int, int]] = []
-    while remaining > 1:
-        factor = smallest_factor(remaining)
-        prime = remaining if factor is None else factor
-        multiplicity = 0
-        while remaining % prime == 0:
-            remaining //= prime
-            multiplicity += 1
-        out.append((prime, multiplicity))
-    return tuple(out)
+    return factor_multiplicities_truth(value)
 
 
 def _prime_divisors(value: int) -> tuple[int, ...]:
@@ -652,9 +636,7 @@ def _quadratic_mul(
     delta: int,
     modulus: int,
 ) -> tuple[int, int]:
-    a, b = first
-    c, d = second
-    return ((a * c + b * d * delta) % modulus, (a * d + b * c) % modulus)
+    return _quadratic_mul_pair(first, second, delta, modulus)
 
 
 def _quadratic_pow(

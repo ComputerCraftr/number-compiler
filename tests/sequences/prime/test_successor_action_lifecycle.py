@@ -39,9 +39,7 @@ def test_constructor_budget_failure_releases_every_created_store() -> None:
         _assert_prior_inventory_unchanged(before, after)
 
         dag.max_states = retained + 100
-        arena = PrimeSuccessorActionArena(dag, 5)
-        arena.close()
-        assert (dag.ledger.entries, dag.ledger.nodes) == (before.entries, before.nodes)
+        _assert_successor_close_restores(dag, before)
     finally:
         dag.close()
     assert dag.ledger.entries == dag.ledger.nodes == 0
@@ -164,9 +162,15 @@ def test_constructor_publication_failure_rolls_back_only_its_own_allocations(
     try:
         assert (after.entries, after.nodes) == (before.entries, before.nodes)
         _assert_prior_inventory_unchanged(before, after)
-        arena = PrimeSuccessorActionArena(dag, 5)
-        arena.close()
-        assert (dag.ledger.entries, dag.ledger.nodes) == (before.entries, before.nodes)
+        _assert_successor_close_restores(dag, before)
     finally:
         dag.close()
     assert dag.ledger.entries == dag.ledger.nodes == 0
+
+
+def _assert_successor_close_restores(
+    dag: CoprimeRankDAG, before: LedgerSnapshot
+) -> None:
+    arena = PrimeSuccessorActionArena(dag, 5)
+    arena.close()
+    assert (dag.ledger.entries, dag.ledger.nodes) == (before.entries, before.nodes)

@@ -2,13 +2,14 @@
 
 from __future__ import annotations
 
+from tests.support.source_image_assertions import assert_physical_source_work
 from array import array
 from collections.abc import Callable
 from typing import Never
 
 import pytest
 
-from devtools.proofs.block_power import compose_block_effects
+from devtools.verification.block_power import compose_block_effects
 from number_compiler.arithmetic.contracts.block_effect import BlockContextBudget
 from number_compiler.arithmetic.contracts.block_kernel import FiniteBlockEffect
 from number_compiler.hashlife.execution.tile_scheduler import TileApplication
@@ -70,7 +71,7 @@ def test_generic_composition_reports_issued_tile_executor_cutover() -> None:
     "constructor,seed,family",
     (
         (ReverseAddPoweredTerm, 196, "reverse-add-tile-hashlife"),
-        (PoweredCollatzTerm, 27, "collatz-tile-hashlife"),
+        (PoweredCollatzTerm, 27, "collatz-dyadic-source-image"),
     ),
 )
 def test_certified_family_uses_tile_scheduler_without_legacy_construction(
@@ -88,7 +89,16 @@ def test_certified_family_uses_tile_scheduler_without_legacy_construction(
     if family == "reverse-add-tile-hashlife":
         assert metrics.tile_causal_direct_parent_transfers > 0
     else:
-        assert metrics.tile_scheduler_leaf_function_applications > 0
+        assert isinstance(term, PoweredCollatzTerm)
+        assert term._power is None
+        assert (
+            metrics.temporal_parent_requests
+            == metrics.temporal_parent_compositions
+            == 0
+        )
+        assert metrics.field_action_nodes == 0
+        counters = metrics.resource_work_counters
+        assert_physical_source_work(counters)
 
 
 def test_reverse_tile_route_reports_no_retired_execution_work() -> None:

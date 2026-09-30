@@ -9,6 +9,7 @@ from math import ceil, log2
 from typing import TYPE_CHECKING, Literal
 
 from number_compiler.api.comma_term import CommaTermPayload
+from number_compiler.api.symbolic_terms import SymbolicExpression, initialize_projected
 from number_compiler.arithmetic.contracts.exact_tree_context import source_reads_only
 from number_compiler.arithmetic.contracts.input_validation import require_integer
 from number_compiler.arithmetic.fields.radix import (
@@ -359,15 +360,33 @@ TermPayload = (
 )
 
 
-@dataclass(frozen=True, slots=True)
+@dataclass(frozen=True, slots=True, init=False)
 class ProjectedNumberTerm:
     family: NumberFamily
     index: int
     parameter: int | None
     source_radix: int | None
-    symbolic: str
+    _symbolic: SymbolicExpression
     payload: TermPayload
     metrics: ProjectionMetrics
+
+    def __init__(
+        self,
+        family: NumberFamily,
+        index: int,
+        parameter: int | None,
+        source_radix: int | None,
+        symbolic: str | SymbolicExpression,
+        payload: TermPayload,
+        metrics: ProjectionMetrics,
+    ) -> None:
+        initialize_projected(
+            self, family, index, parameter, source_radix, symbolic, payload, metrics
+        )
+
+    @property
+    def symbolic(self) -> str:
+        return self._symbolic.render()
 
     @property
     def estimated_bit_length(self) -> Extent:
@@ -652,7 +671,7 @@ class NumberCompiler:
                 n,
                 20,
                 10,
-                f"A367620[{n}]",
+                SymbolicExpression("a367620", n),
                 CommaTermPayload(comma),
                 ProjectionMetrics(
                     "a367620",
@@ -691,7 +710,7 @@ class NumberCompiler:
                 n,
                 source,
                 b,
-                f"reverse_add(seed={source},base={b})[{n}]",
+                SymbolicExpression("reverse-add", n, source, b),
                 payload,
                 ProjectionMetrics(
                     "reverse-add",
@@ -726,7 +745,7 @@ class NumberCompiler:
                 n,
                 seed,
                 r,
-                f"collatz(seed={seed})[{n}]",
+                SymbolicExpression("collatz", n, seed),
                 payload,
                 ProjectionMetrics(
                     "collatz",
@@ -760,7 +779,7 @@ class NumberCompiler:
                 n,
                 None,
                 2,
-                f"antihydra_arithmetic(source=blank)[{n}]",
+                SymbolicExpression("antihydra", n),
                 payload,
                 ProjectionMetrics("antihydra", n, 0, 0, 1, descriptor_bits, 4 + n),
             )
@@ -792,7 +811,7 @@ class NumberCompiler:
                 n,
                 start,
                 None,
-                f"prime_at_or_after(start={start})[{n}]",
+                SymbolicExpression("prime", n, start),
                 payload,
                 ProjectionMetrics(
                     "prime",
@@ -837,7 +856,7 @@ class NumberCompiler:
                 n,
                 n,
                 2,
-                f"2^(2^{n})+1",
+                SymbolicExpression("fermat", n),
                 payload,
                 ProjectionMetrics(
                     "fermat",
@@ -860,7 +879,7 @@ class NumberCompiler:
             n,
             n,
             2,
-            f"2^{n}-1",
+            SymbolicExpression("mersenne", n),
             payload,
             ProjectionMetrics(
                 "mersenne",

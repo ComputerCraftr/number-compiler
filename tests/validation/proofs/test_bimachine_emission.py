@@ -4,14 +4,14 @@ from collections.abc import Callable
 
 import pytest
 
-from devtools.proofs.builders.bimachine_lazy_power import (
+from devtools.verification.builders.bimachine_lazy_power import (
     EmissionRequest,
     EmissionSteps,
     LazyBimachine,
     compose,
     lazy_from_eager,
 )
-from devtools.proofs.builders.bimachine_power import DFA, build_step, encode
+from devtools.verification.builders.bimachine_power import DFA, build_step, encode
 
 
 def _forward(previous: LazyBimachine) -> Callable[[int, int, int], EmissionSteps]:

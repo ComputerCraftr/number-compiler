@@ -1,6 +1,6 @@
 import pytest
 
-from devtools.proofs.collatz_spacetime import (
+from devtools.verification.collatz_spacetime import (
     CollatzCausalSpacetimeEngine,
     CollatzRadixField,
 )

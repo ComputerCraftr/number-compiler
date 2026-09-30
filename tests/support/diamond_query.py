@@ -1,37 +1,16 @@
 """Fresh diamond test helpers extracted without changing their execution."""
 
 from __future__ import annotations
+from tests.support.diamond_runtime import build as build_runtime
 
 from number_compiler.arithmetic.contracts.block_effect import BlockEffect, BoundarySide
-from number_compiler.arithmetic.contracts.scoped_handles import ExactSource
-from number_compiler.arithmetic.contracts.source_geometry import SourceGeometry
-from number_compiler.hashlife.actions.lazy_compiler import LazyCompiler
-from number_compiler.hashlife.execution.continuations.diamond_runtime import (
-    DiamondRuntime,
-)
 from number_compiler.hashlife.observation.diamond_query import DiamondApplication
-from number_compiler.resources.ledger import ResourceLedger
 
 
 def build(
     effect: BlockEffect, source: tuple[int, ...], length: int, steps: int
 ) -> DiamondApplication:
-    ledger = ResourceLedger()
-    compiler = LazyCompiler(ledger)
-    atom = compiler.atom(effect)
-    geometry = SourceGeometry(
-        ledger,
-        ExactSource(
-            source,
-            effect.base,
-            blank=effect.blank,
-            extent=length,
-            alphabet_size=effect.blank,
-        ),
-    )
-    geometry.span(source, effect.blank, length)
-    runtime = DiamondRuntime(compiler, geometry)
-    root = runtime.actions.power(runtime.actions.intern(atom), steps)
+    runtime, root = build_runtime(effect, source, length, steps)
     return DiamondApplication(runtime, root)
 
 
@@ -53,3 +32,10 @@ def oracle(
             effect.emit(left[i], symbol, right[i + 1]) for i, symbol in enumerate(word)
         ]
     return word
+
+
+def bounded_case(
+    effect: BlockEffect, steps: int
+) -> tuple[DiamondApplication, list[int]]:
+    source = (1, 0, 1) if effect.base == 2 else (2, 4, 2)
+    return build(effect, source, 8, steps), oracle(effect, source, 8, steps)

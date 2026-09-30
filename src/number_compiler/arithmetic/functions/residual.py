@@ -117,7 +117,7 @@ def _refine(
         part = new
 
 
-def _quotient_dfa(dfa: DFA, part: dict[int, int]) -> tuple[DFA, dict[int, int]]:
+def quotient_dfa(dfa: DFA, part: dict[int, int]) -> tuple[DFA, dict[int, int]]:
     classes = sorted(set(part.values()))
     rep_old = {c: min(q for q in dfa.states if part[q] == c) for c in classes}
     cmap = {c: i for i, c in enumerate(classes)}
@@ -202,8 +202,8 @@ def minimize_bimachine(
             robs[r, a] = rclasses.intern((shape, residual))
     rpart, rr = _refine(machine.right.states, A, machine.right.step, robs)
 
-    left, lrep = _quotient_dfa(machine.left, lpart)
-    right, rrep = _quotient_dfa(machine.right, rpart)
+    left, lrep = quotient_dfa(machine.left, lpart)
+    right, rrep = quotient_dfa(machine.right, rpart)
     projected = output.project(
         tuple(lrep[q] for q in left.states),
         tuple(rrep[q] for q in right.states),

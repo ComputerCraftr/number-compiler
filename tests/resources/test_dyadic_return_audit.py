@@ -7,14 +7,17 @@ from number_compiler.hashlife.execution.dyadic_return_images import (
     DyadicCycleSummary,
     DyadicReturnCycle,
     DyadicReturnImageWorkspace,
-    DyadicReturnSourceID,
     DyadicReturnLaw,
+    DyadicReturnSourceID,
 )
 from number_compiler.resources.dyadic_return_payload_audit import (
     audit_dyadic_return_payloads,
 )
 from number_compiler.resources.ledger import ResourceLedger
 from number_compiler.resources.payload_audit import audit_registered_payloads
+from number_compiler.resources.physical_support_payload_audit import (
+    PhysicalSupportPayloadAudit,
+)
 from number_compiler.sequences.antihydra.arithmetic_images import (
     ANTIHYDRA_ARITHMETIC_LAW,
     AntihydraArithmeticImageWorkspace,
@@ -76,9 +79,7 @@ def test_audit_rejects_mutated_composite_source_and_stale_image() -> None:
     object.__setattr__(source, "residue", old_residue ^ 1)
     try:
         result = audit_dyadic_return_payloads(ledger)
-        assert (workspace.image_owner, id(workspace)) in result.invalid
-        assert id(workspace) not in result.approved
-        assert audit_registered_payloads(ledger).forbidden_future_payloads > 0
+        _assert_workspace_rejected(ledger, workspace, result)
     finally:
         object.__setattr__(source, "residue", old_residue)
 
@@ -143,9 +144,7 @@ def test_unknown_subclass_cannot_override_validation_to_gain_approval() -> None:
     ledger = ResourceLedger()
     workspace = ForgedWorkspace(ledger, 27, 65)
     result = audit_dyadic_return_payloads(ledger)
-    assert (workspace.image_owner, id(workspace)) in result.invalid
-    assert id(workspace) not in result.approved
-    assert audit_registered_payloads(ledger).forbidden_future_payloads > 0
+    _assert_workspace_rejected(ledger, workspace, result)
 
 
 def test_audit_preserves_images_and_charges_its_bounded_recomputation() -> None:
@@ -328,9 +327,7 @@ def test_audit_rejects_a_mutated_cycle_descriptor() -> None:
     object.__setattr__(cycle, "states", (1, 2, 4))
     try:
         result = audit_dyadic_return_payloads(ledger)
-        assert (workspace.image_owner, id(workspace)) in result.invalid
-        assert id(workspace) not in result.approved
-        assert audit_registered_payloads(ledger).forbidden_future_payloads > 0
+        _assert_workspace_rejected(ledger, workspace, result)
     finally:
         object.__setattr__(cycle, "states", old_states)
 
@@ -394,3 +391,13 @@ def test_audit_charges_compositions_and_cycles() -> None:
     assert ledger.counters["dyadic_payload_audit_compositions"] > 0
     assert ledger.counters["dyadic_payload_audit_cycle_checks"] > 0
     assert ledger.counters["dyadic_payload_audit_operand_bits"] > 0
+
+
+def _assert_workspace_rejected(
+    ledger: ResourceLedger,
+    workspace: CollatzPhysicalImageWorkspace,
+    result: PhysicalSupportPayloadAudit,
+) -> None:
+    assert (workspace.image_owner, id(workspace)) in result.invalid
+    assert id(workspace) not in result.approved
+    assert audit_registered_payloads(ledger).forbidden_future_payloads > 0

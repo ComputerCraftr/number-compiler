@@ -9,7 +9,7 @@ from pathlib import Path
 PUBLIC_PACKAGES = frozenset(
     {"api", "arithmetic", "hashlife", "sequences", "projection", "resources", "kernels"}
 )
-DEVELOPER_ROOTS = frozenset({"devtools", "tests", "bench", "research"})
+DEVELOPER_ROOTS = frozenset({"devtools", "tests", "bench", "research", "proofs"})
 
 
 def module_inventory(root: Path) -> dict[str, Path]:

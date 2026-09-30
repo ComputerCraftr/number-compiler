@@ -13,7 +13,7 @@ from number_compiler.hashlife.tiles.tile_boundaries import (
     normalize_boundary_view,
 )
 from number_compiler.hashlife.tiles.tiles import TileID
-from tests.arithmetic.contracts.test_tile_kernel import _runtime, _tile
+from tests.support.tile_kernel import _runtime, _tile
 
 if TYPE_CHECKING:
     from number_compiler.hashlife.tiles.tiles import (

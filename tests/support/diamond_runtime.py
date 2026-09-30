@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from tests.support.semantic_oracles import scan_ports
+
 from collections.abc import Sequence
 from typing import TYPE_CHECKING
 
@@ -45,14 +47,10 @@ def oracle(
 ) -> list[int]:
     values = list(values) + [effect.blank] * (length - len(values))
     for _ in range(exponent):
-        left = [effect.initial(BoundarySide.LEFT)]
-        right = [effect.initial(BoundarySide.RIGHT)]
-        for symbol in values:
-            left.append(effect.advance(BoundarySide.LEFT, left[-1], symbol))
-        for symbol in reversed(values):
-            right.append(effect.advance(BoundarySide.RIGHT, right[-1], symbol))
-        right.reverse()
-        values = [
-            effect.emit(left[i], value, right[i + 1]) for i, value in enumerate(values)
-        ]
+        _, _, values = scan_ports(
+            effect,
+            values,
+            effect.initial(BoundarySide.LEFT),
+            effect.initial(BoundarySide.RIGHT),
+        )
     return values

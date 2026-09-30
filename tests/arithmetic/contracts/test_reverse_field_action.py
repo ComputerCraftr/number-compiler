@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from tests.support.assertions import assert_associative
+
 from dataclasses import replace
 from typing import cast
 
@@ -113,10 +115,8 @@ def test_reverse_field_composition_is_associative_and_chronological() -> None:
     b = _atom(arena, "b", growth=1, forward=CarryFn.CONST1, backward=CarryFn.ID)
     c = _atom(arena, "c", growth=0, forward=CarryFn.CONST0, backward=CarryFn.CONST1)
 
-    left = arena.compose(arena.compose(a, b), c)
-    right = arena.compose(a, arena.compose(b, c))
+    left = assert_associative(arena.compose, a, b, c)
 
-    assert left == right
     record = arena.resolve(left)
     assert record.residual == arena.intern_residual("abc")
     assert record.output == arena.intern_output("abc")

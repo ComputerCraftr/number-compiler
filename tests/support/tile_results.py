@@ -29,9 +29,11 @@ from number_compiler.hashlife.tiles.tile_ports import (
 from number_compiler.hashlife.tiles.tile_result_records import (
     CompletedResult,
     PoweredResultKey,
+    FusedInterfaceKey,
 )
 from number_compiler.hashlife.tiles.tile_results import (
     CompletedResultArena,
+    ResultLease,
 )
 from number_compiler.hashlife.tiles.tiles import (
     TileAlphabet,
@@ -39,7 +41,7 @@ from number_compiler.hashlife.tiles.tiles import (
     TileArena,
     TileID,
 )
-from number_compiler.resources.ledger import ResourceLedger
+from number_compiler.resources.ledger import ResourceLedger, LedgerSnapshot
 from number_compiler.resources.stores import LedgerList
 
 if TYPE_CHECKING:
@@ -188,3 +190,118 @@ class _ChangingAlphabetAuthority(_ActionAuthority):
         assert self.tiles is not None
         if self.tiles.resolve(tile).alphabet != expected:
             raise ValueError("wrong child output domain")
+
+
+def _fused_setup(
+    *, publish: bool = False
+) -> tuple[
+    ResourceLedger,
+    _ActionAuthority,
+    TileArena,
+    CompletedResultArena,
+    TileLease,
+    TileLease,
+    PoweredResultKey,
+    CompletedResult,
+    FusedInterfaceKey,
+]:
+    fixture = _setup()
+    results, key, result = fixture[3], fixture[6], fixture[7]
+    fused = FusedInterfaceKey(key.action, key.input, key.ports, key.wiring)
+    if publish:
+        results.publish_fused_interface(fused, result.outgoing)
+    return (*fixture, fused)
+
+
+def assert_valid_tile_payloads(
+    ledger: ResourceLedger, results: CompletedResultArena, key: object
+) -> None:
+    from number_compiler.resources.tile_result_inventory import audit_tile_results
+    from number_compiler.resources.payload_audit import audit_registered_payloads
+
+    approved, invalid = audit_tile_results(results, dict(ledger.iter_containers()))
+    assert not invalid and id(key) in approved
+    payloads = audit_registered_payloads(ledger)
+    assert (
+        payloads.forbidden_future_payloads,
+        payloads.unbounded_future_integers,
+        payloads.unknown_payloads,
+    ) == (0, 0, 0)
+
+
+def assert_result_stores_unchanged(
+    ledger: ResourceLedger,
+    results: CompletedResultArena,
+    before: tuple[int, int, object, object],
+) -> None:
+    assert (ledger.entries, ledger.nodes) == before[:2]
+    assert dict(results._memo) == before[2]
+    assert dict(results._reverse) == before[3]
+
+
+def _incoming_setup() -> tuple[
+    ResourceLedger,
+    _ActionAuthority,
+    TileArena,
+    CompletedResultArena,
+    TileLease,
+    TileLease,
+    PoweredResultKey,
+    CompletedResult,
+    TileLease,
+]:
+    ledger, authority, tiles, results, input_lease, output_lease, key, result = _setup()
+    alphabet = tiles.resolve(key.input).alphabet
+    incoming = tiles.leaf(alphabet, 2)
+    return (
+        ledger,
+        authority,
+        tiles,
+        results,
+        input_lease,
+        output_lease,
+        key,
+        result,
+        incoming,
+    )
+
+
+def _published_setup() -> tuple[
+    ResourceLedger,
+    _ActionAuthority,
+    TileArena,
+    CompletedResultArena,
+    TileLease,
+    TileLease,
+    PoweredResultKey,
+    CompletedResult,
+    ResultLease,
+    LedgerSnapshot,
+]:
+    ledger, authority, tiles, results, input_lease, output_lease, key, result = _setup()
+    held = results.publish(key, result)
+    before = ledger.snapshot()
+    return (
+        ledger,
+        authority,
+        tiles,
+        results,
+        input_lease,
+        output_lease,
+        key,
+        result,
+        held,
+        before,
+    )
+
+
+def assert_retention_and_peaks_unchanged(
+    ledger: ResourceLedger, before: LedgerSnapshot
+) -> None:
+    after = ledger.snapshot()
+    assert (after.entries, after.nodes, after.peak_entries, after.peak_nodes) == (
+        before.entries,
+        before.nodes,
+        before.peak_entries,
+        before.peak_nodes,
+    )

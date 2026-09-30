@@ -139,10 +139,22 @@ def _native_first_inline(
     """Return the internal first coefficient family ``tau`` and ``g1`` only."""
     if source.plane_count != spec.plane_count:
         raise ValueError((source.plane_count, spec.plane_count))
-    Lout = carry_plane_scan(arena, source.planes, spec)
-    g1 = arena.eval_closed_bit(Lout, source.width - 1)
-    tau = branch_coefficient_planes(arena, source.planes, g1, spec, Lout)
-    return tau, g1
+    _carry, tau, growth, _width = _native_step(arena, source.planes, spec)
+    return tau, growth
+
+
+def _native_step(
+    arena: FormulaArena,
+    planes: tuple[Expr, ...],
+    spec: RadixSpec,
+) -> tuple[Expr, tuple[Expr, ...], int, int]:
+    carry = carry_plane_scan(arena, planes, spec)
+    growth = arena.eval_closed_bit(carry, planes[0].width - 1)
+    next_planes = branch_coefficient_planes(arena, planes, growth, spec, carry)
+    return carry, next_planes, growth, next_planes[0].width
+
+
+_NativeStep = tuple[Expr, tuple[Expr, ...], int, int]
 
 
 def _native_two_step_terms(
@@ -156,9 +168,7 @@ def _native_two_step_terms(
     them in arena metadata or promote ``tau`` to FormulaRoot.
     """
     tau, g1 = _native_first_inline(arena, source, spec)
-    first_width = tau[0].width
-    Kout = carry_plane_scan(arena, tau, spec)
-    g2 = arena.eval_closed_bit(Kout, first_width - 1)
+    Kout, _next, g2, _width = _native_step(arena, tau, spec)
     return tau, Kout, g1, g2
 
 
@@ -234,6 +244,24 @@ def native_two_step_digits(
     return digits
 
 
+def _native_four_step_chain(
+    arena: FormulaArena,
+    source: FormulaRoot,
+    spec: RadixSpec,
+) -> tuple[_NativeStep, _NativeStep, _NativeStep, _NativeStep]:
+    """Build the four lexical native steps once for either observer."""
+    c1, tau1, g1, w1 = _native_step(arena, source.planes, spec)
+    c2, tau2, g2, w2 = _native_step(arena, tau1, spec)
+    c3, tau3, g3, w3 = _native_step(arena, tau2, spec)
+    c4, tau4, g4, w4 = _native_step(arena, tau3, spec)
+    return (
+        (c1, tau1, g1, w1),
+        (c2, tau2, g2, w2),
+        (c3, tau3, g3, w3),
+        (c4, tau4, g4, w4),
+    )
+
+
 def compile_native_four_step(
     arena: FormulaArena,
     source: FormulaRoot,
@@ -253,28 +281,18 @@ def compile_native_four_step(
     if isinstance(cached, NativeFourStepCompilation):
         return cached
 
-    # Step 1: S0 -> C1 -> tau1.
-    c1 = carry_plane_scan(arena, source.planes, spec)
-    g1 = arena.eval_closed_bit(c1, source.width - 1)
-    tau1 = branch_coefficient_planes(arena, source.planes, g1, spec, c1)
-    w1 = tau1[0].width
-
-    # Step 2: substituted tau1 -> C2 -> tau2.
-    c2 = carry_plane_scan(arena, tau1, spec)
-    g2 = arena.eval_closed_bit(c2, w1 - 1)
-    tau2 = branch_coefficient_planes(arena, tau1, g2, spec, c2)
-    w2 = tau2[0].width
-
-    # Step 3: substituted tau2 -> C3 -> tau3.
-    c3 = carry_plane_scan(arena, tau2, spec)
-    g3 = arena.eval_closed_bit(c3, w2 - 1)
-    tau3 = branch_coefficient_planes(arena, tau2, g3, spec, c3)
-    w3 = tau3[0].width
-
-    # Step 4: substituted tau3 -> C4 -> final S4.
-    c4 = carry_plane_scan(arena, tau3, spec)
-    g4 = arena.eval_closed_bit(c4, w3 - 1)
-    pair = FormulaRoot(branch_coefficient_planes(arena, tau3, g4, spec, c4))
+    (
+        (c1, tau1, g1, w1),
+        (c2, tau2, g2, w2),
+        (c3, tau3, g3, w3),
+        (
+            c4,
+            _tau4,
+            g4,
+            _w4,
+        ),
+    ) = _native_four_step_chain(arena, source, spec)
+    pair = FormulaRoot(_tau4)
 
     compiled = NativeFourStepCompilation(
         pair=pair,
@@ -304,17 +322,9 @@ def native_four_step_digits(
     # Rebuild the eliminated lexical terms.  Hash-consing reuses any nodes
     # already created by native_four_step(), but no intermediate root/cache key
     # is introduced.
-    c1 = carry_plane_scan(arena, source.planes, spec)
-    g1 = arena.eval_closed_bit(c1, source.width - 1)
-    tau1 = branch_coefficient_planes(arena, source.planes, g1, spec, c1)
-    c2 = carry_plane_scan(arena, tau1, spec)
-    g2 = arena.eval_closed_bit(c2, tau1[0].width - 1)
-    tau2 = branch_coefficient_planes(arena, tau1, g2, spec, c2)
-    c3 = carry_plane_scan(arena, tau2, spec)
-    g3 = arena.eval_closed_bit(c3, tau2[0].width - 1)
-    tau3 = branch_coefficient_planes(arena, tau2, g3, spec, c3)
-    c4 = carry_plane_scan(arena, tau3, spec)
-    g4 = arena.eval_closed_bit(c4, tau3[0].width - 1)
+    _step1, _step2, (_c3, tau3, _g3, _w3), (c4, _tau4, g4, _w4) = (
+        _native_four_step_chain(arena, source, spec)
+    )
     digits = _normalized_digit_root(arena, tau3, c4, g4, spec)
     arena.metadata_set(cache_key, digits)
     return digits

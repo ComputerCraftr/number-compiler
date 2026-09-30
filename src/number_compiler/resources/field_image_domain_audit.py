@@ -2,7 +2,8 @@
 
 from __future__ import annotations
 
-from collections.abc import Mapping
+from collections.abc import Callable, Mapping
+from typing import TypeVar
 
 from number_compiler.arithmetic.contracts.scoped_handles import ArenaToken
 from number_compiler.hashlife.execution.field_image_domains import (
@@ -125,3 +126,27 @@ def audit_field_image_domains(
 
 
 __all__ = ["audit_field_image_domains"]
+
+
+_Record = TypeVar("_Record")
+_Handle = TypeVar("_Handle")
+
+
+def indexed_record_matches(
+    handle: _Handle,
+    resolve: Callable[[_Handle], _Record],
+    keys: Mapping[_Record, int],
+    record: _Record,
+    local_id: int,
+) -> bool:
+    """Audit both directions of an arena index without equating distinct records."""
+    return (resolve(handle) is record) & (keys.get(record) == local_id)
+
+
+def admit_payload_root(
+    valid: bool, invalid: set[tuple[int, int]], owner: int, root: object
+) -> bool:
+    """Record a failed root before suppressing traversal of its untrusted stores."""
+    if not valid:
+        invalid.add((owner, id(root)))
+    return valid

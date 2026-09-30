@@ -81,10 +81,10 @@ status = "current"
 date = "2026-09-20"
 
 [[document]]
-id = "api-migration"
-path = "docs/api-migration.md"
+id = "metrics"
+path = "docs/metrics.md"
 kind = "guide"
-topic = "api-migration"
+topic = "execution-metrics"
 status = "current"
 date = "2026-09-20"
 
@@ -97,10 +97,10 @@ status = "current"
 date = "2026-09-20"
 
 [[document]]
-id = "family-first-cli"
-path = "docs/family-first-cli.md"
+id = "cli"
+path = "docs/cli.md"
 kind = "guide"
-topic = "family-first-cli"
+topic = "cli-reference"
 status = "current"
 date = "2026-09-20"
 
@@ -146,10 +146,10 @@ date = "2026-09-20"
 
 [[document]]
 id = "hygiene-disposition"
-path = "docs/hygiene-disposition.md"
+path = "docs/sprints/history/hygiene-disposition-2026-09-20.md"
 kind = "provenance"
 topic = "repository-hygiene"
-status = "current"
+status = "historical"
 date = "2026-09-20"
 
 [[document]]
@@ -201,16 +201,8 @@ status = "current"
 date = "2026-09-20"
 
 [[document]]
-id = "results-policy"
-path = "results/README.md"
-kind = "guide"
-topic = "result-evidence"
-status = "current"
-date = "2026-09-20"
-
-[[document]]
 id = "sprint-2026-w37"
-path = "results/history/2026-09-07--2026-09-13/README.md"
+path = "docs/sprints/history/2026-09-07--2026-09-13/README.md"
 kind = "checkpoint"
 topic = "repository-sprint"
 status = "historical"
@@ -218,7 +210,7 @@ date = "2026-09-13"
 
 [[document]]
 id = "sprint-2026-w38"
-path = "results/history/2026-09-14--2026-09-20/README.md"
+path = "docs/sprints/history/2026-09-14--2026-09-20/README.md"
 kind = "checkpoint"
 topic = "repository-sprint"
 status = "historical"
@@ -226,7 +218,7 @@ date = "2026-09-20"
 
 [[document]]
 id = "sprint-2026-09-20"
-path = "results/current/week-of-2026-09-20/README.md"
+path = "docs/sprints/week-of-2026-09-20/README.md"
 kind = "sprint"
 topic = "repository-sprint"
 status = "historical"
@@ -242,7 +234,7 @@ date = "2026-09-23"
 
 [[document]]
 id = "sprint-2026-09-06-readme"
-path = "results/current/week-of-2026-09-06/README.md"
+path = "docs/sprints/week-of-2026-09-06/README.md"
 kind = "sprint"
 topic = "readme"
 status = "historical"
@@ -250,7 +242,7 @@ week_start = "2026-09-06"
 
 [[document]]
 id = "sprint-2026-09-13-readme"
-path = "results/current/week-of-2026-09-13/README.md"
+path = "docs/sprints/week-of-2026-09-13/README.md"
 kind = "sprint"
 topic = "readme"
 status = "historical"
@@ -258,7 +250,7 @@ week_start = "2026-09-13"
 
 [[document]]
 id = "sprint-topic-2026-09-20-antihydra-mahler"
-path = "results/current/week-of-2026-09-20/antihydra-mahler.md"
+path = "docs/sprints/week-of-2026-09-20/antihydra-mahler.md"
 kind = "sprint-topic"
 topic = "antihydra-mahler"
 status = "historical"
@@ -266,7 +258,7 @@ week_start = "2026-09-20"
 
 [[document]]
 id = "sprint-topic-2026-09-20-collatz"
-path = "results/current/week-of-2026-09-20/collatz.md"
+path = "docs/sprints/week-of-2026-09-20/collatz.md"
 kind = "sprint-topic"
 topic = "collatz"
 status = "historical"
@@ -274,7 +266,7 @@ week_start = "2026-09-20"
 
 [[document]]
 id = "sprint-topic-2026-09-20-comma"
-path = "results/current/week-of-2026-09-20/comma.md"
+path = "docs/sprints/week-of-2026-09-20/comma.md"
 kind = "sprint-topic"
 topic = "comma"
 status = "historical"
@@ -282,7 +274,7 @@ week_start = "2026-09-20"
 
 [[document]]
 id = "sprint-topic-2026-09-20-repository"
-path = "results/current/week-of-2026-09-20/repository.md"
+path = "docs/sprints/week-of-2026-09-20/repository.md"
 kind = "sprint-topic"
 topic = "repository"
 status = "historical"
@@ -290,7 +282,7 @@ week_start = "2026-09-20"
 
 [[document]]
 id = "sprint-topic-2026-09-20-reverse-add"
-path = "results/current/week-of-2026-09-20/reverse-add.md"
+path = "docs/sprints/week-of-2026-09-20/reverse-add.md"
 kind = "sprint-topic"
 topic = "reverse-add"
 status = "historical"
@@ -298,7 +290,7 @@ week_start = "2026-09-20"
 
 [[document]]
 id = "sprint-topic-2026-09-20-shared"
-path = "results/current/week-of-2026-09-20/shared.md"
+path = "docs/sprints/week-of-2026-09-20/shared.md"
 kind = "sprint-topic"
 topic = "shared"
 status = "historical"
@@ -306,7 +298,7 @@ week_start = "2026-09-20"
 
 [[document]]
 id = "sprint-2026-09-27-readme"
-path = "results/current/week-of-2026-09-27/README.md"
+path = "docs/sprints/week-of-2026-09-27/README.md"
 kind = "sprint"
 topic = "readme"
 status = "current"
@@ -314,7 +306,7 @@ week_start = "2026-09-27"
 
 [[document]]
 id = "sprint-topic-2026-09-27-antihydra-mahler"
-path = "results/current/week-of-2026-09-27/antihydra-mahler.md"
+path = "docs/sprints/week-of-2026-09-27/antihydra-mahler.md"
 kind = "sprint-topic"
 topic = "antihydra-mahler"
 status = "current"
@@ -322,7 +314,7 @@ week_start = "2026-09-27"
 
 [[document]]
 id = "sprint-topic-2026-09-27-comma"
-path = "results/current/week-of-2026-09-27/comma.md"
+path = "docs/sprints/week-of-2026-09-27/comma.md"
 kind = "sprint-topic"
 topic = "comma"
 status = "current"
@@ -330,7 +322,7 @@ week_start = "2026-09-27"
 
 [[document]]
 id = "sprint-topic-2026-09-27-reverse-add"
-path = "results/current/week-of-2026-09-27/reverse-add.md"
+path = "docs/sprints/week-of-2026-09-27/reverse-add.md"
 kind = "sprint-topic"
 topic = "reverse-add"
 status = "current"
@@ -338,8 +330,31 @@ week_start = "2026-09-27"
 
 [[document]]
 id = "sprint-topic-2026-09-27-shared"
-path = "results/current/week-of-2026-09-27/shared.md"
+path = "docs/sprints/week-of-2026-09-27/shared.md"
 kind = "sprint-topic"
 topic = "shared"
 status = "current"
 week_start = "2026-09-27"
+
+[[document]]
+id = "release-status-history-2026-09-27"
+path = "docs/sprints/history/release-status-through-2026-09-27.md"
+kind = "checkpoint"
+topic = "release-history"
+status = "historical"
+date = "2026-09-27"
+
+[[document]]
+id = "sprint-2026-09-27-repository"
+path = "docs/sprints/week-of-2026-09-27/repository.md"
+kind = "sprint-topic"
+topic = "repository"
+status = "current"
+week_start = "2026-09-27"
+
+[[document]]
+id = "api-cli-migrations-history"
+path = "docs/sprints/history/api-cli-migrations.md"
+kind = "provenance"
+topic = "api-cli-migrations"
+status = "historical"

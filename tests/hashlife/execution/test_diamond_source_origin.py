@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from tests.support.assertions import assert_rejected_atomically
+
 from dataclasses import replace
 from typing import TYPE_CHECKING, Literal, Never, cast
 
@@ -122,10 +124,9 @@ def test_warm_admission_still_rejects_foreign_reflected_and_future_cells(
             if isinstance(request, Transfer)
             else replace(request, cell=bad_cell)
         )
-        before = runtime.ledger.snapshot()
-        with pytest.raises((TypeError, ValueError)):
-            runtime.execute(request)
-        assert runtime.ledger.snapshot() == before
+        assert_rejected_atomically(
+            runtime.ledger, lambda: runtime.execute(request), (TypeError, ValueError)
+        )
 
 
 def test_original_metadata_is_derived_and_independently_audited() -> None:

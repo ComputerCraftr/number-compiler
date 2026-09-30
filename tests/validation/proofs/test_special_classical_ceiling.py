@@ -1,8 +1,11 @@
-from devtools.proofs.oracles.classical_ceiling import (
+from devtools.verification.oracles.classical_ceiling import (
     fermat_classical_ceiling,
     mersenne_classical_ceiling,
 )
-from devtools.proofs.oracles.special_primality import lucas_lehmer_test, pepin_test
+from devtools.verification.oracles.special_primality import (
+    lucas_lehmer_test,
+    pepin_test,
+)
 
 
 def test_fermat_classical_ceiling_matches_pepin_and_never_exceeds_bit_length_budget() -> (

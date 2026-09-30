@@ -1,6 +1,6 @@
 import pytest
 
-from devtools.proofs.oracles.bounded_filtration import (
+from devtools.verification.oracles.bounded_filtration import (
     bounded_candidate_image_filtration,
 )
 from number_compiler.arithmetic.polynomials.two_primary_filtration import (

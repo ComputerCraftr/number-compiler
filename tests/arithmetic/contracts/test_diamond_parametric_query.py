@@ -14,7 +14,7 @@ from number_compiler.hashlife.observation.diamond_parametric_query import (
     parametric_width,
 )
 from number_compiler.sequences.collatz.block_power import CollatzPhysicalBlockEffect
-from tests.support.diamond_query import build, oracle
+from tests.support.diamond_query import build, bounded_case
 
 
 @pytest.mark.parametrize("steps", [0, 1, 2, 3, 4, 5])
@@ -24,9 +24,7 @@ def test_higher_point_width_do_not_use_legacy_midpoint_scheduler(
     steps: int,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    source = (1, 0, 1) if effect.base == 2 else (2, 4, 2)
-    app = build(effect, source, 8, steps)
-    expected = oracle(effect, source, 8, steps)
+    app, expected = bounded_case(effect, steps)
 
     def forbidden(*args: object) -> Never:
         raise AssertionError("higher parent must not ask the legacy midpoint evaluator")

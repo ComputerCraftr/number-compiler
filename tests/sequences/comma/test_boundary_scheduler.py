@@ -164,15 +164,7 @@ def test_seal_work_refusal_leaves_no_template_or_seal() -> None:
     term.arena.max_work = spent + sum(construction_charges)
     with pytest.raises(ValueError, match="comma construction exceeds"):
         term.arena._boundary_template(state)
-    assert len(term.arena._boundary_templates) == 0
-    assert len(term.arena._boundary_seals) == 0
-    assert len(term.arena._boundary_nodes) == 0
-    assert len(term.arena._boundary_seal_nodes) == 0
-    assert all(
-        item.accounting_delta == 0
-        for item in term.ledger.inventory()
-        if item.name.startswith("comma-boundary-")
-    )
+    _assert_empty_boundary_publication(term)
 
 
 def test_seal_construction_failure_releases_reserved_storage(
@@ -186,15 +178,7 @@ def test_seal_construction_failure_releases_reserved_storage(
     monkeypatch.setattr(action_arena, "_template_seal", fail_seal)
     with pytest.raises(RuntimeError, match="injected seal failure"):
         term.arena._boundary_template(BoundaryState("N", 2, 10))
-    assert len(term.arena._boundary_templates) == 0
-    assert len(term.arena._boundary_seals) == 0
-    assert len(term.arena._boundary_nodes) == 0
-    assert len(term.arena._boundary_seal_nodes) == 0
-    assert all(
-        item.accounting_delta == 0
-        for item in term.ledger.inventory()
-        if item.name.startswith("comma-boundary-")
-    )
+    _assert_empty_boundary_publication(term)
 
 
 def test_mutated_boundary_template_and_action_fail_closed() -> None:
@@ -272,3 +256,15 @@ def test_mutated_boundary_component_fails_before_private_scheduler_demand(
     with pytest.raises(ValueError, match="template publication was altered"):
         term.scheduler.source_image(term.adapter, term._source, action)
     assert audit_registered_payloads(term.ledger).forbidden_future_payloads > 0
+
+
+def _assert_empty_boundary_publication(term: CommaTerm) -> None:
+    assert len(term.arena._boundary_templates) == 0
+    assert len(term.arena._boundary_seals) == 0
+    assert len(term.arena._boundary_nodes) == 0
+    assert len(term.arena._boundary_seal_nodes) == 0
+    assert all(
+        item.accounting_delta == 0
+        for item in term.ledger.inventory()
+        if item.name.startswith("comma-boundary-")
+    )

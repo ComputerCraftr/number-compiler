@@ -13,6 +13,13 @@ from typing import Any
 from number_compiler.arithmetic.automata.guard import forbid_in_powered_jump
 from number_compiler.arithmetic.formula.formula import FormulaArena, FormulaRoot
 from number_compiler.arithmetic.formula.types import Expr
+from number_compiler.arithmetic.formula.bit_semantics import (
+    constant_bit,
+    shift_position,
+    coefficient_dependencies,
+    coefficient_bit,
+    predicate_bit,
+)
 
 
 def eval_bit(
@@ -47,24 +54,15 @@ def eval_bit(
             if known(node, pos):
                 continue
             k = node.kind
-            if k == "ZERO":
-                store(node, pos, 0)
-                continue
-            if k == "ONES":
-                store(node, pos, 1)
-                continue
-            if k == "LITERAL":
-                store(node, pos, (int(node.param[0]) >> pos) & 1)
+            constant = constant_bit(node, pos)
+            if constant is not None:
+                store(node, pos, constant)
                 continue
             if k == "VAR":
                 slot = int(node.param[0])
                 if slot not in env:
                     raise KeyError(f"missing VAR slot {slot}")
                 store(node, pos, (int(env[slot]) >> pos) & 1)
-                continue
-            if k == "RANGE":
-                lo, hi = map(int, node.param)
-                store(node, pos, int(lo <= pos < hi))
                 continue
             if k == "NOT":
                 child = node.args[0]
@@ -80,26 +78,11 @@ def eval_bit(
             if k == "XOR":
                 stack.append(("XOR", node, pos, 0, 0))
                 continue
-            if k == "SHL":
-                q = pos - int(node.param[0])
-                if q < 0:
+            if k in ("SHL", "SHR", "MIRROR"):
+                q = node.width - 1 - pos if k == "MIRROR" else shift_position(node, pos)
+                if not 0 <= q < node.width:
                     store(node, pos, 0)
                     continue
-                child = node.args[0]
-                stack.append(("COPY", node, pos, child, q))
-                stack.append(("VISIT", child, q))
-                continue
-            if k == "SHR":
-                q = pos + int(node.param[0])
-                if q >= node.width:
-                    store(node, pos, 0)
-                    continue
-                child = node.args[0]
-                stack.append(("COPY", node, pos, child, q))
-                stack.append(("VISIT", child, q))
-                continue
-            if k == "MIRROR":
-                q = node.width - 1 - pos
                 child = node.args[0]
                 stack.append(("COPY", node, pos, child, q))
                 stack.append(("VISIT", child, q))
@@ -133,21 +116,10 @@ def eval_bit(
                 stack.append(("PRED", node, pos, 0, 0))
                 continue
             if k == "COEFFMAP":
-                mode, _bit, _base, nplanes = (
-                    str(node.param[0]),
-                    int(node.param[1]),
-                    int(node.param[2]),
-                    int(node.param[3]),
-                )
-                coeff_deps: list[tuple[Expr, int]] = []
-                if mode == "GROWTH_EDGE":
-                    if pos not in (0, node.width - 1):
-                        store(node, pos, 0)
-                        continue
-                    coeff_deps.extend((node.args[b], 0) for b in range(nplanes))
-                    coeff_deps.append((node.args[nplanes], 0))
-                else:
-                    coeff_deps.extend((arg, pos) for arg in node.args)
+                coeff_deps = coefficient_dependencies(node, pos)
+                if coeff_deps is None:
+                    store(node, pos, 0)
+                    continue
                 stack.append(("COEFF_FINISH", node, pos, tuple(coeff_deps)))
                 for child, q in reversed(coeff_deps):
                     if not known(child, q):
@@ -221,12 +193,7 @@ def eval_bit(
         if tag == "PRED":
             idx, coeff = int(frame[3]), int(frame[4])
             if idx >= len(node.args):
-                op, threshold = str(node.param[0]), int(node.param[1])
-                store(
-                    node,
-                    pos,
-                    int(coeff == threshold) if op == "EQ" else int(coeff > threshold),
-                )
+                store(node, pos, predicate_bit(node, coeff))
                 continue
             child = node.args[idx]
             if not known(child, pos):
@@ -236,39 +203,7 @@ def eval_bit(
             stack.append(("PRED", node, pos, idx + 1, coeff | (get(child, pos) << idx)))
             continue
         if tag == "COEFF_FINISH":
-            mode, bit, base, nplanes = (
-                str(node.param[0]),
-                int(node.param[1]),
-                int(node.param[2]),
-                int(node.param[3]),
-            )
-            if mode == "NO_GROWTH":
-                coeff = sum(get(node.args[b], pos) << b for b in range(nplanes))
-                Li, Li1, Ri, Ri1 = (
-                    get(node.args[j], pos) for j in range(nplanes, nplanes + 4)
-                )
-                coeff = 2 * coeff + Li + Ri1 - base * (Li1 + Ri)
-            elif mode == "GROWTH_INTERNAL":
-                coeff = sum(get(node.args[b], pos) << b for b in range(nplanes))
-                prev = sum(
-                    get(node.args[nplanes + b], pos) << b for b in range(nplanes)
-                )
-                off = 2 * nplanes
-                Li, Li1, Ri, Rim1 = (
-                    get(node.args[j], pos) for j in range(off, off + 4)
-                )
-                coeff = coeff + prev + Li + Ri - base * (Li1 + Rim1)
-            elif mode == "GROWTH_EDGE":
-                coeff = sum(get(node.args[b], 0) << b for b in range(nplanes))
-                coeff = coeff + 1 - base * get(node.args[nplanes], 0)
-            elif mode == "DIGIT_NORMALIZE":
-                coeff = sum(get(node.args[b], pos) << b for b in range(nplanes))
-                incoming = get(node.args[nplanes], pos)
-                outgoing = get(node.args[nplanes + 1], pos)
-                coeff = coeff + incoming - base * outgoing
-            else:
-                raise AssertionError(mode)
-            store(node, pos, (coeff >> bit) & 1)
+            store(node, pos, coefficient_bit(node, pos, get))
             continue
         raise AssertionError(tag)
 

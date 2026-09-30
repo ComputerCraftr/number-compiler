@@ -6,7 +6,7 @@ import json
 from dataclasses import asdict
 
 from devtools.paths import repository_root
-from devtools.proofs.oracles.bounded_filtration import (
+from devtools.verification.oracles.bounded_filtration import (
     bounded_candidate_image_filtration,
 )
 from number_compiler.arithmetic.polynomials.two_primary_filtration import (
@@ -69,4 +69,6 @@ def main() -> None:
 
 
 if __name__ == "__main__":
-    main()
+    from devtools.runs import run_reported
+
+    raise SystemExit(run_reported(main))

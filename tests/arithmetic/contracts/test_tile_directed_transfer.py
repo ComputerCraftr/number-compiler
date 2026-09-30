@@ -1,5 +1,9 @@
 """Concrete parent-first primitive transfer memo regressions."""
 
+from tests.support.tile_kernel import _runtime_source
+from tests.support.assertions import assert_rejected_atomically
+
+
 from typing import Never
 
 import pytest
@@ -8,7 +12,7 @@ from number_compiler.arithmetic.contracts.block_effect import BoundarySide
 from number_compiler.arithmetic.contracts.block_kernel import BaseBlockEffect
 from number_compiler.hashlife.execution.tile_directed_transfer import directed_transfer
 from number_compiler.hashlife.execution.tile_scheduler import TileScheduler
-from tests.arithmetic.contracts.test_tile_kernel import _runtime, _tile
+from tests.support.tile_kernel import _runtime, _tile
 
 
 @pytest.mark.parametrize("base", (2, 3, 4, 5, 10))
@@ -48,8 +52,9 @@ def test_directed_transfer_matches_every_finite_state(
 def test_warm_parent_transfer_bypasses_kernel_and_descendants(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    ledger, tiles, adapter, primitive, _scheduler = _runtime(BaseBlockEffect(3))
-    source = _tile(tiles, adapter, primitive, (0, 1, 2, 3, 4, 5, 0, 1))
+    ledger, tiles, adapter, primitive, _scheduler, source = _runtime_source(
+        BaseBlockEffect(3), (0, 1, 2, 3, 4, 5, 0, 1)
+    )
     wiring = adapter.wiring(primitive)
     law = adapter.primitive_law(primitive)
     try:
@@ -77,8 +82,9 @@ def test_warm_parent_transfer_bypasses_kernel_and_descendants(
 def test_directed_workspace_releases_frames_after_failure(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    _ledger, tiles, adapter, primitive, scheduler = _runtime(BaseBlockEffect(3))
-    source = _tile(tiles, adapter, primitive, (0, 1, 2, 3))
+    _ledger, tiles, adapter, primitive, scheduler, source = _runtime_source(
+        BaseBlockEffect(3), (0, 1, 2, 3)
+    )
     wiring = adapter.wiring(primitive)
     law = adapter.primitive_law(primitive)
 
@@ -97,7 +103,9 @@ def test_directed_workspace_releases_frames_after_failure(
 
 def test_second_scheduler_rejects_before_ledger_mutation() -> None:
     ledger, tiles, adapter, _primitive, scheduler = _runtime(BaseBlockEffect(3))
-    before = ledger.snapshot()
-    with pytest.raises(ValueError, match="another scheduler"):
-        TileScheduler(tiles, scheduler.results, adapter)
-    assert ledger.snapshot() == before
+    assert_rejected_atomically(
+        ledger,
+        lambda: TileScheduler(tiles, scheduler.results, adapter),
+        ValueError,
+        match="another scheduler",
+    )

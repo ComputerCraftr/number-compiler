@@ -28,6 +28,7 @@ from number_compiler.resources.ownership import audit_execution_ownership
 from number_compiler.resources.payload_audit import audit_registered_payloads
 from number_compiler.resources.stores import LedgerList
 from number_compiler.sequences.collatz.block_power import CollatzPhysicalBlockEffect
+from tests.support.diamond_quotient import curried_increment
 
 
 def forbidden(*args: object, **kwargs: object) -> Never:
@@ -134,9 +135,7 @@ def test_factored_higher_outputs_are_accounted_without_observing_outer_ports(
     x = FinitePort(PortVariable(0, 0, "x", 0), 1 << 64)
     y = FinitePort(PortVariable(0, 0, "y", 0), 2)
     word = AtomSort("word", 1 << 64)
-    left = bits.variable((x, y), x, word)
-    right = bits.variable((x, y), y, BOOL)
-    function = structures.curry(structures.atom(bits.add(left, right, word)), (y,))
+    function = curried_increment(structures, x, y, word)
     outer = structures.atom(bits.variable((x,), x, word))
     structures.product((outer, function))
     monkeypatch.setattr(bits.functions, "evaluate", forbidden)

@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from tests.support.assertions import assert_rejected_atomically
+
 from dataclasses import replace
 from typing import Literal, Never, cast
 
@@ -48,9 +50,7 @@ def test_temporal_adapter_imports_binary_dag_and_keeps_real_identity() -> None:
 
 
 def test_nested_images_normalize_before_cell_lookup_without_emission() -> None:
-    ledger, _, actions, cells, first, second = arenas()
-    source = cells.source(0, 4)
-    combined = actions.compose(first, second)
+    ledger, actions, cells, first, second, source, combined = _composed_source()
     expected = cells.image(combined, source)
     intermediate = cells.image(first, source)
     before = len(cells._nodes)
@@ -111,10 +111,9 @@ def test_failed_action_or_cell_publication_reserves_both_stores_atomically() -> 
     ledger, _, actions, cells, first, second = arenas()
     source = cells.source(0, 4)
     ledger.max_cache_entries = ledger.entries + 1
-    before = ledger.snapshot()
-    with pytest.raises(BlockContextBudgetExceeded):
-        actions.compose(first, second)
-    assert ledger.snapshot() == before
+    before = assert_rejected_atomically(
+        ledger, lambda: actions.compose(first, second), BlockContextBudgetExceeded
+    )
     with pytest.raises(BlockContextBudgetExceeded):
         cells.mirror(source)
     assert ledger.snapshot() == before
@@ -125,10 +124,9 @@ def test_import_reservation_is_atomic_across_whole_compiler_dag() -> None:
     root = compiler.power(actions.primitive(first), 16).root
     assert root is not None
     ledger.max_cache_entries = ledger.entries + 2
-    before = ledger.snapshot()
-    with pytest.raises(BlockContextBudgetExceeded):
-        actions.intern(root)
-    assert ledger.snapshot() == before
+    assert_rejected_atomically(
+        ledger, lambda: actions.intern(root), BlockContextBudgetExceeded
+    )
 
 
 def test_composed_port_signatures_use_children_not_product_domains() -> None:
@@ -150,9 +148,7 @@ def test_composed_port_signatures_use_children_not_product_domains() -> None:
 
 
 def test_eviction_cannot_recycle_canonical_actions_or_images() -> None:
-    ledger, _, actions, cells, first, second = arenas()
-    source = cells.source(0, 4)
-    composed = actions.compose(first, second)
+    ledger, actions, cells, first, second, source, composed = _composed_source()
     image = cells.image(composed, source)
     ledger.evict_query_memos()
     assert actions.compose(first, second) == composed
@@ -164,10 +160,9 @@ def test_nested_image_budget_failure_does_not_publish_its_composed_action() -> N
     source = cells.source(0, 4)
     inner = cells.image(first, source)
     ledger.max_cache_entries = ledger.entries + 2
-    before = ledger.snapshot()
-    with pytest.raises(BlockContextBudgetExceeded):
-        cells.image(second, inner)
-    assert ledger.snapshot() == before
+    assert_rejected_atomically(
+        ledger, lambda: cells.image(second, inner), BlockContextBudgetExceeded
+    )
     assert actions.node(first).kind == "atom"
 
 
@@ -265,15 +260,13 @@ def test_formal_symbol_rejects_foreign_kind_and_domain_before_any_mutation() -> 
             FormalSymbolID(cells.formal_token, "diamond-cell", 0),
             FormalSymbolID(cells.formal_token, "diamond-formal-symbol", 20),
         ):
-            before = ledger.snapshot()
-            with pytest.raises(ValueError):
-                method(invalid)
-            assert ledger.snapshot() == before
+            assert_rejected_atomically(ledger, lambda: method(invalid), ValueError)
     for invalid_symbol in (-1, 20, 10**100, True, 0.0):
-        before = ledger.snapshot()
-        with pytest.raises((TypeError, ValueError)):
-            cells.formal_symbol(cast("int", invalid_symbol))
-        assert ledger.snapshot() == before
+        assert_rejected_atomically(
+            ledger,
+            lambda: cells.formal_symbol(cast("int", invalid_symbol)),
+            (TypeError, ValueError),
+        )
 
 
 def test_boundary_binding_accepts_only_own_formal_original_alphabet() -> None:
@@ -298,3 +291,18 @@ def test_boundary_binding_accepts_only_own_formal_original_alphabet() -> None:
         with pytest.raises(ValueError):
             boundaries.validate_binding(replace(binding, cell=invalid))
         assert ledger.snapshot() == before
+
+
+def _composed_source() -> tuple[
+    ResourceLedger,
+    TemporalActionArena,
+    ImageCellArena,
+    ActionProgramID,
+    ActionProgramID,
+    CellID,
+    ActionProgramID,
+]:
+    ledger, _, actions, cells, first, second = arenas()
+    source = cells.source(0, 4)
+    composed = actions.compose(first, second)
+    return ledger, actions, cells, first, second, source, composed

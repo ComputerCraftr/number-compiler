@@ -1,5 +1,8 @@
 """One original primitive port is quotiented extensionally, never a higher universe."""
 
+from tests.support.assertions import assert_rejected_atomically
+
+
 from typing import Never
 
 import pytest
@@ -15,7 +18,13 @@ from number_compiler.hashlife.execution.diamond_continuation_reduction import (
     CompilePrimitiveFunction,
     NormalizePrimitiveLambda,
 )
-from tests.support.diamond_continuation_reduction import literal, machine, normalize
+from tests.support.diamond_continuation_reduction import (
+    literal,
+    machine,
+    normalize,
+    advance_after_emit,
+    incoming_advance_task,
+)
 
 
 @pytest.mark.parametrize("side", [0, 1])
@@ -79,9 +88,7 @@ def test_extra_free_port_declines_normalization_and_foreign_input_is_atomic() ->
     arena = runtime.higher.expressions
     variable = arena.variable(arena.state_sort(action, 1), "input")
     other = arena.variable(arena.state_sort(action, 0), "other")
-    symbol = arena.primitive_emit(action, other, arena.symbol(action, 1), variable)
-    body = arena.primitive_advance(action, 0, other, symbol)
-    function = arena.lambda_(variable, body)
+    symbol, body, function = advance_after_emit(arena, action, other, variable)
     assert normalize(runtime, function) == function
     assert (
         NormalizePrimitiveLambda(function)
@@ -91,20 +98,18 @@ def test_extra_free_port_declines_normalization_and_foreign_input_is_atomic() ->
     foreign_variable = foreign.higher.expressions.variable(
         foreign.higher.expressions.state_sort(foreign_action, 1), "input"
     )
-    before = runtime.ledger.snapshot()
-    with pytest.raises(ValueError):
-        runtime.execute(CompilePrimitiveFunction(foreign_variable, variable))
-    assert runtime.ledger.snapshot() == before
+    assert_rejected_atomically(
+        runtime.ledger,
+        lambda: runtime.execute(CompilePrimitiveFunction(foreign_variable, variable)),
+        ValueError,
+    )
 
 
 def test_warm_complete_function_avoids_primitive_recomputation(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     runtime, action = machine()
-    arena = runtime.higher.expressions
-    variable = arena.variable(arena.state_sort(action, 0), "incoming")
-    body = arena.primitive_advance(action, 0, variable, arena.symbol(action, 1))
-    task = CompilePrimitiveFunction(variable, body)
+    arena, task = incoming_advance_task(runtime, action)
     compiled = runtime.execute(task)
     assert task in runtime.primitive_continuations.maps
 
@@ -124,10 +129,7 @@ def test_exhausted_function_binding_budget_fails_before_child_work(
     )
 
     runtime, action = machine()
-    arena = runtime.higher.expressions
-    variable = arena.variable(arena.state_sort(action, 0), "incoming")
-    body = arena.primitive_advance(action, 0, variable, arena.symbol(action, 1))
-    task = CompilePrimitiveFunction(variable, body)
+    arena, task = incoming_advance_task(runtime, action)
     runtime.ledger.max_cache_entries = runtime.ledger.entries
 
     def forbidden(*args: object, **kwargs: object) -> Never:
@@ -144,25 +146,24 @@ def test_exhausted_function_binding_budget_fails_before_child_work(
 def test_foreign_publication_rejects_before_any_cache_or_counter_mutation() -> None:
     runtime, action = machine()
     foreign, foreign_action = machine()
-    arena = runtime.higher.expressions
-    variable = arena.variable(arena.state_sort(action, 0), "incoming")
-    body = arena.primitive_advance(action, 0, variable, arena.symbol(action, 1))
-    task = CompilePrimitiveFunction(variable, body)
+    arena, task = incoming_advance_task(runtime, action)
     wrong = foreign.kernels.constant(runtime.kernel(action).left_count, 0)
-    before = runtime.ledger.snapshot()
-    with pytest.raises(ValueError):
-        runtime.primitive_continuations.publish(task, wrong)
-    assert runtime.ledger.snapshot() == before
+    assert_rejected_atomically(
+        runtime.ledger,
+        lambda: runtime.primitive_continuations.publish(task, wrong),
+        ValueError,
+    )
     assert task not in runtime.primitive_continuations.maps
-    function = arena.lambda_(variable, body)
+    function = arena.lambda_(task.variable, task.expression)
     other_arena = foreign.higher.expressions
     other_var = other_arena.variable(
         other_arena.state_sort(foreign_action, 0), "incoming"
     )
     other_fn = other_arena.lambda_(other_var, other_var)
-    before = runtime.ledger.snapshot()
-    with pytest.raises(ValueError):
-        runtime.primitive_continuations.publish(
+    assert_rejected_atomically(
+        runtime.ledger,
+        lambda: runtime.primitive_continuations.publish(
             NormalizePrimitiveLambda(function), other_fn
-        )
-    assert runtime.ledger.snapshot() == before
+        ),
+        ValueError,
+    )

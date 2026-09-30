@@ -6,8 +6,8 @@ import hashlib
 import zlib
 
 from devtools.paths import repository_root
-from devtools.proofs.block_composed import ComposedBlockEffect
-from devtools.proofs.block_power import compose_block_effects
+from devtools.verification.block_composed import ComposedBlockEffect
+from devtools.verification.block_power import compose_block_effects
 from number_compiler.arithmetic.contracts.block_effect import (
     BlockContextBudget,
     BoundarySide,

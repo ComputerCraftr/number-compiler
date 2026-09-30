@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from devtools.verification.consumer_fixtures import free_collatz_variables
 import argparse
 import json
 from pathlib import Path
@@ -13,15 +14,10 @@ from number_compiler.arithmetic.carry.collatz_output_quotient import (
     radix64_free_directional_row,
 )
 from number_compiler.arithmetic.fields.radix import digits_lsd
-from number_compiler.arithmetic.functions.finite_function_types import FinitePort
-from number_compiler.arithmetic.functions.finite_port_action import PortVariable
 from number_compiler.hashlife.interfaces.semantic_bits import BitFunctionArena
 from number_compiler.resources.ledger import ResourceLedger
 from number_compiler.sequences.collatz import radix64_transducer
 from number_compiler.sequences.collatz.output_morphism import (
-    CARRY,
-    DIGIT,
-    RESIDUAL_SHIFT,
     CollatzOutputMorphism,
 )
 from number_compiler.sequences.collatz.pair import accelerated_odd_collatz
@@ -111,14 +107,7 @@ def _free_function_metrics() -> dict[str, int]:
     ledger = ResourceLedger(max_nodes=200000)
     bits = BitFunctionArena(ledger)
     morphism = CollatzOutputMorphism(bits)
-    ports = (
-        FinitePort(PortVariable(0, 0, "digit-occurrence", 0), 64),
-        FinitePort(PortVariable(0, 1, "incoming-carry", 0), 3),
-        FinitePort(PortVariable(0, 2, "root-shift-query", 0), 6),
-    )
-    digit = bits.variable(ports, ports[0], DIGIT)
-    carry = bits.variable(ports, ports[1], CARRY)
-    shift = bits.variable(ports, ports[2], RESIDUAL_SHIFT)
+    ports, digit, carry, shift = free_collatz_variables(bits)
     outputs = morphism.free_directional_actions(digit, carry, shift)
     return {
         "factored_function_nodes": len(bits.nodes),
@@ -203,4 +192,6 @@ def main() -> None:
 
 
 if __name__ == "__main__":
-    main()
+    from devtools.runs import run_reported
+
+    raise SystemExit(run_reported(main))

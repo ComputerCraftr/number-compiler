@@ -17,6 +17,8 @@ from number_compiler.hashlife.execution.tile_causal_interfaces import (
     primitive_interface_payload,
 )
 from number_compiler.hashlife.execution.tile_causal_results import PrimitiveCausalPorts
+from number_compiler.hashlife.execution.tile_kernel import PrimitiveTileKernelAdapter
+from number_compiler.hashlife.execution.tile_scheduler import TileScheduler
 from number_compiler.hashlife.tiles.tile_boundaries import (
     BoundaryTileOperands,
     BoundaryTileView,
@@ -42,7 +44,7 @@ from number_compiler.hashlife.tiles.tile_result_records import (
 from number_compiler.hashlife.tiles.tile_results import CompletedResultArena
 from number_compiler.hashlife.tiles.tiles import TileArena, TileID, TileLease
 from number_compiler.resources.ledger import ResourceLedger
-from tests.arithmetic.contracts.test_tile_kernel import _runtime, _tile
+from tests.support.tile_kernel import _runtime, _runtime_source
 
 if TYPE_CHECKING:
     from number_compiler.hashlife.execution.tile_causal_interfaces import (
@@ -62,8 +64,9 @@ def _binding() -> tuple[
     CausalInterfaceKey,
     CausalInterfacePayload,
 ]:
-    ledger, tiles, adapter, action, scheduler = _runtime(BaseBlockEffect(3))
-    source = _tile(tiles, adapter, action, (1,))
+    ledger, tiles, adapter, action, scheduler, source = _runtime_source(
+        BaseBlockEffect(3), (1,)
+    )
     ports = PrimitiveCausalPorts(*adapter.initial_ports(action))
     wiring = adapter.wiring(action)
     key = causal_interface_key(
@@ -97,10 +100,9 @@ def test_causal_interface_binding_preserves_complete_bounded_result() -> None:
 def test_warm_interface_parent_answers_before_child_construction(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    ledger, tiles, adapter, primitive, scheduler = _runtime(BaseBlockEffect(3))
-    source = _tile(tiles, adapter, primitive, (0, 0, 0, 1))
-    action = adapter.power(primitive, 4)
-    engine = CausalTileEngine(scheduler)
+    ledger, tiles, adapter, primitive, scheduler, source, action, engine = (
+        _powered_fixture()
+    )
     try:
         left, right = engine._initial(action, 0), engine._initial(action, 1)
         assert engine.interface(action, source.tile, left, right).active
@@ -361,8 +363,9 @@ def test_live_and_closed_causal_spatial_buffers_have_complete_inventory() -> Non
     )
     from number_compiler.resources.metric_collection import collect_ledger_metrics
 
-    ledger, tiles, _adapter, action, scheduler = _runtime(BaseBlockEffect(3))
-    source = _tile(tiles, _adapter, action, (0, 1))
+    ledger, tiles, _adapter, action, scheduler, source = _runtime_source(
+        BaseBlockEffect(3), (0, 1)
+    )
     buffer = scheduler._causal_workspace.allocate(2)
     try:
         buffer.append(source.tile)
@@ -395,10 +398,9 @@ def test_failed_causal_interface_releases_all_transient_workspace(
 ) -> None:
     from number_compiler.resources.metric_collection import collect_ledger_metrics
 
-    ledger, tiles, adapter, primitive, scheduler = _runtime(BaseBlockEffect(3))
-    source = _tile(tiles, adapter, primitive, (0, 0, 0, 1))
-    action = adapter.power(primitive, 4)
-    engine = CausalTileEngine(scheduler)
+    ledger, tiles, adapter, primitive, scheduler, source, action, engine = (
+        _powered_fixture()
+    )
 
     def forbidden(*_args: object, **_kwargs: object) -> Never:
         raise RuntimeError("injected causal interface failure")
@@ -430,10 +432,9 @@ def test_suspended_causal_frame_stack_has_complete_live_inventory(
         audit_field_image_payloads,
     )
 
-    ledger, tiles, adapter, primitive, scheduler = _runtime(BaseBlockEffect(3))
-    source = _tile(tiles, adapter, primitive, (0, 0, 0, 1))
-    action = adapter.power(primitive, 4)
-    engine = CausalTileEngine(scheduler)
+    ledger, tiles, adapter, primitive, scheduler, source, action, engine = (
+        _powered_fixture()
+    )
     original = adapter.leaf_interface_symbol
     observed: list[int] = []
 
@@ -475,3 +476,18 @@ def test_forged_causal_frame_metadata_is_reported() -> None:
         assert audit_field_image_payloads(ledger).invalid
     finally:
         scheduler._causal_tasks.frames.clear()
+
+
+def _powered_fixture() -> tuple[
+    ResourceLedger,
+    TileArena,
+    PrimitiveTileKernelAdapter,
+    FieldCellActionID,
+    TileScheduler,
+    TileLease,
+    FieldCellActionID,
+    CausalTileEngine,
+]:
+    values = _runtime_source(BaseBlockEffect(3), (0, 0, 0, 1))
+    _, _, adapter, primitive, scheduler, _ = values
+    return (*values, adapter.power(primitive, 4), CausalTileEngine(scheduler))

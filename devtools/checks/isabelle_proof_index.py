@@ -17,10 +17,10 @@ from devtools.checks.isabelle_syntax import (
     parse_theory_header,
     unquoted_matches,
 )
-from devtools.paths import repository_root
+from devtools.paths import isabelle_root, repository_root
 
 ROOT = repository_root()
-ISABELLE = ROOT / "devtools/proofs/isabelle"
+ISABELLE = isabelle_root(ROOT)
 
 # These links describe implementation or executable-reference counterparts.  An
 # empty mapping is deliberate: a standalone mathematical theory must not be
@@ -28,7 +28,7 @@ ISABELLE = ROOT / "devtools/proofs/isabelle"
 COUNTERPARTS: dict[str, tuple[str, ...]] = {
     "Reverse_Uniform_Runs": (
         "devtools/experiments/reverse_add/factored_planes.py",
-        "devtools/proofs/reverse_run_successor.py",
+        "devtools/verification/reverse_run_successor.py",
         "tests/sequences/reverse_add/test_factored_carrier.py",
     ),
     "Maximal_Run_Arithmetic": (
@@ -469,7 +469,7 @@ def build_index() -> dict[str, object]:
                 "declarations": declarations,
                 "lexical_uses_including_ML_and_attributes": uses,
                 "verification_command": (
-                    f"isabelle build -b -d devtools/proofs/isabelle {registered[name]}"
+                    f"isabelle build -b -d proofs/isabelle {registered[name]}"
                     if name in registered
                     else "build an importing session"
                 ),
@@ -478,7 +478,7 @@ def build_index() -> dict[str, object]:
         )
     return {
         "schema_version": 1,
-        "root": "devtools/proofs/isabelle/ROOT",
+        "root": "proofs/isabelle/ROOT",
         "sessions": [
             {
                 "session": session.name,

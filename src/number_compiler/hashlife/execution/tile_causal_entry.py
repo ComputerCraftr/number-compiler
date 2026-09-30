@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from number_compiler.hashlife.actions.field_actions import FieldCellActionID
+
 from typing import TYPE_CHECKING
 
 from number_compiler.hashlife.actions.lazy_compiler import UnsupportedInterfaceError
@@ -11,6 +13,9 @@ from number_compiler.hashlife.tiles.tile_result_records import PoweredResultKey
 from number_compiler.hashlife.tiles.tile_results import ResultLease
 
 if TYPE_CHECKING:
+    from number_compiler.hashlife.execution.tile_kernel import (
+        PrimitiveTileKernelAdapter,
+    )
     from number_compiler.hashlife.execution.tile_scheduler import TileScheduler
 
 
@@ -78,11 +83,7 @@ def causal_point(
                 application=application,
             )
         )
-    scheduler.ledger.bump("powered_absorption_successes")
-    span = adapter.action_cocycle(key.action).physical_ticks
-    previous = scheduler.ledger.counters.get("powered_absorption_max_span", 0)
-    if span > previous:
-        scheduler.ledger.bump("powered_absorption_max_span", span - previous)
+    _record_absorption(scheduler, key.action, adapter)
     return result
 
 
@@ -227,12 +228,20 @@ def causal_width_query(
             application=application,
             contract=key.fusion,
         )
-    scheduler.ledger.bump("powered_absorption_successes")
-    span = adapter.action_cocycle(key.action).physical_ticks
-    previous = scheduler.ledger.counters.get("powered_absorption_max_span", 0)
-    if span > previous:
-        scheduler.ledger.bump("powered_absorption_max_span", span - previous)
+    _record_absorption(scheduler, key.action, adapter)
     return width
 
 
 __all__ = ["causal_complete", "causal_point", "causal_width_query"]
+
+
+def _record_absorption(
+    scheduler: TileScheduler,
+    action: FieldCellActionID,
+    adapter: PrimitiveTileKernelAdapter,
+) -> None:
+    scheduler.ledger.bump("powered_absorption_successes")
+    span = adapter.action_cocycle(action).physical_ticks
+    previous = scheduler.ledger.counters.get("powered_absorption_max_span", 0)
+    if span > previous:
+        scheduler.ledger.bump("powered_absorption_max_span", span - previous)

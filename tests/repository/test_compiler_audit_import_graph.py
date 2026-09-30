@@ -84,18 +84,18 @@ def test_temporal_probe_source_audits_use_executable_syntax(
     )
     _write(
         tmp_path,
-        "devtools/proofs/block_runtime.py",
+        "devtools/verification/block_runtime.py",
         "from .block_recursive import _RecursiveBoundaryState\n"
         '"""from ..program_word import CanonicalWord"""\n',
     )
     _write(
         tmp_path,
-        "devtools/proofs/block_spacetime_runtime.py",
+        "devtools/verification/block_spacetime_runtime.py",
         "# def _output_tile_macro and import SpacetimeBoundary\n",
     )
     _write(
         tmp_path,
-        "devtools/proofs/spacetime_boundary.py",
+        "devtools/verification/spacetime_boundary.py",
         "# class SpacetimeBoundary: pass\n",
     )
     _write(
@@ -172,7 +172,7 @@ def test_temporal_probe_source_audits_use_executable_syntax(
     _write(tmp_path, router, "")
     _write(
         tmp_path,
-        "devtools/proofs/block_runtime.py",
+        "devtools/verification/block_runtime.py",
         "from .block_recursive import _RecursiveBoundaryState\n"
         "from ..program_word import CanonicalWord\n",
     )
@@ -183,7 +183,7 @@ def test_temporal_probe_source_audits_use_executable_syntax(
 
     _write(
         tmp_path,
-        "devtools/proofs/block_runtime.py",
+        "devtools/verification/block_runtime.py",
         "from .block_recursive import _RecursiveBoundaryState\n",
     )
     _write(

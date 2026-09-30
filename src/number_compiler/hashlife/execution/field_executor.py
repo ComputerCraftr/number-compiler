@@ -184,6 +184,12 @@ class RecursiveFieldImageExecutor(Generic[AdapterT_co]):
             return self._forest_image(action, source, geometry, signature)
         raise TypeError("field image requires a scoped source binding")
 
+    def _probe_root(self, key: ImageRequestKey) -> FieldImageID | None:
+        self.images.validate_request(key)
+        if self.adapter.signature(key.action, key.geometry) != key.signature:
+            raise ValueError("field image request has another normalized signature")
+        return self.images.probe(key)
+
     def _cell_image(
         self,
         action: FieldCellActionID,
@@ -192,10 +198,7 @@ class RecursiveFieldImageExecutor(Generic[AdapterT_co]):
         signature: PortSignatureID,
     ) -> FieldImageID:
         root_key = ImageRequestKey(action, source, geometry, signature)
-        self.images.validate_request(root_key)
-        if self.adapter.signature(action, geometry) != signature:
-            raise ValueError("field image request has another normalized signature")
-        found = self.images.probe(root_key)
+        found = self._probe_root(root_key)
         self.ledger.bump("recursive_field_image_requests")
         if found is not None:
             self.ledger.bump("recursive_field_image_early_hits")
@@ -397,10 +400,7 @@ class RecursiveFieldImageExecutor(Generic[AdapterT_co]):
     ) -> FieldImageID:
         """Build a balanced recursive image over a canonical dyadic cover."""
         root_key = ImageRequestKey(action, source, geometry, signature)
-        self.images.validate_request(root_key)
-        if self.adapter.signature(action, geometry) != signature:
-            raise ValueError("field image request has another normalized signature")
-        found = self.images.probe(root_key)
+        found = self._probe_root(root_key)
         self.ledger.bump("recursive_field_forest_requests")
         if found is not None:
             self.ledger.bump("recursive_field_forest_early_hits")
@@ -617,20 +617,11 @@ class FieldImageApplication:
         self.incoming = incoming
         self.ledger = executor.ledger
         self._seal = seal
-        self.ledger.register_execution_root(self)
-        from number_compiler.resources.metric_registry import (
-            ALGEBRAIC_FIELD_WORK_COUNTERS,
+        from number_compiler.hashlife.execution.field_capabilities import (
+            register_field_application,
         )
 
-        for name in ALGEBRAIC_FIELD_WORK_COUNTERS:
-            self.ledger.bump(name, 0)
-        for name in (
-            "diamond_temporal_composition_requests",
-            "diamond_temporal_composition_hits",
-            "diamond_temporal_composition_evaluations",
-        ):
-            self.ledger.bump(name, 0)
-        self.ledger.bump("algebraic_executor_capability_validated")
+        register_field_application(self.ledger, self)
 
     def _image(self) -> FieldImageID:
         self.executor.adapter.validate_port(self.incoming)
@@ -665,9 +656,7 @@ class FieldImageApplication:
 
         return observe_provider_width(self, view)
 
-    def point(self, position: int) -> int:
-        if type(position) is not int:
-            raise TypeError("field-image coordinate must be an exact integer")
+    def _validate_observation(self) -> None:
         self.executor.images.validate_request(
             ImageRequestKey(
                 self.action,
@@ -682,6 +671,11 @@ class FieldImageApplication:
             != self.signature
         ):
             raise ValueError("field application has another normalized signature")
+
+    def point(self, position: int) -> int:
+        if type(position) is not int:
+            raise TypeError("field-image coordinate must be an exact integer")
+        self._validate_observation()
         observe = getattr(self.executor.adapter, "observe_parent_point", None)
         if callable(observe):
             self.ledger.bump("field_image_parent_observation_requests")
@@ -711,20 +705,7 @@ class FieldImageApplication:
         )
 
     def active_width(self) -> int:
-        self.executor.images.validate_request(
-            ImageRequestKey(
-                self.action,
-                self.source,
-                self.geometry,
-                self.signature,
-            )
-        )
-        self.executor.adapter.validate_port(self.incoming)
-        if (
-            self.executor.adapter.signature(self.action, self.geometry)
-            != self.signature
-        ):
-            raise ValueError("field application has another normalized signature")
+        self._validate_observation()
         observe = getattr(self.executor.adapter, "observe_parent_width", None)
         if callable(observe):
             self.ledger.bump("field_image_parent_observation_requests")

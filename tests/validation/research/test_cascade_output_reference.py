@@ -6,6 +6,7 @@ from typing import Never
 import pytest
 
 from devtools.experiments.reverse_add.cascade_output_reference import (
+    ReferenceCascadeComposition,
     compose_reference_cascade,
     normalize_unary_cascade_output,
     normalize_unary_cascade_output_measured,
@@ -40,10 +41,16 @@ def _machine(
     )
 
 
-def test_unary_cascade_normalizer_eliminates_witness_resolver() -> None:
+def _composed_fixture() -> tuple[
+    LazyBimachine, LazyBimachine, ReferenceCascadeComposition
+]:
     first = _machine(lambda left, symbol, right: (left ^ symbol ^ right,))
     second = _machine(lambda left, symbol, right: (symbol ^ (left & right),))
-    composition = compose_reference_cascade(first, second, cache_outputs=False)
+    return first, second, compose_reference_cascade(first, second, cache_outputs=False)
+
+
+def test_unary_cascade_normalizer_eliminates_witness_resolver() -> None:
+    first, second, composition = _composed_fixture()
     assert composition.complete and composition.machine is not None
     machine = composition.machine
     expected = {
@@ -64,9 +71,7 @@ def test_unary_cascade_normalizer_eliminates_witness_resolver() -> None:
 
 
 def test_normalizer_binds_exact_cascade_constructors_and_reports_work() -> None:
-    first = _machine(lambda left, symbol, right: (left ^ symbol ^ right,))
-    second = _machine(lambda left, symbol, right: (symbol ^ (left & right),))
-    composition = compose_reference_cascade(first, second, cache_outputs=False)
+    first, second, composition = _composed_fixture()
     foreign = _machine(lambda left, symbol, right: (left ^ symbol ^ right,))
     with pytest.raises(ValueError, match="foreign constructors"):
         normalize_unary_cascade_output(foreign, second, composition)
@@ -92,9 +97,7 @@ def test_normalizer_binds_exact_cascade_constructors_and_reports_work() -> None:
 
 
 def test_normalizer_rejects_mutated_inputs_and_external_publication() -> None:
-    first = _machine(lambda left, symbol, right: (left ^ symbol ^ right,))
-    second = _machine(lambda left, symbol, right: (symbol ^ (left & right),))
-    composition = compose_reference_cascade(first, second, cache_outputs=False)
+    first, second, composition = _composed_fixture()
     assert composition.machine is not None
     transition = next(iter(first.left.trans))
     old_target = first.left.trans[transition]
@@ -132,9 +135,7 @@ def test_normalizer_rejects_mutated_inputs_and_external_publication() -> None:
 def test_normalized_cascade_matches_chronological_word_composition(
     word: tuple[int, ...],
 ) -> None:
-    first = _machine(lambda left, symbol, right: (left ^ symbol ^ right,))
-    second = _machine(lambda left, symbol, right: (symbol ^ (left & right),))
-    composition = compose_reference_cascade(first, second, cache_outputs=False)
+    first, second, composition = _composed_fixture()
     normalize_unary_cascade_output(first, second, composition)
     assert composition.machine is not None
     assert composition.machine.output(word) == second.output(first.output(word))

@@ -149,20 +149,22 @@ class MonicPolynomialRing:
             coefficients, self.divisor, modulus=self.modulus
         )
 
-    def add(self, first: Sequence[int], second: Sequence[int]) -> tuple[int, ...]:
-        a = tuple(first)
-        b = tuple(second)
+    def _residue_pair(
+        self, first: Sequence[int], second: Sequence[int]
+    ) -> tuple[tuple[int, ...], tuple[int, ...]]:
+        a, b = tuple(first), tuple(second)
         if len(a) != self.degree or len(b) != self.degree:
             raise ValueError((len(a), len(b), self.degree))
+        return a, b
+
+    def add(self, first: Sequence[int], second: Sequence[int]) -> tuple[int, ...]:
+        a, b = self._residue_pair(first, second)
         return tuple(
             (int(x) + int(y)) % self.modulus for x, y in zip(a, b, strict=True)
         )
 
     def subtract(self, first: Sequence[int], second: Sequence[int]) -> tuple[int, ...]:
-        a = tuple(first)
-        b = tuple(second)
-        if len(a) != self.degree or len(b) != self.degree:
-            raise ValueError((len(a), len(b), self.degree))
+        a, b = self._residue_pair(first, second)
         return tuple(
             (int(x) - int(y)) % self.modulus for x, y in zip(a, b, strict=True)
         )

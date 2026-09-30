@@ -16,12 +16,52 @@ pytest
 ```
 
 Strict mypy checks the configured maintained roots `src`, `tests`, and `devtools`.
-Executable reproductions live under `devtools`; `results` contains weekly summaries and ignored raw evidence, with no executable checkpoint launchers. Repository-wide Ruff checks include every remaining authored Python file. There are no mypy error exclusions or inline mypy/Ruff suppressions
+Maintained executable reproductions live under `devtools`; reviewed weekly records live under `docs/sprints`. New raw evidence goes to ignored `results/runs`; old local logs and scripts remain historical evidence, not maintained launchers. Repository-wide Ruff checks include every remaining authored Python file. There are no mypy error exclusions or inline mypy/Ruff suppressions
 in the maintained roots.
 
 Development minimums are pytest 9.1.1, mypy 2.3.1, Ruff 0.16.7 and setuptools
 84.0.0, checked against PyPI on September 14, 2026. Runtime installation remains
 dependency-free and supports Python 3.11 and newer.
+
+## Executable source policy
+
+The policy owner is [`repository_policy.py`](../devtools/checks/repository_policy.py),
+with regression gates in [`test_repository_policy.py`](../tests/repository/test_repository_policy.py)
+and [`test_python_clones.py`](../tests/repository/test_python_clones.py). Run
+`python -m devtools.checks.repository_policy` for machine-readable violations;
+`pytest tests/repository/test_repository_policy.py tests/repository/test_python_clones.py`
+checks both the implementation and the actual repository. The quality release
+suite runs the same owner and fails on any violation.
+
+- Python implementations/stubs, Isabelle theories/ML and ROOT/ROOTS sources have
+  a 1,000-physical-line cap. Generated results and external environments remain
+  outside authored source; tests and developer tools are included. Names such as
+  `build`, `dist` and `venv` inside authored packages do not exempt those modules.
+- The static call graph rejects resolved direct/mutual recursion, including
+  local/module/captured callable aliases, async functions, methods and lambdas.
+  Comprehension, exception, match and enclosing scopes remain distinct. Calls in
+  nested definition defaults/decorators belong to their executing outer function.
+  Conditional aliases conservatively retain both branches; sequential assignment
+  analysis is not flow-sensitive. This is not a proof about arbitrary dynamic
+  dispatch, deep attribute chains, `super()` or generated Python.
+- [`python_clones.py`](../devtools/checks/python_clones.py) rejects substantial
+  alpha-equivalent bodies and statement blocks: at least 24 expression/statement
+  nodes and either three executable statements or one statement containing at
+  least three arithmetic, Boolean, comparison, conditional or comprehension
+  operations. Large literal tables and thin forwarding calls alone do not qualify.
+  It checks complete suites and contiguous three-statement windows, including
+  distinct same-line fragments and substantial lambda bodies. Bound local names
+  and captured closure bindings are
+  normalized; argument positions, binding relationships, literals, operators,
+  external names and attribute names remain significant. Comments and docstrings
+  cannot conceal copies. Hash matches require exact canonical-token equality.
+
+This is a structural clone policy, not an arbitrary algorithm-equivalence prover.
+There is no duplicate-code baseline, path allowlist or suppression mechanism.
+Independent oracle implementations must not be casually replaced by production
+calls merely to clear a finding; preserve independent coverage when resolving
+the reported duplication. The JSON report includes each location and the exact
+thresholds. Existing violations keep the command and repository test red.
 
 ## Unit and exhaustive validation suites
 
@@ -61,6 +101,19 @@ that limit.
 Historical evidence keeps its original fingerprint. New passing evidence uses
 the versioned authored-source fingerprint and a fresh unfiltered serial run.
 An interrupted run or one whose sources changed is diagnostic, not release evidence.
+
+## Reproducible release commands
+
+Use `python -m devtools.checks.release --suite SUITE --output-dir PATH`, choosing `quality`, `unit`, `proofs`, `p0` or `all`. Each run creates fresh guarded evidence with fingerprint version 5. For example:
+
+```sh
+python -m devtools.checks.release --suite quality --output-dir results/runs/quality-review
+python -m devtools.checks.release --suite unit --output-dir results/runs/unit-review
+```
+
+The command preserves the existing unit, P0, proof and quality selections and their resource guards. Failure evidence remains a failure; a historical baseline comparison is separate from acceptance. Developer code uses `devtools.paths.isabelle_root()` to locate the canonical `proofs/isabelle/` tree.
+
+Scaffold a Sunday-start topic with `python -m devtools.checks.sprint_scaffold --week-start YYYY-MM-DD --topic TOPIC --title TITLE`. The tool registers the topic and regenerates weekly topic links/counts without replacing authored topic content. Run it again with `--check` to verify generated navigation.
 
 ## Shared audit and arithmetic owners
 
@@ -152,19 +205,21 @@ with SIGKILL or the machine stops; check for survivors in those cases. A tool
 returning a running session is a yield, not a timeout. Keep tracking that
 session to completion, or terminate the guard so its cleanup runs.
 
-These controls contain the memory incident recorded in the [September 7–13 retrospective sprint](../results/history/2026-09-07--2026-09-13/README.md); they do not make the
+These controls contain the memory incident recorded in the [September 7–13 retrospective sprint](sprints/history/2026-09-07--2026-09-13/README.md); they do not make the
 affected wide-port decision-DAG algorithm acceptable. Large failing probes stay
 paused until the construction path is bounded. Guard failures are incomplete
 evidence, and application allocation budgets remain independently enforced.
 
-Remove generated `build/` and `src/*.egg-info` directories before building a wheel; otherwise setuptools can preserve deleted modules from a previous build. The installed-distribution check compares every package file and resource with the current source, then exercises the installed package outside the checkout.
+Use `python -m devtools.checks.package_release --output-dir results/runs/package-review` for a clean staged wheel build and installed-distribution verification. The tool stages current source in a fresh directory, builds the wheel in isolation, and exercises the installed CLI and kernel admission outside the checkout. Package identity comes from current project metadata; stale local build products cannot supply deleted modules.
 
-Build a wheel with `python -m pip wheel --no-deps --wheel-dir /tmp/number-compiler-wheels .`, then run `python -m devtools.checks.installed_distribution /tmp/number-compiler-wheels/number_compiler-0.59.9-py3-none-any.whl`. This check installs into a disposable environment and exercises the CLI and kernel admission outside the checkout.
+Canonical probe entry points accept `--output-dir PATH`. Choose a fresh directory for every invocation; an existing directory is rejected. Without this option, a unique timestamp/UUID directory is allocated under `results/runs/`. Reports share the invocation's directory and `manifest.json`, which records command, tool versions, metrics schema, limits, source fingerprints before/after, and completion outcome. An unguarded probe records that limits were not enforced. Interrupted or source-changed work remains diagnostic. Raw JSON, logs and profiles stay local; summarize scoped conclusions in the reviewed sprint topic.
 
-New evidence uses fingerprint version 4: project configuration plus authored files and assets under `src`, `tests`, and `devtools`, excluding tool caches and generated distribution metadata. Historical fingerprints are unchanged.
+For configurable current public-route comparisons, use `python -m devtools.benchmarks.public_query_comparison --family collatz --horizons 16 32 64 --trials 5 --modes cold warm bypass --bases 2 10 --output-dir results/runs/public-query-review`. The report retains warm priming and all CLI/point samples; it measures route agreement and states its timing scope without introducing a release threshold.
+
+New evidence uses fingerprint version 5: project configuration plus authored files and assets under `src`, `tests`, `devtools`, and `proofs`, excluding tool caches and generated distribution metadata. Historical fingerprints are unchanged.
 
 Summarize new benchmark evidence in the appropriate topic file under
-`results/current/week-of-YYYY-MM-DD/`, using the **Sunday** start date.
+`docs/sprints/week-of-YYYY-MM-DD/`, using the **Sunday** start date.
 Canonical developer modules write raw evidence to fresh local paths; they do
 not create another versioned microtask report.
 
@@ -182,8 +237,8 @@ not create another versioned microtask report.
   its completion week and state the full range. Do not guess missing dates;
   retain undated aggregate history as explicitly labeled retrospectives.
   Preserve original fingerprints and evidence limits. Use the existing topic
-  categories; register new categories in the catalog and the narrow Markdown
-  allowlist in `.gitignore` when needed.
+  categories; register new categories in the catalog; `docs/sprints/` accepts new topic files
+  without `.gitignore` exceptions.
 - **Architecture and API guides:** current module responsibilities, interfaces
   and user-visible behavior. Keep implementation history in the sprint.
 - **Release ledger and proof index:** current gate disposition and formal
@@ -198,13 +253,12 @@ supplied archived documents unchanged. Register maintained pages in
 sections so local links and heading references remain valid.
 
 Generated run payloads under `results/` are local or CI artifacts and are ignored
-by Git. Commit only reviewed weekly Markdown summaries there; keep executable reproductions under `devtools` and independent oracles under `tests/support`;
+by Git. Commit reviewed weekly Markdown summaries under `docs/sprints/`; keep executable reproductions under `devtools` and independent oracles under `tests/support`;
 keep console transcripts, JUnit XML, result JSON, profiles and caches out of
 source control. Historical raw artifacts were removed during the September 11
 cleanup. Paths in retained summaries describe local outputs, and their recorded
 passes do not certify the current source. Generate and validate fresh evidence
-before a release; the evidence requirements above remain unchanged. See the
-[artifact retention policy](../results/README.md).
+before a release; the evidence requirements above remain unchanged. See the artifact retention policy below.
 
 For an interrupted-suite diagnostic, add
 `-p devtools.benchmarks.pytest_timing --timing-output /tmp/NEW-phases.jsonl`
@@ -214,3 +268,34 @@ record means the run was interrupted; a truncation record invalidates complete
 coverage claims. Use this trace to locate expensive tests, then time the default
 serial release command without the plugin. The plugin caches no test runtime or
 proof result.
+
+## Artifact retention policy
+
+Generated test logs, JUnit XML, JSON measurements, guard reports, profiles,
+databases and other run payloads are ignored here. They belong in local run
+directories or CI artifact storage, not in Git. The September 11 cleanup removed
+these files from the working tree; it did not rewrite existing Git history.
+
+Reviewed Sunday-start `docs/sprints/week-of-YYYY-MM-DD/` indexes and topic files,
+and cross-week retrospectives under `docs/sprints/history/`, are versioned.
+All payloads beneath `results/` are local or CI artifacts. See the [sprint index](index.md#sprint-history-and-provenance).
+Run-local Markdown reports and Python scripts are ignored
+alongside JSON, logs and profiles; there are no extension-wide exceptions.
+Already tracked artifacts must be explicitly untracked because `.gitignore`
+does not remove them from Git's index. Reproduction tools live under `devtools`, and bounded independent test oracles under `tests/support`.
+Historical summaries record what a particular run observed. Their raw artifact
+paths describe local outputs and are not downloadable evidence in this checkout.
+Historical fingerprints and reported passes do not certify a later source tree.
+
+Generate fresh evidence with canonical `devtools` commands. Historical checkpoint launchers have been retired; their recorded commands describe those historical runs only. Comparisons may require a separately measured baseline. Use a fresh run directory and preserve it locally
+while reviewing a result. Keep concise conclusions, commands, limitations and
+source fingerprints in reviewed summaries; do not paste console transcripts.
+
+This retention policy does not change release gates. Full release evidence must
+still be generated and checked against the current source, using the existing
+process guard and test-run evidence checks. A summary alone cannot satisfy those
+checks. See [development guidance](development.md).
+
+Fixtures and required kernel assets belong beside their source owners outside
+this output directory. JSON and XML are not globally ignored: legitimate inputs
+remain reviewable.

@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from tests.support.assertions import assert_rejected_atomically
+
 from typing import Never
 
 import pytest
@@ -68,10 +70,9 @@ def test_clipped_field_and_other_operator_cannot_claim_physical_cycle() -> None:
     runtime, root = build(BaseBlockEffect(2), (1,), 8, 2)
     assert physical_cycle(runtime, root) is None
     foreign, other = build(CollatzPhysicalBlockEffect(), (1,), 8, 2)
-    before = runtime.ledger.snapshot()
-    with pytest.raises(ValueError):
-        physical_cycle(runtime, other)
-    assert runtime.ledger.snapshot() == before
+    assert_rejected_atomically(
+        runtime.ledger, lambda: physical_cycle(runtime, other), ValueError
+    )
     assert physical_cycle(foreign, other) is not None
 
 

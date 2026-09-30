@@ -6,7 +6,7 @@ from typing import Never
 
 import pytest
 
-from devtools.proofs.oracles.reverse_publisher import (
+from devtools.verification.oracles.reverse_publisher import (
     ReversePublisherProjection,
 )
 from number_compiler.arithmetic.contracts.block_kernel import BaseBlockEffect
@@ -20,7 +20,7 @@ from number_compiler.hashlife.execution.continuations.higher_semantic import (
 from number_compiler.hashlife.interfaces.diamond_quotient import LocalInterfaceID
 from number_compiler.hashlife.tiles.tiles import TileID
 from number_compiler.sequences.reverse_add.power import ReverseAddPoweredTerm
-from tests.arithmetic.contracts.test_tile_kernel import _runtime, _tile
+from tests.support.tile_kernel import _runtime, _tile
 from tests.support.reverse_higher_interface import _direct_step
 
 

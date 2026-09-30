@@ -356,7 +356,7 @@ def test_two_valuation_frame_word_handles_large_fixed_point_runs_symbolically() 
 
 
 def test_affine_suffix_germ_streams_directly_into_lazy_event_morphisms() -> None:
-    from devtools.proofs.collatz_frame_projection import (
+    from devtools.verification.collatz_frame_projection import (
         collatz_affine_suffix_event_power_value,
     )
     from number_compiler.sequences.collatz.pair import accelerated_odd_collatz
@@ -379,7 +379,7 @@ def test_affine_suffix_germ_streams_directly_into_lazy_event_morphisms() -> None
 def test_million_digit_frame_to_two_event_dag_does_not_expand_valuation_or_affine_offset() -> (
     None
 ):
-    from devtools.proofs.collatz_frame_projection import (
+    from devtools.verification.collatz_frame_projection import (
         collatz_affine_suffix_event_power_word,
     )
     from number_compiler.arithmetic.automata.program_word import from_runs
@@ -400,7 +400,7 @@ def test_million_digit_frame_to_two_event_dag_does_not_expand_valuation_or_affin
 def test_germ_transition_cache_normalizes_matching_frame_before_boundary_generation() -> (
     None
 ):
-    from devtools.proofs.collatz_frame_projection import (
+    from devtools.verification.collatz_frame_projection import (
         collatz_affine_suffix_event_power_word,
     )
     from number_compiler.arithmetic.automata.program_word import from_runs
@@ -494,7 +494,7 @@ def test_shared_binary_lift_powers_normalized_collatz_germs_exactly() -> None:
 def test_event_projection_uses_shared_binary_lift_weight_without_valuation_replay() -> (
     None
 ):
-    from devtools.proofs.collatz_frame_projection import (
+    from devtools.verification.collatz_frame_projection import (
         collatz_affine_suffix_event_power_word,
     )
     from number_compiler.arithmetic.automata.program_word import from_values

@@ -2,7 +2,7 @@
 
 import inspect
 
-from devtools.proofs.forcing_morphism import ReverseAddForcingMorphismArena
+from devtools.verification.forcing_morphism import ReverseAddForcingMorphismArena
 
 
 def test_reverse_forcing_source_key_uses_packed_cut_not_row_length_vector() -> None:

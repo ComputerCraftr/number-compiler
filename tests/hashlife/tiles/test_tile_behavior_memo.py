@@ -18,7 +18,8 @@ from number_compiler.hashlife.tiles.tile_result_records import (
     BehaviorBindingKey,
     CompletedBehaviorClassification,
 )
-from tests.arithmetic.contracts.test_tile_kernel import _runtime, _tile
+from tests.support.tile_kernel import powered_runtime
+from tests.support.tile_kernel import _runtime, _tile
 
 if TYPE_CHECKING:
     from number_compiler.hashlife.behavior.future_behavior import FutureBehaviorClassID
@@ -203,9 +204,9 @@ def test_public_warm_behavior_point_and_width_skip_construction(
 def test_new_behavior_admission_fails_before_semantic_publication_at_zero_budget() -> (
     None
 ):
-    ledger, tiles, adapter, primitive, scheduler = _runtime(BaseBlockEffect(3))
-    action = adapter.power(primitive, 4)
-    blank = adapter.primitive_law(primitive).blank
+    ledger, tiles, adapter, primitive, scheduler, action, blank = powered_runtime(
+        BaseBlockEffect(3), 4
+    )
     with (
         _tile(tiles, adapter, primitive, (blank,) * 4) as source,
         scheduler.application(

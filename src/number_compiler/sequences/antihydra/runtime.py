@@ -3,7 +3,8 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, TypeVar
+from collections.abc import Callable, MutableMapping
 
 from number_compiler.arithmetic.contracts.exact_tree_context import source_reads_only
 from number_compiler.arithmetic.contracts.input_validation import require_integer
@@ -27,6 +28,7 @@ from number_compiler.sequences.antihydra.projection_workspace import (
 )
 
 _SOURCE = object()
+_CylinderT = TypeVar("_CylinderT", Cylinder, ArithmeticCylinder)
 
 if TYPE_CHECKING:
     from number_compiler.sequences.antihydra.arithmetic_images import (
@@ -648,12 +650,28 @@ class CylinderEngine:
         counters[name] = counters.get(name, 0) + amount
 
     def cylinder(self, residue: int, width: int) -> Cylinder:
+        return self._build_cylinder(residue, width, self.memo, kernel, "")
+
+    def arithmetic_cylinder(self, residue: int, width: int) -> ArithmeticCylinder:
+        """Build a powered arithmetic action without constructing clock roofs."""
+        return self._build_cylinder(
+            residue, width, self.arithmetic_memo, arithmetic_kernel, "arithmetic_"
+        )
+
+    def _build_cylinder(
+        self,
+        residue: int,
+        width: int,
+        memo: MutableMapping[tuple[int, int], _CylinderT],
+        build_leaf: Callable[[int, int], _CylinderT],
+        prefix: str,
+    ) -> _CylinderT:
         require_integer(width, "block width", 1, 64)
         residue %= 1 << width
         key = width, residue
-        if key in self.memo:
-            self.count("cylinder_cache_hits")
-            return self.memo[key]
+        if key in memo:
+            self.count(prefix + "cylinder_cache_hits")
+            return memo[key]
         # A width<=64 construction needs at most 15 new dyadic nodes.
         if len(self.memo) + len(self.arithmetic_memo) + 32 > self.capacity:
             self.count("cache_evictions", len(self.memo) + len(self.arithmetic_memo))
@@ -666,73 +684,27 @@ class CylinderEngine:
             while stack:
                 size, source, _expanded = stack.pop()
                 current = size, source
-                if current in self.memo:
+                if current in memo:
                     continue
                 if size <= 8:
-                    self.memo[current] = kernel(source, size)
-                    self.count("kernel_branch_steps", size)
+                    memo[current] = build_leaf(source, size)
+                    self.count(prefix + "kernel_branch_steps", size)
                     continue
                 first_width = 1 << ((size - 1).bit_length() - 1)
                 last_width = size - first_width
-                first_key = first_width, source % (1 << first_width)
-                if first_key not in self.memo:
+                first_key: tuple[int, int] = first_width, source % (1 << first_width)
+                if first_key not in memo:
                     stack.extend(((size, source, False), (*first_key, False)))
                     continue
-                first = self.memo[first_key]
+                first = memo[first_key]
                 middle = 3**first_width * (source >> first_width) + first.output
-                last_key = last_width, middle % (1 << last_width)
-                if last_key not in self.memo:
+                last_key: tuple[int, int] = last_width, middle % (1 << last_width)
+                if last_key not in memo:
                     stack.extend(((size, source, True), (*last_key, False)))
                     continue
-                self.memo[current] = first.then(self.memo[last_key])
-                self.count("cylinder_compositions")
-            return self.memo[key]
-        finally:
-            self.stack.clear()
-            self.ledger.release(self.workspace, entries=16, nodes=16)
-
-    def arithmetic_cylinder(self, residue: int, width: int) -> ArithmeticCylinder:
-        """Build a powered arithmetic action without constructing clock roofs."""
-        require_integer(width, "block width", 1, 64)
-        residue %= 1 << width
-        key = width, residue
-        if key in self.arithmetic_memo:
-            self.count("arithmetic_cylinder_cache_hits")
-            return self.arithmetic_memo[key]
-        if len(self.memo) + len(self.arithmetic_memo) + 32 > self.capacity:
-            self.count("cache_evictions", len(self.memo) + len(self.arithmetic_memo))
-            self.memo.clear()
-            self.arithmetic_memo.clear()
-        self.ledger.reserve(self.workspace, entries=16, nodes=16)
-        try:
-            stack = self.stack
-            stack.append((width, residue, False))
-            while stack:
-                size, source, _expanded = stack.pop()
-                current = size, source
-                if current in self.arithmetic_memo:
-                    continue
-                if size <= 8:
-                    self.arithmetic_memo[current] = arithmetic_kernel(source, size)
-                    self.count("arithmetic_kernel_branch_steps", size)
-                    continue
-                first_width = 1 << ((size - 1).bit_length() - 1)
-                last_width = size - first_width
-                first_key = first_width, source % (1 << first_width)
-                if first_key not in self.arithmetic_memo:
-                    stack.extend(((size, source, False), (*first_key, False)))
-                    continue
-                first = self.arithmetic_memo[first_key]
-                middle = 3**first_width * (source >> first_width) + first.output
-                last_key = last_width, middle % (1 << last_width)
-                if last_key not in self.arithmetic_memo:
-                    stack.extend(((size, source, True), (*last_key, False)))
-                    continue
-                self.arithmetic_memo[current] = first.then(
-                    self.arithmetic_memo[last_key]
-                )
-                self.count("arithmetic_cylinder_compositions")
-            return self.arithmetic_memo[key]
+                memo[current] = first.then(memo[last_key])
+                self.count(prefix + "cylinder_compositions")
+            return memo[key]
         finally:
             self.stack.clear()
             self.ledger.release(self.workspace, entries=16, nodes=16)

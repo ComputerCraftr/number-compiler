@@ -1,6 +1,7 @@
 """Recursive field images with one canonical implementation owner."""
 
 from __future__ import annotations
+from tests.support.finite_functions import carry_atoms
 
 from collections.abc import Callable, MutableSequence
 from dataclasses import dataclass
@@ -15,10 +16,7 @@ from number_compiler.arithmetic.contracts.semantic_identity import SemanticIdent
 from number_compiler.arithmetic.contracts.source_geometry import SourceGeometry
 from number_compiler.arithmetic.functions.finite_function_types import (
     BOOL,
-    FinitePort,
-    FunctionSignature,
 )
-from number_compiler.arithmetic.functions.finite_port_action import PortVariable
 from number_compiler.arithmetic.functions.semantic_functions import (
     SemanticFunctionArena,
 )
@@ -71,6 +69,7 @@ from number_compiler.resources.ledger import ResourceLedger
 
 if TYPE_CHECKING:
     from number_compiler.hashlife.actions.diamond_actions import PortSignatureID
+    from number_compiler.hashlife.execution.field_executor import FieldImageApplication
     from number_compiler.hashlife.actions.field_actions import (
         FieldGeometryID,
     )
@@ -318,10 +317,7 @@ def _setup(
     )
     functions = SemanticFunctionArena(ledger)
     quotients = DiamondQuotientArena(functions)
-    port = FinitePort(PortVariable(0, 0, "carry", 0), 2)
-    signature = FunctionSignature((port,), BOOL)
-    zero = functions.atom(signature, 0)
-    one = functions.atom(signature, 1)
+    port, signature, zero, one = carry_atoms(functions)
     declared = quotients.intern_interface(
         MacroInterface(
             SemanticIdentity("recursive-image-test-v1", ("kernel",)),
@@ -422,33 +418,20 @@ def _completed_provider_input_setup(
     ProviderImageInputArena,
     ProviderImageInputID,
 ]:
-    ledger, source, signature, geometry, action, images, adapter, executor = _setup(
-        digits,
-    )
-    image = executor.image(action, source, geometry, signature)
-    providers = ProviderAbsorptionArena(
+    (
         ledger,
-        images.sources,
-        validate_output=images._output_validate,
-        validate_bound_output=images._output_validate,
-        validate_interface=images.interfaces.resolve,
-        validate_bound_interface=images.interfaces.resolve,
-        validate_action=images._action_validate,
-        validate_boundary=lambda _value: None,
-        observe=lambda *_args: 0,
-        validate_image=images.resolve,
-        validate_image_occurrence=images.validate_occurrence,
-    )
-    provider = providers.intern(
-        ProviderAction(adapter.output, adapter.interface, action, 0, 0, 1)
-    )
-    binding = providers.bind(
-        provider,
         source,
-        adapter.output,
-        adapter.interface,
-        image,
-    )
+        _signature,
+        _geometry,
+        _action,
+        images,
+        _adapter,
+        _executor,
+        _image,
+        providers,
+        _provider,
+        binding,
+    ) = _completed_provider_setup(digits)
     inputs = ProviderImageInputArena(providers, images)
     assert isinstance(source, SourceCellID)
     root = inputs.bind(binding, source, 2)
@@ -550,3 +533,64 @@ def _transfer_setup() -> tuple[
         transfers,
         executor,
     )
+
+
+def _application_setup() -> tuple[
+    ResourceLedger,
+    SourceCellID,
+    PortSignatureID,
+    FieldGeometryID,
+    FieldCellActionID,
+    RecursiveFieldImageArena,
+    _Adapter,
+    RecursiveFieldImageExecutor[FieldImageAdapter],
+    ArenaHandle,
+    FieldImageApplication,
+]:
+    fixture = _setup()
+    ledger, source, signature, geometry, action, images, adapter, executor = fixture
+    incoming = ArenaHandle(adapter.port_owner, "test-image-port", 0)
+    return (
+        *fixture,
+        incoming,
+        executor.application(action, source, geometry, signature, incoming),
+    )
+
+
+def _completed_provider_setup(
+    digits: tuple[int, int] = (0, 1),
+) -> tuple[
+    ResourceLedger,
+    SourceCellID | SourceForestID,
+    PortSignatureID,
+    FieldGeometryID,
+    FieldCellActionID,
+    RecursiveFieldImageArena,
+    _Adapter,
+    RecursiveFieldImageExecutor[FieldImageAdapter],
+    FieldImageID,
+    ProviderAbsorptionArena,
+    ProviderActionID,
+    ProviderBindingKey,
+]:
+    fixture = _setup(digits)
+    ledger, source, signature, geometry, action, images, adapter, executor = fixture
+    image = executor.image(action, source, geometry, signature)
+    providers = ProviderAbsorptionArena(
+        ledger,
+        images.sources,
+        validate_output=images._output_validate,
+        validate_bound_output=images._output_validate,
+        validate_interface=images.interfaces.resolve,
+        validate_bound_interface=images.interfaces.resolve,
+        validate_action=images._action_validate,
+        validate_boundary=lambda _value: None,
+        observe=lambda *_args: 0,
+        validate_image=images.resolve,
+        validate_image_occurrence=images.validate_occurrence,
+    )
+    provider = providers.intern(
+        ProviderAction(adapter.output, adapter.interface, action, 0, 0, 1)
+    )
+    binding = providers.bind(provider, source, adapter.output, adapter.interface, image)
+    return (*fixture, image, providers, provider, binding)

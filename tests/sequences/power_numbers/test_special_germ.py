@@ -54,10 +54,7 @@ def test_terminal_germ_plan_has_no_detached_support_observation() -> None:
 def test_support_packet_intersection_is_non_cancelling_and_associative_on_support() -> (
     None
 ):
-    modulus = 17 * 41 * 73
-    a = SpecialFrobeniusChunkSpec("fermat", 9, 1, 1, 10, modulus.bit_length())
-    b = a.adjacent(1)
-    c = b.adjacent(1)
+    modulus, a, b, c = _adjacent_support_chunks()
 
     # Pass sets by prime component:
     # A={17,41}, B={17,73}, C={17,41,73}.  The conjunction is {17}.
@@ -144,10 +141,7 @@ def test_downstream_branch_mask_is_pulled_back_through_adjacent_germ_transport()
 def test_candidate_support_ideals_intersect_inside_constrained_germ_without_slot_lists() -> (
     None
 ):
-    modulus = 17 * 41 * 73
-    a = SpecialFrobeniusChunkSpec("fermat", 9, 1, 1, 10, modulus.bit_length())
-    b = a.adjacent(1)
-    c = b.adjacent(1)
+    modulus, a, b, c = _adjacent_support_chunks()
     pa = build_special_germ_plan(a).pullback_defect(
         modulus,
         17 * 41,
@@ -185,3 +179,16 @@ def test_constraint_state_rank_does_not_grow_with_repeated_mask_pullback() -> No
     # State still owns one two-bit mask and no hidden factor-slot carrier.
     assert state.support_modulus is None and state.support_gcd is None
     assert state.method == "mixed-constraint-pullback"
+
+
+def _adjacent_support_chunks() -> tuple[
+    int,
+    SpecialFrobeniusChunkSpec,
+    SpecialFrobeniusChunkSpec,
+    SpecialFrobeniusChunkSpec,
+]:
+    modulus = 17 * 41 * 73
+    a = SpecialFrobeniusChunkSpec("fermat", 9, 1, 1, 10, modulus.bit_length())
+    b = a.adjacent(1)
+    c = b.adjacent(1)
+    return modulus, a, b, c

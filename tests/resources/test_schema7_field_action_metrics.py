@@ -11,6 +11,7 @@ from number_compiler.resources.ledger import ResourceLedger
 from number_compiler.resources.metric_collection import collect_ledger_metrics
 from number_compiler.resources.metric_registry import ALGEBRAIC_FIELD_WORK_COUNTERS
 from number_compiler.resources.stores import LedgerDict, LedgerList
+from tests.support.assertions import collect_counter_quantities
 
 if TYPE_CHECKING:
     from number_compiler.arithmetic.contracts.scoped_handles import ActionProgramID
@@ -272,11 +273,7 @@ def test_radix_recursive_work_is_public_and_part_of_internal_work() -> None:
         "radix_source_bit_visits": 31,
         "radix_limb_operations": 37,
     }
-    for name, value in counters.items():
-        ledger.bump(name, value)
-    report = collect_ledger_metrics(ledger)
-    for name, value in counters.items():
-        assert getattr(report, name) == value
+    report = collect_counter_quantities(ledger, counters)
     assert report.total_internal_action_work == 12 + 18 + 23 + 31 + 37
 
 

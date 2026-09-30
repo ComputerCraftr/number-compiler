@@ -2,7 +2,7 @@
 
 from dataclasses import dataclass
 
-from devtools.proofs.lazy_reverse import ReverseProgram
+from devtools.verification.lazy_reverse import ReverseProgram
 from number_compiler.arithmetic.contracts.scoped_handles import ExactSource
 from number_compiler.arithmetic.fields.dyadic_tile import source_span
 from number_compiler.resources.ledger import OwnedMemo, ResourceLedger

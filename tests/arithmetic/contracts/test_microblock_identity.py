@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from tests.support.assertions import assert_rejected_atomically
+
 from typing import cast
 
 import pytest
@@ -15,7 +17,7 @@ from number_compiler.projection.microblock_cache import (
     MicroblockCache,
     MicroblockKey,
 )
-from number_compiler.resources.ledger import ResourceLedger
+from number_compiler.resources.ledger import ResourceLedger, LedgerSnapshot
 
 
 def _fixture() -> tuple[
@@ -55,12 +57,7 @@ def test_microblock_rejects_invalid_program_before_warm_probe_or_mutation(
     object.__setattr__(key, "kind", "output")
     before = ledger.snapshot()
     with pytest.raises((TypeError, ValueError)):
-        if operation == "get":
-            cache.get(key)
-        elif operation == "put":
-            cache.put(key, ExactMicroblock(3, 2))
-        else:
-            cache.discard(key)
+        _invoke_key_operation(cache, key, operation)
     assert ledger.snapshot() == before
     assert cache.get(_warm) == ExactMicroblock(7, 4)
     assert compiler.resolve(program) is not None
@@ -107,9 +104,7 @@ def test_denied_microblock_reservation_preserves_cache_and_ledger() -> None:
     contents = dict(cache.blocks.items())
     with pytest.raises(Exception, match="cache budget exceeded"):
         cache.put(denied, ExactMicroblock(3, 2))
-    assert dict(cache.blocks.items()) == contents
-    assert ledger.snapshot() == before
-    assert cache.get(key) == ExactMicroblock(7, 4)
+    _assert_cache_retained(cache, ledger, key, contents, before)
 
 
 def test_capacity_eviction_reuses_reserved_slot_atomically(
@@ -148,6 +143,105 @@ def test_failed_publication_restores_selected_eviction_victim(
     monkeypatch.setattr(ledger, "check_store_capacity", fail_second_check)
     with pytest.raises(RuntimeError, match="injected publication failure"):
         cache.put(second, ExactMicroblock(2, 2))
+    _assert_cache_retained(cache, ledger, first, contents, before)
+
+
+@pytest.mark.parametrize("field,value", (("encoded", 4), ("bit_count", 1000)))
+def test_published_payload_has_no_caller_or_returned_mutation_alias(
+    field: str,
+    value: int,
+) -> None:
+    ledger, _compiler, cache, _program, key = _fixture()
+    supplied = ExactMicroblock(5, 3)
+    cache.put(key, supplied)
+    object.__setattr__(supplied, field, value)
+    returned = cache.get(key)
+    assert returned == ExactMicroblock(5, 3)
+    assert returned is not supplied
+    assert returned is not None
+    object.__setattr__(returned, field, value)
+    assert cache.get(key) == ExactMicroblock(5, 3)
+    assert cache.payload_bytes == ledger.counters["microblock_payload_bytes"] == 1
+    cache.discard(key)
+    assert cache.payload_bytes == 0
+
+
+def test_publication_snapshots_key_and_scoped_program_aliases() -> None:
+    _ledger, _compiler, cache, program, _key = _fixture()
+    supplied_program = ActionProgramID(program.owner, program.kind, program.local_id)
+    supplied = MicroblockKey(supplied_program, 10, 0, 1, "output")
+    cache.put(supplied, ExactMicroblock(0, 1))
+    object.__setattr__(supplied, "block", 2)
+    object.__setattr__(supplied_program, "local_id", 100)
+    canonical = MicroblockKey(program, 10, 0, 1, "output")
+    assert cache.get(canonical) == ExactMicroblock(0, 1)
+    cache.discard(canonical)
+    assert len(cache) == 1
+
+
+@pytest.mark.parametrize("field,value", (("encoded", True), ("bit_count", 1000)))
+def test_corrupt_stored_payload_rejected_before_hit_or_replacement(
+    field: str,
+    value: int,
+) -> None:
+    ledger, _compiler, cache, _program, key = _fixture()
+    object.__setattr__(cache.blocks[key], field, value)
+    before = assert_rejected_atomically(
+        ledger, lambda: cache.get(key), (TypeError, ValueError)
+    )
+    with pytest.raises((TypeError, ValueError)):
+        cache.put(key, ExactMicroblock(3, 2))
+    assert ledger.snapshot() == before
+
+
+def test_payload_subclass_cannot_override_admission() -> None:
+    class Unbounded(ExactMicroblock):
+        def __post_init__(self) -> None:
+            pass
+
+    ledger, _compiler, cache, _program, key = _fixture()
+    assert_rejected_atomically(
+        ledger,
+        lambda: cache.put(key, Unbounded(7, 1000)),
+        TypeError,
+        match="exact bounded payload",
+    )
+    assert cache.get(key) == ExactMicroblock(7, 4)
+
+
+@pytest.mark.parametrize("operation", ("get", "put", "discard"))
+def test_key_subclass_cannot_override_coordinate_admission(operation: str) -> None:
+    class UncheckedKey(MicroblockKey):
+        def __post_init__(self) -> None:
+            pass
+
+    ledger, _compiler, cache, program, key = _fixture()
+    invalid = UncheckedKey(program, 10, False, 0, "output")
+    before = ledger.snapshot()
+    with pytest.raises(TypeError, match="exact key"):
+        _invoke_key_operation(cache, invalid, operation)
+    assert ledger.snapshot() == before
+    assert cache.get(key) == ExactMicroblock(7, 4)
+
+
+def _invoke_key_operation(
+    cache: MicroblockCache, key: MicroblockKey, operation: str
+) -> None:
+    if operation == "get":
+        cache.get(key)
+    elif operation == "put":
+        cache.put(key, ExactMicroblock(3, 2))
+    else:
+        cache.discard(key)
+
+
+def _assert_cache_retained(
+    cache: MicroblockCache,
+    ledger: ResourceLedger,
+    key: MicroblockKey,
+    contents: dict[MicroblockKey, ExactMicroblock],
+    before: LedgerSnapshot,
+) -> None:
     assert dict(cache.blocks.items()) == contents
     assert ledger.snapshot() == before
-    assert cache.get(first) == ExactMicroblock(7, 4)
+    assert cache.get(key) == ExactMicroblock(7, 4)

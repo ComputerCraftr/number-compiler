@@ -8,6 +8,8 @@ diamond scheduler.
 
 from __future__ import annotations
 
+from number_compiler.resources.stores import append_indexed_node
+
 from collections.abc import MutableMapping, MutableSequence
 from dataclasses import dataclass, replace
 from typing import TYPE_CHECKING, Literal, TypeAlias
@@ -314,10 +316,15 @@ class TemporalActionArena:
         found = self._ids.get(node)
         if found is not None:
             return self._handle(found)
-        self.ledger.reserve_many(((self._node_owner, 1, 1), (self._index_owner, 1, 0)))
-        index = len(self._nodes)
-        self._nodes.append(node)
-        self._ids[node] = index
+        index = append_indexed_node(
+            self.ledger,
+            self._nodes,
+            self._ids,
+            self._node_owner,
+            self._index_owner,
+            node,
+            node,
+        )
         return self._handle(index)
 
     def from_compiler(self, reference: ActionProgramID) -> ActionProgramID:
@@ -607,10 +614,15 @@ class ImageCellArena:
                 "diamond_source_origin_metadata_reads", 2 if node.kind == "join" else 0
             )
             return self._handle(found)
-        self.ledger.reserve_many(((self._node_owner, 1, 1), (self._index_owner, 1, 0)))
-        index = len(self._nodes)
-        self._nodes.append(node)
-        self._ids[key] = index
+        index = append_indexed_node(
+            self.ledger,
+            self._nodes,
+            self._ids,
+            self._node_owner,
+            self._index_owner,
+            key,
+            node,
+        )
         self.ledger.bump("diamond_cell_interner_evaluations")
         self.ledger.bump(
             "diamond_source_origin_metadata_reads", 2 if node.kind == "join" else 0

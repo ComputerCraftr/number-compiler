@@ -23,7 +23,7 @@ packet.
 from __future__ import annotations
 
 from dataclasses import dataclass
-from fractions import Fraction
+from devtools.verification.fraction_linear_algebra import fraction_matrix_rank
 
 from number_compiler.sequences.power_numbers.terminal_threshold import (
     terminal_threshold_spec,
@@ -95,26 +95,7 @@ def folded_x_sequence(M: int, terms: int) -> tuple[int, ...]:
 
 
 def _matrix_rank_fraction(matrix: list[list[int]]) -> int:
-    if not matrix:
-        return 0
-    a = [[Fraction(x) for x in row] for row in matrix]
-    rows, cols = len(a), len(a[0])
-    rank = col = 0
-    while rank < rows and col < cols:
-        pivot = next((r for r in range(rank, rows) if a[r][col]), None)
-        if pivot is None:
-            col += 1
-            continue
-        a[rank], a[pivot] = a[pivot], a[rank]
-        pv = a[rank][col]
-        a[rank] = [x / pv for x in a[rank]]
-        for r in range(rows):
-            if r != rank and a[r][col]:
-                f = a[r][col]
-                a[r] = [x - f * y for x, y in zip(a[r], a[rank])]
-        rank += 1
-        col += 1
-    return rank
+    return fraction_matrix_rank(matrix)
 
 
 def small_hankel_rank_differential(M: int) -> int:

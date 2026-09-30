@@ -1,5 +1,10 @@
 """Inspect memo bindings independently of the production publication guard."""
 
+from tests.support.diamond_observation_adversarial import (
+    bound_observation_fixture,
+    structured_projection,
+    unsafe_capture,
+)
 import pytest
 
 from number_compiler.hashlife.execution.continuations.diamond_higher_tasks import (
@@ -9,14 +14,11 @@ from number_compiler.hashlife.execution.continuations.diamond_higher_tasks impor
 from number_compiler.hashlife.interfaces.diamond_boundary_expr import (
     ExprBinding,
     ExprSubstitutionKey,
-    StateSort,
 )
 from number_compiler.resources.metric_collection import collect_ledger_metrics
 from tests.support.diamond_observation_adversarial import (
     _bound_projection_fixture,
-    neighbor_xor,
 )
-from tests.support.diamond_query import build
 
 
 @pytest.mark.parametrize("structured", (False, True))
@@ -28,12 +30,9 @@ def test_injected_bound_substitution_response_fails_independent_inventory(
     )
     result = literal
     if structured:
-        sort = arena.node(variable).sort
-        assert type(sort) is StateSort
-        parameter = arena.variable(arena.node(right).sort, "constant-continuation")
-        continuation = arena.lambda_(parameter, literal)
-        projection = arena.pair(sort.action, sort.side, projection, continuation)
-        result = arena.pair(sort.action, sort.side, literal, continuation)
+        projection, result = structured_projection(
+            arena, variable, right, projection, result
+        )
     assert collect_ledger_metrics(ledger).representation_boundary_complete == 1
     key = ExprSubstitutionKey(projection, (ExprBinding(variable, incoming),))
     ledger.reserve(arena.memo_owner, entries=1)
@@ -48,14 +47,7 @@ def test_injected_bound_substitution_response_fails_independent_inventory(
 def test_injected_higher_bound_observation_response_fails_independent_inventory() -> (
     None
 ):
-    app = build(neighbor_xor(), (0, 1, 1), 8, 1)
-    runtime, arena = app.runtime, app.runtime.higher.expressions
-    action = app.root
-    literal = arena.literal(runtime.boundaries.literal(action, 1, 3))
-    parameter = arena.variable(arena.state_sort(action, 1), "unresolved-input")
-    body = arena.primitive_advance(action, 1, parameter, arena.symbol(action, 0))
-    closure = arena.closures.intern((parameter,), body)
-    incoming = arena.call(closure, (literal,))
+    _app, runtime, arena, action, incoming = bound_observation_fixture()
     summary = runtime.execute(HigherUnarySummary(action, runtime.cells.source(0, 1), 1))
     request = HigherUnaryObserve(summary, incoming)
     result = runtime.execute(request)
@@ -87,13 +79,7 @@ def test_open_unsafe_input_cannot_acquire_a_safe_program_response_binding(
     from tests.support.diamond_continuation_payload import populated
 
     runtime, action, variable, expression, _, _ = populated()
-    arena = runtime.higher.expressions
-    literal = arena.literal(runtime.boundaries.literal(action, 0, 0))
-    program = arena.closures.intern((variable,), expression)
-    captured = arena.call(program, (literal,))
-    right = arena.literal(runtime.boundaries.literal(action, 1, 0))
-    symbol = arena.primitive_emit(action, captured, arena.symbol(action, 1), right)
-    unsafe = arena.primitive_advance(action, 0, variable, symbol)
+    arena, unsafe = unsafe_capture(runtime, action, variable, expression)
     assert arena.node(unsafe).free_ports and not arena.node(unsafe).binding_safe
     assert arena.node(variable).binding_safe
     if store == "expression":

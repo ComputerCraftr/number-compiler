@@ -6,6 +6,10 @@ they do not hide the cost of constructing that bitmap/map.
 """
 
 from __future__ import annotations
+from number_compiler.arithmetic.functions.decision import intern_binary_decision
+from number_compiler.arithmetic.contracts.iterative_queries import (
+    defer_binary_level,
+)
 
 from collections.abc import Sequence
 from dataclasses import dataclass
@@ -122,11 +126,7 @@ def collatz_inverse_symbolic_decision_metrics(
             if low_id == high_id:
                 memo[state] = low_id
                 continue
-            key = (level, low_id, high_id)
-            old = unique.get(key)
-            if old is None:
-                old = len(unique) + 2
-                unique[key] = old
+            old = intern_binary_decision(unique, level, low_id, high_id)
             memo[state] = old
 
         roots.append(memo[root])
@@ -192,21 +192,14 @@ def shared_radix_decision_metrics(
                 half = len(current) // 2
                 lo = current[:half]
                 hi = current[half:]
-            low_state, high_state = (lo, current_level + 1), (hi, current_level + 1)
             if not expanded:
-                stack.append((current, current_level, True))
-                stack.append((hi, current_level + 1, False))
-                stack.append((lo, current_level + 1, False))
+                defer_binary_level(stack, current, current_level, lo, hi, memo)
                 continue
-            low_id, high_id = memo[low_state], memo[high_state]
+            low_id, high_id = memo[lo, current_level + 1], memo[hi, current_level + 1]
             if low_id == high_id:
                 memo[state] = low_id
                 continue
-            key = (var, low_id, high_id)
-            old = unique.get(key)
-            if old is None:
-                old = len(unique) + 2
-                unique[key] = old
+            old = intern_binary_decision(unique, var, low_id, high_id)
             memo[state] = old
         return memo[root]
 

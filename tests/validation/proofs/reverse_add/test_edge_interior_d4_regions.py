@@ -131,10 +131,14 @@ def test_d4_regions_and_arrows_match_four_independent_forward_steps(
         interior_digit=interior,
     )
     source = [edge, *([2 * interior] * (extent - 2)), edge]
-    _carry0, _digits0, pair1 = _literal_step(source)
-    _carry1, _digits1, pair2 = _literal_step(pair1)
-    carry2, digits2, pair3 = _literal_step(pair2)
-    carry3, digits3, pair4 = _literal_step(pair3)
+    pair = source
+    steps = []
+    for _ in range(4):
+        step = _literal_step(pair)
+        steps.append(step)
+        pair = step[2]
+    carry2, digits2, pair3 = steps[2]
+    carry3, digits3, pair4 = steps[3]
     q2 = _indicator(clause.q2_region)
     q3 = _indicator(clause.q3_region)
 

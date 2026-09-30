@@ -210,24 +210,30 @@ def _scale_values(value: Polynomial, scalar: Fraction) -> tuple[Fraction, ...]:
     return tuple(scalar * coefficient for coefficient in value)
 
 
-def _add(left: Polynomial, right: Polynomial, budget: _Budget) -> Polynomial:
+def _combine(
+    left: Polynomial,
+    right: Polynomial,
+    budget: _Budget,
+    *,
+    subtract: bool,
+) -> Polynomial:
     size = max(len(left), len(right))
     coefficient_bits = _height(left) + _height(right) + 1
     budget.preflight_operation(
         size=size, coefficient_bits=coefficient_bits, arithmetic_terms=size
     )
-    values = _add_values(left, right, size)
+    values = _add_values(
+        left, tuple(-value for value in right) if subtract else right, size
+    )
     return budget.finish_operation(values, size=size, coefficient_bits=coefficient_bits)
+
+
+def _add(left: Polynomial, right: Polynomial, budget: _Budget) -> Polynomial:
+    return _combine(left, right, budget, subtract=False)
 
 
 def _subtract(left: Polynomial, right: Polynomial, budget: _Budget) -> Polynomial:
-    size = max(len(left), len(right))
-    coefficient_bits = _height(left) + _height(right) + 1
-    budget.preflight_operation(
-        size=size, coefficient_bits=coefficient_bits, arithmetic_terms=size
-    )
-    values = _add_values(left, tuple(-value for value in right), size)
-    return budget.finish_operation(values, size=size, coefficient_bits=coefficient_bits)
+    return _combine(left, right, budget, subtract=True)
 
 
 def _multiply(left: Polynomial, right: Polynomial, budget: _Budget) -> Polynomial:

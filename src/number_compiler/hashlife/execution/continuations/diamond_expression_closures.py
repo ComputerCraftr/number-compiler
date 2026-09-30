@@ -148,18 +148,7 @@ class ExpressionClosures:
             ),
         )
         self.ledger.bump("expression_closure_interner_requests")
-        found = self.ids.get(record)
-        if found is not None:
-            self.ledger.bump("expression_closure_interner_hits")
-            return found
-        self.ledger.reserve_many(((self.node_owner, 1, 1), (self.id_owner, 1, 0)))
-        result = ClosureProgramID(
-            self.token, "diamond-expression-closure", len(self.nodes)
-        )
-        self.nodes.append(record)
-        self.ids[record] = result
-        self.ledger.bump("expression_closure_interner_evaluations")
-        return result
+        return self._publish(record)
 
     def intern_canonical(
         self,
@@ -214,6 +203,9 @@ class ExpressionClosures:
         self.ledger.bump(
             "expression_closure_admission_visits", len(body_node.free_ports)
         )
+        return self._publish(record)
+
+    def _publish(self, record: ClosureProgram) -> ClosureProgramID:
         found = self.ids.get(record)
         if found is not None:
             self.ledger.bump("expression_closure_interner_hits")

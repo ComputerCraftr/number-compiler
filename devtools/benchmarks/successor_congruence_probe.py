@@ -2,16 +2,17 @@
 
 from __future__ import annotations
 
-import json
 from typing import TypedDict
 
-from devtools.paths import repository_root
-from devtools.proofs import exact_oracle
-from devtools.proofs.collatz_spacetime import (
+from devtools.paths import project_version, report_output, repository_root
+from devtools.runs import run_reported
+from devtools.benchmarks.reporting import write_json_report
+from devtools.verification import exact_oracle
+from devtools.verification.collatz_spacetime import (
     CollatzCausalSpacetimeEngine,
     CollatzRadixField,
 )
-from devtools.proofs.reverse_spacetime import (
+from devtools.verification.reverse_spacetime import (
     ReverseAddCausalSpacetimeEngine,
     ReverseAddPairField,
 )
@@ -155,7 +156,7 @@ def _reference_oracle_counts() -> dict[str, dict[str, int]]:
 
 def run_probe() -> CongruenceReport:
     return {
-        "version": "0.59.9",
+        "version": project_version(),
         "status": "PASS",
         "operator_cache_uses_semantic_action_id": True,
         "exact_target_cache_requires_successor_congruence": True,
@@ -174,12 +175,10 @@ def run_probe() -> CongruenceReport:
 
 def main() -> int:
     result = run_probe()
-    out = ROOT / "results" / "successor_congruence_metrics.json"
-    out.parent.mkdir(exist_ok=True)
-    out.write_text(json.dumps(result, indent=2, sort_keys=True) + "\n")
-    print(json.dumps(result, indent=2, sort_keys=True))
+    out = report_output("devtools.benchmarks.successor_congruence_probe", "report.json")
+    write_json_report(out, result)
     return 0
 
 
 if __name__ == "__main__":
-    raise SystemExit(main())
+    raise SystemExit(run_reported(main))

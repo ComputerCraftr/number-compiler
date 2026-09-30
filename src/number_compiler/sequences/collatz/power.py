@@ -16,12 +16,19 @@ possible parity domains of a source-independent ``T**N`` have disappeared.
 """
 
 from __future__ import annotations
+from number_compiler.arithmetic.contracts.iterative_queries import push_binary_children
+from number_compiler.arithmetic.contracts.iterative_queries import defer_dependencies
+from number_compiler.arithmetic.contracts.input_validation import (
+    normalized_integer_pair,
+)
+from number_compiler.arithmetic.fields.morphism_core import canonical_uniform_power
 
 from collections.abc import Callable, Iterable, MutableMapping, MutableSequence
 from dataclasses import dataclass
 from typing import Literal, TypeVar, cast
 
 from number_compiler.arithmetic.fields.morphism_core import (
+    balanced_fold,
     DyadicAffineCocycle,
     InternedEffectNode,
     LazyLoweringCache,
@@ -199,33 +206,7 @@ def _balanced_accumulate(
     concat: Callable[[_NodeT, _NodeT], _NodeT],
 ) -> _NodeT:
     """Binary-counter accumulation with logarithmic temporary stack depth."""
-    levels: list[_NodeT | None] = []
-    count = 0
-    for initial in nodes:
-        node = initial
-        count += 1
-        level = 0
-        while True:
-            if level == len(levels):
-                levels.append(node)
-                break
-            prior = levels[level]
-            if prior is None:
-                levels[level] = node
-                break
-            levels[level] = None
-            node = concat(prior, node)
-            level += 1
-    if count == 0:
-        return identity
-    result: _NodeT | None = None
-    for remaining in reversed(levels):
-        if remaining is None:
-            continue
-        result = remaining if result is None else concat(result, remaining)
-    if result is None:
-        raise AssertionError("nonempty event sequence lost")
-    return result
+    return balanced_fold(nodes, identity=identity, compose=concat)
 
 
 CollatzPowerNode = InternedEffectNode[CollatzAffineBranch]
@@ -518,6 +499,7 @@ class CollatzEventArena:
     def validate_node(self, node: CollatzEventNode) -> None:
         if (
             type(node) is not CollatzEventNode
+            or type(node.node_id) is not int
             or node.node_id < 1
             or node.node_id > len(self._nodes)
             or self._nodes[node.node_id - 1] is not node
@@ -538,6 +520,7 @@ class CollatzEventArena:
             for child in (node.left, node.right):
                 if (
                     type(child) is not CollatzEventNode
+                    or type(child.node_id) is not int
                     or not 0 < child.node_id < node.node_id
                     or self._nodes[child.node_id - 1] is not child
                 ):
@@ -616,17 +599,7 @@ class CollatzEventArena:
         if count == 0:
             return self.identity
         block = self.event(valuation)
-        selected = []
-        while count:
-            if count & 1:
-                selected.append(block)
-            count >>= 1
-            if count:
-                block = self._join(block, block)
-        result = selected[0]
-        for block in selected[1:]:
-            result = self._join(block, result)
-        return result
+        return canonical_uniform_power(block, count, compose=self._join)
 
     def concat(
         self, first: CollatzEventNode, second: CollatzEventNode
@@ -695,10 +668,12 @@ class CollatzEventArena:
 
     def apply_exact(self, node: CollatzEventNode, value: int) -> int:
         """Execute the proven events directly, without lowering a huge offset."""
+        self.validate_node(node)
         value = int(value)
         stack = [node]
         while stack:
             current = stack.pop()
+            self.validate_node(current)
             if current.kind == "identity":
                 continue
             if current.kind == "event":
@@ -714,20 +689,23 @@ class CollatzEventArena:
                 if not value & 1:
                     raise ValueError("event valuation is not exact for concrete source")
                 continue
-            if current.left is None or current.right is None:
-                raise AssertionError(current)
-            # Concatenation semantics are left then right.
-            stack.append(current.right)
-            stack.append(current.left)
+            push_binary_children(stack, current, current.left, current.right)
         return value
 
     def materialize_cocycle(self, node: CollatzEventNode) -> DyadicAffineCocycle:
         """Explicit lowering boundary for callers that genuinely need coefficients."""
+        self.validate_node(node)
         local: dict[int, DyadicAffineCocycle] = {}
         stack: list[tuple[CollatzEventNode, bool]] = [(node, False)]
         while stack:
             current, ready = stack.pop()
             if current.node_id in local:
+                continue
+            self.validate_node(current)
+            cached = self._cocycle_cache.peek(current.node_id)
+            if cached is not None:
+                self._cocycle_cache.hits += 1
+                local[current.node_id] = cached
                 continue
             if current.kind == "identity":
                 candidate = DyadicAffineCocycle.identity()
@@ -739,11 +717,13 @@ class CollatzEventArena:
                 if current.left is None or current.right is None:
                     raise AssertionError(current)
                 if not ready:
-                    stack.append((current, True))
-                    if current.right.node_id not in local:
-                        stack.append((current.right, False))
-                    if current.left.node_id not in local:
-                        stack.append((current.left, False))
+                    defer_dependencies(
+                        stack,
+                        current,
+                        (current.left, current.right),
+                        local,
+                        lambda child: child.node_id,
+                    )
                     continue
                 candidate = local[current.left.node_id].then(
                     local[current.right.node_id]
@@ -783,6 +763,7 @@ class CollatzEventArena:
         return len(seen)
 
     def metrics(self, root: CollatzEventNode) -> dict[str, int]:
+        self.validate_node(root)
         return {
             "operator_nodes": self._reachable_nodes(root),
             "operator_description_bits": root.effect.description_bits,
@@ -799,9 +780,7 @@ class CollatzEventArena:
 
 def collatz_branch_word(seed: int, steps: int) -> tuple[Branch, ...]:
     """Reference-only concrete branch trace used by tests and benchmarks."""
-    seed, steps = int(seed), int(steps)
-    if seed <= 0 or steps < 0:
-        raise ValueError((seed, steps))
+    seed, steps = normalized_integer_pair(seed, steps, first_minimum=1)
     value = seed
     out: list[Branch] = []
     for _ in range(steps):

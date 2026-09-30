@@ -4,16 +4,16 @@ These positive assertions deliberately fail until a complete return is
 published. A specialized chamber or two-step consumer cannot discharge them.
 """
 
-import importlib.util
 from typing import Never
 
 import pytest
+
+from tests.support.reverse_cutover import forbid_uniform_context_compilation
 
 from devtools.experiments.reverse_add import (
     chamber_exit,
     edge_interior_d4_regions,
     edge_interior_regions,
-    uniform_projection_reference,
 )
 from number_compiler.arithmetic.fields.radial_innovation import (
     ReverseAddCyclotomicInnovationBlock,
@@ -43,26 +43,7 @@ def _forbidden(*_args: object, **_kwargs: object) -> Never:
 
 @pytest.fixture
 def generic_only(monkeypatch: pytest.MonkeyPatch) -> None:
-    assert importlib.util.find_spec("number_compiler.hashlife.actions.power") is None
-    assert (
-        importlib.util.find_spec("number_compiler.hashlife.execution.cascade_power")
-        is None
-    )
-    assert (
-        importlib.util.find_spec("number_compiler.hashlife.execution.cascade") is None
-    )
-    # Resolved pair-field shapes are output fixtures, never temporal states.
-    # A source-bound cylinder must construct its innovation/predicates first.
-    for name in (
-        "uniform_successor",
-        "uniform_no_growth_power",
-        "edge_core_successors",
-        "select_clause",
-    ):
-        monkeypatch.setattr(uniform_projection_reference, name, _forbidden)
-    monkeypatch.setattr(
-        uniform_projection_reference.ProjectionClause, "instantiate", _forbidden
-    )
+    forbid_uniform_context_compilation(monkeypatch, _forbidden)
     monkeypatch.setattr(chamber_exit, "analyze_chamber_exit", _forbidden)
     # Hand-derived finite chamber rules are reference evidence, not the
     # generic source-bound constructor, even when their expressions are DAGs.

@@ -1,5 +1,8 @@
 """Formal kernel constants and causal geometry never acquire future-tape authority."""
 
+from tests.support.assertions import assert_rejected_atomically
+
+
 from dataclasses import replace
 from typing import cast
 
@@ -191,10 +194,12 @@ def test_source_slice_and_certificate_construction_work_is_reported() -> None:
     engine.cells.source_span(0, 3)
     assert engine.ledger.counters["diamond_source_forest_chunks"] == 2
     assert engine.ledger.counters["diamond_source_forest_peak_chunks"] == 2
-    before = engine.ledger.snapshot()
-    with pytest.raises(ValueError, match="aligned"):
-        engine.cells.slice(joined, 1, 1)
-    assert engine.ledger.snapshot() == before
+    assert_rejected_atomically(
+        engine.ledger,
+        lambda: engine.cells.slice(joined, 1, 1),
+        ValueError,
+        match="aligned",
+    )
 
 
 def test_bridge_admission_work_is_measured_only_after_successful_validation() -> None:
@@ -216,7 +221,9 @@ def test_bridge_admission_work_is_measured_only_after_successful_validation() ->
     foreign = engine.kernels.variable(
         engine.kernels.expression(expression).domain, PortVariable(0, 0, "foreign", 0)
     )
-    before = engine.ledger.snapshot()
-    with pytest.raises(ValueError, match="foreign finite input"):
-        from_expression(arena, foreign, signature, port)
-    assert engine.ledger.snapshot() == before
+    assert_rejected_atomically(
+        engine.ledger,
+        lambda: from_expression(arena, foreign, signature, port),
+        ValueError,
+        match="foreign finite input",
+    )

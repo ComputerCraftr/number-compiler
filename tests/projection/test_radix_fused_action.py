@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from tests.support.assertions import assert_rejected_atomically
+
 from collections.abc import Mapping
 from itertools import product
 from typing import Never
@@ -146,10 +148,7 @@ def test_fixed_digit_three_budget_and_parent_warm_reuse(
 def test_foreign_action_rejected_before_work() -> None:
     first, second = FusedRadixArena(ResourceLedger()), FusedRadixArena(ResourceLedger())
     action = first.compile((1, 0, 1), radix=3, stages=1, physical=True)
-    snapshot = second.ledger.snapshot()
-    with pytest.raises(ValueError):
-        second.digit(action)
-    assert second.ledger.snapshot() == snapshot
+    assert_rejected_atomically(second.ledger, lambda: second.digit(action), ValueError)
 
 
 @pytest.mark.parametrize("radix, expected, fused", ((6, 1, False), (10, 8, True)))

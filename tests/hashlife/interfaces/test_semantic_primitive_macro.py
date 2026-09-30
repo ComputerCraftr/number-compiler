@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from tests.support.semantic_oracles import macro_oracle as oracle
+
 from typing import TYPE_CHECKING, cast
 
 from number_compiler.hashlife.interfaces.diamond_quotient import LocalInterfaceID
@@ -19,7 +21,6 @@ from typing import TYPE_CHECKING, Never
 
 import pytest
 
-from number_compiler.arithmetic.contracts.block_effect import BoundarySide
 from number_compiler.arithmetic.contracts.block_kernel import FiniteBlockEffect
 from number_compiler.arithmetic.contracts.scoped_handles import (
     ActionProgramID,
@@ -127,47 +128,6 @@ def observe(
             (
                 arena.bits.evaluate(function, values)
                 for function in arena._components(quotient)
-            ),
-            strict=True,
-        )
-    )
-
-
-def oracle(
-    effect: FiniteBlockEffect,
-    word: tuple[int, ...],
-    left: int,
-    right: int,
-    coordinate: int,
-) -> dict[str, int]:
-    ls, rs = [left], [right]
-    for symbol in word:
-        ls.append(effect.advance(BoundarySide.LEFT, ls[-1], symbol))
-    for symbol in reversed(word):
-        rs.append(effect.advance(BoundarySide.RIGHT, rs[-1], symbol))
-    rs.reverse()
-    output = [effect.emit(ls[i], symbol, rs[i + 1]) for i, symbol in enumerate(word)]
-    active = [i for i, symbol in enumerate(output) if symbol != effect.blank]
-    source = [i for i, symbol in enumerate(word) if symbol != effect.blank]
-    extent = active[-1] + 1 if active else 0
-    width = len(word)
-    return dict(
-        zip(
-            COMPONENT_ROLES,
-            (
-                ls[-1],
-                rs[0],
-                output[coordinate],
-                int(bool(active)),
-                active[0] if active else width,
-                active[-1] if active else width,
-                extent,
-                output[0],
-                output[-1],
-                width + extent - (source[-1] + 1 if source else 0),
-                int(not active),
-                output[coordinate],
-                coordinate,
             ),
             strict=True,
         )

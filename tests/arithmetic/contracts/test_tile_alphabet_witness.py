@@ -9,7 +9,7 @@ import pytest
 from number_compiler.arithmetic.contracts.block_kernel import BaseBlockEffect
 from number_compiler.hashlife.actions.field_actions import FieldCellActionID
 from number_compiler.projection.digit_terminal import DigitNormalizeBlockEffect
-from tests.arithmetic.contracts.test_tile_kernel import _runtime, _tile
+from tests.support.tile_kernel import _runtime, _tile
 
 if TYPE_CHECKING:
     from number_compiler.hashlife.actions.tile_action_algebra import PrimitiveTileAction

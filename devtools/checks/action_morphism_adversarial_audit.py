@@ -7,6 +7,8 @@ processes; failed, missing, or skipped cases cannot produce a passing report.
 
 from __future__ import annotations
 
+from number_compiler.resources.temporal_diagnostics import METRICS_SCHEMA_VERSION
+
 import argparse
 import json
 import subprocess
@@ -277,7 +279,7 @@ def main() -> None:
             for name in names
         }
     result = {
-        "metrics_schema_version": 5,
+        "metrics_schema_version": METRICS_SCHEMA_VERSION,
         "audit_revision": 8,
         "prior_validation": "results/followup_representation_audit_v6.json",
         "historical_counterexamples": "results/action_morphism_adversarial_audit.json",

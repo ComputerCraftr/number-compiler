@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from dataclasses import dataclass, fields, is_dataclass
+from dataclasses import dataclass
 
 from number_compiler.resources.ledger import ResourceLedger
 
@@ -11,38 +11,6 @@ from number_compiler.resources.ledger import ResourceLedger
 class FieldActionPayloadAudit:
     approved: frozenset[int]
     invalid: frozenset[tuple[int, int]]
-
-
-def _bounded_semantic_key(root: object) -> bool:
-    pending = [root]
-    visited: set[int] = set()
-    units = 0
-    while pending:
-        value = pending.pop()
-        units += 1
-        if units > 256:
-            return False
-        if value is None or type(value) is bool:
-            continue
-        if type(value) is int:
-            if abs(value).bit_length() > 64:
-                return False
-            continue
-        if isinstance(value, (str, bytes)):
-            if len(value) > 256:
-                return False
-            continue
-        identity = id(value)
-        if identity in visited:
-            continue
-        visited.add(identity)
-        if type(value) is tuple:
-            pending.extend(value)
-        elif is_dataclass(value) and not isinstance(value, type):
-            pending.extend(getattr(value, field.name) for field in fields(value))
-        else:
-            return False
-    return True
 
 
 def audit_field_action_payloads(ledger: ResourceLedger) -> FieldActionPayloadAudit:
@@ -506,43 +474,29 @@ def audit_field_action_payloads(ledger: ResourceLedger) -> FieldActionPayloadAud
                 if not valid:
                     invalid.add((root._leaf_owner, id(collatz_leaf_result)))
                     all_valid = False
-            for source_reference, collatz_source_result in root._source_actions.items():
-                valid = type(source_reference) in (SourceCellID, SourceForestID)
-                try:
-                    if type(source_reference) is SourceCellID:
-                        root.sources.resolve(source_reference)
-                    elif type(source_reference) is SourceForestID:
-                        root.sources.resolve_forest(source_reference)
-                    else:
+            for source_store, source_owner in (
+                (root._source_actions, root._source_owner),
+                (root._binary_source_actions, root._binary_source_owner),
+            ):
+                for source_reference, collatz_source_result in source_store.items():
+                    valid = type(source_reference) in (SourceCellID, SourceForestID)
+                    try:
+                        if type(source_reference) is SourceCellID:
+                            root.sources.resolve(source_reference)
+                        elif type(source_reference) is SourceForestID:
+                            root.sources.resolve_forest(source_reference)
+                        else:
+                            valid = False
+                        root.resolve(collatz_source_result)
+                    except (TypeError, ValueError, IndexError, AttributeError):
                         valid = False
-                    root.resolve(collatz_source_result)
-                except (TypeError, ValueError, IndexError, AttributeError):
-                    valid = False
-                if valid:
-                    approved.update((id(source_reference), id(collatz_source_result)))
-                else:
-                    invalid.add((root._source_owner, id(source_reference)))
-                    all_valid = False
-            for (
-                source_reference,
-                collatz_source_result,
-            ) in root._binary_source_actions.items():
-                valid = type(source_reference) in (SourceCellID, SourceForestID)
-                try:
-                    if type(source_reference) is SourceCellID:
-                        root.sources.resolve(source_reference)
-                    elif type(source_reference) is SourceForestID:
-                        root.sources.resolve_forest(source_reference)
+                    if valid:
+                        approved.update(
+                            (id(source_reference), id(collatz_source_result))
+                        )
                     else:
-                        valid = False
-                    root.resolve(collatz_source_result)
-                except (TypeError, ValueError, IndexError, AttributeError):
-                    valid = False
-                if valid:
-                    approved.update((id(source_reference), id(collatz_source_result)))
-                else:
-                    invalid.add((root._binary_source_owner, id(source_reference)))
-                    all_valid = False
+                        invalid.add((source_owner, id(source_reference)))
+                        all_valid = False
             if all_valid:
                 approved.update(id(value) for value in collatz_local_stores)
         elif type(root) is CollatzRuntimeProgramArena:

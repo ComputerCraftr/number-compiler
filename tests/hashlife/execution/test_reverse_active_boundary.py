@@ -6,6 +6,7 @@ from dataclasses import replace
 from typing import Any, Never
 
 import pytest
+from tests.support.reverse_interface import reverse_interface_payload
 
 from number_compiler.arithmetic.contracts.block_effect import BoundarySide
 from number_compiler.arithmetic.contracts.block_kernel import BaseBlockEffect
@@ -47,7 +48,7 @@ from number_compiler.resources.result_cache_kinds import (
     REVERSE_BOUND_OUTPUT_RETAINED_NODES,
 )
 from tests.arithmetic.contracts.test_tile_causal_private import _scan
-from tests.arithmetic.contracts.test_tile_kernel import _runtime, _tile
+from tests.support.tile_kernel import _runtime, _tile
 
 
 @pytest.mark.parametrize("producer_exponent", (2, 4))
@@ -286,20 +287,7 @@ def test_completed_producer_builds_bound_summary_from_exact_tile(
 
         monkeypatch.setattr(interface_step, "_leaf", forbidden)
         monkeypatch.setattr(scheduler, "_complete_direct", forbidden)
-        observed = engine._run(
-            CausalFrame(
-                "reverse_interface",
-                (
-                    producer,
-                    source.tile,
-                    engine._initial(producer, 0),
-                    engine._initial(producer, 1),
-                ),
-            ),
-            tile_result=False,
-        )
-        assert type(observed) is CausalInterfacePayload
-        assert type(observed.bound_reverse_output) is ReverseBoundOutput
+        observed = reverse_interface_payload(engine, producer, source.tile)
         assert ledger.counters["reverse_exact_output_summary_evaluations"] == 1
         assert (
             engine._run(

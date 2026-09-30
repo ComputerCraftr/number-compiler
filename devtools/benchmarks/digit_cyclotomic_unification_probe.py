@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from devtools.paths import report_directory
+
 import json
 
 from devtools.experiments.algebra.digit_cyclotomic_unification import (
@@ -14,7 +16,10 @@ ROOT = repository_root()
 def main() -> int:
     metrics = unified_digit_cyclotomic_metrics()
     payload = metrics_as_jsonable(metrics)
-    out = ROOT / "results" / "digit_cyclotomic_unification_metrics.json"
+    out = (
+        report_directory("devtools.benchmarks.digit_cyclotomic_unification_probe")
+        / "digit_cyclotomic_unification_metrics.json"
+    )
     out.write_text(json.dumps(payload, indent=2, sort_keys=True) + "\n")
 
     lines = [
@@ -135,4 +140,6 @@ def main() -> int:
 
 
 if __name__ == "__main__":
-    raise SystemExit(main())
+    from devtools.runs import run_reported
+
+    raise SystemExit(run_reported(main))

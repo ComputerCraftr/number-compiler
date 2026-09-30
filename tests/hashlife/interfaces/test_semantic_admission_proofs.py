@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from tests.support.assertions import assert_rejected_atomically
+
 from dataclasses import fields
 from typing import TYPE_CHECKING
 
@@ -77,10 +79,11 @@ def test_forged_root_is_rejected_before_admission_proof_lookup(
         pytest.fail("invalid root reached the proof lookup")
 
     monkeypatch.setattr(compiler.admissions, "get", forbidden)
-    before = runtime.ledger.snapshot()
-    with pytest.raises(ValueError):
-        compiler.validate_task(CompileStructuredExpression(forged))
-    assert runtime.ledger.snapshot() == before
+    assert_rejected_atomically(
+        runtime.ledger,
+        lambda: compiler.validate_task(CompileStructuredExpression(forged)),
+        ValueError,
+    )
 
 
 def test_foreign_parameter_and_undeclared_parameter_reject_before_warm_hit(
@@ -114,10 +117,12 @@ def test_structured_proof_does_not_admit_a_scalar_only_compilation() -> None:
     variable = arena.variable(arena.state_sort(paired, 0), "paired-domain")
     function = arena.lambda_(variable, arena.anchor(variable))
     compiler.validate_task(CompileStructuredExpression(function))
-    before = runtime.ledger.snapshot()
-    with pytest.raises(UnsupportedInterfaceError, match="composed input"):
-        compiler.compile(function)
-    assert runtime.ledger.snapshot() == before
+    assert_rejected_atomically(
+        runtime.ledger,
+        lambda: compiler.compile(function),
+        UnsupportedInterfaceError,
+        match="composed input",
+    )
     assert list(compiler.admissions) == [ExpressionAdmissionKey(function, True)]
 
 

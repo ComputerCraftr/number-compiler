@@ -27,12 +27,12 @@ from devtools.experiments.power_numbers.special_successor_models import (
     CarryTemporalAutomatonAudit,
     CarryTransferAutomatonAudit,
 )
-from devtools.proofs.immutable_artifacts import REGISTRY, ArtifactKey
-from devtools.proofs.oracles.special_binary_jump import (
+from devtools.verification.immutable_artifacts import REGISTRY, ArtifactKey
+from devtools.verification.oracles.special_binary_jump import (
     _fermat_carrier_proof,
     _mersenne_carrier_proof,
 )
-from devtools.proofs.quotient_synthesis import (
+from devtools.verification.quotient_synthesis import (
     ObserverFeature,
     synthesize_finite_quotient,
 )

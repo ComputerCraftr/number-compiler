@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from tests.support.tile_kernel import _runtime_source
 import gc
 import subprocess
 import sys
@@ -29,7 +30,7 @@ from number_compiler.resources.stores import LedgerDict
 from number_compiler.resources.tile_dependency_leases import (
     audit_tile_dependency_leases,
 )
-from tests.arithmetic.contracts.test_tile_kernel import _runtime, _tile
+from tests.support.tile_kernel import _runtime, _tile
 
 if TYPE_CHECKING:
     from number_compiler.hashlife.execution.tile_scheduler import (
@@ -52,8 +53,9 @@ def _request() -> tuple[
     PoweredResultKey,
     ResultLease,
 ]:
-    ledger, tiles, adapter, action, scheduler = _runtime(BaseBlockEffect(3))
-    source = _tile(tiles, adapter, action, (0, 0, 0, 1))
+    ledger, tiles, adapter, action, scheduler, source = _runtime_source(
+        BaseBlockEffect(3), (0, 0, 0, 1)
+    )
     dependency = _tile(tiles, adapter, action, (1, 2))
     boundary = _tile(tiles, adapter, action, (2, 1))
     wiring = adapter.wiring(action)
@@ -328,10 +330,8 @@ def test_application_registry_weak_binding_expires_and_reconciles() -> None:
         gc.collect()
         assert saved() is None
         assert root._closed is True
-        assert identity not in scheduler._applications.records
-        account = ledger.inventory()[scheduler._applications.owner]
-        assert (account.entries, account.nodes) == (0, 0)
-        assert (account.observed_entries, account.observed_nodes) == (0, 0)
+        _assert_application_retired(ledger, scheduler, identity)
+        _assert_application_observation_empty(ledger, scheduler)
         assert ledger.inventory()[tiles._lease_owner].entries == lease_entries
 
 
@@ -356,9 +356,7 @@ def test_abandoned_application_releases_causal_pins_and_dependencies() -> None:
     assert result._closed is True
     assert not scheduler._pins
     assert not scheduler._causal_dependencies.records
-    assert identity not in scheduler._applications.records
-    account = ledger.inventory()[scheduler._applications.owner]
-    assert (account.entries, account.nodes) == (0, 0)
+    _assert_application_retired(ledger, scheduler, identity)
     boundary.close()
     dependency.close()
     source.close()
@@ -400,7 +398,7 @@ def test_application_registry_failed_publication_rolls_back(
         assert not scheduler._applications.records
         account = ledger.inventory()[scheduler._applications.owner]
         assert (account.entries, account.nodes) == (0, 0)
-        assert (account.observed_entries, account.observed_nodes) == (0, 0)
+        _assert_application_observation_empty(ledger, scheduler)
         inventory_after = {
             item.owner: (item.role, item.entries, item.nodes)
             for item in ledger.inventory()
@@ -471,9 +469,7 @@ def test_application_cleanup_delete_failure_is_retryable(
         assert identity in scheduler._applications.records
         assert application.source == source.tile
         application.close()
-        assert identity not in scheduler._applications.records
-        account = ledger.inventory()[scheduler._applications.owner]
-        assert (account.entries, account.nodes) == (0, 0)
+        _assert_application_retired(ledger, scheduler, identity)
 
 
 def test_application_pin_delete_failure_restores_binding_for_retry(
@@ -519,7 +515,7 @@ def test_application_pin_delete_failure_restores_binding_for_retry(
 def test_unclosed_application_shutdown_emits_no_weakref_cleanup_error() -> None:
     script = """
 from number_compiler.arithmetic.contracts.block_kernel import BaseBlockEffect
-from tests.arithmetic.contracts.test_tile_kernel import _runtime, _tile
+from tests.support.tile_kernel import _runtime, _tile
 
 _ledger, tiles, adapter, action, scheduler = _runtime(BaseBlockEffect(3))
 source = _tile(tiles, adapter, action, (0, 0, 0, 1))
@@ -545,3 +541,24 @@ application = scheduler.application(
 
 KeyT = TypeVar("KeyT", bound=Hashable)
 ValueT = TypeVar("ValueT")
+
+
+def _assert_application_account_empty(
+    ledger: ResourceLedger, scheduler: TileScheduler
+) -> None:
+    account = ledger.inventory()[scheduler._applications.owner]
+    assert (account.entries, account.nodes) == (0, 0)
+
+
+def _assert_application_retired(
+    ledger: ResourceLedger, scheduler: TileScheduler, identity: object
+) -> None:
+    assert identity not in scheduler._applications.records
+    _assert_application_account_empty(ledger, scheduler)
+
+
+def _assert_application_observation_empty(
+    ledger: ResourceLedger, scheduler: TileScheduler
+) -> None:
+    account = ledger.inventory()[scheduler._applications.owner]
+    assert (account.observed_entries, account.observed_nodes) == (0, 0)

@@ -6,10 +6,11 @@ import pytest
 
 from devtools.checks import isabelle_proof_index as index
 from devtools.checks import isabelle_syntax as syntax
+from devtools.paths import isabelle_root
 
 
 def _fixture(root: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
-    directory = root / "devtools/proofs/isabelle"
+    directory = isabelle_root(root)
     directory.mkdir(parents=True)
     (directory / "ROOT").write_text("session Example = HOL +\n  theories\n    Sample\n")
     (directory / "Sample.thy").write_text(
@@ -22,6 +23,10 @@ def _fixture(root: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
     monkeypatch.setattr(index, "ISABELLE", directory)
     monkeypatch.setattr(index, "COUNTERPARTS", {})
     return directory
+
+
+def test_index_uses_canonical_isabelle_root() -> None:
+    assert index.ISABELLE == isabelle_root(index.ROOT)
 
 
 def test_index_retains_statement_assumptions_attributes_and_location(
@@ -309,15 +314,7 @@ def test_weighted_comma_ancestry_excludes_legacy_execution(target: str) -> None:
         session.name: session
         for session in syntax.parse_sessions((index.ISABELLE / "ROOT").read_text())
     }
-    ancestors: set[str] = set()
-    pending = [target]
-    while pending:
-        name = pending.pop()
-        if name in ancestors or name not in sessions:
-            continue
-        ancestors.add(name)
-        session = sessions[name]
-        pending.extend((session.parent, *session.dependencies))
+    ancestors = _session_ancestors(sessions, target)
     assert "Comma_Forest_Legacy" not in ancestors
     assert "Comma_Scalar_Reference" not in ancestors
     assert "Comma_Trace_Regression" not in ancestors
@@ -397,17 +394,22 @@ def test_external_session_parents_remain_allowed() -> None:
 def test_collatz_hensel_owner_has_no_reverse_ancestry() -> None:
     sessions = syntax.parse_sessions((index.ISABELLE / "ROOT").read_text())
     local = {session.name: session for session in sessions}
-    reached: set[str] = set()
-    pending = ["Collatz_Cylinder_Refinement"]
-    while pending:
-        name = pending.pop()
-        if name in reached or name not in local:
-            continue
-        reached.add(name)
-        session = local[name]
-        pending.extend((session.parent, *session.dependencies))
+    reached = _session_ancestors(local, "Collatz_Cylinder_Refinement")
     assert "Shared_S_Arithmetic" in reached
     assert "Reverse_Residuals" not in reached
     assert "Hensel_Cylinders" in local["Shared_S_Arithmetic"].theories
     # Reverse temporal carry proofs retain their genuinely required ancestry.
     assert local["Temporal_Clock_Jumps"].parent == "Reverse_Residuals"
+
+
+def _session_ancestors(sessions: dict[str, syntax.Session], target: str) -> set[str]:
+    ancestors: set[str] = set()
+    pending = [target]
+    while pending:
+        name = pending.pop()
+        if name in ancestors or name not in sessions:
+            continue
+        ancestors.add(name)
+        session = sessions[name]
+        pending.extend((session.parent, *session.dependencies))
+    return ancestors

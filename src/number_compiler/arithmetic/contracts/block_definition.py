@@ -23,7 +23,7 @@ class CompatibilityCompositionRuntime:
     def __init_subclass__(cls) -> None:
         if (
             CompatibilityCompositionRuntime._runtime_type is not None
-            or cls.__module__ != "devtools.proofs.block_composed"
+            or cls.__module__ != "devtools.verification.block_composed"
             or cls.__name__ != "ComposedBlockEffect"
         ):
             raise TypeError("compatibility composition runtime is sealed")

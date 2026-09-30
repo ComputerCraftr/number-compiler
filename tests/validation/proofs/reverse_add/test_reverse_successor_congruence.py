@@ -1,6 +1,6 @@
 """Exact oracle regression; these objects are not production carriers."""
 
-from devtools.proofs.reverse_spacetime import (
+from devtools.verification.reverse_spacetime import (
     ReverseAddCausalSpacetimeEngine,
     ReverseAddPairField,
 )

@@ -1,3 +1,5 @@
+from devtools.verification.consumer_fixtures import carry_seed_rows
+from devtools.benchmarks.pair_encoding import pair_from_int as _pair_from_int
 from number_compiler.arithmetic.carry.carry_itinerary import (
     LiveCarryItinerary,
     PairParityChannels,
@@ -28,16 +30,6 @@ from number_compiler.arithmetic.carry.event_memory import (
     forcing_event,
     pair_step,
 )
-
-
-def _pair_from_int(value: int, base: int = 10) -> tuple[int, ...]:
-    digits = []
-    n = value
-    while n:
-        digits.append(n % base)
-        n //= base
-    digits = digits or [0]
-    return tuple(digits[i] + digits[-1 - i] for i in range(len(digits)))
 
 
 def _reverse_int(value: int, base: int = 10) -> int:
@@ -192,11 +184,7 @@ def test_zplus1_primary_jet_is_exact_and_growth_is_literal_shift() -> None:
 
 
 def test_primary_and_negacyclic_memory_are_schedule_adaptive_on_196_trace() -> None:
-    pair = _pair_from_int(196)
-    growths = []
-    for _ in range(256):
-        pair, growth = pair_step(pair, 10)
-        growths.append(growth)
+    growths = _decimal_growth_trace()
     # Degree-k primary jets forget once either five no-growths or k growths occurred.
     for degree in (1, 2, 4, 8):
         horizons = [
@@ -215,11 +203,7 @@ def test_primary_and_negacyclic_memory_are_schedule_adaptive_on_196_trace() -> N
 
 
 def test_adaptive_cyclic_memory_is_far_shorter_than_fixed_20_on_196_trace() -> None:
-    pair = _pair_from_int(196)
-    growths = []
-    for _ in range(256):
-        pair, growth = pair_step(pair, 10)
-        growths.append(growth)
+    growths = _decimal_growth_trace()
     for classes, max_expected in ((1, 5), (2, 6), (4, 9), (8, 11)):
         horizons = [
             adaptive_cyclic_memory_horizon(growths, endpoint, classes=classes, bits=5)
@@ -268,10 +252,7 @@ def test_fixed20_event_window_has_exact_dead_prefix_on_closed_196_schedule() -> 
 
 def test_live_carry_itinerary_self_prunes_and_advances_without_discarded_rows() -> None:
     pair = _pair_from_int(196)
-    seed_carries = []
-    for _ in range(20):
-        seed_carries.append(carry_field(pair, base=10))
-        pair, _ = pair_step(pair, 10)
+    pair, seed_carries = carry_seed_rows(pair, 20)
     live = LiveCarryItinerary.seed(seed_carries, base=10)
     rows = []
     for _ in range(300):
@@ -299,3 +280,12 @@ def test_live_carry_itinerary_generalizes_across_bases_3_through_16() -> None:
             assert live.pair == pair
             live = live.advance()
             pair, _ = pair_step(pair, base)
+
+
+def _decimal_growth_trace() -> list[int]:
+    pair = _pair_from_int(196)
+    growths = []
+    for _ in range(256):
+        pair, growth = pair_step(pair, 10)
+        growths.append(growth)
+    return growths

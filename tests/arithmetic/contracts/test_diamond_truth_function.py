@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from tests.support.assertions import assert_rejected_atomically
+
 from itertools import product
 from typing import TYPE_CHECKING, Literal
 
@@ -114,9 +116,10 @@ def test_foreign_boolean_argument_rejects_before_allocating() -> None:
         other.variable(kernel.left_count, PortVariable(0, 0, "foreign", 0))
     )
     symbol = arena.expression(arena.constant(kernel.blank + 1, 0))
-    before = arena.ledger.snapshot()
-    with pytest.raises(ValueError):
-        compile_truth_function(
+    assert_rejected_atomically(
+        arena.ledger,
+        lambda: compile_truth_function(
             arena, kernel, "advance", BoundarySide.LEFT, (left, symbol)
-        )
-    assert arena.ledger.snapshot() == before
+        ),
+        ValueError,
+    )

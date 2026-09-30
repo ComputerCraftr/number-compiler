@@ -157,6 +157,13 @@ def prime_lsb_residual_kernel(
     )
 
 
+def _admit_boolean_bitmap(mask: int, input_bits: int) -> tuple[int, int, int]:
+    mask, k = int(mask), int(input_bits)
+    if k < 0 or mask < 0 or mask >= (1 << (1 << k)):
+        raise ValueError((mask, k))
+    return mask, k, 1 << k
+
+
 def boolean_coordinate_derivative_metrics(
     mask: int, input_bits: int
 ) -> BooleanCoordinateDerivativeMetrics:
@@ -167,10 +174,7 @@ def boolean_coordinate_derivative_metrics(
     Boolean function is constant, so any interior density immediately rejects
     exact affine structure without relying on a fitted model.
     """
-    mask, k = int(mask), int(input_bits)
-    if k < 0 or mask < 0 or mask >= (1 << (1 << k)):
-        raise ValueError((mask, k))
-    size = 1 << k
+    mask, k, size = _admit_boolean_bitmap(mask, input_bits)
     derivative_ones: list[int] = []
     pair_counts: list[int] = []
     constant = 0
@@ -194,10 +198,7 @@ def boolean_coordinate_derivative_metrics(
 
 def boolean_anf_metrics(mask: int, input_bits: int) -> BooleanANFMetrics:
     """Return algebraic-normal-form complexity of one ``2**input_bits`` bitmap."""
-    mask, k = int(mask), int(input_bits)
-    if k < 0 or mask < 0 or mask >= (1 << (1 << k)):
-        raise ValueError((mask, k))
-    size = 1 << k
+    mask, k, size = _admit_boolean_bitmap(mask, input_bits)
     coeff = [(mask >> i) & 1 for i in range(size)]
     # Fast Mobius transform over F_2.
     for bit in range(k):

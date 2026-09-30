@@ -4,8 +4,8 @@ from typing import cast
 
 import pytest
 
-from devtools.proofs.collatz_clocked_target_seam_probe import build_report
-from devtools.proofs.endpoint_seam_audit import BoundedEndpointPowerArena
+from devtools.verification.collatz_clocked_target_seam_probe import build_report
+from devtools.verification.endpoint_seam_audit import BoundedEndpointPowerArena
 from number_compiler.sequences.collatz.pair import accelerated_odd_collatz
 
 

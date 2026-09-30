@@ -1,20 +1,22 @@
 from __future__ import annotations
 
+from tests.support.assertions import assert_rejected_atomically
+
 from typing import Never
 
 import pytest
 
 from number_compiler.arithmetic.contracts.scoped_handles import ArenaToken
 from number_compiler.hashlife.execution.continuations.higher_macro_composer import (
-    HigherSpatialMacroComposer,
     SourceBoundHigherMacro,
     _MacroBindingKey,
 )
 from number_compiler.hashlife.execution.field_images import SourceForestID
-from number_compiler.hashlife.execution.recursive_outputs import (
-    RecursiveCoordinateMorphismArena,
+from tests.support.reverse_higher_runtime import (
+    _fixture,
+    _macro_composer,
+    _compiled_macro_fixture,
 )
-from tests.support.reverse_higher_runtime import _fixture
 
 
 def test_reverse_macro_probes_the_source_parent_before_descending(
@@ -29,24 +31,10 @@ def test_reverse_macro_probes_the_source_parent_before_descending(
         compiler,
         sources,
         binding,
-    ) = _fixture((7, 18, 7, 19, 19, 19, 19, 19))
-    compiled = compiler.compile(primitive)
-    outputs = RecursiveCoordinateMorphismArena(
-        interfaces,
-        evaluate=semantics.evaluate,
-    )
-    composer = HigherSpatialMacroComposer(
-        semantics,
-        interfaces,
         outputs,
-        sources,
-        primitive,
-        compiled.interface,
-        compiled.left,
-        compiled.symbol,
-        compiled.right,
-    )
-    expected = composer.compile(binding)
+        composer,
+        expected,
+    ) = _compiled_macro_fixture((7, 18, 7, 19, 19, 19, 19, 19))
     visits = semantics.ledger.counters.get("source_leaf_visits", 0)
 
     def forbidden(_source: object) -> Never:
@@ -69,21 +57,8 @@ def test_reverse_macro_rejects_foreign_source_before_warm_binding_probe() -> Non
         sources,
         binding,
     ) = _fixture((7, 18, 7, 19, 19, 19, 19, 19))
-    compiled = compiler.compile(primitive)
-    outputs = RecursiveCoordinateMorphismArena(
-        interfaces,
-        evaluate=semantics.evaluate,
-    )
-    composer = HigherSpatialMacroComposer(
-        semantics,
-        interfaces,
-        outputs,
-        sources,
-        primitive,
-        compiled.interface,
-        compiled.left,
-        compiled.symbol,
-        compiled.right,
+    outputs, composer = _macro_composer(
+        semantics, interfaces, sources, primitive, compiler
     )
     composer.compile(binding)
 
@@ -95,10 +70,12 @@ def test_reverse_macro_rejects_foreign_source_before_warm_binding_probe() -> Non
     foreign = SourceForestID(
         ArenaToken("foreign-source"), binding.kind, binding.local_id
     )
-    snapshot = semantics.ledger.snapshot()
-    with pytest.raises(ValueError, match="different arena"):
-        composer.compile(foreign)
-    assert semantics.ledger.snapshot() == snapshot
+    assert_rejected_atomically(
+        semantics.ledger,
+        lambda: composer.compile(foreign),
+        ValueError,
+        match="different arena",
+    )
 
 
 @pytest.mark.parametrize(
@@ -118,23 +95,19 @@ def test_reverse_macro_rejects_foreign_source_before_warm_binding_probe() -> Non
 def test_spatial_warm_binding_rejects_changed_consumer_declaration(
     field: str, replacement: object, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    actions, primitive, semantics, _runtime, interfaces, compiler, sources, binding = (
-        _fixture((7, 18, 7, 19))
-    )
-    compiled = compiler.compile(primitive)
-    outputs = RecursiveCoordinateMorphismArena(interfaces, evaluate=semantics.evaluate)
-    composer = HigherSpatialMacroComposer(
-        semantics,
-        interfaces,
-        outputs,
-        sources,
+    (
+        actions,
         primitive,
-        compiled.interface,
-        compiled.left,
-        compiled.symbol,
-        compiled.right,
-    )
-    macro = composer.compile(binding)
+        semantics,
+        _runtime,
+        interfaces,
+        compiler,
+        sources,
+        binding,
+        outputs,
+        composer,
+        macro,
+    ) = _compiled_macro_fixture((7, 18, 7, 19))
     changed = (
         actions.identity
         if replacement == "identity"
@@ -154,23 +127,19 @@ def test_spatial_warm_binding_rejects_changed_consumer_declaration(
 def test_spatial_declaration_seal_blocks_coordinated_key_and_composer_mutation(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    _actions, primitive, semantics, _runtime, interfaces, compiler, sources, binding = (
-        _fixture((7, 18, 7, 19))
-    )
-    compiled = compiler.compile(primitive)
-    outputs = RecursiveCoordinateMorphismArena(interfaces, evaluate=semantics.evaluate)
-    composer = HigherSpatialMacroComposer(
-        semantics,
-        interfaces,
-        outputs,
-        sources,
+    (
+        _actions,
         primitive,
-        compiled.interface,
-        compiled.left,
-        compiled.symbol,
-        compiled.right,
-    )
-    macro = composer.compile(binding)
+        semantics,
+        _runtime,
+        interfaces,
+        compiler,
+        sources,
+        binding,
+        outputs,
+        composer,
+        macro,
+    ) = _compiled_macro_fixture((7, 18, 7, 19))
     with monkeypatch.context() as patch:
         patch.setattr(composer, "blank", 0)
         object.__setattr__(composer._declaration, "blank", 0)
@@ -190,18 +159,8 @@ def test_spatial_binding_store_replacement_fails_before_warm_lookup() -> None:
     _actions, primitive, semantics, _runtime, interfaces, compiler, sources, binding = (
         _fixture((7, 18, 7, 19))
     )
-    compiled = compiler.compile(primitive)
-    outputs = RecursiveCoordinateMorphismArena(interfaces, evaluate=semantics.evaluate)
-    composer = HigherSpatialMacroComposer(
-        semantics,
-        interfaces,
-        outputs,
-        sources,
-        primitive,
-        compiled.interface,
-        compiled.left,
-        compiled.symbol,
-        compiled.right,
+    outputs, composer = _macro_composer(
+        semantics, interfaces, sources, primitive, compiler
     )
     composer.compile(binding)
     composer._bindings = dict(composer._bindings)
@@ -210,23 +169,19 @@ def test_spatial_binding_store_replacement_fails_before_warm_lookup() -> None:
 
 
 def test_spatial_provider_binding_checks_source_action_and_output_together() -> None:
-    actions, primitive, semantics, _runtime, interfaces, compiler, sources, binding = (
-        _fixture((7, 18, 7, 19, 19, 19, 19, 19))
-    )
-    compiled = compiler.compile(primitive)
-    outputs = RecursiveCoordinateMorphismArena(interfaces, evaluate=semantics.evaluate)
-    composer = HigherSpatialMacroComposer(
-        semantics,
-        interfaces,
-        outputs,
-        sources,
+    (
+        actions,
         primitive,
-        compiled.interface,
-        compiled.left,
-        compiled.symbol,
-        compiled.right,
-    )
-    full = composer.compile(binding)
+        semantics,
+        _runtime,
+        interfaces,
+        compiler,
+        sources,
+        binding,
+        outputs,
+        composer,
+        full,
+    ) = _compiled_macro_fixture((7, 18, 7, 19, 19, 19, 19, 19))
     short_source = sources.forest(0, 4)
     short = composer.compile(short_source)
     assert full.output != short.output

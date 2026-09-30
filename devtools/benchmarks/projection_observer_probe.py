@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from devtools.paths import report_directory
+
 import json
 
 from devtools.experiments.algebra.projection_observer import (
@@ -176,7 +178,7 @@ def main() -> None:
             },
         },
     }
-    outdir = ROOT / "results"
+    outdir = report_directory("devtools.benchmarks.projection_observer_probe")
     outdir.mkdir(exist_ok=True)
     (outdir / "projection_observer_metrics.json").write_text(
         json.dumps(data, indent=2, sort_keys=True) + "\n"
@@ -285,4 +287,6 @@ def main() -> None:
 
 
 if __name__ == "__main__":
-    main()
+    from devtools.runs import run_reported
+
+    raise SystemExit(run_reported(main))

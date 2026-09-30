@@ -27,7 +27,7 @@ from number_compiler.hashlife.tiles.tile_result_records import (
     NormalizedRegionResult,
 )
 from number_compiler.hashlife.tiles.tiles import TileID, TileLease
-from tests.arithmetic.contracts.test_tile_kernel import _runtime, _tile
+from tests.support.tile_kernel import _runtime, _tile
 
 
 def test_clipped_mirror_scan_reuses_region_before_decomposition(

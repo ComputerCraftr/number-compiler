@@ -5,6 +5,8 @@ flattened into proof-machine Cartesian domains. Evaluation is iterative.
 
 from __future__ import annotations
 
+from number_compiler.resources.stores import append_indexed_node
+
 from collections.abc import Mapping, MutableMapping, MutableSequence
 from dataclasses import dataclass
 from typing import TYPE_CHECKING
@@ -571,15 +573,15 @@ class HigherSemanticArena:
         if found is not None:
             self._function_hits += 1
             return self._function_handle(found)
-        self.ledger.reserve_many(
-            (
-                (self._function_owner, 1, 1),
-                (self._function_key_owner, 1, 0),
-            )
+        local_id = append_indexed_node(
+            self.ledger,
+            self._functions,
+            self._function_keys,
+            self._function_owner,
+            self._function_key_owner,
+            record,
+            record,
         )
-        local_id = len(self._functions)
-        self._functions.append(record)
-        self._function_keys[record] = local_id
         return self._function_handle(local_id)
 
     def _free_variables(

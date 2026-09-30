@@ -1,5 +1,8 @@
 """Transient exact construction is rejected below every point/lowering facade."""
 
+from tests.support.assertions import assert_rejected_atomically
+
+
 import gc
 import weakref
 from collections.abc import Callable
@@ -8,7 +11,7 @@ from typing import Never, cast
 import pytest
 
 from devtools.paths import repository_root
-from devtools.proofs.spacetime_boundary import tile_uniform_symbol
+from devtools.verification.spacetime_boundary import tile_uniform_symbol
 from number_compiler.api.number_api import NumberCompiler, PoweredCollatzTermPayload
 from number_compiler.arithmetic.contracts.exact_tree_context import (
     ExactTreeConstructionForbidden,
@@ -269,7 +272,8 @@ def test_private_source_allocator_rejects_before_reserving_without_source_scope(
 ):
     ledger = ResourceLedger()
     geometry = SourceGeometry(ledger, ExactSource((1,), 2, blank=2, extent=4))
-    before = ledger.snapshot()
-    with pytest.raises(ExactTreeConstructionForbidden):
-        source_reads_only(lambda: geometry._leaf(1))()
-    assert ledger.snapshot() == before
+    assert_rejected_atomically(
+        ledger,
+        lambda: source_reads_only(lambda: geometry._leaf(1))(),
+        ExactTreeConstructionForbidden,
+    )

@@ -8,17 +8,17 @@ completed parent.  A missing child is a no-op; no partial image is retained.
 
 from __future__ import annotations
 
+from number_compiler.hashlife.execution.tile_causal_tasks import combine_spatial_outputs
+
 from typing import Any
 
 from number_compiler.hashlife.execution.tile_causal_results import (
-    combine_causal_outputs,
     lookup_causal_result,
     publish_causal_completed,
 )
 from number_compiler.hashlife.execution.tile_causal_tasks import (
     CausalFrame,
     CausalPrefix,
-    producer_parent,
     result_payload,
 )
 from number_compiler.resources.causal_workspace import CausalResults
@@ -161,23 +161,7 @@ def promotion_step(
     try:
         left_output = result_payload(engine.tiles, left_result)
         right_output = result_payload(engine.tiles, right_result)
-        producer_output = producer_parent(
-            engine.tiles,
-            engine._leases,
-            left_output,
-            right_output,
-        )
-        joined = engine.tiles.join(left_output.output, right_output.output)
-        engine._leases.append(joined)
-        payload = combine_causal_outputs(
-            engine.scheduler.results,
-            before,
-            joined.tile,
-            left_output,
-            right_output,
-            engine._wiring(before),
-            producer_output=producer_output,
-        )
+        payload = combine_spatial_outputs(engine, before, left_output, right_output)
         published = publish_causal_completed(
             engine.scheduler.results,
             parent_key,

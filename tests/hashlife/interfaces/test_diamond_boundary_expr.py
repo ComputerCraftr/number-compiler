@@ -1,7 +1,9 @@
 import pytest
 
 from number_compiler.arithmetic.contracts.block_effect import BlockContextBudgetExceeded
+from number_compiler.arithmetic.contracts.scoped_handles import ActionProgramID
 from number_compiler.hashlife.interfaces.diamond_boundary_expr import (
+    BoundaryExpressionArena,
     ExprID,
     FunctionSort,
     StateSort,
@@ -9,6 +11,8 @@ from number_compiler.hashlife.interfaces.diamond_boundary_expr import (
 from number_compiler.hashlife.interfaces.expression_transactions import (
     _Transaction as _canonical_Transaction,
 )
+from number_compiler.resources.ledger import ResourceLedger
+from tests.support.assertions import assert_rejected_atomically
 from tests.support.diamond_boundary_expr import context
 
 
@@ -82,9 +86,7 @@ def test_nested_lambdas_in_structured_ports_preserve_de_bruijn_depth() -> None:
 
 
 def test_wrong_scopes_sorts_and_foreign_values_fail_before_warm_shortcuts() -> None:
-    ledger, _, _, arena, first, _ = context()
-    _, _, _, foreign, foreign_action, _ = context()
-    sort = arena.state_sort(first, 0)
+    ledger, arena, first, foreign, foreign_action, sort = _foreign_state_fixture()
     x, y = arena.variable(sort, "x"), arena.variable(sort, "y")
     arena.substitute(x, {x: y})
     other = foreign.variable(foreign.state_sort(foreign_action, 0), "x")
@@ -314,9 +316,7 @@ def test_closure_calls_are_opaque_to_capture_safe_outer_substitution(
 def test_closure_ignored_arguments_never_enter_call_identity_but_are_validated() -> (
     None
 ):
-    ledger, _, _, arena, first, _ = context()
-    _, _, _, other, other_action, _ = context()
-    sort = arena.state_sort(first, 0)
+    ledger, arena, first, other, other_action, sort = _foreign_state_fixture()
     a, b, x, y = (arena.variable(sort, name) for name in ("a", "b", "x", "y"))
     body = arena.primitive_advance(first, 0, a, arena.symbol(first, 2))
     program = arena.closures.intern((a, b), body)
@@ -326,7 +326,19 @@ def test_closure_ignored_arguments_never_enter_call_identity_but_are_validated()
     assert ledger.entries == before.entries
     assert len(arena.node(first_call).children) == 1
     foreign = other.variable(other.state_sort(other_action, 0), "foreign")
-    before = ledger.snapshot()
-    with pytest.raises(ValueError):
-        arena.call(program, (x, foreign))
-    assert ledger.snapshot() == before
+    before = assert_rejected_atomically(
+        ledger, lambda: arena.call(program, (x, foreign)), ValueError
+    )
+
+
+def _foreign_state_fixture() -> tuple[
+    ResourceLedger,
+    BoundaryExpressionArena,
+    ActionProgramID,
+    BoundaryExpressionArena,
+    ActionProgramID,
+    StateSort,
+]:
+    ledger, _, _, arena, first, _ = context()
+    _, _, _, foreign, foreign_action, _ = context()
+    return ledger, arena, first, foreign, foreign_action, arena.state_sort(first, 0)

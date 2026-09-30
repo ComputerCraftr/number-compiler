@@ -146,6 +146,12 @@ class DirectedTileTransducerArena:
             self.action_ref(tile), int(incoming_state), reverse=True
         )
 
+    def _emit_symbol(self, state: int, symbol: int) -> int:
+        output = int(self.emit(state, symbol))
+        if not 0 <= output < self.output_alphabet_size:
+            raise ValueError((state, symbol, output))
+        return output
+
     def project(self, tile: DyadicTile, incoming_state: int) -> DirectedProjection:
         """Project output symbols and outgoing carry in physical LSD->MSD order."""
         incoming_state = int(incoming_state)
@@ -177,9 +183,7 @@ class DirectedTileTransducerArena:
                 if node.symbol is None:
                     raise AssertionError(node)
                 symbol = int(node.symbol)
-                out_symbol = int(self.emit(state, symbol))
-                if not 0 <= out_symbol < self.output_alphabet_size:
-                    raise ValueError((state, symbol, out_symbol))
+                out_symbol = self._emit_symbol(state, symbol)
                 result = DirectedProjection(
                     leaf(out_symbol),
                     int(self.kernel.transition(state, symbol)),
@@ -280,9 +284,7 @@ class DirectedTileTransducerArena:
             if node.symbol is None or offset:
                 raise AssertionError((node, offset))
             symbol = int(node.symbol)
-            out = int(self.emit(state, symbol))
-            if not 0 <= out < self.output_alphabet_size:
-                raise ValueError((state, symbol, out))
+            out = self._emit_symbol(state, symbol)
             after = int(self.kernel.transition(state, symbol))
             return out, state, after
         raise AssertionError((position, span.start, span.end))

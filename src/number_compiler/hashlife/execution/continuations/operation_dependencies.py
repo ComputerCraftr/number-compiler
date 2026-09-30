@@ -484,11 +484,7 @@ def advance_operation(
             if type(function) is RuntimeFunction:
                 return RuntimeFunctionRequest(function, argument)
             if type(function) is RuntimeTableFunction:
-                if type(argument) is not int or not 0 <= argument < len(
-                    function.outputs
-                ):
-                    raise ValueError("bounded function argument is outside its domain")
-                results.append(function.outputs[argument])
+                results.append(function.apply(argument))
                 continue
             if type(function) is RuntimeSummaryFunction:
                 summaries = arena.summary_runtime

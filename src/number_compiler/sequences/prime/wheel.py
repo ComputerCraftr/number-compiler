@@ -100,6 +100,17 @@ class LcmWheelFirstPrime:
         return None if self.first_index is None else self.start + 2 * self.first_index
 
 
+def _admit_lcm_wheel(
+    start: int, length: int, wheel: LcmWheel | None
+) -> tuple[int, LcmWheel]:
+    high = start + 2 * (length - 1)
+    if wheel is None:
+        wheel = build_lcm_wheel(isqrt(high))
+    if not wheel.supports(start) or not wheel.supports(high):
+        raise ValueError((start, high, wheel.limit, wheel.exact_high))
+    return high, wheel
+
+
 def first_prime_lcm_wheel(
     start: int,
     length: int,
@@ -112,11 +123,7 @@ def first_prime_lcm_wheel(
         raise ValueError((start, length))
     if length == 0:
         return LcmWheelFirstPrime(start, 0, None, 1, 1, 0, 0)
-    high = start + 2 * (length - 1)
-    if wheel is None:
-        wheel = build_lcm_wheel(isqrt(high))
-    if not wheel.supports(start) or not wheel.supports(high):
-        raise ValueError((start, high, wheel.limit, wheel.exact_high))
+    high, wheel = _admit_lcm_wheel(start, length, wheel)
     calls = 0
     first: int | None = None
     for j in range(length):
@@ -158,11 +165,7 @@ def project_odd_prime_block_lcm_wheel(
         raise ValueError((start, length))
     if length == 0:
         return LcmWheelBlockProjection(start, 0, PrimeBlockSummary.empty(), 1, 1, 0, 0)
-    high = start + 2 * (length - 1)
-    if wheel is None:
-        wheel = build_lcm_wheel(isqrt(high))
-    if not wheel.supports(start) or not wheel.supports(high):
-        raise ValueError((start, high, wheel.limit, wheel.exact_high))
+    high, wheel = _admit_lcm_wheel(start, length, wheel)
     count = 0
     first: int | None = None
     for j in range(length):

@@ -118,13 +118,20 @@ def _terminal_deck_key(family: str, value: int, modulus: int) -> tuple[object, .
     return ("mersenne-square-deck", min(value, (-value) % modulus))
 
 
-def _terminal_deck_audit(family: str, parameter: int) -> TerminalDeckCongruenceAudit:
+def _square_consumer_setup(
+    family: str, parameter: int
+) -> tuple[ArithmeticTileSpec, int, tuple[int, ...], int]:
     width = (1 << parameter) if family == "fermat" else parameter
     spec = getattr(ArithmeticTileSpec, family)(width)
     modulus = spec.modulus
-    transition = tuple(
+    transitions = tuple(
         (value * value + spec.addend) % modulus for value in range(modulus)
     )
+    return spec, modulus, transitions, width
+
+
+def _terminal_deck_audit(family: str, parameter: int) -> TerminalDeckCongruenceAudit:
+    spec, modulus, transition, _width = _square_consumer_setup(family, parameter)
     keys = tuple(_terminal_deck_key(family, value, modulus) for value in range(modulus))
     ids = _class_ids(keys)
     terminal = tuple(_target(family, value, modulus) for value in range(modulus))
@@ -203,12 +210,7 @@ def _terminal_deck_audit(family: str, parameter: int) -> TerminalDeckCongruenceA
 
 
 def _audit(family: str, parameter: int) -> SquareConsumerCongruenceAudit:
-    width = (1 << parameter) if family == "fermat" else parameter
-    spec = getattr(ArithmeticTileSpec, family)(width)
-    modulus = spec.modulus
-    transitions = tuple(
-        (value * value + spec.addend) % modulus for value in range(modulus)
-    )
+    spec, modulus, transitions, width = _square_consumer_setup(family, parameter)
 
     # Carry bounds are a demanded observation.  Keep the ordinary production
     # step free of this complete-domain scan.
@@ -259,7 +261,7 @@ def _audit(family: str, parameter: int) -> SquareConsumerCongruenceAudit:
     seen_pairs: set[tuple[int, int]] = set()
     for value in range(modulus):
         negative = (-value) % modulus
-        pair = tuple(sorted((value, negative)))
+        pair = (min(value, negative), max(value, negative))
         if pair in seen_pairs:
             continue
         seen_pairs.add(pair)

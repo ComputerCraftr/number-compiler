@@ -1,5 +1,9 @@
 """Parent-first finite context programs never acquire future digit storage."""
 
+from tests.support.diamond_context_program import assert_context_inventory
+from tests.support.assertions import assert_rejected_atomically
+
+
 from dataclasses import replace
 from typing import Never
 
@@ -49,16 +53,17 @@ def test_foreign_context_ports_reject_before_warm_lookup_or_mutation() -> None:
         replace(request, incoming=other.incoming),
         replace(request, side=True),
     ):
-        before = runtime.ledger.snapshot()
-        with pytest.raises((TypeError, ValueError)):
-            contexts.execute(
+        assert_rejected_atomically(
+            runtime.ledger,
+            lambda: contexts.execute(
                 invalid.program,
                 invalid.left,
                 invalid.right,
                 invalid.incoming,
                 invalid.side,
-            )
-        assert runtime.ledger.snapshot() == before
+            ),
+            (TypeError, ValueError),
+        )
 
 
 def test_context_node_and_interner_publication_is_atomic() -> None:
@@ -69,17 +74,23 @@ def test_context_node_and_interner_publication_is_atomic() -> None:
         and parent.middle_left is not None
         and parent.middle_right is not None
     )
+    left, middle_left, middle_right = (
+        parent.left,
+        parent.middle_left,
+        parent.middle_right,
+    )
     runtime.ledger.max_cache_entries = runtime.ledger.entries + 1
-    before = runtime.ledger.snapshot()
-    with pytest.raises(BlockContextBudgetExceeded):
-        contexts.join(
+    assert_rejected_atomically(
+        runtime.ledger,
+        lambda: contexts.join(
             action,
             request.program,
-            parent.left,
-            parent.middle_left,
-            parent.middle_right,
-        )
-    assert runtime.ledger.snapshot() == before
+            left,
+            middle_left,
+            middle_right,
+        ),
+        BlockContextBudgetExceeded,
+    )
 
 
 def test_actual_context_graph_and_unary_observations_are_accounted_independently() -> (
@@ -89,11 +100,7 @@ def test_actual_context_graph_and_unary_observations_are_accounted_independently
     report = collect_ledger_metrics(runtime.ledger)
     assert report.representation_boundary_complete == 1
     assert report.context_program_nodes == len(contexts._nodes)
-    inventory = {row.owner: row for row in report.resource_inventory}
-    assert inventory[contexts.observations.owner].observed_entries == len(
-        contexts.observations
-    )
-    assert inventory[contexts.unary.owner].observed_entries == len(contexts.unary._memo)
+    assert_context_inventory(contexts, report)
     assert report.resource_accounting_mismatch == 0
     registry = DiamondPayloadRegistry(runtime.ledger)
     assert all(registry.valid(node) for node in contexts._nodes)

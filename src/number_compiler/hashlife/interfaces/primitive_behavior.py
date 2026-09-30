@@ -21,6 +21,10 @@ from typing import Protocol
 from number_compiler.arithmetic.automata.symmetry_powering import ActionTransform
 from number_compiler.arithmetic.contracts.block_effect import BoundarySide
 from number_compiler.arithmetic.contracts.semantic_identity import SemanticIdentity
+from number_compiler.arithmetic.functions.finite_observer import (
+    canonical_partition,
+    partition_equivalent,
+)
 
 PRIMITIVE_CHANNEL_SCHEMA = (
     "boundary_left",
@@ -374,8 +378,8 @@ def minimize_primitive_behavior(
         )
         for right in range(table.right_count)
     )
-    left_part = _canonical_partition(left_emissions)
-    right_part = _canonical_partition(right_emissions)
+    left_part = canonical_partition(left_emissions)
+    right_part = canonical_partition(right_emissions)
     if work is not None:
         # One channel-vector and one occurrence-vector read per primitive row.
         work.observation_checks += 2 * primitive_observations
@@ -400,9 +404,9 @@ def minimize_primitive_behavior(
             work.successor_checks += (
                 table.left_count + table.right_count
             ) * table.alphabet_size
-        new_left = _canonical_partition(left_signatures)
-        new_right = _canonical_partition(right_signatures)
-        if _same_partition(left_part, new_left) and _same_partition(
+        new_left = canonical_partition(left_signatures)
+        new_right = canonical_partition(right_signatures)
+        if partition_equivalent(left_part, new_left) and partition_equivalent(
             right_part, new_right
         ):
             left_part, right_part = new_left, new_right
@@ -883,25 +887,6 @@ def _validate_observations(
             raise ValueError("primitive occurrence observation has another schema")
         if any(type(value) is not int for value in observation):
             raise TypeError("primitive occurrence observations require exact integers")
-
-
-def _canonical_partition(signatures: tuple[object, ...]) -> tuple[int, ...]:
-    ordered = sorted(set(signatures), key=repr)
-    identities = {signature: index for index, signature in enumerate(ordered)}
-    return tuple(identities[signature] for signature in signatures)
-
-
-def _same_partition(left: tuple[int, ...], right: tuple[int, ...]) -> bool:
-    if len(left) != len(right):
-        return False
-    left_to_right: dict[int, int] = {}
-    right_to_left: dict[int, int] = {}
-    for first, second in zip(left, right, strict=True):
-        if left_to_right.setdefault(first, second) != second:
-            return False
-        if right_to_left.setdefault(second, first) != first:
-            return False
-    return True
 
 
 def _representatives(partition: tuple[int, ...]) -> tuple[int, ...]:

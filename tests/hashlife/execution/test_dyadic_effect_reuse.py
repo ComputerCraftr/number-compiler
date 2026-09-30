@@ -5,6 +5,11 @@ from __future__ import annotations
 from dataclasses import replace
 
 import pytest
+from number_compiler.hashlife.execution.source_bound_images import (
+    SourceBoundSchedulerCore,
+    SourceImageView,
+)
+from tests.support.reference_arithmetic import literal_dyadic_orbit
 
 from number_compiler.arithmetic.contracts.block_effect import BlockContextBudgetExceeded
 from number_compiler.arithmetic.fields.skew_transfer import SkewTransfer
@@ -72,13 +77,7 @@ def test_source_only_macro_squares_without_endpoint_access(
         # the production operation to generate the expected orbit or weights.
         for high in (0, 1, (1 << 127) + 3):
             source = residue + (high << width)
-            value, word, delta, minimum = source, 0, 0, 0
-            for i in range(width):
-                bit = value % 2
-                word |= bit << i
-                delta += law.weights[bit]
-                minimum = min(minimum, delta)
-                value = (law.gains[bit] * value + law.offsets[bit]) // 2
+            value, word, _odd, delta, minimum = literal_dyadic_orbit(source, width, law)
             transfer = macro.transfer
             assert (
                 transfer.upper * source + transfer.offset
@@ -298,9 +297,7 @@ def test_collatz_cycle_shortcut_cannot_leak_to_a_different_high_fiber() -> None:
 
 def test_reuse_rejects_foreign_and_stale_sources() -> None:
     a = DyadicReturnImageWorkspace(ResourceLedger(), 8, 4, ANTIHYDRA_ARITHMETIC_LAW)
-    b = DyadicReturnImageWorkspace(ResourceLedger(), 8, 4, ANTIHYDRA_ARITHMETIC_LAW)
-    core = b.scheduler._source_image_core()
-    foreign = core.view(core._origin(b, b.root_source))
+    b, core, foreign = _origin_fixture(8, 4, ANTIHYDRA_ARITHMETIC_LAW)
     with pytest.raises(ValueError):
         a.admitted_input_key(a.root_action, foreign)
     own_core = a.scheduler._source_image_core()
@@ -333,11 +330,7 @@ def test_reuse_construction_budget_refusal_cleans_all_partial_publications() -> 
 
 
 def test_reuse_rejects_a_forged_source_view_even_with_valid_local_handles() -> None:
-    workspace = DyadicReturnImageWorkspace(
-        ResourceLedger(), 8, 4, ANTIHYDRA_ARITHMETIC_LAW
-    )
-    core = workspace.scheduler._source_image_core()
-    original = core.view(core._origin(workspace, workspace.root_source))
+    workspace, core, original = _origin_fixture(8, 4, ANTIHYDRA_ARITHMETIC_LAW)
     another = workspace._append_source(workspace.source_node(workspace.root_source))
     forged = replace(original, binding=replace(original.binding, source=another))
     with pytest.raises(ValueError, match="differs from its publication"):
@@ -345,11 +338,7 @@ def test_reuse_rejects_a_forged_source_view_even_with_valid_local_handles() -> N
 
 
 def test_reuse_rejects_forged_view_metadata_and_cached_result() -> None:
-    workspace = DyadicReturnImageWorkspace(
-        ResourceLedger(), 1 << 128, 64, COLLATZ_PHYSICAL_LAW
-    )
-    core = workspace.scheduler._source_image_core()
-    source = core.view(core._origin(workspace, workspace.root_source))
+    workspace, core, source = _origin_fixture(1 << 128, 64, COLLATZ_PHYSICAL_LAW)
     result = core.view(workspace.root_image)
     forged_views = (
         replace(source, identity=result.identity),
@@ -367,11 +356,7 @@ def test_reuse_rejects_forged_view_metadata_and_cached_result() -> None:
 
 @pytest.mark.parametrize("alias", (True, 0.0))
 def test_reuse_rejects_integer_aliases_and_disposed_epoch(alias: object) -> None:
-    workspace = DyadicReturnImageWorkspace(
-        ResourceLedger(), 1 << 128, 64, COLLATZ_PHYSICAL_LAW
-    )
-    core = workspace.scheduler._source_image_core()
-    source = core.view(core._origin(workspace, workspace.root_source))
+    workspace, core, source = _origin_fixture(1 << 128, 64, COLLATZ_PHYSICAL_LAW)
     forged_action = replace(workspace.root_action)
     object.__setattr__(forged_action, "local_id", alias)
     with pytest.raises(ValueError, match="malformed scoped handle"):
@@ -394,3 +379,12 @@ def test_reuse_rejects_integer_aliases_and_disposed_epoch(alias: object) -> None
     assert old_action.local_id == replacement.root_action.local_id
     with pytest.raises(ValueError):
         replacement.admitted_input_key(old_action, old_source)
+
+
+def _origin_fixture(
+    source: int, steps: int, law: DyadicReturnLaw
+) -> tuple[DyadicReturnImageWorkspace, SourceBoundSchedulerCore, SourceImageView]:
+    workspace = DyadicReturnImageWorkspace(ResourceLedger(), source, steps, law)
+    core = workspace.scheduler._source_image_core()
+    view = core.view(core._origin(workspace, workspace.root_source))
+    return workspace, core, view

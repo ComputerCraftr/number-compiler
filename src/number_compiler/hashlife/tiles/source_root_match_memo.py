@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from number_compiler.hashlife.tiles.result_reverse_indexes import publish_indexed_result
+
 from number_compiler.hashlife.tiles.tile_result_records import (
     RootMatchResult,
     SourceRootMatchKey,
@@ -117,23 +119,7 @@ def _publish(
             raise ValueError("source tile already has another root summary")
         arena.ledger.bump("collatz_source_root_match_late_duplicates")
         return found
-    referenced = (key.input,)
-    reverse_entries = arena._index_entries(referenced)
-    reservations = (
-        (arena._memo_owner, 1, 0),
-        (arena._reverse_owner, reverse_entries, 0),
-    )
-    arena.ledger.reserve_many(reservations)
-    reverse_snapshot = arena._reverse_snapshot(referenced, key)
-    try:
-        arena._memo[key] = value
-        arena._add_membership(key.input, key)
-    except BaseException:
-        arena._memo.pop(key, None)
-        arena._restore_reverse(reverse_snapshot)
-        for owner, entries, nodes in reservations:
-            arena.ledger.release(owner, entries, nodes)
-        raise
+    publish_indexed_result(arena, key, value, referenced=(key.input,))
     arena.ledger.bump("collatz_source_root_match_publications")
     return value
 

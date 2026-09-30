@@ -1,4 +1,4 @@
-from devtools.proofs.quotient_synthesis import (
+from devtools.verification.quotient_synthesis import (
     ObserverFeature,
     synthesize_finite_quotient,
     synthesize_finite_target_observer,

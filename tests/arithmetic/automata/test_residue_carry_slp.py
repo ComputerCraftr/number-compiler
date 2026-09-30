@@ -149,12 +149,7 @@ def test_output_node_allocation_is_preflighted_and_failure_cleans_workspace() ->
     source = SLPArena()
     root = source.terminal(9)
     ledger = ResourceLedger(max_nodes=0)
-    projector = ResidueCarrySLPProjector(ledger)
-
-    with pytest.raises(BlockContextBudgetExceeded):
-        projector.project(source, source.nodes[root])
-
-    assert ledger.entries == ledger.nodes == 0
+    _assert_projection_refused(source, root, ledger)
     assert any(
         row.name.startswith("residue-carry-slp-output-") and row.disposed
         for row in ledger.inventory()
@@ -165,12 +160,7 @@ def test_repeat_length_validation_precharges_wide_integer_arithmetic() -> None:
     source = SLPArena()
     root = source.repeat(source.terminal(9), 1 << 500)
     ledger = ResourceLedger(max_nodes=2)
-    projector = ResidueCarrySLPProjector(ledger)
-
-    with pytest.raises(BlockContextBudgetExceeded):
-        projector.project(source, source.nodes[root])
-
-    assert ledger.entries == ledger.nodes == 0
+    _assert_projection_refused(source, root, ledger)
 
 
 def test_empty_word_has_empty_outputs_and_preserves_incoming() -> None:
@@ -183,3 +173,14 @@ def test_empty_word_has_empty_outputs_and_preserves_incoming() -> None:
     assert _expand(result.arena, result.closed_jump_root) == (-1,)
     assert result.final_carry == 1
     assert result.input_length == 0
+
+
+def _assert_projection_refused(
+    source: SLPArena, root: int, ledger: ResourceLedger
+) -> None:
+    projector = ResidueCarrySLPProjector(ledger)
+
+    with pytest.raises(BlockContextBudgetExceeded):
+        projector.project(source, source.nodes[root])
+
+    assert ledger.entries == ledger.nodes == 0

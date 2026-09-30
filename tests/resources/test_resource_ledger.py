@@ -1,5 +1,8 @@
 """Resource limits fail before allocation and retain an auditable owner inventory."""
 
+from tests.support.assertions import assert_rejected_atomically
+
+
 import pytest
 
 from number_compiler.arithmetic.contracts.block_effect import BlockContextBudgetExceeded
@@ -12,12 +15,13 @@ from number_compiler.resources.stores import LedgerDict
 def test_zero_budget_rejects_before_any_mutation(dimension: str) -> None:
     ledger = ResourceLedger(max_nodes=0, max_cache_entries=0)
     owner = ledger.register("program", "ACTION_PROGRAM")
-    before = ledger.snapshot()
-    with pytest.raises(BlockContextBudgetExceeded):
-        ledger.reserve(
+    assert_rejected_atomically(
+        ledger,
+        lambda: ledger.reserve(
             owner, entries=int(dimension == "entries"), nodes=int(dimension == "nodes")
-        )
-    assert ledger.snapshot() == before
+        ),
+        BlockContextBudgetExceeded,
+    )
 
 
 def test_combined_reservation_is_atomic_and_owner_release_is_checked() -> None:
@@ -25,10 +29,11 @@ def test_combined_reservation_is_atomic_and_owner_release_is_checked() -> None:
     first = ledger.register("source", "EXACT_SOURCE", "INDEX_OWNED")
     second = ledger.register("program", "ACTION_PROGRAM")
     ledger.reserve(first, entries=1, nodes=1)
-    before = ledger.snapshot()
-    with pytest.raises(BlockContextBudgetExceeded):
-        ledger.reserve(second, entries=1, nodes=2)
-    assert ledger.snapshot() == before
+    assert_rejected_atomically(
+        ledger,
+        lambda: ledger.reserve(second, entries=1, nodes=2),
+        BlockContextBudgetExceeded,
+    )
     ledger.reserve(second, entries=2, nodes=1)
     assert (ledger.entries, ledger.nodes) == (3, 2)
     with pytest.raises(ValueError):
@@ -129,10 +134,11 @@ def test_multi_owner_reservation_rejects_without_changing_peaks() -> None:
     ledger = ResourceLedger(max_cache_entries=1)
     first = ledger.register("nodes", "ACTION_PROGRAM")
     second = ledger.register("interner", "ACTION_INTERNER")
-    before = ledger.snapshot()
-    with pytest.raises(BlockContextBudgetExceeded):
-        ledger.reserve_many(((first, 1, 1), (second, 1, 0)))
-    assert ledger.snapshot() == before
+    before = assert_rejected_atomically(
+        ledger,
+        lambda: ledger.reserve_many(((first, 1, 1), (second, 1, 0))),
+        BlockContextBudgetExceeded,
+    )
     with pytest.raises(ValueError):
         ledger.reserve_many(((first, 1, 1), (999, 0, 0)))
     assert ledger.snapshot() == before
@@ -167,13 +173,11 @@ def test_failed_resource_reassignment_changes_no_account_or_peak() -> None:
     workspace = ledger.register("workspace", "semantic_function_workspace")
     target = ledger.register("target", "semantic_function")
     ledger.reserve(workspace, entries=1, nodes=1)
-    before = ledger.snapshot()
-    with pytest.raises(BlockContextBudgetExceeded):
-        ledger.reassign_many(
-            ((workspace, 1, 1),),
-            ((target, 3, 2),),
-        )
-    assert ledger.snapshot() == before
+    before = assert_rejected_atomically(
+        ledger,
+        lambda: ledger.reassign_many(((workspace, 1, 1),), ((target, 3, 2),)),
+        BlockContextBudgetExceeded,
+    )
     with pytest.raises(ValueError):
         ledger.reassign_many(((workspace, 2, 1),), ())
     assert ledger.snapshot() == before
@@ -280,10 +284,14 @@ def test_container_identity_has_one_owner_and_same_owner_can_upgrade_resolver() 
     second = ledger.register("second", "query_memo")
     container: dict[int, int] = {}
     ledger.register_container(first, container)
-    before = ledger.snapshot()
-    with pytest.raises(ValueError, match="multiple resource owners"):
-        ledger.register_container(second, container, payloads=lambda: (object(),))
-    assert ledger.snapshot() == before
+    assert_rejected_atomically(
+        ledger,
+        lambda: ledger.register_container(
+            second, container, payloads=lambda: (object(),)
+        ),
+        ValueError,
+        match="multiple resource owners",
+    )
     assert tuple(ledger.iter_payloads()) == ()
     ledger.reserve(first, entries=1)
     container[0] = 7

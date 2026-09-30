@@ -7,6 +7,8 @@ completed-result memo.  No carry row, digit word, or coordinate scan is used.
 
 from __future__ import annotations
 
+from number_compiler.hashlife.tiles.result_reverse_indexes import publish_indexed_result
+
 from dataclasses import dataclass
 from typing import TYPE_CHECKING
 
@@ -106,24 +108,7 @@ def _publish(
             raise ValueError("reverse threshold tile already has another summary")
         results.ledger.bump("reverse_threshold_summary_late_duplicates")
         return found
-    referenced = results._tiles_for(key, summary)
-    reverse_entries = results._index_entries(referenced)
-    reservations = (
-        (results._memo_owner, 1, 0),
-        (results._reverse_owner, reverse_entries, 0),
-    )
-    results.ledger.reserve_many(reservations)
-    reverse_snapshot = results._reverse_snapshot(referenced, key)
-    try:
-        results._memo[key] = summary
-        for tile in referenced:
-            results._add_membership(tile, key)
-    except BaseException:
-        results._memo.pop(key, None)
-        results._restore_reverse(reverse_snapshot)
-        for owner, entries, nodes in reservations:
-            results.ledger.release(owner, entries, nodes)
-        raise
+    publish_indexed_result(results, key, summary)
     results.ledger.bump("reverse_threshold_summary_publications")
     return summary
 

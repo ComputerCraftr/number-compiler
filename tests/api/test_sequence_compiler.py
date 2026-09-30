@@ -1,5 +1,8 @@
 from __future__ import annotations
 
+from tests.support.special_theorem_assertions import assert_unknown_resolution
+
+
 import ast
 import itertools
 from collections.abc import Callable
@@ -162,10 +165,8 @@ def test_fermat_and_mersenne_are_actual_symbolic_radix_compilations_not_material
     lazy_f5 = compiler.resolve_special_theorem("fermat", 5)
     assert lazy_f5.projection_method.startswith("terminal-threshold:")
     assert lazy_f5.factor_witness is None
-    assert lazy_f5.primality is not None and lazy_f5.primality.status == "unknown"
-    assert lazy_f5.primality.specialization_raw_squarings == 0
-    assert not lazy_f5.primality.decided and lazy_f5.primality.target_depth is None
-    assert not lazy_f5.primality.scalable_construction
+    primality = assert_unknown_resolution(lazy_f5)
+    assert not primality.scalable_construction
     assert lazy_f5.source_guard.failure_bit is None
 
     mersenne = compiler.compile_diagnostic(
@@ -287,9 +288,7 @@ def test_special_theorem_query_leaves_unproved_special_cases_unknown() -> None:
     f5 = compiler.resolve_special_theorem("fermat", 5)
     assert f5.projection_method.startswith("terminal-threshold:")
     assert f5.factor_witness is None
-    assert f5.primality is not None and f5.primality.status == "unknown"
-    assert f5.primality.specialization_raw_squarings == 0
-    assert not f5.primality.decided and f5.primality.target_depth is None
+    assert_unknown_resolution(f5)
     assert f5.source_guard.failure_bit is None
 
     raw = compiler.compile_diagnostic(
@@ -502,8 +501,8 @@ def test_reduced_growth_and_valuation_itineraries_are_not_retained_as_parallel_s
     )
     assert "growths" not in ReverseAddCompilation.__dataclass_fields__
     assert reverse.carry_reset_max_bits == 0
-    from devtools.proofs import exact_oracle
-    from devtools.proofs.sequence_diagnostics import with_carry_diagnostics
+    from devtools.verification import exact_oracle
+    from devtools.verification.sequence_diagnostics import with_carry_diagnostics
 
     with exact_oracle():
         proof = with_carry_diagnostics(reverse)

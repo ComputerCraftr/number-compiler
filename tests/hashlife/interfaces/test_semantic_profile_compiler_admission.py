@@ -1,6 +1,7 @@
 """Profile encodings preserve binder scope before admission or cache work."""
 
-import pytest
+from tests.support.assertions import assert_rejected_atomically
+
 
 from number_compiler.arithmetic.contracts.physical_collatz_kernel import (
     PhysicalCollatzFourBlockEffect,
@@ -32,10 +33,9 @@ def test_reachable_codec_namespace_cannot_capture_next_binder() -> None:
     task = StructuredExpressionTask(
         expression, ((expression, binding),), profile=profile
     )
-    before = runtime.ledger.snapshot()
-    with pytest.raises(ValueError, match="capture"):
-        compiler.probe_task(task)
-    assert runtime.ledger.snapshot() == before
+    assert_rejected_atomically(
+        runtime.ledger, lambda: compiler.probe_task(task), ValueError, match="capture"
+    )
     assert not compiler.admissions
 
 
@@ -55,7 +55,10 @@ def test_profile_choice_is_explicit_and_foreign_rejects_before_warm_admission() 
     foreign = other.runtime.semantic_compiler.source_initial_profile(
         other.runtime.actions.compose(other.root, other.root)
     )
-    before = runtime.ledger.snapshot()
-    with pytest.raises(ValueError):
-        compiler._admit(variable, (variable,), structured=True, profile=foreign)
-    assert runtime.ledger.snapshot() == before
+    assert_rejected_atomically(
+        runtime.ledger,
+        lambda: compiler._admit(
+            variable, (variable,), structured=True, profile=foreign
+        ),
+        ValueError,
+    )

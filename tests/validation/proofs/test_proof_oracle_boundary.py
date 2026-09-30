@@ -4,9 +4,9 @@ from __future__ import annotations
 
 import pytest
 
-from devtools.proofs import ExactOracleAccessForbidden, exact_oracle
-from devtools.proofs.carry_action_quotient import CarryActionQuotientArena
-from devtools.proofs.reverse_spacetime import (
+from devtools.verification import ExactOracleAccessForbidden, exact_oracle
+from devtools.verification.carry_action_quotient import CarryActionQuotientArena
+from devtools.verification.reverse_spacetime import (
     ReverseAddCausalSpacetimeEngine,
     ReverseAddPairField,
 )

@@ -7,6 +7,8 @@ interface.  Construction is iterative and never creates a future digit word.
 """
 
 from __future__ import annotations
+from number_compiler.arithmetic.contracts.iterative_queries import defer_binary_children
+from number_compiler.resources.stores import append_indexed_node
 
 from collections.abc import MutableMapping, MutableSequence
 from dataclasses import dataclass
@@ -166,10 +168,15 @@ class CollatzRadix4RangeArena:
         if found is not None:
             self.ledger.bump("collatz_range_semantic_alias_hits")
             return CollatzRadix4RangeID(self.owner, self._KIND, found)
-        self.ledger.reserve_many(((self._node_owner, 1, 1), (self._key_owner, 1, 0)))
-        local = len(self._nodes)
-        self._nodes.append(value)
-        self._keys[value] = local
+        local = append_indexed_node(
+            self.ledger,
+            self._nodes,
+            self._keys,
+            self._node_owner,
+            self._key_owner,
+            value,
+            value,
+        )
         return CollatzRadix4RangeID(self.owner, self._KIND, local)
 
     def summarize(self, source: SourceCellID) -> CollatzRadix4RangeID:
@@ -191,8 +198,7 @@ class CollatzRadix4RangeArena:
                 continue
             node = self.sources.resolve(current)
             if node.level > 1 and not ready:
-                left, right = self.sources.children(current)
-                pending.extend(((current, True), (right, False), (left, False)))
+                defer_binary_children(pending, current, self.sources.children)
                 continue
             if node.level == 0:
                 low_symbol = self.sources.symbol(current)

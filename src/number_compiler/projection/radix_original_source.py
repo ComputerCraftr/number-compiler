@@ -519,13 +519,6 @@ class OriginalRadixArena:
             width, shift_nodes, carry_nodes = self._build_affine_summary_nodes(
                 source, shift, size
             )
-        except BaseException:
-            self._workspace.entries = self._workspace.nodes = 0
-            for owner, entries, nodes in reversed(reservations):
-                self.ledger.release(owner, entries=entries, nodes=nodes)
-            self.ledger.bump("original_affine_summary_failures")
-            raise
-        try:
             modulus = 1 << shift
             shift_identity = OriginalShiftTransfer(modulus, 1 % modulus, 0)
             carry_identity = OriginalThreeCarryAction((0, 1, 2))

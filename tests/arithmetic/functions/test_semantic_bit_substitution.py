@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from tests.support.assertions import assert_rejected_atomically
+
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
@@ -27,7 +29,7 @@ from number_compiler.hashlife.interfaces.semantic_bits import (
     _Circuit,
     substitute_boolean,
 )
-from number_compiler.resources.ledger import ResourceLedger
+from number_compiler.resources.ledger import LedgerSnapshot, ResourceLedger
 
 if TYPE_CHECKING:
     from number_compiler.arithmetic.functions.finite_function_types import (
@@ -37,6 +39,66 @@ if TYPE_CHECKING:
     from number_compiler.hashlife.interfaces.semantic_bits import (
         FactoredFunctionID,
     )
+
+
+def _restricted_outputs(
+    arena: BitFunctionArena, port: FinitePort
+) -> tuple[FactoredFunctionID, FactoredFunctionID, FactoredFunctionID]:
+    value = arena.variable((port,), port)
+    return (
+        value,
+        arena.map_atoms(value, BOOL, (1, 0, 1, 0)),
+        arena.map_atoms(value, BOOL, (1, 1, 0, 0)),
+    )
+
+
+def _function_lengths(arena: BitFunctionArena) -> tuple[int, int, int, int]:
+    return (
+        len(arena.functions.nodes),
+        len(arena.functions.keys),
+        len(arena.nodes),
+        len(arena.keys),
+    )
+
+
+def _cap_for_failure(
+    arena: BitFunctionArena, budget: str, delta: tuple[int, int]
+) -> tuple[LedgerSnapshot, tuple[int, int, int, int]]:
+    if budget == "nodes":
+        arena.ledger.max_nodes = arena.ledger.nodes + delta[0] - 1
+    else:
+        arena.ledger.max_cache_entries = arena.ledger.entries + delta[1] - 1
+    return arena.ledger.snapshot(), _function_lengths(arena)
+
+
+def _composition_ports() -> tuple[BitFunctionArena, FinitePort, FinitePort]:
+    return (
+        BitFunctionArena(ResourceLedger()),
+        FinitePort(PortVariable(0, 0, "a", 0), 4),
+        FinitePort(PortVariable(0, 0, "b", 0), 4),
+    )
+
+
+def _fused_source() -> tuple[
+    BitFunctionArena, tuple[FinitePort, ...], _Circuit, int, int, int
+]:
+    arena = BitFunctionArena(ResourceLedger())
+    ports = tuple(
+        FinitePort(PortVariable(0, 0, name, 0), 2) for name in ("a", "b", "c")
+    )
+    source = _Circuit(arena.functions, ports)
+    a, b, c = (source.tx.bit(ports, port.variable) for port in ports)
+    return arena, ports, source, a, b, c
+
+
+def _fused_target(
+    source: _Circuit,
+) -> tuple[FinitePort, FinitePort, _Circuit, int, int, int]:
+    x = FinitePort(PortVariable(1, 0, "x", 0), 2)
+    y = FinitePort(PortVariable(1, 0, "y", 0), 2)
+    target = _Circuit(source.tx.arena, (x, y), source.tx)
+    xx, yy = (target.tx.bit(target.inputs, port.variable) for port in (x, y))
+    return x, y, target, xx, yy, target.xor(xx, yy)
 
 
 def test_constant_cofactor_never_visits_the_unselected_subgraph(
@@ -101,9 +163,7 @@ def test_batch_substitution_shares_roots_and_matches_individual_results() -> Non
 def test_batch_restriction_preserves_each_output_sort_and_shared_domain() -> None:
     arena = BitFunctionArena(ResourceLedger())
     port = FinitePort(PortVariable(0, 0, "port", 0), 4)
-    value = arena.variable((port,), port)
-    bit = arena.map_atoms(value, BOOL, (1, 0, 1, 0))
-    guard = arena.map_atoms(value, BOOL, (1, 1, 0, 0))
+    value, bit, guard = _restricted_outputs(arena, port)
     expected = arena.restrict(value, guard), arena.restrict(bit, guard)
     actual = arena.restrict_many((value, bit), guard)
     assert actual == expected
@@ -146,9 +206,7 @@ def test_batch_restriction_budget_failure_publishes_no_partial_result(
     ]:
         arena = BitFunctionArena(ResourceLedger())
         port = FinitePort(PortVariable(0, 0, "batch-budget", 0), 4)
-        value = arena.variable((port,), port)
-        bit = arena.map_atoms(value, BOOL, (1, 0, 1, 0))
-        guard = arena.map_atoms(value, BOOL, (1, 1, 0, 0))
+        value, bit, guard = _restricted_outputs(arena, port)
         return arena, (value, bit), guard
 
     reference, functions, guard = fixture()
@@ -156,17 +214,7 @@ def test_batch_restriction_budget_failure_publishes_no_partial_result(
     reference.restrict_many(functions, guard)
     delta = reference.ledger.nodes - baseline[0], reference.ledger.entries - baseline[1]
     arena, functions, guard = fixture()
-    if budget == "nodes":
-        arena.ledger.max_nodes = arena.ledger.nodes + delta[0] - 1
-    else:
-        arena.ledger.max_cache_entries = arena.ledger.entries + delta[1] - 1
-    before = arena.ledger.snapshot()
-    lengths = (
-        len(arena.functions.nodes),
-        len(arena.functions.keys),
-        len(arena.nodes),
-        len(arena.keys),
-    )
+    before, lengths = _cap_for_failure(arena, budget, delta)
     with pytest.raises(BlockContextBudgetExceeded):
         arena.restrict_many(functions, guard)
     after = arena.ledger.snapshot()
@@ -249,10 +297,11 @@ def test_foreign_replacement_rejected_before_any_shared_lookup(warm: bool) -> No
     other = foreign.constant(FunctionSignature((), BOOL), 1)
     if warm:
         arena.substitute(function, {port.variable: own})
-    before = arena.ledger.snapshot()
-    with pytest.raises(ValueError):
-        arena.substitute(function, {port.variable: other})
-    assert arena.ledger.snapshot() == before
+    assert_rejected_atomically(
+        arena.ledger,
+        lambda: arena.substitute(function, {port.variable: other}),
+        ValueError,
+    )
 
 
 def _scalar_fixture() -> tuple[BitFunctionArena, FinitePort, SemanticFunctionID]:
@@ -290,10 +339,9 @@ def test_scalar_conversion_rejects_foreign_before_memo_mutation(warm: bool) -> N
     other, _, foreign = _scalar_fixture()
     if warm:
         arena.from_scalar(scalar)
-    before = arena.ledger.snapshot()
-    with pytest.raises(ValueError):
-        arena.from_scalar(foreign)
-    assert arena.ledger.snapshot() == before
+    assert_rejected_atomically(
+        arena.ledger, lambda: arena.from_scalar(foreign), ValueError
+    )
     assert other.ledger is not arena.ledger
 
 
@@ -308,17 +356,7 @@ def test_scalar_components_and_source_binding_publish_atomically(budget: str) ->
     reference.from_scalar(original)
     delta = reference.ledger.nodes - baseline[0], reference.ledger.entries - baseline[1]
     arena, _, scalar = _scalar_fixture()
-    if budget == "nodes":
-        arena.ledger.max_nodes = arena.ledger.nodes + delta[0] - 1
-    else:
-        arena.ledger.max_cache_entries = arena.ledger.entries + delta[1] - 1
-    before = arena.ledger.snapshot()
-    lengths = (
-        len(arena.functions.nodes),
-        len(arena.functions.keys),
-        len(arena.nodes),
-        len(arena.keys),
-    )
+    before, lengths = _cap_for_failure(arena, budget, delta)
     with pytest.raises(BlockContextBudgetExceeded):
         arena.from_scalar(scalar)
     after = arena.ledger.snapshot()
@@ -397,9 +435,7 @@ def test_joint_correlated_substitution_avoids_all_intermediate_ite_work() -> Non
 
 
 def test_joint_substitution_keeps_simultaneous_not_sequential_semantics() -> None:
-    arena = BitFunctionArena(ResourceLedger())
-    a = FinitePort(PortVariable(0, 0, "a", 0), 4)
-    b = FinitePort(PortVariable(0, 0, "b", 0), 4)
+    arena, a, b = _composition_ports()
     output = AtomSort("word", 4)
     aa, bb = arena.variable((a, b), a, output), arena.variable((a, b), b, output)
     plus = arena.add(aa, bb, output, wrap=True)
@@ -415,9 +451,7 @@ def _composition_fixture() -> tuple[
     dict[PortVariable, FactoredFunctionID],
     FinitePort,
 ]:
-    arena = BitFunctionArena(ResourceLedger())
-    a = FinitePort(PortVariable(0, 0, "a", 0), 4)
-    b = FinitePort(PortVariable(0, 0, "b", 0), 4)
+    arena, a, b = _composition_ports()
     x = FinitePort(PortVariable(1, 0, "x", 0), 4)
     aa, bb = arena.variable((a, b), a), arena.variable((a, b), b)
     function = arena.add(aa, bb, AtomSort("sum", 8))
@@ -495,19 +529,10 @@ def test_fused_integer_environments_bind_each_original_support_layout() -> None:
         substitute_boolean_fused,
     )
 
-    arena = BitFunctionArena(ResourceLedger())
-    source_ports = tuple(
-        FinitePort(PortVariable(0, 0, name, 0), 2) for name in ("a", "b", "c")
-    )
-    source = _Circuit(arena.functions, source_ports)
-    a, b, c = (source.tx.bit(source_ports, port.variable) for port in source_ports)
+    arena, source_ports, source, a, b, c = _fused_source()
     first = source.conjunction(a, source.conjunction(b, c))
     second = source.conjunction(a, c)
-    x = FinitePort(PortVariable(1, 0, "x", 0), 2)
-    y = FinitePort(PortVariable(1, 0, "y", 0), 2)
-    target = _Circuit(arena.functions, (x, y), source.tx)
-    xx, yy = (target.tx.bit(target.inputs, port.variable) for port in (x, y))
-    parity = target.xor(xx, yy)
+    x, y, target, xx, yy, parity = _fused_target(source)
     replacement = dict(zip((port.variable for port in source_ports), (parity, xx, yy)))
     outputs = (
         substitute_boolean_fused(target, first, replacement),
@@ -551,18 +576,9 @@ def test_fused_projection_cache_preserves_permuted_correlated_inputs() -> None:
         substitute_boolean_fused,
     )
 
-    arena = BitFunctionArena(ResourceLedger())
-    source_ports = tuple(
-        FinitePort(PortVariable(0, 0, name, 0), 2) for name in ("a", "b", "c")
-    )
-    source = _Circuit(arena.functions, source_ports)
-    a, b, c = (source.tx.bit(source_ports, port.variable) for port in source_ports)
+    arena, source_ports, source, a, b, c = _fused_source()
     root = source.choose(a, b, c)
-    x = FinitePort(PortVariable(1, 0, "x", 0), 2)
-    y = FinitePort(PortVariable(1, 0, "y", 0), 2)
-    target = _Circuit(arena.functions, (x, y), source.tx)
-    xx, yy = (target.tx.bit(target.inputs, port.variable) for port in (x, y))
-    parity = target.xor(xx, yy)
+    x, y, target, xx, yy, parity = _fused_target(source)
     variables = tuple(port.variable for port in source_ports)
     first = substitute_boolean_fused(
         target, root, dict(zip(variables, (parity, xx, yy)))

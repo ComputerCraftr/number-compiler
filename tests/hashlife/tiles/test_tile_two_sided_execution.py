@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from tests.support.assertions import assert_rejected_atomically
+
 from collections.abc import Callable, Iterator, Sequence
 from itertools import product
 from typing import Never
@@ -42,6 +44,7 @@ from number_compiler.hashlife.tiles.tiles import (
     TileLease,
 )
 from number_compiler.resources.ledger import ResourceLedger
+from number_compiler.hashlife.tiles.tile_result_records import FusedInterfaceKey
 
 TileRuntime = tuple[
     ResourceLedger,
@@ -52,6 +55,51 @@ TileRuntime = tuple[
     FieldCellActionID,
     Callable[[Sequence[int]], TileID],
 ]
+
+
+def _square_input(
+    runtime: TileRuntime,
+) -> tuple[
+    ResourceLedger,
+    TileArena,
+    PrimitiveTileKernelAdapter,
+    TileScheduler,
+    BaseBlockEffect,
+    FieldCellActionID,
+    Callable[[Sequence[int]], TileID],
+    TileID,
+    FieldCellActionID,
+    ResultWiring,
+]:
+    source = runtime[6]((0, 0, 0, 1))
+    return (
+        *runtime,
+        source,
+        runtime[2].power(runtime[5], 2),
+        runtime[2].wiring(runtime[5]),
+    )
+
+
+def _warm_fused_input(
+    runtime: TileRuntime,
+) -> tuple[
+    ResourceLedger,
+    TileArena,
+    PrimitiveTileKernelAdapter,
+    TileScheduler,
+    BaseBlockEffect,
+    FieldCellActionID,
+    Callable[[Sequence[int]], TileID],
+    TileID,
+    FieldCellActionID,
+    ResultWiring,
+    FusedInterfaceKey,
+]:
+    fixture = _square_input(runtime)
+    scheduler, source, square, wiring = fixture[3], fixture[7], fixture[8], fixture[9]
+    scheduler.point(square, source, (0, 0), wiring, 0)
+    key = next(key for key in scheduler.results._memo if type(key) is FusedInterfaceKey)
+    return (*fixture, key)
 
 
 @pytest.fixture
@@ -424,10 +472,18 @@ def test_fused_rejection_preserves_complete_ledger_snapshot_before_warm_lookup(
     from number_compiler.hashlife.tiles.tile_result_records import PoweredResultKey
     from number_compiler.hashlife.tiles.tiles import TileID
 
-    ledger, _tiles, adapter, scheduler, _effect, primitive, tile = runtime
-    source = tile((0, 0, 0, 1))
-    square = adapter.power(primitive, 2)
-    wiring = adapter.wiring(primitive)
+    (
+        ledger,
+        _tiles,
+        adapter,
+        scheduler,
+        _effect,
+        primitive,
+        tile,
+        source,
+        square,
+        wiring,
+    ) = _square_input(runtime)
     producer = consumer = BoundPorts((0, 0), wiring)
     fusion = FusedBoundaryContract(producer, consumer)
     with scheduler.complete(square, source, consumer.ports, wiring, fusion=fusion):
@@ -451,10 +507,9 @@ def test_fused_rejection_preserves_complete_ledger_snapshot_before_warm_lookup(
             wiring,
             fusion=FusedBoundaryContract(producer, consumer),
         )
-        before = ledger.snapshot()
-        with pytest.raises((TypeError, ValueError)):
-            scheduler.results.lookup(key)
-        assert ledger.snapshot() == before
+        assert_rejected_atomically(
+            ledger, lambda: scheduler.results.lookup(key), (TypeError, ValueError)
+        )
 
 
 def test_foreign_directional_operand_rejects_before_work_accounting(
@@ -466,10 +521,9 @@ def test_foreign_directional_operand_rejects_before_work_accounting(
     ledger, _tiles, adapter, _scheduler, _effect, primitive, _tile = runtime
     view = BoundaryTileView(TileID(ArenaToken("foreign"), "canonical-tile", 0), 0, 1)
     incoming = BoundPorts((0, 0), adapter.wiring(primitive))
-    before = ledger.snapshot()
-    with pytest.raises(ValueError):
-        adapter.transfer_view(primitive, view, incoming, 0)
-    assert ledger.snapshot() == before
+    before = assert_rejected_atomically(
+        ledger, lambda: adapter.transfer_view(primitive, view, incoming, 0), ValueError
+    )
     with pytest.raises(ValueError):
         adapter.bind_boundaries(
             primitive,
@@ -481,11 +535,19 @@ def test_foreign_directional_operand_rejects_before_work_accounting(
 def test_fused_requests_retain_the_explicit_temporal_edge(runtime: TileRuntime) -> None:
     from number_compiler.hashlife.tiles.tile_result_records import FusedInterfaceKey
 
-    ledger, _tiles, adapter, scheduler, _effect, primitive, tile = runtime
-    source = tile((0, 0, 0, 1))
-    square = adapter.power(primitive, 2)
-    wiring = adapter.wiring(primitive)
-    scheduler.point(square, source, (0, 0), wiring, 0)
+    (
+        ledger,
+        _tiles,
+        adapter,
+        scheduler,
+        _effect,
+        primitive,
+        tile,
+        source,
+        square,
+        wiring,
+        _key,
+    ) = _warm_fused_input(runtime)
     keys = [key for key in scheduler.results._memo if type(key) is FusedInterfaceKey]
     assert keys
     assert all((key.before, key.after) == (primitive, primitive) for key in keys)
@@ -500,18 +562,24 @@ def test_fused_requests_retain_the_explicit_temporal_edge(runtime: TileRuntime) 
 def test_fused_children_use_combined_admission_without_retired_callbacks(
     runtime: TileRuntime, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    from number_compiler.hashlife.tiles.tile_result_records import FusedInterfaceKey
     from number_compiler.hashlife.tiles.tile_result_validation import (
         validate_fused_edge,
         validate_fusion_contexts,
     )
 
-    ledger, _tiles, adapter, scheduler, _effect, primitive, tile = runtime
-    source = tile((0, 0, 0, 1))
-    square = adapter.power(primitive, 2)
-    wiring = adapter.wiring(primitive)
-    scheduler.point(square, source, (0, 0), wiring, 0)
-    key = next(key for key in scheduler.results._memo if type(key) is FusedInterfaceKey)
+    (
+        ledger,
+        _tiles,
+        adapter,
+        scheduler,
+        _effect,
+        primitive,
+        tile,
+        source,
+        square,
+        wiring,
+        key,
+    ) = _warm_fused_input(runtime)
     context = BoundPorts((0, 0), wiring)
     fusion = FusedBoundaryContract(context, context)
     monkeypatch.setattr(scheduler.results, "_validate_action", forbidden)
@@ -523,10 +591,12 @@ def test_fused_children_use_combined_admission_without_retired_callbacks(
     record = adapter._action(primitive)
     object.__setattr__(record, "repetitions", 0)
     try:
-        before = ledger.snapshot()
-        with pytest.raises(ValueError, match="repetition count"):
-            validate_fused_edge(scheduler.results, key)
-        assert ledger.snapshot() == before
+        assert_rejected_atomically(
+            ledger,
+            lambda: validate_fused_edge(scheduler.results, key),
+            ValueError,
+            match="repetition count",
+        )
     finally:
         object.__setattr__(record, "repetitions", 1)
 
@@ -541,14 +611,20 @@ def test_fused_edge_validation_precedes_warm_cache_lookup(
 
     from number_compiler.arithmetic.contracts.scoped_handles import ArenaToken
     from number_compiler.hashlife.actions.field_actions import FieldCellActionID
-    from number_compiler.hashlife.tiles.tile_result_records import FusedInterfaceKey
 
-    ledger, _tiles, adapter, scheduler, _effect, primitive, tile = runtime
-    source = tile((0, 0, 0, 1))
-    square = adapter.power(primitive, 2)
-    wiring = adapter.wiring(primitive)
-    scheduler.point(square, source, (0, 0), wiring, 0)
-    key = next(key for key in scheduler.results._memo if type(key) is FusedInterfaceKey)
+    (
+        ledger,
+        _tiles,
+        adapter,
+        scheduler,
+        _effect,
+        primitive,
+        tile,
+        source,
+        square,
+        wiring,
+        key,
+    ) = _warm_fused_input(runtime)
     forged = replace(key)
     if invalid == "foreign":
         value = FieldCellActionID(
@@ -568,10 +644,11 @@ def test_fused_edge_validation_precedes_warm_cache_lookup(
     else:
         value = None
     object.__setattr__(forged, "before", value)
-    before = ledger.snapshot()
-    with pytest.raises((TypeError, ValueError)):
-        scheduler.results.lookup_fused_interface(forged)
-    assert ledger.snapshot() == before
+    assert_rejected_atomically(
+        ledger,
+        lambda: scheduler.results.lookup_fused_interface(forged),
+        (TypeError, ValueError),
+    )
 
 
 @pytest.mark.parametrize("invalid", ("foreign", "retired", "alphabet", "numeric"))
@@ -581,15 +658,21 @@ def test_consumer_operand_rejected_before_fused_warm_lookup(
     from dataclasses import replace
 
     from number_compiler.arithmetic.contracts.scoped_handles import ArenaToken
-    from number_compiler.hashlife.tiles.tile_result_records import FusedInterfaceKey
     from number_compiler.hashlife.tiles.tiles import TileAlphabet, TileID
 
-    ledger, tiles, adapter, scheduler, _effect, primitive, tile = runtime
-    source = tile((0, 0, 0, 1))
-    square = adapter.power(primitive, 2)
-    wiring = adapter.wiring(primitive)
-    scheduler.point(square, source, (0, 0), wiring, 0)
-    key = next(key for key in scheduler.results._memo if type(key) is FusedInterfaceKey)
+    (
+        ledger,
+        tiles,
+        adapter,
+        scheduler,
+        _effect,
+        primitive,
+        tile,
+        source,
+        square,
+        wiring,
+        key,
+    ) = _warm_fused_input(runtime)
     lease = None
     if invalid == "foreign":
         operand = TileID(ArenaToken("foreign-consumer"), source.kind, source.local_id)
@@ -629,8 +712,7 @@ def test_causal_boundary_concat_reuses_content_without_digit_emission(
     from number_compiler.hashlife.tiles.tile_boundaries import concat_boundary_views
 
     _ledger, tiles, adapter, _scheduler, _effect, primitive, tile = runtime
-    symbols = (0, 1, 2, 3, 4, 5, 1, 2)
-    source = tile(symbols)
+    symbols, source = _boundary_source(tile)
     first = BoundaryTileView(source, -3, 3, first_reverse, 2)
     second = BoundaryTileView(source, 0, 4, second_reverse, 1)
     a, b = symbols[2:5], symbols[1:5]
@@ -760,8 +842,7 @@ def test_causal_dyadic_cover_excludes_padding_and_preserves_order(
     from number_compiler.hashlife.tiles.tile_boundaries import boundary_dyadic_pieces
 
     _ledger, tiles, _adapter, _scheduler, _effect, _primitive, tile = runtime
-    symbols = (0, 1, 2, 3, 4, 5, 1, 2)
-    source = tile(symbols)
+    symbols, source = _boundary_source(tile)
     for start in range(9):
         for length in range(9 - start):
             view = BoundaryTileView(source, -5, length, orientation, start)
@@ -785,3 +866,11 @@ def test_causal_dyadic_cover_excludes_padding_and_preserves_order(
             expected = symbols[start : start + length]
             assert tuple(actual) == (expected[::-1] if orientation else expected)
             assert len(pieces) <= 2 * tiles.resolve(source).level + 1
+
+
+def _boundary_source(
+    tile: Callable[[Sequence[int]], TileID],
+) -> tuple[tuple[int, ...], TileID]:
+    symbols = (0, 1, 2, 3, 4, 5, 1, 2)
+    source = tile(symbols)
+    return symbols, source

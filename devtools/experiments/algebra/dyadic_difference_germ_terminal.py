@@ -441,7 +441,7 @@ def fermat_filtration_requirement_audit(
     # it only as a differential check that a terminal PASS may hand off to the
     # closed theorem; it is not part of the threshold proof.
     if width <= 16:
-        from devtools.proofs.oracles.bounded_filtration import (
+        from devtools.verification.oracles.bounded_filtration import (
             bounded_candidate_image_filtration,
         )
         from number_compiler.arithmetic.polynomials.two_primary_filtration import (
@@ -542,7 +542,7 @@ def mersenne_filtration_requirement_audit(
     bounded_status: str | None = None
     bounded_match: bool | None = None
     if p <= 13:
-        from devtools.proofs.oracles.bounded_filtration import (
+        from devtools.verification.oracles.bounded_filtration import (
             bounded_candidate_image_filtration,
         )
         from number_compiler.arithmetic.polynomials.two_primary_filtration import (

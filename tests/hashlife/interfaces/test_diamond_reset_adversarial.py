@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from tests.support.assertions import assert_rejected_atomically
+
 from typing import TYPE_CHECKING
 
 import pytest
@@ -66,10 +68,9 @@ def test_foreign_incoming_state_cannot_disappear_into_warm_reset_key() -> None:
                 runtime.execute,
                 runtime._cached_transfer,
             ):
-                before = runtime.ledger.snapshot()
-                with pytest.raises(ValueError):
-                    method(task)
-                assert runtime.ledger.snapshot() == before
+                assert_rejected_atomically(
+                    runtime.ledger, lambda: method(task), ValueError
+                )
 
 
 def test_distinct_source_suffixes_share_only_the_certified_reset_prefix() -> None:

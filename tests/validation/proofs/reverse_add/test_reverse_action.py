@@ -2,9 +2,9 @@ from typing import Never
 
 import pytest
 
-from devtools.proofs.carry_action_quotient import CarryActionQuotientArena
-from devtools.proofs.reverse_action import ReverseAddMacroActionArena
-from devtools.proofs.reverse_spacetime import (
+from devtools.verification.carry_action_quotient import CarryActionQuotientArena
+from devtools.verification.reverse_action import ReverseAddMacroActionArena
+from devtools.verification.reverse_spacetime import (
     ReverseAddCausalSpacetimeEngine,
     ReverseAddPairField,
 )
@@ -106,9 +106,9 @@ def test_macro_actions_match_exhaustive_small_symmetric_fields() -> None:
 def test_slab_bootstrap_and_forcing_never_expand_digit_or_carry_vectors(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    import devtools.proofs.forcing_morphism as forcing_module
-    import devtools.proofs.reverse_spacetime as reverse_module
-    import devtools.proofs.temporal_quotient as temporal_module
+    import devtools.verification.forcing_morphism as forcing_module
+    import devtools.verification.reverse_spacetime as reverse_module
+    import devtools.verification.temporal_quotient as temporal_module
 
     engine = ReverseAddCausalSpacetimeEngine(base=10)
     source = ReverseAddPairField.from_value(196)

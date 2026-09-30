@@ -12,28 +12,54 @@ from devtools.paths import repository_root
 from number_compiler.api.number_api import (
     CommaTermPayload,
     NumberCompiler,
+    ProjectedNumberTerm,
     PoweredCollatzTermPayload,
     PoweredReverseAddTermPayload,
 )
 
 
+def _require_powered_payload(
+    payload: object,
+) -> PoweredReverseAddTermPayload | PoweredCollatzTermPayload:
+    if not isinstance(
+        payload, (PoweredReverseAddTermPayload, PoweredCollatzTermPayload)
+    ):
+        raise AssertionError("expected a powered term payload")
+    return payload
+
+
+def _family_seed_position(family: str, maximum_width: int) -> tuple[int, int]:
+    seed = 196 if family == "196" else 27
+    position = maximum_width // 3 if family == "196" else 0
+    return seed, position
+
+
+def _project_powered_request(
+    compiler: NumberCompiler, family: str, steps: int
+) -> tuple[
+    ProjectedNumberTerm,
+    PoweredReverseAddTermPayload | PoweredCollatzTermPayload,
+    int,
+    int,
+]:
+    seed, _ = _family_seed_position(family, 0)
+    result = compiler.project_nth(family, steps, seed=seed)
+    payload = _require_powered_payload(result.payload)
+    core = payload.term
+    _, position = _family_seed_position(family, core.maximum_width)
+    return result, payload, position, seed
+
+
 def repeated_request(family: str, steps: int) -> dict[str, object]:
     compiler = NumberCompiler()
-    seed = 196 if family == "196" else 27
-    term = compiler.project_nth(family, steps, seed=seed)
-    assert isinstance(
-        term.payload, (PoweredReverseAddTermPayload, PoweredCollatzTermPayload)
-    )
-    core = term.payload.term
-    position = core.maximum_width // 3 if family == "196" else 0
+    term, payload, position, seed = _project_powered_request(compiler, family, steps)
+    core = payload.term
     digit = term.digit(position)
     before_metrics = core.metrics()
     before = projection_accounting(before_metrics)
     repeat = compiler.project_nth(family, steps, seed=seed)
-    assert isinstance(
-        repeat.payload, (PoweredReverseAddTermPayload, PoweredCollatzTermPayload)
-    )
-    if repeat.payload.term is not core or repeat.digit(position) != digit:
+    repeat_payload = _require_powered_payload(repeat.payload)
+    if repeat_payload.term is not core or repeat.digit(position) != digit:
         raise AssertionError("public request lost its exact execution owner")
     after_metrics = core.metrics()
     if (
@@ -63,13 +89,8 @@ def repeated_request(family: str, steps: int) -> dict[str, object]:
 
 def cold_request(family: str, steps: int) -> dict[str, object]:
     compiler = NumberCompiler()
-    seed = 196 if family == "196" else 27
-    result = compiler.project_nth(family, steps, seed=seed)
-    assert isinstance(
-        result.payload, (PoweredReverseAddTermPayload, PoweredCollatzTermPayload)
-    )
-    core = result.payload.term
-    position = core.maximum_width // 3 if family == "196" else 0
+    result, payload, position, _seed = _project_powered_request(compiler, family, steps)
+    core = payload.term
     digit = result.digit(position)
     metrics = core.metrics()
     return {
@@ -220,4 +241,6 @@ def main() -> None:
 
 
 if __name__ == "__main__":
-    main()
+    from devtools.runs import run_reported
+
+    raise SystemExit(run_reported(main))

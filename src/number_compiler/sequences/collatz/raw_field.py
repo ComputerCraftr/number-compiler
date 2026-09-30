@@ -29,6 +29,7 @@ carry vector are never retained as semantic state.
 """
 
 from __future__ import annotations
+from number_compiler.arithmetic.contracts.iterative_queries import defer_dependencies
 
 from collections.abc import Iterable, Sequence
 from dataclasses import dataclass
@@ -211,11 +212,9 @@ def summarize_collatz_sentinel_word(
         if node.left is None or node.right is None:
             raise AssertionError(node)
         if not ready:
-            stack.append((node, True))
-            if node.right.node_id not in memo:
-                stack.append((node.right, False))
-            if node.left.node_id not in memo:
-                stack.append((node.left, False))
+            defer_dependencies(
+                stack, node, (node.left, node.right), memo, lambda child: child.node_id
+            )
             continue
         memo[node.node_id] = memo[node.left.node_id].then(memo[node.right.node_id])
     return memo[word.node_id]

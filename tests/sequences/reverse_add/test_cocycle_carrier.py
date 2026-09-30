@@ -13,7 +13,7 @@ from devtools.experiments.reverse_add.cocycle_carrier import (
 )
 from devtools.experiments.reverse_add.factored_planes import PlaneGate, PlaneID
 from devtools.experiments.reverse_add.factored_power import FactoredTemporalPower
-from devtools.proofs import exact_oracle
+from devtools.verification import exact_oracle
 from number_compiler.arithmetic.automata import program_word as words
 from number_compiler.arithmetic.carry.carry_monoid import CarryFn
 from number_compiler.arithmetic.carry.event_memory import pair_step
@@ -286,7 +286,7 @@ def test_partial_plane_gate_rejects_undefined_scalar_input() -> None:
 
 
 def test_cocycle_plane_checkpoint_round_trip() -> None:
-    from devtools.proofs.reverse_plane_checkpoint import (
+    from devtools.verification.reverse_plane_checkpoint import (
         export_plane_roots,
         import_plane_roots,
     )
@@ -310,7 +310,7 @@ def test_cocycle_plane_checkpoint_round_trip() -> None:
 def test_endpoint_resume_preserves_primitive_counts(tmp_path: Path) -> None:
     import json
 
-    from devtools.proofs.reverse_cocycle_endpoint_probe import probe
+    from devtools.verification.reverse_cocycle_endpoint_probe import probe
 
     checkpoint = tmp_path / "checkpoint.json"
     with exact_oracle():

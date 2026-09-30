@@ -2,6 +2,11 @@
 
 from __future__ import annotations
 
+from number_compiler.resources.causal_workspace import (
+    CausalFrameStack,
+    CausalValueStack,
+)
+
 from dataclasses import dataclass
 from typing import Protocol
 
@@ -24,10 +29,6 @@ from number_compiler.hashlife.tiles.tile_result_records import (
 )
 from number_compiler.hashlife.tiles.tile_results import CompletedResultArena
 from number_compiler.hashlife.tiles.tiles import TileArena, TileID
-from number_compiler.resources.causal_workspace import (
-    CausalFrameStack,
-    CausalValueStack,
-)
 from number_compiler.resources.ledger import ResourceLedger
 
 
@@ -69,12 +70,7 @@ def directed_transfer(
 ) -> int:
     """Apply one primitive transfer, caching concrete canonical parents first."""
     results = host._require_results()
-    tasks = results._causal_tasks
-    if tasks is None:
-        raise ValueError("directed transfer requires its scheduler task workspace")
-    frames, values = tasks.directed_frames, tasks.directed_values
-    if len(frames) or len(values):
-        raise ValueError("directed transfer auxiliary workspace is already active")
+    frames, values = _directed_workspace(results)
     admission = _prepare_admission(results, action, wiring, side)
     try:
         return _run_directed(
@@ -102,12 +98,7 @@ def canonical_directed_transfer(
 ) -> int:
     """Apply canonical primitive wiring after one action validation."""
     results = host._require_results()
-    tasks = results._causal_tasks
-    if tasks is None:
-        raise ValueError("directed transfer requires its scheduler task workspace")
-    frames, values = tasks.directed_frames, tasks.directed_values
-    if len(frames) or len(values):
-        raise ValueError("directed transfer auxiliary workspace is already active")
+    frames, values = _directed_workspace(results)
     admission = _prepare_canonical_admission(
         results,
         action,
@@ -236,3 +227,15 @@ def _run_directed(
 
 
 __all__ = ["canonical_directed_transfer", "directed_transfer"]
+
+
+def _directed_workspace(
+    results: CompletedResultArena,
+) -> tuple[CausalFrameStack, CausalValueStack]:
+    tasks = results._causal_tasks
+    if tasks is None:
+        raise ValueError("directed transfer requires its scheduler task workspace")
+    frames, values = tasks.directed_frames, tasks.directed_values
+    if len(frames) or len(values):
+        raise ValueError("directed transfer auxiliary workspace is already active")
+    return frames, values

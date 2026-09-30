@@ -16,8 +16,12 @@ from number_compiler.hashlife.execution.continuations.diamond_runtime import (
 )
 from number_compiler.hashlife.execution.diamond_continuation_reduction import (
     NormalizePrimitiveLambda,
+    CompilePrimitiveFunction,
 )
-from number_compiler.hashlife.interfaces.diamond_boundary_expr import ExprID
+from number_compiler.hashlife.interfaces.diamond_boundary_expr import (
+    ExprID,
+    BoundaryExpressionArena,
+)
 from number_compiler.resources.ledger import ResourceLedger
 from number_compiler.sequences.collatz.block_power import CollatzPhysicalBlockEffect
 
@@ -51,3 +55,23 @@ def literal(
     return runtime.higher.expressions.literal(
         runtime.boundaries.literal(action, side, value)
     )
+
+
+def advance_after_emit(
+    arena: BoundaryExpressionArena, action: ActionProgramID, left: ExprID, right: ExprID
+) -> tuple[ExprID, ExprID, ExprID]:
+    """Build the same dependent primitive recipe for finite/compiler boundary tests."""
+    symbol = arena.primitive_emit(action, left, arena.symbol(action, 1), right)
+    body = arena.primitive_advance(action, 0, left, symbol)
+    return symbol, body, arena.lambda_(right, body)
+
+
+def incoming_advance_task(
+    runtime: DiamondRuntime,
+    action: ActionProgramID,
+) -> tuple[BoundaryExpressionArena, CompilePrimitiveFunction]:
+    arena = runtime.higher.expressions
+    variable = arena.variable(arena.state_sort(action, 0), "incoming")
+    body = arena.primitive_advance(action, 0, variable, arena.symbol(action, 1))
+    task = CompilePrimitiveFunction(variable, body)
+    return arena, task

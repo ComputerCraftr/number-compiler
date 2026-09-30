@@ -2,13 +2,22 @@
 
 from __future__ import annotations
 
+from tests.support.tile_kernel import runtime_signature, _runtime_source
+from tests.support.assertions import assert_rejected_atomically
+from tests.support.tile_kernel import (
+    _runtime,
+    _tile,
+    _oracle,
+    _symbols,
+)
+
 from array import array
 from collections.abc import Mapping
 from typing import Never, cast
 
 import pytest
 
-from number_compiler.arithmetic.contracts.block_effect import BlockEffect, BoundarySide
+from number_compiler.arithmetic.contracts.block_effect import BoundarySide
 from number_compiler.arithmetic.contracts.block_kernel import (
     BaseBlockEffect,
     FiniteBlockEffect,
@@ -21,112 +30,29 @@ from number_compiler.hashlife.actions.field_actions import FieldCellActionID
 from number_compiler.hashlife.actions.lazy_compiler import UnsupportedInterfaceError
 from number_compiler.hashlife.execution.tile_fused_kernel import leaf_product
 from number_compiler.hashlife.execution.tile_kernel import PrimitiveTileKernelAdapter
-from number_compiler.hashlife.execution.tile_scheduler import TileScheduler
 from number_compiler.hashlife.interfaces import tile_reverse_functions
 from number_compiler.hashlife.interfaces.diamond_kernel import DiamondKernelArena
 from number_compiler.hashlife.interfaces.diamond_quotient import DiamondQuotientArena
 from number_compiler.hashlife.interfaces.semantic_bits import FactoredFunctionID
 from number_compiler.hashlife.tiles.tile_context import ChildContext
 from number_compiler.hashlife.tiles.tile_ports import ResultWiring
-from number_compiler.hashlife.tiles.tile_results import CompletedResultArena
 from number_compiler.hashlife.tiles.tiles import (
+    TileLease,
     TileAlphabet,
     TileArena,
     TileID,
-    TileLease,
 )
 from number_compiler.projection.digit_terminal import DigitNormalizeBlockEffect
 from number_compiler.resources.ledger import ResourceLedger
 from number_compiler.sequences.collatz.block_power import CollatzPhysicalBlockEffect
 
 
-def _runtime(
-    effect: BlockEffect,
-) -> tuple[
-    ResourceLedger,
-    TileArena,
-    PrimitiveTileKernelAdapter,
-    FieldCellActionID,
-    TileScheduler,
-]:
-    ledger = ResourceLedger()
-    kernels = DiamondKernelArena(ledger)
-    interfaces = DiamondQuotientArena(SemanticFunctionArena(ledger))
-    tiles = TileArena(ledger)
-    adapter = PrimitiveTileKernelAdapter(tiles, kernels, interfaces)
-    action = adapter.admit(effect)
-    results = CompletedResultArena(
-        tiles,
-        interfaces,
-        action_authority=adapter,
-        validate_action=adapter.validate_action,
-        signature_for=adapter.signature_for,
-    )
-    adapter.attach_results(results)
-    return ledger, tiles, adapter, action, TileScheduler(tiles, results, adapter)
-
-
-def _tile(
-    tiles: TileArena,
-    adapter: PrimitiveTileKernelAdapter,
-    action: FieldCellActionID,
-    symbols: tuple[int, ...],
-) -> TileLease:
-    if not symbols or len(symbols) & (len(symbols) - 1):
-        raise ValueError("test tile width must be a power of two")
-    level = [tiles.leaf(adapter.alphabet(action), symbol) for symbol in symbols]
-    try:
-        while len(level) > 1:
-            following = [
-                tiles.join(level[index].tile, level[index + 1].tile)
-                for index in range(0, len(level), 2)
-            ]
-            for lease in level:
-                lease.close()
-            level = following
-        return level.pop()
-    except BaseException:
-        for lease in level:
-            lease.close()
-        raise
-
-
-def _oracle(
-    effect: BlockEffect,
-    symbols: tuple[int, ...],
-) -> tuple[int, ...]:
-    left = effect.initial(BoundarySide.LEFT)
-    left_states = []
-    for symbol in symbols:
-        left_states.append(left)
-        left = effect.advance(BoundarySide.LEFT, left, symbol)
-    right = effect.initial(BoundarySide.RIGHT)
-    right_states = [right] * len(symbols)
-    for index in range(len(symbols) - 1, -1, -1):
-        right_states[index] = right
-        right = effect.advance(BoundarySide.RIGHT, right, symbols[index])
-    return tuple(
-        int(effect.emit(left_state, symbol, right_state))
-        for left_state, symbol, right_state in zip(
-            left_states,
-            symbols,
-            right_states,
-            strict=True,
-        )
-    )
-
-
-def _symbols(tiles: TileArena, tile: TileID) -> tuple[int, ...]:
-    return tuple(
-        tiles.point(tile, coordinate) for coordinate in range(tiles.resolve(tile).width)
-    )
-
-
 def test_fused_leaf_reuses_direct_kernel_symbol_before_compilation(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    ledger, tiles, adapter, primitive, _scheduler = _runtime(BaseBlockEffect(3))
-    source = _tile(tiles, adapter, primitive, (0,))
+    ledger, tiles, adapter, primitive, _scheduler, source = _runtime_source(
+        BaseBlockEffect(3), (0,)
+    )
     action = adapter.power(primitive, 2)
     wiring = adapter.wiring(primitive)
     ports = adapter.initial_ports(primitive)
@@ -157,10 +83,11 @@ def test_leaf_product_rejects_symbol_alias_before_warm_lookup(
     wiring = adapter.wiring(action)
     leaf_product(adapter, action, 0, wiring)
     leaf_product(adapter, action, 1, wiring)
-    before = ledger.snapshot()
-    with pytest.raises((TypeError, ValueError)):
-        leaf_product(adapter, action, cast("int", bad), wiring)
-    assert ledger.snapshot() == before
+    assert_rejected_atomically(
+        ledger,
+        lambda: leaf_product(adapter, action, cast("int", bad), wiring),
+        (TypeError, ValueError),
+    )
 
 
 def test_leaf_product_budget_rejects_before_kernel_work(
@@ -187,9 +114,9 @@ def test_leaf_product_budget_rejects_before_kernel_work(
 def test_result_shape_uses_one_combined_action_signature_validation(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    _ledger, _tiles, adapter, action, scheduler = _runtime(BaseBlockEffect(3))
-    ports = adapter.initial_ports(action)
-    wiring = adapter.wiring(action)
+    _ledger, _tiles, adapter, action, scheduler, ports, wiring = runtime_signature(
+        BaseBlockEffect(3)
+    )
     original = adapter.validate_action
     calls = 0
 
@@ -319,8 +246,9 @@ def test_physical_collatz_primitive_complete_tile_matches_exact_bimachine() -> N
 
 def test_primitive_cold_point_materializes_only_one_output_leaf() -> None:
     effect = BaseBlockEffect(10)
-    ledger, tiles, adapter, action, scheduler = _runtime(effect)
-    source = _tile(tiles, adapter, action, (2, 7, 11, effect.blank))
+    ledger, tiles, adapter, action, scheduler, source = _runtime_source(
+        effect, (2, 7, 11, effect.blank)
+    )
     try:
         before = ledger.counters.get("tile_publications", 0)
         expected = _oracle(effect, (2, 7, 11, effect.blank))[2]
@@ -343,8 +271,9 @@ def test_primitive_cold_point_materializes_only_one_output_leaf() -> None:
 
 def test_primitive_adapter_rejects_temporal_composition_instead_of_replay() -> None:
     effect = BaseBlockEffect(3)
-    _ledger, tiles, adapter, action, scheduler = _runtime(effect)
-    source = _tile(tiles, adapter, action, (0, effect.blank))
+    _ledger, tiles, adapter, action, scheduler, source = _runtime_source(
+        effect, (0, effect.blank)
+    )
     try:
         result = scheduler.complete(
             action,
@@ -505,25 +434,13 @@ def test_bounded_reverse_parent_interface_composes_without_substitution(
     monkeypatch: pytest.MonkeyPatch,
     base: int,
 ) -> None:
-    _ledger, tiles, adapter, action, _scheduler = _runtime(BaseBlockEffect(base))
-    source = _tile(tiles, adapter, action, (base - 1, 2 * base - 2))
-    substitutions = 0
-    substitute = adapter.bits.substitute
-
-    def counted(
-        function: FactoredFunctionID,
-        replacements: Mapping[PortVariable, FactoredFunctionID],
-        *,
-        joint: bool = True,
-    ) -> FactoredFunctionID:
-        nonlocal substitutions
-        substitutions += 1
-        return substitute(function, replacements, joint=joint)
-
-    monkeypatch.setattr(adapter.bits, "substitute", counted)
+    _ledger, tiles, adapter, action, _scheduler, source = _runtime_source(
+        BaseBlockEffect(base), (base - 1, 2 * base - 2)
+    )
+    substitutions = _substitution_counter(monkeypatch, adapter)
     try:
         adapter._compile_interface(action, source.tile, adapter.wiring(action))
-        assert substitutions == 0
+        assert substitutions[0] == 0
         assert adapter.ledger.counters["reverse_port_parent_interfaces"] == 1
         assert adapter.ledger.counters["spatial_interface_composition_requests"] == 1
         assert (
@@ -540,25 +457,13 @@ def test_bounded_reverse_parent_interface_composes_without_substitution(
 def test_uncertified_reverse_base_keeps_generic_finite_compiler(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    _ledger, tiles, adapter, action, _scheduler = _runtime(BaseBlockEffect(16))
-    source = _tile(tiles, adapter, action, (15, 30))
-    substitutions = 0
-    substitute = adapter.bits.substitute
-
-    def counted(
-        function: FactoredFunctionID,
-        replacements: Mapping[PortVariable, FactoredFunctionID],
-        *,
-        joint: bool = True,
-    ) -> FactoredFunctionID:
-        nonlocal substitutions
-        substitutions += 1
-        return substitute(function, replacements, joint=joint)
-
-    monkeypatch.setattr(adapter.bits, "substitute", counted)
+    _ledger, tiles, adapter, action, _scheduler, source = _runtime_source(
+        BaseBlockEffect(16), (15, 30)
+    )
+    substitutions = _substitution_counter(monkeypatch, adapter)
     try:
         adapter._compile_interface(action, source.tile, adapter.wiring(action))
-        assert substitutions > 0
+        assert substitutions[0] > 0
         assert adapter.ledger.counters.get("reverse_port_parent_interfaces", 0) == 0
     finally:
         source.close()
@@ -590,10 +495,7 @@ def test_fused_leaf_accepts_noninitial_producer_ports() -> None:
 def test_warm_fused_parent_interface_skips_children_and_reducer(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    _ledger, tiles, adapter, primitive, _scheduler = _runtime(BaseBlockEffect(2))
-    action = adapter.power(primitive, 2)
-    source = _tile(tiles, adapter, primitive, (0, 1, 2, 3))
-    ports, wiring = adapter.initial_ports(primitive), adapter.wiring(action)
+    adapter, action, source, ports, wiring = _fused_parent(2)
     try:
         expected = adapter.fused_interface(action, source.tile, ports, wiring)
 
@@ -610,10 +512,7 @@ def test_warm_fused_parent_interface_skips_children_and_reducer(
 def test_cold_fused_parent_computes_each_child_context_once(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    _ledger, tiles, adapter, primitive, _scheduler = _runtime(BaseBlockEffect(3))
-    action = adapter.power(primitive, 2)
-    source = _tile(tiles, adapter, primitive, (0, 1, 2, 3))
-    ports, wiring = adapter.initial_ports(primitive), adapter.wiring(action)
+    adapter, action, source, ports, wiring = _fused_parent(3)
     original = adapter.child_context
     seen: set[tuple[TileID, tuple[int, ...], int]] = set()
 
@@ -736,15 +635,53 @@ def test_fused_direct_api_rejects_bad_ports_sides_and_nonleaf_before_mutation() 
                     cast(int, side),
                 )
             assert ledger.snapshot() == before
-        before = ledger.snapshot()
-        with pytest.raises(ValueError, match="one source symbol"):
-            adapter.fused_leaf_result(
-                action,
-                source.tile,
-                producer,
-                producer,
-                wiring,
-            )
-        assert ledger.snapshot() == before
+        before = assert_rejected_atomically(
+            ledger,
+            lambda: adapter.fused_leaf_result(
+                action, source.tile, producer, producer, wiring
+            ),
+            ValueError,
+            match="one source symbol",
+        )
     finally:
         source.close()
+
+
+def _substitution_counter(
+    monkeypatch: pytest.MonkeyPatch, adapter: PrimitiveTileKernelAdapter
+) -> list[int]:
+    substitutions = [0]
+    substitute = adapter.bits.substitute
+
+    def counted(
+        function: FactoredFunctionID,
+        replacements: Mapping[PortVariable, FactoredFunctionID],
+        *,
+        joint: bool = True,
+    ) -> FactoredFunctionID:
+        substitutions[0] += 1
+        return substitute(function, replacements, joint=joint)
+
+    monkeypatch.setattr(adapter.bits, "substitute", counted)
+    return substitutions
+
+
+def _fused_parent(
+    base: int,
+) -> tuple[
+    PrimitiveTileKernelAdapter,
+    FieldCellActionID,
+    TileLease,
+    tuple[int, ...],
+    ResultWiring,
+]:
+    _ledger, tiles, adapter, primitive, _scheduler = _runtime(BaseBlockEffect(base))
+    action = adapter.power(primitive, 2)
+    source = _tile(tiles, adapter, primitive, (0, 1, 2, 3))
+    return (
+        adapter,
+        action,
+        source,
+        adapter.initial_ports(primitive),
+        adapter.wiring(action),
+    )

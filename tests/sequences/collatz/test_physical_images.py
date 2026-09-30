@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from tests.support.collatz_images import assert_branch_segments
+
 import pytest
 
 from number_compiler.hashlife.execution.tile_causal import CausalTileEngine
@@ -33,11 +35,7 @@ def test_source_image_matches_fixed_physical_recurrence(steps: int) -> None:
     workspace = CollatzPhysicalImageWorkspace(ResourceLedger(), 27, steps)
     assert workspace.endpoint() == expected
     assert workspace.odd_steps() == odd
-    actual: list[int] = []
-    for start, width, word in workspace.segments():
-        assert start == len(actual)
-        actual.extend((word >> offset) & 1 for offset in range(width))
-    assert tuple(actual) == branches
+    assert_branch_segments(workspace, branches)
     assert workspace.scheduler._source_only
 
 

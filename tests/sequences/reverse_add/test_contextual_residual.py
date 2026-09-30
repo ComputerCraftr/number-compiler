@@ -56,9 +56,7 @@ def _q7(
 def test_derived_carries_and_three_stencils_match_all_symmetric_width_four_fields() -> (
     None
 ):
-    arena, ports, (s, t) = _runtime()
-    ds, dt = arena.domain(s), arena.domain(t)
-    growth = arena.carry_prefix((ds, dt, dt, ds))
+    arena, ports, s, t, ds, dt, growth = _symmetric_context()
     outer = arena.no_growth(s, (), (ds, dt, dt))
     inner = arena.no_growth(t, (ds,), (ds, dt))
     edge = arena.growth_edge(s)
@@ -72,9 +70,7 @@ def test_derived_carries_and_three_stencils_match_all_symmetric_width_four_field
 
 
 def test_no_growth_seven_bands_transport_next_domain_and_updated_neighbor() -> None:
-    arena, ports, (s, t) = _runtime()
-    ds, dt = arena.domain(s), arena.domain(t)
-    growth = arena.carry_prefix((ds, dt, dt, ds))
+    arena, ports, s, t, ds, dt, growth = _symmetric_context()
     allowed = arena.bits.map_atoms(growth, BOOL, (1, 0))
     outer = arena.no_growth(s, (), (ds, dt, dt))
     inner = arena.no_growth(t, (ds,), (ds, dt))
@@ -93,9 +89,7 @@ def test_no_growth_seven_bands_transport_next_domain_and_updated_neighbor() -> N
 
 
 def test_growth_refines_only_observable_contextual_distinctions() -> None:
-    arena, ports, (s, t) = _runtime()
-    ds, dt = arena.domain(s), arena.domain(t)
-    growth = arena.carry_prefix((ds, dt, dt, ds))
+    arena, ports, s, t, ds, dt, growth = _symmetric_context()
     neighbor = arena.bits.map_atoms(s, BOOL, tuple(int(i == 10) for i in range(19)))
     allowed = arena.bits.restrict(growth, neighbor)
     edge = arena.growth_edge(s)
@@ -300,3 +294,18 @@ def test_context_layout_is_part_of_residual_identity() -> None:
     foreign_layout = arena.residual(extent_context, ports[0], 10)
     with pytest.raises(ValueError, match="no certified successor"):
         arena.advance(pair_context, pair_context, ports[0], foreign_layout)
+
+
+def _symmetric_context() -> tuple[
+    ReverseContextualResidualArena,
+    tuple[FinitePort, ...],
+    FactoredFunctionID,
+    FactoredFunctionID,
+    FactoredFunctionID,
+    FactoredFunctionID,
+    FactoredFunctionID,
+]:
+    arena, ports, (s, t) = _runtime()
+    ds, dt = arena.domain(s), arena.domain(t)
+    growth = arena.carry_prefix((ds, dt, dt, ds))
+    return arena, ports, s, t, ds, dt, growth

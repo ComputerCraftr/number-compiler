@@ -2,7 +2,7 @@
 
 import pytest
 
-from devtools.proofs import exact_oracle
+from devtools.verification import exact_oracle
 from number_compiler.sequences.collatz.hensel_occurrence import (
     CollatzHenselOccurrenceCarrier,
 )

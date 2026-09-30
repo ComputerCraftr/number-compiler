@@ -10,14 +10,14 @@ present in the compiler.
 
 from __future__ import annotations
 
-from collections.abc import Callable, Sequence
+from collections.abc import Callable, Iterable, Sequence
 from dataclasses import dataclass
 from itertools import pairwise
 from typing import TYPE_CHECKING, TypedDict
 
 from devtools.experiments.algebra.projection_observer import SignQuotientObserverProfile
-from devtools.proofs import exact_oracle
-from devtools.proofs.carry_action_quotient import CarryResetSignature
+from devtools.verification import exact_oracle
+from devtools.verification.carry_action_quotient import CarryResetSignature
 from number_compiler.arithmetic.carry.carry_itinerary import (
     reverse_add_base_pm_residues,
 )
@@ -352,6 +352,22 @@ def _neighbor_residue_conflicts(*, base: int = 10) -> tuple[int, int]:
     return minus_conflicts, pm_conflicts
 
 
+def _successor_conflict_counts(
+    transitions: Iterable[tuple[object, object]],
+) -> tuple[int, int]:
+    seen: dict[object, object] = {}
+    keys: set[object] = set()
+    conflicts = 0
+    for key, successor in transitions:
+        keys.add(key)
+        old = seen.get(key)
+        if old is None:
+            seen[key] = successor
+        elif old != successor:
+            conflicts += 1
+    return len(keys), conflicts
+
+
 @exact_oracle()
 def _temporal_feature_closure(
     orbits: tuple[
@@ -377,21 +393,15 @@ def _temporal_feature_closure(
     history = int(history)
     if history <= 0:
         raise ValueError(history)
-    seen: dict[object, object] = {}
-    keys: set[object] = set()
-    conflicts = 0
+    transitions: list[tuple[object, object]] = []
     for orbit in orbits:
         symbols = tuple((row[3], feature(row)) for row in orbit)
         for index in range(history - 1, len(symbols) - 1):
             current = symbols[index - history + 1 : index + 1]
             nxt = symbols[index + 1]
-            keys.add(current)
-            old = seen.get(current)
-            if old is None:
-                seen[current] = nxt
-            elif old != nxt:
-                conflicts += 1
-    return TemporalClosureRow(history, len(keys), conflicts)
+            transitions.append((current, nxt))
+    key_count, conflicts = _successor_conflict_counts(transitions)
+    return TemporalClosureRow(history, key_count, conflicts)
 
 
 @exact_oracle()
@@ -405,9 +415,7 @@ def _single_jet_multi_seed_closure(
     base: int,
 ) -> tuple[int, int]:
     divisor = cyclotomic_power_coefficients(int(order), 1)
-    seen: dict[object, object] = {}
-    keys: set[object] = set()
-    conflicts = 0
+    transitions: list[tuple[object, object]] = []
     for seed in range(int(seed_start), int(seed_stop) + 1):
         orbit = _reverse_orbit(seed, int(steps), int(base))
         for current, nxt in pairwise(orbit):
@@ -419,13 +427,8 @@ def _single_jet_multi_seed_closure(
                 nxt[3],
                 polynomial_remainder_monic(nxt[2], divisor, modulus=int(modulus)),
             )
-            keys.add(key)
-            old = seen.get(key)
-            if old is None:
-                seen[key] = next_key
-            elif old != next_key:
-                conflicts += 1
-    return len(keys), conflicts
+            transitions.append((key, next_key))
+    return _successor_conflict_counts(transitions)
 
 
 @exact_oracle()
@@ -735,7 +738,7 @@ def special_sign_quotient_work_profile(
     parameter: int,
 ) -> SignQuotientWorkProfile:
     """Compare the old unquotiented digit work with the canonical sign quotient."""
-    from devtools.proofs.oracles.digit_power import (
+    from devtools.verification.oracles.digit_power import (
         lucas_lehmer_digit_field,
         pepin_digit_field,
     )

@@ -74,6 +74,8 @@ class QueryRequest:
     family: str
     selector: Literal["nth", "events", "verify"]
     index: int
+    nth_power10: int | None = None
+    max_index_bits: int = 1_000_000
     info: tuple[str, ...] = ()
     no_value: bool = False
     format: str = "value"
@@ -114,6 +116,82 @@ class QueryRequest:
             if self.selector == "events"
             else CAPABILITIES[self.family].unit
         )
+
+    @property
+    def presentation_index(self) -> int | dict[str, int | str]:
+        if self.nth_power10 is None:
+            return self.index
+        return {"encoding": "power10", "exponent": self.nth_power10}
+
+    def present_indices(self, packet: dict[str, Any]) -> dict[str, Any]:
+        """Keep selector coordinates compact throughout CLI observation packets."""
+        if self.nth_power10 is None:
+            return packet
+        pending: list[Any] = [packet]
+        index_fields = {"index", "requested_index", "requested_returns", "parameter"}
+        while pending:
+            container = pending.pop()
+            items = (
+                container.items()
+                if isinstance(container, dict)
+                else enumerate(container)
+            )
+            for key, value in items:
+                if key in index_fields and type(value) is int and value == self.index:
+                    container[key] = self.presentation_index
+                elif isinstance(value, (dict, list)):
+                    pending.append(value)
+        return packet
+
+
+def cli_index_token(text: str) -> str:
+    """Validate decimal syntax while deferring integer construction to admission."""
+    digits = text[1:] if text and text[0] in "+-" else text
+    if not digits or any(c < "0" or c > "9" for c in digits):
+        raise argparse.ArgumentTypeError("expected an ASCII integer")
+    digits = digits.lstrip("0") or "0"
+    return "-" + digits if text.startswith("-") and digits != "0" else digits
+
+
+def _index_product(left: int, right: int, max_bits: int) -> int:
+    # Reject before multiplication when even its lower bit bound is over budget.
+    # The remaining product has at most max_bits + 1 bits, including refusals.
+    if left and right and left.bit_length() + right.bit_length() - 1 > max_bits:
+        raise ValueError("index exceeds --max-index-bits")
+    value = left * right
+    if value.bit_length() > max_bits:
+        raise ValueError("index exceeds --max-index-bits")
+    return value
+
+
+def bounded_index(token: str, max_bits: int) -> int:
+    """Parse an explicit decimal index without a global integer-string override."""
+    negative = token.startswith("-")
+    digits = token[1:] if negative else token
+    if 3 * (len(digits) - 1) >= max_bits:
+        raise ValueError("index exceeds --max-index-bits")
+    value = 0
+    for start in range(0, len(digits), 9):
+        chunk = digits[start : start + 9]
+        value = _index_product(value, 10 ** len(chunk), max_bits) + int(chunk)
+        if value.bit_length() > max_bits:
+            raise ValueError("index exceeds --max-index-bits")
+    return -value if negative else value
+
+
+def power10_index(exponent: int, max_bits: int) -> int:
+    """Construct an admitted power iteratively, with every product bounded."""
+    require_integer(exponent, "--nth-power10", 0)
+    if 3 * exponent >= max_bits:
+        raise ValueError("index exceeds --max-index-bits")
+    value, factor, remaining = 1, 10, exponent
+    while remaining:
+        if remaining & 1:
+            value = _index_product(value, factor, max_bits)
+        remaining >>= 1
+        if remaining:
+            factor = _index_product(factor, factor, max_bits)
+    return value
 
 
 def cli_integer(text: str) -> int:
@@ -216,11 +294,18 @@ def parser(*, demanded_family: str | None = None) -> argparse.ArgumentParser:
         if demanded_family is not None and name != demanded_family:
             continue
         selectors = command.add_mutually_exclusive_group(required=True)
-        selectors.add_argument("--nth", type=cli_integer, action=UniqueValue)
+        selectors.add_argument("--nth", type=cli_index_token, action=UniqueValue)
+        selectors.add_argument(
+            "--nth-power10",
+            type=cli_index_token,
+            action=UniqueValue,
+            metavar="K",
+            help="exact term index 10^K, with K >= 0",
+        )
         if capability.event_info:
             selectors.add_argument(
                 "--events",
-                type=cli_integer,
+                type=cli_index_token,
                 action=UniqueValue,
                 help="accelerated odd events; information-only query",
             )
@@ -253,6 +338,9 @@ def parser(*, demanded_family: str | None = None) -> argparse.ArgumentParser:
         )
         command.add_argument(
             "--max-output-bits", type=cli_integer, default=1_000_000, action=UniqueValue
+        )
+        command.add_argument(
+            "--max-index-bits", type=cli_integer, default=1_000_000, action=UniqueValue
         )
         defaults = {"seed": None, "base": 10, "radix": 2, "start": 2}
         for parameter in capability.parameters:
@@ -325,7 +413,18 @@ def parse_request(argv: list[str]) -> QueryRequest | None:
             "choose a family and --nth N; use --list-families for available families"
         )
     certificate = getattr(args, "verify_nonhalting", None)
-    events = getattr(args, "events", None)
+    event_token = getattr(args, "events", None)
+    require_integer(args.max_index_bits, "--max-index-bits", 1)
+    events = (
+        None if event_token is None else bounded_index(event_token, args.max_index_bits)
+    )
+    # An admitted exponent is below the index bit budget. Bound its own
+    # construction too, even when Python's decimal conversion limit is disabled.
+    compact_exponent = (
+        None
+        if args.nth_power10 is None
+        else bounded_index(args.nth_power10, args.max_index_bits.bit_length())
+    )
     selector: Literal["nth", "events", "verify"] = (
         "verify"
         if certificate is not None
@@ -340,11 +439,14 @@ def parse_request(argv: list[str]) -> QueryRequest | None:
     }
     fields.update(
         selector=selector,
+        nth_power10=compact_exponent,
         index=0
         if selector == "verify"
         else events
         if selector == "events"
-        else args.nth,
+        else power10_index(compact_exponent, args.max_index_bits)
+        if compact_exponent is not None
+        else bounded_index(args.nth, args.max_index_bits),
         certificate=certificate,
         info=tuple(dict.fromkeys(args.info)),
     )
@@ -368,6 +470,9 @@ def validate(q: QueryRequest, specified: frozenset[str]) -> None:
         "--nth" if q.selector == "nth" else "--events",
         1 if q.family in {"mersenne", "a367620"} else 0,
     )
+    require_integer(q.max_index_bits, "--max-index-bits", 1)
+    if q.index.bit_length() > q.max_index_bits:
+        raise ValueError("index exceeds --max-index-bits")
     allowed = capability.event_info if q.selector == "events" else capability.nth_info
     if set(q.info) - set(allowed):
         raise ValueError("requested information is unavailable for this selector")

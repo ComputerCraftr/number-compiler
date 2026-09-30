@@ -12,8 +12,8 @@ from collections.abc import Iterable
 from dataclasses import asdict, dataclass
 from functools import cache
 
-from devtools.proofs import exact_oracle
-from devtools.proofs.carry_action_quotient import CarryResetSignature
+from devtools.verification import exact_oracle
+from devtools.verification.carry_action_quotient import CarryResetSignature
 from number_compiler.arithmetic.automata.program_word import from_runs
 from number_compiler.arithmetic.carry.event_memory import forcing_event, pair_step
 from number_compiler.arithmetic.fields.adic_morphism import collatz_slab_padic3
@@ -163,6 +163,34 @@ def _live_reverse_innovation(
     return None
 
 
+def _record_reverse_innovation(
+    seen: dict[tuple[object, ...], tuple[int, tuple[object, ...]]],
+    classes: set[tuple[object, ...]],
+    pair_states: set[tuple[int, ...]],
+    key: tuple[object, ...],
+    behavior: tuple[int, tuple[object, ...]],
+    pair: tuple[int, ...],
+    live: int,
+) -> tuple[int, int, int, int]:
+    old = seen.get(key)
+    growth_conflict = action_conflict = 0
+    if old is not None:
+        growth_conflict = int(old[0] != behavior[0])
+        action_conflict = int(old[1] != behavior[1])
+    else:
+        seen[key] = behavior
+    classes.add(key)
+    pair_states.add(pair)
+    return growth_conflict, action_conflict, 1, live
+
+
+def _merge_innovation_counts(
+    counts: tuple[int, int, int, int], deltas: tuple[int, int, int, int]
+) -> tuple[int, int, int, int]:
+    merged = tuple(left + right for left, right in zip(counts, deltas, strict=True))
+    return merged[0], merged[1], merged[2], merged[3]
+
+
 @exact_oracle()
 def _reverse_domain(
     label: str,
@@ -213,16 +241,20 @@ def _reverse_domain(
                     growths[index],
                     CarryResetSignature.from_pair(pairs[index], base=10).canonical_key,
                 )
-                old = seen.get(key)
-                if old is not None:
-                    growth_conflicts += int(old[0] != behavior[0])
-                    action_conflicts += int(old[1] != behavior[1])
-                else:
-                    seen[key] = behavior
-                classes.add(key)
-                pair_states.add(pairs[index])
-                usable += 1
-                max_live = max(max_live, live)
+                growth_conflicts, action_conflicts, usable, max_live = (
+                    _merge_innovation_counts(
+                        (growth_conflicts, action_conflicts, usable, max_live),
+                        _record_reverse_innovation(
+                            seen,
+                            classes,
+                            pair_states,
+                            key,
+                            behavior,
+                            pairs[index],
+                            live,
+                        ),
+                    )
+                )
     distinct = len(pair_states)
     return ReverseInnovationAudit(
         label,
@@ -380,16 +412,14 @@ def _reverse_symmetry_domain(
                 growths[index],
                 CarryResetSignature.from_pair(pairs[index], base=10).canonical_key,
             )
-            old = seen.get(key)
-            if old is not None:
-                growth_conflicts += int(old[0] != behavior[0])
-                action_conflicts += int(old[1] != behavior[1])
-            else:
-                seen[key] = behavior
-            classes.add(key)
-            pair_states.add(pairs[index])
-            usable += 1
-            max_live = max(max_live, live)
+            growth_conflicts, action_conflicts, usable, max_live = (
+                _merge_innovation_counts(
+                    (growth_conflicts, action_conflicts, usable, max_live),
+                    _record_reverse_innovation(
+                        seen, classes, pair_states, key, behavior, pairs[index], live
+                    ),
+                )
+            )
     distinct = len(pair_states)
     return ReverseInnovationAudit(
         label,

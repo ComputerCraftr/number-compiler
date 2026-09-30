@@ -2,6 +2,10 @@
 
 from __future__ import annotations
 
+from number_compiler.hashlife.interfaces.diamond_kernel_bridge import (
+    scan_primitive_support,
+)
+
 from collections.abc import Generator
 from typing import TYPE_CHECKING
 
@@ -127,40 +131,13 @@ class PrimitiveSpatialTransfers:
             PortVariable(port.time, port.side, port.role, port.bit + bit)
             for bit in range((domain - 1).bit_length())
         }
-        pending = list(expression.bits)
-        checked: set[TransferSummaryID] = set()
-        functions = runtime.kernels.functions
-        visits = 0
-        pending_peak = len(pending)
-        workspace_peak = len(pending) + len(allowed)
-        while pending:
-            pending_peak = max(pending_peak, len(pending))
-            workspace_peak = max(
-                workspace_peak, len(pending) + len(checked) + len(allowed)
-            )
-            bit = pending.pop()
-            visits += 1
-            if bit in checked:
-                continue
-            checked.add(bit)
-            decision = functions._nodes[functions._resolve(bit)]
-            if decision.variable is not None:
-                if decision.variable not in allowed:
-                    raise ValueError("spatial function contains another input port")
-                pending.extend(
-                    (functions._handle(decision.low), functions._handle(decision.high))
-                )
-        workspace_peak = max(workspace_peak, len(checked) + len(allowed))
-        self.ledger.bump("primitive_spatial_admission_visits", len(checked))
-        self.ledger.bump("primitive_spatial_admission_frame_visits", visits)
-        for counter, peak in (
-            ("primitive_spatial_admission_pending_peak", pending_peak),
-            ("primitive_spatial_admission_workspace_peak", workspace_peak),
-            ("primitive_spatial_admission_unique_peak", len(checked)),
-        ):
-            self.ledger.bump(
-                counter, max(0, peak - self.ledger.counters.get(counter, 0))
-            )
+        scan_primitive_support(
+            runtime.kernels,
+            list(expression.bits),
+            allowed,
+            "primitive_spatial_admission",
+            "spatial function contains another input port",
+        )
         value = runtime.kernels.evaluate(
             summary, observation_inputs(domain, port, code)
         )

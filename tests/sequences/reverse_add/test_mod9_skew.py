@@ -4,9 +4,12 @@ from itertools import product
 
 import pytest
 
-from devtools.proofs.reverse_geometry_context import ReverseGeometryContext
-from devtools.proofs.skew_residue_laws import skew_normalized_digit, skew_pair_value
-from devtools.proofs.threshold_expressions import ThresholdExpressions
+from devtools.verification.reverse_geometry_context import ReverseGeometryContext
+from devtools.verification.skew_residue_laws import (
+    skew_normalized_digit,
+    skew_pair_value,
+)
+from devtools.verification.threshold_expressions import ThresholdExpressions
 from number_compiler.arithmetic.carry.event_memory import pair_step
 from number_compiler.arithmetic.fields.radix import reverse_pair_sums
 

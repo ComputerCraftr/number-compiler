@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from devtools.paths import report_directory
+
 import json
 
 from devtools.experiments.power_numbers.terminal_section_constructor_frontier import (
@@ -13,10 +15,12 @@ from devtools.experiments.power_numbers.terminal_section_constructor_frontier im
 from devtools.paths import report_output, repository_root
 
 ROOT = repository_root()
-RESULTS = ROOT / "results"
 
 
 def main() -> None:
+    RESULTS = report_directory(
+        "devtools.benchmarks.terminal_section_constructor_frontier_probe"
+    )
     RESULTS.mkdir(exist_ok=True)
     eq = [
         cyclotomic_section_equivalence("fermat", 4),
@@ -108,4 +112,6 @@ def main() -> None:
 
 
 if __name__ == "__main__":
-    main()
+    from devtools.runs import run_reported
+
+    raise SystemExit(run_reported(main))

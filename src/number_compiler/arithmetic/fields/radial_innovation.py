@@ -28,6 +28,17 @@ from number_compiler.arithmetic.polynomials.cyclotomic_transport import (
 from number_compiler.arithmetic.polynomials.digit_cyclotomic import CyclotomicDigitBlock
 
 
+def normalize_event_schedule(
+    events: Sequence[Sequence[int]], growths: Sequence[int]
+) -> tuple[tuple[tuple[int, ...], ...], tuple[int, ...]]:
+    """Normalize one finite coefficient forcing schedule and preserve its pairing."""
+    rows = tuple(tuple(map(int, row)) for row in events)
+    gs = tuple(map(int, growths))
+    if len(rows) != len(gs):
+        raise ValueError((len(rows), len(gs)))
+    return rows, gs
+
+
 @dataclass(frozen=True, slots=True)
 class ReverseAddCyclotomicInnovationBlock:
     """Exact affine reverse-add block in one power-of-two cyclotomic factor.
@@ -117,10 +128,7 @@ class ReverseAddCyclotomicInnovationBlock:
         order: int,
         bits: int,
     ) -> ReverseAddCyclotomicInnovationBlock:
-        rows = tuple(tuple(map(int, row)) for row in events)
-        gs = tuple(map(int, growths))
-        if len(rows) != len(gs):
-            raise ValueError((len(rows), len(gs)))
+        rows, gs = normalize_event_schedule(events, growths)
         out = cls.identity(order=int(order), bits=int(bits))
         for event, growth in zip(rows, gs, strict=True):
             out = out.then(cls.atom(event, growth, order=int(order), bits=int(bits)))

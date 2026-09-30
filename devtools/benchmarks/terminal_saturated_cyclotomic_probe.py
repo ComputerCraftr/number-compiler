@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from devtools.paths import report_directory
+
 import json
 
 from devtools.experiments.power_numbers.terminal_saturated_cyclotomic import (
@@ -76,7 +78,9 @@ def main() -> None:
             "production_promotable": False,
         },
     }
-    results = ROOT / "results"
+    results = report_directory(
+        "devtools.benchmarks.terminal_saturated_cyclotomic_probe"
+    )
     results.mkdir(exist_ok=True)
     (results / "terminal_saturated_cyclotomic_metrics.json").write_text(
         json.dumps(out, indent=2, sort_keys=True) + "\n"
@@ -137,4 +141,6 @@ def main() -> None:
 
 
 if __name__ == "__main__":
-    main()
+    from devtools.runs import run_reported
+
+    raise SystemExit(run_reported(main))

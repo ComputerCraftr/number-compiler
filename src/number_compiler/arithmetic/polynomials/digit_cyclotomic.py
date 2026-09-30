@@ -34,6 +34,7 @@ from number_compiler.arithmetic.polynomials.cyclotomic_factor import (
 )
 from number_compiler.arithmetic.polynomials.cyclotomic_ring import CyclotomicRing
 from number_compiler.arithmetic.polynomials.polynomial import (
+    trim_polynomial,
     evaluate_polynomial,
     polynomial_divide_exact,
 )
@@ -45,10 +46,7 @@ if TYPE_CHECKING:
 
 
 def _trim(values: Sequence[int]) -> tuple[int, ...]:
-    out = list(map(int, values)) or [0]
-    while len(out) > 1 and out[-1] == 0:
-        out.pop()
-    return tuple(out)
+    return trim_polynomial(values)
 
 
 def _affine_morphism() -> type[CyclotomicAffineMorphism]:

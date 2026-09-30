@@ -12,6 +12,16 @@ import pytest
 import devtools.benchmarks.field_query_release_probe as probe
 
 
+def _assert_failed_samples(result: probe.FieldProbeReport, reason: str) -> None:
+    assert result["collection_complete"] is True
+    assert result["measurement_series_complete"] is False
+    assert all(row["status"] == "failed" for row in result["rows"])
+    assert all(
+        isinstance(row["failure_reason"], str) and reason in row["failure_reason"]
+        for row in result["rows"]
+    )
+
+
 def _metrics(scale: int) -> dict[str, int]:
     result = {field: scale for field in probe.ENVELOPE_FIELDS}
     result.update({field: 0 for field in probe.FORBIDDEN_EXECUTION_FIELDS})
@@ -112,14 +122,7 @@ def test_invalid_worker_json_is_retained_as_failed_sample(
         lambda command, **_kwargs: CompletedProcess(command, 0, "not-json", "trace"),
     )
     result = probe.run_probe()
-    assert result["collection_complete"] is True
-    assert result["measurement_series_complete"] is False
-    assert all(row["status"] == "failed" for row in result["rows"])
-    assert all(
-        isinstance(row["failure_reason"], str)
-        and "invalid worker JSON" in row["failure_reason"]
-        for row in result["rows"]
-    )
+    _assert_failed_samples(result, "invalid worker JSON")
 
 
 def test_parent_source_consistency_is_reported_separately_from_worker_claims(
@@ -160,14 +163,7 @@ def test_malformed_metrics_are_retained_as_failure_instead_of_aborting(
 
     monkeypatch.setattr(subprocess, "run", fake_run)
     result = probe.run_probe()
-    assert result["collection_complete"] is True
-    assert result["measurement_series_complete"] is False
-    assert all(row["status"] == "failed" for row in result["rows"])
-    assert all(
-        isinstance(row["failure_reason"], str)
-        and "invalid metrics" in row["failure_reason"]
-        for row in result["rows"]
-    )
+    _assert_failed_samples(result, "invalid metrics")
 
 
 def test_forbidden_execution_work_blocks_otherwise_linear_measurements() -> None:

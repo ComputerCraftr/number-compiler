@@ -8,6 +8,10 @@ canonical IDs. No context program contains an emitted word or cell provenance.
 
 from __future__ import annotations
 
+from number_compiler.hashlife.interfaces.diamond_kernel_bridge import (
+    scan_primitive_support,
+)
+
 from collections.abc import MutableMapping, MutableSequence
 from dataclasses import dataclass
 from typing import Literal
@@ -207,45 +211,14 @@ class ContextProgramArena:
     def _input_port(
         self, arguments: tuple[TransferSummaryID, ...]
     ) -> tuple[int, PortVariable] | None:
-        functions = self.kernels.functions
         pending = [
             bit
             for argument in arguments
             for bit in self.kernels.expression(argument).bits
         ]
-        checked: set[TransferSummaryID] = set()
-        ports: set[tuple[int, int, str]] = set()
-        visits = 0
-        pending_peak = len(pending)
-        workspace_peak = len(pending)
-        while pending:
-            pending_peak = max(pending_peak, len(pending))
-            workspace_peak = max(
-                workspace_peak, len(pending) + len(checked) + len(ports)
-            )
-            bit = pending.pop()
-            visits += 1
-            if bit in checked:
-                continue
-            checked.add(bit)
-            node = functions._nodes[functions._resolve(bit)]
-            if node.variable is not None:
-                variable = node.variable
-                ports.add((variable.time, variable.side, variable.role))
-                pending.extend(
-                    (functions._handle(node.low), functions._handle(node.high))
-                )
-        workspace_peak = max(workspace_peak, len(checked) + len(ports))
-        self.ledger.bump("context_variable_support_visits", len(checked))
-        self.ledger.bump("context_variable_support_frame_visits", visits)
-        for counter, value in (
-            ("context_variable_support_pending_peak", pending_peak),
-            ("context_variable_support_workspace_peak", workspace_peak),
-            ("context_variable_support_unique_peak", len(checked)),
-        ):
-            self.ledger.bump(
-                counter, max(0, value - self.ledger.counters.get(counter, 0))
-            )
+        ports = scan_primitive_support(
+            self.kernels, pending, None, "context_variable_support", ""
+        )
         if ports == {(0, 0, LEFT_A.role)}:
             return 0, LEFT_A
         if ports == {(0, 1, RIGHT_A.role)}:

@@ -4,8 +4,8 @@ from __future__ import annotations
 
 import pytest
 
-from devtools.proofs.collatz_domain_geometry import CollatzDomainGeometry
-from devtools.proofs.threshold_expressions import ThresholdExpressions
+from devtools.verification.collatz_domain_geometry import CollatzDomainGeometry
+from devtools.verification.threshold_expressions import ThresholdExpressions
 from number_compiler.arithmetic.automata import program_word as words
 from number_compiler.arithmetic.carry.collatz_output_quotient import radix64_domain
 

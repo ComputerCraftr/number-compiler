@@ -2,9 +2,9 @@
 
 import pytest
 
-from devtools.proofs.reverse_consumer_audit import audit
-from devtools.proofs.reverse_geometry_context import ReverseGeometryContext
-from devtools.proofs.threshold_expressions import ThresholdExpressions
+from devtools.verification.reverse_consumer_audit import audit
+from devtools.verification.reverse_geometry_context import ReverseGeometryContext
+from devtools.verification.threshold_expressions import ThresholdExpressions
 from number_compiler.arithmetic.contracts.block_effect import BlockContextBudgetExceeded
 
 

@@ -42,14 +42,8 @@ from number_compiler.hashlife.tiles.tile_result_records import SpatialInterfaceK
 from number_compiler.projection.digit_terminal import DigitNormalizeBlockEffect
 from number_compiler.resources.ledger import ResourceLedger
 from number_compiler.resources.metric_collection import collect_ledger_metrics
-
-
-def _reduce(values: tuple[int, ...], classes: int) -> tuple[int, ...]:
-    out = [0] * classes
-    for index, value in enumerate(values):
-        quotient, target = divmod(index, classes)
-        out[target] = (out[target] + (-value if quotient & 1 else value)) % 32
-    return tuple(out)
+from tests.support.reference_arithmetic import negacyclic_reduce as _reduce
+from tests.support.tile_kernel import join_four
 
 
 def _multiply(
@@ -404,9 +398,7 @@ def test_digit_terminal_sector_width_declines_noncontiguous_activity() -> None:
         leaves = tuple(
             adapter.tiles.leaf(alphabet, symbol) for symbol in (7, 19, 7, 19)
         )
-        left = adapter.tiles.join(leaves[0].tile, leaves[1].tile)
-        right = adapter.tiles.join(leaves[2].tile, leaves[3].tile)
-        root = adapter.tiles.join(left.tile, right.tile)
+        left, right, root = join_four(adapter.tiles, leaves)
         terminal = adapter.admit(DigitNormalizeBlockEffect(10))
         application = original.scheduler.application(
             terminal,

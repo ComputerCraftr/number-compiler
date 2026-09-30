@@ -20,6 +20,7 @@ from number_compiler.arithmetic.formula.formula import (
     reachable,
 )
 from number_compiler.arithmetic.formula.pair_algebra import (
+    growth_carry_views,
     carry_plane_scan,
     check_pair_planes,
 )
@@ -136,10 +137,7 @@ def carry_event_formula_from_planes(
         target_width = width
     else:
         target_width = width + 1
-        carry_p = arena.resize(carry, target_width)
-        Ci = arena.shl(carry_p, 1)
-        Cd_i = arena.resize(arena.mirror(carry), target_width)
-        Cd_i_plus_1 = arena.shl(Cd_i, 1)
+        carry_p, Ci, Cd_i, Cd_i_plus_1 = growth_carry_views(arena, carry, target_width)
         interior = arena.range_mask(1, width, target_width)
         grouped = _linear_boolean_value_sets(
             arena,

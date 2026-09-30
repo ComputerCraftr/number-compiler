@@ -26,7 +26,7 @@ from time import perf_counter, process_time
 from typing import Any
 
 from devtools.checks.test_run_evidence import source_fingerprint
-from devtools.paths import repository_root
+from devtools.paths import report_output, repository_root
 from number_compiler.projection.lazy_radix import collatz_radix_digit
 from number_compiler.resources.metric_collection import collect_ledger_metrics
 from number_compiler.sequences.collatz.block_power import PoweredCollatzTerm
@@ -36,7 +36,6 @@ SEED = (1 << 95) + 0x123456789ABCDEF12345
 TRIALS = 5
 COLD_LIMIT = 0.25
 REPEAT_LIMIT = 0.01
-DEFAULT_OUTPUT = ROOT / "results/radix_regression_probe_v1.json"
 _LOGGER = logging.getLogger(__name__)
 
 
@@ -305,13 +304,18 @@ def write_result(path: Path, result: dict[str, Any]) -> None:
 
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--output", type=Path, default=DEFAULT_OUTPUT)
+    parser.add_argument("--output", type=Path)
     parser.add_argument("--worker", action="store_true", help=argparse.SUPPRESS)
     args = parser.parse_args()
     if args.worker:
         row = worker()
         print(json.dumps(row))
         return 0 if row["status"] == "PASS" else 1
+    if args.output is None:
+        args.output = report_output(
+            "devtools.benchmarks.radix_regression_probe",
+            "radix_regression_probe_v1.json",
+        )
     if args.output.exists() or args.output.is_symlink():
         parser.error("refusing to overwrite existing or historical evidence")
     result = run_trials()
@@ -329,4 +333,6 @@ def main() -> int:
 
 
 if __name__ == "__main__":
-    raise SystemExit(main())
+    from devtools.runs import run_reported
+
+    raise SystemExit(run_reported(main))

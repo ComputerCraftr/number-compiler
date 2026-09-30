@@ -447,6 +447,43 @@ class _Builder:
             raise
         return result
 
+    def numeric_function(
+        self,
+        signature: FunctionSignature,
+        joint: tuple[FinitePort, ...],
+        roots: tuple[int, ...],
+        body_valid: int,
+        valid: int,
+        aliases: tuple[FinitePort, ...],
+    ) -> int:
+        output = signature.output
+        if not isinstance(output, FunctionSort):
+            raise TypeError("numeric function wrapper requires a function sort")
+        body = self.atom(FunctionSignature(joint, output.output), roots, body_valid)
+        return self.intern(
+            StructuredNode(
+                signature,
+                "function",
+                self.arena.functions._handle(valid),
+                body=self.arena._handle(body),
+                bound=aliases,
+            )
+        )
+
+    def atom(
+        self, signature: FunctionSignature, roots: tuple[int, ...], valid: int
+    ) -> int:
+        """Intern a numeric structure and its shared Boolean payload together."""
+        bit = self.intern_bit(_PendingFunction(signature, roots, valid))
+        return self.intern(
+            StructuredNode(
+                signature,
+                "atom",
+                self.arena.functions._handle(valid),
+                atom=self.arena.bits._handle(bit),
+            )
+        )
+
     def variable(self, inputs: tuple[FinitePort, ...], port: FinitePort) -> int:
         circuit = self.circuit(inputs)
         roots = tuple(

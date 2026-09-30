@@ -659,3 +659,20 @@ __all__ = [
     "_ReverseLinks",
     "_ReverseMember",
 ]
+
+
+def fused_variant_key(key: FusedInterfaceKey) -> _FusedVariantKey:
+    """The same producer-variant identity is used at publication and retirement."""
+    wiring = key.producer_wiring
+    if type(wiring) is not ResultWiring:
+        raise TypeError("fused producer requires normalized wiring")
+    return _FusedVariantKey(
+        key.action,
+        key.input,
+        key.wiring,
+        wiring,
+        key.boundaries,
+        key.before,
+        key.after,
+        key.consumer_boundaries,
+    )

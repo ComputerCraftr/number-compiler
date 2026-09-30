@@ -367,6 +367,17 @@ class CanonicalDomainArena:
         }
 
 
+def _complement_cell(cell: DomainCell, maximum: int, family: str) -> DomainCell:
+    if not cell.active:
+        return cell
+    if not isinstance(cell.payload, int):
+        raise TypeError(cell.payload)
+    value = int(cell.payload)
+    if not 0 <= value <= maximum:
+        raise ValueError(cell)
+    return DomainCell(family, True, maximum - value)
+
+
 def reverse_pair_codec(base: int = 10) -> DomainCellCodec:
     """Finite symmetric-pair alphabet used by reverse/add spacetime cells.
 
@@ -381,14 +392,7 @@ def reverse_pair_codec(base: int = 10) -> DomainCellCodec:
     family = f"reverse-add-pair-b{base}"
 
     def conjugate(cell: DomainCell) -> DomainCell:
-        if not cell.active:
-            return cell
-        if not isinstance(cell.payload, int):
-            raise TypeError(cell.payload)
-        value = int(cell.payload)
-        if not 0 <= value <= 2 * (base - 1):
-            raise ValueError(cell)
-        return DomainCell(family, True, 2 * (base - 1) - value)
+        return _complement_cell(cell, 2 * (base - 1), family)
 
     codec = DomainCellCodec(family, conjugate=conjugate)
     for value in range(2 * base - 1):
@@ -438,14 +442,7 @@ def collatz_digit_codec(base: int = 4) -> DomainCellCodec:
         raise ValueError(base)
 
     def conjugate(cell: DomainCell) -> DomainCell:
-        if not cell.active:
-            return cell
-        if not isinstance(cell.payload, int):
-            raise TypeError(cell.payload)
-        digit = int(cell.payload)
-        if not 0 <= digit < base:
-            raise ValueError(cell)
-        return DomainCell(cell.family, True, base - 1 - digit)
+        return _complement_cell(cell, base - 1, cell.family)
 
     return DomainCellCodec(f"collatz-radix-{base}", conjugate=conjugate)
 

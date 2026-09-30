@@ -2,6 +2,10 @@
 
 from __future__ import annotations
 
+from tests.support.arithmetic_fixtures import ternary_xy_ports
+
+from tests.support.assertions import assert_rejected_atomically
+
 from itertools import product
 from typing import Literal, cast
 
@@ -108,9 +112,7 @@ def test_equal_exits_do_not_identify_different_finite_outputs() -> None:
 
 def test_non_power_of_two_admissibility_and_curried_invalid_codes() -> None:
     arena = SemanticFunctionArena(ResourceLedger())
-    x = FinitePort(PortVariable(0, 0, "x", 0), 3)
-    y = FinitePort(PortVariable(0, 0, "y", 0), 3)
-    sort = AtomSort("three", 3)
+    x, y, sort = ternary_xy_ports()
     vx = arena.variable((x, y), x, sort)
     curried = arena.curry(vx, (y,))
     for a, b in product(range(4), repeat=2):
@@ -203,10 +205,12 @@ def test_failed_product_publication_does_not_retain_nodes_interner_or_memo() -> 
 def test_wide_primitive_identity_rejects_before_domain_expansion() -> None:
     arena = SemanticFunctionArena(ResourceLedger())
     port = FinitePort(PortVariable(0, 0, "wide", 0), 1 << 63)
-    before = arena.ledger.snapshot()
-    with pytest.raises(ValueError, match="bit-factored"):
-        arena.variable((port,), port)
-    assert arena.ledger.snapshot() == before
+    assert_rejected_atomically(
+        arena.ledger,
+        lambda: arena.variable((port,), port),
+        ValueError,
+        match="bit-factored",
+    )
 
 
 @pytest.mark.parametrize("value", [True, 2.0, float("nan"), "2"])
@@ -253,19 +257,21 @@ def test_simultaneous_substitution_mapping_order_is_canonical_and_foreign_input_
     foreign = SemanticFunctionArena(ResourceLedger()).atom(
         FunctionSignature((), BOOL), 0
     )
-    before = arena.ledger.snapshot()
-    with pytest.raises(ValueError):
-        arena.substitute(pair, {x.variable: foreign, y.variable: vx})
-    assert arena.ledger.snapshot() == before
+    assert_rejected_atomically(
+        arena.ledger,
+        lambda: arena.substitute(pair, {x.variable: foreign, y.variable: vx}),
+        ValueError,
+    )
 
 
 def test_invalid_integer_evaluation_and_warm_sort_aliases_do_not_mutate() -> None:
     arena, x, y, vx, _ = fixture()
     for value in (True, 0.0, float("nan"), "0"):
-        before = arena.ledger.snapshot()
-        with pytest.raises(ValueError):
-            arena.evaluate(vx, {x.variable: cast("int", value), y.variable: 0})
-        assert arena.ledger.snapshot() == before
+        before = assert_rejected_atomically(
+            arena.ledger,
+            lambda: arena.evaluate(vx, {x.variable: cast("int", value), y.variable: 0}),
+            ValueError,
+        )
         forged = object.__new__(AtomSort)
         object.__setattr__(forged, "name", "boolean")
         object.__setattr__(forged, "cardinality", value)
@@ -278,10 +284,12 @@ def test_forged_cyclic_sort_rejects_before_hashing_or_retention() -> None:
     arena = SemanticFunctionArena(ResourceLedger())
     cyclic = ProductSort((BOOL,))
     object.__setattr__(cyclic, "items", (cyclic,))
-    before = arena.ledger.snapshot()
-    with pytest.raises(ValueError, match="cyclic"):
-        arena.invalid(FunctionSignature((), cyclic))
-    assert arena.ledger.snapshot() == before
+    assert_rejected_atomically(
+        arena.ledger,
+        lambda: arena.invalid(FunctionSignature((), cyclic)),
+        ValueError,
+        match="cyclic",
+    )
     # Shared acyclic children remain valid.
     signature = FunctionSignature((), ProductSort((BOOL, BOOL)))
     assert arena.resolve(arena.invalid(signature)).signature == signature

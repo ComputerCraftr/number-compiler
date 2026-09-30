@@ -1,6 +1,13 @@
 """Completed tile results retain output roots without owning future content."""
 
 from __future__ import annotations
+from tests.support.tile_results import _published_setup
+from tests.support.tile_results import _incoming_setup
+
+from tests.support.tile_results import (
+    assert_valid_tile_payloads,
+    assert_result_stores_unchanged,
+)
 
 from dataclasses import replace
 from typing import cast
@@ -33,12 +40,10 @@ from tests.support.tile_results import _ChangingAlphabetAuthority, _setup
 
 def test_boundary_operands_are_indexed_and_outgoing_tiles_are_leased() -> None:
     from number_compiler.resources.metric_collection import collect_ledger_metrics
-    from number_compiler.resources.payload_audit import audit_registered_payloads
-    from number_compiler.resources.tile_result_inventory import audit_tile_results
 
-    ledger, _, tiles, results, input_lease, output_lease, key, result = _setup()
-    alphabet = tiles.resolve(key.input).alphabet
-    incoming = tiles.leaf(alphabet, 2)
+    ledger, _, tiles, results, input_lease, output_lease, key, result, incoming = (
+        _incoming_setup()
+    )
     outgoing = tiles.join(output_lease.tile, output_lease.tile)
     boundary_key = replace(
         key,
@@ -57,14 +62,7 @@ def test_boundary_operands_are_indexed_and_outgoing_tiles_are_leased() -> None:
     held = results.publish(boundary_key, boundary_result)
     assert len(held._boundary_tiles) == 1
     assert held.result.outgoing_boundaries.right is not None
-    approved, invalid = audit_tile_results(results, dict(ledger.iter_containers()))
-    assert not invalid and id(boundary_key) in approved
-    payloads = audit_registered_payloads(ledger)
-    assert (
-        payloads.forbidden_future_payloads,
-        payloads.unbounded_future_integers,
-        payloads.unknown_payloads,
-    ) == (0, 0, 0)
+    assert_valid_tile_payloads(ledger, results, boundary_key)
     ledger.bump("tile_boundary_transfer_requests", 2)
     ledger.bump("tile_boundary_transfer_frames", 5)
     ledger.bump("tile_boundary_transfer_parent_observations", 3)
@@ -138,9 +136,9 @@ def test_result_lease_reports_boundary_operands_after_memo_retirement() -> None:
 
 
 def test_boundary_operands_reject_wrong_scope_and_shape_before_warm_lookup() -> None:
-    ledger, _, _tiles, results, input_lease, output_lease, key, result = _setup()
-    held = results.publish(key, result)
-    before = ledger.snapshot()
+    ledger, _, _tiles, results, input_lease, output_lease, key, result, held, before = (
+        _published_setup()
+    )
     foreign = TileID(ArenaToken("foreign-boundary"), "canonical-tile", 0)
     bad_values = (
         BoundaryTileOperands(BoundaryTileView(foreign, 0, 1), None),
@@ -350,9 +348,7 @@ def test_fused_boundary_reverse_publication_failure_rolls_back_every_tile(
     monkeypatch.setattr(type(results), "_write_reverse", fail_boundary)
     with pytest.raises(RuntimeError, match="boundary-index"):
         results.publish_fused_interface(fused, result.outgoing)
-    assert (ledger.entries, ledger.nodes) == before[:2]
-    assert dict(results._memo) == before[2]
-    assert dict(results._reverse) == before[3]
+    assert_result_stores_unchanged(ledger, results, before[:4])
     assert dict(results._variants) == before[4]
     boundary.close()
     output_lease.close()

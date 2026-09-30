@@ -98,7 +98,7 @@ Python still refuses the request rather than satisfying a success theorem.
 Build the concrete bridge (which builds its registered dependencies) with:
 
 ```console
-isabelle build -d devtools/proofs/isabelle -j 1 -o threads=1 -o parallel_proofs=0 Balanced_Dyadic_Integration
+isabelle build -d proofs/isabelle -j 1 -o threads=1 -o parallel_proofs=0 Balanced_Dyadic_Integration
 ```
 
 The new theories audit exported theorem dependencies for oracles. Session
@@ -149,7 +149,7 @@ requires authenticated physical weighted selection, demanded Q precision,
 exterior-cell admission and a construction-cost bound. A finite inverse or
 a theorem about an already supplied cursor discharges none of those by itself.
 
-The [weekly record](../../results/current/week-of-2026-09-20/shared.md#shifted-parity-germs-and-batched-limbs)
+The [weekly record](../sprints/week-of-2026-09-20/shared.md#shifted-parity-germs-and-batched-limbs)
 records exact build status and measured projection scope.
 
 ## Safety and cost scope
@@ -203,7 +203,7 @@ under scale at least one and nonnegative cap. Comma's translation guard uses
 the existing `repeated_prefix_minimum_closed` in that same theory. The
 different family guards and source classifiers are not interchangeable.
 
-The focused [comma ordered-root model](../../devtools/proofs/isabelle/comma_vieta_root/Comma_Vieta_Root_Frame.thy)
+The focused [comma ordered-root model](../../proofs/isabelle/comma_vieta_root/Comma_Vieta_Root_Frame.thy)
 uses the actual phase/displacement definitions. Its bounded selector refines
 one local Near prefix, under explicit frame, alignment and headroom guards;
 its row port permits two root crossings. Neither this local constructor nor
@@ -215,7 +215,7 @@ weighted repeating return or global branch safety required for forest removal.
 branch/effect as `source`. Its exported safety corollaries reuse that equality.
 This theorem does not change Python's exact `(span,residue)` memo, prove an
 arbitrary two-source canonical representative, or establish a speedup. The
-[powered boundary audit](../../results/current/week-of-2026-09-20/shared.md#powered-boundary-germ-audit)
+[powered boundary audit](../sprints/week-of-2026-09-20/shared.md#powered-boundary-germ-audit)
 records the independent finite tests and rejected extra scan.
 
 Collatz's physical weights are nonnegative, so its `minimum` cannot witness a
@@ -241,7 +241,7 @@ about a supplied branch word or generic associativity closes the latter two.
 ### Finite D8 arithmetic specialization
 
 `collatz_d8_all_source_fibers` in
-[Dyadic_Parity_Inverse_Arithmetic](../../devtools/proofs/isabelle/integration_dyadic/Dyadic_Parity_Inverse_Arithmetic.thy)
+[Dyadic_Parity_Inverse_Arithmetic](../../proofs/isabelle/integration_dyadic/Dyadic_Parity_Inverse_Arithmetic.thy)
 proves `256 * H^8(x) = M(x mod 256) * x + B(x mod 256)`.
 The executable forward-coefficient recurrence supplies `M,B`, and
 `collatz_qprefix_low` establishes that every higher lift selects the same

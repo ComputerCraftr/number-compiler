@@ -27,7 +27,11 @@ from number_compiler.arithmetic.functions.decision import (
     CanonicalOutputRelation,
     MultiTerminalDecisionArena,
 )
-from number_compiler.arithmetic.functions.residual import minimize_bimachine
+from number_compiler.arithmetic.functions.residual import (
+    minimize_bimachine,
+    quotient_dfa,
+)
+from devtools.verification.transducer_graph import determinize_subsets
 
 _NFA = dict[tuple[int, int], set[int]]
 _PrimitiveTriples = list[tuple[int, int, int]]
@@ -35,6 +39,21 @@ _OutputEdges = list[list[list[tuple[int, int]]]]
 _OutputClasses = dict[tuple[int, int, int], int]
 _Observation = tuple[tuple[int, int], ...]
 _Observations = dict[tuple[int, int], _Observation]
+
+
+def _record_nfa_edge(
+    nfa: _NFA,
+    q: int,
+    symbol: int,
+    target: int | None,
+    seen: set[int],
+    todo: deque[int],
+) -> None:
+    if target is None:
+        return
+    nfa.setdefault((q, symbol), set()).add(target)
+    if target not in seen:
+        todo.append(target)
 
 
 class PowerConstructionLimit(RuntimeError):
@@ -66,42 +85,10 @@ ComposedBimachine = BimachineTransformResult[CompositionMetrics]
 def _determinize(
     alphabet: Sequence[int], startset: Iterable[int], nfa: _NFA, *, right: bool
 ) -> tuple[DFA, tuple[frozenset[int], ...]]:
-    subsets: list[frozenset[int]] = []
-    sid: dict[frozenset[int], int] = {}
-
-    def intern(states: Iterable[int]) -> int:
-        fs = frozenset(states)
-        old = sid.get(fs)
-        if old is not None:
-            return old
-        q = len(subsets)
-        sid[fs] = q
-        subsets.append(fs)
-        return q
-
-    start = intern(startset)
-    trans: dict[tuple[int, int], int] = {}
-    todo = deque([start])
-    seen = set()
-    while todo:
-        q = todo.popleft()
-        if q in seen:
-            continue
-        seen.add(q)
-        subset = subsets[q]
-        for symbol in alphabet:
-            out: set[int] = set()
-            for state in subset:
-                out.update(nfa.get((state, symbol), ()))
-            if not out:
-                continue
-            z = intern(out)
-            trans[q, symbol] = z
-            if z not in seen:
-                todo.append(z)
-    return DFA(tuple(alphabet), start, trans, tuple(range(len(subsets))), right), tuple(
-        subsets
-    )
+    start, trans, subsets = determinize_subsets(alphabet, startset, nfa)
+    return DFA(
+        tuple(alphabet), start, trans, tuple(range(len(subsets))), right
+    ), subsets
 
 
 def _fragment(
@@ -213,12 +200,16 @@ def _build_primitive_left(
                 if middle is None:
                     continue
                 second_left_after = second.left.word(second_left_before, middle)
-                if second_left_after is None:
-                    continue
-                z = intern((left_after, right_after, second_left_after))
-                nfa.setdefault((q, symbol), set()).add(z)
-                if z not in seen:
-                    todo.append(z)
+                _record_nfa_edge(
+                    nfa,
+                    q,
+                    symbol,
+                    None
+                    if second_left_after is None
+                    else intern((left_after, right_after, second_left_after)),
+                    seen,
+                    todo,
+                )
     return triples, start, nfa
 
 
@@ -274,12 +265,16 @@ def _build_primitive_right(
                 if middle is None:
                     continue
                 second_right_before = second.right.word(second_right_after, middle)
-                if second_right_before is None:
-                    continue
-                z = intern((left_before, right_before, second_right_before))
-                nfa.setdefault((q, symbol), set()).add(z)
-                if z not in seen:
-                    todo.append(z)
+                _record_nfa_edge(
+                    nfa,
+                    q,
+                    symbol,
+                    None
+                    if second_right_before is None
+                    else intern((left_before, right_before, second_right_before)),
+                    seen,
+                    todo,
+                )
     return triples, start, nfa
 
 
@@ -550,26 +545,7 @@ def _deterministic_partition(
 
 
 def _quotient_dfa_exact(dfa: DFA, part: dict[int, int]) -> tuple[DFA, dict[int, int]]:
-    classes = sorted(set(part.values()))
-    reps = {cls: min(q for q in dfa.states if part[q] == cls) for cls in classes}
-    cmap = {cls: i for i, cls in enumerate(classes)}
-    old_to_new = {q: cmap[part[q]] for q in dfa.states}
-    trans = {}
-    for cls, old in reps.items():
-        q = cmap[cls]
-        for symbol in dfa.alphabet:
-            z = dfa.step(old, symbol)
-            if z is not None:
-                trans[q, symbol] = old_to_new[z]
-    out = DFA(
-        dfa.alphabet,
-        old_to_new[dfa.start],
-        trans,
-        tuple(range(len(classes))),
-        dfa.right,
-    )
-    new_to_old = {cmap[cls]: reps[cls] for cls in classes}
-    return out, new_to_old
+    return quotient_dfa(dfa, part)
 
 
 def _canonical_output_from_classes(

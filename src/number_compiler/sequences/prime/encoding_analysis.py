@@ -7,6 +7,14 @@ primality execution path.
 """
 
 from __future__ import annotations
+from number_compiler.arithmetic.functions.decision import intern_binary_decision
+from number_compiler.arithmetic.contracts.iterative_queries import (
+    defer_binary_level,
+)
+from number_compiler.sequences.prime.radix import (
+    progression_decision,
+    commutative_cache_pair,
+)
 
 from collections.abc import Sequence
 from dataclasses import dataclass
@@ -45,36 +53,9 @@ class _PowerRadixMDD:
         return node
 
     def progression(self, factor: int, phase: int, first: int) -> int:
-        factor, phase, first = map(int, (factor, phase, first))
-        radix = self.radix
-        root = (self.width - 1, 0, radix**self.width)
-        memo: dict[tuple[int, int, int], int] = {}
-        stack: list[tuple[int, int, int, bool]] = [(*root, False)]
-        while stack:
-            var, start, size, expanded = stack.pop()
-            key = (var, start, size)
-            if key in memo:
-                continue
-            lower = max(start, first)
-            hit = lower + ((phase - lower) % factor)
-            if hit >= start + size:
-                memo[key] = 0
-                continue
-            if var < 0:
-                memo[key] = 1
-                continue
-            child_size = size // radix
-            child_keys = tuple(
-                (var - 1, start + digit * child_size, child_size)
-                for digit in range(radix)
-            )
-            if not expanded:
-                stack.append((var, start, size, True))
-                for child in reversed(child_keys):
-                    stack.append((*child, False))
-                continue
-            memo[key] = self.mk(var, tuple(memo[child] for child in child_keys))
-        return memo[root]
+        return progression_decision(
+            self.width, self.radix, factor, phase, first, self.mk
+        )
 
     def or_(self, a: int, b: int) -> int:
         root = (int(a), int(b))
@@ -96,9 +77,8 @@ class _PowerRadixMDD:
             if y == 0 or x == y:
                 memo[key_xy] = x
                 continue
-            aa, bb = (x, y) if x <= y else (y, x)
-            cache_key = (aa, bb)
-            cached = self.or_cache.get(cache_key)
+            aa, bb, cached = commutative_cache_pair(x, y, self.or_cache)
+            cache_key = aa, bb
             if cached is not None:
                 memo[key_xy] = cached
                 continue
@@ -291,18 +271,11 @@ def zeckendorf_bitmap_decision_metrics(
         pos = positions[level]
         low = tuple(row for row in subrows if row[0][pos] == 0)
         high = tuple(row for row in subrows if row[0][pos] == 1)
-        low_state, high_state = (low, level + 1), (high, level + 1)
         if not expanded:
-            stack.append((subrows, level, True))
-            stack.append((high, level + 1, False))
-            stack.append((low, level + 1, False))
+            defer_binary_level(stack, subrows, level, low, high, memo)
             continue
-        lo, hi = memo[low_state], memo[high_state]
-        key = (pos, lo, hi)
-        old = unique.get(key)
-        if old is None:
-            old = len(unique) + 2
-            unique[key] = old
+        lo, hi = memo[low, level + 1], memo[high, level + 1]
+        old = intern_binary_decision(unique, pos, lo, hi)
         memo[state] = old
     _root = memo[root_key]
     return ZeckendorfDecisionMetrics(

@@ -6,6 +6,10 @@ no source, expression, occurrence, coordinate, or observed-argument component.
 
 from __future__ import annotations
 
+from number_compiler.hashlife.interfaces.diamond_kernel_bridge import (
+    evaluate_primitive_bits,
+)
+
 from dataclasses import dataclass
 
 from number_compiler.arithmetic.contracts.block_effect import BoundarySide
@@ -130,16 +134,10 @@ class FiniteFunctionAdmission:
                 )
             peak = max(peak, len(pending) + len(seen))
         for value in range(certificate.input_size):
-            output = 0
-            for offset, handle in enumerate(expression.bits):
-                index = handle.local_id
-                while index >= 2:
-                    node = functions._nodes[index]
-                    assert node.variable is not None
-                    bit = width - 1 - (node.variable.bit - port.bit)
-                    index = node.high if value & (1 << bit) else node.low
-                    visits += 1
-                output |= index << offset
+            output, decision_reads = evaluate_primitive_bits(
+                self.kernels, expression, value, width, port
+            )
+            visits += decision_reads
             if output >= certificate.output_size:
                 raise ValueError(
                     "finite function emits outside its declared primitive domain"

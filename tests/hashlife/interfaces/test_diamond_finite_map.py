@@ -8,13 +8,19 @@ from number_compiler.hashlife.execution.continuations.diamond_context_program im
     LEFT_A,
     RIGHT_A,
 )
-from number_compiler.hashlife.interfaces.diamond_boundary_expr import StateSort
+from number_compiler.hashlife.interfaces.diamond_boundary_expr import (
+    StateSort,
+    BoundaryExpressionArena,
+    ExprID,
+)
+from number_compiler.arithmetic.contracts.scoped_handles import ActionProgramID
+from number_compiler.hashlife.interfaces.diamond_kernel import PrimitiveKernel
 from number_compiler.hashlife.interfaces.diamond_kernel_bridge import input_expression
 from tests.support.diamond_boundary_expr import context
 
 
-def test_cross_side_maps_compose_before_binding_their_argument() -> None:
-    _, _, boundaries, arena, action, _ = context()
+def _check_cross_side_map(offset: int, *, metrics: bool) -> None:
+    ledger, _, boundaries, arena, action, _ = context()
     primitive = arena.primitive(action)
     assert primitive is not None
     left, right = StateSort(action, 0), StateSort(action, 1)
@@ -28,14 +34,17 @@ def test_cross_side_maps_compose_before_binding_their_argument() -> None:
     )
     assert primitive is not None
     backward = arena.unary._reduce(
-        primitive.right_count, primitive.left_count, RIGHT_A, lambda value: 2 * value
+        primitive.right_count,
+        primitive.left_count,
+        RIGHT_A,
+        lambda value: 2 * value + offset,
     )
     assert primitive is not None
     expected = arena.unary._reduce(
         primitive.left_count,
         primitive.left_count,
         LEFT_A,
-        lambda value: 2 * (value % primitive.right_count),
+        lambda value: 2 * (value % primitive.right_count) + offset,
     )
     first = arena.finite_map(left, right, forward, port)
     composed = arena.finite_map(right, left, backward, first)
@@ -47,7 +56,15 @@ def test_cross_side_maps_compose_before_binding_their_argument() -> None:
         literal = arena.literal(boundaries.literal(action, 0, code))
         result = arena.substitute(composed, {port: literal})
         assert primitive is not None
-        assert arena.node(result).value == 2 * (code % primitive.right_count)
+        assert arena.node(result).value == 2 * (code % primitive.right_count) + offset
+    if metrics:
+        from number_compiler.resources.metric_collection import collect_ledger_metrics
+
+        assert collect_ledger_metrics(ledger).representation_boundary_complete == 1
+
+
+def test_cross_side_maps_compose_before_binding_their_argument() -> None:
+    _check_cross_side_map(0, metrics=False)
 
 
 def test_cross_action_constant_retains_target_sort_and_identity_retains_source() -> (
@@ -72,48 +89,23 @@ def test_cross_action_constant_retains_target_sort_and_identity_retains_source()
 
 
 def test_cross_port_composition_normalizes_invalid_original_codes() -> None:
-    from number_compiler.resources.metric_collection import collect_ledger_metrics
+    _check_cross_side_map(1, metrics=True)
 
-    ledger, _, _, arena, action, _ = context()
+
+def _map_argument(
+    arena: BoundaryExpressionArena, action: ActionProgramID
+) -> tuple[StateSort, StateSort, ExprID, PrimitiveKernel]:
+    source, target = StateSort(action, 1), StateSort(action, 0)
+    variable = arena.variable(source, "x")
     primitive = arena.primitive(action)
     assert primitive is not None
-    left, right = StateSort(action, 0), StateSort(action, 1)
-    incoming = arena.variable(left, "incoming")
-    assert primitive is not None
-    forward = arena.unary._reduce(
-        primitive.left_count,
-        primitive.right_count,
-        LEFT_A,
-        lambda value: value % primitive.right_count,
-    )
-    assert primitive is not None
-    backward = arena.unary._reduce(
-        primitive.right_count,
-        primitive.left_count,
-        RIGHT_A,
-        lambda value: 2 * value + 1,
-    )
-    composed = arena.finite_map(
-        right, left, backward, arena.finite_map(left, right, forward, incoming)
-    )
-    assert primitive is not None
-    expected = arena.unary._reduce(
-        primitive.left_count,
-        primitive.left_count,
-        LEFT_A,
-        lambda value: 2 * (value % primitive.right_count) + 1,
-    )
-    assert arena.node(composed).function == expected
-    assert collect_ledger_metrics(ledger).representation_boundary_complete == 1
+    return source, target, variable, primitive
 
 
 def test_foreign_map_argument_and_port_reject_before_warm_lookup_or_mutation() -> None:
     ledger, _, _boundaries, arena, action, _ = context()
     _, _, foreign_boundary, foreign, foreign_action, _ = context()
-    source, target = StateSort(action, 1), StateSort(action, 0)
-    x = arena.variable(source, "x")
-    primitive = arena.primitive(action)
-    assert primitive is not None
+    source, target, x, primitive = _map_argument(arena, action)
     domain, codomain = (
         primitive.right_count,
         primitive.left_count,
@@ -140,10 +132,7 @@ def test_foreign_map_argument_and_port_reject_before_warm_lookup_or_mutation() -
 
 def test_finite_map_node_and_identity_reservation_are_atomic() -> None:
     ledger, _, _, arena, action, _ = context()
-    source, target = StateSort(action, 1), StateSort(action, 0)
-    variable = arena.variable(source, "x")
-    primitive = arena.primitive(action)
-    assert primitive is not None
+    source, target, variable, primitive = _map_argument(arena, action)
     function = arena.unary._reduce(
         primitive.right_count,
         primitive.left_count,

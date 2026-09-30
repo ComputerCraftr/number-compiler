@@ -11,10 +11,10 @@ from typing import Never, cast
 
 import pytest
 
-from devtools.proofs import exact_oracle
-from devtools.proofs.carry_action_quotient import CarryThresholdSignature
-from devtools.proofs.carry_interval_effects import CarryActionQuotientArena
-from devtools.proofs.lazy_reverse import LazyReverseApplication
+from devtools.verification import exact_oracle
+from devtools.verification.carry_action_quotient import CarryThresholdSignature
+from devtools.verification.carry_interval_effects import CarryActionQuotientArena
+from devtools.verification.lazy_reverse import LazyReverseApplication
 from number_compiler.arithmetic.contracts.scoped_handles import (
     ArenaHandle,
     CarryBit,
@@ -297,9 +297,9 @@ def test_diamond_summary_ids_are_checked_against_their_actual_state_arena() -> N
 def test_public_reverse_point_and_width_cannot_use_oracle_packing_or_output_tapes(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    import devtools.proofs.carry_action_quotient as proof_carry
-    import devtools.proofs.reverse_spacetime as proof_spacetime
-    import devtools.proofs.temporal_quotient as proof_cut
+    import devtools.verification.carry_action_quotient as proof_carry
+    import devtools.verification.reverse_spacetime as proof_spacetime
+    import devtools.verification.temporal_quotient as proof_cut
 
     def forbidden(*args: object, **kwargs: object) -> Never:
         raise AssertionError("production entered an exact history or output-tape path")
@@ -337,7 +337,7 @@ def test_production_workspace_never_memoizes_a_complete_future_carry_row() -> No
             return
         if (
             event != "return"
-            or frame.f_globals.get("__name__") != "devtools.proofs.lazy_reverse"
+            or frame.f_globals.get("__name__") != "devtools.verification.lazy_reverse"
         ):
             return
         for value in frame.f_locals.values():

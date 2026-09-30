@@ -10,18 +10,19 @@ import pytest
 from number_compiler.arithmetic.contracts.block_effect import BlockContextBudgetExceeded
 from number_compiler.arithmetic.contracts.cylinder_chart import CylinderChart
 from number_compiler.arithmetic.contracts.semantic_identity import SemanticIdentity
+from number_compiler.arithmetic.fields.f5_innovation import compose_f5_forcing
 from number_compiler.arithmetic.fields.symbolic_innovation import (
     RadialMultiplier,
     SymbolicInnovationArena,
     _Add,
 )
-from number_compiler.arithmetic.fields.f5_innovation import compose_f5_forcing
 from number_compiler.arithmetic.polynomials.f5_transport import (
     F5AffineTransport,
     F5SpatialTransport,
 )
 from number_compiler.resources.ledger import ResourceLedger
 from number_compiler.resources.payload_audit import audit_registered_payloads
+from tests.support.arithmetic_fixtures import wide_innovation_operators
 
 
 def test_unrelated_resource_audit_does_not_load_innovation_machinery() -> None:
@@ -149,12 +150,7 @@ def test_live_mixed_dag_is_fully_audited_without_runtime_callbacks(
 
 
 def test_wide_operator_integer_metadata_is_accepted_with_exact_accounting() -> None:
-    ledger = ResourceLedger()
-    arena = SymbolicInnovationArena(ledger)
-    one = arena.interval(1)
-    arena.linear_combination((((1 << 130) + 1, one),))
-    arena.radial(one, RadialMultiplier(1 << 130, 1 << 129))
-    arena.chart(one, CylinderChart(-1, -(1 << 130)))
+    ledger, arena = wide_innovation_operators()
 
     report = audit_registered_payloads(ledger)
 

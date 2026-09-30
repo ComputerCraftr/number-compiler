@@ -27,6 +27,7 @@ from number_compiler.arithmetic.fields.radix import bit_width, digits_lsd
 from number_compiler.arithmetic.formula.formula import (
     FormulaArena,
     FormulaRoot,
+    literal_planes,
     canonical_root_key,
 )
 from number_compiler.arithmetic.formula.types import Expr
@@ -217,14 +218,7 @@ def digit_root_from_values(
     vals = tuple(map(int, values))
     if not vals or any(not 0 <= v < spec.base for v in vals):
         raise ValueError("digit out of range")
-    planes = []
-    for bit in range(spec.plane_count):
-        mask = 0
-        for i, value in enumerate(vals):
-            if (value >> bit) & 1:
-                mask |= 1 << i
-        planes.append(arena.literal(mask, len(vals)))
-    return FormulaRoot(tuple(planes))
+    return FormulaRoot(literal_planes(vals, arena, spec.plane_count))
 
 
 def digit_root_from_int(

@@ -1,8 +1,9 @@
 from __future__ import annotations
 
+from devtools.paths import report_output
+
 import json
 from dataclasses import asdict
-from pathlib import Path
 
 from devtools.experiments.algebra.baby_giant_behavioral_bend import (
     BabyGiantBendPacketMemo,
@@ -34,11 +35,16 @@ def main() -> None:
         "frontier": asdict(behavioral_bend_frontier()),
     }
     text = json.dumps(data, indent=2, sort_keys=True) + "\n"
-    out = Path("results/baby_giant_behavioral_bend_metrics.json")
+    out = report_output(
+        "devtools.benchmarks.baby_giant_behavioral_bend_probe",
+        "baby_giant_behavioral_bend_metrics.json",
+    )
     out.parent.mkdir(parents=True, exist_ok=True)
     out.write_text(text)
     print(text, end="")
 
 
 if __name__ == "__main__":
-    main()
+    from devtools.runs import run_reported
+
+    raise SystemExit(run_reported(main))

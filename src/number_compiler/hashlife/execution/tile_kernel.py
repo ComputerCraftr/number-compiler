@@ -12,6 +12,7 @@ from number_compiler.arithmetic.contracts.scoped_handles import (
     ActionProgramID,
     ArenaToken,
 )
+from number_compiler.arithmetic.fields.morphism_core import semigroup_power
 from number_compiler.arithmetic.functions.finite_function_types import (
     AtomSort,
     FinitePort,
@@ -422,18 +423,7 @@ class PrimitiveTileKernelAdapter:
         self.validate_action(primitive)
         if type(exponent) is not int or exponent < 1:
             raise ValueError("primitive tile power must be a positive exact integer")
-        result: FieldCellActionID | None = None
-        square = primitive
-        remaining = exponent
-        while remaining:
-            if remaining & 1:
-                result = square if result is None else self.compose(result, square)
-            remaining >>= 1
-            if remaining:
-                square = self.compose(square, square)
-        if result is None:
-            raise AssertionError("positive power produced no temporal action")
-        return result
+        return semigroup_power(primitive, exponent, compose=self.compose)
 
     def action_cocycle(self, action: FieldCellActionID) -> TemporalCocycle:
         return self._action(action).cocycle
@@ -461,7 +451,10 @@ class PrimitiveTileKernelAdapter:
 
     def initial_ports(self, action: FieldCellActionID) -> tuple[int, int]:
         record = self._action(action)
-        kernel = self.kernels.kernel(record.kernel)
+        return self._kernel_ports(record.kernel)
+
+    def _kernel_ports(self, kernel_id: ActionProgramID) -> tuple[int, int]:
+        kernel = self.kernels.kernel(kernel_id)
         return kernel.initial(BoundarySide.LEFT), kernel.initial(BoundarySide.RIGHT)
 
     def primitive_law(self, action: FieldCellActionID) -> PrimitiveKernel:
@@ -901,11 +894,7 @@ class PrimitiveTileKernelAdapter:
         if wiring.signature != record.signature:
             raise ValueError("temporal prefix has another wiring signature")
         before_record = self._action(before)
-        before_kernel = self.kernels.kernel(before_record.kernel)
-        before_ports = (
-            before_kernel.initial(BoundarySide.LEFT),
-            before_kernel.initial(BoundarySide.RIGHT),
-        )
+        before_ports = self._kernel_ports(before_record.kernel)
         if (
             before_record.signature == record.signature
             and original_ports != before_ports
@@ -938,11 +927,7 @@ class PrimitiveTileKernelAdapter:
         # starts at its own certified exterior state; it does not inherit the
         # first scan's outgoing carry.
         after_record = self._action(after)
-        after_kernel = self.kernels.kernel(after_record.kernel)
-        ports = (
-            after_kernel.initial(BoundarySide.LEFT),
-            after_kernel.initial(BoundarySide.RIGHT),
-        )
+        ports = self._kernel_ports(after_record.kernel)
         return ChildContext(
             ports,
             ResultWiring(after_record.signature, wiring.orientation, wiring.phase),

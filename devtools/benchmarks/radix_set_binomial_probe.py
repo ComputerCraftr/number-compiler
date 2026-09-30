@@ -2,9 +2,12 @@
 
 from __future__ import annotations
 
-import json
+from devtools.paths import report_directory
+
 
 from devtools.paths import repository_root
+from devtools.runs import run_reported
+from devtools.benchmarks.reporting import write_json_report
 from number_compiler.arithmetic.fields.digit_formula import (
     synthesize_divide,
     synthesize_function_monoid,
@@ -267,11 +270,12 @@ def main() -> None:
             ),
         },
     }
-    out = ROOT / "results" / "radix_set_binomial_metrics.json"
-    out.parent.mkdir(parents=True, exist_ok=True)
-    out.write_text(json.dumps(data, indent=2, sort_keys=True) + "\n")
-    print(json.dumps(data, indent=2, sort_keys=True))
+    out = (
+        report_directory("devtools.benchmarks.radix_set_binomial_probe")
+        / "radix_set_binomial_metrics.json"
+    )
+    write_json_report(out, data)
 
 
 if __name__ == "__main__":
-    main()
+    raise SystemExit(run_reported(main))

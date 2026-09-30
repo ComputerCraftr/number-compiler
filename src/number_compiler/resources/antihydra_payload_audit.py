@@ -9,13 +9,15 @@ literal TM refinement of the arithmetic law.
 from __future__ import annotations
 
 from dataclasses import fields
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, TypeVar
+from collections.abc import Callable
 
 from number_compiler.arithmetic.fields.skew_transfer import (
     integer_dyadic_fiber_action,
 )
 
 if TYPE_CHECKING:
+    from number_compiler.sequences.antihydra.blocks import Cylinder, ArithmeticCylinder
     from number_compiler.sequences.antihydra.projection_fragments import (
         ProjectionFragmentCache,
     )
@@ -27,37 +29,56 @@ from number_compiler.resources.physical_support_payload_audit import (
 )
 
 
-def canonical_cylinder(value: object, ledger: ResourceLedger) -> bool:
-    from number_compiler.sequences.antihydra.blocks import Cylinder, kernel
+_Cylinder = TypeVar("_Cylinder", "Cylinder", "ArithmeticCylinder")
 
-    if type(value) is not Cylinder:
-        return False
+
+def _canonical_cylinder(
+    value: _Cylinder,
+    ledger: ResourceLedger,
+    kernel: Callable[[int, int], _Cylinder],
+    bit_factor: int,
+    branch_counter: str,
+    composition_counter: str | None = None,
+) -> bool:
     w, r = value.width, value.residue
     if type(w) is not int or not 1 <= w <= 64:
         return False
     if type(r) is not int or not 0 <= r < 1 << w:
         return False
-    # Bound malicious inputs before comparing or doing arithmetic on them.
     if any(
-        type(getattr(value, f.name)) is not int
-        or abs(getattr(value, f.name)).bit_length() > 4 * w + 10
-        for f in fields(value)
+        type(getattr(value, item.name)) is not int
+        or abs(getattr(value, item.name)).bit_length() > bit_factor * w + 10
+        for item in fields(value)
     ):
         return False
     source, remaining = r, w
-    result: Cylinder | None = None
+    result: _Cylinder | None = None
     while remaining:
         size = min(8, remaining)
         leaf = kernel(source % (1 << size), size)
         source = 3**size * (source >> size) + leaf.output
-        ledger.bump("antihydra_payload_audit_branch_steps", size)
+        ledger.bump(branch_counter, size)
         if result is None:
             result = leaf
         else:
             result = result.then(leaf)
-            ledger.bump("antihydra_payload_audit_compositions")
+            if composition_counter is not None:
+                ledger.bump(composition_counter)
         remaining -= size
     return value == result
+
+
+def canonical_cylinder(value: object, ledger: ResourceLedger) -> bool:
+    from number_compiler.sequences.antihydra.blocks import Cylinder, kernel
+
+    return type(value) is Cylinder and _canonical_cylinder(
+        value,
+        ledger,
+        kernel,
+        4,
+        "antihydra_payload_audit_branch_steps",
+        "antihydra_payload_audit_compositions",
+    )
 
 
 def canonical_arithmetic_cylinder(value: object, ledger: ResourceLedger) -> bool:
@@ -66,29 +87,13 @@ def canonical_arithmetic_cylinder(value: object, ledger: ResourceLedger) -> bool
         arithmetic_kernel,
     )
 
-    if type(value) is not ArithmeticCylinder:
-        return False
-    w, r = value.width, value.residue
-    if type(w) is not int or not 1 <= w <= 64:
-        return False
-    if type(r) is not int or not 0 <= r < 1 << w:
-        return False
-    if any(
-        type(getattr(value, field.name)) is not int
-        or abs(getattr(value, field.name)).bit_length() > 2 * w + 10
-        for field in fields(value)
-    ):
-        return False
-    source, remaining = r, w
-    result: ArithmeticCylinder | None = None
-    while remaining:
-        size = min(8, remaining)
-        leaf = arithmetic_kernel(source % (1 << size), size)
-        source = 3**size * (source >> size) + leaf.output
-        ledger.bump("antihydra_payload_audit_arithmetic_branch_steps", size)
-        result = leaf if result is None else result.then(leaf)
-        remaining -= size
-    return value == result
+    return type(value) is ArithmeticCylinder and _canonical_cylinder(
+        value,
+        ledger,
+        arithmetic_kernel,
+        2,
+        "antihydra_payload_audit_arithmetic_branch_steps",
+    )
 
 
 def _fragment_source_bindings(
@@ -225,7 +230,6 @@ def audit_antihydra_payloads(
         AntihydraArithmeticImageWorkspace,
     )
     from number_compiler.sequences.antihydra.blocks import (
-        ArithmeticCylinder,
         arithmetic_kernel,
         kernel,
         terminal_effect,

@@ -5,7 +5,7 @@ from typing import cast
 
 import pytest
 
-from devtools.proofs.active_behavior_profiles import (
+from devtools.verification.active_behavior_profiles import (
     BehaviorAuditWork,
     BehaviorGenerator,
     BehaviorGeneratorSort,
@@ -22,7 +22,7 @@ from number_compiler.hashlife.behavior.future_behavior import (
 from number_compiler.hashlife.execution.tile_causal import CausalTileEngine
 from number_compiler.hashlife.interfaces.diamond_kernel import DiamondKernelArena
 from number_compiler.resources.ledger import ResourceLedger
-from tests.arithmetic.contracts.test_tile_kernel import _runtime, _tile
+from tests.support.tile_kernel import _runtime, _tile
 
 
 def _identity(name: str) -> SemanticIdentity:

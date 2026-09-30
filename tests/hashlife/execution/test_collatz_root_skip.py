@@ -13,7 +13,7 @@ from number_compiler.hashlife.execution.tile_causal_entry import (
 )
 from number_compiler.hashlife.tiles.tile_result_records import PoweredResultKey
 from number_compiler.sequences.collatz.block_power import CollatzPhysicalBlockEffect
-from tests.arithmetic.contracts.test_tile_kernel import _runtime, _tile
+from tests.support.tile_kernel import _runtime, _tile
 
 
 @pytest.mark.parametrize("valuation", (4, 8, 16))

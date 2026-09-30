@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from tests.support.reference_arithmetic import collatz_literal as _literal
 import pytest
 
 from number_compiler.arithmetic.fields.skew_transfer import (
@@ -15,13 +16,6 @@ from number_compiler.resources.ledger import ResourceLedger
 from number_compiler.sequences.collatz.physical_images import (
     CollatzPhysicalImageWorkspace,
 )
-
-
-def _literal(source: int, steps: int) -> int:
-    value = source
-    for _ in range(steps):
-        value = 3 * value + 1 if value & 1 else value // 2
-    return value
 
 
 def _apply(

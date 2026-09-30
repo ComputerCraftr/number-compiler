@@ -2,6 +2,12 @@
 
 from __future__ import annotations
 
+from number_compiler.hashlife.execution.tile_causal_tasks import (
+    publish_composite_output,
+)
+
+from number_compiler.hashlife.execution.tile_causal_tasks import retain_completed
+
 from typing import Any
 
 from number_compiler.hashlife.actions.field_actions import FieldCellActionID
@@ -10,12 +16,10 @@ from number_compiler.hashlife.execution.tile_causal_results import (
     PrimitiveCausalPorts,
     lookup_causal_result,
     probe_causal_result,
-    publish_causal_completed,
 )
 from number_compiler.hashlife.execution.tile_causal_tasks import (
     CausalFrame,
     CausalPrefix,
-    result_payload,
     temporal_payload,
 )
 from number_compiler.hashlife.tiles.tile_boundaries import BoundaryTileView
@@ -74,11 +78,8 @@ def cached_midpoint_step(
             frame.stage = 20
             frames.append(frame)
             return True
-        first = result_payload(engine.tiles, completed)
-        if engine._application is None:
-            engine._result_leases.append(completed)
-        else:
-            engine.scheduler._pin_causal(engine._application, before_key, completed)
+        assert before_key is not None
+        first = retain_completed(engine, before_key, completed)
         node = engine.tiles.resolve(tile)
         frame.stage, frame.saved = 13, (first,)
         if type(left_anchor) is int and type(right_anchor) is int:
@@ -159,16 +160,7 @@ def cached_midpoint_step(
             second,
             left.explicit_edge or right.explicit_edge,
         )
-        key = engine._composite_key(action, tile, left, right)
-        if key is not None:
-            completed = publish_causal_completed(engine.scheduler.results, key, payload)
-            payload = result_payload(engine.tiles, completed)
-            if engine._application is None:
-                engine._result_leases.append(completed)
-            else:
-                engine.scheduler._pin_causal(engine._application, key, completed)
-            engine.ledger.bump("tile_causal_result_evaluations")
-            engine.ledger.bump("tile_temporal_complete_compositions")
+        payload = publish_composite_output(engine, action, tile, left, right, payload)
         values.append(payload)
         return True
     if frame.stage == 20:

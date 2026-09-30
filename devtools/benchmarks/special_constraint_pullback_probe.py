@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from devtools.paths import report_directory
+
 import json
 from typing import TYPE_CHECKING
 
@@ -191,11 +193,16 @@ def main() -> None:
             "cache_size": normalized.theorem_cache_size,
         },
     }
-    out = ROOT / "results" / "special_constraint_pullback_metrics.json"
+    out = (
+        report_directory("devtools.benchmarks.special_constraint_pullback_probe")
+        / "special_constraint_pullback_metrics.json"
+    )
     text = json.dumps(payload, indent=2) + "\n"
     out.write_text(text)
     print(text, end="")
 
 
 if __name__ == "__main__":
-    main()
+    from devtools.runs import run_reported
+
+    raise SystemExit(run_reported(main))

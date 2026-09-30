@@ -5,10 +5,10 @@ from unittest.mock import patch
 
 import pytest
 
-from devtools.proofs.reverse_geometry_context import ReverseGeometryContext
-from devtools.proofs.reverse_growth_attribution import attribute_growth
-from devtools.proofs.reverse_successor_image_audit import _sources
-from devtools.proofs.threshold_expressions import ThresholdExpressions
+from devtools.verification.reverse_geometry_context import ReverseGeometryContext
+from devtools.verification.reverse_growth_attribution import attribute_growth
+from devtools.verification.reverse_successor_image_audit import _sources
+from devtools.verification.threshold_expressions import ThresholdExpressions
 from number_compiler.arithmetic.contracts.block_effect import BlockContextBudgetExceeded
 
 

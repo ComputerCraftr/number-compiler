@@ -14,6 +14,7 @@ from number_compiler.hashlife.execution.source_bound_images import (
     SourceBoundCompositeAdapter,
     SourceBoundImageAdapter,
     SourceBoundSchedulerCore,
+    SourceImageCandidate,
     SourceImageDemand,
     SourceImageID,
     SourceImageView,
@@ -166,17 +167,15 @@ def apply_source_image(
                             cached_result,
                             source_view,
                         )
-                        if split is not None and candidate.failure_prefix is not None:
-                            raise ValueError("split contexts require total arithmetic")
-                        cumulative = adapter.compose_actions(
-                            source_view.binding.action, frame.action
-                        )
-                        result = self._publish_application_result(
+                        result = _publish_candidate(
+                            self,
+                            adapter,
                             apply_key,
-                            source_view.binding.source,
-                            cumulative,
+                            source_view,
+                            frame.action,
                             candidate,
-                            relative_key=None,
+                            None,
+                            split is not None,
                         )
                         push_value(result)
                         self.ledger.bump("source_image_relative_transfer_hits")
@@ -185,17 +184,15 @@ def apply_source_image(
                 children = adapter.action_children(frame.action)
                 if children is None:
                     candidate = adapter.apply_primitive(frame.action, source_view)
-                    if split is not None and candidate.failure_prefix is not None:
-                        raise ValueError("split contexts require total arithmetic")
-                    cumulative = adapter.compose_actions(
-                        source_view.binding.action, frame.action
-                    )
-                    result = self._publish_application_result(
+                    result = _publish_candidate(
+                        self,
+                        adapter,
                         apply_key,
-                        source_view.binding.source,
-                        cumulative,
+                        source_view,
+                        frame.action,
                         candidate,
-                        relative_key=relative_key,
+                        relative_key,
+                        split is not None,
                     )
                     push_value(result)
                     self.ledger.bump("source_image_primitive_applications")
@@ -230,22 +227,15 @@ def apply_source_image(
                             frame.action, source_view, demand
                         )
                         if composite_candidate is not None:
-                            if (
-                                split is not None
-                                and composite_candidate.failure_prefix is not None
-                            ):
-                                raise ValueError(
-                                    "split contexts require total arithmetic"
-                                )
-                            cumulative = adapter.compose_actions(
-                                source_view.binding.action, frame.action
-                            )
-                            composite_result = self._publish_application_result(
+                            composite_result = _publish_candidate(
+                                self,
+                                adapter,
                                 apply_key,
-                                source_view.binding.source,
-                                cumulative,
+                                source_view,
+                                frame.action,
                                 composite_candidate,
-                                relative_key=relative_key,
+                                relative_key,
+                                split is not None,
                             )
                     if composite_candidate is not None:
                         push_value(composite_result)
@@ -382,3 +372,22 @@ def apply_source_image(
             )
         if diverged:
             raise AssertionError("source image workspace accounting diverged")
+
+
+def _publish_candidate(
+    core: SourceBoundSchedulerCore,
+    adapter: SourceBoundImageAdapter,
+    key: _ApplyKey,
+    source: SourceImageView,
+    action: Hashable,
+    candidate: SourceImageCandidate,
+    relative_key: _RelativeKey | None,
+    total: bool,
+) -> SourceImageID:
+    """Admit totality and cumulative action identically for primitive/composite publication."""
+    if total and candidate.failure_prefix is not None:
+        raise ValueError("split contexts require total arithmetic")
+    cumulative = adapter.compose_actions(source.binding.action, action)
+    return core._publish_application_result(
+        key, source.binding.source, cumulative, candidate, relative_key=relative_key
+    )

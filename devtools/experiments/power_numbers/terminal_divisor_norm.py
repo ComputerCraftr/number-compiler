@@ -30,24 +30,12 @@ from number_compiler.sequences.power_numbers.numbers import (
 from number_compiler.sequences.power_numbers.terminal_threshold import (
     terminal_threshold_spec,
 )
-from number_compiler.sequences.prime.set import smallest_factor
+from devtools.verification.factorization_truth import factor_multiplicities_truth
 
 
 def _factor_multiplicities_truth(value: int) -> tuple[tuple[int, int], ...]:
     """Complete bounded factorization for research labels only."""
-    remaining = int(value)
-    if remaining < 2:
-        return ()
-    out: list[tuple[int, int]] = []
-    while remaining > 1:
-        f = smallest_factor(remaining)
-        q = remaining if f is None else f
-        e = 0
-        while remaining % q == 0:
-            remaining //= q
-            e += 1
-        out.append((q, e))
-    return tuple(out)
+    return factor_multiplicities_truth(value)
 
 
 def _mul_pow2_exceeds(multiplier: int, exponent_log2: int, bound: int) -> bool:
@@ -207,28 +195,50 @@ class LinearGaloisFittingBlindAudit:
     conclusion: str
 
 
-def _fermat_local_row(n: int, q: int, e: int, modulus: int) -> LocalDivisorNormRow:
-    T = 1 << n
-    t = v2_positive(q - 1)
-    r = max(0, T - t)
-    f = (1 << r) if r <= 62 else None
-    local_norm = r == 0 or (f is not None and e % f == 0)
-    proper = q < modulus
-
-    if r == 0:
+def _local_divisor_flags(
+    order: int,
+    multiplicity: int,
+    proper: bool,
+    valuation: int,
+    bound_exponent: int,
+    bound_log: int,
+    family: str,
+    *,
+    force_bound: bool = False,
+) -> tuple[int, int | None, bool, bool, bool, bool]:
+    residual = max(0, order - valuation)
+    period = (1 << residual) if residual <= 62 else None
+    allowed = residual == 0 or (period is not None and multiplicity % period == 0)
+    if residual == 0:
         strict = False
         size_bound = not proper
     else:
-        # q = 1 mod 2^t gives q > 2^t.  If q^f divided F_n and
-        # t*f > T, then q^f > 2^T+1=F_n, so every actual exponent e is < f.
-        size_bound = _mul_pow2_exceeds(t, r, T)
-        strict = bool(proper and size_bound and (f is None or e < f))
+        size_bound = force_bound or _mul_pow2_exceeds(
+            bound_exponent, residual, bound_log
+        )
+        strict = bool(
+            proper and size_bound and (period is None or multiplicity < period)
+        )
         if proper and not size_bound:
-            raise AssertionError((n, q, e, t, r, "Fermat multiplicity bound"))
-        if proper and f is not None and not e < f:
-            raise AssertionError((n, q, e, f))
+            raise AssertionError((order, multiplicity, family))
+        if proper and period is not None and not multiplicity < period:
+            raise AssertionError((order, multiplicity, period))
         if proper:
-            local_norm = False
+            allowed = False
+    return residual, period, allowed, proper, strict, size_bound
+
+
+def _fermat_local_row(n: int, q: int, e: int, modulus: int) -> LocalDivisorNormRow:
+    t = v2_positive(q - 1)
+    r, f, local_norm, proper, strict, size_bound = _local_divisor_flags(
+        1 << n,
+        e,
+        q < modulus,
+        t,
+        t,
+        n,
+        "Fermat multiplicity bound",
+    )
 
     return LocalDivisorNormRow(
         "fermat",
@@ -255,28 +265,17 @@ def _mersenne_real_cyclotomic_local_row(
     # u=max(v2(q-1),v2(q+1)); its order in (Z/2^p Z)^*/{+/-1} is
     # 2^(p-u) for u<p, and 1 for u>=p.
     u = max(v2_positive(q - 1), v2_positive(q + 1))
-    r = max(0, p - u)
-    f = (1 << r) if r <= 62 else None
-    local_norm = r == 0 or (f is not None and e % f == 0)
     proper = q < modulus
-
-    if r == 0:
-        strict = False
-        size_bound = not proper
-    else:
-        # q == +/-1 mod 2^u gives q > 2^(u-1).  Thus q^f > 2^p > M_p
-        # once (u-1)*f > p.  This holds for p>=5 and every proper divisor.
-        if p == 3:
-            size_bound = True
-        else:
-            size_bound = _mul_pow2_exceeds(max(1, u - 1), r, p)
-        strict = bool(proper and size_bound and (f is None or e < f))
-        if proper and not size_bound:
-            raise AssertionError((p, q, e, u, r, "Mersenne multiplicity bound"))
-        if proper and f is not None and not e < f:
-            raise AssertionError((p, q, e, f))
-        if proper:
-            local_norm = False
+    r, f, local_norm, proper, strict, size_bound = _local_divisor_flags(
+        p,
+        e,
+        proper,
+        u,
+        max(1, u - 1),
+        p,
+        "Mersenne multiplicity bound",
+        force_bound=p == 3,
+    )
 
     # ``local_capacity_v2`` here is the +/-1 cyclotomic splitting capacity u;
     # it is terminal-equivalent to the LL torus condition but avoids the

@@ -68,7 +68,7 @@ def proof_objects(root: object) -> set[int]:
         if identity in seen:
             continue
         seen.add(identity)
-        if type(value).__module__.startswith("devtools.proofs."):
+        if type(value).__module__.startswith("devtools.verification."):
             found.add(identity)
         elif isinstance(value, Mapping):
             pending.extend(item for pair in audit_mapping_items(value) for item in pair)

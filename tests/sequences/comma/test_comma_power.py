@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from tests.support.comma_oracles import literal_children as _literal_children
+
 from dataclasses import replace
 from typing import cast
 
@@ -27,16 +29,6 @@ from number_compiler.sequences.comma.power import (
     CommaTerm,
     UnresolvedCommaBranch,
 )
-
-
-def _literal_children(value: int) -> tuple[int, ...]:
-    digit = int(str(value)[-1])
-    out: list[int] = []
-    for candidate_digit in range(1, 10):
-        child = value + 10 * digit + candidate_digit
-        if int(str(child)[0]) == candidate_digit:
-            out.append(child)
-    return tuple(out)
 
 
 def _literal_term(index: int) -> int:

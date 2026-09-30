@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from tests.support.reference_arithmetic import negacyclic_reduce as _reduce
 from collections.abc import Callable, Sequence
 from itertools import product
 from typing import cast
@@ -56,14 +57,6 @@ def _forcing(values: Sequence[int], base: int, incoming: int) -> tuple[int, ...]
             + carry[width - index]
             - base * (carry[index + 1] + carry[width - index + 1])
         )
-    return tuple(out)
-
-
-def _reduce(values: Sequence[int], classes: int) -> tuple[int, ...]:
-    out = [0] * classes
-    for index, value in enumerate(values):
-        quotient, target = divmod(index, classes)
-        out[target] = (out[target] + (-value if quotient & 1 else value)) % 32
     return tuple(out)
 
 

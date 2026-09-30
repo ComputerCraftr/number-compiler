@@ -2,6 +2,10 @@
 
 from __future__ import annotations
 
+from tests.support.assertions import assert_rejected_atomically
+from tests.support.diamond_quotient import parent_request, source_cells
+
+from collections.abc import Callable
 from dataclasses import replace
 from itertools import product
 from typing import TYPE_CHECKING
@@ -9,9 +13,7 @@ from typing import TYPE_CHECKING
 import pytest
 
 from number_compiler.arithmetic.contracts.block_effect import BlockContextBudgetExceeded
-from number_compiler.arithmetic.contracts.scoped_handles import ExactSource
 from number_compiler.arithmetic.contracts.semantic_identity import SemanticIdentity
-from number_compiler.arithmetic.contracts.source_geometry import SourceGeometry
 from number_compiler.arithmetic.functions.finite_function_types import (
     BOOL,
     AtomSort,
@@ -28,9 +30,7 @@ from number_compiler.arithmetic.functions.semantic_functions import (
 )
 from number_compiler.hashlife.actions.diamond_actions import (
     ImageCellArena,
-    TemporalActionArena,
 )
-from number_compiler.hashlife.actions.lazy_compiler import LazyCompiler
 from number_compiler.hashlife.interfaces.diamond_quotient import (
     COMPONENT_ROLES,
     DiamondKey,
@@ -71,9 +71,7 @@ def _fixture() -> tuple[
     zero = functions.atom(FunctionSignature(inputs, BOOL), 0)
     one = functions.atom(FunctionSignature(inputs, BOOL), 1)
     admissible = functions.variable(inputs, port, BOOL)
-    source = SourceGeometry(ledger, ExactSource((1, 0), 2, blank=2, extent=2))
-    source.span((1, 0), 2, 2)
-    cells = ImageCellArena(TemporalActionArena(LazyCompiler(ledger)), source)
+    cells = source_cells(ledger)
     quotient = DiamondQuotientArena(functions, cells)
     interface = MacroInterface(
         SemanticIdentity("audit-kernel", ("fixed",)),
@@ -129,35 +127,22 @@ def test_failed_complete_normalization_cannot_publish_partial_function_state(
 ) -> None:
     ledger, functions, quotient, _, signature, components, _ = _fixture()
     ledger.tighten_limits(None, ledger.entries + extra_entries)
-    before = _retention(ledger, functions, quotient)
-    with pytest.raises(BlockContextBudgetExceeded):
-        quotient.intern(signature, components)
-    after = _retention(ledger, functions, quotient)
-    assert after[:2] == before[:2]
-    assert after[4:] == before[4:]
-    # Rejected publication rolls back retention, not the real scratch peak.
-    assert after[2] >= before[2]
-    assert after[3] >= before[3]
+    _assert_refused_normalization(
+        ledger, functions, quotient, lambda: quotient.intern(signature, components)
+    )
 
 
 def test_failed_complete_normalization_is_atomic_for_node_budget_too() -> None:
     ledger, functions, quotient, _, signature, components, _ = _fixture()
     ledger.tighten_limits(ledger.nodes + 1, None)
-    before = _retention(ledger, functions, quotient)
-    with pytest.raises(BlockContextBudgetExceeded):
-        quotient.intern(signature, components)
-    after = _retention(ledger, functions, quotient)
-    assert after[:2] == before[:2]
-    assert after[4:] == before[4:]
-    assert after[2] >= before[2]
-    assert after[3] >= before[3]
+    _assert_refused_normalization(
+        ledger, functions, quotient, lambda: quotient.intern(signature, components)
+    )
 
 
 def test_parent_normalization_failure_does_not_leave_a_successful_child_memo() -> None:
     ledger, functions, quotient, cells, signature, components, one = _fixture()
-    child = quotient.intern(signature, components)
-    cell = cells.source_span(0, 2)[0][1]
-    key = DiamondKey(child, child, cell, 1, 0, 0, signature)
+    child, cell, key = parent_request(quotient, cells, signature, components)
     ledger.tighten_limits(None, ledger.entries + 1)
     before = _retention(ledger, functions, quotient)
     with pytest.raises(BlockContextBudgetExceeded):
@@ -178,10 +163,11 @@ def test_cyclic_semantic_sort_rejects_without_recursive_hashing_or_retention(
         cyclic = object.__new__(FunctionSort)
         object.__setattr__(cyclic, "inputs", ())
         object.__setattr__(cyclic, "output", cyclic)
-    before = functions.ledger.snapshot()
-    with pytest.raises((TypeError, ValueError)):
-        functions.invalid(FunctionSignature((), cyclic))
-    assert functions.ledger.snapshot() == before
+    assert_rejected_atomically(
+        functions.ledger,
+        lambda: functions.invalid(FunctionSignature((), cyclic)),
+        (TypeError, ValueError),
+    )
 
 
 def test_macro_admissibility_rejects_non_boolean_named_sort_before_retention() -> None:
@@ -193,10 +179,7 @@ def test_macro_admissibility_rejects_non_boolean_named_sort_before_retention() -
         1,
     )
     malformed = replace(quotient.interface(signature), admissible=impostor)
-    before = _retention(ledger, functions, quotient)
-    with pytest.raises((TypeError, ValueError)):
-        quotient.intern_interface(malformed)
-    assert _retention(ledger, functions, quotient) == before
+    _assert_refused_interface(ledger, functions, quotient, malformed)
 
 
 def test_nested_kernel_identity_cannot_hide_mutable_payload() -> None:
@@ -205,10 +188,7 @@ def test_nested_kernel_identity_cannot_hide_mutable_payload() -> None:
     kernel = SemanticIdentity("outer", (nested,))
     object.__setattr__(nested, "behavior", ([0, 1, 0, 1],))
     malformed = replace(quotient.interface(signature), kernel=kernel)
-    before = _retention(ledger, functions, quotient)
-    with pytest.raises((TypeError, ValueError)):
-        quotient.intern_interface(malformed)
-    assert _retention(ledger, functions, quotient) == before
+    _assert_refused_interface(ledger, functions, quotient, malformed)
 
 
 def test_three_port_currying_and_capture_avoiding_application_share_canonical_truth_table() -> (
@@ -251,10 +231,11 @@ def test_function_application_checks_foreign_unused_arguments_before_lookup(
     foreign = SemanticFunctionArena(ResourceLedger()).atom(
         FunctionSignature((), BOOL), 0
     )
-    before = functions.ledger.snapshot()
-    with pytest.raises((TypeError, ValueError)):
-        functions.apply(curried, {port.variable: foreign})
-    assert functions.ledger.snapshot() == before
+    assert_rejected_atomically(
+        functions.ledger,
+        lambda: functions.apply(curried, {port.variable: foreign}),
+        (TypeError, ValueError),
+    )
 
 
 def test_deep_acyclic_finite_sort_uses_iterative_identity_not_recursive_hashing() -> (
@@ -310,4 +291,33 @@ def test_complete_function_channel_requires_total_body_not_only_a_function_termi
     before = _retention(ledger, functions, quotient)
     with pytest.raises(ValueError):
         quotient.intern(nested_signature, replace(components, output=function_value))
+    assert _retention(ledger, functions, quotient) == before
+
+
+def _assert_refused_normalization(
+    ledger: ResourceLedger,
+    functions: SemanticFunctionArena,
+    quotient: DiamondQuotientArena,
+    operation: Callable[[], object],
+) -> None:
+    before = _retention(ledger, functions, quotient)
+    with pytest.raises(BlockContextBudgetExceeded):
+        operation()
+    after = _retention(ledger, functions, quotient)
+    assert after[:2] == before[:2]
+    assert after[4:] == before[4:]
+    # Publication rolls back retention, not real scratch peaks.
+    assert after[2] >= before[2]
+    assert after[3] >= before[3]
+
+
+def _assert_refused_interface(
+    ledger: ResourceLedger,
+    functions: SemanticFunctionArena,
+    quotient: DiamondQuotientArena,
+    malformed: MacroInterface,
+) -> None:
+    before = _retention(ledger, functions, quotient)
+    with pytest.raises((TypeError, ValueError)):
+        quotient.intern_interface(malformed)
     assert _retention(ledger, functions, quotient) == before

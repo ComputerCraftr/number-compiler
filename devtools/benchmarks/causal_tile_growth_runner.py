@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from number_compiler.resources.temporal_diagnostics import METRICS_SCHEMA_VERSION
+
 import argparse
 import json
 import math
@@ -577,7 +579,7 @@ def run_fresh_process_probe(
     release_measurement_pass = release_manifest_complete and diagnostic_accepted
     observed = set(observed_requests)
     return {
-        "metrics_schema_version": 7,
+        "metrics_schema_version": METRICS_SCHEMA_VERSION,
         "source_fingerprint": fingerprint,
         "source_unchanged": source_unchanged,
         "fresh_process_trials_per_sample": trials,
@@ -654,7 +656,11 @@ def main(argv: list[str] | None = None) -> int:
         print(json.dumps(worker(*values)))
         return 0
     if args.output is None:
-        parser.error("parent runner requires --output")
+        from devtools.paths import report_output
+
+        args.output = report_output(
+            "devtools.benchmarks.causal_tile_growth_runner", "report.json"
+        )
     if args.output.exists() or args.output.is_symlink():
         parser.error("historical results must not be overwritten")
     result = run_fresh_process_probe()
@@ -665,4 +671,6 @@ def main(argv: list[str] | None = None) -> int:
 
 
 if __name__ == "__main__":
-    raise SystemExit(main())
+    from devtools.runs import run_reported
+
+    raise SystemExit(run_reported(main))

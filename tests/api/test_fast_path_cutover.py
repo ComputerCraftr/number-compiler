@@ -7,6 +7,10 @@ establish those architectural obligations.
 
 from __future__ import annotations
 
+from tests.support.power_assertions import assert_collatz_radices
+
+from tests.support.power_assertions import assert_binary_power_bound
+
 import number_compiler
 from devtools.paths import repository_root
 from number_compiler.api.number_api import NumberCompiler, PoweredCollatzTermPayload
@@ -44,9 +48,7 @@ def test_collatz_huge_nth_construction_is_logarithmic_and_does_not_execute_endpo
     metrics = term.metrics()
     assert metrics.point_queries == 0
     assert metrics.direct_powered_point_queries == 0
-    assert metrics.operator_nodes <= 2 * steps.bit_length()
-    assert metrics.compose_operations <= 2 * steps.bit_length()
-    assert metrics.syntax_depth_bound <= steps.bit_length() + 2
+    assert_binary_power_bound(metrics, steps)
 
 
 def test_number_api_collatz_projection_is_lazy_binary_powered() -> None:
@@ -66,6 +68,4 @@ def test_fast_paths_remain_exact_on_representative_terms() -> None:
     )
     assert PoweredCollatzTerm(27, 10).materialize(max_bits=10_000) == 214
     compiler = NumberCompiler()
-    assert compiler.nth("collatz", 10, seed=27, radix=2) == 214
-    assert compiler.nth("collatz", 10, seed=27, radix=3) == 214
-    assert compiler.nth("collatz", 10, seed=27, radix=6) == 214
+    assert_collatz_radices(compiler)

@@ -2,6 +2,9 @@
 
 from __future__ import annotations
 
+from tests.support.recursive_field_images import _application_setup
+from tests.support.assertions import assert_rejected_atomically
+
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass, fields, is_dataclass, replace
 
@@ -34,9 +37,9 @@ from tests.support.recursive_field_images import _SecondDomainArena, _setup
 
 def test_image_arena_rejects_callable_only_domain_before_registration() -> None:
     ledger, _, _signature, _, _, images, adapter, _ = _setup()
-    before = ledger.snapshot()
-    with pytest.raises(ValueError, match="supplied together"):
-        RecursiveFieldImageArena(
+    assert_rejected_atomically(
+        ledger,
+        lambda: RecursiveFieldImageArena(
             ledger,
             images.sources,
             images.geometries,
@@ -47,8 +50,10 @@ def test_image_arena_rejects_callable_only_domain_before_registration() -> None:
             action_validate=adapter.validate_action,
             output_validate=adapter.validate_output,
             signature_for=adapter.signature,
-        )
-    assert ledger.snapshot() == before
+        ),
+        ValueError,
+        match="supplied together",
+    )
 
 
 def test_image_domain_audit_rejects_missing_authority_metadata() -> None:
@@ -190,9 +195,9 @@ def test_image_domains_are_charged_and_shared_output_authority_is_reused() -> No
 
 def test_duplicate_or_unowned_image_domain_rejects_before_reservation() -> None:
     ledger, _, signature, _, _, images, adapter, _ = _setup((0,))
-    before = ledger.snapshot()
-    with pytest.raises(ValueError, match="already registered"):
-        images.admit_domain(
+    before = assert_rejected_atomically(
+        ledger,
+        lambda: images.admit_domain(
             images.interfaces,
             action_owner=adapter.action.owner,
             action_kind=adapter.action.kind,
@@ -205,8 +210,10 @@ def test_duplicate_or_unowned_image_domain_rejects_before_reservation() -> None:
             action_authority=adapter,
             output_authority=adapter,
             signature_authority=adapter,
-        )
-    assert ledger.snapshot() == before
+        ),
+        ValueError,
+        match="already registered",
+    )
 
     fake_owner = ArenaToken("unowned-actions")
     with pytest.raises(ValueError, match="not an index arena"):
@@ -231,9 +238,18 @@ def test_duplicate_or_unowned_image_domain_rejects_before_reservation() -> None:
 def test_same_arena_wrong_signature_cannot_reach_parent_observer(
     monkeypatch: pytest.MonkeyPatch, method: str
 ) -> None:
-    ledger, source, signature, geometry, action, images, adapter, executor = _setup()
-    incoming = ArenaHandle(adapter.port_owner, "test-image-port", 0)
-    application = executor.application(action, source, geometry, signature, incoming)
+    (
+        ledger,
+        source,
+        signature,
+        geometry,
+        action,
+        images,
+        adapter,
+        executor,
+        incoming,
+        application,
+    ) = _application_setup()
     other = images.interfaces.intern_interface(
         replace(
             images.interfaces.interface(signature),
@@ -262,10 +278,14 @@ def test_image_phase_domain_matches_admitted_port_before_lookup() -> None:
     ledger, source, signature, geometry, action, images, _, executor = _setup()
     executor.image(action, source, geometry, signature)
     wrong_geometry = images.geometries.intern(FieldGeometry(1, phase=1, phase_count=2))
-    before = ledger.snapshot()
-    with pytest.raises(ValueError, match="phase domain"):
-        images.probe(ImageRequestKey(action, source, wrong_geometry, signature))
-    assert ledger.snapshot() == before
+    assert_rejected_atomically(
+        ledger,
+        lambda: images.probe(
+            ImageRequestKey(action, source, wrong_geometry, signature)
+        ),
+        ValueError,
+        match="phase domain",
+    )
 
 
 def test_image_publication_rejects_interface_from_another_signature() -> None:
@@ -344,10 +364,9 @@ def test_signature_subclass_cannot_alias_the_configured_handle_sort() -> None:
         pass
 
     forged = ForgedSignature(signature.owner, signature.kind, signature.local_id)
-    before = ledger.snapshot()
-    with pytest.raises(TypeError):
-        executor.image(action, source, geometry, forged)
-    assert ledger.snapshot() == before
+    assert_rejected_atomically(
+        ledger, lambda: executor.image(action, source, geometry, forged), TypeError
+    )
     assert images.retained_bindings == 0
 
 
@@ -388,10 +407,12 @@ def test_non_source_image_graph_owns_no_exact_digit_geometry() -> None:
 def test_geometry_rejects_boolean_integer_aliases() -> None:
     ledger = ResourceLedger()
     arena = FieldGeometryArena(ledger)
-    before = ledger.snapshot()
-    with pytest.raises(TypeError, match="exact integer"):
-        arena.intern(FieldGeometry(True))
-    assert ledger.snapshot() == before
+    assert_rejected_atomically(
+        ledger,
+        lambda: arena.intern(FieldGeometry(True)),
+        TypeError,
+        match="exact integer",
+    )
 
 
 def test_geometry_nodes_and_interner_are_independently_inventoried() -> None:

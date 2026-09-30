@@ -4,7 +4,7 @@ from itertools import product
 
 import pytest
 
-from devtools.proofs.decimal_root_tangent_audit import audit_decimal_root_tangent
+from devtools.verification.decimal_root_tangent_audit import audit_decimal_root_tangent
 
 pytestmark = pytest.mark.validation
 

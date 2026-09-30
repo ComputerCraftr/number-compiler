@@ -12,6 +12,7 @@ from pathlib import Path
 from urllib.parse import unquote, urlsplit
 
 from devtools.paths import repository_root
+from devtools.checks.sprint_scaffold import HEADINGS, refresh_index
 
 _LINK = re.compile(r"!?\[[^\]\n]*\]\((<[^>]+>|[^)\s]+)(?:\s+[^)]*)?\)")
 _REFERENCE = re.compile(r"^\s*\[[^]]+\]:\s*(<[^>]+>|\S+)")
@@ -80,7 +81,7 @@ def _sprint_errors(name: str, kind: str, week_start: object, text: str) -> list[
         return [f"{prefix} invalid sprint week_start: {week_start}"]
     if start.weekday() != 6 or start.isoformat() != week_start:
         return [f"{prefix} sprint week_start must be a Sunday (YYYY-MM-DD)"]
-    expected = f"results/current/week-of-{week_start}"
+    expected = f"docs/sprints/week-of-{week_start}"
     errors = []
     if Path(name).parent.as_posix() != expected:
         errors.append(f"{prefix} sprint folder must match week_start: {expected}")
@@ -92,6 +93,17 @@ def _sprint_errors(name: str, kind: str, week_start: object, text: str) -> list[
             errors.append(
                 f"{prefix} sprint index must declare its Sunday–Saturday period"
             )
+    elif kind == "sprint-topic":
+        period = (
+            f"Period: {start} through {start + timedelta(days=6)} (Sunday–Saturday)."
+        )
+        if period not in text.splitlines():
+            errors.append(
+                f"{prefix} sprint topic must declare its Sunday–Saturday period"
+            )
+        for heading in HEADINGS:
+            if f"## {heading}" not in text.splitlines():
+                errors.append(f"{prefix} missing sprint topic section: {heading}")
     return errors
 
 
@@ -188,11 +200,25 @@ def check_docs(root: Path) -> tuple[str, ...]:
         ):
             errors.append(f"{name}:1: missing provenance section")
         if kind in {"sprint", "sprint-topic"}:
-            errors.extend(
-                _sprint_errors(name, kind, record.get("week_start"), path.read_text())
+            sprint_errors = _sprint_errors(
+                name, kind, record.get("week_start"), path.read_text()
             )
+            errors.extend(sprint_errors)
+            if kind == "sprint" and not sprint_errors:
+                start = date.fromisoformat(str(record["week_start"]))
+                if refresh_index(path.parent, start, check=True):
+                    errors.append(
+                        f"{name}:1: generated sprint topic links/counts are stale"
+                    )
         if not name.startswith("docs/archive/"):
-            errors.extend(_link_errors(root, path, durable=name.startswith("docs/")))
+            errors.extend(
+                _link_errors(
+                    root,
+                    path,
+                    durable=name.startswith("docs/")
+                    and not name.startswith("docs/sprints/"),
+                )
+            )
     # Iterative traversal also detects cycles without imposing a recursion limit.
     complete: set[str] = set()
     for identifier in ids:
@@ -245,6 +271,10 @@ def check_docs(root: Path) -> tuple[str, ...]:
     readme = root / "README.md"
     if readme.is_file() and "README.md" not in paths:
         errors.extend(_link_errors(root, readme, durable=True))
+    if (root / "src/number_compiler/api/cli_requests.py").is_file():
+        from devtools.checks.cli_docs import check_cli_docs
+
+        errors.extend(check_cli_docs(root))
     return tuple(sorted(set(errors)))
 
 

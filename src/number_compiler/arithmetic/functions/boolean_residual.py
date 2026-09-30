@@ -39,6 +39,26 @@ class BooleanResidualStats:
     output_description_bits: int
 
 
+def _rebuild_boolean(arena: FormulaArena, node: Expr, args: tuple[Expr, ...]) -> Expr:
+    k = node.kind
+    if k == "NOT":
+        return arena.not_(args[0])
+    elif k == "AND":
+        return arena.and_many(args, node.width)
+    elif k == "OR":
+        return arena.or_many(args, node.width)
+    elif k == "XOR":
+        return arena.xor_many(args, node.width)
+    elif k == "ITE":
+        return arena.ite(args[0], args[1], args[2])
+    elif k == "BOOLFUNC":
+        return arena.boolfunc(args, int(node.param[0]))
+    elif k in ("ZERO", "ONES"):
+        return node
+    else:
+        raise AssertionError(k)
+
+
 def _description_bits(roots: Sequence[Expr]) -> tuple[int, int]:
     seen = reachable(tuple(roots))
     refs = sum(len(node.args) for node in seen.values())
@@ -260,22 +280,7 @@ def normalize_boolean_residuals(
                     )
                     if composed is None:
                         wide += 1
-                        if k == "NOT":
-                            out = arena.not_(args[0])
-                        elif k == "AND":
-                            out = arena.and_many(args, node.width)
-                        elif k == "OR":
-                            out = arena.or_many(args, node.width)
-                        elif k == "XOR":
-                            out = arena.xor_many(args, node.width)
-                        elif k == "ITE":
-                            out = arena.ite(args[0], args[1], args[2])
-                        elif k == "BOOLFUNC":
-                            out = arena.boolfunc(args, int(node.param[0]))
-                        elif k in ("ZERO", "ONES"):
-                            out = node
-                        else:
-                            raise AssertionError(k)
+                        out = _rebuild_boolean(arena, node, args)
                         spec_memo[out.id] = None
                     else:
                         atoms, table = composed
@@ -287,22 +292,7 @@ def normalize_boolean_residuals(
                         if prior is not None:
                             out = prior
                         else:
-                            if k == "NOT":
-                                structural = arena.not_(args[0])
-                            elif k == "AND":
-                                structural = arena.and_many(args, node.width)
-                            elif k == "OR":
-                                structural = arena.or_many(args, node.width)
-                            elif k == "XOR":
-                                structural = arena.xor_many(args, node.width)
-                            elif k == "ITE":
-                                structural = arena.ite(args[0], args[1], args[2])
-                            elif k == "BOOLFUNC":
-                                structural = arena.boolfunc(args, int(node.param[0]))
-                            elif k in ("ZERO", "ONES"):
-                                structural = node
-                            else:
-                                raise AssertionError(k)
+                            structural = _rebuild_boolean(arena, node, args)
                             candidate = _bdd_from_table(
                                 arena, atoms, table, width=node.width
                             )

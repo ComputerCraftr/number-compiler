@@ -38,6 +38,7 @@ from number_compiler.hashlife.interfaces.semantic_structures import (
     _Builder,
 )
 from number_compiler.resources.ledger import ResourceLedger
+from tests.support.diamond_quotient import curried_increment
 
 if TYPE_CHECKING:
     from number_compiler.arithmetic.functions.finite_function_types import (
@@ -138,9 +139,7 @@ def test_partial_nested_structured_output_rejects_before_quotient_mutation() -> 
     x = FinitePort(PortVariable(0, 0, "x", 0), 4)
     y = FinitePort(PortVariable(0, 0, "y", 0), 2)
     word = AtomSort("word", 4)
-    vx = bits.variable((x, y), x, word)
-    vy = bits.variable((x, y), y, BOOL)
-    partial = structures.curry(structures.atom(bits.add(vx, vy, word)), (y,))
+    partial = curried_increment(structures, x, y, word)
     arena = DiamondQuotientArena(functions, structures=structures)
     zero, one = (
         functions.atom(FunctionSignature((x,), BOOL), value) for value in (0, 1)

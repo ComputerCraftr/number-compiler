@@ -6,12 +6,12 @@ constructor refusal is an explicit release hold, not a successful term query.
 
 from __future__ import annotations
 
-import importlib.util
 from typing import Never
 
 import pytest
 
-from devtools.experiments.reverse_add import uniform_projection_reference
+from tests.support.reverse_cutover import forbid_uniform_context_compilation
+
 from number_compiler.api.cli import main
 from number_compiler.arithmetic.functions import residual
 from number_compiler.hashlife.execution.tile_causal import CausalTileEngine
@@ -30,24 +30,7 @@ def _forbidden(*_args: object, **_kwargs: object) -> Never:
 @pytest.fixture(autouse=True)
 def forbid_universal_context_compilation(monkeypatch: pytest.MonkeyPatch) -> None:
     """Containment only: missing-return refusals still leave the P0 gate red."""
-    assert importlib.util.find_spec("number_compiler.hashlife.actions.power") is None
-    assert (
-        importlib.util.find_spec("number_compiler.hashlife.execution.cascade_power")
-        is None
-    )
-    assert (
-        importlib.util.find_spec("number_compiler.hashlife.execution.cascade") is None
-    )
-    for name in (
-        "uniform_successor",
-        "uniform_no_growth_power",
-        "edge_core_successors",
-        "select_clause",
-    ):
-        monkeypatch.setattr(uniform_projection_reference, name, _forbidden)
-    monkeypatch.setattr(
-        uniform_projection_reference.ProjectionClause, "instantiate", _forbidden
-    )
+    forbid_uniform_context_compilation(monkeypatch, _forbidden)
     monkeypatch.setattr(residual, "minimize_bimachine", _forbidden)
 
 

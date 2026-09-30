@@ -7,7 +7,10 @@ from typing import Never, cast
 
 import pytest
 
-from devtools.experiments.reverse_add.cocycle_temporal import CocycleTemporalArena
+from devtools.experiments.reverse_add.cocycle_temporal import (
+    CocycleTemporalArena,
+    CocycleAction,
+)
 from devtools.experiments.reverse_add.threshold_cocycle import (
     ResidueMorphism,
     ThresholdCocycleArena,
@@ -71,25 +74,7 @@ def test_affine_cocycle_squares_to_1024_with_primitive_and_evaluation_poisoned(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     bits = BitFunctionArena(ResourceLedger(max_nodes=20000, max_cache_entries=100000))
-    k = ThresholdCocycleArena(bits)
-    t = CocycleTemporalArena(k)
-    sorts = (F5, BOOL, F5, BOOL, BOOL)
-    ports = tuple(
-        FinitePort(PortVariable(0, i, "additive-cocycle-context", 0), s.cardinality)
-        for i, s in enumerate(sorts)
-    )
-    a, e, b, f, _last = (
-        bits.variable(ports, p, s) for p, s in zip(ports, sorts, strict=True)
-    )
-    left, right = ResidueMorphism(a, e), ResidueMorphism(b, f)
-    value = k.add(left, right)
-    residual = k.precompose(k.primitive, left, right)
-    action = t.primitive(
-        ports,
-        (value.alpha, value.epsilon, b, f, k.resolve(residual)),
-        (residual,),
-        bits.constant(FunctionSignature(ports, BOOL), 1),
-    )
+    k, t, ports, action = _additive_action(bits, "additive-cocycle-context")
     first = action
     powers = {1: action}
 
@@ -155,26 +140,7 @@ def test_uninterned_cocycle_cannot_bypass_root_accounting() -> None:
 
 def test_temporal_composition_cache_is_complete_and_event_sensitive() -> None:
     bits = BitFunctionArena(ResourceLedger())
-    k = ThresholdCocycleArena(bits)
-    t = CocycleTemporalArena(k)
-    sorts = (F5, BOOL, F5, BOOL, BOOL)
-    ports = tuple(
-        FinitePort(PortVariable(0, i, "cache-context", 0), sort.cardinality)
-        for i, sort in enumerate(sorts)
-    )
-    a, e, b, f, _last = (
-        bits.variable(ports, port, sort)
-        for port, sort in zip(ports, sorts, strict=True)
-    )
-    left, right = ResidueMorphism(a, e), ResidueMorphism(b, f)
-    value = k.add(left, right)
-    residual = k.precompose(k.primitive, left, right)
-    action = t.primitive(
-        ports,
-        (value.alpha, value.epsilon, b, f, k.resolve(residual)),
-        (residual,),
-        bits.constant(FunctionSignature(ports, BOOL), 1),
-    )
+    k, t, ports, action = _additive_action(bits, "cache-context")
 
     initial_requests = bits.ledger.counters.get("temporal_composition_requests", 0)
     initial_validations = bits.ledger.counters.get(
@@ -250,3 +216,32 @@ def test_temporal_composition_cache_is_complete_and_event_sensitive() -> None:
             t.compose(action, action)
     finally:
         object.__setattr__(cached_entry.result, "events", original_events)
+
+
+def _additive_action(
+    bits: BitFunctionArena,
+    role: str,
+) -> tuple[
+    ThresholdCocycleArena, CocycleTemporalArena, tuple[FinitePort, ...], CocycleAction
+]:
+    k = ThresholdCocycleArena(bits)
+    t = CocycleTemporalArena(k)
+    sorts = (F5, BOOL, F5, BOOL, BOOL)
+    ports = tuple(
+        FinitePort(PortVariable(0, i, role, 0), sort.cardinality)
+        for i, sort in enumerate(sorts)
+    )
+    a, e, b, f, _last = (
+        bits.variable(ports, port, sort)
+        for port, sort in zip(ports, sorts, strict=True)
+    )
+    left, right = ResidueMorphism(a, e), ResidueMorphism(b, f)
+    value = k.add(left, right)
+    residual = k.precompose(k.primitive, left, right)
+    action = t.primitive(
+        ports,
+        (value.alpha, value.epsilon, b, f, k.resolve(residual)),
+        (residual,),
+        bits.constant(FunctionSignature(ports, BOOL), 1),
+    )
+    return k, t, ports, action

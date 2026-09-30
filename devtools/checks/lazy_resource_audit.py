@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from number_compiler.resources.temporal_diagnostics import METRICS_SCHEMA_VERSION
+
 import argparse
 import json
 import os
@@ -425,7 +427,7 @@ def main() -> None:
             for row in rows
         )
     result = {
-        "metrics_schema_version": 4,
+        "metrics_schema_version": METRICS_SCHEMA_VERSION,
         "audit_revision": 7,
         "cold_process_per_row": True,
         "maximum_parallel_workers": args.workers,

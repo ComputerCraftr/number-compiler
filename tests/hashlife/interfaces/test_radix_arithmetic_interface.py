@@ -19,6 +19,8 @@ from number_compiler.hashlife.observation.tile_projection import build_tile_proj
 from number_compiler.hashlife.tiles.tile_context import TemporalCocycle
 from number_compiler.resources.ledger import ResourceLedger
 from number_compiler.sequences.collatz.block_power import CollatzPhysicalBlockEffect
+from tests.support.assertions import assert_rejected_atomically
+from tests.support.diamond_quotient import division_interface
 
 
 @pytest.mark.parametrize("radix", (257, (1 << 63) - 25))
@@ -65,15 +67,7 @@ def test_numeric_components_cannot_silently_narrow_admissibility() -> None:
     with build_tile_projection(
         CollatzPhysicalBlockEffect(), SourceGeometry(ledger, source)
     ) as projection:
-        adapter = projection.scheduler.adapter
-        assert type(adapter) is PrimitiveTileKernelAdapter
-        action = adapter.admit(
-            SymbolicBinaryDivisionEffect(257), cocycle=TemporalCocycle()
-        )
-        interface_id = adapter._compile_interface(
-            action, projection._application.source, adapter.wiring(action)
-        )
-        arena = projection.scheduler.results.interfaces
+        adapter, action, interface_id, arena = division_interface(projection)
         record = arena.resolve(interface_id)
         interface = arena.interface(record.signature)
         before = ledger.snapshot()
@@ -95,7 +89,6 @@ def test_unreachable_threshold_cannot_authorize_affine_substitution() -> None:
         DivisionCarry(RadixRemainderTransfer(7, 2, 1), 6)
     carry = DivisionCarry.leaf(7, 1)
     ledger = ResourceLedger()
-    before = ledger.snapshot()
-    with pytest.raises(ValueError, match="finite domain"):
-        carry.preimage(True, ledger)
-    assert ledger.snapshot() == before
+    assert_rejected_atomically(
+        ledger, lambda: carry.preimage(True, ledger), ValueError, match="finite domain"
+    )

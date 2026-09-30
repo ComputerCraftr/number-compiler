@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from tests.support.power_assertions import assert_binary_power_bound
+
 import random
 from typing import Never
 
@@ -50,9 +52,7 @@ def test_huge_nth_term_construction_is_logarithmic_and_does_not_project() -> Non
     metrics = term.metrics()
     assert metrics.point_queries == 0
     assert metrics.run_action_cache_entries == 0
-    assert metrics.operator_nodes <= 2 * generation.bit_length()
-    assert metrics.compose_operations <= 2 * generation.bit_length()
-    assert metrics.syntax_depth_bound <= generation.bit_length() + 2
+    assert_binary_power_bound(metrics, generation)
     assert metrics.descriptor_bits <= 2 * generation.bit_length()
 
 

@@ -1,8 +1,11 @@
-from devtools.proofs.oracles.special_power_reference import (
+from devtools.verification.oracles.special_power_reference import (
     apply_special_power_reference,
 )
-from devtools.proofs.oracles.special_primality import lucas_lehmer_test, pepin_test
-from devtools.proofs.special_power_monoid import (
+from devtools.verification.oracles.special_primality import (
+    lucas_lehmer_test,
+    pepin_test,
+)
+from devtools.verification.special_power_monoid import (
     build_special_power_program,
 )
 from number_compiler.arithmetic.fields.morphism_core import QuadraticPower

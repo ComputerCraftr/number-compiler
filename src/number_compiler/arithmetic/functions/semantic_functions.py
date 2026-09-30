@@ -423,74 +423,11 @@ class SemanticFunctionArena:
         enumeration of the port universe. Its workspace is discarded; no
         validity predicate or partially checked result enters an arena.
         """
-        target, allowed = self.resolve(function), self.resolve(admissible)
-        if allowed.signature != FunctionSignature(target.signature.inputs, BOOL):
-            raise ValueError(
-                "totality requires the full Boolean admissibility interface"
-            )
-        transaction = _Transaction(self)
+        from number_compiler.arithmetic.functions.semantic_totality import (
+            require_semantic_total,
+        )
 
-        def predicate(identity: int) -> int:
-            signature = transaction.node(identity).signature
-            return transaction.map_terminals(
-                identity,
-                signature,
-                lambda leaf: transaction.terminal(
-                    signature,
-                    SemanticTerminal(
-                        "atom", int(leaf.kind == "atom" and leaf.value == 1)
-                    ),
-                ),
-            )
-
-        admitted = predicate(admissible.local_id)
-        pending = [(function.local_id, admitted)]
-        checked: set[tuple[int, int]] = set()
-        domains: dict[tuple[FinitePort, ...], int] = {}
-        while pending:
-            pair = pending.pop()
-            if pair in checked:
-                continue
-            checked.add(pair)
-            value, condition = (transaction.node(identity) for identity in pair)
-            self.ledger.bump("semantic_totality_pair_visits")
-            if condition.terminal is not None and not condition.terminal.value:
-                continue
-            terminal = value.terminal
-            if terminal is not None:
-                if terminal.kind == "invalid":
-                    raise ValueError(
-                        "complete semantic channel is undefined on an admissible input"
-                    )
-                for child in terminal.references:
-                    inputs = transaction.node(child).signature.inputs
-                    valid = domains.get(inputs)
-                    if valid is None:
-                        signature = FunctionSignature(inputs, BOOL)
-                        valid = predicate(
-                            transaction.admissible(
-                                transaction.terminal(
-                                    signature, SemanticTerminal("atom", 1)
-                                )
-                            )
-                        )
-                        domains[inputs] = valid
-                    pending.append((child, valid))
-                continue
-            variable = min(
-                node.variable
-                for node in (value, condition)
-                if node.variable is not None
-            )
-            low = tuple(
-                node.low if node.variable == variable else identity
-                for node, identity in zip((value, condition), pair)
-            )
-            high = tuple(
-                node.high if node.variable == variable else identity
-                for node, identity in zip((value, condition), pair)
-            )
-            pending.extend(((low[0], low[1]), (high[0], high[1])))
+        require_semantic_total(self, (function,), admissible)
 
 
 __all__ = ["SemanticFunctionArena"]

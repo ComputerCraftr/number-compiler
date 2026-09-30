@@ -224,20 +224,11 @@ class FieldTransferApplication:
         self.incoming = incoming
         self.ledger = executor.ledger
         self._seal = seal
-        self.ledger.register_execution_root(self)
-        from number_compiler.resources.metric_registry import (
-            ALGEBRAIC_FIELD_WORK_COUNTERS,
+        from number_compiler.hashlife.execution.field_capabilities import (
+            register_field_application,
         )
 
-        for name in ALGEBRAIC_FIELD_WORK_COUNTERS:
-            self.ledger.bump(name, 0)
-        for name in (
-            "diamond_temporal_composition_requests",
-            "diamond_temporal_composition_hits",
-            "diamond_temporal_composition_evaluations",
-        ):
-            self.ledger.bump(name, 0)
-        self.ledger.bump("algebraic_executor_capability_validated")
+        register_field_application(self.ledger, self)
 
     def _transfer(self) -> FieldTransferID:
         return self.executor.transfer(

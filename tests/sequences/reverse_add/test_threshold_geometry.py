@@ -5,9 +5,9 @@ from itertools import product
 import pytest
 
 from devtools.experiments.reverse_add.cocycle_carrier import CocycleReverseCarrier
-from devtools.proofs.reverse_geometry_context import ReverseGeometryContext
-from devtools.proofs.reverse_threshold_geometry import ThresholdGeometry
-from devtools.proofs.threshold_expressions import ThresholdExpressions
+from devtools.verification.reverse_geometry_context import ReverseGeometryContext
+from devtools.verification.reverse_threshold_geometry import ThresholdGeometry
+from devtools.verification.threshold_expressions import ThresholdExpressions
 from number_compiler.arithmetic.carry.event_memory import pair_step
 from number_compiler.arithmetic.contracts.block_effect import BlockContextBudgetExceeded
 from number_compiler.arithmetic.fields.radix import reverse_pair_sums

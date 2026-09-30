@@ -2,6 +2,15 @@
 
 from __future__ import annotations
 
+from number_compiler.hashlife.execution.continuations.higher_bimachine import (
+    HigherBimachineRuntime,
+)
+from number_compiler.hashlife.execution.continuations.higher_semantic import (
+    HigherSemanticArena,
+)
+from number_compiler.hashlife.actions.field_actions import FieldCellActionID
+from number_compiler.hashlife.execution.field_images import SourceCellID
+from number_compiler.hashlife.execution.continuations.higher_values import RuntimeAtom
 import pytest
 
 from number_compiler.hashlife.execution.continuations.higher_operations import (
@@ -93,14 +102,23 @@ def test_runtime_value_records_enforce_unary_and_context_summary_sorts() -> None
         semantics.runtime_values.context_state(unary, 0, 0, 0, 0)
 
 
+def _deferred(
+    runtime: HigherBimachineRuntime,
+    semantics: HigherSemanticArena,
+    action: FieldCellActionID,
+    source: SourceCellID,
+) -> RuntimeAtom:
+    incoming = evaluate_operation(semantics, "initial", action, 0, ())
+    transfer = runtime.summaries.runtime_unary(action, source, 0)
+    return runtime.summaries.transfer_value(transfer, incoming)
+
+
 def test_action_continuation_accepts_only_a_deferred_state_of_its_exact_sort() -> None:
     actions, primitive, semantics, runtime, _, _, sources, _ = _fixture((7, 18))
     two = actions.compose(primitive, primitive)
     four = actions.compose(two, two)
     source = sources.intern(0, 0)
-    incoming = evaluate_operation(semantics, "initial", two, 0, ())
-    transfer = runtime.summaries.runtime_unary(two, source, 0)
-    deferred = runtime.summaries.transfer_value(transfer, incoming)
+    deferred = _deferred(runtime, semantics, two, source)
     values = semantics.runtime_values
 
     continuation = values.action_function(
@@ -118,9 +136,7 @@ def test_action_continuation_accepts_only_a_deferred_state_of_its_exact_sort() -
     )
 
     wrong = actions.compose(primitive, two)
-    wrong_incoming = evaluate_operation(semantics, "initial", wrong, 0, ())
-    wrong_summary = runtime.summaries.runtime_unary(wrong, source, 0)
-    wrong_deferred = runtime.summaries.transfer_value(wrong_summary, wrong_incoming)
+    wrong_deferred = _deferred(runtime, semantics, wrong, source)
     before = semantics.ledger.snapshot()
     with pytest.raises(ValueError, match="another boundary sort"):
         values.action_function("constant", four, 0, wrong_deferred, None, -1)

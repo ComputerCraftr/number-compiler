@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from tests.support.reference_arithmetic import reverse_add_digit_step
 import pytest
 
 from devtools.experiments.reverse_add.chamber_exit import analyze_chamber_exit
@@ -19,19 +20,6 @@ def _digits(seed: int, base: int) -> tuple[int, ...]:
             return tuple(result)
 
 
-def _literal(
-    digits: tuple[int, ...], base: int
-) -> tuple[tuple[int, ...], tuple[int, ...]]:
-    carries, output = [0], []
-    for left, right in zip(digits, reversed(digits), strict=True):
-        carry, digit = divmod(left + right + carries[-1], base)
-        carries.append(carry)
-        output.append(digit)
-    if carries[-1]:
-        output.append(carries[-1])
-    return tuple(output), tuple(carries)
-
-
 @pytest.mark.parametrize("base", [2, 3, 10, 16])
 def test_analytic_exit_is_first_literal_carry_change(base: int) -> None:
     for seed in range(512):
@@ -39,7 +27,7 @@ def test_analytic_exit_is_first_literal_carry_change(base: int) -> None:
         source = ExactSource(digits, base)
         ledger = ResourceLedger()
         report = analyze_chamber_exit(source, ledger)
-        _, original = _literal(digits, base)
+        _, original = reverse_add_digit_step(digits, base)
         assert ledger.entries == ledger.nodes == 0
         if report.initial_growth:
             assert original[-1] == 1
@@ -51,10 +39,10 @@ def test_analytic_exit_is_first_literal_carry_change(base: int) -> None:
             continue
         endpoint = digits
         for _ in range(report.safe_applications):
-            endpoint, carries = _literal(endpoint, base)
+            endpoint, carries = reverse_add_digit_step(endpoint, base)
             assert carries == original
             assert len(endpoint) == len(digits)
-        _, changed = _literal(endpoint, base)
+        _, changed = reverse_add_digit_step(endpoint, base)
         assert changed != original
         witness = report.exit
         assert witness is not None

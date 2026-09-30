@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from tests.support.comma_oracles import assert_phase_period
+
 import gzip
 import json
 from pathlib import Path
@@ -76,15 +78,7 @@ def test_canonical_json_parser_rejects_duplicate_keys_and_noncanonical_lines() -
 
 
 def test_phase_period_matches_literal_decimal_child_recurrence() -> None:
-    for leading in range(1, 10):
-        for last_digit in range(10):
-            period, displacement = _phase_period(leading, last_digit)
-            value = 10_000 + last_digit
-            initial = value
-            for _ in range(period):
-                value += 10 * (value % 10) + leading
-            assert value - initial == displacement
-            assert value % 10 == initial % 10
+    assert_phase_period(_phase_period)
 
 
 def test_near_boundary_zero_cycle_row_does_not_apply_skip_guard() -> None:

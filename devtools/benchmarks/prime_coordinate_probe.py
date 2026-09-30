@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from devtools.paths import report_directory
+
 import json
 from typing import TYPE_CHECKING
 
@@ -32,10 +34,6 @@ if TYPE_CHECKING:
 
 
 ROOT = repository_root()
-OUT = ROOT / "results" / "prime_coordinate_metrics.json"
-DOC = report_output(
-    "devtools.benchmarks.prime_coordinate_probe", "PRIME_COORDINATE_RESULTS.md"
-)
 
 
 def lane_min_description_bits(
@@ -48,6 +46,13 @@ def lane_min_description_bits(
 
 
 def main() -> None:
+    OUT = (
+        report_directory("devtools.benchmarks.prime_coordinate_probe")
+        / "prime_coordinate_metrics.json"
+    )
+    DOC = report_output(
+        "devtools.benchmarks.prime_coordinate_probe", "PRIME_COORDINATE_RESULTS.md"
+    )
     start = 9_999_993
     previous_prime = 9_999_991
     length = 4096
@@ -312,4 +317,6 @@ def main() -> None:
 
 
 if __name__ == "__main__":
-    main()
+    from devtools.runs import run_reported
+
+    raise SystemExit(run_reported(main))

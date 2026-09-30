@@ -1,21 +1,22 @@
 # Number Compiler
 
 Number Compiler provides exact terms and radix projections for reverse-add,
-Collatz, Antihydra, prime blocks, Fermat numbers and Mersenne numbers.
+Collatz, Antihydra, prime blocks, Fermat numbers, Mersenne numbers and the admitted A367620 comma prefix.
 
 ```bash
 python -m pip install -e '.[dev]'
 number-compiler --list-families
 number-compiler 196 --nth 8
 number-compiler collatz --nth 8 --seed 27
+number-compiler collatz --nth-power10 6 --seed 27
 number-compiler antihydra --nth 64 --info ledger --info clock
+number-compiler a367620 --nth 1
 number-compiler fermat --nth 3 --no-value --info primality --format json
 number-compiler mersenne --nth 131 --no-value --info primality --info factor --format json
 ```
 
-The supported Python entry points are exported from `number_compiler`.
-Implementation modules have one canonical owner; historical forwarding imports
-have been removed as described in the [API migration guide](docs/api-migration.md).
+The public Python entry points are exported from `number_compiler`. See the
+[CLI reference](docs/cli.md) and [metrics reference](docs/metrics.md) for current usage and accounting.
 
 Each family owns its command: `FAMILY --nth N` emits the candidate or term, while
 `--no-value --info primality` requests the admitted compact primality route.
@@ -34,12 +35,10 @@ only when requested. Collatz `--nth` counts ordinary iterations; its separate
 is the total arithmetic sequence starting at 8, even if its ledger crosses −1;
 physical TM observations retain their halting boundary.
 
-The old `nth`, `observe`, `classify`, `verify-nonhalting` and `families` command
-forms have been removed. See the [CLI migration guide](docs/family-first-cli.md).
 
 A reused `NumberCompiler` keeps up to eight recent powered execution owners.
 Repeated requests and Collatz radix views reuse their existing HashLife caches;
-metrics remain cumulative per term. `NumberCompiler(max_cached_terms=0)` disables
+metrics remain cumulative per term. CLI `--info metrics` reports read-only schema 8 execution counters; unavailable counters are null. `NumberCompiler(max_cached_terms=0)` disables
 this reuse. The capacity bounds retained terms, not total DAG memory, and does
 not share caches between standalone CLI processes.
 
@@ -48,7 +47,7 @@ not share caches between standalone CLI processes.
 - [Development and checks](docs/development.md)
 - [Current validation status](docs/release-status.md)
 - [Research and proof history](docs/history.md)
-- [Repository rules](REPOSITORY_RULES.md)
+- [Executable source policy](devtools/checks/repository_policy.py) and [policy tests](tests/repository/test_repository_policy.py)
 
 The HashLife production cutover is unfinished. Structural cleanup does not prove
 sublinear execution or satisfy the five-minute runtime release gate. The

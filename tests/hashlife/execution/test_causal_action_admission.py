@@ -26,7 +26,7 @@ from number_compiler.hashlife.tiles.tile_directed_transfer_memo import (
 from number_compiler.hashlife.tiles.tile_result_records import DirectedTransferKey
 from number_compiler.resources.causal_workspace import CausalActionAdmission
 from number_compiler.resources.payload_audit import audit_registered_payloads
-from tests.arithmetic.contracts.test_tile_kernel import _runtime, _tile
+from tests.support.tile_kernel import _runtime, _tile
 
 
 def test_final_admission_rejects_callback_action_mutation_and_cleans_workspace(

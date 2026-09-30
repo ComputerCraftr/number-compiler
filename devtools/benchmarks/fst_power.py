@@ -10,8 +10,22 @@ applied after composition.
 from __future__ import annotations
 
 from collections import defaultdict, deque
-from collections.abc import Hashable, Sequence
+from collections.abc import Sequence
 from dataclasses import dataclass
+
+from devtools.verification.partition_refinement import (
+    partition_representatives,
+    stable_partition,
+)
+from devtools.verification.transducer_graph import (
+    DenseInterner,
+    append_reachable_edge,
+    compose_arc_table,
+    compose_suffix_outputs,
+    product_states,
+    quotient_graph,
+    trim_ids,
+)
 
 
 @dataclass(frozen=True, slots=True)
@@ -95,21 +109,16 @@ def build_step(base: int = 10) -> RTTransducer:
     #   start/ordinary no-growth: ("N", L, R, g=0)
     #   growth start/ordinary:    ("G", L, R, prev_symbol_or_-1, edge_or_-1)
     # Global g is encoded by mode.  R is the guessed right-boundary carry R_i.
-    state_id: dict[tuple[str, int, int, int, int], int] = {}
-    states: list[tuple[str, int, int, int, int]] = []
-
-    def sid(s: tuple[str, int, int, int, int]) -> int:
-        if s not in state_id:
-            state_id[s] = len(states)
-            states.append(s)
-        return state_id[s]
+    state_interner: DenseInterner[tuple[str, int, int, int, int]] = DenseInterner()
+    states = state_interner.values
+    sid = state_interner.intern
 
     initials = []
     for g in (0, 1):
         for R0 in (0, 1):
             initials.append(sid(("G" if g else "N", 0, R0, -1, -1)))
 
-    arcs = defaultdict(list)
+    arcs: defaultdict[int, list[Arc]] = defaultdict(list)
     finals: dict[int, tuple[int, ...]] = {}
     q = deque(initials)
     seen = set()
@@ -147,37 +156,15 @@ def build_step(base: int = 10) -> RTTransducer:
                     # they cannot represent a valid reverse/add state path.
                     continue
                 ni = sid(ns)
-                arcs[qi].append(Arc(s, y, ni))
-                if ni not in seen:
-                    q.append(ni)
+                append_reachable_edge(arcs, qi, Arc(s, y, ni), ni, seen, q)
     return trim(
         RTTransducer(b, tuple(initials), {k: tuple(v) for k, v in arcs.items()}, finals)
     )
 
 
 def trim(t: RTTransducer) -> RTTransducer:
-    reachable = set(t.initials)
-    dq = deque(t.initials)
-    while dq:
-        q = dq.popleft()
-        for a in t.arcs.get(q, ()):
-            if a.dest not in reachable:
-                reachable.add(a.dest)
-                dq.append(a.dest)
-    rev = defaultdict(list)
-    for q, aa in t.arcs.items():
-        for a in aa:
-            rev[a.dest].append(q)
-    live = set(t.finals)
-    dq = deque(t.finals)
-    while dq:
-        q = dq.popleft()
-        for p in rev.get(q, ()):
-            if p not in live:
-                live.add(p)
-                dq.append(p)
-    keep = reachable & live
-    ids = {q: i for i, q in enumerate(sorted(keep))}
+    ids = trim_ids(t.initials, t.arcs, t.finals)
+    keep = set(ids)
     arcs = {
         ids[q]: tuple(Arc(a.inp, a.out, ids[a.dest]) for a in aa if a.dest in keep)
         for q, aa in t.arcs.items()
@@ -191,50 +178,14 @@ def trim(t: RTTransducer) -> RTTransducer:
 def compose(a: RTTransducer, b: RTTransducer) -> RTTransducer:
     if a.base != b.base:
         raise ValueError("base mismatch")
-    pair_id: dict[tuple[int, int], int] = {}
-    pairs: list[tuple[int, int]] = []
-
-    def sid(pair: tuple[int, int]) -> int:
-        if pair not in pair_id:
-            pair_id[pair] = len(pairs)
-            pairs.append(pair)
-        return pair_id[pair]
-
-    initials = tuple(sid((p, q)) for p in a.initials for q in b.initials)
-    arcs = defaultdict(list)
+    pairs, initials, sid = product_states(a.initials, b.initials)
+    idx, arcs = compose_arc_table(
+        initials, pairs, a.arcs, b.arcs, sid, lambda edge: Arc(*edge)
+    )
     finals: dict[int, tuple[int, ...]] = {}
-    dq = deque(initials)
-    seen = set()
-    # Index second arcs by input symbol.
-    idx: dict[int, dict[int, list[Arc]]] = {q: defaultdict(list) for q in b.arcs}
-    for q, aa in b.arcs.items():
-        for x in aa:
-            idx[q][x.inp].append(x)
-    while dq:
-        qi = dq.popleft()
-        if qi in seen:
-            continue
-        seen.add(qi)
-        p, q = pairs[qi]
-        for x in a.arcs.get(p, ()):
-            for y in idx.get(q, {}).get(x.out, ()):
-                ni = sid((x.dest, y.dest))
-                arcs[qi].append(Arc(x.inp, y.out, ni))
-                if ni not in seen:
-                    dq.append(ni)
-        # Feed a's final output suffix through b and then use b's final output.
+    for qi, (p, q) in enumerate(pairs):
         if p in a.finals:
-            frontier: set[tuple[int, tuple[int, ...]]] = {(q, ())}
-            for sym in a.finals[p]:
-                nf = set()
-                for qq, out in frontier:
-                    for y in idx.get(qq, {}).get(sym, ()):
-                        nf.add((y.dest, out + (y.out,)))
-                frontier = nf
-            outs = set()
-            for qq, out in frontier:
-                if qq in b.finals:
-                    outs.add(out + b.finals[qq])
+            outs = compose_suffix_outputs(q, a.finals[p], idx, b.finals)
             if len(outs) > 1:
                 raise AssertionError("composition lost functionality")
             if outs:
@@ -250,40 +201,18 @@ def compose(a: RTTransducer, b: RTTransducer) -> RTTransducer:
 
 def bisim_minimize(t: RTTransducer) -> RTTransducer:
     states = sorted(set(t.arcs) | set(t.finals) | set(t.initials))
-    # Initial partition by final-output word (None for nonfinal).
-    keys = {q: (t.finals.get(q, None),) for q in states}
-    part = {}
-    classes: dict[Hashable, int] = {}
-    for q in states:
-        k = keys[q]
-        classes.setdefault(k, len(classes))
-        part[q] = classes[k]
-    while True:
-        classes = {}
-        new = {}
-        for q in states:
-            sig = (
-                t.finals.get(q, None),
-                tuple(sorted((a.inp, a.out, part[a.dest]) for a in t.arcs.get(q, ()))),
-            )
-            classes.setdefault(sig, len(classes))
-            new[q] = classes[sig]
-        if all(new[q] == part[q] for q in states):
-            break
-        part = new
-    reps: dict[int, int] = {}
-    for q, c in part.items():
-        reps.setdefault(c, q)
-    remap = {c: i for i, c in enumerate(sorted(reps))}
-    arcs = {}
-    finals: dict[int, tuple[int, ...]] = {}
-    for c, q in reps.items():
-        nq = remap[c]
-        aa = {(a.inp, a.out, remap[part[a.dest]]) for a in t.arcs.get(q, ())}
-        arcs[nq] = tuple(Arc(*x) for x in sorted(aa))
-        if q in t.finals:
-            finals[nq] = t.finals[q]
-    initials = tuple(sorted({remap[part[q]] for q in t.initials}))
+    part = stable_partition(
+        states,
+        lambda q: (t.finals.get(q, None),),
+        lambda q, previous: (
+            t.finals.get(q, None),
+            tuple(sorted((a.inp, a.out, previous[a.dest]) for a in t.arcs.get(q, ()))),
+        ),
+    )
+    reps, remap = partition_representatives(part)
+    arcs, finals, initials = quotient_graph(
+        part, reps, remap, t.arcs, t.finals, t.initials, Arc
+    )
     return trim(RTTransducer(t.base, initials, arcs, finals))
 
 

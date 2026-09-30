@@ -21,6 +21,7 @@ from number_compiler.arithmetic.contracts.input_validation import (
 )
 from number_compiler.arithmetic.fields.radix import iter_digits_lsd
 from number_compiler.arithmetic.fields.symbolic_extent import (
+    CoordinatePresentation,
     Extent,
     ReverseAddExtent,
     extent_json_value,
@@ -30,7 +31,11 @@ _DIGITS = "0123456789abcdefghijklmnopqrstuvwxyz"
 _DIGIT_BYTES = _DIGITS.encode("ascii")
 
 
-def _metrics_json(term: ProjectedNumberTerm) -> dict[str, object]:
+def _metrics_json(
+    term: ProjectedNumberTerm,
+    *,
+    coordinate: CoordinatePresentation | None = None,
+) -> dict[str, object]:
     """Separate immutable construction descriptors from observed runtime work."""
     # Projection descriptors are immutable. Do not recursively copy scheduler
     # counters only to replace that copy with their JSON mapping below.
@@ -41,7 +46,9 @@ def _metrics_json(term: ProjectedNumberTerm) -> dict[str, object]:
         "counter_items_copied": len(term.metrics.prime_scheduler_counters),
     }
     payload["width"] = (
-        None if term.metrics.width is None else extent_json_value(term.metrics.width)
+        None
+        if term.metrics.width is None
+        else extent_json_value(term.metrics.width, coordinate=coordinate)
     )
     payload["metrics_scope"] = "construction_and_projection_descriptors"
     payload["prime_scheduler_counters"] = dict(term.metrics.prime_scheduler_counters)

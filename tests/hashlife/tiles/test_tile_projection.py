@@ -1,11 +1,15 @@
 """Lazy projection imports exact sources and delegates to one tile scheduler."""
 
 from __future__ import annotations
+from tests.support.finite_functions import carry_atoms
+
+from tests.support.assertions import assert_rejected_atomically
 
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, Never
 
 import pytest
+from tests.support.tile_kernel import _runtime as primitive_runtime
 
 from number_compiler.arithmetic.contracts.block_kernel import BaseBlockEffect
 from number_compiler.arithmetic.contracts.scoped_handles import ArenaToken, ExactSource
@@ -13,18 +17,13 @@ from number_compiler.arithmetic.contracts.semantic_identity import SemanticIdent
 from number_compiler.arithmetic.contracts.source_geometry import SourceGeometry
 from number_compiler.arithmetic.functions.finite_function_types import (
     BOOL,
-    FinitePort,
-    FunctionSignature,
 )
-from number_compiler.arithmetic.functions.finite_port_action import PortVariable
 from number_compiler.arithmetic.functions.semantic_functions import (
     SemanticFunctionArena,
 )
 from number_compiler.hashlife.actions.diamond_actions import PortSignatureID
 from number_compiler.hashlife.actions.field_actions import FieldCellActionID
-from number_compiler.hashlife.execution.tile_kernel import PrimitiveTileKernelAdapter
 from number_compiler.hashlife.execution.tile_scheduler import TileScheduler
-from number_compiler.hashlife.interfaces.diamond_kernel import DiamondKernelArena
 from number_compiler.hashlife.interfaces.diamond_quotient import (
     COMPONENT_ROLES,
     DiamondQuotientArena,
@@ -227,10 +226,7 @@ def _runtime() -> tuple[
     ledger = ResourceLedger()
     functions = SemanticFunctionArena(ledger)
     quotient_arena = DiamondQuotientArena(functions)
-    port = FinitePort(PortVariable(0, 0, "carry", 0), 2)
-    signature = FunctionSignature((port,), BOOL)
-    zero = functions.atom(signature, 0)
-    one = functions.atom(signature, 1)
+    port, signature, zero, one = carry_atoms(functions)
     declared = quotient_arena.intern_interface(
         MacroInterface(
             SemanticIdentity("tile-projection-test-v1", ("identity",)),
@@ -342,10 +338,9 @@ def test_lazy_projection_points_width_and_explicit_endpoint_tiles() -> None:
         projection.close()
     with pytest.raises(ValueError, match="closed"):
         projection.point(0)
-    closed = ledger.snapshot()
-    with pytest.raises(ValueError, match="closed"):
-        projection.active_width()
-    assert ledger.snapshot() == closed
+    assert_rejected_atomically(
+        ledger, lambda: projection.active_width(), ValueError, match="closed"
+    )
 
 
 def test_projection_validates_action_and_ports_before_source_import() -> None:
@@ -428,10 +423,12 @@ def test_source_import_rejects_foreign_geometry_and_alphabet_before_tiles() -> N
     source = ExactSource((1,), 2, blank=2, extent=1, alphabet_size=2)
     foreign_ledger = ResourceLedger()
     foreign_geometry = SourceGeometry(foreign_ledger, source)
-    before = ledger.snapshot()
-    with pytest.raises(ValueError, match="one index ledger"):
-        import_exact_source(source, foreign_geometry, tiles, alphabet)
-    assert ledger.snapshot() == before
+    assert_rejected_atomically(
+        ledger,
+        lambda: import_exact_source(source, foreign_geometry, tiles, alphabet),
+        ValueError,
+        match="one index ledger",
+    )
 
     geometry = SourceGeometry(ledger, source)
     wrong = tiles.intern_alphabet(TileAlphabet(4, 3, 2, 2, "binary", "wrong"))
@@ -455,22 +452,7 @@ def test_actual_primitive_family_projection_matches_independent_oracle(
 ) -> None:
     width = 8
     expected = tuple(oracle(effect, values, width, 1))
-    ledger = ResourceLedger()
-    functions = SemanticFunctionArena(ledger)
-    quotients = DiamondQuotientArena(functions)
-    tiles = TileArena(ledger)
-    kernels = DiamondKernelArena(ledger)
-    adapter = PrimitiveTileKernelAdapter(tiles, kernels, quotients)
-    action = adapter.admit(effect)
-    results = CompletedResultArena(
-        tiles,
-        quotients,
-        action_authority=adapter,
-        validate_action=adapter.validate_action,
-        signature_for=adapter.signature_for,
-    )
-    adapter.attach_results(results)
-    scheduler = TileScheduler(tiles, results, adapter)
+    ledger, tiles, adapter, action, scheduler = primitive_runtime(effect)
     source = ExactSource(
         values,
         effect.base,

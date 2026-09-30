@@ -6,7 +6,7 @@ diagnostic guard. These are explicit validation tests, outside the unit gate.
 
 import pytest
 
-from devtools.proofs.reverse_factored_carrier import exhaustive
+from devtools.verification.reverse_factored_carrier import exhaustive
 
 
 @pytest.mark.parametrize(

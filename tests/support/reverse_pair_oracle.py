@@ -1,26 +1,27 @@
 """Exact scalar reverse-pair oracle shared by independent tests."""
 
+from devtools.verification.oracles.sequence_arithmetic import (
+    reference_successor as reference_successor,
+)
 
-def reference_successor(full: tuple[int, ...], base: int) -> tuple[int, ...]:
-    d = len(full)
-    carry = [0] * (d + 1)
-    for i, value in enumerate(full):
-        carry[i + 1] = int(value + carry[i] >= base)
-    reverse = [carry[d - i] for i in range(d + 1)]
-    if not carry[d]:
-        return tuple(
-            2 * full[i] + carry[i] + reverse[i + 1] - base * (carry[i + 1] + reverse[i])
-            for i in range(d)
-        )
-    out = [0] * (d + 1)
-    out[0] = full[0] + 1 - base * carry[1]
-    out[d] = out[0]
-    for i in range(1, d):
-        out[i] = (
-            full[i]
-            + full[i - 1]
-            + carry[i]
-            + reverse[i]
-            - base * (carry[i + 1] + reverse[i - 1])
-        )
-    return tuple(out)
+
+def symmetric_reference_successor(
+    full: tuple[int, ...], base: int = 10
+) -> tuple[int, ...]:
+    result = reference_successor(full, base)
+    assert result == result[::-1]
+    return result
+
+
+def reference_power(
+    values: tuple[int, ...], base: int, steps: int
+) -> tuple[tuple[int, ...], list[int], list[int]]:
+    expected = values
+    widths = [len(values)]
+    growths: list[int] = []
+    for _ in range(steps):
+        following = symmetric_reference_successor(expected, base)
+        growths.append(len(following) - len(expected))
+        widths.append(len(following))
+        expected = following
+    return expected, growths, widths

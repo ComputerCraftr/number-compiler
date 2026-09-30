@@ -6,7 +6,7 @@ from typing import Never
 
 import pytest
 
-from devtools.proofs import collatz_harmonic_ports
+from devtools.verification import collatz_harmonic_ports
 from number_compiler.arithmetic.carry.collatz_binary_forcing import radix64_phi5
 from number_compiler.arithmetic.carry.collatz_f5_quotient import (
     F5_DIRECTIONAL_COUNTS,

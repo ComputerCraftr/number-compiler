@@ -12,6 +12,8 @@ import zipfile
 from pathlib import Path
 from time import perf_counter
 
+from devtools.checks.package_contracts import DEVELOPER_ROOTS
+
 
 def validate_wheel_contents(wheel: Path, source: Path) -> list[str]:
     """Reject stale build products and missing or changed package resources."""
@@ -24,6 +26,8 @@ def validate_wheel_contents(wheel: Path, source: Path) -> list[str]:
     }
     with zipfile.ZipFile(wheel) as archive:
         members = archive.namelist()
+        if any(name.split("/")[0] in DEVELOPER_ROOTS for name in members):
+            raise ValueError("developer or formal-proof files leaked into the wheel")
         packaged = {
             name
             for name in members
@@ -48,11 +52,6 @@ def verify_wheel(wheel: Path) -> dict[str, object]:
     from devtools.paths import repository_root
 
     members = validate_wheel_contents(wheel, repository_root() / "src")
-    if any(
-        name.startswith(("devtools/", "tests/", "research/", "bench/"))
-        for name in members
-    ):
-        raise ValueError("developer packages leaked into the installed distribution")
     if "number_compiler/py.typed" not in members:
         raise ValueError("installed distribution has no typing marker")
     resources = [
@@ -157,6 +156,13 @@ with patch('number_compiler.sequences.comma.certificates._verify', side_effect=A
     with redirect_stdout(captured):
         assert main(['a367620', '--nth', '20000', '--no-value', '--info', 'certificate', '--format', 'json']) == 0
 comma_status = json.loads(captured.getvalue())
+captured_compact = StringIO()
+with redirect_stdout(captured_compact):
+    assert main(['a367620', '--nth-power10', '0', '--no-value', '--info', 'certificate', '--format', 'json']) == 0
+compact_status = json.loads(captured_compact.getvalue())
+assert compact_status['index'] == {'encoding': 'power10', 'exponent': 0}
+assert compact_status['value'] is None
+
 assert comma_status['index_unit'] == 'oeis_index'
 assert comma_status['value'] is None
 assert comma_status['info']['certificate']['runtime_verified'] is False
@@ -335,6 +341,19 @@ print(json.dumps({'public_exports': len(api.__all__), 'kernel_left_states': kern
         ):
             raise ValueError("installed CLI did not print the checked M11 factor")
         commands = [
+            (["prime", "--nth-power10", "0"], 0, "3"),
+            (["196", "--nth-power10", "0"], 0, "887"),
+            (["reverse-add", "--nth-power10", "0", "--seed", "1"], 0, "2"),
+            (["collatz", "--nth-power10", "6", "--seed", "27"], 0, "4"),
+            (["antihydra", "--nth-power10", "0"], 0, "12"),
+            (["fermat", "--nth-power10", "0"], 0, "5"),
+            (["mersenne", "--nth-power10", "0"], 0, "1"),
+            (["a367620", "--nth-power10", "0"], 0, "20"),
+            (
+                ["collatz", "--nth-power10", "1000000000", "--max-index-bits", "20"],
+                2,
+                "",
+            ),
             (["prime", "--nth", "10", "--info", "metrics"], 0, "31"),
             (["prime", "--nth", "10", "--max-prime-states", "1"], 2, ""),
             (["196", "--nth", "0"], 0, "196"),
@@ -430,7 +449,7 @@ print(json.dumps({'public_exports': len(api.__all__), 'kernel_left_states': kern
                     raise ValueError(
                         "installed prime CLI bypassed the descriptor owner"
                     )
-            if arguments[0] == "antihydra":
+            if arguments[0] == "antihydra" and "ledger" in arguments:
                 details = json.loads(observed.stderr)
                 if details["ledger"]["value"]["ledger"] != 11:
                     raise ValueError(

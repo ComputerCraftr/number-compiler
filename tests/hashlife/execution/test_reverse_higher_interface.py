@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from tests.support.assertions import assert_rejected_atomically
+
 from collections.abc import MutableMapping
 from dataclasses import fields
 from typing import Never, cast
@@ -24,9 +26,6 @@ from number_compiler.hashlife.execution.continuations.higher_interfaces import (
     HigherMacroInterface,
     HigherPort,
 )
-from number_compiler.hashlife.execution.continuations.higher_macro_composer import (
-    HigherSpatialMacroComposer,
-)
 from number_compiler.hashlife.execution.continuations.higher_temporal_provider import (
     HigherTemporalProviderEvaluator,
 )
@@ -42,7 +41,21 @@ from number_compiler.hashlife.execution.recursive_outputs import (
 )
 from number_compiler.hashlife.interfaces.diamond_quotient import LocalInterfaceID
 from tests.support.reverse_higher_interface import _direct_step
-from tests.support.reverse_higher_runtime import _fixture
+from devtools.experiments.reverse_add.field_action import ReverseFieldActionArena
+from devtools.experiments.reverse_add.higher_interface import (
+    ReverseHigherInterfaceCompiler,
+)
+from number_compiler.hashlife.execution.continuations.higher_semantic import (
+    HigherSemanticArena,
+)
+from number_compiler.hashlife.execution.continuations.higher_interfaces import (
+    HigherLocalInterfaceArena,
+)
+from tests.support.reverse_higher_runtime import (
+    _fixture,
+    _macro_composer,
+    _observed_macro,
+)
 
 
 def test_reverse_leaf_activity_positions_use_harmless_zero_for_blank_and_active() -> (
@@ -80,10 +93,12 @@ def test_reverse_schema_cache_cannot_be_entered_by_hash_equality_spoof() -> None
         def __eq__(self, _other: object) -> bool:
             return True
 
-    before = semantics.ledger.snapshot()
-    with pytest.raises(TypeError, match="field-action ID"):
-        schema.validate_action(cast("FieldCellActionID", Spoof()))
-    assert semantics.ledger.snapshot() == before
+    assert_rejected_atomically(
+        semantics.ledger,
+        lambda: schema.validate_action(cast("FieldCellActionID", Spoof())),
+        TypeError,
+        match="field-action ID",
+    )
 
 
 def test_reverse_schema_readonly_validation_does_not_publish_cache_entries() -> None:
@@ -301,15 +316,9 @@ def test_temporal_output_normalizes_before_interning() -> None:
         _sources,
         _binding,
     ) = _fixture()
-    interface = compiler.compile(primitive).interface
-    outputs = RecursiveCoordinateMorphismArena(
-        interfaces,
-        evaluate=semantics.evaluate,
-        validate_action=actions.resolve,
-        compose_actions=actions.compose,
-        complete_temporal_action=lambda _provider, action: action,
+    interface, outputs, source = _temporal_leaf(
+        actions, primitive, semantics, interfaces, compiler
     )
-    source = outputs.leaf(interface)
     first = outputs.temporal(source, primitive, interface)
     result = outputs.temporal(first, primitive, interface)
     record = outputs.resolve(result)
@@ -392,15 +401,9 @@ def test_temporal_output_validates_foreign_action_before_publication() -> None:
     ) = _fixture()
     foreign_actions, foreign, *_unused = _fixture((7, 18))
     assert foreign_actions is not actions
-    interface = compiler.compile(primitive).interface
-    outputs = RecursiveCoordinateMorphismArena(
-        interfaces,
-        evaluate=semantics.evaluate,
-        validate_action=actions.resolve,
-        compose_actions=actions.compose,
-        complete_temporal_action=lambda _provider, action: action,
+    interface, outputs, source = _temporal_leaf(
+        actions, primitive, semantics, interfaces, compiler
     )
-    source = outputs.leaf(interface)
     before = len(outputs._nodes)
     with pytest.raises(ValueError, match="different arena"):
         outputs.temporal(source, foreign, interface)
@@ -418,25 +421,9 @@ def test_higher_spatial_macro_composes_source_without_output_tape() -> None:
         sources,
         binding,
     ) = _fixture((7, 18, 7, 19, 19, 19, 19, 19))
-    compiled = compiler.compile(primitive)
-    outputs = RecursiveCoordinateMorphismArena(
-        interfaces,
-        evaluate=semantics.evaluate,
+    outputs, composer, macro, left, right = _observed_macro(
+        semantics, interfaces, sources, primitive, compiler, runtime, binding
     )
-    composer = HigherSpatialMacroComposer(
-        semantics,
-        interfaces,
-        outputs,
-        sources,
-        primitive,
-        compiled.interface,
-        compiled.left,
-        compiled.symbol,
-        compiled.right,
-    )
-    macro = composer.compile(binding)
-    left = semantics.evaluate(runtime.initial(primitive, 0))
-    right = semantics.evaluate(runtime.initial(primitive, 1))
     expected = _direct_step((7, 18, 7, 19, 19, 19, 19, 19), 10)
     assert (
         tuple(
@@ -464,21 +451,8 @@ def test_reverse_macro_keeps_coordinate_magnitudes_outside_local_port_sorts() ->
         sources,
         binding,
     ) = _fixture(source)
-    compiled = compiler.compile(primitive)
-    outputs = RecursiveCoordinateMorphismArena(
-        interfaces,
-        evaluate=semantics.evaluate,
-    )
-    composer = HigherSpatialMacroComposer(
-        semantics,
-        interfaces,
-        outputs,
-        sources,
-        primitive,
-        compiled.interface,
-        compiled.left,
-        compiled.symbol,
-        compiled.right,
+    outputs, composer = _macro_composer(
+        semantics, interfaces, sources, primitive, compiler
     )
     macro = composer.compile(binding)
     record = interfaces.resolve(macro.interface)
@@ -557,23 +531,14 @@ def test_higher_temporal_provider_executes_without_midpoint_tile() -> None:
         sources,
         binding,
     ) = _fixture(source)
-    compiled = compiler.compile(primitive)
     outputs = RecursiveCoordinateMorphismArena(
         interfaces,
         evaluate=semantics.evaluate,
         validate_action=actions.resolve,
         compose_actions=actions.compose,
     )
-    composer = HigherSpatialMacroComposer(
-        semantics,
-        interfaces,
-        outputs,
-        sources,
-        primitive,
-        compiled.interface,
-        compiled.left,
-        compiled.symbol,
-        compiled.right,
+    outputs, composer = _macro_composer(
+        semantics, interfaces, sources, primitive, compiler, outputs
     )
     macro = composer.compile(binding)
     evaluator = HigherTemporalProviderEvaluator(
@@ -793,3 +758,24 @@ def test_reverse_carry_reset_and_identity_do_not_erase_complete_output_state() -
 def _expression(value: ArenaHandle) -> HigherExpressionID:
     assert isinstance(value, HigherExpressionID)
     return value
+
+
+def _temporal_leaf(
+    actions: ReverseFieldActionArena,
+    primitive: FieldCellActionID,
+    semantics: HigherSemanticArena,
+    interfaces: HigherLocalInterfaceArena,
+    compiler: ReverseHigherInterfaceCompiler,
+) -> tuple[
+    LocalInterfaceID, RecursiveCoordinateMorphismArena, CoordinateOutputMorphismID
+]:
+    interface = compiler.compile(primitive).interface
+    outputs = RecursiveCoordinateMorphismArena(
+        interfaces,
+        evaluate=semantics.evaluate,
+        validate_action=actions.resolve,
+        compose_actions=actions.compose,
+        complete_temporal_action=lambda _provider, action: action,
+    )
+    source = outputs.leaf(interface)
+    return interface, outputs, source

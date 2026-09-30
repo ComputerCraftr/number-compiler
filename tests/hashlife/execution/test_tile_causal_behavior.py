@@ -17,7 +17,8 @@ from number_compiler.hashlife.execution.tile_causal_tasks import (
     CausalPrefix,
 )
 from number_compiler.hashlife.tiles.tile_boundaries import BoundaryTileView
-from tests.arithmetic.contracts.test_tile_kernel import _runtime, _tile
+from tests.support.tile_kernel import powered_runtime
+from tests.support.tile_kernel import _runtime, _tile
 
 
 @pytest.mark.parametrize("base", (2, 3, 10))
@@ -126,9 +127,10 @@ def test_active_input_and_unsafe_physical_left_context_decline() -> None:
 
 
 def test_nonblank_left_prefix_is_not_erased() -> None:
-    _ledger, tiles, adapter, primitive, scheduler = _runtime(BaseBlockEffect(3))
+    _ledger, tiles, adapter, primitive, scheduler, action, _blank = powered_runtime(
+        BaseBlockEffect(3), 4
+    )
     engine = CausalTileEngine(scheduler)
-    action = adapter.power(primitive, 4)
     initial = adapter.initial_ports(primitive)
     with (
         _tile(tiles, adapter, primitive, (5,) * 4) as blank,
@@ -164,9 +166,10 @@ def test_failed_behavior_width_releases_active_application_context(
 ) -> None:
     import number_compiler.hashlife.execution.tile_causal_api as causal_api
 
-    _ledger, tiles, adapter, primitive, scheduler = _runtime(BaseBlockEffect(3))
+    _ledger, tiles, adapter, primitive, scheduler, action, _blank = powered_runtime(
+        BaseBlockEffect(3), 4
+    )
     engine = CausalTileEngine(scheduler)
-    action = adapter.power(primitive, 4)
 
     def fail(*_args: object, **_kwargs: object) -> Never:
         raise RuntimeError("injected behavior failure")

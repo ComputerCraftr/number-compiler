@@ -4,6 +4,13 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING
 
+from number_compiler.hashlife.actions.diamond_actions import PortSignatureID
+from number_compiler.hashlife.actions.field_actions import FieldGeometryID
+from number_compiler.hashlife.execution.field_executor import FieldImageAdapter
+from number_compiler.hashlife.execution.field_images import SourceBindingID
+from tests.support.assertions import assert_rejected_atomically
+from tests.support.recursive_field_images import _application_setup
+
 if TYPE_CHECKING:
     import number_compiler.hashlife.actions.field_actions
     import number_compiler.hashlife.execution.field_images
@@ -160,9 +167,9 @@ def test_image_arena_rejects_owner_and_sort_aliases_atomically(
         "output_kind": "coordinate-output-morphism",
     }
     arguments[field] = value
-    before = ledger.snapshot()
-    with pytest.raises(error):
-        RecursiveFieldImageArena(
+    assert_rejected_atomically(
+        ledger,
+        lambda: RecursiveFieldImageArena(
             ledger,
             images.sources,
             images.geometries,
@@ -172,15 +179,16 @@ def test_image_arena_rejects_owner_and_sort_aliases_atomically(
             output_validate=lambda _value: None,
             signature_for=lambda _action, _geometry: signature,
             **cast(_ArenaArguments, arguments),
-        )
-    assert ledger.snapshot() == before
+        ),
+        error,
+    )
 
 
 def test_image_arena_rejects_partial_authority_before_registration() -> None:
     ledger, _, _signature, _, _, images, adapter, _ = _setup()
-    before = ledger.snapshot()
-    with pytest.raises(ValueError, match="supplied together"):
-        RecursiveFieldImageArena(
+    assert_rejected_atomically(
+        ledger,
+        lambda: RecursiveFieldImageArena(
             ledger,
             images.sources,
             images.geometries,
@@ -192,8 +200,10 @@ def test_image_arena_rejects_partial_authority_before_registration() -> None:
             output_validate=adapter.validate_output,
             signature_for=adapter.signature,
             action_authority=adapter,
-        )
-    assert ledger.snapshot() == before
+        ),
+        ValueError,
+        match="supplied together",
+    )
 
 
 def test_parent_request_is_probed_before_descendants_and_warm_hit_skips_work() -> None:
@@ -218,8 +228,7 @@ def test_phase_is_bounded_by_finite_port_admission_but_coordinates_stay_exact() 
 
 def test_query_eviction_preserves_canonical_field_image_ids() -> None:
     ledger, source, signature, geometry, action, images, _, executor = _setup()
-    image = executor.image(action, source, geometry, signature)
-    record = images.resolve(image)
+    image, record = _completed_image(executor, action, source, geometry, signature)
 
     ledger.evict_query_memos()
 
@@ -232,8 +241,7 @@ def test_query_eviction_preserves_canonical_field_image_ids() -> None:
 
 def test_nonleaf_image_cannot_relabel_a_complete_word_as_an_opaque_leaf() -> None:
     _, source, signature, geometry, action, images, _, executor = _setup()
-    image = executor.image(action, source, geometry, signature)
-    record = images.resolve(image)
+    image, record = _completed_image(executor, action, source, geometry, signature)
     assert record.level > 0
     with pytest.raises(ValueError, match="recursive child references"):
         FieldImageRecord(
@@ -252,8 +260,7 @@ def test_non_power_of_two_forest_publishes_balanced_recursive_image() -> None:
         (0, 1, 0, 1, 0, 1),
     )
     assert type(source) is SourceForestID
-    image = executor.image(action, source, geometry, signature)
-    record = images.resolve(image)
+    image, record = _completed_image(executor, action, source, geometry, signature)
     assert record.left is not None and record.right is not None
     left, right = images.children(image)
     assert images.resolve(left).level < record.level
@@ -298,9 +305,18 @@ def test_warm_forest_parent_hits_before_children_and_composition(
 
 
 def test_runtime_issued_application_is_lazy_and_marker_cannot_forge_it() -> None:
-    ledger, source, signature, geometry, action, images, adapter, executor = _setup()
-    incoming = ArenaHandle(adapter.port_owner, "test-image-port", 0)
-    application = executor.application(action, source, geometry, signature, incoming)
+    (
+        ledger,
+        source,
+        signature,
+        geometry,
+        action,
+        images,
+        adapter,
+        executor,
+        incoming,
+        application,
+    ) = _application_setup()
     assert images.retained_images == images.retained_bindings == 0
     assert validate_field_image_application(application, ledger)
     assert application.point(0) == 0
@@ -309,9 +325,18 @@ def test_runtime_issued_application_is_lazy_and_marker_cannot_forge_it() -> None
 
 
 def test_image_application_rejects_foreign_port_before_warm_image_probe() -> None:
-    ledger, source, signature, geometry, action, _images, adapter, executor = _setup()
-    incoming = ArenaHandle(adapter.port_owner, "test-image-port", 0)
-    application = executor.application(action, source, geometry, signature, incoming)
+    (
+        ledger,
+        source,
+        signature,
+        geometry,
+        action,
+        _images,
+        adapter,
+        executor,
+        incoming,
+        application,
+    ) = _application_setup()
     assert application.point(0) == 0
     requests = ledger.counters.get("field_image_binding_requests", 0)
     object.__setattr__(
@@ -334,9 +359,18 @@ def test_image_application_rejects_foreign_port_before_warm_image_probe() -> Non
 def test_recursive_image_application_cannot_attest_point_lazy_release() -> None:
     from number_compiler.resources.behavior_metrics import _cutover_blocker
 
-    ledger, source, signature, geometry, action, _, adapter, executor = _setup()
-    incoming = ArenaHandle(adapter.port_owner, "test-image-port", 0)
-    application = executor.application(action, source, geometry, signature, incoming)
+    (
+        ledger,
+        source,
+        signature,
+        geometry,
+        action,
+        _,
+        adapter,
+        executor,
+        incoming,
+        application,
+    ) = _application_setup()
 
     class Index:
         _ledger = ledger
@@ -510,10 +544,11 @@ def test_wrong_sort_action_rejects_before_binding_mutation(alias: bool | float) 
     ledger, source, signature, geometry, action, images, _, executor = _setup()
     forged = FieldCellActionID(action.owner, action.kind, action.local_id)
     object.__setattr__(forged, "local_id", alias)
-    before = ledger.snapshot()
-    with pytest.raises((TypeError, ValueError)):
-        executor.image(forged, source, geometry, signature)
-    assert ledger.snapshot() == before
+    assert_rejected_atomically(
+        ledger,
+        lambda: executor.image(forged, source, geometry, signature),
+        (TypeError, ValueError),
+    )
     assert images.retained_bindings == 0
 
 
@@ -558,16 +593,17 @@ def test_republication_with_different_complete_behavior_is_rejected() -> None:
         original,
         summary=replace(original.summary, growth=original.summary.growth + 1),
     )
-    before = ledger.snapshot()
-    with pytest.raises(ValueError, match="different semantic result"):
-        images.publish(key, conflicting)
-    assert ledger.snapshot() == before
+    assert_rejected_atomically(
+        ledger,
+        lambda: images.publish(key, conflicting),
+        ValueError,
+        match="different semantic result",
+    )
 
 
 def test_foreign_child_image_rejects_before_binding_lookup_or_mutation() -> None:
     ledger, source, signature, geometry, action, images, _, executor = _setup()
-    image = executor.image(action, source, geometry, signature)
-    original = images.resolve(image)
+    image, original = _completed_image(executor, action, source, geometry, signature)
     assert original.left is not None
     foreign_owner = ArenaToken("foreign-images")
     foreign_left = FieldImageID(
@@ -583,10 +619,13 @@ def test_foreign_child_image_rejects_before_binding_lookup_or_mutation() -> None
     )
     corrupted = replace(original, left=foreign_left, right=foreign_right)
 
-    before = ledger.snapshot()
-    with pytest.raises(ValueError):
-        images.publish(ImageRequestKey(action, source, geometry, signature), corrupted)
-    assert ledger.snapshot() == before
+    assert_rejected_atomically(
+        ledger,
+        lambda: images.publish(
+            ImageRequestKey(action, source, geometry, signature), corrupted
+        ),
+        ValueError,
+    )
 
 
 def test_indirect_temporal_witness_cycle_rejects_without_publication() -> None:
@@ -817,10 +856,12 @@ def test_foreign_source_rejects_before_other_request_range_lookups() -> None:
         raise AssertionError("foreign source triggered action range validation")
 
     transfers._action_validate = poison
-    before = ledger.snapshot()
-    with pytest.raises(ValueError, match="different arena"):
-        executor.transfer(action, foreign_source, geometry, signature)
-    assert ledger.snapshot() == before
+    assert_rejected_atomically(
+        ledger,
+        lambda: executor.transfer(action, foreign_source, geometry, signature),
+        ValueError,
+        match="different arena",
+    )
 
 
 @pytest.mark.parametrize(
@@ -852,3 +893,14 @@ def test_field_image_summary_rejects_numeric_aliases(
     values[field] = value
     with pytest.raises((TypeError, ValueError)):
         FieldImageSummary(**cast(_SummaryArguments, values))
+
+
+def _completed_image(
+    executor: RecursiveFieldImageExecutor[FieldImageAdapter],
+    action: FieldCellActionID,
+    source: SourceBindingID,
+    geometry: FieldGeometryID,
+    signature: PortSignatureID,
+) -> tuple[FieldImageID, FieldImageRecord]:
+    image = executor.image(action, source, geometry, signature)
+    return image, executor.images.resolve(image)

@@ -6,14 +6,16 @@ import ast
 import re
 from pathlib import Path
 
+from devtools.paths import isabelle_root
 from number_compiler.arithmetic.functions.finite_port_action import PortVariable
 from number_compiler.sequences.collatz.block_power import CollatzPhysicalBlockEffect
-from tests.arithmetic.contracts.test_tile_kernel import _runtime
+from tests.support.tile_kernel import _runtime
 
 
 def _proof_rows(name: str) -> list[list[int | bool]]:
-    root = Path(__file__).resolve().parents[3]
-    theory = root / "devtools/proofs/isabelle/etale/Physical_Collatz_Bound_Consumer.thy"
+    theory = isabelle_root(Path(__file__).resolve().parents[3]) / (
+        "etale/Physical_Collatz_Bound_Consumer.thy"
+    )
     declaration = re.search(
         rf'definition {name} :: "[^"]+" where\s*"([^"]+)"', theory.read_text()
     )

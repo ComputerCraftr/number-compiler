@@ -53,6 +53,7 @@ from devtools.experiments.algebra.bend_scaling import (
     BendScalingRow,
     bend_scaling_audit,
 )
+from devtools.experiments.algebra.inputs import bounded_jet_spec, required_singularity
 from devtools.experiments.algebra.polynomial_morphisms import (
     NewtonPrecisionMorphism,
     ProgressionProductArena,
@@ -65,7 +66,6 @@ from devtools.experiments.algebra.support_product_tree import (
 from devtools.experiments.power_numbers.special_transverse_jet import (
     SpecialJetProgressionSpec,
     build_special_jet_interval,
-    first_special_transverse_singularity,
 )
 from number_compiler.arithmetic.fields.morphism_core import (
     binary_power_composition_count,
@@ -428,16 +428,11 @@ class ResidueRefinedBendAudit:
 
 
 def residue_refined_bend_audit(family: str, parameter: int) -> ResidueRefinedBendAudit:
-    singular = first_special_transverse_singularity(family, parameter)
-    if (
-        not singular.found
-        or singular.first_slot is None
-        or singular.denominator_gcd <= 1
-    ):
-        raise ValueError("bounded composite singular control required")
-    spec = SpecialJetProgressionSpec.build(family, parameter)
+    spec, singular = required_singularity(family, parameter)
     q = singular.denominator_gcd
     bad = singular.first_slot
+    if bad is None:
+        raise ValueError("required singularity has no first slot")
     regular = next(
         m for m in range(1, spec.max_slot + 1) if m != bad and spec.slot_value(m) % q
     )
@@ -650,10 +645,7 @@ def fast_multipoint_bend_audit(
     baby-block values finds the first supported block in O(log span) GCDs; an
     optional second tree descends inside that one baby block.
     """
-    spec = SpecialJetProgressionSpec.build(family, parameter)
-    start, span = int(start), int(span)
-    if start < 1 or span < 1 or start + span - 1 > spec.max_slot:
-        raise ValueError((start, span, spec.max_slot))
+    spec, start, span = bounded_jet_spec(family, parameter, start, span)
     b = max(1, isqrt(span))
     if b * b < span:
         b += 1
@@ -716,6 +708,20 @@ def fast_multipoint_bend_audit(
         support > 1 and bool(locate_first_bend)
     )
     if need_locator:
+
+        def atom_support(block_start: int) -> tuple[int, int, int]:
+            atom_values = tuple(
+                _normalized_slot_value(spec, block_start + offset, inv_c)
+                for offset in range(b)
+            )
+            atom_tree, _atom_mults = support_product_tree(atom_values, spec.modulus)
+            return first_supported_leaf(
+                atom_tree,
+                spec.modulus,
+                prefix_values=atom_values,
+                prefix_limit=4,
+            )
+
         leaf_index, leaf_support, calls = first_supported_leaf(
             support_tree,
             spec.modulus,
@@ -733,39 +739,17 @@ def fast_multipoint_bend_audit(
                 if 1 < leaf_support < spec.modulus:
                     first_factor = leaf_support
                 else:
-                    atom_values = tuple(
-                        _normalized_slot_value(spec, block_start + offset, inv_c)
-                        for offset in range(b)
-                    )
-                    atom_tree, _atom_mults = support_product_tree(
-                        atom_values, spec.modulus
-                    )
-                    atom_index, atom_support, atom_calls = first_supported_leaf(
-                        atom_tree,
-                        spec.modulus,
-                        prefix_values=atom_values,
-                        prefix_limit=4,
-                    )
+                    atom_index, atom_factor, atom_calls = atom_support(block_start)
                     split_gcds += atom_calls
-                    first_factor = atom_support
+                    first_factor = atom_factor
                     if locate_first_bend:
                         first_bend_slot = block_start + atom_index
-                        first_bend_gcd = atom_support
+                        first_bend_gcd = atom_factor
                         leaf_locator_gcds += atom_calls
             if locate_first_bend and first_bend_slot is None:
-                atom_values = tuple(
-                    _normalized_slot_value(spec, block_start + offset, inv_c)
-                    for offset in range(b)
-                )
-                atom_tree, _atom_mults = support_product_tree(atom_values, spec.modulus)
-                atom_index, atom_support, atom_calls = first_supported_leaf(
-                    atom_tree,
-                    spec.modulus,
-                    prefix_values=atom_values,
-                    prefix_limit=4,
-                )
+                atom_index, atom_factor, atom_calls = atom_support(block_start)
                 first_bend_slot = block_start + atom_index
-                first_bend_gcd = atom_support
+                first_bend_gcd = atom_factor
                 leaf_locator_gcds += atom_calls
         else:
             # Tail leaves represent one original slot each.

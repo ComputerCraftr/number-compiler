@@ -1,7 +1,8 @@
 from __future__ import annotations
 
+from devtools.paths import report_output
+
 import json
-from pathlib import Path
 from typing import Literal
 
 from devtools.experiments.algebra.baby_giant_behavioral_bend import (
@@ -11,7 +12,7 @@ from devtools.experiments.algebra.residue_refined_bend import (
     FastMultipointBendAudit,
     fast_multipoint_bend_audit,
 )
-from devtools.proofs.collatz_frame_projection import (
+from devtools.verification.collatz_frame_projection import (
     collatz_affine_suffix_event_power_word,
 )
 from number_compiler.arithmetic.automata.program_word import from_runs
@@ -149,11 +150,15 @@ def main() -> None:
         },
     }
     text = json.dumps(data, indent=2, sort_keys=True) + "\n"
-    out = Path("results/morphism_cleanup_metrics.json")
+    out = report_output(
+        "devtools.benchmarks.morphism_cleanup_probe", "morphism_cleanup_metrics.json"
+    )
     out.parent.mkdir(parents=True, exist_ok=True)
     out.write_text(text)
     print(text, end="")
 
 
 if __name__ == "__main__":
-    main()
+    from devtools.runs import run_reported
+
+    raise SystemExit(run_reported(main))

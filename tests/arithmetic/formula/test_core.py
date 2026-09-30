@@ -4,34 +4,14 @@ import random
 
 import pytest
 
+from tests.support.reverse_pair_oracle import (
+    symmetric_reference_successor as reference_successor,
+)
+
 from number_compiler.arithmetic.formula.derived import carry_out, growth_bit, successor
 from number_compiler.arithmetic.formula.formula import FormulaArena, root_from_values
 from number_compiler.arithmetic.formula.types import RadixSpec
 from number_compiler.hashlife.execution.evaluator import materialize_values
-
-
-def reference_successor(full: tuple[int, ...], base: int = 10) -> tuple[int, ...]:
-    d = len(full)
-    L = [0] * (d + 1)
-    for i, s in enumerate(full):
-        L[i + 1] = 0 if s < base - 1 else (L[i] if s == base - 1 else 1)
-    R = [0] * (d + 1)
-    for i in range(d - 1, -1, -1):
-        s = full[i]
-        R[i] = 0 if s < base - 1 else (R[i + 1] if s == base - 1 else 1)
-    g = L[d]
-    if not g:
-        out = [
-            2 * full[i] + L[i] + R[i + 1] - base * (L[i + 1] + R[i]) for i in range(d)
-        ]
-    else:
-        out = [0] * (d + 1)
-        out[0] = full[0] + 1 - base * L[1]
-        out[d] = out[0]
-        for i in range(1, d):
-            out[i] = full[i] + full[i - 1] + L[i] + R[i] - base * (L[i + 1] + R[i - 1])
-    assert out == out[::-1]
-    return tuple(out)
 
 
 def test_canonical_state_has_no_duplicate_state() -> None:

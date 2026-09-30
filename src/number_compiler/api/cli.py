@@ -58,6 +58,7 @@ def main(argv: list[str] | None = None) -> int:
                 print(
                     f"{family}: --nth N ({capability.unit}); info: {', '.join(capability.nth_info)}"
                 )
+                print("  --nth-power10 K (exact index 10^K, K >= 0)")
                 if capability.event_info:
                     print(
                         f"  --events E (accelerated_odd_events); info: {', '.join(capability.event_info)}"
@@ -84,8 +85,14 @@ def main(argv: list[str] | None = None) -> int:
         context.admit_observation_extents()
         value = None
         if request.selector == "nth" and not request.no_value:
+            from number_compiler.api.symbolic_terms import render_symbolic
+
             value = (
-                context.term.symbolic
+                (
+                    context.term.symbolic
+                    if request.nth_power10 is None
+                    else render_symbolic(context.term, f"10^{request.nth_power10}")
+                )
                 if request.format == "symbolic"
                 else _render_value(
                     context.term,
@@ -100,7 +107,7 @@ def main(argv: list[str] | None = None) -> int:
                     json_integers(
                         {
                             "family": request.family,
-                            "index": request.index,
+                            "index": request.presentation_index,
                             "index_unit": request.index_unit,
                             "output_base": request.output_base,
                             "value": value,
@@ -108,7 +115,11 @@ def main(argv: list[str] | None = None) -> int:
                             **(
                                 {}
                                 if context.unresolved_boundary is None
-                                else {"error": context.unresolved_boundary.diagnostic()}
+                                else {
+                                    "error": request.present_indices(
+                                        context.unresolved_boundary.diagnostic()
+                                    )
+                                }
                             ),
                         }
                     ),
@@ -137,12 +148,12 @@ def main(argv: list[str] | None = None) -> int:
                     json_integers(
                         {
                             "family": request.family,
-                            "index": request.index,
+                            "index": request.presentation_index,
                             "index_unit": request.index_unit,
                             "output_base": request.output_base,
                             "value": None,
                             "info": {},
-                            "error": exc.diagnostic(),
+                            "error": request.present_indices(exc.diagnostic()),
                         }
                     ),
                     sort_keys=True,

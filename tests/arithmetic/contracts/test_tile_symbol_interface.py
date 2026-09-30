@@ -7,7 +7,7 @@ import pytest
 
 from number_compiler.arithmetic.contracts.block_kernel import BaseBlockEffect
 from number_compiler.sequences.collatz.block_power import CollatzPhysicalBlockEffect
-from tests.arithmetic.contracts.test_tile_kernel import _runtime
+from tests.support.tile_kernel import _runtime
 
 
 @pytest.mark.parametrize("effect", (BaseBlockEffect(3), CollatzPhysicalBlockEffect()))

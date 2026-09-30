@@ -1,25 +1,23 @@
 from __future__ import annotations
 
+from tests.support.reference_arithmetic import (
+    physical_collatz_literal as _physical_oracle,
+)
 import random
 from typing import Never
 
 import pytest
 
-from devtools.proofs.collatz_symbolic_action import CollatzSymbolicActionArena
-from devtools.proofs.extensional_family_application import ExtensionalFamilyApplication
-from devtools.proofs.lazy_collatz import LazyCollatzApplication
+from devtools.verification.collatz_symbolic_action import CollatzSymbolicActionArena
+from devtools.verification.extensional_family_application import (
+    ExtensionalFamilyApplication,
+)
+from devtools.verification.lazy_collatz import LazyCollatzApplication
 from number_compiler.arithmetic.contracts.physical_collatz_kernel import (
     PhysicalCollatzFourBlockEffect,
 )
 from number_compiler.sequences.collatz.block_power import PoweredCollatzTerm
 from number_compiler.sequences.collatz.germ_cache import CollatzGermTransitionCache
-
-
-def _physical_oracle(seed: int, steps: int) -> int:
-    value = seed
-    for _ in range(steps):
-        value = value // 2 if value % 2 == 0 else 3 * value + 1
-    return value
 
 
 def _observed_value(term: PoweredCollatzTerm) -> int:

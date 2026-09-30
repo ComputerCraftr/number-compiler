@@ -1,12 +1,13 @@
 from __future__ import annotations
 
+from collections import OrderedDict
 from dataclasses import fields
 from math import comb
 from random import Random
 
 import pytest
 
-from devtools.proofs.lazy_reverse import (
+from devtools.verification.lazy_reverse import (
     CarryRangeSummary,
     LazyReverseApplication,
     OffsetProgram,
@@ -50,6 +51,15 @@ def test_lazy_reverse_points_match_independent_pair_recurrence(base: int) -> Non
         assert application.active_width() == len(expected)
         assert [application.point(i) for i in range(len(expected))] == expected
         assert application.point(-1) == application.point(len(expected)) == -1
+
+
+def test_carry_code_preserves_k1_distinct_from_identity() -> None:
+    application = LazyReverseApplication(10, -1, 0, (9, 10, 10, 9))
+    identity = application.port_actions.interval_identity(application.carry_port)
+    assert application._carry_code_from_summary(identity) == 1
+    assert application._scan(0, OrderedDict()) == 1
+    summary = next(iter(application._ranges.values())).action
+    assert application._carry_code_from_summary(summary) == 2
 
 
 @pytest.mark.validation  # Full N=256 representation and retention workload.

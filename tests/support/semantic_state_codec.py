@@ -16,6 +16,12 @@ from number_compiler.resources.ledger import ResourceLedger
 
 if TYPE_CHECKING:
     from number_compiler.arithmetic.contracts.scoped_handles import ActionProgramID
+    from number_compiler.hashlife.interfaces.diamond_boundary_expr import (
+        BoundaryExpressionArena,
+    )
+    from number_compiler.hashlife.interfaces.semantic_expression_compiler import (
+        SemanticExpressionCompiler,
+    )
 
 
 def tiny() -> tuple[DiamondRuntime, ActionProgramID]:
@@ -46,3 +52,20 @@ def tiny() -> tuple[DiamondRuntime, ActionProgramID]:
     action = runtime.actions.intern(atom)
     runtime.kernel(action)
     return runtime, action
+
+
+def paired_tiny() -> tuple[
+    DiamondRuntime,
+    ActionProgramID,
+    BoundaryExpressionArena,
+    SemanticExpressionCompiler,
+    ActionProgramID,
+]:
+    runtime, primitive = tiny()
+    return (
+        runtime,
+        primitive,
+        runtime.higher.expressions,
+        runtime.semantic_compiler,
+        runtime.actions.compose(primitive, primitive),
+    )

@@ -25,6 +25,7 @@ from number_compiler.arithmetic.polynomials.polynomial import (
     trim_polynomial,
 )
 from number_compiler.sequences.prime.set import smallest_factor
+from number_compiler.arithmetic.polynomials.modular_linear import row_reduce_mod_prime
 
 
 def multiplicative_order_mod(value: int, modulus: int) -> int:
@@ -126,33 +127,10 @@ def _nullspace_mod_prime(
 ) -> tuple[tuple[int, ...], ...]:
     """Return a deterministic row-vector basis for a matrix nullspace over ``F_p``."""
     p = int(prime)
-    rows = [[int(value) % p for value in row] for row in matrix]
+    rows, pivot_cols = row_reduce_mod_prime(matrix, p)
     if not rows:
         return ()
-    nrows, ncols = len(rows), len(rows[0])
-    if any(len(row) != ncols for row in rows):
-        raise ValueError("ragged matrix")
-    pivot_cols: list[int] = []
-    r = 0
-    for c in range(ncols):
-        pivot = next((i for i in range(r, nrows) if rows[i][c] % p), None)
-        if pivot is None:
-            continue
-        rows[r], rows[pivot] = rows[pivot], rows[r]
-        inv = pow(rows[r][c], -1, p)
-        rows[r] = [(value * inv) % p for value in rows[r]]
-        for i in range(nrows):
-            if i == r or not rows[i][c]:
-                continue
-            factor = rows[i][c]
-            rows[i] = [
-                (left - factor * right) % p
-                for left, right in zip(rows[i], rows[r], strict=True)
-            ]
-        pivot_cols.append(c)
-        r += 1
-        if r == nrows:
-            break
+    ncols = len(rows[0])
     free_cols = [c for c in range(ncols) if c not in set(pivot_cols)]
     basis: list[tuple[int, ...]] = []
     for free in free_cols:
@@ -485,6 +463,13 @@ def cyclotomic_primary_components(
     return cyclotomic_factors_mod_prime_power(n, p, k)
 
 
+def _prime_power_modulus(prime: int, precision: int) -> tuple[int, int, int]:
+    p, k = int(prime), int(precision)
+    if p <= 1 or k <= 0 or smallest_factor(p) is not None:
+        raise ValueError((p, k))
+    return p, k, p**k
+
+
 def polynomial_inverse_mod_prime_power(
     coefficients: Sequence[int],
     divisor: Sequence[int],
@@ -497,10 +482,7 @@ def polynomial_inverse_mod_prime_power(
     each round doubles p-adic precision.  A nonunit fails closed at the base
     finite-field inverse rather than fabricating a partial inverse.
     """
-    p, k = int(prime), int(precision)
-    if p <= 1 or k <= 0 or smallest_factor(p) is not None:
-        raise ValueError((p, k))
-    q = p**k
+    p, k, q = _prime_power_modulus(prime, precision)
     div = tuple(int(c) % q for c in trim_polynomial(divisor))
     if not div or div[-1] % q != 1:
         raise ValueError("divisor must be monic")
@@ -543,10 +525,7 @@ def polynomial_crt_mod_prime_power(
     precision: int,
 ) -> tuple[int, ...]:
     """CRT-reconstruct pairwise-coprime Hensel components modulo ``p**k``."""
-    p, k = int(prime), int(precision)
-    if p <= 1 or k <= 0 or smallest_factor(p) is not None:
-        raise ValueError((p, k))
-    q = p**k
+    p, k, q = _prime_power_modulus(prime, precision)
     mods = tuple(tuple(int(c) % q for c in trim_polynomial(m)) for m in moduli)
     rs = tuple(tuple(int(c) % q for c in residue) for residue in residues)
     if not mods or len(mods) != len(rs) or any(m[-1] % q != 1 for m in mods):

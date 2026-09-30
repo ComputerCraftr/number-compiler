@@ -4,6 +4,8 @@ from __future__ import annotations
 
 import pytest
 
+from number_compiler.hashlife.execution.source_bound_images import SourceImageView
+
 from number_compiler.resources.ledger import ResourceLedger
 from number_compiler.sequences.reverse_add.source_images import (
     ReverseActionID,
@@ -178,11 +180,7 @@ def test_undemanded_second_step_publishes_one_fused_image() -> None:
 
 def test_count_only_d2_image_cannot_authorize_a_right_half() -> None:
     """A returned D2 occurrence needs complete outputs before D4 admission."""
-    workspace = ReverseSourceImageWorkspace(ResourceLedger(), 196, 2)
-    image = workspace.scheduler.source_image(
-        workspace.adapter, workspace.source, workspace.root_action
-    )
-    view = workspace.scheduler._source_image_core().view(image)
+    workspace, view = _two_step_view()
     assert isinstance(view.payload, ReverseImagePayload)
     assert workspace.actions.node(view.payload.action).steps == 2
     with pytest.raises(ReverseCylinderConstructionUnavailable, match="source cylinder"):
@@ -190,11 +188,7 @@ def test_count_only_d2_image_cannot_authorize_a_right_half() -> None:
 
     # Matching numeric action duration and seed do not transfer authority from
     # another occurrence arena. The right-half constructor must check both.
-    foreign = ReverseSourceImageWorkspace(ResourceLedger(), 196, 2)
-    other = foreign.scheduler.source_image(
-        foreign.adapter, foreign.source, foreign.root_action
-    )
-    other_view = foreign.scheduler._source_image_core().view(other)
+    foreign, other_view = _two_step_view()
     with pytest.raises(ValueError, match="different arena"):
         workspace.adapter.validate_payload(other_view.payload)
 
@@ -347,3 +341,12 @@ def test_failed_workspace_construction_releases_every_reservation(
         ReverseSourceImageWorkspace(ledger, 196, 1)
     assert ledger.entries == 0
     assert ledger.nodes == 0
+
+
+def _two_step_view() -> tuple[ReverseSourceImageWorkspace, SourceImageView]:
+    workspace = ReverseSourceImageWorkspace(ResourceLedger(), 196, 2)
+    image = workspace.scheduler.source_image(
+        workspace.adapter, workspace.source, workspace.root_action
+    )
+    view = workspace.scheduler._source_image_core().view(image)
+    return workspace, view

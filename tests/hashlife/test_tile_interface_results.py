@@ -1,6 +1,10 @@
 """Completed tile results retain output roots without owning future content."""
 
 from __future__ import annotations
+from tests.support.tile_results import assert_retention_and_peaks_unchanged
+from tests.support.tile_results import _incoming_setup
+
+from tests.support.assertions import assert_rejected_atomically
 
 from dataclasses import replace
 from typing import cast
@@ -43,17 +47,20 @@ from number_compiler.hashlife.tiles.tile_result_types import (
     ReverseValue as _ReverseValue,
 )
 from number_compiler.hashlife.tiles.tile_results import CompletedResultArena
-from tests.support.tile_results import _setup
+from tests.support.tile_results import (
+    _setup,
+    _fused_setup,
+    assert_result_stores_unchanged,
+    assert_valid_tile_payloads,
+)
 
 
 def test_fused_result_contract_keeps_producer_and_consumer_contexts_distinct() -> None:
-    from number_compiler.resources.payload_audit import audit_registered_payloads
-    from number_compiler.resources.tile_result_inventory import audit_tile_results
 
-    ledger, _, tiles, results, input_lease, output_lease, key, result = _setup()
-    alphabet = tiles.resolve(key.input).alphabet
-    incoming = tiles.leaf(alphabet, 2)
-    outgoing = tiles.leaf(alphabet, 1)
+    ledger, _, tiles, results, input_lease, output_lease, key, result, incoming = (
+        _incoming_setup()
+    )
+    outgoing = tiles.leaf(tiles.resolve(key.input).alphabet, 1)
     key_consumer = BoundPorts(key.ports, key.wiring, key.boundaries)
     key_producer = BoundPorts(
         (2,),
@@ -86,14 +93,7 @@ def test_fused_result_contract_keeps_producer_and_consumer_contexts_distinct() -
     # output_lease aliases one producer operand; only the distinct outgoing
     # boundary needs another lease.
     assert len(held._boundary_tiles) == 1
-    approved, invalid = audit_tile_results(results, dict(ledger.iter_containers()))
-    assert not invalid and id(fused_key) in approved
-    payloads = audit_registered_payloads(ledger)
-    assert (
-        payloads.forbidden_future_payloads,
-        payloads.unbounded_future_integers,
-        payloads.unknown_payloads,
-    ) == (0, 0, 0)
+    assert_valid_tile_payloads(ledger, results, fused_key)
     held.close()
     outgoing.close()
     incoming.close()
@@ -139,9 +139,7 @@ def test_fused_contract_rejects_consumer_aliases_before_warm_lookup() -> None:
                 ),
             )
         )
-    assert (ledger.entries, ledger.nodes) == before[:2]
-    assert dict(results._memo) == before[2]
-    assert dict(results._reverse) == before[3]
+    assert_result_stores_unchanged(ledger, results, before[:4])
     held.close()
     output_lease.close()
     input_lease.close()
@@ -206,11 +204,10 @@ def test_spatial_interface_pair_validates_scoped_children_before_warm_hit() -> N
 
 
 def test_fused_interface_shares_memo_and_retires_with_input() -> None:
-    from number_compiler.resources.payload_audit import audit_registered_payloads
-    from number_compiler.resources.tile_result_inventory import audit_tile_results
 
-    ledger, _, _, results, input_lease, output_lease, key, result = _setup()
-    fused = FusedInterfaceKey(key.action, key.input, key.ports, key.wiring)
+    ledger, _, _, results, input_lease, output_lease, key, result, fused = _fused_setup(
+        publish=False
+    )
     assert results.lookup_fused_interface(fused) is None
     assert results.publish_fused_interface(fused, result.outgoing) == result.outgoing
     assert results.lookup_fused_interface(fused) == result.outgoing
@@ -222,14 +219,7 @@ def test_fused_interface_shares_memo_and_retires_with_input() -> None:
     assert ledger.counters["fused_interface_publication_requests"] == 2
     assert ledger.counters["fused_interface_publications"] == 1
     assert ledger.counters["fused_interface_late_aliases"] == 1
-    approved, invalid = audit_tile_results(results, dict(ledger.iter_containers()))
-    assert not invalid and id(fused) in approved
-    payloads = audit_registered_payloads(ledger)
-    assert (
-        payloads.forbidden_future_payloads,
-        payloads.unbounded_future_integers,
-        payloads.unknown_payloads,
-    ) == (0, 0, 0)
+    assert_valid_tile_payloads(ledger, results, fused)
     ledger.evict_query_memos()
     assert results.retained_fused_interfaces == 0
     assert not results._reverse and not results._variants
@@ -290,9 +280,9 @@ def test_fused_interface_keeps_producer_and_result_wirings_distinct() -> None:
 
 
 def test_warm_fused_lookup_rejects_tampered_normalization_without_repair() -> None:
-    ledger, _, _, results, input_lease, output_lease, key, result = _setup()
-    fused = FusedInterfaceKey(key.action, key.input, key.ports, key.wiring)
-    results.publish_fused_interface(fused, result.outgoing)
+    ledger, _, _, results, input_lease, output_lease, key, result, fused = _fused_setup(
+        publish=True
+    )
     forged = replace(fused)
     object.__setattr__(forged, "producer_wiring", None)
     before = ledger.snapshot()
@@ -305,8 +295,7 @@ def test_warm_fused_lookup_rejects_tampered_normalization_without_repair() -> No
 
 
 def test_fused_equal_wiring_spelling_has_one_canonical_key() -> None:
-    _, _, _, _, input_lease, output_lease, key, _ = _setup()
-    legacy = FusedInterfaceKey(key.action, key.input, key.ports, key.wiring)
+    _, _, _, _, input_lease, output_lease, key, _, legacy = _fused_setup(publish=False)
     explicit = FusedInterfaceKey(
         key.action,
         key.input,
@@ -321,9 +310,9 @@ def test_fused_equal_wiring_spelling_has_one_canonical_key() -> None:
 
 
 def test_fused_interface_rejects_numeric_and_foreign_aliases_before_warm_hit() -> None:
-    ledger, actions, _, results, input_lease, output_lease, key, result = _setup()
-    fused = FusedInterfaceKey(key.action, key.input, key.ports, key.wiring)
-    results.publish_fused_interface(fused, result.outgoing)
+    ledger, actions, _, results, input_lease, output_lease, key, result, fused = (
+        _fused_setup(publish=True)
+    )
     before = ledger.snapshot()
     with pytest.raises(TypeError):
         results.lookup_fused_interface(replace(fused, ports=(True,)))
@@ -355,8 +344,9 @@ def test_fused_interface_reverse_publication_failure_rolls_back(
     monkeypatch: pytest.MonkeyPatch,
     fail_at: int,
 ) -> None:
-    ledger, _, _, results, input_lease, output_lease, key, result = _setup()
-    fused = FusedInterfaceKey(key.action, key.input, key.ports, key.wiring)
+    ledger, _, _, results, input_lease, output_lease, key, result, fused = _fused_setup(
+        publish=False
+    )
     before = ledger.entries, ledger.nodes, dict(results._memo), dict(results._reverse)
     calls = 0
     original = type(results)._write_reverse
@@ -373,17 +363,16 @@ def test_fused_interface_reverse_publication_failure_rolls_back(
     monkeypatch.setattr(type(results), "_write_reverse", fail_boundary)
     with pytest.raises(RuntimeError, match="injected fused"):
         results.publish_fused_interface(fused, result.outgoing)
-    assert (ledger.entries, ledger.nodes) == before[:2]
-    assert dict(results._memo) == before[2]
-    assert dict(results._reverse) == before[3]
+    assert_result_stores_unchanged(ledger, results, before[:4])
     assert not results._variants
     output_lease.close()
     input_lease.close()
 
 
 def test_fused_interface_budget_rejects_before_retained_mutation() -> None:
-    ledger, _, _, results, input_lease, output_lease, key, result = _setup()
-    fused = FusedInterfaceKey(key.action, key.input, key.ports, key.wiring)
+    ledger, _, _, results, input_lease, output_lease, key, result, fused = _fused_setup(
+        publish=False
+    )
     ledger.tighten_limits(None, ledger.entries)
     before = ledger.snapshot()
     with pytest.raises(Exception, match="cache budget exceeded"):
@@ -443,13 +432,13 @@ def test_spatial_interface_budget_counts_valid_publication_attempt_only() -> Non
         + 1
     )
     assert not results._memo
-    before_invalid = ledger.snapshot()
-    with pytest.raises(TypeError):
-        results.publish_spatial_interface(
-            replace(spatial, left=cast("LocalInterfaceID", True)),
-            result.outgoing,
-        )
-    assert ledger.snapshot() == before_invalid
+    assert_rejected_atomically(
+        ledger,
+        lambda: results.publish_spatial_interface(
+            replace(spatial, left=cast("LocalInterfaceID", True)), result.outgoing
+        ),
+        TypeError,
+    )
     output_lease.close()
     input_lease.close()
 
@@ -457,9 +446,9 @@ def test_spatial_interface_budget_counts_valid_publication_attempt_only() -> Non
 def test_fused_interface_inventory_rejects_boolean_variant_count() -> None:
     from number_compiler.resources.tile_result_inventory import audit_tile_results
 
-    ledger, _, _, results, input_lease, output_lease, key, result = _setup()
-    fused = FusedInterfaceKey(key.action, key.input, key.ports, key.wiring)
-    results.publish_fused_interface(fused, result.outgoing)
+    ledger, _, _, results, input_lease, output_lease, key, result, fused = _fused_setup(
+        publish=True
+    )
     variant = next(iter(results._variants))
     results._variants[variant] = True
     _, invalid = audit_tile_results(results, dict(ledger.iter_containers()))
@@ -472,9 +461,9 @@ def test_fused_interface_inventory_rejects_boolean_variant_count() -> None:
 def test_fused_interface_inventory_rejects_swapped_admission_authority() -> None:
     from number_compiler.resources.tile_result_inventory import audit_tile_results
 
-    ledger, _, _, results, input_lease, output_lease, key, result = _setup()
-    fused = FusedInterfaceKey(key.action, key.input, key.ports, key.wiring)
-    results.publish_fused_interface(fused, result.outgoing)
+    ledger, _, _, results, input_lease, output_lease, key, result, fused = _fused_setup(
+        publish=True
+    )
     original = results._validate_fused_action
     try:
         results._validate_fused_action = lambda _action: None
@@ -510,12 +499,6 @@ def test_parametric_interface_rejects_wrong_signature_before_publication() -> No
     foreign = type(result.outgoing)(ArenaToken("foreign"), result.outgoing.kind, 0)
     with pytest.raises(ValueError):
         results.publish_interface(interface_key, foreign)
-    after = ledger.snapshot()
-    assert (after.entries, after.nodes, after.peak_entries, after.peak_nodes) == (
-        before.entries,
-        before.nodes,
-        before.peak_entries,
-        before.peak_nodes,
-    )
+    assert_retention_and_peaks_unchanged(ledger, before)
     output_lease.close()
     input_lease.close()

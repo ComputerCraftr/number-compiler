@@ -45,7 +45,7 @@ exact-cycle admission and bit/storage cost refinement remain separate.
 The finite parity bijection concerns normalized odd steps `(3*x+1)/2`,
 not ordinary physical steps, whose branch words cannot contain `11`.
 
-[Integration, patch provenance and measured scope](../../results/current/week-of-2026-09-20/shared.md#balanced-dyadic-temporal-cutover).
+[Integration, patch provenance and measured scope](../sprints/week-of-2026-09-20/shared.md#balanced-dyadic-temporal-cutover).
 
 ### Shifted parity germs
 
@@ -74,7 +74,7 @@ phase one needs the pending symbol plus `p` tail symbols for `p >= 1`.
   its positivity consumer remains distinct from physical ledger safety.
 
 The [refinement map](../proofs/balanced-dyadic-refinement.md) and
-[implementation record](../../results/current/week-of-2026-09-20/shared.md#shifted-parity-germs-and-batched-limbs)
+[implementation record](../sprints/week-of-2026-09-20/shared.md#shifted-parity-germs-and-batched-limbs)
 separate numeric proof, projection savings and remaining source construction.
 
 ### Powered boundary germs and precision
@@ -102,7 +102,7 @@ after source information has been erased into a terminal point leaf. The
 weekly record gives an exact failing call and distinguishes it from the
 still-open source-bound recursive construction.
 
-[Selective import, input fingerprints and demand measurements](../../results/current/week-of-2026-09-20/shared.md#affine-point-germ-consumers).
+[Selective import, input fingerprints and demand measurements](../sprints/week-of-2026-09-20/shared.md#affine-point-germ-consumers).
 
 - **Checked theorem:** `Collatz_Reduced_Precision` proves that, for `n` physical
   steps containing `e` even steps, adding `2^min(n,e+1) * h` to the source
@@ -119,7 +119,7 @@ still-open source-bound recursive construction.
   Exact memo keys remain source-cylinder bound; no production minimality or
   new asymptotic bound is claimed.
 
-[Corpora, collision witnesses and cost measurements](../../results/current/week-of-2026-09-20/shared.md#powered-boundary-germ-audit).
+[Corpora, collision witnesses and cost measurements](../sprints/week-of-2026-09-20/shared.md#powered-boundary-germ-audit).
 
 ## Saturated finite safety and source binding
 
@@ -144,7 +144,7 @@ not coverage of one source's infinite trajectory.
 source-application bound or complete Python worklist refinement follows from
 removing retained history. See the [proof scope](../proofs.md#finite-saturated-threshold-actions).
 
-[Implementation and validation record](../../results/current/week-of-2026-09-20/collatz.md#saturated-finite-safety-and-source-binding).
+[Implementation and validation record](../sprints/week-of-2026-09-20/collatz.md#saturated-finite-safety-and-source-binding).
 
 ## Shared branch observers and joint experiment
 
@@ -160,33 +160,33 @@ repeated full keys among 32,768 positive odd 16-bit Collatz sources. Absence
 of conflicts without reuse does not establish closure. See the
 [Mahler joint-observer scope](antihydra-mahler.md#joint-future-observer-experiment).
 
-[Implementation and validation record](../../results/current/week-of-2026-09-20/collatz.md#shared-branch-observers-and-joint-experiment).
+[Implementation and validation record](../sprints/week-of-2026-09-20/collatz.md#shared-branch-observers-and-joint-experiment).
 
 ## Exact source and clock laws
 
-[`Collatz_Cylinder_Constructor.thy`](../../devtools/proofs/isabelle/temporal_collatz/Collatz_Cylinder_Constructor.thy)
+[`Collatz_Cylinder_Constructor.thy`](../../proofs/isabelle/temporal_collatz/Collatz_Cylinder_Constructor.thy)
 proves exact dyadic source splitting, block composition, physical-tick
 composition, and embedding of events in physical time. The constructor
 evaluation theorem applies to the defined finite cylinder; the explicit
 `phase_neutrality_does_not_fix_cylinder_action` lemma records why phase alone is
 not a quotient.
 
-[`Collatz_Physical_Cylinder_Lift.thy`](../../devtools/proofs/isabelle/temporal_collatz/Collatz_Physical_Cylinder_Lift.thy)
+[`Collatz_Physical_Cylinder_Lift.thy`](../../proofs/isabelle/temporal_collatz/Collatz_Physical_Cylinder_Lift.thy)
 proves branch words are dyadic source words and gives exact-precision affine and
 low-residue lifts. Its selector split and affine-leaf division assume the
 admitted branch/source construction.
 
-[`Collatz_Clock_Jumps.thy`](../../devtools/proofs/isabelle/temporal_collatz/Collatz_Clock_Jumps.thy)
+[`Collatz_Clock_Jumps.thy`](../../proofs/isabelle/temporal_collatz/Collatz_Clock_Jumps.thy)
 proves block composition, inverse-three conjugacy, Hensel prefix skips, mismatch
 death, one-hot radix-64 curvature, and normalized jet composition. A matching
 prefix permits the stated skip; a mismatch kills that forcing branch. Neither
 claim proves all future branches absent.
 
 The physical bound consumer in
-[`Physical_Collatz_Bound_Consumer.thy`](../../devtools/proofs/isabelle/etale/Physical_Collatz_Bound_Consumer.thy)
+[`Physical_Collatz_Bound_Consumer.thy`](../../proofs/isabelle/etale/Physical_Collatz_Bound_Consumer.thy)
 assigns odd-event ownership to the low boundary under its finite state cases and
 proves the compiled publisher/pullback refines that emission. The support theory
-[`Physical_Collatz_Support.thy`](../../devtools/proofs/isabelle/etale/Physical_Collatz_Support.thy)
+[`Physical_Collatz_Support.thy`](../../proofs/isabelle/etale/Physical_Collatz_Support.thy)
 exhibits sources with equal normalization but different offsets, proving that
 endpoint and weight do not determine support.
 
@@ -208,7 +208,7 @@ resolves this missing context. This refutes the leaf projection as a successor
 identity, not the full cylinder. Production output morphisms consume the
 reduced ports lazily; repeated temporal closure remains unproved.
 
-[Implementation and validation record](../../results/current/week-of-2026-09-20/collatz.md#carryf5-directional-integration-2026-09-21).
+[Implementation and validation record](../sprints/week-of-2026-09-20/collatz.md#carryf5-directional-integration-2026-09-21).
 
 <a id="cross-family-work-and-cache-measurements"></a>
 
@@ -219,7 +219,7 @@ The measured CLI digit path did not consume the new F5 observer, so those
 benchmarks cannot attribute a CLI speedup to it. Reverse/add construction
 refusals supply no successful-work samples.
 
-[Implementation and validation record](../../results/current/week-of-2026-09-20/collatz.md#cross-family-work-and-cache-measurements).
+[Implementation and validation record](../sprints/week-of-2026-09-20/collatz.md#cross-family-work-and-cache-measurements).
 
 <a id="downloaded-spatial-grammar-patch"></a>
 
@@ -231,7 +231,7 @@ The exact spatial language and its length dependence are specified under
 [generator macros](#generator-macros-spatial-phase-and-birth-emissions).
 A fixed spatial alphabet does not establish reuse of complete future regions.
 
-[Implementation and validation record](../../results/current/week-of-2026-09-20/collatz.md#downloaded-spatial-grammar-patch).
+[Implementation and validation record](../sprints/week-of-2026-09-20/collatz.md#downloaded-spatial-grammar-patch).
 
 ## Shared temporal effect reuse
 
@@ -250,7 +250,7 @@ every possible compiler. Earlier measured costs describe their particular
 constructor and observation demand; they are not impossibility results for
 new temporal quotients.
 
-[Implementation and validation record](../../results/current/week-of-2026-09-20/collatz.md#shared-temporal-effect-reuse).
+[Implementation and validation record](../sprints/week-of-2026-09-20/collatz.md#shared-temporal-effect-reuse).
 
 ### Finite D8 source sections
 
@@ -275,7 +275,7 @@ new temporal quotients.
   exact word representation, not a proof that arbitrary innovations disappear.
   Its supplied-word census and hot timings do not certify this source tree.
 
-[Current integration and measurements](../../results/current/week-of-2026-09-27/shared.md#recursive-dyadic-report-integration)
+[Current integration and measurements](../sprints/week-of-2026-09-27/shared.md#recursive-dyadic-report-integration)
 separate the production D8 port from the unported recursive word interner and
 longer primitive-word detector.
 
@@ -296,7 +296,7 @@ cap remain distinct retained consumers.
   with zero kernel discards the earlier kernel and offset before multiplying;
   it keeps the chronological step extent and validates compatible rings.
 - **Checked theorem:** `last_five_births_erase_earlier_jet` in
-  [Collatz_Harmonic_Ports](../../devtools/proofs/isabelle/Collatz_Harmonic_Ports.thy)
+  [Collatz_Harmonic_Ports](../../proofs/isabelle/Collatz_Harmonic_Ports.thy)
   derives suffix reduction from the existing same-birth source-independence
   theorem. The last five births are supplied, potentially source-dependent.
   They are not computed by the nilpotence theorem.
@@ -319,7 +319,7 @@ Reproduce the finite census and cross-family transport checks:
 
 ```console
 python -m pytest -q -o addopts='' tests/sequences/collatz/test_harmonic_ports.py tests/arithmetic/polynomials/test_primary_jet.py tests/validation/proofs/test_mahler_f5_production_bridge.py
-isabelle build -d devtools/proofs/isabelle -j 1 -o threads=1 -o parallel_proofs=0 Reverse_Residuals
+isabelle build -d proofs/isabelle -j 1 -o threads=1 -o parallel_proofs=0 Reverse_Residuals
 ```
 
 ## Generator macros, spatial phase and birth emissions
@@ -355,7 +355,7 @@ spatial bridge. Integer input size is still real work. The rule cannot repeat
 source-dependent emissions or skip temporal source discovery.
 
 **Proof owner.** `carry_then` and `carry_then_apply` now live once in
-[Reverse_Residuals](../../devtools/proofs/isabelle/Reverse_Residuals.thy), imported
+[Reverse_Residuals](../../proofs/isabelle/Reverse_Residuals.thy), imported
 by the reverse/add and Collatz branches. The Collatz harmonic theory proves
 nonempty-generator idempotence, spatial length-phase transport, cardinality 17,
 phase-zero closure, and the exact repetition formula. These are spatial laws;
@@ -404,7 +404,7 @@ support and retains its separate safety predicate.
 extent. The bounded comparison regressed latency; generator reuse alone is
 not a successful performance gate.
 
-[Dated evidence](../../results/current/week-of-2026-09-20/collatz.md#source-only-macro-construction-measurements).
+[Dated evidence](../sprints/week-of-2026-09-20/collatz.md#source-only-macro-construction-measurements).
 
 ## Production and reproduction
 
@@ -475,7 +475,7 @@ Arithmetic consistency of a supplied action/cylinder pair is insufficient
 admission. The downloaded scalar-leaf constructor and unchecked summary cache
 were not accepted as replacements for the source-bound scheduler.
 
-[Implementation and validation record](../../results/current/week-of-2026-09-20/collatz.md#updated-saturated-publication-patch).
+[Implementation and validation record](../sprints/week-of-2026-09-20/collatz.md#updated-saturated-publication-patch).
 
 ## Shared safety transformers and exact cycle acceleration
 
@@ -506,7 +506,7 @@ were not accepted as replacements for the source-bound scheduler.
   cannot be inverted as cylinders. This utility is not a source constructor.
 - **Checked theorem:** `inverse_affine_max`, `prefix_safety_chronological`
   and `repeated_prefix_minimum_closed` in
-  [Associated_Action_Pullback.thy](../../devtools/proofs/isabelle/integration/Associated_Action_Pullback.thy)
+  [Associated_Action_Pullback.thy](../../proofs/isabelle/integration/Associated_Action_Pullback.thy)
   establish inverse/max transport, chronological safety and the repetition
   formula by induction. The same theory passes an isolated HOL-based build
   with its oracle audit. The full integration build remains blocked by the
@@ -531,4 +531,4 @@ Cycle-specific measurements confirm bounded primitive discovery after exact
 cycle entry, with logarithmic scheduler overhead. They are not a general
 source-discovery bound or the complete release growth manifest.
 
-[Dated evidence](../../results/current/week-of-2026-09-20/collatz.md#exact-cycle-acceleration-measurements).
+[Dated evidence](../sprints/week-of-2026-09-20/collatz.md#exact-cycle-acceleration-measurements).

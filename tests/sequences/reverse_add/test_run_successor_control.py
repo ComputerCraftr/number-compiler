@@ -4,8 +4,8 @@ from itertools import product
 
 import pytest
 
-from devtools.proofs import ExactOracleAccessForbidden, exact_oracle
-from devtools.proofs import reverse_run_successor as control
+from devtools.verification import ExactOracleAccessForbidden, exact_oracle
+from devtools.verification import reverse_run_successor as control
 from number_compiler.arithmetic.carry.event_memory import pair_step
 from number_compiler.arithmetic.fields.radix import symbol_runs
 

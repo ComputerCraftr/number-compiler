@@ -99,6 +99,15 @@ def _summary_from_terminal_unknown(
     )
 
 
+def _certificate_flags(collect_gcd_packet: bool, allow_classical_ceiling: bool) -> None:
+    if type(collect_gcd_packet) is not bool:
+        raise TypeError("collect_gcd_packet must be a Boolean")
+    if type(allow_classical_ceiling) is not bool:
+        raise TypeError("allow_classical_ceiling must be a Boolean")
+    if allow_classical_ceiling:
+        raise ValueError("classical primality recurrences are not production paths")
+
+
 def fermat_depth_certificate(
     index: int,
     *,
@@ -122,12 +131,7 @@ def fermat_depth_certificate(
         raise ValueError(n)
     if max_exact_width is not None and int(max_exact_width) < 1:
         raise ValueError(max_exact_width)
-    if type(collect_gcd_packet) is not bool:
-        raise TypeError("collect_gcd_packet must be a Boolean")
-    if type(allow_classical_ceiling) is not bool:
-        raise TypeError("allow_classical_ceiling must be a Boolean")
-    if allow_classical_ceiling:
-        raise ValueError("classical primality recurrences are not production paths")
+    _certificate_flags(collect_gcd_packet, allow_classical_ceiling)
     require_special_candidate_budget("fermat", n, max_candidate_bits)
     width = 1 << n
     modulus_bits = width + 1
@@ -171,12 +175,7 @@ def mersenne_depth_certificate(
         raise ValueError(p)
     if max_exact_exponent is not None and int(max_exact_exponent) < 3:
         raise ValueError(max_exact_exponent)
-    if type(collect_gcd_packet) is not bool:
-        raise TypeError("collect_gcd_packet must be a Boolean")
-    if type(allow_classical_ceiling) is not bool:
-        raise TypeError("allow_classical_ceiling must be a Boolean")
-    if allow_classical_ceiling:
-        raise ValueError("classical primality recurrences are not production paths")
+    _certificate_flags(collect_gcd_packet, allow_classical_ceiling)
     require_special_candidate_budget("mersenne", p, max_candidate_bits)
     if p == 2:
         return SpecialDepthCertificateSummary(

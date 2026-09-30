@@ -7,7 +7,7 @@ from array import array
 
 import pytest
 
-from devtools.proofs.block_power import compose_block_effects
+from devtools.verification.block_power import compose_block_effects
 from number_compiler.arithmetic.carry.event_memory import pair_step
 from number_compiler.arithmetic.contracts.block_effect import (
     BlockContextBudget,
@@ -198,7 +198,7 @@ def test_uncertified_huge_blank_geometry_never_expands_to_a_future_word() -> Non
 
 
 def test_explicit_block_application_preserves_compiled_program_output_type() -> None:
-    from devtools.proofs.block_power import apply_block_power
+    from devtools.verification.block_power import apply_block_power
 
     # This test concerns the explicit bounded block oracle. It must construct
     # its own reference program, not restore a retired backend on public terms.

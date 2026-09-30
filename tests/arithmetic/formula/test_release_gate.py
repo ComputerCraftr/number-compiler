@@ -41,9 +41,7 @@ def test_release_rejects_non_formula_or_quotient_like_backend() -> None:
     assert "full exact" in report.reason
 
 
-class SymbolicExplosionBackend:
-    full_state_exact = True
-
+class _FormulaSeedBackend:
     def __init__(self) -> None:
         self.arena = FormulaArena()
         self.spec = RadixSpec(10)
@@ -51,6 +49,10 @@ class SymbolicExplosionBackend:
 
     def seed_root(self) -> FormulaRoot:
         return self._seed
+
+
+class SymbolicExplosionBackend(_FormulaSeedBackend):
+    full_state_exact = True
 
     def jump_bit(
         self, prefix_index: object, root: FormulaRoot, bit: int
@@ -94,16 +96,8 @@ def test_release_rejects_symbolic_dag_blowup_even_when_guard_clean() -> None:
     assert "complexity budget" in report.reason
 
 
-class CascadeExplosionBackend:
+class CascadeExplosionBackend(_FormulaSeedBackend):
     full_state_exact = True
-
-    def __init__(self) -> None:
-        self.arena = FormulaArena()
-        self.spec = RadixSpec(10)
-        self._seed = root_from_values((7, 18, 7), self.arena, self.spec)
-
-    def seed_root(self) -> FormulaRoot:
-        return self._seed
 
     def jump_bit(
         self, prefix_index: object, root: FormulaRoot, bit: object
@@ -144,16 +138,8 @@ def test_release_rejects_cascade_dependency_blowup() -> None:
     assert "cascade" in report.reason
 
 
-class LateSemanticMergeBackend:
+class LateSemanticMergeBackend(_FormulaSeedBackend):
     full_state_exact = True
-
-    def __init__(self) -> None:
-        self.arena = FormulaArena()
-        self.spec = RadixSpec(10)
-        self._seed = root_from_values((7, 18, 7), self.arena, self.spec)
-
-    def seed_root(self) -> FormulaRoot:
-        return self._seed
 
     def jump_bit(
         self, prefix_index: object, root: FormulaRoot, bit: object

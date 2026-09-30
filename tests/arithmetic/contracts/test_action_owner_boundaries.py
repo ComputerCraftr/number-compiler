@@ -5,7 +5,7 @@ from typing import cast
 
 import pytest
 
-from devtools.proofs.collatz_symbolic_action import CollatzSymbolicActionArena
+from devtools.verification.collatz_symbolic_action import CollatzSymbolicActionArena
 from number_compiler.arithmetic.automata.action_power import ActionPowerArena
 from number_compiler.arithmetic.contracts.block_kernel import BaseBlockEffect
 from number_compiler.arithmetic.contracts.scoped_handles import (
@@ -53,12 +53,7 @@ def test_action_power_checks_ownership_and_kind_before_zero_and_warm_shortcuts(
 ) -> None:
     actions, other = CollatzSymbolicActionArena(), CollatzSymbolicActionArena()
     local, foreign = actions.atom(2), other.atom(2)
-    powers = ActionPowerArena(
-        actions.identity, actions.compose, validate=actions.validate
-    )
-    if warm:
-        powers.power(local, 0)
-        powers.compose(local, local)
+    powers = _warmed_power_arena(actions, local, warm)
     before = powers.metrics()
     for bad in (
         foreign,
@@ -93,12 +88,7 @@ def test_action_power_rejects_program_id_subclass_before_identity_or_warm_lookup
         pass
 
     alias = ProgramIDAlias(local.owner, local.kind, local.local_id)
-    powers = ActionPowerArena(
-        actions.identity, actions.compose, validate=actions.validate
-    )
-    if warm:
-        powers.power(local, 0)
-        powers.compose(local, local)
+    powers = _warmed_power_arena(actions, local, warm)
     before = powers.metrics()
     with pytest.raises(TypeError, match="scoped program ID"):
         powers.power(alias, 0)
@@ -171,3 +161,17 @@ def test_collatz_affine_integer_arguments_reject_python_numeric_aliases(
             arena.endpoint_projections,
             arena.action_count,
         ) == before
+
+
+def _warmed_power_arena(
+    actions: CollatzSymbolicActionArena,
+    local: ActionProgramID,
+    warm: bool,
+) -> ActionPowerArena:
+    powers = ActionPowerArena(
+        actions.identity, actions.compose, validate=actions.validate
+    )
+    if warm:
+        powers.power(local, 0)
+        powers.compose(local, local)
+    return powers

@@ -367,10 +367,7 @@ def test_higher_handles_reject_foreign_integer_bool_and_wrong_sort() -> None:
 
 
 def test_higher_records_contain_no_exact_future_payloads() -> None:
-    schema, arena = _arena()
-    state = arena.literal(schema.primitive, 0, 0)
-    symbol = arena.symbol(schema.primitive, 0)
-    arena.primitive_step(schema.primitive, 0, state, symbol)
+    schema, arena = _issued_records()
     forbidden = {"digits", "tile", "span", "carry_rows", "future", "coefficient"}
     for record in arena._expressions:
         assert forbidden.isdisjoint(record.__dataclass_fields__)
@@ -383,10 +380,7 @@ def test_higher_payload_audit_validates_issued_records_and_rejects_mutation() ->
 
     from number_compiler.resources.payload_audit import audit_registered_payloads
 
-    schema, arena = _arena()
-    state = arena.literal(schema.primitive, 0, 0)
-    symbol = arena.symbol(schema.primitive, 0)
-    arena.primitive_step(schema.primitive, 0, state, symbol)
+    schema, arena = _issued_records()
     assert audit_registered_payloads(arena.ledger).forbidden_future_payloads == 0
     assert audit_registered_payloads(arena.ledger).unknown_payloads == 0
 
@@ -467,3 +461,11 @@ def test_semantic_work_counts_deep_frames_even_when_observation_fails(
     assert calls == 20
     assert schema.ledger.counters["higher_semantic_task_frames"] > 40
     assert schema.ledger.counters.get("higher_semantic_evaluations", 0) == 0
+
+
+def _issued_records() -> tuple[_Schema, HigherSemanticArena]:
+    schema, arena = _arena()
+    state = arena.literal(schema.primitive, 0, 0)
+    symbol = arena.symbol(schema.primitive, 0)
+    arena.primitive_step(schema.primitive, 0, state, symbol)
+    return schema, arena

@@ -1,5 +1,8 @@
 """Ordered reconstruction reuses nodes; moved variables still reorder exactly."""
 
+from tests.support.finite_port_fixtures import semantic_boolean_variable
+
+
 from itertools import product
 from typing import Never
 
@@ -9,21 +12,23 @@ from number_compiler.arithmetic.functions.finite_function_types import (
     BOOL,
     FinitePort,
     FunctionSignature,
+    SemanticNode,
 )
 from number_compiler.arithmetic.functions.finite_port_action import PortVariable
 from number_compiler.arithmetic.functions.semantic_function_transactions import (
     _Transaction,
 )
-from number_compiler.hashlife.interfaces.semantic_bits import BitFunctionArena
+from number_compiler.hashlife.interfaces.semantic_bits import (
+    BitFunctionArena,
+    FactoredFunctionID,
+)
 from number_compiler.resources.ledger import ResourceLedger
 
 
 def test_unchanged_decision_rebuild_does_not_enter_generic_shannon_apply(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    bits = BitFunctionArena(ResourceLedger())
-    x = FinitePort(PortVariable(0, 0, "x", 0), 2)
-    value = bits.variable((x,), x, BOOL)
+    bits, x, value = semantic_boolean_variable("x")
     tx = _Transaction(bits.functions)
     root = bits.resolve(value).bits[0].local_id
 
@@ -57,11 +62,8 @@ def test_replacement_that_moves_a_variable_earlier_keeps_shannon_reordering() ->
 def test_canonical_child_ids_hit_before_derived_support_work(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    bits = BitFunctionArena(ResourceLedger())
-    port = FinitePort(PortVariable(0, 0, "x", 0), 2)
-    value = bits.variable((port,), port, BOOL)
-    identity = bits.resolve(value).bits[0].local_id
-    node = bits.functions.nodes[identity]
+    bits, port, value = semantic_boolean_variable("x")
+    identity, node = _decision_node(bits, value)
     tx = _Transaction(bits.functions)
 
     def forbidden(*args: object, **kwargs: object) -> Never:
@@ -82,11 +84,8 @@ def test_support_metadata_cannot_change_semantic_identity_but_is_audited() -> No
     )
     from number_compiler.resources.semantic_payload import SemanticPayloadRegistry
 
-    bits = BitFunctionArena(ResourceLedger())
-    port = FinitePort(PortVariable(0, 0, "x", 0), 2)
-    value = bits.variable((port,), port, BOOL)
-    identity = bits.resolve(value).bits[0].local_id
-    node = bits.functions.nodes[identity]
+    bits, port, value = semantic_boolean_variable("x")
+    identity, node = _decision_node(bits, value)
     assert replace(node, support=()) == node
     original = node.support
     object.__setattr__(node, "support", ())
@@ -98,3 +97,11 @@ def test_support_metadata_cannot_change_semantic_identity_but_is_audited() -> No
         assert not registry.valid(bits.functions._handle(identity))
     finally:
         object.__setattr__(node, "support", original)
+
+
+def _decision_node(
+    bits: BitFunctionArena, value: FactoredFunctionID
+) -> tuple[int, SemanticNode]:
+    identity = bits.resolve(value).bits[0].local_id
+    node = bits.functions.nodes[identity]
+    return identity, node

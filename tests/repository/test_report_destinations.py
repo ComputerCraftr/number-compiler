@@ -11,6 +11,7 @@ def test_current_reports_use_canonical_module_ownership(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     monkeypatch.setattr(paths, "repository_root", lambda: tmp_path)
+    (tmp_path / "pyproject.toml").write_text('[project]\nversion="0.0.0"\n')
     history = tmp_path / "results" / "historical-root-checkpoints" / "report.md"
     history.parent.mkdir(parents=True)
     history.write_text("original checkpoint")
@@ -18,11 +19,16 @@ def test_current_reports_use_canonical_module_ownership(
         "devtools.benchmarks.reverse_temporal_power_probe", "report.md"
     )
     output.write_text("new measurement")
-    assert (
-        output
-        == tmp_path
-        / "results/current/benchmarks/reverse_temporal_power_probe/report.md"
+    assert output.relative_to(tmp_path).parts[:2] == ("results", "runs")
+    assert output.parts[-3:] == (
+        "benchmarks",
+        "reverse_temporal_power_probe",
+        "report.md",
     )
+    with pytest.raises(FileExistsError):
+        paths.report_output(
+            "devtools.benchmarks.reverse_temporal_power_probe", "report.md"
+        )
     assert history.read_text() == "original checkpoint"
     assert not (tmp_path / "report.md").exists()
 

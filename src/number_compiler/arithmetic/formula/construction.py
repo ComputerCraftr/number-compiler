@@ -171,6 +171,22 @@ class FormulaBuildMixin(FormulaStorage):
                 return self._shallow_many("OR", (*common, inner), width)
         return self._raw("AND", width, sorted(flat, key=lambda x: x.id))
 
+    def _factor_conjunctions(
+        self, terms: Sequence[Expr], common_ids: set[int], kind: str, width: int
+    ) -> Expr:
+        by_id = {argument.id: argument for argument in terms[0].args}
+        common = [by_id[index] for index in sorted(common_ids)]
+        residual = [
+            self._shallow_many(
+                "AND",
+                (argument for argument in term.args if argument.id not in common_ids),
+                width,
+            )
+            for term in terms
+        ]
+        inner = self._shallow_many(kind, residual, width)
+        return self._shallow_many("AND", (*common, inner), width)
+
     def or_many(self, items: Iterable[Expr], width: int) -> Expr:
         width = int(width)
         flat = self._flatten("OR", items)
@@ -202,16 +218,7 @@ class FormulaBuildMixin(FormulaStorage):
             for term in flat[1:]:
                 common_ids.intersection_update(a.id for a in term.args)
             if common_ids:
-                by_id = {a.id: a for a in flat[0].args}
-                common = [by_id[i] for i in sorted(common_ids)]
-                residual = [
-                    self._shallow_many(
-                        "AND", (a for a in term.args if a.id not in common_ids), width
-                    )
-                    for term in flat
-                ]
-                inner = self._shallow_many("OR", residual, width)
-                return self._shallow_many("AND", (*common, inner), width)
+                return self._factor_conjunctions(flat, common_ids, "OR", width)
         return self._raw("OR", width, sorted(flat, key=lambda x: x.id))
 
     def xor_many(self, items: Iterable[Expr], width: int) -> Expr:
@@ -241,16 +248,7 @@ class FormulaBuildMixin(FormulaStorage):
             for term in args[1:]:
                 common_ids.intersection_update(a.id for a in term.args)
             if common_ids:
-                by_id = {a.id: a for a in args[0].args}
-                common = [by_id[i] for i in sorted(common_ids)]
-                residual = [
-                    self._shallow_many(
-                        "AND", (a for a in term.args if a.id not in common_ids), width
-                    )
-                    for term in args
-                ]
-                inner = self._shallow_many("XOR", residual, width)
-                out = self._shallow_many("AND", (*common, inner), width)
+                out = self._factor_conjunctions(args, common_ids, "XOR", width)
             else:
                 out = self._raw("XOR", width, args)
         else:

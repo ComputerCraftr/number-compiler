@@ -48,9 +48,9 @@ def test_hashlife_production_source_has_no_rle_or_generation_padding_carrier() -
     assert "def output_word" not in hash_text
     assert "def point(" not in hash_text
     assert "program_pop_last" not in hash_text
-    from devtools import proofs
+    import devtools.verification as verification
 
-    package = Path(proofs.__file__).parent
+    package = Path(verification.__file__).parent
     runtime_text = (package / "block_runtime.py").read_text()
     spacetime_text = (package / "block_spacetime_runtime.py").read_text()
     production_text = runtime_text + spacetime_text

@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from tests.support.assertions import assert_rejected_atomically
+
 from typing import Never, cast
 
 import pytest
@@ -178,10 +180,9 @@ def test_transfer_integer_aliases_reject_before_lookup_or_mutation(
     valid = executor.transfer(action, source, geometry, signature)
     forged = type(valid)(valid.owner, valid.kind, valid.local_id)
     object.__setattr__(forged, "local_id", alias)
-    before = ledger.snapshot()
-    with pytest.raises(ValueError, match="malformed"):
-        transfers.resolve(forged)
-    assert ledger.snapshot() == before
+    before = assert_rejected_atomically(
+        ledger, lambda: transfers.resolve(forged), ValueError, match="malformed"
+    )
 
     foreign = type(valid)(ArenaToken("foreign-transfer"), valid.kind, valid.local_id)
     with pytest.raises(ValueError, match="different arena"):

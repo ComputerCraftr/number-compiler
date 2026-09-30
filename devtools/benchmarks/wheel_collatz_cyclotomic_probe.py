@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from devtools.paths import report_directory
+
 import json
 
 from devtools.benchmarks.report_schema import sequence
@@ -120,7 +122,7 @@ def main() -> int:
             "closure": closure_rows,
         },
     }
-    outdir = ROOT / "results"
+    outdir = report_directory("devtools.benchmarks.wheel_collatz_cyclotomic_probe")
     outdir.mkdir(exist_ok=True)
     (outdir / "wheel_collatz_cyclotomic_metrics.json").write_text(
         json.dumps(metrics, indent=2, sort_keys=True) + "\n"
@@ -181,4 +183,6 @@ def main() -> int:
 
 
 if __name__ == "__main__":
-    raise SystemExit(main())
+    from devtools.runs import run_reported
+
+    raise SystemExit(run_reported(main))

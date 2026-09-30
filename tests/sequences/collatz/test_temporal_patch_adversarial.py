@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from tests.support.collatz_images import assert_branch_segments
+
 from random import Random
 
 from number_compiler.resources.ledger import ResourceLedger
@@ -50,11 +52,7 @@ def test_saturated_cycle_boundary_keeps_exact_branch_stream() -> None:
         ResourceLedger(), seed, steps, retain_chronology=False
     )
     assert workspace.endpoint() == expected
-    actual: list[int] = []
-    for start, width, word in workspace.segments():
-        assert start == len(actual)
-        actual.extend((word >> position) & 1 for position in range(width))
-    assert tuple(actual) == branches
+    assert_branch_segments(workspace, branches)
 
 
 def test_metrics_audit_does_not_recompose_an_entire_growing_prefix() -> None:

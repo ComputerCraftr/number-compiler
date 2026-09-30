@@ -1,8 +1,9 @@
 from __future__ import annotations
 
+from devtools.paths import report_output
+
 import json
 from dataclasses import asdict
-from pathlib import Path
 
 from devtools.experiments.power_numbers.special_theorem_behavioral_quotient import (
     theorem_behavioral_frontier,
@@ -30,11 +31,16 @@ def main() -> None:
         "frontier": asdict(theorem_behavioral_frontier()),
     }
     text = json.dumps(data, indent=2, sort_keys=True) + "\n"
-    out = Path("results/special_theorem_behavioral_quotient_metrics.json")
+    out = report_output(
+        "devtools.benchmarks.special_theorem_behavioral_quotient_probe",
+        "special_theorem_behavioral_quotient_metrics.json",
+    )
     out.parent.mkdir(parents=True, exist_ok=True)
     out.write_text(text)
     print(text, end="")
 
 
 if __name__ == "__main__":
-    main()
+    from devtools.runs import run_reported
+
+    raise SystemExit(run_reported(main))

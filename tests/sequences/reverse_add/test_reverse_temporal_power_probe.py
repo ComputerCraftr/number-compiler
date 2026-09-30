@@ -1,5 +1,7 @@
 from pathlib import Path
 
+from tests.support.source_policy import module_sources
+
 import pytest
 
 from number_compiler.sequences.reverse_add.power import ReverseAddPoweredTerm
@@ -53,13 +55,13 @@ def test_reverse_production_has_only_direct_powered_hashlife_path() -> None:
 
 
 def test_reverse_power_source_has_no_slow_temporal_backend() -> None:
-    import devtools.proofs.block_runtime as runtime
+    import devtools.verification.block_runtime as runtime
     import number_compiler.hashlife.observation.hashlife_projection as hashlife
     import number_compiler.sequences.reverse_add.power as reverse_power
 
-    power_text = Path(reverse_power.__file__).read_text()
-    hash_text = Path(hashlife.__file__).read_text()
-    runtime_text = Path(runtime.__file__).read_text()
+    power_text, hash_text, runtime_text = module_sources(
+        reverse_power, hashlife, runtime
+    )
     assert "ReverseAddCausalSpacetimeEngine" not in power_text
     assert "BlockPointIndex" not in power_text
     assert "def _partition3" not in hash_text

@@ -6,6 +6,8 @@ makes no logarithmic claim from the number of compiler or image nodes.
 
 from __future__ import annotations
 
+from number_compiler.resources.temporal_diagnostics import METRICS_SCHEMA_VERSION
+
 import argparse
 import json
 import os
@@ -446,7 +448,7 @@ def run_probe() -> FieldProbeReport:
         and all(report["status"] == "GREEN" for report in family_reports.values())
     )
     return {
-        "metrics_schema_version": 7,
+        "metrics_schema_version": METRICS_SCHEMA_VERSION,
         "source_fingerprint": before,
         "source_unchanged": source_unchanged,
         "worker_sources_consistent": worker_sources_consistent,
@@ -475,7 +477,11 @@ def main() -> int:
         print(json.dumps(worker(args.worker, args.horizon)))
         return 0
     if args.output is None:
-        parser.error("--output is required")
+        from devtools.paths import report_output
+
+        args.output = report_output(
+            "devtools.benchmarks.field_query_release_probe", "report.json"
+        )
     if args.output.exists() or args.output.is_symlink():
         parser.error("historical results must not be overwritten")
     result = run_probe()
@@ -486,4 +492,6 @@ def main() -> int:
 
 
 if __name__ == "__main__":
-    raise SystemExit(main())
+    from devtools.runs import run_reported
+
+    raise SystemExit(run_reported(main))

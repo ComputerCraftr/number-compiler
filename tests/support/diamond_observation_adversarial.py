@@ -8,8 +8,15 @@ from number_compiler.arithmetic.contracts.block_kernel import FiniteBlockEffect
 from number_compiler.hashlife.interfaces.diamond_boundary_expr import (
     BoundaryExpressionArena,
     ExprID,
+    StateSort,
 )
 from number_compiler.resources.ledger import ResourceLedger
+from number_compiler.arithmetic.contracts.scoped_handles import ActionProgramID
+from number_compiler.hashlife.execution.continuations.diamond_runtime import (
+    DiamondRuntime,
+)
+from tests.support.diamond_query import build
+from number_compiler.hashlife.observation.diamond_query import DiamondApplication
 
 
 def neighbor_xor() -> FiniteBlockEffect:
@@ -61,3 +68,47 @@ def _bound_projection_fixture() -> tuple[
     projection = arena.anchor(variable)
     assert not arena.node(incoming).free_ports
     return ledger, arena, variable, incoming, projection, left, right
+
+
+def structured_projection(
+    arena: BoundaryExpressionArena,
+    variable: ExprID,
+    right: ExprID,
+    expression: ExprID,
+    expected: ExprID,
+) -> tuple[ExprID, ExprID]:
+    sort = arena.node(variable).sort
+    assert type(sort) is StateSort
+    parameter = arena.variable(arena.node(right).sort, "constant-continuation")
+    continuation = arena.lambda_(parameter, expected)
+    return arena.pair(sort.action, sort.side, expression, continuation), arena.pair(
+        sort.action, sort.side, expected, continuation
+    )
+
+
+def bound_observation_fixture() -> tuple[
+    DiamondApplication, DiamondRuntime, BoundaryExpressionArena, ActionProgramID, ExprID
+]:
+    app = build(neighbor_xor(), (0, 1, 1), 8, 1)
+    runtime, arena = app.runtime, app.runtime.higher.expressions
+    action = app.root
+    literal = arena.literal(runtime.boundaries.literal(action, 1, 3))
+    parameter = arena.variable(arena.state_sort(action, 1), "unresolved-input")
+    body = arena.primitive_advance(action, 1, parameter, arena.symbol(action, 0))
+    program = arena.closures.intern((parameter,), body)
+    return app, runtime, arena, action, arena.call(program, (literal,))
+
+
+def unsafe_capture(
+    runtime: DiamondRuntime,
+    action: ActionProgramID,
+    variable: ExprID,
+    expression: ExprID,
+) -> tuple[BoundaryExpressionArena, ExprID]:
+    arena = runtime.higher.expressions
+    literal = arena.literal(runtime.boundaries.literal(action, 0, 0))
+    program = arena.closures.intern((variable,), expression)
+    captured = arena.call(program, (literal,))
+    right = arena.literal(runtime.boundaries.literal(action, 1, 0))
+    symbol = arena.primitive_emit(action, captured, arena.symbol(action, 1), right)
+    return arena, arena.primitive_advance(action, 0, variable, symbol)

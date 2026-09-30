@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from tests.support.tile_kernel import _runtime_source
 from typing import Never, cast
 
 import pytest
@@ -12,9 +13,10 @@ from number_compiler.hashlife.execution.tile_causal_interfaces import (
 )
 from number_compiler.hashlife.execution.tile_causal_observation import causal_width
 from number_compiler.hashlife.interfaces.diamond_quotient import LocalInterfaceID
-from number_compiler.hashlife.tiles.tiles import TileArena, TileID
+from number_compiler.hashlife.tiles.tiles import TileArena, TileID, TileLease
+from number_compiler.hashlife.actions.field_actions import FieldCellActionID
 from number_compiler.resources.ledger import ResourceLedger
-from tests.arithmetic.contracts.test_tile_kernel import _runtime, _tile
+from tests.support.tile_kernel import _runtime, _tile
 
 
 class _InterfaceEngine:
@@ -59,7 +61,9 @@ class _InterfaceEngine:
         raise AssertionError("causal width constructed an output root")
 
 
-def test_causal_width_skips_inactive_siblings_without_point_or_output() -> None:
+def _activity_fixture() -> tuple[
+    TileArena, FieldCellActionID, TileLease, _InterfaceEngine
+]:
     effect = BaseBlockEffect(3)
     ledger, tiles, adapter, action, _scheduler = _runtime(effect)
     blank = effect.blank
@@ -70,6 +74,11 @@ def test_causal_width_skips_inactive_siblings_without_point_or_output() -> None:
         adapter.wiring(action),
     )
     engine = _InterfaceEngine(tiles, ledger, interface)
+    return tiles, action, source, engine
+
+
+def test_causal_width_skips_inactive_siblings_without_point_or_output() -> None:
+    tiles, action, source, engine = _activity_fixture()
     try:
         assert (
             causal_width(
@@ -89,16 +98,7 @@ def test_causal_width_skips_inactive_siblings_without_point_or_output() -> None:
 
 
 def test_causal_width_clips_activity_outside_limit() -> None:
-    effect = BaseBlockEffect(3)
-    ledger, tiles, adapter, action, _scheduler = _runtime(effect)
-    blank = effect.blank
-    source = _tile(tiles, adapter, action, (blank, blank, 1, blank))
-    interface = adapter._compile_interface(
-        action,
-        source.tile,
-        adapter.wiring(action),
-    )
-    engine = _InterfaceEngine(tiles, ledger, interface)
+    tiles, action, source, engine = _activity_fixture()
     try:
         assert (
             causal_width(
@@ -120,8 +120,9 @@ def test_causal_width_rejects_invalid_limits_before_tasks(
     bad: bool | float,
 ) -> None:
     effect = BaseBlockEffect(3)
-    ledger, tiles, adapter, action, _scheduler = _runtime(effect)
-    source = _tile(tiles, adapter, action, (effect.blank,))
+    ledger, tiles, adapter, action, _scheduler, source = _runtime_source(
+        effect, (effect.blank,)
+    )
     interface = adapter._compile_interface(
         action,
         source.tile,
@@ -141,8 +142,7 @@ def test_causal_width_rejects_invalid_limits_before_tasks(
 
 def test_causal_width_rejects_wrong_interface_level() -> None:
     effect = BaseBlockEffect(3)
-    ledger, tiles, adapter, action, _scheduler = _runtime(effect)
-    source = _tile(tiles, adapter, action, (1,))
+    ledger, tiles, adapter, action, _scheduler, source = _runtime_source(effect, (1,))
     interface = adapter._compile_interface(
         action,
         source.tile,

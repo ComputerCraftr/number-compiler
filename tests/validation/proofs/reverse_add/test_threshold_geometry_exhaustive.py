@@ -4,7 +4,7 @@ from itertools import product
 
 import pytest
 
-from devtools.proofs.reverse_geometry_context import ReverseGeometryContext
+from devtools.verification.reverse_geometry_context import ReverseGeometryContext
 from number_compiler.arithmetic.carry.event_memory import pair_step
 
 

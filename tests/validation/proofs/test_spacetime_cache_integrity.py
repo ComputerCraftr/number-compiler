@@ -2,8 +2,9 @@ from __future__ import annotations
 
 import gc
 from pathlib import Path
+from tests.support.source_policy import module_sources
 
-from devtools.proofs.block_composed import ComposedBlockEffect
+from devtools.verification.block_composed import ComposedBlockEffect
 from number_compiler.arithmetic.contracts.block_effect import BoundarySide
 from number_compiler.arithmetic.contracts.block_kernel import FiniteBlockEffect
 from number_compiler.arithmetic.fields.dyadic_tile import (
@@ -34,7 +35,7 @@ def test_persistent_macro_key_retains_canonical_tile_identity() -> None:
 
 
 def test_recursive_carrier_bulk_and_leaf_traversal_share_one_state_identity() -> None:
-    from devtools.proofs.block_power import power_block_effect
+    from devtools.verification.block_power import power_block_effect
 
     effect = power_block_effect(base=10, exponent=8).root
     assert isinstance(effect, ComposedBlockEffect)
@@ -45,22 +46,16 @@ def test_recursive_carrier_bulk_and_leaf_traversal_share_one_state_identity() ->
         join(leaf(values[0]), leaf(values[1])), join(leaf(values[2]), leaf(values[3]))
     )
 
-    bulk = effect._advance_effect_tile_macro(effect, BoundarySide.LEFT, start, tile)
-    scalar = start
-    for symbol in values:
-        scalar = effect.advance(BoundarySide.LEFT, scalar, symbol)
-    assert bulk is scalar
-
-    # Repeat at a deliberately non-aligned action-stream offset.  Alignment is
-    # occurrence geometry; it must not manufacture a different residual ID.
-    prefix_bulk = effect.advance(BoundarySide.LEFT, start, 5)
-    shifted_bulk = effect._advance_effect_tile_macro(
-        effect, BoundarySide.LEFT, prefix_bulk, tile
-    )
-    shifted_scalar = prefix_bulk
-    for symbol in values:
-        shifted_scalar = effect.advance(BoundarySide.LEFT, shifted_scalar, symbol)
-    assert shifted_bulk is shifted_scalar
+    # Exercise both aligned and non-aligned action-stream offsets.
+    prefix = effect.advance(BoundarySide.LEFT, start, 5)
+    for incoming in (start, prefix):
+        bulk = effect._advance_effect_tile_macro(
+            effect, BoundarySide.LEFT, incoming, tile
+        )
+        scalar = incoming
+        for symbol in values:
+            scalar = effect.advance(BoundarySide.LEFT, scalar, symbol)
+        assert bulk is scalar
 
 
 def test_lazy_range_hit_is_not_counted_on_computed_miss() -> None:
@@ -256,12 +251,12 @@ def test_lazy_carrier_metrics_expose_programs_without_duplicate_finite_domains()
 
 
 def test_higher_carrier_has_no_eager_composed_universe_cutoff() -> None:
-    import devtools.proofs.block_composed as composed
+    import devtools.verification.block_composed as composed
 
     text = Path(composed.__file__).read_text()
     assert "first.exponent) <= 8" not in text
     assert "max_states=4096" not in text
-    from devtools.proofs.block_recursive import _RecursiveResidualAction
+    from devtools.verification.block_recursive import _RecursiveResidualAction
     from number_compiler.arithmetic.contracts.block_effect import BlockContextBudget
     from number_compiler.arithmetic.contracts.block_kernel import BaseBlockEffect
 
@@ -276,20 +271,20 @@ def test_higher_carrier_has_no_eager_composed_universe_cutoff() -> None:
 
 
 def test_late_partition_alias_and_cache_compaction_paths_are_deleted() -> None:
-    import devtools.proofs.block_partition as partition
-    import devtools.proofs.block_spacetime_runtime as spacetime
+    import devtools.verification.block_partition as partition
+    import devtools.verification.block_spacetime_runtime as spacetime
     import number_compiler.arithmetic.contracts.block_effect as core
 
-    partition_source = Path(partition.__file__).read_text()
-    spacetime_source = Path(spacetime.__file__).read_text()
-    core_source = Path(core.__file__).read_text()
+    partition_source, spacetime_source, core_source = module_sources(
+        partition, spacetime, core
+    )
     assert "refine_partition_behavioral_aliases" not in partition_source
     assert "canonical_representative" not in partition_source
     assert "_compact_canonical_state_caches" not in spacetime_source
     assert "effect_cache_owners" not in core_source
     assert "release_cache(" not in core_source
 
-    import devtools.proofs.spacetime_boundary as boundary
+    import devtools.verification.spacetime_boundary as boundary
 
     boundary_source = Path(boundary.__file__).read_text()
     assert "class SpacetimeBoundary" not in boundary_source
@@ -365,7 +360,7 @@ def test_cold_miss_counters_match_new_entries_without_late_reinsertion() -> None
 def test_hashlife_tile_budget_counts_generated_quadtree_not_only_source_roots() -> None:
     import pytest
 
-    from devtools.proofs.block_power import power_block_effect
+    from devtools.verification.block_power import power_block_effect
     from number_compiler.arithmetic.contracts.block_effect import (
         BlockContextBudgetExceeded,
     )
@@ -389,11 +384,11 @@ def test_hashlife_tile_budget_counts_generated_quadtree_not_only_source_roots() 
 
 
 def test_core_hashlife_semantics_do_not_trust_construction_order_tile_ids() -> None:
-    from devtools.proofs.block_power import power_block_effect
-    from devtools.proofs.finite_tile_action import (
+    from devtools.verification.block_power import power_block_effect
+    from devtools.verification.finite_tile_action import (
         FiniteTileActionArena,
     )
-    from devtools.proofs.spacetime_boundary import tile_uniform_symbol
+    from devtools.verification.spacetime_boundary import tile_uniform_symbol
 
     # Deliberately manufacture non-interned tiles with colliding diagnostic IDs.
     # Core semantic caches/traversals must use canonical objects/structure rather
@@ -445,8 +440,8 @@ def test_core_hashlife_semantics_do_not_trust_construction_order_tile_ids() -> N
 
 
 def test_standalone_finite_tile_action_reuse_counts_real_hits() -> None:
-    from devtools.proofs.block_power import power_block_effect
-    from devtools.proofs.finite_tile_action import (
+    from devtools.verification.block_power import power_block_effect
+    from devtools.verification.finite_tile_action import (
         FiniteTileActionArena,
     )
 

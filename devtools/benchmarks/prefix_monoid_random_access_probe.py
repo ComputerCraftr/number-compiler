@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from devtools.paths import report_directory
+
 import json
 
 from devtools.experiments.reverse_add.domain import ReverseAddSpatialIndex
@@ -143,10 +145,15 @@ def main() -> None:
         "collatz": collatz_metrics(),
         "structure": structure_metrics(),
     }
-    out = ROOT / "results" / "prefix_monoid_random_access_metrics.json"
+    out = (
+        report_directory("devtools.benchmarks.prefix_monoid_random_access_probe")
+        / "prefix_monoid_random_access_metrics.json"
+    )
     out.write_text(json.dumps(payload, indent=2, sort_keys=True) + "\n")
     print(json.dumps(payload, indent=2, sort_keys=True))
 
 
 if __name__ == "__main__":
-    main()
+    from devtools.runs import run_reported
+
+    raise SystemExit(run_reported(main))

@@ -2,13 +2,15 @@
 
 from __future__ import annotations
 
+from devtools.paths import report_directory
+
 import json
 from typing import NotRequired, TypedDict, cast
 
 from devtools.benchmarks.json_support import jsonable
 from devtools.paths import report_output, repository_root
-from devtools.proofs import exact_oracle
-from devtools.proofs.sequence_diagnostics import with_carry_diagnostics
+from devtools.verification import exact_oracle
+from devtools.verification.sequence_diagnostics import with_carry_diagnostics
 from number_compiler.api.sequence_compiler import CanonicalSequenceCompiler
 from number_compiler.api.sequence_types import (
     CollatzSequenceSpec,
@@ -269,7 +271,10 @@ def main() -> None:
             "prime": prime_cache_entries,
         },
     }
-    out_json = ROOT / "results" / "sequence_family_metrics.json"
+    out_json = (
+        report_directory("devtools.benchmarks.sequence_family_probe")
+        / "sequence_family_metrics.json"
+    )
     out_json.write_text(
         json.dumps(jsonable(data), sort_keys=True, separators=(",", ":")) + "\n"
     )

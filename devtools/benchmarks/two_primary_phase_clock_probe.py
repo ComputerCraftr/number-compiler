@@ -336,7 +336,7 @@ def _depth_view_audit(
     local_depths: tuple[int, ...],
     profile_source: str,
 ) -> TwoPrimaryDepthViewAudit:
-    from devtools.proofs.oracles.bounded_filtration import (
+    from devtools.verification.oracles.bounded_filtration import (
         bounded_candidate_image_filtration,
     )
 

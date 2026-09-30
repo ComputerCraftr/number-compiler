@@ -29,6 +29,22 @@ V = TypeVar("V")
 T = TypeVar("T")
 
 
+def _update_values(args: tuple[object, ...], kwargs: Mapping[str, V]) -> dict[K, V]:
+    """Normalize the standard mapping/iterable update input before mutation."""
+    if len(args) > 1:
+        raise TypeError("update accepts at most one positional mapping")
+    values: dict[K, V] = {}
+    if args:
+        source = args[0]
+        if isinstance(source, (Mapping, Iterable)):
+            values.update(source)
+        else:
+            raise TypeError("update requires a mapping or key-value pairs")
+    for name, value in kwargs.items():
+        values[cast(K, name)] = value
+    return values
+
+
 class _TrackedDict(dict[K, V]):
     """Backing map that invalidates audits even through adversarial test access."""
 
@@ -57,17 +73,7 @@ class _TrackedDict(dict[K, V]):
         return result
 
     def update(self, *args: object, **kwargs: V) -> None:
-        if len(args) > 1:
-            raise TypeError("update accepts at most one positional mapping")
-        values: dict[K, V] = {}
-        if args:
-            source = args[0]
-            if isinstance(source, (Mapping, Iterable)):
-                values.update(source)
-            else:
-                raise TypeError("update requires a mapping or key-value pairs")
-        for name, value in kwargs.items():
-            values[cast(K, name)] = value
+        values: dict[K, V] = _update_values(args, kwargs)
         if values:
             super().update(values)
             self._ledger.note_store_mutation()
@@ -248,17 +254,7 @@ class LedgerDict(_StoreSerializationBoundary, MutableMapping[K, V]):
         return self._data.setdefault(key, cast(V, default))
 
     def update(self, *args: object, **kwargs: V) -> None:
-        if len(args) > 1:
-            raise TypeError("update accepts at most one positional mapping")
-        values: dict[K, V] = {}
-        if args:
-            source = args[0]
-            if isinstance(source, (Mapping, Iterable)):
-                values.update(source)
-            else:
-                raise TypeError("update requires a mapping or key-value pairs")
-        for name, value in kwargs.items():
-            values[cast(K, name)] = value
+        values: dict[K, V] = _update_values(args, kwargs)
         if self.write_once and any(key in self._data for key in values):
             raise TypeError("canonical mapping entries are write-once")
         self._check(len(self) + sum(key not in self for key in values))
@@ -427,3 +423,76 @@ class LedgerList(_StoreSerializationBoundary, MutableSequence[T]):
     def sort(self, *, key: object = None, reverse: bool = False) -> None:
         self._editable()
         raise TypeError("sorting retained identity stores is unsupported")
+
+
+def append_indexed_node(
+    ledger: ResourceLedger,
+    nodes: MutableSequence[T],
+    keys: MutableMapping[K, int],
+    node_owner: int,
+    key_owner: int,
+    key: K,
+    record: T,
+    *,
+    reservations: tuple[tuple[int, int, int], ...] = (),
+) -> int:
+    """Reserve and append one already-admitted dense arena node and its index.
+
+    Semantic validation and hit detection belong to the caller. Both retained
+    stores remain ledger-created; this does not grant unscoped handle authority.
+    """
+    ledger.reserve_many(((node_owner, 1, 1), (key_owner, 1, 0), *reservations))
+    local_id = len(nodes)
+    nodes.append(record)
+    keys[key] = local_id
+    return local_id
+
+
+def reserve_indexed_id(
+    ledger: ResourceLedger, node_owner: int, key_owner: int, next_id: int
+) -> tuple[int, int]:
+    """Admit one monotone arena identity before the caller mutates either index."""
+    ledger.reserve_many(((node_owner, 1, 1), (key_owner, 1, 0)))
+    return next_id, next_id + 1
+
+
+def register_dense_index(
+    ledger: ResourceLedger,
+    node_owner: int,
+    key_owner: int,
+    nodes: MutableSequence[T],
+    keys: MutableMapping[K, int],
+) -> None:
+    """Register the payload roots of an existing dense node/interner pair."""
+    ledger.register_container(
+        node_owner, nodes, node_count=lambda: len(nodes), payloads=lambda: nodes
+    )
+    ledger.register_container(key_owner, keys, payloads=keys.items)
+
+
+def make_node_index(
+    ledger: ResourceLedger, node_owner: int, key_owner: int
+) -> tuple[MutableMapping[int, T], MutableMapping[K, int]]:
+    """Create a sparse node store and its semantic index under separate owners."""
+    return ledger.make_dict(node_owner, nodes_per_entry=1), ledger.make_dict(key_owner)
+
+
+def record_indexed_node(
+    nodes: MutableMapping[int, T],
+    keys: MutableMapping[T, int],
+    local_id: int,
+    record: T,
+) -> None:
+    """Install an admitted sparse node and its matching semantic reverse index."""
+    nodes[local_id] = record
+    keys[record] = local_id
+
+
+def make_dense_index(
+    ledger: ResourceLedger, node_owner: int, key_owner: int
+) -> tuple[MutableSequence[T], MutableMapping[K, int]]:
+    """Create and register a dense arena's node/index pair as one operation."""
+    nodes: MutableSequence[T] = ledger.make_list(node_owner)
+    keys: MutableMapping[K, int] = ledger.make_dict(key_owner)
+    register_dense_index(ledger, node_owner, key_owner, nodes, keys)
+    return nodes, keys

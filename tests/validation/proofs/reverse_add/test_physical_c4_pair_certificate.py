@@ -11,9 +11,9 @@ from typing import TYPE_CHECKING, Never, cast
 
 import pytest
 
-from devtools.proofs.block_composed import ComposedBlockEffect
-from devtools.proofs.block_runtime import _FunctionalBoundaryState
-from devtools.proofs.physical_c4_pair_certificate import (
+from devtools.verification.block_composed import ComposedBlockEffect
+from devtools.verification.block_runtime import _FunctionalBoundaryState
+from devtools.verification.physical_c4_pair_certificate import (
     certificate_digest,
     generate_certificate,
     load_certificate,

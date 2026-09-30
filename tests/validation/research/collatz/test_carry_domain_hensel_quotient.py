@@ -12,7 +12,7 @@ from itertools import pairwise, product
 
 import pytest
 
-from devtools.proofs import exact_oracle
+from devtools.verification import exact_oracle
 from number_compiler.arithmetic.automata.program_word import from_values
 from number_compiler.arithmetic.carry.collatz_carry_wires import (
     collatz_digit_carry_wires,
@@ -192,22 +192,22 @@ def test_adjacent_division_domain_factorization_all_six_phases() -> None:
     assert tuple(counts) == RADIX64_DIRECTIONAL_DOMAIN_COUNTS
 
 
+def _assert_directional_target(n: int) -> tuple[int, ...]:
+    source = digits_lsd(n, 64)
+    event = radix64_transducer.compose_radix64_events(source)
+    assert _directional_next_domains(source) == tuple(
+        map(radix64_domain, event.target_digits)
+    )
+    return event.target_digits
+
+
 def test_directional_views_reconstruct_complete_next_geometry() -> None:
     for n in range(1, 1 << 16, 2):
-        source = digits_lsd(n, 64)
-        event = radix64_transducer.compose_radix64_events(source)
-        assert _directional_next_domains(source) == tuple(
-            map(radix64_domain, event.target_digits)
-        )
+        _assert_directional_target(n)
     for seed in (1, 15, 19, 27, 129, 385, 58723):
         n = seed
         for _ in range(8):
-            source = digits_lsd(n, 64)
-            event = radix64_transducer.compose_radix64_events(source)
-            assert _directional_next_domains(source) == tuple(
-                map(radix64_domain, event.target_digits)
-            )
-            n = value_from_lsd_digits(event.target_digits, 64)
+            n = value_from_lsd_digits(_assert_directional_target(n), 64)
 
 
 def test_eq_survives_complete_acceleration_and_next_frame_crop() -> None:

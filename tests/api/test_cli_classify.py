@@ -7,7 +7,7 @@ from typing import Never
 
 import pytest
 
-from devtools.proofs.oracles import classical_ceiling
+from devtools.verification.oracles import classical_ceiling
 from number_compiler.api.cli import main
 from number_compiler.api.sequence_compiler import CanonicalSequenceCompiler
 from number_compiler.arithmetic.polynomials import two_primary_filtration

@@ -1,3 +1,5 @@
+from tests.support.arithmetic_fixtures import wide_innovation_operators
+
 import pytest
 
 from number_compiler.arithmetic.contracts.block_effect import BlockContextBudgetExceeded
@@ -126,13 +128,7 @@ def test_wide_interval_budget_refusal_publishes_no_node() -> None:
 
 
 def test_wide_operator_metadata_charges_exact_integer_limbs() -> None:
-    ledger = ResourceLedger()
-    arena = SymbolicInnovationArena(ledger)
-    one = arena.interval(1)
-
-    arena.linear_combination((((1 << 130) + 1, one),))
-    arena.radial(one, RadialMultiplier(1 << 130, 1 << 129))
-    arena.chart(one, CylinderChart(-1, -(1 << 130)))
+    ledger, arena = wide_innovation_operators()
 
     node_row = next(
         row for row in ledger.inventory() if row.role == "innovation_action"

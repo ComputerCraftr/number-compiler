@@ -153,8 +153,8 @@ def test_special_certificate_compiler_path_has_no_classical_recurrence_owner() -
     production = special / "sequences/power_numbers"
     assert not (production / "classical_ceiling.py").exists()
     assert not (production / "digit_power.py").exists()
-    assert (ROOT / "devtools/proofs/oracles/classical_ceiling.py").is_file()
-    assert (ROOT / "devtools/proofs/oracles/digit_power.py").is_file()
+    assert (ROOT / "devtools/verification/oracles/classical_ceiling.py").is_file()
+    assert (ROOT / "devtools/verification/oracles/digit_power.py").is_file()
     definitions = _production_definitions()
     for recurrence in (
         "fermat_classical_ceiling",
@@ -165,7 +165,7 @@ def test_special_certificate_compiler_path_has_no_classical_recurrence_owner() -
     ):
         assert not definitions.get(recurrence)
     for path in src.rglob("*.py"):
-        assert "devtools.proofs.oracles" not in path.read_text()
+        assert "devtools.verification.oracles" not in path.read_text()
 
 
 def test_terminal_frobenius_chunk_is_detached_from_constrained_production_germ() -> (
@@ -229,7 +229,7 @@ def test_special_output_guard_stays_lightweight_on_production_compiler_path() ->
 
 
 def test_special_source_program_cannot_hide_a_deferred_certificate_or_oracle() -> None:
-    text = (ROOT / "devtools/proofs/special_source_program.py").read_text()
+    text = (ROOT / "devtools/verification/special_source_program.py").read_text()
     for forbidden in (
         "pepin_test",
         "lucas_lehmer_test",
@@ -255,7 +255,7 @@ def test_special_slow_oracles_are_explicit_opt_in_not_root_exports() -> None:
         "bounded_candidate_image_filtration",
     ):
         assert forbidden not in root
-    oracle = ROOT / "devtools" / "proofs" / "oracles" / "__init__.py"
+    oracle = ROOT / "devtools" / "verification" / "oracles" / "__init__.py"
     assert oracle.is_file()
     production = ROOT / "src" / "number_compiler" / "sequences" / "power_numbers"
     for proof_only in (
@@ -267,10 +267,10 @@ def test_special_slow_oracles_are_explicit_opt_in_not_root_exports() -> None:
     ):
         assert not (production / proof_only).exists()
     assert (
-        ROOT / "devtools" / "proofs" / "oracles" / "special_binary_jump.py"
+        ROOT / "devtools" / "verification" / "oracles" / "special_binary_jump.py"
     ).is_file()
-    assert (ROOT / "devtools" / "proofs" / "special_power_monoid.py").is_file()
-    assert (ROOT / "devtools" / "proofs" / "special_source_program.py").is_file()
+    assert (ROOT / "devtools" / "verification" / "special_power_monoid.py").is_file()
+    assert (ROOT / "devtools" / "verification" / "special_source_program.py").is_file()
 
 
 def test_shared_cross_family_arithmetic_has_one_owner_per_primitive() -> None:
@@ -501,7 +501,7 @@ def test_distribution_metadata_owns_number_compiler_cli_without_legacy_package()
 
     meta = tomllib.loads((ROOT / "pyproject.toml").read_text())["project"]
     assert meta["name"] == "number-compiler"
-    assert meta["version"] == "0.59.9"
+    assert meta["version"] == "0.60.0"
     assert meta["scripts"] == {"number-compiler": "number_compiler.api.cli:main"}
     assert not (ROOT / "src" / "reverse_add").exists()
 

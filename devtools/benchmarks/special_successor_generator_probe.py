@@ -1,6 +1,7 @@
 from __future__ import annotations
 
-import json
+from devtools.paths import report_directory
+
 from typing import TYPE_CHECKING
 
 from devtools.experiments.power_numbers.special_successor_generators import (
@@ -8,6 +9,8 @@ from devtools.experiments.power_numbers.special_successor_generators import (
     special_successor_generator_metrics,
 )
 from devtools.paths import report_output, repository_root
+from devtools.runs import run_reported
+from devtools.benchmarks.reporting import write_markdown_json_report
 
 if TYPE_CHECKING:
     from devtools.experiments.power_numbers.special_successor_models import (
@@ -16,12 +19,6 @@ if TYPE_CHECKING:
 
 
 ROOT = repository_root()
-
-REPORT = report_output(
-    "devtools.benchmarks.special_successor_generator_probe",
-    "SPECIAL_SUCCESSOR_GENERATOR_RESULTS.md",
-)
-METRICS = ROOT / "results" / "special_successor_generator_metrics.json"
 
 
 def markdown(
@@ -74,21 +71,26 @@ def markdown(
         "",
         "## Evidence",
         "",
-        "- Full machine-readable tables: `results/special_successor_generator_metrics.json`.",
+        "- Full machine-readable tables: `special_successor_generator_metrics.json` (this run’s sibling artifact).",
         "- Reproduce: `python -m devtools.benchmarks.special_successor_generator_probe`.",
     ]
     return "\n".join(lines) + "\n"
 
 
 def main() -> None:
+    REPORT = report_output(
+        "devtools.benchmarks.special_successor_generator_probe",
+        "SPECIAL_SUCCESSOR_GENERATOR_RESULTS.md",
+    )
+    METRICS = (
+        report_directory("devtools.benchmarks.special_successor_generator_probe")
+        / "special_successor_generator_metrics.json"
+    )
     metrics_obj = special_successor_generator_metrics()
     report = markdown(metrics_obj)
     metrics = metrics_as_jsonable(metrics_obj)
-    REPORT.write_text(report)
-    METRICS.parent.mkdir(parents=True, exist_ok=True)
-    METRICS.write_text(json.dumps(metrics, indent=2, sort_keys=True) + "\n")
-    print(report, end="")
+    write_markdown_json_report(REPORT, METRICS, report, metrics)
 
 
 if __name__ == "__main__":
-    main()
+    raise SystemExit(run_reported(main))

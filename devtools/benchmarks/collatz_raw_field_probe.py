@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from devtools.paths import report_directory
+
 import json
 from collections.abc import Iterator
 
@@ -30,11 +32,6 @@ from number_compiler.sequences.collatz.raw_field import (
 )
 
 ROOT = repository_root()
-
-OUT = ROOT / "results" / "collatz_raw_field_metrics.json"
-REPORT = report_output(
-    "devtools.benchmarks.collatz_raw_field_probe", "COLLATZ_RAW_FIELD_RESULTS.md"
-)
 
 
 def _odd_orbit(seed: int) -> Iterator[int]:
@@ -74,6 +71,13 @@ def _formula_max_nodes(seed: int) -> dict[str, int]:
 
 
 def main() -> None:
+    OUT = (
+        report_directory("devtools.benchmarks.collatz_raw_field_probe")
+        / "collatz_raw_field_metrics.json"
+    )
+    REPORT = report_output(
+        "devtools.benchmarks.collatz_raw_field_probe", "COLLATZ_RAW_FIELD_RESULTS.md"
+    )
     seeds = (27, 97, 871, 6171)
     bases = (4, 16, 64, 256)
     sentinel: dict[str, dict[str, dict[str, int]]] = {}
@@ -273,4 +277,6 @@ def main() -> None:
 
 
 if __name__ == "__main__":
-    main()
+    from devtools.runs import run_reported
+
+    raise SystemExit(run_reported(main))

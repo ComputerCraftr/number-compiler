@@ -93,10 +93,9 @@ def _complete_composite_candidate(
 
     from number_compiler.hashlife.execution.dyadic_return_transport import (
         _low_bits as transport_low_bits,
-        balanced_residue_effect,
-        balanced_residue_macro,
+    )
+    from number_compiler.hashlife.execution.dyadic_return_transport import (
         cycle_phase_summaries,
-        residue_macro,
     )
 
     retain_support = self.retain_chronological_support()
@@ -231,16 +230,9 @@ def _complete_composite_candidate(
             MAX_CYCLE_DISCOVERY_STEPS - discovered,
         )
         chunk_residue = transport_low_bits(tracked_value, chunk_width)
-        if retain_support:
-            chunk_support = residue_macro(
-                self, chunk_width, chunk_residue, _keep_memo=True
-            )
-            chunk = self.support_node(chunk_support)
-        else:
-            chunk_support = None
-            chunk = balanced_residue_effect(
-                self, chunk_width, chunk_residue, _keep_memo=True
-            )
+        chunk, chunk_support = _residue_candidate(
+            self, chunk_width, chunk_residue, retain_support, balanced=False
+        )
 
         before_transfer = transfer
         transfer = before_transfer.then(chunk.transfer, multiply=mul, add=add)
@@ -313,16 +305,9 @@ def _complete_composite_candidate(
             tail_residue = transport_low_bits(tracked_value, remaining)
         else:
             tail_residue = transport_low_bits(source_node.residue, remaining)
-        if retain_support:
-            tail_support = balanced_residue_macro(
-                self, remaining, tail_residue, _keep_memo=True
-            )
-            tail = self.support_node(tail_support)
-        else:
-            tail_support = None
-            tail = balanced_residue_effect(
-                self, remaining, tail_residue, _keep_memo=True
-            )
+        tail, tail_support = _residue_candidate(
+            self, remaining, tail_residue, retain_support, balanced=True
+        )
         before_transfer = transfer
         transfer = before_transfer.then(tail.transfer, multiply=mul, add=add)
         odd_steps += tail.odd_steps
@@ -403,3 +388,24 @@ def _complete_composite_candidate(
         ),
         precision=source_node.precision,
     )
+
+
+def _residue_candidate(
+    workspace: DyadicReturnImageWorkspace,
+    width: int,
+    residue: int,
+    retain: bool,
+    *,
+    balanced: bool,
+) -> tuple[_SupportNode, DyadicReturnSupportID | None]:
+    from number_compiler.hashlife.execution.dyadic_return_transport import (
+        balanced_residue_effect,
+        balanced_residue_macro,
+        residue_macro,
+    )
+
+    if not retain:
+        return balanced_residue_effect(workspace, width, residue, _keep_memo=True), None
+    build = balanced_residue_macro if balanced else residue_macro
+    support = build(workspace, width, residue, _keep_memo=True)
+    return workspace.support_node(support), support

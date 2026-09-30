@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from devtools.paths import report_directory
+
 import argparse
 import itertools
 import json
@@ -16,6 +18,12 @@ from devtools.benchmarks.tile_projection_accounting import (
 from devtools.checks.dependency_graph import source_syntax
 from devtools.checks.test_run_evidence import source_fingerprint
 from devtools.paths import repository_root
+from devtools.runs import run_reported
+from devtools.benchmarks.reporting import write_json_report
+from devtools.benchmarks.temporal_probe_support import (
+    common_temporal_blockers,
+    shared_cutover_sources,
+)
 from number_compiler.api.cli_context import QueryContext
 from number_compiler.api.cli_requests import parse_request
 from number_compiler.api.number_api import (
@@ -293,11 +301,16 @@ def _source_audit() -> dict[str, bool]:
     block = source_syntax(
         ROOT / "src" / "number_compiler" / "sequences/collatz/block_power.py"
     )
-    proof = ROOT / "devtools" / "proofs"
-    runtime = source_syntax(proof / "block_runtime.py")
-    spacetime = source_syntax(proof / "block_spacetime_runtime.py")
-    compatibility_names = runtime.identifiers | spacetime.identifiers
-    compatibility_imports = runtime.imports | spacetime.imports
+    (
+        compatibility_names,
+        compatibility_imports,
+        runtime,
+        spacetime,
+        boundary,
+        router_syntax,
+        router_imports,
+        generic_executor_imported,
+    ) = shared_cutover_sources(ROOT)
     init = source_syntax(ROOT / "src" / "number_compiler" / "__init__.py")
     bounded = source_syntax(
         ROOT
@@ -306,13 +319,6 @@ def _source_audit() -> dict[str, bool]:
         / "hashlife"
         / "execution"
         / "bounded_application.py"
-    )
-    boundary = source_syntax(proof / "spacetime_boundary.py")
-    router_path = ROOT / "src" / "number_compiler" / "sequences" / "runtime_router.py"
-    router_syntax = source_syntax(router_path)
-    router_imports = router_syntax.imports | router_syntax.dynamic_imports
-    generic_executor_imported = router_syntax.unknown_dynamic_import or any(
-        name.endswith("diamond_runtime") for name in router_imports
     )
     public_modules = init.imports | init.export_modules | init.dynamic_imports
     checks = {
@@ -424,18 +430,7 @@ def run_probe() -> dict[str, object]:
         + _metric_int(projection[0]["retained_nodes"])
         for previous, current in itertools.pairwise(projection)
     )
-    blockers: list[str] = []
-    if not projection:
-        blockers.append("execution_measurements_missing")
-    if rejection is not None:
-        blockers.append("certified_execution_unavailable")
-    if projection and not all(
-        _metric_int(row["whole_word_sweeps"]) == 0
-        and _metric_int(row["whole_word_symbol_visits"]) == 0
-        and _metric_int(row["proof_machine_applications"]) == 0
-        for row in projection
-    ):
-        blockers.append("forbidden_execution_work_observed")
+    blockers = common_temporal_blockers(projection, rejection, _metric_int)
     if projection and not all(
         _metric_int(row["source_image_chronological_compositions"])
         <= 2 * max(1, _metric_int(row["index_bits"])) + 4
@@ -904,12 +899,13 @@ def main() -> int:
         )
         return 0
     result = run_probe()
-    out = ROOT / "results" / "collatz_temporal_power_metrics.json"
-    out.parent.mkdir(exist_ok=True)
-    out.write_text(json.dumps(result, indent=2, sort_keys=True) + "\n")
-    print(json.dumps(result, indent=2, sort_keys=True))
+    out = (
+        report_directory("devtools.benchmarks.collatz_temporal_power_probe")
+        / "collatz_temporal_power_metrics.json"
+    )
+    write_json_report(out, result)
     return 0
 
 
 if __name__ == "__main__":
-    raise SystemExit(main())
+    raise SystemExit(run_reported(main))

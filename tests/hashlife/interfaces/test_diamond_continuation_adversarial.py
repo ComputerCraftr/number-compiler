@@ -7,14 +7,10 @@ from typing import TYPE_CHECKING, Never
 
 import pytest
 
-from devtools.proofs.parametric_query import parametric_point
+from devtools.verification.parametric_query import parametric_point
 from number_compiler.hashlife.execution.continuations.diamond_expression_eval import (
     ResolveExpr,
 )
-from number_compiler.hashlife.execution.continuations.diamond_higher_tasks import (
-    HigherEmit,
-)
-from number_compiler.hashlife.execution.continuations.diamond_tasks import Task
 from number_compiler.hashlife.execution.diamond_continuation_guard import (
     function_program_admission,
 )
@@ -23,17 +19,18 @@ from number_compiler.hashlife.execution.diamond_continuation_reduction import (
     NormalizePrimitiveLambda,
 )
 from number_compiler.hashlife.interfaces.diamond_boundary_expr import (
-    ExprID,
     ExprSubstitutionKey,
 )
+from tests.support.assertions import assert_rejected_atomically
 from tests.support.diamond_observation_adversarial import neighbor_xor
 from tests.support.diamond_query import build, oracle
+from tests.support.diamond_quotient import (
+    capture_root_emissions,
+    warmed_neighbor_application,
+)
 
 if TYPE_CHECKING:
-    from number_compiler.arithmetic.contracts.scoped_handles import TransferSummaryID
-    from number_compiler.hashlife.interfaces.diamond_boundary import BoundaryStateID
-    from number_compiler.hashlife.interfaces.diamond_quotient import LocalInterfaceID
-    from number_compiler.hashlife.interfaces.semantic_structures import StructureID
+    pass
 
 
 @pytest.mark.parametrize("argument_matters", (False, True))
@@ -45,26 +42,7 @@ def test_fake_free_port_cannot_cache_a_complete_future_tape(
     source = tuple(rng.randrange(2) for _ in range(24))
     app = build(neighbor_xor(), source, 32, 4)
     runtime, arena = app.runtime, app.runtime.higher.expressions
-    outputs = []
-    execute = runtime.execute
-
-    def observe(
-        task: Task,
-    ) -> (
-        BoundaryStateID
-        | TransferSummaryID
-        | ExprID
-        | StructureID
-        | LocalInterfaceID
-        | int
-    ):
-        result = execute(task)
-        if type(task) is HigherEmit and task.action == app.root:
-            assert isinstance(result, ExprID)
-            outputs.append(result)
-        return result
-
-    monkeypatch.setattr(runtime, "execute", observe)
+    outputs = capture_root_emissions(app, monkeypatch)
     expected = oracle(neighbor_xor(), source, 32, 4)
     for position in range(24):
         assert parametric_point(runtime, app.root, position) == expected[position]
@@ -177,9 +155,8 @@ def test_fake_free_port_cannot_cache_a_complete_future_tape(
 
 
 def test_actual_reset_function_from_kernel_symbols_remains_memoizable() -> None:
-    app = build(neighbor_xor(), (0, 1), 4, 1)
+    app = warmed_neighbor_application()
     runtime, arena = app.runtime, app.runtime.higher.expressions
-    runtime.kernels.intern(runtime.actions.primitive(app.root))
     variable = arena.variable(arena.state_sort(app.root, 1), "actual-carry-input")
     body = arena.primitive_advance(app.root, 1, variable, arena.symbol(app.root, 1))
     assert function_program_admission(arena, body)[0]
@@ -204,10 +181,11 @@ def test_foreign_complete_function_cannot_enter_warm_or_cold_binding(
     if warm:
         runtime.execute(request)
     foreign = other.runtime.kernels.constant(4, 1)
-    before = runtime.ledger.snapshot()
-    with pytest.raises(ValueError):
-        runtime.primitive_continuations.publish(request, foreign)
-    assert runtime.ledger.snapshot() == before
+    assert_rejected_atomically(
+        runtime.ledger,
+        lambda: runtime.primitive_continuations.publish(request, foreign),
+        ValueError,
+    )
 
 
 def test_binding_proof_metadata_equals_independent_full_graph_walk(
@@ -243,9 +221,8 @@ def test_binding_proof_metadata_equals_independent_full_graph_walk(
 def test_warm_binding_proof_never_reopens_opaque_child_program(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    app = build(neighbor_xor(), (0, 1), 4, 1)
+    app = warmed_neighbor_application()
     runtime, arena = app.runtime, app.runtime.higher.expressions
-    runtime.kernels.intern(runtime.actions.primitive(app.root))
     variable = arena.variable(arena.state_sort(app.root, 1), "warm-declared-port")
     body = arena.primitive_advance(app.root, 1, variable, arena.symbol(app.root, 1))
     closure = arena.closures.intern((variable,), body)

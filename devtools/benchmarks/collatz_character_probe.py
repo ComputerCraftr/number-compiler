@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from devtools.paths import report_directory
+
 import json
 
 from devtools.paths import repository_root
@@ -79,10 +81,15 @@ def run_probe() -> dict[str, object]:
 
 def main() -> None:
     result = run_probe()
-    out = ROOT / "results" / "collatz_character_metrics.json"
+    out = (
+        report_directory("devtools.benchmarks.collatz_character_probe")
+        / "collatz_character_metrics.json"
+    )
     out.write_text(json.dumps(result, indent=2, sort_keys=True) + "\n")
     print(json.dumps(result, indent=2, sort_keys=True))
 
 
 if __name__ == "__main__":
-    main()
+    from devtools.runs import run_reported
+
+    raise SystemExit(run_reported(main))

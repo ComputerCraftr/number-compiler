@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import json
 
-from devtools.proofs import exact_oracle
+from devtools.verification import exact_oracle
 from number_compiler.arithmetic.automata.program_word import from_values
 from number_compiler.arithmetic.fields.radix import digits_lsd
 from number_compiler.sequences.collatz.hensel_occurrence import (

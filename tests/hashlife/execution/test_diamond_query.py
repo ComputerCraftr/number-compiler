@@ -13,7 +13,7 @@ from number_compiler.hashlife.execution.continuations.diamond_runtime import (
 from number_compiler.hashlife.observation.diamond_observers import NonblankBlockEffect
 from number_compiler.resources.ledger import ResourceLedger
 from number_compiler.sequences.collatz.block_power import CollatzPhysicalBlockEffect
-from tests.support.diamond_query import build, oracle
+from tests.support.diamond_query import build, oracle, bounded_case
 
 
 def test_nonblank_observer_is_admitted_by_compiler_as_immutable_primitive() -> None:
@@ -32,9 +32,7 @@ def test_width_uses_observer_diamonds_without_point_queries(
     steps: int,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    source = (1, 0, 1) if effect.base == 2 else (2, 4, 2)
-    application = build(effect, source, 8, steps)
-    expected = oracle(effect, source, 8, steps)
+    application, expected = bounded_case(effect, steps)
 
     def forbidden(*args: object) -> Never:
         raise AssertionError("width must not query individual output points")

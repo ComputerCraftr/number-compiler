@@ -16,7 +16,7 @@ from number_compiler.resources.fused_traversal_workspace import (
 )
 from number_compiler.resources.ledger import ResourceLedger
 from number_compiler.resources.tile_runtime_inventory import audit_tile_runtime
-from tests.arithmetic.contracts.test_tile_kernel import _runtime, _tile
+from tests.support.tile_kernel import _runtime, _tile
 
 
 def test_fused_workspace_rejects_reentry_and_releases_after_failure() -> None:

@@ -5,6 +5,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import cast
 
+from number_compiler.resources.field_image_domain_audit import indexed_record_matches
 from number_compiler.resources.ledger import ResourceLedger
 
 
@@ -71,6 +72,8 @@ def audit_field_image_payloads(ledger: ResourceLedger) -> FieldImagePayloadAudit
         PortStateID,
         Residual,
         ResidualBindingID,
+    )
+    from number_compiler.hashlife.execution.continuations.concrete_port_records import (
         VirtualBinding as _VirtualBinding,
     )
     from number_compiler.hashlife.execution.continuations.concrete_port_records import (
@@ -713,13 +716,10 @@ def audit_field_image_payloads(ledger: ResourceLedger) -> FieldImagePayloadAudit
                     root._validate_output(provider_record.output)
                     root._validate_interface(provider_record.interface)
                     root._validate_action(provider_record.action)
-                    provider_id = ProviderActionID(
-                        root.owner,
-                        root._KIND,
-                        local_id,
+                    provider_id = ProviderActionID(root.owner, root._KIND, local_id)
+                    valid &= indexed_record_matches(
+                        provider_id, root.resolve, root._keys, provider_record, local_id
                     )
-                    valid &= root.resolve(provider_id) is provider_record
-                    valid &= root._keys.get(provider_record) == local_id
                 except (TypeError, ValueError, IndexError, KeyError, AttributeError):
                     valid = False
                 if valid:

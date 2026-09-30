@@ -11,6 +11,9 @@ exact position.  No seed-196 assumption appears here.
 """
 
 from __future__ import annotations
+from number_compiler.arithmetic.contracts.input_validation import (
+    normalized_integer_pair,
+)
 
 from number_compiler.arithmetic.fields.digit_formula import (
     DigitSpec,
@@ -142,9 +145,7 @@ def reverse_add_nth_formula(
     *after* the requested term.  The latter was pure eager work in the public
     nth/digit API.
     """
-    seed, index = int(seed), int(index)
-    if seed < 0 or index < 0:
-        raise ValueError((seed, index))
+    seed, index = normalized_integer_pair(seed, index)
     spec = RadixSpec(base)
     dspec = DigitSpec(base)
     arena = FormulaArena()
@@ -169,9 +170,7 @@ def reverse_add_orbit_formulas(
     ``digit_roots[k]`` and ``digit_roots[k+1]`` is derived from it by the exact
     digit normalization formula above.
     """
-    seed, steps = int(seed), int(steps)
-    if seed < 0 or steps < 0:
-        raise ValueError((seed, steps))
+    seed, steps = normalized_integer_pair(seed, steps)
     spec = RadixSpec(base)
     dspec = DigitSpec(base)
     arena = FormulaArena()

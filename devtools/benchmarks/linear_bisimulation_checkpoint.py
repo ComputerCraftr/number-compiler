@@ -2,6 +2,11 @@
 
 from __future__ import annotations
 
+from devtools.verification.oracles.sequence_arithmetic import (
+    collatz_literal as _collatz_scalar,
+)
+from devtools.paths import report_directory
+
 import json
 from time import perf_counter
 
@@ -18,13 +23,6 @@ def _reverse_scalar(steps: int) -> int:
     for _ in range(steps):
         text = str(value)
         value += int(text[::-1])
-    return value
-
-
-def _collatz_scalar(seed: int, steps: int) -> int:
-    value = seed
-    for _ in range(steps):
-        value = 3 * value + 1 if value & 1 else value // 2
     return value
 
 
@@ -90,7 +88,10 @@ def run() -> dict[str, object]:
 
 def main() -> int:
     result = run()
-    out = ROOT / "results" / "linear_bisimulation_checkpoint_v1.json"
+    out = (
+        report_directory("devtools.benchmarks.linear_bisimulation_checkpoint")
+        / "linear_bisimulation_checkpoint_v1.json"
+    )
     out.parent.mkdir(exist_ok=True)
     out.write_text(json.dumps(result, indent=2, sort_keys=True) + "\n")
     print(json.dumps(result, sort_keys=True))
@@ -98,4 +99,6 @@ def main() -> int:
 
 
 if __name__ == "__main__":
-    raise SystemExit(main())
+    from devtools.runs import run_reported
+
+    raise SystemExit(run_reported(main))

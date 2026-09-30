@@ -1,6 +1,7 @@
 """Opaque program bodies preserve the binary DAG and explicit capture scope."""
 
-import pytest
+from tests.support.assertions import assert_rejected_atomically
+
 
 from number_compiler.hashlife.execution.continuations.diamond_expression_eval import (
     LowerFinite,
@@ -92,10 +93,9 @@ def test_all_arguments_are_validated_even_when_program_ignores_them() -> None:
     assert arena.call(program, (initial,)) == initial
     foreign = BoundaryExpressionArena(runtime.boundaries)
     foreign_literal = foreign.literal(runtime.boundaries.literal(action, 0, 0))
-    before = runtime.ledger.snapshot()
-    with pytest.raises(ValueError):
-        arena.call(program, (foreign_literal,))
-    assert runtime.ledger.snapshot() == before
+    assert_rejected_atomically(
+        runtime.ledger, lambda: arena.call(program, (foreign_literal,)), ValueError
+    )
 
 
 def test_undeclared_free_port_cannot_be_hidden_in_a_closure() -> None:
@@ -105,10 +105,9 @@ def test_undeclared_free_port_cannot_be_hidden_in_a_closure() -> None:
         arena.variable(arena.state_sort(action, 0), name)
         for name in ("allowed", "hidden")
     )
-    before = runtime.ledger.snapshot()
-    with pytest.raises(ValueError):
-        arena.closures.intern((allowed,), hidden)
-    assert runtime.ledger.snapshot() == before
+    assert_rejected_atomically(
+        runtime.ledger, lambda: arena.closures.intern((allowed,), hidden), ValueError
+    )
 
 
 def test_closure_repeated_scalar_observation_has_no_output_response_index() -> None:

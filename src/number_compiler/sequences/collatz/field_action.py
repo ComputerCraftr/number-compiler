@@ -7,6 +7,7 @@ lowering boundary; they can never enter a field-action record.
 """
 
 from __future__ import annotations
+from number_compiler.arithmetic.fields.morphism_core import semigroup_power
 
 from collections.abc import Mapping, MutableMapping, MutableSequence
 from dataclasses import dataclass
@@ -774,18 +775,7 @@ class CollatzFieldActionArena:
         # reduction only to discover the already-interned primitive as a late
         # duplicate, making every cold power start with avoidable publication
         # work.  The loop visits exponent bits, never physical generations.
-        result: CollatzFieldActionID | None = None
-        current = action
-        remaining = exponent
-        while remaining:
-            if remaining & 1:
-                result = current if result is None else self.compose(result, current)
-            remaining >>= 1
-            if remaining:
-                current = self.compose(current, current)
-        if result is None:
-            raise AssertionError("positive Collatz power lost its accumulator")
-        return result
+        return semigroup_power(action, exponent, compose=self.compose)
 
     @property
     def action_count(self) -> int:

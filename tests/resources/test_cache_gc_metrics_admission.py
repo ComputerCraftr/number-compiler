@@ -9,7 +9,7 @@ import pytest
 from number_compiler.arithmetic.contracts.block_kernel import BaseBlockEffect
 from number_compiler.hashlife.execution.tile_causal_admission import admit_run_actions
 from number_compiler.resources.cache_gc_metrics import record_execution_cache_event
-from tests.arithmetic.contracts.test_tile_kernel import _runtime
+from tests.support.tile_kernel import _runtime
 
 
 def test_admitted_cache_event_does_not_reenter_action_cocycle(

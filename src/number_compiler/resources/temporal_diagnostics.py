@@ -13,6 +13,8 @@ from dataclasses import dataclass, replace
 
 from number_compiler.resources.ledger import ResourceLedger
 
+METRICS_SCHEMA_VERSION = 8
+
 
 @dataclass(frozen=True, slots=True)
 class TemporalReuseLane:
@@ -196,7 +198,7 @@ class TemporalReportingWork:
 class TemporalExecutionDiagnostics:
     """Compact schema-eight view beside the preserved raw work counters."""
 
-    schema_version: int = 8
+    schema_version: int = METRICS_SCHEMA_VERSION
     action: TemporalReuseLane = TemporalReuseLane()
     application: TemporalReuseLane = TemporalReuseLane()
     projection: TemporalReuseLane = TemporalReuseLane()

@@ -8,6 +8,9 @@ separate experiment.
 
 from __future__ import annotations
 
+from devtools.verification.oracles.sequence_arithmetic import (
+    reference_successor as reference_successor,
+)
 import json
 import random
 import time
@@ -29,24 +32,6 @@ from number_compiler.arithmetic.formula.types import RadixSpec
 from number_compiler.hashlife.execution.evaluator import materialize_values
 
 HERE = repository_root()
-
-
-def reference_successor(full: tuple[int, ...], base: int) -> tuple[int, ...]:
-    d = len(full)
-    L = [0] * (d + 1)
-    for i, s in enumerate(full):
-        L[i + 1] = int(s + L[i] >= base)
-    R = [L[d - i] for i in range(d + 1)]
-    if not L[d]:
-        return tuple(
-            2 * full[i] + L[i] + R[i + 1] - base * (L[i + 1] + R[i]) for i in range(d)
-        )
-    out = [0] * (d + 1)
-    out[0] = full[0] + 1 - base * L[1]
-    out[d] = out[0]
-    for i in range(1, d):
-        out[i] = full[i] + full[i - 1] + L[i] + R[i] - base * (L[i + 1] + R[i - 1])
-    return tuple(out)
 
 
 class ConstructionMetrics(TypedDict):
@@ -251,4 +236,6 @@ it against the existing composed `T² o T²` machine construction without confla
 
 
 if __name__ == "__main__":
-    main()
+    from devtools.runs import run_reported
+
+    raise SystemExit(run_reported(main))

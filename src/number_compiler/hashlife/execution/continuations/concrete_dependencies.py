@@ -65,6 +65,12 @@ def _run(self: ConcretePortScheduler, root: tuple[object, ...]) -> PortAtom:
         self.ledger.bump("concrete_port_task_frames")
         frame = normalize_request(self, tasks.pop())
         tag = cast(str, frame[0])
+        if tag in ("ADV", "RES"):
+            hit = self._memo.get(frame)
+            if hit is not None:
+                self.ledger.bump("concrete_port_task_early_hits")
+                results.append(hit)
+                continue
         if tag == "INIT":
             action, side = cast(FieldCellActionID, frame[1]), cast(int, frame[2])
             hit = self._memo.get(frame)
@@ -123,11 +129,6 @@ def _run(self: ConcretePortScheduler, root: tuple[object, ...]) -> PortAtom:
             layer_id = cast(ProviderLayerID | None, frame[5])
             reverse = cast(bool, frame[6])
             key = frame
-            hit = self._memo.get(key)
-            if hit is not None:
-                self.ledger.bump("concrete_port_task_early_hits")
-                results.append(hit)
-                continue
             canonical_advance = getattr(
                 self.adapter,
                 "canonical_advance_cell",
@@ -315,9 +316,7 @@ def _run(self: ConcretePortScheduler, root: tuple[object, ...]) -> PortAtom:
             continue
         if tag == "ADV_DIRECTED":
             argument, anchor = results.pop(), results.pop()
-            d_key = cast(tuple[object, ...], frame[1])
-            d_action = cast(FieldCellActionID, frame[2])
-            d_side = cast(int, frame[3])
+            d_key, d_action, d_side = _directed_header(frame)
             d_port = cast(_ComposedPort, frame[4])
             prior_record = self.resolve_residual(d_port.residual)
             if prior_record.constant_result is not None:
@@ -379,9 +378,7 @@ def _run(self: ConcretePortScheduler, root: tuple[object, ...]) -> PortAtom:
             continue
         if tag == "ADV_DIRECTED_STORE":
             constant = results.pop()
-            d_key = cast(tuple[object, ...], frame[1])
-            d_action = cast(FieldCellActionID, frame[2])
-            d_side = cast(int, frame[3])
+            d_key, d_action, d_side = _directed_header(frame)
             d_anchor = cast(PortAtom, frame[4])
             residual = self._intern_residual(
                 _Residual(
@@ -516,11 +513,6 @@ def _run(self: ConcretePortScheduler, root: tuple[object, ...]) -> PortAtom:
                 cast(PortAtom, frame[4]),
             )
             key = frame
-            hit = self._memo.get(key)
-            if hit is not None:
-                self.ledger.bump("concrete_port_task_early_hits")
-                results.append(hit)
-                continue
             residual_record = self.resolve_residual(residual_id)
             children = self.adapter.children(action)
             if children is None:
@@ -919,3 +911,13 @@ def _run(self: ConcretePortScheduler, root: tuple[object, ...]) -> PortAtom:
         raise AssertionError((root[0], len(results)))
     self._store(root, results[0])
     return results[0]
+
+
+def _directed_header(
+    frame: tuple[object, ...],
+) -> tuple[tuple[object, ...], FieldCellActionID, int]:
+    return (
+        cast(tuple[object, ...], frame[1]),
+        cast(FieldCellActionID, frame[2]),
+        cast(int, frame[3]),
+    )

@@ -1,5 +1,6 @@
 """Public scheduler demand must enter the arbitrary-depth causal recurrence."""
 
+from tests.support.tile_kernel import _runtime_source
 from typing import Never
 
 import pytest
@@ -8,7 +9,7 @@ from number_compiler.arithmetic.contracts.block_kernel import BaseBlockEffect
 from number_compiler.hashlife.execution.tile_causal import CausalTileEngine
 from number_compiler.hashlife.tiles.tile_results import ResultLease
 from number_compiler.hashlife.tiles.tiles import TileLease
-from tests.arithmetic.contracts.test_tile_kernel import _runtime, _tile
+from tests.support.tile_kernel import _runtime, _tile
 
 
 @pytest.mark.parametrize(
@@ -23,8 +24,9 @@ def test_scheduler_deep_point_uses_causal_tiles_without_complete_midpoint(
     exponent: int,
     expected: tuple[int, int, int, int],
 ) -> None:
-    ledger, tiles, adapter, primitive, scheduler = _runtime(BaseBlockEffect(3))
-    source = _tile(tiles, adapter, primitive, (0, 0, 0, 1))
+    ledger, tiles, adapter, primitive, scheduler, source = _runtime_source(
+        BaseBlockEffect(3), (0, 0, 0, 1)
+    )
     action = adapter.power(primitive, exponent)
 
     def forbidden(*_args: object, **_kwargs: object) -> Never:
@@ -175,8 +177,9 @@ def test_warm_causal_parent_reads_exact_result_without_execution(
         tile_reverse_functions as reverse_ports,
     )
 
-    _ledger, tiles, adapter, primitive, scheduler = _runtime(BaseBlockEffect(3))
-    source = _tile(tiles, adapter, primitive, (0, 0, 0, 1))
+    _ledger, tiles, adapter, primitive, scheduler, source = _runtime_source(
+        BaseBlockEffect(3), (0, 0, 0, 1)
+    )
     action = adapter.power(primitive, exponent)
     with (
         source,

@@ -5,7 +5,7 @@ from typing import cast
 
 import pytest
 
-from devtools.proofs.block_power import apply_block_power, power_block_effect
+from devtools.verification.block_power import apply_block_power, power_block_effect
 from tests.support.dataclass_records import replace_record
 
 
@@ -67,7 +67,7 @@ def test_primitive_kernel_rejects_numeric_base_aliases(base: object) -> None:
 def test_all_reverse_bases_bypass_proof_execution(
     base: int, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    from devtools.proofs.block_composed import ComposedBlockEffect
+    from devtools.verification.block_composed import ComposedBlockEffect
     from tests.support.reverse_pair_oracle import reference_successor
 
     power = power_block_effect(base=base, exponent=4)

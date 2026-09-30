@@ -1,5 +1,8 @@
 """Transient causal storage is owned, budgeted, and released on every path."""
 
+from tests.support.assertions import assert_rejected_atomically
+
+
 from typing import Never
 
 import pytest
@@ -50,10 +53,9 @@ def test_zero_workspace_budget_rejects_before_buffer_constructor(
         raise AssertionError("allocated before budget reservation")
 
     monkeypatch.setattr(SpatialReferenceBuffer, "__init__", forbidden)
-    before = ledger.snapshot()
-    with pytest.raises(BlockContextBudgetExceeded):
-        workspace.allocate(1)
-    assert ledger.snapshot() == before
+    assert_rejected_atomically(
+        ledger, lambda: workspace.allocate(1), BlockContextBudgetExceeded
+    )
 
 
 def test_task_memo_failed_completion_preserves_active_dependency_until_cleanup() -> (
@@ -63,10 +65,9 @@ def test_task_memo_failed_completion_preserves_active_dependency_until_cleanup()
     workspace = CausalTaskWorkspace(ledger, "test")
     key = ("transfer", (1, 2))
     workspace.begin(key)
-    before = ledger.snapshot()
-    with pytest.raises(BlockContextBudgetExceeded):
-        workspace.finish(key, 3)
-    assert ledger.snapshot() == before
+    assert_rejected_atomically(
+        ledger, lambda: workspace.finish(key, 3), BlockContextBudgetExceeded
+    )
     assert key in workspace.active
     assert not workspace.memo
     workspace.clear()
@@ -80,10 +81,9 @@ def test_task_workspace_reuses_registration_and_rejects_cycles() -> None:
     ledger.register_execution_root(workspace)
     key = ("transfer", (1, 2))
     workspace.begin(key)
-    before = ledger.snapshot()
-    with pytest.raises(ValueError, match="cycle"):
-        workspace.begin(key)
-    assert ledger.snapshot() == before
+    assert_rejected_atomically(
+        ledger, lambda: workspace.begin(key), ValueError, match="cycle"
+    )
     workspace.finish(key, 3)
     assert workspace.memo[key] == 3
     assert ledger.entries == 1
@@ -98,10 +98,11 @@ def test_result_workspace_reserves_before_publish_and_releases_on_cleanup() -> N
     ledger.register_execution_root(workspace)
     result = ("bounded-result", 1)
     workspace.values.append(result)
-    before = ledger.snapshot()
-    with pytest.raises(BlockContextBudgetExceeded):
-        workspace.values.append(("unpublished-result", 2))
-    assert ledger.snapshot() == before
+    assert_rejected_atomically(
+        ledger,
+        lambda: workspace.values.append(("unpublished-result", 2)),
+        BlockContextBudgetExceeded,
+    )
     assert len(workspace.values) == 1
     assert workspace.values.pop() is result
     assert ledger.entries == 0
@@ -118,7 +119,7 @@ def test_causal_frame_budget_rejects_before_primitive_execution(
 ) -> None:
     from number_compiler.arithmetic.contracts.block_kernel import BaseBlockEffect
     from number_compiler.hashlife.execution.tile_causal import CausalTileEngine
-    from tests.arithmetic.contracts.test_tile_kernel import _runtime, _tile
+    from tests.support.tile_kernel import _runtime, _tile
 
     ledger, tiles, adapter, primitive, scheduler = _runtime(BaseBlockEffect(3))
     action = adapter.power(primitive, 4)

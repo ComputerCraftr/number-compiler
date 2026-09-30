@@ -33,7 +33,8 @@ special-form primality algorithms that may exploit additional number theory.
 from __future__ import annotations
 
 from dataclasses import dataclass
-from fractions import Fraction
+from devtools.verification.fraction_linear_algebra import fraction_matrix_rank
+from devtools.verification.partition_refinement import parent_split_count
 
 
 @dataclass(frozen=True, slots=True)
@@ -172,27 +173,7 @@ def seed_decision_trace(spec: SpecialTheoremMapSpec) -> tuple[int, ...]:
 
 
 def _rank_fraction(matrix: list[list[int]]) -> int:
-    if not matrix:
-        return 0
-    a = [[Fraction(value) for value in row] for row in matrix]
-    rows, cols = len(a), len(a[0])
-    rank = col = 0
-    while rank < rows and col < cols:
-        pivot = next((r for r in range(rank, rows) if a[r][col]), None)
-        if pivot is None:
-            col += 1
-            continue
-        a[rank], a[pivot] = a[pivot], a[rank]
-        divisor = a[rank][col]
-        a[rank] = [value / divisor for value in a[rank]]
-        for r in range(rows):
-            if r == rank or not a[r][col]:
-                continue
-            factor = a[r][col]
-            a[r] = [x - factor * y for x, y in zip(a[r], a[rank], strict=True)]
-        rank += 1
-        col += 1
-    return rank
+    return fraction_matrix_rank(matrix)
 
 
 def delta_hankel_rank_differential(distance: int) -> int:
@@ -323,10 +304,7 @@ def theorem_behavioral_quotient_audit(
         if previous_classes is None:
             parent_split = 1
         else:
-            child_sets: dict[int, set[int]] = {}
-            for parent, child in zip(previous_classes, classes, strict=True):
-                child_sets.setdefault(parent, set()).add(child)
-            parent_split = sum(len(children) > 1 for children in child_sets.values())
+            parent_split = parent_split_count(previous_classes, classes)
         rows.append(
             TheoremBehavioralRow(
                 horizon,

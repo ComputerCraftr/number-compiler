@@ -3,10 +3,12 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Any, TypeVar
 
-from number_compiler.arithmetic.formula.skew_residue_laws import (
-    pair_growth_edge,
-    pair_growth_interior,
-    pair_no_growth,
+from number_compiler.arithmetic.formula.bit_semantics import (
+    constant_bit,
+    shift_position,
+    coefficient_dependencies,
+    coefficient_bit,
+    predicate_bit,
 )
 from number_compiler.arithmetic.formula.types import Expr, FormulaStorage
 
@@ -70,6 +72,13 @@ class FormulaEvalMixin(FormulaStorage):
         # Typed VISIT frames evaluate a node; continuation
         # frames resume one parent after the requested child has been cached.
         stack = [_EvalFrame("VISIT", root, position)]
+
+        def schedule_copy(node: Expr, pos: int, child: Expr, child_pos: int) -> None:
+            stack.append(
+                _EvalFrame("COPY", node, pos, child=child, child_position=child_pos)
+            )
+            stack.append(_EvalFrame("VISIT", child, child_pos))
+
         while stack:
             frame = stack.pop()
             tag, node, pos = frame.tag, frame.node, frame.position
@@ -78,18 +87,9 @@ class FormulaEvalMixin(FormulaStorage):
                 if is_known(node, pos):
                     continue
                 kind = node.kind
-                if kind == "ZERO":
-                    store(node, pos, 0)
-                    continue
-                if kind == "ONES":
-                    store(node, pos, 1)
-                    continue
-                if kind == "LITERAL":
-                    store(node, pos, (int(node.param[0]) >> pos) & 1)
-                    continue
-                if kind == "RANGE":
-                    lo, hi = map(int, node.param)
-                    store(node, pos, int(lo <= pos < hi))
+                constant = constant_bit(node, pos)
+                if constant is not None:
+                    store(node, pos, constant)
                     continue
                 if kind == "VAR":
                     raise KeyError("closed expression contains VAR")
@@ -110,51 +110,36 @@ class FormulaEvalMixin(FormulaStorage):
                     stack.append(_EvalFrame("XOR", node, pos, index=0, accumulator=0))
                     continue
                 if kind == "SHL":
-                    q = pos - int(node.param[0])
+                    q = shift_position(node, pos)
                     if q < 0:
                         store(node, pos, 0)
                         continue
                     child = node.args[0]
-                    stack.append(
-                        _EvalFrame("COPY", node, pos, child=child, child_position=q)
-                    )
-                    stack.append(_EvalFrame("VISIT", child, q))
+                    schedule_copy(node, pos, child, q)
                     continue
                 if kind == "SHR":
-                    q = pos + int(node.param[0])
+                    q = shift_position(node, pos)
                     if q >= node.width:
                         store(node, pos, 0)
                         continue
                     child = node.args[0]
-                    stack.append(
-                        _EvalFrame("COPY", node, pos, child=child, child_position=q)
-                    )
-                    stack.append(_EvalFrame("VISIT", child, q))
+                    schedule_copy(node, pos, child, q)
                     continue
                 if kind == "MIRROR":
                     q = node.width - 1 - pos
                     child = node.args[0]
-                    stack.append(
-                        _EvalFrame("COPY", node, pos, child=child, child_position=q)
-                    )
-                    stack.append(_EvalFrame("VISIT", child, q))
+                    schedule_copy(node, pos, child, q)
                     continue
                 if kind == "PAD_RIGHT":
                     child = node.args[0]
                     if pos >= child.width:
                         store(node, pos, 0)
                         continue
-                    stack.append(
-                        _EvalFrame("COPY", node, pos, child=child, child_position=pos)
-                    )
-                    stack.append(_EvalFrame("VISIT", child, pos))
+                    schedule_copy(node, pos, child, pos)
                     continue
                 if kind == "CROP":
                     child = node.args[0]
-                    stack.append(
-                        _EvalFrame("COPY", node, pos, child=child, child_position=pos)
-                    )
-                    stack.append(_EvalFrame("VISIT", child, pos))
+                    schedule_copy(node, pos, child, pos)
                     continue
                 if kind == "ITE":
                     selector = node.args[0]
@@ -174,21 +159,10 @@ class FormulaEvalMixin(FormulaStorage):
                     stack.append(_EvalFrame("PRED", node, pos, index=0, accumulator=0))
                     continue
                 if kind == "COEFFMAP":
-                    mode, _bit, _base, nplanes = (
-                        str(node.param[0]),
-                        int(node.param[1]),
-                        int(node.param[2]),
-                        int(node.param[3]),
-                    )
-                    coeff_deps: list[tuple[Expr, int]] = []
-                    if mode == "GROWTH_EDGE":
-                        if pos not in (0, node.width - 1):
-                            store(node, pos, 0)
-                            continue
-                        coeff_deps.extend((node.args[b], 0) for b in range(nplanes))
-                        coeff_deps.append((node.args[nplanes], 0))
-                    else:
-                        coeff_deps.extend((arg, pos) for arg in node.args)
+                    coeff_deps = coefficient_dependencies(node, pos)
+                    if coeff_deps is None:
+                        store(node, pos, 0)
+                        continue
                     stack.append(
                         _EvalFrame(
                             "COEFF_FINISH", node, pos, dependencies=tuple(coeff_deps)
@@ -200,20 +174,12 @@ class FormulaEvalMixin(FormulaStorage):
                     continue
                 raise AssertionError(kind)
 
-            if tag == "NOT":
+            if tag in ("NOT", "COPY"):
                 continuation = frame.child
                 if continuation is None:
                     raise AssertionError("missing continuation child")
                 child, q = continuation, frame.child_position
-                store(node, pos, 1 ^ get(child, q))
-                continue
-
-            if tag == "COPY":
-                continuation = frame.child
-                if continuation is None:
-                    raise AssertionError("missing continuation child")
-                child, q = continuation, frame.child_position
-                store(node, pos, get(child, q))
+                store(node, pos, get(child, q) ^ int(tag == "NOT"))
                 continue
 
             if tag == "AND":
@@ -295,14 +261,7 @@ class FormulaEvalMixin(FormulaStorage):
             if tag == "PRED":
                 idx, coeff = frame.index, frame.accumulator
                 if idx >= len(node.args):
-                    op, threshold = str(node.param[0]), int(node.param[1])
-                    store(
-                        node,
-                        pos,
-                        int(coeff == threshold)
-                        if op == "EQ"
-                        else int(coeff > threshold),
-                    )
+                    store(node, pos, predicate_bit(node, coeff))
                     continue
                 child = node.args[idx]
                 if not is_known(child, pos):
@@ -323,39 +282,7 @@ class FormulaEvalMixin(FormulaStorage):
                 continue
 
             if tag == "COEFF_FINISH":
-                mode, bit, base, nplanes = (
-                    str(node.param[0]),
-                    int(node.param[1]),
-                    int(node.param[2]),
-                    int(node.param[3]),
-                )
-                if mode == "NO_GROWTH":
-                    coeff = sum(get(node.args[b], pos) << b for b in range(nplanes))
-                    Li, Li1, Ri, Ri1 = (
-                        get(node.args[j], pos) for j in range(nplanes, nplanes + 4)
-                    )
-                    coeff = pair_no_growth(coeff, Li, Li1, Ri1, Ri, base)
-                elif mode == "GROWTH_INTERNAL":
-                    coeff = sum(get(node.args[b], pos) << b for b in range(nplanes))
-                    prev = sum(
-                        get(node.args[nplanes + b], pos) << b for b in range(nplanes)
-                    )
-                    off = 2 * nplanes
-                    Li, Li1, Ri, Rim1 = (
-                        get(node.args[j], pos) for j in range(off, off + 4)
-                    )
-                    coeff = pair_growth_interior(coeff, prev, Li, Li1, Ri, Rim1, base)
-                elif mode == "GROWTH_EDGE":
-                    coeff = sum(get(node.args[b], 0) << b for b in range(nplanes))
-                    coeff = pair_growth_edge(coeff, get(node.args[nplanes], 0), base)
-                elif mode == "DIGIT_NORMALIZE":
-                    coeff = sum(get(node.args[b], pos) << b for b in range(nplanes))
-                    incoming = get(node.args[nplanes], pos)
-                    outgoing = get(node.args[nplanes + 1], pos)
-                    coeff = coeff + incoming - base * outgoing
-                else:
-                    raise AssertionError(mode)
-                store(node, pos, (coeff >> bit) & 1)
+                store(node, pos, coefficient_bit(node, pos, get))
                 continue
 
             raise AssertionError(tag)

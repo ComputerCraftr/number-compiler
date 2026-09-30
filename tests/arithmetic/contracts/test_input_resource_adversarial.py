@@ -1,5 +1,8 @@
 """Independent numeric-alias and original-source authority admission probes."""
 
+from tests.support.assertions import assert_rejected_atomically
+
+
 from typing import Never, TypedDict, cast
 
 import pytest
@@ -109,10 +112,11 @@ def test_factory_append_only_flag_requires_an_actual_boolean(value: object) -> N
     value = cast(bool, value)
     ledger = ResourceLedger()
     owner = ledger.register("canonical", "canonical_action")
-    before = ledger.snapshot()
-    with pytest.raises((TypeError, ValueError)):
-        ledger.make_list(owner, append_only=value)
-    assert ledger.snapshot() == before
+    assert_rejected_atomically(
+        ledger,
+        lambda: ledger.make_list(owner, append_only=value),
+        (TypeError, ValueError),
+    )
 
 
 @pytest.mark.parametrize("field", ("name", "role", "scope"))
@@ -263,10 +267,9 @@ def test_public_digit_aliases_reject_before_zero_or_warm_lookup(
         forbidden,
     )
     for value in BAD:
-        before = term._ledger.snapshot()
-        with pytest.raises(TypeError):
-            term.digit(cast(int, value))
-        assert term._ledger.snapshot() == before
+        assert_rejected_atomically(
+            term._ledger, lambda: term.digit(cast(int, value)), TypeError
+        )
 
 
 @pytest.mark.parametrize("value", BAD)

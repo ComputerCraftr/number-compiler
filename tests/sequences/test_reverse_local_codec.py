@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from tests.support.local_codec_assertions import assert_publication_refused
+
 from typing import Never, cast
 
 import pytest
@@ -13,7 +15,6 @@ from devtools.experiments.reverse_add.local_interface import (
 )
 from number_compiler.arithmetic.automata.symmetry_powering import ActionTransform
 from number_compiler.arithmetic.contracts.block_effect import (
-    BlockContextBudgetExceeded,
     BoundarySide,
 )
 from number_compiler.arithmetic.contracts.scoped_handles import ArenaToken, ExactSource
@@ -277,47 +278,20 @@ def test_powered_local_codec_probes_canonical_source_before_child_work(
 def test_reverse_local_codec_rejects_leaf_and_parent_publication_atomically() -> None:
     ledger, cells, _ = _source_cells((1, 2))
     codec = ReversePoweredLocalCodec(10, cells, ledger=ledger)
-    before_entries, before_nodes = ledger.entries, ledger.nodes
-    before_sizes = tuple(
-        map(
-            len,
-            (
-                codec._nodes,
-                codec._keys,
-                codec._leaf_actions,
-                codec._compose,
-            ),
-        )
-    )
-    ledger.tighten_limits(before_nodes, before_entries)
-    with pytest.raises(BlockContextBudgetExceeded):
-        codec.leaf(3)
-    assert (ledger.entries, ledger.nodes) == (before_entries, before_nodes)
-    assert (
-        tuple(
-            map(
-                len,
-                (
-                    codec._nodes,
-                    codec._keys,
-                    codec._leaf_actions,
-                    codec._compose,
-                ),
-            )
-        )
-        == before_sizes
+    assert_publication_refused(
+        ledger,
+        (codec._nodes, codec._keys, codec._leaf_actions, codec._compose),
+        lambda: codec.leaf(3),
     )
 
     ledger, cells, _ = _source_cells((1, 2))
     codec = ReversePoweredLocalCodec(10, cells, ledger=ledger)
     left, right = codec.leaf(2), codec.leaf(7)
-    before_entries, before_nodes = ledger.entries, ledger.nodes
-    before_sizes = tuple(map(len, (codec._nodes, codec._keys, codec._compose)))
-    ledger.tighten_limits(before_nodes, before_entries)
-    with pytest.raises(BlockContextBudgetExceeded):
-        codec.compose(left, right)
-    assert (ledger.entries, ledger.nodes) == (before_entries, before_nodes)
-    assert tuple(map(len, (codec._nodes, codec._keys, codec._compose))) == before_sizes
+    assert_publication_refused(
+        ledger,
+        (codec._nodes, codec._keys, codec._compose),
+        lambda: codec.compose(left, right),
+    )
 
 
 @pytest.mark.algebra

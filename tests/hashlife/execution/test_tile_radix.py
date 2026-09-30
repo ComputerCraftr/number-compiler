@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from tests.support.assertions import assert_rejected_atomically
+
 from copy import copy
 from typing import cast
 
@@ -249,10 +251,12 @@ def test_reserved_binary_symbol_rejects_without_projection_mutation() -> None:
     )
     reserved = tiles.leaf(wrong_alphabet, 2)
     try:
-        before = ledger.snapshot()
-        with pytest.raises(ValueError, match="canonical binary"):
-            TileRadixProjection(scheduler, adapter, reserved.tile, 3)
-        assert ledger.snapshot() == before
+        assert_rejected_atomically(
+            ledger,
+            lambda: TileRadixProjection(scheduler, adapter, reserved.tile, 3),
+            ValueError,
+            match="canonical binary",
+        )
     finally:
         reserved.close()
         projection.close()
@@ -281,15 +285,13 @@ def test_tile_radix_rejects_invalid_radix_before_retaining_source(
 ) -> None:
     ledger, _, scheduler, adapter, projection = _runtime(7, 3)
     try:
-        before = ledger.snapshot()
-        with pytest.raises(error):
-            TileRadixProjection(
-                scheduler,
-                adapter,
-                projection._source.tile,
-                cast(int, radix),
-            )
-        assert ledger.snapshot() == before
+        assert_rejected_atomically(
+            ledger,
+            lambda: TileRadixProjection(
+                scheduler, adapter, projection._source.tile, cast(int, radix)
+            ),
+            error,
+        )
     finally:
         projection.close()
 
@@ -521,10 +523,12 @@ def test_warm_radix_observation_rejects_a_foreign_application_before_lookup() ->
     try:
         assert observation.digit(0) == 2
         object.__setattr__(observation, "projection", second)
-        before = observation.scheduler.ledger.snapshot()
-        with pytest.raises(ValueError, match="another application"):
-            observation.digit(0)
-        assert observation.scheduler.ledger.snapshot() == before
+        assert_rejected_atomically(
+            observation.scheduler.ledger,
+            lambda: observation.digit(0),
+            ValueError,
+            match="another application",
+        )
     finally:
         object.__setattr__(observation, "projection", first)
         observation.close()

@@ -83,6 +83,33 @@ def _node_units(node: SLPNode) -> int:
     return max(1, (bits + 63) // 64)
 
 
+def _slp_children(node: SLPNode) -> tuple[int, ...]:
+    if node.kind == "CONCAT":
+        return node.left, node.right
+    if node.kind == "REPEAT":
+        return (node.child,)
+    return ()
+
+
+def _push_slp_children(
+    stack: list[tuple[int, bool]], node_id: int, children: tuple[int, ...]
+) -> None:
+    stack.append((node_id, True))
+    stack.extend((child, False) for child in reversed(children))
+
+
+def _defer_slp_node(
+    arena: SLPArena, stack: list[tuple[int, bool]], node_id: int, expanded: bool
+) -> bool:
+    if expanded:
+        return False
+    children = _slp_children(arena.nodes[node_id])
+    if not children:
+        return False
+    _push_slp_children(stack, node_id, children)
+    return True
+
+
 class PairSLPTransducer:
     """Ledger-owned spatial successor grammar for exact pair-alphabet SLPs."""
 
@@ -345,16 +372,9 @@ class PairSLPTransducer:
             node_id, expanded = stack.pop()
             if node_id in self._effects:
                 continue
-            node = self._arena.nodes[node_id]
-            children = (
-                (node.left, node.right)
-                if node.kind == "CONCAT"
-                else ((node.child,) if node.kind == "REPEAT" else ())
-            )
-            if children and not expanded:
-                stack.append((node_id, True))
-                stack.extend((child, False) for child in reversed(children))
+            if _defer_slp_node(self._arena, stack, node_id, expanded):
                 continue
+            node = self._arena.nodes[node_id]
             with self._work("reverse_pair_slp_effect_nodes"):
                 if node.kind == "EMPTY":
                     result = _Effect(node_id, node_id, 0, 1)
@@ -385,16 +405,9 @@ class PairSLPTransducer:
             node_id, expanded = stack.pop()
             if node_id in self._reverse:
                 continue
-            node = self._arena.nodes[node_id]
-            children = (
-                (node.left, node.right)
-                if node.kind == "CONCAT"
-                else ((node.child,) if node.kind == "REPEAT" else ())
-            )
-            if children and not expanded:
-                stack.append((node_id, True))
-                stack.extend((child, False) for child in reversed(children))
+            if _defer_slp_node(self._arena, stack, node_id, expanded):
                 continue
+            node = self._arena.nodes[node_id]
             with self._work("reverse_pair_slp_reverse_nodes"):
                 if node.kind in ("EMPTY", "TERM"):
                     result = node_id
@@ -521,16 +534,9 @@ class PairSLPTransducer:
             key = node_id, coefficient
             if key in self._scales:
                 continue
-            node = self._arena.nodes[node_id]
-            children = (
-                (node.left, node.right)
-                if node.kind == "CONCAT"
-                else ((node.child,) if node.kind == "REPEAT" else ())
-            )
-            if children and not expanded:
-                stack.append((node_id, True))
-                stack.extend((child, False) for child in reversed(children))
+            if _defer_slp_node(self._arena, stack, node_id, expanded):
                 continue
+            node = self._arena.nodes[node_id]
             with self._work("reverse_pair_slp_scale_nodes"):
                 if node.kind == "EMPTY":
                     result = node_id

@@ -2,17 +2,18 @@
 
 from __future__ import annotations
 
+from tests.support.assertions import assert_rejected_atomically
+from tests.support.semantic_oracles import macro_oracle as _oracle
+
 from array import array
 from dataclasses import replace
 from itertools import product
-from typing import TYPE_CHECKING, Never, TypedDict, cast
+from typing import TYPE_CHECKING, NamedTuple, Never, TypedDict, cast
 
 import pytest
 
 from number_compiler.arithmetic.contracts.block_effect import (
     BlockContextBudgetExceeded,
-    BlockEffect,
-    BoundarySide,
 )
 from number_compiler.arithmetic.contracts.block_kernel import FiniteBlockEffect
 from number_compiler.arithmetic.contracts.scoped_handles import ArenaToken, ExactSource
@@ -30,6 +31,8 @@ from number_compiler.hashlife.execution.field_images import SourceCellArena
 from number_compiler.hashlife.execution.field_transfer import FieldTransferExecutor
 from number_compiler.hashlife.execution.field_transfers import (
     FieldTransferArena,
+    FieldTransferID,
+    FieldTransferRecord,
     FieldTransferRequestKey,
 )
 from number_compiler.hashlife.interfaces.diamond_kernel import DiamondKernelArena
@@ -46,6 +49,7 @@ from number_compiler.resources.ledger import ResourceLedger
 
 if TYPE_CHECKING:
     from number_compiler.arithmetic.contracts.scoped_handles import ActionProgramID
+    from number_compiler.hashlife.actions.diamond_actions import PortSignatureID
     from number_compiler.hashlife.execution.field_images import (
         SourceCellID,
     )
@@ -121,45 +125,89 @@ def _setup(
     return ledger, sources, root, kernels, kernel, quotients, compiler
 
 
-def _oracle(
-    effect: BlockEffect,
-    word: tuple[int, ...],
-    left: int,
-    right: int,
-    coordinate: int,
-) -> dict[str, object]:
-    ls: list[object] = [left]
-    rs: list[object] = [right]
-    for symbol in word:
-        ls.append(effect.advance(BoundarySide.LEFT, ls[-1], symbol))
-    for symbol in reversed(word):
-        rs.append(effect.advance(BoundarySide.RIGHT, rs[-1], symbol))
-    rs.reverse()
-    output = [effect.emit(ls[i], symbol, rs[i + 1]) for i, symbol in enumerate(word)]
-    active = [i for i, symbol in enumerate(output) if symbol != effect.blank]
-    source = [i for i, symbol in enumerate(word) if symbol != effect.blank]
-    width = len(word)
-    extent = active[-1] + 1 if active else 0
-    return dict(
-        zip(
-            COMPONENT_ROLES,
-            (
-                ls[-1],
-                rs[0],
-                output[coordinate],
-                int(bool(active)),
-                active[0] if active else width,
-                active[-1] if active else width,
-                extent,
-                output[0],
-                output[-1],
-                width + extent - (source[-1] + 1 if source else 0),
-                int(not active),
-                output[coordinate],
-                coordinate,
-            ),
-            strict=True,
-        )
+def _transfer_setup(
+    ledger: ResourceLedger,
+    sources: SourceCellArena,
+    kernel: ActionProgramID,
+    quotients: DiamondQuotientArena,
+    compiler: SemanticLocalInterfaceCompiler,
+    level: int,
+) -> tuple[
+    FieldCellActionID,
+    SemanticBoundaryArena,
+    FieldGeometryID,
+    PortSignatureID,
+    FieldTransferArena,
+    FieldTransferExecutor,
+]:
+    """Construct one consistently scoped transfer fixture for authority tests."""
+    owner = ArenaToken("semantic-test-actions")
+    action = FieldCellActionID(owner, "field-cell-action", 0)
+    boundaries = SemanticBoundaryArena(ledger)
+
+    def validate(value: FieldCellActionID) -> None:
+        value.validate(owner, "field-cell-action", size=1)
+
+    adapter = PrimitiveSemanticTransferAdapter(
+        compiler, boundaries, validate, lambda _value: kernel
+    )
+    geometries = FieldGeometryArena(ledger)
+    geometry = geometries.intern(FieldGeometry(level))
+    signature = compiler.signature(kernel, level)
+    transfers = FieldTransferArena(
+        ledger,
+        sources,
+        geometries,
+        quotients,
+        action_owner=owner,
+        output_owner=compiler.outputs.owner,
+        action_validate=validate,
+        output_validate=compiler.outputs.validate,
+    )
+    adapter.attach_transfers(transfers)
+    return (
+        action,
+        boundaries,
+        geometry,
+        signature,
+        transfers,
+        FieldTransferExecutor(transfers, adapter),
+    )
+
+
+class _TransferFixture(NamedTuple):
+    ledger: ResourceLedger
+    sources: SourceCellArena
+    root: SourceCellID
+    compiler: SemanticLocalInterfaceCompiler
+    kernel: ActionProgramID
+    action: FieldCellActionID
+    boundaries: SemanticBoundaryArena
+    geometry: FieldGeometryID
+    signature: PortSignatureID
+    transfers: FieldTransferArena
+    executor: FieldTransferExecutor
+
+
+def _transfer_fixture(
+    word: tuple[int, ...], level: int, effect: FiniteBlockEffect | None = None
+) -> _TransferFixture:
+    ledger, sources, root, _kernels, kernel, quotients, compiler = _setup(word, effect)
+    action, boundaries, geometry, signature, transfers, executor = _transfer_setup(
+        ledger, sources, kernel, quotients, compiler, level
+    )
+    return _TransferFixture(
+        ledger,
+        sources,
+        root,
+        compiler,
+        kernel,
+        action,
+        boundaries,
+        geometry,
+        signature,
+        transfers,
+        executor,
     )
 
 
@@ -227,53 +275,36 @@ def test_huge_spatial_level_does_not_create_coordinate_port_or_cartesian_summary
 def test_parent_transfer_warm_hit_needs_no_compiler_or_source_leaf(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    ledger, sources, root, _kernels, kernel, quotients, compiler = _setup((0, 1, 3, 0))
-    action_owner = ArenaToken("semantic-test-actions")
-    action = FieldCellActionID(action_owner, "field-cell-action", 0)
-    boundaries = SemanticBoundaryArena(ledger)
-    incoming = boundaries.intern(0, 0)
-    adapter = PrimitiveSemanticTransferAdapter(
-        compiler,
-        boundaries,
-        lambda value: value.validate(action_owner, "field-cell-action", size=1),
-        lambda _value: kernel,
+    fixture = _transfer_fixture((0, 1, 3, 0), 2)
+    incoming = fixture.boundaries.intern(0, 0)
+    first = fixture.executor.transfer(
+        fixture.action, fixture.root, fixture.geometry, fixture.signature
     )
-    geometries = FieldGeometryArena(ledger)
-    geometry = geometries.intern(FieldGeometry(2))
-    signature = compiler.signature(kernel, 2)
-    transfers = FieldTransferArena(
-        ledger,
-        sources,
-        geometries,
-        quotients,
-        action_owner=action_owner,
-        output_owner=compiler.outputs.owner,
-        action_validate=lambda value: value.validate(
-            action_owner, "field-cell-action", size=1
-        ),
-        output_validate=compiler.outputs.validate,
-    )
-    adapter.attach_transfers(transfers)
-    executor = FieldTransferExecutor(transfers, adapter)
-    first = executor.transfer(action, root, geometry, signature)
-    expected = executor.point(first, root, incoming, 2)
-    leaf_visits = ledger.counters.get("source_leaf_visits", 0)
+    expected = fixture.executor.point(first, fixture.root, incoming, 2)
+    leaf_visits = fixture.ledger.counters.get("source_leaf_visits", 0)
 
     def poison(*_args: object, **_kwargs: object) -> Never:
         raise AssertionError("warm parent descended into semantic construction")
 
-    monkeypatch.setattr(compiler, "compile", poison)
-    monkeypatch.setattr(compiler.outputs, "intern", poison)
-    assert executor.transfer(action, root, geometry, signature) == first
-    assert executor.point(first, root, incoming, 2) == expected
-    assert ledger.counters.get("source_leaf_visits", 0) == leaf_visits
+    monkeypatch.setattr(fixture.compiler, "compile", poison)
+    monkeypatch.setattr(fixture.compiler.outputs, "intern", poison)
+    assert (
+        fixture.executor.transfer(
+            fixture.action, fixture.root, fixture.geometry, fixture.signature
+        )
+        == first
+    )
+    assert fixture.executor.point(first, fixture.root, incoming, 2) == expected
+    assert fixture.ledger.counters.get("source_leaf_visits", 0) == leaf_visits
 
-    application = executor.application(action, root, geometry, signature, incoming)
+    application = fixture.executor.application(
+        fixture.action, fixture.root, fixture.geometry, fixture.signature, incoming
+    )
 
     def no_transfer(*_args: object, **_kwargs: object) -> Never:
         raise AssertionError("invalid scalar reached a warm transfer lookup")
 
-    monkeypatch.setattr(executor, "transfer", no_transfer)
+    monkeypatch.setattr(fixture.executor, "transfer", no_transfer)
     for invalid in (True, False, 0.0, 2.0, "2"):
         with pytest.raises(TypeError, match="exact integer"):
             application.point(cast(int, invalid))
@@ -282,103 +313,67 @@ def test_parent_transfer_warm_hit_needs_no_compiler_or_source_leaf(
 def test_transfer_request_rejects_scoped_aliases_before_warm_lookup_or_mutation() -> (
     None
 ):
-    ledger, sources, root, _kernels, kernel, quotients, compiler = _setup((0, 1))
-    action_owner = ArenaToken("semantic-test-actions")
-    action = FieldCellActionID(action_owner, "field-cell-action", 0)
-    boundaries = SemanticBoundaryArena(ledger)
-    adapter = PrimitiveSemanticTransferAdapter(
-        compiler,
-        boundaries,
-        lambda value: value.validate(action_owner, "field-cell-action", size=1),
-        lambda _value: kernel,
+    fixture = _transfer_fixture((0, 1), 1)
+    expected = fixture.executor.transfer(
+        fixture.action, fixture.root, fixture.geometry, fixture.signature
     )
-    geometries = FieldGeometryArena(ledger)
-    geometry = geometries.intern(FieldGeometry(1))
-    signature = compiler.signature(kernel, 1)
-    transfers = FieldTransferArena(
-        ledger,
-        sources,
-        geometries,
-        quotients,
-        action_owner=action_owner,
-        output_owner=compiler.outputs.owner,
-        action_validate=lambda value: value.validate(
-            action_owner, "field-cell-action", size=1
-        ),
-        output_validate=compiler.outputs.validate,
+    key = FieldTransferRequestKey(
+        fixture.action, fixture.root, fixture.geometry, fixture.signature
     )
-    adapter.attach_transfers(transfers)
-    executor = FieldTransferExecutor(transfers, adapter)
-    expected = executor.transfer(action, root, geometry, signature)
-    key = FieldTransferRequestKey(action, root, geometry, signature)
-    assert transfers.probe(key) == expected
+    assert fixture.transfers.probe(key) == expected
 
     invalid = (
         replace(
             key,
             action=FieldCellActionID(
-                ArenaToken("semantic-test-actions"), action.kind, 0
+                ArenaToken("semantic-test-actions"), fixture.action.kind, 0
             ),
         ),
-        replace(key, action=FieldCellActionID(action.owner, "wrong-kind", 0)),
-        replace(key, action=FieldCellActionID(action.owner, action.kind, 1)),
+        replace(key, action=FieldCellActionID(fixture.action.owner, "wrong-kind", 0)),
         replace(
-            key, source=type(root)(ArenaToken("source-cells"), root.kind, root.local_id)
+            key, action=FieldCellActionID(fixture.action.owner, fixture.action.kind, 1)
         ),
-        replace(key, source=cast("SourceCellID", root.local_id)),
-        replace(key, geometry=type(geometry)(geometry.owner, geometry.kind, 99)),
         replace(
             key,
-            signature=type(signature)(
-                signature.owner, "wrong-kind", signature.local_id
+            source=type(fixture.root)(
+                ArenaToken("source-cells"), fixture.root.kind, fixture.root.local_id
+            ),
+        ),
+        replace(key, source=cast("SourceCellID", fixture.root.local_id)),
+        replace(
+            key,
+            geometry=type(fixture.geometry)(
+                fixture.geometry.owner, fixture.geometry.kind, 99
+            ),
+        ),
+        replace(
+            key,
+            signature=type(fixture.signature)(
+                fixture.signature.owner, "wrong-kind", fixture.signature.local_id
             ),
         ),
         replace(key, action=cast("FieldCellActionID", True)),
         replace(key, geometry=cast("FieldGeometryID", 0.0)),
     )
     for forged in invalid:
-        before = ledger.snapshot()
-        with pytest.raises((TypeError, ValueError)):
-            transfers.probe(forged)
-        assert ledger.snapshot() == before
+        assert_rejected_atomically(
+            fixture.ledger,
+            lambda: fixture.transfers.probe(forged),
+            (TypeError, ValueError),
+        )
 
 
 def test_transfer_semantic_key_excludes_occurrence_and_observation_coordinates() -> (
     None
 ):
-    ledger, sources, root, _, kernel, quotients, compiler = _setup((0, 1))
-    action_owner = ArenaToken("semantic-test-actions")
-    action = FieldCellActionID(action_owner, "field-cell-action", 0)
-    boundaries = SemanticBoundaryArena(ledger)
-    adapter = PrimitiveSemanticTransferAdapter(
-        compiler,
-        boundaries,
-        lambda value: value.validate(action_owner, "field-cell-action", size=1),
-        lambda _value: kernel,
+    fixture = _transfer_fixture((0, 1), 1)
+    fixture.executor.transfer(
+        fixture.action,
+        fixture.root,
+        fixture.geometry,
+        fixture.signature,
     )
-    geometries = FieldGeometryArena(ledger)
-    geometry = geometries.intern(FieldGeometry(1))
-    signature = compiler.signature(kernel, 1)
-    transfers = FieldTransferArena(
-        ledger,
-        sources,
-        geometries,
-        quotients,
-        action_owner=action_owner,
-        output_owner=compiler.outputs.owner,
-        action_validate=lambda value: value.validate(
-            action_owner, "field-cell-action", size=1
-        ),
-        output_validate=compiler.outputs.validate,
-    )
-    adapter.attach_transfers(transfers)
-    FieldTransferExecutor(transfers, adapter).transfer(
-        action,
-        root,
-        geometry,
-        signature,
-    )
-    semantic = next(iter(transfers._keys))
+    semantic = next(iter(fixture.transfers._keys))
     assert set(semantic.__dataclass_fields__) == {
         "level",
         "interface",
@@ -418,9 +413,9 @@ def test_transfer_arena_rejects_owner_and_sort_aliases_atomically(
         "output_kind": "coordinate-output-morphism",
     }
     arguments[field] = value
-    before = ledger.snapshot()
-    with pytest.raises(error):
-        FieldTransferArena(
+    assert_rejected_atomically(
+        ledger,
+        lambda: FieldTransferArena(
             ledger,
             sources,
             geometries,
@@ -428,237 +423,130 @@ def test_transfer_arena_rejects_owner_and_sort_aliases_atomically(
             action_validate=lambda _value: None,
             output_validate=lambda _value: None,
             **cast("TransferDomains", arguments),
-        )
-    assert ledger.snapshot() == before
+        ),
+        error,
+    )
+
+
+def _published_transfer_fixture() -> tuple[
+    _TransferFixture, FieldTransferID, FieldTransferRecord
+]:
+    fixture = _transfer_fixture((0, 1), 1)
+    transfer = fixture.executor.transfer(
+        fixture.action, fixture.root, fixture.geometry, fixture.signature
+    )
+    return fixture, transfer, fixture.transfers.resolve(transfer)
+
+
+def _alias_transfer_fixture() -> tuple[
+    FiniteBlockEffect, _TransferFixture, SourceCellID, SourceCellID
+]:
+    effect = _primitive("forget-source")
+    fixture = _transfer_fixture((0, 1), 0, effect)
+    left, right = fixture.sources.children(fixture.root)
+    return effect, fixture, left, right
 
 
 def test_binding_eviction_preserves_canonical_transfer_id_and_accounting() -> None:
-    ledger, sources, root, _, kernel, quotients, compiler = _setup((0, 1))
-    action_owner = ArenaToken("semantic-test-actions")
-    action = FieldCellActionID(action_owner, "field-cell-action", 0)
-    boundaries = SemanticBoundaryArena(ledger)
-    adapter = PrimitiveSemanticTransferAdapter(
-        compiler,
-        boundaries,
-        lambda value: value.validate(action_owner, "field-cell-action", size=1),
-        lambda _value: kernel,
+    fixture, first, record = _published_transfer_fixture()
+    before_nodes = fixture.transfers.retained_transfers
+    fixture.transfers.clear()
+    assert fixture.transfers.resolve(first) == record
+    assert fixture.transfers.retained_transfers == before_nodes
+    assert fixture.transfers.retained_bindings == 0
+    second = fixture.executor.transfer(
+        fixture.action, fixture.root, fixture.geometry, fixture.signature
     )
-    geometries = FieldGeometryArena(ledger)
-    geometry = geometries.intern(FieldGeometry(1))
-    signature = compiler.signature(kernel, 1)
-    transfers = FieldTransferArena(
-        ledger,
-        sources,
-        geometries,
-        quotients,
-        action_owner=action_owner,
-        output_owner=compiler.outputs.owner,
-        action_validate=lambda value: value.validate(
-            action_owner,
-            "field-cell-action",
-            size=1,
-        ),
-        output_validate=compiler.outputs.validate,
-    )
-    adapter.attach_transfers(transfers)
-    executor = FieldTransferExecutor(transfers, adapter)
-    first = executor.transfer(action, root, geometry, signature)
-    record = transfers.resolve(first)
-    before_nodes = transfers.retained_transfers
-    transfers.clear()
-    assert transfers.resolve(first) == record
-    assert transfers.retained_transfers == before_nodes
-    assert transfers.retained_bindings == 0
-    second = executor.transfer(action, root, geometry, signature)
     assert second == first
-    assert transfers.resolve(first) == record
+    assert fixture.transfers.resolve(first) == record
 
 
 def test_global_query_eviction_cannot_stale_semantic_transfer_ids() -> None:
-    ledger, sources, root, _, kernel, quotients, compiler = _setup((0, 1))
-    action_owner = ArenaToken("semantic-test-actions")
-    action = FieldCellActionID(action_owner, "field-cell-action", 0)
-    adapter = PrimitiveSemanticTransferAdapter(
-        compiler,
-        SemanticBoundaryArena(ledger),
-        lambda value: value.validate(action_owner, "field-cell-action", size=1),
-        lambda _value: kernel,
+    fixture, first, record = _published_transfer_fixture()
+    before_inventory = {row.owner: row for row in fixture.ledger.inventory()}
+    node_entries = before_inventory[fixture.transfers._node_owner].entries
+    key_entries = before_inventory[fixture.transfers._key_owner].entries
+    fixture.ledger.evict_query_memos()
+    assert fixture.transfers.resolve(first) == record
+    assert fixture.transfers.retained_transfers == 1
+    assert fixture.transfers.retained_bindings == 0
+    after_inventory = {row.owner: row for row in fixture.ledger.inventory()}
+    assert after_inventory[fixture.transfers._node_owner].entries == node_entries
+    assert after_inventory[fixture.transfers._key_owner].entries == key_entries
+    assert (
+        fixture.executor.transfer(
+            fixture.action, fixture.root, fixture.geometry, fixture.signature
+        )
+        == first
     )
-    geometries = FieldGeometryArena(ledger)
-    geometry = geometries.intern(FieldGeometry(1))
-    signature = compiler.signature(kernel, 1)
-    transfers = FieldTransferArena(
-        ledger,
-        sources,
-        geometries,
-        quotients,
-        action_owner=action_owner,
-        output_owner=compiler.outputs.owner,
-        action_validate=lambda value: value.validate(
-            action_owner, "field-cell-action", size=1
-        ),
-        output_validate=compiler.outputs.validate,
-    )
-    adapter.attach_transfers(transfers)
-    executor = FieldTransferExecutor(transfers, adapter)
-    first = executor.transfer(action, root, geometry, signature)
-    record = transfers.resolve(first)
-    before_inventory = {row.owner: row for row in ledger.inventory()}
-    node_entries = before_inventory[transfers._node_owner].entries
-    key_entries = before_inventory[transfers._key_owner].entries
-    ledger.evict_query_memos()
-    assert transfers.resolve(first) == record
-    assert transfers.retained_transfers == 1
-    assert transfers.retained_bindings == 0
-    after_inventory = {row.owner: row for row in ledger.inventory()}
-    assert after_inventory[transfers._node_owner].entries == node_entries
-    assert after_inventory[transfers._key_owner].entries == key_entries
-    assert executor.transfer(action, root, geometry, signature) == first
 
 
 def test_semantic_alias_with_inconsistent_occurrence_bound_rejects_atomically() -> None:
-    effect = _primitive("forget-source")
-    ledger, sources, root, _, kernel, quotients, compiler = _setup((0, 1), effect)
-    left, right = sources.children(root)
-    action_owner = ArenaToken("semantic-test-actions")
-    action = FieldCellActionID(action_owner, "field-cell-action", 0)
-    boundaries = SemanticBoundaryArena(ledger)
-    adapter = PrimitiveSemanticTransferAdapter(
-        compiler,
-        boundaries,
-        lambda value: value.validate(action_owner, "field-cell-action", size=1),
-        lambda _value: kernel,
+    effect, fixture, left, right = _alias_transfer_fixture()
+    first = fixture.executor.transfer(
+        fixture.action, left, fixture.geometry, fixture.signature
     )
-    geometries = FieldGeometryArena(ledger)
-    geometry = geometries.intern(FieldGeometry(0))
-    signature = compiler.signature(kernel, 0)
-    transfers = FieldTransferArena(
-        ledger,
-        sources,
-        geometries,
-        quotients,
-        action_owner=action_owner,
-        output_owner=compiler.outputs.owner,
-        action_validate=lambda value: value.validate(
-            action_owner,
-            "field-cell-action",
-            size=1,
-        ),
-        output_validate=compiler.outputs.validate,
-    )
-    adapter.attach_transfers(transfers)
-    executor = FieldTransferExecutor(transfers, adapter)
-    first = executor.transfer(action, left, geometry, signature)
-    record = transfers.resolve(first)
-    transfers.clear_bindings()
-    ledger_before = ledger.snapshot()
+    record = fixture.transfers.resolve(first)
+    fixture.transfers.clear_bindings()
+    ledger_before = fixture.ledger.snapshot()
     before = (
-        len(transfers._nodes),
-        len(transfers._keys),
-        len(transfers._bindings),
-        ledger.counters.get("field_transfer_binding_publications", 0),
+        len(fixture.transfers._nodes),
+        len(fixture.transfers._keys),
+        len(fixture.transfers._bindings),
+        fixture.ledger.counters.get("field_transfer_binding_publications", 0),
     )
     with pytest.raises(ValueError, match="inconsistent admission bounds"):
-        transfers.publish(
-            FieldTransferRequestKey(action, right, geometry, signature),
+        fixture.transfers.publish(
+            FieldTransferRequestKey(
+                fixture.action, right, fixture.geometry, fixture.signature
+            ),
             replace(record, extent_bound=record.extent_bound + 1),
         )
     assert (
-        len(transfers._nodes),
-        len(transfers._keys),
-        len(transfers._bindings),
-        ledger.counters.get("field_transfer_binding_publications", 0),
+        len(fixture.transfers._nodes),
+        len(fixture.transfers._keys),
+        len(fixture.transfers._bindings),
+        fixture.ledger.counters.get("field_transfer_binding_publications", 0),
     ) == before
-    assert ledger.snapshot() == ledger_before
+    assert fixture.ledger.snapshot() == ledger_before
 
 
 def test_transfer_observation_rejects_an_unpublished_source_alias() -> None:
-    effect = _primitive("forget-source")
-    ledger, sources, root, _kernels, kernel, quotients, compiler = _setup(
-        (0, 1),
-        effect,
+    effect, fixture, left, right = _alias_transfer_fixture()
+    incoming = fixture.boundaries.intern(0, 0)
+    first = fixture.executor.transfer(
+        fixture.action, left, fixture.geometry, fixture.signature
     )
-    left, right = sources.children(root)
-    action_owner = ArenaToken("semantic-test-actions")
-    action = FieldCellActionID(action_owner, "field-cell-action", 0)
-    boundaries = SemanticBoundaryArena(ledger)
-    incoming = boundaries.intern(0, 0)
-    adapter = PrimitiveSemanticTransferAdapter(
-        compiler,
-        boundaries,
-        lambda value: value.validate(action_owner, "field-cell-action", size=1),
-        lambda _value: kernel,
-    )
-    geometries = FieldGeometryArena(ledger)
-    geometry = geometries.intern(FieldGeometry(0))
-    signature = compiler.signature(kernel, 0)
-    transfers = FieldTransferArena(
-        ledger,
-        sources,
-        geometries,
-        quotients,
-        action_owner=action_owner,
-        output_owner=compiler.outputs.owner,
-        action_validate=lambda value: value.validate(
-            action_owner,
-            "field-cell-action",
-            size=1,
-        ),
-        output_validate=compiler.outputs.validate,
-    )
-    adapter.attach_transfers(transfers)
-    executor = FieldTransferExecutor(transfers, adapter)
-    first = executor.transfer(action, left, geometry, signature)
-    before = ledger.snapshot()
+    before = fixture.ledger.snapshot()
     with pytest.raises(ValueError, match="not published for this source"):
-        executor.point(first, right, incoming, 0)
-    after = ledger.snapshot()
+        fixture.executor.point(first, right, incoming, 0)
+    after = fixture.ledger.snapshot()
     assert (after.entries, after.nodes) == (before.entries, before.nodes)
 
     # Once the equal occurrence is explicitly bound it can reuse the same
     # semantic transfer and be observed through its own source authority.
-    second = executor.transfer(action, right, geometry, signature)
+    second = fixture.executor.transfer(
+        fixture.action, right, fixture.geometry, fixture.signature
+    )
     assert second == first
-    assert executor.point(second, right, incoming, 0) in range(effect.blank + 1)
+    assert fixture.executor.point(second, right, incoming, 0) in range(effect.blank + 1)
 
 
 def test_rejected_transfer_binding_is_atomic() -> None:
-    ledger, sources, root, _, kernel, quotients, compiler = _setup((0, 1))
-    action_owner = ArenaToken("semantic-test-actions")
-    action = FieldCellActionID(action_owner, "field-cell-action", 0)
-    boundaries = SemanticBoundaryArena(ledger)
-    adapter = PrimitiveSemanticTransferAdapter(
-        compiler,
-        boundaries,
-        lambda value: value.validate(action_owner, "field-cell-action", size=1),
-        lambda _value: kernel,
+    fixture = _transfer_fixture((0, 1), 1)
+    fixture.executor.transfer(
+        fixture.action, fixture.root, fixture.geometry, fixture.signature
     )
-    geometries = FieldGeometryArena(ledger)
-    geometry = geometries.intern(FieldGeometry(1))
-    signature = compiler.signature(kernel, 1)
-    transfers = FieldTransferArena(
-        ledger,
-        sources,
-        geometries,
-        quotients,
-        action_owner=action_owner,
-        output_owner=compiler.outputs.owner,
-        action_validate=lambda value: value.validate(
-            action_owner, "field-cell-action", size=1
-        ),
-        output_validate=compiler.outputs.validate,
-    )
-    adapter.attach_transfers(transfers)
-    executor = FieldTransferExecutor(transfers, adapter)
-    executor.transfer(action, root, geometry, signature)
-    transfers.clear_bindings()
-    before = ledger.snapshot()
-    ledger.max_cache_entries = ledger.entries
+    fixture.transfers.clear_bindings()
+    before = fixture.ledger.snapshot()
+    fixture.ledger.max_cache_entries = fixture.ledger.entries
     with pytest.raises(BlockContextBudgetExceeded):
-        executor.transfer(action, root, geometry, signature)
-    after = ledger.snapshot()
+        fixture.executor.transfer(
+            fixture.action, fixture.root, fixture.geometry, fixture.signature
+        )
+    after = fixture.ledger.snapshot()
     assert (after.entries, after.nodes) == (before.entries, before.nodes)
-    assert transfers.retained_bindings == 0
+    assert fixture.transfers.retained_bindings == 0
 
 
 def test_transfer_publication_rejects_interface_from_another_signature() -> None:
@@ -666,50 +554,24 @@ def test_transfer_publication_rejects_interface_from_another_signature() -> None
         FieldTransferRequestKey,
     )
 
-    ledger, sources, root, _, kernel, quotients, compiler = _setup((0, 1))
-    action_owner = ArenaToken("semantic-test-actions")
-    action = FieldCellActionID(action_owner, "field-cell-action", 0)
-    boundaries = SemanticBoundaryArena(ledger)
-    adapter = PrimitiveSemanticTransferAdapter(
-        compiler,
-        boundaries,
-        lambda value: value.validate(action_owner, "field-cell-action", size=1),
-        lambda _value: kernel,
-    )
-    geometries = FieldGeometryArena(ledger)
-    geometry = geometries.intern(FieldGeometry(1))
-    signature = compiler.signature(kernel, 1)
-    transfers = FieldTransferArena(
-        ledger,
-        sources,
-        geometries,
-        quotients,
-        action_owner=action_owner,
-        output_owner=compiler.outputs.owner,
-        action_validate=lambda value: value.validate(
-            action_owner,
-            "field-cell-action",
-            size=1,
-        ),
-        output_validate=compiler.outputs.validate,
-    )
-    adapter.attach_transfers(transfers)
-    executor = FieldTransferExecutor(transfers, adapter)
-    transfer = executor.transfer(action, root, geometry, signature)
-    record = transfers.resolve(transfer)
-    other_signature = compiler.signature(kernel, 0)
-    before = ledger.snapshot()
+    fixture, transfer, record = _published_transfer_fixture()
+    other_signature = fixture.compiler.signature(fixture.kernel, 0)
+    before = fixture.ledger.snapshot()
     with pytest.raises(ValueError, match="another port signature"):
-        transfers.publish(
-            FieldTransferRequestKey(action, root, geometry, other_signature),
+        fixture.transfers.publish(
+            FieldTransferRequestKey(
+                fixture.action, fixture.root, fixture.geometry, other_signature
+            ),
             record,
         )
     with pytest.raises(ValueError, match="level differs"):
-        transfers.publish(
-            FieldTransferRequestKey(action, root, geometry, signature),
+        fixture.transfers.publish(
+            FieldTransferRequestKey(
+                fixture.action, fixture.root, fixture.geometry, fixture.signature
+            ),
             replace(record, level=0),
         )
-    after = ledger.snapshot()
+    after = fixture.ledger.snapshot()
     assert (after.entries, after.nodes) == (before.entries, before.nodes)
 
 
@@ -719,43 +581,16 @@ def test_transfer_observation_authority_is_in_independent_payload_audit() -> Non
     )
     from number_compiler.resources.metric_collection import collect_ledger_metrics
 
-    ledger, sources, root, _, kernel, quotients, compiler = _setup((0, 1))
-    action_owner = ArenaToken("semantic-test-actions")
-    action = FieldCellActionID(action_owner, "field-cell-action", 0)
-    boundaries = SemanticBoundaryArena(ledger)
-    adapter = PrimitiveSemanticTransferAdapter(
-        compiler,
-        boundaries,
-        lambda value: value.validate(action_owner, "field-cell-action", size=1),
-        lambda _value: kernel,
+    fixture = _transfer_fixture((0, 1), 1)
+    fixture.executor.transfer(
+        fixture.action,
+        fixture.root,
+        fixture.geometry,
+        fixture.signature,
     )
-    geometries = FieldGeometryArena(ledger)
-    geometry = geometries.intern(FieldGeometry(1))
-    signature = compiler.signature(kernel, 1)
-    transfers = FieldTransferArena(
-        ledger,
-        sources,
-        geometries,
-        quotients,
-        action_owner=action_owner,
-        output_owner=compiler.outputs.owner,
-        action_validate=lambda value: value.validate(
-            action_owner,
-            "field-cell-action",
-            size=1,
-        ),
-        output_validate=compiler.outputs.validate,
-    )
-    adapter.attach_transfers(transfers)
-    FieldTransferExecutor(transfers, adapter).transfer(
-        action,
-        root,
-        geometry,
-        signature,
-    )
-    report = collect_ledger_metrics(ledger)
+    report = collect_ledger_metrics(fixture.ledger)
     assert report.resource_accounting_mismatch == 0
-    assert audit_field_image_payloads(ledger).invalid == frozenset()
+    assert audit_field_image_payloads(fixture.ledger).invalid == frozenset()
     bindings = [
         row for row in report.resource_inventory if row.role == "field_transfer_binding"
     ]

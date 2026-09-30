@@ -1,6 +1,8 @@
 from random import Random
 from typing import Literal, cast
 
+import pytest
+
 from number_compiler.sequences.collatz.power import (
     CollatzAffineBranch,
     CollatzPowerArena,
@@ -150,3 +152,92 @@ def test_event_cocycle_lowering_is_explicit_and_memoized() -> None:
     assert first is second
     assert arena.cocycle_materializations == materialized
     assert first.shift == 10
+
+
+def test_event_lowering_rejects_foreign_colliding_ids_before_cache_access() -> None:
+    import pytest
+
+    from number_compiler.sequences.collatz.power import CollatzEventArena
+
+    for warm in (False, True):
+        owner, foreign = CollatzEventArena(), CollatzEventArena()
+        admitted, alien = owner.event(1), foreign.event(3)
+        assert admitted.node_id == alien.node_id
+        if warm:
+            assert owner.materialize_cocycle(admitted).shift == 1
+        before = owner.cocycle_materializations
+        with pytest.raises(ValueError, match="another arena"):
+            owner.materialize_cocycle(alien)
+        assert owner.cocycle_materializations == before
+        assert owner.materialize_cocycle(admitted).shift == 1
+
+
+def test_event_consumers_reject_foreign_and_copied_handles() -> None:
+    from dataclasses import replace
+
+    import pytest
+
+    from number_compiler.sequences.collatz.power import CollatzEventArena
+
+    owner, foreign = CollatzEventArena(), CollatzEventArena()
+    admitted = owner.event(3)
+    for alien in (foreign.event(3), replace(admitted)):
+        with pytest.raises(ValueError, match="another arena"):
+            owner.apply_exact(alien, 13)
+        with pytest.raises(ValueError, match="another arena"):
+            owner.metrics(alien)
+        with pytest.raises(ValueError, match="another arena"):
+            owner.materialize_cocycle(alien)
+    assert owner.apply_exact(admitted, 13) == 5
+
+
+def test_warm_event_lowering_does_not_recompose_cached_subtrees(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from number_compiler.arithmetic.fields.morphism_core import DyadicAffineCocycle
+    from number_compiler.sequences.collatz.power import CollatzEventArena
+
+    owner = CollatzEventArena()
+    root = owner.from_valuations((1, 3, 2, 4))
+    expected = owner.materialize_cocycle(root)
+
+    def forbidden(*args: object, **kwargs: object) -> None:
+        raise AssertionError("warm lowering recomposed an admitted cocycle")
+
+    monkeypatch.setattr(DyadicAffineCocycle, "then", forbidden)
+    assert owner.materialize_cocycle(root) is expected
+
+
+@pytest.mark.parametrize("alias", (True, 1.0))
+def test_event_identity_rejects_numeric_id_alias_before_warm_lookup(
+    alias: object,
+) -> None:
+    from number_compiler.sequences.collatz.power import CollatzEventArena
+
+    owner = CollatzEventArena()
+    node = owner.identity
+    owner.materialize_cocycle(node)
+    object.__setattr__(node, "node_id", alias)
+    with pytest.raises(ValueError, match="another arena"):
+        owner.materialize_cocycle(node)
+
+
+def test_exact_event_application_rejects_corrupted_descendant_bindings() -> None:
+    from number_compiler.sequences.collatz.power import (
+        CollatzEventArena,
+        CollatzEventTransport,
+    )
+
+    owner = CollatzEventArena()
+    first, second = owner.event(1), owner.event(3)
+    root = owner.concat(first, second)
+    # Swapping valuations preserves the root's totals but changes its action.
+    # Frozen assignment is forbidden; explicitly challenge canonical admission.
+    for node, valuation in ((first, 3), (second, 1)):
+        object.__setattr__(node, "valuation", valuation)
+        object.__setattr__(
+            node, "effect", CollatzEventTransport.valuation_atom(valuation)
+        )
+    owner.validate_node(root)
+    with pytest.raises(ValueError, match="canonical arena binding"):
+        owner.apply_exact(root, 29)

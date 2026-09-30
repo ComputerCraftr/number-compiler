@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from tests.support.assertions import assert_rejected_atomically
+
 from dataclasses import replace
 from itertools import product
 from typing import TYPE_CHECKING, Literal
@@ -166,10 +168,9 @@ def test_foreign_forged_actions_reject_before_warm_mutation(
         object.__setattr__(
             forged, name, value if name == field else getattr(action, name)
         )
-    before = runtime.ledger.snapshot()
-    with pytest.raises((TypeError, ValueError)):
-        arena.compile(forged, 0)
-    assert runtime.ledger.snapshot() == before
+    assert_rejected_atomically(
+        runtime.ledger, lambda: arena.compile(forged, 0), (TypeError, ValueError)
+    )
 
 
 def test_higher_domain_and_forged_metadata_reject_before_allocation() -> None:

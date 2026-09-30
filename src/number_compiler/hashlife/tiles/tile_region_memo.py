@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from number_compiler.hashlife.tiles.result_reverse_indexes import publish_indexed_result
+
 from typing import TYPE_CHECKING
 
 from number_compiler.hashlife.tiles.tile_boundaries import (
@@ -147,24 +149,7 @@ def _publish(
             raise ValueError("clipped region already has another canonical result")
         arena.ledger.bump("tile_region_normalization_late_duplicates")
         return found, False
-    referenced = arena._tiles_for(key, value)
-    reverse_entries = arena._index_entries(referenced)
-    reservations = (
-        (arena._memo_owner, 1, 0),
-        (arena._reverse_owner, reverse_entries, 0),
-    )
-    arena.ledger.reserve_many(reservations)
-    reverse_snapshot = arena._reverse_snapshot(referenced, key)
-    try:
-        arena._memo[key] = value
-        for tile in referenced:
-            arena._add_membership(tile, key)
-    except BaseException:
-        arena._memo.pop(key, None)
-        arena._restore_reverse(reverse_snapshot)
-        for owner, entries, nodes in reservations:
-            arena.ledger.release(owner, entries, nodes)
-        raise
+    publish_indexed_result(arena, key, value)
     arena.ledger.bump("tile_region_normalization_publications")
     return value, True
 

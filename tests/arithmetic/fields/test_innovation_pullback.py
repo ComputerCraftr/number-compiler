@@ -9,6 +9,7 @@ from number_compiler.arithmetic.contracts.cylinder_chart import CylinderChart
 from number_compiler.arithmetic.contracts.semantic_identity import SemanticIdentity
 from number_compiler.arithmetic.fields.symbolic_innovation import (
     RadialMultiplier,
+    InnovationID,
     SymbolicInnovationArena,
 )
 from number_compiler.resources.ledger import ResourceLedger
@@ -25,9 +26,7 @@ def _forbidden(*_args: object, **_kwargs: object) -> Never:
 def test_simultaneous_environment_does_not_rewrite_its_replacements(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    arena = _arena()
-    a = arena.atom(SemanticIdentity("test", ("a",)))
-    b = arena.atom(SemanticIdentity("test", ("b",)))
+    arena, a, b = _two_atoms()
     difference = arena.subtract(a, b)
     expected = arena.subtract(b, a)
     monkeypatch.setattr(arena, "project_cyclotomic", _forbidden)
@@ -41,9 +40,7 @@ def test_simultaneous_environment_does_not_rewrite_its_replacements(
 
 
 def test_cancellation_and_growth_reflection_use_existing_normalizers() -> None:
-    arena = _arena()
-    a = arena.atom(SemanticIdentity("test", ("a",)))
-    b = arena.atom(SemanticIdentity("test", ("b",)))
+    arena, a, b = _two_atoms()
     radial = RadialMultiplier(2, 3)
     chart = CylinderChart(-1, 17)
     roots = (arena.subtract(a, b), arena.chart(a, chart), arena.radial(b, radial))
@@ -159,3 +156,10 @@ def test_disposed_arena_cannot_publish_even_an_empty_pullback() -> None:
     arena.close()
     with pytest.raises(ValueError, match="disposed"):
         arena.substitute_many((), {})
+
+
+def _two_atoms() -> tuple[SymbolicInnovationArena, InnovationID, InnovationID]:
+    arena = _arena()
+    a = arena.atom(SemanticIdentity("test", ("a",)))
+    b = arena.atom(SemanticIdentity("test", ("b",)))
+    return arena, a, b

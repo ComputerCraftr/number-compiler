@@ -37,7 +37,7 @@ from number_compiler.hashlife.execution.recursive_outputs import (
 )
 from number_compiler.resources.higher_payload_audit import audit_higher_payloads
 from number_compiler.resources.stores import LedgerDict
-from tests.support.reverse_higher_runtime import _fixture
+from tests.support.reverse_higher_runtime import _fixture, _macro_composer
 
 
 def _bound_step(
@@ -46,9 +46,7 @@ def _bound_step(
     right_index: int,
     base: int = 10,
 ) -> tuple[int, ...]:
-    effect = BaseBlockEffect(base)
-    left_domain = tuple(effect.boundary_universe(BoundarySide.LEFT) or ())
-    right_domain = tuple(effect.boundary_universe(BoundarySide.RIGHT) or ())
+    effect, left_domain, right_domain = _bound_domains(base)
     left_states = []
     state = left_domain[left_index]
     for symbol in word:
@@ -68,9 +66,7 @@ def _bound_step(
 def _bound_exits(
     word: tuple[int, ...], left_index: int, right_index: int, base: int = 10
 ) -> tuple[int, int]:
-    effect = BaseBlockEffect(base)
-    left_domain = tuple(effect.boundary_universe(BoundarySide.LEFT) or ())
-    right_domain = tuple(effect.boundary_universe(BoundarySide.RIGHT) or ())
+    effect, left_domain, right_domain = _bound_domains(base)
     left = left_domain[left_index]
     for symbol in word:
         left = effect.advance(BoundarySide.LEFT, left, symbol)
@@ -95,32 +91,11 @@ def _construction(
     actions, primitive, semantics, runtime, interfaces, compiler, sources, binding = (
         _fixture(source)
     )
-    compiled = compiler.compile(primitive)
-    outputs = RecursiveCoordinateMorphismArena(
-        interfaces,
-        evaluate=semantics.evaluate,
+    outputs, producer = _macro_composer(
+        semantics, interfaces, sources, primitive, compiler
     )
-    producer = HigherSpatialMacroComposer(
-        semantics,
-        interfaces,
-        outputs,
-        sources,
-        primitive,
-        compiled.interface,
-        compiled.left,
-        compiled.symbol,
-        compiled.right,
-    )
-    consumer = HigherSpatialMacroComposer(
-        semantics,
-        interfaces,
-        outputs,
-        sources,
-        primitive,
-        compiled.interface,
-        compiled.left,
-        compiled.symbol,
-        compiled.right,
+    outputs, consumer = _macro_composer(
+        semantics, interfaces, sources, primitive, compiler, outputs
     )
 
     images = HigherTemporalImageArena(
@@ -139,6 +114,59 @@ def _construction(
     )
 
 
+def _construction_ports(
+    source: tuple[int, ...],
+) -> tuple[
+    ReverseFieldActionArena,
+    FieldCellActionID,
+    HigherSemanticArena,
+    HigherBimachineRuntime,
+    RecursiveCoordinateMorphismArena,
+    HigherSpatialMacroComposer,
+    HigherTemporalImageArena,
+    SourceForestID,
+    HigherExpressionID,
+    HigherExpressionID,
+]:
+    fixture = _construction(source)
+    runtime, primitive = fixture[3], fixture[1]
+    return (*fixture, runtime.initial(primitive, 0), runtime.initial(primitive, 1))
+
+
+def _initial_construction(
+    source: tuple[int, ...],
+) -> tuple[
+    ReverseFieldActionArena,
+    FieldCellActionID,
+    HigherSemanticArena,
+    HigherBimachineRuntime,
+    RecursiveCoordinateMorphismArena,
+    HigherSpatialMacroComposer,
+    HigherTemporalImageArena,
+    SourceForestID,
+    HigherExpressionID,
+    HigherExpressionID,
+    HigherTemporalImageID,
+]:
+    fixture = _construction_ports(source)
+    producer, images, binding, left, right = fixture[5:]
+    initial = images.bind_initial(
+        producer, binding, producer.compile(binding), left, right
+    )
+    return (*fixture, initial)
+
+
+def _bound_domains(
+    base: int,
+) -> tuple[BaseBlockEffect, tuple[object, ...], tuple[object, ...]]:
+    effect = BaseBlockEffect(base)
+    return (
+        effect,
+        tuple(effect.boundary_universe(BoundarySide.LEFT) or ()),
+        tuple(effect.boundary_universe(BoundarySide.RIGHT) or ()),
+    )
+
+
 def test_temporal_image_repeatedly_substitutes_bound_recursive_output(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -152,12 +180,10 @@ def test_temporal_image_repeatedly_substitutes_bound_recursive_output(
         producer,
         images,
         binding,
-    ) = _construction(source)
-    left = runtime.initial(primitive, 0)
-    right = runtime.initial(primitive, 1)
-    initial = images.bind_initial(
-        producer, binding, producer.compile(binding), left, right
-    )
+        left,
+        right,
+        initial,
+    ) = _initial_construction(source)
 
     def forbidden(*_args: object, **_kwargs: object) -> Never:
         raise AssertionError("temporal image construction reached evaluator fallback")
@@ -406,9 +432,9 @@ def test_temporal_image_rejects_foreign_mutated_and_unbound_occurrences() -> Non
         producer,
         images,
         binding,
-    ) = _construction(source)
-    left = runtime.initial(primitive, 0)
-    right = runtime.initial(primitive, 1)
+        left,
+        right,
+    ) = _construction_ports(source)
     macro = producer.compile(binding)
     image = images.bind_initial(producer, binding, macro, left, right)
     foreign = HigherTemporalImageID(ArenaToken("foreign"), image.kind, image.local_id)
@@ -437,12 +463,10 @@ def test_temporal_image_rejects_unadmitted_growth_before_traversal() -> None:
         producer,
         images,
         binding,
-    ) = _construction(source)
-    left = runtime.initial(primitive, 0)
-    right = runtime.initial(primitive, 1)
-    initial = images.bind_initial(
-        producer, binding, producer.compile(binding), left, right
-    )
+        left,
+        right,
+        initial,
+    ) = _initial_construction(source)
     before = semantics.ledger.counters.get("higher_temporal_image_node_visits", 0)
     with pytest.raises(ValueError, match="padding"):
         images.step(initial, left, right)
@@ -463,9 +487,9 @@ def test_temporal_image_growth_uses_one_admitted_blank_seam() -> None:
         producer,
         images,
         binding,
-    ) = _construction(source)
-    left = runtime.initial(primitive, 0)
-    right = runtime.initial(primitive, 1)
+        left,
+        right,
+    ) = _construction_ports(source)
     first_expected = _bound_step(source, 0, 0)
     assert next(index for index, value in enumerate(first_expected) if value == 19) > 2
     initial = images.bind_initial(
@@ -496,12 +520,10 @@ def test_temporal_image_construction_does_not_observe_provider_coordinates(
         producer,
         images,
         binding,
-    ) = _construction(source)
-    left = runtime.initial(primitive, 0)
-    right = runtime.initial(primitive, 1)
-    initial = images.bind_initial(
-        producer, binding, producer.compile(binding), left, right
-    )
+        left,
+        right,
+        initial,
+    ) = _initial_construction(source)
 
     def forbidden(*_args: object, **_kwargs: object) -> Never:
         raise AssertionError("temporal construction observed a provider coordinate")
@@ -522,12 +544,10 @@ def test_temporal_image_reuses_compressed_blank_subtrees() -> None:
         producer,
         images,
         binding,
-    ) = _construction(source)
-    left = runtime.initial(primitive, 0)
-    right = runtime.initial(primitive, 1)
-    initial = images.bind_initial(
-        producer, binding, producer.compile(binding), left, right
-    )
+        left,
+        right,
+        initial,
+    ) = _initial_construction(source)
     before = semantics.ledger.counters.get("higher_temporal_image_node_visits", 0)
     images.step(initial, left, right)
     visits = semantics.ledger.counters["higher_temporal_image_node_visits"] - before
@@ -547,12 +567,10 @@ def test_temporal_image_workspace_rolls_back_failed_memo_insertion(
         producer,
         images,
         binding,
-    ) = _construction(source)
-    left = runtime.initial(primitive, 0)
-    right = runtime.initial(primitive, 1)
-    initial = images.bind_initial(
-        producer, binding, producer.compile(binding), left, right
-    )
+        left,
+        right,
+        initial,
+    ) = _initial_construction(source)
     original = LedgerDict.__setitem__
 
     def fail_built(
@@ -581,12 +599,10 @@ def test_temporal_image_inventory_and_seal_track_issued_records() -> None:
         producer,
         images,
         binding,
-    ) = _construction(source)
-    left = runtime.initial(primitive, 0)
-    right = runtime.initial(primitive, 1)
-    initial = images.bind_initial(
-        producer, binding, producer.compile(binding), left, right
-    )
+        left,
+        right,
+        initial,
+    ) = _initial_construction(source)
     images.step(initial, left, right)
     assert not audit_higher_payloads(images.ledger).invalid
 
@@ -681,12 +697,10 @@ def test_temporal_image_publishes_complete_split_interface_channels(
         producer,
         images,
         binding,
-    ) = _construction(source)
-    left = runtime.initial(primitive, 0)
-    right = runtime.initial(primitive, 1)
-    initial = images.bind_initial(
-        producer, binding, producer.compile(binding), left, right
-    )
+        left,
+        right,
+        initial,
+    ) = _initial_construction(source)
     prior = images.resolve(initial)
     result = images.resolve(images.step(initial, left, right))
     prior_word = tuple(

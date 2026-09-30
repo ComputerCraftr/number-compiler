@@ -1,6 +1,6 @@
 [project]
 name = "number-compiler"
-version = "0.59.9"
+version = "0.60.0"
 description = "Canonical cross-family radix compiler for reverse-add, Collatz, primes, Fermat, and Mersenne sequences"
 requires-python = ">=3.11"
 

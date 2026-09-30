@@ -7,9 +7,11 @@ from typing import TYPE_CHECKING, cast
 from number_compiler.hashlife.tiles.tile_result_records import (
     CompletedResult,
     PoweredResultKey,
+    _FusedVariantKey,
     _ReverseHead,
     _ReverseLinks,
     _ReverseMember,
+    _ResultVariantKey,
 )
 from number_compiler.hashlife.tiles.tile_result_types import is_execution_key
 from number_compiler.hashlife.tiles.tile_results import (
@@ -22,10 +24,11 @@ if TYPE_CHECKING:
         ExecutionKey as _ExecutionKey,
     )
     from number_compiler.hashlife.tiles.tile_result_types import (
-        ReverseKey as _ReverseKey,
+        ExecutionValue,
+        ReverseValue,
     )
     from number_compiler.hashlife.tiles.tile_result_types import (
-        ReverseValue,
+        ReverseKey as _ReverseKey,
     )
     from number_compiler.hashlife.tiles.tile_results import CompletedResultArena
 
@@ -175,3 +178,52 @@ def _remove_membership(
         )
     self.ledger.release(self._reverse_owner, entries=removed)
     self.ledger.bump("completed_result_reverse_index_removals", removed)
+
+
+def publish_indexed_result(
+    arena: CompletedResultArena,
+    key: _ExecutionKey,
+    value: ExecutionValue,
+    *,
+    retained_nodes: int = 0,
+    referenced: tuple[TileID, ...] | None = None,
+) -> None:
+    """Atomically insert an admitted, absent result and its reverse links.
+
+    Callers own semantic admission and duplicate checks. This transaction owns
+    reservations and rollback, including a failed reverse-index snapshot.
+    """
+    if referenced is None:
+        referenced = arena._tiles_for(key, value)
+    reservations = (
+        (arena._memo_owner, 1, retained_nodes),
+        (arena._reverse_owner, arena._index_entries(referenced), 0),
+    )
+    reverse_snapshot = arena._reverse_snapshot(referenced, key)
+    arena.ledger.reserve_many(reservations)
+    try:
+        arena._memo[key] = value
+        for tile in referenced:
+            arena._add_membership(tile, key)
+    except BaseException:
+        arena._memo.pop(key, None)
+        arena._restore_reverse(reverse_snapshot)
+        for owner, entries, nodes in reservations:
+            arena.ledger.release(owner, entries, nodes)
+        raise
+
+
+def restore_variant_publication(
+    arena: CompletedResultArena,
+    key: _ExecutionKey,
+    reverse_snapshot: tuple[tuple[_ReverseKey, object], ...],
+    variant_key: _ResultVariantKey | _FusedVariantKey,
+    old_variants: int,
+) -> None:
+    """Restore only stores mutated by publication, before caller releases credits."""
+    arena._memo.pop(key, None)
+    arena._restore_reverse(reverse_snapshot)
+    if old_variants:
+        arena._variants[variant_key] = old_variants
+    else:
+        arena._variants.pop(variant_key, None)

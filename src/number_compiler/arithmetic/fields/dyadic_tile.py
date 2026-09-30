@@ -15,6 +15,7 @@ in the canonical tile key.
 """
 
 from __future__ import annotations
+from number_compiler.arithmetic.contracts.iterative_queries import push_binary_children
 
 from collections.abc import Iterator, Sequence
 from dataclasses import dataclass
@@ -677,10 +678,7 @@ def iter_symbols(span: DyadicSpan) -> Iterator[int]:
                 raise AssertionError(tile)
             yield int(tile.symbol)
             continue
-        if tile.left is None or tile.right is None:
-            raise AssertionError(tile)
-        stack.append(tile.right)
-        stack.append(tile.left)
+        push_binary_children(stack, tile, tile.left, tile.right)
 
 
 def tile_metrics(span: DyadicSpan) -> dict[str, int]:

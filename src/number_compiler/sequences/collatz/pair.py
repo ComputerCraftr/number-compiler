@@ -11,6 +11,9 @@ valuation sequence is exactly a run-length encoding of the parity coordinate.
 """
 
 from __future__ import annotations
+from number_compiler.arithmetic.contracts.input_validation import (
+    normalized_integer_pair,
+)
 
 from collections.abc import Sequence
 from dataclasses import dataclass
@@ -118,9 +121,7 @@ def accelerated_odd_collatz(value: int) -> CollatzValuationStep:
 def collatz_valuation_itinerary(
     seed: int, *, max_odd_steps: int = 10000
 ) -> tuple[int, ...]:
-    seed, max_odd_steps = int(seed), int(max_odd_steps)
-    if seed <= 0 or max_odd_steps < 0:
-        raise ValueError((seed, max_odd_steps))
+    seed, max_odd_steps = normalized_integer_pair(seed, max_odd_steps, first_minimum=1)
     value = seed
     while value > 1 and not (value & 1):
         value //= 2

@@ -33,7 +33,7 @@ precision with valuation-dependent Collatz division.
 The canonical digit carrier is bounded to callers that request a digit
 projection. Research-only recurrence runners use `SquareTileAction` through
 native modular arithmetic or the diagnostic digit tile. They live under
-`devtools/proofs/oracles`; production cannot import them or select them as a
+`devtools/verification/oracles`; production cannot import them or select them as a
 fallback classifier.
 
 One tile step is one primitive square or trace-square. It does not establish
@@ -76,7 +76,7 @@ harmonic partitions still have successor conflicts.
 The arithmetic owner is
 [`arithmetic_tile.py`](../../src/number_compiler/arithmetic/polynomials/arithmetic_tile.py).
 The research-only runners are
-[`special_digit_power.py`](../../devtools/proofs/oracles/special_digit_power.py)
-and [`special_classical_ceiling.py`](../../devtools/proofs/oracles/special_classical_ceiling.py).
+[`special_digit_power.py`](../../devtools/verification/oracles/special_digit_power.py)
+and [`special_classical_ceiling.py`](../../devtools/verification/oracles/special_classical_ceiling.py).
 The bounded square-only congruence evidence is documented in
 the [Fermat/Mersenne research synthesis](../research/fermat-mersenne.md).

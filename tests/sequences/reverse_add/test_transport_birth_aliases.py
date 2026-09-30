@@ -5,7 +5,7 @@ from typing import Never
 import pytest
 
 from number_compiler.arithmetic.contracts.block_kernel import BaseBlockEffect
-from tests.arithmetic.contracts.test_tile_kernel import _runtime, _tile
+from tests.support.tile_kernel import _runtime, _tile
 
 
 @pytest.mark.parametrize(

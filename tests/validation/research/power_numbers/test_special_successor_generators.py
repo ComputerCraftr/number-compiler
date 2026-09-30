@@ -1,4 +1,4 @@
-from devtools.proofs.oracles.special_binary_jump import _mersenne_carrier_proof
+from devtools.verification.oracles.special_binary_jump import _mersenne_carrier_proof
 from number_compiler.arithmetic.functions.finite_unary import (
     minimize_unary_moore,
     partition_equivalent,
@@ -621,7 +621,7 @@ def test_carry_history_is_exactly_a_phase_refinement_of_independent_image_depth(
 
 
 def test_legacy_carry_event_and_source_only_theorem_surfaces_are_removed() -> None:
-    import devtools.proofs.oracles.special_binary_jump as special_jump
+    import devtools.verification.oracles.special_binary_jump as special_jump
     import number_compiler.arithmetic.polynomials.two_primary_filtration as filtration
     from devtools.experiments.power_numbers.special_successor_carry import (
         carry_phase_refinement_audits,

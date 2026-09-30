@@ -47,7 +47,7 @@ evaluates its strict floor/clamp count directly after validating the phase
 transfer; it no longer allocates an action to rediscover that count.
 The shared formal algebra is `prefix_safety_chronological` and
 `repeated_prefix_minimum_closed` in
-[Associated_Action_Pullback](../../devtools/proofs/isabelle/integration/Associated_Action_Pullback.thy).
+[Associated_Action_Pullback](../../proofs/isabelle/integration/Associated_Action_Pullback.thy).
 This algebraic connection does not yet prove the Python constructor. Small values,
 forks, missing children and power-of-ten crossings use literal child semantics.
 
@@ -71,7 +71,7 @@ The finite owner intentionally does not assert OEIS membership.
 - **Checked local theorem:** `comma_port_pumped_first_hit` proves the first
   crossing for every admitted row, and `comma_port_pump_refines_ordered_roots`
   connects it to the ordered roots. See
-  [Comma_Root_Pair_Port](../../devtools/proofs/isabelle/comma_vieta_root/Comma_Root_Pair_Port.thy).
+  [Comma_Root_Pair_Port](../../proofs/isabelle/comma_vieta_root/Comma_Root_Pair_Port.thy).
 - **Checked weighted coverage:** `comma_port_weighted_cycle` proves return
   within nine ports with dwell sum equal to the existing physical period
   displacement divided by ten. `comma_port_weighted_locator_coverage` gives
@@ -85,12 +85,12 @@ The finite owner intentionally does not assert OEIS membership.
   proves a validated physical prefix agrees with the Near semantics, under
   the authenticated phase/chart and `H<=540` assumptions. The scheduler also
   checks the source sector, displacement and strict seam guard before use.
-- **Checked Entry conjugacy:** [the focused anchor theory](../../devtools/proofs/isabelle/comma_entry_port/Comma_Entry_Port_Anchor.thy)
+- **Checked Entry conjugacy:** [the focused anchor theory](../../proofs/isabelle/comma_entry_port/Comma_Entry_Port_Anchor.thy)
   proves signed source-to-row transport, weighted-row admission and periodic
   root transport. Its lifted weighted-root invariant counts one or two raw
   root crossings, including the zero root. `comma_entry_weighted_target`
   identifies the selected interval with the exact Entry target. The
-  [nine-action refinement](../../devtools/proofs/isabelle/comma_entry_port/Comma_Entry_Port_Refinement.thy)
+  [nine-action refinement](../../proofs/isabelle/comma_entry_port/Comma_Entry_Port_Refinement.thy)
   retains both weighted inequalities and returns terminal headroom directly,
   without calling the old Near consumer in its conclusion.
 - **Open global obligation:** local port closure does not prove complete Entry
@@ -152,16 +152,16 @@ The Isabelle row-coverage theorem alone does not prove this anchor equation.
 
 Bounded independent tests enumerate all 450 admitted diagonal rows and compare
 physical prefixes with literal children. Measurements and implementation
-history belong in the [weekly record](../../results/current/week-of-2026-09-27/comma.md#punctured-port-construction-and-physical-prefixes).
+history belong in the [weekly record](../sprints/week-of-2026-09-27/comma.md#punctured-port-construction-and-physical-prefixes).
 
 ## Certificates and proof scope
 
-[Comma_Child_Cylinder](../../devtools/proofs/isabelle/comma/Comma_Child_Cylinder.thy)
+[Comma_Child_Cylinder](../../proofs/isabelle/comma/Comma_Child_Cylinder.thy)
 models child, phase and interior-guard equations.
-[Comma_Root_Forest](../../devtools/proofs/isabelle/comma_legacy/Comma_Root_Forest.thy)
+[Comma_Root_Forest](../../proofs/isabelle/comma_legacy/Comma_Root_Forest.thy)
 states the root-exhaustion bridge: global finite-root coverage and finite
 child-closed regions for all roots except 20 imply unbounded descendants of 20.
-[Comma_Decimal_Parent](../../devtools/proofs/isabelle/comma/Comma_Decimal_Parent.thy)
+[Comma_Decimal_Parent](../../proofs/isabelle/comma/Comma_Decimal_Parent.thy)
 checks the 50-root classification and establishes global root coverage by
 predecessor descent. The concrete closed regions remain obligations; the
 conditional finite-set argument is not checker refinement.
@@ -212,7 +212,7 @@ The concrete exponent remains part of the source occurrence.
   two. The nine-candidate search remains only for small startup values. Tests
   retain an independent literal child enumerator.
 - **Checked local theorems:** the
-  [complete child classification](../../devtools/proofs/isabelle/comma/Comma_Child_Classification.thy)
+  [complete child classification](../../proofs/isabelle/comma/Comma_Child_Classification.thy)
   proves both candidate directions for every decimal sector at exponent at least
   two. The finite-period theory proves the 17 displacement catalog; the
   power-residue theory proves the 924-period modular law, and the affine-ray
@@ -222,16 +222,16 @@ The concrete exponent remains part of the source occurrence.
   admitted sector has an exact literal path with `weight=initial_weight+steps`,
   the correct terminal chart and the complete ordered child set. This is an
   induction over the executable constructor, not merely a composition law.
-  [Exact weighted refinement](../../devtools/proofs/isabelle/comma_scalar/Comma_Weighted_Macro.thy)
+  [Exact weighted refinement](../../proofs/isabelle/comma_scalar/Comma_Weighted_Macro.thy)
 - **Checked conditional selection:** the canonical weighted chart and binary
   prefix selector refine every partial literal prefix of a successful trace,
   using the cycle-count/remainder expression for Entry fragments.
-  [Whole-macro selection](../../devtools/proofs/isabelle/comma_literal/Comma_Macro_Selection.thy)
+  [Whole-macro selection](../../proofs/isabelle/comma_literal/Comma_Macro_Selection.thy)
 - **Formal frontier:** discharge successful evaluation for every admitted
   boundary state. Only then instantiate the kernel-checked
   losing-rank/winning-cycle proof from that same constructor.
   The Python ray checker is an independent oracle, not a theorem premise. The
-  [boundary theory](../../devtools/proofs/isabelle/comma/Comma_Boundary_Quotient.thy)
+  [boundary theory](../../proofs/isabelle/comma/Comma_Boundary_Quotient.thy)
   develops the seam and modular ingredients; it does not certify the complete
   constructor or authorize removing production forest admission.
 
@@ -258,7 +258,7 @@ headroom is available. Erasing weights must preserve the finite outcome;
 this alone does not prove literal refinement, totality or infinite safety.
 
 **Checked round weights.** The
-[weighted-prefix theorem](../../devtools/proofs/isabelle/comma_round_weights/Comma_Round_Weights.thy)
+[weighted-prefix theorem](../../proofs/isabelle/comma_round_weights/Comma_Round_Weights.thy)
 separates chart operations from literal transitions. Given an admitted source,
 exponent `p ≥ 5` and `r mod 924 = p mod 924`, its emitted weight is the length
 of a literal comma path. A decimal crossing adds one transition; inspecting a
@@ -280,13 +280,13 @@ the omitted-rebase and weakened-guard summaries, not to the full cylinder.
 [Independent chart regressions](../../tests/sequences/comma/test_boundary_chart.py)
 check the exact canonical moves against literal child enumeration.
 
-The checked [chart-action theory](../../devtools/proofs/isabelle/comma_chart_action/Comma_Chart_Action.thy)
+The checked [chart-action theory](../../proofs/isabelle/comma_chart_action/Comma_Chart_Action.thy)
 represents `(X,H) ↦ (lambda*X,H+a*X+b)` using the shared skew algebra.
 It transports affine guards contravariantly, preserving comparison relations,
 event decorations and chronological order. Its canonical transition lemmas
 derive the source digit from the actual chart. They do not grant admission to
 an arbitrary supplied digit or erase exponent/weight occurrence data.
-The checked [weighted-round constructor](../../devtools/proofs/isabelle/comma_weighted_round/Comma_Weighted_Round.thy)
+The checked [weighted-round constructor](../../proofs/isabelle/comma_weighted_round/Comma_Weighted_Round.thy)
 composes these germs to the first decisive event and retains at most nine
 Entry weight pieces. At an admitted exponent of at least five, matching
 phase yields an exact literal path. Its counted terminal observation is a
@@ -301,7 +301,7 @@ classification, then the infinite return and weighted scheduler consumer.
 The 84,084-state constructor rank and the 14,784-state future-safety rank
 answer different questions. Neither a control-only round nor guard truth at
 one bound source establishes admission equivalence for another source.
-The [residual core](../../devtools/proofs/isabelle/comma_decade_residual_core/Comma_Decade_Residual_Core.thy)
+The [residual core](../../proofs/isabelle/comma_decade_residual_core/Comma_Decade_Residual_Core.thy)
 owns terminal outcomes, exact summaries, chronological blocks and the local
 classifier recurrence independently of rank checking.
 `comma_boundary_macro_exists_from_residual_classifier` connects a classifier
@@ -316,14 +316,14 @@ identify them. A tropical minimum may replace guards only after a separate
 equivalence theorem preserves strictness, equality and event identity.
 
 **Checked control normalization.** `comma_normalized_step_commutes` in
-[the finite transition theory](../../devtools/proofs/isabelle/comma_cutover/Comma_Finite_Transition.thy)
+[the finite transition theory](../../proofs/isabelle/comma_cutover/Comma_Finite_Transition.thy)
 proves that replacing the chart's absolute gain by `(residue+delta) mod 924`
 commutes with one canonical control move, including terminal outcomes.
 This observation forgets exponent gain: weighted application must retain it
 separately. It is not a termination or infinite-path theorem.
 
 The named theorem `comma_decade_state_future_congruent` in
-[the decade-control theory](../../devtools/proofs/isabelle/comma_decade/Comma_Decade_Control.thy)
+[the decade-control theory](../../proofs/isabelle/comma_decade/Comma_Decade_Control.thy)
 lifts this erasure to an entire round from an Entry-1 occurrence. Its result
 observes terminal residue phase and normalized crossing state. Raw fork gains
 0 and 924 are different, even when these observations agree; weights, absolute
@@ -339,23 +339,23 @@ catalog displacement `P`, the eventual power period `T(P)` lies in
 \]
 
 whose exponent is at most 32. The theorem
-[`comma_power_residue_correct`](../../devtools/proofs/isabelle/comma/Comma_Power_Residue.thy)
+[`comma_power_residue_correct`](../../proofs/isabelle/comma/Comma_Power_Residue.thy)
 proves equality to `10^(p+delta) mod P` for every admitted exponent.
 Finite residue tests are separate from that kernel-checked theorem. Making
 Entry inexpensive does not prove that every boundary macro terminates: the
 total constructor theorem must remove the successful-run premise before
 ranked termination or infinite continuation can authorize branch pruning.
-The checked [short-phase transport](../../devtools/proofs/isabelle/comma_short_phase/Comma_Short_Phase.thy)
+The checked [short-phase transport](../../proofs/isabelle/comma_short_phase/Comma_Short_Phase.thy)
 permits Entry arithmetic reuse at phase `(r+delta) mod T(P)`, with the output
 gain restored by the transport. The power lookup itself uses the rotated index
 `(r+delta+919) mod T(P)`. There are 116 power observations; the finite catalog
 contains 7,019 Entry classes for offsets 0–98, while decade starts use 0–90.
 Neither catalog size proves the full rank instance or its verification cost.
 Construction and formal-validation evidence belongs in the
-[weekly chart-unification record](../../results/current/week-of-2026-09-20/comma.md#comma-chart-unification).
+[weekly chart-unification record](../sprints/week-of-2026-09-20/comma.md#comma-chart-unification).
 
 Constructor measurements and the cutover disposition are recorded in the
-[weekly boundary-quotient work](../../results/current/week-of-2026-09-20/comma.md#comma-boundary-quotient).
+[weekly boundary-quotient work](../sprints/week-of-2026-09-20/comma.md#comma-boundary-quotient).
 
 ## Packed temporal control (candidate)
 
@@ -367,7 +367,7 @@ and integer division by ten. Subtraction is signed before reduction. The
 Literal weights, actual exponents and source authority remain separate.
 
 The oracle-free endpoint check and `comma_decade_control_orbit_congruent` in
-[the orbit theory](../../devtools/proofs/isabelle/comma_decade_orbit/Comma_Decade_Orbit_Quotient.thy)
+[the orbit theory](../../proofs/isabelle/comma_decade_orbit/Comma_Decade_Orbit_Quotient.thy)
 establish this control equality for every phase. They supply no numeric
 terminal table and do not equate literal weights.
 `comma_decade_power_orbit_congruent` extends the equality to every dyadic
@@ -394,7 +394,7 @@ in the packed recurrence.
 - **Checked Entry diagonal:** for decimal period `P=10M` and power residue
   `10v`, write `x=10q+d` and `eta=(q-v) mod M` using signed subtraction.
   `comma_entry_diagonal_refines` in
-  [Comma_Frobenius_Entry](../../devtools/proofs/isabelle/comma_frobenius_entry/Comma_Frobenius_Entry.thy)
+  [Comma_Frobenius_Entry](../../proofs/isabelle/comma_frobenius_entry/Comma_Frobenius_Entry.thy)
   factors the admitted sector endpoint through `(f,d,eta)`. The existing Near
   cache already shares the corresponding `(f,headroom)` arithmetic; an extra
   diagonal cache duplicated this work and was rejected after measurement.
@@ -409,7 +409,7 @@ in the packed recurrence.
   are separate formal obligations.
 - **Checked Frobenius recurrence:** for every admitted displacement `P`, put
   `M=P div 10` and `nu(r)=comma_power_residue P r div 10`.
-  [Comma_Frobenius_Recurrence](../../devtools/proofs/isabelle/comma_frobenius_recurrence/Comma_Frobenius_Recurrence.thy)
+  [Comma_Frobenius_Recurrence](../../proofs/isabelle/comma_frobenius_recurrence/Comma_Frobenius_Recurrence.thy)
   proves decimal divisibility, `nu((r+1) mod 924)=10*nu(r) mod M`, arbitrary
   block transport and `a(2D)=a(D)^2 mod M`. The proof derives these from the
   existing modular-power semantics, not enumerated phase results. Its
@@ -450,7 +450,7 @@ in the packed recurrence.
 Implementation and bounded reference comparison:
 [temporal control compiler](../../devtools/experiments/comma/temporal_masks.py).
 Build status, timings and exact scope are recorded in the
-[weekly evidence](../../results/current/week-of-2026-09-27/comma.md#comma-packed-temporal-control).
+[weekly evidence](../sprints/week-of-2026-09-27/comma.md#comma-packed-temporal-control).
 
 ## First-fork index discrepancy
 
@@ -461,11 +461,11 @@ constructors and a separate literal C enumerator, initialized explicitly at
 anchor, not a convention change. The preceding value is checked in the
 arithmetic tests; no later branch is chosen by a fixture.
 The checked theorem `comma_source20_to_fork` in
-[the source-entry theory](../../devtools/proofs/isabelle/comma_entry/Comma_Source_Entry.thy)
+[the source-entry theory](../../proofs/isabelle/comma_entry/Comma_Source_Entry.thy)
 now establishes a literal path of exactly 412,987,858 transitions from 20 to
 that value, and `comma_source20_first_fork_children` proves the complete child
 set. The separate theorem `comma_source20_to_fork_unique` in
-[the uniqueness theory](../../devtools/proofs/isabelle/comma_unique/Comma_Source_Unique.thy)
+[the uniqueness theory](../../proofs/isabelle/comma_unique/Comma_Source_Unique.thy)
 proves that every preceding transition has exactly one child. These finite
 prefix results do not establish an infinite continuation after the fork.
 The first excluded child is `20000000000`; its complete finite forest forces
@@ -474,6 +474,6 @@ decision in [A399179](https://oeis.org/A399179). The other 29 published decision
 do not automatically extend the admitted production boundary.
 
 Reproduction and frozen measurements belong in the
-[weekly implementation record](../../results/current/week-of-2026-09-20/comma.md#a367620-integration).
+[weekly implementation record](../sprints/week-of-2026-09-20/comma.md#a367620-integration).
 Public acceptance, finite arithmetic, certificate soundness and performance
 remain separate gates.

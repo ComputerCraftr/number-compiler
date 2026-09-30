@@ -181,10 +181,12 @@ class _Transaction:
                         "boundary_expression_projection_call_early_hits"
                     )
                     return _Rewrite("normal", projected)
-        if node.kind == "finite_map":
+        if node.kind in ("finite_map", "finite_apply"):
             assert node.function is not None and type(node.sort) is StateSort
             kernels = self.arena.boundaries.kernels
             expression = kernels.expression(node.function)
+        if node.kind == "finite_map":
+            assert node.function is not None and type(node.sort) is StateSort
             if all(bit.local_id < 2 for bit in expression.bits):
                 value = sum(
                     bit.local_id << bit_number
@@ -233,8 +235,6 @@ class _Transaction:
                 return _Rewrite("normal", temporary)
         if node.kind == "finite_apply":
             assert node.function is not None and type(node.sort) is StateSort
-            kernels = self.arena.boundaries.kernels
-            expression = kernels.expression(node.function)
             if all(bit.local_id < 2 for bit in expression.bits):
                 value = sum(
                     bit.local_id << bit_number

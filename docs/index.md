@@ -5,8 +5,8 @@ to their recorded checkout, not later source.
 
 ## Usage
 
-- [Family-first CLI](family-first-cli.md)
-- [API and metrics migration](api-migration.md)
+- [CLI reference](cli.md)
+- [Metrics reference](metrics.md)
 
 ## Architecture
 
@@ -37,23 +37,24 @@ records below; see the [placement guide](development.md#documentation-placement)
 ## Current status
 
 - [Release gate table](release-status.md)
-- [Hygiene evidence and test-by-test baseline disposition](hygiene-disposition.md)
 
 ## Sprint history and provenance
 
 Weeks run **Sunday–Saturday**, named by their Sunday start date. Each weekly
 index links to categorized implementation and validation records.
 
-- [September 27–October 3 — current week](../results/current/week-of-2026-09-27/README.md)
-- [September 20–26](../results/current/week-of-2026-09-20/README.md)
-- [September 13–19](../results/current/week-of-2026-09-13/README.md)
-- [September 6–12](../results/current/week-of-2026-09-06/README.md)
+- [September 27–October 3 — current week](sprints/week-of-2026-09-27/README.md)
+- [September 20–26](sprints/week-of-2026-09-20/README.md)
+- [September 13–19](sprints/week-of-2026-09-13/README.md)
+- [September 6–12](sprints/week-of-2026-09-06/README.md)
 
 Earlier aggregate summaries cross Sunday boundaries; they retain their original
 coverage as retrospectives, not weekly records:
 
-- [September 7–13 retrospective](../results/history/2026-09-07--2026-09-13/README.md)
-- [September 14–20 retrospective](../results/history/2026-09-14--2026-09-20/README.md)
+- [September 7–13 retrospective](sprints/history/2026-09-07--2026-09-13/README.md)
+- [September 14–20 retrospective](sprints/history/2026-09-14--2026-09-20/README.md)
+- [Historical hygiene evidence and 206-failure baseline](sprints/history/hygiene-disposition-2026-09-20.md)
+- [Historical API and CLI migrations](sprints/history/api-cli-migrations.md)
 - [Historical research and preserved external reports](history.md)
 - [Document migration and provenance](provenance.md)
 

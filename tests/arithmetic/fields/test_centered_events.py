@@ -12,7 +12,6 @@ from number_compiler.arithmetic.contracts.cylinder_chart import CylinderChart
 from number_compiler.arithmetic.fields.centered_carry import (
     advance_centered_residual,
     carry_coboundary,
-    center_pair_field,
     reflected_innovation,
 )
 from number_compiler.arithmetic.fields.centered_events import (
@@ -31,7 +30,11 @@ from number_compiler.arithmetic.fields.symbolic_innovation import (
 )
 from number_compiler.resources.ledger import ResourceLedger
 from number_compiler.resources.payload_audit import audit_registered_payloads
-from tests.arithmetic.fields.test_centered_carry import _evaluate, _polynomial
+from tests.arithmetic.fields.test_centered_carry import (
+    _evaluate,
+    _polynomial,
+    centered_seed,
+)
 
 
 def test_interval_cancellation_is_exact_without_coefficients() -> None:
@@ -204,10 +207,7 @@ def test_jump_recurrence_matches_both_physical_carry_ports() -> None:
 def test_event_successor_equals_centered_successor_on_bounded_sources(
     seed: int,
 ) -> None:
-    arena = SymbolicInnovationArena(ResourceLedger())
-    digits = [int(d) for d in str(seed)[::-1]]
-    pairs = [a + b for a, b in zip(digits, reversed(digits), strict=True)]
-    delta = center_pair_field(arena, _polynomial(arena, pairs), extent=len(pairs))
+    arena, digits, pairs, delta = centered_seed(seed)
     for _ in range(5):
         m = len(digits)
         carries: list[int] = []

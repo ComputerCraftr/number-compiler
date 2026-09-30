@@ -11,10 +11,11 @@ normalized forcing classes are still charged on nonrepeating first-use paths.
 
 from __future__ import annotations
 
-import json
 
-from devtools.paths import repository_root
-from devtools.proofs.collatz_spacetime import (
+from devtools.paths import project_version, report_output, repository_root
+from devtools.runs import run_reported
+from devtools.benchmarks.reporting import write_json_report
+from devtools.verification.collatz_spacetime import (
     CollatzCausalSpacetimeEngine,
     CollatzPhysicalField,
     CollatzRadixField,
@@ -217,7 +218,7 @@ def run_probe() -> dict[str, object]:
     reverse_rows = _reverse_rows()
     collatz = _collatz_rows()
     return {
-        "version": "0.59.9",
+        "version": project_version(),
         "status": "PASS",
         "global_finite_quotient_required_for_hashlife": False,
         "canonical_recursive_cell_identity": True,
@@ -252,12 +253,12 @@ def run_probe() -> dict[str, object]:
 
 def main() -> int:
     result = run_probe()
-    out = ROOT / "results" / "shared_powering_metrics.json"
-    out.parent.mkdir(exist_ok=True)
-    out.write_text(json.dumps(result, indent=2, sort_keys=True) + "\n")
-    print(json.dumps(result, indent=2, sort_keys=True))
+    out = report_output(
+        "devtools.benchmarks.finite_action_powering_probe", "report.json"
+    )
+    write_json_report(out, result)
     return 0
 
 
 if __name__ == "__main__":
-    raise SystemExit(main())
+    raise SystemExit(run_reported(main))

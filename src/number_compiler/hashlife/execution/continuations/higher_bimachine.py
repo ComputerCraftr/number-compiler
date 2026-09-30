@@ -32,7 +32,6 @@ from number_compiler.hashlife.execution.field_images import (
     SourceBindingID,
     SourceCellArena,
     SourceCellID,
-    SourceForestID,
 )
 from number_compiler.resources.ledger import ResourceLedger
 
@@ -251,40 +250,13 @@ class HigherBimachineRuntime:
         start: int,
         end: int,
     ) -> tuple[SourceCellID, ...]:
-        extent = self.sources.binding_extent(source)
-        if any(type(value) is not int for value in (start, end)):
-            raise TypeError("higher range coordinates must be exact integers")
-        if not 0 <= start <= end <= extent:
-            raise ValueError("higher range lies outside the source binding")
-        if type(source) is SourceCellID:
-            roots: tuple[SourceCellID, ...] = (source,)
-        else:
-            if type(source) is not SourceForestID:
-                raise TypeError("higher range requires a scoped source binding")
-            roots = self.sources.resolve_forest(source).cells
-        result: list[tuple[int, SourceCellID]] = []
-        offset = 0
-        for root in roots:
-            width = self.sources.resolve(root).width
-            low, high = max(start, offset), min(end, offset + width)
-            if low < high:
-                stack = [(root, offset)]
-                while stack:
-                    current, origin = stack.pop()
-                    node = self.sources.resolve(current)
-                    finish = origin + node.width
-                    if finish <= low or high <= origin:
-                        continue
-                    if low <= origin and finish <= high:
-                        result.append((origin, current))
-                        continue
-                    left, right = self.sources.children(current)
-                    middle = origin + self.sources.resolve(left).width
-                    stack.extend(((right, middle), (left, origin)))
-            offset += width
-        result.sort(key=lambda item: item[0])
+        from number_compiler.hashlife.observation.concrete_port_queries import (
+            range_cells,
+        )
+
+        result = range_cells(self.sources, source, start, end)
         self.ledger.bump("higher_range_dyadic_cells", len(result))
-        return tuple(cell for _, cell in result)
+        return result
 
     def _summary_boundary(
         self,

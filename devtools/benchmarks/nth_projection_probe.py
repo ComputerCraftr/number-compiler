@@ -7,10 +7,13 @@ ratio.  The release guard requires substantial headroom below that boundary.
 
 from __future__ import annotations
 
+from devtools.paths import report_directory
+
 import json
 from typing import TypedDict, Unpack
 
 from devtools.paths import repository_root
+from devtools.runs import run_reported
 from number_compiler.api.number_api import NumberCompiler
 from number_compiler.arithmetic.fields.symbolic_extent import extent_json_value
 
@@ -114,7 +117,10 @@ def run_probe() -> ProjectionReport:
 
 def main() -> int:
     result = run_probe()
-    out = ROOT / "results" / "nth_projection_metrics.json"
+    out = (
+        report_directory("devtools.benchmarks.nth_projection_probe")
+        / "nth_projection_metrics.json"
+    )
     out.parent.mkdir(exist_ok=True)
     out.write_text(json.dumps(result, indent=2, sort_keys=True) + "\n")
     print(json.dumps(result, indent=2, sort_keys=True))
@@ -122,4 +128,4 @@ def main() -> int:
 
 
 if __name__ == "__main__":
-    raise SystemExit(main())
+    raise SystemExit(run_reported(main))

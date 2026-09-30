@@ -54,6 +54,7 @@ from number_compiler.resources.field_image_payload_audit import (
 from number_compiler.resources.ledger import ResourceLedger
 from number_compiler.resources.metric_collection import collect_ledger_metrics
 from number_compiler.resources.payload_audit import audit_registered_payloads
+from tests.support.assertions import assert_rejected_atomically
 
 
 def _runtime(
@@ -99,13 +100,7 @@ def test_tile_runtime_inventory_approves_real_action_and_demand_pin() -> None:
     try:
         projection.point(0)
         assert scheduler._pins
-        assert not audit_field_image_payloads(ledger).invalid
-        payloads = audit_registered_payloads(ledger)
-        assert (
-            payloads.forbidden_future_payloads,
-            payloads.unbounded_future_integers,
-            payloads.unknown_payloads,
-        ) == (0, 0, 0)
+        _assert_payload_clean(ledger)
     finally:
         projection.close()
 
@@ -581,10 +576,11 @@ def test_temporal_action_warm_interner_rejects_wrong_record_or_integer_alias(
         key = primitive, primitive
         assert adapter._compositions[key] == composed.local_id
         adapter._compositions[key] = cast(int, forged)
-        before = ledger.snapshot()
-        with pytest.raises((TypeError, ValueError)):
-            adapter.compose(primitive, primitive)
-        assert ledger.snapshot() == before
+        assert_rejected_atomically(
+            ledger,
+            lambda: adapter.compose(primitive, primitive),
+            (TypeError, ValueError),
+        )
     finally:
         projection.close()
 
@@ -599,13 +595,7 @@ def test_tile_runtime_inventory_validates_composed_action_dag_and_interner() -> 
         right = adapter.compose(primitive, composed)
         assert left == right
         assert adapter.compose(primitive, composed) == right
-        assert not audit_field_image_payloads(ledger).invalid
-        payloads = audit_registered_payloads(ledger)
-        assert (
-            payloads.forbidden_future_payloads,
-            payloads.unbounded_future_integers,
-            payloads.unknown_payloads,
-        ) == (0, 0, 0)
+        _assert_payload_clean(ledger)
 
         key = primitive, primitive
         adapter._compositions[key] = primitive.local_id
@@ -674,3 +664,13 @@ def test_sparse_legacy_source_geometry_is_canonical_tile_content() -> None:
         assert not audit_field_image_payloads(ledger).invalid
     finally:
         lease.close()
+
+
+def _assert_payload_clean(ledger: ResourceLedger) -> None:
+    assert not audit_field_image_payloads(ledger).invalid
+    payloads = audit_registered_payloads(ledger)
+    assert (
+        payloads.forbidden_future_payloads,
+        payloads.unbounded_future_integers,
+        payloads.unknown_payloads,
+    ) == (0, 0, 0)

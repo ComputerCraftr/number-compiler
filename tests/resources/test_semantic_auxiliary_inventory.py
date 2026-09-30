@@ -31,6 +31,10 @@ from number_compiler.resources.ledger import ResourceLedger
 from number_compiler.resources.metric_collection import collect_ledger_metrics
 from number_compiler.resources.semantic_payload import SemanticPayloadRegistry
 from number_compiler.sequences.collatz.block_power import PoweredCollatzTerm
+from tests.support.assertions import (
+    assert_mutation_rejected,
+    assert_rejected_atomically,
+)
 from tests.support.diamond_continuation_reduction import machine
 
 if TYPE_CHECKING:
@@ -88,12 +92,9 @@ def test_codec_rechecks_mutated_record_domains_and_all_immutable_fields(
     field: str, value: object
 ) -> None:
     arena, record = codec()
-    original = getattr(record, field)
-    object.__setattr__(record, field, value)
-    try:
-        assert not registry(arena.ledger).valid(record)
-    finally:
-        object.__setattr__(record, field, original)
+    assert_mutation_rejected(
+        record, field, value, lambda candidate: registry(arena.ledger).valid(candidate)
+    )
 
 
 def test_codec_rejects_same_ledger_wrong_structure_owner_and_wrong_namespace() -> None:
@@ -148,12 +149,9 @@ def test_fused_record_rejects_unbounded_or_untyped_channel_metadata(
 ) -> None:
     arena = FusedRadixArena(ResourceLedger())
     record = arena.compile((1,), radix=3, stages=1, physical=False)
-    original = getattr(record, field)
-    object.__setattr__(record, field, value)
-    try:
-        assert not registry(arena.ledger).valid(record)
-    finally:
-        object.__setattr__(record, field, original)
+    assert_mutation_rejected(
+        record, field, value, lambda candidate: registry(arena.ledger).valid(candidate)
+    )
 
 
 @pytest.mark.parametrize("foreign", (False, True))
@@ -268,7 +266,9 @@ def test_same_ledger_distinct_original_cannot_reuse_warm_radix_action() -> None:
     second._ledger = ledger
     collatz_radix_digit(first, 6, 0)
     projection = first._radix_projections[6]
-    before = ledger.snapshot()
-    with pytest.raises(ValueError, match="another binary source"):
-        projection.digit(second, 0)
-    assert ledger.snapshot() == before
+    assert_rejected_atomically(
+        ledger,
+        lambda: projection.digit(second, 0),
+        ValueError,
+        match="another binary source",
+    )

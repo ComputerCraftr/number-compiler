@@ -7,11 +7,15 @@ from number_compiler.arithmetic.carry.reverse_port_functions import (
     ReversePortCodec,
     ReverseRightTransfer,
 )
+from number_compiler.arithmetic.contracts.block_kernel import (
+    _BaseLeftState,
+    _BaseRightState,
+)
 from number_compiler.hashlife.behavior.reverse_bound_output import ReverseBoundOutput
 from number_compiler.hashlife.execution.reverse_morphism_transfer import (
     ReverseMorphismTransferArena,
 )
-from number_compiler.hashlife.tiles.tiles import TileID
+from number_compiler.hashlife.tiles.tiles import TileID, TileRecord
 from number_compiler.resources.ledger import ResourceLedger
 
 
@@ -93,8 +97,7 @@ def audit_reverse_morphisms(
                 ):
                     raise ValueError("invalid carry morphism binding")
                 source, ports = key
-                left, right = codec.decode_left(ports[0]), codec.decode_right(ports[1])
-                node = arena.tiles.resolve(source)
+                node, left, right = _binding_inputs(arena, codec, source, ports)
                 if type(result) is not ReverseBoundOutput:
                     raise ValueError("invalid carry morphism output")
                 result.__post_init__()
@@ -108,9 +111,9 @@ def audit_reverse_morphisms(
                 else:
                     if node.left is None or node.right is None:
                         raise ValueError("carry morphism binding lacks children")
-                    a, b = arena._sources[node.left], arena._sources[node.right]
-                    mid_left = codec.encode_left(a[0].apply(left))
-                    mid_right = codec.encode_right(b[1].apply(right))
+                    mid_left, mid_right = _interior_ports(
+                        arena, codec, node.left, node.right, left, right
+                    )
                     first = arena._bound[node.left, (ports[0], mid_right)]
                     second = arena._bound[node.right, (mid_left, ports[1])]
                     if not _composes(first, second, result):
@@ -132,8 +135,7 @@ def audit_reverse_morphisms(
                 ):
                     raise ValueError("invalid directional binding")
                 source, ports = key
-                left, right = codec.decode_left(ports[0]), codec.decode_right(ports[1])
-                node = arena.tiles.resolve(source)
+                node, left, right = _binding_inputs(arena, codec, source, ports)
                 if type(right_result) is not ReverseRightTransfer:
                     raise ValueError("invalid directional output")
                 right_result.__post_init__()
@@ -147,9 +149,9 @@ def audit_reverse_morphisms(
                 else:
                     if node.left is None or node.right is None:
                         raise ValueError("directional binding lacks children")
-                    a, b = arena._sources[node.left], arena._sources[node.right]
-                    mid_left = codec.encode_left(a[0].apply(left))
-                    mid_right = codec.encode_right(b[1].apply(right))
+                    mid_left, mid_right = _interior_ports(
+                        arena, codec, node.left, node.right, left, right
+                    )
                     first_right = arena._right_bound[node.left, (ports[0], mid_right)]
                     second_right = arena._right_bound[node.right, (mid_left, ports[1])]
                     expected_right = second_right.then(first_right)
@@ -198,3 +200,25 @@ def audit_reverse_morphisms(
             else:
                 approved.update(id(v) for v in (*composition, result))
     return approved, invalid
+
+
+def _binding_inputs(
+    arena: ReverseMorphismTransferArena,
+    codec: ReversePortCodec,
+    source: TileID,
+    ports: tuple[int, int],
+) -> tuple[TileRecord, _BaseLeftState, _BaseRightState]:
+    left, right = codec.decode_left(ports[0]), codec.decode_right(ports[1])
+    return arena.tiles.resolve(source), left, right
+
+
+def _interior_ports(
+    arena: ReverseMorphismTransferArena,
+    codec: ReversePortCodec,
+    left_tile: TileID,
+    right_tile: TileID,
+    left: _BaseLeftState,
+    right: _BaseRightState,
+) -> tuple[int, int]:
+    a, b = arena._sources[left_tile], arena._sources[right_tile]
+    return codec.encode_left(a[0].apply(left)), codec.encode_right(b[1].apply(right))

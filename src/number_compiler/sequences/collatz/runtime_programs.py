@@ -162,6 +162,15 @@ class CollatzRuntimeProgramArena:
         )
         return SemanticIdentity("", behavior)
 
+    def _composition_operands(
+        self, role: ProgramRole, before: ActionProgramID, after: ActionProgramID
+    ) -> tuple[ProgramRole, CollatzRuntimeProgram, CollatzRuntimeProgram]:
+        role = self._role(role)
+        first, second = self.resolve(before), self.resolve(after)
+        if first.role != role or second.role != role:
+            raise ValueError("Collatz program composition crossed component roles")
+        return role, first, second
+
     def composed_semantic_identity(
         self,
         role: ProgramRole,
@@ -169,10 +178,7 @@ class CollatzRuntimeProgramArena:
         after: ActionProgramID,
     ) -> SemanticIdentity:
         """Predict composition semantics without publishing a syntax node."""
-        role = self._role(role)
-        first, second = self.resolve(before), self.resolve(after)
-        if first.role != role or second.role != role:
-            raise ValueError("Collatz program composition crossed component roles")
+        role, first, second = self._composition_operands(role, before, after)
         behavior = (
             "collatz-runtime-program-v1",
             role,
@@ -194,10 +200,7 @@ class CollatzRuntimeProgramArena:
         before: ActionProgramID,
         after: ActionProgramID,
     ) -> ActionProgramID:
-        role = self._role(role)
-        first, second = self.resolve(before), self.resolve(after)
-        if first.role != role or second.role != role:
-            raise ValueError("Collatz program composition crossed component roles")
+        role, first, second = self._composition_operands(role, before, after)
         if first.exponent == 0:
             return after
         if second.exponent == 0:

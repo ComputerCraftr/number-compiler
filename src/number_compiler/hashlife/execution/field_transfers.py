@@ -30,6 +30,7 @@ from number_compiler.hashlife.interfaces.diamond_quotient import (
     LocalInterfaceID,
 )
 from number_compiler.resources.ledger import ResourceLedger
+from number_compiler.resources.stores import make_node_index
 
 
 @dataclass(frozen=True, slots=True)
@@ -89,6 +90,9 @@ class _TransferKey:
 class FieldTransferArena:
     """Lifetime-stable semantic transfers with evictable occurrence bindings."""
 
+    _nodes: MutableMapping[int, FieldTransferRecord]
+    _keys: MutableMapping[_TransferKey, int]
+
     _KIND = "field-transfer"
 
     def __init__(
@@ -145,12 +149,8 @@ class FieldTransferArena:
             prefix + "-observation-bindings",
             "observation_memo",
         )
-        self._nodes: MutableMapping[int, FieldTransferRecord] = ledger.make_dict(
-            self._node_owner,
-            nodes_per_entry=1,
-        )
-        self._keys: MutableMapping[_TransferKey, int] = ledger.make_dict(
-            self._key_owner
+        self._nodes, self._keys = make_node_index(
+            ledger, self._node_owner, self._key_owner
         )
         self._bindings: MutableMapping[FieldTransferRequestKey, FieldTransferID] = (
             ledger.make_dict(self._binding_owner)

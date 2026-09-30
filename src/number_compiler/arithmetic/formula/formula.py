@@ -70,6 +70,20 @@ def canonical_root_key(root: FormulaRoot) -> tuple[int, tuple[int, ...]]:
     return root.width, tuple(p.id for p in root.planes)
 
 
+def literal_planes(
+    values: Sequence[int], arena: FormulaArena, plane_count: int
+) -> tuple[Expr, ...]:
+    """Ingest already-admitted scalar values into the canonical literal planes."""
+    planes: list[Expr] = []
+    for bit in range(plane_count):
+        mask = 0
+        for i, value in enumerate(values):
+            if (value >> bit) & 1:
+                mask |= 1 << i
+        planes.append(arena.literal(mask, len(values)))
+    return tuple(planes)
+
+
 def root_from_values(
     values: Sequence[int], arena: FormulaArena, spec: RadixSpec
 ) -> FormulaRoot:
@@ -79,13 +93,7 @@ def root_from_values(
     vals = tuple(map(int, values))
     if not vals or any(not 0 <= v <= spec.pair_max for v in vals):
         raise ValueError("pair coefficient out of range")
-    planes = []
-    for bit in range(spec.plane_count):
-        mask = 0
-        for i, value in enumerate(vals):
-            if (value >> bit) & 1:
-                mask |= 1 << i
-        planes.append(arena.literal(mask, len(vals)))
+    planes = literal_planes(vals, arena, spec.plane_count)
     root = FormulaRoot(tuple(planes))
     # Compiler metadata only; FormulaRoot remains planes-only semantic state.
     from number_compiler.arithmetic.formula.summary import (

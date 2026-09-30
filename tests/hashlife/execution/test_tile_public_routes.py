@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from tests.support.assertions import assert_rejected_atomically
+
 from typing import Never
 
 import pytest
@@ -306,9 +308,9 @@ def test_application_constructor_cannot_forge_scheduler_identity() -> None:
     projection = index._lazy_application
     assert type(projection) is LazyProjection
     application = projection._application
-    before = projection.ledger.snapshot()
-    with pytest.raises(TypeError, match="issued by their scheduler"):
-        TileApplication(
+    assert_rejected_atomically(
+        projection.ledger,
+        lambda: TileApplication(
             projection.scheduler,
             application.identity,
             application.action,
@@ -316,5 +318,7 @@ def test_application_constructor_cannot_forge_scheduler_identity() -> None:
             application.ports,
             application.wiring,
             None,
-        )
-    assert projection.ledger.snapshot() == before
+        ),
+        TypeError,
+        match="issued by their scheduler",
+    )

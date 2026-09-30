@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from tests.support.assertions import collect_counter_quantities
+
 from typing import TYPE_CHECKING
 
 from number_compiler.hashlife.observation.hashlife_projection import HashLifeBlockIndex
@@ -191,7 +193,7 @@ def test_additional_registered_nodes_are_visible_in_the_other_category() -> None
 def test_literal_and_reflection_work_distinguishes_cache_and_identity_shortcuts() -> (
     None
 ):
-    from devtools.proofs.carry_interval_effects import CarryActionQuotientArena
+    from devtools.verification.carry_interval_effects import CarryActionQuotientArena
     from number_compiler.arithmetic.functions.finite_port_action import PortVariable
 
     arena = CarryActionQuotientArena()
@@ -254,11 +256,7 @@ def test_boundary_validation_work_is_separate_from_proof_publication_slots() -> 
         "collatz_radix_boundary_proof_hits": 13,
         "collatz_radix_boundary_proof_publications": 11,
     }
-    for counter, quantity in quantities.items():
-        ledger.bump(counter, quantity)
-    report = collect_ledger_metrics(ledger)
-    for counter, quantity in quantities.items():
-        assert getattr(report, counter) == quantity
+    report = collect_counter_quantities(ledger, quantities)
     assert report.total_internal_action_work == 24
     assert report.resource_observed_entries == 0
 
@@ -269,11 +267,7 @@ def test_tile_radix_publications_and_observations_count_as_work() -> None:
         "tile_radix_stage_publications": 5,
         "tile_radix_digit_observations": 276,
     }
-    for counter, quantity in quantities.items():
-        ledger.bump(counter, quantity)
-    report = collect_ledger_metrics(ledger)
-    for counter, quantity in quantities.items():
-        assert getattr(report, counter) == quantity
+    report = collect_counter_quantities(ledger, quantities)
     assert report.total_internal_action_work == 281
     assert report.resource_observed_entries == 0
 

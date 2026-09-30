@@ -17,6 +17,7 @@ from number_compiler.hashlife.execution.dyadic_return_images import (
 from number_compiler.hashlife.execution.dyadic_return_records import (
     DyadicReturnLaw,
     DyadicReturnSupportID,
+    _SupportNode,
 )
 from number_compiler.hashlife.execution.dyadic_return_transport import (
     balanced_residue_effect,
@@ -44,6 +45,19 @@ def _literal(
         assert numerator % 2 == 0
         value = numerator // 2
     return value, branch_word, odd_steps, delta, minimum
+
+
+def _assert_physical_effect(effect: _SupportNode, residue: int, width: int) -> None:
+    endpoint, _word, odd_steps, delta, minimum = _literal(
+        COLLATZ_PHYSICAL_LAW, residue, width
+    )
+    transfer = effect.transfer
+    assert (transfer.upper * residue + transfer.offset) // transfer.lower == endpoint
+    assert (effect.odd_steps, effect.delta, effect.minimum) == (
+        odd_steps,
+        delta,
+        minimum,
+    )
 
 
 def _retained_word(
@@ -128,16 +142,7 @@ def test_balanced_memo_eviction_preserves_high_entropy_effect() -> None:
     ledger = ResourceLedger()
     workspace = DyadicReturnImageWorkspace(ledger, 0, 0, COLLATZ_PHYSICAL_LAW)
     effect = balanced_residue_effect(workspace, width, residue)
-    endpoint, _word, odd_steps, delta, minimum = _literal(
-        COLLATZ_PHYSICAL_LAW, residue, width
-    )
-    transfer = effect.transfer
-    assert (transfer.upper * residue + transfer.offset) // transfer.lower == endpoint
-    assert (effect.odd_steps, effect.delta, effect.minimum) == (
-        odd_steps,
-        delta,
-        minimum,
-    )
+    _assert_physical_effect(effect, residue, width)
     assert (
         ledger.counters[workspace.counter_prefix + "_balanced_effect_memo_evictions"]
         > 0
@@ -200,16 +205,7 @@ def test_full_balanced_memo_evicts_before_optional_reserve_refusal(
         effect = balanced_residue_effect(workspace, width, residue)
     assert refused
     assert ledger.counters[prefix + "balanced_effect_memo_evictions"] > 0
-    expected, _word, odd_steps, delta, minimum = _literal(
-        COLLATZ_PHYSICAL_LAW, residue, width
-    )
-    transfer = effect.transfer
-    assert (transfer.upper * residue + transfer.offset) // transfer.lower == expected
-    assert (effect.odd_steps, effect.delta, effect.minimum) == (
-        odd_steps,
-        delta,
-        minimum,
-    )
+    _assert_physical_effect(effect, residue, width)
     assert ledger.inventory()[workspace.balanced_stack_owner].entries == 0
     workspace.dispose()
     assert ledger.entries == ledger.nodes == 0

@@ -37,10 +37,12 @@ def test_production_has_no_compatibility_proof_exemptions() -> None:
     "source",
     (
         "from .proof.reverse_spacetime import ReverseAddCarrySlab",
+        "import proofs.isabelle",
+        "importlib.import_module('proofs.isabelle')",
         "from number_compiler import proof",
-        "import devtools.proofs.temporal_quotient as cut",
+        "import devtools.verification.temporal_quotient as cut",
         "def hidden():\n    from .proof import reverse_action",
-        "importlib.import_module('devtools.proofs.reverse_action')",
+        "importlib.import_module('devtools.verification.reverse_action')",
         "__import__('number_compiler.reverse_spacetime')",
     ),
 )
@@ -59,7 +61,7 @@ def test_package_import_and_cold_warm_queries_work_with_proof_imports_blocked() 
         import sys
         class ForbidProof(importlib.abc.MetaPathFinder):
             def find_spec(self, fullname, path=None, target=None):
-                if fullname == "devtools.proofs" or fullname.startswith("devtools.proofs."):
+                if fullname == "devtools.verification" or fullname.startswith("devtools.verification."):
                     raise AssertionError("production imported exact oracle: " + fullname)
                 return None
         sys.meta_path.insert(0, ForbidProof())
@@ -83,7 +85,7 @@ def test_package_import_and_cold_warm_queries_work_with_proof_imports_blocked() 
         collatz = PoweredCollatzTerm(27, 16)
         assert collatz.digit(0) == collatz.digit(0)
         assert collatz.width() == collatz.width()
-        assert not any(name == "devtools.proofs" or name.startswith("devtools.proofs.") for name in sys.modules)
+        assert not any(name == "devtools.verification" or name.startswith("devtools.verification.") for name in sys.modules)
         for name in ("ReverseAddCarrySlab", "ReverseAddCarryCutState", "ReverseAddForcingMorphismArena", "ReverseAddAffineActionArena", "CarryPortAction"):
             assert not hasattr(number_compiler, name), name
     """)

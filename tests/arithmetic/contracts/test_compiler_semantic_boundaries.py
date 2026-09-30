@@ -2,9 +2,11 @@
 
 from __future__ import annotations
 
+from tests.support.assertions import assert_rejected_atomically
+
 import pytest
 
-from devtools.proofs.block_composed import ComposedBlockEffect
+from devtools.verification.block_composed import ComposedBlockEffect
 from number_compiler.arithmetic.contracts.block_effect import BlockContextBudget
 from number_compiler.arithmetic.contracts.block_kernel import BaseBlockEffect
 from number_compiler.arithmetic.contracts.scoped_handles import (
@@ -45,10 +47,11 @@ def test_compose_requires_explicit_import_of_a_mutable_compatibility_runtime() -
     compiler = LazyCompiler(ResourceLedger())
     atom = BaseBlockEffect(2)
     runtime = ComposedBlockEffect(atom, atom, budget=BlockContextBudget())
-    before = compiler.ledger.snapshot()
-    with pytest.raises(UnsupportedInterfaceError):
-        compiler.compose(runtime, atom)
-    assert compiler.ledger.snapshot() == before
+    assert_rejected_atomically(
+        compiler.ledger,
+        lambda: compiler.compose(runtime, atom),
+        UnsupportedInterfaceError,
+    )
     imported = compiler.import_effect(runtime)
     result = compiler.compose(imported, atom)
     assert isinstance(result, ProgramComposition)
@@ -84,7 +87,6 @@ def test_generic_import_admits_all_descendants_before_a_warm_composed_key() -> N
     outer = ProgramComposition(good, bad, ActionProgramID(owner, "action-program", 2))
     ledger = ResourceLedger()
     compiler = LazyCompiler(ledger)
-    before = ledger.snapshot()
-    with pytest.raises(UnsupportedInterfaceError):
-        compiler.import_effect(outer)
-    assert ledger.snapshot() == before
+    assert_rejected_atomically(
+        ledger, lambda: compiler.import_effect(outer), UnsupportedInterfaceError
+    )

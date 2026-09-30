@@ -29,6 +29,7 @@ from number_compiler.hashlife.interfaces.semantic_reachable_profile import (
 )
 from number_compiler.hashlife.interfaces.semantic_structures import StructureArena
 from number_compiler.resources.metric_collection import collect_ledger_metrics
+from tests.support.assertions import assert_forbidden_payloads_read_only
 from tests.support.diamond_query import build
 
 if TYPE_CHECKING:
@@ -220,9 +221,7 @@ def test_function_decoder_parent_validity_is_not_inferred_from_body() -> None:
     key = ReachableDecodeKey(ReachableCodecKey(codec.profile, codec.request), 1)
     assert arena is not None
     arena.decodes._data[key] = forged
-    before = app.runtime.ledger.snapshot()
-    assert collect_ledger_metrics(app.runtime.ledger).forbidden_future_payloads > 0
-    assert app.runtime.ledger.snapshot() == before
+    assert_forbidden_payloads_read_only(app.runtime.ledger)
 
 
 def test_profile_interner_cannot_borrow_an_equal_profile_from_another_arena() -> None:
@@ -231,9 +230,7 @@ def test_profile_interner_cannot_borrow_an_equal_profile_from_another_arena() ->
     foreign = other.c4_pair_left(codec.request.action)
     assert arena is not None
     arena.keys[codec.request.action] = foreign
-    before = app.runtime.ledger.snapshot()
-    assert collect_ledger_metrics(app.runtime.ledger).forbidden_future_payloads > 0
-    assert app.runtime.ledger.snapshot() == before
+    assert_forbidden_payloads_read_only(app.runtime.ledger)
 
 
 def test_bypassed_frozen_key_mutation_is_reported_instead_of_crashing() -> None:
@@ -246,6 +243,4 @@ def test_bypassed_frozen_key_mutation_is_reported_instead_of_crashing() -> None:
     # This bypasses the public immutable-record boundary and invalidates the
     # existing interner key hash; an adversarial audit must still finish.
     object.__setattr__(structures.nodes[function.local_id], "valid", all_valid)
-    before = app.runtime.ledger.snapshot()
-    assert collect_ledger_metrics(app.runtime.ledger).forbidden_future_payloads > 0
-    assert app.runtime.ledger.snapshot() == before
+    assert_forbidden_payloads_read_only(app.runtime.ledger)

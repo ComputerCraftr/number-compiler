@@ -66,9 +66,7 @@ def test_declaration_preserves_outer_dependencies_padding_and_bound_capture() ->
 def test_warm_semantic_declaration_avoids_construction_and_validates_handles(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    ledger, structures, x, value = setup()
-    extra = FinitePort(PortVariable(1, 0, "extra", 0), 3)
-    inputs = (x, extra)
+    ledger, structures, x, value, extra, inputs = _declaration_fixture()
     result = structures.declare(value, inputs)
 
     def forbidden(*args: object, **kwargs: object) -> Never:
@@ -100,9 +98,7 @@ def test_warm_semantic_declaration_avoids_construction_and_validates_handles(
 def test_declaration_budget_rejection_is_atomic_and_eviction_preserves_ids(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    ledger, structures, x, value = setup()
-    extra = FinitePort(PortVariable(1, 0, "extra", 0), 3)
-    inputs = (x, extra)
+    ledger, structures, x, value, extra, inputs = _declaration_fixture()
     before = ledger.snapshot()
     ledger.max_cache_entries = ledger.entries
 
@@ -132,3 +128,17 @@ def test_declaration_budget_rejection_is_atomic_and_eviction_preserves_ids(
     structures._declarations.clear()
     assert structures.resolve(result).signature.inputs == inputs
     assert structures.declare(value, inputs) == result
+
+
+def _declaration_fixture() -> tuple[
+    ResourceLedger,
+    StructureArena,
+    FinitePort,
+    StructureID,
+    FinitePort,
+    tuple[FinitePort, FinitePort],
+]:
+    ledger, structures, x, value = setup()
+    extra = FinitePort(PortVariable(1, 0, "extra", 0), 3)
+    inputs = (x, extra)
+    return ledger, structures, x, value, extra, inputs

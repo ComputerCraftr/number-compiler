@@ -31,11 +31,11 @@ from devtools.experiments.power_numbers.special_successor_models import (
 from devtools.experiments.power_numbers.special_successor_purity import (
     crt_purity_audits,
 )
-from devtools.proofs.oracles.special_binary_jump import (
+from devtools.verification.oracles.special_binary_jump import (
     _fermat_carrier_proof,
     _mersenne_carrier_proof,
 )
-from devtools.proofs.quotient_synthesis import (
+from devtools.verification.quotient_synthesis import (
     ObserverFeature,
     synthesize_finite_quotient,
 )
@@ -52,7 +52,7 @@ from number_compiler.arithmetic.polynomials.primary_jet import primary_jet_from_
 from number_compiler.sequences.prime.set import jacobi_symbol
 
 if TYPE_CHECKING:
-    from devtools.proofs.oracles.special_binary_jump import _SpecialCarrierProof
+    from devtools.verification.oracles.special_binary_jump import _SpecialCarrierProof
 
 
 def _two_primary_shape(

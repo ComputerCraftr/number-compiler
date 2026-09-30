@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from devtools.paths import report_directory
+
 import json
 
 from devtools.benchmarks.json_support import jsonable
@@ -15,7 +17,7 @@ ROOT = repository_root()
 
 def main() -> None:
     metrics = projection_field_metrics()
-    outdir = ROOT / "results"
+    outdir = report_directory("devtools.benchmarks.projection_field_probe")
     outdir.mkdir(exist_ok=True)
     (outdir / "projection_field_metrics.json").write_text(
         json.dumps(jsonable(metrics), indent=2, sort_keys=True) + "\n"
@@ -82,4 +84,6 @@ def main() -> None:
 
 
 if __name__ == "__main__":
-    main()
+    from devtools.runs import run_reported
+
+    raise SystemExit(run_reported(main))

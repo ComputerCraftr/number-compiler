@@ -40,6 +40,7 @@ from number_compiler.hashlife.interfaces.diamond_quotient import (
     LocalInterfaceID,
 )
 from number_compiler.resources.ledger import ResourceLedger
+from number_compiler.resources.stores import append_indexed_node, make_node_index
 
 
 @dataclass(frozen=True, slots=True)
@@ -113,6 +114,9 @@ class SourceForestRecord:
 class SourceCellArena:
     """Scoped structural view of immutable original-source geometry."""
 
+    _nodes: MutableSequence[SourceCellRecord]
+    _keys: MutableMapping[DyadicTile, int]
+
     _KIND = "source-cell"
     _FOREST_KIND = "source-forest"
 
@@ -126,12 +130,8 @@ class SourceCellArena:
         self._key_owner = self.ledger.register(
             prefix + "-interner", "source_cell_interner"
         )
-        self._nodes: MutableSequence[SourceCellRecord] = self.ledger.make_list(
-            self._node_owner
-        )
-        self._keys: MutableMapping[DyadicTile, int] = self.ledger.make_dict(
-            self._key_owner
-        )
+        self._nodes = self.ledger.make_list(self._node_owner)
+        self._keys = self.ledger.make_dict(self._key_owner)
         self._forest_node_owner = self.ledger.register(
             prefix + "-forest-nodes", "source_forest"
         )
@@ -215,15 +215,15 @@ class SourceCellArena:
         if found is not None:
             self.ledger.bump("source_forest_interner_hits")
             return self._forest_handle(found)
-        self.ledger.reserve_many(
-            (
-                (self._forest_node_owner, 1, 1),
-                (self._forest_key_owner, 1, 0),
-            )
+        found = append_indexed_node(
+            self.ledger,
+            self._forests,
+            self._forest_keys,
+            self._forest_node_owner,
+            self._forest_key_owner,
+            key,
+            record,
         )
-        found = len(self._forests)
-        self._forests.append(record)
-        self._forest_keys[key] = found
         self.ledger.bump("source_forest_publications")
         return self._forest_handle(found)
 
@@ -330,12 +330,15 @@ class SourceCellArena:
                 right,
                 uniform_symbol,
             )
-            self.ledger.reserve_many(
-                ((self._node_owner, 1, 1), (self._key_owner, 1, 0))
+            append_indexed_node(
+                self.ledger,
+                self._nodes,
+                self._keys,
+                self._node_owner,
+                self._key_owner,
+                current,
+                record,
             )
-            local_id = len(self._nodes)
-            self._nodes.append(record)
-            self._keys[current] = local_id
             self.ledger.bump("source_cell_publications")
         return self._handle(self._keys[tile])
 
@@ -512,6 +515,9 @@ class RecursiveFieldImageArena:
     stable semantic identities.
     """
 
+    _nodes: MutableMapping[int, FieldImageRecord]
+    _keys: MutableMapping[_ImageKey, int]
+
     _KIND = "field-image"
 
     def __init__(
@@ -628,11 +634,9 @@ class RecursiveFieldImageArena:
         self._node_owner = ledger.register(prefix + "-nodes", "field_image")
         self._key_owner = ledger.register(prefix + "-interner", "field_image_interner")
         self._binding_owner = ledger.register(prefix + "-bindings", "spatial_binding")
-        self._nodes: MutableMapping[int, FieldImageRecord] = ledger.make_dict(
-            self._node_owner,
-            nodes_per_entry=1,
+        self._nodes, self._keys = make_node_index(
+            ledger, self._node_owner, self._key_owner
         )
-        self._keys: MutableMapping[_ImageKey, int] = ledger.make_dict(self._key_owner)
         self._bindings: MutableMapping[ImageRequestKey, FieldImageID] = (
             ledger.make_dict(self._binding_owner)
         )

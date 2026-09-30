@@ -66,6 +66,11 @@ class RuntimeTableFunction:
     side: int
     outputs: tuple[int, ...]
 
+    def apply(self, argument: RuntimeAtom) -> RuntimeAtom:
+        if type(argument) is not int or not 0 <= argument < len(self.outputs):
+            raise ValueError("bounded function argument is outside its domain")
+        return self.outputs[argument]
+
 
 @dataclass(frozen=True, slots=True)
 class RuntimeTransferredState:

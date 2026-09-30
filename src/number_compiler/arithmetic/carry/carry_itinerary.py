@@ -19,7 +19,7 @@ epimorphism before temporal caching.
 from __future__ import annotations
 
 import itertools
-from collections.abc import Sequence
+from collections.abc import Callable, Sequence
 from dataclasses import dataclass
 from math import comb, gcd
 
@@ -32,6 +32,7 @@ from number_compiler.arithmetic.carry.event_memory import (
 )
 from number_compiler.arithmetic.fields.morphism_core import binary_power
 from number_compiler.arithmetic.polynomials.cyclotomic import is_power_of_two
+from number_compiler.arithmetic.polynomials.modular_linear import row_reduce_mod_prime
 from number_compiler.arithmetic.polynomials.cyclotomic_transport import (
     power_two_cyclotomic_annihilated,
 )
@@ -121,15 +122,86 @@ def pair_field_preimage_count(pair: Sequence[int], *, base: int = 10) -> int:
     return count
 
 
+def _quotient_values(
+    values: Sequence[int], size: int, modulus: int
+) -> tuple[tuple[int, ...], int, int]:
+    normalized = tuple(map(int, values))
+    size, modulus = int(size), int(modulus)
+    if size <= 0 or modulus <= 1:
+        raise ValueError((size, modulus))
+    return normalized, size, modulus
+
+
+def _advance_values(
+    state: Sequence[int], growth: int, modulus: int
+) -> tuple[tuple[int, ...], int, int]:
+    normalized = tuple(map(int, state))
+    growth, modulus = int(growth), int(modulus)
+    if not normalized or growth not in (0, 1) or modulus <= 1:
+        raise ValueError((len(normalized), growth, modulus))
+    return normalized, growth, modulus
+
+
+def _doubled_event(
+    state: Sequence[int], event: Sequence[int], modulus: int
+) -> tuple[int, ...]:
+    return tuple(
+        (2 * value + forcing) % modulus
+        for value, forcing in zip(state, event, strict=True)
+    )
+
+
+def _class_transport_kernel(
+    classes: int, no_growth: int, growth: int, modulus: int, *, negacyclic: bool
+) -> tuple[int, ...]:
+    classes, no_growth, growth, modulus = map(
+        int, (classes, no_growth, growth, modulus)
+    )
+    if classes <= 0 or no_growth < 0 or growth < 0 or modulus <= 1:
+        raise ValueError((classes, no_growth, growth, modulus))
+    scale = pow(2, no_growth, modulus)
+    out = [0] * classes
+    for index in range(growth + 1):
+        quotient, remainder = divmod(index, classes)
+        sign = -1 if negacyclic and quotient & 1 else 1
+        out[remainder] = (out[remainder] + sign * scale * comb(growth, index)) % modulus
+    return tuple(out)
+
+
+def _adaptive_memory_horizon(
+    growth_bits: Sequence[int],
+    endpoint: int,
+    size: int,
+    bits: int,
+    annihilated: Callable[..., bool],
+    *,
+    primary: bool = False,
+) -> int | None:
+    gs = tuple(map(int, growth_bits))
+    endpoint, size, bits = int(endpoint), int(size), int(bits)
+    if (
+        not 0 <= endpoint <= len(gs)
+        or size <= 0
+        or bits <= 0
+        or any(g not in (0, 1) for g in gs)
+    ):
+        raise ValueError((endpoint, size, bits))
+    kwargs = {"bits": bits} if primary else {"modulus": 1 << bits}
+    no_growth = growth = 0
+    for length in range(1, endpoint + 1):
+        bit = gs[endpoint - length]
+        growth += bit
+        no_growth += 1 - bit
+        if annihilated(size, no_growth, growth, **kwargs):
+            return length
+    return None
+
+
 def cyclic_class_sums(
     values: Sequence[int], classes: int, modulus: int
 ) -> tuple[int, ...]:
     """Coefficient vector of ``sum values[i] z**i`` modulo ``z**classes-1``."""
-    values = tuple(map(int, values))
-    classes = int(classes)
-    modulus = int(modulus)
-    if classes <= 0 or modulus <= 1:
-        raise ValueError((classes, modulus))
+    values, classes, modulus = _quotient_values(values, classes, modulus)
     out = [0] * classes
     for i, value in enumerate(values):
         out[i % classes] = (out[i % classes] + value) % modulus
@@ -145,18 +217,14 @@ def cyclic_pair_advance(
     indexing.  The event may be the full event row or an already-quotiented
     vector of the same class count.
     """
-    state = tuple(map(int, state))
-    growth = int(growth)
-    modulus = int(modulus)
-    if not state or growth not in (0, 1) or modulus <= 1:
-        raise ValueError((len(state), growth, modulus))
+    state, growth, modulus = _advance_values(state, growth, modulus)
     classes = len(state)
     if len(event) == classes:
         ev = tuple(int(x) % modulus for x in event)
     else:
         ev = cyclic_class_sums(event, classes, modulus)
     if growth == 0:
-        return tuple((2 * state[i] + ev[i]) % modulus for i in range(classes))
+        return _doubled_event(state, ev, modulus)
     return tuple(
         (state[i] + state[(i - 1) % classes] + ev[i]) % modulus for i in range(classes)
     )
@@ -166,16 +234,9 @@ def cyclic_transport_kernel(
     classes: int, no_growth: int, growth: int, *, modulus: int
 ) -> tuple[int, ...]:
     """Kernel of ``2**q (1+z)**r`` in ``Z/modulus[z]/(z**m-1)``."""
-    classes, no_growth, growth, modulus = map(
-        int, (classes, no_growth, growth, modulus)
+    return _class_transport_kernel(
+        classes, no_growth, growth, modulus, negacyclic=False
     )
-    if classes <= 0 or no_growth < 0 or growth < 0 or modulus <= 1:
-        raise ValueError((classes, no_growth, growth, modulus))
-    scale = pow(2, no_growth, modulus)
-    out = [0] * classes
-    for j in range(growth + 1):
-        out[j % classes] = (out[j % classes] + scale * comb(growth, j)) % modulus
-    return tuple(out)
 
 
 def cyclic_transport_annihilated(
@@ -193,11 +254,7 @@ def negacyclic_class_sums(
     ``(-1)**q``.  At integer radix ``b`` this is the polynomial interface behind
     residues modulo ``b**classes+1`` (for example decimal mod 101 at classes=2).
     """
-    values = tuple(map(int, values))
-    classes = int(classes)
-    modulus = int(modulus)
-    if classes <= 0 or modulus <= 1:
-        raise ValueError((classes, modulus))
+    values, classes, modulus = _quotient_values(values, classes, modulus)
     out = [0] * classes
     for i, value in enumerate(values):
         q, r = divmod(i, classes)
@@ -210,17 +267,13 @@ def negacyclic_pair_advance(
     state: Sequence[int], event: Sequence[int], growth: int, *, modulus: int
 ) -> tuple[int, ...]:
     """Advance ``S' = A_g S + E`` in ``Z/modulus[z]/(z**m+1)``."""
-    state = tuple(map(int, state))
-    growth = int(growth)
-    modulus = int(modulus)
-    if not state or growth not in (0, 1) or modulus <= 1:
-        raise ValueError((len(state), growth, modulus))
+    state, growth, modulus = _advance_values(state, growth, modulus)
     classes = len(state)
     # ``len(event)==classes`` is ambiguous (a raw event can have exactly m
     # digits), so the public primitive always treats ``event`` as raw values.
     ev = negacyclic_class_sums(event, classes, modulus)
     if growth == 0:
-        return tuple((2 * state[i] + ev[i]) % modulus for i in range(classes))
+        return _doubled_event(state, ev, modulus)
     out = []
     for i in range(classes):
         shifted = -state[-1] if i == 0 else state[i - 1]
@@ -232,18 +285,7 @@ def negacyclic_transport_kernel(
     classes: int, no_growth: int, growth: int, *, modulus: int
 ) -> tuple[int, ...]:
     """Kernel of ``2**q(1+z)**r`` modulo ``(z**m+1, modulus)``."""
-    classes, no_growth, growth, modulus = map(
-        int, (classes, no_growth, growth, modulus)
-    )
-    if classes <= 0 or no_growth < 0 or growth < 0 or modulus <= 1:
-        raise ValueError((classes, no_growth, growth, modulus))
-    scale = pow(2, no_growth, modulus)
-    out = [0] * classes
-    for j in range(growth + 1):
-        q, rem = divmod(j, classes)
-        sign = -1 if q & 1 else 1
-        out[rem] = (out[rem] + sign * scale * comb(growth, j)) % modulus
-    return tuple(out)
+    return _class_transport_kernel(classes, no_growth, growth, modulus, negacyclic=True)
 
 
 def negacyclic_transport_annihilated(
@@ -268,26 +310,14 @@ def adaptive_negacyclic_memory_horizon(
     growth_bits: Sequence[int], endpoint: int, *, classes: int, bits: int
 ) -> int | None:
     """Exact old-state dependency horizon in a negacyclic ``2**bits`` quotient."""
-    gs = tuple(map(int, growth_bits))
-    endpoint = int(endpoint)
-    classes = int(classes)
-    bits = int(bits)
-    if (
-        not 0 <= endpoint <= len(gs)
-        or classes <= 0
-        or bits <= 0
-        or any(g not in (0, 1) for g in gs)
-    ):
-        raise ValueError((endpoint, classes, bits))
-    q = r = 0
-    modulus = 1 << bits
-    for k in range(1, endpoint + 1):
-        g = gs[endpoint - k]
-        r += g
-        q += 1 - g
-        if negacyclic_transport_annihilated(classes, q, r, modulus=modulus):
-            return k
-    return None
+    return _adaptive_memory_horizon(
+        growth_bits,
+        endpoint,
+        classes,
+        bits,
+        negacyclic_transport_annihilated,
+        primary=False,
+    )
 
 
 def zplus1_jet(values: Sequence[int], degree: int, modulus: int) -> tuple[int, ...]:
@@ -297,11 +327,7 @@ def zplus1_jet(values: Sequence[int], degree: int, modulus: int) -> tuple[int, .
     jet is an exact polynomial quotient; no point evaluation or digit materialization
     is hidden behind the representation.
     """
-    values = tuple(map(int, values))
-    degree = int(degree)
-    modulus = int(modulus)
-    if degree <= 0 or modulus <= 1:
-        raise ValueError((degree, modulus))
+    values, degree, modulus = _quotient_values(values, degree, modulus)
     out = [0] * degree
     for i, value in enumerate(values):
         for j in range(min(i, degree - 1) + 1):
@@ -319,17 +345,13 @@ def zplus1_jet_advance(
     literal one-place nilpotent shift; this is the strongest polynomial
     conjugacy found by the residue audit.
     """
-    state = tuple(map(int, state))
-    growth = int(growth)
-    modulus = int(modulus)
-    if not state or growth not in (0, 1) or modulus <= 1:
-        raise ValueError((len(state), growth, modulus))
+    state, growth, modulus = _advance_values(state, growth, modulus)
     degree = len(state)
     # As above, raw width can equal the quotient degree.  Never infer an
     # already-projected event from length alone.
     ev = zplus1_jet(event, degree, modulus)
     if growth == 0:
-        return tuple((2 * state[j] + ev[j]) % modulus for j in range(degree))
+        return _doubled_event(state, ev, modulus)
     return tuple((ev[j] + (state[j - 1] if j else 0)) % modulus for j in range(degree))
 
 
@@ -347,25 +369,9 @@ def adaptive_zplus1_memory_horizon(
     growth_bits: Sequence[int], endpoint: int, *, degree: int, bits: int
 ) -> int | None:
     """Exact dependency horizon in the primary jet quotient."""
-    gs = tuple(map(int, growth_bits))
-    endpoint = int(endpoint)
-    degree = int(degree)
-    bits = int(bits)
-    if (
-        not 0 <= endpoint <= len(gs)
-        or degree <= 0
-        or bits <= 0
-        or any(g not in (0, 1) for g in gs)
-    ):
-        raise ValueError((endpoint, degree, bits))
-    q = r = 0
-    for k in range(1, endpoint + 1):
-        g = gs[endpoint - k]
-        r += g
-        q += 1 - g
-        if zplus1_transport_annihilated(degree, q, r, bits=bits):
-            return k
-    return None
+    return _adaptive_memory_horizon(
+        growth_bits, endpoint, degree, bits, zplus1_transport_annihilated, primary=True
+    )
 
 
 def adaptive_cyclic_memory_horizon(
@@ -377,26 +383,14 @@ def adaptive_cyclic_memory_horizon(
     ``growth_bits[endpoint-k:endpoint]``.  ``None`` means the supplied prefix is
     too short to prove annihilation.
     """
-    gs = tuple(map(int, growth_bits))
-    endpoint = int(endpoint)
-    classes = int(classes)
-    bits = int(bits)
-    if (
-        not 0 <= endpoint <= len(gs)
-        or classes <= 0
-        or bits <= 0
-        or any(g not in (0, 1) for g in gs)
-    ):
-        raise ValueError((endpoint, classes, bits))
-    q = r = 0
-    modulus = 1 << bits
-    for k in range(1, endpoint + 1):
-        g = gs[endpoint - k]
-        r += g
-        q += 1 - g
-        if cyclic_transport_annihilated(classes, q, r, modulus=modulus):
-            return k
-    return None
+    return _adaptive_memory_horizon(
+        growth_bits,
+        endpoint,
+        classes,
+        bits,
+        cyclic_transport_annihilated,
+        primary=False,
+    )
 
 
 def growth_run_itinerary(
@@ -670,24 +664,8 @@ def _rank_mod_prime(matrix: Sequence[Sequence[int]], prime: int) -> int:
     p = int(prime)
     if p < 2:
         raise ValueError(p)
-    a = [[int(x) % p for x in row] for row in matrix]
-    rows = len(a)
-    cols = len(a[0]) if rows else 0
-    rank = 0
-    for col in range(cols):
-        pivot = next((r for r in range(rank, rows) if a[r][col]), None)
-        if pivot is None:
-            continue
-        a[rank], a[pivot] = a[pivot], a[rank]
-        inv = pow(a[rank][col], -1, p)
-        a[rank] = [(x * inv) % p for x in a[rank]]
-        for r in range(rows):
-            if r == rank or not a[r][col]:
-                continue
-            c = a[r][col]
-            a[r] = [(x - c * y) % p for x, y in zip(a[r], a[rank])]
-        rank += 1
-    return rank
+    _rows, pivots = row_reduce_mod_prime(matrix, p)
+    return len(pivots)
 
 
 def cyclic_growth_operator_rank(classes: int, prime: int, *, power: int = 1) -> int:

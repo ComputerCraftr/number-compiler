@@ -1,5 +1,8 @@
 """The fixed C^4 interface is kernel data, with an exhaustive offline proof."""
 
+from tests.support.assertions import assert_rejected_atomically
+
+
 import hashlib
 from dataclasses import FrozenInstanceError
 from itertools import product
@@ -88,10 +91,12 @@ def test_forged_fixed_kernel_rejects_before_index_ledger_mutation() -> None:
     effect = PhysicalCollatzFourBlockEffect()
     object.__setattr__(effect, "right_count", 90.0)
     ledger = ResourceLedger()
-    before = ledger.snapshot()
-    with pytest.raises(ValueError, match="certificate"):
-        HashLifeBlockIndex(effect, (1,), logical_length=4, ledger=ledger)
-    assert ledger.snapshot() == before
+    assert_rejected_atomically(
+        ledger,
+        lambda: HashLifeBlockIndex(effect, (1,), logical_length=4, ledger=ledger),
+        ValueError,
+        match="certificate",
+    )
 
 
 def test_macro_physical_compiler_consumes_binary_dag_and_certifies_halo_and_cycle() -> (

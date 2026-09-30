@@ -21,6 +21,8 @@ replay is permitted here.
 
 from __future__ import annotations
 
+from number_compiler.arithmetic.contracts.input_validation import normalized_odd_modulus
+
 from dataclasses import dataclass
 from math import gcd
 
@@ -45,6 +47,24 @@ class SpecialFrobeniusChunkSpec:
             raise ValueError((self.parameter, self.start_level, self.span))
         if self.baseline_local_v2 < 0 or self.modulus_bits <= 0:
             raise ValueError((self.baseline_local_v2, self.modulus_bits))
+
+    def then(self, downstream: SpecialFrobeniusChunkSpec) -> SpecialFrobeniusChunkSpec:
+        if (
+            self.family != downstream.family
+            or self.parameter != downstream.parameter
+            or self.baseline_local_v2 != downstream.baseline_local_v2
+            or self.modulus_bits != downstream.modulus_bits
+            or downstream.start_level != self.end_level + 1
+        ):
+            raise ValueError((self, downstream))
+        return SpecialFrobeniusChunkSpec(
+            self.family,
+            self.parameter,
+            self.start_level,
+            self.span + downstream.span,
+            self.baseline_local_v2,
+            self.modulus_bits,
+        )
 
     @property
     def base_stride_v2(self) -> int:
@@ -169,23 +189,7 @@ class SpecialFrobeniusChunkResult:
         """
         if not isinstance(downstream, SpecialFrobeniusChunkResult):
             raise TypeError(type(downstream))
-        a, b = self.spec, downstream.spec
-        if (
-            a.family != b.family
-            or a.parameter != b.parameter
-            or a.baseline_local_v2 != b.baseline_local_v2
-            or a.modulus_bits != b.modulus_bits
-            or b.start_level != a.end_level + 1
-        ):
-            raise ValueError((a, b))
-        combined_spec = SpecialFrobeniusChunkSpec(
-            a.family,
-            a.parameter,
-            a.start_level,
-            a.span + b.span,
-            a.baseline_local_v2,
-            a.modulus_bits,
-        )
+        combined_spec = self.spec.then(downstream.spec)
         method = f"compose({self.method},{downstream.method})"
         if self.status == "ALL_PASS":
             if downstream.status == "ALL_PASS":
@@ -195,7 +199,7 @@ class SpecialFrobeniusChunkResult:
             if downstream.status == "ALL_FAIL":
                 offset = downstream.first_failure_offset
                 if offset is not None:
-                    offset += a.span
+                    offset += self.spec.span
                 return SpecialFrobeniusChunkResult(
                     combined_spec,
                     "ALL_FAIL",
@@ -280,9 +284,7 @@ class SpecialFrobeniusDefectPacket:
     factor_enumeration: int = 0
 
     def __post_init__(self) -> None:
-        modulus = int(self.modulus)
-        if modulus <= 1 or not (modulus & 1):
-            raise ValueError(modulus)
+        modulus = normalized_odd_modulus(self.modulus)
         object.__setattr__(self, "modulus", modulus)
         object.__setattr__(self, "defect", int(self.defect) % modulus)
         if any(

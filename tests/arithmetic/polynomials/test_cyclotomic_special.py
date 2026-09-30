@@ -1,6 +1,9 @@
 import itertools
 
-from devtools.proofs.oracles.special_primality import lucas_lehmer_test, pepin_test
+from devtools.verification.oracles.special_primality import (
+    lucas_lehmer_test,
+    pepin_test,
+)
 from number_compiler.arithmetic.carry.carry_itinerary import negacyclic_transport_kernel
 from number_compiler.arithmetic.polynomials.cyclotomic import (
     cyclotomic_one_plus_norm,

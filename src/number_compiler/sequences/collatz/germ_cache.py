@@ -346,6 +346,15 @@ class CollatzGermTransitionCache:
         self._power_engine = out
         return out
 
+    @staticmethod
+    def _admit_event_count(germ: CollatzAffineSuffixGerm, events: int) -> int:
+        if not isinstance(germ, CollatzAffineSuffixGerm):
+            raise TypeError(type(germ))
+        events = int(events)
+        if events < 0:
+            raise ValueError(events)
+        return events
+
     def advance_many(
         self,
         germ: CollatzAffineSuffixGerm,
@@ -357,11 +366,7 @@ class CollatzGermTransitionCache:
         additive action restored on the returned germ.  The valuation sum is
         accumulated as a second additive observer.
         """
-        if not isinstance(germ, CollatzAffineSuffixGerm):
-            raise TypeError(type(germ))
-        events = int(events)
-        if events < 0:
-            raise ValueError(events)
+        events = self._admit_event_count(germ, events)
         start_steps = int(germ.logical_steps)
         algebraic = self._algebraic_state(germ)
         target, weight = self._lift_engine().advance(algebraic, events)
@@ -419,11 +424,7 @@ class CollatzGermTransitionCache:
         arena: object,
     ) -> CollatzGermEventPowerAdvance:
         """Jump events and construct their exact lazy event DAG as lift weight."""
-        if not isinstance(germ, CollatzAffineSuffixGerm):
-            raise TypeError(type(germ))
-        events = int(events)
-        if events < 0:
-            raise ValueError(events)
+        events = self._admit_event_count(germ, events)
         start_steps = int(germ.logical_steps)
         engine = self._event_lift_engine(arena)
         target, root = engine.advance(self._algebraic_state(germ), events)

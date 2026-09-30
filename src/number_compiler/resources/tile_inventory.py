@@ -167,12 +167,33 @@ def audit_tiles(
                     and right.alphabet == alphabet_id
                 )
                 offset = 1 << (record.level - 1)
-                first = left.first_active
-                if first is None and right.first_active is not None:
-                    first = offset + right.first_active
-                last = left.last_active
-                if right.last_active is not None:
-                    last = offset + right.last_active
+                # Independent extremum check: do not copy the publisher's branch law.
+                first = min(
+                    (
+                        position
+                        for position in (
+                            left.first_active,
+                            None
+                            if right.first_active is None
+                            else offset + right.first_active,
+                        )
+                        if position is not None
+                    ),
+                    default=None,
+                )
+                last = max(
+                    (
+                        position
+                        for position in (
+                            left.last_active,
+                            None
+                            if right.last_active is None
+                            else offset + right.last_active,
+                        )
+                        if position is not None
+                    ),
+                    default=None,
+                )
                 content_key = (
                     alphabet_id.local_id,
                     record.level,

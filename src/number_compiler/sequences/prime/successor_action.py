@@ -321,12 +321,10 @@ class PrimeSuccessorActionArena:
         self._normal_forms[width] = action
         return action
 
-    def power(self, copies: int) -> PrimeSuccessorActionID:
-        """Build a binary-composed action without replaying parent periods."""
-        self._check_open()
-        if type(copies) is not int or copies < 0:
-            raise ValueError("prime successor power must be a nonnegative integer")
-        result, power, remaining = self.identity, self.base, copies
+    def _charged_power(
+        self, power: PrimeSuccessorActionID, remaining: int
+    ) -> PrimeSuccessorActionID:
+        result = self.identity
         while remaining:
             self.rank.charge()
             if remaining & 1:
@@ -335,6 +333,13 @@ class PrimeSuccessorActionArena:
             if remaining:
                 power = self.compose(power, power)
         return result
+
+    def power(self, copies: int) -> PrimeSuccessorActionID:
+        """Build a binary-composed action without replaying parent periods."""
+        self._check_open()
+        if type(copies) is not int or copies < 0:
+            raise ValueError("prime successor power must be a nonnegative integer")
+        return self._charged_power(self.base, copies)
 
     def prefix(self, width: int) -> PrimeSuccessorActionID:
         """Build a binary admitted integer prefix without enumerating its leaves."""
@@ -357,15 +362,7 @@ class PrimeSuccessorActionArena:
                 )
             )
             self._normal_forms[1] = unit
-        result, power, remaining = self.identity, unit, width
-        while remaining:
-            self.rank.charge()
-            if remaining & 1:
-                result = self.compose(result, power)
-            remaining >>= 1
-            if remaining:
-                power = self.compose(power, power)
-        return result
+        return self._charged_power(unit, width)
 
     def _interval_effect(
         self, start: int, width: int, entering_phase: int

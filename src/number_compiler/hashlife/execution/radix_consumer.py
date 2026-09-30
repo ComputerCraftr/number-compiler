@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from number_compiler.arithmetic.fields.morphism_core import semigroup_power
+
 from collections.abc import MutableMapping, MutableSequence
 from dataclasses import dataclass
 
@@ -161,17 +163,7 @@ class RadixDivisionActionArena:
         if found is not None:
             self.ledger.bump("radix_temporal_action_early_hits")
             return self._handle(found)
-        result: RadixDivisionActionID | None = None
-        power = self.primitive
-        remaining = exponent
-        while remaining:
-            if remaining & 1:
-                result = power if result is None else self.compose(result, power)
-            remaining >>= 1
-            if remaining:
-                power = self.compose(power, power)
-        assert result is not None
-        return result
+        return semigroup_power(self.primitive, exponent, compose=self.compose)
 
 
 __all__ = [

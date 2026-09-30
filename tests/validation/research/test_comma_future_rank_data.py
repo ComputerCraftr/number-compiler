@@ -9,6 +9,7 @@ from pathlib import Path
 import pytest
 
 from devtools.experiments.comma import generate_rank_candidate as generator
+from devtools.paths import isabelle_root
 
 pytestmark = pytest.mark.validation
 
@@ -20,8 +21,8 @@ def _side_values(text: str) -> list[int]:
 
 def test_rank_default_output_has_concrete_check_owner() -> None:
     assert generator.DEFAULT_OUTPUT == (
-        Path(__file__).resolve().parents[3]
-        / "devtools/proofs/isabelle/comma_future_checked/Comma_Rank_Data.thy"
+        isabelle_root(Path(__file__).resolve().parents[3])
+        / "comma_future_checked/Comma_Rank_Data.thy"
     )
 
 

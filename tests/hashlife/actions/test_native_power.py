@@ -1,5 +1,10 @@
 from __future__ import annotations
 
+from tests.support.reverse_pair_oracle import (
+    symmetric_reference_successor as reference_successor,
+)
+from tests.support.reverse_pair_oracle import reference_power
+from tests.support.reference_arithmetic import symmetric_word as symmetric_word
 import random
 from typing import Never
 
@@ -19,27 +24,6 @@ from number_compiler.arithmetic.formula.types import RadixSpec
 from number_compiler.hashlife.execution.evaluator import materialize_values
 
 
-def reference_successor(full: tuple[int, ...], base: int) -> tuple[int, ...]:
-    d = len(full)
-    L = [0] * (d + 1)
-    for i, s in enumerate(full):
-        L[i + 1] = int(s + L[i] >= base)
-    R = [L[d - i] for i in range(d + 1)]
-    growth = L[d]
-    if not growth:
-        out = [
-            2 * full[i] + L[i] + R[i + 1] - base * (L[i + 1] + R[i]) for i in range(d)
-        ]
-    else:
-        out = [0] * (d + 1)
-        out[0] = full[0] + 1 - base * L[1]
-        out[d] = out[0]
-        for i in range(1, d):
-            out[i] = full[i] + full[i - 1] + L[i] + R[i] - base * (L[i + 1] + R[i - 1])
-    assert out == out[::-1]
-    return tuple(out)
-
-
 def normalize_pair_digits(full: tuple[int, ...], base: int) -> tuple[int, ...]:
     carry = 0
     out = []
@@ -50,13 +34,6 @@ def normalize_pair_digits(full: tuple[int, ...], base: int) -> tuple[int, ...]:
     if carry:
         out.append(carry)
     return tuple(out)
-
-
-def symmetric_word(rng: random.Random, base: int, width: int) -> tuple[int, ...]:
-    half = [rng.randrange(2 * base - 1) for _ in range((width + 1) // 2)]
-    if half[0] == 0:
-        half[0] = 1
-    return tuple(half + (half[-2::-1] if width & 1 else half[::-1]))
 
 
 def test_native_two_step_matches_two_successors_random_bases() -> None:
@@ -182,14 +159,7 @@ def test_native_four_step_matches_four_successors_random_bases() -> None:
         spec = RadixSpec(base)
         for _ in range(25):
             values = symmetric_word(rng, base, rng.randint(1, 16))
-            expected = values
-            widths = [len(values)]
-            growths = []
-            for _step in range(4):
-                nxt = reference_successor(expected, base)
-                growths.append(len(nxt) - len(expected))
-                widths.append(len(nxt))
-                expected = nxt
+            expected, growths, widths = reference_power(values, base, 4)
             arena = FormulaArena()
             source = root_from_values(values, arena, spec)
             compiled = compile_native_four_step(arena, source, spec)
@@ -298,14 +268,7 @@ def test_general_native_power_matches_reference_without_semantic_intermediate_ro
         spec = RadixSpec(base)
         for steps in range(10):
             values = symmetric_word(rng, base, rng.randint(1, 12))
-            expected = values
-            widths = [len(values)]
-            growths = []
-            for _ in range(steps):
-                nxt = reference_successor(expected, base)
-                growths.append(len(nxt) - len(expected))
-                widths.append(len(nxt))
-                expected = nxt
+            expected, growths, widths = reference_power(values, base, steps)
             arena = FormulaArena()
             source = root_from_values(values, arena, spec)
             compiled = compile_native_power(arena, source, steps, spec)

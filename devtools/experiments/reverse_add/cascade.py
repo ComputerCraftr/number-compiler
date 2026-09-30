@@ -12,7 +12,7 @@ semantic reverse/add state.
 
 from __future__ import annotations
 
-from collections.abc import Iterable, Iterator, Sequence
+from collections.abc import Callable, Iterable, Iterator, Sequence
 from dataclasses import dataclass
 from itertools import pairwise, permutations
 from math import prod
@@ -77,6 +77,28 @@ def _selector_metrics_mask(mask: int) -> SelectorMetrics:
 
 def _selector_metrics(values: Sequence[int]) -> SelectorMetrics:
     return _selector_metrics_mask(_selector_mask(values))
+
+
+def group_left_behavior(
+    states: Iterable[int],
+    step: Callable[[int, int], int | None],
+    emit: Callable[[int, int, int], Sequence[int] | None],
+    symbol: int,
+    right_after: int,
+) -> tuple[tuple[int, tuple[int, ...], int], ...]:
+    """Group left states by emitted word and successor state."""
+    groups: dict[tuple[tuple[int, ...], int], int] = {}
+    for left_state in states:
+        left_next = step(left_state, symbol)
+        if left_next is None:
+            continue
+        value = emit(left_state, symbol, right_after)
+        if value is not None:
+            key = (tuple(value), left_next)
+            groups[key] = groups.get(key, 0) | (1 << left_state)
+    return tuple(
+        (mask, value, left_next) for (value, left_next), mask in groups.items()
+    )
 
 
 def _checked_relation_signature(arity: int, relation: CascadeRelation) -> int:

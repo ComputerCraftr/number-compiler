@@ -9,7 +9,7 @@ from number_compiler.hashlife.execution.tile_causal_interfaces import (
     interface_payload_from_causal,
 )
 from number_compiler.hashlife.execution.tile_causal_tasks import result_payload
-from tests.arithmetic.contracts.test_tile_kernel import _runtime, _tile
+from tests.support.tile_kernel import _runtime, _tile
 
 
 @pytest.mark.parametrize("source", ((0, 0, 0, 1), (5, 5, 5, 5)))

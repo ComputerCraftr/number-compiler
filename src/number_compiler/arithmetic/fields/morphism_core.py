@@ -16,7 +16,7 @@ orbit or claims that a branch observer is closed.
 
 from __future__ import annotations
 
-from collections.abc import Callable, Hashable
+from collections.abc import Callable, Hashable, Iterable
 from dataclasses import dataclass
 from typing import Generic, TypeVar
 
@@ -24,6 +24,31 @@ T = TypeVar("T")
 K = TypeVar("K", bound=Hashable)
 V = TypeVar("V")
 E = TypeVar("E")
+
+
+def balanced_fold(
+    nodes: Iterable[T], *, identity: T, compose: Callable[[T, T], T]
+) -> T:
+    """Fold ordered monoid elements using logarithmic binary-counter storage."""
+    levels: list[T | None] = []
+    for node in nodes:
+        level = 0
+        while True:
+            if level == len(levels):
+                levels.append(node)
+                break
+            prior = levels[level]
+            if prior is None:
+                levels[level] = node
+                break
+            levels[level] = None
+            node = compose(prior, node)
+            level += 1
+    result: T | None = None
+    for retained in reversed(levels):
+        if retained is not None:
+            result = retained if result is None else compose(result, retained)
+    return identity if result is None else result
 
 
 @dataclass(frozen=True, slots=True)
@@ -85,6 +110,40 @@ class BinaryPowerResult(Generic[T]):
 
     value: T
     compositions: int
+
+
+def semigroup_power(base: T, exponent: int, *, compose: Callable[[T, T], T]) -> T:
+    """Positive binary power without publishing or composing a semantic identity."""
+    if type(exponent) is not int or exponent <= 0:
+        raise ValueError("semigroup exponent must be a positive exact integer")
+    result: T | None = None
+    current, remaining = base, exponent
+    while remaining:
+        if remaining & 1:
+            result = current if result is None else compose(result, current)
+        remaining >>= 1
+        if remaining:
+            current = compose(current, current)
+    if result is None:
+        raise AssertionError("positive semigroup power lost its accumulator")
+    return result
+
+
+def canonical_uniform_power(base: T, count: int, *, compose: Callable[[T, T], T]) -> T:
+    """Build a positive uniform word in canonical descending-bit parent shape."""
+    selected: list[T] = []
+    while count:
+        if count & 1:
+            selected.append(base)
+        count >>= 1
+        if count:
+            base = compose(base, base)
+    if not selected:
+        raise ValueError("uniform power requires a positive duration")
+    result = selected[0]
+    for block in selected[1:]:
+        result = compose(block, result)
+    return result
 
 
 def binary_power(

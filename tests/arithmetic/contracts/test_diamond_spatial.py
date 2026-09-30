@@ -1,5 +1,8 @@
 """Complete primitive transfer functions reuse a parent across bound states."""
 
+from tests.support.assertions import assert_rejected_atomically
+
+
 from dataclasses import replace
 from typing import Never
 
@@ -68,7 +71,6 @@ def test_invalid_primitive_summary_scope_rejects_before_warm_lookup() -> None:
         replace(request, cell=foreign.cells.source(0, 2)),
         replace(request, side=True),
     ):
-        before = runtime.ledger.snapshot()
-        with pytest.raises((ValueError, TypeError)):
-            runtime.execute(invalid)
-        assert runtime.ledger.snapshot() == before
+        assert_rejected_atomically(
+            runtime.ledger, lambda: runtime.execute(invalid), (ValueError, TypeError)
+        )

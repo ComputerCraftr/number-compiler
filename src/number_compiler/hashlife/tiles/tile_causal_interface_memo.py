@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from number_compiler.hashlife.tiles.result_reverse_indexes import publish_indexed_result
+
 from number_compiler.arithmetic.contracts.block_kernel import BaseBlockEffect
 from number_compiler.hashlife.execution.tile_causal_interfaces import (
     CausalInterfacePayload,
@@ -199,13 +201,7 @@ def _validate_value(
     key: CausalInterfaceKey,
     value: CompletedInterfaceResult,
 ) -> None:
-    value.__post_init__()
-    if value.physical_support is not None:
-        arena.validate_physical_support(value.physical_support)
-    if (key.observation == "reverse-output-carry") != (
-        value.bound_reverse_output is not None
-    ):
-        raise ValueError("causal interface result omits its requested observation")
+    _validate_observation_payload(arena, key, value)
     if key.observation == "reverse-output-carry" and value.bound_reverse_output is None:
         raise ValueError(
             "reverse carry observation requires its complete output transfer"
@@ -240,13 +236,7 @@ def _validate_published_value(
     value: CompletedInterfaceResult,
 ) -> None:
     """Validate a warm record without executing its semantic functions."""
-    value.__post_init__()
-    if value.physical_support is not None:
-        arena.validate_physical_support(value.physical_support)
-    if (key.observation == "reverse-output-carry") != (
-        value.bound_reverse_output is not None
-    ):
-        raise ValueError("causal interface result omits its requested observation")
+    _validate_observation_payload(arena, key, value)
     _validate_reverse_output_profile(arena, key, value)
     if value._publication_owner is not arena._interface_publication_seal:
         raise ValueError("causal interface result was not issued by this arena")
@@ -325,30 +315,16 @@ def publish_causal_interface(
             temporal_span=temporal_span(arena.action_authority, key.action),
         )
         return _payload(found, key)
-    referenced = arena._tiles_for(key, value)
-    reverse_entries = arena._index_entries(referenced)
-    reservations = (
-        (
-            arena._memo_owner,
-            1,
+    publish_indexed_result(
+        arena,
+        key,
+        value,
+        retained_nodes=(
             0
             if value.bound_reverse_output is None
-            else value.bound_reverse_output.retained_slots,
+            else value.bound_reverse_output.retained_slots
         ),
-        (arena._reverse_owner, reverse_entries, 0),
     )
-    arena.ledger.reserve_many(reservations)
-    reverse_snapshot = arena._reverse_snapshot(referenced, key)
-    try:
-        arena._memo[key] = value
-        for tile in referenced:
-            arena._add_membership(tile, key)
-    except BaseException:
-        arena._memo.pop(key, None)
-        arena._restore_reverse(reverse_snapshot)
-        for owner, entries, nodes in reservations:
-            arena.ledger.release(owner, entries, nodes)
-        raise
     arena.ledger.bump("causal_interface_result_publications")
     level = arena.tiles.resolve(key.input).level
     span = temporal_span(arena.action_authority, key.action)
@@ -373,3 +349,17 @@ __all__ = [
     "lookup_causal_interface",
     "publish_causal_interface",
 ]
+
+
+def _validate_observation_payload(
+    arena: CompletedResultArena,
+    key: CausalInterfaceKey,
+    value: CompletedInterfaceResult,
+) -> None:
+    value.__post_init__()
+    if value.physical_support is not None:
+        arena.validate_physical_support(value.physical_support)
+    if (key.observation == "reverse-output-carry") != (
+        value.bound_reverse_output is not None
+    ):
+        raise ValueError("causal interface result omits its requested observation")

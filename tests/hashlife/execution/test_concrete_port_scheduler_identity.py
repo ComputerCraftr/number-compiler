@@ -205,7 +205,12 @@ def test_stale_and_cross_action_composed_ports_reject_before_task_lookup() -> No
     assert final.nodes == cleared.nodes
 
 
-def test_virtual_interface_publication_is_atomic_and_counted_as_one_node() -> None:
+def _virtual_fixture() -> tuple[
+    ResourceLedger,
+    ConcretePortScheduler,
+    _canonical_VirtualInterface,
+    _canonical_VirtualBinding,
+]:
     ledger, scheduler, primitive, composed, cell = _runtime()
     record = _canonical_VirtualInterface(primitive, 0, (0, 1))
     binding = _canonical_VirtualBinding(
@@ -217,6 +222,11 @@ def test_virtual_interface_publication_is_atomic_and_counted_as_one_node() -> No
         0,
         False,
     )
+    return ledger, scheduler, record, binding
+
+
+def test_virtual_interface_publication_is_atomic_and_counted_as_one_node() -> None:
+    ledger, scheduler, record, binding = _virtual_fixture()
     before = ledger.snapshot()
     ledger.tighten_limits(before.nodes + 1, before.entries + 2)
     with pytest.raises(BlockContextBudgetExceeded):
@@ -228,17 +238,7 @@ def test_virtual_interface_publication_is_atomic_and_counted_as_one_node() -> No
     assert scheduler._virtual_bindings == {}
     assert scheduler._next_virtual == 0
 
-    ledger, scheduler, primitive, composed, cell = _runtime()
-    record = _canonical_VirtualInterface(primitive, 0, (0, 1))
-    binding = _canonical_VirtualBinding(
-        composed,
-        0,
-        cell,
-        None,
-        0,
-        0,
-        False,
-    )
+    ledger, scheduler, record, binding = _virtual_fixture()
     initial = ledger.snapshot()
     interface = scheduler._publish_virtual(binding, record)
     inventory = {item.name: item for item in ledger.inventory()}

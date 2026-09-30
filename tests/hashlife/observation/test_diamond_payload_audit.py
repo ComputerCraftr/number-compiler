@@ -100,9 +100,7 @@ def test_temporal_images_retain_only_scoped_dag_metadata() -> None:
     effect = compiler.atom(DigitNormalizeBlockEffect(10))
     actions = TemporalActionArena(compiler)
     action = actions.intern(effect)
-    source = ExactSource((2, 3), 10, "reverse-add", 19, 8, alphabet_size=19)
-    geometry = SourceGeometry(ledger, source)
-    geometry.span(source.digits, 19, 8)
+    geometry = _geometry(ledger)
     cells = ImageCellArena(actions, geometry)
     image = cells.image(action, cells.source(0, 3))
     registry = DiamondPayloadRegistry(ledger)
@@ -126,9 +124,7 @@ def test_complete_runtime_continuations_and_memo_keys_are_typed_payloads() -> No
     compiler = LazyCompiler(ledger)
     atom = compiler.atom(DigitNormalizeBlockEffect(10))
     effect = compiler.compose(atom, atom)
-    source = ExactSource((2, 3), 10, "reverse-add", 19, 8, alphabet_size=19)
-    geometry = SourceGeometry(ledger, source)
-    geometry.span(source.digits, 19, 8)
+    geometry = _geometry(ledger)
     runtime = DiamondRuntime(compiler, geometry)
     action = runtime.actions.intern(effect)
     assert runtime.point(action, 1) == 3
@@ -197,7 +193,7 @@ def test_parametric_macro_bindings_and_extensional_functions_have_distinct_units
     None
 ):
     from number_compiler.hashlife.tiles.tile_result_records import FusedInterfaceKey
-    from tests.arithmetic.contracts.test_tile_kernel import _runtime, _tile
+    from tests.support.tile_kernel import _runtime, _tile
 
     ledger, tiles, adapter, first, scheduler = _runtime(BaseBlockEffect(2))
     second = adapter.admit(DigitNormalizeBlockEffect(2))
@@ -314,3 +310,10 @@ def test_public_index_rejects_a_foreign_execution_backend(
     )
     with pytest.raises(UnsupportedInterfaceError, match="canonical tile executor"):
         projection.HashLifeBlockIndex(BaseBlockEffect(2), (1, 2, 1), logical_length=8)
+
+
+def _geometry(ledger: ResourceLedger) -> SourceGeometry:
+    source = ExactSource((2, 3), 10, "reverse-add", 19, 8, alphabet_size=19)
+    geometry = SourceGeometry(ledger, source)
+    geometry.span(source.digits, 19, 8)
+    return geometry

@@ -5,9 +5,9 @@ from itertools import product
 
 import pytest
 
-from devtools.proofs.carry_harmonic_ports import CarryHarmonicPortAction
-from devtools.proofs.reverse_threshold_geometry import ThresholdGeometry
-from devtools.proofs.threshold_expressions import ThresholdExpressions
+from devtools.verification.carry_harmonic_ports import CarryHarmonicPortAction
+from devtools.verification.reverse_threshold_geometry import ThresholdGeometry
+from devtools.verification.threshold_expressions import ThresholdExpressions
 from number_compiler.arithmetic.automata import program_word as words
 from number_compiler.arithmetic.carry.carry_monoid import CarryFn, apply_carry_fn
 from number_compiler.arithmetic.contracts.block_effect import BlockContextBudgetExceeded

@@ -9,13 +9,16 @@ from number_compiler.arithmetic.contracts.scoped_handles import ArenaHandle, Are
 from number_compiler.hashlife.actions.field_actions import FieldCellActionID
 from number_compiler.hashlife.execution.continuations.provider_absorption import (
     ProviderAbsorptionArena,
+    ProviderAction,
     ProviderBindingKey,
 )
 from number_compiler.hashlife.execution.field_images import (
     FieldImageID,
+    FieldImageRecord,
     ImageRequestKey,
     RecursiveFieldImageArena,
     SourceCellID,
+    SourceCellRecord,
 )
 
 
@@ -89,6 +92,15 @@ class ProviderImageInputArena:
     def _handle(self, local_id: int) -> ProviderImageInputID:
         return ProviderImageInputID(self.owner, self._KIND, local_id)
 
+    def _components(
+        self, record: ProviderImageInput
+    ) -> tuple[ProviderAction, SourceCellRecord, FieldImageRecord]:
+        return (
+            self.providers.validate_occurrence(record.binding),
+            self.sources.resolve(record.source),
+            self.images.resolve(record.image),
+        )
+
     def resolve(self, value: ProviderImageInputID) -> ProviderImageInput:
         if type(value) is not ProviderImageInputID:
             raise TypeError("expected a completed provider input ID")
@@ -99,9 +111,7 @@ class ProviderImageInputArena:
             raise ValueError("stale completed provider input ID") from exc
         # A warm image hit must not bypass the occurrence/admission checks that
         # bind() performed. Frozen records alone are not publication authority.
-        provider = self.providers.validate_occurrence(record.binding)
-        source = self.sources.resolve(record.source)
-        image = self.images.resolve(record.image)
+        provider, source, image = self._components(record)
         self.images.validate_binding(record.request, record.image)
         if (
             record.binding.source != record.source

@@ -12,6 +12,7 @@ import pytest
 
 from devtools.checks.isabelle_syntax import parse_theory_header
 from devtools.experiments.comma import generate_rank_candidate as generator
+from devtools.paths import isabelle_root
 from number_compiler.sequences.comma.boundary_chart import (
     UNIT_WEIGHT,
     BoundaryChart,
@@ -105,8 +106,8 @@ def test_internal_decade_graph_has_27_round_evaluations_and_no_cycle() -> None:
     # Compare all checked-in candidate cells with independently recomputed edges.
     # Render the deliberately tiny data format; no second ML parser is needed.
     candidate_path = (
-        Path(__file__).resolve().parents[3]
-        / "devtools/proofs/isabelle/comma_decade_rank_data/rank_candidates.ML"
+        isabelle_root(Path(__file__).resolve().parents[3])
+        / "comma_decade_rank_data/rank_candidates.ML"
     )
     encoded_rows = [
         '  "'
@@ -193,8 +194,8 @@ def test_round_phase_ml_reproduces_and_rejects_corruption(tmp_path: Path) -> Non
 
 def test_decade_rank_data_does_not_import_transition_checker() -> None:
     theory = (
-        Path(__file__).resolve().parents[3]
-        / "devtools/proofs/isabelle/comma_decade_rank_data/Comma_Decade_Rank_Data.thy"
+        isabelle_root(Path(__file__).resolve().parents[3])
+        / "comma_decade_rank_data/Comma_Decade_Rank_Data.thy"
     )
     name, imports = parse_theory_header(theory.read_text(), theory)
     assert name == "Comma_Decade_Rank_Data"

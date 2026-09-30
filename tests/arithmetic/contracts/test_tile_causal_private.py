@@ -2,13 +2,14 @@
 
 from __future__ import annotations
 
+from tests.support.tile_kernel import _runtime_source, powered_runtime_source
 from typing import TYPE_CHECKING, Never
 
 import pytest
 
 from number_compiler.arithmetic.contracts.block_kernel import BaseBlockEffect
 from number_compiler.hashlife.execution.tile_causal import CausalTileEngine
-from tests.arithmetic.contracts.test_tile_kernel import _runtime, _symbols, _tile
+from tests.support.tile_kernel import _runtime, _symbols, _tile
 
 if TYPE_CHECKING:
     from number_compiler.hashlife.interfaces.diamond_kernel import PrimitiveKernel
@@ -18,8 +19,9 @@ def test_causal_macro_recurrence_p4_p8_without_temporal_midpoint(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     effect = BaseBlockEffect(3)
-    ledger, tiles, adapter, primitive, scheduler = _runtime(effect)
-    source = _tile(tiles, adapter, primitive, (0, 0, 0, 1))
+    ledger, tiles, adapter, primitive, scheduler, source = _runtime_source(
+        effect, (0, 0, 0, 1)
+    )
 
     def forbidden(*_args: object, **_kwargs: object) -> Never:
         raise AssertionError(
@@ -138,8 +140,9 @@ def test_repeated_point_reuses_completed_causal_leaf(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     effect = BaseBlockEffect(3)
-    ledger, tiles, adapter, primitive, scheduler = _runtime(effect)
-    source = _tile(tiles, adapter, primitive, (0, 0, 0, 1))
+    ledger, tiles, adapter, primitive, scheduler, source = _runtime_source(
+        effect, (0, 0, 0, 1)
+    )
     action = adapter.power(primitive, 8)
     with (
         source,
@@ -165,8 +168,9 @@ def test_repeated_point_reuses_completed_causal_leaf(
 
 def test_causal_output_consumes_an_already_completed_midpoint() -> None:
     effect = BaseBlockEffect(3)
-    ledger, tiles, adapter, primitive, scheduler = _runtime(effect)
-    source = _tile(tiles, adapter, primitive, (0, 0, 0, 1))
+    ledger, tiles, adapter, primitive, scheduler, source = _runtime_source(
+        effect, (0, 0, 0, 1)
+    )
     square = adapter.power(primitive, 2)
     fourth = adapter.power(primitive, 4)
     try:
@@ -185,8 +189,9 @@ def test_causal_width_uses_interfaces_without_output_tiles(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     effect = BaseBlockEffect(3)
-    _ledger, tiles, adapter, primitive, scheduler = _runtime(effect)
-    source = _tile(tiles, adapter, primitive, (0, 0, 0, 1))
+    _ledger, tiles, adapter, primitive, scheduler, source = _runtime_source(
+        effect, (0, 0, 0, 1)
+    )
     engine = CausalTileEngine(scheduler)
 
     def forbidden(*_args: object, **_kwargs: object) -> Never:
@@ -204,10 +209,9 @@ def test_causal_width_uses_interfaces_without_output_tiles(
 def test_causal_width_probes_completed_parent_before_interface_children(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    effect = BaseBlockEffect(3)
-    ledger, tiles, adapter, primitive, scheduler = _runtime(effect)
-    source = _tile(tiles, adapter, primitive, (0, 0, 0, 1))
-    action = adapter.power(primitive, 4)
+    ledger, tiles, adapter, primitive, scheduler, source, action = (
+        powered_runtime_source(BaseBlockEffect(3), (0, 0, 0, 1), 4)
+    )
     engine = CausalTileEngine(scheduler)
     try:
         with engine.output(action, source.tile):
@@ -229,10 +233,9 @@ def test_causal_width_preserves_noninitial_two_sided_edge() -> None:
         FusedBoundaryContract,
     )
 
-    effect = BaseBlockEffect(3)
-    _ledger, tiles, adapter, primitive, scheduler = _runtime(effect)
-    source = _tile(tiles, adapter, primitive, (0, 0, 0, 1))
-    action = adapter.power(primitive, 4)
+    _ledger, tiles, adapter, primitive, scheduler, source, action = (
+        powered_runtime_source(BaseBlockEffect(3), (0, 0, 0, 1), 4)
+    )
     wiring = adapter.wiring(action)
     contract = FusedBoundaryContract(
         BoundPorts((1, 0), wiring),

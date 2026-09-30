@@ -2,6 +2,8 @@ from __future__ import annotations
 
 import pytest
 
+from tests.support.source_image_assertions import assert_physical_source_work
+
 from number_compiler.api.number_api import NumberCompiler, PoweredCollatzTermPayload
 from number_compiler.sequences.collatz.block_power import PoweredCollatzTerm
 from number_compiler.sequences.reverse_add.power import ReverseAddPoweredTerm
@@ -29,17 +31,7 @@ def _assert_diamond_bridge(
         assert metrics.temporal_parent_compositions == 0
         assert metrics.tile_temporal_action_publications == 0
         assert metrics.field_action_nodes == 0
-        assert counters.get("collatz_physical_action_publications", 0) > 0
-        assert counters.get("source_image_publications", 0) > 0
-        assert counters.get("source_image_projection_publications", 0) > 0
-        # A source already entering 1→4→2 may publish through the checked
-        # cycle shortcut without a primitive or generic composite apply.
-        assert (
-            counters.get("source_image_composite_applications", 0)
-            + counters.get("source_image_primitive_applications", 0)
-            + counters.get("collatz_physical_cycle_compressions", 0)
-            > 0
-        )
+        assert_physical_source_work(counters)
         assert term._power is None
     else:
         assert metrics.temporal_parent_requests == (
@@ -112,26 +104,22 @@ def test_public_family_and_radix_paths_report_no_sequential_backend_work() -> No
     collatz = PoweredCollatzTerm(140137, 11)
     assert collatz.width() > 0
     assert collatz.digit(0) in (0, 1)
-    projected = NumberCompiler().project_nth("collatz", 11, seed=140137, radix=3)
-    assert 0 <= projected.digit(3) < 3
-    assert isinstance(projected.payload, PoweredCollatzTermPayload)
-    for term in (reverse, collatz, projected.payload.term):
+    projected_term = _checked_radix_projection()
+    for term in (reverse, collatz, projected_term):
         metrics = term.metrics()
         assert metrics.sequential_generation_advances == 0
         assert metrics.higher_concrete_operation_evaluations == 0
 
 
 def test_former_collatz_radix_timeout_reports_actual_diamond_work() -> None:
-    projected = NumberCompiler().project_nth("collatz", 11, seed=140137, radix=3)
-    assert 0 <= projected.digit(3) < 3
-    assert isinstance(projected.payload, PoweredCollatzTermPayload)
-    metrics = projected.payload.term.metrics()
+    projected_term = _checked_radix_projection()
+    metrics = projected_term.metrics()
     assert metrics.temporal_parent_requests == 0
     assert metrics.temporal_parent_compositions == 0
     counters = metrics.resource_work_counters
     assert counters.get("source_image_publications", 0) > 0
     assert counters.get("collatz_image_radix_demands", 0) > 0
-    assert projected.payload.term._power is None
+    assert projected_term._power is None
     assert metrics.whole_word_sweeps == metrics.proof_machine_applications == 0
     assert metrics.sequential_generation_advances == 0
     assert metrics.forbidden_future_payloads == 0
@@ -146,3 +134,10 @@ def test_identical_warm_point_does_not_rebuild_temporal_parents() -> None:
     after = term.metrics()
     assert after.temporal_parent_compositions == compositions
     assert after.resource_work_counters.get("point_response_cache_hits", 0) >= 1
+
+
+def _checked_radix_projection() -> PoweredCollatzTerm:
+    projected = NumberCompiler().project_nth("collatz", 11, seed=140137, radix=3)
+    assert 0 <= projected.digit(3) < 3
+    assert isinstance(projected.payload, PoweredCollatzTermPayload)
+    return projected.payload.term

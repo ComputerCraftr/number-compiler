@@ -7,7 +7,7 @@ from number_compiler.arithmetic.contracts.block_effect import BoundarySide
 from number_compiler.hashlife.execution.diamond_primitive_pair import (
     PrimitivePairActions,
 )
-from tests.support.diamond_boundary import boundary
+from tests.support.diamond_boundary import boundary, composed_anchor
 
 
 @pytest.mark.parametrize("side", [0, 1])
@@ -54,8 +54,7 @@ def test_primitive_pair_cache_reuses_canonical_result_before_function_work(
     import number_compiler.hashlife.execution.diamond_primitive_pair as module
 
     ledger, actions, _, boundaries, first, second = boundary()
-    pair = actions.compose(first, second)
-    anchor = boundaries.literal(first, 0, 0)
+    pair, anchor = composed_anchor(actions, boundaries, first, second)
     function = boundaries.constant(boundaries.literal(second, 0, 0), first, 1)
     state = boundaries.pair(pair, 0, anchor, function)
     fast = PrimitivePairActions(boundaries)

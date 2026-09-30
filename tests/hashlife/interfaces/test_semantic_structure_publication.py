@@ -145,15 +145,7 @@ def test_publication_insert_failure_rolls_back_every_arena(
     after_insert: bool,
 ) -> None:
     ledger, arena, _, _, prepared = _prepared()
-    retained = (
-        tuple(arena.functions.nodes),
-        tuple(arena.functions.keys.items()),
-        tuple(arena.functions.memo.items()),
-        tuple(arena.bits.nodes),
-        tuple(arena.bits.keys.items()),
-        tuple(arena.nodes),
-        tuple(arena.keys.items()),
-    )
+    retained = _retained_stores(arena)
     prepared.reserve_with()
     original = _TrackedDict.__setitem__
     failed = False
@@ -174,35 +166,15 @@ def test_publication_insert_failure_rolls_back_every_arena(
         prepared.publish_reserved()
     prepared.cancel()
     assert failed
-    assert retained == (
-        tuple(arena.functions.nodes),
-        tuple(arena.functions.keys.items()),
-        tuple(arena.functions.memo.items()),
-        tuple(arena.bits.nodes),
-        tuple(arena.bits.keys.items()),
-        tuple(arena.nodes),
-        tuple(arena.keys.items()),
-    )
-    assert all(row.accounting_delta == 0 for row in ledger.inventory())
-    workspace = next(
-        row for row in ledger.inventory() if row.role == "semantic_function_workspace"
-    )
-    assert workspace.entries == workspace.nodes == 0
+    assert retained == _retained_stores(arena)
+    _assert_workspace_released(ledger)
 
 
 def test_function_commit_failure_rolls_back_structures_and_boolean_stores(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     ledger, arena, _, _, prepared = _prepared()
-    retained = (
-        tuple(arena.functions.nodes),
-        tuple(arena.functions.keys.items()),
-        tuple(arena.functions.memo.items()),
-        tuple(arena.bits.nodes),
-        tuple(arena.bits.keys.items()),
-        tuple(arena.nodes),
-        tuple(arena.keys.items()),
-    )
+    retained = _retained_stores(arena)
     prepared.reserve_with()
 
     def fail_commit(_prepared: object) -> None:
@@ -212,20 +184,8 @@ def test_function_commit_failure_rolls_back_structures_and_boolean_stores(
     with pytest.raises(MemoryError, match="injected semantic commit failure"):
         prepared.publish_reserved()
     prepared.cancel()
-    assert retained == (
-        tuple(arena.functions.nodes),
-        tuple(arena.functions.keys.items()),
-        tuple(arena.functions.memo.items()),
-        tuple(arena.bits.nodes),
-        tuple(arena.bits.keys.items()),
-        tuple(arena.nodes),
-        tuple(arena.keys.items()),
-    )
-    assert all(row.accounting_delta == 0 for row in ledger.inventory())
-    workspace = next(
-        row for row in ledger.inventory() if row.role == "semantic_function_workspace"
-    )
-    assert workspace.entries == workspace.nodes == 0
+    assert retained == _retained_stores(arena)
+    _assert_workspace_released(ledger)
 
 
 @pytest.mark.parametrize("budget", ("entries", "nodes"))
@@ -308,3 +268,23 @@ def test_successful_multi_root_publication_shares_roots_and_charges_exact_invent
     with pytest.raises(RuntimeError):
         prepared.publish_reserved()
     assert _retention(ledger, arena) == snapshot
+
+
+def _retained_stores(arena: StructureArena) -> tuple[object, ...]:
+    return (
+        tuple(arena.functions.nodes),
+        tuple(arena.functions.keys.items()),
+        tuple(arena.functions.memo.items()),
+        tuple(arena.bits.nodes),
+        tuple(arena.bits.keys.items()),
+        tuple(arena.nodes),
+        tuple(arena.keys.items()),
+    )
+
+
+def _assert_workspace_released(ledger: ResourceLedger) -> None:
+    assert all(row.accounting_delta == 0 for row in ledger.inventory())
+    workspace = next(
+        row for row in ledger.inventory() if row.role == "semantic_function_workspace"
+    )
+    assert workspace.entries == workspace.nodes == 0

@@ -15,6 +15,7 @@ from number_compiler.hashlife.actions.field_actions import (
 )
 from number_compiler.hashlife.execution.continuations.higher_interfaces import (
     HigherLocalInterfaceArena,
+    HigherInterfaceRecord,
     HigherMacroComponents,
     HigherMacroInterface,
     HigherMorphismSort,
@@ -246,6 +247,13 @@ class HigherSpatialMacroComposer:
             raise TypeError(f"higher spatial {role} is not a scalar expression")
         return value
 
+    def _bound_interface(
+        self, interface: LocalInterfaceID
+    ) -> tuple[HigherInterfaceRecord, dict[str, HigherExpressionID]]:
+        return self.interfaces.bound_interface(
+            interface, error="higher child macro has another bound interface"
+        )
+
     def _bound(
         self,
         interface: LocalInterfaceID,
@@ -253,11 +261,7 @@ class HigherSpatialMacroComposer:
         left: HigherExpressionID,
         right: HigherExpressionID,
     ) -> HigherExpressionID:
-        record = self.interfaces.resolve(interface)
-        signature = self.interfaces.interface(record.signature)
-        ports = {port.role: port.variable for port in signature.inputs}
-        if set(ports) != {"left-boundary", "right-boundary"}:
-            raise ValueError("higher child macro has another bound interface")
+        record, ports = self._bound_interface(interface)
         value = self._scalar(getattr(record.components, role), role)
         return self.semantics.bind_free_many(
             value,
@@ -269,11 +273,7 @@ class HigherSpatialMacroComposer:
         interface: LocalInterfaceID,
     ) -> HigherBoundaryTransfer:
         """Expose a child interface through the shared absorption algebra."""
-        record = self.interfaces.resolve(interface)
-        signature = self.interfaces.interface(record.signature)
-        ports = {port.role: port.variable for port in signature.inputs}
-        if set(ports) != {"left-boundary", "right-boundary"}:
-            raise ValueError("higher child macro has another bound interface")
+        record, ports = self._bound_interface(interface)
         if ports["left-boundary"] != self.left or ports["right-boundary"] != self.right:
             raise ValueError("higher child macro has another port declaration")
         return higher_boundary_transfer(

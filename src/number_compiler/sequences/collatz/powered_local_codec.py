@@ -8,6 +8,13 @@ successor implementation.
 """
 
 from __future__ import annotations
+from number_compiler.arithmetic.contracts.iterative_queries import defer_binary_children
+from number_compiler.arithmetic.contracts.local_action_codec import (
+    initialize_local_stores,
+    publish_oriented_action,
+    local_cache_hit,
+    compile_source_cell,
+)
 
 from collections.abc import MutableMapping, MutableSequence
 from dataclasses import dataclass
@@ -119,21 +126,16 @@ class CollatzPoweredLocalCodec:
         self._binary_source_owner = self.ledger.register(
             prefix + "-binary-sources", "collatz_local_source_binding"
         )
-        self._nodes: MutableSequence[CollatzLocalAction] = self.ledger.make_list(
-            self._node_owner
-        )
-        self._keys: MutableMapping[CollatzLocalAction, int] = self.ledger.make_dict(
-            self._key_owner
-        )
+        self._nodes: MutableSequence[CollatzLocalAction]
+        self._keys: MutableMapping[CollatzLocalAction, int]
         self._compose: MutableMapping[
             tuple[CollatzLocalActionID, CollatzLocalActionID], CollatzLocalActionID
-        ] = self.ledger.make_dict(self._compose_owner)
-        self._leaf_actions: MutableMapping[int, CollatzLocalActionID] = (
-            self.ledger.make_dict(self._leaf_owner)
-        )
+        ]
+        self._leaf_actions: MutableMapping[int, CollatzLocalActionID]
         self._source_actions: MutableMapping[
             SourceCellID | SourceForestID, CollatzLocalActionID
-        ] = self.ledger.make_dict(self._source_owner)
+        ]
+        initialize_local_stores(self)
         self._binary_source_actions: MutableMapping[
             SourceCellID | SourceForestID, CollatzLocalActionID
         ] = self.ledger.make_dict(self._binary_source_owner)
@@ -212,22 +214,7 @@ class CollatzPoweredLocalCodec:
             ((action, ActionTransform.IDENTITY), (mirrored, ActionTransform.MIRROR)),
             key=lambda item: (item[0].forward, item[0].reverse, int(item[1])),
         )
-        found = self._keys.get(canonical)
-        if found is not None:
-            self.ledger.reserve_many(reservations)
-            self.semantic_alias_hits += 1
-            if transform is ActionTransform.MIRROR:
-                self.mirror_alias_hits += 1
-            return self._handle(found, transform)
-        self.ledger.reserve_many(
-            ((self._node_owner, 1, 1), (self._key_owner, 1, 0), *reservations)
-        )
-        local_id = len(self._nodes)
-        self._nodes.append(canonical)
-        self._keys[canonical] = local_id
-        if transform is ActionTransform.MIRROR:
-            self.mirror_alias_hits += 1
-        return self._handle(local_id, transform)
+        return publish_oriented_action(self, canonical, transform, reservations)
 
     def _leaf(
         self,
@@ -237,10 +224,10 @@ class CollatzPoweredLocalCodec:
         if type(symbol) is not int or not 0 <= symbol < self.kernel.alphabet_size:
             raise ValueError("Collatz local leaf is outside the radix-4 alphabet")
         self.leaf_requests += 1
-        found = self._leaf_actions.get(symbol)
+        found = local_cache_hit(
+            self, self._leaf_actions.get(symbol), reservations, spatial=False
+        )
         if found is not None:
-            self.ledger.reserve_many(reservations)
-            self.leaf_hits += 1
             return found
         mapping = (
             self.kernel.transition(0, symbol),
@@ -277,10 +264,10 @@ class CollatzPoweredLocalCodec:
         # scoped identities in the retained key so local integer aliases from
         # another codec or sort can never hit this composition.
         key = left, right
-        found = self._compose.get(key)
+        found = local_cache_hit(
+            self, self._compose.get(key), reservations, spatial=True
+        )
         if found is not None:
-            self.ledger.reserve_many(reservations)
-            self.spatial_hits += 1
             return found
         result = self._intern(
             CollatzLocalAction(
@@ -338,36 +325,7 @@ class CollatzPoweredLocalCodec:
 
     def _cell_action(self, source: SourceCellID) -> CollatzLocalActionID:
         """Compile one canonical source subtree bottom-up without recursion."""
-        self.sources.resolve(source)
-        source_key = self._source_key(source)
-        found = self._source_actions.get(source_key)
-        if found is not None:
-            return found
-        pending: list[tuple[SourceCellID, bool]] = [(source, False)]
-        while pending:
-            current, ready = pending.pop()
-            current_key = self._source_key(current)
-            if current_key in self._source_actions:
-                continue
-            record = self.sources.resolve(current)
-            if record.level == 0:
-                result = self._leaf(
-                    self.sources.symbol(current),
-                    ((self._source_owner, 1, 0),),
-                )
-            elif not ready:
-                left, right = self.sources.children(current)
-                pending.extend(((current, True), (right, False), (left, False)))
-                continue
-            else:
-                left, right = self.sources.children(current)
-                result = self._compose_actions(
-                    self._source_actions[self._source_key(left)],
-                    self._source_actions[self._source_key(right)],
-                    ((self._source_owner, 1, 0),),
-                )
-            self._source_actions[current_key] = result
-        return self._source_actions[source_key]
+        return compile_source_cell(self, source)
 
     def source_action(
         self,
@@ -467,8 +425,7 @@ class CollatzPoweredLocalCodec:
                 high = self._binary_bit(self.sources.symbol(high_cell), blank)
                 result = self._leaf(low | (high << 1))
             elif not ready:
-                left, right = self.sources.children(current)
-                pending.extend(((current, True), (right, False), (left, False)))
+                defer_binary_children(pending, current, self.sources.children)
                 continue
             else:
                 left, right = self.sources.children(current)

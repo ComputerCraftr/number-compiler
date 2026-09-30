@@ -1,8 +1,9 @@
 from __future__ import annotations
 
+from tests.support.reference_arithmetic import symmetric_word as symmetric_word
 import random
 
-from devtools.proofs.block_power import (
+from devtools.verification.block_power import (
     apply_block_power,
     compose_block_effects,
     power_block_effect,
@@ -15,13 +16,6 @@ from number_compiler.arithmetic.contracts.block_kernel import (
     BaseBlockEffect,
 )
 from tests.support.reverse_pair_oracle import reference_successor
-
-
-def symmetric_word(rng: random.Random, base: int, width: int) -> tuple[int, ...]:
-    half = [rng.randrange(2 * base - 1) for _ in range((width + 1) // 2)]
-    if half[0] == 0:
-        half[0] = 1
-    return tuple(half + (half[-2::-1] if width & 1 else half[::-1]))
 
 
 def test_block_power_exact_multibase_without_intermediate_generations() -> None:
@@ -188,7 +182,7 @@ def test_parallel_blank_tail_theorem_preserves_long_power_semantics() -> None:
 
 
 def test_higher_spacetime_macrocells_use_recursive_actions_not_boundary_roots() -> None:
-    from devtools.proofs.block_composed import ComposedBlockEffect
+    from devtools.verification.block_composed import ComposedBlockEffect
 
     power = power_block_effect(base=10, exponent=128)
     application = apply_block_power(power, (7, 18, 7))
@@ -232,8 +226,8 @@ def test_higher_spacetime_macrocells_use_recursive_actions_not_boundary_roots() 
 def test_t4_partition_ids_are_final_before_parent_hashlife_use() -> None:
     from pathlib import Path
 
-    import devtools.proofs.block_partition as partition_mod
-    from devtools.proofs.block_composed import ComposedBlockEffect
+    import devtools.verification.block_partition as partition_mod
+    from devtools.verification.block_composed import ComposedBlockEffect
 
     power = power_block_effect(
         base=10, exponent=128, max_context_nodes=1_000_000, max_cache_entries=1_000_000

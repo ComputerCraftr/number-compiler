@@ -2,13 +2,13 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING
 
-from devtools.proofs.reverse_spacetime import (
+from devtools.verification.reverse_spacetime import (
     ReverseAddCausalSpacetimeEngine,
     ReverseAddPairField,
 )
 
 if TYPE_CHECKING:
-    from devtools.proofs.reverse_spacetime import ReverseAddCarrySlab
+    from devtools.verification.reverse_spacetime import ReverseAddCarrySlab
 
 
 def _boot(seed: int) -> ReverseAddCarrySlab:

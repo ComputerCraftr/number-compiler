@@ -1,13 +1,14 @@
 from itertools import product
+from tests.support.reference_arithmetic import literal_events
 from typing import Never
 
 import pytest
 
-from devtools.proofs.collatz_spacetime import (
+from devtools.verification.collatz_spacetime import (
     CollatzCausalSpacetimeEngine,
     CollatzRadixField,
 )
-from devtools.proofs.collatz_symbolic_action import CollatzSymbolicActionArena
+from devtools.verification.collatz_symbolic_action import CollatzSymbolicActionArena
 from number_compiler.arithmetic.automata.action_power import ActionPowerArena
 
 
@@ -52,13 +53,7 @@ def test_production_symbolic_power_never_projects_intermediate_fields(
     monkeypatch.setattr(CollatzRadixField, "value", forbidden)
     monkeypatch.setattr(CollatzRadixField, "digits", forbidden)
     target, event = engine.advance_event_power(source, 16)
-    expected = (1 << 130) + 27
-    shift = 0
-    for _ in range(16):
-        raw = 3 * expected + 1
-        valuation = (raw & -raw).bit_length() - 1
-        expected = raw >> valuation
-        shift += valuation
+    expected, shift = literal_events((1 << 130) + 27, 16)
     # Only the explicitly requested endpoint is projected.
     from number_compiler.arithmetic.fields.dyadic_tile import iter_symbols
 
@@ -96,12 +91,7 @@ def test_symbolic_endpoints_and_cocycles_match_independent_random_orbits() -> No
         for _ in range(4):
             seed = rng.getrandbits(width) | 1
             events = rng.choice((1, 2, 7, 16, 33))
-            expected, shift = seed, 0
-            for _event in range(events):
-                raw = 3 * expected + 1
-                valuation = (raw & -raw).bit_length() - 1
-                expected = raw >> valuation
-                shift += valuation
+            expected, shift = literal_events(seed, events)
             engine = CollatzCausalSpacetimeEngine()
             target, transport = engine.advance_event_power(
                 CollatzRadixField.from_value(seed), events

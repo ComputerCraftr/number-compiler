@@ -2,8 +2,8 @@
 
 import pytest
 
-from devtools.proofs.decimal_endpoint_seam import decimal_step, reachable_pairs
-from devtools.proofs.endpoint_seam_audit import (
+from devtools.verification.decimal_endpoint_seam import decimal_step, reachable_pairs
+from devtools.verification.endpoint_seam_audit import (
     BoundedEndpointPowerArena,
     audit_endpoint_frontier,
 )

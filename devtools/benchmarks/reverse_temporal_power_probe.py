@@ -16,7 +16,11 @@ from devtools.benchmarks.tile_projection_accounting import (
     projection_accounting,
 )
 from devtools.checks.dependency_graph import source_syntax
-from devtools.paths import repository_root
+from devtools.paths import report_output, repository_root
+from devtools.benchmarks.temporal_probe_support import (
+    common_temporal_blockers,
+    shared_cutover_sources,
+)
 
 ROOT = repository_root()
 
@@ -208,18 +212,16 @@ def _source_audit() -> dict[str, bool]:
     reverse = source_syntax(
         ROOT / "src" / "number_compiler" / "sequences/reverse_add/power.py"
     )
-    proof = ROOT / "devtools" / "proofs"
-    runtime = source_syntax(proof / "block_runtime.py")
-    spacetime = source_syntax(proof / "block_spacetime_runtime.py")
-    compatibility_names = runtime.identifiers | spacetime.identifiers
-    compatibility_imports = runtime.imports | spacetime.imports
-    boundary = source_syntax(proof / "spacetime_boundary.py")
-    router_path = ROOT / "src" / "number_compiler" / "sequences" / "runtime_router.py"
-    router_syntax = source_syntax(router_path)
-    router_imports = router_syntax.imports | router_syntax.dynamic_imports
-    generic_executor_imported = router_syntax.unknown_dynamic_import or any(
-        name.endswith("diamond_runtime") for name in router_imports
-    )
+    (
+        compatibility_names,
+        compatibility_imports,
+        runtime,
+        spacetime,
+        boundary,
+        router_syntax,
+        router_imports,
+        generic_executor_imported,
+    ) = shared_cutover_sources(ROOT)
     checks = {
         "causal_engine_absent_from_reverse_power": "ReverseAddCausalSpacetimeEngine"
         not in reverse.identifiers,
@@ -328,18 +330,7 @@ def run_probe() -> dict[str, object]:
             "higher_semantic_task_frames",
         )
     }
-    blockers: list[str] = []
-    if not projection:
-        blockers.append("execution_measurements_missing")
-    if rejection is not None:
-        blockers.append("certified_execution_unavailable")
-    if projection and not all(
-        _metric_int(row["whole_word_sweeps"]) == 0
-        and _metric_int(row["whole_word_symbol_visits"]) == 0
-        and _metric_int(row["proof_machine_applications"]) == 0
-        for row in projection
-    ):
-        blockers.append("forbidden_execution_work_observed")
+    blockers = common_temporal_blockers(projection, rejection, _metric_int)
     if projection and not all(
         _metric_int(row["temporal_parent_compositions"])
         <= 2 * max(1, _metric_int(row["index_bits"])) + 4
@@ -414,8 +405,10 @@ def main() -> int:
     result = run_probe()
     result["source_fingerprint"] = fingerprint
     result["source_unchanged"] = fingerprint == source_fingerprint(ROOT)
-    out = ROOT / "results" / ("reverse_temporal_power_" + fingerprint[:12] + ".json")
-    out.parent.mkdir(exist_ok=True)
+    out = report_output(
+        "devtools.benchmarks.reverse_temporal_power_probe", "report.json"
+    )
+    out.parent.mkdir(parents=True, exist_ok=True)
     with out.open("x") as stream:
         stream.write(json.dumps(result, sort_keys=True, separators=(",", ":")) + "\n")
     print(json.dumps(result, sort_keys=True, separators=(",", ":")))
@@ -423,4 +416,6 @@ def main() -> int:
 
 
 if __name__ == "__main__":
-    raise SystemExit(main())
+    from devtools.runs import run_reported
+
+    raise SystemExit(run_reported(main))

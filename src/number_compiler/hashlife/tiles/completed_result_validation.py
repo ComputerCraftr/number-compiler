@@ -2,6 +2,12 @@
 
 from __future__ import annotations
 
+from number_compiler.hashlife.tiles.tiles import TileRecord
+
+from number_compiler.hashlife.execution.tile_kernel_validation import (
+    validate_kernel_alphabet,
+)
+
 from collections.abc import Callable
 from typing import TYPE_CHECKING, cast
 
@@ -141,17 +147,7 @@ def _validate_admitted_input(
         action_admission, authority, action
     )
     kernel = authority.kernels.kernel(kernel_id)
-    node = self.tiles.resolve(source)
-    alphabet = self.tiles.alphabet(node.alphabet)
-    if (
-        alphabet.symbol_count != kernel.blank + 1
-        or alphabet.blank != kernel.blank
-        or alphabet.radix != kernel.base
-        or alphabet.cell_bits != max(1, kernel.blank.bit_length())
-        or alphabet.interpretation != "unsigned-radix-cell-with-explicit-blank"
-        or alphabet.version != "canonical-tile-alphabet-v1"
-    ):
-        raise ValueError("tile alphabet differs from primitive kernel")
+    validate_kernel_alphabet(self.tiles, source, kernel)
 
 
 def _validate_base(
@@ -352,10 +348,7 @@ def _validate_result(
             or result.physical_support.odd_ticks != result.event_weight
         ):
             raise ValueError("physical support disagrees with result weights")
-    output = self.tiles.resolve(result.output)
-    validate_output_region(key.region)
-    if key.region is not None and output.level != key.region[1]:
-        raise ValueError("causal result has another output level")
+    output = _result_output(self, key, result)
     self._validate_boundaries(result.outgoing_boundaries, result.output)
     if action_admission is not None:
         _validate_admitted_input(
@@ -462,10 +455,7 @@ def _validate_leased(
             raise ValueError("leased physical support disagrees with result weights")
     if tile.tile != result.output:
         raise ValueError("completed-result lease pins another output")
-    output = self.tiles.resolve(result.output)
-    validate_output_region(key.region)
-    if key.region is not None and output.level != key.region[1]:
-        raise ValueError("causal result has another output level")
+    output = _result_output(self, key, result)
     if self._validate_output is not None:
         self._validate_output(key.action, result.output)
     if result.relative_extent != output.extent:
@@ -584,3 +574,13 @@ def _tiles_for(
     if type(result) is not CompletedResult:
         raise TypeError("completed result memo has another value sort")
     return self._unique_tiles((*key_tiles, *self._result_tile_ids(result)))
+
+
+def _result_output(
+    self: CompletedResultArena, key: PoweredResultKey, result: CompletedResult
+) -> TileRecord:
+    output = self.tiles.resolve(result.output)
+    validate_output_region(key.region)
+    if key.region is not None and output.level != key.region[1]:
+        raise ValueError("causal result has another output level")
+    return output

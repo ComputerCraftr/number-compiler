@@ -1,13 +1,13 @@
 # Proof index and acceptance
 
 The Isabelle sources are registered in
-[`devtools/proofs/isabelle/ROOT`](../devtools/proofs/isabelle/ROOT). Registration
+[`proofs/isabelle/ROOT`](../proofs/isabelle/ROOT). Registration
 is the acceptance boundary: a theory file is not considered checked merely
 because it exists in the tree or is imported by an editor session.
 
 ## Canonical spatial and finite-clock lemmas
 
-[`Reverse_Boundary_Germ_Local`](../devtools/proofs/isabelle/Reverse_Boundary_Germ_Local.thy)
+[`Reverse_Boundary_Germ_Local`](../proofs/isabelle/Reverse_Boundary_Germ_Local.thy)
 in `Reverse_Residuals` checks the finite Q95 boundary encoding, blank rejection,
 threshold carry, equality wire, reflected edge ordering and symbol-complement
 carry conjugacy. Its successor-factor theorem requires agreement on every
@@ -17,12 +17,12 @@ not an occurrence-parameterized temporal transformer. See the
 [candidate audit](research/reverse-add.md#three-cell-temporal-boundary-candidate)
 for the separate seed-196 clock/germ experiment.
 
-[`Mirror_Pair_Step`](../devtools/proofs/isabelle/Mirror_Pair_Step.thy) owns
+[`Mirror_Pair_Step`](../proofs/isabelle/Mirror_Pair_Step.thy) owns
 `palindrome_nth_reflect`; both publisher and growth branches import it. Its
 assumptions are palindrome admission and an in-range index. It is a spatial
 lemma, not temporal constructor refinement.
 
-[`Runtime_Cylinder_Refinement`](../devtools/proofs/isabelle/etale/Runtime_Cylinder_Refinement.thy)
+[`Runtime_Cylinder_Refinement`](../proofs/isabelle/etale/Runtime_Cylinder_Refinement.thy)
 proves finite semantic observer equations and bounded counterexamples.
 `reassociation_preserves_clock_transfer` and
 `event_clock_s_arithmetic_exponents` concern its event-word model; they do not
@@ -37,7 +37,7 @@ needed the decimal temporal constructor. The optional
 or aggregate acceptance target was removed.
 
 The new
-[Collatz_Saturated_Threshold_Composition](../devtools/proofs/isabelle/integration/Collatz_Saturated_Threshold_Composition.thy)
+[Collatz_Saturated_Threshold_Composition](../proofs/isabelle/integration/Collatz_Saturated_Threshold_Composition.thy)
 connects the shared skew endpoint and finite inverse-threshold envelope:
 
 - `saturated_endpoint_then` and `saturated_safety_then` state chronological
@@ -58,7 +58,7 @@ not implied. Oracle audits cover the exported results. Build the registered
 core and Mahler consumer with:
 
 ```sh
-isabelle build -d devtools/proofs/isabelle -o threads=1 -o parallel_proofs=0 Associated_Action_Core Antihydra_Mahler_Integration
+isabelle build -d proofs/isabelle -o threads=1 -o parallel_proofs=0 Associated_Action_Core Antihydra_Mahler_Integration
 ```
 
 ## Inventory and existing branches
@@ -66,21 +66,21 @@ isabelle build -d devtools/proofs/isabelle -o threads=1 -o parallel_proofs=0 Ass
 `Collatz_Cylinder_Refinement` checks
 `collatz_physical_admitted_leaf_loop_refinement` and
 `collatz_physical_d4_base_refinement` in
-[Collatz_Physical_Cylinder_Lift](../devtools/proofs/isabelle/temporal_collatz/Collatz_Physical_Cylinder_Lift.thy).
+[Collatz_Physical_Cylinder_Lift](../proofs/isabelle/temporal_collatz/Collatz_Physical_Cylinder_Lift.thy).
 The model matches the shared residue owner's bounded generator updates for
 the physical Collatz law: current value, affine numerator/denominator, branch
 labels, odd count, delta and minimum. Existing dyadic lift/split theorems justify
 the transported right source. This does not prove the complete Python worklist,
 resource accounting or a sublinear cold constructor; see the
-[D4 sprint record](../results/current/week-of-2026-09-20/shared.md#bounded-d4-bases-and-larger-transported-powers).
+[D4 sprint record](sprints/week-of-2026-09-20/shared.md#bounded-d4-bases-and-larger-transported-powers).
 
 The `Reverse_Digit_Terminal` session also checks
 `streamed_digits_refines_terminal` in
-[Reverse_Digit_Terminal_Refinement](../devtools/proofs/isabelle/reverse_terminal/Reverse_Digit_Terminal_Refinement.thy).
+[Reverse_Digit_Terminal_Refinement](../proofs/isabelle/reverse_terminal/Reverse_Digit_Terminal_Refinement.thy).
 It proves the single-carry streaming fold used by the D1/D2 output iterators
 equals the existing digit normalizer for admitted pair coefficients below 19.
 It does not construct those coefficients or prove arbitrary temporal closure.
-The [weekly validation record](../results/current/week-of-2026-09-20/shared.md#temporal-production-agent-wave)
+The [weekly validation record](sprints/week-of-2026-09-20/shared.md#temporal-production-agent-wave)
 records the registered build and its scope.
 
 Run the fast structural check with:
@@ -114,7 +114,7 @@ The September 22 carry-quotient reduction adds two scoped connections in
 
 Both reuse existing lemmas and are included in their theory's oracle audit.
 Build the owning session with
-`isabelle build -d devtools/proofs/isabelle -j 1 -o threads=1 -o parallel_proofs=0 Reverse_Residuals`.
+`isabelle build -d proofs/isabelle -j 1 -o threads=1 -o parallel_proofs=0 Reverse_Residuals`.
 Serial proof evaluation keeps the same statements and checks every proof.
 
 The generator-macro continuation additionally checks
@@ -149,7 +149,7 @@ suite:
 - `Reverse_Growth_Admission` derives `r <= 3*(q+1)` from the actual valid
   reverse/add trajectory and an edge potential. Its modulo-32 live-age
   corollary is a source theorem, not a grammar-size or pumping theorem.
-  Verify with `isabelle build -d devtools/proofs/isabelle Reverse_Growth_Admission`.
+  Verify with `isabelle build -d proofs/isabelle Reverse_Growth_Admission`.
   Its `source_four_step_no_growth` and `source_block_parity_forcing`
   corollaries establish that every admitted block of at least four steps
   loses its homogeneous F2 source contribution; `source_196_block_parity_forcing`
@@ -272,7 +272,7 @@ safety. Its integer orbit is the existing Antihydra source owner. It proves
 finite exclusions and necessary all-time conditions, not a global decision.
 
 ```console
-isabelle build -d devtools/proofs/isabelle Mahler_Safety_Cylinders
+isabelle build -d proofs/isabelle Mahler_Safety_Cylinders
 ```
 
 Use the existing 60-second/4-GiB process guard for acceptance. The four
@@ -280,7 +280,7 @@ theories audit their exported results with `Thm_Deps.all_oracles`. A successful
 focused build does not replace aggregate release validation.
 
 The same session includes
-[`Mahler_Cyclotomic_Boundary`](../devtools/proofs/isabelle/mahler_safety/Mahler_Cyclotomic_Boundary.thy):
+[`Mahler_Cyclotomic_Boundary`](../proofs/isabelle/mahler_safety/Mahler_Cyclotomic_Boundary.thy):
 
 | Result | Assumptions / scope | Executable connection |
 | --- | --- | --- |
@@ -316,7 +316,7 @@ it uses the shared Collatz carry/F5 owner and Antihydra arithmetic cylinders.
 F5 table refinement, temporal grammar closure and non-halting remain separate.
 
 ```console
-isabelle build -d devtools/proofs/isabelle Mahler_Source_Transport
+isabelle build -d proofs/isabelle Mahler_Source_Transport
 ```
 
 ## Joint-adic arithmetic and history-free projections
@@ -337,7 +337,7 @@ equality with source authority, or establish an all-time safe/fail invariant.
 The shared session's oracle audit includes the new lemmas. Reproduce with:
 
 ```console
-isabelle build -d devtools/proofs/isabelle Shared_S_Arithmetic
+isabelle build -d proofs/isabelle Shared_S_Arithmetic
 ```
 
 Validation at `6560841b95ca428e64f941235defc4318cec58b9cfe2f56e9cec7086a894443d`: the generalized shared session and Antihydra
@@ -351,7 +351,7 @@ not replace all-session release acceptance.
 
 ## Complete finite-interface admission
 
-[Reverse_196_Complete_Interface_Substitution](../devtools/proofs/isabelle/temporal_clocks/Reverse_196_Complete_Interface_Substitution.thy)
+[Reverse_196_Complete_Interface_Substitution](../proofs/isabelle/temporal_clocks/Reverse_196_Complete_Interface_Substitution.thy)
 models complete partial images. `canonical_partial_guard_extensional` identifies
 undefined and false rejection guards; `saturated_image_chronological_composition`
 connects simultaneous output substitution with chronological partial application.
@@ -367,8 +367,8 @@ worklist. Additional observers outside the output tuple cannot authorize a
 successor merge.
 
 Owning session: `Temporal_Clock_Jumps`. Run
-`isabelle build -d devtools/proofs/isabelle -j 1 -o threads=1 -o parallel_proofs=0 Temporal_Clock_Jumps`.
-The [weekly record](../results/current/week-of-2026-09-20/reverse-add.md#temporal-patch-cutover-audit)
+`isabelle build -d proofs/isabelle -j 1 -o threads=1 -o parallel_proofs=0 Temporal_Clock_Jumps`.
+The [weekly record](sprints/week-of-2026-09-20/reverse-add.md#temporal-patch-cutover-audit)
 separates its timed-out build from the checked exact-body focused diagnostic.
 
 ## Completed spatial streaming
@@ -385,13 +385,13 @@ closure, source extent, the iterative Python worklist or its complexity bound.
 Verify the focused theory with:
 
 ```console
-isabelle build -d devtools/proofs/isabelle Reverse_Cylinder_Length_Refinement
+isabelle build -d proofs/isabelle Reverse_Cylinder_Length_Refinement
 ```
 
 For **all repository sessions and their dependencies**, use:
 
 ```console
-isabelle build -D devtools/proofs/isabelle -j 1 -o threads=1 -o parallel_proofs=0
+isabelle build -D proofs/isabelle -j 1 -o threads=1 -o parallel_proofs=0
 ```
 
 The macrocell integration guard is 60 seconds / 4 GiB. `-d ... -a` instead
@@ -445,7 +445,7 @@ boundary-cutover acceptance target. The split provides focused feedback:
 | `Comma_Mask_Safety` | Simultaneous positive-rotation updates refine canonical losing levels and exclude infinite quotient paths from each admitted losing state. | Conditional on actual constructor refinement. One-way mask soundness proves neither complete classification nor safety of the complement; no concrete 14,470/314 instance is supplied. |
 | `Comma_Decade_Layer_Check` / `Comma_Decade_Layer_Smoke` | Postorder construction of checked 91-result layers; arithmetic-only squares; bounded memo ownership and failed-publication cleanup. | Small concrete regressions check repeated requests, wrapped phases, invalid phases and capacity refusal. They do not establish all-state coverage. |
 | `Comma_Decade_Layer_Instance` | Positive assertion: all 924 phases and 91 offsets stop within 26 crossings under B5. | Unresolved concrete acceptance gate. Neither the research enumeration nor partial progress is a theorem instance. |
-| `Comma_Decade_Orbit_Layer` | `comma_decade_orbit_layer_lookup_correct`, `comma_decade_orbit_layer_square_correct` and `comma_decade_orbit_layer_complete_sound` refine 46 stored orbit cells to all 91 physical offsets. Exact stop heights, phase transport and malformed-input rejection are preserved. | Generic kernel-checked refinement; it does not prove that B5 finishes. Build with `isabelle build -b -d devtools/proofs/isabelle Comma_Decade_Orbit_Layer`. |
+| `Comma_Decade_Orbit_Layer` | `comma_decade_orbit_layer_lookup_correct`, `comma_decade_orbit_layer_square_correct` and `comma_decade_orbit_layer_complete_sound` refine 46 stored orbit cells to all 91 physical offsets. Exact stop heights, phase transport and malformed-input rejection are preserved. | Generic kernel-checked refinement; it does not prove that B5 finishes. Build with `isabelle build -b -d proofs/isabelle Comma_Decade_Orbit_Layer`. |
 | `Comma_Decade_Orbit_Layer_Instance` | Same all-state B5/height-26 assertion through the 46-cell representation. | Concrete positive gate; timeout remains failure. No imported rank or forest premise. |
 | `Comma_Sector_Mask_Constructor`: forwarding | `comma_sector_mask_period_one_forward` proves equality of complete response functions from a checked period-one, noncrossing clause. `comma_sector_rows_rebind` transports row certificates without rebuilding masks. | Checked in `Comma_Decade_Masks`; exact source/target and exponent deltas remain. No literal-weight or global branch-safety assertion. The executable alias is tested with zero parent mask transports. |
 | `Comma_Sparse_Checked_Algebra` / `Comma_Sparse_Base_Instance` | Partial sparse rows retain exact output and mask coverage. Checked joins, stop absorption and rotated live composition feed binary powers. The base instance names and certifies each row before structural aggregation. | Generic laws and the concrete 46-row construction are separate gates. The base instance must complete before any sparse B5 theorem can be exported; diagnostic scheduling is not evidence. |
@@ -466,7 +466,7 @@ boundary-cutover acceptance target. The split provides focused feedback:
 | `Comma_Future_Safety` | Losing-level induction and an infinite selected path in a closed, stable finite complement. | Conditional graph lemmas; no concrete comma classification is assumed or certified by these statements. |
 | `Comma_Checked_Ranks` | A checked rank witness proves all-branch termination of ranked states, unique unranked continuation and the bounded losing fixed point. | Checker soundness only. A concrete instance must check every outcome of the executable transition; a generated rank table alone supplies no theorem. |
 
-Build the core with `isabelle build -b -d devtools/proofs/isabelle -o threads=1 Comma_Cylinder`.
+Build the core with `isabelle build -b -d proofs/isabelle -o threads=1 Comma_Cylinder`.
 The `-b` option saves the checked heap for subsequent child builds. The forest
 is isolated in `Comma_Forest_Legacy`; the older scalar macro and its refinement
 are isolated in `Comma_Scalar_Reference`. Neither is an ancestor of the weighted
@@ -509,7 +509,7 @@ constructor termination, separately from the losing rank for literal branches.
 Source entry and prefix uniqueness are checked; global totality and future
 safety are still pending.
 Unchecked downstream statements must not be read as release results.
-The [weekly review](../results/current/week-of-2026-09-20/comma.md#independent-forest-cutover-review)
+The [weekly review](sprints/week-of-2026-09-20/comma.md#independent-forest-cutover-review)
 separates local arithmetic checks, exact-prefix refinement, totality and
 unconditional future safety. A cached-parent focused build does not discharge
 the aggregate time limit.
@@ -521,4 +521,4 @@ after these replacement obligations pass. The generated
 [proof inventory](../devtools/checks/isabelle_proof_index.py) records imports
 and exact theorem names; registration alone never certifies a successful build.
 See the [research scope](research/comma.md) and the
-[weekly validation record](../results/current/week-of-2026-09-20/comma.md#a367620-integration).
+[weekly validation record](sprints/week-of-2026-09-20/comma.md#a367620-integration).

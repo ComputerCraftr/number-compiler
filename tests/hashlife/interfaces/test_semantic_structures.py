@@ -22,6 +22,7 @@ from number_compiler.hashlife.interfaces.semantic_structures import (
     StructureID,
 )
 from number_compiler.resources.ledger import ResourceLedger
+from tests.support.arithmetic_fixtures import ternary_xy_ports
 
 if TYPE_CHECKING:
     from number_compiler.hashlife.interfaces.semantic_bits import (
@@ -114,9 +115,7 @@ def test_product_validity_masks_all_components_and_keeps_function_partiality() -
 
 def test_bitwise_substitution_is_simultaneous_and_preserves_invalid_arguments() -> None:
     bits = BitFunctionArena(ResourceLedger())
-    x = FinitePort(PortVariable(0, 0, "x", 0), 3)
-    y = FinitePort(PortVariable(0, 0, "y", 0), 3)
-    word = AtomSort("three", 3)
+    x, y, word = ternary_xy_ports()
     vx, vy = (bits.variable((x, y), port, word) for port in (x, y))
     swapped = bits.substitute(vx, {x.variable: vy, y.variable: vx})
     for a, b in product(range(4), repeat=2):

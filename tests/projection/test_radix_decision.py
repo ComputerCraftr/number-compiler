@@ -1,4 +1,5 @@
 from number_compiler.projection.radix_decision import (
+    RadixDecisionMetrics,
     bitmap_radix_decision_metrics,
     collatz_inverse_symbolic_decision_metrics,
     shared_radix_decision_metrics,
@@ -7,12 +8,16 @@ from number_compiler.sequences.collatz.parity import collatz_parity_inverse_resi
 from number_compiler.sequences.prime.set import project_odd_prime_block
 
 
-def test_collatz_inverse_parity_map_has_large_radix_dag_reduction() -> None:
-    width = 12
+def _inverse_truth_metrics(width: int) -> RadixDecisionMetrics:
     outputs = tuple(
         collatz_parity_inverse_residue(word, width) for word in range(1 << width)
     )
-    metrics = shared_radix_decision_metrics(outputs, width, width, order="lsb")
+    return shared_radix_decision_metrics(outputs, width, width, order="lsb")
+
+
+def test_collatz_inverse_parity_map_has_large_radix_dag_reduction() -> None:
+    width = 12
+    metrics = _inverse_truth_metrics(width)
     assert metrics.nonterminal_nodes == 604
     assert metrics.distinct_roots == width
     assert metrics.nonterminal_nodes < (1 << width) // 6
@@ -31,10 +36,7 @@ def test_collatz_inverse_symbolic_dag_matches_truth_table_and_extends_without_en
     None
 ):
     width = 12
-    outputs = tuple(
-        collatz_parity_inverse_residue(word, width) for word in range(1 << width)
-    )
-    ordinary = shared_radix_decision_metrics(outputs, width, width, order="lsb")
+    ordinary = _inverse_truth_metrics(width)
     symbolic = collatz_inverse_symbolic_decision_metrics(width)
     assert symbolic.nonterminal_nodes == ordinary.nonterminal_nodes == 604
     assert symbolic.distinct_roots == ordinary.distinct_roots == width

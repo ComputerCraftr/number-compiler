@@ -8,13 +8,17 @@ substitution and restriction transaction; they never become successor inputs.
 from __future__ import annotations
 
 from dataclasses import dataclass
+from typing import TypeVar
 
+from number_compiler.arithmetic.automata.primitive_semantics import PrimitiveSemantics
 from number_compiler.arithmetic.functions.finite_function_types import (
     BOOL,
     AtomSort,
     FinitePort,
     FunctionSignature,
+    SemanticFunctionID,
 )
+from number_compiler.arithmetic.functions.finite_port_action import PortVariable
 from number_compiler.hashlife.interfaces.semantic_bits import (
     BitFunctionArena,
     FactoredFunctionID,
@@ -148,3 +152,77 @@ def differs_from_constant(
         valid,
     )
     return arena._publish(circuit, (pending,))[0]
+
+
+MACRO_LEFT = PortVariable(0, 0, "macro-left", 0)
+MACRO_RIGHT = PortVariable(0, 1, "macro-right", 0)
+
+
+def primitive_boundary_inputs(
+    bits: BitFunctionArena, laws: PrimitiveSemantics, ports: tuple[FinitePort, ...]
+) -> tuple[FactoredFunctionID, FactoredFunctionID]:
+    return (
+        bits.variable(
+            ports, next(p for p in ports if p.variable == MACRO_LEFT), laws.left_sort
+        ),
+        bits.variable(
+            ports, next(p for p in ports if p.variable == MACRO_RIGHT), laws.right_sort
+        ),
+    )
+
+
+def primitive_leaf_channels(
+    bits: BitFunctionArena,
+    laws: PrimitiveSemantics,
+    ports: tuple[FinitePort, ...],
+    symbol: int,
+) -> tuple[FactoredFunctionID, FactoredFunctionID, FactoredFunctionID]:
+    """Simultaneous primitive substitution shared by both complete interfaces."""
+    left, right = primitive_boundary_inputs(bits, laws, ports)
+    source = bits.constant(FunctionSignature(ports, laws.symbol_sort), symbol)
+    replacement = {
+        laws.ports[0].variable: left,
+        laws.ports[1].variable: source,
+        laws.ports[2].variable: right,
+    }
+    advance_left, advance_right, output = (
+        bits.substitute(bits.from_scalar(function), replacement)
+        for function in (laws.advance_left, laws.advance_right, laws.emit)
+    )
+    return advance_left, advance_right, output
+
+
+def retag_numeric(
+    bits: BitFunctionArena, function: FactoredFunctionID, output: AtomSort, error: str
+) -> FactoredFunctionID:
+    """Change a numeric codomain without discarding represented value bits."""
+    node = bits.resolve(function)
+    circuit, roots, valid = bits.imported_circuit(node)
+    width = (output.cardinality - 1).bit_length()
+    if len(roots) > width:
+        raise ValueError(error)
+    pending = circuit.normalized(
+        FunctionSignature(node.signature.inputs, output),
+        roots + (circuit.zero,) * (width - len(roots)),
+        valid,
+    )
+    return bits._publish(circuit, (pending,))[0]
+
+
+_Argument = TypeVar("_Argument")
+
+
+def primitive_operation(
+    primitive: PrimitiveSemantics,
+    kind: str,
+    side: int,
+    children: tuple[_Argument, ...],
+    zero_left: _Argument,
+    zero_right: _Argument,
+) -> tuple[SemanticFunctionID, tuple[_Argument, ...]]:
+    """Select the primitive law and its ordered, fully bound input ports."""
+    if kind == "emit":
+        return primitive.emit, children
+    if side == 0:
+        return primitive.advance_left, (children[0], children[1], zero_right)
+    return primitive.advance_right, (zero_left, children[1], children[0])

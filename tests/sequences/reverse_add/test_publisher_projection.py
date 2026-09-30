@@ -1,10 +1,12 @@
 from __future__ import annotations
 
+from tests.support.assertions import assert_rejected_atomically
+
 from dataclasses import replace
 
 import pytest
 
-from devtools.proofs.oracles.reverse_publisher import (
+from devtools.verification.oracles.reverse_publisher import (
     ReversePublisherProjection,
     build_reverse_publisher_projection,
 )
@@ -87,9 +89,7 @@ def test_source_bound_publisher_matches_literal_196(generation: int) -> None:
     expected = _literal(196, generation)
     publisher = _reference_publisher(term)
     assert type(publisher) is ReversePublisherProjection
-    source = pair_field_from_integer(term.seed, term.base)
-    publisher.sources.source.require_source(source, 2 * term.base - 1)
-    assert publisher.macro.source_extent == len(source)
+    _assert_publisher_source(publisher, term)
     assert publisher.macro.width == term.maximum_width
     assert tuple(publisher.iter_active()) == expected
     assert publisher.active_width() == len(expected)
@@ -157,9 +157,7 @@ def test_pending_publisher_rejects_changed_source_before_image_construction() ->
 
 
 def test_pending_publisher_rejects_coordinated_action_and_schema_mutation() -> None:
-    publisher = _reference_publisher(ReverseAddPoweredTerm(196, 8))
-    foreign = _reference_publisher(ReverseAddPoweredTerm(89, 8))
-    assert type(publisher) is type(foreign) is ReversePublisherProjection
+    publisher, foreign = _distinct_publishers()
     original_action, original_binding = publisher.action, publisher._binding
     original_schema = publisher._schema
     before = publisher.ledger.snapshot()
@@ -212,19 +210,19 @@ def test_failed_lazy_image_demand_is_terminal_and_auditable(
     assert publisher._image_binding is None
     assert publisher._image_failure is not None
     assert not audit_reverse_temporal_experiment(publisher.ledger).invalid
-    before = publisher.ledger.snapshot()
-    with pytest.raises(RuntimeError, match="previously failed"):
-        publisher.point(0)
-    assert publisher.ledger.snapshot() == before
+    assert_rejected_atomically(
+        publisher.ledger,
+        lambda: publisher.point(0),
+        RuntimeError,
+        match="previously failed",
+    )
     publisher.close()
     with pytest.raises(ValueError, match="closed reverse publisher"):
         publisher.point(0)
 
 
 def test_publisher_rejects_foreign_source_and_action_before_observation() -> None:
-    first = _reference_publisher(ReverseAddPoweredTerm(196, 8))
-    second = _reference_publisher(ReverseAddPoweredTerm(89, 8))
-    assert type(first) is type(second) is ReversePublisherProjection
+    first, second = _distinct_publishers()
     original_source, original_action = first.source, first.action
     try:
         first.source = first.sources.forest(0, 1)
@@ -396,9 +394,7 @@ def test_recursive_fold_matches_independent_literal_sheets(
     publisher = _reference_publisher(term)
     assert type(publisher) is ReversePublisherProjection
     assert publisher.macro.width == term.maximum_width
-    source = pair_field_from_integer(term.seed, term.base)
-    publisher.sources.source.require_source(source, 2 * term.base - 1)
-    assert publisher.macro.source_extent == len(source)
+    _assert_publisher_source(publisher, term)
     assert publisher.mirror_obstruction() == reference
     assert (
         publisher.ledger.counters.get("reverse_publisher_cylinder_node_evaluations", 0)
@@ -430,3 +426,21 @@ def test_publisher_preserves_budget_refusal() -> None:
     )
     with pytest.raises(BlockContextBudgetExceeded):
         _reference_publisher(term)
+
+
+def _assert_publisher_source(
+    publisher: ReversePublisherProjection, term: ReverseAddPoweredTerm
+) -> tuple[int, ...]:
+    source = pair_field_from_integer(term.seed, term.base)
+    publisher.sources.source.require_source(source, 2 * term.base - 1)
+    assert publisher.macro.source_extent == len(source)
+    return source
+
+
+def _distinct_publishers() -> tuple[
+    ReversePublisherProjection, ReversePublisherProjection
+]:
+    first = _reference_publisher(ReverseAddPoweredTerm(196, 8))
+    second = _reference_publisher(ReverseAddPoweredTerm(89, 8))
+    assert type(first) is type(second) is ReversePublisherProjection
+    return first, second

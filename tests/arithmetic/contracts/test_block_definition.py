@@ -6,7 +6,7 @@ from dataclasses import fields
 
 import pytest
 
-from devtools.proofs.block_composed import ComposedBlockEffect
+from devtools.verification.block_composed import ComposedBlockEffect
 from number_compiler.arithmetic.contracts import semantic_identity
 from number_compiler.arithmetic.contracts.block_definition import (
     BlockDefinition,

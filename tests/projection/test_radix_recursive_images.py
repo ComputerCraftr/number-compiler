@@ -4,7 +4,7 @@ from typing import cast
 
 import pytest
 
-from devtools.proofs.radix_stage_images import (
+from devtools.verification.radix_stage_images import (
     RadixDivisionImageArena,
     RadixDivisionImageID,
     RadixDivisionInterfaceID,

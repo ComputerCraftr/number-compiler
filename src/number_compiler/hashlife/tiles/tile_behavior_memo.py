@@ -397,14 +397,16 @@ def publish_behavior_classification(
         or reservation._reservations != reservations
     ):
         raise ValueError("behavior publication reservation does not match its request")
-    reverse_snapshot = arena._reverse_snapshot(referenced, stored_key)
+    reverse_snapshot = None
     try:
+        reverse_snapshot = arena._reverse_snapshot(referenced, stored_key)
         arena._memo[stored_key] = value
         for tile in referenced:
             arena._add_membership(tile, stored_key)
     except BaseException:
-        arena._memo.pop(stored_key, None)
-        arena._restore_reverse(reverse_snapshot)
+        if reverse_snapshot is not None:
+            arena._memo.pop(stored_key, None)
+            arena._restore_reverse(reverse_snapshot)
         for owner, entries, nodes in reservations:
             arena.ledger.release(owner, entries, nodes)
         if reservation is not None:

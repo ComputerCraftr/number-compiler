@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from tests.support.comma_oracles import assert_phase_period
+
 import json
 import gzip
 from pathlib import Path
@@ -62,15 +64,7 @@ def test_boundary_formula_matches_independent_nine_candidate_rule() -> None:
 
 
 def test_phase_period_matches_independent_literal_word() -> None:
-    for f in range(1, 10):
-        for d in range(10):
-            length, displacement = _phase_period(f, d)
-            k = 10_000 + d
-            original = k
-            for _ in range(length):
-                k += 10 * (k % 10) + f
-            assert k - original == displacement
-            assert k % 10 == original % 10
+    assert_phase_period(_phase_period)
 
 
 def test_small_root_partition_has_every_child_once() -> None:

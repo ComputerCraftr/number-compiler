@@ -1,5 +1,7 @@
 """Distinguish syntactic programs, reduced functions, and work before aliasing."""
 
+from tests.support.assertions import measure_operation
+from tests.support.diamond_context_program import assert_context_inventory
 from dataclasses import replace
 from types import SimpleNamespace
 
@@ -27,11 +29,7 @@ def test_spatial_context_programs_are_not_counted_as_extensional_functions() -> 
     assert len(contexts.observations) > 0
     assert len(contexts.unary._memo) > 0
     assert report.unary_function_cache_entries == len(contexts.unary._memo)
-    inventory = {row.owner: row for row in report.resource_inventory}
-    assert inventory[contexts.observations.owner].observed_entries == len(
-        contexts.observations
-    )
-    assert inventory[contexts.unary.owner].observed_entries == len(contexts.unary._memo)
+    assert_context_inventory(contexts, report)
     assert report.boundary_substitution_cache_entries == len(runtime.continuations)
     partition = observed_node_partition(
         runtime.ledger.inventory(), dict(runtime.ledger.iter_containers())
@@ -82,9 +80,12 @@ def test_unary_key_audit_checks_declared_variable_support_and_exact_port_type() 
 def test_early_unary_lookup_does_not_mask_late_expression_interning() -> None:
     runtime, _, contexts, _ = populated()
     key = next(key for key in contexts.unary._memo if type(key) is UnaryComposition)
-    before = runtime.ledger.snapshot()
-    contexts.unary.compose(key.kernel, key.side, key.before, key.after, key.port)
-    after = runtime.ledger.snapshot()
+    before, after = measure_operation(
+        runtime.ledger,
+        lambda: contexts.unary.compose(
+            key.kernel, key.side, key.before, key.after, key.port
+        ),
+    )
     assert (
         after.counters["unary_function_composition_hits"]
         == before.counters.get("unary_function_composition_hits", 0) + 1
@@ -231,9 +232,12 @@ def test_warm_unary_composition_hits_before_repeated_admission_work() -> None:
     runtime, _, contexts, _ = populated()
     key = next(key for key in contexts.unary._memo if type(key) is UnaryComposition)
     contexts.unary.compose(key.kernel, key.side, key.before, key.after, key.port)
-    before = runtime.ledger.snapshot()
-    contexts.unary.compose(key.kernel, key.side, key.before, key.after, key.port)
-    after = runtime.ledger.snapshot()
+    before, after = measure_operation(
+        runtime.ledger,
+        lambda: contexts.unary.compose(
+            key.kernel, key.side, key.before, key.after, key.port
+        ),
+    )
     popped = (
         after.counters["unary_function_admission_frame_visits"]
         - before.counters["unary_function_admission_frame_visits"]

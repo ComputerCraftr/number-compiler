@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from tests.support.assertions import assert_rejected_atomically
+
 from dataclasses import replace
 from typing import TYPE_CHECKING, cast
 
@@ -60,10 +62,11 @@ def test_identity_schema_validates_complete_primitive_port(
     schema = generic_higher_runtime(app.runtime).schema
     identity = schema.import_action(app.root)
 
-    before = app.ledger.snapshot()
-    with pytest.raises((TypeError, ValueError)):
-        getattr(schema, method)(identity, *arguments)
-    assert app.ledger.snapshot() == before
+    assert_rejected_atomically(
+        app.ledger,
+        lambda: getattr(schema, method)(identity, *arguments),
+        (TypeError, ValueError),
+    )
 
 
 def test_width_rejects_foreign_second_action_before_importing_first() -> None:

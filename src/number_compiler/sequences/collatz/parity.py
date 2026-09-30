@@ -20,6 +20,9 @@ not an enumeration of the Fibonacci family of legal E/O branch words.
 """
 
 from __future__ import annotations
+from number_compiler.arithmetic.contracts.input_validation import (
+    normalized_integer_pair,
+)
 
 from bisect import bisect_right
 from collections.abc import Iterable
@@ -107,9 +110,7 @@ def pow3_mod_pow2_binomial(exponent: int, bits: int, *, inverse: bool = False) -
     where terms ``r >= bits`` vanish modulo ``2**bits``.  This deliberately
     reuses the same 2-adic binomial transport primitive as reverse-and-add.
     """
-    exponent, bits = int(exponent), int(bits)
-    if exponent < 0 or bits <= 0:
-        raise ValueError((exponent, bits))
+    exponent, bits = normalized_integer_pair(exponent, bits, second_minimum=1)
     modulus = 1 << bits
     if exponent == 0:
         return 1 % modulus

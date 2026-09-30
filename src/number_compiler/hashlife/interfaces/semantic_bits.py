@@ -38,7 +38,6 @@ from number_compiler.arithmetic.functions.semantic_functions import (
 )
 from number_compiler.hashlife.interfaces.boolean_composition import (
     _CompositionKey,
-    substitute_boolean_fused,
 )
 from number_compiler.hashlife.interfaces.semantic_publication import prepare_functions
 from number_compiler.resources.ledger import OwnedMemo, ResourceLedger
@@ -304,6 +303,14 @@ class BitFunctionArena:
         result = circuit.normalized(signature, bits, valid)
         return self._publish(circuit, (result,))[0]
 
+    def imported_circuit(
+        self, source: FactoredFunction
+    ) -> tuple[_Circuit, tuple[int, ...], int]:
+        """Import one numeric function while preserving its admitted domain."""
+        circuit = _Circuit(self.functions, source.signature.inputs)
+        roots, valid = circuit.imported(source)
+        return circuit, roots, valid
+
     def map_atoms(
         self,
         function: FactoredFunctionID,
@@ -328,8 +335,7 @@ class BitFunctionArena:
             or any(type(v) is not int or not 0 <= v < output.cardinality for v in table)
         ):
             raise ValueError("unary atom map requires a complete bounded finite law")
-        circuit = _Circuit(self.functions, source.signature.inputs)
-        source_bits, valid = circuit.imported(source)
+        circuit, source_bits, valid = self.imported_circuit(source)
         width = (output.cardinality - 1).bit_length()
         values = [
             tuple(
@@ -415,24 +421,14 @@ class BitFunctionArena:
         if type(joint) is not bool:
             raise TypeError("substitution strategy requires a Boolean flag")
         original = self.resolve(function)
-        admitted = {port.variable: port for port in original.signature.inputs}
-        items = []
-        references = []
-        for variable, reference in replacements.items():
-            if type(variable) is not PortVariable:
-                raise ValueError("substitution needs typed finite port names")
-            PortVariable.__post_init__(variable)
-            port = admitted.get(variable)
-            replacement = self.resolve(reference)
-            if (
-                port is None
-                or type(replacement.signature.output) is not AtomSort
-                or replacement.signature.output.cardinality != port.cardinality
-            ):
-                raise ValueError("substitution changes a finite input domain")
-            items.append((port, replacement))
-            references.append((variable, reference))
-        items.sort(key=lambda item: item[0].variable)
+        from number_compiler.hashlife.interfaces.semantic_bit_batches import (
+            admitted_replacements,
+            substitution_environment,
+        )
+
+        items, references = admitted_replacements(
+            self, original.signature.inputs, replacements
+        )
         removed = {port.variable for port, _ in items}
         inputs = _union_inputs(
             tuple(
@@ -463,23 +459,7 @@ class BitFunctionArena:
                 "bit substitution cache budget exhausted before construction"
             )
         circuit = _Circuit(self.functions, inputs)
-        mapping: dict[PortVariable, int] = {}
-        validity = circuit.admitted()
-        for port, value in items:
-            bits, valid = circuit.imported(value)
-            validity = circuit.conjunction(validity, valid)
-            for bit, root in enumerate(bits):
-                mapping[
-                    PortVariable(
-                        port.variable.time, port.variable.side, port.variable.role, bit
-                    )
-                ] = root
-        # Cofactor correlated argument functions jointly; bottom-up ITE builds
-        # functions for combinations of argument bits that can never coexist.
-        fused = joint and any(
-            len(circuit.tx.node(value).support) > 1 for value in mapping.values()
-        )
-        transform = substitute_boolean_fused if fused else substitute_boolean
+        mapping, validity, transform = substitution_environment(circuit, items, joint)
         result_bits = tuple(
             transform(circuit, bit.local_id, mapping) for bit in original.bits
         )
@@ -796,6 +776,21 @@ class _Circuit:
             self.tx.arena.ledger.bump("semantic_bit_boolean_absorption_reductions")
             return self.one
         return self.tx.choose(condition, yes, no)
+
+    def join_branch(
+        self, values: list[tuple[int, ...]], variable: PortVariable
+    ) -> None:
+        """Replace two completed cofactors by their common decision node."""
+        high, low = values.pop(), values.pop()
+        values.append(self.branch(variable, low, high))
+
+    def branch(
+        self, variable: PortVariable, low: tuple[int, ...], high: tuple[int, ...]
+    ) -> tuple[int, ...]:
+        return tuple(
+            self.tx.decision(self.signature, variable, a, b)
+            for a, b in zip(low, high, strict=True)
+        )
 
     def negate(self, value: int) -> int:
         return self.choose(value, self.zero, self.one)

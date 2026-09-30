@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from tests.support.assertions import assert_rejected_atomically
+
 from collections.abc import Callable, Hashable
 from dataclasses import replace
 from typing import TYPE_CHECKING, Never, TypeVar, cast
@@ -76,10 +78,9 @@ def test_alphabet_blank_and_interpretation_are_part_of_identity() -> None:
         assert len({a.tile, b.tile, c.tile}) == 3
         assert arena.resolve(a.tile).extent == 1
         assert arena.resolve(b.tile).extent == 0
-        before = ledger.snapshot()
-        with pytest.raises(ValueError):
-            arena.join(a.tile, c.tile)
-        assert ledger.snapshot() == before
+        assert_rejected_atomically(
+            ledger, lambda: arena.join(a.tile, c.tile), ValueError
+        )
 
 
 def test_parent_retains_children_and_retirement_never_recycles_ids() -> None:
@@ -213,10 +214,9 @@ def test_corrupt_alphabet_interner_rejects_before_warm_return(
     ledger, arena, alphabet = _arena()
     definition = arena.alphabet(alphabet)
     arena._alphabet_keys[definition] = cast("int", alias)
-    before = ledger.snapshot()
-    with pytest.raises((ValueError, TypeError)):
-        arena.intern_alphabet(definition)
-    assert ledger.snapshot() == before
+    assert_rejected_atomically(
+        ledger, lambda: arena.intern_alphabet(definition), (ValueError, TypeError)
+    )
 
 
 def test_independent_inventory_accepts_future_tiles_without_executing_queries(
@@ -312,10 +312,12 @@ def test_tile_retirement_cannot_install_an_arbitrary_callback_owner() -> None:
     callback = SimpleNamespace(
         tiles=arena, ledger=ledger, retire_tile=lambda _tile: None
     )
-    before = ledger.snapshot()
-    with pytest.raises(TypeError, match="canonical result memo owner"):
-        arena.bind_results(cast("CompletedResultArena", callback))
-    assert ledger.snapshot() == before
+    assert_rejected_atomically(
+        ledger,
+        lambda: arena.bind_results(cast("CompletedResultArena", callback)),
+        TypeError,
+        match="canonical result memo owner",
+    )
     assert arena._results is None
 
 

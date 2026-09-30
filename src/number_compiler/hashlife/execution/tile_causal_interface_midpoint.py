@@ -17,7 +17,7 @@ from number_compiler.hashlife.execution.tile_causal_results import (
 )
 from number_compiler.hashlife.execution.tile_causal_tasks import (
     CausalFrame,
-    result_payload,
+    retain_completed,
 )
 from number_compiler.hashlife.tiles.tile_boundaries import BoundaryTileView
 from number_compiler.hashlife.tiles.tile_causal_interface_memo import (
@@ -82,11 +82,8 @@ def cached_midpoint_interface_step(
         if completed is None:
             frame.stage = 0
             return False
-        first = result_payload(engine.tiles, completed)
-        if engine._application is None:
-            engine._result_leases.append(completed)
-        else:
-            engine.scheduler._pin_causal(engine._application, before_key, completed)
+        assert before_key is not None
+        first = retain_completed(engine, before_key, completed)
         node = engine.tiles.resolve(tile)
         frame.stage, frame.saved = 31, (first, observation_key)
         if type(left_anchor) is int and type(right_anchor) is int:

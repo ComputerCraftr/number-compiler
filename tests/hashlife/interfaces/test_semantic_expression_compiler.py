@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from tests.support.assertions import assert_rejected_atomically
+
 from typing import TYPE_CHECKING
 
 import pytest
@@ -27,9 +29,19 @@ from number_compiler.hashlife.execution.continuations.diamond_tasks import Resul
 from number_compiler.hashlife.interfaces.semantic_expression_compiler import (
     SemanticExpressionCompiler,
 )
-from tests.support.diamond_continuation_reduction import literal, machine
+from tests.support.diamond_continuation_reduction import (
+    literal,
+    machine,
+    advance_after_emit,
+)
 
 if TYPE_CHECKING:
+    from number_compiler.arithmetic.contracts.scoped_handles import ActionProgramID
+    from number_compiler.hashlife.execution.continuations.diamond_runtime import (
+        DiamondRuntime,
+    )
+    from number_compiler.hashlife.interfaces.diamond_boundary_expr import ExprID
+    from number_compiler.hashlife.interfaces.diamond_kernel import PrimitiveKernel
     from number_compiler.arithmetic.functions.finite_function_types import (
         SemanticFunctionID,
     )
@@ -45,10 +57,10 @@ def _inner_function(
     return functions.terminal_references(value, {})[0]
 
 
-def test_actual_cubed_step_nested_continuation_evaluates_without_replay(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    runtime, action = machine()
+def _cubed_reference(
+    runtime: DiamondRuntime, action: ActionProgramID
+) -> tuple[ExprID, PrimitiveKernel, dict[int, tuple[int, tuple[int, ...]]]]:
+    """Execute the original expression reference before compiled evaluation is poisoned."""
     arena = runtime.higher.expressions
     paired = runtime.actions.compose(action, action)
     cubed = runtime.actions.compose(action, paired)
@@ -73,6 +85,15 @@ def test_actual_cubed_step_nested_continuation_evaluates_without_replay(
                 for y in range(kernel.right_count)
             ),
         )
+    return outer, kernel, expected
+
+
+def test_actual_cubed_step_nested_continuation_evaluates_without_replay(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    runtime, action = machine()
+    arena = runtime.higher.expressions
+    outer, kernel, expected = _cubed_reference(runtime, action)
     functions = SemanticFunctionArena(runtime.ledger)
     compiler = SemanticExpressionCompiler(runtime, functions)
     compiled = compiler.compile(outer)
@@ -101,10 +122,9 @@ def test_actual_cubed_step_nested_continuation_evaluates_without_replay(
     assert not hasattr(compiler, "results")
 
 
-def test_different_zero_word_recipes_alias_with_outer_dependent_function_terminal() -> (
-    None
-):
-    runtime, action = machine(PhysicalCollatzFourBlockEffect())
+def _zero_word_recipes(
+    runtime: DiamondRuntime, action: ActionProgramID
+) -> list[ExprID]:
     arena = runtime.higher.expressions
     paired = runtime.actions.compose(action, action)
     x = arena.variable(arena.state_sort(action, 0), "outer")
@@ -117,6 +137,14 @@ def test_different_zero_word_recipes_alias_with_outer_dependent_function_termina
         body = arena.pair(paired, 0, x, arena.lambda_(y, reset))
         bodies.append(arena.lambda_(x, body))
     assert bodies[0] != bodies[1]
+    return bodies
+
+
+def test_different_zero_word_recipes_alias_with_outer_dependent_function_terminal() -> (
+    None
+):
+    runtime, action = machine(PhysicalCollatzFourBlockEffect())
+    bodies = _zero_word_recipes(runtime, action)
     functions = SemanticFunctionArena(runtime.ledger)
     compiler = SemanticExpressionCompiler(runtime, functions)
     first, second = (compiler.compile(body) for body in bodies)
@@ -129,9 +157,7 @@ def test_free_outer_port_and_bound_inner_port_compile_jointly() -> None:
     arena = runtime.higher.expressions
     x = arena.variable(arena.state_sort(action, 0), "free-x")
     y = arena.variable(arena.state_sort(action, 1), "bound-y")
-    emitted = arena.primitive_emit(action, x, arena.symbol(action, 1), y)
-    body = arena.primitive_advance(action, 0, x, emitted)
-    function = arena.lambda_(y, body)
+    _emitted, _body, function = advance_after_emit(arena, action, x, y)
     compiler = SemanticExpressionCompiler(
         runtime, SemanticFunctionArena(runtime.ledger)
     )
@@ -160,10 +186,12 @@ def test_unsupported_composed_input_and_foreign_input_reject_without_mutation() 
     compiler = SemanticExpressionCompiler(
         runtime, SemanticFunctionArena(runtime.ledger)
     )
-    before = runtime.ledger.snapshot()
-    with pytest.raises(UnsupportedInterfaceError, match="composed input"):
-        compiler.compile(composed, (composed,))
-    assert runtime.ledger.snapshot() == before
+    before = assert_rejected_atomically(
+        runtime.ledger,
+        lambda: compiler.compile(composed, (composed,)),
+        UnsupportedInterfaceError,
+        match="composed input",
+    )
     foreign, foreign_action = machine()
     other = foreign.higher.expressions.variable(
         foreign.higher.expressions.state_sort(foreign_action, 0), "foreign"
@@ -172,10 +200,9 @@ def test_unsupported_composed_input_and_foreign_input_reject_without_mutation() 
         compiler.compile(other, (other,))
     assert runtime.ledger.snapshot() == before
     x = arena.variable(arena.state_sort(action, 0), "undeclared")
-    before = runtime.ledger.snapshot()
-    with pytest.raises(ValueError, match="undeclared"):
-        compiler.compile(x)
-    assert runtime.ledger.snapshot() == before
+    before = assert_rejected_atomically(
+        runtime.ledger, lambda: compiler.compile(x), ValueError, match="undeclared"
+    )
 
 
 def test_existing_finite_map_is_lifted_with_invalid_codes_preserved() -> None:
@@ -243,10 +270,12 @@ def test_composed_lambda_input_is_rejected_before_semantic_publication() -> None
     compiler = SemanticExpressionCompiler(
         runtime, SemanticFunctionArena(runtime.ledger)
     )
-    before = runtime.ledger.snapshot()
-    with pytest.raises(UnsupportedInterfaceError, match="composed input"):
-        compiler.compile(function)
-    assert runtime.ledger.snapshot() == before
+    assert_rejected_atomically(
+        runtime.ledger,
+        lambda: compiler.compile(function),
+        UnsupportedInterfaceError,
+        match="composed input",
+    )
 
 
 def test_structured_production_nested_output_never_uses_scalar_product_or_curry(
@@ -259,29 +288,7 @@ def test_structured_production_nested_output_never_uses_scalar_product_or_curry(
 
     runtime, action = machine()
     arena = runtime.higher.expressions
-    paired = runtime.actions.compose(action, action)
-    cubed = runtime.actions.compose(action, paired)
-    state = runtime.execute(HigherInitial(cubed, 0))
-    for bit in (1, 0, 1):
-        state = runtime.execute(HigherStep(cubed, 0, state, arena.symbol(cubed, bit)))
-    outer = runtime.execute(ResolveExpr(arena.continuation(state)))
-    kernel = runtime.kernel(action)
-    expected = {}
-    for x in range(kernel.right_count):
-        body = runtime.execute(
-            ResolveExpr(arena.apply(outer, literal(runtime, action, 1, x)))
-        )
-        anchor = runtime.execute(LowerFinite(arena.anchor(body)))
-        inner = runtime.execute(ResolveExpr(arena.continuation(body)))
-        expected[x] = (
-            anchor,
-            tuple(
-                runtime.execute(
-                    LowerFinite(arena.apply(inner, literal(runtime, action, 1, y)))
-                )
-                for y in range(kernel.right_count)
-            ),
-        )
+    outer, kernel, expected = _cubed_reference(runtime, action)
     functions = runtime.semantic_functions
     compiler = runtime.semantic_compiler
 
@@ -328,19 +335,7 @@ def test_structured_zero_word_alias_preserves_joint_outer_dependency(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     runtime, action = machine(PhysicalCollatzFourBlockEffect())
-    arena = runtime.higher.expressions
-    paired = runtime.actions.compose(action, action)
-    x = arena.variable(arena.state_sort(action, 0), "outer")
-    y = arena.variable(arena.state_sort(action, 1), "inner")
-    expressions = []
-    for count in (4, 8):
-        value = x
-        for _ in range(count):
-            value = arena.primitive_advance(action, 0, value, arena.symbol(action, 0))
-        expressions.append(
-            arena.lambda_(x, arena.pair(paired, 0, x, arena.lambda_(y, value)))
-        )
-    assert expressions[0] != expressions[1]
+    expressions = _zero_word_recipes(runtime, action)
     functions = runtime.semantic_functions
     compiler = runtime.semantic_compiler
 
@@ -498,7 +493,9 @@ def test_standalone_compiler_cannot_hijack_runtime_structured_owner() -> None:
     standalone = SemanticExpressionCompiler(
         runtime, SemanticFunctionArena(runtime.ledger)
     )
-    before = runtime.ledger.snapshot()
-    with pytest.raises(ValueError, match="runtime-owned"):
-        standalone.compile_structured(x, (x,))
-    assert runtime.ledger.snapshot() == before
+    assert_rejected_atomically(
+        runtime.ledger,
+        lambda: standalone.compile_structured(x, (x,)),
+        ValueError,
+        match="runtime-owned",
+    )

@@ -19,6 +19,14 @@ from dataclasses import dataclass
 from number_compiler.arithmetic.fields.radix import bit_width
 
 
+def integer_text(value: int) -> str:
+    """Render admitted integers without unbounded decimal conversion."""
+    import sys
+
+    limit = min(sys.get_int_max_str_digits() or 4096, 4096)
+    return str(value) if value.bit_length() <= 3 * limit else hex(value)
+
+
 @dataclass(frozen=True, slots=True)
 class DyadicExtent:
     """Exact symbolic integer ``2**power + offset``.
@@ -142,10 +150,7 @@ class DyadicExtent:
         return (1 << self.power) + self.offset
 
     def __repr__(self) -> str:
-        if self.offset:
-            sign = "+" if self.offset > 0 else "-"
-            return f"2**{self.power}{sign}{abs(self.offset)}"
-        return f"2**{self.power}"
+        return extent_expression(self)
 
 
 def _normalize_reverse_descriptor(obj: ReverseAddExtent | ReverseAddBitExtent) -> None:
@@ -202,9 +207,7 @@ class ReverseAddExtent:
         return position < self.materialize()
 
     def __repr__(self) -> str:
-        return (
-            f"width(reverse_add(seed={self.seed},base={self.base})[{self.generation}])"
-        )
+        return extent_expression(self)
 
 
 @dataclass(frozen=True, slots=True)
@@ -269,37 +272,78 @@ class ReverseAddBitExtent:
         return NotImplemented
 
     def __repr__(self) -> str:
-        return f"bit_extent(reverse_add(seed={self.seed},base={self.base})[{self.generation}])"
+        return extent_expression(self)
 
 
 Extent = int | DyadicExtent | ReverseAddExtent | ReverseAddBitExtent
 
 
-def extent_json_value(value: Extent) -> int | dict[str, object]:
+CoordinatePresentation = tuple[int, str, dict[str, int | str]]
+
+
+def extent_expression(
+    value: DyadicExtent | ReverseAddExtent | ReverseAddBitExtent,
+    coordinate: CoordinatePresentation | None = None,
+) -> str:
+    """Render exact descriptor coordinates only on explicit presentation demand."""
+    parameter = value.power if isinstance(value, DyadicExtent) else value.generation
+    text = (
+        coordinate[1]
+        if coordinate is not None and parameter == coordinate[0]
+        else integer_text(parameter)
+    )
+    if isinstance(value, DyadicExtent):
+        suffix = (
+            ("+" if value.offset > 0 else "-") + integer_text(abs(value.offset))
+            if value.offset
+            else ""
+        )
+        return f"2**{text}{suffix}"
+    reverse = f"reverse_add(seed={integer_text(value.seed)},base={integer_text(value.base)})[{text}]"
+    return (
+        f"bit_extent({reverse})"
+        if isinstance(value, ReverseAddBitExtent)
+        else f"width({reverse})"
+    )
+
+
+def extent_json_value(
+    value: Extent,
+    *,
+    coordinate: CoordinatePresentation | None = None,
+) -> int | dict[str, object]:
     """Return a JSON-safe exact extent without forcing dyadic materialization."""
     if isinstance(value, DyadicExtent):
         return {
             "kind": "dyadic-extent",
-            "power": value.power,
+            "power": coordinate[2]
+            if coordinate is not None and value.power == coordinate[0]
+            else value.power,
             "offset": value.offset,
-            "expression": repr(value),
+            "expression": extent_expression(value, coordinate),
         }
     if isinstance(value, ReverseAddExtent):
         return {
             "kind": "reverse-add-extent",
             "seed": value.seed,
             "base": value.base,
-            "generation": value.generation,
-            "expression": repr(value),
+            "generation": coordinate[2]
+            if coordinate is not None and value.generation == coordinate[0]
+            else value.generation,
+            "expression": extent_expression(value, coordinate),
         }
     if isinstance(value, ReverseAddBitExtent):
         return {
             "kind": "reverse-add-bit-extent",
             "seed": value.seed,
             "base": value.base,
-            "generation": value.generation,
-            "expression": repr(value),
+            "generation": coordinate[2]
+            if coordinate is not None and value.generation == coordinate[0]
+            else value.generation,
+            "expression": extent_expression(value, coordinate),
         }
+    if coordinate is not None and value == coordinate[0]:
+        return dict(coordinate[2])
     return int(value)
 
 

@@ -7,7 +7,11 @@ from typing import TYPE_CHECKING
 from number_compiler.arithmetic.contracts.block_kernel import BaseBlockEffect
 from number_compiler.hashlife.behavior.reverse_bound_output import ReverseBoundOutput
 from number_compiler.hashlife.execution.tile_causal_results import lookup_causal_result
-from number_compiler.hashlife.execution.tile_causal_tasks import CausalFrame
+from number_compiler.hashlife.execution.tile_causal_tasks import (
+    CausalFrame,
+    schedule_reflected_scan,
+    schedule_spatial_scan,
+)
 from number_compiler.hashlife.tiles.tile_boundaries import BoundaryTileView
 from number_compiler.hashlife.tiles.tile_causal_interface_memo import (
     causal_interface_key,
@@ -122,24 +126,11 @@ def reverse_boundary_step(
         chunks = workspace.allocate(len(pieces))
         for tile in pieces:
             chunks.append(tile)
-        anchors = workspace.allocate(len(chunks) + 1)
-        anchors.append(anchor)
-        frame.stage, frame.saved = 1, (chunks, argument)
-        frames.extend(
-            (frame, CausalFrame("scan_chunks", (action, 0, chunks, anchor, 0, anchors)))
+        schedule_spatial_scan(
+            workspace, frames, frame, action, 0, chunks, anchor, (chunks, argument)
         )
     elif frame.stage == 1:
-        anchors = values.pop()
-        chunks, argument = frame.saved
-        arguments = workspace.allocate(len(chunks) + 1)
-        arguments.append(argument)
-        frame.stage, frame.saved = 2, (chunks, anchors)
-        frames.extend(
-            (
-                frame,
-                CausalFrame("scan_chunks", (action, 1, chunks, argument, 0, arguments)),
-            )
-        )
+        schedule_reflected_scan(workspace, frames, frame, action, values)
     elif frame.stage == 2:
         arguments = values.pop()
         arguments.reverse()

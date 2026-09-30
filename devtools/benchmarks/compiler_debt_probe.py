@@ -8,16 +8,18 @@ measurements enter release artifacts.
 
 from __future__ import annotations
 
+from devtools.paths import report_directory
+
 import json
 
 from devtools.paths import report_output, repository_root
-from devtools.proofs import exact_oracle
-from devtools.proofs.block_power import apply_block_power, power_block_effect
-from devtools.proofs.quotient_synthesis import (
+from devtools.verification import exact_oracle
+from devtools.verification.block_power import apply_block_power, power_block_effect
+from devtools.verification.quotient_synthesis import (
     ObserverFeature,
     synthesize_finite_quotient,
 )
-from devtools.proofs.sequence_diagnostics import with_carry_diagnostics
+from devtools.verification.sequence_diagnostics import with_carry_diagnostics
 from number_compiler.api.sequence_compiler import CanonicalSequenceCompiler
 from number_compiler.api.sequence_types import (
     CollatzSequenceSpec,
@@ -38,10 +40,6 @@ from number_compiler.arithmetic.polynomials.cyclotomic_factor import (
 from number_compiler.arithmetic.polynomials.digit_cyclotomic import CyclotomicDigitBlock
 
 ROOT = repository_root()
-OUT = ROOT / "results" / "compiler_debt_metrics.json"
-REPORT = report_output(
-    "devtools.benchmarks.compiler_debt_probe", "COMPILER_DEBT_RESULTS.md"
-)
 
 
 def _m7_cegar() -> dict[str, object]:
@@ -78,6 +76,13 @@ def _m7_cegar() -> dict[str, object]:
 
 
 def main() -> None:
+    OUT = (
+        report_directory("devtools.benchmarks.compiler_debt_probe")
+        / "compiler_debt_metrics.json"
+    )
+    REPORT = report_output(
+        "devtools.benchmarks.compiler_debt_probe", "COMPILER_DEBT_RESULTS.md"
+    )
     compiler = CanonicalSequenceCompiler()
 
     r_spec = ReverseAddSequenceSpec(196, 10, 64)
@@ -271,4 +276,6 @@ def main() -> None:
 
 
 if __name__ == "__main__":
-    main()
+    from devtools.runs import run_reported
+
+    raise SystemExit(run_reported(main))

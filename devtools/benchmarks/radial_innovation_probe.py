@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from devtools.paths import report_directory
+
 import json
 
 from devtools.experiments.algebra.radial_innovation_quotients import (
@@ -16,7 +18,7 @@ ROOT = repository_root()
 def main() -> int:
     m = radial_innovation_metrics()
     data = metrics_as_jsonable(m)
-    out = ROOT / "results"
+    out = report_directory("devtools.benchmarks.radial_innovation_probe")
     out.mkdir(exist_ok=True)
     (out / "radial_innovation_metrics.json").write_text(
         json.dumps(data, indent=2, sort_keys=True) + "\n"
@@ -120,4 +122,6 @@ def main() -> int:
 
 
 if __name__ == "__main__":
-    raise SystemExit(main())
+    from devtools.runs import run_reported
+
+    raise SystemExit(run_reported(main))

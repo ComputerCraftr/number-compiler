@@ -4,7 +4,10 @@ from itertools import product
 
 import pytest
 
-from devtools.proofs.carry_harmonic_ports import CarryHarmonicPortAction, harmonic_sum
+from devtools.verification.carry_harmonic_ports import (
+    CarryHarmonicPortAction,
+    harmonic_sum,
+)
 from number_compiler.arithmetic.carry.carry_monoid import value_carry_fn
 from number_compiler.arithmetic.carry.event_memory import forcing_event, pair_step
 

@@ -13,7 +13,11 @@ from number_compiler.hashlife.execution.continuations.higher_types import (
     HigherFunctionID,
 )
 from tests.support.reverse_higher_interface import _direct_step
-from tests.support.reverse_higher_runtime import _fixture
+from tests.support.reverse_higher_runtime import (
+    _fixture,
+    _single_cell_fixture,
+    _single_cell_summary_fixture,
+)
 
 
 def test_higher_unary_summary_matches_primitive_spatial_transfer() -> None:
@@ -26,9 +30,8 @@ def test_higher_unary_summary_matches_primitive_spatial_transfer() -> None:
         _compiler,
         sources,
         binding,
-    ) = _fixture()
-    forest = sources.resolve_forest(binding)
-    assert len(forest.cells) == 1
+        forest,
+    ) = _single_cell_fixture()
     summary = runtime.summaries.unary(primitive, forest.cells[0], 0)
     initial = runtime.initial(primitive, 0)
     observed = semantics.evaluate(runtime.summaries.apply_unary(summary, initial))
@@ -77,9 +80,8 @@ def test_higher_context_summary_composes_emitted_word_transfer() -> None:
         _compiler,
         sources,
         binding,
-    ) = _fixture()
-    forest = sources.resolve_forest(binding)
-    assert len(forest.cells) == 1
+        forest,
+    ) = _single_cell_fixture()
     summary = runtime.summaries.context(primitive, primitive, forest.cells[0])
     initial_left = runtime.initial(primitive, 0)
     initial_right = runtime.initial(primitive, 1)
@@ -109,9 +111,8 @@ def test_higher_summary_semantics_survive_source_binding_eviction() -> None:
         _compiler,
         sources,
         binding,
-    ) = _fixture()
-    forest = sources.resolve_forest(binding)
-    assert len(forest.cells) == 1
+        forest,
+    ) = _single_cell_fixture()
     action = actions.power(primitive, 4)
     first = runtime.summaries.unary(action, forest.cells[0], 0)
     record = runtime.summaries.resolve(first)
@@ -131,9 +132,8 @@ def test_higher_summary_rejects_foreign_and_integer_alias_handles() -> None:
         _compiler,
         sources,
         binding,
-    ) = _fixture()
-    forest = sources.resolve_forest(binding)
-    assert len(forest.cells) == 1
+        forest,
+    ) = _single_cell_fixture()
     valid = runtime.summaries.unary(primitive, forest.cells[0], 0)
     before = runtime.ledger.snapshot()
     aliases = (
@@ -196,9 +196,9 @@ def test_higher_summary_payload_audit_rejects_mutated_semantic_reference() -> No
         _compiler,
         sources,
         binding,
-    ) = _fixture()
-    cell = sources.resolve_forest(binding).cells[0]
-    summary = runtime.summaries.unary(primitive, cell, 0)
+        cell,
+        summary,
+    ) = _single_cell_summary_fixture()
     record = runtime.summaries.unary_record(summary)
     foreign = HigherFunctionID(
         ArenaToken("foreign"),
@@ -229,9 +229,9 @@ def test_higher_summary_payload_audit_rejects_incompatible_binding_result() -> N
         _compiler,
         sources,
         binding,
-    ) = _fixture()
-    cell = sources.resolve_forest(binding).cells[0]
-    left = runtime.summaries.unary(primitive, cell, 0)
+        cell,
+        left,
+    ) = _single_cell_summary_fixture()
     right = runtime.summaries.unary(primitive, cell, 1)
     key = next(
         key for key, result in runtime.summaries._bindings.items() if result == left

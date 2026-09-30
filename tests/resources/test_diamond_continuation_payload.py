@@ -1,5 +1,6 @@
 """Finite function reductions keep a live interface, not bound observations."""
 
+from tests.support.diamond_observation_adversarial import unsafe_capture
 from dataclasses import replace
 
 import pytest
@@ -88,15 +89,7 @@ def test_live_input_cannot_hide_closed_capture_in_children_or_opaque_closure_bod
     opaque: bool,
 ) -> None:
     runtime, action, variable, expression, _, function = populated()
-    arena = runtime.higher.expressions
-    literal = arena.literal(runtime.boundaries.literal(action, 0, 0))
-    captured_program = arena.closures.intern((variable,), expression)
-    captured = arena.call(captured_program, (literal,))
-    right = arena.literal(runtime.boundaries.literal(action, 1, 0))
-    captured_symbol = arena.primitive_emit(
-        action, captured, arena.symbol(action, 1), right
-    )
-    body = arena.primitive_advance(action, 0, variable, captured_symbol)
+    arena, body = unsafe_capture(runtime, action, variable, expression)
     if opaque:
         program = arena.closures.intern((variable,), body)
         body = arena.call(program, (variable,))

@@ -127,7 +127,7 @@ def test_production_certificate_keeps_missing_terminal_extractor_unresolved() ->
 def test_classical_ceiling_uses_shared_native_square_action(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    from devtools.proofs.oracles.classical_ceiling import (
+    from devtools.verification.oracles.classical_ceiling import (
         fermat_classical_ceiling,
         mersenne_classical_ceiling,
     )

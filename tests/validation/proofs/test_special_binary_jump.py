@@ -1,4 +1,4 @@
-from devtools.proofs.oracles.special_binary_jump import (
+from devtools.verification.oracles.special_binary_jump import (
     _fermat_carrier_proof,
     build_fermat_binary_jump,
     build_fermat_carrier_proof_uncached,
@@ -6,7 +6,9 @@ from devtools.proofs.oracles.special_binary_jump import (
     fermat_radix_orbit_representative,
     mersenne_sign_representative,
 )
-from devtools.proofs.oracles.special_power_reference import bounded_binary_target_jump
+from devtools.verification.oracles.special_power_reference import (
+    bounded_binary_target_jump,
+)
 from number_compiler.arithmetic.functions.finite_unary import (
     UnaryPowerArena,
     UnaryTransitionEffect,
@@ -148,7 +150,7 @@ def test_target_horizon_uses_real_binary_jump_not_raw_recurrence() -> None:
 
 
 def test_explicit_oracle_can_apply_bounded_target_jump_to_power_program() -> None:
-    from devtools.proofs.special_power_monoid import (
+    from devtools.verification.special_power_monoid import (
         build_special_power_program,
     )
 

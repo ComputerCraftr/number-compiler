@@ -4,6 +4,10 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
+from number_compiler.resources.field_image_domain_audit import (
+    admit_payload_root,
+    indexed_record_matches,
+)
 from number_compiler.resources.ledger import ResourceLedger
 
 
@@ -57,8 +61,7 @@ def audit_radix_provider_payloads(
                     containers.get(owner) is store for owner, store in division_stores
                 )
             )
-            if not valid_root:
-                invalid.add((root._node_owner, id(root)))
+            if not admit_payload_root(valid_root, invalid, root._node_owner, root):
                 continue
             division_arenas.add(id(root))
             all_valid = True
@@ -130,8 +133,7 @@ def audit_radix_provider_payloads(
                     containers.get(owner) is store for owner, store in provider_stores
                 )
             )
-            if not valid_root:
-                invalid.add((root._node_owner, id(root)))
+            if not admit_payload_root(valid_root, invalid, root._node_owner, root):
                 continue
             provider_arenas.add(id(root))
             all_valid = True
@@ -145,8 +147,13 @@ def audit_radix_provider_payloads(
                         root._KIND,
                         index,
                     )
-                    valid &= root.resolve(provider_handle) is provider_record
-                    valid &= root._keys.get(provider_record) == index
+                    valid &= indexed_record_matches(
+                        provider_handle,
+                        root.resolve,
+                        root._keys,
+                        provider_record,
+                        index,
+                    )
                 except (TypeError, ValueError, IndexError, AttributeError):
                     valid = False
                 if valid:

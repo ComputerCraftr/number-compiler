@@ -8,6 +8,7 @@ Spatial carry geometry and a closed consumer profile must still be supplied.
 """
 
 from __future__ import annotations
+from number_compiler.resources.stores import append_indexed_node
 
 from collections.abc import Callable, Mapping
 
@@ -101,10 +102,15 @@ class ReverseActiveOutputArena:
         if found is not None:
             self.ledger.bump("reverse_active_output_hits")
             return CoordinateOutputMorphismID(self.owner, self._KIND, found)
-        self.ledger.reserve_many(((self._node_owner, 1, 1), (self._key_owner, 1, 0)))
-        local_id = len(self._nodes)
-        self._nodes.append(function)
-        self._keys[function] = local_id
+        local_id = append_indexed_node(
+            self.ledger,
+            self._nodes,
+            self._keys,
+            self._node_owner,
+            self._key_owner,
+            function,
+            function,
+        )
         self.ledger.bump("reverse_active_output_publications")
         return CoordinateOutputMorphismID(self.owner, self._KIND, local_id)
 

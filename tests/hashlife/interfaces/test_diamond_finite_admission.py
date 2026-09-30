@@ -1,5 +1,8 @@
 """Universal interface facts cache no source-dependent argument observations."""
 
+from tests.support.assertions import assert_rejected_atomically
+
+
 import pytest
 
 from number_compiler.hashlife.execution.continuations.diamond_context_program import (
@@ -60,10 +63,11 @@ def test_foreign_and_wrong_port_reject_before_telemetry_or_retention(
         (sort, SymbolSort(3, 2), valid),
     )
     for source, target, function in cases:
-        before = runtime.ledger.snapshot()
-        with pytest.raises(ValueError):
-            admission.validate(source, target, function)
-        assert runtime.ledger.snapshot() == before
+        assert_rejected_atomically(
+            runtime.ledger,
+            lambda: admission.validate(source, target, function),
+            ValueError,
+        )
 
 
 def test_invalid_admissible_output_code_is_not_certified() -> None:
@@ -73,10 +77,9 @@ def test_invalid_admissible_output_code_is_not_certified() -> None:
     assert runtime.kernel(action).right_count == 3
     true = runtime.kernels.functions.constant(True)
     invalid = runtime.kernels._intern_expression(FiniteExpression(3, (true, true)))
-    before = runtime.ledger.snapshot()
-    with pytest.raises(ValueError):
-        admission.validate(sort, sort, invalid)
-    assert runtime.ledger.snapshot() == before
+    assert_rejected_atomically(
+        runtime.ledger, lambda: admission.validate(sort, sort, invalid), ValueError
+    )
 
 
 def test_exhausted_budget_validates_without_retaining_and_eviction_revalidates() -> (

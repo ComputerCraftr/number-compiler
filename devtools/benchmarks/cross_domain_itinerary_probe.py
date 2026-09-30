@@ -2,12 +2,16 @@
 
 from __future__ import annotations
 
+from devtools.verification.consumer_fixtures import carry_seed_rows
+from devtools.paths import report_directory
+
 import json
 from collections import Counter
 from math import comb, log2
-from typing import TypedDict
+from typing import Sequence, TypedDict
 
 from devtools.paths import report_output, repository_root
+from devtools.benchmarks.pair_encoding import pair_from_int
 from number_compiler.arithmetic.carry.carry_itinerary import (
     LiveCarryItinerary,
     adaptive_cyclic_memory_horizon,
@@ -39,21 +43,16 @@ from number_compiler.sequences.collatz.pair import (
 from number_compiler.sequences.collatz.raw_field import CollatzRawDigitField
 
 ROOT = repository_root()
-OUT = ROOT / "results" / "cross_domain_itinerary_metrics.json"
-REPORT = report_output(
-    "devtools.benchmarks.cross_domain_itinerary_probe",
-    "CROSS_DOMAIN_ITINERARY_RESULTS.md",
-)
 
 
-def pair_from_int(value: int, base: int = 10) -> tuple[int, ...]:
-    digits = []
-    n = int(value)
-    while n:
-        digits.append(n % base)
-        n //= base
-    digits = digits or [0]
-    return tuple(digits[i] + digits[-1 - i] for i in range(len(digits)))
+def _summarize_horizons(values: Sequence[int | None]) -> dict[str, float]:
+    assert all(value is not None for value in values)
+    resolved = [value for value in values if value is not None]
+    return {
+        "average": sum(resolved) / len(resolved),
+        "maximum": max(resolved),
+        "minimum": min(resolved),
+    }
 
 
 def reverse_int(value: int, base: int = 10) -> int:
@@ -240,10 +239,7 @@ def macro_event_probe(
 
 def live_carry_probe(steps: int = 512) -> dict[str, float]:
     pair = pair_from_int(196)
-    fixed = []
-    for __1 in range(20):
-        fixed.append(carry_field(pair, base=10))
-        pair, __1 = pair_step(pair, 10)
+    pair, fixed = carry_seed_rows(pair, 20)
     live = LiveCarryItinerary.seed(fixed, base=10)
     rows = []
     live_bits = []
@@ -289,6 +285,14 @@ def mod99_trace(steps: int = 15) -> list[dict[str, int]]:
 
 
 def main() -> None:
+    OUT = (
+        report_directory("devtools.benchmarks.cross_domain_itinerary_probe")
+        / "cross_domain_itinerary_metrics.json"
+    )
+    REPORT = report_output(
+        "devtools.benchmarks.cross_domain_itinerary_probe",
+        "CROSS_DOMAIN_ITINERARY_RESULTS.md",
+    )
     pairs, carries, events, growths, neutral, resets, positions = reverse_trace(512)
     vertical = vertical_itinerary_metrics(carries)
     runs = growth_run_itinerary(growths[:512])
@@ -308,13 +312,7 @@ def main() -> None:
             adaptive_cyclic_memory_horizon(growths, endpoint, classes=classes, bits=5)
             for endpoint in range(20, 513)
         ]
-        assert all(h is not None for h in hs)
-        resolved_horizons = [h for h in hs if h is not None]
-        cyclic_memory[str(classes)] = {
-            "average": sum(resolved_horizons) / len(resolved_horizons),
-            "maximum": max(resolved_horizons),
-            "minimum": min(resolved_horizons),
-        }
+        cyclic_memory[str(classes)] = _summarize_horizons(hs)
 
     negacyclic_memory = {}
     for classes in (1, 2, 4, 8):
@@ -324,13 +322,7 @@ def main() -> None:
             )
             for endpoint in range(20, 513)
         ]
-        assert all(h is not None for h in hs)
-        resolved_horizons = [h for h in hs if h is not None]
-        negacyclic_memory[str(classes)] = {
-            "average": sum(resolved_horizons) / len(resolved_horizons),
-            "maximum": max(resolved_horizons),
-            "minimum": min(resolved_horizons),
-        }
+        negacyclic_memory[str(classes)] = _summarize_horizons(hs)
 
     primary_memory = {}
     for degree in (1, 2, 4, 8, 16):
@@ -338,13 +330,7 @@ def main() -> None:
             adaptive_zplus1_memory_horizon(growths, endpoint, degree=degree, bits=5)
             for endpoint in range(20, 513)
         ]
-        assert all(h is not None for h in hs)
-        resolved_horizons = [h for h in hs if h is not None]
-        primary_memory[str(degree)] = {
-            "average": sum(resolved_horizons) / len(resolved_horizons),
-            "maximum": max(resolved_horizons),
-            "minimum": min(resolved_horizons),
-        }
+        primary_memory[str(degree)] = _summarize_horizons(hs)
 
     polynomial_ranks: dict[str, dict[str, list[int]]] = {}
     for prime in (2, 3, 5, 7):
@@ -676,4 +662,6 @@ def main() -> None:
 
 
 if __name__ == "__main__":
-    main()
+    from devtools.runs import run_reported
+
+    raise SystemExit(run_reported(main))

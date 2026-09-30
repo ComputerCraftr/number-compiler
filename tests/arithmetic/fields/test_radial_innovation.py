@@ -1,4 +1,4 @@
-from devtools.proofs import exact_oracle
+from devtools.verification import exact_oracle
 from number_compiler.arithmetic.carry.event_memory import forcing_event, pair_step
 from number_compiler.arithmetic.fields.adic_morphism import collatz_slab_padic3
 from number_compiler.arithmetic.fields.radial_innovation import (
@@ -78,7 +78,7 @@ def test_collatz_three_adic_radial_quotient_annihilates_old_source_at_precision(
 @exact_oracle()
 def test_legacy_carry_shadow_adapters_are_absent() -> None:
     import number_compiler.sequences.collatz.pair as collatz_pair
-    from devtools.proofs import carry_action_quotient
+    from devtools.verification import carry_action_quotient
 
     assert not hasattr(carry_action_quotient.CarryResetSignature, "cyclotomic_block")
     assert not hasattr(

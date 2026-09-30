@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from tests.support.assertions import assert_associative
+
 from dataclasses import fields
 from typing import Never, cast
 
@@ -191,25 +193,7 @@ def _action(
 
 @pytest.mark.algebra
 def test_composition_is_canonical_associative_and_ordered() -> None:
-    arena, programs, defects = _fixture()
-    a = _action(
-        arena,
-        programs,
-        defects,
-        matrix=(1, 1, 0, 1),
-        multiplier=3,
-        innovation=1,
-        phase=1,
-    )
-    b = _action(
-        arena,
-        programs,
-        defects,
-        matrix=(1, 0, 1, 1),
-        multiplier=2,
-        innovation=2,
-        phase=0,
-    )
+    arena, programs, defects, a, b = _noncommuting_actions()
     c = _action(
         arena,
         programs,
@@ -220,9 +204,7 @@ def test_composition_is_canonical_associative_and_ordered() -> None:
         phase=1,
     )
 
-    left = arena.compose(arena.compose(a, b), c)
-    right = arena.compose(a, arena.compose(b, c))
-    assert left == right
+    assert_associative(arena.compose, a, b, c)
     assert arena.compose(a, b) != arena.compose(b, a)
     assert arena.compose(arena.identity, a) == a
     assert arena.compose(a, arena.identity) == a
@@ -243,25 +225,7 @@ def test_composition_is_canonical_associative_and_ordered() -> None:
 def test_composition_cache_hits_before_symbolic_or_affine_work(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    arena, programs, defects = _fixture()
-    a = _action(
-        arena,
-        programs,
-        defects,
-        matrix=(1, 1, 0, 1),
-        multiplier=3,
-        innovation=1,
-        phase=1,
-    )
-    b = _action(
-        arena,
-        programs,
-        defects,
-        matrix=(1, 0, 1, 1),
-        multiplier=2,
-        innovation=2,
-        phase=0,
-    )
+    arena, programs, defects, a, b = _noncommuting_actions()
     expected = arena.compose(a, b)
     before = arena.metrics
     counters = arena.ledger.snapshot().counters
@@ -296,25 +260,7 @@ def test_composition_cache_hits_before_symbolic_or_affine_work(
 
 @pytest.mark.accounting
 def test_failed_composition_reservation_publishes_no_partial_state() -> None:
-    arena, programs, defects = _fixture()
-    a = _action(
-        arena,
-        programs,
-        defects,
-        matrix=(1, 1, 0, 1),
-        multiplier=3,
-        innovation=1,
-        phase=1,
-    )
-    b = _action(
-        arena,
-        programs,
-        defects,
-        matrix=(1, 0, 1, 1),
-        multiplier=2,
-        innovation=2,
-        phase=0,
-    )
+    arena, programs, defects, a, b = _noncommuting_actions()
     ledger = arena.ledger
     ledger.tighten_limits(ledger.nodes, ledger.entries)
     before = (
@@ -472,3 +418,32 @@ def test_invalid_residual_certificate_and_large_payload_reject() -> None:
         bounded_3adic_innovation(41, 3, 1)
     with pytest.raises(TypeError):
         bounded_3adic_innovation(4, True, 1)
+
+
+def _noncommuting_actions() -> tuple[
+    CollatzFieldActionArena,
+    _FinitePrograms,
+    CollatzDefectArena,
+    CollatzFieldActionID,
+    CollatzFieldActionID,
+]:
+    arena, programs, defects = _fixture()
+    a = _action(
+        arena,
+        programs,
+        defects,
+        matrix=(1, 1, 0, 1),
+        multiplier=3,
+        innovation=1,
+        phase=1,
+    )
+    b = _action(
+        arena,
+        programs,
+        defects,
+        matrix=(1, 0, 1, 1),
+        multiplier=2,
+        innovation=2,
+        phase=0,
+    )
+    return arena, programs, defects, a, b

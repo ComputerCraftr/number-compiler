@@ -12,6 +12,12 @@ spatial word-action composition as temporal composition would be incorrect.
 """
 
 from __future__ import annotations
+from number_compiler.arithmetic.contracts.local_action_codec import (
+    initialize_local_stores,
+    publish_oriented_action,
+    local_cache_hit,
+    compile_source_cell,
+)
 
 from collections.abc import MutableMapping, MutableSequence
 from dataclasses import dataclass
@@ -138,21 +144,16 @@ class ReversePoweredLocalCodec:
         self._source_owner = self.ledger.register(
             prefix + "-sources", "reverse_local_source_binding"
         )
-        self._nodes: MutableSequence[ReverseLocalAction] = self.ledger.make_list(
-            self._node_owner
-        )
-        self._keys: MutableMapping[ReverseLocalAction, int] = self.ledger.make_dict(
-            self._key_owner
-        )
+        self._nodes: MutableSequence[ReverseLocalAction]
+        self._keys: MutableMapping[ReverseLocalAction, int]
         self._compose: MutableMapping[
             tuple[ReverseLocalActionID, ReverseLocalActionID], ReverseLocalActionID
-        ] = self.ledger.make_dict(self._compose_owner)
-        self._leaf_actions: MutableMapping[int, ReverseLocalActionID] = (
-            self.ledger.make_dict(self._leaf_owner)
-        )
+        ]
+        self._leaf_actions: MutableMapping[int, ReverseLocalActionID]
         self._source_actions: MutableMapping[
             SourceCellID | SourceForestID, ReverseLocalActionID
-        ] = self.ledger.make_dict(self._source_owner)
+        ]
+        initialize_local_stores(self)
         self.ledger.register_container(
             self._compose_owner,
             self._compose,
@@ -196,22 +197,7 @@ class ReversePoweredLocalCodec:
                 int(item[1]),
             ),
         )
-        found = self._keys.get(canonical)
-        if found is not None:
-            self.ledger.reserve_many(reservations)
-            self.semantic_alias_hits += 1
-            if transform is ActionTransform.MIRROR:
-                self.mirror_alias_hits += 1
-            return self._handle(found, transform)
-        self.ledger.reserve_many(
-            ((self._node_owner, 1, 1), (self._key_owner, 1, 0), *reservations)
-        )
-        local_id = len(self._nodes)
-        self._nodes.append(canonical)
-        self._keys[canonical] = local_id
-        if transform is ActionTransform.MIRROR:
-            self.mirror_alias_hits += 1
-        return self._handle(local_id, transform)
+        return publish_oriented_action(self, canonical, transform, reservations)
 
     def _mapping(self, side: BoundarySide, symbol: int) -> tuple[int, ...]:
         index = int(side)
@@ -226,10 +212,10 @@ class ReversePoweredLocalCodec:
         if type(symbol) is not int or not 0 <= symbol <= self.blank:
             raise ValueError("reverse local leaf is outside the pair alphabet")
         self.leaf_requests += 1
-        found = self._leaf_actions.get(symbol)
+        found = local_cache_hit(
+            self, self._leaf_actions.get(symbol), reservations, spatial=False
+        )
         if found is not None:
-            self.ledger.reserve_many(reservations)
-            self.leaf_hits += 1
             return found
         left = self._mapping(BoundarySide.LEFT, symbol)
         right = self._mapping(BoundarySide.RIGHT, symbol)
@@ -259,10 +245,10 @@ class ReversePoweredLocalCodec:
         # Resolution above must precede this lookup.  The complete scoped
         # handles keep owner, kind, ID, and orientation in the cache key.
         key = left, right
-        found = self._compose.get(key)
+        found = local_cache_hit(
+            self, self._compose.get(key), reservations, spatial=True
+        )
         if found is not None:
-            self.ledger.reserve_many(reservations)
-            self.spatial_hits += 1
             return found
         result = self._intern(
             ReverseLocalAction(
@@ -353,36 +339,7 @@ class ReversePoweredLocalCodec:
 
     def _source_cell_action(self, source: SourceCellID) -> ReverseLocalActionID:
         """Compile one canonical dyadic source cell with an iterative trampoline."""
-        self.sources.resolve(source)
-        source_key = self._source_key(source)
-        found = self._source_actions.get(source_key)
-        if found is not None:
-            return found
-        pending: list[tuple[SourceCellID, bool]] = [(source, False)]
-        while pending:
-            current, ready = pending.pop()
-            current_key = self._source_key(current)
-            if current_key in self._source_actions:
-                continue
-            record = self.sources.resolve(current)
-            if record.level == 0:
-                result = self._leaf(
-                    self.sources.symbol(current),
-                    ((self._source_owner, 1, 0),),
-                )
-            elif not ready:
-                left, right = self.sources.children(current)
-                pending.extend(((current, True), (right, False), (left, False)))
-                continue
-            else:
-                left, right = self.sources.children(current)
-                result = self._compose_actions(
-                    self._source_actions[self._source_key(left)],
-                    self._source_actions[self._source_key(right)],
-                    ((self._source_owner, 1, 0),),
-                )
-            self._source_actions[current_key] = result
-        return self._source_actions[source_key]
+        return compile_source_cell(self, source)
 
     def source_action(
         self,

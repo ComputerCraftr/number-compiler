@@ -25,4 +25,22 @@ def require_integer(
     return value
 
 
+def normalized_integer_pair(
+    first: int, second: int, *, first_minimum: int = 0, second_minimum: int = 0
+) -> tuple[int, int]:
+    """Preserve legacy algebraic integer coercion and paired range diagnostics."""
+    left, right = int(first), int(second)
+    if left < first_minimum or right < second_minimum:
+        raise ValueError((left, right))
+    return left, right
+
+
 __all__ = ["require_integer"]
+
+
+def normalized_odd_modulus(value: int, *, minimum: int = 3) -> int:
+    """Admit legacy integer-coercing odd ring moduli with scalar diagnostics."""
+    modulus = int(value)
+    if modulus < minimum or not (modulus & 1):
+        raise ValueError(modulus)
+    return modulus

@@ -23,6 +23,7 @@ from number_compiler.hashlife.interfaces.diamond_kernel import (
 )
 from number_compiler.hashlife.interfaces.diamond_kernel_bridge import (
     _valid_argument,
+    scan_primitive_support,
     input_expression,
     observation_inputs,
     substitution_bindings,
@@ -93,40 +94,13 @@ class PrimitiveUnaryFunctions:
             PortVariable(port.time, port.side, port.role, port.bit + bit)
             for bit in range(width)
         }
-        functions = self.kernels.functions
-        checked: set[TransferSummaryID] = set()
-        pending = [*a.bits, *b.bits]
-        visits = 0
-        pending_peak = len(pending)
-        workspace_peak = len(pending) + len(variables)
-        while pending:
-            pending_peak = max(pending_peak, len(pending))
-            workspace_peak = max(
-                workspace_peak, len(pending) + len(checked) + len(variables)
-            )
-            bit = pending.pop()
-            visits += 1
-            if bit in checked:
-                continue
-            checked.add(bit)
-            node = functions._nodes[functions._resolve(bit)]
-            if node.variable is not None:
-                if node.variable not in variables:
-                    raise ValueError("unary composition contains another input port")
-                pending.extend(
-                    (functions._handle(node.low), functions._handle(node.high))
-                )
-        workspace_peak = max(workspace_peak, len(checked) + len(variables))
-        self.ledger.bump("unary_function_admission_visits", len(checked))
-        self.ledger.bump("unary_function_admission_frame_visits", visits)
-        for counter, value in (
-            ("unary_function_admission_pending_peak", pending_peak),
-            ("unary_function_admission_workspace_peak", workspace_peak),
-            ("unary_function_admission_unique_peak", len(checked)),
-        ):
-            self.ledger.bump(
-                counter, max(0, value - self.ledger.counters.get(counter, 0))
-            )
+        scan_primitive_support(
+            self.kernels,
+            [*a.bits, *b.bits],
+            variables,
+            "unary_function_admission",
+            "unary composition contains another input port",
+        )
         answer = self.kernels.substitute(
             after, substitution_bindings(self.kernels, domain, port, before)
         )
@@ -176,40 +150,13 @@ class PrimitiveUnaryFunctions:
             PortVariable(port.time, port.side, port.role, port.bit + bit)
             for bit in range(width)
         }
-        functions = self.kernels.functions
-        checked: set[TransferSummaryID] = set()
-        pending = [bit for expression in expressions for bit in expression.bits]
-        visits = 0
-        pending_peak = len(pending)
-        workspace_peak = len(pending) + len(variables)
-        while pending:
-            pending_peak = max(pending_peak, len(pending))
-            workspace_peak = max(
-                workspace_peak, len(pending) + len(checked) + len(variables)
-            )
-            bit = pending.pop()
-            visits += 1
-            if bit in checked:
-                continue
-            checked.add(bit)
-            node = functions._nodes[functions._resolve(bit)]
-            if node.variable is not None:
-                if node.variable not in variables:
-                    raise ValueError("mapped primitive contains another input port")
-                pending.extend(
-                    (functions._handle(node.low), functions._handle(node.high))
-                )
-        workspace_peak = max(workspace_peak, len(checked) + len(variables))
-        self.ledger.bump("unary_function_admission_visits", len(checked))
-        self.ledger.bump("unary_function_admission_frame_visits", visits)
-        for counter, value in (
-            ("unary_function_admission_pending_peak", pending_peak),
-            ("unary_function_admission_workspace_peak", workspace_peak),
-            ("unary_function_admission_unique_peak", len(checked)),
-        ):
-            self.ledger.bump(
-                counter, max(0, value - self.ledger.counters.get(counter, 0))
-            )
+        scan_primitive_support(
+            self.kernels,
+            [bit for expression in expressions for bit in expression.bits],
+            variables,
+            "unary_function_admission",
+            "mapped primitive contains another input port",
+        )
         answer = self._mapped_correlated(
             domain, port, target, operation, BoundarySide(side), expressions
         )

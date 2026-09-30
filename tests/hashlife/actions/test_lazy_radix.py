@@ -1,3 +1,4 @@
+from tests.support.reference_arithmetic import collatz_literal as _collatz
 from random import Random
 from typing import cast
 
@@ -9,13 +10,6 @@ from number_compiler.projection.lazy_radix import RadixProjection, collatz_radix
 from number_compiler.resources.ledger import ResourceLedger
 from number_compiler.sequences.collatz.block_power import PoweredCollatzTerm
 from tests.support.runtime_limits import deadline
-
-
-def _collatz(seed: int, steps: int) -> int:
-    value = seed
-    for _ in range(steps):
-        value = 3 * value + 1 if value & 1 else value // 2
-    return value
 
 
 @pytest.mark.validation  # Complete 12-source, four-radix point matrix.

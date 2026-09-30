@@ -116,7 +116,10 @@ def test_lambda_binder_sort_is_checked_independently_of_claimed_scope() -> None:
 def test_direct_parametric_queries_block_exact_construction_inside_callbacks(
     query_kind: str, warm: bool, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    from devtools.proofs.parametric_query import parametric_point, parametric_width
+    from devtools.verification.parametric_query import (
+        parametric_point,
+        parametric_width,
+    )
     from number_compiler.arithmetic.contracts.exact_tree_context import (
         ExactTreeConstructionForbidden,
     )

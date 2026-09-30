@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from tests.support.assertions import assert_rejected_atomically
+
 from array import array
 from itertools import product
 from typing import TYPE_CHECKING, Literal
@@ -202,10 +204,9 @@ def test_record_budget_rejection_precedes_primitive_synthesis() -> None:
     compiled = adapter()
     handle = compiled.kernels.intern(CollatzPhysicalBlockEffect())
     compiled.ledger.max_cache_entries = compiled.ledger.entries
-    before = compiled.ledger.snapshot()
-    with pytest.raises(BlockContextBudgetExceeded):
-        compiled.compile(handle)
-    assert compiled.ledger.snapshot() == before
+    assert_rejected_atomically(
+        compiled.ledger, lambda: compiled.compile(handle), BlockContextBudgetExceeded
+    )
     assert not compiled.records
 
 
@@ -321,10 +322,7 @@ def test_late_component_budget_failure_publishes_no_partial_functions(
         compiled.compile(handle)
     assert compiled.ledger.counters["primitive_semantics_admissible_evaluations"] > 0
     assert _retained_snapshot(compiled) == before
-    after_work = _construction_work_snapshot(compiled)
-    assert all(after >= prior for after, prior in zip(after_work[:2], before_work[:2]))
-    assert after_work[2] > before_work[2]
-    assert after_work[3] > before_work[3]
+    _assert_failed_construction_work(compiled, before_work)
     compiled.ledger.max_cache_entries = None
     compiled.ledger.max_nodes = None
     record = compiled.compile(handle)
@@ -361,10 +359,7 @@ def test_exception_during_third_component_keeps_prior_semantic_arena_unchanged(
         compiled.compile(handle)
     assert calls == ["left", "right", "emit"]
     assert _retained_snapshot(compiled) == before
-    after_work = _construction_work_snapshot(compiled)
-    assert all(after >= prior for after, prior in zip(after_work[:2], before_work[:2]))
-    assert after_work[2] > before_work[2]
-    assert after_work[3] > before_work[3]
+    _assert_failed_construction_work(compiled, before_work)
 
 
 def test_full_budget_warm_record_needs_no_reservation_or_primitive_work(
@@ -384,3 +379,13 @@ def test_full_budget_warm_record_needs_no_reservation_or_primitive_work(
     assert compiled.compile(record.kernel) is record
     assert _retained_snapshot(compiled) == before
     assert _construction_work_snapshot(compiled) == before_work
+
+
+def _assert_failed_construction_work(
+    compiled: PrimitiveSemanticsAdapter,
+    before_work: tuple[int, int, int, int],
+) -> None:
+    after_work = _construction_work_snapshot(compiled)
+    assert all(after >= prior for after, prior in zip(after_work[:2], before_work[:2]))
+    assert after_work[2] > before_work[2]
+    assert after_work[3] > before_work[3]

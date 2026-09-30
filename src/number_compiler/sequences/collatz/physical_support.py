@@ -6,6 +6,7 @@ selection read it without expanding its word or evaluating a Collatz source.
 """
 
 from __future__ import annotations
+from number_compiler.arithmetic.fields.morphism_core import canonical_uniform_power
 
 from collections.abc import MutableMapping, MutableSequence
 from dataclasses import dataclass, field
@@ -232,17 +233,7 @@ class PhysicalSupportArena:
         if not count:
             return self.identity
         block = self.odd if parity else self.even
-        selected = []
-        while count:
-            if count & 1:
-                selected.append(block)
-            count >>= 1
-            if count:
-                block = self._join(block, block)
-        result = selected[0]
-        for block in selected[1:]:
-            result = self._join(block, result)
-        return result
+        return canonical_uniform_power(block, count, compose=self._join)
 
     def concat(
         self, first: PhysicalSupport, second: PhysicalSupport

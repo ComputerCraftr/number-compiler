@@ -23,6 +23,9 @@ from number_compiler.hashlife.interfaces.diamond_boundary_expr import (
     FunctionSort,
     StateSort,
 )
+from number_compiler.hashlife.interfaces.semantic_bit_transforms import (
+    primitive_operation,
+)
 from number_compiler.hashlife.interfaces.semantic_bits import (
     FactoredFunctionID,
     _Circuit,
@@ -202,10 +205,7 @@ def _structured_program(
             )
         arguments.append(value)
     if node.kind in ("finite_apply", "finite_map"):
-        assert node.function is not None
-        source = arena.node(arena._handle(node.children[0])).sort
-        assert isinstance(source, StateSort)
-        mapped, port = self._finite(node.function, source, node.sort)
+        mapped, port = self._finite_child(node)
         return structures.atom(
             bits.substitute(self._factored(mapped, bits), {port.variable: arguments[0]})
         )
@@ -213,18 +213,9 @@ def _structured_program(
         primitive = self.primitives.compile(self.runtime.actions.primitive(node.action))
         zero_left = bits.constant(FunctionSignature(inputs, primitive.left_sort), 0)
         zero_right = bits.constant(FunctionSignature(inputs, primitive.right_sort), 0)
-        if node.kind == "emit":
-            primitive_function, actual = primitive.emit, tuple(arguments)
-        elif node.side == 0:
-            primitive_function, actual = (
-                primitive.advance_left,
-                (arguments[0], arguments[1], zero_right),
-            )
-        else:
-            primitive_function, actual = (
-                primitive.advance_right,
-                (zero_left, arguments[1], arguments[0]),
-            )
+        primitive_function, actual = primitive_operation(
+            primitive, node.kind, node.side, tuple(arguments), zero_left, zero_right
+        )
         scalar = bits.substitute(
             self._factored(primitive_function, bits),
             dict(zip((port.variable for port in primitive.ports), actual, strict=True)),

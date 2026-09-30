@@ -2,8 +2,8 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING
 
-from devtools.proofs.reverse_spacetime import ReverseAddCarrySlab
-from devtools.proofs.temporal_quotient import ReverseAddCarryCutState
+from devtools.verification.reverse_spacetime import ReverseAddCarrySlab
+from devtools.verification.temporal_quotient import ReverseAddCarryCutState
 from number_compiler.arithmetic.carry.event_memory import (
     carry_field,
     event_memory_horizon,

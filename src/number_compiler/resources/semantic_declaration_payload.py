@@ -211,17 +211,7 @@ def _booleans_agree(
                 for root in actual
                 for node in (arena.nodes[root],)
             )
-            next_cube = cube
-            base = PortVariable(variable.time, variable.side, variable.role, 0)
-            if base in positions:
-                index = positions[base]
-                low, remaining = cube[index]
-                mask = 1 << variable.bit
-                next_cube = (
-                    cube[:index]
-                    + ((low | mask if high else low, remaining & ~mask),)
-                    + cube[index + 1 :]
-                )
+            next_cube = cofactor_cube(cube, positions, variable, high)
             next_assignments = (
                 tuple(sorted((*assignments, (variable, high))))
                 if variable in support
@@ -229,3 +219,23 @@ def _booleans_agree(
             )
             pending.append((roots, next_actual, next_assignments, next_cube))
     return True
+
+
+def cofactor_cube(
+    cube: tuple[tuple[int, int], ...],
+    positions: dict[PortVariable, int],
+    variable: PortVariable,
+    high: bool,
+) -> tuple[tuple[int, int], ...]:
+    """Restrict one bit of a finite-port validity cube without evaluating a DAG."""
+    base = PortVariable(variable.time, variable.side, variable.role, 0)
+    if base not in positions:
+        return cube
+    index = positions[base]
+    low, remaining = cube[index]
+    mask = 1 << variable.bit
+    return (
+        cube[:index]
+        + ((low | mask if high else low, remaining & ~mask),)
+        + cube[index + 1 :]
+    )

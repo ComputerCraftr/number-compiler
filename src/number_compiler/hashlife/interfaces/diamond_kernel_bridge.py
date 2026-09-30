@@ -6,6 +6,8 @@ nodes, not spatial cells or temporal generations, and uses explicit stacks.
 
 from __future__ import annotations
 
+from typing import TypeVar
+
 from number_compiler.arithmetic.contracts.scoped_handles import (
     ActionProgramID,
     TransferSummaryID,
@@ -20,6 +22,7 @@ from number_compiler.hashlife.interfaces.diamond_kernel import (
     DiamondKernelArena,
     FiniteExpression,
 )
+from number_compiler.resources.ledger import ResourceLedger
 
 
 def _variable(port: PortVariable, width: int, bit: int) -> PortVariable:
@@ -110,11 +113,7 @@ def to_expression(
     values: dict[BoundaryActionID, TransferSummaryID] = {}
     stack = [(function, False)]
     while stack:
-        peak = kernels.ledger.counters.get("diamond_finite_bridge_stack_peak_frames", 0)
-        kernels.ledger.bump(
-            "diamond_finite_bridge_stack_peak_frames", max(0, len(stack) - peak)
-        )
-        handle, ready = stack.pop()
+        handle, ready = _bridge_pop(kernels.ledger, stack)
         if handle in values:
             continue
         kernels.ledger.bump("diamond_finite_bridge_visits")
@@ -238,11 +237,7 @@ def from_expression(
     ] = {}
     stack = [(roots, False)]
     while stack:
-        peak = kernels.ledger.counters.get("diamond_finite_bridge_stack_peak_frames", 0)
-        kernels.ledger.bump(
-            "diamond_finite_bridge_stack_peak_frames", max(0, len(stack) - peak)
-        )
-        current, ready = stack.pop()
+        current, ready = _bridge_pop(kernels.ledger, stack)
         if current in results:
             continue
         kernels.ledger.bump("diamond_finite_bridge_visits")
@@ -293,3 +288,79 @@ def from_expression(
         peak = kernels.ledger.counters.get(name, 0)
         kernels.ledger.bump(name, max(0, count - peak))
     return results[roots]
+
+
+def scan_primitive_support(
+    kernels: DiamondKernelArena,
+    pending: list[TransferSummaryID],
+    allowed: set[PortVariable] | None,
+    counter: str,
+    error: str,
+) -> set[tuple[int, int, str]]:
+    """Read-only finite-DAG admission with one accounting and support owner."""
+    functions = kernels.functions
+    checked: set[TransferSummaryID] = set()
+    ports: set[tuple[int, int, str]] = set()
+    visits = 0
+    pending_peak = len(pending)
+    workspace_peak = len(pending) + (len(allowed) if allowed is not None else 0)
+    while pending:
+        pending_peak = max(pending_peak, len(pending))
+        extra = len(ports) if allowed is None else len(allowed)
+        workspace_peak = max(workspace_peak, len(pending) + len(checked) + extra)
+        bit = pending.pop()
+        visits += 1
+        if bit in checked:
+            continue
+        checked.add(bit)
+        node = functions._nodes[functions._resolve(bit)]
+        if node.variable is not None:
+            variable = node.variable
+            if allowed is None:
+                ports.add((variable.time, variable.side, variable.role))
+            elif variable not in allowed:
+                raise ValueError(error)
+            pending.extend((functions._handle(node.low), functions._handle(node.high)))
+    workspace_peak = max(
+        workspace_peak, len(checked) + (len(ports) if allowed is None else len(allowed))
+    )
+    kernels.ledger.bump(counter + "_visits", len(checked))
+    kernels.ledger.bump(counter + "_frame_visits", visits)
+    for suffix, value in (
+        ("_pending_peak", pending_peak),
+        ("_workspace_peak", workspace_peak),
+        ("_unique_peak", len(checked)),
+    ):
+        name = counter + suffix
+        kernels.ledger.bump(name, max(0, value - kernels.ledger.counters.get(name, 0)))
+    return ports
+
+
+def evaluate_primitive_bits(
+    kernels: DiamondKernelArena,
+    expression: FiniteExpression,
+    code: int,
+    width: int,
+    port: PortVariable,
+) -> tuple[int, int]:
+    """Evaluate an admitted primitive assignment and report each decision read."""
+    output = reads = 0
+    for offset, handle in enumerate(expression.bits):
+        index = handle.local_id
+        while index >= 2:
+            node = kernels.functions._nodes[index]
+            assert node.variable is not None
+            bit = width - 1 - (node.variable.bit - port.bit)
+            index = node.high if code & (1 << bit) else node.low
+            reads += 1
+        output |= index << offset
+    return output, reads
+
+
+_Frame = TypeVar("_Frame")
+
+
+def _bridge_pop(ledger: ResourceLedger, stack: list[_Frame]) -> _Frame:
+    peak = ledger.counters.get("diamond_finite_bridge_stack_peak_frames", 0)
+    ledger.bump("diamond_finite_bridge_stack_peak_frames", max(0, len(stack) - peak))
+    return stack.pop()

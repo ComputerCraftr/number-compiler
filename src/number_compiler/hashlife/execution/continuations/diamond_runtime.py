@@ -888,6 +888,17 @@ class DiamondRuntime:
         intermediate = self._joined_provider(provider, first, left.anchor, right.anchor)
         return _scalar((yield Output(intermediate, second, second_left, second_right)))
 
+    def point_span(
+        self, action: ActionProgramID, position: int, source_length: int
+    ) -> tuple[tuple[int, CellID], ...]:
+        radius = self.halos.right(action)
+        stop = (
+            source_length
+            if radius is None
+            else min(source_length, position + radius + 1)
+        )
+        return self.cells.source_span(0, stop)
+
     def point(self, action: ActionProgramID, position: int) -> int:
         self.actions.resolve(action)
         if type(position) is not int or position < 0:
@@ -899,13 +910,7 @@ class DiamondRuntime:
         right = _state(self.execute(Initial(action, 1)))
         unit_left = _state(self.execute(Initial(self.actions.identity, 0)))
         unit_right = _state(self.execute(Initial(self.actions.identity, 1)))
-        radius = self.halos.right(action)
-        stop = (
-            source.length
-            if radius is None
-            else min(source.length, position + radius + 1)
-        )
-        forest = self.cells.source_span(0, stop)
+        forest = self.point_span(action, position, source.length)
         selected: CellID | None = None
         origin = 0
         for start, cell in forest:

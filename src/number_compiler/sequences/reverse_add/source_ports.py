@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from collections.abc import Generator, Iterator
+from collections.abc import Callable, Generator, Iterator
 from dataclasses import dataclass
 
 from number_compiler.arithmetic.carry.carry_monoid import (
@@ -318,8 +318,28 @@ class SourceCarryPorts:
         self._ledger.bump("reverse_source_ports_interval_publications")
 
     def _first_interval(self, start: int, span: int) -> CarryFn:
-        root = 1, start, span
-        found = self._cached(root, self._width)
+        return self._carry_interval(
+            1,
+            start,
+            span,
+            self._width,
+            lambda position: value_carry_fn(
+                self._raw_first_pair(position), self._source.base
+            ),
+            "first",
+        )
+
+    def _carry_interval(
+        self,
+        stage: int,
+        start: int,
+        span: int,
+        extent: int,
+        leaf: Callable[[int], CarryFn],
+        label: str,
+    ) -> CarryFn:
+        root = stage, start, span
+        found = self._cached(root, extent)
         if found is not None:
             return found
         workspace = _QueryWorkspace(self._ledger, self._workspace_owner)
@@ -334,15 +354,13 @@ class SourceCarryPorts:
                 _, current_start, current_span = frame.key
                 self._ledger.bump("reverse_source_ports_postorder_frames")
                 if current_span == 1:
-                    result = value_carry_fn(
-                        self._raw_first_pair(current_start), self._source.base
-                    )
+                    result = leaf(current_start)
                     self._publish(workspace, frame.key, result)
                     workspace.pop()
                     continue
                 half = current_span // 2
-                left = 1, current_start, half
-                right = 1, current_start + half, half
+                left = stage, current_start, half
+                right = stage, current_start + half, half
                 if not frame.expanded:
                     frame.expanded = True
                     if self._exact_cached(right) is None:
@@ -374,7 +392,7 @@ class SourceCarryPorts:
             workspace.close()
         published = self._exact_cached(root)
         if published is None:
-            raise AssertionError("first carry interval was not published")
+            raise AssertionError(f"{label} carry interval was not published")
         return published
 
     def _first_range(self, start: int, stop: int) -> CarryFn:
@@ -579,70 +597,18 @@ class SourceCarryPorts:
             reflected.close()
 
     def _second_interval(self, start: int, span: int, extent: int) -> CarryFn:
-        root = 2, start, span
-        found = self._cached(root, extent)
-        if found is not None:
-            return found
         growth = extent - self._width
-        workspace = _QueryWorkspace(self._ledger, self._workspace_owner)
-        try:
-            workspace.push(_IntervalFrame(root))
-            while workspace.stack:
-                frame = workspace.stack[-1]
-                cached = self._exact_cached(frame.key)
-                if cached is not None:
-                    workspace.pop()
-                    continue
-                _, current_start, current_span = frame.key
-                self._ledger.bump("reverse_source_ports_postorder_frames")
-                if current_span == 1:
-                    result = (
-                        self._second_decimal_cocycle(current_start, growth)[0]
-                        if self._source.base == 10
-                        else value_carry_fn(
-                            self._raw_second_pair(current_start, growth),
-                            self._source.base,
-                        )
-                    )
-                    self._publish(workspace, frame.key, result)
-                    workspace.pop()
-                    continue
-                half = current_span // 2
-                left = 2, current_start, half
-                right = 2, current_start + half, half
-                if not frame.expanded:
-                    frame.expanded = True
-                    if self._exact_cached(right) is None:
-                        workspace.push(_IntervalFrame(right))
-                    continue
-                after = self._exact_cached(right)
-                if after is None:
-                    raise AssertionError("right carry interval was not constructed")
-                if after is CarryFn.ID:
-                    before = self._exact_cached(left)
-                    if before is None:
-                        workspace.push(_IntervalFrame(left))
-                        continue
-                    result = compose_carry_fn(after, before)
-                else:
-                    result = after
-                    self._ledger.bump("reverse_source_ports_reset_shortcuts")
-                self._publish(workspace, frame.key, result)
-                self._ledger.bump("reverse_source_ports_interval_compositions")
-                workspace.pop()
-            workspace.commit_pruning(self._cache)
-        except BaseException:
-            while workspace.created:
-                key = workspace.pop_created()
-                del self._cache[key]
-            self._ledger.bump("reverse_source_ports_failed_queries")
-            raise
-        finally:
-            workspace.close()
-        published = self._exact_cached(root)
-        if published is None:
-            raise AssertionError("second carry interval was not published")
-        return published
+
+        def leaf(position: int) -> CarryFn:
+            return (
+                self._second_decimal_cocycle(position, growth)[0]
+                if self._source.base == 10
+                else value_carry_fn(
+                    self._raw_second_pair(position, growth), self._source.base
+                )
+            )
+
+        return self._carry_interval(2, start, span, extent, leaf, "second")
 
     def _second_range(self, start: int, stop: int, extent: int) -> CarryFn:
         effect = CarryFn.ID

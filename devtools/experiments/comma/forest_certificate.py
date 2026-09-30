@@ -7,11 +7,12 @@ must be built before its result can enable public A367620 terms.
 
 from __future__ import annotations
 
+from number_compiler.sequences.comma.arithmetic import phase_period
+
 from collections import deque
 from dataclasses import dataclass
 from hashlib import sha256
 import json
-from math import gcd
 
 from number_compiler.arithmetic.contracts.block_effect import (
     BlockContextBudgetExceeded,
@@ -121,14 +122,6 @@ def _small_roots() -> tuple[int, ...]:
     if roots != ROOTS:
         raise ValueError("comma root classification does not match the child rule")
     return roots
-
-
-def _phase_period(f: int, d: int) -> tuple[int, int]:
-    g = gcd(f, 10)
-    length = 10 // g
-    residue = d % g
-    displacement = 10 * (length * residue + g * length * (length - 1) // 2) + length * f
-    return length, displacement
 
 
 def _interior_cycles(k: int, f: int, boundary: int) -> tuple[int, int]:
@@ -305,3 +298,7 @@ def main() -> None:
 
 if __name__ == "__main__":
     main()
+
+
+def _phase_period(leading: int, last_digit: int) -> tuple[int, int]:
+    return phase_period(leading, last_digit)

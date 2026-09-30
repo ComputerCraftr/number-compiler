@@ -12,24 +12,24 @@ universal Goldbach multiplicity and its live finite prover remain separate**.
 
 ## Prime source and rank/select
 
-[`Prime_Wheel_Bridge.thy`](../../devtools/proofs/isabelle/prime_wheel/Prime_Wheel_Bridge.thy)
+[`Prime_Wheel_Bridge.thy`](../../proofs/isabelle/prime_wheel/Prime_Wheel_Bridge.thy)
 connects a finite wheel descriptor to exact prime prefixes. In particular,
 `discovery_stop_constructs_complete_prefix` requires the sound descriptor and
 stop condition; `complete_prefix_survivors_are_exact_primes` applies to that
 complete prefix. `prime_block_bisection` and
 `binary_prime_branch_preserves_target` operate on an already exact rank block.
 
-[`Prime_Wheel_Executor.thy`](../../devtools/proofs/isabelle/prime_wheel/Prime_Wheel_Executor.thy)
+[`Prime_Wheel_Executor.thy`](../../proofs/isabelle/prime_wheel/Prime_Wheel_Executor.thy)
 proves the postorder evaluator completes for its finite dependency tree.
 The deterministic Python refinements are connected in
-[`Prime_Deterministic_Phi_Refinement.thy`](../../devtools/proofs/isabelle/integration_prime/Prime_Deterministic_Phi_Refinement.thy)
+[`Prime_Deterministic_Phi_Refinement.thy`](../../proofs/isabelle/integration_prime/Prime_Deterministic_Phi_Refinement.thy)
 and
-[`Prime_Deterministic_Worklist_Refinement.thy`](../../devtools/proofs/isabelle/integration_prime/Prime_Deterministic_Worklist_Refinement.thy).
+[`Prime_Deterministic_Worklist_Refinement.thy`](../../proofs/isabelle/integration_prime/Prime_Deterministic_Worklist_Refinement.thy).
 The worklist theorem establishes evaluator reachability; it does not by itself
 bound arbitrary target expansion.
 
 Odd-window expansion and descent are proved in
-[`Prime_Odd_Window_Expansion_Refinement.thy`](../../devtools/proofs/isabelle/integration_prime/Prime_Odd_Window_Expansion_Refinement.thy):
+[`Prime_Odd_Window_Expansion_Refinement.thy`](../../proofs/isabelle/integration_prime/Prime_Odd_Window_Expansion_Refinement.thy):
 the step preserves a ranked target under its guard, the loop terminates, and a
 ready window descends to the target. Source initialization, prefix extension,
 selection, and retained rank each have separate registered refinement theories
@@ -37,7 +37,7 @@ listed in the [proof index](../proofs.md).
 
 ## Progression and Goldbach views
 
-[`Prime_Wheel_Skew_Actions.thy`](../../devtools/proofs/isabelle/prime_wheel/Prime_Wheel_Skew_Actions.thy)
+[`Prime_Wheel_Skew_Actions.thy`](../../proofs/isabelle/prime_wheel/Prime_Wheel_Skew_Actions.thy)
 proves progression counts from modular inverses and exact finite windows.
 `fresh_prime_deletes_at_most_seven` and
 `eight_prebirth_survivors_leave_one` are local finite claims with their wheel

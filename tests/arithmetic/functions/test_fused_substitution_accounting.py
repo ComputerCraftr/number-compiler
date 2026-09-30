@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from tests.support.finite_port_fixtures import binary_carry_ports
+
 from itertools import product
 from typing import TYPE_CHECKING
 
@@ -25,9 +27,7 @@ def fixture() -> tuple[
     dict[PortVariable, TransferSummaryID],
     tuple[PortVariable, PortVariable],
 ]:
-    arena = FinitePortActionArena()
-    px, py = PortVariable(0, 0, "carry", 0), PortVariable(1, 0, "carry", 0)
-    x, y = arena.variable(px), arena.variable(py)
+    arena, px, py, x, y = binary_carry_ports()
     root = arena.choose(x, y, arena.constant(False))
     replacements = {px: arena.negate(y), py: x}
     return arena, root, replacements, (px, py)

@@ -2,19 +2,23 @@ from __future__ import annotations
 
 import json
 import time
-from collections import defaultdict, deque
-from collections.abc import Iterable, Sequence
+from collections import deque
+from collections.abc import Callable, Iterable, Sequence
 from typing import TYPE_CHECKING
 
 from devtools.experiments.reverse_add.cascade import DependencyCascadeArena
 from devtools.paths import report_output, repository_root
-from devtools.proofs.builders.bimachine_lazy_power import compose, lazy_from_eager
-from devtools.proofs.builders.bimachine_power import build_step, determinize
+from devtools.verification.builders.bimachine_lazy_power import compose, lazy_from_eager
+from devtools.verification.builders.bimachine_power import (
+    build_step,
+    determinize,
+    predecessor_index,
+)
 
 if TYPE_CHECKING:
-    import devtools.proofs.builders.bimachine_lazy_power
-    from devtools.proofs.builders.bimachine_lazy_power import LazyBimachine
-    from devtools.proofs.builders.bimachine_power import DFA
+    import devtools.verification.builders.bimachine_lazy_power
+    from devtools.verification.builders.bimachine_lazy_power import LazyBimachine
+    from devtools.verification.builders.bimachine_power import DFA
 
 
 Triple = tuple[int, int, int]
@@ -22,54 +26,74 @@ NFAResult = tuple[
     list[Triple], set[int], dict[tuple[int, int], set[int]], set[int], bool
 ]
 
+
+class _CappedInterner:
+    def __init__(self, cap: int | None) -> None:
+        self.cap = cap
+        self.values: list[Triple] = []
+        self.index: dict[Triple, int] = {}
+
+    def intern(self, value: Triple) -> int | None:
+        old = self.index.get(value)
+        if old is not None:
+            return old
+        if self.cap is not None and len(self.values) >= self.cap:
+            return None
+        result = len(self.values)
+        self.index[value] = result
+        self.values.append(value)
+        return result
+
+
+def _walk_nfa(
+    starts: set[int],
+    successors: Callable[[int], Iterable[tuple[int, int]]],
+    process_cap: int | None,
+) -> tuple[dict[tuple[int, int], set[int]], set[int], bool]:
+    transitions: dict[tuple[int, int], set[int]] = {}
+    queue = deque(starts)
+    seen: set[int] = set()
+    capped = False
+    while queue:
+        state = queue.popleft()
+        if state in seen:
+            continue
+        if process_cap is not None and len(seen) >= process_cap:
+            capped = True
+            break
+        seen.add(state)
+        for symbol, target in successors(state):
+            transitions.setdefault((state, symbol), set()).add(target)
+            if target not in seen:
+                queue.append(target)
+    return transitions, seen, capped
+
+
 ROOT = repository_root()
 
 
 def left_nfa(
     B1: LazyBimachine,
-    B2: devtools.proofs.builders.bimachine_lazy_power.LazyBimachine,
+    B2: devtools.verification.builders.bimachine_lazy_power.LazyBimachine,
     *,
     triple_cap: int | None = None,
     process_cap: int | None = None,
 ) -> NFAResult:
     A = B1.alphabet
-    LT: list[Triple] = []
-    li: dict[Triple, int] = {}
-    lnfa: dict[tuple[int, int], set[int]] = {}
-
-    def LID(x: Triple) -> int | None:
-        old = li.get(x)
-        if old is not None:
-            return old
-        if triple_cap is not None and len(LT) >= triple_cap:
-            return None
-        i = len(LT)
-        li[x] = i
-        LT.append(x)
-        return i
+    left_interner = _CappedInterner(triple_cap)
+    LT = left_interner.values
+    LID = left_interner.intern
 
     lstart = set()
     for r in B1.right.states:
         z = LID((B1.left.start, r, B2.left.start))
         if z is not None:
             lstart.add(z)
-    predR: dict[int, dict[int, list[int]]] = {a: defaultdict(list) for a in A}
-    for r2 in B1.right.states:
-        for a in A:
-            r1 = B1.right.step(r2, a)
-            if r1 is not None:
-                predR[a][r1].append(r2)
-    dq = deque(lstart)
-    seen: set[int] = set()
+    predR = predecessor_index(B1.right.states, A, B1.right.step)
     capped = False
-    while dq:
-        qi = dq.popleft()
-        if qi in seen:
-            continue
-        if process_cap is not None and len(seen) >= process_cap:
-            capped = True
-            break
-        seen.add(qi)
+
+    def successors(qi: int) -> Iterable[tuple[int, int]]:
+        nonlocal capped
         l1, r1, l2 = LT[qi]
         for a in A:
             l1n = B1.left.step(l1, a)
@@ -85,58 +109,36 @@ def left_nfa(
                 qn = LID((l1n, r2, l2n))
                 if qn is None:
                     capped = True
-                    return LT, lstart, lnfa, seen, capped
-                lnfa.setdefault((qi, a), set()).add(qn)
-                if qn not in seen:
-                    dq.append(qn)
+                    return
+                yield a, qn
+
+    lnfa, seen, walked_cap = _walk_nfa(lstart, successors, process_cap)
+    capped = capped or walked_cap
     return LT, lstart, lnfa, seen, capped
 
 
 def right_nfa(
     B1: LazyBimachine,
-    B2: devtools.proofs.builders.bimachine_lazy_power.LazyBimachine,
+    B2: devtools.verification.builders.bimachine_lazy_power.LazyBimachine,
     *,
     triple_cap: int | None = None,
     process_cap: int | None = None,
 ) -> NFAResult:
     A = B1.alphabet
-    RT: list[Triple] = []
-    ri: dict[Triple, int] = {}
-    rnfa: dict[tuple[int, int], set[int]] = {}
-
-    def RID(x: Triple) -> int | None:
-        old = ri.get(x)
-        if old is not None:
-            return old
-        if triple_cap is not None and len(RT) >= triple_cap:
-            return None
-        i = len(RT)
-        ri[x] = i
-        RT.append(x)
-        return i
+    right_interner = _CappedInterner(triple_cap)
+    RT = right_interner.values
+    RID = right_interner.intern
 
     rstart = set()
     for left_state in B1.left.states:
         z = RID((left_state, B1.right.start, B2.right.start))
         if z is not None:
             rstart.add(z)
-    predL: dict[int, dict[int, list[int]]] = {a: defaultdict(list) for a in A}
-    for l1 in B1.left.states:
-        for a in A:
-            l2 = B1.left.step(l1, a)
-            if l2 is not None:
-                predL[a][l2].append(l1)
-    dq = deque(rstart)
-    seen: set[int] = set()
+    predL = predecessor_index(B1.left.states, A, B1.left.step)
     capped = False
-    while dq:
-        qi = dq.popleft()
-        if qi in seen:
-            continue
-        if process_cap is not None and len(seen) >= process_cap:
-            capped = True
-            break
-        seen.add(qi)
+
+    def successors(qi: int) -> Iterable[tuple[int, int]]:
+        nonlocal capped
         l2, r2, rr2 = RT[qi]
         for a in A:
             r1 = B1.right.step(r2, a)
@@ -152,10 +154,11 @@ def right_nfa(
                 qn = RID((l1, r1, rr1))
                 if qn is None:
                     capped = True
-                    return RT, rstart, rnfa, seen, capped
-                rnfa.setdefault((qi, a), set()).add(qn)
-                if qn not in seen:
-                    dq.append(qn)
+                    return
+                yield a, qn
+
+    rnfa, seen, walked_cap = _walk_nfa(rstart, successors, process_cap)
+    capped = capped or walked_cap
     return RT, rstart, rnfa, seen, capped
 
 
@@ -245,4 +248,6 @@ def main() -> None:
 
 
 if __name__ == "__main__":
-    main()
+    from devtools.runs import run_reported
+
+    raise SystemExit(run_reported(main))

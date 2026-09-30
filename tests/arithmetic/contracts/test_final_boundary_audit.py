@@ -1,3 +1,5 @@
+from tests.support.assertions import assert_rejected_atomically
+
 import tracemalloc
 from typing import cast
 
@@ -20,9 +22,7 @@ from number_compiler.resources.ledger import ResourceLedger
 
 
 def test_source_tile_rejects_oversized_level_without_expanding_its_power() -> None:
-    ledger = ResourceLedger()
-    geometry = SourceGeometry(ledger, ExactSource((1,), 2, "collatz", 2, 1))
-    geometry.span((1,), 2, 1)
+    ledger, geometry = _single_source_geometry()
     assert geometry.tile_at(0, 0) is not None
     before = ledger.snapshot()
     tracemalloc.start()
@@ -39,13 +39,13 @@ def test_source_tile_rejects_oversized_level_without_expanding_its_power() -> No
 def test_source_tile_rejects_noninteger_geometry_before_lookup(
     start: bool | float, level: bool | int | str
 ) -> None:
-    ledger = ResourceLedger()
-    geometry = SourceGeometry(ledger, ExactSource((1,), 2, "collatz", 2, 1))
-    geometry.span((1,), 2, 1)
-    before = ledger.snapshot()
-    with pytest.raises(TypeError, match="integers"):
-        geometry.tile_at(cast("int", start), cast("int", level))
-    assert ledger.snapshot() == before
+    ledger, geometry = _single_source_geometry()
+    assert_rejected_atomically(
+        ledger,
+        lambda: geometry.tile_at(cast("int", start), cast("int", level)),
+        TypeError,
+        match="integers",
+    )
 
 
 def test_source_tile_preserves_aligned_subtrees_and_exterior_queries() -> None:
@@ -76,7 +76,16 @@ def test_mixed_alphabet_program_rejected_before_retaining_any_runtime(
     malformed = ProgramComposition(
         BaseBlockEffect(10), DigitNormalizeBlockEffect(2), handle
     )
-    before = ledger.snapshot()
-    with pytest.raises(ValueError, match="mixed alphabets"):
-        compiler.import_effect(malformed)
-    assert ledger.snapshot() == before
+    assert_rejected_atomically(
+        ledger,
+        lambda: compiler.import_effect(malformed),
+        ValueError,
+        match="mixed alphabets",
+    )
+
+
+def _single_source_geometry() -> tuple[ResourceLedger, SourceGeometry]:
+    ledger = ResourceLedger()
+    geometry = SourceGeometry(ledger, ExactSource((1,), 2, "collatz", 2, 1))
+    geometry.span((1,), 2, 1)
+    return ledger, geometry

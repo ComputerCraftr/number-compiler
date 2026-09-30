@@ -1,5 +1,6 @@
 """Radix views may share only the one bounded exact microblock facility."""
 
+from tests.support.reference_arithmetic import collatz_literal as _collatz
 from typing import Never
 
 import pytest
@@ -7,13 +8,6 @@ import pytest
 from number_compiler.projection.lazy_radix import collatz_radix_digit
 from number_compiler.projection.microblock_cache import MicroblockKey
 from number_compiler.sequences.collatz.block_power import PoweredCollatzTerm
-
-
-def _collatz(seed: int, steps: int) -> int:
-    value = seed
-    for _ in range(steps):
-        value = 3 * value + 1 if value & 1 else value // 2
-    return value
 
 
 def test_single_radix_query_has_no_range_or_prefix_replay_store() -> None:

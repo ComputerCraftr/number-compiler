@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from tests.support.assertions import assert_rejected_atomically
+
 from array import array
 from itertools import product
 from typing import Never, cast
@@ -203,10 +205,9 @@ def test_zero_budget_and_nonprimitive_admission_publish_no_kernel() -> None:
     class Pretend:
         canonical_key = ("collatz-physical-block", 1)
 
-    before = arena.ledger.snapshot()
-    with pytest.raises(TypeError):
-        arena.intern(cast("BlockEffect", Pretend()))
-    assert arena.ledger.snapshot() == before
+    assert_rejected_atomically(
+        arena.ledger, lambda: arena.intern(cast("BlockEffect", Pretend())), TypeError
+    )
 
 
 def test_nonblank_observer_is_complete_for_physical_and_pair_alphabets(
@@ -262,10 +263,9 @@ def test_absorber_classification_matches_complete_primitive_alphabet() -> None:
                 for symbol in range(kernel.blank + 1)
             )
             assert kernel.is_absorbing(side, state) == expected
-    before = arena.ledger.snapshot()
-    with pytest.raises(ValueError):
-        kernel.is_absorbing(BoundarySide.LEFT, -1)
-    assert arena.ledger.snapshot() == before
+    assert_rejected_atomically(
+        arena.ledger, lambda: kernel.is_absorbing(BoundarySide.LEFT, -1), ValueError
+    )
 
 
 def test_universal_primitive_templates_are_substituted_without_reenumeration() -> None:

@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from devtools.proofs.lazy_collatz import CollatzLazyView, LazyCollatzApplication
+from devtools.verification.lazy_collatz import CollatzLazyView, LazyCollatzApplication
 
 
 def application() -> tuple[LazyCollatzApplication, CollatzLazyView, int]:

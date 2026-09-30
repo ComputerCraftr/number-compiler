@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from tests.support.assertions import assert_rejected_atomically
+
 from dataclasses import replace
 from typing import TYPE_CHECKING, Never
 
@@ -152,10 +154,11 @@ def test_exhausted_decode_cache_preflight_and_warm_hit(
 
     runtime, arena, _, structures, codec = setup()
     runtime.ledger.max_cache_entries = runtime.ledger.entries
-    before = runtime.ledger.snapshot()
-    with pytest.raises(BlockContextBudgetExceeded):
-        arena.component(codec, 0, structures)
-    assert runtime.ledger.snapshot() == before
+    assert_rejected_atomically(
+        runtime.ledger,
+        lambda: arena.component(codec, 0, structures),
+        BlockContextBudgetExceeded,
+    )
     runtime.ledger.max_cache_entries = None
     anchor = arena.component(codec, 0, structures)
     runtime.ledger.max_cache_entries = runtime.ledger.entries

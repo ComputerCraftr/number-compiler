@@ -9,14 +9,12 @@ from number_compiler.hashlife.interfaces.diamond_quotient import (
     MacroComponents,
     QuotientRecord,
 )
-from number_compiler.hashlife.tiles.tile_ports import (
-    ResultWiring,
-)
+from number_compiler.hashlife.tiles.result_reverse_indexes import publish_indexed_result
 from number_compiler.hashlife.tiles.tile_result_records import (
     FusedInterfaceKey,
     PoweredInterfaceKey,
     SpatialInterfaceKey,
-    _FusedVariantKey,
+    fused_variant_key,
 )
 from number_compiler.resources.cache_gc_metrics import (
     record_execution_cache_event,
@@ -64,24 +62,7 @@ def publish_interface(
             raise ValueError("powered interface already has another complete value")
         self.ledger.bump("powered_interface_early_hits")
         return found
-    referenced = self._tiles_for(key, interface)
-    reverse_entries = self._index_entries(referenced)
-    reservations = (
-        (self._memo_owner, 1, 0),
-        (self._reverse_owner, reverse_entries, 0),
-    )
-    self.ledger.reserve_many(reservations)
-    reverse_snapshot = self._reverse_snapshot(referenced, key)
-    try:
-        self._memo[key] = interface
-        for tile in referenced:
-            self._add_membership(tile, key)
-    except BaseException:
-        self._memo.pop(key, None)
-        self._restore_reverse(reverse_snapshot)
-        for owner, entries, nodes in reservations:
-            self.ledger.release(owner, entries, nodes)
-        raise
+    publish_indexed_result(self, key, interface)
     self.ledger.bump("powered_interface_publications")
     return interface
 
@@ -152,19 +133,8 @@ def publish_fused_interface(
             raise ValueError("fused interface already has another complete value")
         self.ledger.bump("fused_interface_late_aliases")
         return found
-    producer_wiring = key.producer_wiring
-    if type(producer_wiring) is not ResultWiring:
-        raise TypeError("fused producer requires normalized wiring")
-    variant_key = _FusedVariantKey(
-        key.action,
-        key.input,
-        key.wiring,
-        producer_wiring,
-        key.boundaries,
-        key.before,
-        key.after,
-        key.consumer_boundaries,
-    )
+    variant_key = fused_variant_key(key)
+    producer_wiring = variant_key.producer_wiring
     old_variants = self._variants.get(variant_key, 0)
     bound = 1
     for port in self.interfaces.interface(producer_wiring.signature).inputs:
@@ -178,20 +148,21 @@ def publish_fused_interface(
         (self._reverse_owner, reverse_entries, 0),
         (self._variant_owner, int(old_variants == 0), 0),
     )
-    self.ledger.reserve_many(reservations)
     reverse_snapshot = self._reverse_snapshot(referenced, key)
+    self.ledger.reserve_many(reservations)
     try:
         self._memo[key] = interface
         for tile in referenced:
             self._add_membership(tile, key)
         self._variants[variant_key] = old_variants + 1
     except BaseException:
-        self._memo.pop(key, None)
-        self._restore_reverse(reverse_snapshot)
-        if old_variants:
-            self._variants[variant_key] = old_variants
-        else:
-            self._variants.pop(variant_key, None)
+        from number_compiler.hashlife.tiles.result_reverse_indexes import (
+            restore_variant_publication,
+        )
+
+        restore_variant_publication(
+            self, key, reverse_snapshot, variant_key, old_variants
+        )
         for owner, entries, nodes in reservations:
             self.ledger.release(owner, entries, nodes)
         raise

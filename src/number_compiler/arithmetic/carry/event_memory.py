@@ -25,6 +25,11 @@ reverse/add has an exact order-20 nonlinear recurrence on binary carry fields.
 """
 
 from __future__ import annotations
+from number_compiler.arithmetic.formula.skew_residue_laws import (
+    pair_no_growth,
+    pair_growth_interior,
+    pair_growth_edge,
+)
 
 import itertools
 from collections.abc import Sequence
@@ -95,25 +100,29 @@ def _pair_step_with_carry(
     reverse = tuple(reversed(carry))
     if not growth:
         out = tuple(
-            2 * source[i]
-            + carry[i]
-            + reverse[i + 1]
-            - base * (carry[i + 1] + reverse[i])
+            pair_no_growth(
+                source[i], carry[i], carry[i + 1], reverse[i + 1], reverse[i], base
+            )
             for i in range(d)
         )
     else:
-        values = [0] * (d + 1)
-        values[0] = source[0] + 1 - base * carry[1]
-        values[d] = values[0]
-        for i in range(1, d):
-            values[i] = (
-                source[i]
-                + source[i - 1]
-                + carry[i]
-                + reverse[i]
-                - base * (carry[i + 1] + reverse[i - 1])
+        edge = pair_growth_edge(source[0], carry[1], base)
+        out = (
+            (edge,)
+            + tuple(
+                pair_growth_interior(
+                    source[i],
+                    source[i - 1],
+                    carry[i],
+                    carry[i + 1],
+                    reverse[i],
+                    reverse[i - 1],
+                    base,
+                )
+                for i in range(1, d)
             )
-        out = tuple(values)
+            + (edge,)
+        )
     if any(not 0 <= value <= 2 * (base - 1) for value in out):
         raise AssertionError((base, source, out))
     if out != out[::-1]:
@@ -173,17 +182,31 @@ def forcing_event_from_carry(
     base = int(base)
     if len(c) < 2 or c[0] != 0 or any(v not in (0, 1) for v in c):
         raise ValueError("invalid forward carry track")
-    d = len(c) - 1
-    growth = c[d]
-    if not growth:
+    width = len(c) - 1
+    if not c[-1]:
         return tuple(
-            c[i] + c[d - i - 1] - base * (c[i + 1] + c[d - i]) for i in range(d)
+            pair_no_growth(
+                0, c[index], c[index + 1], c[width - index - 1], c[width - index], base
+            )
+            for index in range(width)
         )
-    out = [0] * (d + 1)
-    out[0] = out[d] = 1 - base * c[1]
-    for i in range(1, d):
-        out[i] = c[i] + c[d - i] - base * (c[i + 1] + c[d - i + 1])
-    return tuple(out)
+    edge = pair_growth_edge(0, c[1], base)
+    return (
+        (edge,)
+        + tuple(
+            pair_growth_interior(
+                0,
+                0,
+                c[index],
+                c[index + 1],
+                c[width - index],
+                c[width - index + 1],
+                base,
+            )
+            for index in range(1, width)
+        )
+        + (edge,)
+    )
 
 
 def growths_from_event_widths(events: Sequence[Sequence[int]]) -> tuple[int, ...]:

@@ -5,9 +5,9 @@ These reports describe their original checkpoints. They are not current release 
 For current navigation, use the [documentation index](index.md). Superseded
 authored notes and their maintained destinations are listed in the
 [migration and provenance index](provenance.md). Reviewed implementation
-checkpoints are consolidated in the [September 7–13 retrospective](../results/history/2026-09-07--2026-09-13/README.md),
-[September 14–20 retrospective](../results/history/2026-09-14--2026-09-20/README.md) and
-[2026-W39](../results/current/week-of-2026-09-20/README.md) sprint records.
+checkpoints are consolidated in the [September 7–13 retrospective](sprints/history/2026-09-07--2026-09-13/README.md),
+[September 14–20 retrospective](sprints/history/2026-09-14--2026-09-20/README.md) and
+[2026-W39](sprints/week-of-2026-09-20/README.md) sprint records.
 
 The supplied [decimal pair quotient research](archive/reverse-add/DECIMAL_PAIR_QUOTIENT_RESEARCH.md)
 is preserved verbatim (SHA-256 `023599ebc89d1f17601bb84f4fda49c2daaff3308a39e3a7179630cd41683cbe`).

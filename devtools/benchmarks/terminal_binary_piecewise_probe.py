@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from devtools.paths import report_directory
+
 import json
 
 from devtools.benchmarks.report_schema import record, records
@@ -133,7 +135,10 @@ def main() -> None:
             "missing_edge": "unfactored sparse candidate -> ZERO/ONE/SPLIT Frobenius root action",
         },
     }
-    out = ROOT / "results" / "terminal_binary_piecewise_metrics.json"
+    out = (
+        report_directory("devtools.benchmarks.terminal_binary_piecewise_probe")
+        / "terminal_binary_piecewise_metrics.json"
+    )
     out.write_text(json.dumps(data, indent=2, sort_keys=True) + "\n")
 
     rows = "\n".join(
@@ -188,4 +193,6 @@ the root bit by replaying the Lucas/Pépin horizon is rejected.
 
 
 if __name__ == "__main__":
-    main()
+    from devtools.runs import run_reported
+
+    raise SystemExit(run_reported(main))

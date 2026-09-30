@@ -29,6 +29,11 @@ from number_compiler.hashlife.execution.field_images import (
 )
 from number_compiler.hashlife.interfaces.diamond_quotient import LocalInterfaceID
 from number_compiler.resources.ledger import ResourceLedger
+from number_compiler.resources.stores import (
+    make_node_index,
+    record_indexed_node,
+    reserve_indexed_id,
+)
 
 ProviderBoundary: TypeAlias = int | ArenaHandle
 
@@ -78,6 +83,9 @@ class _PointKey:
 
 class ProviderAbsorptionArena:
     """Canonical providers with evictable, boundary-bound observations."""
+
+    _nodes: MutableMapping[int, ProviderAction]
+    _keys: MutableMapping[ProviderAction, int]
 
     _KIND = "provider-action"
 
@@ -141,12 +149,8 @@ class ProviderAbsorptionArena:
         self._key_owner = ledger.register(prefix + "-keys", "provider_action_interner")
         self._binding_owner = ledger.register(prefix + "-bindings", "spatial_binding")
         self._point_owner = ledger.register(prefix + "-points", "observation_memo")
-        self._nodes: MutableMapping[int, ProviderAction] = ledger.make_dict(
-            self._node_owner,
-            nodes_per_entry=1,
-        )
-        self._keys: MutableMapping[ProviderAction, int] = ledger.make_dict(
-            self._key_owner
+        self._nodes, self._keys = make_node_index(
+            ledger, self._node_owner, self._key_owner
         )
         self._bindings: MutableMapping[ProviderBindingKey, None] = ledger.make_dict(
             self._binding_owner,
@@ -242,13 +246,10 @@ class ProviderAbsorptionArena:
         if found is not None:
             self.ledger.bump("provider_action_alias_hits")
             return self._handle(found)
-        self.ledger.reserve_many(
-            ((self._node_owner, 1, 1), (self._key_owner, 1, 0)),
+        local_id, self._next_id = reserve_indexed_id(
+            self.ledger, self._node_owner, self._key_owner, self._next_id
         )
-        local_id = self._next_id
-        self._next_id += 1
-        self._nodes[local_id] = record
-        self._keys[record] = local_id
+        record_indexed_node(self._nodes, self._keys, local_id, record)
         self.ledger.bump("provider_action_publications")
         return self._handle(local_id)
 
@@ -383,6 +384,17 @@ class ProviderAbsorptionArena:
         self.ledger.bump("provider_observation_evaluations")
         return result
 
+    def _validate_bound_channels(self, binding: ProviderBindingKey) -> ProviderAction:
+        record = self.resolve(binding.provider)
+        self.sources.binding_extent(binding.source)
+        if type(binding.output) is not CoordinateOutputMorphismID:
+            raise TypeError("provider binding requires a coordinate output morphism")
+        if type(binding.interface) is not LocalInterfaceID:
+            raise TypeError("provider binding requires a bounded local interface")
+        self._validate_bound_output(binding.output)
+        self._validate_bound_interface(binding.interface)
+        return record
+
     def validate_binding(
         self,
         binding: ProviderBindingKey,
@@ -392,14 +404,7 @@ class ProviderAbsorptionArena:
         """Validate occurrence and concrete ports before any memo probe."""
         if type(binding) is not ProviderBindingKey:
             raise TypeError("provider observation requires a scoped binding")
-        record = self.resolve(binding.provider)
-        self.sources.binding_extent(binding.source)
-        if type(binding.output) is not CoordinateOutputMorphismID:
-            raise TypeError("provider binding requires a coordinate output morphism")
-        if type(binding.interface) is not LocalInterfaceID:
-            raise TypeError("provider binding requires a bounded local interface")
-        self._validate_bound_output(binding.output)
-        self._validate_bound_interface(binding.interface)
+        record = self._validate_bound_channels(binding)
         if binding.image is not None:
             self._validate_image_binding(
                 binding.image,
@@ -421,14 +426,7 @@ class ProviderAbsorptionArena:
         """Validate a completed provider occurrence without binding its ports."""
         if type(binding) is not ProviderBindingKey:
             raise TypeError("expected a scoped provider occurrence")
-        record = self.resolve(binding.provider)
-        self.sources.binding_extent(binding.source)
-        if type(binding.output) is not CoordinateOutputMorphismID:
-            raise TypeError("provider binding requires a coordinate output morphism")
-        if type(binding.interface) is not LocalInterfaceID:
-            raise TypeError("provider binding requires a bounded local interface")
-        self._validate_bound_output(binding.output)
-        self._validate_bound_interface(binding.interface)
+        record = self._validate_bound_channels(binding)
         if binding.image is None:
             raise TypeError("completed provider occurrence requires a field image")
         self._validate_image_binding(

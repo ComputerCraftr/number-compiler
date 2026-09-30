@@ -86,7 +86,7 @@ from devtools.experiments.power_numbers.special_successor_residual import (
     two_primary_shift_block_audits,
 )
 from devtools.paths import repository_root
-from devtools.proofs.oracles.special_binary_jump import (
+from devtools.verification.oracles.special_binary_jump import (
     _fermat_carrier_proof,
     _mersenne_carrier_proof,
 )

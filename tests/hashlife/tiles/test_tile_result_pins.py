@@ -1,5 +1,8 @@
 """All result pin routes authenticate the live application before lookup."""
 
+from tests.support.assertions import assert_rejected_atomically
+
+
 from typing import cast
 
 import pytest
@@ -21,10 +24,9 @@ def test_result_pin_rejects_application_alias_before_mutation(
             fresh = scheduler.results.lookup(key)
             assert fresh is not None
             result = fresh
-        before = ledger.snapshot()
-        with pytest.raises(ValueError):
-            scheduler._pin(cast(int, alias), key, result)
-        assert ledger.snapshot() == before
+        assert_rejected_atomically(
+            ledger, lambda: scheduler._pin(cast(int, alias), key, result), ValueError
+        )
         assert result.result.output is not None
     finally:
         result.close()

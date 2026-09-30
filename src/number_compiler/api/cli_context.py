@@ -144,18 +144,32 @@ class QueryContext:
                 else:
                     self._info[name] = self._observe(name)
         if "metrics" in self.request.info and "metrics" not in self._info:
-            self._info["metrics"] = _metrics_json(self.term)
+            presentation = self.request.presentation_index
+            self._info["metrics"] = (
+                _metrics_json(self.term)
+                if isinstance(presentation, int)
+                else _metrics_json(
+                    self.term,
+                    coordinate=(
+                        self.request.index,
+                        f"(10**{self.request.nth_power10})",
+                        presentation,
+                    ),
+                )
+            )
         # Common CLI metadata is selector-based. Family-specific payload fields
         # remain intact, while the public Python observers keep their own APIs.
         for name, packet in self._info.items():
             packet.update(
                 family=self.request.family,
                 kind=name,
-                index=self.request.index,
+                index=self.request.presentation_index,
                 index_unit=self.request.index_unit,
             )
             packet.setdefault("status", "available")
-        return {name: self._info[name] for name in self.request.info}
+        return self.request.present_indices(
+            {name: self._info[name] for name in self.request.info}
+        )
 
     def _observe(self, name: str) -> dict[str, Any]:
         q = self.request

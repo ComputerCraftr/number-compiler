@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import pytest
 
-from devtools.proofs.special_source_program import (
+from devtools.verification.special_source_program import (
     FoldedSupportInstruction,
     FoldedSupportProgram,
     SpecialSourceCertificateCandidate,

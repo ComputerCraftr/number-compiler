@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from number_compiler.sequences.prime.set import normalize_jacobi_inputs
+
 from math import gcd
 
 from devtools.experiments.power_numbers.special_successor_factor import (
@@ -15,10 +17,7 @@ from devtools.experiments.power_numbers.special_successor_models import (
 
 
 def _jacobi_counted(a: int, n: int) -> tuple[int, int]:
-    a = int(a)
-    n = int(n)
-    if n <= 0 or not (n & 1):
-        raise ValueError((a, n))
+    a, n = normalize_jacobi_inputs(a, n)
     a %= n
     result = 1
     steps = 0

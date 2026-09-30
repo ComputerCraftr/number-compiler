@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from tests.support.assertions import assert_rejected_atomically
+
 from itertools import product
 from typing import Literal
 
@@ -170,10 +172,11 @@ def test_foreign_or_forged_factored_handles_reject_before_any_circuit_work(
         object.__setattr__(
             forged, name, value if name == field else getattr(handle, name)
         )
-    before = arena.ledger.snapshot()
-    with pytest.raises(ValueError):
-        arena.add(forged, handle, AtomSort("carry", 3))
-    assert arena.ledger.snapshot() == before
+    assert_rejected_atomically(
+        arena.ledger,
+        lambda: arena.add(forged, handle, AtomSort("carry", 3)),
+        ValueError,
+    )
 
 
 def test_finite_addition_rejects_overflow_instead_of_wrapping_through_domain_holes() -> (
@@ -186,10 +189,12 @@ def test_finite_addition_rejects_overflow_instead_of_wrapping_through_domain_hol
     word = AtomSort("word", 4)
     word_two = arena.constant(FunctionSignature((), word), 2)
     assert arena.evaluate(arena.add(word_two, word_two, word, wrap=True), {}) == 0
-    before = arena.ledger.snapshot()
-    with pytest.raises(ValueError, match="power-of-two"):
-        arena.add(two, two, output, wrap=True)
-    assert arena.ledger.snapshot() == before
+    assert_rejected_atomically(
+        arena.ledger,
+        lambda: arena.add(two, two, output, wrap=True),
+        ValueError,
+        match="power-of-two",
+    )
     # Truncating higher input bits must not make an unrepresentable sum valid.
     wide = arena.constant(FunctionSignature((), AtomSort("wide", 16)), 8)
     zero = arena.constant(FunctionSignature((), word), 0)

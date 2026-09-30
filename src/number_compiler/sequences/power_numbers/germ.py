@@ -367,23 +367,7 @@ class SpecialGermPlan:
         """Compose adjacent constrained blocks with exact evidence pullback."""
         if not isinstance(downstream, SpecialGermPlan):
             raise TypeError(type(downstream))
-        a, b = self.spec, downstream.spec
-        if (
-            a.family != b.family
-            or a.parameter != b.parameter
-            or a.baseline_local_v2 != b.baseline_local_v2
-            or a.modulus_bits != b.modulus_bits
-            or b.start_level != a.end_level + 1
-        ):
-            raise ValueError((a, b))
-        spec = SpecialFrobeniusChunkSpec(
-            a.family,
-            a.parameter,
-            a.start_level,
-            a.span + b.span,
-            a.baseline_local_v2,
-            a.modulus_bits,
-        )
+        spec = self.spec.then(downstream.spec)
         return SpecialGermPlan(
             spec,
             self.transfer.then(downstream.transfer),

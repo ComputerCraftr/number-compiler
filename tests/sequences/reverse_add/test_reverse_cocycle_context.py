@@ -6,8 +6,8 @@ import pytest
 
 from devtools.experiments.reverse_add.cocycle_temporal import CocycleAction
 from devtools.experiments.reverse_add.factored_carrier import DOMAINS
-from devtools.proofs import exact_oracle
-from devtools.proofs.reverse_cocycle_context import BoundedReverseCocycle
+from devtools.verification import exact_oracle
+from devtools.verification.reverse_cocycle_context import BoundedReverseCocycle
 from number_compiler.arithmetic.carry.event_memory import pair_step
 from number_compiler.arithmetic.formula.decimal_pair_coordinates import (
     decimal_cocycle_value,

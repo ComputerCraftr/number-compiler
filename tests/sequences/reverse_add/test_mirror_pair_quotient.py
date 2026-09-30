@@ -7,8 +7,8 @@ from typing import cast
 
 import pytest
 
-from devtools.proofs.reverse_geometry_context import ReverseGeometryContext
-from devtools.proofs.threshold_expressions import (
+from devtools.verification.reverse_geometry_context import ReverseGeometryContext
+from devtools.verification.threshold_expressions import (
     MIRROR_DOMAIN_CLASSES,
     MIRROR_DOMAIN_ROWS,
     MIRROR_PAIR_TABLE,

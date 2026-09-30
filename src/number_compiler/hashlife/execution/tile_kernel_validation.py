@@ -86,17 +86,7 @@ def validate_input(
     # spatial memo hit without obtaining any additional alphabet information.
     current = self._action(action)
     kernel = self.kernels.kernel(current.kernel)
-    node = self.tiles.resolve(source)
-    alphabet = self.tiles.alphabet(node.alphabet)
-    if (
-        alphabet.symbol_count != kernel.blank + 1
-        or alphabet.blank != kernel.blank
-        or alphabet.radix != kernel.base
-        or alphabet.cell_bits != max(1, kernel.blank.bit_length())
-        or alphabet.interpretation != "unsigned-radix-cell-with-explicit-blank"
-        or alphabet.version != "canonical-tile-alphabet-v1"
-    ):
-        raise ValueError("tile alphabet differs from primitive kernel")
+    validate_kernel_alphabet(self.tiles, source, kernel)
 
 
 def validate_fused_action(self: _Host, action: FieldCellActionID) -> None:
@@ -304,3 +294,20 @@ def validate_action(
                     "reverse Frobenius plan differs from its temporal action"
                 )
             classes <<= 1
+
+
+def validate_kernel_alphabet(
+    tiles: TileArena, source: TileID, kernel: PrimitiveKernel
+) -> None:
+    """Validate the fixed cell interpretation after independent action admission."""
+    node = tiles.resolve(source)
+    alphabet = tiles.alphabet(node.alphabet)
+    if (
+        alphabet.symbol_count != kernel.blank + 1
+        or alphabet.blank != kernel.blank
+        or alphabet.radix != kernel.base
+        or alphabet.cell_bits != max(1, kernel.blank.bit_length())
+        or alphabet.interpretation != "unsigned-radix-cell-with-explicit-blank"
+        or alphabet.version != "canonical-tile-alphabet-v1"
+    ):
+        raise ValueError("tile alphabet differs from primitive kernel")

@@ -1,6 +1,10 @@
 """Completed tile results retain output roots without owning future content."""
 
 from __future__ import annotations
+from tests.support.tile_results import assert_retention_and_peaks_unchanged
+from tests.support.tile_results import _published_setup
+
+from tests.support.assertions import assert_rejected_atomically
 
 import pickle
 from copy import copy, deepcopy
@@ -72,9 +76,9 @@ def test_observed_input_ports_validate_before_result_publication() -> None:
 
 
 def test_warm_result_port_admission_is_read_only_semantic_validation() -> None:
-    ledger, _, _, results, input_lease, output_lease, key, result = _setup()
-    held = results.publish(key, result)
-    before = ledger.snapshot()
+    ledger, _, _, results, input_lease, output_lease, key, result, held, before = (
+        _published_setup()
+    )
     warm = results.lookup(key)
     assert warm is not None
     after = ledger.snapshot()
@@ -94,9 +98,9 @@ def test_warm_result_port_admission_is_read_only_semantic_validation() -> None:
 
 
 def test_result_lease_inspection_is_counter_neutral_but_still_validates() -> None:
-    ledger, _, _, results, input_lease, output_lease, key, result = _setup()
-    held = results.publish(key, result)
-    before = ledger.snapshot()
+    ledger, _, _, results, input_lease, output_lease, key, result, held, before = (
+        _published_setup()
+    )
     assert held.output == result.output
     assert held.result == result
     assert ledger.snapshot() == before
@@ -179,9 +183,18 @@ def test_invalid_ports_reject_before_warm_lookup_or_mutation(bad_port: object) -
 
 
 def test_foreign_action_and_signature_reject_before_lookup() -> None:
-    ledger, actions, _, results, input_lease, output_lease, key, result = _setup()
-    lease = results.publish(key, result)
-    before = ledger.snapshot()
+    (
+        ledger,
+        actions,
+        _,
+        results,
+        input_lease,
+        output_lease,
+        key,
+        result,
+        lease,
+        before,
+    ) = _published_setup()
     foreign = replace(
         key,
         action=FieldCellActionID(ArenaToken("foreign"), key.action.kind, 0),
@@ -236,16 +249,18 @@ def test_exhausted_budget_rejects_publication_without_retained_mutation() -> Non
 
 def test_constructor_rejects_unowned_action_callbacks() -> None:
     ledger, actions, tiles, results, input_lease, output_lease, _, _ = _setup()
-    before = ledger.snapshot()
-    with pytest.raises(ValueError, match="real action authority"):
-        CompletedResultArena(
+    assert_rejected_atomically(
+        ledger,
+        lambda: CompletedResultArena(
             tiles,
             results.interfaces,
             action_authority=object(),
             validate_action=lambda _value: None,
             signature_for=actions.signature,
-        )
-    assert ledger.snapshot() == before
+        ),
+        ValueError,
+        match="real action authority",
+    )
     output_lease.close()
     input_lease.close()
 
@@ -262,16 +277,18 @@ def test_constructor_rejects_unowned_action_callbacks() -> None:
 def test_constructor_rejects_unbound_optional_action_authority_hooks(name: str) -> None:
     ledger, actions, tiles, results, input_lease, output_lease, _, _ = _setup()
     setattr(actions, name, lambda *_args: None)
-    before = ledger.snapshot()
-    with pytest.raises(ValueError, match="bound .* validator"):
-        CompletedResultArena(
+    assert_rejected_atomically(
+        ledger,
+        lambda: CompletedResultArena(
             tiles,
             results.interfaces,
             action_authority=actions,
             validate_action=actions.validate_action,
             signature_for=actions.signature,
-        )
-    assert ledger.snapshot() == before
+        ),
+        ValueError,
+        match="bound .* validator",
+    )
     output_lease.close()
     input_lease.close()
 
@@ -321,13 +338,7 @@ def test_result_extent_must_equal_exact_output_tile_extent() -> None:
     before = ledger.snapshot()
     with pytest.raises(ValueError, match="disagrees"):
         results.publish(key, replace(result, relative_extent=0))
-    after = ledger.snapshot()
-    assert (after.entries, after.nodes, after.peak_entries, after.peak_nodes) == (
-        before.entries,
-        before.nodes,
-        before.peak_entries,
-        before.peak_nodes,
-    )
+    assert_retention_and_peaks_unchanged(ledger, before)
     output_lease.close()
     input_lease.close()
 
@@ -491,10 +502,9 @@ def test_causal_region_rejects_before_lookup_or_ledger_mutation(
     ledger, _, tiles, results, source, output, key, _result = _setup()
     parent = tiles.join(source.tile, output.tile)
     request = replace(key, input=parent.tile, region=cast("tuple[int, int]", region))
-    before = ledger.snapshot()
-    with pytest.raises((TypeError, ValueError)):
-        results.lookup(request)
-    assert ledger.snapshot() == before
+    assert_rejected_atomically(
+        ledger, lambda: results.lookup(request), (TypeError, ValueError)
+    )
     parent.close()
     output.close()
     source.close()

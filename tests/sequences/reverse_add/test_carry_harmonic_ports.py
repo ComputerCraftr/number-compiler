@@ -4,11 +4,11 @@ from itertools import product
 
 import pytest
 
-from devtools.proofs.carry_harmonic_port_probe import direct_rows, finite
-from devtools.proofs.carry_harmonic_ports import (
+from devtools.verification.carry_harmonic_port_probe import direct_rows, finite
+from devtools.verification.carry_harmonic_ports import (
     CarryHarmonicPortAction as Action,
 )
-from devtools.proofs.carry_harmonic_ports import (
+from devtools.verification.carry_harmonic_ports import (
     population_harmonics,
     populations,
     prefix_harmonics,
@@ -77,7 +77,7 @@ def test_harmonic_kernel_is_separated_but_pointwise_carries_are_not_retained() -
 def test_spatial_powering_does_not_reconstruct_carry_words(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    import devtools.proofs.carry_harmonic_ports as ports
+    import devtools.verification.carry_harmonic_ports as ports
 
     action = Action.leaf(CarryFn.ID)
 

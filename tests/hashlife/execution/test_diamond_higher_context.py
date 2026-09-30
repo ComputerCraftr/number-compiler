@@ -2,6 +2,16 @@
 
 from __future__ import annotations
 
+from number_compiler.hashlife.execution.continuations.diamond_runtime import (
+    DiamondRuntime,
+)
+from number_compiler.arithmetic.contracts.scoped_handles import ActionProgramID
+from number_compiler.hashlife.interfaces.diamond_boundary_expr import (
+    BoundaryExpressionArena,
+)
+from number_compiler.hashlife.interfaces.diamond_boundary import BoundaryActionArena
+from tests.support.assertions import assert_rejected_atomically
+
 from typing import TYPE_CHECKING, Never
 
 import pytest
@@ -148,10 +158,9 @@ def test_higher_admission_rejects_foreign_and_wrong_side_before_warm_mutation() 
         ),
     )
     for request in bad:
-        before = runtime.ledger.snapshot()
-        with pytest.raises((ValueError, TypeError)):
-            runtime.execute(request)
-        assert runtime.ledger.snapshot() == before
+        assert_rejected_atomically(
+            runtime.ledger, lambda: runtime.execute(request), (ValueError, TypeError)
+        )
 
 
 def test_summary_program_and_binding_reservations_are_atomic() -> None:
@@ -187,9 +196,7 @@ def test_complete_higher_step_matches_primitive_pair_for_every_argument(
 ) -> None:
     from number_compiler.hashlife.execution.continuations.diamond_tasks import Evaluate
 
-    runtime, primitive = machine()
-    paired = runtime.actions.compose(primitive, primitive)
-    arena, boundaries = runtime.higher.expressions, runtime.boundaries
+    runtime, primitive, paired, arena, boundaries = _paired_fixture()
     kernel = runtime.kernel(primitive)
     domain = kernel.right_count if side == 0 else kernel.left_count
     anchor = boundaries.literal(primitive, side, 0)
@@ -237,10 +244,25 @@ def test_complete_higher_step_matches_primitive_pair_for_every_argument(
         )
 
 
-def test_higher_step_binder_never_captures_an_incoming_same_named_free_port() -> None:
+def _paired_fixture() -> tuple[
+    DiamondRuntime,
+    ActionProgramID,
+    ActionProgramID,
+    BoundaryExpressionArena,
+    BoundaryActionArena,
+]:
     runtime, primitive = machine()
-    paired = runtime.actions.compose(primitive, primitive)
-    arena, boundaries = runtime.higher.expressions, runtime.boundaries
+    return (
+        runtime,
+        primitive,
+        runtime.actions.compose(primitive, primitive),
+        runtime.higher.expressions,
+        runtime.boundaries,
+    )
+
+
+def test_higher_step_binder_never_captures_an_incoming_same_named_free_port() -> None:
+    runtime, primitive, paired, arena, boundaries = _paired_fixture()
     free = arena.variable(arena.state_sort(primitive, 1), "higher-step-opposite")
     argument = arena.variable(arena.state_sort(primitive, 1), "test-ignored-argument")
     anchor = arena.literal(boundaries.literal(primitive, 0, 0))

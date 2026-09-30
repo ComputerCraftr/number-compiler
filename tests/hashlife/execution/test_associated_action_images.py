@@ -4,6 +4,7 @@ import pytest
 
 from number_compiler.arithmetic.fields.consumer_pullback import (
     AssociatedActionArena,
+    AssociatedActionID,
     ExactRational,
     SaturatingAffineAction,
     ThresholdDemand,
@@ -29,12 +30,38 @@ def _runtime() -> tuple[
     return ledger, scheduler, arena, adapter
 
 
-def test_source_only_scheduler_accepts_a_certified_safe_composite() -> None:
-    ledger, scheduler, arena, adapter = _runtime()
+def _decrement_fixture() -> tuple[
+    ResourceLedger,
+    TileScheduler,
+    AssociatedActionArena,
+    AssociatedActionSourceAdapter,
+    AssociatedActionID,
+    AssociatedActionID,
+]:
+    fixture = _runtime()
+    arena = fixture[2]
     decrement = arena.admit(
         SaturatingAffineAction(offset=ExactRational(-1)), logical_extent=1
     )
-    block = arena.compose(decrement, decrement)
+    return (*fixture, decrement, arena.compose(decrement, decrement))
+
+
+def _assert_threshold_failure(
+    scheduler: TileScheduler,
+    adapter: AssociatedActionSourceAdapter,
+    block: AssociatedActionID,
+    threshold: ThresholdDemand,
+) -> None:
+    demand = SourceImageDemand("threshold", (threshold,))
+    image = scheduler.source_image_demanded(
+        adapter, AssociatedScalarSource(ExactRational(1, 2), threshold), block, demand
+    )
+    assert scheduler.source_projection(adapter, image, demand).value is True
+    assert scheduler.source_first_failure(adapter, image) == 1
+
+
+def test_source_only_scheduler_accepts_a_certified_safe_composite() -> None:
+    ledger, scheduler, arena, adapter, decrement, block = _decrement_fixture()
     threshold = ThresholdDemand()
     demand = SourceImageDemand("threshold", (threshold,))
     image = scheduler.source_image_demanded(
@@ -50,11 +77,7 @@ def test_source_only_scheduler_accepts_a_certified_safe_composite() -> None:
 
 
 def test_failing_composite_descends_to_the_first_leaf() -> None:
-    _, scheduler, arena, adapter = _runtime()
-    decrement = arena.admit(
-        SaturatingAffineAction(offset=ExactRational(-1)), logical_extent=1
-    )
-    block = arena.compose(decrement, decrement)
+    _, scheduler, arena, adapter, decrement, block = _decrement_fixture()
     threshold = ThresholdDemand()
     demand = SourceImageDemand("threshold", (threshold,))
     image = scheduler.source_image_demanded(
@@ -77,15 +100,7 @@ def test_recovering_final_value_does_not_hide_an_earlier_failure() -> None:
     )
     block = arena.compose(decrement, recover)
     threshold = ThresholdDemand()
-    demand = SourceImageDemand("threshold", (threshold,))
-    image = scheduler.source_image_demanded(
-        adapter,
-        AssociatedScalarSource(ExactRational(1, 2), threshold),
-        block,
-        demand,
-    )
-    assert scheduler.source_projection(adapter, image, demand).value is True
-    assert scheduler.source_first_failure(adapter, image) == 1
+    _assert_threshold_failure(scheduler, adapter, block, threshold)
     assert ledger.counters.get("source_image_demanded_composite_applications", 0) == 0
 
 
@@ -100,15 +115,7 @@ def test_weak_zero_threshold_does_not_accept_equality_as_no_recovery() -> None:
     )
     block = arena.compose(decrement, recover_to_zero)
     threshold = ThresholdDemand(strict=False)
-    demand = SourceImageDemand("threshold", (threshold,))
-    image = scheduler.source_image_demanded(
-        adapter,
-        AssociatedScalarSource(ExactRational(1, 2), threshold),
-        block,
-        demand,
-    )
-    assert scheduler.source_projection(adapter, image, demand).value is True
-    assert scheduler.source_first_failure(adapter, image) == 1
+    _assert_threshold_failure(scheduler, adapter, block, threshold)
 
 
 def test_infinite_source_is_projected_without_a_sentinel() -> None:

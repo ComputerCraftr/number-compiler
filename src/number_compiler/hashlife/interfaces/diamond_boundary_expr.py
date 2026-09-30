@@ -7,6 +7,10 @@ syntactically, not claimed to be an extensional quotient of higher functions.
 
 from __future__ import annotations
 
+from number_compiler.hashlife.interfaces.diamond_kernel_bridge import (
+    evaluate_primitive_bits,
+)
+
 from collections.abc import Mapping, MutableMapping, MutableSequence, Sequence
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, Literal, TypeAlias
@@ -501,16 +505,10 @@ class BoundaryExpressionArena:
         constant_value = -1
         noncanonical = False
         for code in range(1 << width):
-            output = 0
-            for bit_number, bit in enumerate(expression.bits):
-                index = bit.local_id
-                while index >= 2:
-                    decision = functions._nodes[index]
-                    assert decision.variable is not None
-                    bit_index = width - 1 - (decision.variable.bit - port.bit)
-                    index = decision.high if code & (1 << bit_index) else decision.low
-                    reads += 1
-                output |= index << bit_number
+            output, decision_reads = evaluate_primitive_bits(
+                self.boundaries.kernels, expression, code, width, port
+            )
+            reads += decision_reads
             if code >= domain:
                 noncanonical |= output != 0
                 continue

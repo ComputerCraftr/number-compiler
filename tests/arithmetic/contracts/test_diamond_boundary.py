@@ -1,3 +1,5 @@
+from tests.support.assertions import assert_rejected_atomically
+
 from dataclasses import replace
 
 import pytest
@@ -7,7 +9,7 @@ from number_compiler.hashlife.interfaces.diamond_boundary import (
     ContinuationStep,
     ImageBinding,
 )
-from tests.support.diamond_boundary import boundary
+from tests.support.diamond_boundary import boundary, composed_anchor
 
 
 def test_constant_reduction_preserves_domain_and_codomain_admissibility() -> None:
@@ -49,8 +51,7 @@ def test_primitive_literals_and_foreign_handles_fail_before_publication() -> Non
 
 def test_pair_requires_exact_first_opposite_to_second_same_interface() -> None:
     ledger, actions, _, arena, first, second = boundary()
-    composed = actions.compose(first, second)
-    anchor = arena.literal(first, 0, 0)
+    composed, anchor = composed_anchor(actions, arena, first, second)
     output = arena.literal(second, 0, 0)
     correct = arena.constant(output, first, 1)
     wrong = arena.constant(output, first, 0)
@@ -92,10 +93,11 @@ def test_complete_finite_function_validates_all_values_and_reserves_atomically()
     assert size is not None and size > 1
     values = [arena.literal(second, 0, index % 2) for index in range(size)]
     ledger.max_cache_entries = ledger.entries + 1
-    before = ledger.snapshot()
-    with pytest.raises(BlockContextBudgetExceeded):
-        arena.finite_function(values, first, 1)
-    assert ledger.snapshot() == before
+    before = assert_rejected_atomically(
+        ledger,
+        lambda: arena.finite_function(values, first, 1),
+        BlockContextBudgetExceeded,
+    )
     with pytest.raises(ValueError, match="complete primitive"):
         arena.finite_function(values[:-1], first, 1)
     assert ledger.snapshot() == before
@@ -104,7 +106,9 @@ def test_complete_finite_function_validates_all_values_and_reserves_atomically()
     for index, expected in enumerate(values):
         assert arena.select(function, arena.literal(first, 1, index)) == expected
     composed = actions.compose(first, second)
-    before = ledger.snapshot()
-    with pytest.raises(ValueError, match="complete primitive"):
-        arena.finite_function(values, composed, 1)
-    assert ledger.snapshot() == before
+    before = assert_rejected_atomically(
+        ledger,
+        lambda: arena.finite_function(values, composed, 1),
+        ValueError,
+        match="complete primitive",
+    )

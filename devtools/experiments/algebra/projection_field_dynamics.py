@@ -15,8 +15,8 @@ from devtools.experiments.algebra.projection_observer import (
     fermat_squaring_observer_profile,
     mersenne_lucas_observer_profile,
 )
-from devtools.proofs import exact_oracle
-from devtools.proofs.carry_action_quotient import CarryResetSignature
+from devtools.verification import exact_oracle
+from devtools.verification.carry_action_quotient import CarryResetSignature
 from number_compiler.arithmetic.fields.projection_field import (
     projection_field_summary_from_values,
 )

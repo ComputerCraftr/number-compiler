@@ -382,6 +382,16 @@ class DiamondPayloadRegistry:
 
         return _kernel_fields(self, value)
 
+    def _original_action_cell(self, action: object, cell: object) -> bool:
+        return (
+            type(action) is ActionProgramID
+            and action.kind == "diamond-action"
+            and self._handle(action)
+            and type(cell) is CellID
+            and self._handle(cell)
+            and self._original_cell(cell)
+        )
+
     def valid(self, value: object) -> bool:
         if type(value) in InterfacePayloadRegistry.record_types:
             return self.interfaces.valid(value)
@@ -556,14 +566,7 @@ class DiamondPayloadRegistry:
                 )
             )
         if type(value) is PairMacroKey:
-            return (
-                type(value.action) is ActionProgramID
-                and value.action.kind == "diamond-action"
-                and self._handle(value.action)
-                and type(value.cell) is CellID
-                and self._handle(value.cell)
-                and self._original_cell(value.cell)
-            )
+            return self._original_action_cell(value.action, value.cell)
         if type(value) is PairMacroRecord:
             return self._pair_macro(value)
         if type(value) in (

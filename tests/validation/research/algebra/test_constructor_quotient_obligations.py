@@ -4,7 +4,7 @@ from fractions import Fraction
 
 import pytest
 
-from devtools.proofs.decimal_endpoint_seam import decimal_step
+from devtools.verification.decimal_endpoint_seam import decimal_step
 from number_compiler.arithmetic.functions.finite_function_types import (
     BOOL,
     AtomSort,

@@ -1,14 +1,18 @@
+from tests.support.special_theorem_assertions import assert_unknown_resolution
 from random import Random
 
 import pytest
 
-from devtools.proofs import exact_oracle
-from devtools.proofs.carry_action_quotient import CarryThresholdSignature
-from devtools.proofs.oracles.digit_power import (
+from devtools.verification import exact_oracle
+from devtools.verification.carry_action_quotient import CarryThresholdSignature
+from devtools.verification.oracles.digit_power import (
     lucas_lehmer_digit_field,
     pepin_digit_field,
 )
-from devtools.proofs.oracles.special_primality import lucas_lehmer_test, pepin_test
+from devtools.verification.oracles.special_primality import (
+    lucas_lehmer_test,
+    pepin_test,
+)
 from number_compiler.api.sequence_compiler import CanonicalSequenceCompiler
 from number_compiler.api.sequence_types import (
     CollatzSequenceSpec,
@@ -184,7 +188,7 @@ def test_special_digit_power_uses_shared_arithmetic_tile_without_legacy_convolut
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     import number_compiler.arithmetic.polynomials.digit_convolution as legacy
-    from devtools.proofs.oracles import digit_power
+    from devtools.verification.oracles import digit_power
 
     def forbidden(*args: object, **kwargs: object) -> None:
         raise AssertionError((args, kwargs))
@@ -317,9 +321,7 @@ def test_unified_compiler_retains_shared_sensitivity_and_digit_projection_interf
     assert mersenne.terms[0].primality is None
     m31 = compiler.resolve_special_theorem("mersenne", 31)
     assert m31.projection_method.startswith("terminal-threshold:")
-    assert m31.primality is not None and m31.primality.status == "unknown"
-    assert m31.primality.specialization_raw_squarings == 0
-    assert not m31.primality.decided and m31.primality.target_depth is None
+    assert_unknown_resolution(m31)
     assert m31.source_guard.failure_bit is None
 
 
@@ -327,7 +329,7 @@ def test_unified_compiler_retains_shared_sensitivity_and_digit_projection_interf
 def test_reset_itinerary_is_extensional_carry_automaton_and_optimizer_selects_cheaper_encoding() -> (
     None
 ):
-    from devtools.proofs.carry_action_quotient import (
+    from devtools.verification.carry_action_quotient import (
         CarryResetSignature,
         analyze_carry_action_quotient,
     )

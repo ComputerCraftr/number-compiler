@@ -6,6 +6,7 @@ one node per symbol.
 """
 
 from __future__ import annotations
+from number_compiler.arithmetic.contracts.iterative_queries import defer_dependencies
 
 import weakref
 from collections.abc import Callable, Generator, Iterable, Iterator, MutableSequence
@@ -833,11 +834,13 @@ def cap_symbol_runs(word: CanonicalWord, symbol: int, cap: int) -> CanonicalWord
             if node.left is None or node.right is None:
                 raise AssertionError(node)
             if not ready:
-                stack.append((node, True))
-                if node.right.node_id not in built:
-                    stack.append((node.right, False))
-                if node.left.node_id not in built:
-                    stack.append((node.left, False))
+                defer_dependencies(
+                    stack,
+                    node,
+                    (node.left, node.right),
+                    built,
+                    lambda child: child.node_id,
+                )
                 continue
             out = concat(built[node.left.node_id], built[node.right.node_id])
         _put(_NORMALIZE_RUN_CAP, key, out)

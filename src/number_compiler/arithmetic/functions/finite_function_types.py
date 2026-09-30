@@ -8,6 +8,8 @@ enter this arena. Reduced DAG size can still be exponential in the interface.
 
 from __future__ import annotations
 
+from number_compiler.arithmetic.contracts.iterative_queries import finish_postorder
+
 from dataclasses import dataclass, field
 from typing import Literal, TypeAlias
 
@@ -120,8 +122,7 @@ def _sort(sort: SemanticSort) -> None:
         item, ready = pending.pop()
         identity = id(item)
         if ready:
-            active.remove(identity)
-            finished.add(identity)
+            finish_postorder(active, finished, identity)
             continue
         if identity in finished:
             continue

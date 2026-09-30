@@ -1,5 +1,8 @@
 """Structured boundary composition used by arbitrary-depth tile absorption."""
 
+from tests.support.assertions import assert_rejected_atomically
+
+
 from dataclasses import dataclass
 from itertools import product
 from typing import Literal
@@ -205,10 +208,25 @@ def test_four_cell_spatial_transfer_matches_direct_two_sided_scan() -> None:
         )
 
 
-def test_equivalent_spatial_derivations_share_structured_ids() -> None:
+def _opposite_cells() -> tuple[
+    StructureArena,
+    FinitePort,
+    FinitePort,
+    StructuredBoundaryTransfer,
+    StructuredBoundaryTransfer,
+]:
     structures, left, right = _setup()
-    a = _cell(structures, left, right, False, True)
-    b = _cell(structures, left, right, True, False)
+    return (
+        structures,
+        left,
+        right,
+        _cell(structures, left, right, False, True),
+        _cell(structures, left, right, True, False),
+    )
+
+
+def test_equivalent_spatial_derivations_share_structured_ids() -> None:
+    structures, left, right, a, b = _opposite_cells()
     c = _cell(structures, left, right, True, True)
     left_grouped = compose_spatial_transfers(
         structures,
@@ -228,9 +246,7 @@ def test_equivalent_spatial_derivations_share_structured_ids() -> None:
 
 
 def test_function_valued_boundary_pair_publishes_as_one_complete_quotient() -> None:
-    structures, left, right = _setup()
-    a = _cell(structures, left, right, False, True)
-    b = _cell(structures, left, right, True, False)
+    structures, left, right, a, b = _opposite_cells()
     two_cells = compose_spatial_transfers(structures, a, b, left, right)
     four_cells = compose_spatial_transfers(
         structures,
@@ -274,10 +290,11 @@ def test_boundary_composition_rejects_foreign_handles_before_mutation() -> None:
     local = _cell(structures, left, right, False, False)
     foreign, foreign_left, foreign_right = _setup()
     other = _cell(foreign, foreign_left, foreign_right, False, False)
-    before = structures.ledger.snapshot()
-    with pytest.raises(ValueError):
-        compose_spatial_transfers(structures, local, other, left, right)
-    assert structures.ledger.snapshot() == before
+    assert_rejected_atomically(
+        structures.ledger,
+        lambda: compose_spatial_transfers(structures, local, other, left, right),
+        ValueError,
+    )
 
 
 def test_p4_function_valued_boundaries_compose_without_runtime_evaluation(

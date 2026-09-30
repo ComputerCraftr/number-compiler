@@ -9,7 +9,11 @@ from number_compiler.hashlife.execution.tile_causal_results import (
     lookup_causal_result,
     probe_causal_result,
 )
-from number_compiler.hashlife.execution.tile_causal_tasks import CausalFrame
+from number_compiler.hashlife.execution.tile_causal_tasks import (
+    CausalFrame,
+    schedule_reflected_scan,
+    schedule_spatial_scan,
+)
 from number_compiler.hashlife.tiles.tile_boundaries import (
     BoundaryTileView,
 )
@@ -180,24 +184,11 @@ def boundary_step(
                 )
             )
             return True
-        states = workspace.allocate(len(chunks) + 1)
-        states.append(anchor)
-        frame.stage, frame.saved = 1, (chunks, argument)
-        frames.extend(
-            (frame, CausalFrame("scan_chunks", (action, 0, chunks, anchor, 0, states)))
+        schedule_spatial_scan(
+            workspace, frames, frame, action, 0, chunks, anchor, (chunks, argument)
         )
     elif frame.stage == 1:
-        anchors = values.pop()
-        chunks, argument = frame.saved
-        states = workspace.allocate(len(chunks) + 1)
-        states.append(argument)
-        frame.stage, frame.saved = 2, (chunks, anchors)
-        frames.extend(
-            (
-                frame,
-                CausalFrame("scan_chunks", (action, 1, chunks, argument, 0, states)),
-            )
-        )
+        schedule_reflected_scan(workspace, frames, frame, action, values)
     elif frame.stage == 2:
         arguments = values.pop()
         arguments.reverse()

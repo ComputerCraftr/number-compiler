@@ -4,7 +4,7 @@ from typing import Never, cast
 
 import pytest
 
-from devtools.proofs.collatz_semantic_action import (
+from devtools.verification.collatz_semantic_action import (
     CollatzBlockAction,
     CollatzBlockActionArena,
 )

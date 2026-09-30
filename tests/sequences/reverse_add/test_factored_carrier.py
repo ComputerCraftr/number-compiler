@@ -13,7 +13,7 @@ from devtools.experiments.reverse_add.factored_carrier import (
 )
 from devtools.experiments.reverse_add.factored_power import FactoredTemporalPower
 from devtools.experiments.reverse_add.factored_planes import PlaneAlgebra, PlaneGate
-from devtools.proofs import exact_oracle
+from devtools.verification import exact_oracle
 from number_compiler.arithmetic.automata import program_word as words
 from number_compiler.arithmetic.carry.carry_monoid import CarryFn
 from number_compiler.arithmetic.carry.event_memory import pair_step
@@ -258,7 +258,10 @@ def test_independent_observations_release_their_workspaces() -> None:
 def test_checkpoint_preserves_separate_planes_without_reencoding() -> None:
     import json
 
-    from devtools.proofs.reverse_plane_checkpoint import export_planes, import_planes
+    from devtools.verification.reverse_plane_checkpoint import (
+        export_planes,
+        import_planes,
+    )
 
     carrier = FactoredReverseCarrier()
     cell = carrier.uniform(CarryFn.CONST0, 2, 0, 10**100)

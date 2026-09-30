@@ -344,6 +344,16 @@ class HigherLocalInterfaceArena:
         )
         return self._higher_nodes[reference.local_id]
 
+    def bound_interface(
+        self, reference: LocalInterfaceID, *, error: str
+    ) -> tuple[HigherInterfaceRecord, dict[str, HigherExpressionID]]:
+        record = self.resolve(reference)
+        signature = self.interface(record.signature)
+        ports = {port.role: port.variable for port in signature.inputs}
+        if set(ports) != {"left-boundary", "right-boundary"}:
+            raise ValueError(error)
+        return record, ports
+
     def normalize(
         self, signature: PortSignatureID, components: HigherMacroComponents
     ) -> HigherMacroComponents:

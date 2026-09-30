@@ -30,6 +30,7 @@ closed orbit state unless a caller separately proves successor closure.
 """
 
 from __future__ import annotations
+from number_compiler.arithmetic.fields.radial_innovation import normalize_event_schedule
 
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
@@ -729,10 +730,7 @@ class ReverseAddSymmetryInnovationBlock:
         bits: int,
         start_width: int | None = None,
     ) -> ReverseAddSymmetryInnovationBlock:
-        rows = tuple(tuple(map(int, row)) for row in events)
-        gs = tuple(map(int, growths))
-        if len(rows) != len(gs):
-            raise ValueError((len(rows), len(gs)))
+        rows, gs = normalize_event_schedule(events, growths)
         if not rows:
             if start_width is None or int(start_width) <= 0:
                 raise ValueError("empty symmetry block requires start_width")

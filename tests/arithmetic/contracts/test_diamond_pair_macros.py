@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from tests.support.assertions import assert_rejected_atomically
+
 from typing import TYPE_CHECKING, Never
 
 import pytest
@@ -144,10 +146,11 @@ def test_parent_publication_is_atomic_and_eviction_preserves_canonical_effects()
     arena.ledger.evict_query_memos()
     assert not arena._bindings
     arena.ledger.max_cache_entries = arena.ledger.entries
-    before = arena.ledger.snapshot()
-    with pytest.raises(BlockContextBudgetExceeded):
-        arena._publish(PairMacroKey(pair, cell), record)
-    assert arena.ledger.snapshot() == before
+    assert_rejected_atomically(
+        arena.ledger,
+        lambda: arena._publish(PairMacroKey(pair, cell), record),
+        BlockContextBudgetExceeded,
+    )
     arena.ledger.max_cache_entries = None
     assert arena.summary(pair, cell) == summary
     assert all(row.accounting_delta == 0 for row in arena.ledger.inventory())
@@ -162,7 +165,9 @@ def test_joined_original_cells_are_supported_but_joined_images_reject_before_pro
     assert arena.summary(pair, joined) == arena.summary(pair, cell)
     image = arena.cells.image(first, left)
     bad = arena.cells.join(image, right)
-    before = arena.ledger.snapshot()
-    with pytest.raises(ValueError, match="original source geometry"):
-        arena.cache_probe(pair, bad)
-    assert arena.ledger.snapshot() == before
+    assert_rejected_atomically(
+        arena.ledger,
+        lambda: arena.cache_probe(pair, bad),
+        ValueError,
+        match="original source geometry",
+    )

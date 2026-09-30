@@ -124,13 +124,9 @@ def evaluate_higher(
                             ("eval", record.body.local_id, function.environment, None)
                         )
                         continue
-                    stack.append(function_id)
-                    tasks.append(("finish", local_id, env, None))
-                    tasks.append(("eval", node.children[1], env, None))
-                else:
-                    stack.append(function_id)
-                    tasks.append(("finish", local_id, env, None))
-                    tasks.append(("eval", node.children[1], env, None))
+                stack.append(function_id)
+                tasks.append(("finish", local_id, env, None))
+                tasks.append(("eval", node.children[1], env, None))
                 continue
             if mode == "bind-free":
                 replacement = stack.pop()
@@ -224,13 +220,7 @@ def evaluate_higher(
                     raise ValueError("higher application received a non-function")
                 function = values_arena.resolve(function_id)
                 if type(function) is RuntimeTableFunction:
-                    if type(argument) is not int or not 0 <= argument < len(
-                        function.outputs
-                    ):
-                        raise ValueError(
-                            "bounded function argument is outside its domain"
-                        )
-                    stack.append(function.outputs[argument])
+                    stack.append(function.apply(argument))
                     continue
                 if type(function) is RuntimeActionFunction:
                     from number_compiler.hashlife.execution.continuations.higher_operations import (

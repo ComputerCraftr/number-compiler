@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from devtools.paths import report_directory
+
 import json
 
 from devtools.experiments.power_numbers.terminal_projective_wreath import (
@@ -16,14 +18,17 @@ from number_compiler.sequences.power_numbers.terminal_threshold import (
 )
 
 ROOT = repository_root()
-OUT = ROOT / "results" / "terminal_projective_wreath_metrics.json"
-REPORT = report_output(
-    "devtools.benchmarks.terminal_projective_wreath_probe",
-    "TERMINAL_PROJECTIVE_WREATH_RESULTS.md",
-)
 
 
 def main() -> None:
+    OUT = (
+        report_directory("devtools.benchmarks.terminal_projective_wreath_probe")
+        / "terminal_projective_wreath_metrics.json"
+    )
+    REPORT = report_output(
+        "devtools.benchmarks.terminal_projective_wreath_probe",
+        "TERMINAL_PROJECTIVE_WREATH_RESULTS.md",
+    )
     local_cases = [
         ("fermat", 4, 65537),
         ("fermat", 5, 641),
@@ -143,4 +148,6 @@ def main() -> None:
 
 
 if __name__ == "__main__":
-    main()
+    from devtools.runs import run_reported
+
+    raise SystemExit(run_reported(main))

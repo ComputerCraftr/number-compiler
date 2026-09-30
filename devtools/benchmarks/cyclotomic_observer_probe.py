@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from devtools.paths import report_directory
+
 import json
 
 from devtools.benchmarks.json_support import jsonable
@@ -20,7 +22,7 @@ def _pct(value: float) -> str:
 
 def write_results(metrics: CyclotomicObserverMetrics) -> None:
     payload = jsonable(metrics)
-    outdir = ROOT / "results"
+    outdir = report_directory("devtools.benchmarks.cyclotomic_observer_probe")
     outdir.mkdir(exist_ok=True)
     (outdir / "cyclotomic_observer_metrics.json").write_text(
         json.dumps(payload, indent=2, sort_keys=True) + "\n"
@@ -202,4 +204,6 @@ def main() -> None:
 
 
 if __name__ == "__main__":
-    main()
+    from devtools.runs import run_reported
+
+    raise SystemExit(run_reported(main))

@@ -36,6 +36,36 @@ def _two_port_expression(
     return schema, arena, left, right, symbol, expression
 
 
+def _replacement_fixture() -> tuple[
+    _Schema,
+    HigherSemanticArena,
+    HigherExpressionID,
+    HigherExpressionID,
+    HigherExpressionID,
+    HigherExpressionID,
+    HigherExpressionID,
+]:
+    schema, arena = _arena()
+    _, arena, left, right, symbol, expression = _two_port_expression(schema, arena)
+    literal = arena.literal(schema.primitive, 0, 1)
+    return schema, arena, left, right, symbol, expression, literal
+
+
+def _bound_replacement_fixture() -> tuple[
+    _Schema,
+    HigherSemanticArena,
+    HigherExpressionID,
+    HigherExpressionID,
+    HigherExpressionID,
+    HigherExpressionID,
+    HigherExpressionID,
+    HigherExpressionID,
+]:
+    schema, arena, left, right, symbol, expression, literal = _replacement_fixture()
+    bound = arena.bind_free_many(expression, ((left, right), (right, literal)))
+    return schema, arena, left, right, symbol, expression, literal, bound
+
+
 def test_simultaneous_binding_swaps_same_sort_ports() -> None:
     schema, arena = _arena()
     _schema, arena, left, right, symbol, expression = _two_port_expression(
@@ -56,12 +86,9 @@ def test_simultaneous_binding_swaps_same_sort_ports() -> None:
 
 
 def test_simultaneous_binding_replacements_share_original_environment() -> None:
-    schema, arena = _arena()
-    _schema, arena, left, right, symbol, expression = _two_port_expression(
-        schema, arena
+    schema, arena, left, right, symbol, expression, literal, bound = (
+        _bound_replacement_fixture()
     )
-    literal = arena.literal(schema.primitive, 0, 1)
-    bound = arena.bind_free_many(expression, ((left, right), (right, literal)))
 
     for left_value, right_value, selected in ((0, 2, 0), (1, 2, 1)):
         actual = arena.evaluate(
@@ -76,12 +103,9 @@ def test_simultaneous_binding_replacements_share_original_environment() -> None:
 
 
 def test_simultaneous_binding_is_order_independent_and_warm_reuses_handle() -> None:
-    schema, arena = _arena()
-    _schema, arena, left, right, symbol, expression = _two_port_expression(
-        schema, arena
+    schema, arena, left, right, symbol, expression, literal, forward = (
+        _bound_replacement_fixture()
     )
-    literal = arena.literal(schema.primitive, 0, 1)
-    forward = arena.bind_free_many(expression, ((left, right), (right, literal)))
     before = len(arena._expressions)
     reverse = arena.bind_free_many(expression, ((right, literal), (left, right)))
     assert reverse == forward
@@ -93,11 +117,7 @@ def test_simultaneous_binding_is_order_independent_and_warm_reuses_handle() -> N
 
 
 def test_sequential_rebind_keeps_its_defined_capture_semantics() -> None:
-    schema, arena = _arena()
-    _schema, arena, left, right, symbol, expression = _two_port_expression(
-        schema, arena
-    )
-    literal = arena.literal(schema.primitive, 0, 1)
+    schema, arena, left, right, symbol, expression, literal = _replacement_fixture()
     sequential = arena.bind_free(
         arena.bind_free(expression, left, right), right, literal
     )

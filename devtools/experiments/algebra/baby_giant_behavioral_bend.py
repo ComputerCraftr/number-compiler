@@ -38,6 +38,7 @@ sampled/endpoint quotient from being promoted as a theorem.
 from __future__ import annotations
 
 from dataclasses import dataclass
+from typing import Callable, TypeVar
 
 from devtools.experiments.algebra.math_support import ceil_sqrt
 from devtools.experiments.algebra.residue_refined_bend import (
@@ -54,6 +55,25 @@ from number_compiler.arithmetic.functions.finite_unary import (
     minimize_unary_moore,
 )
 from number_compiler.sequences.prime.set import jacobi_symbol
+from devtools.verification.partition_refinement import parent_split_count
+
+
+PacketT = TypeVar("PacketT")
+
+
+def _memoized_packet(
+    cache: dict[tuple[str, int, int, int], PacketT],
+    key: tuple[str, int, int, int],
+    build: Callable[[], PacketT],
+    hits: int,
+    misses: int,
+) -> tuple[PacketT, int, int]:
+    old = cache.get(key)
+    if old is not None:
+        return old, hits + 1, misses
+    packet = build()
+    cache[key] = packet
+    return packet, hits, misses + 1
 
 
 def _next_power_of_two_at_least(value: int) -> int:
@@ -68,6 +88,12 @@ def _canonicalize(
 ) -> tuple[int, ...]:
     ids: dict[object, int] = {}
     return tuple(ids.setdefault(signature, len(ids)) for signature in signatures)
+
+
+def _memo_key(
+    family: str, parameter: int, start: int, span: int
+) -> tuple[str, int, int, int]:
+    return str(family), int(parameter), int(start), int(span)
 
 
 def _partition_equivalent_ids(left: tuple[int, ...], right: tuple[int, ...]) -> bool:
@@ -276,33 +302,30 @@ class BabyGiantSupportPacketMemo:
     def evaluate(
         self, family: str, parameter: int, *, start: int, span: int
     ) -> FixedWindowSupportPacket:
-        key = (str(family), int(parameter), int(start), int(span))
-        old = self._cache.get(key)
-        if old is not None:
-            self.hits += 1
-            return old
-        audit = fast_multipoint_support_decision(
-            key[0],
-            key[1],
-            start=key[2],
-            span=key[3],
+        key = _memo_key(family, parameter, start, span)
+
+        def build() -> FixedWindowSupportPacket:
+            audit = fast_multipoint_support_decision(
+                key[0], key[1], start=key[2], span=key[3]
+            )
+            support = int(audit.bend_support_gcd)
+            return FixedWindowSupportPacket(
+                audit.family,
+                audit.parameter,
+                audit.start,
+                audit.span,
+                audit.modulus,
+                support,
+                "CLEAR" if support == 1 else "NONUNIT",
+                audit.final_support_gcds,
+                audit.split_descent_gcds,
+                audit.direct_control_evaluated,
+                audit.charged_total_ring_ops,
+            )
+
+        packet, self.hits, self.misses = _memoized_packet(
+            self._cache, key, build, self.hits, self.misses
         )
-        support = int(audit.bend_support_gcd)
-        packet = FixedWindowSupportPacket(
-            audit.family,
-            audit.parameter,
-            audit.start,
-            audit.span,
-            audit.modulus,
-            support,
-            "CLEAR" if support == 1 else "NONUNIT",
-            audit.final_support_gcds,
-            audit.split_descent_gcds,
-            audit.direct_control_evaluated,
-            audit.charged_total_ring_ops,
-        )
-        self._cache[key] = packet
-        self.misses += 1
         return packet
 
 
@@ -328,22 +351,22 @@ class BabyGiantBendPacketMemo:
     def evaluate(
         self, family: str, parameter: int, *, start: int, span: int
     ) -> FixedWindowBendPacket:
-        key = (str(family), int(parameter), int(start), int(span))
-        old = self._cache.get(key)
-        if old is not None:
-            self.hits += 1
-            return old
-        audit = fast_multipoint_bend_audit(
-            key[0],
-            key[1],
-            start=key[2],
-            span=key[3],
-            locate_first_bend=True,
-            include_direct_control=False,
+        key = _memo_key(family, parameter, start, span)
+
+        def build() -> FixedWindowBendPacket:
+            audit = fast_multipoint_bend_audit(
+                key[0],
+                key[1],
+                start=key[2],
+                span=key[3],
+                locate_first_bend=True,
+                include_direct_control=False,
+            )
+            return FixedWindowBendPacket.from_audit(audit)
+
+        packet, self.hits, self.misses = _memoized_packet(
+            self._cache, key, build, self.hits, self.misses
         )
-        packet = FixedWindowBendPacket.from_audit(audit)
-        self._cache[key] = packet
-        self.misses += 1
         return packet
 
 
@@ -398,10 +421,7 @@ def _dyadic_trace_partition_rows(
             # transparent truth audit rather than hidden scalable work.
             parent_trace = _trace_signatures(period, bend_residue, horizon // 2)
             parent = _canonicalize(parent_trace)
-            child_sets: dict[int, set[int]] = {}
-            for pcls, ccls in zip(parent, classes, strict=True):
-                child_sets.setdefault(pcls, set()).add(ccls)
-            parent_split = sum(len(children) > 1 for children in child_sets.values())
+            parent_split = parent_split_count(parent, classes)
             pullback_exact = classes == _canonicalize(
                 _trace_signatures(period, bend_residue, horizon)
             )

@@ -5,7 +5,7 @@ from itertools import product
 
 import pytest
 
-from devtools.proofs.growth_coboundary import (
+from devtools.verification.growth_coboundary import (
     GROWTH_SYMBOLS,
     GrowthCoboundaryHalf,
     growth_symbol_value,

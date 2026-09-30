@@ -30,6 +30,44 @@ from number_compiler.resources.higher_value_record_audit import (
 )
 from number_compiler.sequences.collatz.block_power import PoweredCollatzTerm
 from tests.support.reverse_higher_runtime import _fixture
+from number_compiler.hashlife.execution.continuations.higher_bimachine import (
+    HigherBimachineRuntime,
+)
+from number_compiler.hashlife.execution.continuations.higher_semantic import (
+    HigherSemanticArena,
+)
+from number_compiler.hashlife.execution.field_images import SourceCellArena
+
+
+def _two_unary_fixture() -> tuple[
+    FieldCellActionID,
+    HigherSemanticArena,
+    HigherBimachineRuntime,
+    SourceCellArena,
+    HigherSummaryID,
+    HigherSummaryID,
+]:
+    _, primitive, semantics, runtime, _, _, sources, _ = _fixture((0, 10))
+    first = runtime.summaries.runtime_unary(primitive, sources.intern(0, 0), 1)
+    second = runtime.summaries.runtime_unary(primitive, sources.intern(1, 0), 1)
+    return primitive, semantics, runtime, sources, first, second
+
+
+def _ordered_unary_fixture() -> tuple[
+    FieldCellActionID,
+    HigherSemanticArena,
+    HigherBimachineRuntime,
+    SourceCellArena,
+    HigherSummaryID,
+    HigherSummaryID,
+    HigherSummaryID,
+    HigherSummaryID,
+]:
+    fixture = _two_unary_fixture()
+    runtime, first, second = fixture[2], fixture[4], fixture[5]
+    forward = runtime.summaries.combine_runtime_unary((first, second))
+    reverse = runtime.summaries.combine_runtime_unary((second, first))
+    return (*fixture, forward, reverse)
 
 
 def test_equal_complete_primitive_transfers_share_one_runtime_summary() -> None:
@@ -85,24 +123,16 @@ def test_equal_observed_exit_does_not_alias_a_different_complete_transfer() -> N
 
 
 def test_runtime_spatial_composition_preserves_noncommuting_order() -> None:
-    _, primitive, _, runtime, _, _, sources, _ = _fixture((0, 10))
-    constant_zero = runtime.summaries.runtime_unary(
+    (
         primitive,
-        sources.intern(0, 0),
-        1,
-    )
-    constant_one = runtime.summaries.runtime_unary(
-        primitive,
-        sources.intern(1, 0),
-        1,
-    )
-
-    zero_then_one = runtime.summaries.combine_runtime_unary(
-        (constant_zero, constant_one),
-    )
-    one_then_zero = runtime.summaries.combine_runtime_unary(
-        (constant_one, constant_zero),
-    )
+        semantics,
+        runtime,
+        sources,
+        constant_zero,
+        constant_one,
+        zero_then_one,
+        one_then_zero,
+    ) = _ordered_unary_fixture()
     assert zero_then_one != one_then_zero
     first = runtime.summaries.runtime_unary_record(constant_zero).recipe
     second = runtime.summaries.runtime_unary_record(constant_one).recipe
@@ -136,9 +166,7 @@ def test_runtime_spatial_composition_preserves_noncommuting_order() -> None:
 def test_normalized_finite_composition_matches_unreduced_spatial_semantics(
     reverse: bool,
 ) -> None:
-    _, primitive, _, runtime, _, _, sources, _ = _fixture((0, 10))
-    first = runtime.summaries.runtime_unary(primitive, sources.intern(0, 0), 1)
-    second = runtime.summaries.runtime_unary(primitive, sources.intern(1, 0), 1)
+    primitive, semantics, runtime, sources, first, second = _two_unary_fixture()
     if reverse:
         first, second = second, first
     normalized = runtime.summaries.combine_runtime_unary((first, second))
@@ -403,11 +431,9 @@ def test_production_collatz_shares_one_tile_execution_authority() -> None:
 def test_composition_inventory_rejects_wrong_same_interface_result() -> None:
     from number_compiler.resources.higher_payload_audit import audit_higher_payloads
 
-    _, primitive, semantics, runtime, _, _, sources, _ = _fixture((0, 10))
-    first = runtime.summaries.runtime_unary(primitive, sources.intern(0, 0), 1)
-    second = runtime.summaries.runtime_unary(primitive, sources.intern(1, 0), 1)
-    forward = runtime.summaries.combine_runtime_unary((first, second))
-    reverse = runtime.summaries.combine_runtime_unary((second, first))
+    primitive, semantics, runtime, sources, first, second, forward, reverse = (
+        _ordered_unary_fixture()
+    )
     assert forward != reverse
     # This experimental reverse fixture is not an admitted production graph.
     # Check the retained generic summary owner, without whitelisting the fixture.

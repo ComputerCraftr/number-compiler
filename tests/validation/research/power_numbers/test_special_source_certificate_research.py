@@ -6,7 +6,7 @@ from devtools.experiments.power_numbers.special_source_certificate import (
     folded_support_local_controls,
     synthesize_folded_support_program,
 )
-from devtools.proofs.special_source_program import (
+from devtools.verification.special_source_program import (
     FoldedSupportInstruction,
     FoldedSupportProgram,
 )

@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from number_compiler.resources.temporal_diagnostics import METRICS_SCHEMA_VERSION
+
 import argparse
 import itertools
 import json
@@ -865,7 +867,7 @@ def run_probe(
     complete = all(bool(report["measurements_complete"]) for report in reports.values())
     blocked = any(report["status"] == "RED" for report in reports.values())
     return {
-        "metrics_schema_version": 7,
+        "metrics_schema_version": METRICS_SCHEMA_VERSION,
         "probe_policy": "fresh-index-single-cold-point-no-acceleration",
         "measurements_complete": complete,
         "status": "RED" if blocked or not complete else "MEASURED_PASS",
@@ -894,4 +896,6 @@ def main(argv: list[str] | None = None) -> int:
 
 
 if __name__ == "__main__":
-    raise SystemExit(main())
+    from devtools.runs import run_reported
+
+    raise SystemExit(run_reported(main))

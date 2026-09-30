@@ -2,6 +2,12 @@
 
 from __future__ import annotations
 
+from tests.support.tile_kernel import runtime_source_children
+from tests.support.tile_kernel import _spatial_inputs
+
+from tests.support.tile_kernel import _runtime_source
+from tests.support.assertions import assert_rejected_atomically
+
 from dataclasses import replace
 from typing import TYPE_CHECKING, cast
 
@@ -29,7 +35,7 @@ from number_compiler.hashlife.tiles.tile_context import ResultSemantics, Tempora
 from number_compiler.hashlife.tiles.tile_ports import BoundPorts, FusedBoundaryContract
 from number_compiler.hashlife.tiles.tiles import TileAlphabet
 from number_compiler.sequences.collatz.block_power import CollatzPhysicalBlockEffect
-from tests.arithmetic.contracts.test_tile_kernel import (
+from tests.support.tile_kernel import (
     _oracle,
     _runtime,
     _symbols,
@@ -42,8 +48,9 @@ if TYPE_CHECKING:
 
 def test_primitive_causal_output_publishes_complete_reusable_result() -> None:
     effect = BaseBlockEffect(3)
-    ledger, tiles, adapter, action, scheduler = _runtime(effect)
-    source = _tile(tiles, adapter, action, (0, 0, 0, 1))
+    ledger, tiles, adapter, action, scheduler, source = _runtime_source(
+        effect, (0, 0, 0, 1)
+    )
     ports, wiring = adapter.initial_ports(action), adapter.wiring(action)
     key = causal_result_key(
         scheduler.results,
@@ -88,8 +95,9 @@ def test_primitive_causal_output_publishes_complete_reusable_result() -> None:
 
 def test_composite_key_encodes_exact_input_prefixes_separately_from_ports() -> None:
     effect = BaseBlockEffect(3)
-    _ledger, tiles, adapter, primitive, scheduler = _runtime(effect)
-    source = _tile(tiles, adapter, primitive, (0, 0, 0, 1))
+    _ledger, tiles, adapter, primitive, scheduler, source = _runtime_source(
+        effect, (0, 0, 0, 1)
+    )
     action = adapter.power(primitive, 4)
     ports, wiring = adapter.initial_ports(action), adapter.wiring(action)
     left = BoundaryTileView(source.tile, 0, 2, 0, 0)
@@ -136,10 +144,12 @@ def test_causal_payload_rejects_conflicting_observed_inputs_before_composition()
             value.outgoing_ports,
             observed_input_ports=(0, 0),
         )
-        before = ledger.snapshot()
-        with pytest.raises(ValueError, match="disagree"):
-            CausalCompletedOutput(result.output, semantics, (1, 0))
-        assert ledger.snapshot() == before
+        assert_rejected_atomically(
+            ledger,
+            lambda: CausalCompletedOutput(result.output, semantics, (1, 0)),
+            ValueError,
+            match="disagree",
+        )
 
 
 @pytest.mark.parametrize("bad", (False, True, 0.0, 1.0))
@@ -147,8 +157,7 @@ def test_causal_finite_ports_reject_numeric_aliases_before_arena_work(
     bad: bool | float,
 ) -> None:
     effect = BaseBlockEffect(3)
-    ledger, tiles, adapter, action, scheduler = _runtime(effect)
-    source = _tile(tiles, adapter, action, (0,))
+    ledger, tiles, adapter, action, scheduler, source = _runtime_source(effect, (0,))
     before = ledger.snapshot()
     try:
         with pytest.raises(TypeError, match="exact integers"):
@@ -169,8 +178,7 @@ def test_causal_finite_ports_reject_numeric_aliases_before_arena_work(
 
 def test_outgoing_boundaries_are_validated_in_output_space_before_mutation() -> None:
     effect = BaseBlockEffect(3)
-    ledger, tiles, adapter, action, scheduler = _runtime(effect)
-    source = _tile(tiles, adapter, action, (0,))
+    ledger, tiles, adapter, action, scheduler, source = _runtime_source(effect, (0,))
     ports, wiring = adapter.initial_ports(action), adapter.wiring(action)
     key = causal_result_key(
         scheduler.results,
@@ -219,8 +227,9 @@ def test_outgoing_boundaries_are_validated_in_output_space_before_mutation() -> 
 
 def test_causal_boundary_sorts_cannot_alias_across_temporal_depth() -> None:
     effect = BaseBlockEffect(3)
-    _ledger, tiles, adapter, primitive, scheduler = _runtime(effect)
-    source = _tile(tiles, adapter, primitive, (0,))
+    _ledger, tiles, adapter, primitive, scheduler, source = _runtime_source(
+        effect, (0,)
+    )
     composite = adapter.power(primitive, 2)
     try:
         with pytest.raises(ValueError, match="composed causal"):
@@ -267,38 +276,21 @@ def _payload(
 
 def test_spatial_causal_composition_reuses_real_final_stage_interface() -> None:
     effect = BaseBlockEffect(3)
-    _ledger, tiles, adapter, action, scheduler = _runtime(effect)
-    source = _tile(tiles, adapter, action, (0, 0, 0, 1))
-    node = tiles.resolve(source.tile)
-    assert node.left is not None and node.right is not None
-    ports, wiring = adapter.initial_ports(action), adapter.wiring(action)
-    left_context = adapter.child_context(
-        action,
-        source.tile,
-        node.left,
-        node.right,
-        ports,
-        wiring,
-        0,
+    _ledger, tiles, adapter, action, scheduler, source = _runtime_source(
+        effect, (0, 0, 0, 1)
     )
-    right_context = adapter.child_context(
-        action,
-        source.tile,
-        node.left,
-        node.right,
-        ports,
-        wiring,
-        1,
+    node, left_cell, right_cell, ports, wiring, left_context, right_context = (
+        _spatial_inputs(tiles, adapter, action, source)
     )
     left = scheduler.complete(
         action,
-        node.left,
+        left_cell,
         left_context.ports,
         left_context.wiring,
     )
     right = scheduler.complete(
         action,
-        node.right,
+        right_cell,
         right_context.ports,
         right_context.wiring,
     )
@@ -375,10 +367,9 @@ def test_spatial_causal_composition_reuses_real_final_stage_interface() -> None:
 
 
 def test_collatz_causal_spatial_events_sum_beyond_one_tick_cap() -> None:
-    effect = CollatzPhysicalBlockEffect()
-    _ledger, tiles, adapter, primitive, scheduler = _runtime(effect)
-    source = _tile(tiles, adapter, primitive, (1, 1))
-    node = tiles.resolve(source.tile)
+    _ledger, tiles, adapter, primitive, scheduler, source, node = (
+        runtime_source_children(CollatzPhysicalBlockEffect(), (1, 1))
+    )
     assert node.left is not None and node.right is not None
     action = adapter.power(primitive, 2)
     wiring = adapter.wiring(action)
@@ -422,8 +413,9 @@ def test_spatial_causal_composition_keeps_distinct_producer_and_consumer_tiles()
     None
 ):
     effect = BaseBlockEffect(3)
-    _ledger, tiles, adapter, primitive, scheduler = _runtime(effect)
-    source = _tile(tiles, adapter, primitive, (0, 1))
+    _ledger, tiles, adapter, primitive, scheduler, source = _runtime_source(
+        effect, (0, 1)
+    )
     producer_output = _tile(tiles, adapter, primitive, (1, 0))
     node = tiles.resolve(source.tile)
     producer_node = tiles.resolve(producer_output.tile)

@@ -17,7 +17,7 @@ Historical timings measure specific observers and checks; they do not establish
 a family construction bound. Warm projections must authenticate their backing
 source payload just as cold demands do.
 
-[Implementation and validation record](../../results/current/week-of-2026-09-20/shared.md#profiler-and-cache-authority-audit).
+[Implementation and validation record](../sprints/week-of-2026-09-20/shared.md#profiler-and-cache-authority-audit).
 
 ## Shared execution model
 
@@ -29,14 +29,14 @@ enough to merge states whose future support differs.
 
 ## Checked shared algebra
 
-[`S_Arithmetic_Skew.thy`](../../devtools/proofs/isabelle/shared/S_Arithmetic_Skew.thy)
+[`S_Arithmetic_Skew.thy`](../../proofs/isabelle/shared/S_Arithmetic_Skew.thy)
 proves associativity, identities, and transport for the shared skew record.
-[`Skew_Cylinder_Observers.thy`](../../devtools/proofs/isabelle/etale/Skew_Cylinder_Observers.thy)
+[`Skew_Cylinder_Observers.thy`](../../proofs/isabelle/etale/Skew_Cylinder_Observers.thy)
 proves observer/composition, clock-offset, S-arithmetic product, physical tick,
 and demand-pullback laws. These theorems assume the supplied actions and
 observers satisfy their definitions; they do not construct a family source.
 
-[`Dyadic_Source_Lift.thy`](../../devtools/proofs/isabelle/shared/Dyadic_Source_Lift.thy)
+[`Dyadic_Source_Lift.thy`](../../proofs/isabelle/shared/Dyadic_Source_Lift.thy)
 proves source lifting with extra precision under the positive-precision label
 and step premises. Exact-precision lifting is a corollary for an already
 admitted source word.
@@ -89,7 +89,7 @@ authorize a successor image, and resetting a cache invalidates its authority.
 The September audit corrected identity and lifecycle defects. It did not prove
 a new temporal quotient or eliminate the retained construction failures.
 
-[Implementation and validation record](../../results/current/week-of-2026-09-20/shared.md#memo-authority-and-accounting-audit).
+[Implementation and validation record](../sprints/week-of-2026-09-20/shared.md#memo-authority-and-accounting-audit).
 
 ## Production and reproduction
 
@@ -110,4 +110,4 @@ improvement. It does not remove the source discovery or complete temporal
 constructor obligations described above. Accounting must include admission,
 failed work, retained support and explicitly demanded output.
 
-[Implementation and validation record](../../results/current/week-of-2026-09-20/shared.md#eager-work-audit-scope).
+[Implementation and validation record](../sprints/week-of-2026-09-20/shared.md#eager-work-audit-scope).

@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from devtools.paths import report_directory
+
 import json
 from dataclasses import asdict
 
@@ -104,7 +106,7 @@ def build_metrics() -> dict[str, object]:
 
 
 def write_results(data: dict[str, object]) -> None:
-    results = ROOT / "results"
+    results = report_directory("devtools.benchmarks.terminal_frobenius_chunk_probe")
     results.mkdir(exist_ok=True)
     (results / "terminal_frobenius_chunk_metrics.json").write_text(
         json.dumps(data, indent=2, sort_keys=True) + "\n"
@@ -202,4 +204,6 @@ def main() -> None:
 
 
 if __name__ == "__main__":
-    main()
+    from devtools.runs import run_reported
+
+    raise SystemExit(run_reported(main))

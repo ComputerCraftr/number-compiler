@@ -6,7 +6,6 @@ import pytest
 
 from number_compiler.arithmetic.contracts.scoped_handles import ExactSource
 from number_compiler.arithmetic.fields.symbolic_innovation import (
-    RadialMultiplier,
     SymbolicInnovationArena,
     SymbolicRadialInnovation,
 )
@@ -17,6 +16,7 @@ from number_compiler.sequences.reverse_add.cylinder_innovation import (
     primitive_successor_clause,
 )
 from number_compiler.sequences.reverse_add.source_ports import SourceCarryPorts
+from tests.support.arithmetic_fixtures import forge_growth
 
 
 def _clause() -> tuple[ResourceLedger, SourceCarryPorts, PrimitiveSuccessorClause]:
@@ -54,15 +54,7 @@ def test_coordinated_reforged_authority_is_still_forbidden(tamper: str) -> None:
     ledger, _ports, clause = _clause()
     if tamper == "growth":
         growth = 1 - clause.growth
-        object.__setattr__(clause, "growth", growth)
-        object.__setattr__(clause, "output_extent", clause.extent + growth)
-        object.__setattr__(
-            clause,
-            "action",
-            SymbolicRadialInnovation(
-                RadialMultiplier(1 - growth, growth), clause._beta
-            ),
-        )
+        forge_growth(clause, growth)
         object.__setattr__(clause._record, "growth", growth)
         object.__setattr__(clause._record, "output_extent", clause.output_extent)
         object.__setattr__(clause._record, "action", clause.action)

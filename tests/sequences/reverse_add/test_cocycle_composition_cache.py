@@ -4,6 +4,8 @@ from dataclasses import replace
 
 import pytest
 
+from number_compiler.resources.ledger import ResourceLedger, ResourceInventory
+
 from devtools.experiments.reverse_add.cocycle_temporal import (
     CocycleAction,
     CocycleTemporalArena,
@@ -13,7 +15,7 @@ from devtools.experiments.reverse_add.cocycle_temporal import (
 from devtools.experiments.reverse_add.cocycle_temporal_payload_audit import (
     audit_cocycle_temporal_payloads,
 )
-from devtools.proofs.reverse_cocycle_context import BoundedReverseCocycle
+from devtools.verification.reverse_cocycle_context import BoundedReverseCocycle
 from number_compiler.arithmetic.contracts.block_effect import (
     BlockContextBudgetExceeded,
 )
@@ -145,9 +147,7 @@ def test_cache_cap_evicts_the_oldest_complete_key_and_reconciles_entries() -> No
         temporal._composition_cache[key] = entry
     assert len(temporal._composition_cache) == temporal._COMPOSITION_CACHE_LIMIT
     assert len(temporal._composition_seals) == temporal._COMPOSITION_CACHE_LIMIT
-    inventory = {row.owner: row for row in ledger.inventory()}
-    assert inventory[temporal._composition_cache.owner].entries == 1024
-    assert inventory[temporal._composition_seals.owner].entries == 1024
+    inventory = _assert_composition_inventory(ledger, temporal)
 
     temporal.compose(replace(primitive, events=1025), primitive)
     assert len(temporal._composition_cache) == temporal._COMPOSITION_CACHE_LIMIT
@@ -155,9 +155,7 @@ def test_cache_cap_evicts_the_oldest_complete_key_and_reconciles_entries() -> No
     assert keys[0] not in temporal._composition_cache
     assert keys[0] not in temporal._composition_seals
     assert keys[-1] in temporal._composition_cache
-    inventory = {row.owner: row for row in ledger.inventory()}
-    assert inventory[temporal._composition_cache.owner].entries == 1024
-    assert inventory[temporal._composition_seals.owner].entries == 1024
+    inventory = _assert_composition_inventory(ledger, temporal)
     assert inventory[temporal._composition_cache.owner].accounting_delta == 0
     assert inventory[temporal._composition_seals.owner].accounting_delta == 0
 
@@ -294,3 +292,13 @@ def test_audit_rejects_corrupted_cache_entry_and_seal() -> None:
 def test_cache_limit_is_an_exact_integer_policy() -> None:
     assert type(CocycleTemporalArena._COMPOSITION_CACHE_LIMIT) is int
     assert CocycleTemporalArena._COMPOSITION_CACHE_LIMIT == 1024
+
+
+def _assert_composition_inventory(
+    ledger: ResourceLedger,
+    temporal: CocycleTemporalArena,
+) -> dict[int, ResourceInventory]:
+    inventory = {row.owner: row for row in ledger.inventory()}
+    assert inventory[temporal._composition_cache.owner].entries == 1024
+    assert inventory[temporal._composition_seals.owner].entries == 1024
+    return inventory

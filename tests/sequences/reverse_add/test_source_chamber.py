@@ -4,6 +4,8 @@ from __future__ import annotations
 
 import pytest
 
+from tests.support.reference_arithmetic import reverse_add_digit_step as _step
+
 from number_compiler.arithmetic.contracts.scoped_handles import ExactSource
 from number_compiler.resources.ledger import ResourceLedger
 from number_compiler.sequences.reverse_add.source_chamber import (
@@ -22,20 +24,6 @@ def _digits(value: int, base: int) -> tuple[int, ...]:
         result.append(digit)
         if value == 0:
             return tuple(result)
-
-
-def _step(
-    digits: tuple[int, ...], base: int
-) -> tuple[tuple[int, ...], tuple[int, ...]]:
-    output = []
-    carries = [0]
-    for left, right in zip(digits, reversed(digits), strict=True):
-        carry, digit = divmod(left + right + carries[-1], base)
-        carries.append(carry)
-        output.append(digit)
-    if carries[-1]:
-        output.append(carries[-1])
-    return tuple(output), tuple(carries)
 
 
 @pytest.mark.parametrize("base", [2, 3, 10, 16])

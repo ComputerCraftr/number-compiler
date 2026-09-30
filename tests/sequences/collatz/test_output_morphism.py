@@ -1,9 +1,14 @@
 """Connected quotient control must keep exact values at downstream guards."""
 
+from devtools.verification.consumer_fixtures import free_collatz_variables
+from tests.support.reference_arithmetic import literal_events as _oracle
+
 import random
 from itertools import product
 
 import pytest
+
+from tests.support.assertions import assert_clean_payloads
 
 from number_compiler.arithmetic.carry.collatz_output_quotient import (
     CORRECTIONS,
@@ -16,10 +21,11 @@ from number_compiler.arithmetic.functions.finite_function_types import (
     FunctionSignature,
 )
 from number_compiler.arithmetic.functions.finite_port_action import PortVariable
-from number_compiler.hashlife.interfaces.semantic_bits import BitFunctionArena
+from number_compiler.hashlife.interfaces.semantic_bits import (
+    BitFunctionArena,
+    FactoredFunctionID,
+)
 from number_compiler.resources.ledger import ResourceLedger
-from number_compiler.resources.ownership import audit_execution_ownership
-from number_compiler.resources.payload_audit import audit_registered_payloads
 from number_compiler.sequences.collatz.output_morphism import (
     CARRY,
     DIGIT,
@@ -42,26 +48,10 @@ def _digits(n: int) -> tuple[int, ...]:
     return tuple(result)
 
 
-def _oracle(n: int, events: int) -> tuple[int, int]:
-    weight = 0
-    for _ in range(events):
-        raw = 3 * n + 1
-        k = (raw & -raw).bit_length() - 1
-        n = raw >> k
-        weight += k
-    return n, weight
-
-
 def test_symbolic_raw_output_and_correction_all_primitive_ports() -> None:
     ledger = ResourceLedger()
     bits = BitFunctionArena(ledger)
-    morphism = CollatzOutputMorphism(bits)
-    ports = (
-        FinitePort(PortVariable(0, 0, "digit", 0), 64),
-        FinitePort(PortVariable(0, 1, "carry", 0), 3),
-    )
-    d = bits.variable(ports, ports[0], DIGIT)
-    c = bits.variable(ports, ports[1], CARRY)
+    morphism, ports, d, c = _raw_variables(bits)
     outgoing, raw = morphism.raw(d, c)
     correction = morphism.correction(c, outgoing)
     domain = morphism.domain(raw)
@@ -75,33 +65,19 @@ def test_symbolic_raw_output_and_correction_all_primitive_ports() -> None:
     assert morphism.growth(c, 2) == morphism.growth(c, 5)
     for digit, carry in product(range(64), range(3)):
         binding = {ports[0].variable: digit, ports[1].variable: carry}
-        out, value = divmod(3 * digit + carry, 64)
-        assert bits.evaluate(outgoing, binding) == out
-        assert bits.evaluate(raw, binding) == value
+        out, value = _assert_raw_pair(bits, outgoing, raw, binding, digit, carry)
         assert bits.evaluate(domain, binding) == radix64_domain(value)
         assert bits.evaluate(correction, binding) == CORRECTIONS.index(carry - 64 * out)
-    assert not audit_execution_ownership(ledger).violations
-    payloads = audit_registered_payloads(ledger)
-    assert (
-        payloads.unknown_payloads,
-        payloads.forbidden_future_payloads,
-        payloads.unbounded_future_integers,
-    ) == (0, 0, 0)
+    assert_clean_payloads(ledger)
 
 
 def test_raw_value_path_does_not_decode_the_seventeen_way_joint_observer(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    from devtools.proofs import collatz_harmonic_ports
+    from devtools.verification import collatz_harmonic_ports
 
     bits = BitFunctionArena(ResourceLedger())
-    morphism = CollatzOutputMorphism(bits)
-    ports = (
-        FinitePort(PortVariable(0, 0, "digit", 0), 64),
-        FinitePort(PortVariable(0, 1, "carry", 0), 3),
-    )
-    digit = bits.variable(ports, ports[0], DIGIT)
-    carry = bits.variable(ports, ports[1], CARRY)
+    morphism, ports, digit, carry = _raw_variables(bits)
 
     def forbidden(*_args: object, **_kwargs: object) -> None:
         pytest.fail("geometry-first value path decoded a redundant joint observer")
@@ -111,9 +87,7 @@ def test_raw_value_path_does_not_decode_the_seventeen_way_joint_observer(
     outgoing, raw = morphism.raw(digit, carry)
     for d, c in product(range(64), range(3)):
         binding = {ports[0].variable: d, ports[1].variable: c}
-        expected_out, expected_raw = divmod(3 * d + c, 64)
-        assert bits.evaluate(outgoing, binding) == expected_out
-        assert bits.evaluate(raw, binding) == expected_raw
+        _assert_raw_pair(bits, outgoing, raw, binding, d, c)
 
 
 def test_different_domain_geometries_share_complete_carry_correction_morphisms() -> (
@@ -176,12 +150,10 @@ def test_symbolic_temporal_composition_keeps_value_register_in_guards() -> None:
 def test_directional_domain_consumer_avoids_exact_joint_leaf(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    from devtools.proofs import collatz_harmonic_ports
+    from devtools.verification import collatz_harmonic_ports
 
     bits = BitFunctionArena(ResourceLedger(max_nodes=200000))
-    morphism = CollatzOutputMorphism(bits)
-    ports = tuple(FinitePort(PortVariable(0, i, "raw", 0), 64) for i in range(2))
-    raw, adjacent = tuple(bits.variable(ports, port, DIGIT) for port in ports)
+    morphism, ports, raw, adjacent = _adjacent_raw_variables(bits)
 
     def forbidden(*_args: object, **_kwargs: object) -> None:
         pytest.fail("directional consumer reconstructed the old joint leaf")
@@ -214,14 +186,7 @@ def test_free_future_consumer_defers_carry_and_root_shift_without_raw_midpoint(
     ledger = ResourceLedger(max_nodes=200000)
     bits = BitFunctionArena(ledger)
     morphism = CollatzOutputMorphism(bits)
-    ports = (
-        FinitePort(PortVariable(0, 0, "digit-occurrence", 0), 64),
-        FinitePort(PortVariable(0, 1, "incoming-carry", 0), 3),
-        FinitePort(PortVariable(0, 2, "root-shift-query", 0), 6),
-    )
-    digit = bits.variable(ports, ports[0], DIGIT)
-    carry = bits.variable(ports, ports[1], CARRY)
-    shift = bits.variable(ports, ports[2], RESIDUAL_SHIFT)
+    ports, digit, carry, shift = free_collatz_variables(bits)
     growth_ports = ports[1:]
     growth_carry = bits.variable(growth_ports, growth_ports[0], CARRY)
     growth_shift = bits.variable(growth_ports, growth_ports[1], RESIDUAL_SHIFT)
@@ -286,9 +251,7 @@ def test_free_future_consumer_defers_carry_and_root_shift_without_raw_midpoint(
 
 def test_exact_shift_uses_adjacent_directional_value_views() -> None:
     bits = BitFunctionArena(ResourceLedger(max_nodes=200000))
-    morphism = CollatzOutputMorphism(bits)
-    ports = tuple(FinitePort(PortVariable(0, i, "raw", 0), 64) for i in range(2))
-    raw, adjacent = tuple(bits.variable(ports, port, DIGIT) for port in ports)
+    morphism, ports, raw, adjacent = _adjacent_raw_variables(bits)
     for shift in range(6):
         left, _ = morphism.directional(raw, shift)
         _, right = morphism.directional(adjacent, shift)
@@ -407,3 +370,52 @@ def test_symbolic_sort_and_publication_budget_and_stream_boundaries_fail_closed(
         stage.feed(1)
     with pytest.raises(ValueError):
         stage.finish()
+
+
+def _raw_variables(
+    bits: BitFunctionArena,
+) -> tuple[
+    CollatzOutputMorphism,
+    tuple[FinitePort, FinitePort],
+    FactoredFunctionID,
+    FactoredFunctionID,
+]:
+    morphism = CollatzOutputMorphism(bits)
+    ports = (
+        FinitePort(PortVariable(0, 0, "digit", 0), 64),
+        FinitePort(PortVariable(0, 1, "carry", 0), 3),
+    )
+    return (
+        morphism,
+        ports,
+        bits.variable(ports, ports[0], DIGIT),
+        bits.variable(ports, ports[1], CARRY),
+    )
+
+
+def _adjacent_raw_variables(
+    bits: BitFunctionArena,
+) -> tuple[
+    CollatzOutputMorphism,
+    tuple[FinitePort, ...],
+    FactoredFunctionID,
+    FactoredFunctionID,
+]:
+    morphism = CollatzOutputMorphism(bits)
+    ports = tuple(FinitePort(PortVariable(0, i, "raw", 0), 64) for i in range(2))
+    raw, adjacent = tuple(bits.variable(ports, port, DIGIT) for port in ports)
+    return morphism, ports, raw, adjacent
+
+
+def _assert_raw_pair(
+    bits: BitFunctionArena,
+    outgoing: FactoredFunctionID,
+    raw: FactoredFunctionID,
+    binding: dict[PortVariable, int],
+    digit: int,
+    carry: int,
+) -> tuple[int, int]:
+    out, value = divmod(3 * digit + carry, 64)
+    assert bits.evaluate(outgoing, binding) == out
+    assert bits.evaluate(raw, binding) == value
+    return out, value

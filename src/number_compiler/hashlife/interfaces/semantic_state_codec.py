@@ -34,7 +34,6 @@ from number_compiler.arithmetic.functions.finite_port_action import PortVariable
 from number_compiler.hashlife.interfaces.semantic_bits import (
     FactoredFunctionID,
     _Circuit,
-    _PendingFunction,
 )
 from number_compiler.hashlife.interfaces.semantic_structures import (
     StructureArena,
@@ -177,17 +176,7 @@ class StateCodecArena:
             admitted.anchor_count,
         )
         anchor_signature = FunctionSignature(ports, output)
-        anchor_bit = builder.intern_bit(
-            _PendingFunction(anchor_signature, anchor_roots, valid)
-        )
-        anchor_node = builder.intern(
-            StructuredNode(
-                anchor_signature,
-                "atom",
-                self.structures.functions._handle(valid),
-                atom=self.structures.bits._handle(anchor_bit),
-            )
-        )
+        anchor_node = builder.atom(anchor_signature, anchor_roots, valid)
         root = anchor_node
         if argument is not None:
             aliases = _aliases(ports, (argument,))
@@ -211,29 +200,11 @@ class StateCodecArena:
             )
             body_roots = _lookup(circuit, selector, leaves)
             body_valid = _filter(circuit, selector, circuit.one)
-            body_signature = FunctionSignature(joint, target)
-            body_bit = builder.intern_bit(
-                _PendingFunction(body_signature, body_roots, body_valid)
-            )
-            body = builder.intern(
-                StructuredNode(
-                    body_signature,
-                    "atom",
-                    self.structures.functions._handle(body_valid),
-                    atom=self.structures.bits._handle(body_bit),
-                )
-            )
             function_signature = FunctionSignature(
                 ports, FunctionSort((argument,), target)
             )
-            function = builder.intern(
-                StructuredNode(
-                    function_signature,
-                    "function",
-                    self.structures.functions._handle(valid),
-                    body=self.structures._handle(body),
-                    bound=aliases,
-                )
+            function = builder.numeric_function(
+                function_signature, joint, body_roots, body_valid, valid, aliases
             )
             signature = FunctionSignature(
                 ports, ProductSort((output, function_signature.output))

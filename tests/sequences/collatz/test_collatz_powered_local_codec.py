@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from tests.support.local_codec_assertions import assert_publication_refused
+
 from dataclasses import fields
 from itertools import product
 from typing import TYPE_CHECKING, Never, cast
@@ -9,7 +11,6 @@ from typing import TYPE_CHECKING, Never, cast
 import pytest
 
 from number_compiler.arithmetic.automata.symmetry_powering import ActionTransform
-from number_compiler.arithmetic.contracts.block_effect import BlockContextBudgetExceeded
 from number_compiler.arithmetic.contracts.scoped_handles import (
     ActionProgramID,
     ArenaHandle,
@@ -339,47 +340,20 @@ def test_collatz_local_public_inputs_require_exact_types() -> None:
 def test_collatz_local_codec_rejects_leaf_and_parent_publication_atomically() -> None:
     codec, _ = _codec((1, 2))
     ledger = codec.ledger
-    before_entries, before_nodes = ledger.entries, ledger.nodes
-    before_sizes = tuple(
-        map(
-            len,
-            (
-                codec._nodes,
-                codec._keys,
-                codec._leaf_actions,
-                codec._compose,
-            ),
-        )
-    )
-    ledger.tighten_limits(before_nodes, before_entries)
-    with pytest.raises(BlockContextBudgetExceeded):
-        codec.leaf(3)
-    assert (ledger.entries, ledger.nodes) == (before_entries, before_nodes)
-    assert (
-        tuple(
-            map(
-                len,
-                (
-                    codec._nodes,
-                    codec._keys,
-                    codec._leaf_actions,
-                    codec._compose,
-                ),
-            )
-        )
-        == before_sizes
+    assert_publication_refused(
+        ledger,
+        (codec._nodes, codec._keys, codec._leaf_actions, codec._compose),
+        lambda: codec.leaf(3),
     )
 
     codec, _ = _codec((1, 2))
     ledger = codec.ledger
     left, right = codec.leaf(1), codec.leaf(2)
-    before_entries, before_nodes = ledger.entries, ledger.nodes
-    before_sizes = tuple(map(len, (codec._nodes, codec._keys, codec._compose)))
-    ledger.tighten_limits(before_nodes, before_entries)
-    with pytest.raises(BlockContextBudgetExceeded):
-        codec.compose(left, right)
-    assert (ledger.entries, ledger.nodes) == (before_entries, before_nodes)
-    assert tuple(map(len, (codec._nodes, codec._keys, codec._compose))) == before_sizes
+    assert_publication_refused(
+        ledger,
+        (codec._nodes, codec._keys, codec._compose),
+        lambda: codec.compose(left, right),
+    )
 
 
 class _SymbolicPrograms:
@@ -586,15 +560,15 @@ def test_collatz_transfer_path_never_calls_proof_generic_or_whole_word_routes(
         raise AssertionError("retired Collatz execution route was called")
 
     monkeypatch.setattr(
-        "devtools.proofs.collatz_spacetime.CollatzCausalSpacetimeEngine.advance",
+        "devtools.verification.collatz_spacetime.CollatzCausalSpacetimeEngine.advance",
         forbidden,
     )
     monkeypatch.setattr(
-        "devtools.proofs.collatz_spacetime.CollatzCausalSpacetimeEngine.advance_power",
+        "devtools.verification.collatz_spacetime.CollatzCausalSpacetimeEngine.advance_power",
         forbidden,
     )
     monkeypatch.setattr(
-        "devtools.proofs.collatz_spacetime.CollatzCausalSpacetimeEngine.advance_event_power",
+        "devtools.verification.collatz_spacetime.CollatzCausalSpacetimeEngine.advance_event_power",
         forbidden,
     )
     monkeypatch.setattr(
@@ -602,7 +576,7 @@ def test_collatz_transfer_path_never_calls_proof_generic_or_whole_word_routes(
         forbidden,
     )
     monkeypatch.setattr(
-        "devtools.proofs.extensional_family_application.ExtensionalFamilyApplication._apply_machine",
+        "devtools.verification.extensional_family_application.ExtensionalFamilyApplication._apply_machine",
         forbidden,
     )
     assert application.point(1) == 1

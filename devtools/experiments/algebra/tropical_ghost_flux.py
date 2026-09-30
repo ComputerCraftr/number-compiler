@@ -41,6 +41,7 @@ from math import gcd
 from devtools.experiments.algebra.arithmetic_ghost_flux import (
     arithmetic_ghost_flux_block,
 )
+from devtools.experiments.algebra.inputs import bounded_jet_spec
 from devtools.experiments.power_numbers.special_transverse_jet import (
     SpecialJetProgressionSpec,
     first_special_transverse_singularity,
@@ -182,10 +183,7 @@ def tropical_block_composition_audit(
     requires a saturated gcd.  This is therefore a state compression, not a
     source-work compression.
     """
-    spec = SpecialJetProgressionSpec.build(family, parameter)
-    start, span = int(start), int(span)
-    if start < 1 or span < 1 or start + span - 1 > spec.max_slot:
-        raise ValueError((start, span, spec.max_slot))
+    spec, start, span = bounded_jet_spec(family, parameter, start, span)
     level = [
         TropicalDivisorState.observe(spec.modulus, spec.slot_value(slot))
         for slot in range(start, start + span)
@@ -454,10 +452,7 @@ def tropical_axis_reconstruction_audit(
     span: int,
 ) -> TropicalAxisReconstructionAudit:
     """Evaluate the tropical flux cheaply *after* all hidden q-axes are known."""
-    spec = SpecialJetProgressionSpec.build(family, parameter)
-    start, span = int(start), int(span)
-    if start < 1 or span < 1 or start + span - 1 > spec.max_slot:
-        raise ValueError((start, span, spec.max_slot))
+    spec, start, span = bounded_jet_spec(family, parameter, start, span)
     factors = _factor_multiplicities_truth(spec.modulus)
     rows = tuple(_known_axis_flux(spec, q, e, start, span) for q, e in factors)
     reconstructed = 1

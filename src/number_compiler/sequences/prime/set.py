@@ -173,10 +173,7 @@ def jacobi_symbol(a: int, n: int) -> int:
     certificate that ``a`` is not a square modulo ``n``; ``+1`` is only a
     quadratic-residue certificate when ``n`` is known prime.
     """
-    a = int(a)
-    n = int(n)
-    if n <= 0 or not (n & 1):
-        raise ValueError((a, n))
+    a, n = normalize_jacobi_inputs(a, n)
     a %= n
     result = 1
     while a:
@@ -486,3 +483,11 @@ __all__ = [
     "smallest_factor",
     "summarize_prime_bits",
 ]
+
+
+def normalize_jacobi_inputs(a: int, n: int) -> tuple[int, int]:
+    a = int(a)
+    n = int(n)
+    if n <= 0 or not (n & 1):
+        raise ValueError((a, n))
+    return a, n

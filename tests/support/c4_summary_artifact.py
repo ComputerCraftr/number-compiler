@@ -2,7 +2,7 @@
 
 from dataclasses import dataclass
 
-from devtools.proofs.c4_summary_artifact import c4_fourth_right_summary
+from devtools.verification.c4_summary_artifact import c4_fourth_right_summary
 from number_compiler.arithmetic.contracts.physical_collatz_kernel import (
     PhysicalCollatzFourBlockEffect,
 )

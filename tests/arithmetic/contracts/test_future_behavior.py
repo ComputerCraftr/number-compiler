@@ -7,7 +7,7 @@ from typing import Never, cast
 
 import pytest
 
-from devtools.proofs.immutable_artifacts import REGISTRY, ArtifactKey
+from devtools.verification.immutable_artifacts import REGISTRY, ArtifactKey
 from number_compiler.arithmetic.contracts.block_effect import (
     BlockContextBudgetExceeded,
     BoundarySide,

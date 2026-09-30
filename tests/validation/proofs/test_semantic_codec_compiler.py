@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from tests.support.assertions import assert_rejected_atomically
+
 from itertools import product
 from typing import TYPE_CHECKING, Never, cast
 
@@ -20,10 +22,15 @@ from number_compiler.hashlife.interfaces.semantic_expression_tasks import (
     StructuredExpressionTask,
 )
 from number_compiler.hashlife.interfaces.semantic_structures import StructureArena
-from tests.support.c4_summary_artifact import fresh_c4_fourth_right_summary
+from tests.support.c4_summary_artifact import (
+    C4FourthInput,
+    fresh_c4_fourth_right_summary,
+)
+from devtools.verification.immutable_artifacts import ImmutableArtifactRegistry
+from number_compiler.resources.ledger import LedgerSnapshot
 from tests.support.diamond_continuation_reduction import literal
 from tests.support.runtime_limits import deadline
-from tests.support.semantic_state_codec import tiny
+from tests.support.semantic_state_codec import paired_tiny, tiny
 
 if TYPE_CHECKING:
     import typing
@@ -75,9 +82,7 @@ if TYPE_CHECKING:
 
 @pytest.mark.parametrize("side", [0, 1])
 def test_unknown_paired_continuation_uses_every_original_component(side: int) -> None:
-    runtime, primitive = tiny()
-    arena, compiler = runtime.higher.expressions, runtime.semantic_compiler
-    paired = runtime.actions.compose(primitive, primitive)
+    runtime, primitive, arena, compiler, paired = paired_tiny()
     parameter = arena.variable(arena.state_sort(paired, side), "arbitrary-function")
     count = (
         runtime.kernel(primitive).right_count
@@ -113,9 +118,7 @@ def test_unknown_paired_continuation_uses_every_original_component(side: int) ->
 
 
 def test_lambda_over_a_paired_state_has_flat_codec_domain_and_exact_decoding() -> None:
-    runtime, primitive = tiny()
-    arena, compiler = runtime.higher.expressions, runtime.semantic_compiler
-    paired = runtime.actions.compose(primitive, primitive)
+    runtime, primitive, arena, compiler, paired = paired_tiny()
     variable = arena.variable(arena.state_sort(paired, 1), "input-pair")
     function = arena.lambda_(variable, arena.anchor(variable))
     compiled = compiler.compile_structured(function)
@@ -139,9 +142,7 @@ def test_lambda_over_a_paired_state_has_flat_codec_domain_and_exact_decoding() -
 
 
 def test_composed_lambda_keeps_independent_outer_dependency() -> None:
-    runtime, primitive = tiny()
-    arena, compiler = runtime.higher.expressions, runtime.semantic_compiler
-    paired = runtime.actions.compose(primitive, primitive)
+    runtime, primitive, arena, compiler, paired = paired_tiny()
     outer = arena.variable(arena.state_sort(primitive, 1), "outer")
     argument = arena.variable(arena.state_sort(paired, 1), "bound")
     # Return outer: ignored paired inputs are still valid finite codec arguments.
@@ -169,16 +170,16 @@ def test_composed_lambda_keeps_independent_outer_dependency() -> None:
 
 
 def test_unsupported_higher_lambda_domain_rejects_without_registering_codec() -> None:
-    runtime, primitive = tiny()
-    arena, compiler = runtime.higher.expressions, runtime.semantic_compiler
-    paired = runtime.actions.compose(primitive, primitive)
+    runtime, primitive, arena, compiler, paired = paired_tiny()
     higher = runtime.actions.compose(paired, paired)
     variable = arena.variable(arena.state_sort(higher, 0), "unsupported-domain")
     function = arena.lambda_(variable, literal(runtime, primitive, 0, 0))
-    before = runtime.ledger.snapshot()
-    with pytest.raises(UnsupportedInterfaceError, match="composed function domain"):
-        compiler.compile_structured(function)
-    assert runtime.ledger.snapshot() == before
+    assert_rejected_atomically(
+        runtime.ledger,
+        lambda: compiler.compile_structured(function),
+        UnsupportedInterfaceError,
+        match="composed function domain",
+    )
     assert compiler.codecs is None and compiler.structures is None
 
 
@@ -212,7 +213,7 @@ def _check_actual_c4_fourth_power_right_summary() -> None:
 
 
 def test_c4_summary_artifact_rebinds_into_fresh_scoped_arenas() -> None:
-    from devtools.proofs.immutable_artifacts import REGISTRY
+    from devtools.verification.immutable_artifacts import REGISTRY
 
     before = REGISTRY.stats().get("physical-c4-fourth-right-unary-summary")
     first = fresh_c4_fourth_right_summary()
@@ -228,7 +229,7 @@ def test_c4_summary_artifact_rebinds_into_fresh_scoped_arenas() -> None:
 def test_proof_registry_rejects_scoped_handles_and_records_uncached_reason() -> None:
     from dataclasses import dataclass
 
-    from devtools.proofs.immutable_artifacts import (
+    from devtools.verification.immutable_artifacts import (
         ArtifactKey,
         ImmutableArtifactRegistry,
         UncachedBuild,
@@ -284,7 +285,7 @@ def test_proof_registry_rejects_scoped_handles_and_records_uncached_reason() -> 
 
 
 def test_c4_artifact_budget_preflight_leaves_fresh_runtime_unchanged() -> None:
-    from devtools.proofs.c4_summary_artifact import c4_fourth_right_summary
+    from devtools.verification.c4_summary_artifact import c4_fourth_right_summary
     from number_compiler.arithmetic.contracts.block_effect import (
         BlockContextBudgetExceeded,
     )
@@ -307,24 +308,32 @@ def test_c4_artifact_budget_preflight_leaves_fresh_runtime_unchanged() -> None:
     assert after.counters["proof_artifact_loading_failures"] == 1
 
 
-def test_cold_c4_artifact_rejects_exhausted_target_before_shared_build() -> None:
-    from devtools.proofs.c4_summary_artifact import c4_fourth_right_summary
-    from devtools.proofs.immutable_artifacts import ImmutableArtifactRegistry
+def _refused_summary(
+    value: C4FourthInput, registry: ImmutableArtifactRegistry
+) -> tuple[LedgerSnapshot, LedgerSnapshot]:
+    from devtools.verification.c4_summary_artifact import c4_fourth_right_summary
     from number_compiler.arithmetic.contracts.block_effect import (
         BlockContextBudgetExceeded,
     )
+
+    ledger = value.runtime.ledger
+    before = ledger.snapshot()
+    with pytest.raises(BlockContextBudgetExceeded):
+        c4_fourth_right_summary(
+            value.runtime, value.fourth, value.cell, registry=registry
+        )
+    return before, ledger.snapshot()
+
+
+def test_cold_c4_artifact_rejects_exhausted_target_before_shared_build() -> None:
+    from devtools.verification.immutable_artifacts import ImmutableArtifactRegistry
     from tests.support.c4_summary_artifact import fresh_c4_fourth_input
 
     registry = ImmutableArtifactRegistry()
     value = fresh_c4_fourth_input()
     ledger = value.runtime.ledger
     ledger.max_nodes, ledger.max_cache_entries = ledger.nodes, ledger.entries
-    before = ledger.snapshot()
-    with pytest.raises(BlockContextBudgetExceeded):
-        c4_fourth_right_summary(
-            value.runtime, value.fourth, value.cell, registry=registry
-        )
-    after = ledger.snapshot()
+    before, after = _refused_summary(value, registry)
     assert registry.stats() == {}
     assert (after.entries, after.nodes, after.inventory) == (
         before.entries,
@@ -335,11 +344,8 @@ def test_cold_c4_artifact_rejects_exhausted_target_before_shared_build() -> None
 
 
 def test_c4_artifact_capacity_bound_rejects_intermediate_budgets_atomically() -> None:
-    from devtools.proofs.c4_summary_artifact import c4_fourth_right_summary
-    from devtools.proofs.immutable_artifacts import ImmutableArtifactRegistry
-    from number_compiler.arithmetic.contracts.block_effect import (
-        BlockContextBudgetExceeded,
-    )
+    from devtools.verification.c4_summary_artifact import c4_fourth_right_summary
+    from devtools.verification.immutable_artifacts import ImmutableArtifactRegistry
     from tests.support.c4_summary_artifact import fresh_c4_fourth_input
 
     registry = ImmutableArtifactRegistry()
@@ -350,12 +356,7 @@ def test_c4_artifact_capacity_bound_rejects_intermediate_budgets_atomically() ->
         ledger = value.runtime.ledger
         ledger.max_nodes = ledger.nodes + allowance
         ledger.max_cache_entries = ledger.entries + allowance
-        before = ledger.snapshot()
-        with pytest.raises(BlockContextBudgetExceeded):
-            c4_fourth_right_summary(
-                value.runtime, value.fourth, value.cell, registry=registry
-            )
-        after = ledger.snapshot()
+        before, after = _refused_summary(value, registry)
         assert (after.entries, after.nodes, after.inventory) == (
             before.entries,
             before.nodes,
@@ -368,8 +369,8 @@ def test_malformed_artifact_parameters_reject_before_target_binding(
 ) -> None:
     from dataclasses import replace
 
-    import devtools.proofs.c4_summary_artifact as module
-    from devtools.proofs.immutable_artifacts import ImmutableArtifactRegistry
+    import devtools.verification.c4_summary_artifact as module
+    from devtools.verification.immutable_artifacts import ImmutableArtifactRegistry
     from tests.support.c4_summary_artifact import fresh_c4_fourth_input
 
     value = fresh_c4_fourth_input()
@@ -414,9 +415,7 @@ def test_codec_environment_rejects_foreign_or_wrong_sort_before_work() -> None:
         StructuredExpressionTask,
     )
 
-    first, primitive = tiny()
-    arena, compiler = first.higher.expressions, first.semantic_compiler
-    paired = first.actions.compose(primitive, primitive)
+    runtime, primitive, arena, compiler, paired = paired_tiny()
     variable = arena.variable(arena.state_sort(paired, 0), "local")
     compiler.compile_structured(variable, (variable,))
     assert compiler.codecs is not None
@@ -430,22 +429,20 @@ def test_codec_environment_rejects_foreign_or_wrong_sort_before_work() -> None:
     assert other.semantic_compiler.codecs is not None
     foreign = next(iter(other.semantic_compiler.codecs.records.values()))
     wrong_side = arena.variable(arena.state_sort(paired, 1), "wrong-side")
-    before = first.ledger.snapshot()
+    before = runtime.ledger.snapshot()
     for task in (
         StructuredExpressionTask(variable, ((variable, foreign),)),
         StructuredExpressionTask(wrong_side, ((wrong_side, local),)),
     ):
         with pytest.raises(ValueError):
             compiler.probe_task(task)
-    assert first.ledger.snapshot() == before
+    assert runtime.ledger.snapshot() == before
 
 
 def test_equal_decoded_state_and_rebuilt_identity_continuation_share_complete_id() -> (
     None
 ):
-    runtime, primitive = tiny()
-    arena, compiler = runtime.higher.expressions, runtime.semantic_compiler
-    paired = runtime.actions.compose(primitive, primitive)
+    runtime, primitive, arena, compiler, paired = paired_tiny()
     x = arena.variable(arena.state_sort(paired, 0), "arbitrary-state")
     q = arena.variable(arena.state_sort(primitive, 1), "opposite")
     applied = arena.apply(arena.continuation(x), q)
@@ -465,9 +462,7 @@ def test_projecting_opaque_pair_does_not_compile_its_unused_continuation(
 ) -> None:
     from number_compiler.hashlife.interfaces.diamond_boundary_expr import FunctionSort
 
-    runtime, primitive = tiny()
-    arena, compiler = runtime.higher.expressions, runtime.semantic_compiler
-    paired = runtime.actions.compose(primitive, primitive)
+    runtime, primitive, arena, compiler, paired = paired_tiny()
     x = arena.variable(arena.state_sort(primitive, 0), "anchor-input")
     q = arena.variable(arena.state_sort(primitive, 1), "opposite-input")
     continuation = arena.lambda_(

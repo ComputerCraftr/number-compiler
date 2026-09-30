@@ -6,6 +6,7 @@ all cut states.  This algebra supplies no arithmetic successor-closure proof.
 """
 
 from __future__ import annotations
+from number_compiler.arithmetic.contracts.iterative_queries import split_choice
 
 from collections.abc import Mapping
 from dataclasses import dataclass
@@ -331,10 +332,7 @@ class FinitePortActionArena:
                     else index
                     for index in key
                 )
-                low_key = lower[0], lower[1], lower[2]
-                high_key = upper[0], upper[1], upper[2]
-                splits[key] = variable, low_key, high_key
-                frames.extend(((key, True), (high_key, False), (low_key, False)))
+                split_choice(frames, splits, key, variable, lower, upper)
                 continue
             variable, low_key, high_key = splits[key]
             result = self._intern(variable, results[low_key], results[high_key])

@@ -43,6 +43,7 @@ from __future__ import annotations
 from dataclasses import asdict, dataclass
 from math import gcd, lcm
 
+from devtools.experiments.algebra.inputs import required_singularity
 from devtools.experiments.power_numbers.special_transverse_jet import (
     SpecialJetProgressionSpec,
     first_special_transverse_singularity,
@@ -250,16 +251,12 @@ def formal_exponential_denominator_audit(
     family: str,
     parameter: int,
 ) -> FormalExponentialDenominatorAudit:
-    singular = first_special_transverse_singularity(family, parameter)
-    if (
-        not singular.found
-        or singular.first_slot is None
-        or singular.denominator_gcd <= 1
-    ):
-        raise ValueError("bounded composite singular control required")
-    spec = SpecialJetProgressionSpec.build(family, parameter)
+    spec, singular = required_singularity(family, parameter)
+    first_slot = singular.first_slot
+    if first_slot is None:
+        raise ValueError("required singularity has no first slot")
     q = min(_factor_truth(spec.modulus))
-    bend_atom = spec.slot_value(singular.first_slot)
+    bend_atom = spec.slot_value(first_slot)
     # exp(T)=sum T^k/k! is defined coefficientwise over Z/NZ exactly until the
     # first prime divisor of N enters k!.  Since q is the least prime factor,
     # every 1,...,q-1 is a unit and q! is the first failed denominator.
@@ -268,7 +265,7 @@ def formal_exponential_denominator_audit(
         spec.parameter,
         spec.modulus,
         q,
-        singular.first_slot,
+        first_slot,
         bend_atom,
         q,
         q - 1,
@@ -303,14 +300,10 @@ def known_axis_additive_orbit_audit(
     family: str,
     parameter: int,
 ) -> KnownAxisAdditiveOrbitAudit:
-    singular = first_special_transverse_singularity(family, parameter)
-    if (
-        not singular.found
-        or singular.first_slot is None
-        or singular.denominator_gcd <= 1
-    ):
-        raise ValueError("bounded composite singular control required")
-    spec = SpecialJetProgressionSpec.build(family, parameter)
+    spec, singular = required_singularity(family, parameter)
+    first_slot = singular.first_slot
+    if first_slot is None:
+        raise ValueError("required singularity has no first slot")
     q = singular.denominator_gcd
     c = spec.stride % q
     inv_c = pow(c, -1, q)
@@ -327,11 +320,11 @@ def known_axis_additive_orbit_audit(
         q,
         spec.stride,
         slot,
-        singular.first_slot,
+        first_slot,
         product,
         endpoint,
         product == endpoint == 0,
-        slot == singular.first_slot,
+        slot == first_slot,
         True,
     )
 
@@ -408,15 +401,11 @@ class NormSymmetrizationAudit:
 
 
 def norm_symmetrization_audit(family: str, parameter: int) -> NormSymmetrizationAudit:
-    singular = first_special_transverse_singularity(family, parameter)
-    if (
-        not singular.found
-        or singular.first_slot is None
-        or singular.denominator_gcd <= 1
-    ):
-        raise ValueError("bounded composite singular control required")
-    spec = SpecialJetProgressionSpec.build(family, parameter)
-    y = spec.slot_value(singular.first_slot)
+    spec, singular = required_singularity(family, parameter)
+    first_slot = singular.first_slot
+    if first_slot is None:
+        raise ValueError("required singularity has no first slot")
+    y = spec.slot_value(first_slot)
     if family == "fermat":
         norm = (y * y + 1) % spec.modulus
     elif family == "mersenne":

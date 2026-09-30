@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from tests.support.assertions import assert_rejected_atomically
+
 from dataclasses import replace
 from typing import TYPE_CHECKING, Never
 
@@ -33,10 +35,13 @@ def test_failed_parent_reservation_changes_no_associated_container_or_count(
 ) -> None:
     runtime, key = setup()
     runtime.ledger.max_cache_entries = runtime.ledger.entries + room
-    before = runtime.ledger.snapshot()
-    with pytest.raises(BlockContextBudgetExceeded):
-        publish_parent_identity(runtime.actions, runtime.cells, runtime.macros, key)
-    assert runtime.ledger.snapshot() == before
+    assert_rejected_atomically(
+        runtime.ledger,
+        lambda: publish_parent_identity(
+            runtime.actions, runtime.cells, runtime.macros, key
+        ),
+        BlockContextBudgetExceeded,
+    )
 
 
 def test_parent_action_image_and_binding_share_one_reservation(
@@ -84,12 +89,13 @@ def test_foreign_parent_handles_reject_before_work_or_publication(warm: bool) ->
         replace(key, cell=foreign.cell),
         replace(key, side=True),
     ):
-        before = runtime.ledger.snapshot()
-        with pytest.raises((TypeError, ValueError)):
-            publish_parent_identity(
+        assert_rejected_atomically(
+            runtime.ledger,
+            lambda: publish_parent_identity(
                 runtime.actions, runtime.cells, runtime.macros, invalid
-            )
-        assert runtime.ledger.snapshot() == before
+            ),
+            (TypeError, ValueError),
+        )
 
 
 def test_image_hidden_inside_join_rejects_before_parent_publication() -> None:
@@ -98,7 +104,11 @@ def test_image_hidden_inside_join_rejects_before_parent_publication() -> None:
     image = runtime.cells.image(key.before, leaf)
     mixed = runtime.cells.join(leaf, image)
     invalid = replace(key, cell=mixed)
-    before = runtime.ledger.snapshot()
-    with pytest.raises(ValueError, match="original source geometry"):
-        publish_parent_identity(runtime.actions, runtime.cells, runtime.macros, invalid)
-    assert runtime.ledger.snapshot() == before
+    assert_rejected_atomically(
+        runtime.ledger,
+        lambda: publish_parent_identity(
+            runtime.actions, runtime.cells, runtime.macros, invalid
+        ),
+        ValueError,
+        match="original source geometry",
+    )

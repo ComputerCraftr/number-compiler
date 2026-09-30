@@ -25,6 +25,8 @@ candidate-to-section map remains the theorem frontier.
 
 from __future__ import annotations
 
+from number_compiler.arithmetic.contracts.input_validation import normalized_odd_modulus
+
 from dataclasses import dataclass
 from math import gcd
 from typing import Never
@@ -52,9 +54,7 @@ class ProjectiveLucasState:
     steps: int = 0
 
     def __post_init__(self) -> None:
-        modulus = int(self.modulus)
-        if modulus <= 1 or not (modulus & 1):
-            raise ValueError(modulus)
+        modulus = normalized_odd_modulus(self.modulus)
         object.__setattr__(self, "modulus", modulus)
         object.__setattr__(self, "a", int(self.a) % modulus)
         object.__setattr__(self, "b", int(self.b) % modulus)

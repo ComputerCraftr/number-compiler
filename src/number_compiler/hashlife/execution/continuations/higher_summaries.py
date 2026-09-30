@@ -8,6 +8,8 @@ never source digits, future words, or proof-machine states.
 
 from __future__ import annotations
 
+from number_compiler.resources.stores import append_indexed_node
+
 from collections.abc import MutableMapping, MutableSequence
 from dataclasses import dataclass, field
 
@@ -400,10 +402,15 @@ class HigherSummaryArena:
         if found is not None:
             self.ledger.bump("higher_summary_semantic_hits")
             return self._handle(found, record)
-        self.ledger.reserve_many(((self._node_owner, 1, 1), (self._key_owner, 1, 0)))
-        local_id = len(self._nodes)
-        self._nodes.append(record)
-        self._keys[record] = local_id
+        local_id = append_indexed_node(
+            self.ledger,
+            self._nodes,
+            self._keys,
+            self._node_owner,
+            self._key_owner,
+            record,
+            record,
+        )
         self.ledger.bump("higher_summary_semantic_publications")
         return self._handle(local_id, record)
 

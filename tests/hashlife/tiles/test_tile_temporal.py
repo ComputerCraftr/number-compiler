@@ -2,6 +2,11 @@
 
 from __future__ import annotations
 
+from number_compiler.hashlife.actions.field_actions import FieldCellActionID
+
+from tests.support.tile_kernel import _oracle as _step
+from tests.support.tile_kernel import _tile as _canonical_tile
+
 from array import array
 from typing import Never, cast
 
@@ -9,8 +14,6 @@ import pytest
 
 from number_compiler.arithmetic.contracts.block_effect import (
     BlockContextBudgetExceeded,
-    BlockEffect,
-    BoundarySide,
 )
 from number_compiler.arithmetic.contracts.block_kernel import (
     BaseBlockEffect,
@@ -61,43 +64,7 @@ def _tile(
 
     if type(action) is not FieldCellActionID:
         raise TypeError("test action is not scoped")
-    level = [tiles.leaf(adapter.alphabet(action), symbol) for symbol in symbols]
-    try:
-        while len(level) > 1:
-            following = [
-                tiles.join(level[index].tile, level[index + 1].tile)
-                for index in range(0, len(level), 2)
-            ]
-            for lease in level:
-                lease.close()
-            level = following
-        return level.pop()
-    except BaseException:
-        for lease in level:
-            lease.close()
-        raise
-
-
-def _step(effect: BlockEffect, symbols: tuple[int, ...]) -> tuple[int, ...]:
-    left = effect.initial(BoundarySide.LEFT)
-    left_states = []
-    for symbol in symbols:
-        left_states.append(left)
-        left = effect.advance(BoundarySide.LEFT, left, symbol)
-    right = effect.initial(BoundarySide.RIGHT)
-    right_states = [right] * len(symbols)
-    for index in range(len(symbols) - 1, -1, -1):
-        right_states[index] = right
-        right = effect.advance(BoundarySide.RIGHT, right, symbols[index])
-    return tuple(
-        int(effect.emit(before, symbol, after))
-        for before, symbol, after in zip(
-            left_states,
-            symbols,
-            right_states,
-            strict=True,
-        )
-    )
+    return _canonical_tile(tiles, adapter, action, symbols)
 
 
 def _symbols(tiles: TileArena, tile: TileID) -> tuple[int, ...]:
@@ -137,6 +104,24 @@ def _mapped_effect(name: str, outputs: tuple[int, int, int, int]) -> FiniteBlock
         stable_blank_output=True,
         blank=3,
     )
+
+
+def _square_source() -> tuple[
+    BaseBlockEffect,
+    ResourceLedger,
+    TileArena,
+    PrimitiveTileKernelAdapter,
+    TileScheduler,
+    FieldCellActionID,
+    FieldCellActionID,
+    TileLease,
+]:
+    effect = BaseBlockEffect(3)
+    ledger, tiles, adapter, scheduler = _runtime(3)
+    primitive = adapter.admit(effect)
+    action = adapter.power(primitive, 2)
+    source = _tile(tiles, adapter, primitive, (0, 2, 4, effect.blank))
+    return effect, ledger, tiles, adapter, scheduler, primitive, action, source
 
 
 @pytest.mark.parametrize("base", (2, 10))
@@ -182,15 +167,8 @@ def test_complete_temporal_power_matches_repeated_primitive(
 
 
 def test_complete_temporal_power_reuses_published_root_and_midpoints() -> None:
-    effect = BaseBlockEffect(3)
-    ledger, tiles, adapter, scheduler = _runtime(3)
-    primitive = adapter.admit(effect)
-    action = adapter.power(primitive, 4)
-    source = _tile(
-        tiles,
-        adapter,
-        primitive,
-        (0, 2, 4, effect.blank),
+    effect, ledger, tiles, adapter, scheduler, primitive, action, source = (
+        _square_source()
     )
     try:
         first = scheduler.complete(
@@ -472,11 +450,9 @@ def test_noncommuting_heterogeneous_primitives_remain_distinct() -> None:
 
 
 def test_complete_temporal_power_rejects_noncanonical_exterior_ports() -> None:
-    effect = BaseBlockEffect(3)
-    _ledger, tiles, adapter, scheduler = _runtime(3)
-    primitive = adapter.admit(effect)
-    action = adapter.power(primitive, 2)
-    source = _tile(tiles, adapter, primitive, (0, 2, 4, effect.blank))
+    effect, ledger, tiles, adapter, scheduler, primitive, action, source = (
+        _square_source()
+    )
     try:
         with pytest.raises(ValueError, match="canonical exterior"):
             scheduler.complete(
@@ -522,11 +498,9 @@ def test_primitive_wiring_rejects_uncertified_automorphism_before_lookup(
 def test_temporal_context_failure_releases_completed_prefix(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    effect = BaseBlockEffect(3)
-    _ledger, tiles, adapter, scheduler = _runtime(3)
-    primitive = adapter.admit(effect)
-    action = adapter.power(primitive, 2)
-    source = _tile(tiles, adapter, primitive, (0, 2, 4, effect.blank))
+    effect, ledger, tiles, adapter, scheduler, primitive, action, source = (
+        _square_source()
+    )
     leases_before = len(tiles._leases)
 
     def fail_context(*_args: object, **_kwargs: object) -> Never:
@@ -557,11 +531,9 @@ def test_temporal_context_failure_releases_completed_prefix(
 def test_temporal_parent_publication_failure_releases_all_children(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    effect = BaseBlockEffect(3)
-    _ledger, tiles, adapter, scheduler = _runtime(3)
-    primitive = adapter.admit(effect)
-    action = adapter.power(primitive, 2)
-    source = _tile(tiles, adapter, primitive, (0, 2, 4, effect.blank))
+    effect, ledger, tiles, adapter, scheduler, primitive, action, source = (
+        _square_source()
+    )
     leases_before = len(tiles._leases)
     publish = scheduler.results.publish
 

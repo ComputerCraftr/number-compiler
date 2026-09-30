@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from devtools.paths import report_directory
+
 import json
 
 from devtools.experiments.algebra.state_reduction import (
@@ -14,9 +16,10 @@ ROOT = repository_root()
 def main() -> int:
     metrics = state_reduction_metrics()
     payload = metrics_as_jsonable(metrics)
-    (ROOT / "results" / "state_reduction_metrics.json").write_text(
-        json.dumps(payload, indent=2, sort_keys=True) + "\n"
-    )
+    (
+        report_directory("devtools.benchmarks.state_reduction_probe")
+        / "state_reduction_metrics.json"
+    ).write_text(json.dumps(payload, indent=2, sort_keys=True) + "\n")
     lines = [
         "# Exact state reductions and cross-domain propagation (v0.43.0)",
         "",
@@ -72,7 +75,7 @@ def main() -> int:
         "their compact growth/valuation projections have successor conflicts, so replacing their real state with a saturated depth counter would be unsound.",
         "For primes, the transferable idea is earlier quotienting of impossible divisor branches and residual-set actions; the odd-candidate parity branch is now removed before gcd work.",
         "",
-        "The bounded special-number carrier proof remains single-sourced in `devtools/proofs/oracles/special_binary_jump.py`; the obsolete over-refined special character state was deleted rather than propagated.",
+        "The bounded special-number carrier proof remains single-sourced in `devtools/verification/oracles/special_binary_jump.py`; the obsolete over-refined special character state was deleted rather than propagated.",
     ]
     (
         report_output(
@@ -84,4 +87,6 @@ def main() -> int:
 
 
 if __name__ == "__main__":
-    raise SystemExit(main())
+    from devtools.runs import run_reported
+
+    raise SystemExit(run_reported(main))

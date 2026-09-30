@@ -14,12 +14,11 @@ from number_compiler.hashlife.interfaces.diamond_kernel import DiamondKernelAren
 from number_compiler.hashlife.observation.diamond_observers import NonblankBlockEffect
 from number_compiler.resources.metric_collection import collect_ledger_metrics
 from number_compiler.resources.stores import LedgerList
+from tests.support.arithmetic_fixtures import nonblank_demand
 
 
 def populated() -> tuple[DiamondKernelArena, PrimitiveDemandOracle]:
-    kernels = DiamondKernelArena()
-    kernel = kernels.intern(NonblankBlockEffect(2, 2))
-    demand = PrimitiveDemandOracle(kernels)
+    _, kernels, kernel, demand = nonblank_demand()
     assert demand.constant(kernel, "advance", 0, (1, None)) == 1
     return kernels, demand
 

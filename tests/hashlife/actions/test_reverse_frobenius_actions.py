@@ -1,5 +1,8 @@
 """The public tile authority owns scoped reverse source-sector bounds."""
 
+from tests.support.assertions import assert_rejected_atomically
+
+
 from collections.abc import MutableMapping
 from dataclasses import replace
 from typing import cast
@@ -75,10 +78,12 @@ def test_warm_action_rejects_a_frobenius_plan_for_another_depth() -> None:
         adapter._actions[powered.local_id] = replace(
             record, reverse_frobenius=adapter._action(primitive).reverse_frobenius
         )
-        before = ledger.snapshot()
-        with pytest.raises(ValueError, match="differs from its temporal action"):
-            adapter.power(powered, 1)
-        assert ledger.snapshot() == before
+        assert_rejected_atomically(
+            ledger,
+            lambda: adapter.power(powered, 1),
+            ValueError,
+            match="differs from its temporal action",
+        )
         adapter._actions[powered.local_id] = record
 
 

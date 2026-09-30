@@ -2,9 +2,12 @@
 
 from __future__ import annotations
 
-import json
+from devtools.paths import report_directory
+
 
 from devtools.paths import repository_root
+from devtools.runs import run_reported
+from devtools.benchmarks.reporting import write_json_report
 from number_compiler.sequences.collatz.power import (
     CollatzPowerArena,
     collatz_apply_word,
@@ -106,11 +109,12 @@ def prime_metrics() -> dict[str, object]:
 
 def main() -> None:
     data = {"collatz": collatz_metrics(), "prime": prime_metrics()}
-    out = ROOT / "results" / "auxiliary_power_metrics.json"
-    out.parent.mkdir(parents=True, exist_ok=True)
-    out.write_text(json.dumps(data, indent=2, sort_keys=True) + "\n")
-    print(json.dumps(data, indent=2, sort_keys=True))
+    out = (
+        report_directory("devtools.benchmarks.auxiliary_power_probe")
+        / "auxiliary_power_metrics.json"
+    )
+    write_json_report(out, data)
 
 
 if __name__ == "__main__":
-    main()
+    raise SystemExit(run_reported(main))

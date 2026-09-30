@@ -543,14 +543,8 @@ def audit_tile_results(
                         or any(type(n) is not int for n in region)
                     ):
                         raise TypeError("behavior region has another geometry sort")
-                    origin, level = region
-                    source_level = arena.tiles.resolve(behavior_key.input).level
-                    valid &= (
-                        origin >= 0
-                        and 0 <= level <= source_level
-                        and origin % (1 << level) == 0
-                        and origin + (1 << level) <= (1 << source_level)
-                        and region != (0, source_level)
+                    valid &= _proper_dyadic_region(
+                        region, arena.tiles.resolve(behavior_key.input).level
                     )
                 arena.interfaces.resolve_future_profile(behavior_key.profile)
                 if behavior_key.fusion is not None:
@@ -570,14 +564,8 @@ def audit_tile_results(
                         or any(type(n) is not int for n in region)
                     ):
                         raise TypeError("causal region has another geometry sort")
-                    origin, level = region
-                    source_level = arena.tiles.resolve(powered_key.input).level
-                    valid &= (
-                        origin >= 0
-                        and 0 <= level <= source_level
-                        and origin % (1 << level) == 0
-                        and origin + (1 << level) <= (1 << source_level)
-                        and region != (0, source_level)
+                    valid &= _proper_dyadic_region(
+                        region, arena.tiles.resolve(powered_key.input).level
                     )
                 valid &= valid_ports(powered_key.wiring.signature, powered_key.ports)
                 if powered_key.fusion is not None:
@@ -883,3 +871,15 @@ def audit_tile_results(
 
 
 __all__ = ["audit_tile_results"]
+
+
+def _proper_dyadic_region(region: tuple[int, int], source_level: int) -> bool:
+    """Check a non-root dyadic region after exact-integer admission."""
+    origin, level = region
+    return (
+        origin >= 0
+        and 0 <= level <= source_level
+        and origin % (1 << level) == 0
+        and origin + (1 << level) <= (1 << source_level)
+        and region != (0, source_level)
+    )

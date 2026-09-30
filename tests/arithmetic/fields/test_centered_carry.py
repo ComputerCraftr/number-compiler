@@ -92,10 +92,7 @@ def _evaluate(arena: SymbolicInnovationArena, root: InnovationID) -> dict[int, i
 
 @pytest.mark.parametrize("seed", [0, 1, 5, 6, 9, 18, 196, 292, 909, 1041, 1051, 1593])
 def test_centered_self_advance_matches_twenty_literal_steps(seed: int) -> None:
-    arena = SymbolicInnovationArena(ResourceLedger())
-    digits = [int(d) for d in str(seed)[::-1]]
-    pair = [a + b for a, b in zip(digits, reversed(digits), strict=True)]
-    residual = center_pair_field(arena, _polynomial(arena, pair), extent=len(pair))
+    arena, digits, pair, residual = centered_seed(seed)
     for _ in range(20):
         width = len(digits)
         carry = 0
@@ -195,3 +192,13 @@ def test_invalid_geometry_is_rejected(extent: int, growth: int) -> None:
             arena, arena.zero, arena.zero, extent=extent, growth=growth
         )
     assert arena.node_count == 1
+
+
+def centered_seed(
+    seed: int,
+) -> tuple[SymbolicInnovationArena, list[int], list[int], InnovationID]:
+    arena = SymbolicInnovationArena(ResourceLedger())
+    digits = [int(d) for d in str(seed)[::-1]]
+    pair = [a + b for a, b in zip(digits, reversed(digits), strict=True)]
+    residual = center_pair_field(arena, _polynomial(arena, pair), extent=len(pair))
+    return arena, digits, pair, residual

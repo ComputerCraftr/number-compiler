@@ -1,12 +1,12 @@
 """Cold output-carry observations merge cancellation before exact successors exist."""
 
+from tests.support.reference_arithmetic import carry_summary as _sectors
 from typing import Never
 
 import pytest
 
-from number_compiler.arithmetic.carry.reverse_sector_transfer import (
-    ReverseCarrySectorTransfer,
-)
+from tests.support.reverse_interface import reverse_interface_payload
+
 from number_compiler.arithmetic.contracts.block_kernel import BaseBlockEffect
 from number_compiler.hashlife.behavior.reverse_bound_output import ReverseBoundOutput
 from number_compiler.hashlife.execution.tile_causal import CausalTileEngine
@@ -15,14 +15,7 @@ from number_compiler.hashlife.execution.tile_causal_interfaces import (
 )
 from number_compiler.hashlife.execution.tile_causal_tasks import CausalFrame
 from number_compiler.hashlife.tiles.tiles import TileAlphabetID, TileLease
-from tests.arithmetic.contracts.test_tile_kernel import _runtime, _tile
-
-
-def _sectors(symbols: tuple[int, ...]) -> ReverseCarrySectorTransfer:
-    value = ReverseCarrySectorTransfer.leaf(10, symbols[0])
-    for symbol in symbols[1:]:
-        value = value.then(ReverseCarrySectorTransfer.leaf(10, symbol))
-    return value
+from tests.support.tile_kernel import _runtime, _tile
 
 
 @pytest.mark.parametrize("exponent", (1, 2))
@@ -70,20 +63,7 @@ def test_cold_cancellation_merges_bounded_consumer_without_exact_output(
         observed = []
         for source in (a, b):
             engine = CausalTileEngine(scheduler)
-            payload = engine._run(
-                CausalFrame(
-                    "reverse_interface",
-                    (
-                        action,
-                        source.tile,
-                        engine._initial(action, 0),
-                        engine._initial(action, 1),
-                    ),
-                ),
-                tile_result=False,
-            )
-            assert type(payload) is CausalInterfacePayload
-            assert type(payload.bound_reverse_output) is ReverseBoundOutput
+            payload = reverse_interface_payload(engine, action, source.tile)
             observed.append(payload.bound_reverse_output)
         assert observed[0] == observed[1]
         assert ledger.counters.get("completed_result_publications", 0) == before

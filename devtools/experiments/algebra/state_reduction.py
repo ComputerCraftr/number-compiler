@@ -12,8 +12,8 @@ from __future__ import annotations
 from dataclasses import asdict, dataclass
 from itertools import pairwise
 
-from devtools.proofs import exact_oracle
-from devtools.proofs.carry_action_quotient import CarryResetSignature
+from devtools.verification import exact_oracle
+from devtools.verification.carry_action_quotient import CarryResetSignature
 from number_compiler.arithmetic.fields.radix import (
     bit_width,
     digits_lsd,

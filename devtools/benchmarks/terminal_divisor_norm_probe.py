@@ -2,9 +2,10 @@
 
 from __future__ import annotations
 
+from devtools.paths import report_output
+
 import json
 from dataclasses import asdict
-from pathlib import Path
 
 from devtools.experiments.power_numbers.terminal_divisor_norm import (
     aggregate_artin_blind_audit,
@@ -70,11 +71,16 @@ def build_metrics() -> dict[str, object]:
 
 
 def main() -> None:
-    out = Path("results/terminal_divisor_norm_metrics.json")
+    out = report_output(
+        "devtools.benchmarks.terminal_divisor_norm_probe",
+        "terminal_divisor_norm_metrics.json",
+    )
     out.parent.mkdir(parents=True, exist_ok=True)
     out.write_text(json.dumps(build_metrics(), indent=2, sort_keys=True) + "\n")
     print(out)
 
 
 if __name__ == "__main__":
-    main()
+    from devtools.runs import run_reported
+
+    raise SystemExit(run_reported(main))

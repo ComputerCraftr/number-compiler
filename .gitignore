@@ -217,29 +217,11 @@ __marimo__/
 # Streamlit
 .streamlit/secrets.toml
 
-# Number Compiler: only the policy and reviewed weekly summaries are versioned.
-# Run-local Markdown and Python are artifacts too, not blanket exceptions.
-/results/**
-!/results/README.md
-!/results/current/
-!/results/current/week-of-20[0-9][0-9]-[0-1][0-9]-[0-3][0-9]/
-!/results/current/week-of-*/README.md
-!/results/current/week-of-*/shared.md
-!/results/current/week-of-*/reverse-add.md
-!/results/current/week-of-*/collatz.md
-!/results/current/week-of-*/antihydra-mahler.md
-!/results/current/week-of-*/comma.md
-!/results/current/week-of-*/repository.md
-!/results/history/
-!/results/history/2026-09-07--2026-09-13/
-!/results/history/2026-09-07--2026-09-13/README.md
-!/results/history/2026-09-14--2026-09-20/
-!/results/history/2026-09-14--2026-09-20/README.md
-/results/**/__pycache__/
+# Number Compiler: reviewed summaries live in docs/sprints.
+# All results, including run-local Markdown and Python, are generated evidence.
+/results/
 .DS_Store
 *.pstats
 .isabelle/
-/results/**/isabelle-home/
-/results/**/isabelle-user-root/
 .env.*
 !.env.example

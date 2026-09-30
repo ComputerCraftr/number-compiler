@@ -2,6 +2,9 @@
 
 from __future__ import annotations
 
+from number_compiler.arithmetic.contracts.scoped_handles import TransferSummaryID
+from tests.support.assertions import assert_rejected_atomically
+
 from collections import OrderedDict
 from dataclasses import replace
 from itertools import product
@@ -9,16 +12,16 @@ from typing import TYPE_CHECKING, Literal, Never
 
 import pytest
 
-from devtools.proofs.carry_interval_effects import CarryActionQuotientArena
-from devtools.proofs.lazy_collatz import LazyCollatzApplication
-from devtools.proofs.lazy_reverse import LazyReverseApplication
+from devtools.verification.carry_interval_effects import CarryActionQuotientArena
+from devtools.verification.lazy_collatz import LazyCollatzApplication
+from devtools.verification.lazy_reverse import LazyReverseApplication
 from number_compiler.arithmetic.functions.finite_port_action import PortVariable
 from number_compiler.resources.metric_collection import collect_ledger_metrics
 
 if TYPE_CHECKING:
     import typing
 
-    from devtools.proofs.lazy_reverse import ReverseRangeRequest
+    from devtools.verification.lazy_reverse import ReverseRangeRequest
     from number_compiler.arithmetic.contracts.scoped_handles import TransferSummaryID
 
 
@@ -146,13 +149,19 @@ def test_warm_interval_scan_checks_ids_before_any_coefficient_evaluation(
     assert (after.entries, after.nodes) == (before.entries, before.nodes)
 
 
-def test_reflection_is_an_involution_and_does_not_identify_different_boundary_functions() -> (
-    None
-):
+def _reflected_fixture() -> tuple[
+    CarryActionQuotientArena, PortVariable, TransferSummaryID, TransferSummaryID
+]:
     arena = CarryActionQuotientArena()
     port = PortVariable(0, 0, "carry", 0)
     action = arena.interval_word((0, 10), base=10, port=port)
-    reflected = arena.reflect_interval(action)
+    return arena, port, action, arena.reflect_interval(action)
+
+
+def test_reflection_is_an_involution_and_does_not_identify_different_boundary_functions() -> (
+    None
+):
+    arena, port, action, reflected = _reflected_fixture()
     assert reflected != action
     assert arena.reflect_interval(reflected) == action
     assert (
@@ -164,10 +173,7 @@ def test_reflection_is_an_involution_and_does_not_identify_different_boundary_fu
 def test_known_reflection_and_literal_ids_bypass_descriptor_construction(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    arena = CarryActionQuotientArena()
-    port = PortVariable(0, 0, "carry", 0)
-    action = arena.interval_word((0, 10), base=10, port=port)
-    reflected = arena.reflect_interval(action)
+    arena, port, action, reflected = _reflected_fixture()
     zero = arena.interval_symbol(0, base=10, port=port)
     identity = arena.interval_identity(port)
     before = arena.ledger.snapshot()
@@ -235,10 +241,7 @@ def test_collatz_summary_validates_foreign_view_before_warm_lookup_and_releases_
     a = LazyCollatzApplication(2, 0, (1, 1))
     b = LazyCollatzApplication(2, 0, (1, 1))
     expected = a.mul3_summary(a.initial)
-    before = a.ledger.snapshot()
-    with pytest.raises(ValueError):
-        a.mul3_summary(b.initial)
-    assert a.ledger.snapshot() == before
+    assert_rejected_atomically(a.ledger, lambda: a.mul3_summary(b.initial), ValueError)
     assert len(a._mul3_summaries) == 1
     a.ledger.evict_query_memos()
     assert len(a._mul3_summaries) == 0

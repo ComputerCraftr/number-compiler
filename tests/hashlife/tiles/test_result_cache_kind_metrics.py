@@ -20,13 +20,14 @@ from number_compiler.hashlife.tiles.tile_result_records import (
 )
 from number_compiler.resources.metric_collection import collect_ledger_metrics
 from number_compiler.resources.result_cache_kinds import result_cache_kind
-from tests.arithmetic.contracts.test_tile_kernel import _runtime, _tile
+from tests.support.tile_kernel import powered_runtime
+from tests.support.tile_kernel import _tile
 
 
 def test_eviction_and_unknown_recreation_are_attributed_by_cache_kind() -> None:
-    ledger, tiles, adapter, primitive, scheduler = _runtime(BaseBlockEffect(3))
-    action = adapter.power(primitive, 4)
-    blank = adapter.primitive_law(primitive).blank
+    ledger, tiles, adapter, primitive, scheduler, action, blank = powered_runtime(
+        BaseBlockEffect(3), 4
+    )
     engine = CausalTileEngine(scheduler)
     with _tile(tiles, adapter, primitive, (blank,) * 4) as source:
         left, right = engine._initial(action, 0), engine._initial(action, 1)
@@ -113,9 +114,9 @@ def test_eviction_and_unknown_recreation_are_attributed_by_cache_kind() -> None:
 
 
 def test_retirement_removals_keep_behavior_and_region_distinct() -> None:
-    ledger, tiles, adapter, primitive, scheduler = _runtime(BaseBlockEffect(3))
-    action = adapter.power(primitive, 4)
-    blank = adapter.primitive_law(primitive).blank
+    ledger, tiles, adapter, primitive, scheduler, action, blank = powered_runtime(
+        BaseBlockEffect(3), 4
+    )
     engine = CausalTileEngine(scheduler)
     source = _tile(tiles, adapter, primitive, (blank,) * 4)
     left, right = engine._initial(action, 0), engine._initial(action, 1)

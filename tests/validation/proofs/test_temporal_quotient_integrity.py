@@ -1,12 +1,15 @@
 import inspect
 
-import devtools.proofs.collatz_semantic_action as semantic_action
-from devtools.proofs.block_recursive import (
+import devtools.verification.collatz_semantic_action as semantic_action
+from devtools.verification.block_recursive import (
     _RecursiveBoundaryState,
     _RecursiveResidualAction,
 )
-from devtools.proofs.collatz_forcing_morphism import CollatzForcingOccurrence
-from devtools.proofs.collatz_spacetime import CollatzPhysicalField, CollatzRadixField
+from devtools.verification.collatz_forcing_morphism import CollatzForcingOccurrence
+from devtools.verification.collatz_spacetime import (
+    CollatzPhysicalField,
+    CollatzRadixField,
+)
 from number_compiler.arithmetic.fields import causal_domain
 
 
@@ -30,7 +33,7 @@ def test_arithmetic_action_helpers_do_not_use_diagnostic_tile_ids_as_work_keys()
 
 
 def test_recursive_runtime_uses_only_bounded_dyadic_alignment_phase() -> None:
-    import devtools.proofs.block_spacetime_runtime as runtime
+    import devtools.verification.block_spacetime_runtime as runtime
 
     source = inspect.getsource(runtime)
     assert "_recursive_residual_phase" in source

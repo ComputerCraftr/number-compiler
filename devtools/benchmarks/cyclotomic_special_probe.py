@@ -2,12 +2,18 @@
 
 from __future__ import annotations
 
+from devtools.paths import report_directory
+
 import json
 from math import isqrt, sqrt
 
 from devtools.benchmarks.report_schema import record, records
+from devtools.benchmarks.pair_encoding import pair_from_int
 from devtools.paths import report_output, repository_root
-from devtools.proofs.oracles.special_primality import lucas_lehmer_test, pepin_test
+from devtools.verification.oracles.special_primality import (
+    lucas_lehmer_test,
+    pepin_test,
+)
 from number_compiler.arithmetic.carry.carry_itinerary import (
     adaptive_negacyclic_memory_horizon,
 )
@@ -48,20 +54,13 @@ from number_compiler.sequences.prime.set import project_odd_prime_block
 
 ROOT = repository_root()
 
-OUT = ROOT / "results" / "cyclotomic_special_metrics.json"
-REPORT = report_output(
-    "devtools.benchmarks.cyclotomic_special_probe", "CYCLOTOMIC_SPECIAL_RESULTS.md"
-)
 
-
-def pair_from_int(value: int, base: int = 10) -> tuple[int, ...]:
-    digits: list[int] = []
-    n = int(value)
-    while n:
-        digits.append(n % base)
-        n //= base
-    digits = digits or [0]
-    return tuple(digits[i] + digits[-1 - i] for i in range(len(digits)))
+def _record_square_field(
+    fields: set[tuple[int, ...]], alphabet: set[int], field: tuple[int, ...]
+) -> int:
+    fields.add(field)
+    alphabet.update(field)
+    return sum(value != 0 for value in field)
 
 
 def reverse_growth_trace(steps: int = 512) -> list[int]:
@@ -155,11 +154,9 @@ def _fermat_square_field_rows() -> list[dict[str, object]]:
         for _ in range(spec.exponent - 1):
             projection = negacyclic_binary_square_projection(value, spec.exponent)
             field = projection.field
-            fields.add(field)
-            alphabet.update(field)
+            nonzero.append(_record_square_field(fields, alphabet, field))
             low = min(low, min(field))
             high = max(high, max(field))
-            nonzero.append(sum(x != 0 for x in field))
             assert projection.residue == value * value % modulus
             value = projection.residue
         rows.append(
@@ -191,10 +188,8 @@ def _mersenne_square_field_rows() -> list[dict[str, object]]:
         for _ in range(max(0, exponent - 2)):
             projection = cyclic_binary_square_projection(value, exponent)
             field = projection.field
-            fields.add(field)
-            alphabet.update(field)
+            nonzero.append(_record_square_field(fields, alphabet, field))
             high = max(high, max(field))
-            nonzero.append(sum(x != 0 for x in field))
             assert projection.residue == value * value % modulus
             value = (projection.residue - 2) % modulus
         ll = lucas_lehmer_test(exponent)
@@ -359,6 +354,9 @@ def prime_automaton_metrics() -> dict[str, object]:
 
 
 def write_report(data: dict[str, dict[str, object]]) -> None:
+    REPORT = report_output(
+        "devtools.benchmarks.cyclotomic_special_probe", "CYCLOTOMIC_SPECIAL_RESULTS.md"
+    )
     cyc = data["reverse_add_cyclotomic"]
     coll = data["collatz_inverse"]
     _special = data["special_numbers"]
@@ -436,6 +434,10 @@ def write_report(data: dict[str, dict[str, object]]) -> None:
 
 
 def main() -> None:
+    OUT = (
+        report_directory("devtools.benchmarks.cyclotomic_special_probe")
+        / "cyclotomic_special_metrics.json"
+    )
     data = {
         "reverse_add_cyclotomic": reverse_cyclotomic_metrics(),
         "collatz_inverse": collatz_inverse_metrics(),
@@ -448,4 +450,6 @@ def main() -> None:
 
 
 if __name__ == "__main__":
-    main()
+    from devtools.runs import run_reported
+
+    raise SystemExit(run_reported(main))

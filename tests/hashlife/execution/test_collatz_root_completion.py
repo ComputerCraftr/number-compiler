@@ -2,6 +2,9 @@
 
 from __future__ import annotations
 
+from number_compiler.hashlife.execution.tile_kernel import PrimitiveTileKernelAdapter
+from number_compiler.hashlife.actions.field_actions import FieldCellActionID
+from number_compiler.hashlife.tiles.tiles import TileID
 from itertools import product
 from typing import Any
 
@@ -14,7 +17,15 @@ from number_compiler.hashlife.execution.tile_collatz_root_completion import (
 from number_compiler.hashlife.interfaces.diamond_quotient import COMPONENT_ROLES
 from number_compiler.hashlife.tiles.tile_result_records import PoweredResultKey
 from number_compiler.sequences.collatz.block_power import CollatzPhysicalBlockEffect
-from tests.arithmetic.contracts.test_tile_kernel import _runtime, _tile
+from tests.support.tile_kernel import _runtime, _tile
+
+
+def _request(
+    adapter: PrimitiveTileKernelAdapter, action: FieldCellActionID, tile: TileID
+) -> PoweredResultKey:
+    return PoweredResultKey(
+        action, tile, adapter.initial_ports(action), adapter.wiring(action)
+    )
 
 
 def _case(valuation: int, ticks: int) -> tuple[Any, ...]:
@@ -107,12 +118,7 @@ def test_initial_root_completion_matches_full_causal_result(ticks: int) -> None:
     ledger, tiles, adapter, primitive, scheduler, digits = runtime
     with _tile(tiles, adapter, primitive, digits) as source:
         action = adapter.power(primitive, ticks)
-        key = PoweredResultKey(
-            action,
-            source.tile,
-            adapter.initial_ports(action),
-            adapter.wiring(action),
-        )
+        key = _request(adapter, action, source.tile)
         actual = complete_collatz_root(scheduler, key)
         assert actual is not None
         try:
@@ -141,12 +147,7 @@ def test_initial_root_completion_executes_two_primitive_fields(
     monkeypatch.setattr(entry, "causal_complete", primitive_only)
     with _tile(tiles, adapter, primitive, digits) as source:
         action = adapter.power(primitive, 8)
-        key = PoweredResultKey(
-            action,
-            source.tile,
-            adapter.initial_ports(action),
-            adapter.wiring(action),
-        )
+        key = _request(adapter, action, source.tile)
         result = complete_collatz_root(scheduler, key)
         assert result is not None
         result.close()
@@ -248,10 +249,5 @@ def test_initial_root_completion_declines_after_first_event() -> None:
     _, tiles, adapter, primitive, scheduler = _runtime(CollatzPhysicalBlockEffect())
     with _tile(tiles, adapter, primitive, (1, 1, 2, 2, 2, 2, 2, 2)) as source:
         action = adapter.power(primitive, 8)
-        key = PoweredResultKey(
-            action,
-            source.tile,
-            adapter.initial_ports(action),
-            adapter.wiring(action),
-        )
+        key = _request(adapter, action, source.tile)
         assert complete_collatz_root(scheduler, key) is None

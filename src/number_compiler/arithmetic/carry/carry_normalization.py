@@ -24,6 +24,7 @@ blocks by binary composition without expanding their coefficients.
 """
 
 from __future__ import annotations
+from number_compiler.arithmetic.fields.morphism_core import balanced_fold
 
 from collections.abc import Iterable
 from dataclasses import dataclass
@@ -65,35 +66,11 @@ class RadixCarryBlock:
         cls, coefficients: Iterable[int], *, base: int = 2
     ) -> RadixCarryBlock:
         base = int(base)
-        out = cls.identity(base)
-        # Balanced binary-counter composition keeps temporary depth logarithmic.
-        levels: list[RadixCarryBlock | None] = []
-        count = 0
-        for coefficient in coefficients:
-            node = cls.coefficient(int(coefficient), base=base)
-            count += 1
-            level = 0
-            while True:
-                if level == len(levels):
-                    levels.append(node)
-                    break
-                prior = levels[level]
-                if prior is None:
-                    levels[level] = node
-                    break
-                levels[level] = None
-                node = prior.then(node)
-                level += 1
-        if not count:
-            return out
-        result: RadixCarryBlock | None = None
-        for retained_node in reversed(levels):
-            if retained_node is None:
-                continue
-            result = retained_node if result is None else result.then(retained_node)
-        if result is None:
-            raise AssertionError("nonempty coefficient stream lost")
-        return result
+        return balanced_fold(
+            (cls.coefficient(int(value), base=base) for value in coefficients),
+            identity=cls.identity(base),
+            compose=RadixCarryBlock.then,
+        )
 
     @property
     def scale(self) -> int:
@@ -644,6 +621,16 @@ def normalization_digits_lsf(
     return tuple(out_digits)
 
 
+def _admit_normalization_coefficients(
+    coefficients: Iterable[int], normalization: EndAroundCarryNormalization
+) -> tuple[tuple[int, ...], RadixCarryBlock]:
+    coeffs = tuple(map(int, coefficients))
+    block = normalization.block
+    if len(coeffs) != block.length:
+        raise ValueError((len(coeffs), block.length))
+    return coeffs, block
+
+
 def normalization_carry_boundaries(
     coefficients: Iterable[int], normalization: EndAroundCarryNormalization
 ) -> tuple[int, ...]:
@@ -656,10 +643,7 @@ def normalization_carry_boundaries(
     ``(-1,0,...,0)`` rather than silently switching to an ordinary all-ones
     digit representation.
     """
-    coeffs = tuple(map(int, coefficients))
-    block = normalization.block
-    if len(coeffs) != block.length:
-        raise ValueError((len(coeffs), block.length))
+    coeffs, block = _admit_normalization_coefficients(coefficients, normalization)
     digits = normalization_digits_lsf(normalization)
 
     carry = normalization.boundary_in
@@ -679,10 +663,7 @@ def end_around_carry_marker(
     coefficients: Iterable[int], normalization: EndAroundCarryNormalization
 ) -> EndAroundCarryMarker:
     """Stream a compact exact marker summary without retaining carry history."""
-    coeffs = tuple(map(int, coefficients))
-    block = normalization.block
-    if len(coeffs) != block.length:
-        raise ValueError((len(coeffs), block.length))
+    coeffs, block = _admit_normalization_coefficients(coefficients, normalization)
 
     # Stream canonical digits from the scalar residue.  The exceptional
     # negacyclic -1 residue is represented by (-1,0,...,0), matching the

@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from number_compiler.hashlife.tiles.result_reverse_indexes import publish_indexed_result
+
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, cast
 
@@ -500,24 +502,7 @@ def publish_prepared_directed_transfer(
             raise ValueError("directed transfer already has another exact exit")
         results.ledger.bump("tile_directed_transfer_late_duplicates")
         return found
-    referenced = results._tiles_for(key, outgoing)
-    reverse_entries = results._index_entries(referenced)
-    reservations = (
-        (results._memo_owner, 1, 0),
-        (results._reverse_owner, reverse_entries, 0),
-    )
-    results.ledger.reserve_many(reservations)
-    reverse_snapshot = results._reverse_snapshot(referenced, key)
-    try:
-        results._memo[key] = outgoing
-        for tile in referenced:
-            results._add_membership(tile, key)
-    except BaseException:
-        results._memo.pop(key, None)
-        results._restore_reverse(reverse_snapshot)
-        for owner, entries, nodes in reservations:
-            results.ledger.release(owner, entries, nodes)
-        raise
+    publish_indexed_result(results, key, outgoing)
     results.ledger.bump("tile_directed_transfer_publications")
     return outgoing
 

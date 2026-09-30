@@ -13,6 +13,13 @@ It never constructs an output word or evaluates a future symbol for a leaf.
 
 from __future__ import annotations
 
+from number_compiler.hashlife.interfaces.semantic_bit_transforms import (
+    MACRO_LEFT as _LEFT,
+    MACRO_RIGHT as _RIGHT,
+    primitive_leaf_channels,
+    retag_numeric,
+)
+
 from collections.abc import Generator
 from dataclasses import dataclass
 from typing import TYPE_CHECKING
@@ -77,8 +84,6 @@ CONTRACT = (
     "normalization:preserve-symbols-no-trim",
     "frame:identity-coordinate",
 )
-_LEFT = PortVariable(0, 0, "macro-left", 0)
-_RIGHT = PortVariable(0, 1, "macro-right", 0)
 _COORDINATE = PortVariable(0, 0, "macro-coordinate", 0)
 
 
@@ -151,18 +156,12 @@ class PrimitiveMacroArena:
     def _retag(
         self, function: FactoredFunctionID, output: AtomSort
     ) -> FactoredFunctionID:
-        node = self.bits.resolve(function)
-        circuit = _Circuit(self.quotients.functions, node.signature.inputs)
-        roots, valid = circuit.imported(node)
-        width = (output.cardinality - 1).bit_length()
-        if len(roots) > width:
-            raise ValueError("primitive macro numeric conversion would discard bits")
-        pending = circuit.normalized(
-            FunctionSignature(node.signature.inputs, output),
-            roots + (circuit.zero,) * (width - len(roots)),
-            valid,
+        return retag_numeric(
+            self.bits,
+            function,
+            output,
+            "primitive macro numeric conversion would discard bits",
         )
-        return self.bits._publish(circuit, (pending,))[0]
 
     def _offset(
         self, function: FactoredFunctionID, offset: int, output: AtomSort
@@ -365,17 +364,8 @@ class PrimitiveMacroArena:
         self, laws: PrimitiveSemantics, symbol: int
     ) -> tuple[tuple[FactoredFunctionID, ...], int]:
         ports = self._ports(laws, 1)
-        left = self._variable(ports, _LEFT, laws.left_sort)
-        right = self._variable(ports, _RIGHT, laws.right_sort)
-        source = self._constant(ports, laws.symbol_sort, symbol)
-        replacement = {
-            laws.ports[0].variable: left,
-            laws.ports[1].variable: source,
-            laws.ports[2].variable: right,
-        }
-        advance_left, advance_right, output = (
-            self.bits.substitute(self.bits.from_scalar(function), replacement)
-            for function in (laws.advance_left, laws.advance_right, laws.emit)
+        advance_left, advance_right, output = primitive_leaf_channels(
+            self.bits, laws, ports, symbol
         )
         active = self._nonblank(output, laws.blank)
         position = AtomSort("cell-active-position", 2)

@@ -17,6 +17,13 @@ from number_compiler.arithmetic.polynomials.digit_cyclotomic import (
 from number_compiler.resources.ledger import ResourceLedger
 
 
+def _assert_padded_equal(actual: list[int], expected: list[int]) -> None:
+    for index in range(-2, len(expected) + 2):
+        want = expected[index] if 0 <= index < len(expected) else 0
+        got = actual[index] if 0 <= index < len(actual) else 0
+        assert got == want
+
+
 def _indicator(start: int, stop: int) -> list[int]:
     result = [0] * stop
     for index in range(start, stop):
@@ -166,20 +173,8 @@ def test_parameter_region_matches_two_independent_forward_steps_exhaustively() -
                 symbolic_digits1 = _add(_scale(2, source), _add(beta0, e1))
                 radial = _scale(2, _add(source, _shift(source)))
                 symbolic_pair2 = _add(radial, b2)
-                for index in range(-2, len(digits1) + 2):
-                    expected = digits1[index] if 0 <= index < len(digits1) else 0
-                    actual = (
-                        symbolic_digits1[index]
-                        if 0 <= index < len(symbolic_digits1)
-                        else 0
-                    )
-                    assert actual == expected
-                for index in range(-2, len(pair2) + 2):
-                    expected = pair2[index] if 0 <= index < len(pair2) else 0
-                    actual = (
-                        symbolic_pair2[index] if 0 <= index < len(symbolic_pair2) else 0
-                    )
-                    assert actual == expected
+                _assert_padded_equal(symbolic_digits1, digits1)
+                _assert_padded_equal(symbolic_pair2, pair2)
 
 
 @pytest.mark.parametrize(

@@ -2,13 +2,15 @@
 
 from __future__ import annotations
 
+from devtools.paths import report_directory
+
 import json
 from typing import TypedDict
 
 from devtools.paths import report_output, repository_root
-from devtools.proofs import exact_oracle
-from devtools.proofs.carry_action_quotient import analyze_carry_action_quotient
-from devtools.proofs.oracles.digit_power import (
+from devtools.verification import exact_oracle
+from devtools.verification.carry_action_quotient import analyze_carry_action_quotient
+from devtools.verification.oracles.digit_power import (
     lucas_lehmer_digit_field,
     pepin_digit_field,
 )
@@ -275,7 +277,7 @@ def main() -> None:
         "prime_mixed_radix_residual": residual,
         "compiler_integration": integration,
     }
-    outdir = ROOT / "results"
+    outdir = report_directory("devtools.benchmarks.carry_monoid_quotient_probe")
     outdir.mkdir(exist_ok=True)
     out = outdir / "monoid_quotient_v020_metrics.json"
     out.write_text(json.dumps(data, indent=2, sort_keys=True) + "\n")
@@ -367,4 +369,6 @@ def main() -> None:
 
 
 if __name__ == "__main__":
-    main()
+    from devtools.runs import run_reported
+
+    raise SystemExit(run_reported(main))

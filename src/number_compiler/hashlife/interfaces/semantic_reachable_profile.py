@@ -31,7 +31,7 @@ from number_compiler.arithmetic.functions.finite_function_types import (
 )
 from number_compiler.arithmetic.functions.finite_port_action import PortVariable
 from number_compiler.hashlife.actions.lazy_compiler import UnsupportedInterfaceError
-from number_compiler.hashlife.interfaces.semantic_bits import _Circuit, _PendingFunction
+from number_compiler.hashlife.interfaces.semantic_bits import _Circuit
 from number_compiler.hashlife.interfaces.semantic_state_codec import CodecRequest
 from number_compiler.hashlife.interfaces.semantic_structures import (
     StructureArena,
@@ -265,20 +265,9 @@ class SemanticProfileArena:
         if type(index) is not int or index not in (0, 1):
             raise ValueError("reachable state has exactly two components")
         key = ReachableDecodeKey(ReachableCodecKey(codec.profile, codec.request), index)
-        found = self.decodes.get(key)
+        found = self._lookup_decode(key)
         if found is not None:
-            self.ledger.bump("semantic_reachable_decoder_requests")
-            self.ledger.bump("semantic_reachable_decoder_hits")
             return found
-        if (
-            self.ledger.max_cache_entries is not None
-            and self.ledger.entries >= self.ledger.max_cache_entries
-        ):
-            raise BlockContextBudgetExceeded(
-                "reachable decoder needs one metadata entry"
-            )
-        self.ledger.bump("semantic_reachable_decoder_requests")
-        self.ledger.bump("semantic_reachable_decoder_evaluations")
         definition = self.resolve(codec.profile).definition
         ports = codec.ports
         builder = _Builder(structures)
@@ -302,15 +291,7 @@ class SemanticProfileArena:
             )
             roots = self._lookup(outer, code, anchor_leaves)
             signature = FunctionSignature(ports, target)
-            bit_id = builder.intern_bit(_PendingFunction(signature, roots, valid))
-            root = builder.intern(
-                StructuredNode(
-                    signature,
-                    "atom",
-                    structures.functions._handle(valid),
-                    atom=structures.bits._handle(bit_id),
-                )
-            )
+            root = builder.atom(signature, roots, valid)
             self.ledger.bump(
                 "semantic_reachable_decoder_table_cells", len(definition.states)
             )
@@ -354,27 +335,9 @@ class SemanticProfileArena:
             self._filter(circuit, code, circuit.one),
             self._filter(circuit, selector, circuit.one),
         )
-        body_signature = FunctionSignature(joint, target)
-        body_bit = builder.intern_bit(
-            _PendingFunction(body_signature, body_roots, body_valid)
-        )
-        body = builder.intern(
-            StructuredNode(
-                body_signature,
-                "atom",
-                structures.functions._handle(body_valid),
-                atom=structures.bits._handle(body_bit),
-            )
-        )
         function_signature = FunctionSignature(ports, FunctionSort((argument,), target))
-        function = builder.intern(
-            StructuredNode(
-                function_signature,
-                "function",
-                structures.functions._handle(valid),
-                body=structures._handle(body),
-                bound=aliases,
-            )
+        function = builder.numeric_function(
+            function_signature, joint, body_roots, body_valid, valid, aliases
         )
         return self._publish_decode(builder, function, key)
 
@@ -399,9 +362,7 @@ class SemanticProfileArena:
             else:
                 prepared.cancel()
 
-    def decode(self, codec: ReachableCodec, structures: StructureArena) -> StructureID:
-        self.validate_codec(codec, structures)
-        key = ReachableDecodeKey(ReachableCodecKey(codec.profile, codec.request), 2)
+    def _lookup_decode(self, key: ReachableDecodeKey) -> StructureID | None:
         found = self.decodes.get(key)
         if found is not None:
             self.ledger.bump("semantic_reachable_decoder_requests")
@@ -416,6 +377,14 @@ class SemanticProfileArena:
             )
         self.ledger.bump("semantic_reachable_decoder_requests")
         self.ledger.bump("semantic_reachable_decoder_evaluations")
+        return None
+
+    def decode(self, codec: ReachableCodec, structures: StructureArena) -> StructureID:
+        self.validate_codec(codec, structures)
+        key = ReachableDecodeKey(ReachableCodecKey(codec.profile, codec.request), 2)
+        found = self._lookup_decode(key)
+        if found is not None:
+            return found
         first = self.component(codec, 0, structures)
         second = self.component(codec, 1, structures)
         builder = _Builder(structures)

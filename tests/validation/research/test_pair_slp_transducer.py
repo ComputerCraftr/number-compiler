@@ -97,12 +97,16 @@ def test_same_carry_word_does_not_authorize_temporal_merge() -> None:
     grammar.close()
 
 
-def test_misaligned_repetitions_report_structural_zip_refinement() -> None:
+def _misaligned_zip() -> tuple[ResourceLedger, PairSLPTransducer, int, int, int]:
     ledger = ResourceLedger()
     grammar = PairSLPTransducer(ledger)
     left = grammar.concat(grammar.repeat(grammar.word((1, 2)), 9), grammar.terminal(3))
     right = grammar.concat(grammar.terminal(4), grammar.repeat(grammar.word((5, 6)), 9))
-    result = grammar.zip_sum(left, right)
+    return ledger, grammar, left, right, grammar.zip_sum(left, right)
+
+
+def test_misaligned_repetitions_report_structural_zip_refinement() -> None:
+    ledger, grammar, left, right, result = _misaligned_zip()
     assert _expand(grammar, result) == tuple(
         a + b
         for a, b in zip(
@@ -116,11 +120,7 @@ def test_misaligned_repetitions_report_structural_zip_refinement() -> None:
 
 
 def test_reversed_zip_request_reuses_the_exact_commutative_result() -> None:
-    ledger = ResourceLedger()
-    grammar = PairSLPTransducer(ledger)
-    left = grammar.concat(grammar.repeat(grammar.word((1, 2)), 9), grammar.terminal(3))
-    right = grammar.concat(grammar.terminal(4), grammar.repeat(grammar.word((5, 6)), 9))
-    result = grammar.zip_sum(left, right)
+    ledger, grammar, left, right, result = _misaligned_zip()
     before = ledger.snapshot()
     node_count = grammar.node_count
     reversed_result = grammar.zip_sum(right, left)

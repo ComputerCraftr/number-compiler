@@ -8,15 +8,16 @@ the checked arithmetic progressions inside a sector.
 
 from __future__ import annotations
 
+from number_compiler.sequences.comma.arithmetic import phase_period
+from number_compiler.sequences.comma.certificates import _charge
+
 from dataclasses import dataclass
 import gzip
 import hashlib
 import json
-from math import gcd
 from pathlib import Path
 from typing import Any
 
-from number_compiler.arithmetic.contracts.block_effect import BlockContextBudgetExceeded
 from number_compiler.resources.ledger import ResourceLedger
 from number_compiler.resources.stores import LedgerList
 
@@ -55,17 +56,6 @@ class ForestVerification:
             "compressed_bytes": self.compressed_bytes,
             "uncompressed_bytes": self.uncompressed_bytes,
         }
-
-
-def _charge(ledger: ResourceLedger, max_work: int, amount: int = 1) -> None:
-    spent = ledger.counters.get("comma_work", 0) + ledger.counters.get(
-        "comma_certificate_work", 0
-    )
-    if amount > max_work - spent:
-        ledger.bump("comma_budget_refusals")
-        ledger.bump("comma_certificate_budget_refusals")
-        raise BlockContextBudgetExceeded("comma certificate work budget exceeded")
-    ledger.bump("comma_certificate_work", amount)
 
 
 def _charge_bits(ledger: ResourceLedger, *values: int) -> None:
@@ -124,16 +114,6 @@ def _small_roots(ledger: ResourceLedger, max_work: int) -> tuple[int, ...]:
     if len(roots) != 50 or 20 not in roots:
         raise ValueError("comma root partition is not the expected exact partition")
     return tuple(roots)
-
-
-def _phase_period(leading: int, last_digit: int) -> tuple[int, int]:
-    common = gcd(leading, 10)
-    period = 10 // common
-    residue = last_digit % common
-    displacement = (
-        10 * (period * residue + common * period * (period - 1) // 2) + period * leading
-    )
-    return period, displacement
 
 
 def _sector_upper(leading: int, scale: int) -> int:
@@ -554,3 +534,7 @@ def verify_forest_certificate(
                 store.clear()
             if reserved:
                 ledger.release(owner, entries=reserved, nodes=reserved)
+
+
+def _phase_period(leading: int, last_digit: int) -> tuple[int, int]:
+    return phase_period(leading, last_digit)

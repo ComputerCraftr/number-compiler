@@ -9,9 +9,20 @@ integer root comparison rather than a materialized Cartesian row/column vector.
 """
 
 from __future__ import annotations
+from number_compiler.arithmetic.contracts.iterative_queries import (
+    defer_dependencies,
+    defer_indexed_dependencies,
+)
 
 import itertools
-from collections.abc import Callable, Iterable, Iterator, Mapping, Sequence
+from collections.abc import (
+    Callable,
+    Iterable,
+    Iterator,
+    Mapping,
+    MutableMapping,
+    Sequence,
+)
 from dataclasses import dataclass, field
 from typing import (
     Literal,
@@ -19,6 +30,22 @@ from typing import (
 )
 
 from number_compiler.arithmetic.fields.radix import bit_width
+
+
+def intern_binary_decision(
+    unique: MutableMapping[tuple[int, int, int], int],
+    variable: int,
+    low: int,
+    high: int,
+) -> int:
+    """Intern one caller-admitted binary decision, preserving terminal IDs 0/1."""
+    key = variable, low, high
+    found = unique.get(key)
+    if found is None:
+        found = len(unique) + 2
+        unique[key] = found
+    return found
+
 
 _bits = bit_width
 
@@ -456,10 +483,7 @@ class MultiTerminalDecisionArena:
                     if remap_mask(original, old_mask)
                 )
             if not ready:
-                stack.append((node, level, True))
-                for dep_node, dep_level in reversed(deps):
-                    if (dep_node, dep_level) not in memo:
-                        stack.append((dep_node, dep_level, False))
+                defer_indexed_dependencies(stack, node, level, deps, memo)
                 continue
             if nlevel > level:
                 memo[key] = memo[(node, level + 1)]
@@ -511,10 +535,13 @@ class MultiTerminalDecisionArena:
                 memo[node] = out.terminal(relabel(record[1]))
                 continue
             if not ready:
-                stack.append((node, True))
-                for child, _mask in reversed(record[2]):
-                    if child not in memo:
-                        stack.append((child, False))
+                defer_dependencies(
+                    stack,
+                    node,
+                    tuple(child for child, _mask in record[2]),
+                    memo,
+                    lambda child: child,
+                )
                 continue
             by_child: dict[int, int] = {}
             for child, mask in record[2]:
@@ -571,10 +598,7 @@ class MultiTerminalDecisionArena:
             else:
                 deps = [(child, level + 1) for child, _mask in n[2]]
             if not ready:
-                stack.append((node, level, True))
-                for dep_node, dep_level in reversed(deps):
-                    if (dep_node, dep_level) not in memo:
-                        stack.append((dep_node, dep_level, False))
+                defer_indexed_dependencies(stack, node, level, deps, memo)
                 continue
             if nlevel > level:
                 memo[mk] = memo[(node, level + 1)]
@@ -726,10 +750,13 @@ class MultiTerminalDecisionArena:
                 )
             else:
                 if not ready:
-                    stack.append((node, True))
-                    for child, _mask in reversed(n[2]):
-                        if child not in built:
-                            stack.append((child, False))
+                    defer_dependencies(
+                        stack,
+                        node,
+                        tuple(child for child, _mask in n[2]),
+                        built,
+                        lambda child: child,
+                    )
                     continue
                 shape_key = (
                     "N",

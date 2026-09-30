@@ -2,6 +2,14 @@
 
 from __future__ import annotations
 
+from number_compiler.hashlife.execution.tile_causal_tasks import (
+    publish_composite_output,
+)
+
+from number_compiler.hashlife.execution.tile_causal_tasks import combine_spatial_outputs
+
+from number_compiler.hashlife.execution.tile_causal_tasks import retain_completed
+
 from dataclasses import replace
 from typing import TYPE_CHECKING, Any
 
@@ -33,7 +41,6 @@ from number_compiler.hashlife.execution.tile_causal_promotion import promotion_s
 from number_compiler.hashlife.execution.tile_causal_results import (
     CausalCompletedOutput,
     PrimitiveCausalPorts,
-    combine_causal_outputs,
     lookup_causal_result,
     primitive_causal_semantics,
     probe_causal_result,
@@ -50,8 +57,6 @@ from number_compiler.hashlife.execution.tile_causal_tasks import (
     composite_result_key,
     covered_chunks,
     primitive_advance,
-    producer_parent,
-    result_payload,
     temporal_payload,
 )
 from number_compiler.hashlife.execution.tile_reverse_boundary import (
@@ -382,15 +387,7 @@ class CausalTileEngine(CausalTileAPI):
                             action_admission=self._action_admission_token,
                         )
                         if completed is not None:
-                            payload = result_payload(self.tiles, completed)
-                            if self._application is None:
-                                self._result_leases.append(completed)
-                            else:
-                                self.scheduler._pin_causal(
-                                    self._application,
-                                    key,
-                                    completed,
-                                )
+                            payload = retain_completed(self, key, completed)
                             self.ledger.bump("tile_causal_result_hits")
                             values.append(payload)
                             continue
@@ -453,15 +450,7 @@ class CausalTileEngine(CausalTileAPI):
                             key,
                             payload,
                         )
-                        payload = result_payload(self.tiles, completed)
-                        if self._application is None:
-                            self._result_leases.append(completed)
-                        else:
-                            self.scheduler._pin_causal(
-                                self._application,
-                                key,
-                                completed,
-                            )
+                        payload = retain_completed(self, key, completed)
                         values.append(payload)
                         self.ledger.bump("tile_causal_primitive_emits")
                         continue
@@ -765,13 +754,7 @@ class CausalTileEngine(CausalTileAPI):
                             self.ledger.bump("tile_causal_result_evaluations")
                         else:
                             self.ledger.bump("tile_causal_result_hits")
-                        payload = result_payload(self.tiles, completed)
-                        if self._application is None:
-                            self._result_leases.append(completed)
-                        else:
-                            self.scheduler._pin_causal(
-                                self._application, key, completed
-                            )
+                        payload = retain_completed(self, key, completed)
                         values.append(payload)
                         continue
                     if frame.stage == 0 and children is not None:
@@ -783,15 +766,7 @@ class CausalTileEngine(CausalTileAPI):
                                 action_admission=self._action_admission_token,
                             )
                             if completed is not None:
-                                payload = result_payload(self.tiles, completed)
-                                if self._application is None:
-                                    self._result_leases.append(completed)
-                                else:
-                                    self.scheduler._pin_causal(
-                                        self._application,
-                                        key,
-                                        completed,
-                                    )
+                                payload = retain_completed(self, key, completed)
                                 self.ledger.bump("tile_causal_result_hits")
                                 values.append(payload)
                                 continue
@@ -828,24 +803,9 @@ class CausalTileEngine(CausalTileAPI):
                                 raise AssertionError(
                                     "causal leaf emission returned another result sort"
                                 )
-                        key = self._composite_key(action, tile, left, right)
-                        if key is not None:
-                            completed = publish_causal_completed(
-                                self.scheduler.results,
-                                key,
-                                payload,
-                            )
-                            payload = result_payload(self.tiles, completed)
-                            if self._application is None:
-                                self._result_leases.append(completed)
-                            else:
-                                self.scheduler._pin_causal(
-                                    self._application,
-                                    key,
-                                    completed,
-                                )
-                            self.ledger.bump("tile_causal_result_evaluations")
-                            self.ledger.bump("tile_temporal_complete_compositions")
+                        payload = publish_composite_output(
+                            self, action, tile, left, right, payload
+                        )
                         values.append(payload)
                         continue
                     assert node.left is not None and node.right is not None
@@ -907,39 +867,10 @@ class CausalTileEngine(CausalTileAPI):
                         continue
                     right_out = values.pop()
                     left_out = frame.saved[0]
-                    producer_output = producer_parent(
-                        self.tiles,
-                        self._leases,
-                        left_out,
-                        right_out,
+                    payload = combine_spatial_outputs(self, action, left_out, right_out)
+                    payload = publish_composite_output(
+                        self, action, tile, left, right, payload
                     )
-                    lease = self.tiles.join(left_out.output, right_out.output)
-                    self._leases.append(lease)
-                    payload = combine_causal_outputs(
-                        self.scheduler.results,
-                        action,
-                        lease.tile,
-                        left_out,
-                        right_out,
-                        self._wiring(action),
-                        producer_output=producer_output,
-                    )
-                    key = self._composite_key(action, tile, left, right)
-                    if key is not None:
-                        completed = publish_causal_completed(
-                            self.scheduler.results,
-                            key,
-                            payload,
-                        )
-                        payload = result_payload(self.tiles, completed)
-                        if self._application is None:
-                            self._result_leases.append(completed)
-                        else:
-                            self.scheduler._pin_causal(
-                                self._application, key, completed
-                            )
-                        self.ledger.bump("tile_causal_result_evaluations")
-                        self.ledger.bump("tile_temporal_complete_compositions")
                     values.append(payload)
                     continue
                 raise AssertionError(op)

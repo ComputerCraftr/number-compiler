@@ -13,7 +13,10 @@ from number_compiler.arithmetic.functions.finite_function_types import (
     FunctionSignature,
 )
 from number_compiler.arithmetic.functions.finite_port_action import PortVariable
-from number_compiler.hashlife.interfaces.semantic_bits import BitFunctionArena
+from number_compiler.hashlife.interfaces.semantic_bits import (
+    BitFunctionArena,
+    FactoredFunctionID,
+)
 from number_compiler.hashlife.interfaces.tile_reverse_functions import (
     reverse_leaf_components,
 )
@@ -144,12 +147,7 @@ def test_foreign_or_wrong_sort_arguments_are_rejected_before_template_constructi
 
 @pytest.mark.parametrize("allowance", (0, 50))
 def test_budget_refusal_publishes_no_partial_channel_template(allowance: int) -> None:
-    ledger = ResourceLedger()
-    bits = BitFunctionArena(ledger)
-    arena = ReversePrimitiveOutputMorphism(bits)
-    symbol = bits.constant(FunctionSignature((), CHANNEL_SYMBOL), 7)
-    left = bits.constant(FunctionSignature((), LEFT_STATE), 0)
-    right = bits.constant(FunctionSignature((), RIGHT_STATE), 0)
+    ledger, bits, arena, symbol, left, right = _constant_channel_fixture()
     ledger.max_nodes = ledger.nodes + allowance
     with pytest.raises(BlockContextBudgetExceeded):
         arena.pullback_channels(symbol, left, right)
@@ -161,12 +159,7 @@ def test_budget_refusal_publishes_no_partial_channel_template(allowance: int) ->
 
 
 def test_modified_template_is_rejected_and_eviction_rebuilds_it() -> None:
-    ledger = ResourceLedger()
-    bits = BitFunctionArena(ledger)
-    arena = ReversePrimitiveOutputMorphism(bits)
-    symbol = bits.constant(FunctionSignature((), CHANNEL_SYMBOL), 7)
-    left = bits.constant(FunctionSignature((), LEFT_STATE), 0)
-    right = bits.constant(FunctionSignature((), RIGHT_STATE), 0)
+    ledger, bits, arena, symbol, left, right = _constant_channel_fixture()
     expected = arena.pullback_channels(symbol, left, right)
     template = arena._channel_templates[0]
     forged = bits.constant(bits.resolve(template[0]).signature, 0)
@@ -188,3 +181,20 @@ def test_modified_template_is_rejected_and_eviction_rebuilds_it() -> None:
         arena.pullback_channels(symbol, left, right)
     ledger.evict_query_memos()
     assert arena.pullback_channels(symbol, left, right) == expected
+
+
+def _constant_channel_fixture() -> tuple[
+    ResourceLedger,
+    BitFunctionArena,
+    ReversePrimitiveOutputMorphism,
+    FactoredFunctionID,
+    FactoredFunctionID,
+    FactoredFunctionID,
+]:
+    ledger = ResourceLedger()
+    bits = BitFunctionArena(ledger)
+    arena = ReversePrimitiveOutputMorphism(bits)
+    symbol = bits.constant(FunctionSignature((), CHANNEL_SYMBOL), 7)
+    left = bits.constant(FunctionSignature((), LEFT_STATE), 0)
+    right = bits.constant(FunctionSignature((), RIGHT_STATE), 0)
+    return ledger, bits, arena, symbol, left, right

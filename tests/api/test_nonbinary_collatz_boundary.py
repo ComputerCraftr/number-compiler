@@ -6,7 +6,7 @@ from typing import Never
 
 import pytest
 
-from devtools.proofs.lazy_collatz import LazyCollatzApplication
+from devtools.verification.lazy_collatz import LazyCollatzApplication
 from number_compiler.api.number_api import NumberCompiler, PoweredCollatzTermPayload
 from number_compiler.sequences.collatz.block_power import PoweredCollatzTerm
 from tests.support.runtime_limits import deadline

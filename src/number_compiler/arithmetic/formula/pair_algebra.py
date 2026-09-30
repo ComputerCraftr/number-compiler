@@ -74,9 +74,7 @@ def carry_prefix_projection(
     cached = arena.metadata_get(key)
     if isinstance(cached, FormulaPrefixMonoidProjection):
         return cached
-    equal = arena.predicate("EQ", spec.threshold, planes)
-    greater = arena.predicate("GT", spec.threshold, planes)
-    less = arena.not_(arena.or_(equal, greater))
+    less, equal, greater = threshold_plane_views(arena, planes, spec)
     projection = compile_reset_prefix_monoid(arena, less, equal, greater)
     arena.metadata_set(key, projection)
     return projection
@@ -110,6 +108,16 @@ def carry_boundary_at(
         return incoming
     element = projection.state_at(arena, boundary - 1)
     return apply_carry_fn(_CARRY_ELEMENTS[element], incoming)
+
+
+def growth_carry_views(
+    arena: FormulaArena, carry: Expr, width: int
+) -> tuple[Expr, Expr, Expr, Expr]:
+    """Aligned forward and mirrored carry planes for a one-digit growth edge."""
+    resized = arena.resize(carry, width)
+    left = arena.shl(resized, 1)
+    right = arena.resize(arena.mirror(carry), width)
+    return resized, left, right, arena.shl(right, 1)
 
 
 def branch_coefficient_planes(
@@ -151,10 +159,7 @@ def branch_coefficient_planes(
     out_width = width + 1
     cur = tuple(arena.resize(p, out_width) for p in source_planes)
     prev = tuple(arena.shl(p, 1) for p in cur)
-    carry_p = arena.resize(carry, out_width)
-    Li = arena.shl(carry_p, 1)
-    Ri = arena.resize(arena.mirror(carry), out_width)
-    Rim1 = arena.shl(Ri, 1)
+    carry_p, Li, Ri, Rim1 = growth_carry_views(arena, carry, out_width)
     internal = cur + prev + (Li, carry_p, Ri, Rim1)
     edge = cur + (carry_p,)
     interior_mask = arena.range_mask(1, width, out_width)

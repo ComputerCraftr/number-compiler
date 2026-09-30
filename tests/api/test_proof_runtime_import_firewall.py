@@ -28,11 +28,11 @@ for query in queries:
     except UnsupportedInterfaceError as error:
         rejected.append(str(error))
 forbidden = (
-    "devtools.proofs.block_composed",
-    "devtools.proofs.block_runtime",
+    "devtools.verification.block_composed",
+    "devtools.verification.block_runtime",
     "number_compiler.arithmetic.contracts.physical_collatz_kernel",
     "number_compiler.hashlife.execution.diamond_reverse_kernel",
-    "devtools.proofs.extensional_family_application",
+    "devtools.verification.extensional_family_application",
 )
 print(json.dumps({
     "loaded": [name for name in forbidden if name in sys.modules],
@@ -55,10 +55,10 @@ def test_composed_effect_requires_an_explicit_developer_import() -> None:
 import json
 import sys
 import number_compiler
-before = "devtools.proofs.block_runtime" in sys.modules
+before = "devtools.verification.block_runtime" in sys.modules
 root_export = hasattr(number_compiler, "ComposedBlockEffect")
-from devtools.proofs.block_composed import ComposedBlockEffect
-print(json.dumps((before, root_export, ComposedBlockEffect.__name__, "devtools.proofs.block_runtime" in sys.modules)))
+from devtools.verification.block_composed import ComposedBlockEffect
+print(json.dumps((before, root_export, ComposedBlockEffect.__name__, "devtools.verification.block_runtime" in sys.modules)))
 """
     completed = subprocess.run(
         [sys.executable, "-c", program], check=True, capture_output=True, text=True

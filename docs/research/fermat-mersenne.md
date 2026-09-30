@@ -19,33 +19,33 @@ Mersenne zero observer cannot be copied to Fermat's sign-sensitive observer.
 
 The maintained implementation contract is in
 [arithmetic square tiles](../architecture/arithmetic-square-tiles.md).
-[`Special_Factor_Progressions.thy`](../../devtools/proofs/isabelle/etale/Special_Factor_Progressions.thy)
+[`Special_Factor_Progressions.thy`](../../proofs/isabelle/etale/Special_Factor_Progressions.thy)
 proves the prime-factor progression restrictions for admitted Fermat and
 Mersenne candidates. These restrict possible factors; they are not a primality
 decision procedure.
 
-[`Primary_Carry_Jet.thy`](../../devtools/proofs/isabelle/etale/Primary_Carry_Jet.thy)
+[`Primary_Carry_Jet.thy`](../../proofs/isabelle/etale/Primary_Carry_Jet.thy)
 proves mod-16 reduction, recovery/defect inverses, shift composition, and the
 carry-normalization coefficient identity. A carry jet derived from a supplied
 root does not construct that root from the candidate.
 
-[`Transverse_Frobenius_Holonomy.thy`](../../devtools/proofs/isabelle/etale/Transverse_Frobenius_Holonomy.thy)
+[`Transverse_Frobenius_Holonomy.thy`](../../proofs/isabelle/etale/Transverse_Frobenius_Holonomy.thy)
 proves indexed transverse unit criteria and Fermat/Mersenne prime-bit theorems
 under the stated family progression and product construction. It also proves a
 nonunit slot can yield an annihilator or factor. The theorem does not compactly
 compute the indexed product.
 
-[`Special_Frobenius_Defect_Bridge.thy`](../../devtools/proofs/isabelle/etale/Special_Frobenius_Defect_Bridge.thy)
+[`Special_Frobenius_Defect_Bridge.thy`](../../proofs/isabelle/etale/Special_Frobenius_Defect_Bridge.thy)
 connects terminal defects and gcd criteria and proves that a proper terminal gcd
 prints a factor. This is conditional on obtaining the terminal defect.
 
 ## Known invalid shortcuts
 
-[`Runtime_Cylinder_Refinement.thy`](../../devtools/proofs/isabelle/etale/Runtime_Cylinder_Refinement.thy)
+[`Runtime_Cylinder_Refinement.thy`](../../proofs/isabelle/etale/Runtime_Cylinder_Refinement.thy)
 records three explicit boundaries: a zero root does not decide M11, the M11
 Frobenius coordinates need not be roots, and nonzero F5 coefficients need not
 split. The dedicated
-[`Mersenne_Zero_Key_Counterexample.thy`](../../devtools/proofs/isabelle/etale/Mersenne_Zero_Key_Counterexample.thy)
+[`Mersenne_Zero_Key_Counterexample.thy`](../../proofs/isabelle/etale/Mersenne_Zero_Key_Counterexample.thy)
 shows the normalized zero key is not a universal prime/composite classifier.
 These witnesses reject the named shortcut, not the indexed holonomy criterion.
 

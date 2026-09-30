@@ -10,6 +10,15 @@ this compiler.
 
 from __future__ import annotations
 
+from number_compiler.hashlife.interfaces.semantic_bit_transforms import (
+    MACRO_LEFT as _LEFT,
+    MACRO_RIGHT as _RIGHT,
+    primitive_leaf_channels,
+    retag_numeric,
+)
+
+from number_compiler.resources.stores import append_indexed_node
+
 from collections.abc import Callable, MutableMapping, MutableSequence
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING
@@ -59,7 +68,6 @@ from number_compiler.hashlife.interfaces.semantic_bit_transforms import (
 )
 from number_compiler.hashlife.interfaces.semantic_bits import (
     FactoredFunctionID,
-    _Circuit,
 )
 from number_compiler.hashlife.interfaces.semantic_structures import StructureID
 from number_compiler.resources.ledger import ResourceLedger
@@ -81,8 +89,6 @@ SEMANTIC_INTERFACE_CONTRACT = (
     "normalization:preserve-symbols",
     "frame:identity",
 )
-_LEFT = PortVariable(0, 0, "macro-left", 0)
-_RIGHT = PortVariable(0, 1, "macro-right", 0)
 _COORDINATE = PortVariable(0, 0, "macro-coordinate", 0)
 
 
@@ -129,12 +135,15 @@ class SemanticBoundaryArena:
         record = _Boundary(left, right)
         found = self._keys.get(record)
         if found is None:
-            self.ledger.reserve_many(
-                ((self._node_owner, 1, 1), (self._key_owner, 1, 0))
+            found = append_indexed_node(
+                self.ledger,
+                self._nodes,
+                self._keys,
+                self._node_owner,
+                self._key_owner,
+                record,
+                record,
             )
-            found = len(self._nodes)
-            self._nodes.append(record)
-            self._keys[record] = found
         return SemanticBoundaryID(self.owner, self._KIND, found)
 
     def resolve(self, reference: ArenaHandle) -> _Boundary:
@@ -210,12 +219,15 @@ class SemanticCoordinateOutputArena:
         pending = _OutputRecord(interface, source, semantic_key)
         found = self._keys.get(pending)
         if found is None:
-            self.ledger.reserve_many(
-                ((self._node_owner, 1, 1), (self._key_owner, 1, 0))
+            found = append_indexed_node(
+                self.ledger,
+                self._nodes,
+                self._keys,
+                self._node_owner,
+                self._key_owner,
+                pending,
+                pending,
             )
-            found = len(self._nodes)
-            self._nodes.append(pending)
-            self._keys[pending] = found
             self.ledger.bump("output_morphism_nodes")
         return CoordinateOutputMorphismID(self.owner, self._KIND, found)
 
@@ -380,7 +392,7 @@ class SemanticLocalInterfaceCompiler:
         if type(channel) is not str or channel not in COMPONENT_ROLES:
             raise ValueError("unknown complete semantic channel")
         record = self.quotients.resolve(interface)
-        declared = self.quotients.interface(record.signature)
+        self.quotients.interface(record.signature)
         if source is None:
             source = self._default_sources.get(interface)
         if channel in (
@@ -413,20 +425,7 @@ class SemanticLocalInterfaceCompiler:
             )
             self._geometry_last = (key, result)
             return result
-        values = {_LEFT: left, _RIGHT: right}
-        for port in declared.inputs:
-            value = values.get(port.variable)
-            if type(value) is not int or not 0 <= value < port.cardinality:
-                raise ValueError("semantic observation lies outside its port")
-        reference = record.components.functions()[COMPONENT_ROLES.index(channel)]
-        if type(reference) is not StructureID:
-            raise ValueError("semantic channel is not a factored structure")
-        function = self.structures.resolve(reference).atom
-        if function is None:
-            raise ValueError("semantic channel is not scalar")
-        evaluated = self.bits.evaluate(function, values)
-        if evaluated is None:
-            raise ValueError("semantic observation is inadmissible")
+        evaluated = self._finite_observe(interface, channel, left, right)
         self.ledger.bump("local_interface_observations")
         return evaluated
 
@@ -585,18 +584,12 @@ class SemanticLocalInterfaceCompiler:
     def _retag(
         self, function: FactoredFunctionID, output: AtomSort
     ) -> FactoredFunctionID:
-        node = self.bits.resolve(function)
-        circuit = _Circuit(self.quotients.functions, node.signature.inputs)
-        roots, valid = circuit.imported(node)
-        width = (output.cardinality - 1).bit_length()
-        if len(roots) > width:
-            raise ValueError("semantic numeric conversion would discard bits")
-        pending = circuit.normalized(
-            FunctionSignature(node.signature.inputs, output),
-            roots + (circuit.zero,) * (width - len(roots)),
-            valid,
+        return retag_numeric(
+            self.bits,
+            function,
+            output,
+            "semantic numeric conversion would discard bits",
         )
-        return self.bits._publish(circuit, (pending,))[0]
 
     def _offset(
         self, function: FactoredFunctionID, offset: int, output: AtomSort
@@ -626,17 +619,8 @@ class SemanticLocalInterfaceCompiler:
         self, laws: PrimitiveSemantics, symbol: int
     ) -> tuple[tuple[FactoredFunctionID, ...], int]:
         ports = self._ports(laws)
-        left = self._variable(ports, _LEFT, laws.left_sort)
-        right = self._variable(ports, _RIGHT, laws.right_sort)
-        source = self._constant(ports, laws.symbol_sort, symbol)
-        replacement = {
-            laws.ports[0].variable: left,
-            laws.ports[1].variable: source,
-            laws.ports[2].variable: right,
-        }
-        advance_left, advance_right, output = (
-            self.bits.substitute(self.bits.from_scalar(function), replacement)
-            for function in (laws.advance_left, laws.advance_right, laws.emit)
+        advance_left, advance_right, output = primitive_leaf_channels(
+            self.bits, laws, ports, symbol
         )
         active = self._nonblank(output, laws.blank)
         original_extent = int(symbol != laws.blank)

@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from tests.support.assertions import assert_rejected_atomically
+
 from dataclasses import replace
 from typing import TYPE_CHECKING, Never
 
@@ -65,10 +67,9 @@ def assert_rejected(
     runtime: DiamondRuntime,
     request: Task,
 ) -> None:
-    before = runtime.ledger.snapshot()
-    with pytest.raises((TypeError, ValueError)):
-        runtime.execute(request)
-    assert runtime.ledger.snapshot() == before
+    before = assert_rejected_atomically(
+        runtime.ledger, lambda: runtime.execute(request), (TypeError, ValueError)
+    )
     with pytest.raises((TypeError, ValueError)):
         runtime._probe(request)
     assert runtime.ledger.snapshot() == before
@@ -197,7 +198,6 @@ def test_oversized_primitive_alphabets_reject_before_admission_work(
 ) -> None:
     arena = DiamondKernelArena()
     arena.intern(CollatzPhysicalBlockEffect())
-    before = arena.ledger.snapshot()
-    with pytest.raises(ValueError, match="64-bit"):
-        arena.intern(effect)
-    assert arena.ledger.snapshot() == before
+    assert_rejected_atomically(
+        arena.ledger, lambda: arena.intern(effect), ValueError, match="64-bit"
+    )

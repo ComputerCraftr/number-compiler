@@ -8,7 +8,7 @@ import pytest
 from devtools.checks.installed_distribution import validate_wheel_contents
 
 
-@pytest.mark.parametrize("fault", ["extra", "missing", "stale", "none"])
+@pytest.mark.parametrize("fault", ["extra", "missing", "stale", "proofs", "none"])
 def test_wheel_rejects_obsolete_build_products(tmp_path: Path, fault: str) -> None:
     source = tmp_path / "src"
     package = source / "number_compiler"
@@ -23,6 +23,10 @@ def test_wheel_rejects_obsolete_build_products(tmp_path: Path, fault: str) -> No
         )
         if fault != "missing":
             archive.writestr("number_compiler/py.typed", "")
+        if fault == "proofs":
+            archive.writestr(
+                "proofs/isabelle/Test.thy", "theory Test imports Main begin end"
+            )
         if fault == "extra":
             archive.writestr("number_compiler/obsolete.py", "")
     if fault == "none":

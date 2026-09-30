@@ -48,6 +48,7 @@ from number_compiler.sequences.power_numbers.numbers import (
     mersenne_composite_exponent_factor,
     mersenne_number,
 )
+from number_compiler.sequences.power_numbers.etale_factor import _quadratic_mul_pair
 
 
 @dataclass(frozen=True, slots=True)
@@ -597,9 +598,7 @@ def _quadratic_pair_mul(
     d: int,
     modulus: int,
 ) -> tuple[int, int]:
-    a, b = left
-    c, e = right
-    return ((a * c + b * e * d) % modulus, (a * e + b * c) % modulus)
+    return _quadratic_mul_pair(left, right, d, modulus)
 
 
 def mersenne_cayley_lucas_quotient(exponent: int) -> MersenneCayleyLucasQuotientAudit:
@@ -806,7 +805,7 @@ def existing_squaring_morphism_reuse_audit(
     enabled in research tests to compare against the direct Lucas recurrence,
     but that validation result is never used to fill ``semantic_source_code``.
     """
-    from devtools.proofs.special_power_monoid import (
+    from devtools.verification.special_power_monoid import (
         build_special_power_program,
     )
     from number_compiler.arithmetic.functions.finite_unary import (

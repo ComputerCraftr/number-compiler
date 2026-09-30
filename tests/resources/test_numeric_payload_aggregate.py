@@ -9,7 +9,7 @@ from typing import cast
 
 import pytest
 
-from devtools.proofs.lazy_collatz import (
+from devtools.verification.lazy_collatz import (
     CarryRangeSummary,
     CarryRangeTransfer,
     Mul3Carry,
@@ -160,7 +160,7 @@ def test_a_suspended_generator_cannot_hold_an_untyped_four_limb_tail() -> None:
 
 
 def test_transient_collatz_cut_contains_valid_machine_ports_not_numeric_words() -> None:
-    from devtools.proofs.lazy_collatz import (
+    from devtools.verification.lazy_collatz import (
         CollatzLazyView,
         LazyCollatzApplication,
         _ShiftPort,

@@ -6,6 +6,8 @@ primitive input tuples nor construct or publish replacement semantic functions.
 
 from __future__ import annotations
 
+from number_compiler.resources.semantic_declaration_payload import cofactor_cube
+
 from typing import TYPE_CHECKING
 
 from number_compiler.arithmetic.functions.finite_function_types import (
@@ -249,17 +251,7 @@ def _agreement(
                 else identity
                 for identity in source
             )
-            new_bounds = bounds
-            base = PortVariable(variable.time, variable.side, variable.role, 0)
-            if base in positions:
-                index = positions[base]
-                low, remaining = bounds[index]
-                mask = 1 << variable.bit
-                new_bounds = (
-                    bounds[:index]
-                    + ((low | mask if high else low, remaining & ~mask),)
-                    + bounds[index + 1 :]
-                )
+            new_bounds = cofactor_cube(bounds, positions, variable, high)
             pending.append(
                 (
                     new_source,

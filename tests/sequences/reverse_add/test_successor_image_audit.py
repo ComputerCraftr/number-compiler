@@ -2,7 +2,7 @@
 
 from dataclasses import fields
 
-from devtools.proofs.reverse_successor_image_audit import (
+from devtools.verification.reverse_successor_image_audit import (
     ReverseSuccessorImageID,
     canonical_successor_image,
     occurrence_image_key,

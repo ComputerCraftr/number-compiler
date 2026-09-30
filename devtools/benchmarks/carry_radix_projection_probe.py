@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from devtools.paths import report_directory
+
 import json
 
 from devtools.benchmarks.json_support import jsonable
@@ -19,7 +21,7 @@ def _pct(numerator: int, denominator: int) -> str:
 
 
 def write_results(metrics: CarryRadixMetrics) -> None:
-    outdir = ROOT / "results"
+    outdir = report_directory("devtools.benchmarks.carry_radix_projection_probe")
     outdir.mkdir(exist_ok=True)
     payload = jsonable(metrics)
     (outdir / "carry_radix_projection_metrics.json").write_text(

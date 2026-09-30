@@ -291,13 +291,8 @@ def test_reverse_run_comparison_matches_bounded_integer_reference(
 
 
 def test_most_significant_mismatch_does_not_exhaust_reverse_run_tail() -> None:
-    from number_compiler.arithmetic.automata.program_word import from_runs
 
-    word = from_runs(((97, 1), (1, 1), (3, 1)))
-    lowest = word
-    while lowest.left is not None:
-        lowest = lowest.left
-    original = lowest.symbol
+    word, lowest, original = _word_with_low_tail()
     object.__setattr__(lowest, "symbol", None)
     try:
         # Both operands have three radix-4 digits, and 3 > 2 at the most
@@ -339,14 +334,9 @@ def test_long_common_prefix_uses_balanced_block_work() -> None:
 
 
 def test_reverse_block_failure_releases_admission_frontier() -> None:
-    from number_compiler.arithmetic.automata.program_word import from_runs
     from number_compiler.resources.ledger import ResourceLedger
 
-    word = from_runs(((97, 1), (1, 1), (3, 1)))
-    lowest = word
-    while lowest.left is not None:
-        lowest = lowest.left
-    original = lowest.symbol
+    word, lowest, original = _word_with_low_tail()
     ledger = ResourceLedger()
     frontier_owner = ledger.register("test-failing-frontier", "runtime_query_workspace")
     frontier: LedgerList[tuple[CanonicalWord, int, int]] = ledger.make_list(
@@ -406,3 +396,14 @@ def test_publisher_preserves_exact_intermediate_digit_budget() -> None:
                         )
                         == published.discovery_digit_work
                     )
+
+
+def _word_with_low_tail() -> tuple[CanonicalWord, CanonicalWord, int | None]:
+    from number_compiler.arithmetic.automata.program_word import from_runs
+
+    word = from_runs(((97, 1), (1, 1), (3, 1)))
+    lowest = word
+    while lowest.left is not None:
+        lowest = lowest.left
+    original = lowest.symbol
+    return word, lowest, original

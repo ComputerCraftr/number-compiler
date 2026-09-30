@@ -8,13 +8,13 @@ from typing import TYPE_CHECKING, cast, get_type_hints
 
 import pytest
 
-import devtools.proofs.lazy_collatz as collatz
-import devtools.proofs.lazy_collatz_range as collatz_range
-import devtools.proofs.lazy_reverse as reverse
+import devtools.verification.lazy_collatz as collatz
+import devtools.verification.lazy_collatz_range as collatz_range
+import devtools.verification.lazy_reverse as reverse
 import number_compiler.arithmetic.contracts.block_kernel as base
 import number_compiler.arithmetic.functions.finite_port_action as finite
 import number_compiler.projection.digit_terminal as digit
-from devtools.proofs.carry_interval_effects import (
+from devtools.verification.carry_interval_effects import (
     CarryIntervalCompositionKey,
     CarryIntervalEffect,
 )
@@ -58,7 +58,7 @@ from number_compiler.resources.stores import LedgerList
 from tests.support.dataclass_records import replace_record
 
 if TYPE_CHECKING:
-    from devtools.proofs.lazy_collatz import (
+    from devtools.verification.lazy_collatz import (
         CarryRangeSummary,
         CarryRangeTransfer,
         CollatzLazyView,
@@ -70,14 +70,14 @@ if TYPE_CHECKING:
         _SourceRangeKey,
         _SummaryKey,
     )
-    from devtools.proofs.lazy_collatz_range import (
+    from devtools.verification.lazy_collatz_range import (
         CollatzRangeEffect,
         _CompositionKey,
         _RangeKey,
         _Request,
         _SourceTileKey,
     )
-    from devtools.proofs.lazy_reverse import (
+    from devtools.verification.lazy_reverse import (
         OffsetProgram,
         ReverseProgram,
         ReverseRangeKey,

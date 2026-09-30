@@ -2,12 +2,13 @@
 
 from __future__ import annotations
 
-from collections.abc import Mapping
+from collections.abc import Callable, Mapping
 
 from number_compiler.arithmetic.functions.finite_function_types import (
     BOOL,
     AtomSort,
     FunctionSignature,
+    FinitePort,
     _union_inputs,
 )
 from number_compiler.arithmetic.functions.finite_port_action import PortVariable
@@ -17,6 +18,7 @@ from number_compiler.hashlife.interfaces.boolean_composition import (
 from number_compiler.hashlife.interfaces.semantic_bits import (
     BitFunctionArena,
     FactoredFunctionID,
+    FactoredFunction,
     _Circuit,
     substitute_boolean,
 )
@@ -91,24 +93,7 @@ def substitute_many(
     source_inputs = originals[0].signature.inputs
     if any(node.signature.inputs != source_inputs for node in originals[1:]):
         raise ValueError("batch substitution requires one complete input interface")
-    admitted = {port.variable: port for port in source_inputs}
-    items = []
-    references = []
-    for variable, reference in replacements.items():
-        if type(variable) is not PortVariable:
-            raise ValueError("substitution needs typed finite port names")
-        PortVariable.__post_init__(variable)
-        port = admitted.get(variable)
-        replacement = arena.resolve(reference)
-        if (
-            port is None
-            or type(replacement.signature.output) is not AtomSort
-            or replacement.signature.output.cardinality != port.cardinality
-        ):
-            raise ValueError("substitution changes a finite input domain")
-        items.append((port, replacement))
-        references.append((variable, reference))
-    items.sort(key=lambda item: item[0].variable)
+    items, references = admitted_replacements(arena, source_inputs, replacements)
     if not items:
         return functions
     from number_compiler.hashlife.interfaces.semantic_bits import BitSubstitutionKey
@@ -142,24 +127,9 @@ def substitute_many(
     )
     circuit = _Circuit(arena.functions, inputs)
     try:
-        mapping: dict[PortVariable, int] = {}
-        replacement_valid = circuit.admitted()
-        for port, value in items:
-            bits, valid = circuit.imported(value)
-            replacement_valid = circuit.conjunction(replacement_valid, valid)
-            for bit, root in enumerate(bits):
-                mapping[
-                    PortVariable(
-                        port.variable.time,
-                        port.variable.side,
-                        port.variable.role,
-                        bit,
-                    )
-                ] = root
-        fused = joint and any(
-            len(circuit.tx.node(value).support) > 1 for value in mapping.values()
+        mapping, replacement_valid, transform = substitution_environment(
+            circuit, items, joint
         )
-        transform = substitute_boolean_fused if fused else substitute_boolean
         pending = []
         for index in missing:
             original = originals[index]
@@ -231,3 +201,64 @@ def restrict_many(
 
 
 __all__ = ["restrict_many", "substitute_many"]
+
+
+def admitted_replacements(
+    arena: BitFunctionArena,
+    source_inputs: tuple[FinitePort, ...],
+    replacements: Mapping[PortVariable, FactoredFunctionID],
+) -> tuple[
+    list[tuple[FinitePort, FactoredFunction]],
+    list[tuple[PortVariable, FactoredFunctionID]],
+]:
+    """Validate the same complete finite domain for scalar and batch substitution."""
+    admitted = {port.variable: port for port in source_inputs}
+    items = []
+    references = []
+    for variable, reference in replacements.items():
+        if type(variable) is not PortVariable:
+            raise ValueError("substitution needs typed finite port names")
+        PortVariable.__post_init__(variable)
+        port = admitted.get(variable)
+        replacement = arena.resolve(reference)
+        if (
+            port is None
+            or type(replacement.signature.output) is not AtomSort
+            or replacement.signature.output.cardinality != port.cardinality
+        ):
+            raise ValueError("substitution changes a finite input domain")
+        items.append((port, replacement))
+        references.append((variable, reference))
+    items.sort(key=lambda item: item[0].variable)
+    return items, references
+
+
+def substitution_environment(
+    circuit: _Circuit,
+    items: list[tuple[FinitePort, FactoredFunction]],
+    joint: bool,
+) -> tuple[
+    dict[PortVariable, int],
+    int,
+    Callable[[_Circuit, int, Mapping[PortVariable, int]], int],
+]:
+    """Import one correlated argument environment and select its cofactor engine."""
+    mapping: dict[PortVariable, int] = {}
+    replacement_valid = circuit.admitted()
+    for port, value in items:
+        bits, valid = circuit.imported(value)
+        replacement_valid = circuit.conjunction(replacement_valid, valid)
+        for bit, root in enumerate(bits):
+            mapping[
+                PortVariable(
+                    port.variable.time,
+                    port.variable.side,
+                    port.variable.role,
+                    bit,
+                )
+            ] = root
+    fused = joint and any(
+        len(circuit.tx.node(value).support) > 1 for value in mapping.values()
+    )
+    transform = substitute_boolean_fused if fused else substitute_boolean
+    return mapping, replacement_valid, transform

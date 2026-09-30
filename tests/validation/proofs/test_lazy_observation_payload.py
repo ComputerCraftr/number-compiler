@@ -6,14 +6,14 @@ from typing import TYPE_CHECKING
 
 import pytest
 
-from devtools.proofs.lazy_collatz import (
+from devtools.verification.lazy_collatz import (
     CarryRangeSummary,
     CarryRangeTransfer,
     CollatzLazyView,
     LazyCollatzApplication,
     _SummaryKey,
 )
-from devtools.proofs.lazy_collatz_range import _RangeKey
+from devtools.verification.lazy_collatz_range import _RangeKey
 from number_compiler.arithmetic.contracts.scoped_handles import (
     ActionProgramID,
     ArenaToken,

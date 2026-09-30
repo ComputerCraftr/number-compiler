@@ -2,6 +2,10 @@
 
 from __future__ import annotations
 
+from tests.support.arithmetic_fixtures import nonblank_demand
+
+from tests.support.assertions import assert_rejected_atomically
+
 from itertools import product
 from typing import TYPE_CHECKING, Literal, cast
 
@@ -16,7 +20,6 @@ from number_compiler.hashlife.execution.diamond_primitive_demand import (
 )
 from number_compiler.hashlife.interfaces.diamond_kernel import DiamondKernelArena
 from number_compiler.hashlife.observation.diamond_observers import NonblankBlockEffect
-from number_compiler.resources.ledger import ResourceLedger
 from number_compiler.sequences.collatz.block_power import CollatzPhysicalBlockEffect
 
 if TYPE_CHECKING:
@@ -139,22 +142,20 @@ def test_foreign_domains_and_malformed_warm_patterns_do_not_mutate_ledger() -> N
         (handle, "emit", 0, (0, None)),
     )
     for kernel, operation, side, values in bad:
-        before = kernels.ledger.snapshot()
-        with pytest.raises((ValueError, TypeError)):
-            demand.constant(
+        assert_rejected_atomically(
+            kernels.ledger,
+            lambda: demand.constant(
                 kernel,
                 cast("Literal['advance', 'emit']", operation),
                 side,
                 cast("tuple[int | None, ...]", values),
-            )
-        assert kernels.ledger.snapshot() == before
+            ),
+            (ValueError, TypeError),
+        )
 
 
 def test_eviction_recomputes_the_universal_certificate() -> None:
-    ledger = ResourceLedger()
-    kernels = DiamondKernelArena(ledger)
-    handle = kernels.intern(NonblankBlockEffect(2, 2))
-    demand = PrimitiveDemandOracle(kernels)
+    ledger, kernels, handle, demand = nonblank_demand()
     assert demand.constant(handle, "advance", 0, (1, None)) == 1
     before = ledger.counters["primitive_demand_completion_tests"]
     ledger.evict_query_memos()

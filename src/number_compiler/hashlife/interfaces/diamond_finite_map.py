@@ -2,6 +2,10 @@
 
 from __future__ import annotations
 
+from number_compiler.hashlife.interfaces.diamond_kernel_bridge import (
+    evaluate_primitive_bits,
+)
+
 from typing import TYPE_CHECKING
 
 from number_compiler.arithmetic.contracts.block_effect import BoundarySide
@@ -74,16 +78,10 @@ def admit_map(
     constant, identity, invalid = True, source == target, False
     reads = 0
     for code in range(1 << width):
-        output = 0
-        for bit_number, bit in enumerate(expression.bits):
-            index = bit.local_id
-            while index >= 2:
-                decision = functions._nodes[index]
-                assert decision.variable is not None
-                bit_index = width - 1 - (decision.variable.bit - port.bit)
-                index = decision.high if code & (1 << bit_index) else decision.low
-                reads += 1
-            output |= index << bit_number
+        output, decision_reads = evaluate_primitive_bits(
+            kernels, expression, code, width, port
+        )
+        reads += decision_reads
         if code >= domain:
             invalid |= output != 0
             continue

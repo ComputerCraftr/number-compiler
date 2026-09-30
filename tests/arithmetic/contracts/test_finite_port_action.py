@@ -1,5 +1,9 @@
 from __future__ import annotations
 
+from tests.support.finite_port_fixtures import binary_carry_ports
+
+from tests.support.assertions import assert_rejected_atomically
+
 from itertools import product
 from typing import Literal, Never, cast
 
@@ -64,9 +68,7 @@ def test_finite_port_rejects_subclass_and_scalar_aliases_before_work(
 
 
 def test_shannon_reduction_and_simultaneous_substitution_are_canonical() -> None:
-    arena = FinitePortActionArena()
-    xvar, yvar = PortVariable(0, 0, "carry", 0), PortVariable(1, 0, "carry", 0)
-    x, y = arena.variable(xvar), arena.variable(yvar)
+    arena, xvar, yvar, x, y = binary_carry_ports()
     zero = arena.constant(False)
     xy = arena.choose(x, y, zero)
     assert xy == arena.choose(y, x, zero)
@@ -101,9 +103,7 @@ def test_twenty_row_cut_stays_factored_and_never_enumerates_joint_states() -> No
 
 
 def test_query_eviction_preserves_canonical_handles_and_live_inventory() -> None:
-    arena = FinitePortActionArena()
-    xvar, yvar = PortVariable(0, 0, "carry", 0), PortVariable(1, 0, "carry", 0)
-    x, y = arena.variable(xvar), arena.variable(yvar)
+    arena, xvar, yvar, x, y = binary_carry_ports()
     first = arena.choose(x, y, arena.constant(False))
     assert len(arena._ite) > 0
     count = arena.node_count
@@ -184,16 +184,17 @@ def test_constant_substitution_prunes_unreachable_function_before_visiting(
     assert counters["finite_port_substitution_constant_prunes"] == 1
     assert arena.ledger.entries == before.entries
     other = FinitePortActionArena()
-    frozen = arena.ledger.snapshot()
-    with pytest.raises(ValueError):
-        arena.substitute(
+    assert_rejected_atomically(
+        arena.ledger,
+        lambda: arena.substitute(
             root,
             {
                 port: arena.constant(False),
                 PortVariable(2, 0, "unused", 0): other.constant(False),
             },
-        )
-    assert arena.ledger.snapshot() == frozen
+        ),
+        ValueError,
+    )
 
 
 def test_decision_interner_metrics_separate_existing_keys_identity_and_publication() -> (
@@ -228,10 +229,11 @@ def test_decision_interner_metrics_separate_existing_keys_identity_and_publicati
         after.counters["finite_decision_published_nodes"]
         == before.counters["finite_decision_published_nodes"]
     )
-    frozen = arena.ledger.snapshot()
-    with pytest.raises(ValueError):
-        arena._intern(PortVariable(0, 0, "carry", 1), -1, 0)
-    assert arena.ledger.snapshot() == frozen
+    assert_rejected_atomically(
+        arena.ledger,
+        lambda: arena._intern(PortVariable(0, 0, "carry", 1), -1, 0),
+        ValueError,
+    )
 
 
 def test_private_node_interner_probes_integer_ids_without_handle_allocation(
@@ -264,10 +266,9 @@ def test_private_node_interner_revalidates_forged_port_coordinates(
     arena = FinitePortActionArena()
     port = PortVariable(0, 0, "validated-port", 0)
     object.__setattr__(port, field, value)
-    before = arena.ledger.snapshot()
-    with pytest.raises(ValueError):
-        arena._intern(port, 0, 1)
-    assert arena.ledger.snapshot() == before
+    assert_rejected_atomically(
+        arena.ledger, lambda: arena._intern(port, 0, 1), ValueError
+    )
 
 
 def test_choice_subproblems_use_only_private_integer_identities(

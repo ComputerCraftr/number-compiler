@@ -12,6 +12,12 @@ from collections.abc import Hashable, Sequence
 from dataclasses import dataclass
 
 
+def canonical_partition(signatures: tuple[object, ...]) -> tuple[int, ...]:
+    ordered = sorted(set(signatures), key=repr)
+    identities = {signature: index for index, signature in enumerate(ordered)}
+    return tuple(identities[signature] for signature in signatures)
+
+
 def partition_equivalent(first: Sequence[Hashable], second: Sequence[Hashable]) -> bool:
     """Test equality of partitions in linear time, independent of label names."""
     if len(first) != len(second):

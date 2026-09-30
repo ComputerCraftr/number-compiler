@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from tests.support.finite_port_fixtures import three_input_ports
+
 from itertools import product
 from typing import TYPE_CHECKING, Never
 
@@ -51,9 +53,7 @@ def test_every_two_variable_function_and_simultaneous_replacement() -> None:
 def test_effective_mapping_canonical_before_warm_lookup(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    arena = FinitePortActionArena()
-    px, py, pz = (PortVariable(0, 0, "input", bit) for bit in range(3))
-    x, y, z = (arena.variable(port) for port in (px, py, pz))
+    arena, (px, py, pz), (x, y, z) = three_input_ports()
     function = arena.choose(x, y, arena.constant(False))
     result = arena.substitute(function, {px: z})
     before = arena.ledger.snapshot()
@@ -95,9 +95,7 @@ def test_effective_mapping_canonical_before_warm_lookup(
 
 
 def test_atomic_final_graph_publication_and_exhausted_fast_rejection() -> None:
-    arena = FinitePortActionArena()
-    px, py, pz = (PortVariable(0, 0, "input", bit) for bit in range(3))
-    x, y, z = (arena.variable(port) for port in (px, py, pz))
+    arena, (px, py, pz), (x, y, z) = three_input_ports()
     function = arena.choose(x, y, arena.constant(False))
     old = arena.ledger.snapshot()
     arena.ledger.max_cache_entries = (

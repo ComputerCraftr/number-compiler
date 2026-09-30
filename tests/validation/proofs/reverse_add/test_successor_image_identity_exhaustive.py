@@ -2,7 +2,7 @@
 
 import pytest
 
-from devtools.proofs.reverse_successor_image_audit import audit_width
+from devtools.verification.reverse_successor_image_audit import audit_width
 
 
 @pytest.mark.parametrize(

@@ -7,9 +7,11 @@ independent of the represented digit width.
 
 from __future__ import annotations
 
-from collections.abc import Callable, Sequence
+from collections import deque
+from collections.abc import MutableMapping, Callable, Sequence
 from dataclasses import dataclass, field
 from typing import (
+    Literal,
     TYPE_CHECKING,
     Generic,
     TypeVar,
@@ -30,11 +32,99 @@ if TYPE_CHECKING:
 
 
 _MetricsT = TypeVar("_MetricsT")
+_StateT = TypeVar("_StateT")
+
+
+def _intern_dfa_state(
+    data: _StateT, states: list[_StateT], identifiers: dict[_StateT, int]
+) -> int:
+    previous = identifiers.get(data)
+    if previous is not None:
+        return previous
+    identifier = len(states)
+    identifiers[data] = identifier
+    states.append(data)
+    return identifier
+
+
+def dfa_word(
+    step: Callable[[int, int], int | None],
+    state: int,
+    word: Sequence[int],
+    *,
+    right: bool = False,
+) -> int | None:
+    symbols = reversed(tuple(word)) if right else word
+    current = int(state)
+    for symbol in symbols:
+        successor = step(current, int(symbol))
+        if successor is None:
+            return None
+        current = successor
+    return current
 
 
 def _lab(s: int, base: int) -> int:
     t = base - 1
     return R0 if s < t else (I if s == t else R1)
+
+
+def pair_half_coefficient(
+    parity: int,
+    first_pre: int,
+    last_pre: int,
+    prev: int,
+    seen_value: int,
+    center: int,
+    first_excl: int,
+    a: int,
+    b: int,
+) -> int | None:
+    """Canonical bounded coefficient law for one paired bimachine context."""
+    m = _lab(a, b)
+    last_after = m if m != I else last_pre
+    first_all = first_excl if first_excl != I else (center if seen_value else I)
+    glob = first_pre if first_pre != I else (m if m != I else first_all)
+    growth = int(glob == R1)
+    li = _carry(last_pre)
+    li1 = _carry(last_after)
+    if parity == 0:
+        rip1_lab = first_all if first_all != I else last_after
+        ri_lab = m if m != I else (first_all if first_all != I else last_pre)
+    else:
+        if first_excl != I:
+            rip1_lab = first_excl
+        elif seen_value:
+            rip1_lab = center if center != I else last_after
+        else:
+            rip1_lab = last_pre
+        if m != I:
+            ri_lab = m
+        elif first_excl != I:
+            ri_lab = first_excl
+        elif seen_value and center != I:
+            ri_lab = center
+        else:
+            ri_lab = last_pre
+    ri = _carry(ri_lab)
+    rip1 = _carry(rip1_lab)
+    if not growth:
+        y = 2 * a + li + rip1 - b * (li1 + ri)
+    elif prev == -1:
+        y = a + 1 - b * li1
+    else:
+        rim1 = 0 if prev < b - 1 else (ri if prev == b - 1 else 1)
+        y = a + prev + li + ri - b * (li1 + rim1)
+    return y if 0 <= y <= 2 * (b - 1) else None
+
+
+def pair_left_context(
+    parity: int, first: int, last: int, symbol: int, base: int
+) -> tuple[str, int, int, int, int]:
+    label = _lab(symbol, base)
+    leading = first if first != I else label
+    trailing = label if label != I else last
+    return "V", parity, leading, trailing, symbol
 
 
 def _carry(m: int) -> int:
@@ -61,14 +151,40 @@ class DFA:
         return self.trans.get((int(state), int(symbol)))
 
     def word(self, state: int, word: Sequence[int]) -> int | None:
-        seq = reversed(tuple(word)) if self.right else word
-        q = int(state)
-        for symbol in seq:
-            next_q = self.step(q, int(symbol))
-            if next_q is None:
-                return None
-            q = next_q
-        return q
+        return dfa_word(self.step, state, word, right=self.right)
+
+
+def bimachine_output(
+    word: Sequence[int],
+    left_start: int,
+    left_step: Callable[[int, int], int | None],
+    right_start: int,
+    right_step: Callable[[int, int], int | None],
+    emit: Callable[[int, int, int], tuple[int, ...] | None],
+) -> tuple[int, ...]:
+    """Evaluate canonical left/right context paths and emitted symbols once."""
+    w = tuple(map(int, word))
+    n = len(w)
+    left = [left_start]
+    for symbol in w:
+        q = left_step(left[-1], symbol)
+        if q is None:
+            raise ValueError(("left reject", left[-1], symbol))
+        left.append(q)
+    right = [0] * (n + 1)
+    right[n] = right_start
+    for i in range(n - 1, -1, -1):
+        q = right_step(right[i + 1], w[i])
+        if q is None:
+            raise ValueError(("right reject", right[i + 1], w[i]))
+        right[i] = q
+    out: list[int] = []
+    for i, symbol in enumerate(w):
+        z = emit(left[i], symbol, right[i + 1])
+        if z is None:
+            raise ValueError(("undefined output", left[i], symbol, right[i + 1]))
+        out.extend(z)
+    return tuple(out)
 
 
 @dataclass(slots=True)
@@ -123,28 +239,14 @@ class LazyBimachine:
         return len(self._cache)
 
     def output(self, word: Sequence[int]) -> tuple[int, ...]:
-        w = tuple(map(int, word))
-        n = len(w)
-        left = [self.left.start]
-        for symbol in w:
-            q = self.left.step(left[-1], symbol)
-            if q is None:
-                raise ValueError(("left reject", left[-1], symbol))
-            left.append(q)
-        right = [0] * (n + 1)
-        right[n] = self.right.start
-        for i in range(n - 1, -1, -1):
-            q = self.right.step(right[i + 1], w[i])
-            if q is None:
-                raise ValueError(("right reject", right[i + 1], w[i]))
-            right[i] = q
-        out: list[int] = []
-        for i, symbol in enumerate(w):
-            z = self.emit(left[i], symbol, right[i + 1])
-            if z is None:
-                raise ValueError(("undefined output", left[i], symbol, right[i + 1]))
-            out.extend(z)
-        return tuple(out)
+        return bimachine_output(
+            word,
+            self.left.start,
+            self.left.step,
+            self.right.start,
+            self.right.step,
+            self.emit,
+        )
 
 
 @dataclass(slots=True)
@@ -175,13 +277,7 @@ class _BimachineBuilder:
         lt: dict[tuple[int, int], int] = {}
 
         def L(data: tuple[str, int, int, int, int]) -> int:
-            old = lid.get(data)
-            if old is not None:
-                return old
-            q = len(ldata)
-            lid[data] = q
-            ldata.append(data)
-            return q
+            return _intern_dfa_state(data, ldata, lid)
 
         start_l = L(("S", 0, 0, 0, 0))
         done_l = L(("D", 0, 0, 0, 0))
@@ -194,17 +290,11 @@ class _BimachineBuilder:
             seen.add(q)
             data = ldata[q]
             if data[0] == "S":
-                for parity, tag in ((0, p0), (1, p1)):
-                    z = L(("V", parity, I, I, -1))
-                    lt[q, tag] = z
-                    todo.append(z)
+                enqueue_pair_parity_transitions(L, lt, todo, q, p0, p1)
             elif data[0] == "V":
                 _, parity, first, last, _prev = data
                 for s in vals:
-                    m = _lab(s, b)
-                    nf = first if first != I else m
-                    nl = m if m != I else last
-                    z = L(("V", parity, nf, nl, s))
+                    z = L(pair_left_context(parity, first, last, s, b))
                     lt[q, s] = z
                     todo.append(z)
                 lt[q, end] = done_l
@@ -215,13 +305,7 @@ class _BimachineBuilder:
         rt: dict[tuple[int, int], int] = {}
 
         def R(data: tuple[str, int, int, int]) -> int:
-            old = rid.get(data)
-            if old is not None:
-                return old
-            q = len(rdata)
-            rid[data] = q
-            rdata.append(data)
-            return q
+            return _intern_dfa_state(data, rdata, rid)
 
         start_r = R(("S", 0, 0, 0))
         after = R(("A", 0, I, I))
@@ -260,45 +344,18 @@ class _BimachineBuilder:
             if ld[0] == "V" and a in vals and rd[0] == "A":
                 _, parity, first_pre, last_pre, prev = ld
                 _, seen_value, center, first_excl = rd
-                m = _lab(a, b)
-                last_after = m if m != I else last_pre
-                first_all = (
-                    first_excl if first_excl != I else (center if seen_value else I)
+                output = pair_half_coefficient(
+                    parity,
+                    first_pre,
+                    last_pre,
+                    prev,
+                    seen_value,
+                    center,
+                    first_excl,
+                    a,
+                    b,
                 )
-                glob = first_pre if first_pre != I else (m if m != I else first_all)
-                growth = int(glob == R1)
-                li = _carry(last_pre)
-                li1 = _carry(last_after)
-                if parity == 0:
-                    rip1_lab = first_all if first_all != I else last_after
-                    ri_lab = (
-                        m if m != I else (first_all if first_all != I else last_pre)
-                    )
-                else:
-                    if first_excl != I:
-                        rip1_lab = first_excl
-                    elif seen_value:
-                        rip1_lab = center if center != I else last_after
-                    else:
-                        rip1_lab = last_pre
-                    if m != I:
-                        ri_lab = m
-                    elif first_excl != I:
-                        ri_lab = first_excl
-                    elif seen_value and center != I:
-                        ri_lab = center
-                    else:
-                        ri_lab = last_pre
-                ri = _carry(ri_lab)
-                rip1 = _carry(rip1_lab)
-                if not growth:
-                    y = 2 * a + li + rip1 - b * (li1 + ri)
-                elif prev == -1:
-                    y = a + 1 - b * li1
-                else:
-                    rim1 = 0 if prev < b - 1 else (ri if prev == b - 1 else 1)
-                    y = a + prev + li + ri - b * (li1 + rim1)
-                return (y,) if 0 <= y <= 2 * (b - 1) else None
+                return None if output is None else (output,)
             if a == end and r == start_r and ld[0] == "V" and ld[4] != -1:
                 _, parity, first, last, prev = ld
                 growth = int(first == R1)
@@ -348,3 +405,45 @@ __all__ = [
     "end_tag",
     "parity_tag",
 ]
+
+
+def enqueue_dfa_transition(
+    transitions: MutableMapping[tuple[int, int], int],
+    queue: deque[int],
+    state: int,
+    symbol: int,
+    target: int,
+) -> None:
+    """Publish an admitted transition and schedule its destination for traversal."""
+    transitions[state, symbol] = target
+    queue.append(target)
+
+
+def transduction_midpoints(
+    forward: Callable[[int, int], int | None],
+    reverse: Callable[[int, int], int | None],
+    left: int,
+    right: int,
+    left_context: int,
+    right_context: int,
+) -> tuple[int, int]:
+    """Resolve both midpoint contexts in chronological order before child output."""
+    left_mid = forward(left, left_context)
+    right_mid = reverse(right, right_context)
+    if left_mid is None or right_mid is None:
+        raise ValueError("context reject")
+    return left_mid, right_mid
+
+
+def enqueue_pair_parity_transitions(
+    intern: Callable[[tuple[Literal["V"], int, int, int, int]], int],
+    transitions: MutableMapping[tuple[int, int], int],
+    queue: deque[int],
+    state: int,
+    parity_zero: int,
+    parity_one: int,
+) -> None:
+    """Introduce the two tagged pair contexts with identity carry boundaries."""
+    for parity, tag in ((0, parity_zero), (1, parity_one)):
+        target = intern(("V", parity, I, I, -1))
+        enqueue_dfa_transition(transitions, queue, state, tag, target)

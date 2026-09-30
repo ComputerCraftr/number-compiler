@@ -12,10 +12,8 @@ from number_compiler.hashlife.execution.continuations.diamond_expression_eval im
     ResolveExpr,
 )
 from number_compiler.hashlife.execution.continuations.diamond_higher_tasks import (
-    HigherEmit,
     HigherUnarySummary,
 )
-from number_compiler.hashlife.execution.continuations.diamond_tasks import Task
 from number_compiler.hashlife.interfaces.diamond_boundary_expr import (
     ExprID,
     StateSort,
@@ -26,15 +24,17 @@ from number_compiler.hashlife.observation.diamond_parametric_query import (
 )
 from tests.support.diamond_observation_adversarial import (
     _bound_projection_fixture,
+    bound_observation_fixture,
     neighbor_xor,
+    structured_projection,
 )
 from tests.support.diamond_query import build, oracle
+from tests.support.diamond_quotient import (
+    capture_root_emissions,
+)
 
 if TYPE_CHECKING:
-    from number_compiler.arithmetic.contracts.scoped_handles import TransferSummaryID
-    from number_compiler.hashlife.interfaces.diamond_boundary import BoundaryStateID
-    from number_compiler.hashlife.interfaces.diamond_quotient import LocalInterfaceID
-    from number_compiler.hashlife.interfaces.semantic_structures import StructureID
+    pass
 
 
 def test_public_points_cannot_cache_intermediate_symbols_disguised_as_finite_states(
@@ -46,26 +46,7 @@ def test_public_points_cannot_cache_intermediate_symbols_disguised_as_finite_sta
     app = build(kernel, source, 32, 2)
     runtime = app.runtime
     arena = runtime.higher.expressions
-    outputs = []
-    execute = runtime.execute
-
-    def observing(
-        task: Task,
-    ) -> (
-        BoundaryStateID
-        | TransferSummaryID
-        | ExprID
-        | StructureID
-        | LocalInterfaceID
-        | int
-    ):
-        result = execute(task)
-        if type(task) is HigherEmit and task.action == app.root:
-            assert isinstance(result, ExprID)
-            outputs.append(result)
-        return result
-
-    monkeypatch.setattr(runtime, "execute", observing)
+    outputs = capture_root_emissions(app, monkeypatch)
     expected = oracle(kernel, source, 32, 2)
     for position in range(24):
         assert parametric_point(runtime, app.root, position) == expected[position]
@@ -155,12 +136,9 @@ def test_bound_projection_results_do_not_acquire_substitution_response_bindings(
         _bound_projection_fixture()
     )
     if structured:
-        sort = arena.node(variable).sort
-        assert type(sort) is StateSort
-        binder = arena.variable(arena.node(right).sort, "constant-continuation")
-        continuation = arena.lambda_(binder, expected)
-        expression = arena.pair(sort.action, sort.side, expression, continuation)
-        expected = arena.pair(sort.action, sort.side, expected, continuation)
+        expression, expected = structured_projection(
+            arena, variable, right, expression, expected
+        )
     key = ExprSubstitutionKey(expression, (ExprBinding(variable, incoming),))
     before = ledger.snapshot()
     ledger.max_cache_entries = ledger.entries
@@ -176,14 +154,7 @@ def test_higher_observation_drops_a_realized_result_with_bound_program_input() -
         HigherUnaryObserve,
     )
 
-    app = build(neighbor_xor(), (0, 1, 1), 8, 1)
-    runtime, arena = app.runtime, app.runtime.higher.expressions
-    action = app.root
-    literal = arena.literal(runtime.boundaries.literal(action, 1, 3))
-    parameter = arena.variable(arena.state_sort(action, 1), "unresolved-input")
-    body = arena.primitive_advance(action, 1, parameter, arena.symbol(action, 0))
-    program = arena.closures.intern((parameter,), body)
-    bound = arena.call(program, (literal,))
+    _app, runtime, arena, action, bound = bound_observation_fixture()
     assert arena.node(bound).kind == "call"
     parent = runtime.execute(HigherUnarySummary(action, runtime.cells.source(0, 1), 1))
     task = HigherUnaryObserve(parent, bound)

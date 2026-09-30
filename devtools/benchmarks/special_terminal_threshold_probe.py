@@ -2,9 +2,9 @@
 
 from __future__ import annotations
 
-import json
+from devtools.paths import report_output
+
 from dataclasses import asdict
-from pathlib import Path
 
 from devtools.experiments.algebra.dyadic_difference_germ_terminal import (
     fermat_filtration_requirement_audit,
@@ -13,6 +13,8 @@ from devtools.experiments.algebra.dyadic_difference_germ_terminal import (
     mersenne_sparse_candidate_quotient_audit,
     mersenne_sparse_torus_base_change_audit,
 )
+from devtools.runs import run_reported
+from devtools.benchmarks.reporting import write_json_report
 from number_compiler.sequences.power_numbers.terminal_threshold import (
     terminal_threshold_probe,
     terminal_threshold_spec,
@@ -73,11 +75,12 @@ def report() -> dict[str, object]:
 
 def main() -> None:
     payload = report()
-    out = Path("results/special_terminal_threshold_metrics.json")
-    out.parent.mkdir(exist_ok=True)
-    out.write_text(json.dumps(payload, indent=2, sort_keys=True) + "\n")
-    print(json.dumps(payload, indent=2, sort_keys=True))
+    out = report_output(
+        "devtools.benchmarks.special_terminal_threshold_probe",
+        "special_terminal_threshold_metrics.json",
+    )
+    write_json_report(out, payload)
 
 
 if __name__ == "__main__":
-    main()
+    raise SystemExit(run_reported(main))

@@ -16,6 +16,9 @@ from number_compiler.arithmetic.automata.primitive_semantics import (
     PrimitiveSemanticsAdapter,
 )
 from number_compiler.arithmetic.contracts.block_effect import BoundarySide
+from number_compiler.arithmetic.contracts.iterative_queries import (
+    defer_indexed_dependencies,
+)
 from number_compiler.arithmetic.contracts.scoped_handles import (
     ActionProgramID,
     TransferSummaryID,
@@ -49,6 +52,7 @@ from number_compiler.hashlife.execution.continuations.diamond_expression_eval im
 )
 from number_compiler.hashlife.interfaces.diamond_boundary_expr import (
     BoundaryExpressionArena,
+    BoundaryExprNode,
     ExpressionSort,
     ExprID,
     FormalPort,
@@ -57,6 +61,9 @@ from number_compiler.hashlife.interfaces.diamond_boundary_expr import (
     SymbolSort,
 )
 from number_compiler.hashlife.interfaces.diamond_kernel_bridge import observation_inputs
+from number_compiler.hashlife.interfaces.semantic_bit_transforms import (
+    primitive_operation,
+)
 from number_compiler.hashlife.interfaces.semantic_bits import (
     BitFunctionArena,
     FactoredFunctionID,
@@ -729,6 +736,14 @@ class SemanticExpressionCompiler:
         root = transaction.resign(function.local_id, signature)
         return transaction.finish(transaction.admissible(root))
 
+    def _finite_child(
+        self, node: BoundaryExprNode
+    ) -> tuple[SemanticFunctionID, FinitePort]:
+        assert node.function is not None
+        source = self.expressions.node(self.expressions._handle(node.children[0])).sort
+        assert isinstance(source, StateSort)
+        return self._finite(node.function, source, node.sort)
+
     def _program(
         self, task: _Task
     ) -> Generator[_Task, SemanticFunctionID, SemanticFunctionID]:
@@ -784,10 +799,7 @@ class SemanticExpressionCompiler:
                 children[0], {target.inputs[0].variable: children[1]}
             )
         if node.kind in ("finite_apply", "finite_map"):
-            assert node.function is not None
-            source = arena.node(arena._handle(node.children[0])).sort
-            assert isinstance(source, StateSort)
-            mapped, port = self._finite(node.function, source, node.sort)
+            mapped, port = self._finite_child(node)
             return self.functions.substitute(mapped, {port.variable: children[0]})
         if node.kind in ("advance", "emit") and node.action is not None:
             primitive = self.primitives.compile(
@@ -799,18 +811,9 @@ class SemanticExpressionCompiler:
             zero_right = self.functions.atom(
                 FunctionSignature((), primitive.right_sort), 0
             )
-            if node.kind == "emit":
-                function, arguments = primitive.emit, tuple(children)
-            elif node.side == 0:
-                function, arguments = (
-                    primitive.advance_left,
-                    (children[0], children[1], zero_right),
-                )
-            else:
-                function, arguments = (
-                    primitive.advance_right,
-                    (zero_left, children[1], children[0]),
-                )
+            function, arguments = primitive_operation(
+                primitive, node.kind, node.side, tuple(children), zero_left, zero_right
+            )
             return self.functions.substitute(
                 function,
                 dict(
@@ -869,13 +872,14 @@ class SemanticExpressionCompiler:
                     terminal = SemanticTerminal("atom", output)
                 results.append(transaction.terminal(signature, terminal))
             else:
-                pending.extend(
-                    (
-                        (bit, value, True),
-                        (bit + 1, value | (1 << bit), False),
-                        (bit + 1, value, False),
-                    )
+                defer_indexed_dependencies(
+                    pending,
+                    bit,
+                    value,
+                    ((bit + 1, value), (bit + 1, value | (1 << bit))),
+                    (),
                 )
+
         from number_compiler.hashlife.interfaces.semantic_publication import (
             prepare_functions,
         )

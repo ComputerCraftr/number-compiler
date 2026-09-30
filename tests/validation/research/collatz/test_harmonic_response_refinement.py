@@ -5,8 +5,11 @@ from collections.abc import Hashable, Iterator
 
 import pytest
 
-from devtools.proofs import exact_oracle
-from devtools.proofs.collatz_harmonic_ports import binary_output_response, radix64_phi5
+from devtools.verification import exact_oracle
+from devtools.verification.collatz_harmonic_ports import (
+    binary_output_response,
+    radix64_phi5,
+)
 from number_compiler.arithmetic.fields.radix import digits_lsd, value_from_lsd_digits
 from number_compiler.arithmetic.fields.two_adic import v2_positive
 from tests.validation.research.collatz.test_carry_domain_hensel_quotient import (

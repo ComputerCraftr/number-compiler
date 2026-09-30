@@ -24,7 +24,7 @@ from number_compiler.sequences.comma.boundary_quotient import (
     BoundaryState,
     construct_macro,
 )
-from tests.sequences.comma.test_boundary_quotient import _literal_children
+from tests.support.comma_oracles import literal_children as _literal_children
 
 
 def _value(chart: BoundaryChart, exponent: int) -> int:

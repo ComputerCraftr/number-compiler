@@ -16,6 +16,7 @@ from itertools import zip_longest
 from pathlib import Path
 from typing import Literal, TypedDict
 
+from devtools.paths import isabelle_root
 from number_compiler.sequences.comma.arithmetic import (
     cycle_power_residue,
     cycle_transfer,
@@ -32,10 +33,7 @@ from number_compiler.sequences.comma.boundary_chart import (
 
 STATE_COUNT = 16 * PERIOD
 PADDED_COUNT = 16_384
-DEFAULT_OUTPUT = (
-    Path(__file__).resolve().parents[2]
-    / "proofs/isabelle/comma_future_checked/Comma_Rank_Data.thy"
-)
+DEFAULT_OUTPUT = isabelle_root() / "comma_future_checked/Comma_Rank_Data.thy"
 CONTROL_WITNESS_SCHEMA = 1
 DECADE_RANK_SCHEMA = 1
 DECADE_OFFSETS = 91

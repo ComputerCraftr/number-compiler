@@ -11,9 +11,11 @@ from pathlib import Path
 
 import pytest
 
+from devtools.paths import isabelle_root
+
 THEORY = (
-    Path(__file__).resolve().parents[3]
-    / "devtools/proofs/isabelle/mahler_safety/Generated_Mahler_Safety.thy"
+    isabelle_root(Path(__file__).resolve().parents[3])
+    / "mahler_safety/Generated_Mahler_Safety.thy"
 )
 INTERVALS = {
     int(residue): (Fraction(lower.strip("()")), Fraction(upper.strip("()")))

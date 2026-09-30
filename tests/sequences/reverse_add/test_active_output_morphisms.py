@@ -21,7 +21,10 @@ from number_compiler.arithmetic.formula.decimal_pair_coordinates import decimal_
 from number_compiler.arithmetic.polynomials.centered_f5 import CenteredF5Transport
 from number_compiler.hashlife.actions.field_actions import CoordinateOutputMorphismID
 from number_compiler.hashlife.execution.tile_scheduler import TileScheduler
-from number_compiler.hashlife.interfaces.semantic_bits import BitFunctionArena
+from number_compiler.hashlife.interfaces.semantic_bits import (
+    BitFunctionArena,
+    FactoredFunctionID,
+)
 from number_compiler.hashlife.tiles.tiles import TileArena
 from number_compiler.resources.ledger import ResourceLedger
 from number_compiler.sequences.reverse_add.active_output import (
@@ -38,10 +41,7 @@ def _arena() -> ReverseActiveOutputArena:
 
 
 def test_q95_has_fixed_leaf_semantics_and_derived_three_state_carry() -> None:
-    arena = _arena()
-    bits = arena.bits
-    port = FinitePort(PortVariable(0, 0, "q95", 0), 95)
-    value = bits.variable((port,), port, Q95)
+    arena, bits, port, value = _q95_variable()
     output, forcing = arena.q95_output(value), arena.q95_forcing(value)
     assert arena.q95(output, forcing) == value
     domain = arena.q95_carry(value)
@@ -62,10 +62,7 @@ def test_q95_has_fixed_leaf_semantics_and_derived_three_state_carry() -> None:
 def test_q95_carry_projection_needs_no_intermediate_output_publication(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    arena = _arena()
-    bits = arena.bits
-    port = FinitePort(PortVariable(0, 0, "q95", 0), 95)
-    carrier = bits.variable((port,), port, Q95)
+    arena, bits, port, carrier = _q95_variable()
 
     def forbidden(*_args: object, **_kwargs: object) -> None:
         raise AssertionError("carry projection constructed another output state")
@@ -359,3 +356,15 @@ def test_symbolic_forward_carry_geometry_and_growth_against_pair_oracle(
         assert bits.evaluate(arena.carry_apply(next_edge_action, zero), values) == int(
             expected[0] >= 10
         )
+
+
+def _q95_variable() -> tuple[
+    ReverseActiveOutputArena,
+    BitFunctionArena,
+    FinitePort,
+    FactoredFunctionID,
+]:
+    arena = _arena()
+    bits = arena.bits
+    port = FinitePort(PortVariable(0, 0, "q95", 0), 95)
+    return arena, bits, port, bits.variable((port,), port, Q95)

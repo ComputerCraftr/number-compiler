@@ -30,6 +30,7 @@ from number_compiler.hashlife.execution.radix_consumer import (
     RadixDivisionActionID,
 )
 from number_compiler.resources.ledger import ResourceLedger
+from number_compiler.resources.stores import append_indexed_node, make_dense_index
 
 
 @dataclass(frozen=True, slots=True)
@@ -45,6 +46,9 @@ class _RadixProviderAction:
 
 class RadixProviderActionArena:
     """Intern heterogeneous roots without weakening either child action sort."""
+
+    _nodes: MutableSequence[_RadixProviderAction]
+    _keys: MutableMapping[_RadixProviderAction, int]
 
     _KIND = "radix-provider-action"
 
@@ -63,22 +67,8 @@ class RadixProviderActionArena:
         prefix = f"radix-provider-actions-{len(ledger.inventory())}"
         self._node_owner = ledger.register(prefix + "-nodes", "field_cell_action")
         self._key_owner = ledger.register(prefix + "-keys", "field_action_interner")
-        self._nodes: MutableSequence[_RadixProviderAction] = ledger.make_list(
-            self._node_owner,
-        )
-        self._keys: MutableMapping[_RadixProviderAction, int] = ledger.make_dict(
-            self._key_owner,
-        )
-        ledger.register_container(
-            self._node_owner,
-            self._nodes,
-            node_count=lambda: len(self._nodes),
-            payloads=lambda: self._nodes,
-        )
-        ledger.register_container(
-            self._key_owner,
-            self._keys,
-            payloads=self._keys.items,
+        self._nodes, self._keys = make_dense_index(
+            ledger, self._node_owner, self._key_owner
         )
         ledger.register_execution_root(self)
 
@@ -103,12 +93,15 @@ class RadixProviderActionArena:
         if found is not None:
             self.ledger.bump("radix_provider_action_early_hits")
             return self._handle(found)
-        self.ledger.reserve_many(
-            ((self._node_owner, 1, 1), (self._key_owner, 1, 0)),
+        local_id = append_indexed_node(
+            self.ledger,
+            self._nodes,
+            self._keys,
+            self._node_owner,
+            self._key_owner,
+            record,
+            record,
         )
-        local_id = len(self._nodes)
-        self._nodes.append(record)
-        self._keys[record] = local_id
         self.ledger.bump("radix_provider_action_evaluations")
         self.ledger.bump("field_action_publications")
         return self._handle(local_id)

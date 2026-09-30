@@ -190,16 +190,7 @@ def record_execution_cache_event(
     action_admission: object | None = None,
 ) -> None:
     """Record an execution memo event using already-owned arena metadata."""
-    tiles = getattr(arena, "tiles", None)
-    authority = getattr(arena, "action_authority", None)
-    metrics = getattr(tiles, "_cache_metrics", None)
-    resolve = getattr(tiles, "resolve", None)
-    if type(metrics) is not CacheEventMetrics or not callable(resolve):
-        raise TypeError("execution cache accounting requires the canonical tile arena")
-    record = resolve(input_tile)
-    level = getattr(record, "level", None)
-    if type(level) is not int:
-        raise TypeError("execution cache accounting requires canonical tile geometry")
+    metrics, level, authority = _execution_metadata(arena, input_tile)
     metrics.record(
         kind,
         outcome,
@@ -222,15 +213,7 @@ def prepare_execution_cache_event(
     *,
     action_admission: object | None = None,
 ) -> None:
-    tiles = getattr(arena, "tiles", None)
-    authority = getattr(arena, "action_authority", None)
-    metrics = getattr(tiles, "_cache_metrics", None)
-    resolve = getattr(tiles, "resolve", None)
-    if type(metrics) is not CacheEventMetrics or not callable(resolve):
-        raise TypeError("execution cache accounting requires the canonical tile arena")
-    level = getattr(resolve(input_tile), "level", None)
-    if type(level) is not int:
-        raise TypeError("execution cache accounting requires canonical tile geometry")
+    metrics, level, authority = _execution_metadata(arena, input_tile)
     metrics.prepare(
         kind,
         outcome,
@@ -304,3 +287,19 @@ __all__ = [
     "record_execution_cache_event",
     "temporal_span",
 ]
+
+
+def _execution_metadata(
+    arena: object, input_tile: object
+) -> tuple[CacheEventMetrics, int, object]:
+    """Validate the shared live tile geometry for accounting and reservation."""
+    tiles = getattr(arena, "tiles", None)
+    authority = getattr(arena, "action_authority", None)
+    metrics = getattr(tiles, "_cache_metrics", None)
+    resolve = getattr(tiles, "resolve", None)
+    if type(metrics) is not CacheEventMetrics or not callable(resolve):
+        raise TypeError("execution cache accounting requires the canonical tile arena")
+    level = getattr(resolve(input_tile), "level", None)
+    if type(level) is not int:
+        raise TypeError("execution cache accounting requires canonical tile geometry")
+    return metrics, level, authority

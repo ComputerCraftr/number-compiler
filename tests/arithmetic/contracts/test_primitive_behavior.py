@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from tests.support.assertions import assert_rejected_atomically
+
 from array import array
 from collections.abc import Callable, MutableSequence
 from dataclasses import dataclass, replace
@@ -379,10 +381,12 @@ def test_powered_proof_machine_domain_cannot_enter_runtime_quotient() -> None:
     )
     arena = DiamondKernelArena(ResourceLedger())
     handle = arena.intern(effect)
-    before = arena.ledger.snapshot()
-    with pytest.raises(ValueError, match="proof-machine"):
-        arena.behavioral_quotient(handle)
-    assert arena.ledger.snapshot() == before
+    assert_rejected_atomically(
+        arena.ledger,
+        lambda: arena.behavioral_quotient(handle),
+        ValueError,
+        match="proof-machine",
+    )
 
 
 def test_identity_only_certificate_rejects_uncertified_d4_and_mirror() -> None:

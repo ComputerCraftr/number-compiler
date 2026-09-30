@@ -80,17 +80,17 @@ def _observe_geometry(
                 else:
                     raise ValueError("unknown geometry channel")
             continue
+        child_left, child_right = self.sources.children(current)
+        half = self.sources.resolve(child_left).width
+        left_interface = self._source_interfaces[(kernel, child_left)]
+        right_interface = self._source_interfaces[(kernel, child_right)]
+        left_mid = self._finite_observe(
+            left_interface, "boundary_left", current_left, current_right
+        )
+        right_mid = self._finite_observe(
+            right_interface, "boundary_right", current_left, current_right
+        )
         if not finishing:
-            child_left, child_right = self.sources.children(current)
-            half = self.sources.resolve(child_left).width
-            left_interface = self._source_interfaces[(kernel, child_left)]
-            right_interface = self._source_interfaces[(kernel, child_right)]
-            left_mid = self._finite_observe(
-                left_interface, "boundary_left", current_left, current_right
-            )
-            right_mid = self._finite_observe(
-                right_interface, "boundary_right", current_left, current_right
-            )
             dependencies: list[tuple[SourceCellID, str, int, int, int]] = []
             if current_channel in (
                 "activity",
@@ -194,16 +194,6 @@ def _observe_geometry(
             for dependency in reversed(dependencies):
                 pending.append((False, *dependency))
             continue
-        child_left, child_right = self.sources.children(current)
-        half = self.sources.resolve(child_left).width
-        left_interface = self._source_interfaces[(kernel, child_left)]
-        right_interface = self._source_interfaces[(kernel, child_right)]
-        left_mid = self._finite_observe(
-            left_interface, "boundary_left", current_left, current_right
-        )
-        right_mid = self._finite_observe(
-            right_interface, "boundary_right", current_left, current_right
-        )
 
         def get(dep: tuple[SourceCellID, str, int, int, int]) -> int:
             return values[(dep[0], dep[1], dep[2], dep[3], dep[4])]

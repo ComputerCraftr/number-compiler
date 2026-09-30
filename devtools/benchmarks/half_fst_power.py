@@ -13,8 +13,24 @@ from __future__ import annotations
 import random
 import time
 from collections import defaultdict, deque
-from collections.abc import Hashable, Sequence
+from collections.abc import Sequence
 from dataclasses import dataclass
+
+from devtools.verification.random_inputs import random_half
+from devtools.verification.reverse_pair_reference import reference_pair_half
+from devtools.verification.partition_refinement import (
+    partition_representatives,
+    stable_partition,
+)
+from devtools.verification.transducer_graph import (
+    DenseInterner,
+    append_reachable_edge,
+    compose_arc_table,
+    compose_suffix_outputs,
+    product_states,
+    quotient_graph,
+    trim_ids,
+)
 from typing import Literal
 
 # parity tags live above the pair alphabet
@@ -69,44 +85,16 @@ class FST:
 def reference_half(
     parity: int, half: Sequence[int], base: int = 10
 ) -> tuple[int, tuple[int, ...]]:
-    h = tuple(half)
-    full = h + (h[-2::-1] if parity else h[::-1])
-    d = len(full)
-    t = base - 1
-    L = [0] * (d + 1)
-    for i, s in enumerate(full):
-        L[i + 1] = carry(s, L[i], t)
-    R = [0] * (d + 1)
-    for i in range(d - 1, -1, -1):
-        R[i] = carry(full[i], R[i + 1], t)
-    g = L[d]
-    if not g:
-        out = [
-            2 * full[i] + L[i] + R[i + 1] - base * (L[i + 1] + R[i]) for i in range(d)
-        ]
-    else:
-        out = [0] * (d + 1)
-        out[0] = full[0] + 1 - base * L[1]
-        out[d] = out[0]
-        for i in range(1, d):
-            out[i] = full[i] + full[i - 1] + L[i] + R[i] - base * (L[i + 1] + R[i - 1])
-    p2 = len(out) & 1
-    h2 = (len(out) + 1) // 2
-    return p2, tuple(out[:h2])
+    return reference_pair_half(parity, half, base, carry)
 
 
 def build(base: int = 10) -> FST:
     b = base
     t = b - 1
     vals = range(2 * b - 1)
-    ids = {}
-    sts: list[HalfState] = []
-
-    def sid(x: HalfState) -> int:
-        if x not in ids:
-            ids[x] = len(sts)
-            sts.append(x)
-        return ids[x]
+    state_interner: DenseInterner[HalfState] = DenseInterner()
+    sts = state_interner.values
+    sid = state_interner.intern
 
     # super initial state consumes parity tag.  After that:
     # ("B", p, g=R0, L_i, R_i, prev_s, L_before_prev, count_nonempty)
@@ -166,35 +154,13 @@ def build(base: int = 10) -> FST:
                     continue
                 ns = ("B", p, g, L1, R1, s, L, 1)
                 ni = sid(ns)
-                arcs[qi].append(Arc(s, y, ni))
-                if ni not in seen:
-                    dq.append(ni)
+                append_reachable_edge(arcs, qi, Arc(s, y, ni), ni, seen, dq)
     return trim(FST(b, (S,), {q: tuple(v) for q, v in arcs.items()}, finals))
 
 
 def trim(t: FST) -> FST:
-    reach = set(t.initials)
-    dq = deque(t.initials)
-    while dq:
-        q = dq.popleft()
-        for a in t.arcs.get(q, ()):
-            if a.dest not in reach:
-                reach.add(a.dest)
-                dq.append(a.dest)
-    rev: defaultdict[int, list[int]] = defaultdict(list)
-    for q, aa in t.arcs.items():
-        for a in aa:
-            rev[a.dest].append(q)
-    live = set(t.finals)
-    dq = deque(live)
-    while dq:
-        q = dq.popleft()
-        for z in rev.get(q, ()):
-            if z not in live:
-                live.add(z)
-                dq.append(z)
-    keep = reach & live
-    mp = {q: i for i, q in enumerate(sorted(keep))}
+    mp = trim_ids(t.initials, t.arcs, t.finals)
+    keep = set(mp)
     return FST(
         t.base,
         tuple(mp[q] for q in t.initials if q in keep),
@@ -209,85 +175,36 @@ def trim(t: FST) -> FST:
 
 def bisim(t: FST) -> FST:
     qs = sorted(set(t.arcs) | set(t.finals) | set(t.initials))
-    part = {}
-    cc: dict[Hashable, int] = {}
-    for q in qs:
-        k = t.finals.get(q, None)
-        cc.setdefault(k, len(cc))
-        part[q] = cc[k]
-    while True:
-        cc = {}
-        new = {}
-        for q in qs:
-            sig = (
-                t.finals.get(q, None),
-                tuple(sorted((a.inp, a.out, part[a.dest]) for a in t.arcs.get(q, ()))),
-            )
-            cc.setdefault(sig, len(cc))
-            new[q] = cc[sig]
-        # This construction is a monotone partition refinement: signatures are
-        # expressed through the previous partition, so classes can split but not
-        # merge.  Equal class counts therefore mean the partition is stable.
-        if len(set(new.values())) == len(set(part.values())):
-            part = new
-            break
-        part = new
-    reps: dict[int, int] = {}
-    for q, c in part.items():
-        reps.setdefault(c, q)
-    cmap = {c: i for i, c in enumerate(sorted(reps))}
-    arcs = {}
-    fin = {}
-    for c, q in reps.items():
-        nq = cmap[c]
-        items = {(a.inp, a.out, cmap[part[a.dest]]) for a in t.arcs.get(q, ())}
-        arcs[nq] = tuple(Arc(*x) for x in sorted(items))
-        if q in t.finals:
-            fin[nq] = t.finals[q]
-    ini = tuple(sorted({cmap[part[q]] for q in t.initials}))
+    part = stable_partition(
+        qs,
+        lambda q: t.finals.get(q, None),
+        lambda q, previous: (
+            t.finals.get(q, None),
+            tuple(sorted((a.inp, a.out, previous[a.dest]) for a in t.arcs.get(q, ()))),
+        ),
+    )
+    reps, cmap = partition_representatives(part)
+    arcs, fin, ini = quotient_graph(
+        part,
+        reps,
+        cmap,
+        t.arcs,
+        t.finals,
+        t.initials,
+        lambda inp, out, dest: Arc(inp, out, dest),
+    )
     return trim(FST(t.base, ini, arcs, fin))
 
 
 def compose(a: FST, b: FST) -> FST:
-    pairid = {}
-    pairs: list[tuple[int, int]] = []
-
-    def sid(x: tuple[int, int]) -> int:
-        if x not in pairid:
-            pairid[x] = len(pairs)
-            pairs.append(x)
-        return pairid[x]
-
-    ini = tuple(sid((p, q)) for p in a.initials for q in b.initials)
-    arcs: defaultdict[int, list[Arc]] = defaultdict(list)
+    pairs, ini, sid = product_states(a.initials, b.initials)
+    idx, arcs = compose_arc_table(
+        ini, pairs, a.arcs, b.arcs, sid, lambda edge: Arc(*edge)
+    )
     fin = {}
-    dq = deque(ini)
-    seen = set()
-    idx: dict[int, dict[int, list[Arc]]] = {q: defaultdict(list) for q in b.arcs}
-    for q, aa in b.arcs.items():
-        for z in aa:
-            idx[q][z.inp].append(z)
-    while dq:
-        qi = dq.popleft()
-        if qi in seen:
-            continue
-        seen.add(qi)
-        p, q = pairs[qi]
-        for x in a.arcs.get(p, ()):
-            for y in idx.get(q, {}).get(x.out, ()):
-                ni = sid((x.dest, y.dest))
-                arcs[qi].append(Arc(x.inp, y.out, ni))
-                if ni not in seen:
-                    dq.append(ni)
+    for qi, (p, q) in enumerate(pairs):
         if p in a.finals:
-            front: set[tuple[int, tuple[int, ...]]] = {(q, ())}
-            for sym in a.finals[p]:
-                nf = set()
-                for qq, o in front:
-                    for y in idx.get(qq, {}).get(sym, ()):
-                        nf.add((y.dest, o + (y.out,)))
-                front = nf
-            outs = {o + b.finals[qq] for qq, o in front if qq in b.finals}
+            outs = compose_suffix_outputs(q, a.finals[p], idx, b.finals)
             if len(outs) > 1:
                 raise AssertionError("nonfunctional")
             if outs:
@@ -301,8 +218,7 @@ def selftest() -> None:
     rng = random.Random(196)
     for _ in range(500):
         p = rng.randrange(2)
-        h = [rng.randrange(19) for _ in range(rng.randrange(1, 7))]
-        h[0] = h[0] or 1
+        h = random_half(rng, 6)
         exp = reference_half(p, h)
         got = T.apply((P(p, 10),) + tuple(h))
         dec = (got[0] - (2 * 10 - 1), got[1:])
@@ -315,8 +231,7 @@ def selftest() -> None:
         print("pow", 2**e, Q.states, Q.arc_count, len(Q.finals), "sec", dt, flush=True)
         for _ in range(50):
             p = rng.randrange(2)
-            h = [rng.randrange(19) for _ in range(rng.randrange(1, 5))]
-            h[0] = h[0] or 1
+            h = random_half(rng, 4)
             pp, hh = p, tuple(h)
             for __ in range(2**e):
                 pp, hh = reference_half(pp, hh)

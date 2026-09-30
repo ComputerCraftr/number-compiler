@@ -13,7 +13,7 @@ from number_compiler.hashlife.execution.source_bound_images import (
     SourceImageView,
 )
 from number_compiler.resources.ledger import ResourceLedger
-from tests.hashlife.execution.test_source_bound_images import _Action, _DecimalAdapter
+from tests.support.source_bound_images import _Action, _DecimalAdapter
 
 
 class _SplitDecimal(_DecimalAdapter):

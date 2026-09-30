@@ -280,8 +280,7 @@ def _balanced_residue_build(
                 remember(result)
             elif cached is None:
                 push(span, source, None)
-                span = 1 << ((span - 1).bit_length() - 1)
-                source = _low_bits(source, span)
+                span, source = _first_half_residue(span, source)
                 continue
 
             while stack:
@@ -644,8 +643,7 @@ def _residue_effect(
                 remember(result)
             else:
                 push(span, source, None)
-                span = 1 << ((span - 1).bit_length() - 1)
-                source = _low_bits(source, span)
+                span, source = _first_half_residue(span, source)
                 continue
             while workspace.macro_stack:
                 span, source, left = workspace.macro_stack.pop()
@@ -689,3 +687,8 @@ def residue_macro(
         workspace, width, residue, macro=True, keep_memo=_keep_memo
     )
     return workspace._append_support(result)
+
+
+def _first_half_residue(span: int, source: int) -> tuple[int, int]:
+    half = 1 << ((span - 1).bit_length() - 1)
+    return half, _low_bits(source, half)

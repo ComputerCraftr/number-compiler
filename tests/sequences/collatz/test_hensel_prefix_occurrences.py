@@ -101,9 +101,7 @@ def test_mismatch_retains_only_independent_event_coordinates() -> None:
         "constant_at_mismatch",
     )
     for h in range(1, 7):
-        root = RationalPadicRootGerm(h, 1 + 2 * h)
-        digit = (root.radix4_digit + 1) % 4
-        mismatch, _suffix = root.first_mismatch_word(from_values((digit,)))
+        root, digit, mismatch = _nonmatching_digit(h)
         expected_root = (-mismatch.constant_at_mismatch * pow(3**h, -1, 4)) % 4
         assert mismatch.root_digit == expected_root
         assert mismatch.digit_v2 == v2_nonzero(digit - expected_root)
@@ -146,9 +144,7 @@ def test_angular_multiplier_is_derived_from_residual_phase() -> None:
             assert same_action.canonical_key == action.canonical_key
             assert same_angular.canonical_key != angular.canonical_key
     for denominator_power in range(1, 7):
-        root = RationalPadicRootGerm(denominator_power, 1 + 2 * denominator_power)
-        digit = (root.radix4_digit + 1) % 4
-        mismatch, _suffix = root.first_mismatch_word(from_values((digit,)))
+        root, digit, mismatch = _nonmatching_digit(denominator_power)
         angular = PadicAngularBoundaryGerm.from_mismatch(root, mismatch)
         assert angular.multiplier == (4 * 3**denominator_power) >> mismatch.digit_v2
 
@@ -362,3 +358,12 @@ def test_nine_carry_reentry_is_the_existing_root_pullback() -> None:
             ]
             assert sum(digit * 4**i for i, digit in enumerate(actual_digits)) == high
             assert 9 * high + outgoing == output >> (2 * (prefix + 1))
+
+
+def _nonmatching_digit(
+    h: int,
+) -> tuple[RationalPadicRootGerm, int, RationalPadicRootMismatch]:
+    root = RationalPadicRootGerm(h, 1 + 2 * h)
+    digit = (root.radix4_digit + 1) % 4
+    mismatch, _suffix = root.first_mismatch_word(from_values((digit,)))
+    return root, digit, mismatch

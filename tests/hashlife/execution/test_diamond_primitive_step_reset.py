@@ -2,6 +2,9 @@
 
 from __future__ import annotations
 
+from tests.support.assertions import assert_unallocated_hit
+from tests.support.assertions import assert_rejected_atomically
+
 from typing import Never
 
 import pytest
@@ -124,10 +127,9 @@ def test_foreign_or_malformed_state_is_rejected_before_reset_shortcuts(
     for invalid in invalids:
         task = HigherStep(action, 1, invalid, symbol)
         for operation in (runtime.execute, runtime.higher.probe):
-            before = runtime.ledger.snapshot()
-            with pytest.raises(ValueError):
-                operation(task)
-            assert runtime.ledger.snapshot() == before
+            assert_rejected_atomically(
+                runtime.ledger, lambda: operation(task), ValueError
+            )
 
 
 def test_uncertified_right_transition_preserves_its_input() -> None:
@@ -182,12 +184,7 @@ def test_distinct_erased_programs_share_one_observation_key_before_execution(
         len([key for key in runtime.higher.observations if type(key) is HigherStep])
         == 1
     )
-    assert runtime.ledger.entries == before.entries
-    assert runtime.ledger.nodes == before.nodes
-    assert (
-        runtime.ledger.counters["higher_context_cache_hits"]
-        == before.counters.get("higher_context_cache_hits", 0) + 1
-    )
+    assert_unallocated_hit(runtime.ledger, before, "higher_context_cache_hits")
 
 
 @pytest.mark.parametrize("warm", (False, True))
@@ -232,10 +229,9 @@ def test_wrong_sort_or_foreign_published_result_rejects_before_reset_allocation(
         other.boundaries.literal(foreign_action, 1, 0)
     )
     for result in (wrong_sort, foreign):
-        before = runtime.ledger.snapshot()
-        with pytest.raises(ValueError):
-            runtime.higher.publish(request, result)
-        assert runtime.ledger.snapshot() == before
+        assert_rejected_atomically(
+            runtime.ledger, lambda: runtime.higher.publish(request, result), ValueError
+        )
 
 
 def test_singleton_right_port_erases_symbol_program_before_warm_lookup(
@@ -265,17 +261,13 @@ def test_singleton_right_port_erases_symbol_program_before_warm_lookup(
 
     monkeypatch.setattr(runtime.higher, "_step", forbidden)
     assert runtime.execute(HigherStep(action, 1, right, second)) == right
-    assert runtime.ledger.entries == before.entries
-    assert runtime.ledger.nodes == before.nodes
-    assert (
-        runtime.ledger.counters["higher_context_cache_hits"]
-        == before.counters.get("higher_context_cache_hits", 0) + 1
-    )
+    assert_unallocated_hit(runtime.ledger, before, "higher_context_cache_hits")
     wrong_sort = left
     foreign, foreign_action = machine(DigitNormalizeBlockEffect(2))
     foreign_symbol = foreign.higher.expressions.symbol(foreign_action, 1)
     for invalid in (wrong_sort, foreign_symbol):
-        before = runtime.ledger.snapshot()
-        with pytest.raises(ValueError):
-            runtime.execute(HigherStep(action, 1, right, invalid))
-        assert runtime.ledger.snapshot() == before
+        before = assert_rejected_atomically(
+            runtime.ledger,
+            lambda: runtime.execute(HigherStep(action, 1, right, invalid)),
+            ValueError,
+        )

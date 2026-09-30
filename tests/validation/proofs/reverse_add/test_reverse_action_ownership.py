@@ -2,9 +2,9 @@
 
 import pytest
 
-from devtools.proofs.carry_action_quotient import CarryActionQuotientArena
-from devtools.proofs.reverse_action import ReverseAddMacroActionArena
-from devtools.proofs.reverse_spacetime import (
+from devtools.verification.carry_action_quotient import CarryActionQuotientArena
+from devtools.verification.reverse_action import ReverseAddMacroActionArena
+from devtools.verification.reverse_spacetime import (
     ReverseAddCausalSpacetimeEngine,
     ReverseAddPairField,
 )

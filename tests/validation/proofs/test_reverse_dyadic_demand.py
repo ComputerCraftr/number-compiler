@@ -1,12 +1,18 @@
 """Dyadic carry actions skip known parents without storing emitted words."""
 
+from tests.support.assertions import assert_rejected_atomically
+
+
 from collections import OrderedDict
 from typing import Never
 
 import pytest
 
-from devtools.proofs.carry_interval_effects import CarryActionQuotientArena
-from devtools.proofs.lazy_reverse import LazyReverseApplication, ReverseRangeRequest
+from devtools.verification.carry_interval_effects import CarryActionQuotientArena
+from devtools.verification.lazy_reverse import (
+    LazyReverseApplication,
+    ReverseRangeRequest,
+)
 from number_compiler.arithmetic.contracts.scoped_handles import ExactSource
 from number_compiler.arithmetic.contracts.source_geometry import SourceGeometry
 from number_compiler.arithmetic.functions.finite_port_action import PortVariable
@@ -102,10 +108,13 @@ def test_foreign_original_geometry_rejects_before_allocating_application() -> No
     ledger = ResourceLedger()
     geometry = SourceGeometry(ledger, ExactSource((2, 2), 10, alphabet_size=19))
     geometry.span((2, 2), 0, 2)
-    before = ledger.snapshot()
-    with pytest.raises(ValueError):
-        LazyReverseApplication(10, 0, 4, (4, 4), ledger, source_geometry=geometry)
-    assert ledger.snapshot() == before
+    assert_rejected_atomically(
+        ledger,
+        lambda: LazyReverseApplication(
+            10, 0, 4, (4, 4), ledger, source_geometry=geometry
+        ),
+        ValueError,
+    )
 
 
 def test_known_siblings_do_not_publish_unrequested_ancestors() -> None:

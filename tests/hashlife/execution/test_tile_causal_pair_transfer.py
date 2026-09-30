@@ -16,7 +16,7 @@ from number_compiler.hashlife.execution.tile_causal_tasks import CausalPrefix
 from number_compiler.hashlife.tiles.tile_boundaries import BoundaryTileView
 from number_compiler.projection.digit_terminal import DigitNormalizeBlockEffect
 from tests.arithmetic.contracts.test_tile_causal_private import _scan
-from tests.arithmetic.contracts.test_tile_kernel import _runtime, _tile
+from tests.support.tile_kernel import _runtime, _tile
 
 
 @pytest.mark.parametrize("base", (2, 3, 10))

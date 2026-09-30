@@ -4,7 +4,10 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING
 
-from number_compiler.hashlife.interfaces.diamond_boundary import BoundaryActionArena
+from number_compiler.hashlife.interfaces.diamond_boundary import (
+    BoundaryActionArena,
+    BoundaryStateID,
+)
 from number_compiler.hashlife.interfaces.diamond_kernel import DiamondKernelArena
 from tests.support.diamond_actions import arenas
 
@@ -31,3 +34,12 @@ def boundary() -> tuple[
     kernels.intern(actions.primitive(second))
     result = BoundaryActionArena(actions, kernels, cells)
     return ledger, actions, cells, result, first, second
+
+
+def composed_anchor(
+    actions: TemporalActionArena,
+    arena: BoundaryActionArena,
+    first: ActionProgramID,
+    second: ActionProgramID,
+) -> tuple[ActionProgramID, BoundaryStateID]:
+    return actions.compose(first, second), arena.literal(first, 0, 0)

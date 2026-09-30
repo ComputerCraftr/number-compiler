@@ -1,7 +1,7 @@
 """Different fixed histories collapse to the same live carry occurrence."""
 
-from devtools.proofs import exact_oracle
-from devtools.proofs.reverse_spacetime import (
+from devtools.verification import exact_oracle
+from devtools.verification.reverse_spacetime import (
     ReverseAddCausalSpacetimeEngine,
     ReverseAddPairField,
 )

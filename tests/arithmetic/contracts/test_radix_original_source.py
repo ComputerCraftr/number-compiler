@@ -1,5 +1,8 @@
 """Native C1 ternary normal form may retain only certified ORIGINAL digits."""
 
+from tests.support.assertions import assert_rejected_atomically
+
+
 from typing import Never, cast
 
 import pytest
@@ -94,10 +97,9 @@ def test_budget_rejection_precedes_source_conversion() -> None:
 
     authority = OriginalSourceConstruction(ExactSource((1, 0, 1), 2))
     arena = OriginalRadixArena(ResourceLedger(0, 0))
-    before = arena.ledger.snapshot()
-    with pytest.raises(BlockContextBudgetExceeded):
-        arena.encode(authority, 3)
-    assert arena.ledger.snapshot() == before
+    assert_rejected_atomically(
+        arena.ledger, lambda: arena.encode(authority, 3), BlockContextBudgetExceeded
+    )
     assert not arena.sources
 
 
@@ -348,10 +350,11 @@ def test_transient_shift_zero_and_invalid_requests_preserve_the_encoding() -> No
     assert arena.shifted_width(encoding, 62) == 1
     assert arena.shifted_point(encoding, 62, 0) == 0
     for shift in (True, 0.0, -1, 63):
-        before = arena.ledger.snapshot()
-        with pytest.raises(ValueError):
-            arena.shifted_width(encoding, cast("int", shift))
-        assert arena.ledger.snapshot() == before
+        before = assert_rejected_atomically(
+            arena.ledger,
+            lambda: arena.shifted_width(encoding, cast("int", shift)),
+            ValueError,
+        )
     before = arena.ledger.snapshot()
     foreign = OriginalRadixArena(ResourceLedger()).encode(authority, 12)
     with pytest.raises(ValueError):

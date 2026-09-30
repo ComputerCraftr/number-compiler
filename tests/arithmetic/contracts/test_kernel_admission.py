@@ -1,5 +1,8 @@
 """Admission remains usable without the compatibility evaluator."""
 
+from tests.support.assertions import assert_rejected_atomically
+
+
 import ast
 
 import pytest
@@ -84,10 +87,9 @@ def test_full_dag_admission_rejects_hidden_alias_before_publication(warm: bool) 
         atom, Alias(10), ActionProgramID(scope, "action-program", 0)
     )
     root = ProgramComposition(atom, hidden, ActionProgramID(scope, "action-program", 1))
-    before = compiler.ledger.snapshot()
-    with pytest.raises(UnsupportedInterfaceError):
-        compiler.import_effect(root)
-    assert compiler.ledger.snapshot() == before
+    assert_rejected_atomically(
+        compiler.ledger, lambda: compiler.import_effect(root), UnsupportedInterfaceError
+    )
 
 
 def test_admission_does_not_spend_zero_compiler_budget() -> None:

@@ -10,7 +10,7 @@ whose output has the *local* support semantics required by production:
 Local-axis testing is intentionally stronger than matching the candidate-global
 gcd: it prevents two bad components from cancelling into an apparently good
 scalar.  Candidate programs are built from the production-safe
-:mod:`devtools.proofs.special_source_program` language and contain no factor,
+:mod:`devtools.verification.special_source_program` language and contain no factor,
 CRT, recurrence, carrier, polynomial-expansion, or deferred-exponent token.
 
 Agreement on bounded controls is not a theorem.  The final report distinguishes
@@ -26,7 +26,7 @@ from math import gcd
 from devtools.experiments.power_numbers.terminal_frobenius_chunk import (
     special_local_frobenius_chunk_audit,
 )
-from devtools.proofs.special_source_program import (
+from devtools.verification.special_source_program import (
     FoldedSupportInstruction,
     FoldedSupportProgram,
     SpecialSourceCertificateCandidate,
@@ -158,10 +158,7 @@ class _SynthExpr:
                 completed[id(node)] = ("atom", node.atom)
                 continue
             if not ready:
-                pending.append((node, True))
-                for child in (node.right, node.left):
-                    if child is not None:
-                        pending.append((child, False))
+                _push_synth_children(pending, node)
                 continue
             left = completed[id(node.left)] if node.left is not None else None
             completed[id(node)] = (
@@ -182,10 +179,7 @@ class _SynthExpr:
                 completed[id(node)] = str(node.atom)
                 continue
             if not ready:
-                pending.append((node, True))
-                for child in (node.right, node.left):
-                    if child is not None:
-                        pending.append((child, False))
+                _push_synth_children(pending, node)
                 continue
             assert node.left is not None
             left = completed[id(node.left)]
@@ -215,6 +209,15 @@ class _SynthExpr:
                     if child is not None:
                         pending.append(child)
         return frozenset(found)
+
+
+def _push_synth_children(
+    pending: list[tuple[_SynthExpr, bool]], node: _SynthExpr
+) -> None:
+    pending.append((node, True))
+    for child in (node.right, node.left):
+        if child is not None:
+            pending.append((child, False))
 
 
 @dataclass(frozen=True, slots=True)

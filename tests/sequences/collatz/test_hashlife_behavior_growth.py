@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from tests.support.source_image_assertions import assert_physical_publications
+
 from typing import TYPE_CHECKING
 
 import pytest
@@ -46,9 +48,7 @@ def _exercise(
         assert after.seed_application_temporal_action_nodes > 0
         assert term._power is None
         counters = runtime.resource_work_counters
-        assert counters.get("collatz_physical_action_publications", 0) > 0
-        assert counters.get("source_image_publications", 0) > 0
-        assert counters.get("source_image_projection_publications", 0) > 0
+        assert_physical_publications(counters)
         assert runtime.temporal_parent_requests == 0
         assert runtime.temporal_parent_compositions == 0
     else:

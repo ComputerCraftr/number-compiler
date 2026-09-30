@@ -2,6 +2,9 @@
 
 from __future__ import annotations
 
+from tests.support.source_image_assertions import assert_physical_publications
+from tests.support.tile_kernel import _runtime_source
+from tests.support.reference_arithmetic import physical_collatz_literal as _physical
 import importlib.util
 from typing import Never
 
@@ -22,14 +25,7 @@ from number_compiler.sequences.collatz.block_power import (
     CollatzPhysicalBlockEffect,
     PoweredCollatzTerm,
 )
-from tests.arithmetic.contracts.test_tile_kernel import _oracle, _runtime, _tile
-
-
-def _physical(seed: int, steps: int) -> int:
-    value = seed
-    for _ in range(steps):
-        value = value // 2 if value % 2 == 0 else 3 * value + 1
-    return value
+from tests.support.tile_kernel import _oracle, _runtime, _tile
 
 
 @pytest.mark.parametrize("seed", (1, 2, 3, 7, 27))
@@ -79,9 +75,7 @@ def test_public_powered_collatz_uses_source_image_consumer(steps: int) -> None:
         (expected >> i) & 1 for i in range(expected.bit_length())
     )
     counters = term._ledger.counters
-    assert counters.get("collatz_physical_action_publications", 0) > 0
-    assert counters.get("source_image_publications", 0) > 0
-    assert counters.get("source_image_projection_publications", 0) > 0
+    assert_physical_publications(counters)
     assert counters.get("sequential_generation_advances", 0) == 0
     assert counters.get("whole_word_symbol_visits", 0) == 0
 
@@ -90,8 +84,9 @@ def test_nonboundary_collatz_interfaces_elide_the_low_source_read(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     effect = CollatzPhysicalBlockEffect()
-    ledger, tiles, adapter, primitive, scheduler = _runtime(effect)
-    source = _tile(tiles, adapter, primitive, (0, 1, 1, 0, 1, 0, 1, 1))
+    ledger, tiles, adapter, primitive, scheduler, source = _runtime_source(
+        effect, (0, 1, 1, 0, 1, 0, 1, 1)
+    )
     right = effect.initial(BoundarySide.RIGHT)
 
     def forbidden(*_args: object, **_kwargs: object) -> Never:
@@ -123,8 +118,9 @@ def test_boundary_collatz_interface_reads_the_low_source_for_event_weight(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     effect = CollatzPhysicalBlockEffect()
-    _ledger, tiles, adapter, primitive, scheduler = _runtime(effect)
-    source = _tile(tiles, adapter, primitive, (1, 1, 1, 0, 1, 0, 1, 1))
+    _ledger, tiles, adapter, primitive, scheduler, source = _runtime_source(
+        effect, (1, 1, 1, 0, 1, 0, 1, 1)
+    )
     original = type(tiles).point
     reads = 0
 
@@ -201,11 +197,11 @@ def test_public_collatz_does_not_reach_retired_executors(
         raise AssertionError("retired Collatz executor was reached")
 
     monkeypatch.setattr(
-        "devtools.proofs.collatz_spacetime.CollatzCausalSpacetimeEngine.advance",
+        "devtools.verification.collatz_spacetime.CollatzCausalSpacetimeEngine.advance",
         forbidden,
     )
     monkeypatch.setattr(
-        "devtools.proofs.collatz_spacetime.CollatzCausalSpacetimeEngine.advance_power",
+        "devtools.verification.collatz_spacetime.CollatzCausalSpacetimeEngine.advance_power",
         forbidden,
     )
     monkeypatch.setattr(
@@ -218,7 +214,7 @@ def test_public_collatz_does_not_reach_retired_executors(
         forbidden,
     )
     monkeypatch.setattr(
-        "devtools.proofs.extensional_family_application."
+        "devtools.verification.extensional_family_application."
         "ExtensionalFamilyApplication._apply_machine",
         forbidden,
     )
@@ -226,6 +222,10 @@ def test_public_collatz_does_not_reach_retired_executors(
         "number_compiler.hashlife.interfaces.semantic_state_codec.StateCodecArena.compile",
         forbidden,
     )
+    _assert_noncycle_output()
+
+
+def _assert_noncycle_output() -> None:
     term = PoweredCollatzTerm(7, 4)
     assert term.width() == 5
     assert tuple(term.digit(position) for position in range(5)) == (1, 0, 0, 0, 1)
@@ -245,9 +245,7 @@ def test_noncycle_public_observations_do_not_use_higher_point_or_width(
         "number_compiler.hashlife.execution.continuations.higher_bimachine.HigherBimachineRuntime.width",
         forbidden,
     )
-    term = PoweredCollatzTerm(7, 4)
-    assert term.width() == 5
-    assert tuple(term.digit(position) for position in range(5)) == (1, 0, 0, 0, 1)
+    _assert_noncycle_output()
 
 
 def test_noncycle_point_does_not_eagerly_observe_width_channels() -> None:

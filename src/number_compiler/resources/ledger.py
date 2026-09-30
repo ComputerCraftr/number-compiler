@@ -147,15 +147,20 @@ class ResourceLedger:
             rows.append((id(root), tuple(sorted(fields))))
         return tuple(sorted(rows))
 
-    def cached_payload_audit(
-        self, root_signature: object | None = None
+    def _cached_audit(
+        self, cached: tuple[int, object, object] | None, root_signature: object | None
     ) -> object | None:
-        cached = self._payload_audit_cache
         if cached is None or cached[0] != self._mutation_version:
             return None
         if root_signature is not None and cached[1] != root_signature:
             return None
         return cached[2]
+
+    def cached_payload_audit(
+        self, root_signature: object | None = None
+    ) -> object | None:
+        cached = self._payload_audit_cache
+        return self._cached_audit(cached, root_signature)
 
     def cache_payload_audit(
         self,
@@ -171,11 +176,7 @@ class ResourceLedger:
         self, root_signature: object | None = None
     ) -> object | None:
         cached = self._ownership_audit_cache
-        if cached is None or cached[0] != self._mutation_version:
-            return None
-        if root_signature is not None and cached[1] != root_signature:
-            return None
-        return cached[2]
+        return self._cached_audit(cached, root_signature)
 
     def cache_ownership_audit(
         self,

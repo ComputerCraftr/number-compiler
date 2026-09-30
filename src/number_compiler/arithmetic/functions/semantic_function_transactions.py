@@ -1,6 +1,7 @@
 """Transient reduced-function construction and atomic publication."""
 
 from __future__ import annotations
+from number_compiler.arithmetic.contracts.iterative_queries import split_choice
 
 from collections.abc import Callable
 from typing import TYPE_CHECKING, Self, TypeVar
@@ -441,10 +442,7 @@ class _Transaction:
                     n.high if n.variable == variable else identity
                     for n, identity in zip((c, a, b), key)
                 )
-                low = low_key[0], low_key[1], low_key[2]
-                high = high_key[0], high_key[1], high_key[2]
-                children[key] = variable, low, high
-                pending.extend(((key, True), (high, False), (low, False)))
+                split_choice(pending, children, key, variable, low_key, high_key)
         return self.choices[root]
 
     def map_terminals(

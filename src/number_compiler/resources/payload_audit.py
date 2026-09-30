@@ -724,32 +724,28 @@ def audit_registered_payloads(
             if not semantic_component(value):
                 forbidden.add(identity)
             continue
-        if id(value) in field_actions.approved:
+        if any(
+            id(value) in audit.approved
+            for audit in (
+                field_actions,
+                field_images,
+                radix_providers,
+                higher_payloads,
+                support_payloads,
+                reverse_source,
+            )
+        ):
             continue
-        if id(value) in field_images.approved:
-            continue
-        if id(value) in radix_providers.approved:
-            continue
-        if id(value) in higher_payloads.approved:
-            continue
-        if id(value) in support_payloads.approved:
-            continue
-        if id(value) in reverse_source.approved:
-            continue
-        if source_bound.recognizes(value):
-            if not source_bound.valid(value):
-                forbidden.add(identity)
-            continue
-        if reverse_source.recognizes(value):
-            if not reverse_source.valid(value):
-                forbidden.add(identity)
-            continue
-        if associated.recognizes(value):
-            if not associated.valid(value):
-                forbidden.add(identity)
-            continue
-        if behaviors.recognizes(value):
-            if not behaviors.valid(value):
+        recognizing = next(
+            (
+                audit
+                for audit in (source_bound, reverse_source, associated, behaviors)
+                if audit.recognizes(value)
+            ),
+            None,
+        )
+        if recognizing is not None:
+            if not recognizing.valid(value):
                 forbidden.add(identity)
             continue
         if type(value) in (BehaviorBindingKey, CompletedBehaviorClassification):
@@ -781,7 +777,7 @@ def audit_registered_payloads(
             continue
         if role in ("exact_source", "exact_endpoint", "explicit_lowering", "lowering"):
             continue
-        if type(value).__module__.startswith("devtools.proofs."):
+        if type(value).__module__.startswith("devtools.verification."):
             if type(value) in geometry_fields and semantic_component(value):
                 continue
             if type(value) in record_opaque:

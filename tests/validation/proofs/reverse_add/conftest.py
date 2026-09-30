@@ -4,7 +4,7 @@ from collections.abc import Iterator
 
 import pytest
 
-from devtools.proofs import exact_oracle
+from devtools.verification import exact_oracle
 
 
 @pytest.fixture(autouse=True)

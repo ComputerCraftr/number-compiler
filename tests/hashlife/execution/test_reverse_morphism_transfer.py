@@ -3,6 +3,7 @@
 from itertools import product
 
 import pytest
+from tests.support.assertions import assert_clean_payloads
 
 from number_compiler.arithmetic.contracts.block_effect import (
     BlockContextBudgetExceeded,
@@ -19,14 +20,13 @@ from number_compiler.hashlife.execution.tile_causal_tasks import (
     CausalPrefix,
 )
 from number_compiler.hashlife.tiles.tile_boundaries import BoundaryTileView
-from number_compiler.resources.ownership import audit_execution_ownership
 from number_compiler.resources.payload_audit import audit_registered_payloads
 from number_compiler.sequences.reverse_add.primitive_output_morphism import (
     LEFT,
     RIGHT,
     ReversePrimitiveOutputMorphism,
 )
-from tests.arithmetic.contracts.test_tile_kernel import _runtime, _tile
+from tests.support.tile_kernel import _runtime, _tile
 
 
 def test_decimal_output_morphism_all_kernel_ports() -> None:
@@ -94,13 +94,7 @@ def test_live_causal_edge_uses_morphism_before_fused_or_exact_outputs(
             2 if width == 3 else 1
         )
         assert ledger.counters.get("completed_result_publications", 0) == 0
-        assert not audit_execution_ownership(ledger).violations
-        payloads = audit_registered_payloads(ledger)
-        assert (
-            payloads.unknown_payloads,
-            payloads.forbidden_future_payloads,
-            payloads.unbounded_future_integers,
-        ) == (0, 0, 0)
+        assert_clean_payloads(ledger)
 
 
 def test_morphism_budget_failure_cleans_traversal_and_stale_sources_are_rejected() -> (

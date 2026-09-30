@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from devtools.paths import report_directory
+
 import json
 from dataclasses import asdict
 
@@ -53,11 +55,16 @@ def main() -> None:
             ),
         },
     }
-    out = ROOT / "results" / "special_idempotent_output_metrics.json"
+    out = (
+        report_directory("devtools.benchmarks.special_idempotent_output_probe")
+        / "special_idempotent_output_metrics.json"
+    )
     text = json.dumps(payload, indent=2, sort_keys=False) + "\n"
     out.write_text(text)
     print(text, end="")
 
 
 if __name__ == "__main__":
-    main()
+    from devtools.runs import run_reported
+
+    raise SystemExit(run_reported(main))

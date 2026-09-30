@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from devtools.proofs.carry_action_quotient import (
+from devtools.verification.carry_action_quotient import (
     CarryActionQuotientArena,
     analyze_carry_action_quotient,
 )
@@ -76,7 +76,7 @@ def test_extensional_carry_action_key_is_adaptive_across_radices() -> None:
 
 
 def test_threshold_signature_is_an_exact_pre_scan_action_key() -> None:
-    from devtools.proofs.carry_action_quotient import CarryThresholdSignature
+    from devtools.verification.carry_action_quotient import CarryThresholdSignature
     from number_compiler.arithmetic.carry.carry_monoid import scan_carry_automaton
 
     base = 10
@@ -110,7 +110,7 @@ def test_reset_observer_synthesizes_full_carry_row_without_scan_execution_random
 ):
     import random
 
-    from devtools.proofs.carry_action_quotient import CarryResetSignature
+    from devtools.verification.carry_action_quotient import CarryResetSignature
 
     rng = random.Random(0x0B5E2E)
     for base in range(3, 17):

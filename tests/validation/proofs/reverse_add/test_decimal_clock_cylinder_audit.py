@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import pytest
 
-from devtools.proofs.decimal_clock_cylinder_audit import (
+from devtools.verification.decimal_clock_cylinder_audit import (
     audit_decimal_clock_cylinder,
     audit_seed_196_births,
 )

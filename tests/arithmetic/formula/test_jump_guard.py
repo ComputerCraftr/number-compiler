@@ -148,7 +148,10 @@ class BlockProjectionBackend(_BaseBackend):
     def jump_bit(
         self, prefix_index: object, root: FormulaRoot, bit: object
     ) -> FormulaRoot:
-        from devtools.proofs.block_power import apply_block_power, power_block_effect
+        from devtools.verification.block_power import (
+            apply_block_power,
+            power_block_effect,
+        )
 
         apply_block_power(power_block_effect(base=10, exponent=1), (7, 18, 7))
         return root

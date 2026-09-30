@@ -12,13 +12,63 @@ construction work is still larger than the irreducible factor-lane basis.
 """
 
 from __future__ import annotations
+from number_compiler.arithmetic.contracts.iterative_queries import (
+    defer_indexed_dependencies,
+)
 
 from dataclasses import dataclass
+from collections.abc import Callable
 
 from number_compiler.sequences.prime.set import (
     PrimeBlockSummary,
     canonical_multiplicative_lanes,
 )
+
+
+def commutative_cache_pair(
+    first: int, second: int, cache: dict[tuple[int, int], int]
+) -> tuple[int, int, int | None]:
+    low, high = (first, second) if first <= second else (second, first)
+    return low, high, cache.get((low, high))
+
+
+def progression_decision(
+    width: int,
+    radix: int,
+    factor: int,
+    phase: int,
+    first: int,
+    make_node: Callable[[int, tuple[int, ...]], int],
+) -> int:
+    """Compile one arithmetic progression into an ordered radix decision DAG."""
+    factor, phase, first = map(int, (factor, phase, first))
+    root = (width - 1, 0, radix**width)
+    memo: dict[tuple[int, int, int], int] = {}
+    stack: list[tuple[int, int, int, bool]] = [(*root, False)]
+    while stack:
+        variable, start, size, ready = stack.pop()
+        key = variable, start, size
+        if key in memo:
+            continue
+        lower = max(start, first)
+        hit = lower + ((phase - lower) % factor)
+        if hit >= start + size:
+            memo[key] = 0
+            continue
+        if variable < 0:
+            memo[key] = 1
+            continue
+        child_size = size // radix
+        children = tuple(
+            (variable - 1, start + digit * child_size, child_size)
+            for digit in range(radix)
+        )
+        if not ready:
+            stack.append((*key, True))
+            stack.extend((*child, False) for child in reversed(children))
+            continue
+        memo[key] = make_node(variable, tuple(memo[child] for child in children))
+    return memo[root]
 
 
 class _BDD:
@@ -44,34 +94,14 @@ class _BDD:
         return node
 
     def progression(self, factor: int, phase: int, first: int) -> int:
-        factor, phase, first = map(int, (factor, phase, first))
-        root_key = (self.width - 1, 0)
-        results: dict[tuple[int, int], int] = {}
-        stack: list[tuple[int, int, bool]] = [(root_key[0], root_key[1], False)]
-        while stack:
-            var, start, expanded = stack.pop()
-            key = (var, start)
-            if key in results:
-                continue
-            size = 1 << (var + 1)
-            lower = max(start, first)
-            hit = lower + ((phase - lower) % factor)
-            if hit >= start + size:
-                results[key] = 0
-                continue
-            if var < 0:
-                results[key] = 1
-                continue
-            half = 1 << var
-            left = (var - 1, start)
-            right = (var - 1, start + half)
-            if not expanded:
-                stack.append((var, start, True))
-                stack.append((right[0], right[1], False))
-                stack.append((left[0], left[1], False))
-                continue
-            results[key] = self.mk(var, results[left], results[right])
-        return results[root_key]
+        return progression_decision(
+            self.width,
+            2,
+            factor,
+            phase,
+            first,
+            lambda variable, children: self.mk(variable, children[0], children[1]),
+        )
 
     def or_(self, a: int, b: int) -> int:
         root = (int(a), int(b))
@@ -90,9 +120,8 @@ class _BDD:
             if y == 0 or x == y:
                 results[(x, y)] = x
                 continue
-            a1, b1 = (x, y) if x <= y else (y, x)
-            key = (a1, b1)
-            cached = self.or_cache.get(key)
+            a1, b1, cached = commutative_cache_pair(x, y, self.or_cache)
+            key = a1, b1
             if cached is not None:
                 results[(x, y)] = cached
                 continue
@@ -107,9 +136,7 @@ class _BDD:
             blo, bhi = (lb, hb) if vb == var else (b1, b1)
             low_key, high_key = (alo, blo), (ahi, bhi)
             if not expanded:
-                stack.append((x, y, True))
-                stack.append((high_key[0], high_key[1], False))
-                stack.append((low_key[0], low_key[1], False))
+                defer_indexed_dependencies(stack, x, y, (low_key, high_key), results)
                 continue
             low = results[low_key]
             high = results[high_key]

@@ -23,6 +23,9 @@ The transport helper exploits the extra factor ``2**q`` directly:
 """
 
 from __future__ import annotations
+from number_compiler.arithmetic.contracts.input_validation import (
+    normalized_integer_pair,
+)
 
 from functools import cache
 
@@ -60,9 +63,7 @@ def _odd_prefix_table(bits: int) -> tuple[tuple[int, ...], int]:
 
 def odd_factorial_mod_pow2(n: int, bits: int) -> int:
     """Odd part of ``n!``; cold setup allocates ``2**bits + 1`` prefix entries."""
-    n, bits = int(n), int(bits)
-    if n < 0 or bits <= 0:
-        raise ValueError((n, bits))
+    n, bits = normalized_integer_pair(n, bits, second_minimum=1)
     modulus = 1 << bits
     prefix, block_product = _odd_prefix_table(bits)
     out = 1

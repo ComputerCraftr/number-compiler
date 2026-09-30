@@ -1,7 +1,7 @@
 import pytest
 
-from devtools.proofs import exact_oracle
-from devtools.proofs.reverse_consumer_residual_audit import (
+from devtools.verification import exact_oracle
+from devtools.verification.reverse_consumer_residual_audit import (
     audit_reverse_consumer_residuals,
 )
 from number_compiler.arithmetic.contracts.block_effect import BlockContextBudgetExceeded

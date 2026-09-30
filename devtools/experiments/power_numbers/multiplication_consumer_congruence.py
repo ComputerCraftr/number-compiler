@@ -13,7 +13,7 @@ from dataclasses import dataclass
 from functools import lru_cache
 from typing import Protocol
 
-from devtools.proofs.oracles.special_binary_jump import (
+from devtools.verification.oracles.special_binary_jump import (
     _fermat_carrier_proof,
     _mersenne_carrier_proof,
     fermat_radix_orbit_representative,

@@ -80,14 +80,19 @@ class AntihydraArithmeticImageWorkspace(DyadicReturnImageWorkspace):
             return
         yield from self._run_steps(h, width, scratch)
 
+    @staticmethod
+    def _centered_source(h: int, scratch: RunArithmeticWorkspace) -> int:
+        scratch.require_bits(8 * (h.bit_length() + 16))
+        centered = h - 1
+        if centered <= 0:
+            raise ValueError("Antihydra run source must have positive centered value")
+        return centered
+
     def _run_steps(
         self, h: int, width: int, scratch: RunArithmeticWorkspace
     ) -> Iterator[tuple[int, int, int]]:
         """Iterate run arithmetic inside an already reserved workspace scope."""
-        scratch.require_bits(8 * (h.bit_length() + 16))
-        d = h - 1
-        if d <= 0:
-            raise ValueError("Antihydra run source must have positive centered value")
+        d = self._centered_source(h, scratch)
         remaining = width
         while remaining:
             source_bits = d.bit_length()
@@ -178,10 +183,7 @@ class AntihydraArithmeticImageWorkspace(DyadicReturnImageWorkspace):
         run; a final incomplete zero run retains its own powered action.
         Long mixed sources remain owned by balanced scheduler composition.
         """
-        scratch.require_bits(8 * (h.bit_length() + 16))
-        d = h - 1
-        if d <= 0:
-            raise ValueError("Antihydra run source must have positive centered value")
+        d = self._centered_source(h, scratch)
         remaining = width
         while remaining:
             source_bits = d.bit_length()

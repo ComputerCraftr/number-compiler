@@ -5,7 +5,7 @@ from collections.abc import Callable
 
 import pytest
 
-from devtools.proofs.collatz_harmonic_probe import (
+from devtools.verification.collatz_harmonic_probe import (
     death,
     phase_normalization,
     spatial,

@@ -18,6 +18,7 @@ FINGERPRINT_AFTER = "number_compiler_source_after"
 MANIFEST = "number_compiler_test_manifest"
 NODE_ID = "number_compiler_nodeid"
 EXECUTION_MODE = "number_compiler_execution_mode"
+FINGERPRINT_VERSION = 5
 
 
 def classify_execution_mode(
@@ -79,7 +80,7 @@ def authored_source_paths(
     paths = {root / "pyproject.toml"}
     if include_directories:
         paths.add(root)
-    for folder in ("src", "tests", "devtools"):
+    for folder in ("src", "tests", "devtools", "proofs"):
         if include_directories and (root / folder).is_dir():
             paths.add(root / folder)
         paths.update(
@@ -102,7 +103,7 @@ def authored_source_paths(
 
 def source_fingerprint(root: Path) -> str:
     digest = hashlib.sha256()
-    digest.update(b"number-compiler-authored-source-v4\0")
+    digest.update(f"number-compiler-authored-source-v{FINGERPRINT_VERSION}\0".encode())
     for path in authored_source_paths(root):
         name, data = path.relative_to(root).as_posix().encode(), path.read_bytes()
         digest.update(len(name).to_bytes(8, "big"))
@@ -138,9 +139,14 @@ def collect_required(root: Path, selectors: tuple[str, ...]) -> tuple[str, ...]:
         raise ValueError(
             f"cannot collect required tests:\n{completed.stdout}\n{completed.stderr}"
         )
+    return parse_collection(completed.stdout)
+
+
+def parse_collection(output: str) -> tuple[str, ...]:
+    """Decode the canonical pytest node list shared by guarded suite runners."""
     nodes = tuple(
         line.strip()
-        for line in completed.stdout.splitlines()
+        for line in output.splitlines()
         if line.startswith("tests/") and "::" in line
     )
     if not nodes or len(set(nodes)) != len(nodes):

@@ -5,7 +5,7 @@ from typing import cast
 
 import pytest
 
-from devtools.proofs.carry_harmonic_ports import (
+from devtools.verification.carry_harmonic_ports import (
     CarryHarmonicPortAction,
     PortRows,
     PuncturedCarryHarmonic,
@@ -120,7 +120,7 @@ def test_active_zero_coordinate_is_idempotent_and_is_not_identity() -> None:
 def test_even_algebra_associates_without_replaying_carries(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    import devtools.proofs.carry_harmonic_ports as owner
+    import devtools.verification.carry_harmonic_ports as owner
 
     ports = tuple(
         PuncturedCarryHarmonic(o, p, f)

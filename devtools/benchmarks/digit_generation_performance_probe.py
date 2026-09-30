@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from devtools.paths import report_directory
+
 import json
 
 from devtools.experiments.algebra.baby_giant_behavioral_bend import (
@@ -117,10 +119,15 @@ def main() -> None:
         },
     }
     text = json.dumps(data, indent=2, sort_keys=True) + "\n"
-    out = ROOT / "results" / "digit_generation_performance_metrics.json"
+    out = (
+        report_directory("devtools.benchmarks.digit_generation_performance_probe")
+        / "digit_generation_performance_metrics.json"
+    )
     out.write_text(text)
     print(text, end="")
 
 
 if __name__ == "__main__":
-    main()
+    from devtools.runs import run_reported
+
+    raise SystemExit(run_reported(main))

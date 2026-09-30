@@ -105,6 +105,55 @@ def _add_into(target: list[int], source: tuple[int, ...], offset: int = 0) -> in
     return adds
 
 
+def _combine_karatsuba(
+    results: list[tuple[tuple[int, ...], int, int, int]],
+    width: int,
+    half: int,
+    input_adds: int,
+) -> None:
+    middle, middle_muls, middle_adds, middle_nodes = results.pop()
+    high, high_muls, high_adds, high_nodes = results.pop()
+    low, low_muls, low_adds, low_nodes = results.pop()
+    cross = list(middle) + [0] * max(0, max(len(low), len(high)) - len(middle))
+    cross += [0] * max(0, (2 * half - 1) - len(cross))
+    adds = low_adds + middle_adds + high_adds + input_adds
+    adds += _sub_into(cross, low)
+    adds += _sub_into(cross, high)
+    out = [0] * (2 * width - 1)
+    adds += _add_into(out, low, 0)
+    adds += _add_into(out, tuple(cross), half)
+    adds += _add_into(out, high, 2 * half)
+    results.append(
+        (
+            tuple(_trim(out)),
+            low_muls + middle_muls + high_muls,
+            adds,
+            1 + low_nodes + middle_nodes + high_nodes,
+        )
+    )
+
+
+def _convolution_result(
+    results: list[tuple[tuple[int, ...], int, int, int]],
+    wanted: int,
+    input_length: int,
+    padded: int,
+    threshold: int,
+) -> tuple[tuple[int, ...], ConvolutionMetrics]:
+    if len(results) != 1:
+        raise AssertionError(len(results))
+    product, muls, adds, nodes = results.pop()
+    product = product[:wanted] + (0,) * max(0, wanted - len(product))
+    return product, ConvolutionMetrics(
+        input_length,
+        padded,
+        muls,
+        adds,
+        nodes,
+        "schoolbook" if padded <= threshold else "karatsuba",
+    )
+
+
 def karatsuba_convolution(
     first: Sequence[int], second: Sequence[int], *, threshold: int = 1
 ) -> tuple[tuple[int, ...], ConvolutionMetrics]:
@@ -165,41 +214,12 @@ def karatsuba_convolution(
 
         if frame[0] == "COMBINE":
             n, half, ax, ay = map(int, frame[1:])
-            z1, m1, a1, r1 = results.pop()
-            z2, m2, a2, r2 = results.pop()
-            z0, m0, a0, r0 = results.pop()
-            cross = list(z1) + [0] * max(0, max(len(z0), len(z2)) - len(z1))
-            cross += [0] * max(0, (2 * half - 1) - len(cross))
-            adds = a0 + a1 + a2 + ax + ay
-            adds += _sub_into(cross, z0)
-            adds += _sub_into(cross, z2)
-            out = [0] * (2 * n - 1)
-            adds += _add_into(out, z0, 0)
-            adds += _add_into(out, tuple(cross), half)
-            adds += _add_into(out, z2, 2 * half)
-            results.append(
-                (
-                    tuple(_trim(out)),
-                    m0 + m1 + m2,
-                    adds,
-                    1 + r0 + r1 + r2,
-                )
-            )
+            _combine_karatsuba(results, n, half, ax + ay)
             continue
         raise AssertionError(tag)
 
-    if len(results) != 1:
-        raise AssertionError(len(results))
-    product, muls, adds, nodes = results.pop()
-    wanted = len(a) + len(b) - 1
-    product = product[:wanted] + (0,) * max(0, wanted - len(product))
-    return product, ConvolutionMetrics(
-        input_length,
-        padded,
-        muls,
-        adds,
-        nodes,
-        "schoolbook" if padded <= threshold else "karatsuba",
+    return _convolution_result(
+        results, len(a) + len(b) - 1, input_length, padded, threshold
     )
 
 
@@ -265,41 +285,12 @@ def karatsuba_square(
 
         if frame[0] == "COMBINE":
             n, half, input_adds = map(int, frame[1:])
-            middle, middle_muls, middle_adds, middle_nodes = results.pop()
-            high, high_muls, high_adds, high_nodes = results.pop()
-            low, low_muls, low_adds, low_nodes = results.pop()
-            cross = list(middle) + [0] * max(0, max(len(low), len(high)) - len(middle))
-            cross += [0] * max(0, (2 * half - 1) - len(cross))
-            adds = low_adds + middle_adds + high_adds + input_adds
-            adds += _sub_into(cross, low)
-            adds += _sub_into(cross, high)
-            out = [0] * (2 * n - 1)
-            adds += _add_into(out, low, 0)
-            adds += _add_into(out, tuple(cross), half)
-            adds += _add_into(out, high, 2 * half)
-            results.append(
-                (
-                    tuple(_trim(out)),
-                    low_muls + middle_muls + high_muls,
-                    adds,
-                    1 + low_nodes + middle_nodes + high_nodes,
-                )
-            )
+            _combine_karatsuba(results, n, half, input_adds)
             continue
         raise AssertionError(frame[0])
 
-    if len(results) != 1:
-        raise AssertionError(len(results))
-    product, muls, adds, nodes = results.pop()
-    wanted = 2 * input_length - 1
-    product = product[:wanted] + (0,) * max(0, wanted - len(product))
-    return product, ConvolutionMetrics(
-        input_length,
-        padded,
-        muls,
-        adds,
-        nodes,
-        "schoolbook" if padded <= threshold else "karatsuba",
+    return _convolution_result(
+        results, 2 * input_length - 1, input_length, padded, threshold
     )
 
 
@@ -400,63 +391,53 @@ def binary_square_sign_representative(value: int, width: int, sign: int) -> int:
     return min((weight(value), value), (weight(negative), negative))[1]
 
 
+def _binary_square_projection(
+    value: int, width: int, sign: int, constant: int | None = None
+) -> DigitSquareProjection:
+    value, width = int(value), int(width)
+    modulus = (1 << width) - sign
+    if width < (2 if sign == 1 else 1) or not 0 <= value < modulus:
+        raise ValueError((value, width))
+    digits = _binary_digits(value, width, signed_minus_one=sign == -1)
+    product, metrics = adaptive_square_convolution(digits)
+    fold = fold_cyclic if sign == 1 else fold_negacyclic
+    field = fold(product, width)
+    if constant is not None:
+        mutable = list(field)
+        mutable[0] += constant
+        field = tuple(mutable)
+    block = RadixCarryBlock.from_coefficients(field, base=2)
+    normalize = normalize_cyclic_block if sign == 1 else normalize_negacyclic_block
+    normalization = normalize(block)
+    naive = (sum(digits) if sign == 1 else sum(int(bool(d)) for d in digits if d)) ** 2
+    expected = (value * value + (constant or 0)) % modulus
+    if normalization.residue != expected:
+        detail: tuple[int, ...] = (value, width, normalization.residue)
+        if constant is not None:
+            detail = (value, width, constant, normalization.residue)
+        elif sign == -1:
+            detail = (value, width, normalization.residue, expected)
+        raise AssertionError(detail)
+    return DigitSquareProjection(width, sign, field, normalization, metrics, naive)
+
+
 def cyclic_binary_square_projection(value: int, width: int) -> DigitSquareProjection:
     """Exact ``value**2 mod (2**width-1)`` through Karatsuba + scalar carry."""
-    value, width = int(value), int(width)
-    modulus = (1 << width) - 1
-    if width < 2 or not 0 <= value < modulus:
-        raise ValueError((value, width))
-    digits = _binary_digits(value, width)
-    product, metrics = adaptive_square_convolution(digits)
-    field = fold_cyclic(product, width)
-    block = RadixCarryBlock.from_coefficients(field, base=2)
-    normalization = normalize_cyclic_block(block)
-    naive = sum(digits) ** 2
-    if normalization.residue != value * value % modulus:
-        raise AssertionError((value, width, normalization.residue))
-    return DigitSquareProjection(width, 1, field, normalization, metrics, naive)
+    return _binary_square_projection(value, width, 1)
 
 
 def cyclic_binary_square_add_projection(
     value: int, width: int, constant: int
 ) -> DigitSquareProjection:
     """Exact ``value**2 + constant`` modulo ``2**width-1`` in the digit field."""
-    value, width, constant = int(value), int(width), int(constant)
-    modulus = (1 << width) - 1
-    if width < 2 or not 0 <= value < modulus:
-        raise ValueError((value, width))
-    digits = _binary_digits(value, width)
-    product, metrics = adaptive_square_convolution(digits)
-    mutable_field = list(fold_cyclic(product, width))
-    mutable_field[0] += constant
-    field = tuple(mutable_field)
-    block = RadixCarryBlock.from_coefficients(field, base=2)
-    normalization = normalize_cyclic_block(block)
-    naive = sum(digits) ** 2
-    if normalization.residue != (value * value + constant) % modulus:
-        raise AssertionError((value, width, constant, normalization.residue))
-    return DigitSquareProjection(width, 1, field, normalization, metrics, naive)
+    return _binary_square_projection(value, width, 1, int(constant))
 
 
 def negacyclic_binary_square_projection(
     value: int, width: int
 ) -> DigitSquareProjection:
     """Exact ``value**2 mod (2**width+1)`` through Karatsuba + scalar carry."""
-    value, width = int(value), int(width)
-    modulus = (1 << width) + 1
-    if width <= 0 or not 0 <= value < modulus:
-        raise ValueError((value, width))
-    digits = _binary_digits(value, width, signed_minus_one=True)
-    product, metrics = adaptive_square_convolution(digits)
-    field = fold_negacyclic(product, width)
-    block = RadixCarryBlock.from_coefficients(field, base=2)
-    normalization = normalize_negacyclic_block(block)
-    naive = sum(int(bool(d)) for d in digits if d) ** 2
-    if normalization.residue != value * value % modulus:
-        raise AssertionError(
-            (value, width, normalization.residue, value * value % modulus)
-        )
-    return DigitSquareProjection(width, -1, field, normalization, metrics, naive)
+    return _binary_square_projection(value, width, -1)
 
 
 __all__ = [

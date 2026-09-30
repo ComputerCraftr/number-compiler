@@ -1,6 +1,9 @@
 """A completed required dyadic boundary is consumed before producer scans."""
 
 from dataclasses import replace
+from collections.abc import Callable
+from number_compiler.hashlife.tiles.tiles import TileArena
+from number_compiler.resources.ledger import ResourceLedger
 from typing import Never, cast
 
 import pytest
@@ -14,7 +17,23 @@ from number_compiler.hashlife.execution.tile_causal_tasks import (
 )
 from number_compiler.hashlife.tiles.tile_boundaries import BoundaryTileView
 from number_compiler.hashlife.tiles.tiles import TileID
-from tests.arithmetic.contracts.test_tile_kernel import _runtime, _tile
+from tests.support.tile_kernel import _runtime, _tile
+
+
+def _warm_boundary(
+    request: Callable[[], BoundaryTileView], tiles: TileArena, ledger: ResourceLedger
+) -> tuple[BoundaryTileView, tuple[int, ...], dict[str, int]]:
+    view = request()
+    symbols = tuple(tiles.point(view.tile, index) for index in range(4))
+    return view, symbols, dict(ledger.counters)
+
+
+def _same_boundary(
+    request: Callable[[], BoundaryTileView], tiles: TileArena, expected: tuple[int, ...]
+) -> BoundaryTileView:
+    view = request()
+    assert tuple(tiles.point(view.tile, index) for index in range(4)) == expected
+    return view
 
 
 @pytest.mark.parametrize("side", (0, 1))
@@ -267,9 +286,7 @@ def test_repeated_boundary_hits_completed_region_before_descendants(
             assert isinstance(result, BoundaryTileView)
             return result
 
-        first = request()
-        expected = tuple(tiles.point(first.tile, i) for i in range(4))
-        before = dict(ledger.counters)
+        first, expected, before = _warm_boundary(request, tiles, ledger)
 
         def forbidden(*_args: object, **_kwargs: object) -> Never:
             raise AssertionError(
@@ -280,8 +297,7 @@ def test_repeated_boundary_hits_completed_region_before_descendants(
         monkeypatch.setattr(adapter, "leaf_interface_symbol", forbidden)
         monkeypatch.setattr(tiles, "leaf", forbidden)
         monkeypatch.setattr(tiles, "join", forbidden)
-        second = request()
-        assert tuple(tiles.point(second.tile, i) for i in range(4)) == expected
+        second = _same_boundary(request, tiles, expected)
         assert second.tile == first.tile
         assert ledger.counters["tile_causal_boundary_output_hits"] > before.get(
             "tile_causal_boundary_output_hits", 0
@@ -395,11 +411,7 @@ def test_clipped_region_memo_hits_before_cross_observation_construction(
             assert isinstance(result, BoundaryTileView)
             return result
 
-        expected = request()
-        expected_symbols = tuple(
-            tiles.point(expected.tile, index) for index in range(4)
-        )
-        before = dict(ledger.counters)
+        expected, expected_symbols, before = _warm_boundary(request, tiles, ledger)
 
         def forbidden(*_args: object, **_kwargs: object) -> Never:
             raise AssertionError("warm clipped boundary rebuilt spatial content")
@@ -407,11 +419,7 @@ def test_clipped_region_memo_hits_before_cross_observation_construction(
         monkeypatch.setattr(region_memo, "normalize_boundary_view", forbidden)
         monkeypatch.setattr(boundary_runtime, "concat_boundary_views", forbidden)
         monkeypatch.setattr(tiles, "join", forbidden)
-        actual = request()
-        assert (
-            tuple(tiles.point(actual.tile, index) for index in range(4))
-            == expected_symbols
-        )
+        _same_boundary(request, tiles, expected_symbols)
         assert ledger.counters["tile_region_normalization_early_hits"] > before.get(
             "tile_region_normalization_early_hits",
             0,

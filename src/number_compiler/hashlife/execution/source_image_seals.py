@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from collections.abc import Hashable
+from number_compiler.arithmetic.contracts.iterative_queries import enter_tuple_node
 from dataclasses import dataclass, fields, is_dataclass
 from typing import Self, cast
 
@@ -95,11 +96,8 @@ def _require_immutable_key(value: object, label: str) -> int:
     finished: set[int] = set()
     visited = 0
     while pending:
-        current, exiting = pending.pop()
-        identity = id(current)
+        current, identity, exiting = _pop_visit(pending, active, finished)
         if exiting:
-            active.remove(identity)
-            finished.add(identity)
             continue
         if _primitive(current):
             visited += 1
@@ -128,10 +126,7 @@ def _require_immutable_key(value: object, label: str) -> int:
             raise ValueError(
                 f"{label} exceeds the inline descriptor bound; intern it in an arena"
             )
-        active.add(identity)
-        pending.append((current, True))
-        if type(current) is tuple:
-            pending.extend((item, False) for item in current)
+        if enter_tuple_node(pending, active, current):
             continue
         if type(current) is frozenset:
             pending.extend((item, False) for item in current)
@@ -395,11 +390,8 @@ def publication_seal(value: object, ledger: ResourceLedger) -> PublicationSeal:
     visits = consumed = 0
     try:
         while pending:
-            current, leaving = pending.pop()
-            identity = id(current)
+            current, identity, leaving = _pop_visit(pending, active, finished)
             if leaving:
-                active.remove(identity)
-                finished.add(identity)
                 continue
             visits += 1
             if _primitive(current):
@@ -415,9 +407,9 @@ def publication_seal(value: object, ledger: ResourceLedger) -> PublicationSeal:
             if identity in finished:
                 continue
             children: tuple[object, ...]
-            if isinstance(current, ArenaHandle):
-                # Flat type/value slots remove one allocated anchor tuple per
-                # field while still pinning the original type independently.
+            if isinstance(current, ArenaHandle) or (
+                is_dataclass(current) and not isinstance(current, type)
+            ):
                 names = tuple(item.name for item in fields(current))
                 pinned = tuple(getattr(current, name) for name in names)
                 retained_nodes += 5 + 2 * len(names)
@@ -432,29 +424,14 @@ def publication_seal(value: object, ledger: ResourceLedger) -> PublicationSeal:
                         ),
                     )
                 )
-                # Arena authority is identity-anchored and is not traversed.
+                # Arena tokens are identity anchors, never recursively traversed.
                 children = (
-                    current.kind,
-                    current.local_id,
-                    *pinned[3:],
+                    (current.kind, current.local_id, *pinned[3:])
+                    if isinstance(current, ArenaHandle)
+                    else pinned
                 )
             elif type(current) in (tuple, frozenset):
                 children = tuple(cast(tuple[object, ...] | frozenset[object], current))
-            elif is_dataclass(current) and not isinstance(current, type):
-                names = tuple(item.name for item in fields(current))
-                children = tuple(getattr(current, name) for name in names)
-                retained_nodes += 5 + 2 * len(names)
-                ledger.check_capacity(nodes=retained_nodes)
-                guards.append(
-                    (
-                        current,
-                        type(current),
-                        names,
-                        tuple(
-                            item for child in children for item in (type(child), child)
-                        ),
-                    )
-                )
             else:
                 raise TypeError("publication contains an unsupported value")
             ledger.check_capacity(nodes=retained_nodes + len(pending) + len(children))
@@ -513,3 +490,15 @@ __all__ = [
     "publication_matches_readonly",
     "publication_seal",
 ]
+
+
+def _pop_visit(
+    pending: list[tuple[object, bool]], active: set[int], finished: set[int]
+) -> tuple[object, int, bool]:
+    """Retire a postorder frame in both key admission and publication sealing."""
+    current, leaving = pending.pop()
+    identity = id(current)
+    if leaving:
+        active.remove(identity)
+        finished.add(identity)
+    return current, identity, leaving

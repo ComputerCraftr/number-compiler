@@ -1,5 +1,7 @@
 """Complete finite output identity, simultaneous composition and domain retention."""
 
+from tests.support.finite_port_fixtures import semantic_boolean_variable
+
 from dataclasses import replace
 from itertools import product
 
@@ -12,7 +14,9 @@ from number_compiler.arithmetic.functions.finite_function_types import (
     FunctionSignature,
 )
 from number_compiler.arithmetic.functions.finite_port_action import PortVariable
-from number_compiler.hashlife.interfaces.semantic_bits import BitFunctionArena
+from number_compiler.hashlife.interfaces.semantic_bits import (
+    BitFunctionArena,
+)
 from number_compiler.hashlife.interfaces.semantic_bit_transforms import (
     CompleteFiniteTransform,
 )
@@ -87,9 +91,7 @@ def test_ignored_output_domain_is_not_erased_by_a_later_constant() -> None:
 
 
 def test_retained_consumer_partiality_contributes_to_joint_admission() -> None:
-    bits = BitFunctionArena(ResourceLedger())
-    port = FinitePort(PortVariable(0, 0, "value", 0), 2)
-    value = bits.variable((port,), port, BOOL)
+    bits, port, value = semantic_boolean_variable("value")
     allowed = bits.constant(FunctionSignature((port,), BOOL), 1)
     partial = bits.add(value, value, BOOL)  # Only defined at 0.
     result, retained = bits.complete_transform(
@@ -102,9 +104,7 @@ def test_retained_consumer_partiality_contributes_to_joint_admission() -> None:
 
 
 def test_foreign_or_inconsistent_transform_is_not_admitted() -> None:
-    bits = BitFunctionArena(ResourceLedger())
-    port = FinitePort(PortVariable(0, 0, "value", 0), 2)
-    value = bits.variable((port,), port, BOOL)
+    bits, port, value = semantic_boolean_variable("value")
     allowed = bits.constant(FunctionSignature((port,), BOOL), 1)
     identity, _ = bits.complete_transform((port,), (value,), allowed)
     foreign = BitFunctionArena(ResourceLedger())
@@ -120,9 +120,7 @@ def test_foreign_or_inconsistent_transform_is_not_admitted() -> None:
 
 
 def test_partial_guard_and_false_guard_have_one_semantic_identity() -> None:
-    bits = BitFunctionArena(ResourceLedger())
-    port = FinitePort(PortVariable(0, 0, "value", 0), 2)
-    value = bits.variable((port,), port, BOOL)
+    bits, port, value = semantic_boolean_variable("value")
     one = bits.constant(FunctionSignature((port,), BOOL), 1)
     partial_guard = bits.add(value, one, BOOL)  # True at 0, undefined at 1.
     total_guard = bits.domain_predicate(partial_guard)
@@ -167,9 +165,7 @@ def test_partial_action_identity_survives_every_boolean_future_and_squaring(
     table: tuple[int | None, int | None], monkeypatch: pytest.MonkeyPatch
 ) -> None:
     """Exhaust the partial one-bit algebra, not a recursive source constructor."""
-    bits = BitFunctionArena(ResourceLedger())
-    port = FinitePort(PortVariable(0, 0, "value", 0), 2)
-    value = bits.variable((port,), port, BOOL)
+    bits, port, value = semantic_boolean_variable("value")
     one = bits.constant(FunctionSignature((port,), BOOL), 1)
 
     def action(

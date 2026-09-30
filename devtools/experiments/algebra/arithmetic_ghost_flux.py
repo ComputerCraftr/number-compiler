@@ -19,6 +19,7 @@ from dataclasses import dataclass
 from fractions import Fraction
 from math import comb, gcd, isqrt
 
+from devtools.experiments.algebra.inputs import bounded_jet_spec
 from devtools.experiments.power_numbers.special_transverse_jet import (
     SpecialJetProgressionSpec,
     build_special_jet_interval,
@@ -193,6 +194,16 @@ class DivisorCurrentIntegralAudit:
     enumerates_interior_atoms: bool = True
 
 
+def _validated_spec(
+    family: str, parameter: int, start: int, span: int
+) -> tuple[SpecialJetProgressionSpec, int, int]:
+    spec = SpecialJetProgressionSpec.build(family, parameter)
+    start, span = int(start), int(span)
+    if start < 1 or span < 1:
+        raise ValueError((start, span))
+    return spec, start, span
+
+
 def divisor_current_integral_audit(
     family: str,
     parameter: int,
@@ -211,10 +222,7 @@ def divisor_current_integral_audit(
     implementation intentionally scans every interior atom and therefore is not
     the missing release evaluator.
     """
-    spec = SpecialJetProgressionSpec.build(family, parameter)
-    start, span = int(start), int(span)
-    if start < 1 or span < 1:
-        raise ValueError((start, span))
+    spec, start, span = _validated_spec(family, parameter, start, span)
     product = 1
     local_product = 1
     atoms: list[tuple[int, int]] = []
@@ -284,10 +292,7 @@ def arithmetic_plaquette_audit(
 
     so curvature is identically trivial on the unit locus.
     """
-    spec = SpecialJetProgressionSpec.build(family, parameter)
-    start, span = int(start), int(span)
-    if start < 1 or span < 1:
-        raise ValueError((start, span))
+    spec, start, span = _validated_spec(family, parameter, start, span)
     x0 = _atom(spec, start)
     x1 = _atom(spec, start + span)
     x2 = _atom(spec, start + span + 1)
@@ -424,10 +429,7 @@ def finite_difference_ghost_jet_audit(
     unit, the formal Newton degree is exactly l; truncating at bounded order
     cannot represent the whole translated family.
     """
-    spec = SpecialJetProgressionSpec.build(family, parameter)
-    start, span = int(start), int(span)
-    if start < 1 or span < 1:
-        raise ValueError((start, span))
+    spec, start, span = _validated_spec(family, parameter, start, span)
     samples = tuple(
         _interval_product_unbounded(spec, start + shift, span)
         for shift in range(span + 1)
@@ -545,10 +547,7 @@ def analytic_gamma_boundary_audit(
     ``(C,a,l)`` is a compact symbolic descriptor but no modular Gamma primitive
     is supplied by the repository, so this does not count as an evaluator.
     """
-    spec = SpecialJetProgressionSpec.build(family, parameter)
-    start, span = int(start), int(span)
-    if start < 1 or span < 1:
-        raise ValueError((start, span))
+    spec, start, span = _validated_spec(family, parameter, start, span)
     x = Fraction(start * spec.stride + 1, spec.stride)
     end = x + span
     direct = _interval_product_unbounded(spec, start, span)
@@ -837,10 +836,7 @@ def baby_giant_ghost_flux_audit(
     Horner evaluation so its charged arithmetic cannot masquerade as a fast
     multipoint primitive.
     """
-    spec = SpecialJetProgressionSpec.build(family, parameter)
-    start, span = int(start), int(span)
-    if start < 1 or span < 1 or start + span - 1 > spec.max_slot:
-        raise ValueError((start, span, spec.max_slot))
+    spec, start, span = bounded_jet_spec(family, parameter, start, span)
     b = isqrt(span)
     if b * b < span:
         b += 1

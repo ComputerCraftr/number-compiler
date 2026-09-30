@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from devtools.paths import report_directory
+
 import json
 
 from devtools.experiments.primes.prime_clock_quotients import (
@@ -16,7 +18,7 @@ ROOT = repository_root()
 def main() -> int:
     rows = prime_clock_wheel_audits()
     data = metrics_as_jsonable(rows)
-    out = ROOT / "results"
+    out = report_directory("devtools.benchmarks.prime_clock_quotient_probe")
     out.mkdir(exist_ok=True)
     (out / "prime_clock_quotient_metrics.json").write_text(
         json.dumps(data, indent=2, sort_keys=True) + "\n"
@@ -49,4 +51,6 @@ def main() -> int:
 
 
 if __name__ == "__main__":
-    raise SystemExit(main())
+    from devtools.runs import run_reported
+
+    raise SystemExit(run_reported(main))

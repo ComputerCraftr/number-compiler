@@ -13,6 +13,30 @@ from number_compiler.arithmetic.fields.consumer_pullback import PrefixSafety
 from number_compiler.arithmetic.fields.skew_transfer import SkewTransfer
 
 
+def _advance_cylinder(
+    width: int, residue: int, output: int, delta: int, h: int, ledger: int
+) -> tuple[int, int]:
+    p2 = 1 << width
+    if type(h) is not int or type(ledger) is not int:
+        raise TypeError("cylinder arithmetic requires exact integers")
+    if h < 6 or h % p2 != residue:
+        raise ValueError("source is outside the arithmetic cylinder")
+    return 3**width * (h >> width) + output, ledger + delta
+
+
+def _join_cylinder_fields(
+    before: ArithmeticCylinder | Cylinder, after: ArithmeticCylinder | Cylinder
+) -> tuple[PrefixSafety, int, int, int, int, int, int]:
+    safety = PrefixSafety(before.delta, before.minimum).then(
+        PrefixSafety(after.delta, after.minimum)
+    )
+    k, ell = before.width, after.width
+    lift, residue, output, gain = _join_source_cylinders(
+        k, before.residue, before.output, before.skew, ell, after.residue, after.skew
+    )
+    return safety, k, ell, lift, residue, output, gain
+
+
 def _join_source_cylinders(
     before_width: int,
     before_residue: int,
@@ -74,20 +98,13 @@ class ArithmeticCylinder:
         return SkewTransfer(p3, p2 * self.output - p3 * self.residue, p2)
 
     def advance(self, h: int, ledger: int) -> tuple[int, int]:
-        p2 = 1 << self.width
-        if type(h) is not int or type(ledger) is not int:
-            raise TypeError("cylinder arithmetic requires exact integers")
-        if h < 6 or h % p2 != self.residue:
-            raise ValueError("source is outside the arithmetic cylinder")
-        return 3**self.width * (h >> self.width) + self.output, ledger + self.delta
+        return _advance_cylinder(
+            self.width, self.residue, self.output, self.delta, h, ledger
+        )
 
     def then(self, after: ArithmeticCylinder) -> ArithmeticCylinder:
-        safety = PrefixSafety(self.delta, self.minimum).then(
-            PrefixSafety(after.delta, after.minimum)
-        )
-        k, ell = self.width, after.width
-        _lift, residue, output, _first_gain = _join_source_cylinders(
-            k, self.residue, self.output, self.skew, ell, after.residue, after.skew
+        safety, k, ell, _lift, residue, output, _first_gain = _join_cylinder_fields(
+            self, after
         )
         return ArithmeticCylinder(
             k + ell,
@@ -143,22 +160,13 @@ class Cylinder:
 
     def advance(self, h: int, ledger: int) -> tuple[int, int]:
         """Apply the total arithmetic skew without asserting TM admission."""
-        p2 = 1 << self.width
-        if type(h) is not int or type(ledger) is not int:
-            raise TypeError("cylinder arithmetic requires exact integers")
-        if h < 6 or h % p2 != self.residue:
-            raise ValueError("source is outside the arithmetic cylinder")
-        return 3**self.width * (h >> self.width) + self.output, ledger + self.delta
+        return _advance_cylinder(
+            self.width, self.residue, self.output, self.delta, h, ledger
+        )
 
     def then(self, after: Cylinder) -> Cylinder:
         """Compose full cylinders; derive the required incoming source lift."""
-        safety = PrefixSafety(self.delta, self.minimum).then(
-            PrefixSafety(after.delta, after.minimum)
-        )
-        k, ell = self.width, after.width
-        lift, residue, output, p3 = _join_source_cylinders(
-            k, self.residue, self.output, self.skew, ell, after.residue, after.skew
-        )
+        safety, k, ell, lift, residue, output, p3 = _join_cylinder_fields(self, after)
         # x_first = 2^ell*x + lift, x_after = 3^k*x + translated.
         translated = (p3 * lift + self.output - after.residue) // (1 << ell)
         a, b = 1 << ell, p3

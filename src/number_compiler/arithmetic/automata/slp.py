@@ -11,12 +11,16 @@ repeat exponent, never the represented characters.
 """
 
 from __future__ import annotations
+from number_compiler.arithmetic.contracts.iterative_queries import push_binary_children
 
 from collections.abc import Iterable, Sequence
 from dataclasses import dataclass
 
 from number_compiler.arithmetic.automata.guard import record_slp_metrics
-from number_compiler.arithmetic.automata.transducer import LazyBimachine
+from number_compiler.arithmetic.automata.transducer import (
+    LazyBimachine,
+    transduction_midpoints,
+)
 from number_compiler.arithmetic.fields.radix import bit_width
 
 _bits = bit_width
@@ -149,8 +153,7 @@ class SLPArena:
                 out.extend([n.symbol] * mult)
             elif n.kind == "CONCAT":
                 for _ in range(mult):
-                    stack.append((n.right, 1))
-                    stack.append((n.left, 1))
+                    push_binary_children(stack, n, (n.left, 1), (n.right, 1))
             elif n.kind == "REPEAT":
                 stack.append((n.child, mult * n.count))
             else:  # pragma: no cover - arena invariant
@@ -434,13 +437,12 @@ class BimachineSLPProjector:
                     self._block[key] = out
                     values.append(out)
                 elif n.kind == "CONCAT":
-                    left_mid = self.forward(n.left, lctx)
-                    right_mid = self.reverse(n.right, rctx)
-                    if left_mid is None or right_mid is None:
-                        raise ValueError("context reject")
+                    child_left, child_right = transduction_midpoints(
+                        self.forward, self.reverse, n.left, n.right, lctx, rctx
+                    )
                     tasks.append(("BLOCK_CONCAT", node_id, lctx, rctx))
-                    tasks.append(("BLOCK", n.right, left_mid, rctx))
-                    tasks.append(("BLOCK", n.left, lctx, right_mid))
+                    tasks.append(("BLOCK", n.right, child_left, rctx))
+                    tasks.append(("BLOCK", n.left, lctx, child_right))
                 elif n.kind == "REPEAT":
                     tasks.append(("BLOCK_STORE", node_id, lctx, rctx))
                     tasks.append(("REPEAT_BLOCK", n.child, n.count, lctx, rctx))

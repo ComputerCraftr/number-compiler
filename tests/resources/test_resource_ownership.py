@@ -275,7 +275,7 @@ def test_execution_owners_allocate_persistent_stores_only_through_factories() ->
     root = repository_root() / "src/number_compiler"
     violations: dict[str, list[int]] = {}
     examined = 0
-    for source_root in (root, repository_root() / "devtools" / "proofs"):
+    for source_root in (root, repository_root() / "devtools" / "verification"):
         for path in source_root.rglob("*.py"):
             text = path.read_text()
             classes = set()

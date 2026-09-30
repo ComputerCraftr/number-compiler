@@ -150,22 +150,54 @@ class MicroblockCache:
         self._validators[program_owner] = validate_program
 
     def _validate_key(self, key: MicroblockKey) -> None:
+        if type(key) is not MicroblockKey:
+            raise TypeError("microblock requests require an exact key")
         key.__post_init__()
         validator = self._validators.get(key.program.owner)
         if validator is None:
             raise ValueError("microblock program belongs to an unbound arena")
         validator(key.program)
 
+    @staticmethod
+    def _validate_payload(value: ExactMicroblock) -> ExactMicroblock:
+        if type(value) is not ExactMicroblock:
+            raise TypeError("microblock cache requires an exact bounded payload")
+        value.__post_init__()
+        return value
+
+    @staticmethod
+    def _payload(value: ExactMicroblock) -> ExactMicroblock:
+        if type(value) is not ExactMicroblock:
+            raise TypeError("microblock cache requires an exact bounded payload")
+        # Ordinary frozen-record assignment is already forbidden. Snapshots also
+        # isolate explicit object.__setattr__ corruption of caller-held records.
+        # Only two scalar fields are copied; retained entry/payload charges stay
+        # unchanged, and the copied integer payload remains at most 64 bits.
+        return ExactMicroblock(value.encoded, value.bit_count)
+
+    @staticmethod
+    def _key_snapshot(key: MicroblockKey) -> MicroblockKey:
+        program = key.program
+        return MicroblockKey(
+            ActionProgramID(program.owner, program.kind, program.local_id),
+            key.radix,
+            key.stage,
+            key.block,
+            key.kind,
+            key.source_scope,
+        )
+
     def get(self, key: MicroblockKey) -> ExactMicroblock | None:
         self._validate_key(key)
         found = self.blocks.get(key)
+        value = None if found is None else self._payload(found)
         self.ledger.bump("microblock_requests")
-        if found is not None:
+        if value is not None:
             self.ledger.bump("microblock_hits")
-        return found
+        return value
 
     def _drop(self, key: MicroblockKey) -> None:
-        value = self.blocks[key]
+        value = self._validate_payload(self.blocks[key])
         del self.blocks[key]
         self.ledger.release(self.owner, entries=1)
         self.payload_bytes -= value.payload_bytes
@@ -179,9 +211,11 @@ class MicroblockCache:
 
     def put(self, key: MicroblockKey, value: ExactMicroblock) -> None:
         self._validate_key(key)
-        value.__post_init__()
+        value = self._payload(value)
+        key = self._key_snapshot(key)
         old = self.blocks.get(key)
         if old is not None:
+            old = self._validate_payload(old)
             next_bytes = self.payload_bytes - old.payload_bytes + value.payload_bytes
             if next_bytes > self.MAX_PAYLOAD_BYTES:
                 raise RuntimeError(
@@ -204,7 +238,7 @@ class MicroblockCache:
                 <= self.MAX_PAYLOAD_BYTES
             ):
                 break
-            victim_value = self.blocks[victim]
+            victim_value = self._validate_payload(self.blocks[victim])
             victims.append((victim, victim_value))
             removed_bytes += victim_value.payload_bytes
         if (

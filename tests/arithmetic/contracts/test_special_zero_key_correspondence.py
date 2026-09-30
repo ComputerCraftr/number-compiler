@@ -5,20 +5,19 @@ The source-text check is an audit anchor, not extraction of Isabelle code into P
 
 from pathlib import Path
 
-from devtools.proofs.oracles.special_primality import pepin_test
+from devtools.paths import isabelle_root
+from devtools.verification.oracles.special_primality import pepin_test
 from number_compiler.arithmetic.polynomials.arithmetic_tile import (
     ArithmeticTile,
     ArithmeticTileSpec,
 )
 from number_compiler.arithmetic.polynomials.primary_carry_jet import PrimaryCarryJet
 
-ROOT = Path(__file__).resolve().parents[3]
+ROOT = isabelle_root(Path(__file__).resolve().parents[3])
 
 
 def test_m11_zero_key_numeric_regression_agrees_with_arithmetic_tile() -> None:
-    theory = (
-        ROOT / "devtools/proofs/isabelle/etale/Mersenne_Zero_Key_Counterexample.thy"
-    ).read_text()
+    theory = (ROOT / "etale/Mersenne_Zero_Key_Counterexample.thy").read_text()
     assert '"primary_root_key False 11 m11_zero_carry =' in theory
     assert "(False, -1, (14, 5))" in theory
 

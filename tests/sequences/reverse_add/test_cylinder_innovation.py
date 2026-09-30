@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from tests.support.arithmetic_fixtures import forge_growth
+
 from dataclasses import replace
 
 import pytest
@@ -17,7 +19,6 @@ from number_compiler.arithmetic.fields.centered_carry import (
     reflected_innovation,
 )
 from number_compiler.arithmetic.fields.symbolic_innovation import (
-    RadialMultiplier,
     SymbolicInnovationArena,
     SymbolicRadialInnovation,
 )
@@ -242,15 +243,7 @@ def test_published_authority_rejects_coordinated_clause_mutation_before_source_r
     clause = primitive_successor_clause(arena, ports)
     if tamper == "growth":
         forged_growth = 1 - clause.growth
-        object.__setattr__(clause, "growth", forged_growth)
-        object.__setattr__(clause, "output_extent", clause.extent + forged_growth)
-        object.__setattr__(
-            clause,
-            "action",
-            SymbolicRadialInnovation(
-                RadialMultiplier(1 - forged_growth, forged_growth), clause._beta
-            ),
-        )
+        forge_growth(clause, forged_growth)
     else:
         foreign = clause.carry_atom.atom
         object.__setattr__(clause, "_beta", foreign)

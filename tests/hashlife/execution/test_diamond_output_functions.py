@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from tests.support.assertions import assert_rejected_atomically
+
 from dataclasses import fields, replace
 from typing import TYPE_CHECKING, Never
 
@@ -138,8 +140,7 @@ def test_foreign_and_nonprimitive_requests_reject_before_warm_lookup_or_mutation
         replace(request, left=other.left),
         replace(request, action=pair, left=left, right=right),
     ):
-        before = runtime.ledger.snapshot()
-        with pytest.raises((TypeError, ValueError)):
-            runtime.execute(invalid)
-        assert runtime.ledger.snapshot() == before
+        assert_rejected_atomically(
+            runtime.ledger, lambda: runtime.execute(invalid), (TypeError, ValueError)
+        )
     assert foreign.outputs.bindings == {}

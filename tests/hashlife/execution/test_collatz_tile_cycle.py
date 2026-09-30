@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from tests.support.assertions import assert_rejected_atomically
+
 from itertools import islice
 
 import pytest
@@ -43,10 +45,11 @@ def test_noninitial_cycle_contract_rejects_the_certified_shortcut() -> None:
     term = PoweredCollatzTerm(1, 8)
     workspace = term._source_image()
     foreign = PoweredCollatzTerm(2, 8)._source_image()
-    before = term._ledger.snapshot()
-    with pytest.raises((ValueError, TypeError)):
-        workspace.validate_source(foreign.root_source)
-    assert term._ledger.snapshot() == before
+    assert_rejected_atomically(
+        term._ledger,
+        lambda: workspace.validate_source(foreign.root_source),
+        (ValueError, TypeError),
+    )
 
 
 def test_completed_cycle_interface_bypasses_causal_evaluation(
