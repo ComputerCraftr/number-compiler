@@ -28,6 +28,7 @@ from number_compiler.resources.ledger import OwnedMemo, ResourceLedger
 from number_compiler.resources.stores import LedgerList
 from number_compiler.sequences.reverse_add.source_chamber import (
     SameCarryChamberRejected,
+    iter_admitted_same_carry_digits,
     same_carry_digit,
     validate_same_carry_chamber,
 )
@@ -544,8 +545,7 @@ class _ReverseSourceImageAdapter(SourceBoundImageAdapter):
     def iter_same_carry_digits(self, source: ExactSource, steps: int) -> Iterator[int]:
         """Consume the chamber already checked by image admission."""
         ports = self.ports(source)
-        for position in range(ports.width):
-            yield same_carry_digit(ports, steps, position)
+        yield from iter_admitted_same_carry_digits(ports, steps)
 
     def project(
         self, image: SourceImageView, demand: SourceImageDemand

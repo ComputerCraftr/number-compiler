@@ -182,7 +182,9 @@ def authenticated_arithmetic_result(
         arithmetic = result._term._result
         if type(arithmetic) is not ArithmeticResult:
             raise ValueError("unbound Antihydra arithmetic result")
-        arithmetic.require_source()
+        # Run.require_source has already authenticated this exact term result
+        # before checking the physical publication. No intervening constructor
+        # or observer replaces it here, so a second aggregate check repeats work.
         return arithmetic
     raise TypeError("Mahler observations require an Antihydra source result")
 

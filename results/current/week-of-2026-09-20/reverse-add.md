@@ -1,0 +1,872 @@
+# Reverse/add
+
+[Week of 2026-09-20](README.md) · [Documentation index](../../../docs/index.md)
+
+## Records
+
+- [Centered carry recovery measurements](#centered-carry-recovery-measurements)
+- [Pair grammar spatial versus temporal cost](#pair-grammar-spatial-versus-temporal-cost)
+- [Historical carry-slab comparison](#historical-carry-slab-comparison)
+- [Reverse CLI re-entry measurements](#reverse-cli-re-entry-measurements)
+- [Archived output quotient audit validation](#archived-output-quotient-audit-validation)
+- [Pullback implementation milestone: 2026-09-21](#pullback-implementation-milestone-2026-09-21)
+- [F2 forcing elimination in the shared arithmetic](#f2-forcing-elimination-in-the-shared-arithmetic)
+- [F5 operator reuse versus region-occurrence construction](#f5-operator-reuse-versus-region-occurrence-construction)
+- [Native source-only D4 squares](#native-source-only-d4-squares)
+- [Spatial residual bisimulation and repeated-work fixes](#spatial-residual-bisimulation-and-repeated-work-fixes)
+- [Demand-specific forcing retention](#demand-specific-forcing-retention)
+- [Temporal patch cutover audit](#temporal-patch-cutover-audit)
+- [Provider executor and reverse cutover trace](#provider-executor-and-reverse-cutover-trace)
+
+## Provenance
+
+Original records and caveats follow. Their evidence certifies only its recorded
+source and scope. Records without a precise day retain their original weekly
+context; listing order is not evidence of execution order.
+
+## Centered carry recovery measurements
+
+Record period: September 20 evidence collection; individual run dates remain as recorded below.
+
+Relocated evidence from the reverse-add synthesis; original scope and dates below.
+
+<details>
+<summary>Recorded implementation and evidence</summary>
+
+On source `605e76066c6f`, five fresh-arena trials per horizon measured:
+
+| Horizon | Median construction seconds | Retained innovation nodes | Domain actions |
+| --- | --- | --- | --- |
+| 20 | 0.103 | 305 | 124 |
+| 64 | 0.803 | 1,376 | 946 |
+| 128 | 2.563 | 3,687 | 3,530 |
+
+The preceding same-host carry-SLP round-trip comparison had five complete
+20/64 trials, with medians 0.146/1.370 seconds and 285/1,149 retained nodes.
+Direct recovery reduces time but retains extra signed-reset expressions. The
+comparison's aggregate 35-second guard expired during its 128-step baseline;
+that incomplete group is not performance-acceptance evidence. The final
+direct-event trials completed separately, with observation, rendering and
+literal-reference costs reported apart. All still perform one chronological
+advance per step. Neither these diagnostics nor the checked spatial laws
+establish temporal powering, the full 16–1024 release manifest or CLI cutover.
+
+**Earlier measured limitation (before direct recovery):** fresh research constructions at depths 20, 40 and 80
+inspect 124, 394 and 1,428 carry runs, and 1,006, 3,699 and 16,345 packet stencil
+terms. Construction takes approximately 0.17, 0.52 and 2.12 seconds in these
+single diagnostic trials. Each performs exactly one `advance` per step and
+retains 21, 41 and 81 states. D20 emits `70446464506`, but this is not a
+production cutover or a successful complexity gate. The full-extent run
+construction can hide quadratic work even without a per-digit loop. The
+missing component remains a source-admitted parameter-changing temporal
+normal form with a successful construction bound.
+
+Reproduce bounded correctness with
+`python -m pytest -o addopts='' tests/validation/proofs/reverse_add/test_centered_future_grammar.py tests/validation/proofs/reverse_add/test_source_growth_admission.py`.
+Diagnostic evidence is local under
+`results/current/future-grammars-agents-2026-09-20/`; the
+[weekly record](README.md) separates it from
+release evidence and preserves the source fingerprint.
+
+</details>
+
+
+## Pair grammar spatial versus temporal cost
+
+Record period: September 20 evidence collection; individual run dates remain as recorded below.
+
+Relocated evidence from the reverse-add synthesis; original scope and dates below.
+
+<details>
+<summary>Recorded implementation and evidence</summary>
+
+Single cold research probes on the `2^30`-cell field retain 80, 305, 1,290 and
+5,504 nodes after 6, 12, 24 and 48 steps. The corresponding final reachable
+grammars have only 10, 17, 37 and 67 nodes. Construction takes about 0.0012,
+0.0040, 0.016 and 0.063 seconds. Thus represented spatial width is compressed,
+but cumulative construction is still roughly quadratic in time. For 196,
+depths 20, 40 and 80 take about 0.0065, 0.024 and 0.079 seconds and retain
+541, 1,751 and 6,539 nodes. These are finite research diagnostics, not CLI
+latency or the unchanged five-trial release workload. The small final grammar
+does not erase construction or retained-work costs.
+
+</details>
+
+
+## Historical carry-slab comparison
+
+Record period: September 20 evidence collection; individual run dates remain as recorded below.
+
+Relocated evidence from the reverse-add synthesis; original scope and dates below.
+
+<details>
+<summary>Recorded implementation and evidence</summary>
+
+The archived [carry/event account](../../../docs/archive/reverse-add/CARRY_EVENT_FORMULA_RESULTS.md)
+records a decimal `H=20` carry-field reconstruction window. The
+[generalized-power account](../../../docs/archive/repository-and-algebra/GENERALIZED_POWER_RESULTS.md)
+records native slab morphisms and guarded `32->65` and `64->128` jumps without
+ordinary replay, while explicitly leaving temporal closure open. These concern
+the carry/event owner, not the old digit/wreath executor or the recent pair-SLP
+spatial prototype. The pair-SLP measurements below cannot establish a lower
+bound or a regression result for that different construction.
+
+The supplied [v0.12.0 carry-slab report](../../../docs/archive/reverse-add/CARRY_SLAB_JUMP_RESULTS.md)
+is now preserved verbatim. Its SHA-256 is
+`e5a4e9bb00d4391b6c6e99c35b3fb1ef8570d75dbf13189ed349338a9a6bc310`.
+The following are historical measurements from that report, not current-source
+measurements. The report does not include a source fingerprint, executable,
+raw per-trial evidence or measurement environment; the local Git history search
+did not recover the retired slab modules.
+
+| Power | Nodes | References | Description bits |
+| --- | --- | --- | --- |
+| D4 | 79 | 255 | 2649 |
+| D8 | 111 | 463 | 4441 |
+| D256 | 2095 | 13359 | 182340 |
+| D1024 | 8239 | 53295 | 832674 |
+
+All eleven tabulated powers, D1 through D1024, satisfy **exactly**
+`nodes = 8N + 47`, `references = 52N + 47`, and `depth = 3N + 3`.
+These equalities were checked against the supplied table; they are not a proof
+for unmeasured powers. The node fit near `N^0.933` should not obscure the simpler
+linear relation including its fixed overhead. Description bits grow somewhat
+faster (the report fits `N^1.094`). These are representation measurements, not
+counts of all construction operations or cold-runtime measurements.
+
+#### Comparison with the current output-morphism gates
+
+| Question | Historical carry-slab report | Current acceptance |
+| --- | --- | --- |
+| Object being powered | Fixed-H carry reconstruction, carry scan and active-domain growth; five pair-bit projections share one core | An admitted complete source-cylinder output return, composed by the existing scheduler |
+| D4/D8 representation | 79/111 nodes, without expanded Boolean decision cones in powered roots | Generic D4 range construction and D4/D8 CLI output still fail; there is no successful current complete-return size to compare |
+| Exact execution evidence | Guarded `32->65` and `64->128` jumps; reported forbidden-operation maps empty | Positive digit, width and point checks with causal execution and temporal continuations poisoned |
+| Output accounting | Both roots materialized **outside** the powered guard and compared with an independent oracle | CLI tests cover requested digit emission; generic-range tests also check width, points, streaming and demand order |
+| Temporal reduction | About one nonlinear slab generation survives per represented step | Requires complete-effect normalization; a small wrapper around unresolved generations is insufficient |
+| Cost evidence | Linear retained node/reference/depth tables; two closed-jump measurements | Construction, demand and rendering must be measured separately under the unchanged resource gates |
+
+The two historical closed jumps used 5,162 and 18,218 bit evaluations, taking
+1.717 and 5.921 seconds respectively. The advance changes from 33 to 64 and
+target width from 32 to 58. These two different workloads do not establish an
+evaluation complexity bound; they do demonstrate why linear representation
+size must not be labeled linear end-to-end work. No D4/D8 cold-construction or
+final-materialization timings are supplied.
+
+The report nevertheless records a concrete capability missing from the current
+generic production route: exact guarded carry-domain jumps with a compact
+representation. It is a historical capability baseline, and the quadratic
+pair-SLP experiment cannot be used to dismiss it. Conversely, neither a recent
+single-coordinate circuit benchmark nor a local thirteen-channel test measures
+that historical whole-cylinder capability. Reproduction should preserve the
+historical representation columns while adding cold construction, demanded
+output and cumulative work, rather than replacing them with an unrelated DAG
+node count. Recovering or replacing that capability is an integration target;
+the stronger temporal quotient remains a separate target.
+
+</details>
+
+
+## Reverse CLI re-entry measurements
+
+Record period: September 20 evidence collection; individual run dates remain as recorded below.
+
+Relocated evidence from the reverse-add synthesis; original scope and dates below.
+
+<details>
+<summary>Recorded implementation and evidence</summary>
+
+The current pair-SLP constructor remains research-only. The exact zipper now
+shares commutative operand pairs, but its chronological constructor still calls
+one spatial successor per time step. Structural validation visits are counted
+explicitly; cold construction, observation, rendering and warm re-demand are
+reported separately. Warm reuse allocates no new grammar nodes but still
+performs validation work.
+
+Five fresh-process trials at each horizon from 16 through 1024 were measured
+for seed 196 on authored source `42862bb0f8c9`. Selected results:
+
+| Steps | Output digits | Median construction seconds | Retained grammar nodes |
+| --- | --- | --- | --- |
+| 256 | 113 | 0.706 | 63,672 |
+| 512 | 222 | 2.859 | 254,754 |
+| 1024 | 421 | 11.311 | 994,782 |
+
+At 1024 the final pair root reaches only 439 nodes, but total retained ledger
+entries are 2,326,043. Reporting only the final graph would hide construction.
+The approximately fourfold increase on horizon doubling does not establish
+subquadratic temporal work. It is not fourfold growth on each individual
+successor. All rendered terms in these trials match an independent bounded
+integer reference.
+
+The experiment also rejected eagerly retaining every inverse-reversal memo:
+it increased ledger retention by about 9.5% at 1024 while barely reducing
+reverse work. That change was removed. Only exact commutative zipper reuse
+remains; its small improvement is not a temporal-compression claim.
+
+Reproduce one bounded trial through the existing measurement tool:
+
+```console
+python -m devtools.benchmarks.field_image_growth_probe --research-pair --seed 196 --horizon 1024
+```
+
+This mode explicitly reports `production_cutover_complete=false`. Returning
+the constructor to the CLI still requires source-bound scheduler publication,
+complete consumer refinement and the unchanged work/retention gates. The
+source-specific temporal grammar remains the missing construction.
+
+</details>
+
+
+## Archived output quotient audit validation
+
+Record period: September 20 evidence collection; individual run dates remain as recorded below.
+
+Relocated evidence from the reverse-add synthesis; original scope and dates below.
+
+<details>
+<summary>Recorded implementation and evidence</summary>
+
+The audit rerun on source fingerprint
+`605e76066c6f4bb1b9427a360e0dc2edc85a57eb732e40893a3a6787b7403efc`
+reported **24 passed, 26 failed** in 20.95 seconds for
+`test_active_output_morphisms.py`, `test_symbolic_primitive_channels.py`,
+`test_contextual_residual.py`, `test_reverse_generic_range_constructor.py`
+and `test_reverse_temporal_publisher_cutover.py`, with pytest's default
+exclusions disabled. Failures comprise twelve generic-range cases and the
+fourteen existing CLI cutover cases. The 35-second/1-GiB guard measured
+21.65 seconds and 88,719,960 peak bytes. Local evidence is
+`results/current/future-grammars-agents-2026-09-20/output-quotient-audit-tests.{log,json}`;
+these ignored artifacts are not portable downloads. This is failed cutover
+evidence, not release acceptance.
+
+</details>
+
+
+## Pullback implementation milestone: 2026-09-21
+
+Record period: 2026-09-21.
+
+<details>
+<summary>Implementation, validation and remaining work</summary>
+
+The first prerequisite is implemented in the existing
+[`SymbolicInnovationArena`](../../../src/number_compiler/arithmetic/fields/symbolic_innovation.py):
+`substitute_many` transports primitive-atom expressions through multiple
+innovation roots in one frozen environment. It uses an iterative postorder
+worklist and one shared memo, rebuilding through the existing radial, chart
+and signed-sum normalizers. It never evaluates coefficients, projects a
+polynomial, or recursively rewrites replacement expressions.
+
+Environment, memo and frame storage are ledger owned and released on both
+success and refusal. Already interned arithmetic nodes remain valid and
+charged after a failed request; no result tuple is returned. Counters separate
+attempts, root/binding checks, traversal frames, distinct nodes and memo hits.
+The tests cover simultaneous swaps, cancellation, growth/reflection transport,
+independent residue-environment evaluation, thirteen shared roots, a depth-1100
+DAG, binary-encoded huge extents/powers, foreign handles and budget cleanup.
+
+This is an arithmetic prerequisite, **not yet a production consumer** of the
+complete thirteen-channel return. The existing finite-function substitution
+and this innovation substitution still need a shared admitted cylinder
+environment. Next are predicate/growth transport and complete-effect
+normalization, followed by D2/D4/D8 and scheduler publication. The current
+chronological refusal and all cutover assertions remain unchanged. The
+[proof index](../../../docs/proofs.md) distinguishes the checked substitution specification
+from the unproved executable-worklist and temporal-constructor refinements.
+
+Validation at source fingerprint
+`c724147015087bf0e15df3ec67fb11d4502169a30242c11669e7e3c6f7be5165`:
+the eight new substitution tests, existing innovation/local-output tests and
+unchanged range/CLI cutover selections produced **56 passes and 26 failures**.
+All failures are the twelve generic-range and fourteen CLI cutover cases.
+The 35-second/1-GiB guard recorded 18.16 seconds and 92,979,800 sampled peak
+bytes. Local evidence is
+`results/current/reverse-pullback-2026-09-21/final-substitution-and-cutover.{log,json}`.
+The aggregate Isabelle memory refusal is recorded separately in the proof
+index; this milestone is not release closure.
+
+</details>
+
+
+## F2 forcing elimination in the shared arithmetic
+
+Record period: 2026-09-21.
+
+<details>
+<summary>Implementation, validation and remaining work</summary>
+
+Integration date: 2026-09-21. The supplied `196_f5f2_carrier_summary.md`
+identifies an independent coordinate that can be removed: for an admitted
+block of at least four steps, the homogeneous parity transport is zero and
+`F2_block = epsilon_out`. Output parity itself remains part of the complete
+carrier. A local 190-class encoding includes the pair symbol and incoming
+carry; decoding it does not construct either of those inputs.
+
+The existing `F2SpatialTransport.apply_with_output_forcing`,
+`F2AffineTransport.apply` and `F2AffineTransport.then` now return the surviving
+forcing directly when the relevant homogeneous transport is annihilated.
+They no longer invoke `add(source, source)` or other arithmetic callbacks on
+the discarded term. Composition uses this shortcut only when the **later**
+linear action is zero; a live later action still transports earlier forcing.
+Output-chart alignment and the source pullback of later forcing remain
+explicit caller obligations.
+
+`SymbolicInnovationArena.substitute_parity_many` uses the same owned iterative
+substitution worklist as exact substitution. It prunes positive no-growth
+radial factors and even integer scales before child traversal, reduces odd
+scales modulo two, and cancels identical XOR operands. It still substitutes
+the surviving forcing in the original environment. The returned expressions
+are equivalent **only modulo two**; they cannot replace exact carry/output
+expressions or authenticate a successor. Exact substitution is unchanged.
+
+The `Reverse_Growth_Admission` session adds `source_four_step_no_growth`,
+`source_block_parity_forcing` and `source_196_block_parity_forcing`. These
+derive annihilation from the valid source trajectory, rather than a supplied
+growth itinerary. The checked build took 7.89 seconds with 1,341,738,464 sampled
+peak bytes under the unchanged 35-second/4-GiB guard. These statements do not
+prove the Python worklist, spatial grammar closure or the generic CLI cutover.
+
+Poison tests prevent access to a dead symbolic child and annihilated affine
+callbacks; bounded tests preserve reflected charts, signed coefficients,
+simultaneous replacements and exact/parity separation. The existing research
+carrier consumer is tested with its dead homogeneous application poisoned,
+and its no-growth output aliases the forcing handle. No 190-cell word or new
+execution owner is introduced. Generic production D4/D8 publication and
+elimination of the remaining forcing-discovery scans are still open.
+
+At source fingerprint
+`c3017221c1a44fea3a4137c996767ee6feeb6a835b1ca2a4c3257a166482e4e0`,
+the combined arithmetic, carrier and unchanged cutover selection reports
+**132 passed, 26 failed** in 4.11 seconds. The failures remain the twelve
+generic-range and fourteen CLI cutover cases. Guarded runtime was 4.72 seconds
+and sampled peak memory 82,002,520 bytes. Raw evidence is local under
+`results/current/f2-pullback-2026-09-21/`; this is not a full-suite or release
+performance pass.
+
+</details>
+
+
+## F5 operator reuse versus region-occurrence construction
+
+Record period: 2026-09-21–22.
+
+<details>
+<summary>Implementation, validation and remaining work</summary>
+
+The existing `F5SpatialTransport.apply` already constructs the homogeneous
+operator through radix-five Frobenius factors. For `r = sum d_j 5^j`, it makes
+`sum d_j` shift calls, the same number of addition calls, and one scale call.
+That is logarithmic in the growth exponent **if callbacks construct shared
+operation handles**. Callback cost, source discovery and carry-forcing
+construction are separate; a fixed 25-entry addition table does not bound how
+often those operations are applied to different source occurrences.
+
+A 2026-09-21 bounded seed-196 reference supplied the following growth counts.
+The callback counts were checked against the existing transport implementation
+using opaque operation handles, not a region evaluator or a powered CLI run:
+
+| Right-half interval | q | r | Frobenius factors (stride, multiplicity) | Shift/add pairs | Expanded nonzero shifts |
+| --- | ---: | ---: | --- | ---: | ---: |
+| 64 to 128 | 37 | 27 | (1,2), (25,1) | 3 | 6 |
+| 128 to 256 | 73 | 55 | (5,1), (25,2) | 3 | 6 |
+| 256 to 512 | 147 | 109 | (1,4), (5,1), (25,4) | 9 | 50 |
+
+Right-half growth must not be confused with cumulative root growth: D512 from
+the original seed has growth 219 and therefore includes stride 125. Reusing
+an operator rule does not assert equal growth for both halves of a square.
+
+`ReverseActiveOutputArena.transported_alpha` is a different, bounded point
+consumer: it calls `shifts()` and binds one source function per expanded term.
+It cannot be treated as the region-transform constructor. The region path must
+retain the factored operator and share admitted source-region demands without
+expanding them through that point API. The older plane-gate reference instead
+zips concrete grammar intervals, which can incur work for each distinct
+aligned occurrence despite the fixed gate table.
+
+The added `test_dense_radix_five_transport_keeps_shared_operator_structure`
+poisons coefficient expansion and checks a dense exponent `5^64-1`: 256
+shift/add pairs share prior roots, even though the expanded support has
+`5^64` terms. This is an operator-construction regression, not a proof of cheap
+source-bound region evaluation.
+
+The baseline archive was located on 2026-09-21 as
+`number-compiler-main-powered-f5f2-carrier.zip` in the supplied Downloads
+directory, SHA-256
+`780e37ea4abff740976dff4db37ddbe075ad15691b1120b14bbcba33bd140c7e`.
+Its `devtools/experiments/reverse_add/powered_f5f2_carrier.py` checks affine
+forcing composition and the 190-carrier alphabet. In that bounded reference,
+`reverse_add_pair_orbit` computes a literal orbit and `powered_block` obtains
+forcing by subtracting the transported source from an already available
+target. These are finite algebra checks, not source-derived construction
+measurements. The archive itself identifies spatial region quotienting as
+remaining work.
+
+The later `powered_class190_regions.py` fragment was supplied separately on
+2026-09-21. It composes **supplied** adjacent block observations: transport
+left forcing, add right forcing, and retain the right output carrier. Its
+shift/add passes scan the entire word, so it establishes the local rule
+catalog and exact forcing law, not a source-derived region constructor or
+subquadratic temporal construction.
+
+#### Carry-free alphabet and output-residue threshold integration
+
+The September 22 supplied `README(20260922-065353).md` corrects the
+alphabet to **95 = 19 pair symbols × 5 forcing values**. Incoming carry is
+the prefix action of the threshold field at carry zero, so including it again
+in a local symbol is redundant. The maintained
+[bounded reference](../../../devtools/experiments/reverse_add/powered_f5f2_carrier.py)
+now constructs this word directly, without invoking its carry-report scan.
+That report retains incoming/outgoing values only for independent comparison.
+The historical 190-class counts below remain historical measurements.
+
+- **Implemented production consumer:**
+  [SourceCarryPorts](../../../src/number_compiler/sequences/reverse_add/source_ports.py)
+  derives a second-layer threshold directly with `decimal_add_cocycle` from
+  the two normalized F5/parity output channels. Reflection uses output extent
+  `m+g`; the new leading digit has channels `(1,1)`. Physical carry still goes
+  exclusively LSD to MSD. No next-pair coefficient is reconstructed for this
+  threshold demand, and the carry interval cache retains only monoid actions.
+- **Checked local theorem:** `output_crt_threshold_exact` and
+  `normalized_output_crt_threshold_exact` in
+  [Reverse_Threshold_Cocycle](../../../devtools/proofs/isabelle/Reverse_Threshold_Cocycle.thy)
+  establish the residue-to-threshold law. They consume normalized digits;
+  they do not derive an arbitrary future digit's residues from the source.
+- **Finite validation:** supplied adjacent blocks compose exactly through D512
+  with the 95-symbol alphabet. The 25 F5 additions, 20 nonzero scalar maps and
+  95 attachments all occur in the bounded corpus. Source-port tests poison
+  next-pair reconstruction and cover seeds 0, 1, 18, 99, 196, 909, 1041, 1051,
+  1593. On decisive constant sources of width 16–1024, length demands have
+  zero next-pair reads and one CRT-threshold query; validation remains charged.
+- **Validation disposition:** the old length counter now requires zero
+  second-pair reconstructions plus one CRT-threshold query, preserving the
+  source-read and validation bounds. The layer-scoped identity poison moved
+  from `_raw_second_pair` to `_second_decimal_cocycle`; it additionally checks
+  that the two layers still return distinct actions after a failed demand.
+  No positive construction assertion was removed or relaxed.
+- **Remaining constructor:** the supplied patch itself says its threshold or
+  output grammar must already be available. Computing the right block's
+  threshold/output grammar through the left complete effect remains required.
+  The positive production D4/D8/D16 tests still fail. Neither a 95-symbol
+  alphabet nor a carry prefix query is that missing constructor or its bound.
+
+#### Reachable operator catalog versus the source-only macro
+
+The subsequently supplied `196_powered_reachable_grammar_closure.md` and
+`number_compiler_powered_reachable_grammar.patch` describe a fixed catalog of
+95 symbols, 25 F5 additions, 20 scales, 19 threshold rules and 9 carry
+compositions. Their larger radix-5 strides reuse the existing Frobenius law.
+The reported D8192 saturation is a finite experiment, not a size bound for
+future recursive occurrences.
+
+The patch's `root_power_grammar_table` first calls
+`reverse_add_pair_orbit(seed, max_power)`, then derives both half-block effects
+with `powered_block`. Its right block is still supplied by the future orbit.
+Consequently the audit does not provide the missing source-only `J4` or `J8`.
+No endpoint-oracle table, duplicate finite arithmetic helper or new region
+scheduler from that patch has been installed as a production constructor.
+The 95-state source representation and the transition constructor are separate
+obligations; no additional independent carry-in coordinate is being requested.
+
+#### Local integration of the supplied class-190 fragment
+
+- **Production arithmetic:**
+  [compose_f5_forcing](../../../src/number_compiler/arithmetic/fields/f5_innovation.py)
+  binds `F5AffineTransport.then` to the existing ledger-owned
+  `SymbolicInnovationArena`. Closed chart shifts and shared sums construct
+  `L_after B_before + B_after` without coefficient observations. No scheduler
+  or occurrence-authority mechanism is added. Both operands must already be
+  pulled back into a common source/chart environment; this arithmetic function
+  does not establish that admission.
+- **Important type scope:** the returned F5 affine action contains integer
+  lifts valid modulo five. These lifts must not substitute for exact decimal
+  innovations. Source bindings, growth discovery, right-block output carriers
+  and F2 admission remain the enclosing constructor's responsibility.
+- **Bounded reference:**
+  [powered_cocycle_regions.py](../../../devtools/experiments/reverse_add/powered_cocycle_regions.py)
+  ports the fragment using the same production Frobenius operator rather than
+  copying its factor loop. It reports decoded, shifted, added, scaled and
+  attached cells separately from the original 25/20/190 rule catalog
+  (updated to 25/20/95 below). For width `w`
+  and `s = sum(base5_digits(r))`, its shift work is `sw` and addition work is
+  `(s+1)w`. This reference remains outside the installed package.
+- **Independent finite checks:**
+  [the orbit reference](../../../devtools/experiments/reverse_add/powered_f5f2_carrier.py)
+  was selectively recovered from the pinned archive. Its forcing oracle uses
+  ordinary binomial coefficients independently of the production Frobenius
+  decomposition. Seed-196 supplied-block squares through D512 agree with both
+  the word reference and the production shared-handle composition. Carrier
+  discovery is poisoned during composition, after fixtures are prepared.
+- **Construction check:** dense exponent `5^64-1` creates 514 arithmetic nodes
+  from two existing forcing atoms, with 256 shift requests and no coefficient
+  expansion. A subsequent integration added a lazy ledger-owned result memo:
+  repeating the request validates the handles and reuses the forcing result
+  without repeating the shifts or normalization. Clearing that memo retains
+  the arithmetic DAG but repeats charged construction requests. This is an
+  operator-construction measurement, not a
+  source-trajectory performance claim or an Isabelle constructor theorem.
+
+The focused arithmetic/fragment selection passed **27 tests** in 0.28 seconds
+under the 35-second/1-GiB guard (0.87 seconds including startup;
+41,681,472 bytes sampled peak). Strict mypy passed for the five added files.
+Raw local evidence: `/tmp/f5-class190-integration-2.log` and
+`/tmp/f5-class190-integration-2.json`. These historical measurements do not
+certify later source changes.
+
+```console
+python -m pytest -q -o addopts='' tests/arithmetic/fields/test_f5_innovation.py tests/sequences/reverse_add/test_powered_cocycle_regions.py tests/arithmetic/polynomials/test_f5_transport.py tests/arithmetic/polynomials/test_centered_f5.py
+```
+
+**Remaining production gate:** `source_images.py` still cannot construct the
+right forcing and complete output carrier from the admitted earlier image.
+The class-190 composition function consumes that carrier unchanged; it does
+not construct it. The generic D4/CLI assertions remain active and are not
+discharged by these supplied-block tests.
+
+</details>
+
+
+## Native source-only D4 squares
+
+Record period: 2026-09-22.
+
+<details>
+<summary>Implementation, validation and remaining work</summary>
+
+**Implemented bounded constructor (2026-09-22):**
+[FactoredTemporalPower](../../../devtools/experiments/reverse_add/factored_power.py)
+now accepts the existing `(domain, F5, epsilon)`
+[CocycleReverseCarrier](../../../devtools/experiments/reverse_add/cocycle_carrier.py).
+Its base macro constructs at most four native grammar advances. Higher powers
+compose the emitted `F5AffineTransport` objects; the right macro receives the
+left macro's returned grammar, rather than an oracle trajectory row.
+
+- No pair tuple decoding, future orbit lookup or coefficient-array import is
+  needed after admitting the source. The existing bounded reference remains
+  available for independent verification; its supplied right rows are not used
+  by this constructor.
+- Every positive block retains its terminal normalized F5/parity output
+  channels. The symmetric pair grammar alone loses digit orientation and is
+  insufficient for terminal emission. Index zero still uses the original seed.
+- Tests poison orbit helpers, pair decoding and plane imports while constructing
+  D4, its right D4, D8, D16 and D20. Eight seam seeds are checked against an
+  independent integer reference. Seed 196 at D20 emits `70446464506`.
+- Lifetime plane-work and gate-hit counters survive per-operation resets.
+  A repeated macro reuses its result; this is measured separately from cold
+  source construction.
+- Temporal composition retains the right block's returned grammar. It no
+  longer reapplies the accumulated F5 action to the original source at every
+  internal node. Tests forbid that redundant application during construction
+  and check its equality separately afterward.
+
+**Proof scope:** `native_emit_refines`, `native_step_refines`,
+`native_iteration_refines`, `native_terminal_emission_refines` and
+`native_macro_refines` in
+[Reverse_Threshold_Cocycle.thy](../../../devtools/proofs/isabelle/Reverse_Threshold_Cocycle.thy)
+specify native carry, growth, output and chronological macro semantics.
+They prove equality with the literal pair recurrence for every finite macro
+level. This executable word model is the specification of the rope operations;
+it does not prove the Python rope interner, resource publication or compression.
+
+**Remaining construction and production obligation:** cold D20 on seed 196
+still performs 20 native grammar advances. No bounded vocabulary or sublinear
+temporal construction follows from composing their affine projections. The
+research rope arena is endpoint-construction guarded and has process-global
+interning, not production ledger admission. It remains outside the installed
+package. Generic production D4 acceptance is therefore still required; importing
+this arena into the CLI would bypass the very gate being tested.
+
+Frozen-source diagnostic measurements (`6e8eb712f8a1`, five fresh processes per
+extent through D256) separate construction from source import and digit output:
+
+| Extent | Native advances | Construction work | Median construction |
+| --- | ---: | ---: | ---: |
+| D4 | 4 | 542 | 3.51 ms |
+| D16 | 16 | 3,401 | 22.33 ms |
+| D20 | 20 | 4,789 | 31.67 ms |
+| D64 | 64 | 36,082 | 273.75 ms |
+| D128 | 128 | 128,622 | 1,077.93 ms |
+| D256 | 256 | 471,980 | 4,507.35 ms |
+
+Removing redundant accumulated-action application reduced work by about
+24–25% at D20, D64 and D256. A single additional D512 sample completed in
+21.28 seconds including process startup; D1024 timed out at 35 seconds. These
+last two extents do not have five final-source samples and do not satisfy the
+complete release manifest. Earlier five-trial measurements, before that
+removal, completed through D512 and timed out on every D1024 sample. Full
+diagnostic records live locally under
+`results/current/source-macros-2026-09-22/`; they are not portable artifacts.
+
+Reproduce one cold sample in a fresh process; the command reports the warm
+repeat separately and performs literal validation only after construction:
+
+```console
+python -m devtools.proofs.reverse_factored_carrier native-macro --seed 196 --steps 20
+python -m pytest -q -o addopts='' tests/sequences/reverse_add/test_cocycle_carrier.py tests/sequences/reverse_add/test_factored_carrier.py
+isabelle build -d devtools/proofs/isabelle Reverse_Residuals
+```
+
+</details>
+
+
+## Spatial residual bisimulation and repeated-work fixes
+
+Record period: 2026-09-22.
+
+<details>
+<summary>Implementation, validation and remaining work</summary>
+
+The native constructor avoids integer endpoint decoding, but still makes one
+grammar advance per represented temporal step. Each advance can encounter new
+spatial regions. Thus its quadratic measurements cannot be attributed solely
+to a cache bug or interpreted as a counterexample to a complete cylinder.
+
+The September 22 profile did identify removable repeated work in
+[PlaneAlgebra](../../../devtools/experiments/reverse_add/factored_planes.py):
+
+- Gate requests now normalize constants and repeated aligned input views into
+  a complete finite residual function before traversing a region. Gate names
+  and the original positions of constant runs do not distinguish semantics.
+  Partial functions retain `None`; undefined inputs never become defined zero.
+- Constant and projection residuals return a run or an existing input subtree.
+  A clipped projection visits only the two interval boundaries, preserving
+  complete interior subtrees instead of rebuilding an identity map.
+- Exact residual results share a bounded 4,096-entry FIFO of weak references.
+  This cache does not own endpoint words. The source-free cofactor catalog has
+  a separate 512-entry bound; eviction, reset, bypass, compilation and hits are
+  measured. Neither cache authorizes substitution of a different source image.
+- [Canonical rope memo cleanup](../../../src/number_compiler/arithmetic/automata/program_word.py)
+  no longer scans accumulated global tables on every grammar advance.
+  Automatic sweeps wait for the population to double after cleanup; explicit
+  cleanup remains immediate. The probe reports visited cleanup keys separately.
+
+**Checked local laws:** `plane_complete_residual_bisimulation`,
+`plane_cofactor_entry_refines`, `plane_cofactor_undefined_exact`,
+`plane_projection_elimination`, `plane_constant_elimination`,
+`plane_cofactor_spatial_split` and `plane_cofactor_interval` in
+[Reverse_Factored_Channels.thy](../../../devtools/proofs/isabelle/Reverse_Factored_Channels.thy).
+The executable table model checks equality on every supplied assignment, with
+constants and aliased ports substituted simultaneously. Python enumerates the
+complete finite input product. The tests independently exercise all 81 partial
+two-input Boolean tables under every constant/alias pattern, large projection
+intervals, foreign sources, eviction and weak-reference lifetime.
+
+`automatic_sweep_charged_to_insertions` supplies the local amortized inequality:
+when the population has doubled, visiting it costs at most twice the entries
+inserted since the previous sweep. This bounds cleanup bookkeeping, not the
+number of semantic regions the temporal constructor creates. The checked
+spatial rules likewise do not establish finite temporal bisimulation, Python
+worklist refinement or production admission. Those release gates remain active.
+
+**Measured scope:** authored-source fingerprint
+`2f3dc54b3011e335bd7e6be41f4591ead9f7e4ee412d239591879bd9fa4ffe95`.
+Five fresh-process trials per horizon used the unchanged 35-second/1-GiB
+guard; discovery, construction, warm repeat and rendering were recorded
+separately. The following medians describe the research constructor, not the
+installed CLI:
+
+| Steps | Construction | Plane work | Native grammar advances | Exact residual reuse hits |
+| --- | --- | --- | --- | --- |
+| 20 | 33.77 ms | 4,402 | 20 | 326 |
+| 64 | 274.93 ms | 26,158 | 64 | 2,158 |
+| 128 | 1.060 s | 90,304 | 128 | 6,364 |
+| 256 | 4.329 s | 332,484 | 256 | 17,602 |
+| 512 | 19.179 s | 1,277,547 | 512 | 48,913 |
+| 1,024 | All five timed out | Unavailable | Unavailable | Unavailable |
+
+The prior D128 measurement was 128,622 plane operations / 1.078 seconds;
+the new work count is 29.8% lower, but latency improves only slightly. Small
+horizons incur some normalization overhead. These historical timing samples
+are not paired acceptance comparisons. The approximately quadratic temporal
+cost remains visible; no missing timeout sample counts as zero work.
+
+**Remaining composition defect:** `FactoredPowerBlock.action` is a
+source-specific F5 affine action. The complete target domain/parity grammar
+and emission are concrete returned objects, not a normalized transformer
+that can be squared on a new source. After constructing seed-196 D4, disabling
+`successor_with_emission` makes D8 fail at `FactoredTemporalPower.block`'s
+native base branch. The right half still needs fresh grammar advances.
+This is an implementation-obligation witness, not a counterexample to a
+possible complete cylinder quotient. The existing research bimachine
+composer first constructs universal witness contexts and does not supply the
+required source-admitted replacement.
+
+Local evidence resides under
+`results/current/plane-bisimulation-2026-09-22/`: `reverse-trials.json`,
+`reverse-summary.json`, `d4-no-replay.json`, guards and raw logs. The full
+unit selection has 6,229 passes and exactly the same 42 failing node IDs;
+the explicit CLI cutover selection retains 14 failures and six passes.
+The 71 focused checks pass, including complete partial-table enumeration,
+cache reset/eviction and source-authority tests. These results preserve the
+positive construction gates rather than treating refusal as success.
+
+```console
+python -m pytest -q -o addopts='' tests/sequences/reverse_add/test_factored_carrier.py tests/sequences/reverse_add/test_cocycle_carrier.py
+python -m devtools.proofs.reverse_factored_carrier native-macro --seed 196 --steps 128
+isabelle build -d devtools/proofs/isabelle Reverse_Residuals
+```
+
+</details>
+
+
+## Demand-specific forcing retention
+
+Record period: 2026-09-22.
+
+<details>
+<summary>Implementation, validation and remaining work</summary>
+
+The research `FactoredTemporalPower` now shares one postorder driver between
+endpoint-only and complete-action requests. Endpoint requests retain the
+returned native grammar and omit composition of unrequested historical affine
+forcing. Complete requests still construct the exact accumulated F5 action.
+Their caches are distinct: a complete action can answer an endpoint request,
+but an endpoint memo entry cannot authorize a complete action. Both count
+against the same cache-entry limit.
+
+This removes redundant action work, not primitive source discovery. Cold D32
+still makes 32 native advances. The research constructor remains outside the
+installed reverse/add production path until the complete temporal admission
+and construction gates pass.
+
+The proposed local encoding `(S mod 5, S mod 2, [S>9])` is injective on the
+admitted decimal pair range `0..18`. It collides on 10 and 20 outside that
+range. It also does not define a context-free successor: seeds 111 and 191
+have pair fields `(2,2,2)` and `(2,18,2)`, sharing the low pair 2, while their
+next pair fields are `(4,4,4)` and `(5,16,5)`. The difference comes from the
+spatial carry context. These scoped witnesses reject an overextended local
+recoding rule, not the complete source-bound cylinder. Physical carry remains
+LSD to MSD.
+
+The endpoint tests poison historical affine composition, compare bounded
+independent pair arithmetic, and then demand the complete action to ensure
+endpoint reuse cannot hide missing action work. No subquadratic temporal bound,
+complete grammar closure or new production cutover follows from this change.
+
+At authored-source fingerprint `6560841b95ca428e64f941235defc4318cec58b9cfe2f56e9cec7086a894443d`, five cold/warm trials for each
+seed 1 and 196 and each horizon 4, 8, 16, 32 and 64 passed independent bounded
+pair recurrence checks. Selected seed-196 medians:
+
+| Horizon | Endpoint plane work | Complete-action plane work | Endpoint cold ms | Complete-action cold ms | Primitive advances, either demand |
+| ---: | ---: | ---: | ---: | ---: | ---: |
+| 16 | 2,475 | 2,904 | 19.143 | 22.074 | 16 |
+| 32 | 5,972 | 7,348 | 56.399 | 67.208 | 32 |
+| 64 | 18,725 | 23,185 | 216.360 | 261.014 | 64 |
+
+Warm requests added no primitive advances. The 100 demand samples completed
+in a 6.60-second/26,362,360-byte guarded probe. These are research demand
+comparisons, not cold CLI timings or the full 16–1024 release manifest. Local
+evidence is `results/current/joint-cylinder-2026-09-22/demand-measurements.json`;
+its companion `demand-probe-definition.json` records the exact bounded probe.
+
+</details>
+
+
+
+## Temporal patch cutover audit
+
+Record date: exact day not recorded; retained in its documented weekly context.
+
+- **Objective:** evaluate the new 196 patch for source-bound temporal cutover
+  and remove redundant semantic state without weakening admission.
+- **Input scope:** the downloaded Frobenius patch changes a research experiment,
+  bounded tests and result files. It has no production constructor or Isabelle
+  edits. `root_lift_table` calls a literal orbit; generator routines expand
+  integer coefficient tuples. The corrected semantic tables supersede the
+  earlier claim that exact B layers must be retained quotient state, but still
+  leave recursive source-occurrence construction/right congruence open.
+- **Changes:** complete finite transforms now identify undefined and false
+  guards through a total admission predicate. Reverse/add derives Q95 carry
+  without interning a redundant coordinate-output view. A Collatz regression
+  verifies that equal carry/F5 observations at sources 67 and 75 do not permit
+  borrowing their different second-event source continuations.
+- **Proof scope:** canonical guard and complete partial-image composition laws
+  were added to the existing interface theory, with oracle audits. Extensional
+  congruence assumes complete function equality. Occurrence-only equality and
+  incomplete modular views remain insufficient; these are not counterexamples
+  to the proposed complete cylinder.
+- **Validation:** 153 focused tests pass; strict mypy, Ruff and formatting pass.
+  The registered temporal session exceeded 35 seconds at 3,725,219,864 sampled
+  peak bytes. A focused session checked exact copies of the changed theory and
+  its three local dependencies in 8.62 seconds / 1,504,333,376 bytes. No theorem
+  bodies or imports were weakened. That diagnostic is not aggregate acceptance.
+- **Independent review:** the cross-family reviewer verified admission
+  totalization and flagged the retained-observer boundary. The first full run
+  caught a scalar-restriction regression, and review caught a subset-port guard
+  regression in the proposed batch fix. Final normalization widens the guard
+  and totalizes it with selection; the scalar path remains poisoned. Only output functions
+  participate in successor identity; separately requested observers cannot be
+  silently promoted to future-relevant state. No 196 Q95 recurrence was
+  substituted for the distinct Collatz or Antihydra laws.
+- **Remaining work:** `source_images.py` still has no general chronological
+  reverse/add constructor. D2 and a guarded same-carry chamber are insufficient
+  for generic D4/D8. Source occurrence plus saturated regional action must produce
+  the complete target occurrence without replay or midpoint realization. That
+  constructor, executable refinement and a successful cost bound remain red.
+  Raw B history need not be restored to semantic ActionID.
+
+Frozen authored source:
+`ef94eb6e60425427778a600008a38d0f9831f7a7ba21573a54299f9fff0ddee9`.
+Local evidence: `results/current/temporal-patch-cutover-audit/` (`scope.json`,
+`focused-v3`, `proofs`, `proofs-scoped`, `scoped-proof.json`).
+
+| Downloaded input | SHA-256 |
+| --- | --- |
+| `number_compiler_196_f5_lift_frobenius_release.patch` | `3b00788b2e3166bfe5fa6278a8383cdb2652cdde1f8aa318ad198bb649acac26` |
+| `196_f5_lift_frobenius_release_table.md` | `b9f5ea4ce8a29e94f79321bf861a58918c5e06fa6483143d747279ab2b4fc8df` |
+| `196_corrected_semantic_innovation_table.md` | `929e48a4975fa3b5739bf38d91d30c99e6e7d46000064c27ee425fae0799a0e0` |
+| `196_release_semantic_only_table.md` | `29a2ad710246704afee53cace0e8c0a650b97ae6ebe1fa87274beff2c39415f9` |
+
+Final serial validation on that fingerprint: **6,446 unit PASS / 42 FAIL**,
+with exactly the same failing node IDs as the preceding sprint run; no skips
+were added. The unchanged explicit cutover selection has **14 FAIL / 6 PASS**.
+The unit guard completed in 210.13 seconds with 812,352,640 sampled peak bytes
+under the 300-second/1-GiB limit. Final focused validation has 153 passes in
+3.75 guarded seconds. Raw final stems are `unit-final`, `focused-v3`,
+`cutover-final` and `failure-comparison.json`. No successful recursive source
+construction or new asymptotic performance evidence was produced.
+
+Strict mypy (1,475 files), Ruff, formatting, repository policy, documentation
+links and the proof inventory pass on the frozen source. The fresh installed
+wheel check passes in 5.16 seconds / 115,165,224 sampled peak bytes. Evidence:
+`quality.json`, `installed-wheel`; wheel SHA-256
+`3b42ed1a34644cfaf6dd5354e6a0b96729bafa1b9697b7d52104e904d72ed279`.
+
+
+## Provider executor and reverse cutover trace
+
+Record date: exact day not recorded; retained in its documented weekly context.
+
+- **Finding:** the production `ProviderFieldImageExecutor` contains the iterative
+  publication traversal, but has no reverse family adapter. Its existing
+  completed-provider test supplies an idempotent fake adapter and returns a
+  cached parent, so it does not establish cold reverse temporal construction.
+  The real reverse `apply_composite` still selects D2 or same-carry chambers;
+  `compose_chronological` refuses. `196 --nth 20` still fails there.
+- **Missing integration:** implement complete temporal output/admission
+  composition and growth/reflection transport in the provider adapter's
+  `compose_actions`, `compile_leaf` and `join` hooks. The current local codec
+  is spatial; the primitive thirteen-channel substitution is not yet lifted
+  to this recursive temporal adapter. No counterexample to the proposed
+  complete cylinder was established by this trace.
+- **Fix:** completed provider inputs now revalidate exact image bindings and
+  published extent/context before resolution, including warm hits. Tests
+  reject altered source, level, extent and request records, and a revoked image
+  binding while the image itself remains live. No new evaluator was introduced.
+- **Validation:** 95 provider/image tests pass; strict mypy (1,475 files),
+  focused Ruff and formatting pass. The unchanged cutover selection remains
+  **14 FAIL / 6 PASS**. No full-unit or Isabelle rebuild was needed for this
+  scoped Python validation fix; no mathematical proof changed.
+- **Completion boundary:** this fixes publication authority, not the missing
+  reverse constructor. The CLI has not been reconnected and the production
+  release hold is unchanged. The prior F5 observer work was a separate task.
+
+Authored source fingerprint:
+`4a6075b9c4d35885ddcc0292f98955eeddfa40c89bb9f0aadf2940515103869f`.
+Local evidence: `results/current/provider-cutover-audit/` (`focused`, `cutover`,
+`scope.json`). Commands use the unchanged 35-second/1-GiB process guard:
+
+```console
+python -m pytest -q -o addopts='' tests/hashlife/test_provider_bindings.py tests/resources/test_recursive_field_images.py tests/hashlife/test_image_domains.py
+python -m pytest -q -o addopts='' tests/validation/proofs/test_reverse_temporal_publisher_cutover.py tests/validation/proofs/test_family_digit_cylinder_cutover.py
+python -m number_compiler 196 --nth 20
+```

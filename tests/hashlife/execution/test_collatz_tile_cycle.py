@@ -95,7 +95,11 @@ def test_wide_power_of_two_cycle_entry_is_independent_of_temporal_extent() -> No
     term = PoweredCollatzTerm(1 << exponent, steps)
     assert term.materialize(max_bits=4) == expected
     assert term._ledger.counters["collatz_physical_cycle_compressions"] > 0
-    assert term._ledger.counters.get("collatz_physical_leaf_steps", 0) <= 1024
+    assert (
+        term._ledger.counters["collatz_physical_temporal_zero_run_symbols"] == exponent
+    )
+    assert term._ledger.counters["collatz_physical_temporal_run_actions"] <= 4
+    assert term._ledger.counters.get("collatz_physical_leaf_steps", 0) == 0
     assert term._ledger.counters.get("tile_causal_frames", 0) == 0
 
 

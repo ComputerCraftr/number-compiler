@@ -1,13 +1,13 @@
 theory Comma_Total_Macro
-  imports Comma_Decade_Totality.Comma_Decade_Control
+  imports Comma_Decade_Residual_Core.Comma_Decade_Residual_Core
 begin
 
 declare comma_round_close.simps [simp del]
 declare comma_weighted_step_def [simp del]
 
 text \<open>Successful bounded evaluators are stable refinement witnesses.
-No numerical fuel constant owns the semantic macro. Until a concrete decade
-rank is checked, successful-domain assumptions remain explicit.\<close>
+No numerical fuel constant owns the semantic macro. Until a concrete residual
+classifier is checked, successful-domain assumptions remain explicit.\<close>
 
 lemma comma_finite_run_success_unique:
   assumes left: "comma_finite_run f r source=Some x"
@@ -293,7 +293,8 @@ next
 qed
 
 lemma comma_boundary_macro_exists:
-  assumes checked: "comma_decade_rank_check rank"
+  assumes total: "\<And>s. comma_decade_admitted s \<Longrightarrow>
+      \<exists>rounds. comma_decade_finishes s rounds"
     and valid: "comma_boundary_valid q"
   shows "comma_macro_defined q"
 proof -
@@ -317,7 +318,7 @@ proof -
     let ?state = "Comma_Decade ((r+1) mod 924) x"
     have state: "comma_decade_admitted ?state" using x by simp
     obtain rounds where finishes: "comma_decade_finishes ?state rounds"
-      using comma_decade_checked_rank_totality[OF checked state] by blast
+      using total[OF state] by blast
     obtain fuel outcome where suffix:
       "comma_finite_run fuel ((r+1) mod 924) (Comma_Entry 1 0 x)=Some outcome"
       using comma_decade_finishes_run_exists[OF finishes state] by auto
@@ -332,18 +333,18 @@ proof -
   then show ?thesis unfolding comma_macro_defined_def by blast
 qed
 
-corollary comma_total_macro_from_checked_rank:
-  assumes "comma_decade_rank_check rank" "comma_boundary_valid q"
-  shows "\<exists>fuel. comma_finite_macro fuel q=Some (comma_total_macro q)"
-  by (rule comma_total_macro_correct[OF comma_boundary_macro_exists[OF assms]])
-
-corollary comma_total_weighted_macro_from_checked_rank:
-  assumes "comma_decade_rank_check rank" "comma_boundary_valid q"
-    "5\<le>p" "p mod 924=snd (snd q)"
-  shows "\<exists>fuel. comma_finite_weighted_macro fuel p q=
-    Some (comma_total_weighted_macro p q)"
-  by (rule comma_total_weighted_macro_correct[OF comma_macro_defined_weighted
-    [OF comma_boundary_macro_exists[OF assms(1,2)] assms(3,4)]])
+corollary comma_boundary_macro_exists_from_residual_classifier:
+  assumes classifier: "comma_decade_residual_classifier_ok C"
+    and valid: "comma_boundary_valid q"
+  shows "comma_macro_defined q"
+proof (rule comma_boundary_macro_exists[OF _ valid])
+  fix s assume admitted: "comma_decade_admitted s"
+  have summary: "comma_decade_exact_summary s (fst (C s)) (snd (C s))"
+    by (rule comma_residual_classifier_sound[OF classifier admitted]) simp
+  have "comma_decade_finishes s (Suc (fst (C s)))"
+    by (rule comma_decade_exact_summary_finishes[OF summary])
+  then show "\<exists>rounds. comma_decade_finishes s rounds" by blast
+qed
 
 text \<open>The total functions above are semantic descriptions. Their
 correctness theorems require a successful domain; HOL's definite description
@@ -360,8 +361,7 @@ ML \<open>
       comma_macro_defined_weighted comma_total_weighted_macro_erasure
       comma_total_children_agree comma_finite_run_shift_exists
       comma_round_success_from_cross comma_decade_finishes_run_exists
-      comma_boundary_macro_exists comma_total_macro_from_checked_rank
-      comma_total_weighted_macro_from_checked_rank})
+      comma_boundary_macro_exists comma_boundary_macro_exists_from_residual_classifier})
     then () else error "Comma total macro depends on an oracle";
 \<close>
 end

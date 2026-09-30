@@ -13,6 +13,7 @@ from dataclasses import dataclass, field
 
 from number_compiler.arithmetic.automata.program_word import (
     CanonicalWord,
+    SourceWord,
     RunTraversalMetrics,
     from_values,
     iter_run_blocks_reverse,
@@ -135,7 +136,7 @@ class CollatzSourcePublisher:
 
     @staticmethod
     def _word_leq_integer(
-        word: CanonicalWord,
+        word: SourceWord,
         limit: int,
         *,
         ledger: ResourceLedger | None = None,

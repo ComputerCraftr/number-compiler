@@ -83,12 +83,18 @@ class RunTraversalMetrics:
     peak_frontier_bits: int = 0
 
 
+def _record_source_visit(metrics: RunTraversalMetrics | None) -> None:
+    if metrics is not None:
+        metrics.visited_nodes += 1
+
+
 EMPTY = CanonicalWord(next(_IDS), 0, 0)
 _WORDS: weakref.WeakValueDictionary[int, CanonicalWord] = weakref.WeakValueDictionary()
 _WORD_DEFINITIONS: dict[
     int, tuple[int, int, int, int | None, int, int | None, int | None]
 ] = {}
 _WORD_WATCHES: dict[int, weakref.ReferenceType[CanonicalWord]] = {}
+_WORD_SYMBOL_BOUNDS: dict[int, tuple[int, int] | None] = {}
 
 
 def _definition(
@@ -109,10 +115,24 @@ def _publish_word(word: CanonicalWord) -> None:
     local_id = word.node_id
     _WORDS[local_id] = word
     _WORD_DEFINITIONS[local_id] = _definition(word)
+    if word.symbol is not None:
+        bounds: tuple[int, int] | None = (word.symbol, word.symbol)
+    elif word.left is not None and word.right is not None:
+        left_bounds = _WORD_SYMBOL_BOUNDS[word.left.node_id]
+        right_bounds = _WORD_SYMBOL_BOUNDS[word.right.node_id]
+        assert left_bounds is not None and right_bounds is not None
+        bounds = (
+            min(left_bounds[0], right_bounds[0]),
+            max(left_bounds[1], right_bounds[1]),
+        )
+    else:
+        bounds = None
+    _WORD_SYMBOL_BOUNDS[local_id] = bounds
 
     def expired(_reference: weakref.ReferenceType[CanonicalWord]) -> None:
         _WORD_DEFINITIONS.pop(local_id, None)
         _WORD_WATCHES.pop(local_id, None)
+        _WORD_SYMBOL_BOUNDS.pop(local_id, None)
 
     _WORD_WATCHES[local_id] = weakref.ref(word, expired)
 
@@ -161,6 +181,179 @@ def _validate_word(word: CanonicalWord) -> None:
         word.node_id
     ) != _definition(word):
         raise ValueError("canonical word identity is foreign or stale")
+
+
+_SUFFIX_SEAL = object()
+_SUFFIX_MEMO_LIMIT = 4096
+
+
+@dataclass(frozen=True, slots=True, weakref_slot=True, eq=False)
+class SourceWordSuffix:
+    """Issued suffix of an original word, retaining its coordinate alignment.
+
+    The cover uses existing source subtrees and at most one partial run. It is
+    occurrence geometry, not a newly balanced canonical word or semantic action.
+    """
+
+    node_id: int
+    source: CanonicalWord
+    start: int
+    length: int
+    run_count: int
+    parts: tuple[CanonicalWord, ...]
+    _seal: object
+
+    def __post_init__(self) -> None:
+        if self._seal is not _SUFFIX_SEAL:
+            raise TypeError("source word suffixes must be issued")
+        if any(
+            type(value) is not int
+            for value in (self.node_id, self.start, self.length, self.run_count)
+        ):
+            raise TypeError("source suffix coordinates require exact integers")
+        if type(self.source) is not CanonicalWord or type(self.parts) is not tuple:
+            raise TypeError("source suffix requires its original canonical word")
+        if self.node_id <= 0 or not 0 < self.start < self.source.length:
+            raise ValueError("invalid source suffix offset")
+        if self.length != self.source.length - self.start or self.run_count < 1:
+            raise ValueError("invalid source suffix extent")
+
+
+SourceWord = CanonicalWord | SourceWordSuffix
+_SUFFIXES: weakref.WeakValueDictionary[tuple[int, int], SourceWordSuffix] = (
+    weakref.WeakValueDictionary()
+)
+_SUFFIX_AUTHORITIES: weakref.WeakValueDictionary[int, SourceWordSuffix] = (
+    weakref.WeakValueDictionary()
+)
+_SUFFIX_DEFINITIONS: weakref.WeakKeyDictionary[SourceWordSuffix, tuple[object, ...]] = (
+    weakref.WeakKeyDictionary()
+)
+
+
+def _suffix_definition(word: SourceWordSuffix) -> tuple[object, ...]:
+    return (
+        word.node_id,
+        word.source.node_id,
+        word.start,
+        word.length,
+        word.run_count,
+        tuple(part.node_id for part in word.parts),
+        word._seal,
+    )
+
+
+def validate_source_word(
+    word: SourceWord, *, metrics: RunTraversalMetrics | None = None
+) -> None:
+    """Check exact canonical authority or issued original-source suffix authority."""
+    if type(word) is CanonicalWord:
+        _record_source_visit(metrics)
+        _validate_word(word)
+    elif isinstance(word, SourceWordSuffix):
+        _record_source_visit(metrics)
+        word.__post_init__()
+        _record_source_visit(metrics)
+        _validate_word(word.source)
+        if _SUFFIX_AUTHORITIES.get(word.node_id) is not word or _SUFFIX_DEFINITIONS.get(
+            word
+        ) != _suffix_definition(word):
+            raise ValueError("source word suffix identity is foreign or stale")
+        for part in word.parts:
+            _record_source_visit(metrics)
+            _validate_word(part)
+    else:
+        raise TypeError("expected an authenticated source word")
+
+
+def source_word_symbol_bounds(
+    word: SourceWord, *, metrics: RunTraversalMetrics | None = None
+) -> tuple[int, int] | None:
+    validate_source_word(word, metrics=metrics)
+    parts = word.parts if isinstance(word, SourceWordSuffix) else (word,)
+    if metrics is not None:
+        metrics.visited_nodes += len(parts)
+    bounds = [_WORD_SYMBOL_BOUNDS[part.node_id] for part in parts]
+    nonempty = [bound for bound in bounds if bound is not None]
+    if not nonempty:
+        return None
+    return min(bound[0] for bound in nonempty), max(bound[1] for bound in nonempty)
+
+
+def source_word_key(word: SourceWord) -> tuple[object, ...]:
+    """Exact source authority and coordinates, independent of memo publication."""
+    validate_source_word(word)
+    if isinstance(word, SourceWordSuffix):
+        return ("source-word-suffix", word.source.node_id, word.start, word.length)
+    return ("canonical-word", word.node_id)
+
+
+def drop_source_prefix(
+    word: SourceWord,
+    count_value: int,
+    *,
+    metrics: RunTraversalMetrics | None = None,
+) -> SourceWord:
+    """Drop represented symbols by original coordinates without suffix rebalance."""
+    validate_source_word(word, metrics=metrics)
+    if type(count_value) is not int or not 0 <= count_value <= word.length:
+        raise ValueError("source prefix is outside its occurrence")
+    if count_value == 0:
+        return word
+    if count_value == word.length:
+        return EMPTY
+    source = word.source if isinstance(word, SourceWordSuffix) else word
+    start = count_value + (word.start if isinstance(word, SourceWordSuffix) else 0)
+    key = source.node_id, start
+    found = _SUFFIXES.get(key)
+    if found is not None:
+        validate_source_word(found, metrics=metrics)
+        return found
+    # Only the cut boundary is descended. Whole untouched subtrees form the
+    # source-aligned cover and never pass through canonical JOIN/SLICE work.
+    parts: list[CanonicalWord] = []
+    stack = [(source, start)]
+    while stack:
+        if metrics is not None:
+            metrics.peak_frontier = max(metrics.peak_frontier, len(stack))
+        node, offset = stack.pop()
+        _record_source_visit(metrics)
+        _validate_word(node)
+        if offset == 0:
+            parts.append(node)
+        elif node.symbol is not None:
+            parts.append(run(node.symbol, node.length - offset))
+        else:
+            assert node.left is not None and node.right is not None
+            if offset < node.left.length:
+                stack.append((node.right, 0))
+                stack.append((node.left, offset))
+            else:
+                stack.append((node.right, offset - node.left.length))
+    if len(parts) == 1:
+        return parts[0]
+    run_count = sum(part.run_count for part in parts)
+    if run_count <= 8:
+        # Bounded leaf normalization preserves existing tiny semantic aliases.
+        # It never scans or rebalances an unbounded high suffix.
+        return from_runs(
+            item for part in parts for item in iter_runs(part, metrics=metrics)
+        )
+    result = SourceWordSuffix(
+        next(_IDS),
+        source,
+        start,
+        source.length - start,
+        run_count,
+        tuple(parts),
+        _SUFFIX_SEAL,
+    )
+    if len(_SUFFIXES) >= _SUFFIX_MEMO_LIMIT:
+        _SUFFIXES.pop(next(iter(_SUFFIXES)), None)
+    _SUFFIXES[key] = result
+    _SUFFIX_AUTHORITIES[result.node_id] = result
+    _SUFFIX_DEFINITIONS[result] = _suffix_definition(result)
+    return result
 
 
 def run(symbol: int, count_value: int) -> CanonicalWord:
@@ -397,17 +590,33 @@ def from_runs(runs: Iterable[tuple[int, int]]) -> CanonicalWord:
     return out
 
 
-def iter_runs(root: CanonicalWord) -> Iterator[tuple[int, int]]:
-    """Yield canonical runs left-to-right without expanding their lengths."""
-    _validate_word(root)
-    stack: list[CanonicalWord] = []
-    node = root
+def iter_runs(
+    root: SourceWord, *, metrics: RunTraversalMetrics | None = None
+) -> Iterator[tuple[int, int]]:
+    """Yield runs; optional visits include authority checks and tree descent.
+
+    No integer blocks are split here, so the block-bit metrics remain unchanged.
+    """
+    validate_source_word(root, metrics=metrics)
+    stack: list[CanonicalWord]
+    if isinstance(root, SourceWordSuffix):
+        stack = list(reversed(root.parts[1:]))
+        node = root.parts[0]
+    else:
+        stack = []
+        node = root
+    if metrics is not None:
+        metrics.peak_frontier = max(metrics.peak_frontier, len(stack))
     while stack or node.run_count:
+        _record_source_visit(metrics)
         while node.run_count and node.left is not None:
             if node.right is None:
                 raise AssertionError(node)
             stack.append(node.right)
+            if metrics is not None:
+                metrics.peak_frontier = max(metrics.peak_frontier, len(stack))
             node = node.left
+            _record_source_visit(metrics)
         if node.run_count:
             if node.symbol is None:
                 raise AssertionError(node)
@@ -418,7 +627,7 @@ def iter_runs(root: CanonicalWord) -> Iterator[tuple[int, int]]:
 
 
 def iter_run_blocks_reverse(
-    root: CanonicalWord,
+    root: SourceWord,
     value: int,
     *,
     symbol_bits: int,
@@ -431,13 +640,14 @@ def iter_run_blocks_reverse(
     The input integer is split at the existing balanced word boundaries. No
     digit vector or integer representing the canonical word is constructed.
     """
-    _validate_word(root)
+    validate_source_word(root)
     if type(value) is not int or value < 0:
         raise ValueError("word block traversal requires a nonnegative integer")
     if type(symbol_bits) is not int or symbol_bits < 1:
         raise ValueError("word block traversal requires a positive symbol width")
     if value.bit_length() > root.length * symbol_bits:
-        raise ValueError("integer does not fit the canonical word extent")
+        raise ValueError("integer does not fit the source word extent")
+    parts = root.parts if isinstance(root, SourceWordSuffix) else (root,)
     stack: MutableSequence[tuple[CanonicalWord, int, int]]
     if frontier is None:
         stack = []
@@ -445,58 +655,80 @@ def iter_run_blocks_reverse(
         if frontier:
             raise ValueError("word block traversal requires an empty frontier")
         stack = frontier
-    frontier_bits = 0
-    node, block = root, value
-    try:
-        while stack or node.run_count:
+    offset = root.length
+    remaining = value
+    for part in reversed(parts):
+        if isinstance(root, SourceWordSuffix):
             if metrics is not None:
                 metrics.visited_nodes += 1
-                metrics.visited_block_bits += node.length * symbol_bits
-            while node.run_count and node.right is not None:
-                if node.left is None:
-                    raise AssertionError(node)
-                left_bits = node.left.length * symbol_bits
-                right_block = block >> left_bits
-                left_block = block - (right_block << left_bits)
-                if frontier_delta is not None:
-                    frontier_delta(1, left_bits)
-                try:
-                    stack.append((node.left, left_block, left_bits))
-                except BaseException:
-                    if frontier_delta is not None:
-                        frontier_delta(-1, -left_bits)
-                    raise
-                frontier_bits += left_bits
+                metrics.visited_block_bits += offset * symbol_bits
+            offset -= part.length
+            block = remaining >> (offset * symbol_bits)
+            remaining -= block << (offset * symbol_bits)
+        else:
+            block = remaining
+        frontier_bits = 0
+        node = part
+        try:
+            while stack or node.run_count:
                 if metrics is not None:
-                    metrics.peak_frontier = max(metrics.peak_frontier, len(stack))
-                    metrics.peak_frontier_bits = max(
-                        metrics.peak_frontier_bits, frontier_bits
-                    )
                     metrics.visited_nodes += 1
-                    metrics.visited_block_bits += node.right.length * symbol_bits
-                node, block = node.right, right_block
-            if node.run_count:
-                if node.symbol is None:
-                    raise AssertionError(node)
-                yield int(node.symbol), int(node.run_length), block
-            if not stack:
-                break
-            node, block, block_bits = stack.pop()
-            frontier_bits -= block_bits
-            if frontier_delta is not None:
-                frontier_delta(-1, -block_bits)
-    finally:
-        while stack:
-            _, _, block_bits = stack.pop()
-            if frontier_delta is not None:
-                frontier_delta(-1, -block_bits)
+                    metrics.visited_block_bits += node.length * symbol_bits
+                while node.run_count and node.right is not None:
+                    if node.left is None:
+                        raise AssertionError(node)
+                    left_bits = node.left.length * symbol_bits
+                    right_block = block >> left_bits
+                    left_block = block - (right_block << left_bits)
+                    if frontier_delta is not None:
+                        frontier_delta(1, left_bits)
+                    try:
+                        stack.append((node.left, left_block, left_bits))
+                    except BaseException:
+                        if frontier_delta is not None:
+                            frontier_delta(-1, -left_bits)
+                        raise
+                    frontier_bits += left_bits
+                    if metrics is not None:
+                        metrics.peak_frontier = max(metrics.peak_frontier, len(stack))
+                        metrics.peak_frontier_bits = max(
+                            metrics.peak_frontier_bits, frontier_bits
+                        )
+                        metrics.visited_nodes += 1
+                        metrics.visited_block_bits += node.right.length * symbol_bits
+                    node, block = node.right, right_block
+                if node.run_count:
+                    if node.symbol is None:
+                        raise AssertionError(node)
+                    yield int(node.symbol), int(node.run_length), block
+                if not stack:
+                    break
+                node, block, block_bits = stack.pop()
+                frontier_bits -= block_bits
+                if frontier_delta is not None:
+                    frontier_delta(-1, -block_bits)
+        finally:
+            while stack:
+                _, _, block_bits = stack.pop()
+                if frontier_delta is not None:
+                    frontier_delta(-1, -block_bits)
 
 
-def word_metrics(root: CanonicalWord) -> dict[str, int]:
+def word_metrics(root: SourceWord) -> dict[str, int]:
     """Charge the retained RLE/SLP word, including references and run parameters."""
-    _validate_word(root)
-    seen = {}
-    stack = [root]
+    if isinstance(root, SourceWordSuffix):
+        validate_source_word(root)
+        stack = [root.source, *root.parts]
+        cursor_nodes = 1
+        cursor_refs = 1 + len(root.parts)
+        cursor_bits = (
+            bit_width(root.start) + bit_width(root.length) + bit_width(root.run_count)
+        )
+    else:
+        _validate_word(root)
+        stack = [root]
+        cursor_nodes = cursor_refs = cursor_bits = 0
+    seen: dict[int, CanonicalWord] = {}
     while stack:
         node = stack.pop()
         if node.node_id in seen:
@@ -506,24 +738,25 @@ def word_metrics(root: CanonicalWord) -> dict[str, int]:
             stack.append(node.left)
         if node.right is not None:
             stack.append(node.right)
-    refs = sum(
+    refs = cursor_refs + sum(
         int(node.left is not None) + int(node.right is not None)
         for node in seen.values()
     )
-    param_bits = 0
+    param_bits = cursor_bits
     for node in seen.values():
         if node.run_count == 1:
             param_bits += bit_width(int(node.symbol or 0)) + bit_width(node.run_length)
         else:
             param_bits += bit_width(node.length) + bit_width(node.run_count)
-    id_bits = bit_width(len(seen))
+    node_count = len(seen) + cursor_nodes
+    id_bits = bit_width(node_count)
     return {
         "length": root.length,
         "runs": root.run_count,
-        "nodes": len(seen),
+        "nodes": node_count,
         "references": refs,
         "parameter_bits": param_bits,
-        "description_bits": param_bits + len(seen) + refs * id_bits,
+        "description_bits": param_bits + node_count + refs * id_bits,
     }
 
 
@@ -624,6 +857,7 @@ def clear_transient_program_word_caches() -> None:
     _SLICE.clear()
     _JOIN.clear()
     _NORMALIZE_RUN_CAP.clear()
+    _SUFFIXES.clear()
 
 
 _NEXT_PRUNE_SIZE = 256
@@ -670,11 +904,14 @@ def prune_stale_program_word_memos(*, amortized: bool = False) -> int:
 __all__ = [
     "EMPTY",
     "CanonicalWord",
+    "SourceWord",
+    "SourceWordSuffix",
     "RunTraversalMetrics",
     "cap_symbol_runs",
     "clear_transient_program_word_caches",
     "concat",
     "concat_disjoint",
+    "drop_source_prefix",
     "first_run",
     "from_runs",
     "from_values",
@@ -686,5 +923,8 @@ __all__ = [
     "reverse",
     "run",
     "slice_runs",
+    "source_word_symbol_bounds",
+    "source_word_key",
+    "validate_source_word",
     "word_metrics",
 ]

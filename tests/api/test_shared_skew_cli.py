@@ -56,7 +56,8 @@ def test_public_collatz_cycle_uses_safety_transformer_after_exact_entry(
     assert not output.err
     assert counters
     assert counters[-1]["collatz_physical_cycle_safety_transformer_applications"] > 0
-    assert counters[-1]["collatz_physical_leaf_steps"] <= 128
+    assert 0 < counters[-1]["collatz_physical_temporal_run_actions"] <= 128
+    assert counters[-1].get("collatz_physical_leaf_steps", 0) == 0
     assert counters[-1].get("tile_causal_frames", 0) == 0
 
 

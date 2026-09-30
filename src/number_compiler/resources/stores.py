@@ -18,7 +18,7 @@ from collections.abc import (
     ValuesView,
 )
 from operator import index as as_index
-from typing import TYPE_CHECKING, Never, SupportsIndex, TypeVar, cast, overload
+from typing import TYPE_CHECKING, Never, Self, SupportsIndex, TypeVar, cast, overload
 
 if TYPE_CHECKING:
     from number_compiler.resources.ledger import ResourceLedger
@@ -79,16 +79,22 @@ class _TrackedList(list[T]):
     def __init__(self, ledger: ResourceLedger) -> None:
         super().__init__()
         self._ledger = ledger
+        self._mutation_identity = object()
+        self._mutation_version = 0
+
+    def _changed(self) -> None:
+        self._mutation_version += 1
+        self._ledger.note_store_mutation()
 
     def append(self, value: T) -> None:
         super().append(value)
-        self._ledger.note_store_mutation()
+        self._changed()
 
     def extend(self, values: Iterable[T]) -> None:
         pending = tuple(values)
         if pending:
             super().extend(pending)
-            self._ledger.note_store_mutation()
+            self._changed()
 
     @overload
     def __setitem__(self, key: SupportsIndex, value: T) -> None: ...
@@ -101,33 +107,49 @@ class _TrackedList(list[T]):
             super().__setitem__(key, cast(Iterable[T], value))
         else:
             super().__setitem__(key, cast(T, value))
-        self._ledger.note_store_mutation()
+        self._changed()
 
     def __delitem__(self, key: SupportsIndex | slice) -> None:
         super().__delitem__(key)
-        self._ledger.note_store_mutation()
+        self._changed()
 
     def clear(self) -> None:
         if self:
             super().clear()
-            self._ledger.note_store_mutation()
+            self._changed()
 
     def insert(self, index: SupportsIndex, value: T) -> None:
         super().insert(as_index(index), value)
-        self._ledger.note_store_mutation()
+        self._changed()
 
     def pop(self, index: SupportsIndex = -1) -> T:
         result = super().pop(as_index(index))
-        self._ledger.note_store_mutation()
+        self._changed()
         return result
 
     def remove(self, value: T) -> None:
         super().remove(value)
-        self._ledger.note_store_mutation()
+        self._changed()
 
     def reverse(self) -> None:
         super().reverse()
-        self._ledger.note_store_mutation()
+        self._changed()
+
+    def sort(self, *, key: object = None, reverse: bool = False) -> Never:
+        raise TypeError("tracked retained lists do not support in-place sorting")
+
+    def __iadd__(self, values: object) -> Never:
+        raise TypeError("tracked retained lists do not support in-place addition")
+
+    def __add__(self, values: object) -> Never:
+        raise TypeError(
+            "tracked retained lists do not expose concatenated backing lists"
+        )
+
+    def __imul__(self, count: SupportsIndex) -> Self:
+        super().__imul__(count)
+        self._changed()
+        return self
 
 
 class _StoreSerializationBoundary:
@@ -144,7 +166,7 @@ class _StoreSerializationBoundary:
 
 
 class LedgerDict(_StoreSerializationBoundary, MutableMapping[K, V]):
-    __slots__ = ("_data", "_sealed", "ledger", "nodes_per_entry", "owner")
+    __slots__ = ("_data", "_sealed", "ledger", "nodes_per_entry", "owner", "write_once")
 
     def __setattr__(self, name: str, value: object) -> None:
         if getattr(self, "_sealed", False):
@@ -155,12 +177,18 @@ class LedgerDict(_StoreSerializationBoundary, MutableMapping[K, V]):
         raise AttributeError("retained store ownership cannot be deleted")
 
     def __init__(
-        self, ledger: ResourceLedger, owner: int, nodes_per_entry: int
+        self,
+        ledger: ResourceLedger,
+        owner: int,
+        nodes_per_entry: int,
+        *,
+        write_once: bool = False,
     ) -> None:
         if getattr(self, "_sealed", False):
             raise TypeError("retained stores cannot be reinitialized")
         self._data: dict[K, V] = _TrackedDict(ledger)
         self.ledger, self.owner, self.nodes_per_entry = ledger, owner, nodes_per_entry
+        self.write_once = write_once
         self._sealed = True
 
     def _check(self, size: int) -> None:
@@ -169,6 +197,8 @@ class LedgerDict(_StoreSerializationBoundary, MutableMapping[K, V]):
         self.ledger.check_store_capacity(self.owner, size, size * self.nodes_per_entry)
 
     def __getitem__(self, key: K) -> V:
+        if self.write_once:
+            self._check(len(self))
         return self._data[key]
 
     def __iter__(self) -> Iterator[K]:
@@ -188,14 +218,20 @@ class LedgerDict(_StoreSerializationBoundary, MutableMapping[K, V]):
         return self._data.values()
 
     def __setitem__(self, key: K, value: V) -> None:
+        if self.write_once and key in self._data:
+            raise TypeError("canonical mapping entries are write-once")
         self._check(len(self) + int(key not in self))
         self._data[key] = value
 
     def __delitem__(self, key: K) -> None:
+        if self.write_once:
+            raise TypeError("canonical mapping entries cannot be deleted")
         self._check(len(self))
         del self._data[key]
 
     def clear(self) -> None:
+        if self.write_once:
+            raise TypeError("canonical mapping entries cannot be deleted")
         self._check(len(self))
         self._data.clear()
 
@@ -223,6 +259,8 @@ class LedgerDict(_StoreSerializationBoundary, MutableMapping[K, V]):
                 raise TypeError("update requires a mapping or key-value pairs")
         for name, value in kwargs.items():
             values[cast(K, name)] = value
+        if self.write_once and any(key in self._data for key in values):
+            raise TypeError("canonical mapping entries are write-once")
         self._check(len(self) + sum(key not in self for key in values))
         self._data.update(values)
 
@@ -258,7 +296,7 @@ class LedgerList(_StoreSerializationBoundary, MutableSequence[T]):
     ) -> None:
         if getattr(self, "_sealed", False):
             raise TypeError("canonical arena identities cannot be reinitialized")
-        self._data: list[T] = _TrackedList(ledger)
+        self._data: _TrackedList[T] = _TrackedList(ledger)
         self.ledger, self.owner = ledger, owner
         self.nodes_per_entry, self.append_only = nodes_per_entry, append_only
         self._sealed = True
@@ -300,6 +338,16 @@ class LedgerList(_StoreSerializationBoundary, MutableSequence[T]):
         ordinary public iteration keeps its non-serializable boundary above.
         """
         return tuple(self._data)
+
+    @property
+    def mutation_stamp(self) -> tuple[object, int]:
+        """Opaque backing authority and revision, without exposing its values.
+
+        Direct adversarial backing-list mutators invalidate this stamp as well
+        as the ledger-wide audit revision. Unrelated stores do not invalidate
+        a consumer's checked prefix of this sequence.
+        """
+        return self._data._mutation_identity, self._data._mutation_version
 
     @overload
     def __getitem__(self, key: SupportsIndex) -> T: ...

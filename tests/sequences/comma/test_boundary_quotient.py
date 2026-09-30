@@ -261,7 +261,9 @@ def test_long_phase_prefix_uses_bounded_residue_work(
     monkeypatch.setattr(arithmetic, "range", bounded_range, raising=False)
     count = 10**100
     assert phase_prefix_displacement(5, 0, count + 1) == 30 * count + 5
-    assert sum(visited) == 3
+    # The complete cycle is closed arithmetic; only the one-symbol tail is
+    # visited. The former three visits included a redundant two-phase sum.
+    assert visited == [1]
 
 
 def test_partial_selection_never_reclassifies_literal_children(
@@ -338,6 +340,12 @@ def test_macro_constructor_never_materializes_a_representative_scale(
     def modular_only(base: int, exponent: int, modulus: int | None = None) -> int:
         if modulus is None:
             raise AssertionError("constructor materialized a representative endpoint")
+        if exponent == -1:
+            assert 1 <= base <= 9 and modulus in (2, 5, 10)
+            inverse = int(actual_pow(base, exponent, modulus))
+            assert base * inverse % modulus == 1
+            return inverse
+        assert base == 10
         powers.append((exponent, modulus))
         return int(actual_pow(base, exponent, modulus))
 
@@ -353,9 +361,9 @@ def test_macro_constructor_never_materializes_a_representative_scale(
     for state in (BoundaryState("N", 3, 5), BoundaryState("N", 2, 0)):
         macro = construct_macro(state)
         assert macro.outcome in ("fork", "landmine")
-    assert powers and all(
-        5 <= exponent <= 32 and modulus <= 540 for exponent, modulus in powers
-    )
+    # The shared recursive core evaluator removes even the bounded modular
+    # powers; the poisoned representative-scale and endpoint guards remain.
+    assert not powers
 
 
 def test_bit_budget_rejects_before_boundary_power_allocations(

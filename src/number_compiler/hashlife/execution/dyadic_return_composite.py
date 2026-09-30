@@ -108,18 +108,27 @@ def _complete_composite_candidate(
     # quadratic sequence of ever-wider affine compositions.
     MAX_CYCLE_DISCOVERY_STEPS = 4096
     MAX_CYCLE_TRACK_BITS = 1024
-    tracked_value = self._source_value(source_node) if source_node.exact else None
+    source_bits = max(
+        1,
+        source_node.residue.bit_length(),
+        source_node.precision + source_node.lift.bit_length()
+        if source_node.lift
+        else 0,
+    )
     track_cycle = (
-        tracked_value is not None
-        and tracked_value.bit_length() <= MAX_CYCLE_TRACK_BITS
+        source_node.exact
         and self.law.cycle is not None
+        and source_bits <= MAX_CYCLE_TRACK_BITS
         # Cycle discovery is an optimization for long time / small-source
         # queries.  When the source already carries roughly as many bits as
         # the requested temporal extent, serial exact tracking only turns a
         # cold cylinder into quadratic big-integer work.  The balanced
         # source-cylinder constructor is exact in that regime.
-        and width > 2 * max(1, tracked_value.bit_length())
+        and width > 2 * source_bits
     )
+    # Admission uses disjoint residue/lift bit extents. Do not assemble an
+    # exact source merely to reject unused or over-wide cycle tracking.
+    tracked_value = self._source_value(source_node) if track_cycle else None
 
     remaining = width
     transfer = _identity_transfer()

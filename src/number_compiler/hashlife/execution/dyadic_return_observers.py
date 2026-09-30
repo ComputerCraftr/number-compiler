@@ -21,12 +21,15 @@ from number_compiler.hashlife.execution.dyadic_return_records import (
     DyadicReturnSupportID,
     _SupportNode,
 )
-from number_compiler.hashlife.execution.source_bound_images import SourceImageView
 from number_compiler.hashlife.execution.dyadic_return_transport import (
+    _clear_finite_memo,
     _low_bits,
+    balanced_residue_effect,
     balanced_residue_macro,
     cycle_phase_summaries,
+    transport_low,
 )
+from number_compiler.hashlife.execution.source_bound_images import SourceImageView
 
 if TYPE_CHECKING:
     from number_compiler.hashlife.execution.dyadic_return_images import (
@@ -283,10 +286,26 @@ def _expanded_saturated_support(
                 )
             )
         completed = workspace.support_node(completed_id)
+        transfer_matches = completed.transfer == summary.transfer
+        if not transfer_matches and summary.transfer.upper == 0 and source.exact:
+            # A constant published image denotes this exact occurrence only.
+            # The expanded affine cylinder may act differently on other lifts.
+            source_value = workspace._source_value(source)
+            numerator = (
+                completed.transfer.upper * source_value + completed.transfer.offset
+            )
+            workspace._bump(
+                "support_comparison_operand_bits",
+                max(1, numerator.bit_length(), source_value.bit_length()),
+            )
+            transfer_matches = (
+                summary.transfer.lower == 1
+                and numerator == summary.transfer.offset * completed.transfer.lower
+            )
         if (
             completed.width != summary.width
             or completed.residue != summary.residue
-            or completed.transfer != summary.transfer
+            or not transfer_matches
             or completed.odd_steps != summary.odd_steps
             or completed.delta != summary.delta
             or completed.minimum != summary.minimum
@@ -355,7 +374,7 @@ def leaf_summaries_for(
 
 
 def first_failure_index(workspace: DyadicReturnImageWorkspace) -> int | None:
-    """Find the first negative weighted prefix from retained support."""
+    """Find the first negative weighted prefix from the admitted summary."""
     return workspace._first_failure(workspace.summary())
 
 
@@ -372,36 +391,21 @@ def _first_failure(
     current = support
     while True:
         node = workspace.support_node(current)
+        if node.saturated:
+            return _saturated_first_failure(workspace, node, balance, start)
         if node.branch_word is not None:
             for offset in range(node.width):
+                workspace._bump("first_failure_leaf_steps")
                 bit = (node.branch_word >> offset) & 1
                 balance += workspace.law.weights[bit]
                 if balance < 0:
                     return start + offset
             raise ArithmeticError("dyadic return minimum lost its witness")
         if node.cycle is not None and node.children is None:
-            cycle = workspace.law.cycle
             metadata = node.cycle
-            if cycle is None or metadata.entry_steps != 0:
+            if workspace.law.cycle is None or metadata.entry_steps != 0:
                 raise ArithmeticError("singleton cycle compression lost its origin")
-            safety, _cycle_odd, _remainder_safety, _remainder_odd = (
-                cycle_phase_summaries(
-                    workspace.law, metadata.cycle_phase, metadata.remainder
-                )
-            )
-            failing_copy = safety.first_failing_copy(balance, metadata.cycles)
-            copies = metadata.cycles if failing_copy is None else failing_copy
-            cycle_length = len(cycle.states)
-            offset = copies * cycle_length
-            balance += copies * safety.delta
-            limit = metadata.remainder if failing_copy is None else cycle_length
-            workspace._bump("cycle_safety_descent_demands")
-            for local in range(limit):
-                state = cycle.states[(metadata.cycle_phase + local) % cycle_length]
-                balance += workspace.law.weights[state & 1]
-                if balance < 0:
-                    return start + offset + local
-            raise ArithmeticError("failing cycle summary lost its first failure")
+            return _cycle_first_failure(workspace, metadata, balance, start)
         if node.children is None:
             raise ArithmeticError("dyadic return support lost its children")
         left, right = node.children
@@ -412,3 +416,110 @@ def _first_failure(
         balance += left_node.delta
         start += left_node.width
         current = right
+
+
+def _saturated_first_failure(
+    workspace: DyadicReturnImageWorkspace,
+    node: _SupportNode,
+    balance: int,
+    start: int,
+) -> int:
+    """Refine only the failing interval, without publishing chronological support.
+
+    Each demanded left effect is built by the shared balanced constructor. That
+    construction can classify linearly many symbols; descent does not establish
+    an all-source logarithmic temporal quotient. Only the selected interval and
+    finite construction memo survive between refinements.
+    """
+    if (
+        workspace._closed
+        or workspace.macros
+        or workspace.macro_stack
+        or workspace.balanced_stack
+    ):
+        raise RuntimeError("nested or disposed dyadic first-failure descent")
+    # A failing first symbol is known from the admitted source port. Do not
+    # construct a half-horizon effect merely to rediscover that boundary.
+    if node.width and balance + workspace.law.weights[node.residue & 1] < 0:
+        workspace._bump("first_failure_leaf_steps")
+        return start
+    workspace.ledger.reserve(workspace.balanced_stack_owner, entries=1, nodes=1)
+    try:
+        width, residue = node.width, node.residue
+        metadata = node.cycle
+        if metadata is not None:
+            prefix = metadata.entry_steps
+            if prefix:
+                left = balanced_residue_effect(
+                    workspace, prefix, _low_bits(residue, prefix), _keep_memo=True
+                )
+                workspace._bump("first_failure_refinements")
+                if balance + left.minimum < 0:
+                    width, residue = prefix, left.residue
+                else:
+                    balance += left.delta
+                    start += prefix
+                    return _cycle_first_failure(workspace, metadata, balance, start)
+            else:
+                return _cycle_first_failure(workspace, metadata, balance, start)
+        while width > workspace.MAX_LEAF_STEPS:
+            left_width = width // 2
+            left = balanced_residue_effect(
+                workspace, left_width, _low_bits(residue, left_width), _keep_memo=True
+            )
+            workspace._bump("first_failure_refinements")
+            workspace._bump(
+                "first_failure_descent_operand_bits",
+                residue.bit_length() + width.bit_length() + abs(balance).bit_length(),
+            )
+            if balance + left.minimum < 0:
+                width, residue = left_width, left.residue
+            else:
+                right_width = width - left_width
+                residue = transport_low(workspace, left.transfer, residue, right_width)
+                balance += left.delta
+                start += left_width
+                width = right_width
+        for offset in range(width):
+            bit = residue & 1
+            workspace._bump("first_failure_leaf_steps")
+            balance += workspace.law.weights[bit]
+            if balance < 0:
+                return start + offset
+            residue = transport_low(
+                workspace,
+                SkewTransfer(workspace.law.gains[bit], workspace.law.offsets[bit], 2),
+                residue,
+                width - offset - 1,
+            )
+        raise ArithmeticError("saturated dyadic minimum lost its failure witness")
+    finally:
+        _clear_finite_memo(workspace)
+        workspace.ledger.release(workspace.balanced_stack_owner, entries=1, nodes=1)
+
+
+def _cycle_first_failure(
+    workspace: DyadicReturnImageWorkspace,
+    metadata: DyadicCycleSummary,
+    balance: int,
+    start: int,
+) -> int:
+    cycle = workspace.law.cycle
+    if cycle is None:
+        raise ArithmeticError("saturated cycle compression lost its law")
+    safety, _odd, _remainder_safety, _remainder_odd = cycle_phase_summaries(
+        workspace.law, metadata.cycle_phase, metadata.remainder
+    )
+    failing_copy = safety.first_failing_copy(balance, metadata.cycles)
+    copies = metadata.cycles if failing_copy is None else failing_copy
+    cycle_length = len(cycle.states)
+    balance += copies * safety.delta
+    limit = metadata.remainder if failing_copy is None else cycle_length
+    workspace._bump("cycle_safety_descent_demands")
+    for local in range(limit):
+        workspace._bump("first_failure_leaf_steps")
+        state = cycle.states[(metadata.cycle_phase + local) % cycle_length]
+        balance += workspace.law.weights[state & 1]
+        if balance < 0:
+            return start + copies * cycle_length + local
+    raise ArithmeticError("failing cycle summary lost its first failure")

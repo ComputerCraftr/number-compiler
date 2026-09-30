@@ -296,6 +296,11 @@ def test_documentation_and_string_cannot_forge_theory_header() -> None:
         "Comma_Source_Entry",
         "Comma_Source_Entry_Witness",
         "Comma_Source_Uniqueness",
+        "Comma_Decade_Residual_Core",
+        "Comma_Decade_Blocks",
+        "Comma_Total_Macro",
+        "Comma_Decade_Summary_Transport",
+        "Comma_Powered_Boundary",
     ],
 )
 def test_weighted_comma_ancestry_excludes_legacy_execution(target: str) -> None:
@@ -316,6 +321,15 @@ def test_weighted_comma_ancestry_excludes_legacy_execution(target: str) -> None:
     assert "Comma_Forest_Legacy" not in ancestors
     assert "Comma_Scalar_Reference" not in ancestors
     assert "Comma_Trace_Regression" not in ancestors
+    rank_free = target in {
+        "Comma_Decade_Residual_Core",
+        "Comma_Decade_Blocks",
+        "Comma_Total_Macro",
+        "Comma_Decade_Summary_Transport",
+        "Comma_Powered_Boundary",
+    }
+    if rank_free:
+        assert ancestors.isdisjoint({"Comma_Fast_Decade_Rank", "Comma_Fast_Rank_Check"})
     headers = dict(
         syntax.parse_theory_header(path.read_text(), path)
         for path in index.ISABELLE.rglob("*.thy")
@@ -334,6 +348,9 @@ def test_weighted_comma_ancestry_excludes_legacy_execution(target: str) -> None:
         )
     assert "Comma_Finite_Transition" in reached
     assert "Comma_Literal_Path" in reached
+    if rank_free:
+        assert "Comma_Decade_Residual_Core" in reached
+        assert "Comma_Fast_Decade_Rank" not in reached
     assert reached.isdisjoint(
         {
             "Comma_Root_Forest",

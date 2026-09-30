@@ -18,7 +18,10 @@ from dataclasses import dataclass
 
 from number_compiler.arithmetic.automata.program_word import (
     EMPTY,
-    CanonicalWord,
+    SourceWord,
+    source_word_key,
+    source_word_symbol_bounds,
+    validate_source_word,
     from_runs,
     from_values,
     iter_runs,
@@ -41,7 +44,7 @@ from number_compiler.sequences.collatz.root_germs import (
 )
 
 
-def _word_value(word: CanonicalWord) -> int:
+def _word_value(word: SourceWord) -> int:
     require_endpoint_construction()
     if 2 * word.length > 16384:
         raise BlockContextBudgetExceeded("Hensel endpoint export exceeds bit budget")
@@ -65,13 +68,12 @@ def _append_run(runs: list[tuple[int, int]], digit: int, count: int) -> None:
 
 
 def _affine_radix4_suffix(
-    suffix: CanonicalWord,
+    suffix: SourceWord,
     scale: int,
     addend: int,
-) -> CanonicalWord:
+) -> SourceWord:
     """Return ``scale*M+addend`` by counted radix-four carry propagation."""
-    if not isinstance(suffix, CanonicalWord):
-        raise TypeError("affine suffix normalization requires a canonical word")
+    validate_source_word(suffix)
     if type(scale) is not int or scale not in (1, 2):
         raise ValueError("affine suffix scale must be one or two")
     if type(addend) is not int or addend < 0:
@@ -134,7 +136,7 @@ class CollatzHenselOccurrence:
     """One exact suffix occurrence of a bounded Hensel action."""
 
     action: CollatzHenselAction
-    suffix: CanonicalWord
+    suffix: SourceWord
     logical_steps: int = 0
 
     @classmethod
@@ -142,7 +144,7 @@ class CollatzHenselOccurrence:
         cls,
         a: int,
         h: int,
-        suffix: CanonicalWord,
+        suffix: SourceWord,
         b: int,
         logical_steps: int = 0,
     ) -> CollatzHenselOccurrence:
@@ -151,9 +153,8 @@ class CollatzHenselOccurrence:
     def __post_init__(self) -> None:
         if type(self.action) is not CollatzHenselAction:
             raise TypeError("Hensel occurrence requires its action type")
-        if not isinstance(self.suffix, CanonicalWord):
-            raise TypeError("Hensel occurrence requires a canonical suffix word")
-        if any(not 0 <= digit < 4 for digit, _count in iter_runs(self.suffix)):
+        bounds = source_word_symbol_bounds(self.suffix)
+        if bounds is not None and not 0 <= bounds[0] <= bounds[1] < 4:
             raise ValueError("Hensel suffix must use radix-four symbols")
         if type(self.logical_steps) is not int or self.logical_steps < 0:
             raise ValueError("Hensel occurrence time must be a nonnegative integer")
@@ -175,7 +176,7 @@ class CollatzHenselOccurrence:
         return self.action.b
 
     @property
-    def M(self) -> CanonicalWord:
+    def M(self) -> SourceWord:
         """Compatibility spelling for the retained canonical suffix."""
         return self.suffix
 
@@ -193,7 +194,7 @@ class CollatzHenselOccurrence:
         return (
             "collatz-hensel-algebraic-occurrence",
             self.action.canonical_key,
-            self.suffix.node_id,
+            source_word_key(self.suffix),
             self.suffix.length,
         )
 
@@ -344,7 +345,7 @@ class CollatzHenselOccurrenceCarrier:
     def intern(
         self,
         action: CollatzHenselAction,
-        suffix: CanonicalWord,
+        suffix: SourceWord,
         logical_steps: int = 0,
     ) -> CollatzHenselOccurrence:
         require_endpoint_construction()
@@ -421,7 +422,7 @@ class CollatzHenselOccurrenceCarrier:
 
     def image_second(
         self,
-        source: int | CanonicalWord,
+        source: int | SourceWord,
         *,
         logical_steps: int = 0,
     ) -> CollatzHenselOccurrence:
@@ -430,14 +431,14 @@ class CollatzHenselOccurrenceCarrier:
     def reimage(
         self,
         action: CollatzHenselAction,
-        suffix: CanonicalWord,
+        suffix: SourceWord,
         logical_steps: int = 0,
     ) -> CollatzHenselOccurrence:
         return self.intern(action, suffix, logical_steps)
 
 
 def hensel_second_image(
-    source: int | CanonicalWord,
+    source: int | SourceWord,
     *,
     carrier: CollatzHenselOccurrenceCarrier | None = None,
     logical_steps: int = 0,
@@ -458,13 +459,14 @@ def hensel_second_image(
         raise TypeError("image carrier has another type")
 
     require_endpoint_construction()
+    word: SourceWord
     if type(source) is int:
         if source <= 0 or not source & 1:
             raise ValueError("image source must be positive and odd")
         if source.bit_length() > 16384:
             raise BlockContextBudgetExceeded("Hensel source import exceeds bit budget")
         word = from_values(digits_lsd(source, 4))
-    elif type(source) is CanonicalWord:
+    elif isinstance(source, SourceWord):
         word = source
     else:
         raise TypeError("image source must be an odd integer or canonical word")

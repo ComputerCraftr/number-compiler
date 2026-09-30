@@ -10,6 +10,7 @@ from pathlib import Path
 
 import pytest
 
+from devtools.checks.isabelle_syntax import parse_theory_header
 from devtools.experiments.comma import generate_rank_candidate as generator
 from number_compiler.sequences.comma.boundary_chart import (
     UNIT_WEIGHT,
@@ -101,6 +102,23 @@ def test_internal_decade_graph_has_27_round_evaluations_and_no_cycle() -> None:
     graph = generator._decade_round_graph()
     ranks = generator._decade_rank_candidates(graph)
     assert len(graph) == len(ranks) == 924 * 91 == 84_084
+    # Compare all checked-in candidate cells with independently recomputed edges.
+    # Render the deliberately tiny data format; no second ML parser is needed.
+    candidate_path = (
+        Path(__file__).resolve().parents[3]
+        / "devtools/proofs/isabelle/comma_decade_rank_data/rank_candidates.ML"
+    )
+    encoded_rows = [
+        '  "'
+        + "".join(chr(ord("A") + rank) for rank in ranks[start : start + 91])
+        + '"'
+        for start in range(0, len(ranks), 91)
+    ]
+    expected = (
+        "(* Untrusted ranks only. A=0, ..., Z=25, [=26. *)\n"
+        "val comma_decade_candidate_rows = [\n" + ",\n".join(encoded_rows) + "\n];\n"
+    )
+    assert candidate_path.read_text() == expected
     assert min(ranks) == 0
     assert max(ranks) == 26  # Terminal state has rank zero.
     longest = next(index for index, rank in enumerate(ranks) if rank == 26)
@@ -171,3 +189,13 @@ def test_round_phase_ml_reproduces_and_rejects_corruption(tmp_path: Path) -> Non
         generator._write_round_phase(path, 5, check=True)
     with pytest.raises(ValueError, match="round phase"):
         list(generator._round_phase_lines(924))
+
+
+def test_decade_rank_data_does_not_import_transition_checker() -> None:
+    theory = (
+        Path(__file__).resolve().parents[3]
+        / "devtools/proofs/isabelle/comma_decade_rank_data/Comma_Decade_Rank_Data.thy"
+    )
+    name, imports = parse_theory_header(theory.read_text(), theory)
+    assert name == "Comma_Decade_Rank_Data"
+    assert imports == ("Comma_Decade_Totality.Comma_Decade_Control",)

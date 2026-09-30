@@ -59,6 +59,6 @@ it does not materialize a combined alphabet, and it is not a count of a
 certified finite temporal quotient. Node counts alone do not prove entropy
 or asymptotic compression bounds.
 
-The [2026-W37 validation checkpoint](../../results/current/2026-W37/README.md)
+The [September 7–13 retrospective validation checkpoint](../../results/history/2026-09-07--2026-09-13/README.md)
 records exhaustive widths, repunit controls, per-plane 196 measurements,
 temporal composition checks, formal theorem scope, and failed probes.

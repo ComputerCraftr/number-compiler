@@ -14,7 +14,6 @@ from collections.abc import Iterator
 from dataclasses import dataclass
 from itertools import zip_longest
 from pathlib import Path
-from tempfile import gettempdir
 from typing import Literal, TypedDict
 
 from number_compiler.sequences.comma.arithmetic import (
@@ -33,7 +32,10 @@ from number_compiler.sequences.comma.boundary_chart import (
 
 STATE_COUNT = 16 * PERIOD
 PADDED_COUNT = 16_384
-DEFAULT_OUTPUT = Path(gettempdir()) / "number-compiler-comma-rank-data.thy"
+DEFAULT_OUTPUT = (
+    Path(__file__).resolve().parents[2]
+    / "proofs/isabelle/comma_future_checked/Comma_Rank_Data.thy"
+)
 CONTROL_WITNESS_SCHEMA = 1
 DECADE_RANK_SCHEMA = 1
 DECADE_OFFSETS = 91
@@ -526,25 +528,31 @@ def _candidate_ranks() -> list[int]:
     return codes
 
 
-def _render(codes: list[int]) -> str:
+def _render_rank_side(kind: Literal["N", "Z"], codes: list[int]) -> str:
+    """Render one semantic boundary side, using the canonical radix-16 tree."""
     if len(codes) != PADDED_COUNT:
         raise ValueError("invalid candidate length")
+    start = 0 if kind == "N" else 8 * PERIOD
+    values = codes[start : start + 8 * PERIOD]
+    values.extend([0] * (PADDED_COUNT // 2 - len(values)))
+    name = f"comma_rank_codes_{kind}"
     parts = [
-        "theory Comma_Rank_Data\n  imports Comma_Arithmetic.Comma_Boundary_Primitives\nbegin\n\n",
-        "text \\<open>These numbers are a candidate rank witness generated from the\n",
-        "finite boundary audit. They confer no branch authority. The checked\n",
-        "instance must compare every entry with the executable HOL transition\n",
-        "and prove complete macro construction before using the witness.\\<close>\n\n",
-        'definition comma_rank_codes :: "nat list list list list" where\n',
-        '  "comma_rank_codes = [\n',
+        f"theory Comma_Rank_Data_{kind}\n",
+        "  imports Comma_Arithmetic.Comma_Boundary_Primitives\nbegin\n\n",
+        f"text \\<open>Untrusted rank codes for all {kind} boundary states, ordered\n",
+        "by leading coefficient then phase. Zero denotes an unranked candidate;\n",
+        "positive codes encode rank plus one. Padding is outside the catalog.\n",
+        "These definitions confer no branch authority.\\<close>\n\n",
+        f'definition {name} :: "nat list list list list" where\n',
+        f'  "{name} = [\n',
     ]
-    for top in range(4):
+    for top in range(2):
         parts.append("    [\n")
         for second in range(16):
             parts.append("      [\n")
             for third in range(16):
-                start = ((top * 16 + second) * 16 + third) * 16
-                leaf = codes[start : start + 16]
+                offset = ((top * 16 + second) * 16 + third) * 16
+                leaf = values[offset : offset + 16]
                 parts.append(
                     "        ["
                     + ", ".join(map(str, leaf))
@@ -553,23 +561,56 @@ def _render(codes: list[int]) -> str:
                     + "\n"
                 )
             parts.append("      ]" + ("," if second < 15 else "") + "\n")
-        parts.append("    ]" + ("," if top < 3 else "") + "\n")
+        parts.append("    ]" + ("," if top < 1 else "") + "\n")
     parts.extend(
         [
             '  ]"\n\n',
+            "ML \\<open>\n",
+            f"  val _ = if null (Thm_Deps.all_oracles @{{thms {name}_def}})\n",
+            f'    then () else error "Comma {kind} rank data depends on an oracle";\n',
+            "\\<close>\n\nend\n",
+        ]
+    )
+    return "".join(parts)
+
+
+def _render(codes: list[int]) -> str:
+    """Render the shared lookup; semantic side data live in sibling theories."""
+    if len(codes) != PADDED_COUNT:
+        raise ValueError("invalid candidate length")
+    return "".join(
+        [
+            "theory Comma_Rank_Data\n  imports Comma_Rank_Data_N Comma_Rank_Data_Z\nbegin\n\n",
+            "text \\<open>Both side tables are untrusted candidate definitions.\n",
+            "The checked instance must compare every rank with complete children\n",
+            "computed from the executable HOL transition.\\<close>\n\n",
             'definition comma_rank_code_at :: "nat \\<Rightarrow> nat" where\n',
-            '  "comma_rank_code_at i = comma_rank_codes ! (i div 4096) !\n',
-            '    ((i div 256) mod 16) ! ((i div 16) mod 16) ! (i mod 16)"\n\n',
+            '  "comma_rank_code_at i =\n',
+            "    (let codes = (if i < 8*924 then comma_rank_codes_N else comma_rank_codes_Z);\n",
+            "         j = i mod (8*924)\n",
+            "     in codes ! (j div 4096) ! ((j div 256) mod 16) !\n",
+            '       ((j div 16) mod 16) ! (j mod 16))"\n\n',
             'definition comma_rank_candidate :: "comma_boundary_state \\<Rightarrow> nat option" where\n',
             '  "comma_rank_candidate q =\n',
             "    (case q of (kind,a,r) \\<Rightarrow>\n",
             "      let index = (if kind = Comma_Z then 8 * 924 else 0) +\n",
             "        (a - 2) * 924 + r; code = comma_rank_code_at index\n",
             '      in if code = 0 then None else Some (code - 1))"\n\n',
-            "end\n",
+            "ML \\<open>\n",
+            "  val _ = if null (Thm_Deps.all_oracles\n",
+            "    @{thms comma_rank_code_at_def comma_rank_candidate_def})\n",
+            '    then () else error "Comma rank lookup depends on an oracle";\n',
+            "\\<close>\n\nend\n",
         ]
     )
-    return "".join(parts)
+
+
+def _rank_candidate_files(output: Path, codes: list[int]) -> dict[Path, str]:
+    return {
+        output.with_name("Comma_Rank_Data_N.thy"): _render_rank_side("N", codes),
+        output.with_name("Comma_Rank_Data_Z.thy"): _render_rank_side("Z", codes),
+        output: _render(codes),
+    }
 
 
 def main() -> None:
@@ -621,14 +662,16 @@ def main() -> None:
     if args.decade_rank_only and args.decade_rank_output is None:
         parser.error("--decade-rank-only requires --decade-rank-output")
     if not (args.witness_only or args.decade_rank_only or args.round_phase_only):
-        content = _render(_candidate_ranks())
+        files = _rank_candidate_files(args.output, _candidate_ranks())
+        for path, content in files.items():
+            if args.check:
+                if path.read_text() != content:
+                    raise SystemExit(f"comma rank candidate differs: {path}")
+            else:
+                path.write_text(content)
+                print(path)
         if args.check:
-            if args.output.read_text() != content:
-                raise SystemExit("comma rank candidate differs from regenerated data")
             print("comma rank candidate matches deterministic generator")
-        else:
-            args.output.write_text(content)
-            print(args.output)
     if args.witness_dir is not None:
         _write_witness_slices(
             args.witness_dir,

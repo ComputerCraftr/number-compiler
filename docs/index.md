@@ -41,9 +41,19 @@ records below; see the [placement guide](development.md#documentation-placement)
 
 ## Sprint history and provenance
 
-- [2026-W39 — current week](../results/current/2026-W39/README.md)
-- [2026-W37](../results/current/2026-W37/README.md)
-- [2026-W38](../results/current/2026-W38/README.md)
+Weeks run **Sunday–Saturday**, named by their Sunday start date. Each weekly
+index links to categorized implementation and validation records.
+
+- [September 27–October 3 — current week](../results/current/week-of-2026-09-27/README.md)
+- [September 20–26](../results/current/week-of-2026-09-20/README.md)
+- [September 13–19](../results/current/week-of-2026-09-13/README.md)
+- [September 6–12](../results/current/week-of-2026-09-06/README.md)
+
+Earlier aggregate summaries cross Sunday boundaries; they retain their original
+coverage as retrospectives, not weekly records:
+
+- [September 7–13 retrospective](../results/history/2026-09-07--2026-09-13/README.md)
+- [September 14–20 retrospective](../results/history/2026-09-14--2026-09-20/README.md)
 - [Historical research and preserved external reports](history.md)
 - [Document migration and provenance](provenance.md)
 

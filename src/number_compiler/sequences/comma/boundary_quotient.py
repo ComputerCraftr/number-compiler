@@ -20,7 +20,6 @@ from number_compiler.sequences.comma.arithmetic import (
 
 from number_compiler.sequences.comma.boundary_chart import (
     PERIOD,
-    UNIT_WEIGHT,
     ZERO_WEIGHT,
     chart_moves,
 )
@@ -369,11 +368,14 @@ def construct_macro(
     *,
     charge: Callable[[int], None] | None = None,
     charge_bits: Callable[[int], None] | None = None,
+    grouped_near: bool = False,
 ) -> MacroTemplate:
     """Accumulate exact weights over the bounded Entry/Near chart machine.
 
-    Entry consumes complete interior cycles; Near consumes one literal edge
-    or reports all terminal alternatives. Control uses modular powers only.
+    Entry consumes complete interior cycles; Near consumes bounded seam
+    edges and reports all terminal alternatives. The optional grouped Near
+    classifier is an exact validation view, not the default executor: its
+    present catalog construction costs more than the bounded edge scan.
     No representative endpoint or sampled branch is constructed. The global
     winning-cycle and literal lifting proofs remain admission obligations.
     """
@@ -401,6 +403,7 @@ def construct_macro(
         source.exponent_residue,
         charge=charge,
         charge_bits=charge_bits,
+        grouped_near=grouped_near,
     ):
         if charge_bits is not None:
             charge_bits(
@@ -468,13 +471,32 @@ def construct_macro(
         if emitted.scale and emitted.exponent_delta != chart.delta:
             raise AssertionError("comma weight has a foreign exponent chart")
         if move.cycle is None and move.next_chart.kind == "near":
-            if emitted != UNIT_WEIGHT:
-                raise AssertionError(
-                    "comma Near run weight differs from unit semantics"
-                )
+            if (
+                emitted.scale != 0
+                or emitted.exponent_delta != 0
+                or emitted.denominator != 1
+                or emitted.offset <= 0
+                or move.next_chart.leading != f
+                or move.next_chart.delta != chart.delta
+                or move.literal_increment != x - move.next_chart.coordinate
+            ):
+                raise AssertionError("comma Near run lost its constant physical weight")
             digit = (-x) % 10
+            steps_added = emitted.offset
+            if charge is not None:
+                charge(steps_added % (10 // gcd(f, 10)) + 1)
+            if charge_bits is not None:
+                charge_bits(
+                    steps_added.bit_length() + move.literal_increment.bit_length() + 32
+                )
+            if phase_prefix_displacement(
+                f, digit, steps_added
+            ) != move.literal_increment or x <= move.literal_increment + int(f < 9):
+                raise AssertionError(
+                    "comma Near run weight differs from phase semantics"
+                )
             if near_run is None:
-                near_run = (f, digit, 1, move.literal_increment)
+                near_run = (f, digit, steps_added, move.literal_increment)
             else:
                 leading, entering_digit, steps, increment = near_run
                 if leading != f or (entering_digit + steps * f) % 10 != digit:
@@ -482,7 +504,7 @@ def construct_macro(
                 near_run = (
                     leading,
                     entering_digit,
-                    steps + 1,
+                    steps + steps_added,
                     increment + move.literal_increment,
                 )
             continue

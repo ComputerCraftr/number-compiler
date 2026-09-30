@@ -17,7 +17,7 @@ Historical timings measure specific observers and checks; they do not establish
 a family construction bound. Warm projections must authenticate their backing
 source payload just as cold demands do.
 
-[Implementation and validation record](../../results/current/2026-W39/README.md#profiler-and-cache-authority-audit).
+[Implementation and validation record](../../results/current/week-of-2026-09-20/shared.md#profiler-and-cache-authority-audit).
 
 ## Shared execution model
 
@@ -89,7 +89,7 @@ authorize a successor image, and resetting a cache invalidates its authority.
 The September audit corrected identity and lifecycle defects. It did not prove
 a new temporal quotient or eliminate the retained construction failures.
 
-[Implementation and validation record](../../results/current/2026-W39/README.md#memo-authority-and-accounting-audit).
+[Implementation and validation record](../../results/current/week-of-2026-09-20/shared.md#memo-authority-and-accounting-audit).
 
 ## Production and reproduction
 
@@ -110,4 +110,4 @@ improvement. It does not remove the source discovery or complete temporal
 constructor obligations described above. Accounting must include admission,
 failed work, retained support and explicitly demanded output.
 
-[Implementation and validation record](../../results/current/2026-W39/README.md#eager-work-audit-scope).
+[Implementation and validation record](../../results/current/week-of-2026-09-20/shared.md#eager-work-audit-scope).

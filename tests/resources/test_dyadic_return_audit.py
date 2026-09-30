@@ -115,6 +115,8 @@ def test_audit_rejects_foreign_composite_source_authority() -> None:
 def test_audit_reconstructs_transfer_and_rejects_law_mutation() -> None:
     ledger = ResourceLedger()
     workspace = AntihydraArithmeticImageWorkspace(ledger, 129)
+    # Chronological leaves now belong to an explicit support demand.
+    assert sum(width for _start, width, _word in workspace.branch_segments()) == 129
     leaf = next(node for node in workspace.support if node.branch_word is not None)
     transfer = leaf.transfer
     old_offset = transfer.offset

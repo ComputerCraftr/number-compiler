@@ -245,9 +245,10 @@ try:
     assert captured.getvalue().strip() == str(1 << 3072)
     assert reuse_calls
     reuse = reuse_calls[-1]
-    assert reuse['collatz_physical_balanced_effect_memo_hits'] > 0
-    assert reuse['collatz_physical_reused_temporal_extent'] >= 960
-    assert reuse['collatz_physical_transient_leaf_steps'] <= 64
+    assert reuse['collatz_physical_temporal_run_actions'] == 1
+    assert reuse['collatz_physical_temporal_zero_run_symbols'] == 1024
+    assert reuse['collatz_physical_run_contraction_publications'] == 1
+    assert reuse.get('collatz_physical_transient_leaf_steps', 0) == 0
     assert reuse.get('source_image_primitive_applications', 0) == 0
 finally:
     Images.saturated_summary = original_summary
@@ -269,7 +270,7 @@ try:
     assert limb_term._ledger.counters['collatz_image_radix_demands'] == 1
 finally:
     PoweredCollatzTerm._point_symbol = original_point
-print(json.dumps({'public_exports': len(api.__all__), 'kernel_left_states': kernel.left_count, 'kernel_right_states': kernel.right_count, 'installed_path': api.__file__, 'arithmetic_cli_roof_poison': 'passed', 'complete_effect_cli_reuses': reuse['collatz_physical_balanced_effect_memo_hits'], 'mahler_composed_image': 'passed'}))
+print(json.dumps({'public_exports': len(api.__all__), 'kernel_left_states': kernel.left_count, 'kernel_right_states': kernel.right_count, 'installed_path': api.__file__, 'arithmetic_cli_roof_poison': 'passed', 'homogeneous_run_cli_actions': reuse['collatz_physical_temporal_run_actions'], 'mahler_composed_image': 'passed'}))
 """,
             ],
             cwd=work,

@@ -36,7 +36,10 @@ from typing import TYPE_CHECKING
 
 from number_compiler.arithmetic.automata.program_word import (
     EMPTY,
-    CanonicalWord,
+    SourceWord,
+    source_word_key,
+    drop_source_prefix,
+    validate_source_word,
     iter_runs,
     word_metrics,
 )
@@ -155,30 +158,22 @@ def strip_radix4_fixed_point_digits(
     return q, ds[q:]
 
 
-def strip_radix4_fixed_point_word(word: CanonicalWord) -> tuple[int, CanonicalWord]:
+def strip_radix4_fixed_point_word(word: SourceWord) -> tuple[int, SourceWord]:
     """Drop the first canonical run when it is the radix-4 sentinel run.
 
     Returns ``(frame_depth, tail_word)`` without expanding the run length.
     The empty tail represents the all-sentinel finite source.
     """
-    from number_compiler.arithmetic.automata.program_word import (
-        EMPTY,
-        CanonicalWord,
-        first_run,
-        slice_runs,
-    )
-
-    if not isinstance(word, CanonicalWord):
-        raise TypeError(type(word))
+    validate_source_word(word)
     if not word.run_count:
         return 0, EMPTY
-    first = first_run(word)
-    if first.symbol != 1:
+    first = next(iter_runs(word))
+    if first[0] != 1:
         return 0, word
-    q = int(first.run_length)
+    q = first[1]
     if word.run_count == 1:
         return q, EMPTY
-    return q, slice_runs(word, 1, word.run_count - 1)
+    return q, drop_source_prefix(word, q)
 
 
 @dataclass(frozen=True, slots=True)
@@ -197,7 +192,7 @@ class CollatzAffineSuffixGerm:
 
     multiplier: int
     offset: int
-    suffix: CanonicalWord
+    suffix: SourceWord
     logical_steps: int = 0
 
     def __post_init__(self) -> None:
@@ -212,8 +207,7 @@ class CollatzAffineSuffixGerm:
             raise TypeError("Collatz affine suffix fields require exact integers")
         if self.multiplier < 0 or self.offset < 0 or self.logical_steps < 0:
             raise ValueError(self)
-        if not isinstance(self.suffix, CanonicalWord):
-            raise TypeError(type(self.suffix))
+        validate_source_word(self.suffix)
         if self.suffix.length == 0 and self.multiplier:
             object.__setattr__(self, "multiplier", 0)
 
@@ -222,8 +216,9 @@ class CollatzAffineSuffixGerm:
         return AffineCocycle(self.multiplier, self.offset)
 
     @classmethod
-    def from_word(cls, word: CanonicalWord) -> CollatzAffineSuffixGerm:
-        if not isinstance(word, CanonicalWord) or not word.length:
+    def from_word(cls, word: SourceWord) -> CollatzAffineSuffixGerm:
+        validate_source_word(word)
+        if not word.length:
             raise ValueError("positive odd radix-4 source word required")
         # LSD-first odd sources have first digit 1 or 3.
         first = next(iter_runs(word))[0]
@@ -297,19 +292,19 @@ class CollatzAffineSuffixGerm:
             "collatz-affine-suffix-algebraic",
             self.multiplier,
             self.offset,
-            self.suffix.node_id,
+            source_word_key(self.suffix),
             self.suffix.length,
         )
 
     @property
     def canonical_key(self) -> tuple[object, ...]:
-        # CanonicalWord is structurally interned; the source cursor is execution
-        # state, not claimed as a finite semantic quotient.
+        # Exact source authority and anchored coordinates are occurrence state,
+        # not a finite semantic quotient or a rebuilt output-word identity.
         return (
             "collatz-affine-suffix-germ",
             self.multiplier,
             self.offset,
-            self.suffix.node_id,
+            source_word_key(self.suffix),
             self.suffix.length,
             self.logical_steps,
         )
@@ -349,7 +344,7 @@ class CollatzAffineSuffixAdvance:
 
 
 def collatz_affine_suffix_valuations_word(
-    word: CanonicalWord,
+    word: SourceWord,
     steps: int,
     *,
     transition_cache: CollatzGermTransitionCache | None = None,
@@ -458,8 +453,8 @@ class CollatzFutureValuationRoot:
     def next_valuation_from_digits(self, digits: Sequence[int]) -> int:
         return self.rational_root.valuation_from_digits(digits) - self.local_shift
 
-    def next_valuation_from_word(self, word: CanonicalWord) -> int:
-        if not isinstance(word, CanonicalWord):
+    def next_valuation_from_word(self, word: SourceWord) -> int:
+        if not isinstance(word, SourceWord):
             raise TypeError(type(word))
         return self.rational_root.valuation_from_word(word) - self.local_shift
 
@@ -518,28 +513,27 @@ class CollatzTwoValuationFrameSummary:
 
 
 def normalize_collatz_frame_word(
-    word: CanonicalWord,
-) -> tuple[int, int, CanonicalWord]:
+    word: SourceWord,
+) -> tuple[int, int, SourceWord]:
     """Return frame depth, residual phase and tail without a root query."""
-    from number_compiler.arithmetic.automata.program_word import first_run
-
-    if not isinstance(word, CanonicalWord) or not word.length:
+    validate_source_word(word)
+    if not word.length:
         raise ValueError("positive odd Collatz source required")
-    if first_run(word).symbol not in (1, 3):
+    if next(iter_runs(word))[0] not in (1, 3):
         raise ValueError("positive odd Collatz source required")
     q, tail = strip_radix4_fixed_point_word(word)
     if not tail.length:
         local = 0
     else:
-        first = first_run(tail)
-        if first.symbol not in (0, 2, 3):
+        first = next(iter_runs(tail))[0]
+        if first not in (0, 2, 3):
             raise ValueError("tail is not fixed-point-frame normalized")
-        local = int(first.symbol == 3)
+        local = int(first == 3)
     return q, local, tail
 
 
 def collatz_two_valuation_frame_word(
-    word: CanonicalWord,
+    word: SourceWord,
 ) -> CollatzTwoValuationFrameSummary:
     """Project ``(k_t,k_{t+1})`` from one canonical radix-4 RLE/SLP word.
 

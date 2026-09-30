@@ -19,7 +19,7 @@ from number_compiler.api.number_api import (
 from number_compiler.arithmetic.contracts.input_validation import (
     require_integer as _integer,
 )
-from number_compiler.arithmetic.fields.radix import digits_lsd
+from number_compiler.arithmetic.fields.radix import iter_digits_lsd
 from number_compiler.arithmetic.fields.symbolic_extent import (
     Extent,
     ReverseAddExtent,
@@ -123,7 +123,7 @@ def _radix_string(value: int, base: int) -> str:
             return str(value)
         finally:
             sys.set_int_max_str_digits(previous_limit)
-    encoded = bytearray(_DIGIT_BYTES[digit] for digit in digits_lsd(value, base))
+    encoded = bytearray(_DIGIT_BYTES[digit] for digit in iter_digits_lsd(value, base))
     encoded.reverse()
     return encoded.decode("ascii")
 

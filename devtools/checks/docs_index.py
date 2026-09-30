@@ -7,6 +7,7 @@ import re
 import subprocess
 import tomllib
 from collections import Counter
+from datetime import date, timedelta
 from pathlib import Path
 from urllib.parse import unquote, urlsplit
 
@@ -66,6 +67,32 @@ def _tracked(root: Path) -> set[str]:
 def _local_path(root: Path, value: str) -> Path | None:
     path = (root / value).resolve()
     return path if path.is_relative_to(root) else None
+
+
+def _sprint_errors(name: str, kind: str, week_start: object, text: str) -> list[str]:
+    """Weekly indexes and topics share an explicit Sunday calendar boundary."""
+    prefix = f"{name}:1:"
+    if not isinstance(week_start, str):
+        return [f"{prefix} sprint requires an ISO date string in week_start"]
+    try:
+        start = date.fromisoformat(week_start)
+    except ValueError:
+        return [f"{prefix} invalid sprint week_start: {week_start}"]
+    if start.weekday() != 6 or start.isoformat() != week_start:
+        return [f"{prefix} sprint week_start must be a Sunday (YYYY-MM-DD)"]
+    expected = f"results/current/week-of-{week_start}"
+    errors = []
+    if Path(name).parent.as_posix() != expected:
+        errors.append(f"{prefix} sprint folder must match week_start: {expected}")
+    if kind == "sprint":
+        period = (
+            f"Period: {start} through {start + timedelta(days=6)} (Sunday–Saturday)."
+        )
+        if Path(name).name != "README.md" or period not in text.splitlines():
+            errors.append(
+                f"{prefix} sprint index must declare its Sunday–Saturday period"
+            )
+    return errors
 
 
 def _link_errors(root: Path, path: Path, *, durable: bool) -> list[str]:
@@ -156,10 +183,14 @@ def check_docs(root: Path) -> tuple[str, ...]:
             errors.append(f"docs/catalog.toml:1: missing or foreign document: {name}")
             continue
         if (
-            kind in {"checkpoint", "sprint"}
+            kind in {"checkpoint", "sprint", "sprint-topic"}
             and "provenance" not in path.read_text().lower()
         ):
             errors.append(f"{name}:1: missing provenance section")
+        if kind in {"sprint", "sprint-topic"}:
+            errors.extend(
+                _sprint_errors(name, kind, record.get("week_start"), path.read_text())
+            )
         if not name.startswith("docs/archive/"):
             errors.extend(_link_errors(root, path, durable=name.startswith("docs/")))
     # Iterative traversal also detects cycles without imposing a recursion limit.

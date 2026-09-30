@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from dataclasses import replace
 from typing import cast
 
 import pytest
@@ -10,6 +11,8 @@ from number_compiler.arithmetic.fields.consumer_pullback import PrefixSafety
 from number_compiler.hashlife.execution.source_bound_images import SourceImageDemand
 from number_compiler.sequences.comma import certificates
 from number_compiler.sequences.comma.arithmetic import (
+    DecimalSector,
+    _large_sector_children,
     comma_children,
     cycle_transfer,
     decimal_sector,
@@ -80,6 +83,89 @@ def test_phase_cycle_is_a_guarded_exact_composition(leading: int, digit: int) ->
     assert comma_children(source) == _literal_children(source)
 
 
+@pytest.mark.parametrize("leading", range(1, 10))
+@pytest.mark.parametrize("digit", range(10))
+def test_direct_cycle_count_preserves_strict_guard_and_target_clamp(
+    leading: int, digit: int
+) -> None:
+    transfer = cycle_transfer(leading, digit)
+    boundary = (leading + 1) * 10_000
+    safety = PrefixSafety(-transfer.displacement, -transfer.maximum_guard)
+    # H == G, H == G+1 and both sides of later repeated guards are included
+    # whenever compatible with the authenticated entering decimal digit.
+    guards = [transfer.maximum_guard + i * transfer.displacement for i in range(4)]
+    headrooms = {
+        h
+        for guard in guards
+        for h in range(max(1, guard - 10), guard + 11)
+        if (-h) % 10 == digit
+    }
+    for headroom in sorted(headrooms):
+        source = boundary - headroom
+        for remaining in (
+            0,
+            transfer.period - 1,
+            transfer.period,
+            2 * transfer.period,
+            4 * transfer.period + 1,
+            10**30,
+        ):
+            target = remaining // transfer.period
+            failure = safety.first_failing_copy(headroom - 1, target)
+            expected = target if failure is None else failure
+            actual = safe_complete_cycles(source, transfer, remaining)
+            assert actual == expected
+            if actual:
+                assert transfer.maximum_guard + (actual - 1) * transfer.displacement < (
+                    headroom
+                )
+            if actual < target:
+                assert transfer.maximum_guard + actual * transfer.displacement >= (
+                    headroom
+                )
+
+
+@pytest.mark.parametrize("field", ("period", "displacement", "maximum_guard"))
+@pytest.mark.parametrize("replacement", (0, 1, -1, False, True))
+@pytest.mark.parametrize("remaining", (0, 1000))
+def test_cycle_count_rejects_forged_transfer_arithmetic(
+    field: str, replacement: int, remaining: int
+) -> None:
+    forged = replace(cycle_transfer(1, 7), **{field: replacement})
+    with pytest.raises(ValueError, match="cycle transfer"):
+        safe_complete_cycles(10_007, forged, remaining)
+
+
+@pytest.mark.parametrize("field", ("leading", "entering_digit"))
+def test_cycle_count_rejects_boolean_phase_coordinates(field: str) -> None:
+    # True compares equal to one; exact type validation must reject it even
+    # when the receiving source's leading digit and phase otherwise agree.
+    forged = replace(cycle_transfer(1, 1), **{field: True})
+    with pytest.raises(ValueError, match="exact integers"):
+        safe_complete_cycles(10_001, forged, 1000)
+
+
+def test_cycle_count_rejects_foreign_entering_cylinder() -> None:
+    with pytest.raises(ValueError, match="another entering cylinder"):
+        safe_complete_cycles(10_007, cycle_transfer(2, 7), 1000)
+    with pytest.raises(ValueError, match="another entering cylinder"):
+        safe_complete_cycles(10_007, cycle_transfer(1, 8), 1000)
+
+
+def test_cycle_count_does_not_construct_a_generic_safety_observer(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    def forbidden(*_args: object, **_kwargs: object) -> None:
+        pytest.fail("comma cycle counting reopened generic safety observation")
+
+    transfer = cycle_transfer(1, 7)
+    monkeypatch.setattr(PrefixSafety, "first_failing_copy", forbidden)
+    monkeypatch.setattr(
+        "number_compiler.sequences.comma.arithmetic.cycle_transfer", forbidden
+    )
+    assert safe_complete_cycles(10_007, transfer, 3 * transfer.period) == 3
+
+
 def test_mixed_chronological_actions_keep_executable_children() -> None:
     term = CommaTerm(201)
     source = CommaSource(20)
@@ -104,6 +190,7 @@ def test_mixed_chronological_actions_keep_executable_children() -> None:
         ).value
         == 10_588
     )
+
     step_then_cycle = term.arena.compose(term.arena.step(1), term.arena.one_cycle(1, 8))
     after = term.scheduler.source_image(term.adapter, entered, step_then_cycle)
     assert (
@@ -112,6 +199,60 @@ def test_mixed_chronological_actions_keep_executable_children() -> None:
         ).value
         == 10_588
     )
+
+
+@pytest.mark.parametrize("steps", range(1, 10))
+def test_partial_phase_uses_admitted_provider_without_scalar_children(
+    monkeypatch: pytest.MonkeyPatch, steps: int
+) -> None:
+    from number_compiler.sequences.comma import power
+
+    term = CommaTerm(201)
+    source_value = term.materialize()
+    expected = source_value
+    for _ in range(steps):
+        (expected,) = _literal_children(expected)
+
+    def forbidden(*_args: object, **_kwargs: object) -> None:
+        pytest.fail("partial orbit reopened scalar child discovery")
+
+    monkeypatch.setattr(power, "_large_sector_children", forbidden)
+    monkeypatch.setattr(power, "comma_children", forbidden)
+    action = term.arena.phase_prefix(1, 7, steps)
+    assert term._publish(action) == expected
+    assert term.ledger.counters["comma_phase_prefix_transitions"] >= steps
+
+
+def test_partial_phase_rejects_another_source_and_seam_crossing() -> None:
+    term = CommaTerm(201)
+    term.materialize()
+    with pytest.raises(ValueError, match="another source"):
+        term._publish(term.arena.phase_prefix(1, 8, 2))
+    for invalid in (0, 10, True):
+        with pytest.raises(ValueError, match="positive partial orbit"):
+            term.arena.phase_prefix(1, 7, invalid)
+    edge = CommaTerm(FIRST_FORK_INDEX)
+    edge.materialize()
+    with pytest.raises(ValueError, match="unadmitted seam"):
+        edge._publish(edge.arena.phase_prefix(1, 8, 1))
+
+
+def test_production_resolver_groups_partial_phases(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from number_compiler.sequences.comma import power
+
+    def only_boundary_children(value: int, sector: DecimalSector) -> tuple[int, ...]:
+        assert sector.headroom <= (
+            10 * sector.digit + sector.leading + int(sector.leading < 9)
+        ), "production replayed a strictly interior transition"
+        return _large_sector_children(value, sector)
+
+    monkeypatch.setattr(power, "_large_sector_children", only_boundary_children)
+    term = CommaTerm(20000)
+    assert term.materialize() == 1_039_404
+    assert term.ledger.counters["comma_phase_prefix_transitions"] > 0
+    assert term.ledger.counters["comma_port_classifications"] > 0
 
 
 def test_first_fork_is_not_silently_selected() -> None:

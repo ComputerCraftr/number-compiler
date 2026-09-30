@@ -98,10 +98,11 @@ def test_symbolic_cycle_extent_is_not_charged_as_allocated_operand_bits() -> Non
     term = PoweredCollatzTerm(27, 10**26)
     assert term.materialize(max_bits=3) == 4
     counters = term._ledger.counters
-    assert 0 < counters["collatz_physical_leaf_steps"] <= 256
+    assert 0 < counters["collatz_physical_temporal_run_actions"] <= 256
     for name in (
-        "transient_leaf_operand_bits",
-        "transport_exact_operand_bits",
-        "cycle_repeat_operand_bits",
+        "temporal_run_operand_bits",
+        "temporal_endpoint_operand_bits",
     ):
         assert 0 < counters[f"collatz_physical_{name}"] < 100_000
+    assert counters["collatz_physical_temporal_cycle_pump_requests"] == 1
+    assert counters["collatz_physical_temporal_cycle_pump_repetitions"] > 10**24

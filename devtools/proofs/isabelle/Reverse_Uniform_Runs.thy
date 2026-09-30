@@ -5,6 +5,38 @@ begin
 text \<open>Counted pair coefficients, not decimal digits. These equations hold
 for arbitrary natural run lengths; there is no finite-width enumeration.\<close>
 
+text \<open>The domain-plane evaluator demands one incoming carry at a time.
+Its memo key must include that carry. These spatial laws preserve all incoming
+cases; they do not normalize a composition of successive reverse/add actions.\<close>
+
+fun region_incoming_carries :: "bool \<Rightarrow> carry_domain list \<Rightarrow> bool list" where
+  "region_incoming_carries c [] = []"
+| "region_incoming_carries c (d#ds) = c # region_incoming_carries (carry_apply d c) ds"
+
+lemma carry_domain_idempotent:
+  "carry_apply d (carry_apply d c) = carry_apply d c"
+  by (cases d) simp_all
+
+lemma region_carry_run_output:
+  "region_incoming_carries c (replicate (Suc n) d) =
+    c # replicate n (carry_apply d c)"
+  by (induction n arbitrary: c) (simp_all add: carry_domain_idempotent)
+
+lemma region_carry_run_exit:
+  "fold carry_apply (replicate (Suc n) d) c = carry_apply d c"
+  by (induction n arbitrary: c) (simp_all add: carry_domain_idempotent)
+
+lemma region_carry_spatial_join:
+  "region_incoming_carries c (ds @ es) =
+    region_incoming_carries c ds @
+    region_incoming_carries (fold carry_apply ds c) es"
+  by (induction ds arbitrary: c) simp_all
+
+lemma region_carry_emission_refinement:
+  "emit c ss = map (\<lambda>(s,b). (s + (if b then 1 else 0)) mod 10)
+    (zip ss (region_incoming_carries c (map domain ss)))"
+  by (induction ss arbitrary: c) simp_all
+
 lemma emit_uniform_below:
   assumes "s < 9"
   shows "emit False (replicate n s) = replicate n s"
@@ -82,7 +114,8 @@ theorem repunit_domain_phases:
 ML \<open>
   val _ = if null (Thm_Deps.all_oracles
     @{thms uniform_below_successor uniform_sixteen_growth repunit_four_events
-      repunit_domain_phases}) then ()
+      repunit_domain_phases region_carry_run_output region_carry_run_exit
+      region_carry_spatial_join region_carry_emission_refinement}) then ()
     else error "Uniform run proof depends on an oracle";
 \<close>
 

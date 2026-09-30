@@ -2,13 +2,18 @@
 
 from __future__ import annotations
 
-from collections.abc import Callable
+from collections.abc import Callable, Iterator
 from dataclasses import replace
-from typing import Literal
+from math import gcd
+from typing import Literal, cast
 
 import pytest
 
-from number_compiler.sequences.comma import arithmetic, boundary_chart
+from number_compiler.sequences.comma import (
+    arithmetic,
+    boundary_chart,
+    boundary_quotient,
+)
 from number_compiler.sequences.comma.boundary_chart import (
     BoundaryChart,
     chart_moves,
@@ -101,6 +106,158 @@ def test_first_n_boundary_has_93_chart_positions_not_92() -> None:
     assert moves[1][0] == BoundaryChart("entry", 2, 0, 91)
     assert moves[-1][1].fork_a == 7
     assert moves[-1][0].delta == 2
+
+
+@pytest.mark.parametrize("kind", ["N", "Z"])
+@pytest.mark.parametrize("a,residue", [(2, 10), (3, 5), (9, 923)])
+def test_grouped_near_moves_refine_the_single_edge_reference(
+    kind: Literal["N", "Z"], a: int, residue: int
+) -> None:
+    reference = iter(chart_moves(kind, a, residue))
+    for chart, move in chart_moves(kind, a, residue, grouped_near=True):
+        source, first = next(reference)
+        assert source == chart
+        if move == first:
+            continue
+        assert chart.kind == "near" and move.cycle is None
+        assert move.next_chart is not None and move.next_chart.kind == "near"
+        assert move.weight.scale == 0 and move.weight.denominator == 1
+        increment = 0
+        current, edge = source, first
+        for index in range(move.weight.offset):
+            assert edge.weight == boundary_chart.UNIT_WEIGHT
+            assert edge.next_chart is not None and edge.next_chart.kind == "near"
+            assert edge.next_chart.leading == chart.leading
+            increment += edge.literal_increment
+            current = edge.next_chart
+            if index + 1 < move.weight.offset:
+                next_source, edge = next(reference)
+                assert next_source == current
+        assert current == move.next_chart
+        assert increment == move.literal_increment
+        assert current.coordinate > int(chart.leading < 9)
+    assert next(reference, None) is None
+
+
+@pytest.mark.parametrize("kind", ["N", "Z"])
+@pytest.mark.parametrize("a,residue", [(2, 10), (3, 5), (9, 923)])
+def test_grouped_macro_is_the_same_complete_weighted_return(
+    monkeypatch: pytest.MonkeyPatch,
+    kind: Literal["N", "Z"],
+    a: int,
+    residue: int,
+) -> None:
+    source = BoundaryState(kind, a, residue)
+    grouped = construct_macro(source, grouped_near=True)
+    original = chart_moves
+
+    def scalar(
+        kind: Literal["N", "Z"],
+        a: int,
+        residue: int,
+        *,
+        charge: Callable[[int], None] | None = None,
+        charge_bits: Callable[[int], None] | None = None,
+        grouped_near: bool = False,
+    ) -> Iterator[tuple[BoundaryChart, boundary_chart.ChartMove]]:
+        assert grouped_near
+        return original(kind, a, residue, charge=charge, charge_bits=charge_bits)
+
+    monkeypatch.setattr(boundary_quotient, "chart_moves", scalar)
+    reference = construct_macro(source, grouped_near=True)
+    assert grouped == reference
+
+
+def test_grouped_constructor_never_replays_strict_near_edges(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    reference = tuple(chart_moves("N", 2, 10))
+    grouped = tuple(chart_moves("N", 2, 10, grouped_near=True))
+    assert len(grouped) < len(reference) == 93
+    original = boundary_chart.chart_step
+    calls = 0
+
+    def seam_only(
+        residue: int,
+        chart: BoundaryChart,
+        *,
+        charge_bits: Callable[[int], None] | None = None,
+    ) -> boundary_chart.ChartMove:
+        nonlocal calls
+        assert not (
+            chart.kind == "near"
+            and chart.coordinate
+            > 10 * ((-chart.coordinate) % 10) + chart.leading + int(chart.leading < 9)
+        ), "grouped construction replayed a strict-interior Near edge"
+        calls += 1
+        return original(residue, chart, charge_bits=charge_bits)
+
+    monkeypatch.setattr(boundary_chart, "chart_step", seam_only)
+    charges: list[int] = []
+    macro = construct_macro(
+        BoundaryState("N", 2, 10), charge=charges.append, grouped_near=True
+    )
+    assert macro.ordered_children
+    assert 0 < calls < len(grouped) < len(reference)
+    assert sum(charges) > len(grouped)  # Port construction is charged too.
+
+
+def test_default_macro_avoids_the_more_expensive_grouped_classifier(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    source = BoundaryState("N", 2, 10)
+    grouped_work: list[int] = []
+    grouped = construct_macro(source, grouped_near=True, charge=grouped_work.append)
+
+    def forbidden(*_args: object, **_kwargs: object) -> arithmetic.NearPortReturn:
+        raise AssertionError("default macro constructed a grouped port catalog")
+
+    monkeypatch.setattr(boundary_chart, "classify_near_port", forbidden)
+    default_work: list[int] = []
+    default = construct_macro(source, charge=default_work.append)
+    assert default == grouped
+    assert 0 < sum(default_work) < sum(grouped_work)
+
+
+def test_grouped_macro_rejects_a_consistent_but_unsafe_prefix(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    original = arithmetic.classify_near_port
+
+    def forged(
+        leading: int,
+        headroom: int,
+        *,
+        charge_work: Callable[[int], None] | None = None,
+        charge_bits: Callable[[int], None] | None = None,
+    ) -> arithmetic.NearPortReturn:
+        result = original(
+            leading, headroom, charge_work=charge_work, charge_bits=charge_bits
+        )
+        digit = (-headroom) % 10
+        for steps in range(result.physical_steps + 1, result.physical_steps + 11):
+            terminal = headroom - arithmetic.phase_prefix_displacement(
+                leading, digit, steps
+            )
+            if terminal == 1 and leading < 9:
+                return replace(result, physical_steps=steps, terminal_headroom=terminal)
+        return result
+
+    # H82 at f1 is a fork; its lower child has H1. A forged grouped move
+    # can match the phase displacement exactly while silently skipping it.
+    monkeypatch.setattr(
+        boundary_chart,
+        "initial_chart",
+        lambda _kind, _a: BoundaryChart("near", 1, 0, 153),
+    )
+    monkeypatch.setattr(boundary_chart, "classify_near_port", forged)
+    with pytest.raises(AssertionError, match="phase semantics"):
+        construct_macro(BoundaryState("N", 2, 10), grouped_near=True)
+
+
+def test_grouped_selector_requires_an_exact_boolean() -> None:
+    with pytest.raises(ValueError, match="Boolean selector"):
+        tuple(chart_moves("N", 2, 10, grouped_near=cast(bool, 1)))
 
 
 def test_macro_consumes_emitted_weight_instead_of_recomputing_it(
@@ -292,18 +449,39 @@ def test_small_power_periods_cover_every_cycle_and_exponent_residue() -> None:
                 assert actual == pow(10, exponent, displacement)
 
 
-def test_entry_uses_only_small_modular_powers(monkeypatch: pytest.MonkeyPatch) -> None:
-    exponents: list[int] = []
+def test_entry_uses_recursive_cores_without_modular_power(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    inverse_moduli: list[int] = []
 
     def bounded(base: int, exponent: int, modulus: int) -> int:
-        assert base == 10 and 5 <= exponent <= 32 and 0 < modulus <= 540
-        exponents.append(exponent)
+        if exponent == -1:
+            assert 1 <= base <= 9 and modulus in (2, 5, 10)
+            assert gcd(base, modulus) == 1
+            inverse_moduli.append(modulus)
+        else:
+            pytest.fail("Entry rebuilt a decimal modular power")
         return pow(base, exponent, modulus)
 
     monkeypatch.setattr(arithmetic, "pow", bounded, raising=False)
     for residue in (0, 4, 5, 10, 923):
         construct_macro(BoundaryState("N", 2, residue))
-    assert exponents
+        construct_macro(BoundaryState("N", 2, residue), grouped_near=True)
+    assert inverse_moduli
+
+
+@pytest.mark.parametrize("core", (1, 3, 7, 11, 13, 21, 23, 27, 29))
+def test_recursive_core_matches_modular_power_at_all_phases(core: int) -> None:
+    for exponent in (*range(924), 10**100 + 29):
+        assert arithmetic.recursive_core_residue(core, exponent) == pow(
+            10, exponent, core
+        )
+
+
+@pytest.mark.parametrize("core,exponent", ((True, 0), (5, 0), (7, True), (7, -1)))
+def test_recursive_core_rejects_unadmitted_arguments(core: int, exponent: int) -> None:
+    with pytest.raises(ValueError, match="recursive core"):
+        arithmetic.recursive_core_residue(core, exponent)
 
 
 @pytest.mark.parametrize(

@@ -80,7 +80,7 @@ def test_public_collatz_accounts_for_shared_images_without_retired_tiles() -> No
     assert all(count > 0 for count in retained.values())
     assert snapshot.counters["source_image_publications"] > 0
     assert snapshot.counters["source_image_primitive_applications"] > 0
-    source_work = snapshot.counters["collatz_physical_leaf_steps"]
+    source_work = snapshot.counters["collatz_physical_temporal_run_actions"]
     publications = snapshot.counters["source_image_publications"]
     assert source_work > 0
     term._ledger.evict_query_memos()
@@ -99,7 +99,7 @@ def test_public_collatz_accounts_for_shared_images_without_retired_tiles() -> No
     } == retained
     assert term.digit(0) == 1
     assert term._ledger.counters["source_image_publications"] == publications
-    assert term._ledger.counters["collatz_physical_leaf_steps"] == source_work
+    assert term._ledger.counters["collatz_physical_temporal_run_actions"] == source_work
 
 
 def test_field_action_work_is_forwarded_from_one_ledger_snapshot() -> None:

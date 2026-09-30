@@ -464,13 +464,20 @@ class DyadicReturnImageWorkspace(
         source_node = self.source_node(source_id)
         if not source_node.exact:
             return None
-        source_value = self._source_value(source_node)
-        if source_value not in cycle.states:
+        entry_phase = None
+        for phase, value in enumerate(cycle.states):
+            self._bump("cycle_source_comparisons")
+            if (
+                source_node.residue == _low_bits(value, source_node.precision)
+                and source_node.lift == value >> source_node.precision
+            ):
+                entry_phase = phase
+                break
+        if entry_phase is None:
             return None
         action_node = self.action_node(action)
         if action_node.width == 0:
             return None
-        entry_phase = cycle.states.index(source_value)
         cycle_length = len(cycle.states)
         cycles, remainder = divmod(action_node.width, cycle_length)
         terminal_phase = (entry_phase + remainder) % cycle_length
@@ -564,20 +571,25 @@ class DyadicReturnImageWorkspace(
                 self._bump("composite_cutover_rollbacks")
             raise
 
+    def primitive_run_candidate(
+        self, action: Hashable, source: SourceImageView
+    ) -> SourceImageCandidate | None:
+        """Optional family arithmetic contraction inside shared publication."""
+        return None
+
     def apply_primitive(
         self, action: Hashable, source: SourceImageView
     ) -> SourceImageCandidate:
         self.validate_action(action)
         self.validate_payload(source.payload)
+        contracted = self.primitive_run_candidate(action, source)
+        if contracted is not None:
+            return contracted
         assert type(action) is DyadicReturnActionID
         assert type(source.binding.source) is DyadicReturnSourceID
         node = self.action_node(action)
         source_node = self.source_node(source.binding.source)
-        if (
-            self.law.cycle is not None
-            and source_node.exact
-            and self._source_value(source_node) in self.law.cycle.states
-        ):
+        if self.law.cycle is not None and source_node.exact:
             compressed = self._compressed_cycle_candidate(action, source)
             if compressed is not None:
                 return compressed
@@ -652,8 +664,8 @@ class DyadicReturnImageWorkspace(
             or self.compose_actions(before_action, after_action) != parent_action
         ):
             raise ValueError("dyadic return parent has another precision split")
-        parent_value = self._source_value(parent) if parent.exact else 0
         exact = parent.exact and self.law.cycle is not None
+        parent_value = self._source_value(parent) if exact else 0
         lift = parent_value >> before_width if exact else 0
         return self._append_source(
             _SourceNode(

@@ -64,6 +64,39 @@ def _action_packet(
             )
         ),
     )
+    workspace = result._term.arithmetic_workspace
+    if type(workspace) is not AntihydraArithmeticImageWorkspace:
+        raise ValueError("Mahler residual lost its admitted arithmetic image")
+    # The scheduler projection has already authenticated the complete source
+    # image and read its saturated summary.  Serialize the same published
+    # transfer directly; a second aggregate projection duplicates work and
+    # cannot strengthen the source binding checked at this demand boundary.
+    transfer = workspace.summary().transfer
+    carry = transfer.upper + transfer.offset - transfer.lower
+    result.ledger.bump("mahler_temporal_residual_projections")
+    result.ledger.bump(
+        "mahler_temporal_residual_operand_bits",
+        transfer.upper.bit_length()
+        + transfer.lower.bit_length()
+        + abs(transfer.offset).bit_length()
+        + carry.bit_length(),
+    )
+    # The centered source and the real w=4t action consume this identical carry.
+    # The admitted public source is D=7. Its 11 prefix makes the real domain
+    # empty at return two, independently of the Antihydra ledger.
+    residual = {
+        "Q": result.returns,
+        "C": carry,
+        "R": 7 if result.returns >= 3 else 7 % (1 << result.returns),
+        "source_modulus_exponent": result.returns,
+        "real_coordinate": "w=4*fractional_offset",
+        "rho": rational_packet(ExactRational(transfer.lower, transfer.upper)),
+        "h": rational_packet(ExactRational(4 * carry, transfer.upper)),
+        "L": rational_packet(ExactRational(2) * root.domain.lower),
+        "U": rational_packet(ExactRational(2) * root.domain.upper),
+        "delta": result.balance,
+        "minimum": result.minimum,
+    }
     demand = semantic.pullback(ThresholdDemand())
     return {
         "source_binding": result.source_binding,
@@ -81,6 +114,7 @@ def _action_packet(
         "first_failure": first_failure,
         "first_failure_index_unit": "one_based_macro_return",
         "predicate": "Mahler_strict_margin_positivity",
+        "temporal_run_residual": residual,
         "root_shell": {
             "coordinate": "r_squared=theta=2*fractional_offset",
             "radicand_scale": rational_packet(root.action.scale),

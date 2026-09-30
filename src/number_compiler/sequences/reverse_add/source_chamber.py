@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from collections.abc import Iterator
+from contextlib import closing
 from dataclasses import dataclass
 
 from number_compiler.arithmetic.contracts.scoped_handles import ExactSource
@@ -70,35 +71,55 @@ def _validate_ports(ports: SourceCarryPorts, steps: int) -> SameCarryChamberCert
         raise SameCarryChamberRejected("original source leaves the no-growth chamber")
     exponent = steps - 1
     all_zero = True
-    for position in range(ports.width):
-        pair = ports.pair(position)
-        left_in, left_out = ports.carry(position), ports.carry(position + 1)
-        right_in = ports.carry(ports.width - 1 - position)
-        right_out = ports.carry(ports.width - position)
-        beta = pair_no_growth(0, left_in, left_out, right_in, right_out, source.base)
-        try:
-            endpoint = _endpoint_pair(pair, beta, exponent, 2 * source.base - 2)
-        except SameCarryChamberRejected:
-            ledger.bump("reverse_source_chamber_rejections")
-            raise
-        all_zero &= pair + beta == 0
-        if int(endpoint + left_in >= source.base) != left_out:
-            ledger.bump("reverse_source_chamber_rejections")
-            raise SameCarryChamberRejected(
-                "powered pair changes an original source carry port"
+    with (
+        closing(ports.iter_first_ports()) as forward,
+        closing(ports.iter_first_ports(reflected=True)) as reflected,
+    ):
+        for position, (left, right) in enumerate(zip(forward, reflected, strict=True)):
+            pair = ports.pair(position)
+            left_in, left_out = left
+            right_in, right_out = right
+            beta = pair_no_growth(
+                0, left_in, left_out, right_in, right_out, source.base
             )
-        ledger.bump("reverse_source_chamber_guard_coordinates")
+            try:
+                endpoint = _endpoint_pair(pair, beta, exponent, 2 * source.base - 2)
+            except SameCarryChamberRejected:
+                ledger.bump("reverse_source_chamber_rejections")
+                raise
+            all_zero &= pair + beta == 0
+            if int(endpoint + left_in >= source.base) != left_out:
+                ledger.bump("reverse_source_chamber_rejections")
+                raise SameCarryChamberRejected(
+                    "powered pair changes an original source carry port"
+                )
+            ledger.bump("reverse_source_chamber_guard_coordinates")
     ledger.bump("reverse_source_chamber_admissions")
     return SameCarryChamberCertificate(steps, ports.width, all_zero)
 
 
 def same_carry_digit(ports: SourceCarryPorts, steps: int, position: int) -> int:
     """Consume a previously admitted chamber at one coordinate, without replay."""
+    return _same_carry_digit(
+        ports,
+        steps,
+        position,
+        (ports.carry(position), ports.carry(position + 1)),
+        (ports.carry(ports.width - 1 - position), ports.carry(ports.width - position)),
+    )
+
+
+def _same_carry_digit(
+    ports: SourceCarryPorts,
+    steps: int,
+    position: int,
+    left: tuple[int, int],
+    right: tuple[int, int],
+) -> int:
     source, ledger = ports.source, ports.ledger
     pair = ports.pair(position)
-    left_in, left_out = ports.carry(position), ports.carry(position + 1)
-    right_in = ports.carry(ports.width - 1 - position)
-    right_out = ports.carry(ports.width - position)
+    left_in, left_out = left
+    right_in, right_out = right
     beta = pair_no_growth(0, left_in, left_out, right_in, right_out, source.base)
     endpoint = _endpoint_pair(pair, beta, steps - 1, 2 * source.base - 2)
     if source.base == 10:
@@ -114,6 +135,20 @@ def same_carry_digit(ports: SourceCarryPorts, steps: int, position: int) -> int:
     return digit
 
 
+def iter_admitted_same_carry_digits(
+    ports: SourceCarryPorts, steps: int
+) -> Iterator[int]:
+    """Consume admitted output with shared regional carry contexts."""
+    forward = ports.iter_first_ports()
+    reflected = ports.iter_first_ports(reflected=True)
+    try:
+        for position, (left, right) in enumerate(zip(forward, reflected, strict=True)):
+            yield _same_carry_digit(ports, steps, position, left, right)
+    finally:
+        forward.close()
+        reflected.close()
+
+
 def iter_same_carry_digits(
     source: ExactSource, steps: int, ledger: ResourceLedger
 ) -> Iterator[int]:
@@ -121,8 +156,7 @@ def iter_same_carry_digits(
     ports = SourceCarryPorts(source, ledger)
     try:
         validate_same_carry_chamber(source, steps, ledger, ports=ports)
-        for position in range(ports.width):
-            yield same_carry_digit(ports, steps, position)
+        yield from iter_admitted_same_carry_digits(ports, steps)
     finally:
         ports.dispose()
 

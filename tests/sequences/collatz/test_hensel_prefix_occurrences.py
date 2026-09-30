@@ -1,8 +1,24 @@
 """Dead root prefixes preserve angular actions and surviving occurrence words."""
 
-from dataclasses import fields
+from collections.abc import Iterator
+from dataclasses import fields, replace
 
-from number_compiler.arithmetic.automata.program_word import from_values
+import pytest
+
+from number_compiler.arithmetic.automata.program_word import (
+    CanonicalWord,
+    SourceWord,
+    SourceWordSuffix,
+    drop_source_prefix,
+    source_word_key,
+    validate_source_word,
+    concat,
+    from_runs,
+    from_values,
+    iter_runs,
+)
+import number_compiler.sequences.collatz.root_germs as root_module
+from number_compiler.arithmetic.automata import program_word
 from number_compiler.arithmetic.carry.collatz_output_quotient import radix64_domain
 from number_compiler.arithmetic.fields.radix import digits_lsd
 from number_compiler.arithmetic.fields.two_adic import v2_nonzero
@@ -170,3 +186,179 @@ def test_matching_radix64_prefixes_are_weight_not_live_action_identity() -> None
                 )
             )
         assert len(set(images)) == 1
+
+
+@pytest.mark.parametrize("prefix", (0, 10**12))
+@pytest.mark.parametrize("irregular", (False, True))
+def test_first_hole_stops_run_iteration_and_preserves_suffix(
+    monkeypatch: pytest.MonkeyPatch, prefix: int, irregular: bool
+) -> None:
+    symbols = []
+    state, last = 991, 1
+    for _ in range(4096):
+        state = (1103515245 * state + 12345) & 0x7FFFFFFF
+        last = (
+            (((state >> 11) % 3) + last + 1) % 4
+            if irregular
+            else 5 - last
+            if last in (2, 3)
+            else 2
+        )
+        symbols.append(last)
+    high = from_values(symbols)
+    source = concat(from_runs(((1, prefix), (0, 1))), high)
+    root = RationalPadicRootGerm(1, 1)
+    visits = 0
+
+    def bounded_runs(word: SourceWord) -> Iterator[tuple[int, int]]:
+        nonlocal visits
+        for item in iter_runs(word):
+            visits += 1
+            if visits > 1 + bool(prefix):
+                raise AssertionError("first-hole search read past its mismatch")
+            yield item
+
+    def forbidden_normalization(*_args: object, **_kwargs: object) -> None:
+        raise AssertionError("first-hole cursor rebalanced the high suffix")
+
+    monkeypatch.setattr(program_word, "_word_tasks", forbidden_normalization)
+    monkeypatch.setattr(root_module, "iter_runs", bounded_runs)
+    mismatch, suffix = root.first_mismatch_word(source)
+    assert mismatch.matched_quarters == prefix
+    assert mismatch.valuation_bits == 2 * prefix
+    assert isinstance(suffix, SourceWordSuffix)
+    assert suffix.source is source and suffix.start == prefix + 1
+    assert len(suffix.parts) <= source.run_count.bit_length()
+    assert tuple(iter_runs(suffix)) == tuple(iter_runs(high))
+    visits = 0
+    dropped, normalized, remaining = root.normalize_matching_prefix_word(source)
+    assert dropped == prefix and normalized == root
+    assert tuple(iter_runs(remaining)) == ((0, 1), *tuple(iter_runs(high)))
+
+
+def _irregular_word(count: int) -> CanonicalWord:
+    state, last = 991, 1
+    symbols = []
+    for _ in range(count):
+        state = (1103515245 * state + 12345) & 0x7FFFFFFF
+        last = (((state >> 11) % 3) + last + 1) % 4
+        symbols.append(last)
+    return from_values(symbols)
+
+
+@pytest.mark.parametrize("count", (128, 512, 2048))
+def test_irregular_first_hole_constructs_only_boundary_cover(
+    count: int, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    source = concat(from_runs(((1, 10**12), (0, 7))), _irregular_word(count))
+    checked = 0
+    original = program_word._validate_word
+
+    def counted(word: CanonicalWord) -> None:
+        nonlocal checked
+        checked += 1
+        original(word)
+
+    def forbidden(*_args: object, **_kwargs: object) -> None:
+        raise AssertionError("source suffix performed canonical rebalance")
+
+    monkeypatch.setattr(program_word, "_validate_word", counted)
+    monkeypatch.setattr(program_word, "_word_tasks", forbidden)
+    mismatch, suffix = RationalPadicRootGerm(1, 1).first_mismatch_word(source)
+    assert mismatch.matched_quarters == 10**12
+    assert isinstance(suffix, SourceWordSuffix)
+    assert suffix.source is source and suffix.start == 10**12 + 1
+    assert checked <= 8 * source.run_count.bit_length()
+    assert len(suffix.parts) <= source.run_count.bit_length()
+    assert next(iter_runs(suffix)) == (0, 6)
+
+
+def test_source_suffix_authority_and_memo_reset_are_independent(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    source = _irregular_word(128)
+    suffix = drop_source_prefix(source, 1)
+    assert isinstance(suffix, SourceWordSuffix)
+    key = source_word_key(suffix)
+    forged = replace(suffix, start=2, length=suffix.length - 1)
+    with pytest.raises(ValueError, match="foreign or stale"):
+        validate_source_word(forged)
+    foreign = replace(suffix, source=_irregular_word(129), length=128)
+    with pytest.raises(ValueError, match="foreign or stale"):
+        validate_source_word(foreign)
+    program_word.clear_transient_program_word_caches()
+    monkeypatch.setattr(program_word, "_SUFFIX_MEMO_LIMIT", 2)
+    retained = [drop_source_prefix(source, offset) for offset in range(2, 6)]
+    assert [word.length for word in retained] == [
+        source.length - offset for offset in range(2, 6)
+    ]
+    assert len(program_word._SUFFIXES) == 2
+    for word in retained:
+        validate_source_word(word)
+    validate_source_word(suffix)
+    program_word.clear_transient_program_word_caches()
+    validate_source_word(suffix)
+    reissued = drop_source_prefix(source, 1)
+    assert reissued is not suffix and source_word_key(reissued) == key
+    assert len(program_word._SUFFIXES) <= 2
+
+
+def test_partial_source_suffix_counts_retained_nodes_and_integer_splits() -> None:
+    source = concat(from_runs(((0, 7),)), _irregular_word(128))
+    suffix = drop_source_prefix(source, 1)
+    assert isinstance(suffix, SourceWordSuffix)
+    before = program_word.word_metrics(source)
+    retained = program_word.word_metrics(suffix)
+    # One issued cursor and its new partial-run node remain live alongside
+    # the original source; existing cover subtrees are counted only once.
+    assert retained["nodes"] == before["nodes"] + 2
+    assert retained["references"] == before["references"] + 1 + len(suffix.parts)
+    value = 0
+    place = 1
+    for digit, length in iter_runs(suffix):
+        value += digit * (4**length - 1) // 3 * place
+        place *= 4**length
+    metrics = program_word.RunTraversalMetrics()
+    actual = list(
+        program_word.iter_run_blocks_reverse(
+            suffix, value, symbol_bits=2, metrics=metrics
+        )
+    )
+    assert [(digit, length) for digit, length, _block in actual] == list(
+        reversed(tuple(iter_runs(suffix)))
+    )
+    assert metrics.visited_nodes >= len(suffix.parts)
+    assert metrics.visited_block_bits >= 2 * suffix.length
+
+
+def test_nine_carry_reentry_is_the_existing_root_pullback() -> None:
+    # First non-1 digit of 9*M+c is the first hole of 27*M+3*c+1.
+    # The returned suffix remains a source occurrence, not the emitted image.
+    for source in range(257):
+        word = from_values(digits_lsd(source, 4))
+        for carry in range(9):
+            mismatch, suffix = RationalPadicRootGerm(
+                3, 3 * carry + 1
+            ).first_mismatch_word(word)
+            output = 9 * source + carry
+            prefix = 0
+            tail = output
+            while tail % 4 == 1:
+                prefix += 1
+                tail //= 4
+            assert mismatch.matched_quarters == prefix
+            assert mismatch.valuation_bits == v2_nonzero(3 * output + 1)
+            assert mismatch.constant_at_mismatch % 3 == 1
+            port = (mismatch.constant_at_mismatch - 1) // 3
+            assert 0 <= port < 9
+            outgoing, emitted = divmod(9 * mismatch.source_digit + port, 4)
+            assert emitted == tail % 4 and emitted != 1
+            assert 0 <= outgoing < 9
+            high = source >> (2 * (prefix + 1))
+            # A finite source may retain a leading zero; numerical semantics,
+            # not source-word identity, establishes this affine suffix lift.
+            actual_digits = [
+                digit for digit, count in iter_runs(suffix) for _ in range(count)
+            ]
+            assert sum(digit * 4**i for i, digit in enumerate(actual_digits)) == high
+            assert 9 * high + outgoing == output >> (2 * (prefix + 1))

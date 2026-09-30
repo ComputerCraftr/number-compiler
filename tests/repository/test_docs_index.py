@@ -2,6 +2,8 @@
 
 from pathlib import Path
 
+import pytest
+
 from devtools.checks.docs_index import check_docs
 
 
@@ -66,6 +68,40 @@ def test_checkpoint_requires_provenance(tmp_path: Path) -> None:
     catalog = tmp_path / "docs/catalog.toml"
     catalog.write_text(catalog.read_text().replace('kind="research"', 'kind="sprint"'))
     assert any("missing provenance" in error for error in check_docs(tmp_path))
+
+
+@pytest.mark.parametrize(
+    ("start", "folder", "end", "error"),
+    [
+        ("2026-09-27", "2026-09-27", "2026-10-03", None),
+        ("2026-09-21", "2026-09-21", "2026-09-27", "must be a Sunday"),
+        ("2026-09-27", "2026-09-20", "2026-10-03", "folder must match"),
+        ("2026-09-27", "2026-09-27", "2026-10-04", "must declare"),
+        ("not-a-date", "2026-09-27", "2026-10-03", "invalid sprint"),
+    ],
+)
+def test_sprint_calendar_boundaries(
+    tmp_path: Path, start: str, folder: str, end: str, error: str | None
+) -> None:
+    _fixture(tmp_path)
+    relative = f"results/current/week-of-{folder}/README.md"
+    sprint = tmp_path / relative
+    sprint.parent.mkdir(parents=True)
+    sprint.write_text(
+        f"# Sprint\n\nPeriod: {start} through {end} (Sunday–Saturday).\n"
+        "\n## Provenance\n\nHistorical evidence.\n"
+    )
+    with (tmp_path / "docs/catalog.toml").open("a") as stream:
+        stream.write(
+            f'[[document]]\nid="sprint"\npath="{relative}"\n'
+            'kind="sprint"\ntopic="repository"\nstatus="current"\n'
+            f'week_start="{start}"\n'
+        )
+    errors = check_docs(tmp_path)
+    if error is None:
+        assert errors == ()
+    else:
+        assert any(error in message for message in errors)
 
 
 def test_repository_documentation_is_indexed_and_links_resolve() -> None:

@@ -88,6 +88,39 @@ proof -
   show ?thesis by (rule every_word)
 qed
 
+lemma collatz_centered_gain:
+  "dyadic_gain_product collatz_normalized_gain bits =
+    3 ^ length (filter id bits)"
+  by (induction bits)
+    (simp_all add: dyadic_gain_product_def collatz_normalized_gain_def)
+
+theorem collatz_target_centered_source_lift:
+  "dyadic_source_orbit collatz_normalized_step (r + 2^n*u) n =
+    dyadic_source_orbit collatz_normalized_step r n +
+    3 ^ length (filter id (collatz_qprefix n r)) * u"
+  using collatz_normalized_source.exact_precision_source_lift[of r n u]
+  by (simp add: collatz_qprefix_def collatz_centered_gain)
+
+theorem collatz_d8_cylinder_transition:
+  fixes origin gain digit high :: nat
+  defines "v \<equiv> origin + gain * digit"
+  shows "dyadic_source_orbit collatz_normalized_step
+      (origin + gain * (digit + 256 * high)) 8 =
+    dyadic_source_orbit collatz_normalized_step (v mod 256) 8 +
+      3 ^ length (filter id (collatz_qprefix 8 (v mod 256))) *
+        (v div 256 + gain * high)"
+proof -
+  have split: "v mod 256 + 256 * (v div 256) = v"
+    by (simp add: mult.commute)
+  have input: "origin + gain * (digit + 256 * high) =
+      v mod 256 + 2^8 * (v div 256 + gain * high)"
+    using split by (simp add: v_def algebra_simps)
+  show ?thesis
+    using collatz_target_centered_source_lift
+      [of "v mod 256" 8 "v div 256 + gain * high"]
+    by (simp only: input)
+qed
+
 lemma collatz_qprefix_topbit_flip:
   "odd (dyadic_source_orbit collatz_normalized_step
       (source + 2^width) width) \<noteq>
@@ -212,6 +245,59 @@ corollary collatz_qprefix_bit_minimal_explicit:
   "((0::nat) div 2^position) mod 2 \<noteq>
     ((2^position) div 2^position) mod 2"
   using collatz_qprefix_bit_minimal(1) by simp_all
+
+text \<open>Centering at source minus one conjugates the physical map.
+These local equations do not classify a future source cylinder. In particular
+S is the physical map, not the normalized parity step nor the Antihydra map.\<close>
+
+definition collatz_centered_physical :: "nat \<Rightarrow> nat" where
+  "collatz_centered_physical y =
+    (if even y then 3*y+3 else y div 2)"
+
+lemma collatz_centered_physical_even:
+  "collatz_centered_physical (2*z)=6*z+3"
+  by (simp add: collatz_centered_physical_def)
+
+lemma collatz_centered_physical_odd:
+  "collatz_centered_physical (2*z+1)=z"
+  by (simp add: collatz_centered_physical_def)
+
+theorem collatz_centered_physical_conjugacy:
+  "physical_collatz (Suc y)=Suc (collatz_centered_physical y)"
+  by (cases "even y";
+    simp add: physical_collatz_def collatz_centered_physical_def; presburger)
+
+theorem collatz_centered_physical_iteration:
+  "(physical_collatz ^^ n) (Suc y) = Suc ((collatz_centered_physical ^^ n) y)"
+  by (induction n arbitrary: y)
+    (simp_all add: funpow_Suc_right collatz_centered_physical_conjugacy)
+
+text \<open>Restricting one original source bit fixes the branch over every
+high fiber. The even branch consumes two physical ticks; a one-tick request
+must retain the existing pending phase rather than apply this two-tick law.
+These primitive identities do not prove powered structural classification.\<close>
+
+lemma collatz_centered_odd_fiber:
+  assumes "odd v"
+  shows "collatz_centered_physical (2*a*z+v)=a*z+(v-1) div 2"
+proof -
+  obtain k where v: "v=2*k+1" using assms by (elim oddE)
+  show ?thesis by (simp add: v collatz_centered_physical_def algebra_simps)
+qed
+
+lemma collatz_centered_even_fiber:
+  assumes "even v"
+  shows "collatz_centered_physical (collatz_centered_physical (2*a*z+v))=
+    3*a*z+(3*v+2) div 2"
+proof -
+  obtain k where v: "v=2*k" using assms by (elim evenE)
+  show ?thesis by (simp add: v collatz_centered_physical_def algebra_simps)
+qed
+
+lemma collatz_centered_source_restriction:
+  fixes a b d z :: nat
+  shows "a*(d+2*z)+b=2*a*z+(a*d+b)"
+  by (simp add: algebra_simps)
 
 lemma physical_collatz_normalized_even:
   "even source \<Longrightarrow> physical_collatz source =
@@ -444,12 +530,18 @@ ML \<open>
       normalized_step_translation collatz_qprefix_length
       collatz_qprefix_snoc collatz_qprefix_shift collatz_qprefix_low
       collatz_normalized_gain_odd collatz_qprefix_gain_odd
+      collatz_centered_gain collatz_target_centered_source_lift
+      collatz_d8_cylinder_transition
       collatz_qprefix_topbit_flip collatz_qprefix_topbit_prefix
       collatz_qprefix_injective_mod collatz_qinverse_actual_source
       collatz_qinverse_zero collatz_qprefix_bit_minimal
       collatz_qprefix_bit_minimal_explicit
       physical_collatz_normalized_even
       physical_collatz_normalized_odd physical_collatz_pending_division
+      collatz_centered_physical_even collatz_centered_physical_odd
+      collatz_centered_physical_conjugacy collatz_centered_physical_iteration
+      collatz_centered_odd_fiber collatz_centered_even_fiber
+      collatz_centered_source_restriction
       collatz_phase0_shifted_q_residue collatz_phase1_shifted_q_residue
       collatz_phase1_low_bit_forced_zero
       collatz_phase1_positive_bit_minimal

@@ -1,5 +1,5 @@
 theory Comma_Round_Witness
-  imports Comma_Entry_Arithmetic Comma_Decade_Observation
+  imports Comma_Entry_Arithmetic.Comma_Entry_Arithmetic Comma_Decade_Observation
 begin
 
 text \<open>Local equations are kernel-checked and composed in one forward

@@ -14,6 +14,7 @@ from itertools import product
 from weakref import ReferenceType, WeakValueDictionary, ref
 
 from number_compiler.arithmetic.automata import program_word as words
+from number_compiler.arithmetic.carry.carry_monoid import CarryFn, apply_carry_fn
 from number_compiler.arithmetic.contracts.block_effect import BlockContextBudgetExceeded
 from number_compiler.arithmetic.contracts.exact_tree_context import (
     require_endpoint_construction,
@@ -153,6 +154,9 @@ class PlaneAlgebra:
         self.reuse_hits = 0
         self.reuse_evictions = 0
         self.reuse_peak_entries = 0
+        self.carry_region_requests = 0
+        self.carry_region_hits = 0
+        self.carry_region_publications = 0
         self._cofactors: OrderedDict[_CofactorKey, PlaneGate] = OrderedDict()
         # Weak values own no endpoint or intermediate word. Keys contain only
         # exact finite functions and globally unique, validated word IDs.
@@ -464,48 +468,51 @@ class PlaneAlgebra:
             self.slice(plane, 0, width - distance),
         )
 
-    def carry_prefix(self, domains: PlaneID) -> tuple[PlaneID, int]:
-        """Domain grammar supplies all incoming carries and the growth bit."""
+    def carry_prefix(self, domains: PlaneID, incoming: int = 0) -> tuple[PlaneID, int]:
+        """Apply the one forward carry monoid to demanded recursive regions.
+
+        A run is pumped through its idempotent carry action. At a join the
+        right region receives the left exit. Only that incoming case is built;
+        repeated regions with different incoming carries remain distinct memo
+        entries. This is a spatial application, not a temporal ActionID.
+        """
         require_endpoint_construction()
+        if type(incoming) is not int or incoming not in (0, 1):
+            raise ValueError("incoming carry must be an exact bit")
         root = self.resolve(domains, "domain")
-        # Each record is (word for c=0, exit0, word for c=1, exit1).
-        built: dict[int, tuple[words.CanonicalWord, int, words.CanonicalWord, int]] = {}
-        pending = [(root, False)]
+        built: dict[tuple[int, int], tuple[words.CanonicalWord, int]] = {}
+        pending = [(root, incoming, 0)]
         while pending:
-            node, ready = pending.pop()
-            if node.node_id in built:
-                continue
+            node, entry, stage = pending.pop()
+            key = node.node_id, entry
             self._tick()
+            if stage == 0:
+                self.carry_region_requests += 1
+            if key in built:
+                self.carry_region_hits += 1
+                continue
             if node.symbol is not None:
-                outputs = []
-                exits = []
-                for incoming in (0, 1):
-                    outgoing = incoming if node.symbol == 1 else int(node.symbol == 2)
-                    value = words.run(incoming, 1)
-                    if node.length > 1:
-                        value = words.concat(
-                            value, words.run(outgoing, node.length - 1)
-                        )
-                    outputs.append(value)
-                    exits.append(outgoing)
-                result = outputs[0], exits[0], outputs[1], exits[1]
+                action = (CarryFn.CONST0, CarryFn.ID, CarryFn.CONST1)[node.symbol]
+                outgoing = apply_carry_fn(action, entry)
+                value = words.run(entry, 1)
+                if node.length > 1:
+                    value = words.concat(value, words.run(outgoing, node.length - 1))
+                result = value, outgoing
             else:
                 if node.left is None or node.right is None:
                     raise ValueError("domain grammar lost its children")
-                if not ready:
-                    pending.extend(
-                        ((node, True), (node.right, False), (node.left, False))
-                    )
+                if stage == 0:
+                    pending.extend(((node, entry, 1), (node.left, entry, 0)))
                     continue
-                a, b = built[node.left.node_id], built[node.right.node_id]
-                result = (
-                    words.concat(a[0], b[0] if a[1] == 0 else b[2]),
-                    b[1] if a[1] == 0 else b[3],
-                    words.concat(a[2], b[0] if a[3] == 0 else b[2]),
-                    b[1] if a[3] == 0 else b[3],
-                )
-            built[node.node_id] = result
-        result = built[root.node_id]
+                left, carry = built[node.left.node_id, entry]
+                if stage == 1:
+                    pending.extend(((node, entry, 2), (node.right, carry, 0)))
+                    continue
+                right, outgoing = built[node.right.node_id, carry]
+                result = words.concat(left, right), outgoing
+            built[key] = result
+            self.carry_region_publications += 1
+        result = built[root.node_id, incoming]
         return self._issue("bool", result[0]), result[1]
 
     def atom(self, plane: PlaneID, position: int) -> int:

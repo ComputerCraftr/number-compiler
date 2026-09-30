@@ -1,6 +1,7 @@
 theory Comma_Run_Germ
   imports Comma_Round_Weights.Comma_Round_Weights
     Prefix_Effect_Core.Prefix_Effect
+    Comma_Fast_Arithmetic.Comma_Fast_Arithmetic
 begin
 
 text \<open>A Near germ is keyed by sector and headroom only. It retains the

@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from collections.abc import Iterator
+from collections.abc import Generator, Iterator
 from dataclasses import dataclass
 
 from number_compiler.arithmetic.carry.carry_monoid import (
@@ -403,6 +403,70 @@ class SourceCarryPorts:
         self._check_open()
         return self._first_prefix(self._width)
 
+    def iter_first_ports(
+        self, *, reflected: bool = False
+    ) -> Generator[tuple[int, int], None, None]:
+        """Stream physical incoming/outgoing carries in either coordinate order.
+
+        Reflection changes traversal order only. Each right child receives the
+        left child's forward carry effect; no reverse carry law is introduced.
+        The charged stack retains logarithmically many region contexts, not rows.
+        """
+        self._check_open()
+        stack: list[tuple[int, int, int, bool]] = []
+
+        def push(start: int, span: int, incoming: int, neutral: bool) -> None:
+            self._ledger.reserve(self._workspace_owner, nodes=1)
+            try:
+                stack.append((start, span, incoming, neutral))
+            except BaseException:
+                self._ledger.release(self._workspace_owner, nodes=1)
+                raise
+
+        root_span = 1 << (self._width - 1).bit_length()
+        root_neutral = (
+            root_span == self._width
+            and self._exact_cached((1, 0, root_span)) is CarryFn.ID
+        )
+        push(0, root_span, 0, root_neutral)
+        try:
+            while stack:
+                self._check_open()
+                start, span, incoming, neutral = stack.pop()
+                self._ledger.release(self._workspace_owner, nodes=1)
+                if start >= self._width:
+                    continue
+                self._ledger.bump("reverse_source_ports_stream_region_visits")
+                if not neutral and start + span <= self._width:
+                    neutral = self._exact_cached((1, start, span)) is CarryFn.ID
+                if span == 1:
+                    effect = (
+                        CarryFn.ID if neutral else self._first_interval(start, span)
+                    )
+                    yield incoming, apply_carry_fn(effect, incoming)
+                    continue
+                half = span // 2
+                left_effect = (
+                    CarryFn.ID
+                    if neutral
+                    else (
+                        self._first_interval(start, half)
+                        if start + half <= self._width
+                        else self._first_range(start, self._width)
+                    )
+                )
+                middle = apply_carry_fn(left_effect, incoming)
+                if reflected:
+                    push(start, half, incoming, left_effect is CarryFn.ID)
+                    push(start + half, half, middle, neutral)
+                else:
+                    push(start + half, half, middle, neutral)
+                    push(start, half, incoming, left_effect is CarryFn.ID)
+        finally:
+            if stack:
+                self._ledger.release(self._workspace_owner, nodes=len(stack))
+                stack.clear()
+
     def _raw_second_pair(self, position: int, growth: int) -> int:
         self._ledger.bump("reverse_source_length_pair_reads")
         base = self._source.base
@@ -469,17 +533,50 @@ class SourceCarryPorts:
             raise IndexError(position)
         return self._raw_second_pair(position, growth)
 
+    def _iter_first_decimal_channels(
+        self, growth: int, *, reflected: bool = False
+    ) -> Generator[tuple[int, int], None, None]:
+        """Consume the original carry tree without a midpoint digit word."""
+        physical = self.iter_first_ports(reflected=reflected)
+        try:
+            if growth and reflected:
+                yield 1, 1
+            for index, (incoming, _) in enumerate(physical):
+                self._check_open()
+                position = self._width - 1 - index if reflected else index
+                pair = self._raw_first_pair(position)
+                yield decimal_normalize_cocycle(pair % 5, pair % 2, incoming)
+            if growth and not reflected:
+                yield 1, 1
+        finally:
+            physical.close()
+
     def iter_second_pairs(self) -> Iterator[int]:
         """Stream the pulled pair field with one authenticated growth choice.
 
-        A final-output consumer can run its physical carry once from LSD to
-        MSD. No second-layer prefix tree or pair word is built by this iterator.
+        Decimal streams share regional physical carry contexts in forward and
+        reflected coordinates. They retain neither a midpoint nor carry rows.
         """
         self._check_open()
         growth = self._first_prefix(self._width)
-        for position in range(self._width + growth):
-            self._check_open()
-            yield self._raw_second_pair(position, growth)
+        if self._source.base != 10:
+            for position in range(self._width + growth):
+                self._check_open()
+                yield self._raw_second_pair(position, growth)
+            return
+        forward = self._iter_first_decimal_channels(growth)
+        reflected = self._iter_first_decimal_channels(growth, reflected=True)
+        try:
+            for left, right in zip(forward, reflected, strict=True):
+                self._check_open()
+                domain, alpha, epsilon, _ = decimal_add_cocycle(left, right)
+                self._ledger.bump("reverse_source_length_pair_reads")
+                self._ledger.bump("reverse_source_ports_crt_threshold_queries")
+                self._ledger.bump("reverse_source_ports_second_pair_queries")
+                yield decimal_cocycle_value(domain, alpha, epsilon)
+        finally:
+            forward.close()
+            reflected.close()
 
     def _second_interval(self, start: int, span: int, extent: int) -> CarryFn:
         root = 2, start, span

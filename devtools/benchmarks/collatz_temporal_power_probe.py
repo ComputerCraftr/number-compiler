@@ -54,6 +54,9 @@ def _source_image_work(metrics: CollatzPhysicalBlockMetrics) -> tuple[int, int, 
             continue
         if type(value) is not int or value < 0:
             raise AssertionError(("invalid-source-image-work-measurement", name, value))
+        if name.endswith(("_symbols", "_ticks", "_repetitions", "_peak_bits")):
+            # Represented extent and high-water storage are not performed work.
+            continue
         if "operand_bits" in name or name.endswith("_bits"):
             operand_bits += value
         elif name.endswith("_bytes"):
@@ -141,6 +144,7 @@ def _projection_rows() -> list[dict[str, object]]:
             "collatz_physical_macro_bounded_base_steps",
             "collatz_physical_macro_compositions",
             "collatz_physical_transient_leaf_steps",
+            "collatz_physical_temporal_run_actions",
             "source_image_primitive_applications",
         ):
             # These are mutually exclusive construction paths. An unexecuted
@@ -150,6 +154,7 @@ def _projection_rows() -> list[dict[str, object]]:
         discovery_steps = (
             image_work["collatz_physical_macro_bounded_base_steps"]
             + image_work["collatz_physical_transient_leaf_steps"]
+            + image_work["collatz_physical_temporal_run_actions"]
         )
         if discovery_steps <= 0:
             raise AssertionError(("source-discovery-measurement-missing", steps))
@@ -183,8 +188,13 @@ def _projection_rows() -> list[dict[str, object]]:
         if steps > 64 and (
             chronological != 0
             or image_work["source_image_primitive_applications"] != 0
-            or metrics.resource_work_counters.get(
-                "collatz_physical_composite_cutover_publications", 0
+            or (
+                metrics.resource_work_counters.get(
+                    "collatz_physical_composite_cutover_publications", 0
+                )
+                + metrics.resource_work_counters.get(
+                    "collatz_physical_run_contraction_publications", 0
+                )
             )
             <= 0
         ):
@@ -475,7 +485,7 @@ def run_probe() -> dict[str, object]:
         "public_radix_exactness": exact,
         "public_radix_exactness_available": rejection is None,
         "whole_state_successor_loop_present": False,
-        "parity_itinerary_required_for_physical_nth_state": True,
+        "parity_itinerary_required_for_physical_nth_state": False,
         "history_word_carrier_present": False,
         "spacetime_macrocell_absorption_installed": False,
         "lazy_program_projection_installed": False,
@@ -509,6 +519,8 @@ def balanced_scaling(
             if pattern == "random"
             else ((1 << steps) - 1) // 3 | (1 << (steps - 1)) | 1
             if pattern == "repeating"
+            else 931386509544713451
+            if pattern == "long"
             else 27
         )
         if family == "antihydra":
@@ -838,7 +850,7 @@ def main() -> int:
     parser.add_argument("--trials", type=int, default=5)
     parser.add_argument("--mode", choices=("cold", "repeat", "bypass"), default="cold")
     parser.add_argument(
-        "--pattern", choices=("random", "repeating", "cycle"), default="random"
+        "--pattern", choices=("random", "repeating", "cycle", "long"), default="random"
     )
     parser.add_argument("--mahler", action="store_true")
     parser.add_argument("--limb-widths", nargs="+", type=int, default=(4, 32, 63))
@@ -853,8 +865,10 @@ def main() -> int:
             parser.error("--limb-projection conflicts with --balanced-scaling")
         if args.family != "collatz" or args.mahler:
             parser.error("--limb-projection requires Collatz without Mahler")
-        if args.pattern == "cycle":
-            parser.error("--limb-projection requires a noncycle source pattern")
+        if args.pattern in ("cycle", "long"):
+            parser.error(
+                "--limb-projection requires a random or repeating source pattern"
+            )
         if args.mode != "cold":
             parser.error("--limb-projection always uses independent fresh terms")
         if args.limb_index < 0 or args.limb_index > 8192:

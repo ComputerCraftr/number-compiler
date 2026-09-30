@@ -13,6 +13,7 @@ from devtools.proofs.carry_harmonic_ports import (
 )
 from devtools.proofs.carry_harmonic_ports import (
     PortRows,
+    PuncturedCarryHarmonic,
     compose_rows,
     harmonic_sum,
     prefix_harmonics,
@@ -59,7 +60,19 @@ def finite() -> dict[str, object]:
             # Same exact set and same spatial phase imply all subsequent
             # layers repeat after ten, by deterministic generator expansion.
             assert reached == period_start
-        rows.append({"width": width, "occupancy": len(reached), "border": len(border)})
+        punctured = {
+            PuncturedCarryHarmonic.from_border_rows(row)
+            for row in border
+            if row != ((0, 0, 0), (1, 0, 0))
+        }
+        rows.append(
+            {
+                "width": width,
+                "occupancy": len(reached),
+                "border": len(border),
+                "punctured_border": len(punctured),
+            }
+        )
     initial = (0, Action.empty().rows)
     seen = {initial}
     pending = [initial]
@@ -147,6 +160,7 @@ def trajectory() -> dict[str, object]:
     words: dict[int, set[tuple[CarryFn, ...]]] = {n: set() for n in lengths}
     occupancy: dict[int, set[PortRows]] = {n: set() for n in lengths}
     border: dict[int, set[PortRows]] = {n: set() for n in lengths}
+    punctured: dict[int, set[PuncturedCarryHarmonic]] = {n: set() for n in lengths}
     successors: dict[tuple[int, PortRows], set[tuple[int, PortRows]]] = defaultdict(set)
     source = reverse_pair_sums(196, 10)
     previous: tuple[int, PortRows] | None = None
@@ -165,6 +179,7 @@ def trajectory() -> dict[str, object]:
                     block = Action.from_domains(word)
                     occupancy[width].add(block.rows)
                     border[width].add(block.border_rows())
+                    punctured[width].add(block.punctured_border())
         previous = current
         if _ < 1024:
             source = pair_step(source, 10)[0]
@@ -180,6 +195,7 @@ def trajectory() -> dict[str, object]:
                 "domain_words": len(words[n]),
                 "occupancy": len(occupancy[n]),
                 "border": len(border[n]),
+                "punctured_border": len(punctured[n]),
             }
             for n in lengths
         ],

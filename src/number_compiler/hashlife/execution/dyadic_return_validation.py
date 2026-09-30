@@ -161,8 +161,20 @@ def validate_payload(workspace: DyadicReturnImageWorkspace, payload: Hashable) -
         and summary.width != 0
     ):
         raise ValueError("invalid dyadic return image")
-    if summary.transfer.upper == 0 and (summary.cycle is None or not source.exact):
-        raise ValueError("zero-growth dyadic image is not singleton-bound")
+    if summary.transfer.upper == 0:
+        saturated = (
+            summary.support is not None
+            and workspace.support_node(summary.support).saturated
+        )
+        if (
+            not source.exact
+            or summary.cycle is None
+            and not saturated
+            or summary.cycle is None
+            and summary.transfer.lower != 1
+            or summary.transfer.offset < 0
+        ):
+            raise ValueError("zero-growth dyadic image is not singleton-bound")
     if summary.cycle is not None:
         cycle = summary.cycle
         if (
@@ -306,16 +318,23 @@ def validate_workspace(workspace: DyadicReturnImageWorkspace) -> None:
         )
         current = workspace.support_node(support_id)
         if current.saturated:
+            supported_law = (
+                workspace.law.gains,
+                workspace.law.offsets,
+                workspace.law.weights,
+            ) in (((1, 6), (0, 2), (0, 1)), ((3, 3), (0, -1), (2, -1)))
             if (
-                not workspace.law.family.startswith("collatz")
+                not supported_law
                 or current.branch_word is not None
                 or current.children is not None
                 or current.width <= 0
+                or current.transfer.upper < 0
+                or current.transfer.lower <= 0
                 or current.odd_steps < 0
                 or current.odd_steps > current.width
                 or current.minimum > min(0, current.delta)
             ):
-                raise ValueError("invalid saturated Collatz support")
+                raise ValueError("invalid saturated dyadic support")
         elif current.branch_word is not None:
             if (
                 current.children is not None

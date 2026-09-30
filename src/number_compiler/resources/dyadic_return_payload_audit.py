@@ -11,6 +11,7 @@ from number_compiler.hashlife.execution.dyadic_return_transport import (
 )
 from number_compiler.resources.dyadic_return_balanced_audit import (
     _balanced_saturated_audit,
+    audit_collatz_d8_payloads,
 )
 from number_compiler.resources.ledger import ResourceLedger
 from number_compiler.resources.physical_support_payload_audit import (
@@ -49,6 +50,10 @@ def audit_dyadic_return_payloads(
     inventory = {row.owner: row for row in ledger.inventory()}
     approved: set[int] = set()
     invalid: set[tuple[int, int]] = set()
+
+    local_tables = audit_collatz_d8_payloads(ledger)
+    approved.update(local_tables.approved)
+    invalid.update(local_tables.invalid)
 
     for root in roots:
         if not isinstance(root, DyadicReturnImageWorkspace):
@@ -94,6 +99,56 @@ def audit_dyadic_return_payloads(
                 workspace: DyadicReturnImageWorkspace = root,
             ) -> _ImageNode:
                 return DyadicReturnImageWorkspace.image_node(workspace, identity)
+
+            def transfer_matches(
+                retained: SkewTransfer[int],
+                reconstructed: SkewTransfer[int],
+                admitted: _SourceNode,
+            ) -> bool:
+                """Compare full affine laws or an authenticated Collatz singleton."""
+                if (
+                    retained.upper < 0
+                    or reconstructed.upper < 0
+                    or retained.lower <= 0
+                    or reconstructed.lower <= 0
+                ):
+                    return False
+                collatz = (root.law.gains, root.law.offsets, root.law.weights) == (
+                    (1, 6),
+                    (0, 2),
+                    (0, 1),
+                )
+                if retained.upper == 0 and reconstructed.upper != 0:
+                    if (
+                        not collatz
+                        or not admitted.exact
+                        or retained.lower != 1
+                        or reconstructed.upper <= 0
+                    ):
+                        return False
+                    exact_source = admitted.residue + (
+                        admitted.lift << admitted.precision
+                    )
+                    numerator = (
+                        reconstructed.upper * exact_source + reconstructed.offset
+                    )
+                    ledger.bump(
+                        "dyadic_payload_audit_operand_bits",
+                        exact_source.bit_length()
+                        + abs(numerator).bit_length()
+                        + reconstructed.lower.bit_length()
+                        + abs(retained.offset).bit_length(),
+                    )
+                    return (
+                        numerator % reconstructed.lower == 0
+                        and numerator // reconstructed.lower == retained.offset
+                    )
+                return (
+                    retained.upper * reconstructed.lower
+                    == reconstructed.upper * retained.lower
+                    and retained.offset * reconstructed.lower
+                    == reconstructed.offset * retained.lower
+                )
 
             owners = (
                 root.action_owner,
@@ -387,10 +442,13 @@ def audit_dyadic_return_payloads(
                     )
                 if bound and support_record.saturated:
                     bound &= (
-                        root.law.family.startswith("collatz")
+                        (root.law.gains, root.law.offsets, root.law.weights)
+                        in (((1, 6), (0, 2), (0, 1)), ((3, 3), (0, -1), (2, -1)))
                         and support_record.branch_word is None
                         and support_record.children is None
                         and support_record.width > 0
+                        and support_record.transfer.upper >= 0
+                        and support_record.transfer.lower > 0
                         and 0 <= support_record.odd_steps <= support_record.width
                         and support_record.minimum <= min(0, support_record.delta)
                     )
@@ -675,12 +733,40 @@ def audit_dyadic_return_payloads(
                         )
                         if bound and retained.saturated:
                             if retained.cycle is None:
-                                expected = _balanced_saturated_audit(
-                                    root.law,
-                                    image_source.residue,
-                                    retained.width,
-                                    ledger,
+                                expanded_id = root.demanded_support.get(image_id)
+                                expanded = (
+                                    None
+                                    if expanded_id is None
+                                    else support_node(expanded_id)
                                 )
+                                if (
+                                    expanded is not None
+                                    and id(expanded) in root_approved
+                                    and not expanded.saturated
+                                    and expanded.cycle is None
+                                    and expanded.width == retained.width
+                                    and expanded.residue == image_source.residue
+                                ):
+                                    # The preceding support pass independently
+                                    # reconstructed these leaves and joins.
+                                    # Reuse that demanded-support witness, not
+                                    # the saturated record's own claimed effect.
+                                    expected = (
+                                        expanded.transfer,
+                                        expanded.odd_steps,
+                                        expanded.delta,
+                                        expanded.minimum,
+                                    )
+                                    ledger.bump(
+                                        "dyadic_payload_audit_reconstruction_hits"
+                                    )
+                                else:
+                                    expected = _balanced_saturated_audit(
+                                        root.law,
+                                        image_source.residue,
+                                        retained.width,
+                                        ledger,
+                                    )
                             else:
                                 metadata = retained.cycle
                                 law_cycle = root.law.cycle
@@ -761,10 +847,9 @@ def audit_dyadic_return_payloads(
                                     )
                             if bound:
                                 bound &= (
-                                    retained.transfer.upper * expected[0].lower
-                                    == expected[0].upper * retained.transfer.lower
-                                    and retained.transfer.offset * expected[0].lower
-                                    == expected[0].offset * retained.transfer.lower
+                                    transfer_matches(
+                                        retained.transfer, expected[0], image_source
+                                    )
                                     and retained.odd_steps == expected[1]
                                     and retained.delta == expected[2]
                                     and retained.minimum == expected[3]
@@ -810,7 +895,11 @@ def audit_dyadic_return_payloads(
                     and support_node(original).saturated
                     and completed.width == image.summary.width
                     and completed.residue == image.summary.residue
-                    and completed.transfer == image.summary.transfer
+                    and transfer_matches(
+                        image.summary.transfer,
+                        completed.transfer,
+                        source_node(image.source),
+                    )
                     and completed.odd_steps == image.summary.odd_steps
                     and completed.delta == image.summary.delta
                     and completed.minimum == image.summary.minimum

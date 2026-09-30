@@ -7,9 +7,11 @@ from dataclasses import dataclass
 
 from number_compiler.arithmetic.automata.program_word import (
     EMPTY,
-    CanonicalWord,
-    from_runs,
+    RunTraversalMetrics,
+    SourceWord,
+    drop_source_prefix,
     iter_runs,
+    validate_source_word,
 )
 from number_compiler.arithmetic.fields.morphism_core import AffineCocycle
 from number_compiler.arithmetic.fields.radix import bit_width
@@ -166,60 +168,54 @@ class RationalPadicRootGerm:
 
     def normalize_matching_prefix_word(
         self,
-        word: CanonicalWord,
-    ) -> tuple[int, RationalPadicRootGerm, CanonicalWord]:
+        word: SourceWord,
+    ) -> tuple[int, RationalPadicRootGerm, SourceWord]:
         """Quotient the maximal root-matching low prefix before cache lookup.
 
         The returned quarter count is a coordinate action: it contributes
         ``2*quarters`` valuation bits but does not change the future angular
         boundary state.  A partial matching run is sliced without expanding
-        its digits, so million-scale fixed-point frames normalize in O(runs).
+        its digits. Traversal stops at the first mismatch; the untouched
+        high suffix retains its original source coordinates and subtree cover.
+        Only the cut boundary is descended; no canonical suffix rebalance is
+        performed. Leaves of at most eight runs retain bounded normalization.
         """
-        if not isinstance(word, CanonicalWord):
-            raise TypeError(type(word))
-        runs = list(iter_runs(word))
+        validate_source_word(word)
         current = self
         consumed = 0
-        for index, (digit, count) in enumerate(runs):
+        for digit, count in iter_runs(word):
             matched, advanced, mismatch = current._advance_matching_run(digit, count)
             if mismatch is None:
                 consumed += count
                 current = advanced
                 continue
-            if matched:
-                remaining = count - matched
-                suffix_runs = ([(digit, remaining)] if remaining else []) + runs[
-                    index + 1 :
-                ]
-                return consumed + matched, advanced, from_runs(suffix_runs)
-            return consumed, current, from_runs(runs[index:])
+            suffix = drop_source_prefix(word, consumed + matched)
+            return consumed + matched, advanced, suffix
         return consumed, current, EMPTY
 
     def first_mismatch_word(
-        self, word: CanonicalWord
-    ) -> tuple[RationalPadicRootMismatch, CanonicalWord]:
+        self,
+        word: SourceWord,
+        *,
+        metrics: RunTraversalMetrics | None = None,
+    ) -> tuple[RationalPadicRootMismatch, SourceWord]:
         """Return the first mismatch and the unconsumed higher source suffix.
 
         The traversal is by canonical runs, never represented digits.  If every
         finite source digit agrees, the implicit high-zero extension supplies
         the mismatch.
         """
-        if not isinstance(word, CanonicalWord):
-            raise TypeError(type(word))
-        runs = list(iter_runs(word))
+        validate_source_word(word, metrics=metrics)
         current = self
         consumed = 0
-        for index, (digit, count) in enumerate(runs):
+        runs = iter_runs(word) if metrics is None else iter_runs(word, metrics=metrics)
+        for digit, count in runs:
             matched, advanced, mismatch = current._advance_matching_run(digit, count)
             if mismatch is None:
                 consumed += count
                 current = advanced
                 continue
-            remaining = count - matched - 1
-            suffix_runs = ([] if remaining <= 0 else [(digit, remaining)]) + runs[
-                index + 1 :
-            ]
-            suffix = from_runs(suffix_runs)
+            suffix = drop_source_prefix(word, consumed + matched + 1, metrics=metrics)
             absolute = RationalPadicRootMismatch(
                 mismatch.denominator_power,
                 consumed + mismatch.matched_quarters,
@@ -246,7 +242,7 @@ class RationalPadicRootGerm:
         )
         return absolute, EMPTY
 
-    def valuation_from_word(self, word: CanonicalWord) -> int:
+    def valuation_from_word(self, word: SourceWord) -> int:
         mismatch, _suffix = self.first_mismatch_word(word)
         return mismatch.valuation_bits
 

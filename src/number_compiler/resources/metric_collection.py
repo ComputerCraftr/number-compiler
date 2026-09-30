@@ -86,6 +86,7 @@ def collect_ledger_metrics(ledger: ResourceLedger) -> LedgerMetrics:
     # Audits charge their bounded arithmetic; the retained inventory stays fixed.
     audit = audit_registered_payloads(ledger, snapshot=snapshot, fresh=False)
     audit_counters = {
+        "collatz_d8_payload_audit_local_symbols",
         "dyadic_payload_audit_branch_steps",
         "dyadic_payload_audit_operand_bits",
         "dyadic_payload_audit_cycle_checks",

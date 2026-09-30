@@ -143,3 +143,64 @@ def test_no_split_is_cached_without_becoming_a_prime_certificate(
         compiler.resolve_special_theorem("mersenne", 13, collect_etale_factor=True)
         is result
     )
+
+
+@pytest.mark.parametrize("family,parameter", [("fermat", 5), ("mersenne", 11)])
+def test_factor_enriches_cached_primality_without_terminal_reconstruction(
+    family: str, parameter: int, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from number_compiler.sequences.power_numbers import theorem_query
+
+    compiler = CanonicalSequenceCompiler()
+    base = compiler.resolve_special_theorem(family, parameter)
+    assert not base.decided
+    expected = theorem_query.resolve_special_theorem(
+        family, parameter, collect_etale_factor=True
+    )
+
+    def forbidden(*_args: object, **_kwargs: object) -> None:
+        pytest.fail("factor demand repeated the cached terminal constructor")
+
+    monkeypatch.setattr(theorem_query, "resolve_special_theorem", forbidden)
+    refused = compiler.resolve_special_theorem(
+        family, parameter, collect_etale_factor=True, max_factor_products=0
+    )
+    assert not refused.decided
+    assert refused.factor_query_status == "product-budget-exceeded"
+    result = compiler.resolve_special_theorem(
+        family, parameter, collect_etale_factor=True
+    )
+    assert result == expected
+    assert result.etale_ring_multiplications > 0
+    if result.factor_witness is not None:
+        candidate = (
+            (1 << (1 << parameter)) + 1 if family == "fermat" else (1 << parameter) - 1
+        )
+        assert 1 < result.factor_witness < candidate
+        assert candidate % result.factor_witness == 0
+    else:
+        assert result.factor_query_status == "no-split" and not result.decided
+    assert not base.decided  # Witness enrichment does not mutate the cached result.
+    with pytest.raises(ValueError, match="candidate exceeds"):
+        compiler.resolve_special_theorem(
+            family, parameter, collect_etale_factor=True, max_candidate_bits=1
+        )
+
+
+def test_factor_reuse_respects_terminal_policy(monkeypatch: pytest.MonkeyPatch) -> None:
+    from number_compiler.sequences.power_numbers import theorem_query
+
+    compiler = CanonicalSequenceCompiler()
+    compiler.resolve_special_theorem("mersenne", 13, use_terminal_certificate=False)
+    called = []
+    original = theorem_query.resolve_special_theorem
+
+    def observed(*args: object, **kwargs: object) -> None:
+        called.append(True)
+        raise RuntimeError("different policy requires its own constructor")
+
+    monkeypatch.setattr(theorem_query, "resolve_special_theorem", observed)
+    with pytest.raises(RuntimeError, match="different policy"):
+        compiler.resolve_special_theorem("mersenne", 13, collect_etale_factor=True)
+    assert called == [True]
+    monkeypatch.setattr(theorem_query, "resolve_special_theorem", original)

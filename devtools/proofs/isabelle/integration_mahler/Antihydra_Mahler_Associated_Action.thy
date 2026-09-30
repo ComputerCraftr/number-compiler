@@ -36,6 +36,82 @@ proof -
         mahler_bit_action_def min_def; linarith)
 qed
 
+
+text \<open>
+  A source-selected positive odd event is the chronological word one followed
+  by q-1 zero symbols. Its saturated consumer has a closed action; the proof
+  below removes the predicate-bit fold after q has been authenticated by the
+  source classifier. It does not authenticate q from a supplied event word or
+  establish an all-time source barrier. Index zero is explicitly identity.
+\<close>
+
+definition mahler_odd_event_zero_tail :: "nat \<Rightarrow> associated_action" where
+  "mahler_odd_event_zero_tail n =
+    foldl associated_action_then (mahler_bit_action 1)
+      (replicate n (mahler_bit_action 0))"
+
+lemma mahler_odd_event_zero_tail_exact:
+  "mahler_odd_event_zero_tail n =
+    \<lparr>action_scale=(3/2)^(Suc n), action_offset=-((3/2)^(Suc n)),
+      action_cap=Some (min (9/4) ((3/4)*(3/2)^n))\<rparr>"
+proof -
+  have run: "foldl associated_action_then
+      \<lparr>action_scale=3/2, action_offset=-(3/2), action_cap=Some (3/4)\<rparr>
+      (replicate n \<lparr>action_scale=3/2, action_offset=0, action_cap=Some (9/4)\<rparr>) =
+    \<lparr>action_scale=(3/2)^n*(3/2), action_offset=(3/2)^n*(-(3/2)),
+      action_cap=Some (if n=0 then 3/4 else min (9/4) ((3/2)^n*(3/4)))\<rparr>"
+    by (rule associated_action_dilation_tail) simp_all
+  show ?thesis using run
+    by (cases "n=0"; simp add: mahler_odd_event_zero_tail_def mahler_bit_action_def
+        power_Suc algebra_simps min_def)
+qed
+
+definition mahler_maximal_odd_event :: "nat \<Rightarrow> associated_action" where
+  "mahler_maximal_odd_event q =
+    (if q=0 then associated_action_identity else mahler_odd_event_zero_tail (q-1))"
+
+lemma mahler_maximal_odd_event_identity:
+  "mahler_maximal_odd_event 0 = associated_action_identity"
+  by (simp add: mahler_maximal_odd_event_def)
+
+theorem mahler_maximal_odd_event_word_refinement:
+  assumes "0 < q"
+  shows "mahler_maximal_odd_event q =
+    foldl associated_action_then associated_action_identity
+      (map mahler_bit_action ([1] @ replicate (q-1) 0))"
+  using assms
+  by (simp add: mahler_maximal_odd_event_def mahler_odd_event_zero_tail_def)
+
+theorem mahler_maximal_odd_event_closed:
+  assumes "0 < q"
+  shows "mahler_maximal_odd_event q =
+    \<lparr>action_scale=(3/2)^q, action_offset=-((3/2)^q),
+      action_cap=Some (min (9/4) ((3/4)*(3/2)^(q-1)))\<rparr>"
+  using assms
+  by (simp add: mahler_maximal_odd_event_def mahler_odd_event_zero_tail_exact)
+
+corollary mahler_maximal_odd_event_closed_scale:
+  assumes "0 < q"
+  shows "mahler_maximal_odd_event q =
+    \<lparr>action_scale=(3/2)^q, action_offset=-((3/2)^q),
+      action_cap=Some (min (9/4) ((3/2)^q/2))\<rparr>"
+proof -
+  have power: "((3/2)::rat)^q = (3/2)*(3/2)^(q-1)"
+    using power_Suc[of "(3/2)::rat" "q-1"] assms by simp
+  have cap: "((3/2)::rat)^q/2 = (3/4)*(3/2)^(q-1)"
+    using power by linarith
+  show ?thesis
+    using mahler_maximal_odd_event_closed[OF assms]
+    by (simp only: cap)
+qed
+
+corollary mahler_maximal_odd_event_apply:
+  assumes "0 < q"
+  shows "associated_action_apply (mahler_maximal_odd_event q) margin =
+    min (min (9/4) ((3/4)*(3/2)^(q-1))) ((3/2)^q*(margin-1))"
+  by (simp add: mahler_maximal_odd_event_closed[OF assms]
+      associated_action_apply_def algebra_simps)
+
 definition mahler_source_two_prefix :: associated_action where
   "mahler_source_two_prefix =
     associated_action_then (mahler_bit_action 1) (mahler_bit_action 1)"
@@ -158,6 +234,10 @@ positivity or establish an all-time invariant.\<close>
 ML \<open>
   val _ = if null (Thm_Deps.all_oracles
     @{thms mahler_bit_action_admitted mahler_bit_action_negative_unsaturated
+      mahler_odd_event_zero_tail_exact
+      mahler_maximal_odd_event_identity mahler_maximal_odd_event_word_refinement
+      mahler_maximal_odd_event_closed mahler_maximal_odd_event_closed_scale
+      mahler_maximal_odd_event_apply
       mahler_source_two_prefix_exact mahler_source_tail_admitted
       mahler_source_coefficients_determine_action
       mahler_source_cap_from_centered_transfer mahler_source_first_two_caps

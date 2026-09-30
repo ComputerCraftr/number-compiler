@@ -46,7 +46,8 @@ def test_collatz_powered_point_uses_admitted_source_image_without_replay() -> No
         (term.seed + 2).bit_length() + (19 * pairs + 31) // 32 + 2
     )
     counters = term._ledger.snapshot().counters
-    assert counters["collatz_physical_transient_leaf_steps"] > 0
+    assert counters["collatz_physical_temporal_run_actions"] > 0
+    assert counters.get("collatz_physical_transient_leaf_steps", 0) == 0
     assert counters["source_image_postorder_frames"] > 0
     assert counters.get("source_image_primitive_applications", 0) == 0
     assert counters.get("source_image_demanded_composite_applications", 0) == 1
@@ -82,7 +83,8 @@ def test_collatz_production_uses_dyadic_source_image_morphism(
     term = PoweredCollatzTerm(27, 64)
     assert term.digit(0) == 1
     counters = term._ledger.snapshot().counters
-    assert counters["collatz_physical_macro_bounded_base_steps"] > 0
+    assert counters["collatz_physical_temporal_run_actions"] > 0
+    assert counters.get("collatz_physical_macro_bounded_base_steps", 0) == 0
     assert counters["collatz_physical_action_publications"] > 0
     assert counters["source_image_publications"] > 0
     assert counters["source_image_projection_publications"] > 0
@@ -177,7 +179,7 @@ def test_collatz_temporal_release_probe_reports_source_image_execution_as_red(
     assert result["measurements_complete"] is True
     assert result["execution_rejection_type"] is None
     assert not result["whole_state_successor_loop_present"]
-    assert result["parity_itinerary_required_for_physical_nth_state"]
+    assert not result["parity_itinerary_required_for_physical_nth_state"]
     assert not result["history_word_carrier_present"]
     assert not result["spacetime_macrocell_absorption_installed"]
     assert not result["lazy_program_projection_installed"]
@@ -203,7 +205,7 @@ def test_collatz_temporal_release_probe_reports_source_image_execution_as_red(
     for row in projection:
         record = object_record(row)
         for name in (
-            "collatz_physical_macro_bounded_base_steps",
+            "collatz_physical_temporal_run_actions",
             "source_image_publications",
         ):
             measured = record[name]

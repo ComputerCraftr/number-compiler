@@ -207,3 +207,98 @@ def test_decimal_thresholds_use_output_crt_without_next_pair_reconstruction(
     # A second demand reuses the same admitted interval summaries.
     assert tuple(ports.second_carry(i) for i in range(len(first) + 1)) == expected
     ports.dispose()
+
+
+@pytest.mark.parametrize(
+    "value,base", [(0, 2), (27, 2), (41, 3), (18, 10), (196, 10), (1593, 10)]
+)
+def test_regional_carry_stream_matches_forward_scan_in_both_coordinate_orders(
+    value: int,
+    base: int,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    source = _source(value, base)
+    expected = _carries(_pairs(source.digits), base)
+    ports = SourceCarryPorts(source, ResourceLedger())
+
+    def forbidden(*_args: object) -> int:
+        raise AssertionError("stream reopened a point prefix")
+
+    monkeypatch.setattr(SourceCarryPorts, "_first_prefix", forbidden)
+    pairs = tuple(zip(expected[:-1], expected[1:], strict=True))
+    assert tuple(ports.iter_first_ports()) == pairs
+    assert tuple(ports.iter_first_ports(reflected=True)) == pairs[::-1]
+    ports.dispose()
+
+
+def test_regional_carry_stream_releases_partial_traversal_stack() -> None:
+    ledger = ResourceLedger()
+    ports = SourceCarryPorts(_source(int("45" * 64), 10), ledger)
+    stream = ports.iter_first_ports(reflected=True)
+    next(stream)
+    stream.close()
+    account = next(
+        item
+        for item in ledger.inventory()
+        if item.role == "reverse_source_carry_workspace"
+    )
+    assert account.nodes == 0
+    ports.dispose()
+    assert ledger.nodes == ledger.entries == 0
+
+
+@pytest.mark.parametrize("value", [18, 196, 909, 1041, 1051, 1593])
+def test_second_pair_stream_uses_one_growth_prefix_only(
+    value: int,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    source = _source(value, 10)
+    ports = SourceCarryPorts(source, ResourceLedger())
+    original = SourceCarryPorts._first_prefix
+    calls = 0
+
+    def single_growth(self: SourceCarryPorts, boundary: int) -> int:
+        nonlocal calls
+        calls += 1
+        assert calls == 1 and boundary == ports.width
+        return original(self, boundary)
+
+    monkeypatch.setattr(SourceCarryPorts, "_first_prefix", single_growth)
+    assert tuple(ports.iter_second_pairs()) == _pairs(_step_digits(source.digits, 10))
+    assert calls == 1
+    ports.dispose()
+
+
+def test_neutral_region_stream_propagates_identity_without_ancestor_search() -> None:
+    width = 1024
+    ledger = ResourceLedger()
+    ports = SourceCarryPorts(ExactSource((4,) * 512 + (5,) * 512, 10), ledger)
+    assert ports.terminal == 0
+    before = dict(ledger.counters)
+    assert tuple(ports.iter_first_ports()) == ((0, 0),) * width
+    assert tuple(ports.iter_first_ports(reflected=True)) == ((0, 0),) * width
+    for counter in (
+        "reverse_source_ports_identity_ancestor_probes",
+        "reverse_source_pullback_pair_reads",
+        "reverse_source_ports_prefix_blocks",
+        "reverse_source_ports_layer_1_carry_queries",
+    ):
+        assert ledger.counters.get(counter, 0) == before.get(counter, 0)
+    assert ledger.counters["reverse_source_ports_stream_region_visits"] == 4 * width - 2
+    ports.dispose()
+
+
+def test_regional_stream_budget_failure_releases_stack() -> None:
+    ledger = ResourceLedger(max_nodes=1)
+    ports = SourceCarryPorts(_source(1593, 10), ledger)
+    stream = ports.iter_first_ports()
+    with pytest.raises(BlockContextBudgetExceeded):
+        next(stream)
+    account = next(
+        item
+        for item in ledger.inventory()
+        if item.role == "reverse_source_carry_workspace"
+    )
+    assert account.nodes == 0
+    ports.dispose()
+    assert ledger.nodes == ledger.entries == 0

@@ -64,6 +64,8 @@ class CoprimeRankDAG:
         self._primes: LedgerList[int] = self.ledger.make_list(
             self._factor_owner, append_only=True
         )
+        self._issued_factor_store = self._primes
+        self._issued_factor_stamp = self._primes.mutation_stamp
         self.work = self.cache_hits = self.arithmetic_bit_work = 0
         self.shared_hits = self.shared_misses = self.shared_puts = 0
         self.peak_pending_frames = self.pending_frames = 0
@@ -80,6 +82,7 @@ class CoprimeRankDAG:
     @property
     def primes(self) -> tuple[int, ...]:
         """Immutable descriptor; cache keys remain bound to their original prefix."""
+        self._validate_factor_source()
         return self._primes.snapshot()
 
     @property
@@ -93,10 +96,22 @@ class CoprimeRankDAG:
 
     @property
     def last_factor(self) -> int:
+        self._validate_factor_source()
         return self._primes[-1]
 
     def factor_rank(self, limit: int) -> int:
+        self._validate_factor_source()
         return bisect_right(self._primes, limit)
+
+    def _validate_factor_source(self) -> None:
+        """Only this owner's appends may advance numerical memo authority."""
+        if (
+            self._primes is not self._issued_factor_store
+            or self._primes.mutation_stamp != self._issued_factor_stamp
+        ):
+            raise RuntimeError(
+                "prime factor source changed: prime successor action lost its parent source binding"
+            )
 
     def charge(self, bit_work: int = 0) -> None:
         """One admission/evaluation step; operand bits are reported separately."""
@@ -106,6 +121,7 @@ class CoprimeRankDAG:
         """Charge a known batch before doing cache-admission validation."""
         if self._closed:
             raise RuntimeError("prime rank workspace is closed")
+        self._validate_factor_source()
         if type(amount) is not int or amount < 0:
             raise ValueError("prime work charge must be a nonnegative integer")
         if self.max_work is not None and self.work + amount > self.max_work:
@@ -114,6 +130,7 @@ class CoprimeRankDAG:
         self.arithmetic_bit_work += bit_work
 
     def append_factor(self, prime: int) -> None:
+        self._validate_factor_source()
         if (
             type(prime) is not int
             or prime < 2
@@ -124,6 +141,7 @@ class CoprimeRankDAG:
         self.ledger.reserve(self._factor_owner, entries=1, nodes=1)
         try:
             self._primes.append(prime)
+            self._issued_factor_stamp = self._primes.mutation_stamp
         except BaseException:
             self.ledger.release(self._factor_owner, entries=1, nodes=1)
             raise
@@ -150,6 +168,7 @@ class CoprimeRankDAG:
         """
         if self._closed:
             raise RuntimeError("prime rank workspace is closed")
+        self._validate_factor_source()
         if depth is None:
             depth = len(self._primes)
         if type(depth) is not int or not 1 <= depth <= len(self._primes):
@@ -166,6 +185,7 @@ class CoprimeRankDAG:
 
     def validate_fresh_successor(self, fresh_prime: int) -> None:
         """Prove ``fresh_prime`` is the next survivor of this exact prefix."""
+        self._validate_factor_source()
         if (
             type(fresh_prime) is not int
             or not self._primes
@@ -179,6 +199,40 @@ class CoprimeRankDAG:
             or self.count(fresh_prime, depth) != 2
         ):
             raise ValueError("fresh prime is not the least parent-wheel survivor")
+
+    def validate_bound_factor_prefix(
+        self, parent: tuple[int, ...], successor: int | None = None
+    ) -> None:
+        """Recheck a previously admitted prefix after its store changes.
+
+        This validates source contents, not primality discovery. The caller
+        owns the immutable expected prefix and its mutation-stamp admission.
+        Charge before scanning and retain no detached factor copy.
+        """
+        depth = len(parent)
+        required = depth + int(successor is not None)
+        self.charge_many(required)
+        self.ledger.bump("prime_successor_prefix_validation_factors", required)
+        bit_work = 0
+        try:
+            if len(self._primes) < required:
+                raise RuntimeError(
+                    "prime successor action lost its parent source binding"
+                )
+            for index in range(required):
+                expected = parent[index] if index < depth else successor
+                actual = self._primes[index]
+                if type(actual) is not int or type(expected) is not int:
+                    raise RuntimeError(
+                        "prime successor action lost its parent source binding"
+                    )
+                bit_work += actual.bit_length() + expected.bit_length()
+                if actual != expected:
+                    raise RuntimeError(
+                        "prime successor action lost its parent source binding"
+                    )
+        finally:
+            self.charge_many(0, bit_work)
 
     def count_via_fresh_successor(self, limit: int, depth: int | None = None) -> int:
         """Apply the final admitted prime as an exact partial successor action.
@@ -209,6 +263,7 @@ class CoprimeRankDAG:
         """Count positive survivors <= limit without materializing a gap cycle."""
         if self._closed:
             raise RuntimeError("prime rank workspace is closed")
+        self._validate_factor_source()
         if depth is None:
             depth = len(self._primes)
         if (
@@ -348,6 +403,7 @@ class CoprimeRankDAG:
         """
         if self._closed:
             raise RuntimeError("prime rank workspace is closed")
+        self._validate_factor_source()
         if depth is None:
             depth = len(self._primes)
         if (
@@ -489,6 +545,7 @@ class CoprimeRankDAG:
             # unpublished backing suffix only after all consumers have closed.
             self._primes._rollback_unpublished(0)
             self.ledger.release(self._factor_owner, entries=size, nodes=size)
+        self._issued_factor_stamp = self._primes.mutation_stamp
         self.ledger.mark_disposed(self._factor_owner)
         self._closed = True
 

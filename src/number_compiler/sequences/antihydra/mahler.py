@@ -35,12 +35,16 @@ def tangent(result: Run | ArithmeticResult, precision: int) -> dict[str, object]
         return data
     modulus = 1 << precision
     clock_precision = max(3, precision)
-    inv3 = InverseThreeClock(clock_precision, 1).inverse_unit % modulus
-    scale = (
-        InverseThreeClock(clock_precision, arithmetic.returns).inverse_unit % modulus
-    )
-    normalized = d * scale % modulus
-    root = -scale * inv3 % modulus
+    # One demanded clock supplies both 3^(-n) and -3^(-(n+1)).
+    # Multiplying the full endpoint before reducing it copies irrelevant
+    # high source bits into a precision-limited observation.
+    clock_exponent = arithmetic.returns + 1
+    clock = InverseThreeClock(clock_precision, clock_exponent)
+    inverse_next = clock.inverse_unit % modulus
+    scale = 3 * inverse_next % modulus
+    source_residue = d & (modulus - 1)
+    normalized = source_residue * scale % modulus
+    root = -inverse_next % modulus
     difference = (normalized - root) % modulus
     matched = v2_positive(difference) if difference else precision
     data.update(
@@ -59,8 +63,21 @@ def tangent(result: Run | ArithmeticResult, precision: int) -> dict[str, object]
         )
     else:
         data["required_next_precision"] = precision + 6
-    arithmetic.ledger.counters["tangent_modular_power_exponent_bits"] = (
-        arithmetic.ledger.counters.get("tangent_modular_power_exponent_bits", 0)
-        + arithmetic.returns.bit_length()
+    # These are observational operand-size totals, not budget admission.
+    # The modular power consumes the period-reduced clock phase; preserve
+    # the unreduced exponent's size separately so normalization stays visible.
+    arithmetic.ledger.bump(
+        "tangent_modular_power_exponent_bits", clock.phase.bit_length()
+    )
+    arithmetic.ledger.bump(
+        "tangent_clock_input_exponent_bits", clock_exponent.bit_length()
+    )
+    arithmetic.ledger.bump("tangent_inverse_clock_demands")
+    arithmetic.ledger.bump(
+        "tangent_modular_operand_bits",
+        max(1, d.bit_length())
+        + max(1, source_residue.bit_length())
+        + max(1, scale.bit_length())
+        + 3 * (clock_precision + 1),
     )
     return data

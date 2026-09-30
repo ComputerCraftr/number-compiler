@@ -133,7 +133,9 @@ def main() -> None:
     parser.add_argument("--joint-high-fiber-probes", action="store_true")
     parser.add_argument("--joint-fractional-probes", action="store_true")
     parser.add_argument(
-        "--mode", choices=("ledger", "fractional", "grammar", "joint"), default="ledger"
+        "--mode",
+        choices=("ledger", "fractional", "tail", "grammar", "joint"),
+        default="ledger",
     )
     args = parser.parse_args()
     if args.max_event is None:
@@ -186,6 +188,11 @@ def main() -> None:
             )
         )
         return
+    if args.mode == "tail":
+        if args.depth < 1 or args.max_nodes < 1:
+            parser.error("tail mode requires positive depth and max-nodes")
+        print(json.dumps(tail_refinement(args.depth, args.max_nodes), sort_keys=True))
+        return
     if args.mode == "fractional":
         print(
             json.dumps(
@@ -210,6 +217,63 @@ def main() -> None:
             sort_keys=True,
         )
     )
+
+
+def tail_refinement(depth: int, max_nodes: int) -> dict[str, object]:
+    """Refine unresolved current-tail signs with the original prefix guard.
+
+    Positive leaves end this query only; they cannot certify later shifts.
+    This is not a replacement for the all-shift fractional census below.
+    """
+    if type(depth) is not int or depth < 1 or max_nodes < 1:
+        raise ValueError("invalid bounded tail refinement parameters")
+    ledger = ResourceLedger(max_nodes=max_nodes, max_cache_entries=2 * max_nodes)
+    workspace = SourceSafetyWorkspace(ledger, max_width=depth)
+    records: list[dict[str, object]] = []
+    status = "FINITE_CURRENT_TAIL_BOUNDARIES"
+    try:
+        frontier: tuple[SourceBlockID, ...] = (workspace.cylinder(0, 0),)
+        for horizon in range(1, depth + 1):
+            next_frontier = []
+            positive = nonpositive = 0
+            for parent in frontier:
+                for child in workspace.refine_tail(parent):
+                    sign = workspace.tail_boundary(child).classification
+                    if sign == "boundary":
+                        next_frontier.append(child)
+                    elif sign == "positive":
+                        positive += 1
+                    else:
+                        nonpositive += 1
+            frontier = tuple(next_frontier)
+            records.append(
+                {
+                    "horizon": horizon,
+                    "boundary_cylinders": len(frontier),
+                    "new_positive_terminals": positive,
+                    "new_nonpositive_terminals": nonpositive,
+                    "boundaries": [
+                        {"width": horizon, "residue": workspace.view(h).residue}
+                        for h in frontier
+                    ],
+                }
+            )
+    except BlockContextBudgetExceeded:
+        status = "BUDGET_EXHAUSTED"
+    finally:
+        retained_nodes = ledger.nodes
+        workspace.close()
+    return {
+        "predicate": "current_signed_tail_with_fractional_prefix_guard",
+        "scope": "all_residues_current_tail",
+        "status": status,
+        "records": records,
+        "work": dict(ledger.counters),
+        "retained_nodes_before_close": retained_nodes,
+        "retained_nodes_after_close": ledger.nodes,
+        "global_safety_decided": False,
+        "nonhalting_certified": False,
+    }
 
 
 def fractional_refinement(rounds: int, max_nodes: int) -> dict[str, object]:

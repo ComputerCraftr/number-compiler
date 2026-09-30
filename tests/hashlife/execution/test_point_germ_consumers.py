@@ -124,7 +124,12 @@ def test_collatz_point_uses_same_kernel_without_endpoint(
     monkeypatch.setattr(DyadicReturnImageWorkspace, "endpoint", _forbidden)
     term = PoweredCollatzTerm(931386509544713451, 1000)
     assert term.digit(0) == 1  # independent long noncycle fixture
-    assert term._ledger.counters["collatz_physical_point_germ_normalizations"] > 0
+    assert term._ledger.counters["collatz_physical_point_germ_demands"] > 0
+    assert term._ledger.counters["collatz_physical_run_contraction_publications"] == 1
+    assert term._source_image().summary().transfer.upper == 0
+    assert (
+        term._ledger.counters.get("collatz_physical_point_germ_normalizations", 0) == 0
+    )
 
 
 def test_antihydra_cli_digits_do_not_request_safety(

@@ -86,8 +86,8 @@ class PrimePartialSuccessorQuery:
             cached_arena._check_open()
             return cached_arena, cached_adapter, cached_scheduler
         self._dispose_stage()
-        factors = self.rank.primes
-        fresh = factors[depth - 1]
+        # One admitted factor is needed, not a detached copy of every stage.
+        fresh = self.rank._factor_store_authority[depth - 1]
         arena: PrimeSuccessorActionArena | None = None
         scheduler: TileScheduler | None = None
         try:

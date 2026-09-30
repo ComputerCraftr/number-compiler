@@ -213,12 +213,18 @@ def test_direct_composite_reuses_exact_homogeneous_subcylinders(
     )
     prefix = workspace.counter_prefix + "_"
     assert workspace.endpoint() == source >> steps
-    assert ledger.counters[prefix + "balanced_effect_memo_hits"] > 0
-    assert ledger.counters[prefix + "reused_temporal_extent"] == steps - 64
     classified = ledger.counters.get(
         prefix + "transient_leaf_steps", 0
     ) + ledger.counters.get(prefix + "macro_bounded_base_steps", 0)
-    assert 0 < classified <= 64
+    if retain_chronology:
+        assert ledger.counters[prefix + "balanced_effect_memo_hits"] > 0
+        assert ledger.counters[prefix + "reused_temporal_extent"] == steps - 64
+        assert 0 < classified <= 64
+    else:
+        assert ledger.counters[prefix + "temporal_run_actions"] == 1
+        assert ledger.counters[prefix + "temporal_zero_run_symbols"] == steps
+        assert ledger.counters.get(prefix + "balanced_effect_memo_hits", 0) == 0
+        assert classified == 0
     assert len(workspace.images) == 2
     assert len(workspace.support) <= steps.bit_length()
     assert not workspace.balanced_stack

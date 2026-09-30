@@ -14,7 +14,11 @@ from number_compiler.arithmetic.contracts.scoped_handles import ArenaHandle, Are
 from number_compiler.arithmetic.fields.consumer_pullback import PrefixSafety
 from number_compiler.resources.ledger import ResourceLedger
 from number_compiler.resources.stores import LedgerDict, LedgerList
-from number_compiler.sequences.comma.arithmetic import CycleTransfer, cycle_transfer
+from number_compiler.sequences.comma.arithmetic import (
+    CycleTransfer,
+    cycle_transfer,
+    phase_prefix_displacement,
+)
 from number_compiler.sequences.comma.boundary_quotient import (
     PERIOD,
     AffineWeight,
@@ -292,6 +296,30 @@ class CommaActionArena:
                 1,
                 transfer.displacement,
                 transfer.maximum_guard,
+            ),
+        )
+
+    def phase_prefix(self, leading: int, digit: int, steps: int) -> CommaActionID:
+        """An incomplete physical phase orbit, with its strict interior guard.
+
+        Port dwell weights count diagonal rows. They never supply ``steps``:
+        the source classifier recovers the physical phase before admission.
+        """
+        transfer = self.transfer(leading, digit)
+        if type(steps) is not int or not 0 < steps < transfer.period:
+            raise ValueError("comma phase prefix must be a positive partial orbit")
+        self.charge(steps + 2)
+        self.charge_bits(32 * steps)
+        displacement = phase_prefix_displacement(leading, digit, steps)
+        return self._intern(
+            ("phase-prefix", leading, digit, steps),
+            _Action(
+                "phase-prefix",
+                steps,
+                leading=leading,
+                entering_digit=digit,
+                displacement=displacement,
+                maximum_guard=displacement + int(leading < 9),
             ),
         )
 

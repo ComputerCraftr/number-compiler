@@ -131,7 +131,7 @@ state counts and terminal-halo bounds are not compiler guarantees.
 
 ## Carry-domain and Hensel validation — September 10
 
-The [2026-W37 validation checkpoint](../../results/current/2026-W37/README.md)
+The [September 7–13 retrospective validation checkpoint](../../results/history/2026-09-07--2026-09-13/README.md)
 adds `tests/validation/research/collatz/test_carry_domain_hensel_quotient.py`.
 It is research evidence only; no new production identity is admitted.
 

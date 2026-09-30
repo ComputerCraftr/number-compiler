@@ -48,6 +48,31 @@ and a reviewed Python mapping are distinct from verification of Python itself.
 
 ## Theorem-to-runtime map
 
+`Maximal_Run_Arithmetic` models the homogeneous contractions used by
+`collatz/temporal_run_quotient.py` and `antihydra/arithmetic_images.py`:
+
+- `collatz_physical_odd_run` consumes `2k` physical ticks from
+  `2^k*u-1`, with `u>0`, and returns `3^k*u-1`.
+- `collatz_physical_even_run` removes a supplied dyadic factor in `k` ticks.
+- `antihydra_centered_odd_run` and `antihydra_centered_even_run` establish
+  both the endpoint and the source parity word for the two homogeneous cases.
+  The source parity is the complement of the implementation's centered parity.
+- `antihydra_centered_run_guards` gives the exact finite ledger condition;
+  `antihydra_run_endpoint_parity` proves the parity switch when the residual
+  factor is odd.
+- `antihydra_punctured_event_bits`, `antihydra_punctured_event_endpoint` and
+  `antihydra_punctured_event_ledger` contract `0^k1` in centered coordinates.
+  From `D=2^k(2M+1)` the endpoint is `3^(k+1)M+(3^(k+1)+1)/2`, the ledger
+  delta is `2-k` and its minimum is `-k`. These are the formulas used by
+  `_punctured_steps` inside the existing bounded scheduler leaf.
+
+These lemmas justify arithmetic within one admitted run. They do not prove the
+Python run-discovery loop, routing heuristic, allocation bounds, anonymous
+F5/root-fiber quotient, or a bound on the number of future runs. Production
+retains balanced construction for wide mixed inputs because repeated full-width
+run arithmetic can increase operand work quadratically. Exact singleton
+Collatz endpoints do not represent the affine action on every residue lift.
+
 | Runtime field or operation | Executable model / theorem | Scope of the Python mapping |
 |---|---|---|
 | Bounded leaf and high-fiber effect | `Dyadic_Balanced_Arithmetic.arithmetic_leaf_loop_correct`, `arithmetic_leaf_correct`, `construct_source_effect_endpoint` | Actual branch gains, offsets, physical odd-bit counts, signed delta and minimum match the Python fields. The mathematical leaf accumulator executes branches; a source word appears only in its specification. |
@@ -124,17 +149,73 @@ requires authenticated physical weighted selection, demanded Q precision,
 exterior-cell admission and a construction-cost bound. A finite inverse or
 a theorem about an already supplied cursor discharges none of those by itself.
 
-The [weekly record](../../results/current/2026-W39/README.md#shifted-parity-germs-and-batched-limbs)
+The [weekly record](../../results/current/week-of-2026-09-20/shared.md#shifted-parity-germs-and-batched-limbs)
 records exact build status and measured projection scope.
 
 ## Safety and cost scope
+
+The centered physical coordinate `Y = x - 1` has two checked affine fiber
+rules in `Collatz_Parity_Shift_Germ`: `collatz_centered_odd_fiber` consumes
+one tick on an odd centered fiber, while `collatz_centered_even_fiber`
+consumes two ticks on an even centered fiber. The latter includes the forced
+halving tick. `collatz_centered_source_restriction` transports a source bit
+into the affine chart. These rules specify arithmetic after a branch has
+been admitted; they do not construct the branch classifier or prove that
+arbitrary temporal squares need bounded discovery.
+
+`Mahler_Spatial_Carry_Pump` reuses the same radix-block conservation owner
+for the nine carries of `9*M+c`. `radix_four_root_derivative_finite_port`
+connects a matching root digit of `27*M+3*c+1` to that carry,
+`radix_four_one_two_reset` proves the two-digit sentinel reset, and
+`radix_four_one_run_conservation` pumps the remaining constant run.
+`mahler_radix_four_reentry` binds the two-step source recurrence to `9*M+c`;
+its four source residues yield ports `0,3,5,8`. These are spatial arithmetic
+and source-reentry results, not an all-time safety theorem or refinement of
+Python's source cursor and cache. The Python root-owner regression checks
+the same nine-port identity against bounded independent integer arithmetic.
+
+The same theory now defines an executable first-hole classifier on source
+trees with authenticated cached extents. `radix_four_classifier_append`
+proves chronological spatial composition;
+`radix_four_source_classifier_refinement` connects the tree to the literal
+digit specification, and `radix_four_source_classifier_early_exit` leaves the
+right child undemanded after a left-hand hole. The cursor law
+`radix_four_classifier_cursor_conservation` retains the original suffix with
+its post-hole carry: the transformed high value is `9*suffix + carry`, not
+the suffix alone. This is not yet a refinement of Python's run leaves,
+authenticated cursor covers, memo lifecycle or resource ledger.
+
+The positive odd-event consumer uses `mahler_maximal_odd_event_closed_scale`
+in `Antihydra_Mahler_Associated_Action`: the word `1 0^(q-1)` has scale
+`(3/2)^q`, offset minus that scale, and cap `min(9/4, scale/2)`. The
+research `SourceSafetyWorkspace.odd_zero_observer` obtains `q` from the
+shared source-root classifier before applying this observer formula. This
+odd-then-zeros observation does not select the live zero-then-one source
+safety event: at `D=1` its exponent is 2, while `source_event` selects 1.
+Raw-source `-1/3` selection and transformed `9*M+c` selection remain distinct; neither
+the formula nor the tree theorem authenticates arbitrary higher-half sources.
+
+Run algebra has shared ownership: `Prefix_Effect` and
+`Dyadic_Prefix_Summary` handle signed prefix totals for the dyadic families;
+`Associated_Action_Pullback` handles chronological saturated affine actions.
+Its `associated_action_dilation_tail` now supplies Mahler's expanding run law
+under scale at least one and nonnegative cap. Comma's translation guard uses
+the existing `repeated_prefix_minimum_closed` in that same theory. The
+different family guards and source classifiers are not interchangeable.
+
+The focused [comma ordered-root model](../../devtools/proofs/isabelle/comma_vieta_root/Comma_Vieta_Root_Frame.thy)
+uses the actual phase/displacement definitions. Its bounded selector refines
+one local Near prefix, under explicit frame, alignment and headroom guards;
+its row port permits two root crossings. Neither this local constructor nor
+shared run algebra supplies the missing source-to-residual classifier,
+weighted repeating return or global branch safety required for forest removal.
 
 `Collatz_Reduced_Precision` additionally proves an upward high-fiber identity:
 `source + 2^min(n,even_count(n,source)+1) * high` has the same complete finite
 branch/effect as `source`. Its exported safety corollaries reuse that equality.
 This theorem does not change Python's exact `(span,residue)` memo, prove an
 arbitrary two-source canonical representative, or establish a speedup. The
-[powered boundary audit](../../results/current/2026-W39/README.md#powered-boundary-germ-audit)
+[powered boundary audit](../../results/current/week-of-2026-09-20/shared.md#powered-boundary-germ-audit)
 records the independent finite tests and rejected extra scan.
 
 Collatz's physical weights are nonnegative, so its `minimum` cannot witness a
@@ -147,8 +228,54 @@ Those predicates must remain distinct in any consumer proof.
 
 The runtime separately charges bounded leaf classifications, residue
 transport, skew joins, memo lookups/publications/evictions, transient stack,
-retained support, and later demanded expansion. The 64-entry memo can make a
-homogeneous cylinder cheap; it cannot make an arbitrary high-entropy cold
-source sublinear. Counted operand-bit growth, measured wall time, and a
+retained support, and later demanded expansion. The balanced executor's
+64-entry memo has no established arbitrary-source sublinear construction
+bound. This describes the implemented owner, not a lower-bound theorem for
+alternative cylinder constructors. The physical run path also has a separate,
+lazy 256-row D8 table; its cold discovery and retention must be counted.
+Counted operand-bit growth, measured wall time, and a
 successful-constructor asymptotic bound are three separate claims. No theorem
 about a supplied branch word or generic associativity closes the latter two.
+
+
+### Finite D8 arithmetic specialization
+
+`collatz_d8_all_source_fibers` in
+[Dyadic_Parity_Inverse_Arithmetic](../../devtools/proofs/isabelle/integration_dyadic/Dyadic_Parity_Inverse_Arithmetic.thy)
+proves `256 * H^8(x) = M(x mod 256) * x + B(x mod 256)`.
+The executable forward-coefficient recurrence supplies `M,B`, and
+`collatz_qprefix_low` establishes that every higher lift selects the same
+normalized symbols. This is the arithmetic used by the lazy production D8
+table. Independent finite tests check all 256 residues, several large lifts,
+physical clocks, optional F5 transport and exact cycle entry.
+
+The theorem is unconditional finite arithmetic. It does not certify Python
+cache authority, prove the scheduler's publication code, or bound the number
+of D8 sections for an arbitrary horizon. These claims remain separate from
+the local coefficient equation. The focused `Balanced_Dyadic_Integration`
+session includes the theorem in its oracle audit.
+
+### Target-centered source sections
+
+`Collatz_Parity_Shift_Germ.collatz_target_centered_source_lift` specializes the
+shared `exact_precision_source_lift` to
+`H^n(r + 2^n*u) = H^n(r) + 3^h*u`, where `h` counts odd symbols on the actual
+source prefix. `collatz_centered_gain` proves the gain simplification. Python's
+D8 table retains exactly `h` and `H^8(r)`; its source key supplies `r` and its
+fixed width supplies eight. Application uses the same equation. Optional F5
+transport rebases the origin using `2^8 = 1 (mod 5)`.
+
+Antihydra already obtains the corresponding gain `3^n` from
+`Antihydra_Arithmetic_Cylinder_Lift.antihydra_family_orbit_cylinder_transport`.
+No new Collatz recurrence or endpoint-only safety quotient is introduced for
+that family. Mahler's finite cap and Antihydra's ledger minimum are additional
+consumers; target centering does not discard them. The ownership, guarded
+publication and construction-cost obligations listed above are unchanged.
+
+`collatz_d8_cylinder_transition` also proves the byte transition on an affine
+frame: with `v = origin + gain*digit`, the next frame has origin
+`H^8(v mod 256) + 3^h*(v div 256)` and gain `3^h*gain`. Its high continuation
+stays symbolic. This proves local transition arithmetic; bounded batching,
+source-window admission, allocation and physical weighted selection remain
+runtime obligations, and it does not establish a finite transition quotient
+closed under arbitrary temporal squaring.

@@ -71,6 +71,63 @@ lemma positive_affine_min:
   using assms
   by (auto simp: min_def split: if_splits; linarith)
 
+
+text \<open>
+  Shared closed run law for an expanding zero-offset saturated action. The
+  seed may have any affine offset and cap. Run admission still belongs to
+  each family's source cylinder; this algebra only composes the admitted
+  scalar consumer. The executable fold is specification, not an instruction
+  to retain or replay a temporal word in production.
+\<close>
+
+lemma associated_positive_dilation_cap_clip:
+  fixes scale cap x :: rat
+  assumes expansion: "1 \<le> scale" and nonnegative: "0 \<le> cap"
+  shows "min cap (scale * min cap x) = min cap (scale*x)"
+proof -
+  have positive: "0 < scale" using expansion by linarith
+  have lifted: "scale*min cap x = min (scale*cap) (scale*x)"
+    using positive_affine_min[OF positive, where x=cap and y=x and offset=0] by simp
+  have cap_bound: "cap \<le> scale*cap"
+    using mult_right_mono[OF expansion nonnegative] by simp
+  have first: "min cap (scale*cap) = cap" using cap_bound by (simp add: min_def)
+  have "min cap (scale * min cap x) = min cap (min (scale*cap) (scale*x))"
+    by (simp only: lifted)
+  also have "\<dots> = min (min cap (scale*cap)) (scale*x)"
+    by (rule min.assoc[symmetric])
+  also have "\<dots> = min cap (scale*x)" by (simp only: first)
+  finally show ?thesis .
+qed
+
+theorem associated_action_dilation_tail:
+  fixes scale cap seed_scale seed_offset seed_cap :: rat
+  assumes expansion: "1 \<le> scale" and nonnegative: "0 \<le> cap"
+  shows "foldl associated_action_then
+      \<lparr>action_scale=seed_scale, action_offset=seed_offset, action_cap=Some seed_cap\<rparr>
+      (replicate n \<lparr>action_scale=scale, action_offset=0, action_cap=Some cap\<rparr>) =
+    \<lparr>action_scale=scale^n*seed_scale, action_offset=scale^n*seed_offset,
+      action_cap=Some (if n=0 then seed_cap else min cap (scale^n*seed_cap))\<rparr>"
+proof (induction n)
+  case 0 then show ?case by simp
+next
+  case (Suc n)
+  let ?A = "\<lparr>action_scale=scale, action_offset=0, action_cap=Some cap\<rparr>"
+  have append: "replicate (Suc n) ?A = replicate n ?A @ [?A]"
+    by (induction n) simp_all
+  have step: "foldl associated_action_then
+      \<lparr>action_scale=seed_scale, action_offset=seed_offset, action_cap=Some seed_cap\<rparr>
+      (replicate (Suc n) ?A) =
+    associated_action_then
+      (foldl associated_action_then
+        \<lparr>action_scale=seed_scale, action_offset=seed_offset, action_cap=Some seed_cap\<rparr>
+        (replicate n ?A)) ?A"
+    by (simp only: append foldl_append foldl.simps)
+  show ?case
+    by (simp only: step Suc.IH; cases "n=0"; simp add: associated_action_then_def
+        associated_cap_min_def power_Suc
+        associated_positive_dilation_cap_clip[OF expansion nonnegative] algebra_simps)
+qed
+
 lemma positive_affine_min_normalized:
   fixes scale offset cap inner_offset inner_scale x :: rat
   assumes "0 < scale"
@@ -332,6 +389,7 @@ ML \<open>
       associated_action_then_associative associated_threshold_pullback_exact
       associated_threshold_pullback_contravariant monotone_survival_ALL_min
       monotone_survival_ANY_max monotone_survival_empty inverse_affine_max
+      associated_positive_dilation_cap_clip associated_action_dilation_tail
       prefix_safety_chronological repeated_prefix_minimum_closed}) then ()
     else error "Associated action pullback depends on an oracle";
 \<close>

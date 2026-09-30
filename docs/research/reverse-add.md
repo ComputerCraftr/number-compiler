@@ -14,6 +14,32 @@ in one place so a component theorem cannot be mistaken for the final result.
 - **Implemented construction:** authenticated primitive publication and restricted clauses are available; carry moves only from LSD to MSD.
 - **Open obligation:** construct the source-derived compressed residue grammar and its complete temporal return with successful work and storage bounds.
 
+### Spatial run responses versus temporal actions
+
+For a supplied domain run `d^(n+1)`, let `e = carry_apply(d, c)`.
+Idempotence gives incoming carries `c · e^n` and final carry `e` for either
+entry bit. Spatial concatenation evaluates the right region with the left
+region's exit. Reflection changes coordinates, not the physical carry direction.
+`Reverse_Uniform_Runs.region_carry_run_output`, `region_carry_run_exit`,
+`region_carry_spatial_join` and `region_carry_emission_refinement` prove these
+laws and their connection to digit emission.
+
+The research Q95 plane evaluator now builds only demanded `(region, entry)`
+responses. It neither constructs both entry-output trees eagerly nor identifies
+different entries in its memo. There are at most two demanded responses per
+distinct domain node in one application; that bound is not a bound on newly
+created temporal regions. The exact source occurrence remains part of the
+application, separate from the three-element carry monoid.
+
+The existing `FactoredTemporalPower` still constructs midpoint grammars and
+executes each temporal successor. It is not `NF(A_B composed with A_A)`.
+Closing a finite leaf arithmetic catalog, or proving the spatial run formula,
+does not construct that normal form. Production admission still requires the
+complete output/admission action, successor right-congruence and a construction
+bound with midpoint realization forbidden.
+
+[Measured spatial change and temporal boundary](../../results/current/week-of-2026-09-27/reverse-add.md#demanded-reverse-carry-regions).
+
 ## Source authority and publication
 
 ### Admitted source pair
@@ -169,6 +195,18 @@ transducer can compute carry behavior without walking represented positions.
 
 ### Exact finite centered constructor; temporal pump still open
 
+**Finite spatial projection:** the carry-border observer has one all-equality
+identity and twenty active classes `(o,p,f)` in F2 × F2 × F5. At even width,
+composition is `(o,p,f)·(O,P,F)=(O,p,f+F-o(1+P))`, with arithmetic modulo five
+in the last coordinate. Centering at `u=f-o(1+p)` gives repeated-block
+harmonic `o(1+p)+n*u`. The
+[existing research owner](../../devtools/proofs/carry_harmonic_ports.py)
+checks this projection independently of carry occupancy. Odd-width joins
+still require phase transport; the active zero harmonic is not the identity.
+These output functions do not recover the source word or authorize temporal
+successor substitution. Validation belongs in the
+[weekly audit](../../results/current/week-of-2026-09-27/shared.md#punctured-port-integration-audit).
+
 The research-only
 [`CenteredFutureGrammar`](../../devtools/experiments/reverse_add/centered_future.py)
 closes the finite arithmetic loop: symbolic centered residual, modulo-32
@@ -211,7 +249,7 @@ new boundaries. Spatial reset recovery improves that work without proving a
 temporal pump or satisfying CLI cutover. The five-trial measurements and
 incomplete baseline group belong to the original sprint.
 
-[Dated evidence](../../results/current/2026-W38/README.md#centered-carry-recovery-measurements).
+[Dated evidence](../../results/current/week-of-2026-09-20/reverse-add.md#centered-carry-recovery-measurements).
 
 ### Spatial pair grammar and the repunit clause
 
@@ -236,7 +274,7 @@ Finite probes compress the represented spatial width but retain roughly
 quadratic cumulative temporal construction. A small final grammar does not
 erase the work needed to construct it; this remains a research reference.
 
-[Dated evidence](../../results/current/2026-W38/README.md#pair-grammar-spatial-versus-temporal-cost).
+[Dated evidence](../../results/current/week-of-2026-09-20/reverse-add.md#pair-grammar-spatial-versus-temporal-cost).
 
 ## Carry transduction and event boundaries
 
@@ -531,7 +569,7 @@ pair-SLP prototype are different constructions and cannot refute that baseline.
 The comparison tables, missing-evidence qualifications and archive hash are
 retained with the sprint review.
 
-[Dated evidence](../../results/current/2026-W38/README.md#historical-carry-slab-comparison).
+[Dated evidence](../../results/current/week-of-2026-09-20/reverse-add.md#historical-carry-slab-comparison).
 
 ### Complete-effect squaring gate
 
@@ -584,7 +622,7 @@ per temporal step. Five-trial 16–1024 measurements show roughly fourfold work
 on horizon doubling, despite small final roots. This does not satisfy the
 source-bound publication, complete-consumer or construction-cost gates.
 
-[Dated evidence](../../results/current/2026-W38/README.md#reverse-cli-re-entry-measurements).
+[Dated evidence](../../results/current/week-of-2026-09-20/reverse-add.md#reverse-cli-re-entry-measurements).
 
 ## Primary literature and the remaining grammar theorem
 
@@ -671,7 +709,7 @@ generic D4/D8 temporal closure; those acceptance assertions remain active.
 The bounded audit retained the twelve generic-range and fourteen CLI cutover
 failures. Its local arithmetic successes are separate from temporal closure.
 
-[Dated evidence](../../results/current/2026-W38/README.md#archived-output-quotient-audit-validation).
+[Dated evidence](../../results/current/week-of-2026-09-20/reverse-add.md#archived-output-quotient-audit-validation).
 
 <a id="pullback-implementation-milestone-2026-09-21"></a>
 
@@ -684,7 +722,7 @@ A shared admitted environment must also transport predicates, growth and extent.
 The [proof index](../proofs.md) separates the substitution specification from
 executable-worklist and temporal-constructor refinement.
 
-[Implementation and validation record](../../results/current/2026-W39/README.md#pullback-implementation-milestone-2026-09-21).
+[Implementation and validation record](../../results/current/week-of-2026-09-20/reverse-add.md#pullback-implementation-milestone-2026-09-21).
 
 ## F2 forcing elimination in the shared arithmetic
 
@@ -700,7 +738,7 @@ and retains the surviving forcing's chart. Its output is equivalent modulo two,
 not as exact decimal innovation. These rules do not construct future forcing,
 refine the full Python worklist or close generic D4/D8 publication.
 
-[Implementation and validation record](../../results/current/2026-W39/README.md#f2-forcing-elimination-in-the-shared-arithmetic).
+[Implementation and validation record](../../results/current/week-of-2026-09-20/reverse-add.md#f2-forcing-elimination-in-the-shared-arithmetic).
 
 ## F5 operator reuse versus region-occurrence construction
 
@@ -738,7 +776,7 @@ bounded references, not source-derived construction evidence. Finite D8192
 catalog saturation likewise supplies no general recursive-occurrence bound.
 The next right-half threshold/output grammar remains a construction obligation.
 
-[Implementation and validation record](../../results/current/2026-W39/README.md#f5-operator-reuse-versus-region-occurrence-construction).
+[Implementation and validation record](../../results/current/week-of-2026-09-20/reverse-add.md#f5-operator-reuse-versus-region-occurrence-construction).
 
 ## Native source-only D4 squares
 
@@ -751,7 +789,7 @@ primitive grammar advances proportional to temporal extent. Endpoint-free
 construction is not the missing normalized D4-squared transformer. Production
 publication and its positive cutover gates remain unresolved.
 
-[Implementation and validation record](../../results/current/2026-W39/README.md#native-source-only-d4-squares).
+[Implementation and validation record](../../results/current/week-of-2026-09-20/reverse-add.md#native-source-only-d4-squares).
 
 ## Spatial residual bisimulation and repeated-work fixes
 
@@ -764,7 +802,7 @@ when D4 is squared. Their spatial bisimulation and memo improvements do not
 establish a source-admitted temporal quotient. This is an implementation
 obligation, not a counterexample to the complete cylinder proposal.
 
-[Implementation and validation record](../../results/current/2026-W39/README.md#spatial-residual-bisimulation-and-repeated-work-fixes).
+[Implementation and validation record](../../results/current/week-of-2026-09-20/reverse-add.md#spatial-residual-bisimulation-and-repeated-work-fixes).
 
 ## Production and reproduction
 
@@ -792,7 +830,7 @@ without context: seeds 111 and 191 have pair fields `(2,2,2)` and `(2,18,2)`,
 sharing low pair 2, but next fields `(4,4,4)` and `(5,16,5)`. This refutes the
 context-free recoding rule, not a complete source-bound cylinder.
 
-[Implementation and validation record](../../results/current/2026-W39/README.md#demand-specific-forcing-retention).
+[Implementation and validation record](../../results/current/week-of-2026-09-20/reverse-add.md#demand-specific-forcing-retention).
 
 ## Q95 and complete finite-interface saturation
 
@@ -844,4 +882,22 @@ isabelle build -d devtools/proofs/isabelle Temporal_Clock_Jumps
   supply a transformation of its F5 forcing. These results do not authorize
   erasing temporal program identity or independently quotienting F5 phases.
 
-[Reproduction, precise witnesses and validation](../../results/current/2026-W39/README.md#powered-boundary-germ-audit).
+[Reproduction, precise witnesses and validation](../../results/current/week-of-2026-09-20/shared.md#powered-boundary-germ-audit).
+
+## Published-action reuse versus cold construction
+
+The downloaded `196_pattern_temporal_quotient.patch` adds a recursive
+occurrence-application path after a complete interface has been published.
+Its poison tests distinguish this warm reuse from initial compilation:
+poisoning the interface compiler before publication still prevents
+construction. This is a useful improvement over re-opening that compiler for
+every application, but does not supply cold temporal normalization.
+
+The earlier quadratic measurements remain historical measurements of their
+specific owners, not lower bounds on all carry-cylinder implementations.
+Pattern/diagonal experiments using a supplied orbit do not establish a
+source-derived constructor. The newer patch's warm path and the earlier
+research-only Frobenius patch are different inputs and must not be attributed
+the same scope.
+
+[Selective integration audit](../../results/current/week-of-2026-09-27/shared.md#recursive-dyadic-report-integration).

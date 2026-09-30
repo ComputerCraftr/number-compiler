@@ -155,6 +155,9 @@ class PrimeSuccessorActionArena:
         forbidden = tuple(sorted({value % q for value in raw_forbidden}))
         self.rank = rank
         self._rank_authority = rank, rank.ledger, rank._factor_store_authority
+        # Constructor admission checked this immutable prefix. Later arena
+        # publications mutate unrelated stores, not the factor authority.
+        self._prefix_stamp = rank._factor_store_authority.mutation_stamp
         self._parent_depth = parent_depth
         self._admitted_successor = admitted_successor
         self._owner = ArenaToken("prime-successor-actions")
@@ -240,15 +243,21 @@ class PrimeSuccessorActionArena:
             or self.rank._factor_store_authority is not factors
         ):
             raise ValueError("prime successor action lost its source authority")
-        depth = len(self.descriptor.parent_factors)
-        admitted = self.rank.primes
-        if admitted[:depth] != self.descriptor.parent_factors or (
-            self._admitted_successor
-            and (
-                len(admitted) <= depth or admitted[depth] != self.descriptor.fresh_prime
-            )
-        ):
-            raise RuntimeError("prime successor action lost its parent source binding")
+        try:
+            stamp = factors.mutation_stamp
+        except (AttributeError, TypeError) as error:
+            raise ValueError(
+                "prime successor action lost its source authority"
+            ) from error
+        if not factors.append_only:
+            raise ValueError("prime successor action lost its append-only authority")
+        if stamp == self._prefix_stamp:
+            return
+        self.rank.validate_bound_factor_prefix(
+            self.descriptor.parent_factors,
+            self.descriptor.fresh_prime if self._admitted_successor else None,
+        )
+        self._prefix_stamp = stamp
 
     def _check_budget(self, additional: int = 1) -> None:
         retained = len(self._nodes) + len(self._normal_forms) + len(self._ports)

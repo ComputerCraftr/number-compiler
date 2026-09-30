@@ -59,13 +59,16 @@ def test_live_workspace_rolls_back_rejected_balanced_support(
     original = ledger.reserve_many
     appended = 0
     source_image_owner = core._node_owner
+    # Aggregate-only publication constructs one support node. An explicitly
+    # chronological consumer still exercises rollback after several children.
+    rejection_at = 4 if workspace.retain_chronological_support() else 1
 
     def capped(reservations: Iterable[tuple[int, int, int]]) -> None:
         nonlocal appended
         rows = tuple(reservations)
         if any(owner == workspace.support_owner for owner, _, _ in rows):
             appended += 1
-            if failure_stage == "candidate" and appended == 4:
+            if failure_stage == "candidate" and appended == rejection_at:
                 # The ledger itself rejects this reservation after several
                 # support nodes have been published for the second query.
                 ledger.max_nodes = ledger.nodes
@@ -92,7 +95,7 @@ def test_live_workspace_rolls_back_rejected_balanced_support(
         ledger.max_nodes = 4096
         monkeypatch.setattr(ledger, "reserve_many", original)
 
-    assert appended >= 4
+    assert appended >= rejection_at
     assert (
         ledger.entries,
         ledger.nodes,

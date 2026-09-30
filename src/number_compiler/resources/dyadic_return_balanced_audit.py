@@ -9,6 +9,9 @@ from number_compiler.arithmetic.fields.skew_transfer import SkewTransfer
 from number_compiler.hashlife.execution.dyadic_return_records import DyadicReturnLaw
 from number_compiler.hashlife.execution.dyadic_return_transport import _low_bits
 from number_compiler.resources.ledger import ResourceLedger
+from number_compiler.resources.physical_support_payload_audit import (
+    PhysicalSupportPayloadAudit,
+)
 
 
 AuditEffect: TypeAlias = tuple[SkewTransfer[int], int, int, int]
@@ -121,3 +124,69 @@ def _balanced_saturated_audit(
             )
         else:
             return result
+
+
+def audit_collatz_d8_payloads(ledger: ResourceLedger) -> PhysicalSupportPayloadAudit:
+    """Independently authenticate the bounded local D8 coefficient store."""
+    containers = dict(ledger.iter_containers())
+    inventory = {row.owner: row for row in ledger.inventory()}
+    approved: set[int] = set()
+    invalid: set[tuple[int, int]] = set()
+    # A D8 table is finite source-residue algebra, not an unbounded itinerary.
+    # Reconstruct each retained row on two independent small scalar lifts so
+    # neither its claimed odd count nor its target origin is trusted.
+    from number_compiler.resources.stores import LedgerDict
+
+    for table_owner, table_inventory in inventory.items():
+        if table_inventory.role != "collatz_d8_local_table":
+            continue
+        table = containers.get(table_owner)
+        table_approved: set[int] = set()
+        try:
+            table_valid = (
+                type(table) is LedgerDict
+                and table.ledger is ledger
+                and table.owner == table_owner
+                and table.write_once
+                and table.nodes_per_entry == 3
+                and ledger.is_factory_container(table)
+                and table_inventory.name == "collatz-physical-d8-local-table"
+                and table_inventory.scope == "ENGINE_OWNED"
+                and table_inventory.accounting_delta == 0
+                and not table_inventory.disposed
+                and table_inventory.entries == len(table)
+                and table_inventory.nodes == 3 * len(table)
+                and len(table) <= 256
+            )
+            if table_valid:
+                assert type(table) is LedgerDict
+                for residue, record in table.items():
+                    if (
+                        type(residue) is not int
+                        or not 0 <= residue < 256
+                        or type(record) is not tuple
+                        or len(record) != 2
+                        or any(type(value) is not int for value in record)
+                    ):
+                        table_valid = False
+                        break
+                    low, high, ones = residue, residue + 256, 0
+                    for _ in range(8):
+                        bit = low & 1
+                        ones += bit
+                        low = (3 * low + 1) // 2 if bit else low // 2
+                        high = (3 * high + 1) // 2 if high & 1 else high // 2
+                    ledger.bump("collatz_d8_payload_audit_local_symbols", 16)
+                    if record != (ones, low) or high - low != 3**ones:
+                        table_valid = False
+                        break
+                    table_approved.add(id(record))
+            if table_valid:
+                approved.update(table_approved)
+                approved.add(id(table))
+            else:
+                invalid.add((table_owner, id(table)))
+        except (AttributeError, ArithmeticError, KeyError, TypeError, ValueError):
+            invalid.add((table_owner, id(table)))
+
+    return PhysicalSupportPayloadAudit(frozenset(approved), frozenset(invalid))

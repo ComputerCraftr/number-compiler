@@ -435,6 +435,29 @@ corollary collatz_generated_q_forward_equation:
       source=source and n=n, OF collatz_normalized_signed_step]
   by (simp add: collatz_qprefix_def)
 
+text \<open>The production D8 table computes these forward coefficients from
+the low eight source bits. The source-lift theorem supplies every higher
+fiber; enumeration of a few lifted endpoints is only a differential check.
+This theorem does not refine Python table ownership or give a bound on the
+number of D8 applications needed by an arbitrary source.\<close>
+
+definition collatz_d8_coefficients :: "nat \<Rightarrow> int \<times> int" where
+  "collatz_d8_coefficients residue = dyadic_forward_coefficients
+    (\<lambda>b. if b then 3 else 1) (\<lambda>b. if b then 1 else 0)
+    0 (1,0) (collatz_qprefix 8 residue)"
+
+corollary collatz_d8_all_source_fibers:
+  "256 * int (dyadic_source_orbit collatz_normalized_step source 8) =
+    fst (collatz_d8_coefficients (source mod 256)) * int source +
+    snd (collatz_d8_coefficients (source mod 256))"
+proof -
+  have low: "collatz_qprefix 8 (source mod 256) = collatz_qprefix 8 source"
+    using collatz_qprefix_low[of 8 source] by simp
+  show ?thesis
+    using collatz_generated_q_forward_equation[of 8 source]
+    by (simp add: collatz_d8_coefficients_def low)
+qed
+
 lemma antihydra_signed_step_by_parity:
   "2 * int (antihydra_family_step x) =
     (3::int) * int x + (if odd x then -1 else 0)"
@@ -552,6 +575,7 @@ ML \<open>
       dyadic_source_orbit_step_at_end
       dyadic_generated_word_forward_equation
       collatz_normalized_signed_step collatz_generated_q_forward_equation
+      collatz_d8_all_source_fibers
       antihydra_signed_step_by_parity antihydra_bool_word_generated
       antihydra_orbit_is_dyadic_source_orbit
       antihydra_generated_word_forward_equation

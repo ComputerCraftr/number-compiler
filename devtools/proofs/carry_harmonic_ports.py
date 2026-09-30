@@ -118,6 +118,14 @@ class CarryHarmonicPortAction:
             result.append((outgoing, f0, f1))
         return result[0], result[1]
 
+    def punctured_border(self) -> PuncturedCarryHarmonic:
+        """Project the active border; the all-Equal row remains the puncture.
+
+        This spatial projection forgets occupancy and source occurrence. It
+        grants no temporal successor authority.
+        """
+        return PuncturedCarryHarmonic.from_border_rows(self.border_rows())
+
     def length_indexed_code(self) -> tuple[int, ...]:
         """501 possibilities at fixed length, NOT an untyped semantic key."""
         zero, one = self.rows
@@ -142,3 +150,135 @@ class CarryHarmonicPortAction:
         output_width = self.width + growth
         reflected_even, reflected_odd = (even, odd) if output_width % 2 else (odd, even)
         return population_harmonics(even + reflected_even, odd + reflected_odd)
+
+
+@dataclass(frozen=True, slots=True)
+class PuncturedCarryHarmonic:
+    """One exact nonidentity border projection, with width kept externally.
+
+    ``then_even`` and ``power_even`` require an even-width occurrence. Decoding
+    rows does not authenticate that phase or any temporal source cylinder.
+    Zero centered harmonics are active idempotents, not the identity puncture.
+    """
+
+    outgoing: int
+    decisive_parity: int
+    harmonic: int
+
+    def __post_init__(self) -> None:
+        require_endpoint_construction()
+        if type(self.outgoing) is not int or self.outgoing not in (0, 1):
+            raise ValueError("punctured outgoing carry must be a bit")
+        if type(self.decisive_parity) is not int or self.decisive_parity not in (0, 1):
+            raise ValueError("punctured decisive parity must be a bit")
+        if type(self.harmonic) is not int or not 0 <= self.harmonic < 5:
+            raise ValueError("punctured harmonic coordinate must lie in F5")
+
+    @property
+    def dependent_harmonic(self) -> int:
+        """Second F5 border coordinate, forced by the punctured code."""
+        return (2 * self.harmonic - self.outgoing) % 5
+
+    @property
+    def centered(self) -> int:
+        """F5 diagonal coordinate whose even-width square is multiplication by 2."""
+        return (self.harmonic - self.outgoing * (1 + self.decisive_parity)) % 5
+
+    @property
+    def idempotent_center(self) -> int:
+        return (self.outgoing * (1 + self.decisive_parity)) % 5
+
+    def then_even(self, right: "PuncturedCarryHarmonic") -> "PuncturedCarryHarmonic":
+        """Compose two nonidentity blocks when the left width is even.
+
+        The first decisive domain remains in the left block, while the outgoing
+        carry is the right block's outgoing carry.  No carry-domain word is
+        reconstructed.
+        """
+        if type(right) is not PuncturedCarryHarmonic:
+            raise TypeError("punctured harmonic composition needs another port")
+        return PuncturedCarryHarmonic(
+            right.outgoing,
+            self.decisive_parity,
+            (
+                self.harmonic
+                + right.harmonic
+                - self.outgoing * (1 + right.decisive_parity)
+            )
+            % 5,
+        )
+
+    def square_even(self) -> "PuncturedCarryHarmonic":
+        return self.then_even(self)
+
+    def power_even(self, exponent: int) -> "PuncturedCarryHarmonic":
+        """Repeat one even-width punctured block without replaying its domains."""
+        if type(exponent) is not int or exponent < 1:
+            raise ValueError("punctured harmonic exponent must be positive")
+        # Closed form of repeated composition.  The Boolean sheet is fixed;
+        # centered u scales by the exponent in F5.
+        center = self.idempotent_center
+        harmonic = (center + (exponent % 5) * self.centered) % 5
+        return PuncturedCarryHarmonic(self.outgoing, self.decisive_parity, harmonic)
+
+    def vieta_with(self, reflected: "PuncturedCarryHarmonic") -> tuple[int, int]:
+        """Anonymous forward/reflection root pair over F5.
+
+        Reflection-sheet metadata remains occurrence data outside this pair.
+        The returned elementary symmetric coordinates are invariant under
+        swapping the two roots.
+        """
+        if type(reflected) is not PuncturedCarryHarmonic:
+            raise TypeError("Vieta pairing needs another punctured port")
+        left, right = self.centered, reflected.centered
+        return (left + right) % 5, (left * right) % 5
+
+    @classmethod
+    def from_border_rows(
+        cls,
+        rows: tuple[tuple[int, int, int], tuple[int, int, int]],
+    ) -> "PuncturedCarryHarmonic":
+        """Decode the exact 20-class nonidentity border parameterization.
+
+        The sole identity/no-decision row is deliberately rejected: it is the
+        puncture, not another active port.
+        """
+        if rows == ((0, 0, 0), (1, 0, 0)):
+            raise ValueError("all-Equal/no-decision carry row is the punctured port")
+        if type(rows) is not tuple or len(rows) != 2:
+            raise ValueError("two immutable border rows are required")
+        first, second = rows
+        if any(type(row) is not tuple or len(row) != 3 for row in rows):
+            raise ValueError("invalid border rows")
+        if any(type(value) is not int for row in rows for value in row):
+            raise ValueError("border coordinates require exact integers")
+        outgoing, f0, f1 = first
+        if (
+            type(outgoing) is not int
+            or outgoing not in (0, 1)
+            or not all(type(v) is int and 0 <= v < 5 for v in (f0, f1))
+        ):
+            raise ValueError("invalid punctured border row")
+        if f1 != (2 * f0 - outgoing) % 5:
+            raise ValueError("border row violates the F5 harmonic relation")
+        parity = None
+        for candidate, (w0, w1) in enumerate(((1, 1), (2, 3))):
+            if second == (
+                outgoing,
+                (f0 - w0) % 5,
+                (f1 - w1) % 5,
+            ):
+                parity = candidate
+                break
+        if parity is None:
+            raise ValueError("border row is not a punctured decisive-prefix action")
+        return cls(outgoing, parity, f0)
+
+    def border_rows(self) -> tuple[tuple[int, int, int], tuple[int, int, int]]:
+        f0 = self.harmonic
+        f1 = self.dependent_harmonic
+        w0, w1 = ((1, 1), (2, 3))[self.decisive_parity]
+        return (
+            (self.outgoing, f0, f1),
+            (self.outgoing, (f0 - w0) % 5, (f1 - w1) % 5),
+        )

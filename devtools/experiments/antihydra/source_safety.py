@@ -8,11 +8,18 @@ The worklist is a bounded research constructor, not a new production scheduler.
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from operator import add, mul
+from typing import Literal
 
 from number_compiler.arithmetic.contracts.block_effect import BlockContextBudgetExceeded
 from number_compiler.arithmetic.contracts.scoped_handles import ArenaHandle, ArenaToken
+from number_compiler.arithmetic.automata.program_word import (
+    SourceWord,
+    RunTraversalMetrics,
+    iter_runs,
+    source_word_symbol_bounds,
+)
 from number_compiler.arithmetic.fields.branch_quotients import PRIME_BANK as PRIME_BANK
 from number_compiler.arithmetic.fields.branch_quotients import prime_lane_after
 from number_compiler.arithmetic.fields.consumer_pullback import (
@@ -24,9 +31,21 @@ from number_compiler.arithmetic.fields.consumer_pullback import (
     SaturatingAffineAction,
 )
 from number_compiler.arithmetic.fields.skew_transfer import SkewTransfer
+from number_compiler.arithmetic.fields.morphism_core import binary_power
+from number_compiler.arithmetic.fields.root_semifield import RootSemifieldElement
 from number_compiler.resources.ledger import ResourceLedger
 from number_compiler.resources.stores import LedgerDict, LedgerList
 from number_compiler.sequences.antihydra.blocks import arithmetic_kernel
+from number_compiler.sequences.collatz.root_germs import (
+    RationalPadicRootGerm,
+    RationalPadicRootMismatch,
+)
+
+from devtools.experiments.antihydra.mahler_predicate import (
+    MahlerPredicateState,
+    mahler_bit_action,
+    mahler_odd_event_action,
+)
 
 ZERO, HALF = Q(0), Q(1, 2)
 
@@ -39,6 +58,18 @@ class SourceBlock:
     guard: Interval
     ledger_delta: int
     ledger_minimum: int
+    predicate_action: SaturatingAffineAction = field(
+        default_factory=SaturatingAffineAction.identity
+    )
+
+    def __post_init__(self) -> None:
+        if type(self.predicate_action) is not SaturatingAffineAction:
+            raise TypeError("source block predicate action must be exact")
+
+    @property
+    def predicate_state(self) -> MahlerPredicateState:
+        """Semantic future-predicate residual, separate from source geometry."""
+        return MahlerPredicateState.initial().advance_action(self.predicate_action)
 
     @property
     def skew(self) -> SkewTransfer[int]:
@@ -72,8 +103,66 @@ class SourceBlock:
 
 
 @dataclass(frozen=True, slots=True)
+class SignedTailBoundary:
+    """Current-tail sign enclosure; never a source or all-shifts certificate.
+
+    The infinite signed tail is in [(numerator-dyadic)/ternary,
+    (numerator+dyadic)/ternary]. Equality at the positive threshold is
+    deliberately unresolved, even though nonempty binary words exclude it.
+    """
+
+    numerator: int
+    dyadic: int
+    ternary: int
+
+    def __post_init__(self) -> None:
+        if any(
+            type(value) is not int
+            for value in (self.numerator, self.dyadic, self.ternary)
+        ):
+            raise TypeError("signed-tail coordinates require exact integers")
+        if self.dyadic <= 0 or self.ternary <= 0:
+            raise ValueError("signed-tail scales must be positive")
+
+    @property
+    def classification(self) -> Literal["positive", "nonpositive", "boundary"]:
+        if self.numerator > self.dyadic:
+            return "positive"
+        if self.numerator <= -self.dyadic:
+            return "nonpositive"
+        return "boundary"
+
+    @property
+    def cone(self) -> tuple[int, int]:
+        return self.numerator + self.dyadic, self.dyadic - self.numerator
+
+    @property
+    def interval(self) -> tuple[Q, Q]:
+        return (
+            Q(self.numerator - self.dyadic, self.ternary),
+            Q(self.numerator + self.dyadic, self.ternary),
+        )
+
+
+@dataclass(frozen=True, slots=True)
 class SourceBlockID(ArenaHandle):
     """A finite source certificate in one research workspace."""
+
+
+@dataclass(frozen=True, slots=True)
+class OddZeroObserver:
+    """Odd-then-zeros observation, not live source-safety event authority.
+
+    ``source`` and ``residual`` retain authenticated radix-four occurrence
+    authority. They are not coordinates of the reusable predicate action.
+    This differs from ``SourceEvent``'s zero-then-one physical convention.
+    """
+
+    source: SourceWord
+    exponent: int
+    mismatch: RationalPadicRootMismatch
+    residual: SourceWord
+    predicate_action: SaturatingAffineAction
 
 
 class SourceSafetyWorkspace:
@@ -97,6 +186,61 @@ class SourceSafetyWorkspace:
     def _require_open(self) -> None:
         if self._closed:
             raise ValueError("closed Mahler source-safety workspace")
+
+    def odd_zero_observer(self, source: SourceWord) -> OddZeroObserver:
+        """Observe an odd-then-zeros action through the shared first-hole cursor.
+
+        The root ``-1/3`` selects ``v2(3D+1)`` on the exact finite source.
+        Prefix runs are accelerated by that existing root owner; the untouched
+        suffix is a source-aligned cursor, never a reconstructed integer/tile.
+        Live ``source_event`` instead selects ``v2(D)+1`` and zero-then-one
+        parity. This observer cannot replace that event's intermediate guards.
+        No claim about arbitrary temporal-cylinder construction follows here.
+        """
+        self._require_open()
+        traversal = RunTraversalMetrics()
+        try:
+            bounds = source_word_symbol_bounds(source, metrics=traversal)
+            if bounds is None or not 0 <= bounds[0] <= bounds[1] < 4:
+                raise ValueError(
+                    "odd-event source requires nonempty radix-four symbols"
+                )
+            low, _count = next(iter_runs(source, metrics=traversal))
+            if not low & 1:
+                raise ValueError("odd-event source must be positive and odd")
+            self.ledger.bump("mahler_odd_zero_observer_first_hole_demands")
+            mismatch, residual = RationalPadicRootGerm(1, 1).first_mismatch_word(
+                source, metrics=traversal
+            )
+            exponent = mismatch.valuation_bits
+            self.ledger.bump("mahler_odd_zero_observer_symbols_represented", exponent)
+            if exponent > self.max_width:
+                self.ledger.bump("safety_refusals")
+                raise BlockContextBudgetExceeded(
+                    "Mahler odd-event width budget exceeded"
+                )
+            action = mahler_odd_event_action(exponent)
+            self.ledger.bump(
+                "mahler_odd_zero_observer_operand_bits",
+                sum(
+                    abs(value.numerator).bit_length() + value.denominator.bit_length()
+                    for value in (action.scale, action.offset, action.cap)
+                    if value is not None
+                ),
+            )
+            return OddZeroObserver(source, exponent, mismatch, residual, action)
+        finally:
+            # Instrument the demanded path itself, including failed/early-exit
+            # work. No post-query metrics traversal reads the untouched suffix.
+            self.ledger.bump(
+                "mahler_odd_zero_observer_source_nodes_visited", traversal.visited_nodes
+            )
+            self.ledger.counters["mahler_odd_zero_observer_source_frontier_peak"] = max(
+                self.ledger.counters.get(
+                    "mahler_odd_zero_observer_source_frontier_peak", 0
+                ),
+                traversal.peak_frontier,
+            )
 
     def view(self, handle: SourceBlockID) -> SourceBlock:
         self._require_open()
@@ -148,6 +292,16 @@ class SourceSafetyWorkspace:
             block.guard.upper.denominator,
             block.ledger_delta,
             block.ledger_minimum,
+            block.predicate_action.scale.numerator,
+            block.predicate_action.scale.denominator,
+            block.predicate_action.offset.numerator,
+            block.predicate_action.offset.denominator,
+            0
+            if block.predicate_action.cap is None
+            else block.predicate_action.cap.numerator,
+            1
+            if block.predicate_action.cap is None
+            else block.predicate_action.cap.denominator,
         )
         self.ledger.bump(
             "safety_retained_integer_bits", sum(abs(v).bit_length() for v in integers)
@@ -160,12 +314,26 @@ class SourceSafetyWorkspace:
         core = arithmetic_kernel(h % 2, 1)
         endpoint = core.output + 3 * (h // 2) - 1
         centered = SourceBlock(
-            1, residue, endpoint, Interval(), core.delta, core.minimum
+            1,
+            residue,
+            endpoint,
+            Interval(),
+            core.delta,
+            core.minimum,
+            mahler_bit_action(residue),
         )
         action = centered.fractional
         guard = Interval().intersect(Interval().pullback(action))
         return self._publish(
-            SourceBlock(1, residue, endpoint, guard, core.delta, core.minimum)
+            SourceBlock(
+                1,
+                residue,
+                endpoint,
+                guard,
+                core.delta,
+                core.minimum,
+                mahler_bit_action(residue),
+            )
         )
 
     def compose(
@@ -206,6 +374,7 @@ class SourceSafetyWorkspace:
         if action != first_fractional.then(second_fractional):
             raise ArithmeticError("fractional projection escaped the centered skew")
         guard = first.guard.intersect(second.guard.pullback(first_fractional))
+        predicate_action = first.predicate_action.then(second.predicate_action)
         self.ledger.bump(
             "safety_composition_operand_bits",
             gain.bit_length() + modulus.bit_length() + abs(endpoint).bit_length(),
@@ -218,6 +387,7 @@ class SourceSafetyWorkspace:
                 guard,
                 first.ledger_delta + second.ledger_delta,
                 min(first.ledger_minimum, first.ledger_delta + second.ledger_minimum),
+                predicate_action,
             )
         )
 
@@ -270,6 +440,85 @@ class SourceSafetyWorkspace:
                 )
             stack.pop()
         return self._keys[(width, residue)]
+
+    def tail_boundary(self, handle: SourceBlockID) -> SignedTailBoundary:
+        """Project the existing centered skew, without a parity-word replay."""
+        transfer = self.view(handle).skew
+        numerator = transfer.upper - transfer.lower - 2 * transfer.offset
+        self.ledger.bump("safety_tail_projections")
+        self.ledger.bump(
+            "safety_tail_operand_bits",
+            transfer.upper.bit_length()
+            + transfer.lower.bit_length()
+            + abs(transfer.offset).bit_length()
+            + abs(numerator).bit_length(),
+        )
+        return SignedTailBoundary(numerator, transfer.lower, transfer.upper)
+
+    def root_boundary(
+        self, handle: SourceBlockID
+    ) -> tuple[RootSemifieldElement, RootSemifieldElement]:
+        """Demand and charge the partial root chart, including failed exits."""
+        tail = self.tail_boundary(handle)
+        a, b = tail.cone
+        denominator = 2 * tail.dyadic
+        self.ledger.bump("safety_root_projections")
+        self.ledger.bump(
+            "safety_root_operand_bits",
+            abs(a).bit_length() + abs(b).bit_length() + 2 * denominator.bit_length(),
+        )
+        if min(a, b) < 0:
+            self.ledger.bump("safety_root_projection_failures")
+        return (
+            RootSemifieldElement(Q(a, denominator)),
+            RootSemifieldElement(Q(b, denominator)),
+        )
+
+    def refine_tail(self, handle: SourceBlockID) -> tuple[SourceBlockID, ...]:
+        """Refine only an unresolved current tail, retaining every prefix guard.
+
+        A positive terminal stops this query, not all later shifted-tail queries.
+        Existing complete source guards and ledger minima remain on each child.
+        """
+        block = self.view(handle)
+        if block.guard.empty or self.tail_boundary(handle).classification != "boundary":
+            self.ledger.bump("safety_tail_terminal_queries")
+            return ()
+        if block.width >= self.max_width:
+            self.ledger.bump("safety_refusals")
+            raise BlockContextBudgetExceeded("Mahler safety width budget exceeded")
+        children = []
+        for bit in (0, 1):
+            self.ledger.bump("safety_tail_refinements")
+            child = self.compose(handle, self.cylinder(1, bit))
+            if not self.view(child).guard.empty:
+                children.append(child)
+        return tuple(children)
+
+    def extend_run(self, handle: SourceBlockID, bit: int, count: int) -> SourceBlockID:
+        """Compose a supplied homogeneous run through the shared binary owner.
+
+        This preserves source admission and all guards. It does not discover a
+        source's next run or assert that the resulting guard is nonempty.
+        """
+        block = self.view(handle)
+        if type(bit) is not int or bit not in (0, 1):
+            raise ValueError("run bit must be zero or one")
+        if type(count) is not int or count < 0:
+            raise ValueError("run count must be a natural integer")
+        if block.width + count > self.max_width:
+            self.ledger.bump("safety_refusals")
+            raise BlockContextBudgetExceeded("Mahler safety width budget exceeded")
+        if not count:
+            return handle
+        powered = binary_power(
+            self.cylinder(1, bit),
+            count,
+            identity=self.cylinder(0, 0),
+            compose=self.compose,
+        )
+        self.ledger.bump("safety_tail_run_compositions", powered.compositions)
+        return self.compose(handle, powered.value)
 
     def close(self) -> None:
         """Release retained research certificates and invalidate their handles."""

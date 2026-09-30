@@ -10,7 +10,11 @@ from __future__ import annotations
 from collections.abc import MutableMapping
 from dataclasses import dataclass
 
-from number_compiler.arithmetic.automata.program_word import EMPTY, CanonicalWord
+from number_compiler.arithmetic.automata.program_word import (
+    EMPTY,
+    SourceWord,
+    source_word_key,
+)
 from number_compiler.arithmetic.automata.symmetry_powering import (
     BinaryLiftEngine,
     BinaryLiftMetrics,
@@ -35,7 +39,7 @@ class _CanonicalCollatzTransition:
     valuation: int
     target_multiplier: int
     target_offset: int
-    target_suffix: CanonicalWord
+    target_suffix: SourceWord
     root: RationalPadicRootGerm | None
     mismatch: RationalPadicRootMismatch | None
 
@@ -228,7 +232,7 @@ class CollatzGermTransitionCache:
                     "collatz-germ-fixed-v2",
                     alpha,
                     beta,
-                    germ.suffix.node_id,
+                    source_word_key(germ.suffix),
                     germ.suffix.length,
                 )
                 action = _CollatzTransitionAction(
@@ -262,7 +266,7 @@ class CollatzGermTransitionCache:
                 key = (
                     "collatz-germ-root-boundary",
                     normalized_root.canonical_key,
-                    normalized_suffix.node_id,
+                    source_word_key(normalized_suffix),
                     normalized_suffix.length,
                 )
                 action = _CollatzTransitionAction(

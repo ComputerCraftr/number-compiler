@@ -5,8 +5,10 @@ databases and other run payloads are ignored here. They belong in local run
 directories or CI artifact storage, not in Git. The September 11 cleanup removed
 these files from the working tree; it did not rewrite existing Git history.
 
-Only this policy and reviewed `results/current/YYYY-Www/README.md` summaries
-remain versioned. Run-local Markdown reports and Python scripts are ignored
+Only this policy, reviewed Sunday-start `results/current/week-of-YYYY-MM-DD/`
+indexes and named topic files, and explicitly retained cross-week retrospectives
+under `results/history/` remain versioned. See the [sprint index](../docs/index.md#sprint-history-and-provenance).
+Run-local Markdown reports and Python scripts are ignored
 alongside JSON, logs and profiles; there are no extension-wide exceptions.
 Already tracked artifacts must be explicitly untracked because `.gitignore`
 does not remove them from Git's index. Reproduction tools live under `devtools`, and bounded independent test oracles under `tests/support`.

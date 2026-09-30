@@ -25,6 +25,57 @@ from number_compiler.arithmetic.contracts.exact_tree_context import (
 from number_compiler.arithmetic.fields.radix import reverse_pair_sums
 
 
+def test_demanded_carry_regions_preserve_both_ordered_entry_cases() -> None:
+    # Includes repeated regions reached under different carries. A memo keyed
+    # only by the domain node would incorrectly merge these requests.
+    for values in product(range(3), repeat=5):
+        planes = PlaneAlgebra()
+        source = planes.from_values("domain", values)
+        for incoming in (0, 1):
+            expected = []
+            carry = incoming
+            for domain in values:
+                expected.append(carry)
+                carry = carry if domain == 1 else int(domain == 2)
+            result, actual = planes.carry_prefix(source, incoming)
+            assert actual == carry
+            assert tuple(planes.atom(result, i) for i in range(5)) == tuple(expected)
+
+
+@pytest.mark.parametrize("domain", (0, 1, 2))
+@pytest.mark.parametrize("incoming", (0, 1))
+def test_spatial_carry_run_builds_only_the_demanded_case(
+    domain: int, incoming: int, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    planes = PlaneAlgebra()
+    width = 10**100
+    source = planes.constant("domain", domain, width)
+
+    def forbidden(*_args: object, **_kwargs: object) -> Never:
+        raise AssertionError("carry run expanded its represented coefficients")
+
+    monkeypatch.setattr(words, "from_values", forbidden)
+    result, outgoing = planes.carry_prefix(source, incoming)
+    expected_exit = incoming if domain == 1 else int(domain == 2)
+    assert outgoing == expected_exit
+    assert planes.atom(result, 0) == incoming
+    assert planes.atom(result, width - 1) == expected_exit
+    assert planes.carry_region_requests == planes.carry_region_publications == 1
+    assert planes.carry_region_hits == 0
+    assert planes.metrics(result)["runs"] <= 2
+
+
+def test_spatial_carry_request_rejects_nonbit_and_foreign_plane() -> None:
+    planes = PlaneAlgebra()
+    source = planes.constant("domain", 1, 5)
+    for incoming in (-1, 2, True):
+        with pytest.raises(ValueError, match="exact bit"):
+            planes.carry_prefix(source, incoming)
+    foreign = PlaneAlgebra().constant("domain", 1, 5)
+    with pytest.raises(ValueError, match="foreign"):
+        planes.carry_prefix(foreign)
+
+
 @pytest.mark.parametrize("seed", (1, 1111, 196))
 def test_three_planes_agree_with_independent_successors(seed: int) -> None:
     carrier = FactoredReverseCarrier()

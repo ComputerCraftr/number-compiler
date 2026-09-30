@@ -90,6 +90,20 @@ def audit_comma_source_adapter(
                     node.entering_digit,
                     node.cycles,
                 )
+            elif node.kind == "phase-prefix":
+                if (
+                    type(node.steps) is not int
+                    or not 0 < node.steps < 10
+                    or not 1 <= node.leading <= 9
+                    or not 0 <= node.entering_digit <= 9
+                ):
+                    raise ValueError("comma phase prefix has invalid coordinates")
+                expected_key = (
+                    "phase-prefix",
+                    node.leading,
+                    node.entering_digit,
+                    node.steps,
+                )
             elif node.kind == "sequence":
                 if node.before is None or node.after is None:
                     raise ValueError("comma sequence lost a chronological child")

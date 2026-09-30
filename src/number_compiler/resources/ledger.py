@@ -303,10 +303,14 @@ class ResourceLedger:
             )
 
     def make_dict(
-        self, owner: int, *, nodes_per_entry: int = 0
+        self, owner: int, *, nodes_per_entry: int = 0, write_once: bool = False
     ) -> LedgerDict[_StoreK, _StoreV]:
         require_integer(nodes_per_entry, "nodes per entry", 0)
-        result: LedgerDict[_StoreK, _StoreV] = LedgerDict(self, owner, nodes_per_entry)
+        if type(write_once) is not bool:
+            raise TypeError("mapping write-once policy must be Boolean")
+        result: LedgerDict[_StoreK, _StoreV] = LedgerDict(
+            self, owner, nodes_per_entry, write_once=write_once
+        )
         self.register_container(
             owner,
             result,
@@ -554,6 +558,13 @@ class ResourceLedger:
         for owner, account in enumerate(self._accounts):
             if account.container is not None:
                 yield owner, account.container
+
+    def registered_container(self, owner: int) -> object | None:
+        """Retrieve one live owner's store without an inventory scan."""
+        account = self._account(owner)
+        if account.disposed:
+            raise RuntimeError("resource owner has been disposed")
+        return account.container
 
     def iter_payloads(self) -> Iterator[tuple[int, object]]:
         """Expose actual registered payloads for an independent iterative audit."""

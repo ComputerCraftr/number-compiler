@@ -94,8 +94,11 @@ def transport_reuse(
     source: SourceImageView,
 ) -> SourceImageCandidate:
     _require_published_view(workspace, cached_result)
-    key = admitted_input_key(workspace, action, source)
-    if key is None or key != admitted_input_key(workspace, action, cached_source):
+    # Family adapters may narrow the generic cylinder key when their
+    # publication is exact-source-only. Use the same admission key as the
+    # scheduler, including when this method is called directly.
+    key = workspace.admitted_input_key(action, source)
+    if key is None or key != workspace.admitted_input_key(action, cached_source):
         raise ValueError("dyadic return reuse requires the same admitted cylinder")
     workspace.validate_payload(cached_result.payload)
     assert type(action) is DyadicReturnActionID
@@ -111,7 +114,9 @@ def transport_reuse(
     ):
         raise ValueError("dyadic return cached effect lost its source/action binding")
     summary = cached.summary
-    if summary.cycle is not None and key[0] != "singleton":
+    if summary.cycle is not None and (
+        type(key) is not tuple or key[0] not in ("singleton", "exact-run")
+    ):
         raise ValueError("a singleton cycle cannot represent a high-fiber cylinder")
     # Share complete immutable support; issue a new source-bound image. No
     # endpoint, branch word, spatial coefficient, or midpoint is rediscovered.

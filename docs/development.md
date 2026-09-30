@@ -152,7 +152,7 @@ with SIGKILL or the machine stops; check for survivors in those cases. A tool
 returning a running session is a yield, not a timeout. Keep tracking that
 session to completion, or terminate the guard so its cleanup runs.
 
-These controls contain the memory incident recorded in the [2026-W37 sprint](../results/current/2026-W37/README.md); they do not make the
+These controls contain the memory incident recorded in the [September 7–13 retrospective sprint](../results/history/2026-09-07--2026-09-13/README.md); they do not make the
 affected wide-port decision-DAG algorithm acceptable. Large failing probes stay
 paused until the construction path is bounded. Guard failures are incomplete
 evidence, and application allocation budgets remain independently enforced.
@@ -163,7 +163,10 @@ Build a wheel with `python -m pip wheel --no-deps --wheel-dir /tmp/number-compil
 
 New evidence uses fingerprint version 4: project configuration plus authored files and assets under `src`, `tests`, and `devtools`, excluding tool caches and generated distribution metadata. Historical fingerprints are unchanged.
 
-Summarize new benchmark evidence in the current ISO-week record under `results/current/`. Canonical developer modules write raw evidence to fresh local paths; they do not create another versioned microtask report.
+Summarize new benchmark evidence in the appropriate topic file under
+`results/current/week-of-YYYY-MM-DD/`, using the **Sunday** start date.
+Canonical developer modules write raw evidence to fresh local paths; they do
+not create another versioned microtask report.
 
 ### Documentation placement
 
@@ -173,8 +176,14 @@ Summarize new benchmark evidence in the current ISO-week record under `results/c
   when a result changes rather than appending another implementation milestone.
 - **Weekly sprints:** dated changes, patch provenance, cache fixes, rejected
   implementations, benchmark tables, validation counts and source fingerprints.
-  Use one record per ISO week with topic summaries; put lengthy supporting
-  records in expandable details. Preserve original dates and evidence limits.
+  Weeks run Sunday–Saturday. Keep `README.md` as a short topic index; append
+  records to the relevant family or shared-infrastructure file, not the index.
+  Give each record its actual date or date range. File cross-week work once in
+  its completion week and state the full range. Do not guess missing dates;
+  retain undated aggregate history as explicitly labeled retrospectives.
+  Preserve original fingerprints and evidence limits. Use the existing topic
+  categories; register new categories in the catalog and the narrow Markdown
+  allowlist in `.gitignore` when needed.
 - **Architecture and API guides:** current module responsibilities, interfaces
   and user-visible behavior. Keep implementation history in the sprint.
 - **Release ledger and proof index:** current gate disposition and formal

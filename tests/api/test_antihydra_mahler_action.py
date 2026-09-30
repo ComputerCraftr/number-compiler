@@ -7,6 +7,8 @@ from dataclasses import fields
 
 import pytest
 
+from tests.support.report_values import object_record
+
 from number_compiler.api.antihydra_observation import observe_run
 from number_compiler.api.number_api import NumberCompiler
 from number_compiler.arithmetic.contracts.block_effect import BlockContextBudgetExceeded
@@ -72,6 +74,91 @@ def test_arithmetic_mahler_and_hensel_do_not_construct_physical_roof(
     assert term.ledger.counters.get("physical_roof_construction_requests", 0) == 0
 
 
+def test_physical_adapter_authenticates_arithmetic_once(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    physical = run(2)
+    original = runtime.ArithmeticResult.require_source
+    validated: list[runtime.ArithmeticResult] = []
+
+    def counted(result: runtime.ArithmeticResult) -> None:
+        validated.append(result)
+        original(result)
+
+    monkeypatch.setattr(runtime.ArithmeticResult, "require_source", counted)
+    arithmetic = runtime.authenticated_arithmetic_result(physical)
+    assert validated == [arithmetic]
+    assert arithmetic is physical._term._result
+    assert runtime.authenticated_arithmetic_result(arithmetic) is arithmetic
+    assert validated == [arithmetic, arithmetic]
+
+
+@pytest.mark.parametrize("forged_owner", ("run", "arithmetic"))
+def test_physical_adapter_rejects_forged_source_owner(forged_owner: str) -> None:
+    physical = run(2)
+    arithmetic = physical._term._result
+    assert type(arithmetic) is runtime.ArithmeticResult
+    owner = physical if forged_owner == "run" else arithmetic
+    token = owner._source
+    object.__setattr__(owner, "_source", object())
+    try:
+        with pytest.raises(ValueError, match="unbound Antihydra"):
+            runtime.authenticated_arithmetic_result(physical)
+    finally:
+        object.__setattr__(owner, "_source", token)
+
+
+@pytest.mark.parametrize("precision", (1, 2, 8, 65))
+@pytest.mark.parametrize("extent", (0, 1024))
+def test_tangent_uses_one_precision_limited_clock(
+    precision: int, extent: int, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from number_compiler.sequences.antihydra import mahler
+    from number_compiler.sequences.collatz.inverse_three_clock import InverseThreeClock
+
+    result = AntihydraArithmeticTerm(extent).result()
+    demanded: list[tuple[int, int]] = []
+
+    class CountedClock(InverseThreeClock):
+        @property
+        def inverse_unit(self) -> int:
+            demanded.append((self.precision, self.phase))
+            return super().inverse_unit
+
+    monkeypatch.setattr(mahler, "InverseThreeClock", CountedClock)
+    packet = tangent(result, precision)
+    modulus = 1 << precision
+    inverse = pow(3, -result.returns, modulus)
+    normalized = (result.h - 1) * inverse % modulus
+    root = -pow(3, -result.returns - 1, modulus) % modulus
+    difference = (normalized - root) % modulus
+    expected_match = (
+        (difference & -difference).bit_length() - 1 if difference else precision
+    )
+    assert packet["normalized_residue"] == normalized
+    assert packet["clock_root"] == root
+    assert packet["matched_bits"] == expected_match
+    assert packet["resolved"] == bool(difference)
+    assert len(demanded) == 1
+    assert demanded[0][0] == max(3, precision)
+    if not difference:
+        assert packet["required_next_precision"] == precision + 6
+    assert result.ledger.counters["tangent_inverse_clock_demands"] == 1
+    assert result.ledger.counters["tangent_modular_power_exponent_bits"] == (
+        demanded[0][1].bit_length()
+    )
+    assert (
+        result.ledger.counters["tangent_clock_input_exponent_bits"]
+        == (extent + 1).bit_length()
+    )
+    assert result.ledger.counters["tangent_modular_operand_bits"] == (
+        max(1, (result.h - 1).bit_length())
+        + max(1, ((result.h - 1) & (modulus - 1)).bit_length())
+        + max(1, inverse.bit_length())
+        + 3 * (max(3, precision) + 1)
+    )
+
+
 def test_mahler_consumes_the_composed_source_image_without_refolding_segments() -> None:
     term = AntihydraArithmeticTerm(1024)
     result = term.result()
@@ -104,7 +191,9 @@ def test_antihydra_and_mahler_consume_the_shared_saturated_publication(
     assert published and published[-1].width == 65
     prior = len(published)
     action = associated_action(result)
-    assert len(published) > prior
+    # Public source validation reads the aggregate twice (result and endpoint).
+    # The Mahler projector reads it once; packet serialization does not reread.
+    assert len(published) == prior + 3
     assert action["extent"] == 65
     assert action["first_failure"] == 2
     assert result.first_failure_index is None
@@ -322,3 +411,195 @@ def test_root_shell_is_source_bound_exact_squared_coordinate(returns: int) -> No
     assert not term._segments_ready and not term.physical_publications
     assert term.ledger.counters["mahler_root_shell_projections"] == 1
     assert term.ledger.counters["mahler_root_shell_operand_bits"] > 0
+
+
+@pytest.mark.parametrize("extent", (0, 1, 2, 3, 8, 63, 64, 65, 128, 257))
+def test_compact_source_image_publishes_exact_arithmetic_and_shared_mahler_carry(
+    extent: int, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from number_compiler.hashlife.execution import dyadic_return_transport
+
+    def forbidden(*_args: object, **_kwargs: object) -> None:
+        raise AssertionError("production arithmetic constructed a branch itinerary")
+
+    for name in ("residue_macro", "balanced_residue_macro"):
+        monkeypatch.setattr(dyadic_return_transport, name, forbidden)
+    term = AntihydraArithmeticTerm(extent)
+    result = term.result()
+    packet = associated_action(result)
+    residual = object_record(packet["temporal_run_residual"])
+    d, carry, balance, minimum, first_failure = 7, 0, 0, 0, None
+    for index in range(extent):
+        bit = d & 1
+        carry = 3 * carry + (bit << index)
+        d = (3 * d + bit) // 2
+        balance += 2 if bit else -1
+        minimum = min(minimum, balance)
+        if balance < 0 and first_failure is None:
+            first_failure = index
+    assert (result.h, result.balance, result.minimum, result.first_failure_index) == (
+        d + 1,
+        balance,
+        minimum,
+        first_failure,
+    )
+    assert residual["Q"] == extent and residual["C"] == carry
+    assert _rational(residual["rho"]) == Fraction(2**extent, 3**extent)
+    assert _rational(residual["h"]) == Fraction(4 * carry, 3**extent)
+    assert residual["delta"] == balance and residual["minimum"] == minimum
+    workspace = term.arithmetic_workspace
+    assert workspace is not None
+    if extent:
+        support_id = workspace.summary().support
+        assert support_id is not None
+        support = workspace.support_node(support_id)
+        assert support.saturated and support.children is None
+        assert support.branch_word is None
+        if extent <= workspace.MAX_LEAF_STEPS:
+            assert term.ledger.counters["antihydra_arithmetic_temporal_run_actions"] > 0
+        else:
+            assert (
+                term.ledger.counters["antihydra_arithmetic_balanced_composite_tails"]
+                == 1
+            )
+    assert term.ledger.counters.get("antihydra_arithmetic_leaf_steps", 0) == 0
+    assert not term._segments_ready
+
+
+@pytest.mark.parametrize("bit,length", ((0, 1000), (1, 1000)))
+def test_centered_run_selector_powers_both_antihydra_branches(
+    bit: int, length: int
+) -> None:
+    workspace = AntihydraArithmeticTerm(0)._arithmetic_image()
+    d = (1 << length) - 1 if bit else 1 << length
+    runs = tuple(workspace._runs(d + 1, length))
+    assert len(runs) == 1
+    size, selected, endpoint = runs[0]
+    assert (size, selected) == (length, bit)
+    # Centered zero steps multiply by three, unlike the Collatz zero action.
+    assert endpoint == 3**length - bit
+
+
+@pytest.mark.parametrize("family", ("antihydra", "collatz"))
+def test_independent_audit_accepts_run_image_and_demanded_support(family: str) -> None:
+    from number_compiler.resources.dyadic_return_payload_audit import (
+        audit_dyadic_return_payloads,
+    )
+    from number_compiler.resources.ledger import ResourceLedger
+    from number_compiler.sequences.collatz.physical_images import (
+        CollatzPhysicalImageWorkspace,
+    )
+
+    ledger = ResourceLedger()
+    workspace = (
+        AntihydraArithmeticImageWorkspace(ledger, 65)
+        if family == "antihydra"
+        else CollatzPhysicalImageWorkspace(ledger, 27, 65, retain_chronology=False)
+    )
+    assert not audit_dyadic_return_payloads(ledger).invalid
+    assert ledger.counters["dyadic_payload_audit_branch_steps"] == 65
+    assert sum(width for _start, width, _word in workspace.branch_segments()) == 65
+    assert not audit_dyadic_return_payloads(ledger).invalid
+
+
+@pytest.mark.parametrize("family", ("antihydra", "collatz"))
+@pytest.mark.parametrize("field", ("offset", "delta", "minimum", "odd_steps", "source"))
+@pytest.mark.parametrize("expanded", (False, True))
+def test_independent_audit_rejects_resealed_saturated_run_forgery(
+    family: str, field: str, expanded: bool
+) -> None:
+    from number_compiler.resources.dyadic_return_payload_audit import (
+        audit_dyadic_return_payloads,
+    )
+    from number_compiler.resources.ledger import ResourceLedger
+    from number_compiler.sequences.collatz.physical_images import (
+        CollatzPhysicalImageWorkspace,
+    )
+
+    ledger = ResourceLedger()
+    workspace = (
+        AntihydraArithmeticImageWorkspace(ledger, 65)
+        if family == "antihydra"
+        else CollatzPhysicalImageWorkspace(ledger, 27, 65, retain_chronology=False)
+    )
+    if expanded:
+        assert sum(width for _start, width, _word in workspace.branch_segments()) == 65
+    image = workspace.image_node(workspace.root_payload)
+    summary = image.summary
+    support_id = summary.support
+    assert support_id is not None
+    support = workspace.support_node(support_id)
+    assert support.saturated
+    if field == "source":
+        source = workspace.source_node(workspace.root_source)
+        object.__setattr__(source, "exact", False)
+        raw_snapshot = workspace.source_snapshots[workspace.root_source.local_id]
+        assert isinstance(raw_snapshot, tuple)
+        snapshot: list[object] = list(raw_snapshot)
+        snapshot[7] = False
+        workspace.source_snapshots[workspace.root_source.local_id] = tuple(snapshot)
+    else:
+        raw_support_snapshot = workspace.support_snapshots[support_id.local_id]
+        raw_image_snapshot = workspace.image_snapshots[workspace.root_payload.local_id]
+        assert isinstance(raw_support_snapshot, tuple)
+        assert isinstance(raw_image_snapshot, tuple)
+        support_snapshot: list[object] = list(raw_support_snapshot)
+        image_snapshot: list[object] = list(raw_image_snapshot)
+        if field == "offset":
+            replacement = support.transfer.offset + 1
+            object.__setattr__(support.transfer, "offset", replacement)
+            support_snapshot[3] = image_snapshot[5] = replacement
+        else:
+            replacement = getattr(support, field) + (-1 if field == "minimum" else 1)
+            object.__setattr__(support, field, replacement)
+            object.__setattr__(summary, field, replacement)
+            support_index, image_index = {
+                "delta": (6, 7),
+                "minimum": (7, 8),
+                "odd_steps": (5, 9),
+            }[field]
+            support_snapshot[support_index] = image_snapshot[image_index] = replacement
+        workspace.support_snapshots[support_id.local_id] = tuple(support_snapshot)
+        workspace.image_snapshots[workspace.root_payload.local_id] = tuple(
+            image_snapshot
+        )
+    assert audit_dyadic_return_payloads(ledger).invalid
+    if field != "source":
+        # Rechecking the retained seal alone would accept these changes.
+        # Independent source-law reconstruction must actually run.
+        assert ledger.counters["dyadic_payload_audit_branch_steps"] == 65
+
+
+def test_audit_rejects_negative_demanded_transfer_with_matching_exact_endpoint() -> (
+    None
+):
+    from number_compiler.resources.dyadic_return_payload_audit import (
+        audit_dyadic_return_payloads,
+    )
+    from number_compiler.resources.ledger import ResourceLedger
+    from number_compiler.sequences.collatz.physical_images import (
+        CollatzPhysicalImageWorkspace,
+    )
+
+    ledger = ResourceLedger()
+    workspace = CollatzPhysicalImageWorkspace(ledger, 27, 65, retain_chronology=False)
+    summary = workspace.summary()
+    assert summary.transfer.upper == 0
+    assert sum(width for _start, width, _word in workspace.branch_segments()) == 65
+    expanded_id = workspace.demanded_support[workspace.root_payload]
+    expanded = workspace.support_node(expanded_id)
+    transfer = expanded.transfer
+    # Forge a decreasing map with the correct value at this one source.
+    # Endpoint agreement cannot replace the independently checked branch law.
+    object.__setattr__(transfer, "upper", -1)
+    offset = summary.transfer.offset * transfer.lower + workspace.seed
+    object.__setattr__(transfer, "offset", offset)
+    assert transfer.upper * workspace.seed + offset == (
+        summary.transfer.offset * transfer.lower
+    )
+    raw_snapshot = workspace.support_snapshots[expanded_id.local_id]
+    assert isinstance(raw_snapshot, tuple)
+    snapshot: list[object] = list(raw_snapshot)
+    snapshot[2], snapshot[3] = -1, offset
+    workspace.support_snapshots[expanded_id.local_id] = tuple(snapshot)
+    assert audit_dyadic_return_payloads(ledger).invalid

@@ -509,15 +509,10 @@ class CanonicalSequenceCompiler:
     ) -> SpecialTheoremResolution:
         """Explicitly demand Fermat/Mersenne theorem classification.
 
-        This is intentionally absent from :meth:`compile`.  Source digits,
-        lengths, and radix programs are exact without primality.  Any survivor
-        mask proved by earlier output construction is consumed first; only an
-        unresolved two-sheet mask reaches arithmetic theorem work.  The
-        ``allow_classical_ceiling`` compatibility keyword rejects true because
-        reference recurrences are not production theorem sources.
-        ``collect_etale_factor=True`` requests a separate coefficient-gcd
-        witness.  A verified proper divisor can decide an unresolved candidate;
-        the additional quadratic ring work is reported explicitly.
+        Compilation never requests primality. Consume existing source constraints
+        before new theorem work; classical recurrence completion is forbidden.
+        ``collect_etale_factor`` requests a separately charged coefficient-gcd
+        witness, which can establish compositeness for an unresolved candidate.
         """
         if type(family) is not str:
             raise TypeError("special family must be a string")
@@ -602,12 +597,15 @@ class CanonicalSequenceCompiler:
         # A factor limit is semantically irrelevant when the optional factor
         # projection is disabled.  Normalize it out of theorem-cache identity.
         factor_key = factor_limit if use_factor_projection else 0
-        key = (
+        base_key = (
             family,
             parameter,
             factor_key,
             use_factor_projection,
             use_terminal_certificate,
+        )
+        key = (
+            *base_key,
             collect_etale_factor,
             max_factor_products if collect_etale_factor else 0,
         )
@@ -617,18 +615,30 @@ class CanonicalSequenceCompiler:
         from number_compiler.sequences.power_numbers.theorem_query import (
             resolve_special_theorem as resolve_special_theorem_query,
         )
-
-        out = resolve_special_theorem_query(
-            family,
-            parameter,
-            factor_limit=factor_limit,
-            use_factor_projection=use_factor_projection,
-            use_terminal_certificate=use_terminal_certificate,
-            allow_classical_ceiling=allow_classical_ceiling,
-            collect_etale_factor=collect_etale_factor,
-            max_factor_products=max_factor_products,
-            max_candidate_bits=max_candidate_bits,
+        from number_compiler.sequences.power_numbers.theorem_query import (
+            with_etale_factor,
         )
+
+        # Enrich the admitted base result, charging only new witness work.
+        base = (
+            self._theorem_cache.get((*base_key, False, 0))
+            if collect_etale_factor
+            else None
+        )
+        if collect_etale_factor and base is not None:
+            out = with_etale_factor(base, max_products=max_factor_products)
+        else:
+            out = resolve_special_theorem_query(
+                family,
+                parameter,
+                factor_limit=factor_limit,
+                use_factor_projection=use_factor_projection,
+                use_terminal_certificate=use_terminal_certificate,
+                allow_classical_ceiling=allow_classical_ceiling,
+                collect_etale_factor=collect_etale_factor,
+                max_factor_products=max_factor_products,
+                max_candidate_bits=max_candidate_bits,
+            )
         if out.source_guard.failure_bit is not None:
             from number_compiler.projection.output_quotient import SpecialBranchMask
 

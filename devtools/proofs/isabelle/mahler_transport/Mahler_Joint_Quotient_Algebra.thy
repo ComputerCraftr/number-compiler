@@ -185,6 +185,39 @@ definition collatz_event_exponent :: "nat \<Rightarrow> nat \<Rightarrow> bool" 
   "collatz_event_exponent H q \<longleftrightarrow>
     odd H \<and> (\<exists>u. 3*H+1 = 2^q*u \<and> odd u)"
 
+
+text \<open>
+  The odd-then-zero observation is not the source-safety selector. At source
+  one their canonical exponents are respectively two and one. These finite
+  witnesses use the existing source predicates and reject both crossed
+  bindings; no convention bridge is inferred from a shared carry classifier.
+\<close>
+
+lemma source_one_source_event:
+  "source_event_exponent 1 1"
+  unfolding source_event_exponent_def
+  by (intro exI[of _ 0] exI[of _ 1]) simp
+
+lemma source_one_odd_zero_event:
+  "collatz_event_exponent 1 2"
+  unfolding collatz_event_exponent_def
+  by (intro conjI; simp; intro exI[of _ 1]; simp)
+
+lemma source_one_rejects_source_event_two:
+  "\<not> source_event_exponent 1 2"
+  unfolding source_event_exponent_def
+  by (auto; arith)
+
+lemma source_one_rejects_odd_zero_event_one:
+  "\<not> collatz_event_exponent 1 1"
+proof
+  assume "collatz_event_exponent 1 1"
+  then obtain u :: nat where factor: "4=2*u" and parity: "odd u"
+    by (auto simp: collatz_event_exponent_def)
+  have "u=2" using factor by arith
+  then show False using parity by simp
+qed
+
 lemma source_event_exponent_from_odd_factor:
   assumes "D = 2^k*u" "odd u"
   shows "source_event_exponent D (Suc k)"
@@ -268,7 +301,9 @@ ML \<open>
   val _ = if null (Thm_Deps.all_oracles
     @{thms branch_suffix_then branch_then_assoc encoded_branch_then_python
       lane_one_event_agreement
-      lane_laws_distinct joint_lanes_use_source_event
+      lane_laws_distinct source_one_source_event source_one_odd_zero_event
+      source_one_rejects_source_event_two source_one_rejects_odd_zero_event_one
+      joint_lanes_use_source_event
       joint_lanes_bind_both_sources
       joint_observer_source_scope})
     then () else error "Joint quotient algebra depends on an oracle";

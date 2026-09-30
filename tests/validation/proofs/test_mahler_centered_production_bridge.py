@@ -125,7 +125,7 @@ def test_centered_chart_authenticates_its_source_handle() -> None:
         first.antihydra_chart(foreign, -1)
 
 
-def test_retention_accounting_counts_only_stored_source_block_integers() -> None:
+def test_retention_accounting_counts_stored_source_and_predicate_integers() -> None:
     ledger = ResourceLedger()
     workspace = SourceSafetyWorkspace(ledger)
     block = workspace.view(workspace.cylinder(1, 0))
@@ -139,6 +139,16 @@ def test_retention_accounting_counts_only_stored_source_block_integers() -> None
         block.guard.upper.denominator,
         block.ledger_delta,
         block.ledger_minimum,
+        block.predicate_action.scale.numerator,
+        block.predicate_action.scale.denominator,
+        block.predicate_action.offset.numerator,
+        block.predicate_action.offset.denominator,
+        0
+        if block.predicate_action.cap is None
+        else block.predicate_action.cap.numerator,
+        1
+        if block.predicate_action.cap is None
+        else block.predicate_action.cap.denominator,
     )
     assert ledger.counters["safety_retained_integer_bits"] == sum(
         abs(value).bit_length() for value in stored

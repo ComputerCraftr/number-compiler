@@ -109,6 +109,16 @@ class TemporalFamilyWork:
     finite_block_evictions: int | None = None
     finite_block_cold_atoms: int | None = None
     finite_block_cold_steps: int | None = None
+    run_actions: int | None = None
+    zero_run_pumps: int | None = None
+    one_run_pumps: int | None = None
+    cycle_pumps: int | None = None
+    represented_cycle_repetitions: int | None = None
+    run_contraction_publications: int | None = None
+    run_routes: int | None = None
+    balanced_routes: int | None = None
+    punctured_event_actions: int | None = None
+    punctured_event_symbols: int | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -303,6 +313,16 @@ def collect_temporal_diagnostics(
                 _count(counters, f"{prefix}_finite_block_evictions"),
                 _count(counters, f"{prefix}_finite_block_cold_atoms"),
                 _count(counters, f"{prefix}_finite_block_cold_steps"),
+                _count(counters, f"{prefix}_temporal_run_actions"),
+                _count(counters, f"{prefix}_temporal_zero_run_pumps"),
+                _count(counters, f"{prefix}_temporal_one_run_pumps"),
+                _count(counters, f"{prefix}_temporal_cycle_pump_requests"),
+                _count(counters, f"{prefix}_temporal_cycle_pump_repetitions"),
+                _count(counters, f"{prefix}_run_contraction_publications"),
+                _count(counters, f"{prefix}_temporal_run_routes"),
+                _count(counters, f"{prefix}_temporal_balanced_routes"),
+                _count(counters, f"{prefix}_temporal_punctured_event_actions"),
+                _count(counters, f"{prefix}_temporal_punctured_event_symbols"),
             )
         )
 

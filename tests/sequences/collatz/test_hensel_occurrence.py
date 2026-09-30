@@ -4,7 +4,7 @@ import pytest
 
 from number_compiler.arithmetic.automata.program_word import (
     EMPTY,
-    CanonicalWord,
+    SourceWord,
     from_runs,
     from_values,
     iter_runs,
@@ -217,8 +217,8 @@ def test_second_image_word_does_not_query_boundary_twice(
         raise AssertionError("direct second image constructed a first successor")
 
     def tracked(
-        self: RationalPadicRootGerm, word: CanonicalWord
-    ) -> tuple[RationalPadicRootMismatch, CanonicalWord]:
+        self: RationalPadicRootGerm, word: SourceWord
+    ) -> tuple[RationalPadicRootMismatch, SourceWord]:
         calls.append(self)
         return original(self, word)
 

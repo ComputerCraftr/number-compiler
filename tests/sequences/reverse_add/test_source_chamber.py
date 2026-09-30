@@ -80,3 +80,24 @@ def test_196_orbit_no_growth_pairs_preserve_generic_two_step_path(
     assert tuple(workspace.iter_digits()) == _digits(expected, 10)
     assert workspace.ledger.counters.get("source_image_primitive_applications", 0) == 0
     workspace.dispose()
+
+
+def test_admitted_chamber_stream_does_not_repeat_point_prefixes(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from number_compiler.sequences.reverse_add.source_ports import SourceCarryPorts
+
+    source = ExactSource((1,) * 257, 10)
+    workspace = ReverseSourceImageWorkspace(ResourceLedger(), int("1" * 257), 3)
+    assert workspace.width() == len(source.digits)
+
+    def forbidden(*_args: object) -> int:
+        raise AssertionError("stream repeated point-prefix demand")
+
+    monkeypatch.setattr(SourceCarryPorts, "_first_prefix", forbidden)
+    assert tuple(workspace.iter_digits()) == (8,) * 257
+    assert (
+        workspace.ledger.counters["reverse_source_ports_stream_region_visits"]
+        < 12 * 257
+    )
+    workspace.dispose()

@@ -76,6 +76,29 @@ def test_uninstrumented_lanes_are_unavailable_not_zero() -> None:
     assert (record.resources.entries, record.resources.nodes) == (3, 4)
 
 
+@pytest.mark.parametrize("prefix", ("collatz_physical", "antihydra_arithmetic"))
+def test_run_measurements_share_schema_without_evaluation(prefix: str) -> None:
+    ledger = ResourceLedger()
+    ledger.bump(f"{prefix}_action_publications")
+    ledger.bump(f"{prefix}_temporal_run_actions", 3)
+    ledger.bump(f"{prefix}_temporal_zero_run_pumps", 2)
+    ledger.bump(f"{prefix}_temporal_one_run_pumps", 1)
+    ledger.bump(f"{prefix}_temporal_punctured_event_actions", 2)
+    ledger.bump(f"{prefix}_temporal_punctured_event_symbols", 7)
+    ledger.bump(f"{prefix}_run_contraction_publications")
+    before = dict(ledger.counters)
+    record = collect_temporal_diagnostics_snapshot(ledger).family_work[0]
+    assert (record.punctured_event_actions, record.punctured_event_symbols) == (2, 7)
+    assert (record.run_actions, record.zero_run_pumps, record.one_run_pumps) == (
+        3,
+        2,
+        1,
+    )
+    assert record.run_contraction_publications == 1
+    assert record.represented_cycle_repetitions is None
+    assert ledger.counters == before
+
+
 def test_comma_macro_reuse_is_distinct_from_represented_steps() -> None:
     ledger = ResourceLedger()
     ledger.bump("comma_boundary_prefix_applications", 2)

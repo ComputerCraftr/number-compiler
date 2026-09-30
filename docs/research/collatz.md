@@ -17,8 +17,18 @@ remain open.**
 source cylinder. Balanced low-residue substitution transports the right child
 through the left affine effect. Digit-only publication retains one saturated
 support root; requested branch support remains a separate charged demand.
-Antihydra uses the same constructor with its own law and retains the support
-needed by guarded consumers. Mahler reads that admitted Antihydra image.
+Antihydra uses the same constructor with its own law. Both families defer
+chronological support until a guarded consumer requests it. Mahler reads that
+admitted Antihydra image.
+
+**Finite run contraction:** an even normalized run of length `k` divides by
+`2^k`; an odd run starting at `x+1=2^k*u` ends at `3^k*u-1` after `2k`
+physical ticks. Maximal lengths come from the existing dyadic valuation owner.
+Small-source and homogeneous queries use these contractions; wide mixed
+sources retain balanced residue construction. Neither route retains an
+itinerary for the ordinary endpoint. Run count and integer operand work are
+separate from represented ticks. A finite F5/root-sum fiber is an optional
+anonymous observer, not an equality test for exact source continuations.
 
 **Cost scope:** bounded leaves still classify source-dependent branches.
 Balanced composition removes growing-prefix recomposition; the sum of operand
@@ -35,7 +45,7 @@ exact-cycle admission and bit/storage cost refinement remain separate.
 The finite parity bijection concerns normalized odd steps `(3*x+1)/2`,
 not ordinary physical steps, whose branch words cannot contain `11`.
 
-[Integration, patch provenance and measured scope](../../results/current/2026-W39/README.md#balanced-dyadic-temporal-cutover).
+[Integration, patch provenance and measured scope](../../results/current/week-of-2026-09-20/shared.md#balanced-dyadic-temporal-cutover).
 
 ### Shifted parity germs
 
@@ -64,7 +74,7 @@ phase one needs the pending symbol plus `p` tail symbols for `p >= 1`.
   its positivity consumer remains distinct from physical ledger safety.
 
 The [refinement map](../proofs/balanced-dyadic-refinement.md) and
-[implementation record](../../results/current/2026-W39/README.md#shifted-parity-germs-and-batched-limbs)
+[implementation record](../../results/current/week-of-2026-09-20/shared.md#shifted-parity-germs-and-batched-limbs)
 separate numeric proof, projection savings and remaining source construction.
 
 ### Powered boundary germs and precision
@@ -92,7 +102,7 @@ after source information has been erased into a terminal point leaf. The
 weekly record gives an exact failing call and distinguishes it from the
 still-open source-bound recursive construction.
 
-[Selective import, input fingerprints and demand measurements](../../results/current/2026-W39/README.md#affine-point-germ-consumers).
+[Selective import, input fingerprints and demand measurements](../../results/current/week-of-2026-09-20/shared.md#affine-point-germ-consumers).
 
 - **Checked theorem:** `Collatz_Reduced_Precision` proves that, for `n` physical
   steps containing `e` even steps, adding `2^min(n,e+1) * h` to the source
@@ -109,7 +119,7 @@ still-open source-bound recursive construction.
   Exact memo keys remain source-cylinder bound; no production minimality or
   new asymptotic bound is claimed.
 
-[Corpora, collision witnesses and cost measurements](../../results/current/2026-W39/README.md#powered-boundary-germ-audit).
+[Corpora, collision witnesses and cost measurements](../../results/current/week-of-2026-09-20/shared.md#powered-boundary-germ-audit).
 
 ## Saturated finite safety and source binding
 
@@ -134,7 +144,7 @@ not coverage of one source's infinite trajectory.
 source-application bound or complete Python worklist refinement follows from
 removing retained history. See the [proof scope](../proofs.md#finite-saturated-threshold-actions).
 
-[Implementation and validation record](../../results/current/2026-W39/README.md#saturated-finite-safety-and-source-binding).
+[Implementation and validation record](../../results/current/week-of-2026-09-20/collatz.md#saturated-finite-safety-and-source-binding).
 
 ## Shared branch observers and joint experiment
 
@@ -150,7 +160,7 @@ repeated full keys among 32,768 positive odd 16-bit Collatz sources. Absence
 of conflicts without reuse does not establish closure. See the
 [Mahler joint-observer scope](antihydra-mahler.md#joint-future-observer-experiment).
 
-[Implementation and validation record](../../results/current/2026-W39/README.md#shared-branch-observers-and-joint-experiment).
+[Implementation and validation record](../../results/current/week-of-2026-09-20/collatz.md#shared-branch-observers-and-joint-experiment).
 
 ## Exact source and clock laws
 
@@ -198,7 +208,7 @@ resolves this missing context. This refutes the leaf projection as a successor
 identity, not the full cylinder. Production output morphisms consume the
 reduced ports lazily; repeated temporal closure remains unproved.
 
-[Implementation and validation record](../../results/current/2026-W39/README.md#carryf5-directional-integration-2026-09-21).
+[Implementation and validation record](../../results/current/week-of-2026-09-20/collatz.md#carryf5-directional-integration-2026-09-21).
 
 <a id="cross-family-work-and-cache-measurements"></a>
 
@@ -209,7 +219,7 @@ The measured CLI digit path did not consume the new F5 observer, so those
 benchmarks cannot attribute a CLI speedup to it. Reverse/add construction
 refusals supply no successful-work samples.
 
-[Implementation and validation record](../../results/current/2026-W39/README.md#cross-family-work-and-cache-measurements).
+[Implementation and validation record](../../results/current/week-of-2026-09-20/collatz.md#cross-family-work-and-cache-measurements).
 
 <a id="downloaded-spatial-grammar-patch"></a>
 
@@ -221,7 +231,7 @@ The exact spatial language and its length dependence are specified under
 [generator macros](#generator-macros-spatial-phase-and-birth-emissions).
 A fixed spatial alphabet does not establish reuse of complete future regions.
 
-[Implementation and validation record](../../results/current/2026-W39/README.md#downloaded-spatial-grammar-patch).
+[Implementation and validation record](../../results/current/week-of-2026-09-20/collatz.md#downloaded-spatial-grammar-patch).
 
 ## Shared temporal effect reuse
 
@@ -235,8 +245,47 @@ handles. Exact singleton cycle shortcuts retain the high fiber.
 stated cycle-exclusion condition for nonnegative offsets. They do not refine
 the Python cache or construct a quotient across different residue clauses.
 Aligned-source reuse and unmatched-source discovery have different costs.
+Here `lower_bound` bounds the numerical source orbit, not the running time of
+every possible compiler. Earlier measured costs describe their particular
+constructor and observation demand; they are not impossibility results for
+new temporal quotients.
 
-[Implementation and validation record](../../results/current/2026-W39/README.md#shared-temporal-effect-reuse).
+[Implementation and validation record](../../results/current/week-of-2026-09-20/collatz.md#shared-temporal-effect-reuse).
+
+### Finite D8 source sections
+
+- **Implemented construction:** the physical run owner can apply eight
+  normalized symbols using one affine row indexed by the low eight source
+  bits. Rows are discovered lazily in a ledger-owned table of at most 256
+  entries. Physical duration is eight plus the number of odd symbols.
+- **Target-centered representation:** for `x = r + 2^D u`, the exact endpoint
+  is `H^D(r) + 3^h u`. The centered action retains `(D,h)`; the target origin
+  remains occurrence data. Production D8 rows store `(h,H^8(r))`, with gain
+  derived from `h`, instead of retaining a word and duplicate affine coefficients.
+  There are nine centered D8 actions and 127 translated effects. Neither count
+  authorizes merging source occurrences or their future safety observations.
+- **Admission:** a whole row must fit the remaining physical clock. Homogeneous
+  runs and exact cycle handling remain available; a row that could hide first
+  cycle entry is rejected. Optional F5 transport uses the same affine action.
+- **Cost scope:** discovery, retained rows, attempted arithmetic and explicit
+  payload verification are counted separately. Fewer actions alone do not
+  prove a cold wall-time gain or a better arbitrary-source asymptotic bound.
+- **Research input:** the downloaded recursive D-row report expresses an upper
+  half as a dihedral transform of its lower half XOR an innovation. This is an
+  exact word representation, not a proof that arbitrary innovations disappear.
+  Its supplied-word census and hot timings do not certify this source tree.
+
+[Current integration and measurements](../../results/current/week-of-2026-09-27/shared.md#recursive-dyadic-report-integration)
+separate the production D8 port from the unported recursive word interner and
+longer primitive-word detector.
+
+`collatz_target_centered_source_lift` proves the endpoint identity for every
+finite horizon and source lift, using the shared dyadic source theorem.
+Exhaustive D16 composition checks establish 17 centered actions and 19,275
+translated effects. These are finite checks of two D8 sections, not evidence
+of a source-universal sublinear D16 constructor. Antihydra has its own existing
+source-lift theorem with gain `3^D`; its ledger minimum and Mahler's saturation
+cap remain distinct retained consumers.
 
 ## Five-multiplication primary-jet reduction
 
@@ -355,7 +404,7 @@ support and retains its separate safety predicate.
 extent. The bounded comparison regressed latency; generator reuse alone is
 not a successful performance gate.
 
-[Dated evidence](../../results/current/2026-W39/README.md#source-only-macro-construction-measurements).
+[Dated evidence](../../results/current/week-of-2026-09-20/collatz.md#source-only-macro-construction-measurements).
 
 ## Production and reproduction
 
@@ -426,7 +475,7 @@ Arithmetic consistency of a supplied action/cylinder pair is insufficient
 admission. The downloaded scalar-leaf constructor and unchecked summary cache
 were not accepted as replacements for the source-bound scheduler.
 
-[Implementation and validation record](../../results/current/2026-W39/README.md#updated-saturated-publication-patch).
+[Implementation and validation record](../../results/current/week-of-2026-09-20/collatz.md#updated-saturated-publication-patch).
 
 ## Shared safety transformers and exact cycle acceleration
 
@@ -482,4 +531,4 @@ Cycle-specific measurements confirm bounded primitive discovery after exact
 cycle entry, with logarithmic scheduler overhead. They are not a general
 source-discovery bound or the complete release growth manifest.
 
-[Dated evidence](../../results/current/2026-W39/README.md#exact-cycle-acceleration-measurements).
+[Dated evidence](../../results/current/week-of-2026-09-20/collatz.md#exact-cycle-acceleration-measurements).

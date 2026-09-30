@@ -197,6 +197,11 @@ The certificate packet distinguishes `runtime_verified` from
 the published OEIS choice bits are not runtime branch oracles. `--info metrics`
 alone never initiates certificate verification or arithmetic. Metrics remain
 read-only schema 8.
+Its shared `family_work` rows report `punctured_event_actions` (completed
+source events) and `punctured_event_symbols` (transitions represented by those
+events). They remain null when uninstrumented. These counters do not imply
+source discovery was skipped or that anonymous harmonic fibers determine a
+successor.
 Its `comma` lane distinguishes published transitions from evaluated image work,
 phase cycles, transfer constructions and phase-fold terms. Work budgets charge
 ten conservative slots per transfer; operand widths include phase-fold bounds,

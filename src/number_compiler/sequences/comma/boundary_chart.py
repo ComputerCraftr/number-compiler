@@ -15,6 +15,7 @@ from typing import Literal
 from number_compiler.sequences.comma.arithmetic import (
     CycleTransfer,
     _sector_child_increments,
+    classify_near_port,
     cycle_power_residue,
     cycle_transfer,
 )
@@ -70,18 +71,7 @@ def initial_chart(kind: Literal["N", "Z"], a: int) -> BoundaryChart:
     )
 
 
-def chart_step(
-    residue: int,
-    chart: BoundaryChart,
-    *,
-    charge_bits: Callable[[int], None] | None = None,
-) -> ChartMove:
-    """One chart move; an Entry jump retains its exact cycle descriptor.
-
-    A Near move consumes one literal edge, except at a fork/landmine where
-    it consumes zero. Entry cycle weights are evaluated at the receiving
-    exponent, not at the residue's representative exponent.
-    """
+def _validate_chart(residue: int, chart: BoundaryChart) -> None:
     if (
         type(residue) is not int
         or not 0 <= residue < PERIOD
@@ -96,6 +86,21 @@ def chart_step(
         or (chart.kind == "near" and not 1 <= chart.coordinate <= 540)
     ):
         raise ValueError("invalid comma boundary chart")
+
+
+def chart_step(
+    residue: int,
+    chart: BoundaryChart,
+    *,
+    charge_bits: Callable[[int], None] | None = None,
+) -> ChartMove:
+    """One chart move; an Entry jump retains its exact cycle descriptor.
+
+    A Near move consumes one literal edge, except at a fork/landmine where
+    it consumes zero. Entry cycle weights are evaluated at the receiving
+    exponent, not at the residue's representative exponent.
+    """
+    _validate_chart(residue, chart)
     f, delta, x = chart.leading, chart.delta, chart.coordinate
     if charge_bits is not None:
         charge_bits(residue.bit_length() + delta.bit_length() + x.bit_length() + 16)
@@ -151,16 +156,46 @@ def chart_moves(
     *,
     charge: Callable[[int], None] | None = None,
     charge_bits: Callable[[int], None] | None = None,
+    grouped_near: bool = False,
 ) -> Iterator[tuple[BoundaryChart, ChartMove]]:
     """Construct a bounded macro, retaining its terminal chart.
 
     Exhaustion is a failure, never a landmine or a branch-safety verdict.
+    Grouped construction uses the weighted port only for strict interior
+    Near prefixes. Its weight is physical phase time, never diagonal dwell.
     """
+    if type(grouped_near) is not bool:
+        raise ValueError("comma chart grouping requires a Boolean selector")
     chart = initial_chart(kind, a)
     for _ in range(MAX_CHART_MOVES):
         if charge is not None:
             charge(1)
-        move = chart_step(residue, chart, charge_bits=charge_bits)
+        _validate_chart(residue, chart)
+        if (
+            grouped_near
+            and chart.kind == "near"
+            and chart.coordinate
+            > 10 * ((-chart.coordinate) % 10) + chart.leading + int(chart.leading < 9)
+        ):
+            prefix = classify_near_port(
+                chart.leading,
+                chart.coordinate,
+                charge_work=charge,
+                charge_bits=charge_bits,
+            )
+            if prefix.physical_steps <= 0:
+                raise ArithmeticError(
+                    "comma interior Near prefix has zero physical time"
+                )
+            move = ChartMove(
+                BoundaryChart(
+                    "near", chart.leading, chart.delta, prefix.terminal_headroom
+                ),
+                ChartWeight(0, 0, prefix.physical_steps, 1),
+                literal_increment=chart.coordinate - prefix.terminal_headroom,
+            )
+        else:
+            move = chart_step(residue, chart, charge_bits=charge_bits)
         yield chart, move
         if move.next_chart is None:
             return

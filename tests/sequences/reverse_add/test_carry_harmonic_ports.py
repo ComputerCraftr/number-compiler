@@ -54,6 +54,9 @@ def test_complete_finite_generator_closure_and_fixed_length_counts() -> None:
         18: (501, 21),
     }
     for row in counts:
+        assert row["punctured_border"] == row["border"] - 1
+        if row["width"] >= 6:
+            assert row["punctured_border"] == 20
         if row["width"] in expected:
             assert (row["occupancy"], row["border"]) == expected[row["width"]]
         if row["width"] >= 18:

@@ -24,7 +24,7 @@ required. Hensel is a separate observation; neither requests physical roofs.
 preserve chronological guards and the event interval `1 ≤ (3/2)^q theta < 3/2`.
 The CLI Mahler packet exposes exact rational radicand coefficients and guards
 from its admitted image. This is an observer, not a new source constructor or
-an all-time safety proof. [Implementation evidence](../../results/current/2026-W39/README.md#root-shell-and-consumer-relative-moore-integration).
+an all-time safety proof. [Implementation evidence](../../results/current/week-of-2026-09-20/shared.md#root-shell-and-consumer-relative-moore-integration).
 
 Binary point requests use the shared affine point germ with its independent
 blank cutoff, without materializing the arithmetic endpoint or requesting
@@ -32,11 +32,15 @@ first-failure descent. Ordinary value output requests the endpoint directly;
 ledger, physical and Mahler information still consume the same admitted image
 through their own safety predicates. A current-point germ is not sufficient
 to replace that support or prove future safety. The
-[integration record](../../results/current/2026-W39/README.md#affine-point-germ-consumers)
+[integration record](../../results/current/week-of-2026-09-20/shared.md#affine-point-germ-consumers)
 separates these demand savings from unchanged cold source discovery.
 
-The public aggregate omits support handles, while the scheduler retains support
-needed by physical consumers. The pinned source's Mahler margin fails at return
+The public aggregate omits support handles. The scheduler retains one saturated
+image and expands chronology only for a demanded physical consumer. Short or
+homogeneous centered runs use exact affine powers; long mixed horizons use the
+shared balanced constructor to avoid growing-integer run replay. The Mahler
+packet exposes its centered carry `C`, source residue, and rational real guard
+from this same image. The pinned source's Mahler margin fails at return
 two, where its Antihydra ledger remains safe. These predicates are distinct.
 
 **Proof scope:** finite associated-action laws are checked in
@@ -47,9 +51,38 @@ see the [executable refinement map](../proofs/balanced-dyadic-refinement.md).
 Python publication/retained-ID refinement, resource bounds and a source-global
 invariant remain open. Dated validation belongs in the weekly record.
 
-[Implementation and validation record](../../results/current/2026-W39/README.md#one-scheduler-for-arithmetic-and-finite-mahler-safety).
+[Implementation and validation record](../../results/current/week-of-2026-09-20/antihydra-mahler.md#one-scheduler-for-arithmetic-and-finite-mahler-safety).
 
 ## Joint future-observer experiment
+
+### Recursive source pullback and coupled boundary
+
+**Exact algebra; bounded validation:** an admitted width-`D` occurrence has
+`X=r+2^D u` and `Y=t+3^D u`. Its inverse is
+`X=(2/3)^D Y+r-(2/3)^D t`. For the composed predicate
+`F(m)=min(C,A*m+B)`, `A=(3/2)^D`, the affine offset is
+`B=3*A*r-3*t`. Thus `Z=m+3X` removes that offset; only the cap carries
+independent predicate information beyond the exact occurrence.
+
+For an ordinary finite source covered by the input width, subsequent source
+chunks are zero. The translated midpoint still need not have zero high bits.
+The normalized interval is `(3*t/A, (C+3*t)/A)`; positivity is equivalent to
+`C>0`. The [independent bounded check](../../tests/validation/proofs/test_mahler_recursive_boundary.py)
+verifies the cancellation, ordered interval nesting and the `39 → 6 → 0`
+survivor counts at widths 8, 16 and 32 for sources 1–255.
+
+**Constructor candidate:** the downloaded recursive selector composes D8 source
+blocks without calling the primitive source builder after bootstrap. Its poison
+tests pass, but a cold source-53 probe still creates `D/8-1` wider compositions.
+This supports finite balanced construction, not logarithmic total construction
+or a proved asymptotic bound. The candidate is not the production scheduler.
+**Open theorem:** every positive finite source must eventually leave the nested
+interval. Monotonicity alone does not prove crossing, and Mahler failure still
+does not imply Antihydra ledger failure.
+
+[Patch review and validation](../../results/current/week-of-2026-09-27/antihydra-mahler.md#mahler-recursive-source-pullback-review).
+
+### Earlier joint-observer audit
 
 The [joint audit](../../devtools/experiments/antihydra/joint_future_quotient.py)
 combines suffix, prime buckets and deck/chart views of admitted source edges.
@@ -70,7 +103,7 @@ proves suffix composition, base-three encoding modulo 729 and distinct lane
 laws. Partition completeness and legal-continuation closure remain open;
 no experiment publishes a pump or merges production sources.
 
-[Implementation and validation record](../../results/current/2026-W39/README.md#joint-future-observer-experiment).
+[Implementation and validation record](../../results/current/week-of-2026-09-20/antihydra-mahler.md#joint-future-observer-experiment).
 
 ## Bounded projection publication
 
@@ -79,7 +112,7 @@ source, action, projection and exact endpoint before publication. Eliminating
 a duplicate roof chain does not eliminate bounded physical discovery or prove
 the source-7 barrier.
 
-[Implementation and validation record](../../results/current/2026-W39/README.md#bounded-projection-publication).
+[Implementation and validation record](../../results/current/week-of-2026-09-20/antihydra-mahler.md#bounded-projection-publication).
 
 ## Checked arithmetic and cylinders
 
@@ -87,6 +120,14 @@ the source-7 barrier.
 proves the total skew equation, centered orbit, block composition, exact minimum
 prefix guard, and guarded agreement before the first failed block. The latter is
 conditional on remaining before failure and does not prove all-time safety.
+
+**Checked named-event contraction:** for `D=2^k(2M+1)`, the centered word
+`0^k1` returns `3^(k+1)M+(3^(k+1)+1)/2`, with ledger delta `2-k` and minimum
+`-k`. The three `antihydra_punctured_event_*` lemmas in
+[`Maximal_Run_Arithmetic`](../../devtools/proofs/isabelle/integration_dyadic/Maximal_Run_Arithmetic.thy)
+reuse the homogeneous run and source-step owners. They justify one admitted
+event; they do not prove future event discovery or identify anonymous roots
+with ordered successor occurrences.
 
 [`Antihydra_Arithmetic_Cylinder_Lift.thy`](../../devtools/proofs/isabelle/antihydra/Antihydra_Arithmetic_Cylinder_Lift.thy)
 identifies family bits with a dyadic source word and proves exact demanded
@@ -124,7 +165,7 @@ source events or prove the Python F5 tables' complete temporal refinement.
 The bounded Mahler source observer now folds its column maps through this same
 carry/F5 owner. Temporal jet forgetting also holds before further shared
 continuations; ordered safety remains a separate consumer. See the
-[transfer and verification record](../../results/current/2026-W39/README.md#f5-observer-and-safety-transfer).
+[transfer and verification record](../../results/current/week-of-2026-09-20/antihydra-mahler.md#f5-observer-and-safety-transfer).
 
 For an odd centered source `U`, with `a=v2(3U+1)`, the next odd event is
 
@@ -135,7 +176,7 @@ U'=3^{a-1}(3U+1)/2^a,\qquad E'=E+3-a.
 The extra factor distinguishes this law from accelerated Collatz. Fractional
 safety, ledger safety and all-time non-halting remain separate obligations.
 
-[Implementation and validation record](../../results/current/2026-W39/README.md#shared-collatz-f5-spatial-action-checked-transfer).
+[Implementation and validation record](../../results/current/week-of-2026-09-20/antihydra-mahler.md#shared-collatz-f5-spatial-action-checked-transfer).
 
 ## Literal and barrier boundary
 
@@ -184,6 +225,53 @@ certificate.
 
 ## Original Mahler fractional safety
 
+### Signed current-tail boundary
+
+For a chronological bit word of length `n`, let
+`C = sum(e_j 3^(n-1-j) 2^j)` and `N = 3^n - 2^n - 2C`.
+This is a projection of the existing source skew, not another source state.
+A tail with remainder in `[-1,1]` lies in
+`[(N-2^n)/3^n, (N+2^n)/3^n]`:
+
+- `N > 2^n`: the **current tail** is positive for every such remainder.
+- `N <= -2^n`: the current tail is nonpositive.
+- Otherwise: refine the cylinder. Endpoint equality stays unresolved on the
+  positive side; nonempty binary words exclude both equalities by parity.
+
+The cone coordinates `A=N+2^n`, `B=2^n-N` obey
+`0: (A,B) -> (3A,2B-A)` and `1: (A,B) -> (2A-B,3B)`.
+Their homogeneous run powers use only `2^k` and `3^k`; the implementation
+reuses shared binary composition and preserves the original fractional guard.
+It powers a supplied run, without claiming to discover future source runs.
+
+**Checked finite algebra:**
+[Mahler_Cyclotomic_Boundary](../../devtools/proofs/isabelle/mahler_safety/Mahler_Cyclotomic_Boundary.thy)
+proves the signed-source bridge, enclosure, absorbing sign regions, cone/run
+laws, the Vieta identity and boundary-exit selectors. Its three-word six-bit
+lemma retains an explicit no-adjacent-ones assumption; a separate finite lemma
+partitions the existing 18 survivor residues into 15 positive and three boundary
+cases. The bounded-remainder premise remains explicit. It is not a proof
+that every source has a globally admissible infinite continuation.
+
+**Finite experiment:** the six-step census reproduces 15 positive
+current tails and boundary residues `{9,13,45}`; twelve steps split into 198
+positive tails and `{521,777,2569}`. Boundary-only refinement through depth 500
+keeps two to five cylinders from depth six onward. Neither a uniform frontier
+bound nor exclusion of positive natural sources follows from this experiment.
+
+Use the existing research driver for the sign query:
+
+```console
+python -m devtools.experiments.antihydra.barrier_search --mode tail --depth 500 --max-nodes 20000
+```
+
+Positive current-tail terminals must **not** replace all-shift fractional
+safety: the word `0011` has a positive time-zero tail but an empty fractional
+guard. The full interval census below remains a separate oracle and theorem.
+[Implementation and verification](../../results/current/week-of-2026-09-27/antihydra-mahler.md#signed-mahler-current-tail-boundary).
+
+### All-shift fractional intervals
+
 The supplied September 20 research folder contains a separate, exact safety
 result for real numbers. Write `x = D + t`, with `0 ≤ t < 1/2`. Safety through
 `N` means `frac(x (3/2)^n) < 1/2` for every `0 ≤ n ≤ N`. It is equivalent to
@@ -216,7 +304,7 @@ is `Mahler_Safety_Cylinders`; the [proof index](../proofs.md) gives its build.
 The finite certificate session and oracle audits are checked; focused build
 evidence remains distinct from aggregate release validation.
 
-[Dated evidence](../../results/current/2026-W38/README.md#original-mahler-safety-build-evidence).
+[Dated evidence](../../results/current/week-of-2026-09-20/antihydra-mahler.md#original-mahler-safety-build-evidence).
 
 **Predicate separation:** all `7 ≤ x < 7.5` fail fractional safety within two
 steps, while the source-seven Antihydra ledgers at those steps are `0, 2, 4`.
@@ -292,7 +380,7 @@ the Python runtime, its full worklist implementation or a production CLI cutover
 Both transport theories have checked focused-session evidence; they do not
 certify a production worklist or an arbitrary-horizon construction bound.
 
-[Dated evidence](../../results/current/2026-W38/README.md#source-cylinder-transport-build-evidence).
+[Dated evidence](../../results/current/week-of-2026-09-20/antihydra-mahler.md#source-cylinder-transport-build-evidence).
 
 ### Conditional prime and carry observations
 
@@ -328,7 +416,7 @@ The bounded refinement census preserves full high fibers but grows the
 number of retained cylinders. It is finite constructor evidence, not a
 compression theorem.
 
-[Dated evidence](../../results/current/2026-W38/README.md#fractional-refinement-census).
+[Dated evidence](../../results/current/week-of-2026-09-20/antihydra-mahler.md#fractional-refinement-census).
 
 For every finite horizon `N`, the positive real `x_N=2^N` is safe through
 `N`: each observed value is the integer `2^(N-n)3^n`. The witness changes
@@ -425,7 +513,7 @@ Finite grammar validation includes supplied-word powering and exact source
 obstructions. Larger event exponents remain unexplored; the source-seven
 certificate and reverse/add construction failures were retained.
 
-[Dated evidence](../../results/current/2026-W38/README.md#reachable-grammar-validation-evidence).
+[Dated evidence](../../results/current/week-of-2026-09-20/antihydra-mahler.md#reachable-grammar-validation-evidence).
 
 **Open construction:** find and verify a parameter-transport rule preserving
 source realizability, chronological guards and subsequent consumers through
@@ -547,7 +635,7 @@ provably empty children. Bounded differential and poison tests support the
 implementation; complete binary-search worklist refinement and all-time
 closure remain open.
 
-[Dated evidence](../../results/current/2026-W38/README.md#next-event-domain-pruning-measurements).
+[Dated evidence](../../results/current/week-of-2026-09-20/antihydra-mahler.md#next-event-domain-pruning-measurements).
 
 ## Primary literature and a mixed-coordinate grammar
 
@@ -621,7 +709,7 @@ finite endpoint/gain projection and six-step high-fiber multiplier 729.
 offset or fractional guard. These projections cannot authorize successor
 substitution or an all-time certificate.
 
-[Implementation and validation record](../../results/current/2026-W39/README.md#demanded-history-and-the-shared-joint-adic-chart).
+[Implementation and validation record](../../results/current/week-of-2026-09-20/antihydra-mahler.md#demanded-history-and-the-shared-joint-adic-chart).
 
 ## Recovered bounded tree-choice observer
 
@@ -642,4 +730,28 @@ and archive audit are retained in the dated record. The shared minimum-prefix
 and affine-threshold actions preserve the distinction between Mahler positivity
 and Antihydra ledger safety.
 
-[Implementation and validation record](../../results/current/2026-W39/README.md#recovered-bounded-tree-choice-observer).
+[Implementation and validation record](../../results/current/week-of-2026-09-20/antihydra-mahler.md#recovered-bounded-tree-choice-observer).
+
+## Safety residual versus occurrence ports
+
+For the finite Mahler safety consumer, the semantic residual is `FORBIDDEN`,
+positive infinity at the empty prefix, or the exact positive rational margin.
+An appended bit acts by
+`m' = min(c_e, 3/2 (m-e))`, with `c_0=9/4`, `c_1=3/4`.
+Nonpositive margins are forbidden, including equality at zero. The nonpositive
+offset of every Mahler bit action makes failure absorbing under continuation.
+
+**Implemented research construction:** the source-cylinder workspace now
+composes this predicate action using the production `SaturatingAffineAction`
+owner. Source residue, deck/lift and recursive occurrence ports remain
+separate. Equal margins can have different ports without contradicting
+right-congruence for the safety consumer. The public source-seven observer
+already uses the same action algebra; this change does not add a second
+production executor.
+
+**Scope:** exact rational margins do not establish a finite all-depth state
+bound. The downloaded depth-500 counts and the first-lift-bit repair concern
+their finite corpus, not an unconditional Mahler or Antihydra safety theorem.
+Those reports do not replace the source-global reachability obligation.
+
+[Independent recurrence checks and patch audit](../../results/current/week-of-2026-09-27/shared.md#recursive-dyadic-report-integration).

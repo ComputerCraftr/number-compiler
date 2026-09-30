@@ -23,7 +23,9 @@ from number_compiler.resources.stores import LedgerList
 from number_compiler.sequences.comma.arithmetic import (
     _large_sector_children,
     comma_children,
+    classify_near_port,
     decimal_sector,
+    phase_prefix_displacement,
     safe_complete_cycles,
 )
 from number_compiler.sequences.comma.action_arena import (
@@ -33,7 +35,7 @@ from number_compiler.sequences.comma.action_arena import (
 )
 from number_compiler.sequences.comma.boundary_quotient import PERIOD
 
-SEMANTIC_VERSION = "comma-source-cylinder-v2"
+SEMANTIC_VERSION = "comma-source-cylinder-v3"
 SOURCE = 20
 FIRST_FORK_VALUE = 19_999_999_918
 # Independently checked by full nine-candidate literal enumeration. OEIS and
@@ -260,6 +262,31 @@ class _CommaImageAdapter(SourceBoundImageAdapter):
             if value - payload.value != 10 * (payload.value % 10) + node.child_digit:
                 raise ValueError("comma action selected another child")
             self.ledger.bump("comma_scalar_seam_steps")
+        elif node.kind == "phase-prefix":
+            sector = decimal_sector(payload.value)
+            transfer = self.arena.transfer(node.leading, node.entering_digit)
+            if (
+                sector.exponent < 2
+                or sector.leading != node.leading
+                or sector.digit != node.entering_digit
+                or not 0 < node.steps < transfer.period
+            ):
+                raise ValueError("comma phase prefix has another source or extent")
+            self.arena.charge(node.steps + 2)
+            self.arena.charge_bits(4 * payload.value.bit_length() + 32 * node.steps)
+            displacement = phase_prefix_displacement(
+                node.leading, node.entering_digit, node.steps
+            )
+            if (
+                node.displacement != displacement
+                or node.maximum_guard != displacement + int(node.leading < 9)
+                or sector.headroom <= node.maximum_guard
+            ):
+                raise ValueError("comma phase prefix crosses an unadmitted seam")
+            value = payload.value + displacement
+            self.ledger.bump("comma_phase_prefix_applications")
+            self.ledger.bump("comma_phase_prefix_transitions", node.steps)
+            self.ledger.bump("comma_powered_image_applications")
         elif node.kind == "cycle":
             self.arena.charge(2)
             self.arena.charge_bits(
@@ -619,6 +646,28 @@ class CommaTerm:
                 value = self._publish(action)
                 remaining -= cycles * transfer.period
                 continue
+            if (
+                sector.exponent >= 2
+                and sector.headroom
+                > 10 * sector.digit + sector.leading + int(sector.leading < 9)
+            ):
+                port = classify_near_port(
+                    sector.leading,
+                    sector.headroom,
+                    charge_work=self.arena.charge,
+                    charge_bits=self.arena.charge_bits,
+                )
+                self.ledger.bump("comma_port_classifications")
+                self.ledger.bump("comma_port_visits", port.port_visits)
+                self.ledger.bump("comma_locator_comparisons", port.locator_comparisons)
+                steps = min(remaining, port.physical_steps)
+                if steps:
+                    action = self.arena.phase_prefix(
+                        sector.leading, sector.digit, steps
+                    )
+                    value = self._publish(action)
+                    remaining -= steps
+                    continue
             if sector.exponent < 2:
                 self._charge(9)
                 self.arena.charge_bits(18 * value.bit_length())
@@ -707,6 +756,9 @@ class CommaTerm:
         return {
             "represented_transitions": self.index - 1,
             "phase_cycles": self.ledger.counters.get("comma_phase_cycles", 0),
+            "phase_prefix_transitions": self.ledger.counters.get(
+                "comma_phase_prefix_transitions", 0
+            ),
             "seam_steps": self.ledger.counters.get("comma_scalar_seam_steps", 0),
             "leading_digit": sector.leading,
             "digit_phase": sector.digit,

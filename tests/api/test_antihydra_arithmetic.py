@@ -149,6 +149,12 @@ def test_total_arithmetic_uses_balanced_scheduler_images_without_endpoint_replay
         + term.ledger.counters["antihydra_arithmetic_composition_operand_bits"]
     )
     assert operand_work < 24 * result.returns
+    assert term.ledger.counters.get("antihydra_arithmetic_temporal_run_actions", 0) == 0
+    support_id = workspace.summary().support
+    assert support_id is not None
+    support = workspace.support_node(support_id)
+    assert support.saturated and support.branch_word is None
+    assert support.children is None
     assert len(term.segments) == 16
     assert term.ledger.counters.get("physical_roof_evaluations", 0) == 0
 
@@ -174,7 +180,7 @@ def test_complete_antihydra_temporal_image_keeps_guard_and_mahler_support(
     ) == (expected_h, expected_balance, expected_minimum, expected_failure)
     assert term.ledger.counters.get("source_image_second_child_contexts", 0) == 0
 
-    # Retained chronological support is still needed for guarded TM sections.
+    # Chronological support is materialized only for an explicit guarded consumer.
     segments = list(workspace.branch_segments())
     assert sum(width for _start, width, _word in segments) == returns
     h = 8
@@ -565,3 +571,25 @@ def test_run_rejects_forged_arithmetic_publication_type() -> None:
     result._term._result = cast(ArithmeticResult, ForgedArithmeticResult())
     with pytest.raises(ValueError, match="unbound Antihydra arithmetic result"):
         result.require_source()
+
+
+@pytest.mark.parametrize("extent", (256, 1024, 4096))
+def test_public_arithmetic_operand_growth_stays_balanced(extent: int) -> None:
+    term = AntihydraArithmeticTerm(extent, max_state_bits=extent + 4)
+    result = term.result()
+    assert result.h == _reference(extent)[0]
+    operand_bits = sum(
+        value
+        for name, value in term.ledger.counters.items()
+        if name.endswith("operand_bits")
+    )
+    # Includes source discovery, coefficient construction, and public endpoint
+    # projection. The bound rejects growing-exact-source replay at each run.
+    assert operand_bits <= 12 * extent * extent.bit_length()
+    workspace = term.arithmetic_workspace
+    assert workspace is not None
+    support_id = workspace.summary().support
+    assert support_id is not None
+    support = workspace.support_node(support_id)
+    assert support.saturated and support.branch_word is None
+    assert support.children is None

@@ -180,6 +180,7 @@ session Balanced_Dyadic_Integration in integration_dyadic = Shared_S_Arithmetic 
   sessions Collatz_Cylinder_Refinement Antihydra Antihydra_Mahler_Integration
   theories
     Balanced_Dyadic_Families
+    Maximal_Run_Arithmetic
     Collatz_Reduced_Precision
     Collatz_Parity_Shift_Germ
     Dyadic_Parity_Inverse_Arithmetic
@@ -190,6 +191,7 @@ session Mahler_Safety_Cylinders in mahler_safety = Antihydra +
   theories
     Mahler_Safety_Cylinders
     Generated_Mahler_Safety
+    Mahler_Cyclotomic_Boundary
     Mahler_Safety_Ledger_Separation
 
 session Mahler_Source_Transport in mahler_transport = Mahler_Safety_Cylinders +
@@ -221,6 +223,12 @@ session Comma_Arithmetic in comma = "HOL-Number_Theory" +
     Comma_Boundary_Primitives
     Comma_Literal_Path
 
+session Comma_Frobenius_Recurrence in comma_frobenius_recurrence = Comma_Arithmetic +
+  options [document = false, quick_and_dirty = false, threads = 1]
+  theories
+    Comma_Frobenius_Recurrence
+    Comma_Carry_Core_Quotient
+
 session Comma_Forest_Legacy in comma_legacy = Comma_Arithmetic +
   options [document = false, quick_and_dirty = false, threads = 1]
   theories
@@ -249,6 +257,7 @@ session Comma_Literal_Bridge in comma_literal = Comma_Chart_Bridge +
   theories
     Comma_Weighted_Selection
     Comma_Macro_Selection
+    Comma_Unique_Path
 
 session Comma_Trace_Regression in comma_regression = Comma_Cylinder +
   options [document = false, quick_and_dirty = false, threads = 1]
@@ -290,11 +299,15 @@ session Comma_Short_Phase in comma_short_phase = Comma_Round_Totality +
   theories
     Comma_Short_Phase
 
-session Comma_Round_Witness_Check in comma_rank = Comma_Weighted_Round +
+session Comma_Entry_Arithmetic in comma_entry_arithmetic = Comma_Short_Phase +
   options [document = false, quick_and_dirty = false, threads = 1]
-  sessions Comma_Short_Phase
   theories
     Comma_Entry_Arithmetic
+
+session Comma_Round_Witness_Check in comma_rank = Comma_Weighted_Round +
+  options [document = false, quick_and_dirty = false, threads = 1]
+  sessions Comma_Entry_Arithmetic
+  theories
     Comma_Decade_Observation
     Comma_Round_Witness
 
@@ -319,7 +332,7 @@ session Comma_Terminal_Event in comma_terminal_event = Comma_Chart_Action +
   theories
     Comma_Terminal_Event
 
-session Comma_Run_Germ in comma_run_germ = Comma_Round_Weights +
+session Comma_Run_Germ in comma_run_germ = Comma_Fast_Arithmetic +
   options [document = false, quick_and_dirty = false, threads = 1]
   sessions Prefix_Effect_Core
   theories
@@ -336,24 +349,199 @@ session Comma_Weighted_Round in comma_weighted_round = Comma_Weighted_Run_Germ +
   theories
     Comma_Weighted_Round
 
-session Comma_Total_Macro in comma_total_macro = Comma_Decade_Totality +
+session Comma_Total_Macro in comma_total_macro = Comma_Decade_Residual_Core +
   options [document = false, quick_and_dirty = false, threads = 1]
   theories
     Comma_Total_Macro
 
-session Comma_Decade_Rank_Check in comma_decade_rank_instance = Comma_Round_Witness_Check +
+session Comma_Decade_Rank_Data in comma_decade_rank_data = Comma_Decade_Totality +
   options [document = false, quick_and_dirty = false, threads = 1]
   theories
-    Comma_Decade_Rank_Rules
-    Comma_Decade_Rank_Check
     Comma_Decade_Rank_Data
 
-session Comma_Decade_Rank_Smoke in comma_decade_rank_smoke = Comma_Decade_Rank_Check +
+session Comma_Fast_Arithmetic in comma_fast_arithmetic = Comma_Round_Weights +
   options [document = false, quick_and_dirty = false, threads = 1]
+  sessions Comma_Entry_Arithmetic
   theories
-    Comma_Decade_Rank_Smoke
+    Comma_Fast_Arithmetic
 
-session Comma_Decade_Rank_Instance in comma_decade_rank_full = Comma_Decade_Rank_Check +
+
+session Comma_Closed_Near in comma_closed_near = Comma_Near_Period +
   options [document = false, quick_and_dirty = false, threads = 1]
   theories
-    Comma_Decade_Rank_Instance
+    Comma_Closed_Near
+
+session Comma_Near_Period in comma_near_period = Comma_Run_Germ +
+  options [document = false, quick_and_dirty = false, threads = 1]
+  theories
+    Comma_Near_Period
+
+session Comma_Fast_Control in comma_fast_control = Comma_Closed_Near +
+  options [document = false, quick_and_dirty = false, threads = 1]
+  theories
+    Comma_Fast_Control
+    Comma_Sector_Alphabet
+    Comma_Fast_Kernel
+
+session Comma_Decade_Helix in comma_decade_helix = Comma_Fast_Control +
+  options [document = false, quick_and_dirty = false, threads = 1]
+  theories
+    Comma_Decade_Helix
+
+session Comma_Decade_Orbit in comma_decade_orbit = Comma_Decade_Blocks +
+  options [document = false, quick_and_dirty = false, threads = 1]
+  theories
+    Comma_Decade_Orbit_Quotient
+
+session Comma_Decade_Residual_Core in comma_decade_residual_core = Comma_Fast_Control +
+  options [document = false, quick_and_dirty = false, threads = 1]
+  sessions Comma_Decade_Helix
+  theories
+    Comma_Decade_Residual_Core
+
+session Comma_Decade_Blocks in comma_decade_blocks = Comma_Decade_Residual_Core +
+  options [document = false, quick_and_dirty = false, threads = 1]
+  sessions Comma_Decade_Helix
+  theories
+    Comma_Decade_Blocks
+
+session Comma_Frobenius_Entry in comma_frobenius_entry = Comma_Fast_Control +
+  options [document = false, quick_and_dirty = false, threads = 1]
+  theories
+    Comma_Frobenius_Entry
+
+session Comma_Decade_Masks in comma_decade_masks = Comma_Decade_Orbit +
+  options [document = false, quick_and_dirty = false, threads = 1]
+  sessions Comma_Total_Macro Comma_Frobenius_Entry
+  theories
+    Comma_Decade_Masks
+    Comma_Orbit_Words
+    Comma_Sector_Response
+    Comma_Sector_Response_Check
+    Comma_Sector_Response_Smoke
+    Comma_Sector_Mask_Constructor
+    Comma_Sector_Base_Masks
+    Comma_Sparse_Temporal_Composition
+    Comma_Sparse_Checked_Algebra
+    Comma_Sector_Mask_Smoke
+    Comma_Mask_Safety
+
+session Comma_Vieta_Root in comma_vieta_root = Comma_Frobenius_Entry +
+  options [document = false, quick_and_dirty = false, threads = 1]
+  theories
+    Comma_Vieta_Root_Frame
+    Comma_Root_Pair_Port
+    Comma_Pair_Field
+
+session Comma_Entry_Port in comma_entry_port = Comma_Vieta_Root +
+  options [document = false, quick_and_dirty = false, threads = 1]
+  theories
+    Comma_Entry_Port_Anchor
+    Comma_Entry_Port_Refinement
+
+session Comma_Sector_Mask_Instance in comma_sector_mask_instance = Comma_Decade_Masks +
+  options [document = false, quick_and_dirty = false, threads = 1]
+  theories
+    Comma_Sector_Mask_Instance
+
+session Comma_Powered_Boundary in comma_powered_boundary = Comma_Decade_Blocks +
+  options [document = false, quick_and_dirty = false, threads = 1]
+  sessions Comma_Decade_Summary_Transport
+  theories
+    Comma_Powered_Boundary
+
+session Comma_Decade_Layer_Check in comma_decade_layer_check = Comma_Decade_Blocks +
+  options [document = false, quick_and_dirty = false, threads = 1]
+  sessions Comma_Decade_Orbit
+  theories
+    Comma_Decade_Layer_Check
+
+session Comma_Decade_Layer_Smoke in comma_decade_layer_smoke = Comma_Decade_Layer_Check +
+  options [document = false, quick_and_dirty = false, threads = 1]
+  theories
+    Comma_Decade_Layer_Smoke
+
+session Comma_Decade_Layer_Instance in comma_decade_layer_full = Comma_Decade_Layer_Check +
+  options [document = false, quick_and_dirty = false, threads = 1]
+  theories
+    Comma_Decade_Layer_Instance
+
+session Comma_Future_Check in comma_future_instance = Comma_Fast_Control +
+  options [document = false, quick_and_dirty = false, threads = 1]
+  sessions Comma_Total_Macro Comma_Literal_Bridge
+  theories
+    Comma_Fast_Future_Check
+    Comma_Future_Cycle_Check
+    Comma_Future_Literal_Bridge
+    Comma_Future_Losing_Lift
+    Comma_Future_Infinite_Lift
+
+session Comma_Fast_Totality_Check in comma_fast_totality = Comma_Fast_Control +
+  options [document = false, quick_and_dirty = false, threads = 1]
+  sessions Comma_Total_Macro
+  theories
+    Comma_Fast_Totality_Check
+
+session Comma_Fast_Totality_Smoke in comma_fast_totality_smoke = Comma_Fast_Totality_Check +
+  options [document = false, quick_and_dirty = false, threads = 1]
+  theories
+    Comma_Fast_Totality_Smoke
+
+session Comma_Fast_Totality in comma_fast_totality_full = Comma_Fast_Rank_Check +
+  options [document = false, quick_and_dirty = false, threads = 1]
+  sessions Comma_Decade_Summary_Transport
+  theories
+    Comma_Fast_Totality
+
+session Comma_Future_Checked_Instance in comma_future_checked = Comma_Future_Check +
+  options [document = false, quick_and_dirty = false, threads = 1]
+  theories
+    Comma_Rank_Data_N
+    Comma_Rank_Data_Z
+    Comma_Rank_Data
+    Comma_Future_Instance
+    Comma_Future_Checked_Instance
+
+session Comma_Future_Source in comma_future_source = Comma_Future_Check +
+  options [document = false, quick_and_dirty = false, threads = 1]
+  sessions Comma_Source_Uniqueness
+  theories
+    Comma_Future_Source
+
+session Comma_Fast_Decade_Rank in comma_fast_rank = Comma_Decade_Residual_Core +
+  options [document = false, quick_and_dirty = false, threads = 1]
+  sessions Comma_Total_Macro
+  theories
+    Comma_Fast_Decade_Rank
+
+session Comma_Fast_Rank_Check in comma_fast_rank_check = Comma_Fast_Decade_Rank +
+  options [document = false, quick_and_dirty = false, threads = 1]
+  sessions Comma_Decade_Rank_Data
+  theories
+    Comma_Fast_Rank_Check
+
+session Comma_Fast_Rank_Smoke in comma_fast_rank_smoke = Comma_Fast_Rank_Check +
+  options [document = false, quick_and_dirty = false, threads = 1]
+  theories
+    Comma_Fast_Rank_Smoke
+
+session Comma_Decade_Summary_Transport in comma_summary_transport = Comma_Decade_Residual_Core +
+  options [document = false, quick_and_dirty = false, threads = 1]
+  sessions Comma_Total_Macro
+  theories
+    Comma_Decade_Summary_Transport
+
+session Comma_Decade_Orbit_Layer in comma_decade_orbit_layer = Comma_Decade_Layer_Check +
+  options [document = false, quick_and_dirty = false, threads = 1]
+  theories
+    Comma_Decade_Orbit_Layer
+
+session Comma_Decade_Orbit_Layer_Instance in comma_decade_orbit_layer_full = Comma_Decade_Orbit_Layer +
+  options [document = false, quick_and_dirty = false, threads = 1]
+  theories
+    Comma_Decade_Orbit_Layer_Instance
+
+session Comma_Sparse_Base_Instance in comma_sparse_instance = Comma_Decade_Masks +
+  options [document = false, quick_and_dirty = false, threads = 1]
+  theories
+    Comma_Sparse_Base_Instance
