@@ -21,7 +21,9 @@ from number_compiler.arithmetic.carry.reverse_sector_transfer import (
 from number_compiler.arithmetic.fields.radial_innovation import (
     ReverseAddCyclotomicInnovationBlock,
 )
+from number_compiler.arithmetic.polynomials.cyclotomic_ring import CyclotomicRing
 from number_compiler.arithmetic.polynomials.frobenius_sector import (
+    DECIMAL_REVERSE_GROWTH_CERTIFICATE,
     ReverseFrobeniusPlan,
 )
 
@@ -184,6 +186,106 @@ class ReverseFrobeniusSectorProduct:
             for sector in observation.sectors
         )
         return cls(8, 5, 1, observation.growth, sectors)
+
+    @classmethod
+    def from_completed_causal_predecessor(
+        cls,
+        initial: ReverseCarrySectorTransfer | None,
+        predecessor: ReverseCarrySectorTransfer,
+        *,
+        initial_width: int,
+        steps: int,
+        plan: ReverseFrobeniusPlan,
+    ) -> ReverseFrobeniusSectorProduct:
+        """Observe a powered affine product from its final primitive input.
+
+        The completed causal interface exposes the pair-sector transfer for
+        the input to the final primitive transition.  Its forcing gives the
+        final output sectors directly.  When the certified source bound kills
+        every initial sector, ``initial`` may be omitted and no initial source
+        sector compilation is needed.
+
+        This is a bounded observation of an existing tile execution.  It does
+        not construct a successor source or authorize a source cylinder.
+        """
+        if type(predecessor) is not ReverseCarrySectorTransfer:
+            raise TypeError("powered sector observation requires a causal predecessor")
+        predecessor.__post_init__()
+        if type(initial_width) is not int or initial_width < 1:
+            raise ValueError("powered sector observation requires an initial width")
+        if type(steps) is not int or steps < 1:
+            raise ValueError("powered sector observation requires positive steps")
+        if type(plan) is not ReverseFrobeniusPlan:
+            raise TypeError("powered sector observation requires a source-bound plan")
+        plan.__post_init__()
+        if (
+            plan.maximum_classes != 8
+            or plan.bits != 5
+            or plan.steps != steps
+            or plan.growth_certificate is not DECIMAL_REVERSE_GROWTH_CERTIFICATE
+            or predecessor.base != 10
+            or predecessor.active_width < 1
+        ):
+            raise ValueError("powered sector observation differs from decimal profile")
+        if initial is None:
+            if not plan.all_source_sectors_annihilated:
+                raise ValueError("powered source sectors are not proved annihilated")
+        else:
+            if type(initial) is not ReverseCarrySectorTransfer:
+                raise TypeError("powered sector initial source has another sort")
+            initial.__post_init__()
+            if (
+                initial.base != predecessor.base
+                or initial.width != predecessor.width
+                or initial.active_width != initial_width
+            ):
+                raise ValueError("powered sector source geometry changed")
+
+        observed = predecessor.forcing(0)
+        final_width = predecessor.active_width + observed.growth
+        growth = final_width - initial_width
+        if not 0 <= growth <= steps:
+            raise ValueError("powered sector widths disagree with temporal growth")
+        sectors: list[ReverseAddCyclotomicInnovationBlock] = []
+        for index, output in enumerate(observed.sectors):
+            classes = 1 << index
+            if output.classes != classes:
+                raise ValueError(
+                    "powered sector predecessor has another sector profile"
+                )
+            radial_block = ReverseAddCyclotomicInnovationBlock(
+                2 * classes,
+                5,
+                steps,
+                growth,
+                (0,) * classes,
+                0,
+            )
+            ring = CyclotomicRing(2 * classes, 32)
+            multiplier = radial_block.radial.multiplier_residue()
+            if initial is None:
+                innovation = output.output
+                if not radial_block.source_annihilated:
+                    raise ValueError(
+                        "observed powered source sector survived its bound"
+                    )
+            else:
+                source = initial.sectors[index]
+                innovation = ring.subtract(
+                    output.output,
+                    ring.multiply(multiplier, source.symbols),
+                )
+            sectors.append(
+                ReverseAddCyclotomicInnovationBlock(
+                    2 * classes,
+                    5,
+                    steps,
+                    growth,
+                    innovation,
+                    0,
+                )
+            )
+        return cls(8, 5, steps, growth, tuple(sectors))
 
     def then(
         self,

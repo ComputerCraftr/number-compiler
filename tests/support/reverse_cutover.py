@@ -7,6 +7,7 @@ from typing import Never
 import pytest
 
 from devtools.experiments.reverse_add import uniform_projection_reference
+from number_compiler.sequences.reverse_add.power import ReverseAddPoweredTerm
 
 
 def forbid_uniform_context_compilation(
@@ -46,3 +47,13 @@ def assert_completed_child_work(counters: Mapping[str, int]) -> None:
         "reverse_recursive_terminal_publications",
     ):
         assert counters.get(name, 0) == 0
+
+
+def assert_mirror_scratch_released(term: ReverseAddPoweredTerm) -> None:
+    """Both mirror consumers return their shared buffer and reservation."""
+    scratch = term._mirror_output_scratch
+    assert scratch is not None and not scratch
+    account = next(
+        item for item in term._ledger.inventory() if item.owner == scratch.owner
+    )
+    assert account.entries == account.nodes == account.accounting_delta == 0

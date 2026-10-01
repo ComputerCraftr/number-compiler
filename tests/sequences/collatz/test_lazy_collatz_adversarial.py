@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from itertools import product
-from typing import Never, cast
+from typing import cast
 
 import pytest
 
@@ -20,7 +20,7 @@ from number_compiler.arithmetic.contracts.scoped_handles import (
 from number_compiler.arithmetic.fields.dyadic_tile import tile_arena_metrics
 from number_compiler.resources.metric_collection import collect_ledger_metrics
 from number_compiler.sequences.collatz.block_power import PoweredCollatzTerm
-from number_compiler.sequences.reverse_add.power import ReverseAddPoweredTerm
+from tests.support.assertions import forbid_explicit_lowering as _forbid
 
 
 def _bits(value: int) -> tuple[int, ...]:
@@ -31,10 +31,6 @@ def _physical(value: int, steps: int) -> int:
     for _ in range(steps):
         value = 3 * value + 1 if value & 1 else value // 2
     return value
-
-
-def _forbid(*args: object, **kwargs: object) -> Never:
-    raise AssertionError("point/width crossed an explicit lowering boundary")
 
 
 @pytest.mark.parametrize(
@@ -180,22 +176,3 @@ def test_program_width_and_view_validation_reject_aliases_before_mutation() -> N
                 cast(int, length),
             )
     assert application.ledger.snapshot() == before
-
-
-@pytest.mark.parametrize("family", ("reverse", "collatz"))
-def test_public_point_never_creates_lowering_capability(
-    monkeypatch: pytest.MonkeyPatch, family: str
-) -> None:
-    import number_compiler.hashlife.observation.hashlife_projection as projection
-
-    term = (
-        ReverseAddPoweredTerm(196, 4)
-        if family == "reverse"
-        else PoweredCollatzTerm(54, 8)
-    )
-    monkeypatch.setattr(projection, "LoweringCapability", _forbid)
-    assert term.width() > 0
-    assert term.digit(0) >= 0
-    # The current source image also returns the explicit bounded output without
-    # creating the retired lowering capability.
-    assert term.digits()

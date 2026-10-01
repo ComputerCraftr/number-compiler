@@ -1,63 +1,52 @@
 # Current release gates
 
-Version **0.60.0 is prepared; release remains blocked**. The gate and cache repairs are validated, but the full reverse/add HashLife cutover is incomplete. No release was tagged or published.
+Version **0.60.0 is prepared; release remains blocked**. Current cleanup gives family and shared-runtime tests their correct owners,
+centralizes support assertions/oracles, and repairs stale audit selectors.
+Production arithmetic is unchanged; the private Collatz source-word comparator
+and developer reference names now state their scope. The requested general 196 production cutover remains
+**incomplete**; no release was tagged or published.
 
 Current authored-source fingerprint (v5):
-`34f1998ae36230e6ebbe4e127664d3ab37acd3ebb97eac118d6cc44805250c65`
-(short `34f1998a`). This freeze removes the unused completed-tail proof cache and
-shares the generic return-edge proof while retaining checked boundary publication.
-See the [lean return constructor record](sprints/week-of-2026-09-27/comma.md#september-30--restore-lean-cold-return-construction).
-The full 314-edge return builds in 56.163 seconds and its source-20 bridge in
-59.526 seconds, both within 60 seconds / 4 GiB with existing dependencies.
-The stronger concrete safe-period gate remains incomplete: rejected smaller
-siblings, selected literal-path integration, lexicographic minimality,
-earlier-root exclusion and exact weighted runtime refinement remain open.
-Production forest admission is unchanged. Earlier measurements retain their
-own source fingerprints.
-
-The [downloaded reverse observer](sprints/week-of-2026-09-27/reverse-add.md#september-30--all-level-terminal-observer-integration-audit)
-remains rejected. The [completed-child reverse migration](sprints/week-of-2026-09-27/reverse-add.md#september-30--bounded-completed-child-parent-joins)
-provides bounded decimal output through horizon 128; generic temporal closure
-and cold higher-interface cost remain open. Earlier measurements and proof
-builds below retain their own fingerprints. The newest complete P0 result is
-from the immediately preceding scope freeze `947a0484`; the full-unit attempt
-at `51a9fa45` timed out and cannot certify the final tree. Comma forest/fuel,
-special-number recovery and global non-halting obligations remain separate.
+`f37500e1f794b43bc7d6ba7f7bb534fe385f1dd17854715dcbf6e80ec063aeca`.
+Commands, assertion dispositions, independent review and evidence are in the
+[October 1 test-ownership record](sprints/week-of-2026-09-27/repository.md#october-1--test-ownership-and-runtime-naming-audit).
+The earlier [shared growth record](sprints/week-of-2026-09-27/shared.md#october-1--audited-homogeneous-growth-and-exact-gain-reuse)
+retains its original fingerprint; those measurements do not certify this source.
 
 | Scope | Result | Source | Evidence | Remaining obligation |
 | --- | --- | --- | --- | --- |
-| Strict mypy, Ruff 0.16.9 and formatting | PASS: zero findings | `34f1998a` | Final lean-return validation | No suppressions, exclusions or thresholds changed. |
-| Source policy, documentation and proof inventory | PASS | `34f1998a` | 95 sessions / 235 theories; canonical theory/session paths and ML-file ownership checks | Inventory status is not checked production refinement. |
-| Clean installed wheel | PASS | `34f1998a` | 34.203 s; installed CLI smoke checks pass | Separate CLI processes remain cold; bounded reverse fallback stops at 128. |
-| Selected-cycle boundary reuse | PASS for all 314 selected edges; stronger safety proof BLOCKED | `34f1998a` | Actual period checker: 314 applied hits, zero misses, zero round expansions; subsequently timed out at 60.121 s after the 128-completed-losing-state checkpoint | Rejected-sibling termination remains incomplete. The partial profile is not a successful period theorem build. |
-| Restored 314-edge return and source-20 bridge | PASS | `34f1998a` | Return: 56.163 s / 1,744,506,336 bytes; source bridge: 59.526 s / 3,593,327,656 bytes; both rebuilt with existing dependencies | Source bridge has little timing margin. Complete safe-period/sibling checking and exact weighted refinement remain open; this is not a cold aggregate build. |
-| Shared boundary proofs and selected blocks | 465 focused tests PASS; three focused Isabelle sessions PASS | `e9878ad5` | 17.85 pytest seconds; proofs 37.492 s / 2,746,159,616 bytes. Actual builder: adjacent join, rejected mismatched join, two imported hits and zero cold rounds | The 314-hit concrete consumer gate has not completed. Cold base producer still times out; exact literal weights and all rejected siblings remain open. |
-| Semantic identity / publication audit | 658 focused tests PASS; seven focused Isabelle sessions PASS | `07a14712` | Frozen cache/branch audit: 22.24 pytest seconds; includes forged records, interrupted publication, ledger and higher-image checks | Full unit, P0, all growth workloads and aggregate proof acceptance were not rerun. Cached focused builds do not establish a cold aggregate bound. |
-| Comma local branch and periodic safety | First zero-tail branch and generic safe-return induction PASS; concrete period BLOCKED | `07a14712` / individual profile provenance | First subtree: 17 states, 8 forks, 9 landmines. Profile reached 312 selected rows and collected 170 rejected N roots before timeout | Collected roots are not termination proofs. Complete rejected-sibling checking and selected-choice literal refinement remain open. |
-| Focused runtime, cache, reporting and lifecycle checks | 906 PASS | `792413ee` | 19.86 pytest seconds; explicit cleanup failures, source ports/chambers, prime selection, family caches and metric snapshots | This focused selection does not replace full-unit, P0 or performance acceptance. |
-| Collatz runtime and occurrence reuse | PASS for measured cases | `622418f8` | Five former flag-only cases and shared runtime checks pass; at N=1,024, same receiving seed uses 71 run actions warm versus 86 bypassed | At most one shared occurrence is consumed on this route. Complete constructor/lifecycle refinement and cold-construction bounds remain open. |
-| Mahler complete-root and observer reuse | PASS for measured cases | `622418f8` | Warm parent skips cold construction; outer cached coefficients checked against admitted transfer; refused publications counted | Child-action reuse and complete source-constructor refinement remain open. A private producer capability does not prove a fabricated source record correct. |
-| Ordinary Antihydra digit construction | PASS for measured reuse | `555ecb47` | Warm exact source-action retrieval precedes cold construction; 1,024/2,048-return point medians 0.949/0.963 ms versus 2.797/4.269 ms before; public five-trial 16–1024 comparison passes | Cold construction remains; process-local reuse does not speed separate cold CLI processes. |
-| Applicable Isabelle refinements | PASS: two focused sessions | `555ecb47` | `Source_Cache_Integration` and `Antihydra_Mahler_Integration`; cached build 5.522 s / 1,281,248,232 sampled bytes | Cached source transport assumes constructor admission. Checked Mahler composition/cap induction is not a complete Python constructor or non-halting proof. |
-| Full unit suite | BLOCKED: latest attempt timed out | `51a9fa45` | 300.099 s / 1,016,366,352 sampled bytes; approximately 72% progress, no complete JUnit result | Earlier completed `f33da115` run had 7,980 pass / 13 fail. Neither run certifies the final scope changes. |
-| Revised explicit P0 selection | BLOCKED: 33 pass / 27 fail | `947a0484` | Unchanged seven-module selection, 14.32 pytest seconds; immediately before paired-stream cleanup | 18 reverse, eight shadow-recovery and one Antihydra non-halting failure. No Collatz failure. |
-| Five-trial 16–1024 queries | Reverse PARTIAL: 120 measured successes / 45 CLI refusals | `f33da115` | Five trials per admitted CLI/point mode through 128; ordered phase measurements; 256/512/1,024 refuse | Larger point samples unavailable. Warm point reuse works, but warm CLI matches bypassed construction; no subquadratic cold bound. Other family results retain their earlier fingerprints. |
-| Compact indices and budgeted stress | PARTIAL | `622418f8` | K=0..3 equivalence; Collatz K=6/12 cycles; Antihydra/Mahler 10,000-return checks with 20,000-bit budgets | Reverse K=1..3 and stress requests still fail construction. Fermat K=2/3 exceed the unchanged output budget. Matching refusals are not construction acceptance. |
-| Aggregate Isabelle | BLOCKED: 60.163-second timeout | `f33da115` | 2,513,769,632 sampled bytes; completed comma layer check/smoke, reached `Prime_Deterministic_Refinement` | Complete aggregate validation under unchanged limits. This incremental run does not establish a cold-build bound. |
-| Decimal reverse completed occurrence and emission | Bounded runtime PASS; generic cutover INCOMPLETE | `f33da115` | Exact completed-child provider joins, source/action/extent validation and direct terminal stream through 128; independent static audit | Cold higher-continuation work still grows roughly fourfold per doubling. Generic closure and executable constructor refinement remain open. |
-| Downloaded reverse all-level terminal observer | REJECTED integration | Pinned external archive | Bounded outputs reproduced, but D16–D128 perform 15/31/63/127 uncharged primitive pair projections; same issued image changes output after seed mutation | Must consume the authenticated completed image, preserve repeated-word order and use bounded ledger-owned storage. Zero higher-runtime work alone is insufficient. |
-| Reverse terminal Isabelle | PASS | `f33da115` | `Reverse_Digit_Terminal`, 4.440 s / 1,220,316,064 sampled bytes; cached after an earlier 32.313-second build | Supplied-list terminal refinement is not the missing recursive constructor refinement. |
-| Comma normalized interior-cycle reuse | PASS within admitted sectors | `c581c215` | 779 focused runtime tests; rotated-cycle poison tests preserve receiving phase and skip coefficient construction | Global branch authority remains forest-backed. Exact complete cycles may share a phase coset; partial prefixes and future branches are not merged. |
-| Comma executable observer quotients | Finite audit PASS | `c581c215` | 99 tests, including explicit full-graph validation: Q15/Q19, T3279/M4986, 14,470 losing and 314 surviving states | R31 covers homogeneous powers only. Python partition checks do not certify weights, all-exponent lifting or infinite admission. |
-| Comma 91-entry global-root reduction | Finite audit PASS; theorem PENDING | `f9b6f0bf` | Exactly offsets 3, 34 and 75 remain open in the independent entry audit; new root theory registered | The 91-entry reduction still uses the existing checked global rank/lifting chain. |
-| Comma rank-free nine-tail return and source-20 infinitude | PASS, unconditional existence | `df2cd1bb` | Concrete 314-edge / +924 return: 56.749 s; source-20 bridge: 58.457 s; 5,939 jump hits, 924 offset transports, 2,724 closed-guard hits | Rejected smaller siblings, least-root proof, exact weighted runtime refinement and forest/fuel cutover remain open. Focused builds do not certify an aggregate cold build. |
-| Comma structural induction and source-20 bridge | PASS, conditional on the concrete witness | `cf2377d1` | Local jump/kernel/mask sessions pass; source-only follow-up 47.723 s / 2,574,749,656 bytes with built dependencies; 79 focused tests pass | Combined source dependency build timed out. Concrete admission is still unproved; focused success does not establish aggregate acceptance. |
-| Comma complete-jump proof reuse | PASS for local semantics and measured reuse | `cf2377d1` | 4,465 complete-jump hits, 2,773 constructions; zero sector-wrapper calls; warm-parent and foreign-key rejection checks pass | Phase-specific continuation memo removed after zero useful hits. Full phase-guard/candidate-label certification and end-to-end speedup remain open. |
-| Comma concrete structural-instance build | BLOCKED: summary timeout | `cf2377d1` | 60.179 s / 1,798,886,104 sampled bytes; 19/924 slices (1,729/84,084 states), 874 control constructions and 855 transported hits; future rows not reached | Complete summary and structural checks, global-safety rebase, root/weighted refinement, then production cutover. |
-| Comma runtime and proof-tool regression selection | 838 PASS | `b54496f3` | Complete comma/API/candidate/inventory selection, 75.653 guarded seconds | Historical runtime selection; later proof changes have separate focused evidence. Runtime forest admission remains unchanged. |
-| Comma global-root proof build | BLOCKED: 60.187-second timeout | `f9b6f0bf` | 2,473,088,136 sampled bytes; stopped in prerequisite `Comma_Future_Checked_Instance` | Root theorem not reached. Production forest and bounded prefix remain; fuel is a separate obligation. |
-| Comma focused Isabelle | PARTIAL | `c581c215` / `34838789` / `03e0da74` | Normalized-cycle theorem passes on current source (5.664 s cached build), required macro session passes on its earlier fingerprint; isolated concrete rank check times out after 60.203 s / 2,725,746,016 sampled bytes | New global theorem not reached. The exact 14,784-row check, executable fuel-free owner, earlier-root exclusion and weighted cutover remain open. |
-| Comma phase reuse measurements | Construction reuse PASS; latency improvement not established | `c581c215` | 90 complete-cycle phase requests: 17 constructions, 73 shared retrievals; 120 five-trial cold/warm/bypassed samples agree | Warm queries eliminate coefficient construction, but 1,024/20,000-term medians remain about 25/46 ms. Certificate cost excluded; cross-fork construction remains blocked. |
-| Other mathematical and production gates | OPEN | `622418f8` | Active tests and proof inventory | Special-number recovery, comma forest/fuel cutover and global Antihydra/Mahler/Goldbach obligations remain separate. |
+| Strict mypy, pinned Ruff, formatting, source policy | PASS | `f37500e1` | Zero findings; 1,657 typed sources; Ruff 0.16.9 | No suppressions or policy thresholds changed. |
+| Documentation, proof inventory, installed wheel | PASS | `f37500e1` | 96 sessions / 237 theories; wheel check 33.815 s | Inventory is not executable refinement. |
+| Focused reverse, field-image and resource tests | 742 PASS / 1 FAIL | Prior `192b1d9b` | 45.87 pytest seconds; admission, forged bindings, deferred streaming, eviction and cleanup covered | Cold point query still opens higher temporal continuations. |
+| Test ownership and audit selection | PASS | `f37500e1` | All 8,296 unit and 60 P0 instances preserved under explicit mappings; all 597 adversarial selectors resolve | Runtime validation is distinct from proof; existing failing assertions remain active. |
+| Ownership/rename affected tests | 182 PASS / 1 existing FAIL; 63 reference-poison PASS | `f37500e1` | 2.27 and 0.63 pytest seconds; the failure is the relocated special-number compiler assertion | No new affected-test outcome; does not substitute for full units. |
+| Full units | BLOCKED: 300-second timeout | `f37500e1` | 8,296 selected / 1,993 deselected; exact old-to-new collection equivalence; timeout after 98% progress, 1,032,521,024 sampled bytes | No completed full-suite result on this fingerprint; prior run had five failures. |
+| Explicit P0 | 33 PASS / 27 FAIL | `f37500e1` | Same 60 instances in nine owner modules; exact relocation map and unchanged outcomes; 14.55 pytest seconds | Eighteen reverse, eight special-number, one global Antihydra non-halting failure. |
+| Bounded completed-provider integration | Runtime PASS; concrete proof OPEN | Prior `192b1d9b` | D4→D8→D16→D20 with seed reconstruction poisoned; chronological right-child consumption; warm parent reuse after eviction | Prove the implemented publication, application and lifetime contract. This does not supply cold EXIT closure. |
+| Reverse mirror/palindrome consumers | Runtime PASS | Prior `192b1d9b` | One completed output stream; reserved scratch, failure cleanup, no per-digit temporal point calls; partial traversal defers undemanded right boundaries | Shared spatial/output proofs do not prove the remaining temporal constructor. |
+| Focused reverse Isabelle | Scoped PASS | Prior `192b1d9b` | Reverse_Digit_Terminal and Reverse_Growth_Admission; cached confirmation 5.726 s | Existing carry/growth/output lemmas do not refine the new complete source-selected constructor, which remains absent. |
+| Aggregate Isabelle | Prior BLOCKED; not rerun | Prior `61ff4816` | Comma_Source_Entry_Witness completed; timed out while building Comma_Future_Source; 2,855,474,600 sampled bytes | Complete aggregate build under unchanged limits. |
+| Reverse public output and performance | Bounded through 128; full cutover BLOCKED | Prior `192b1d9b` | D20 = `70446464506`; 120 literal-reference value checks; five trials per cold/warm/bypassed mode at 16/32/64/128; higher work 1,082/4,359/17,172/67,296 | Replace generic zero-growth descriptor and higher first-demand evaluator. Existing 256–1024 gates remain unavailable/failing. |
+| Reverse reuse scope | Measured point reuse; no cold speedup established | Prior `192b1d9b` | D128 median CLI cold 1,955.437 ms, warm 1,788.158 ms, bypassed 1,798.196 ms; warm point 0.215 ms vs bypassed 1,780.409 ms | Repeated point reuse cannot certify a cold powered bound or eliminate construction per CLI process. |
+| Reverse G161/P7 growth projection | Finite audit retained; producer OPEN | Prior `cd25708b` | Bounded 3,610-row audit; EXIT/ABSENT/duration/growth distinct | Authenticate P7 continuation and construct active EXIT successor/output; finite supplied-word tables are insufficient. |
+| Shared homogeneous growth and Mahler readout | Runtime checks retained; executable proof OPEN | Prior `cd25708b` | Exact bounded ratios, rational enclosures and budgeted mechanical readout | Prove concrete enclosure/equality/CF loops; scaling cannot discover nonlinear branches. |
+| Antihydra/Mahler and Collatz performance | Prior measured evidence retained | Prior `cd25708b` | Five-trial shared-growth sprint evidence; this reverse-only change does not establish new family speedups | Reuse and public-route attribution remain scoped to those measurements. |
+| Other mathematical and production gates | OPEN | Separate historical evidence | Active assertions and proof inventory | Comma forest/fuel cutover, special-number recovery and global non-halting remain separate holds. |
 
-Runtime metrics no longer expose the removed completion/blocker declarations. Applied hits count actual admitted use; exact/transported retrieval and local/process location are separate. CLI reporting remains snapshot-only, while detailed Python resource audits remain explicit. Positive construction assertions remain active; none was converted to a skip, expected failure or success-on-refusal test. Raw run paths in the sprint record are local provenance, not portable downloads.
+Local frozen evidence:
+`results/runs/20261001T205338Z-64257e7f879c4b48b63a40cd6c50e278`;
+affected-test evidence:
+`results/runs/20261001T210124Z-424fb43101be44f2a2d2df53afcdbe91`.
+The relocation manifest verifies identical unit/P0 membership and unchanged P0
+outcomes. Current full units timed out; no partial run is counted as a pass.
+Prior reverse measurements and scoped proof confirmation retain source `192b1d9b`
+at `results/runs/20261001T110639Z-7c1665dfe9ce4a139b1b67fdc5a206fe`.
+The earlier aggregate proof timeout remains at
+`results/runs/20261001T102022Z-25ac165db3be4e128ae85b0036cda621/aggregate-proof`.
+Historical evidence does not certify the current source.
+
+Execution metrics remain schema 8 and snapshot-only. Exact growth is observation
+metadata, not a repeated work charge. Occurrence, semantic and projection reuse
+remain distinct. No positive constructor or performance assertion was skipped,
+weakened or converted into a passing refusal test. Probes retain 35 seconds/1 GiB,
+proofs 60 seconds/4 GiB, and units 300 seconds/1 GiB.

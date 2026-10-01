@@ -15,6 +15,10 @@ from number_compiler.arithmetic.carry.reverse_sector_transfer import (
     ReverseForcingResidues,
 )
 from number_compiler.arithmetic.contracts.block_kernel import BaseBlockEffect
+from number_compiler.arithmetic.polynomials.frobenius_sector import (
+    DECIMAL_REVERSE_GROWTH_CERTIFICATE,
+    ReverseFrobeniusPlan,
+)
 from number_compiler.hashlife.actions.field_actions import FieldCellActionID
 from number_compiler.hashlife.execution.tile_application_authority import (
     application_source,
@@ -90,6 +94,68 @@ def _sector_summary(
     return sectors
 
 
+def _initial_sector_summary(
+    adapter: PrimitiveTileKernelAdapter,
+    primitive: FieldCellActionID,
+    source: TileID,
+    source_width: int,
+    active_width: int,
+) -> ReverseCarrySectorTransfer:
+    interface = adapter._compile_interface(primitive, source, adapter.wiring(primitive))
+    initial = _sector_summary(adapter, interface)
+    if initial.width != source_width or initial.active_width != active_width:
+        raise ValueError("reverse sector source does not match its carry transfer")
+    return initial
+
+
+def _existing_interface_payload(
+    application: TileApplication,
+) -> CausalInterfacePayload:
+    """Read an already available interface without starting another execution."""
+    root = application._cached_root()
+    if root is not None:
+        from number_compiler.hashlife.execution.tile_causal_interfaces import (
+            interface_payload_from_completed,
+        )
+
+        return interface_payload_from_completed(
+            application.scheduler.results,
+            root.result,
+            application.ports,
+        )
+
+    from number_compiler.hashlife.tiles.tile_causal_interface_memo import (
+        _payload,
+        _validate_key,
+        _validate_published_value,
+        causal_interface_key,
+    )
+    from number_compiler.hashlife.tiles.tile_result_records import PoweredResultKey
+
+    key = PoweredResultKey(
+        application.action,
+        application.source,
+        application.ports,
+        application.wiring,
+    )
+    arena = application.scheduler.results
+    interface_key = causal_interface_key(key)
+    _validate_key(arena, interface_key)
+    found = arena._memo.get(interface_key)
+    if found is None:
+        raise ValueError(
+            "powered reverse sector observation requires a prior interface request"
+        )
+    from number_compiler.hashlife.tiles.tile_result_records import (
+        CompletedInterfaceResult,
+    )
+
+    if type(found) is not CompletedInterfaceResult:
+        raise TypeError("powered reverse observation found another interface record")
+    _validate_published_value(arena, interface_key, found)
+    return _payload(found, interface_key)
+
+
 def _source_is_symmetric(
     application: TileApplication,
     source: TileID,
@@ -122,11 +188,7 @@ def _source_is_symmetric(
 def observe_reverse_sector_product(
     application: TileApplication,
 ) -> ReverseFrobeniusSectorProduct:
-    """Observe one primitive sector product from its original source.
-
-    Powered extraction no longer obtains forcing from an executed endpoint.
-    It must be supplied by the source-bound cylinder constructor.
-    """
+    """Observe a sector product from an original source and causal interface."""
     if type(application) is not TileApplication:
         raise TypeError("reverse sector observation requires a tile application")
     source = application_source(application)
@@ -157,28 +219,18 @@ def observe_reverse_sector_product(
     ledger.bump("reverse_sector_product_observation_requests")
     try:
         primitive, steps = _primitive_branch(adapter, application.action)
-        if steps != 1:
-            from number_compiler.sequences.reverse_add.source_images import (
-                ReverseCylinderConstructionUnavailable,
-            )
-
-            raise ReverseCylinderConstructionUnavailable(
-                "reverse/add powered sector pullback is not constructed; "
-                "endpoint reconstruction has been removed"
-            )
-        initial_interface = adapter._compile_interface(
-            primitive, source, adapter.wiring(primitive)
-        )
-        initial = _sector_summary(adapter, initial_interface)
-        active_width = initial.active_width
         source_record = scheduler.tiles.resolve(source)
+        if source_record.first_active is None or source_record.last_active is None:
+            raise ValueError(
+                "reverse sector observation requires one full active prefix and padding"
+            )
+        active_width = source_record.last_active + 1
         if (
-            not active_width
-            or initial.width != source_record.width
-            or active_width + steps > source_record.width
+            active_width < 1
             or source_record.first_active != 0
             or source_record.last_active != active_width - 1
             or source_record.extent != active_width
+            or active_width + steps > source_record.width
         ):
             raise ValueError(
                 "reverse sector observation requires one full active prefix and padding"
@@ -188,7 +240,61 @@ def observe_reverse_sector_product(
                 "reverse sector observation requires a symmetric pair field"
             )
 
-        product = ReverseFrobeniusSectorProduct.from_carry_transfer(initial)
+        if steps == 1:
+            initial = _initial_sector_summary(
+                adapter,
+                primitive,
+                source,
+                source_record.width,
+                active_width,
+            )
+            product = ReverseFrobeniusSectorProduct.from_carry_transfer(initial)
+        else:
+            # The completed causal interface carries the final primitive's
+            # immediate input. Its sector transfer supplies the last forcing
+            # row without materializing or scanning the endpoint tile.
+            predecessor_payload = _existing_interface_payload(application)
+            if type(predecessor_payload) is not CausalInterfacePayload:
+                raise TypeError(
+                    "powered reverse observation requires a causal interface"
+                )
+            predecessor_payload.__post_init__()
+            if (
+                predecessor_payload.level != source_record.level
+                or not predecessor_payload.active
+            ):
+                raise ValueError("powered reverse interface changed source geometry")
+            predecessor = _sector_summary(adapter, predecessor_payload.interface)
+            final_forcing = predecessor.forcing(0)
+            if (
+                predecessor.width != source_record.width
+                or predecessor.active_width + final_forcing.growth > source_record.width
+            ):
+                raise ValueError("powered reverse predecessor changed source geometry")
+            plan = ReverseFrobeniusPlan.for_steps(
+                maximum_classes=8,
+                bits=5,
+                steps=steps,
+                growth_certificate=DECIMAL_REVERSE_GROWTH_CERTIFICATE,
+            )
+            initial = None
+            if not plan.all_source_sectors_annihilated:
+                initial = _initial_sector_summary(
+                    adapter,
+                    primitive,
+                    source,
+                    source_record.width,
+                    active_width,
+                )
+            else:
+                ledger.bump("reverse_sector_product_source_elisions")
+            product = ReverseFrobeniusSectorProduct.from_completed_causal_predecessor(
+                initial,
+                predecessor,
+                initial_width=active_width,
+                steps=steps,
+                plan=plan,
+            )
     except BaseException:
         ledger.bump("reverse_sector_product_observation_failures")
         raise

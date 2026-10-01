@@ -43,7 +43,7 @@ from number_compiler.projection.digit_terminal import DigitNormalizeBlockEffect
 from number_compiler.resources.ledger import ResourceLedger
 from number_compiler.resources.metric_collection import collect_ledger_metrics
 from tests.support.reference_arithmetic import negacyclic_reduce as _reduce
-from tests.support.tile_kernel import join_four
+from tests.support.tile_kernel import join_four, powered_application
 
 
 def _multiply(
@@ -80,16 +80,7 @@ def test_authenticated_application_observes_sector_product_without_endpoint(
     for _ in range(steps):
         target, _growth = pair_step(target, 10)
     with build_tile_projection(BaseBlockEffect(10), _source(ledger)) as projection:
-        primitive_application = projection._application
-        adapter = primitive_application.scheduler.adapter
-        assert type(adapter) is PrimitiveTileKernelAdapter
-        action = adapter.power(primitive_application.action, steps)
-        application = primitive_application.scheduler.application(
-            action,
-            primitive_application.source,
-            adapter.initial_ports(action),
-            adapter.wiring(action),
-        )
+        adapter, _action, application = powered_application(projection, steps)
 
         def forbidden(*_args: object, **_kwargs: object) -> Never:
             raise AssertionError("sector observation constructed an exact endpoint")

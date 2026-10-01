@@ -106,6 +106,29 @@ class TemporalObservations:
     query_observer_reuses: int | None = None
     higher_concrete_operation_evaluations: int | None = None
     higher_action_continuation_requests: int | None = None
+    reverse_recursive_pair_width_cache_hits: int | None = None
+    reverse_recursive_pair_width_cache_misses: int | None = None
+    reverse_recursive_pair_width_publications: int | None = None
+    reverse_recursive_pair_width_descents: int | None = None
+    reverse_recursive_pair_width_failures: int | None = None
+
+
+@dataclass(frozen=True, slots=True)
+class TemporalGrowthReadout:
+    """Demanded homogeneous arithmetic, never endpoint-growth work."""
+
+    work: int | None = None
+    operand_bits: int | None = None
+    precision_bits: int | None = None
+    refinements: int | None = None
+    exact_rational_cases: int | None = None
+    bounded_exact_ratio_cases: int | None = None
+    identity_shortcuts: int | None = None
+    log_constant_hits: int | None = None
+    cf_requests: int | None = None
+    cf_budget_refusals: int | None = None
+    order_hits: int | None = None
+    budget_refusals: int | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -248,6 +271,12 @@ class TemporalMacrocellWork:
     cold_child_discoveries: int | None = None
     coefficient_compositions: int | None = None
     occurrence_frontier_joins: int | None = None
+    gain_local_hits: int | None = None
+    gain_process_hits: int | None = None
+    gain_key_operand_bits: int | None = None
+    gain_construction_operand_bits: int | None = None
+    gain_validation_operand_bits: int | None = None
+    gain_bypasses: int | None = None
     capacity_bypasses: int | None = None
     output_region_visits: int | None = None
     emitted_digits: int | None = None
@@ -266,6 +295,7 @@ class TemporalExecutionDiagnostics:
     demand: TemporalDemand = TemporalDemand()
     stream: TemporalStreamDemand = TemporalStreamDemand()
     observations: TemporalObservations = TemporalObservations()
+    growth_readout: TemporalGrowthReadout = TemporalGrowthReadout()
     family_work: tuple[TemporalFamilyWork, ...] = ()
     macrocells: tuple[TemporalMacrocellWork, ...] = ()
     comma: TemporalCommaWork = TemporalCommaWork()
@@ -320,7 +350,7 @@ def _macrocell_reuse(
         bypasses=sum(observed_bypasses) if observed_bypasses else None,
         capacity_bypasses=(
             bypass_counts["capacity"]
-            if kind in ("occurrence", "source_action")
+            if kind in ("action", "occurrence", "source_action")
             else None
         ),
         disabled_bypasses=bypass_counts["disabled"],
@@ -405,8 +435,10 @@ def _capacity_bypasses(counters: Mapping[str, int], family: str) -> int | None:
     if family == "comma":
         return _count(counters, "comma_hashlife_capacity_bypasses")
     kinds = (
-        ("occurrence", "source_action")
-        if family in ("mahler", "antihydra")
+        ("action", "source_action")
+        if family == "mahler"
+        else ("occurrence", "source_action")
+        if family == "antihydra"
         else ("occurrence",)
     )
     measured = [
@@ -438,7 +470,7 @@ def _macrocell_work(counters: Mapping[str, int]) -> tuple[TemporalMacrocellWork,
                 else "source_occurrence_associated_action"
                 if family == "mahler"
                 and counters.get(f"{prefix}source_action_active", 0)
-                else "complete_associated_observer"
+                else "complete_associated_action"
                 if family == "mahler"
                 else "source_cylinder",
                 semantic=_macrocell_reuse(counters, prefix, "semantic"),
@@ -453,14 +485,12 @@ def _macrocell_work(counters: Mapping[str, int]) -> tuple[TemporalMacrocellWork,
                     else TemporalReuseLane()
                 ),
                 outer_observer=(
-                    _macrocell_reuse(counters, prefix, "occurrence")
+                    _macrocell_reuse(counters, prefix, "action")
                     if family == "mahler"
                     else TemporalReuseLane()
                 ),
                 outer_observer_scope=(
-                    "process_complete_associated_observer"
-                    if family == "mahler"
-                    else None
+                    "process_complete_associated_action" if family == "mahler" else None
                 ),
                 merges=_count(counters, f"{prefix}merges"),
                 max_level=_count(counters, f"{prefix}max_level"),
@@ -477,6 +507,18 @@ def _macrocell_work(counters: Mapping[str, int]) -> tuple[TemporalMacrocellWork,
                 occurrence_frontier_joins=_count(
                     counters, f"{prefix}occurrence_frontier_joins"
                 ),
+                gain_local_hits=_count(counters, f"{prefix}gain_local_hits"),
+                gain_process_hits=_count(counters, f"{prefix}gain_process_hits"),
+                gain_key_operand_bits=_count(
+                    counters, f"{prefix}gain_key_operand_bits"
+                ),
+                gain_construction_operand_bits=_count(
+                    counters, f"{prefix}gain_construction_operand_bits"
+                ),
+                gain_validation_operand_bits=_count(
+                    counters, f"{prefix}gain_validation_operand_bits"
+                ),
+                gain_bypasses=_count(counters, f"{prefix}gain_bypasses"),
                 capacity_bypasses=_capacity_bypasses(counters, family),
                 output_region_visits=_count(counters, f"{prefix}output_region_visits"),
                 emitted_digits=_count(counters, f"{prefix}emitted_digits"),
@@ -650,6 +692,22 @@ def collect_temporal_diagnostics(
                 counters, "cli_render_integer_conversion_operand_bits"
             ),
         ),
+        growth_readout=TemporalGrowthReadout(
+            work=_count(counters, "growth_arithmetic_work"),
+            operand_bits=_count(counters, "growth_arithmetic_operand_bits"),
+            precision_bits=_count(counters, "growth_arithmetic_precision_bits"),
+            refinements=_count(counters, "growth_order_refinements"),
+            exact_rational_cases=_count(counters, "growth_order_exact_rational_cases"),
+            bounded_exact_ratio_cases=_count(
+                counters, "growth_order_bounded_exact_ratio_cases"
+            ),
+            identity_shortcuts=_count(counters, "growth_order_identity_shortcuts"),
+            log_constant_hits=_count(counters, "growth_log_constant_cache_hits"),
+            cf_requests=_count(counters, "growth_cf_key_lookups"),
+            cf_budget_refusals=_count(counters, "growth_cf_budget_refusals"),
+            order_hits=_count(counters, "growth_order_cache_hits"),
+            budget_refusals=_count(counters, "growth_arithmetic_budget_refusals"),
+        ),
         observations=TemporalObservations(
             arithmetic_returns=_count(counters, "arithmetic_returns"),
             arithmetic_result_validation_blocks=_count(
@@ -680,6 +738,21 @@ def collect_temporal_diagnostics(
             ),
             higher_action_continuation_requests=_count(
                 counters, "higher_action_continuation_requests"
+            ),
+            reverse_recursive_pair_width_cache_hits=_count(
+                counters, "reverse_recursive_pair_width_cache_hits"
+            ),
+            reverse_recursive_pair_width_cache_misses=_count(
+                counters, "reverse_recursive_pair_width_cache_misses"
+            ),
+            reverse_recursive_pair_width_publications=_count(
+                counters, "reverse_recursive_pair_width_publications"
+            ),
+            reverse_recursive_pair_width_descents=_count(
+                counters, "reverse_recursive_pair_width_descents"
+            ),
+            reverse_recursive_pair_width_failures=_count(
+                counters, "reverse_recursive_pair_width_failures"
             ),
         ),
         family_work=tuple(families),

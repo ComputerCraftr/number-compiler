@@ -73,7 +73,26 @@ def test_uninstrumented_lanes_are_unavailable_not_zero() -> None:
     assert record.observations.arithmetic_result_validation_operand_bits is None
     assert record.observations.mahler_source_composed_image_reads is None
     assert record.observations.mahler_associated_action_demands is None
+    assert record.growth_readout.exact_rational_cases is None
+    assert record.growth_readout.bounded_exact_ratio_cases is None
     assert (record.resources.entries, record.resources.nodes) == (3, 4)
+
+
+def test_growth_readout_keeps_exact_ratio_and_log_work_separate() -> None:
+    report = _collect(
+        {
+            "growth_order_exact_rational_cases": 2,
+            "growth_order_bounded_exact_ratio_cases": 3,
+            "growth_log_constant_cache_hits": 5,
+            "growth_arithmetic_operand_bits": 97,
+        }
+    )
+    assert report.growth_readout.exact_rational_cases == 2
+    assert report.growth_readout.bounded_exact_ratio_cases == 3
+    assert report.growth_readout.log_constant_hits == 5
+    assert report.growth_readout.operand_bits == 97
+    assert report.growth_readout.precision_bits is None
+    assert report.action.publications is None
 
 
 @pytest.mark.parametrize("prefix", ("collatz_physical", "antihydra_arithmetic"))
@@ -324,6 +343,22 @@ def test_stream_demand_preserves_emission_and_retained_frame_peak_units() -> Non
     assert record.construction.postorder_frames is None
 
 
+@pytest.mark.parametrize(
+    "counter",
+    (
+        "reverse_recursive_pair_width_cache_hits",
+        "reverse_recursive_pair_width_cache_misses",
+        "reverse_recursive_pair_width_publications",
+        "reverse_recursive_pair_width_descents",
+        "reverse_recursive_pair_width_failures",
+    ),
+)
+def test_pair_width_reporting_preserves_missing_zero_and_count(counter: str) -> None:
+    assert getattr(_collect({}).observations, counter) is None
+    for count in (0, 3):
+        assert getattr(_collect({counter: count}).observations, counter) == count
+
+
 def test_malformed_or_unbalanced_snapshot_fails_instead_of_defaulting_to_zero() -> None:
     with pytest.raises(ValueError, match="nonnegative counters"):
         _collect({"source_image_publications": -1})
@@ -501,18 +536,24 @@ def test_macrocell_metrics_separate_semantic_and_occurrence_reuse(family: str) -
         ("semantic_local_hits", 3),
         ("semantic_process_hits", 0),
         ("semantic_misses", 1),
-        ("occurrence_lookups", 4),
-        ("occurrence_exact_hits", 0),
-        ("occurrence_transported_hits", 0),
-        ("occurrence_local_hits", 0),
-        ("occurrence_process_hits", 0),
-        ("occurrence_misses", 4),
         ("max_level", 7),
         ("primitive_steps", 8),
         ("key_operand_bits", 256),
-        ("occurrence_bypasses", 2),
     ):
         ledger.bump(prefix + name, count)
+    lane_kind = "action" if family == "mahler" else "occurrence"
+    for suffix, count in (
+        ("lookups", 4),
+        ("exact_hits", 0),
+        ("misses", 4),
+        ("bypasses", 2),
+    ):
+        ledger.bump(f"{prefix}{lane_kind}_{suffix}", count)
+    if family == "mahler":
+        ledger.bump(prefix + "action_process_hits", 0)
+    else:
+        for suffix in ("transported_hits", "local_hits", "process_hits"):
+            ledger.bump(f"{prefix}occurrence_{suffix}", 0)
     before = dict(ledger.counters)
     record = collect_temporal_diagnostics_snapshot(ledger).macrocells[0]
     assert record.family == family
@@ -526,7 +567,7 @@ def test_macrocell_metrics_separate_semantic_and_occurrence_reuse(family: str) -
         }[family]
     )
     assert record.cache_scope == (
-        "complete_associated_observer" if family == "mahler" else "source_cylinder"
+        "complete_associated_action" if family == "mahler" else "source_cylinder"
     )
     assert record.semantic.requests == 4
     assert record.semantic.exact_hits == 3
@@ -539,12 +580,13 @@ def test_macrocell_metrics_separate_semantic_and_occurrence_reuse(family: str) -
         assert record.occurrence.requests is None
         assert record.outer_observer.requests == 4
         assert record.outer_observer.exact_hits == 0
-        assert record.outer_observer.transported_hits == 0
-        assert record.outer_observer.local_hits == 0
+        assert record.outer_observer.transported_hits is None
+        assert record.outer_observer.local_hits is None
         assert record.outer_observer.process_hits == 0
         assert record.outer_observer.misses == 4
         assert record.outer_observer.applied_hits is None
         assert record.outer_observer.unclassified_hits is None
+        assert record.outer_observer_scope == "process_complete_associated_action"
     else:
         assert record.occurrence.requests == 4
         assert record.occurrence.exact_hits == 0
@@ -570,7 +612,8 @@ def test_absent_macrocell_instrumentation_is_not_a_measured_zero() -> None:
 def test_capacity_refusals_are_counted_once_across_stores(family: str) -> None:
     ledger = ResourceLedger()
     ledger.bump(f"{family}_hashlife_source_action_bypasses", 2)
-    ledger.bump(f"{family}_hashlife_occurrence_bypasses", 1)
+    outer_kind = "action" if family == "mahler" else "occurrence"
+    ledger.bump(f"{family}_hashlife_{outer_kind}_bypasses", 1)
     before = dict(ledger.counters)
     record = collect_temporal_diagnostics_snapshot(ledger).macrocells[0]
     assert record.capacity_bypasses == 3
@@ -629,15 +672,12 @@ def test_mahler_source_action_and_outer_observer_reuse_are_separate_lanes() -> N
     ledger.bump("mahler_hashlife_source_action_misses", 0)
     ledger.bump("mahler_hashlife_source_action_applied_hits", 2)
     ledger.bump("mahler_hashlife_source_action_applied_parent_hits", 1)
-    ledger.bump("mahler_hashlife_occurrence_lookups", 5)
-    ledger.bump("mahler_hashlife_occurrence_exact_hits", 2)
-    ledger.bump("mahler_hashlife_occurrence_transported_hits", 0)
-    ledger.bump("mahler_hashlife_occurrence_local_hits", 0)
-    ledger.bump("mahler_hashlife_occurrence_process_hits", 2)
-    ledger.bump("mahler_hashlife_occurrence_misses", 3)
-    ledger.bump("mahler_hashlife_occurrence_publications", 2)
-    ledger.bump("mahler_hashlife_occurrence_applied_hits", 2)
-    ledger.bump("mahler_hashlife_occurrence_key_operand_bits", 73)
+    ledger.bump("mahler_hashlife_action_lookups", 5)
+    ledger.bump("mahler_hashlife_action_exact_hits", 2)
+    ledger.bump("mahler_hashlife_action_process_hits", 2)
+    ledger.bump("mahler_hashlife_action_misses", 3)
+    ledger.bump("mahler_hashlife_action_publications", 2)
+    ledger.bump("mahler_hashlife_action_key_operand_bits", 73)
     before = dict(ledger.counters)
     record = collect_temporal_diagnostics_snapshot(ledger).macrocells[0]
     assert record.cache_scope == "source_occurrence_associated_action"
@@ -652,12 +692,12 @@ def test_mahler_source_action_and_outer_observer_reuse_are_separate_lanes() -> N
     assert record.source_action.rejected_fit is None
     assert record.outer_observer.requests == 5
     assert record.outer_observer.exact_hits == 2
-    assert record.outer_observer.transported_hits == 0
+    assert record.outer_observer.transported_hits is None
     assert record.outer_observer.process_hits == 2
-    assert record.outer_observer.applied_hits == 2
+    assert record.outer_observer.applied_hits is None
     assert record.outer_observer.applied_parent_hits is None
     assert record.outer_observer.rejected_fit is None
     assert record.outer_observer.key_operand_bits == 73
-    assert record.outer_observer_scope == "process_complete_associated_observer"
+    assert record.outer_observer_scope == "process_complete_associated_action"
     assert record.outer_observer.unclassified_hits is None
     assert ledger.counters == before

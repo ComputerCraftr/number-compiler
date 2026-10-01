@@ -5,6 +5,9 @@ import pytest
 from number_compiler.arithmetic.contracts.block_effect import BlockContextBudgetExceeded
 from number_compiler.resources.ledger import ResourceLedger
 from number_compiler.resources.process_cache import clear_process_cache
+from number_compiler.resources.temporal_diagnostics import (
+    collect_temporal_diagnostics_snapshot,
+)
 from number_compiler.sequences.collatz.block_power import PoweredCollatzTerm
 from number_compiler.sequences.collatz.physical_images import COLLATZ_PHYSICAL_LAW
 from number_compiler.sequences.collatz.source_cylinder_cache import (
@@ -503,3 +506,172 @@ def test_public_smaller_high_fiber_uses_admitted_prefix_and_reduces_work() -> No
     )
     assert warm.metrics().resource_accounting_mismatch == 0
     clear_process_cache()
+
+
+def test_warm_occurrence_does_not_rebuild_its_canonical_gain(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from number_compiler.sequences.collatz import source_cylinder_cache
+
+    clear_process_cache()
+    source = (1 << 200) + 931386509544713451
+    compile_collatz_temporal_run_quotient(
+        source, 1000, ledger=ResourceLedger(), shared_cache=True
+    )
+
+    def forbidden(_exponent: int) -> int:
+        raise AssertionError("warm occurrence reconstructed its canonical power")
+
+    monkeypatch.setattr(source_cylinder_cache, "_canonical_gain", forbidden)
+    ledger = ResourceLedger()
+    with CollatzDyadicMacros(ledger, shared_cache=True) as macros:
+        cell = macros.lookup(source, 128)
+        assert cell is not None
+        transported = source + (2 << 200)
+        assert cell.apply(transported) - cell.apply(source) == cell.multiplier << 73
+        assert ledger.counters["collatz_hashlife_gain_process_hits"] == 1
+        assert (
+            ledger.counters.get("collatz_hashlife_gain_construction_operand_bits", 0)
+            == 0
+        )
+    assert ledger.entries == 0
+    before = dict(ledger.counters)
+    record = collect_temporal_diagnostics_snapshot(ledger).macrocells[0]
+    assert record.gain_process_hits == 1
+    assert record.gain_construction_operand_bits == 0
+    assert record.gain_key_operand_bits is not None
+    assert dict(ledger.counters) == before
+    clear_process_cache()
+
+
+def test_public_occurrence_has_no_gain_evidence_bypass() -> None:
+    from inspect import signature
+
+    from number_compiler.sequences.collatz.source_cylinder_cache import (
+        CollatzDyadicOccurrence,
+    )
+
+    with pytest.raises(ValueError, match="centered coefficients"):
+        CollatzDyadicOccurrence(8, 0, 0, 0, 2)
+    assert "_gain_evidence" not in signature(CollatzDyadicOccurrence).parameters
+
+
+def test_local_gain_and_occurrence_memos_reject_malformed_records() -> None:
+    from number_compiler.sequences.collatz.source_cylinder_cache import (
+        _CanonicalGain,
+    )
+
+    with CollatzDyadicMacros(ResourceLedger()) as macros:
+        macros.gains[0] = 1  # type: ignore[assignment]
+        with pytest.raises(ValueError, match="local canonical gain"):
+            macros._gain(0)
+        macros.gains[0] = _CanonicalGain(0)
+        assert macros._gain(0).multiplier == 1
+
+        macros.occurrences[8, 27] = ("not-an-occurrence", 0)  # type: ignore[assignment]
+        with pytest.raises(ValueError, match="local occurrence"):
+            macros.lookup(27, 8)
+        assert macros.ledger.counters["collatz_hashlife_occurrence_local_hits"] == 0
+        assert (
+            macros.ledger.counters["collatz_hashlife_occurrence_admission_rejections"]
+            == 1
+        )
+
+
+def test_gain_process_payload_is_bound_to_its_exponent() -> None:
+    from typing import cast
+
+    from number_compiler.resources.process_cache import (
+        ImmutableValue,
+        get_process_cache,
+    )
+    from number_compiler.sequences.collatz import source_cylinder_cache
+
+    clear_process_cache()
+    with get_process_cache().acquire(
+        "collatz-power-of-three", CollatzDyadicMacros.GAIN_VERSION, (0,)
+    ) as lease:
+        assert lease.put_issued(
+            ("gain",),
+            cast(ImmutableValue, (1, 1)),
+            source_cylinder_cache._GAIN_PUBLISHER,
+        )
+    with CollatzDyadicMacros(ResourceLedger(), shared_cache=True) as macros:
+        with pytest.raises(ValueError, match="cache is malformed"):
+            macros._gain(0)
+        assert macros.ledger.counters["collatz_hashlife_gain_process_hits"] == 0
+    clear_process_cache()
+
+
+@pytest.mark.parametrize("failure_kind", ("issuer", "value"))
+def test_remember_counts_canonical_gain_admission_failure(
+    failure_kind: str,
+) -> None:
+    from typing import cast
+
+    from number_compiler.resources.process_cache import (
+        CacheRecordIssuerMismatch,
+        ImmutableValue,
+        get_process_cache,
+    )
+    from number_compiler.sequences.collatz import source_cylinder_cache
+
+    clear_process_cache()
+    with get_process_cache().acquire(
+        "collatz-power-of-three", CollatzDyadicMacros.GAIN_VERSION, (0,)
+    ) as lease:
+        if failure_kind == "issuer":
+            assert lease.put(("gain",), (0, 1))
+        else:
+            assert lease.put_issued(
+                ("gain",),
+                cast(ImmutableValue, (1, 3)),
+                source_cylinder_cache._GAIN_PUBLISHER,
+            )
+
+    expected_error = (
+        CacheRecordIssuerMismatch if failure_kind == "issuer" else ValueError
+    )
+    with CollatzDyadicMacros(ResourceLedger(), shared_cache=True) as macros:
+        with pytest.raises(expected_error):
+            macros.remember(27, 8, 0, 0)
+        counters = macros.ledger.counters
+        assert counters["collatz_hashlife_occurrence_admission_rejections"] == 1
+        assert counters["collatz_hashlife_failed_work"] == 1
+        assert counters["collatz_hashlife_gain_bypasses"] == 0
+        assert counters["collatz_hashlife_occurrence_publications"] == 0
+    clear_process_cache()
+
+
+def test_closed_macro_owner_rejects_reuse_without_mutating_counters() -> None:
+    macros = CollatzDyadicMacros(ResourceLedger())
+    with macros:
+        assert macros.lookup(27, 8) is None
+    before = dict(macros.ledger.counters)
+    with pytest.raises(RuntimeError, match="closed"):
+        macros.applied()
+    with pytest.raises(RuntimeError, match="closed"):
+        macros.lookup(27, 8)
+    with pytest.raises(RuntimeError, match="closed"):
+        macros.__enter__()
+    assert macros.ledger.counters == before
+    assert macros.ledger.entries == 0
+
+
+def test_large_width_residue_checks_do_not_build_width_sized_masks() -> None:
+    from number_compiler.sequences.collatz.source_cylinder_cache import (
+        CollatzDyadicOccurrence,
+    )
+
+    width = 1 << 100
+    occurrence = CollatzDyadicOccurrence(width, 27, 0, 0, 1)
+    assert occurrence.apply(27) == 0
+    ledger = ResourceLedger()
+    with CollatzDyadicMacros(ledger) as macros:
+        assert macros.remember(27, width, 0, 0)
+        remembered = macros.lookup(27, width)
+        assert remembered is not None
+        assert remembered.apply(27) == 0
+        assert ledger.counters["collatz_hashlife_key_operand_bits"] == 2 * (
+            (27).bit_length() + width.bit_length()
+        )

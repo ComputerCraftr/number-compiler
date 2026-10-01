@@ -103,8 +103,15 @@ RecursiveOutputRecord: TypeAlias = (
 )
 BoundaryValue: TypeAlias = object
 _StreamFrame: TypeAlias = tuple[
-    CoordinateOutputMorphismID, int, int, BoundaryValue, BoundaryValue, int | None
+    CoordinateOutputMorphismID,
+    int,
+    int,
+    BoundaryValue,
+    BoundaryValue,
+    int | None,
+    LocalInterfaceID | None,
 ]
+_STREAM_FRAME_NODES = 7
 TemporalOutputEvaluator: TypeAlias = Callable[
     [
         CoordinateOutputMorphismID,
@@ -204,7 +211,7 @@ class RecursiveCoordinateMorphismArena:
             prefix + "-stream-frames", "output_stream_workspace"
         )
         self._stream_frames: MutableMapping[int, _StreamFrame] = self.ledger.make_dict(
-            self._stream_owner, nodes_per_entry=6
+            self._stream_owner, nodes_per_entry=_STREAM_FRAME_NODES
         )
         self._stream_next_id = 0
         for name in (
@@ -433,14 +440,16 @@ class RecursiveCoordinateMorphismArena:
         return self._observe(output, coordinate, left, right, "extent_selector_visits")
 
     def _push_stream(self, frame: _StreamFrame) -> int:
-        self.ledger.reserve(self._stream_owner, entries=1, nodes=6)
+        self.ledger.reserve(self._stream_owner, entries=1, nodes=_STREAM_FRAME_NODES)
         key = self._stream_next_id
         self._stream_next_id += 1
         try:
             self._stream_frames[key] = frame
         except BaseException:
             self._stream_frames.pop(key, None)
-            self.ledger.release(self._stream_owner, entries=1, nodes=6)
+            self.ledger.release(
+                self._stream_owner, entries=1, nodes=_STREAM_FRAME_NODES
+            )
             raise
         peak = self.ledger.counters.get("recursive_output_stream_frame_peak", 0)
         if len(self._stream_frames) > peak:
@@ -451,7 +460,7 @@ class RecursiveCoordinateMorphismArena:
 
     def _pop_stream(self, key: int) -> int | None:
         frame = self._stream_frames.pop(key)
-        self.ledger.release(self._stream_owner, entries=1, nodes=6)
+        self.ledger.release(self._stream_owner, entries=1, nodes=_STREAM_FRAME_NODES)
         return frame[5]
 
     def iter_observe_range(
@@ -482,14 +491,35 @@ class RecursiveCoordinateMorphismArena:
         top: int | None = None
         try:
             if start < stop:
-                top = self._push_stream((output, start, stop, left, right, None))
+                top = self._push_stream((output, start, stop, left, right, None, None))
             while top is not None:
-                current, lo, hi, incoming_left, incoming_right, previous = (
-                    self._stream_frames[top]
-                )
+                (
+                    current,
+                    lo,
+                    hi,
+                    incoming_left,
+                    incoming_right,
+                    previous,
+                    pending_left,
+                ) = self._stream_frames[top]
                 if lo == hi:
                     top = self._pop_stream(top)
                     continue
+                if pending_left is not None:
+                    incoming_left = self._evaluate(
+                        self._component(pending_left, "boundary_left"),
+                        self._inputs(pending_left, incoming_left, incoming_right),
+                    )
+                    self.ledger.bump("recursive_output_stream_boundary_evaluations")
+                    self._stream_frames[top] = (
+                        current,
+                        lo,
+                        hi,
+                        incoming_left,
+                        incoming_right,
+                        previous,
+                        None,
+                    )
                 node = self.resolve(current)
                 self.ledger.bump("recursive_output_stream_node_visits")
                 if isinstance(node, RecursiveOutputTemporal):
@@ -504,23 +534,20 @@ class RecursiveCoordinateMorphismArena:
                         incoming_left,
                         incoming_right,
                         previous,
+                        None,
                     )
                     if hi > node.left_width:
-                        transported_left = self._evaluate(
-                            self._component(node.left_interface, "boundary_left"),
-                            self._inputs(
-                                node.left_interface, incoming_left, incoming_right
-                            ),
-                        )
-                        self.ledger.bump("recursive_output_stream_boundary_evaluations")
+                        # A pending right branch may never be demanded. Keep
+                        # its transfer in the charged frame until it is visited.
                         top = self._push_stream(
                             (
                                 node.right,
                                 max(0, lo - node.left_width),
                                 hi - node.left_width,
-                                transported_left,
+                                incoming_left,
                                 incoming_right,
                                 top,
+                                node.left_interface,
                             )
                         )
                     if lo < node.left_width:
@@ -539,6 +566,7 @@ class RecursiveCoordinateMorphismArena:
                                 incoming_left,
                                 transported_right,
                                 top,
+                                None,
                             )
                         )
                     continue

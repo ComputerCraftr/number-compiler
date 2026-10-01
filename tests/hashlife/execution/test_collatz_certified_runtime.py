@@ -23,7 +23,7 @@ from number_compiler.sequences.collatz.block_power import (
     PoweredCollatzTerm,
 )
 from tests.support.reference_arithmetic import physical_collatz_literal as _physical
-from tests.support.source_image_assertions import assert_physical_publications
+from tests.support.source_image_assertions import assert_collatz_source_publications
 from tests.support.tile_kernel import _oracle, _runtime, _runtime_source, _tile
 
 
@@ -74,7 +74,7 @@ def test_public_powered_collatz_uses_source_image_consumer(steps: int) -> None:
         (expected >> i) & 1 for i in range(expected.bit_length())
     )
     counters = term._ledger.counters
-    assert_physical_publications(counters)
+    assert_collatz_source_publications(counters)
     assert counters.get("sequential_generation_advances", 0) == 0
     assert counters.get("whole_word_symbol_visits", 0) == 0
 
@@ -213,8 +213,8 @@ def test_public_collatz_does_not_reach_retired_executors(
         forbidden,
     )
     monkeypatch.setattr(
-        "devtools.verification.extensional_family_application."
-        "ExtensionalFamilyApplication._apply_machine",
+        "devtools.verification.collatz_c4_reference."
+        "CollatzC4ReferenceApplication._apply_machine",
         forbidden,
     )
     monkeypatch.setattr(

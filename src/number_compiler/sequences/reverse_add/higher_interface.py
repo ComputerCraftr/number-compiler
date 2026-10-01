@@ -126,9 +126,14 @@ class ReverseHigherInterfaceCompiler:
         left = arena.variable(arena.state_sort(action, 0), "left-boundary")
         symbol = arena.variable(arena.symbol_sort(action), "source-symbol")
         right = arena.variable(arena.state_sort(action, 1), "right-boundary")
-        boundary_left = self.runtime.step(action, 0, left, symbol)
-        boundary_right = self.runtime.step(action, 1, right, symbol)
-        output = self.runtime.emit(action, left, symbol, right)
+        if self.schema.kind(action) == "primitive":
+            boundary_left = arena.primitive_step(action, 0, left, symbol)
+            boundary_right = arena.primitive_step(action, 1, right, symbol)
+            output = arena.primitive_emit(action, left, symbol, right)
+        else:
+            boundary_left = self.runtime.step(action, 0, left, symbol)
+            boundary_right = self.runtime.step(action, 1, right, symbol)
+            output = self.runtime.emit(action, left, symbol, right)
 
         blank = self.schema.alphabet(action)[1]
         boolean = FieldAtomSort("boolean", 2)

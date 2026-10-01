@@ -1,5 +1,6 @@
 theory Reverse_Digit_Terminal_Refinement
   imports Reverse_Residuals.Reverse_196_Publisher_Refinement
+    Reverse_Residuals.Mirror_Pair_Step
 begin
 
 text \<open>The decimal specialization of DigitNormalizeBlockEffect.  These
@@ -55,6 +56,15 @@ lemma digit_terminal_scan_blanks:
     (auto simp: digit_terminal_emit_def digit_terminal_advance_def
       digit_terminal_active_def)
 
+lemma digit_terminal_blank_advance_idempotent:
+  "digit_terminal_advance (digit_terminal_advance l 19) 19 =
+    digit_terminal_advance l 19"
+  by (cases l) (simp add: digit_terminal_advance_def)
+
+lemma digit_terminal_blank_emit_after_first:
+  "digit_terminal_emit (digit_terminal_advance l 19) 19 = 19"
+  by (cases l) (simp add: digit_terminal_advance_def digit_terminal_emit_def)
+
 lemma digit_terminal_scan_padded:
   assumes "\<forall>s\<in>set ss. s<19"
   shows "digit_terminal_scan (digit_terminal_active c) (ss @ 19 # replicate k 19) =
@@ -71,6 +81,71 @@ lemma strip_blank_tail_extra:
 definition digit_terminal_normalize :: "nat list \<Rightarrow> nat list" where
   "digit_terminal_normalize ss = strip_blank_tail
     (digit_terminal_scan (digit_terminal_active False) (ss@[19]))"
+
+text \<open>For a symmetric pair field, the terminal carry can be obtained from
+the first non-neutral coefficient at the LSD boundary.  A coefficient 9
+preserves the incoming carry; the first coefficient below 9 resets it to
+False, and the first coefficient above 9 resets it to True.  If every
+coefficient is 9, the incoming carry is preserved.\<close>
+
+fun digit_terminal_first_reset_carry :: "bool \<Rightarrow> nat list \<Rightarrow> bool" where
+  "digit_terminal_first_reset_carry c [] = c"
+| "digit_terminal_first_reset_carry c (s # ss) =
+    (if s=9 then digit_terminal_first_reset_carry c ss else 10 \<le> s)"
+
+lemma digit_terminal_first_reset_reverse_carry:
+  "digit_terminal_first_reset_carry c ss = carry_out c (rev ss)"
+proof (induct ss arbitrary: c)
+  case Nil
+  then show ?case by (simp add: carry_out_def)
+next
+  case (Cons s ss)
+  show ?case
+  proof (cases "s=9")
+    case True
+    have step: "carry_out c (rev (s # ss)) = carry_out c (rev ss)"
+      using True by (simp add: carry_out_append carry_out_def domain_def)
+    show ?thesis using Cons.hyps[of c] step True by simp
+  next
+    case non_neutral: False
+    show ?thesis
+    proof (cases "s<9")
+      case below: True
+      have reset: "carry_out c (rev (s # ss)) = False"
+        using below by (simp add: carry_out_append carry_out_def domain_def)
+      show ?thesis
+        using reset below non_neutral
+        by (simp add: digit_terminal_first_reset_carry.simps; arith)
+    next
+      case not_below: False
+      have above: "9<s" using not_below non_neutral by arith
+      have reset: "carry_out c (rev (s # ss)) = True"
+        using above by (simp add: carry_out_append carry_out_def domain_def)
+      show ?thesis
+        using reset above non_neutral
+        by (simp add: digit_terminal_first_reset_carry.simps; arith)
+    qed
+  qed
+qed
+
+theorem digit_terminal_symmetric_first_reset_carry:
+  assumes symmetric: "rev ss = ss"
+  shows "carry_out c ss = digit_terminal_first_reset_carry c ss"
+  using digit_terminal_first_reset_reverse_carry[of c ss] symmetric by simp
+
+corollary digit_terminal_valid_pair_first_reset_carry:
+  assumes "valid_pair ss"
+  shows "carry_out c ss = digit_terminal_first_reset_carry c ss"
+proof -
+  have symmetric: "rev ss = ss" using assms by (simp add: valid_pair_def)
+  show ?thesis
+    by (rule digit_terminal_symmetric_first_reset_carry[OF symmetric])
+qed
+
+lemma digit_terminal_first_reset_all_nines:
+  assumes all_neutral: "\<forall>s\<in>set ss. s=9"
+  shows "digit_terminal_first_reset_carry c ss = c"
+  using all_neutral by (induct ss) auto
 
 theorem digit_terminal_refines_digits:
   assumes "\<forall>s\<in>set ss. s<19"
@@ -125,6 +200,14 @@ corollary digit_terminal_after_pair_publisher:
     digit_terminal_refines_digits step_bounded
   by fastforce
 
+corollary digit_terminal_after_pair_publisher_blank_exterior:
+  assumes "valid_pair ss"
+  shows "digit_terminal_normalize
+      (reverse_two_port_publisher (ss @ replicate n 19)) = digits (step ss)"
+  using digit_terminal_after_pair_publisher[OF assms]
+    reverse_two_port_publisher_active_blank_exterior[of ss n]
+  by simp
+
 corollary digit_terminal_196_pair_output:
   "digit_terminal_normalize (run step n [7,18,7]) = digits (run step n [7,18,7])"
 proof (rule digit_terminal_refines_digits)
@@ -147,12 +230,79 @@ next
     digit_terminal_normalize_padding[OF bounded] by simp
 qed
 
+text \<open>The finite width observer retains F5 position and parity only.
+  Its growth argument is supplied by an admitted occurrence; these equations
+  do not construct that occurrence or recover its exact extent.\<close>
+
+definition reverse_width_phase :: "nat \<Rightarrow> nat" where
+  "reverse_width_phase w = w mod 10"
+
+definition reverse_width_action :: "nat \<Rightarrow> nat \<Rightarrow> nat" where
+  "reverse_width_action r p = (p + r) mod 10"
+
+lemma reverse_width_phase_transport:
+  "reverse_width_action r (reverse_width_phase w) = reverse_width_phase (w+r)"
+  unfolding reverse_width_action_def reverse_width_phase_def
+  by (simp add: mod_add_left_eq)
+
+lemma reverse_width_action_compose:
+  "reverse_width_action s (reverse_width_action r p) =
+    reverse_width_action (r+s) p"
+  unfolding reverse_width_action_def by (simp add: mod_add_left_eq add.assoc)
+
+lemma reverse_width_action_residue:
+  "reverse_width_action (r mod 10) p = reverse_width_action r p"
+  unfolding reverse_width_action_def by (simp add: mod_add_right_eq)
+
+lemma reverse_width_phase_coordinates:
+  "(reverse_width_phase w mod 5, reverse_width_phase w mod 2) =
+    (w mod 5, w mod 2)"
+  unfolding reverse_width_phase_def by simp
+
+lemma reverse_width_phase_faithful:
+  assumes "p < 10" "q < 10" "p mod 5 = q mod 5" "p mod 2 = q mod 2"
+  shows "p = (q::nat)"
+proof -
+  have p: "p=0 \<or> p=1 \<or> p=2 \<or> p=3 \<or> p=4 \<or>
+    p=5 \<or> p=6 \<or> p=7 \<or> p=8 \<or> p=9" using assms(1) by arith
+  have q: "q=0 \<or> q=1 \<or> q=2 \<or> q=3 \<or> q=4 \<or>
+    q=5 \<or> q=6 \<or> q=7 \<or> q=8 \<or> q=9" using assms(2) by arith
+  show ?thesis using p q assms(3,4) by (elim disjE; simp_all)
+qed
+
+lemma reverse_width_reflection:
+  assumes "0 < w"
+  shows "(reverse_width_phase w + g + 9) mod 10 = (w+g-1) mod 10"
+proof -
+  have shift: "w+g+9 = (w+g-1)+10" using assms by arith
+  have reduce: "(w mod 10 + g + 9) mod 10 = (w+g+9) mod 10"
+    by (metis mod_add_left_eq)
+  have target: "(w+g+9) mod 10 = (w+g-1) mod 10"
+    by (subst shift) simp
+  show ?thesis unfolding reverse_width_phase_def by (rule trans[OF reduce target])
+qed
+
+lemma reverse_width_phase_not_exact_extent:
+  "reverse_width_phase (w+10) = reverse_width_phase w \<and> w+10 \<noteq> w"
+  unfolding reverse_width_phase_def by simp
+
 ML \<open>
   val _ = if null (Thm_Deps.all_oracles
-    @{thms digit_terminal_scan_admitted digit_terminal_refines_digits
+    @{thms reverse_width_phase_transport reverse_width_action_compose
+      reverse_width_action_residue reverse_width_phase_coordinates
+      reverse_width_phase_faithful reverse_width_reflection
+      reverse_width_phase_not_exact_extent
+      digit_terminal_scan_admitted digit_terminal_refines_digits
       streamed_digits_fold streamed_digits_refines_terminal
       digit_terminal_after_pair_publisher digit_terminal_196_pair_output
-      digit_terminal_after_raw_pair_scan digit_terminal_normalize_padding})
+      digit_terminal_after_pair_publisher_blank_exterior
+      digit_terminal_after_raw_pair_scan digit_terminal_normalize_padding
+      digit_terminal_blank_advance_idempotent
+      digit_terminal_blank_emit_after_first
+      digit_terminal_first_reset_reverse_carry
+      digit_terminal_symmetric_first_reset_carry
+      digit_terminal_valid_pair_first_reset_carry
+      digit_terminal_first_reset_all_nines})
     then () else error "Digit terminal refinement depends on an oracle";
 \<close>
 

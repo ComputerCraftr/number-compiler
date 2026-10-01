@@ -159,3 +159,75 @@ Microblock publication snapshots bounded scalar key/program/payload fields. Retu
 The final local `failure-disposition.json` maps every failure to its exact baseline identity, records all newly added cases and confirms no removed unit identities. All 42 original production failures remain; the structural-clone failure is resolved. No skips, expected failures, suppressions or relaxed limits were introduced. Raw evidence remains ignored local storage.
 
 **Remaining obligations:** source-policy cleanup is complete. Release remains blocked by the 41 reverse/add construction cases and one special-number concrete-resolution case in the unit selection, along with separately recorded P0, mathematical, performance and aggregate-proof obligations. Consolidation does not establish the missing temporal grammar or authorize publication.
+
+## October 1 — test ownership and runtime naming audit
+
+**Objective.** Attribute runtime failures to their real family and distinguish
+runtime validation from executable proof, without relaxing release assertions.
+
+**Changes.** Reverse/add cases formerly under Collatz move to reverse/add owners;
+cross-family cache and output checks move to shared HashLife/runtime modules.
+Runtime publication/replay checks leave `validation/proofs` and retain explicit
+validation membership. The canonical `release.P0` selection follows the moved
+cases. Shared source-image assertions and independent literal arithmetic have
+one support owner rather than copied family implementations.
+
+The mixed idempotent-output module is split into field-arithmetic, projection,
+and special-number compiler tests. All eight original bodies are preserved; the
+compiler test name now identifies its demanded-concrete-output contract. The
+source-image benchmark replaces the misleading linear-bisimulation name. The
+Collatz C4 developer reference and its metrics class identify their family and
+reference-only scope; production import-firewall and poison paths follow the
+rename. Collatz source-word comparison tests no longer use “reverse” to mean
+backward traversal of a Collatz source word.
+
+**Assertion disposition.** P0 runtime cases retain their assertions, parameter
+coverage, validation selection and inherited accounting selection. Their former
+implicit `proof` marker is
+removed because they execute runtime checks, not theorem builds. Historical
+records retain their original names and fingerprints. The adversarial registry's
+four nonexistent function selectors and one deleted module are replaced as follows:
+
+| Retired selector contract | Current assertion owner |
+| --- | --- |
+| Reverse probe interval/discovery reporting | `test_reverse_release_probe_requires_measured_source_image_execution` |
+| Bounded application versus recursive history | `test_reverse_production_requires_exact_output_and_source_image_evidence` |
+| Reverse interval/carry metric labels | `test_reverse_source_image_reports_exact_output_and_publications` |
+| Action composition/discovery metric labels | `test_action_metrics_report_image_publication_and_warm_response_reuse` |
+| Deleted global source-handle audit module | Recursive field-image authority suite plus foreign dyadic handle/composite-source audits |
+
+The retired metric labels are not reintroduced. Their replacements check exact
+output, actual source-image publications, forbidden interpreter work, accounting
+and warm reuse. No missing selector is silently ignored, and no passing report
+is inferred from a renamed case.
+
+**Rejected approaches.** Keeping reverse failures under a Collatz module;
+retaining a proof label on runtime checks; importing helpers from test modules;
+renaming public term APIs; rewriting historical evidence as current evidence.
+
+**Validation/provenance.** Frozen source v5
+`f37500e1f794b43bc7d6ba7f7bb534fe385f1dd17854715dcbf6e80ec063aeca`.
+Evidence is local at
+`results/runs/20261001T205338Z-64257e7f879c4b48b63a40cd6c50e278`,
+with affected-test confirmation at
+`results/runs/20261001T210124Z-424fb43101be44f2a2d2df53afcdbe91`.
+Typing (1,657 sources), Ruff, formatting, source policy, docs, proof inventory and
+installed-wheel checks pass. All 597 adversarial selector nodes resolve. The
+explicit relocation map preserves every one of 8,296 unit and 60 P0 instances;
+P0 outcomes are unchanged at 33 passed / 27 failed. Affected units are 182 passed
+and the existing special-number compiler failure; 63 Collatz reference-poison
+cases pass. Full units hit the unchanged 300-second limit after 98% progress,
+so no full-suite pass or unchanged full-suite outcome is claimed. No theorem
+source changed, and Isabelle builds were not repeated for naming-only changes.
+
+Independent review checked assertion bodies, reference-firewall names and private
+comparator calls. A dropped post-demand family assertion was restored before
+validation. The final explicit validation decorators and the conftest path marker
+were checked; a stale intermediate warning about missing validation marks did not
+apply to the frozen files. The three relocated cases that lost filename-derived
+accounting markers now carry explicit accounting marks. Earlier runs stopped for
+a missing package initializer or a changed source and are not passes.
+
+**Remaining obligations.** This ownership repair does not close the reverse
+constructor, special-number recovery or non-halting failures. Those positive
+gates remain active under their corrected owners.

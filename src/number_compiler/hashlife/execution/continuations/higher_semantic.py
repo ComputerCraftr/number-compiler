@@ -11,6 +11,9 @@ from typing import TYPE_CHECKING
 
 from number_compiler.arithmetic.contracts.scoped_handles import ArenaToken
 from number_compiler.hashlife.actions.field_actions import FieldCellActionID
+from number_compiler.hashlife.execution.continuations.higher_blank_residual import (
+    is_idempotent_blank_transfer,
+)
 from number_compiler.hashlife.execution.continuations.higher_types import (
     FieldAtomSort,
     FieldFunctionSort,
@@ -771,6 +774,16 @@ class HigherSemanticArena:
             action, side
         ) or symbol_node.sort != self.symbol_sort(action):
             raise ValueError("primitive step operands have incompatible sorts")
+        if is_idempotent_blank_transfer(
+            self.schema,
+            action,
+            side,
+            state_node,
+            symbol_node,
+            symbol.local_id,
+        ):
+            self.ledger.bump("higher_blank_transfer_idempotent_hits")
+            return state
         if symbol_node.kind == "symbol":
             if state_node.kind == "literal":
                 return self.literal(
@@ -827,6 +840,16 @@ class HigherSemanticArena:
             or symbol_node.sort != self.symbol_sort(action)
         ):
             raise ValueError("primitive emit operands have incompatible sorts")
+        if is_idempotent_blank_transfer(
+            self.schema,
+            action,
+            0,
+            left_node,
+            symbol_node,
+            symbol.local_id,
+        ):
+            self.ledger.bump("higher_blank_tail_output_elisions")
+            return symbol
         if (
             left_node.kind == "literal"
             and symbol_node.kind == "symbol"

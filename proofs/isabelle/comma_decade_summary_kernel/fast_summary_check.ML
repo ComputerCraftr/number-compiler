@@ -1,11 +1,17 @@
 structure Comma_Decade_Summary_Kernel =
 struct
+  type lens_stats = {lookups: int, hits: int, misses: int,
+    publications: int, failures: int, retained: int}
+  type engine = {context: Proof.context, stats: unit -> string,
+    certify: thm -> thm, transport: string -> term -> thm option,
+    lens_stats: unit -> lens_stats}
+
   fun make ctxt =
     let
       val (certify, _) = Comma_Entry_Arithmetic.make_certifier ctxt
-      (* Preprove the 91 coordinate lenses, leaving decimal phase symbolic.
-         The control memo sees only the representative; occurrence labels are
-         still checked separately. No candidate transition table is trusted. *)
+      (* Coordinate lenses are immutable theorem templates. Build a demanded
+         offset once; engine setup and unrelated offset requests do no proof
+         work. The control memo still retains the exact receiving occurrence. *)
       val orbit_context = Comma_Entry_Arithmetic.natural_context ctxt addsimps
         @{thms comma_offset_representative_def comma_offset_representatives_def
           comma_offset_orbit_def comma_digit_orbit_sum_def power2_eq_square
@@ -24,7 +30,36 @@ struct
           val reduced = Conv.fconv_rule
             (Conv.arg_conv (Conv.arg_conv (Simplifier.rewrite orbit_context))) admitted
         in certify reduced end
-      val lenses = Vector.fromList (map lens (0 upto 90))
+      val lenses = Array.array (91, NONE: thm option)
+      val lens_lookups = Unsynchronized.ref 0
+      val lens_hits = Unsynchronized.ref 0
+      val lens_misses = Unsynchronized.ref 0
+      val lens_publications = Unsynchronized.ref 0
+      val lens_failures = Unsynchronized.ref 0
+      fun lens_at x =
+        if x < 0 orelse x > 90 then error "Invalid decade lens offset"
+        else
+          let val _ = lens_lookups := !lens_lookups + 1 in
+            case Array.sub (lenses, x) of
+              SOME theorem => (lens_hits := !lens_hits + 1; theorem)
+            | NONE =>
+                let
+                  val _ = lens_misses := !lens_misses + 1
+                  val attempt = Exn.capture lens x
+                in
+                  case attempt of
+                    Exn.Exn failure =>
+                      (lens_failures := !lens_failures + 1; Exn.reraise failure)
+                  | Exn.Res theorem =>
+                      (Array.update (lenses, x, SOME theorem);
+                       lens_publications := !lens_publications + 1;
+                       theorem)
+                end
+          end
+      fun lens_stats () : lens_stats =
+        {lookups = !lens_lookups, hits = !lens_hits, misses = !lens_misses,
+         publications = !lens_publications, failures = !lens_failures,
+         retained = !lens_publications}
       val transported = Unsynchronized.ref 0
       val transport_time = Unsynchronized.ref Time.zeroTime
       fun transport name key =
@@ -37,7 +72,7 @@ struct
                 let
                   val started = Time.now ()
                   val rule = Drule.infer_instantiate ctxt
-                    [(("r",0), Thm.cterm_of ctxt phase)] (Vector.sub (lenses,x))
+                    [(("r",0), Thm.cterm_of ctxt phase)] (lens_at x)
                   val equation = rule RS @{thm eq_reflection}
                   val result = if Thm.is_reflexive equation then NONE
                     else (transported := !transported+1; SOME equation)
@@ -86,19 +121,25 @@ struct
           comma_decade_admitted.simps comma_decade_terminal_candidate_def
           comma_terminal_from_code_eval}
       fun stats () =
-        let val r = rank_stats (); val t = terminal_stats () in
+        let val r = rank_stats (); val t = terminal_stats (); val l = lens_stats () in
           #stats core () ^
           " summary_orbit_transports=" ^ Int.toString (!transported) ^
           " summary_transport_ms=" ^ LargeInt.toString (Time.toMilliseconds (!transport_time)) ^
+          " summary_lens_lookups=" ^ Int.toString (#lookups l) ^
+          " summary_lens_hits=" ^ Int.toString (#hits l) ^
+          " summary_lens_misses=" ^ Int.toString (#misses l) ^
+          " summary_lens_publications=" ^ Int.toString (#publications l) ^
+          " summary_lens_failures=" ^ Int.toString (#failures l) ^
+          " summary_lens_retained=" ^ Int.toString (#retained l) ^
           " summary_rank_lookups=" ^ Int.toString (#lookups r) ^
           " summary_rank_ms=" ^ LargeInt.toString (#elapsed_ms r) ^
           " summary_terminal_lookups=" ^ Int.toString (#lookups t) ^
           " summary_terminal_ms=" ^ LargeInt.toString (#elapsed_ms t)
         end
-    in {context=evaluation, stats=stats, certify=certify} end
+    in {context=evaluation, stats=stats, certify=certify,
+      transport=transport, lens_stats=lens_stats}: engine end
 
-  fun range ctxt (engine: {context: Proof.context, stats: unit -> string,
-      certify: thm -> thm}) (lo,hi) =
+  fun range ctxt (engine: engine) (lo,hi) =
     let
       val _ = if 0 <= lo andalso lo <= hi andalso hi <= 924 then ()
         else error "Invalid summary phase range"

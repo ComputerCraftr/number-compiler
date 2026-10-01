@@ -28,6 +28,80 @@ from number_compiler.arithmetic.polynomials.cyclotomic_transport import (
 from number_compiler.arithmetic.polynomials.digit_cyclotomic import CyclotomicDigitBlock
 
 
+@dataclass(frozen=True, slots=True)
+class ReverseWidthPhase:
+    """Decimal extent observed ONLY through its F5 and parity coordinates.
+
+    This quotient does not recover an exact width or certify a future seam.
+    Exact extent and source authority belong to the admitted occurrence.
+    """
+
+    phase: int
+
+    def __post_init__(self) -> None:
+        if type(self.phase) is not int or not 0 <= self.phase < 10:
+            raise ValueError("reverse width phase must lie in Z/10")
+
+    @classmethod
+    def from_extent(cls, extent: int) -> ReverseWidthPhase:
+        if type(extent) is not int or extent <= 0:
+            raise ValueError("reverse active extent must be a positive integer")
+        return cls(extent % 10)
+
+    @property
+    def observable(self) -> tuple[int, int]:
+        self.__post_init__()
+        return self.phase % 5, self.phase % 2
+
+    def apply(self, action: ReverseWidthPhaseAction) -> ReverseWidthPhase:
+        self.__post_init__()
+        if type(action) is not ReverseWidthPhaseAction:
+            raise TypeError("reverse width phase requires a width action")
+        action.__post_init__()
+        return ReverseWidthPhase((self.phase + action.delta) % 10)
+
+    def reflection_offset(self, *, terminal_growth: int = 0) -> int:
+        """The reflected input chart after one admitted terminal growth bit."""
+        self.__post_init__()
+        if type(terminal_growth) is not int or terminal_growth not in (0, 1):
+            raise ValueError("reverse terminal growth must be an exact bit")
+        return (self.phase + terminal_growth - 1) % 10
+
+
+@dataclass(frozen=True, slots=True)
+class ReverseWidthPhaseAction:
+    """Translation by an ALREADY established growth count modulo ten.
+
+    This is a finite observer action, not an exact return or a growth-count
+    constructor. Equal deltas never authorize substituting successor images.
+    """
+
+    delta: int
+
+    def __post_init__(self) -> None:
+        if type(self.delta) is not int or not 0 <= self.delta < 10:
+            raise ValueError("reverse width action must lie in Z/10")
+
+    @classmethod
+    def from_growth_count(cls, growth_count: int) -> ReverseWidthPhaseAction:
+        if type(growth_count) is not int or growth_count < 0:
+            raise ValueError("reverse growth count must be a nonnegative integer")
+        return cls(growth_count % 10)
+
+    def then(self, after: ReverseWidthPhaseAction) -> ReverseWidthPhaseAction:
+        self.__post_init__()
+        if type(after) is not ReverseWidthPhaseAction:
+            raise TypeError("reverse width composition requires a width action")
+        after.__post_init__()
+        return ReverseWidthPhaseAction((self.delta + after.delta) % 10)
+
+    def power(self, repetitions: int) -> ReverseWidthPhaseAction:
+        self.__post_init__()
+        if type(repetitions) is not int or repetitions < 0:
+            raise ValueError("width repetitions must be a nonnegative integer")
+        return ReverseWidthPhaseAction(self.delta * (repetitions % 10) % 10)
+
+
 def normalize_event_schedule(
     events: Sequence[Sequence[int]], growths: Sequence[int]
 ) -> tuple[tuple[tuple[int, ...], ...], tuple[int, ...]]:
@@ -87,6 +161,11 @@ class ReverseAddCyclotomicInnovationBlock:
     @property
     def classes(self) -> int:
         return self.order // 2
+
+    @property
+    def width_phase_action(self) -> ReverseWidthPhaseAction:
+        """Project this block's supplied growth; grants no source admission."""
+        return ReverseWidthPhaseAction.from_growth_count(self.growth)
 
     @property
     def no_growth(self) -> int:
@@ -234,4 +313,8 @@ class ReverseAddCyclotomicInnovationBlock:
         )
 
 
-__all__ = ["ReverseAddCyclotomicInnovationBlock"]
+__all__ = [
+    "ReverseAddCyclotomicInnovationBlock",
+    "ReverseWidthPhase",
+    "ReverseWidthPhaseAction",
+]

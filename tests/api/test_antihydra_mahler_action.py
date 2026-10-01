@@ -602,3 +602,30 @@ def test_audit_rejects_negative_demanded_transfer_with_matching_exact_endpoint()
     snapshot[2], snapshot[3] = -1, offset
     workspace.support_snapshots[expanded_id.local_id] = tuple(snapshot)
     assert audit_dyadic_return_payloads(ledger).invalid
+
+
+@pytest.mark.parametrize("returns", (0, 1, 2, 8, 16, 128, 512))
+def test_homogeneous_growth_is_demanded_from_admitted_mahler_extent(
+    returns: int,
+) -> None:
+    term = AntihydraArithmeticTerm(returns)
+    packet = associated_action(term.result())
+    growth = object_record(packet["homogeneous_growth"])
+    assert (growth["growths"], growth["halvings"], growth["radix"]) == (
+        returns,
+        returns,
+        10,
+    )
+    order = growth["homogeneous_radix_order"]
+    assert type(order) is int
+    scale = Fraction(3, 2) ** returns
+    assert Fraction(10) ** order <= scale < Fraction(10) ** (order + 1)
+    rational = object_record(packet["scale"])
+    numerator, denominator = rational["numerator"], rational["denominator"]
+    assert type(numerator) is int and type(denominator) is int
+    assert scale == Fraction(numerator, denominator)
+    assert not any(
+        row.entries or row.nodes
+        for row in term.ledger.inventory()
+        if row.name.startswith("homogeneous-growth")
+    )

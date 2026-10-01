@@ -32,7 +32,7 @@ forbidden = (
     "devtools.verification.block_runtime",
     "number_compiler.arithmetic.contracts.physical_collatz_kernel",
     "number_compiler.hashlife.execution.diamond_reverse_kernel",
-    "devtools.verification.extensional_family_application",
+    "devtools.verification.collatz_c4_reference",
 )
 print(json.dumps({
     "loaded": [name for name in forbidden if name in sys.modules],

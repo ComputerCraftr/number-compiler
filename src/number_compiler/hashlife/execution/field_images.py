@@ -36,6 +36,11 @@ from number_compiler.hashlife.execution.field_image_domains import (
     register_field_image_domain,
     validate_field_image_authorities,
 )
+from number_compiler.hashlife.execution.field_image_summaries import (
+    FieldImageSummary,
+    FieldImageSummaryRef,
+    ParametricFieldImageSummary,
+)
 from number_compiler.hashlife.execution.source_image_seals import (
     _require_immutable_key,
     _TypedKey,
@@ -384,60 +389,6 @@ class SourceCellArena:
 
 
 @dataclass(frozen=True, slots=True)
-class FieldImageSummary:
-    activity: bool
-    first_active: int | None
-    last_active: int | None
-    extent: int
-    growth: int = 0
-    terminated: bool = False
-
-    def __post_init__(self) -> None:
-        if type(self.activity) is not bool or type(self.terminated) is not bool:
-            raise TypeError("image activity and termination require booleans")
-        if type(self.extent) is not int or type(self.growth) is not int:
-            raise TypeError("image extent metadata requires exact integers")
-        if self.extent < 0:
-            raise ValueError("negative image extent")
-        for value in (self.first_active, self.last_active):
-            if value is not None and (
-                type(value) is not int or not 0 <= value < self.extent
-            ):
-                raise ValueError("activity coordinate is outside the image extent")
-        if (self.first_active is None) != (self.last_active is None):
-            raise ValueError("activity endpoints must agree on emptiness")
-        if self.activity != (self.first_active is not None):
-            raise ValueError("activity flag disagrees with endpoints")
-        if (
-            self.first_active is not None
-            and self.last_active is not None
-            and self.first_active > self.last_active
-        ):
-            raise ValueError("image activity endpoints are reversed")
-
-
-@dataclass(frozen=True, slots=True)
-class ParametricFieldImageSummary:
-    """Canonical summary functions owned by a bounded local interface.
-
-    ``extent_bound`` is admission geometry only.  Activity and exact extent
-    remain functions of the incoming port and are bound at observation time.
-    """
-
-    interface: LocalInterfaceID
-    extent_bound: int
-
-    def __post_init__(self) -> None:
-        if type(self.interface) is not LocalInterfaceID:
-            raise TypeError("parametric summary requires a local interface ID")
-        if type(self.extent_bound) is not int or self.extent_bound < 0:
-            raise ValueError("parametric summary requires a nonnegative extent bound")
-
-
-FieldImageSummaryRef = FieldImageSummary | ParametricFieldImageSummary
-
-
-@dataclass(frozen=True, slots=True)
 class FieldImageRecord:
     level: int
     left: FieldImageID | None
@@ -543,7 +494,9 @@ class RecursiveFieldImageArena:
     A field-image node is a constant-size semantic record, not exact digit
     geometry.  Its ID therefore remains resolvable for the index lifetime.
     Source occurrence bindings may be discarded and reconstructed around those
-    stable semantic identities.
+    stable semantic identities. Publishers retaining authenticated occurrences
+    can retain their binding authority for the arena lifetime instead. Those
+    bindings remain charged and are released explicitly by ``clear_bindings``.
     """
 
     _nodes: MutableMapping[int, FieldImageRecord]
@@ -570,7 +523,10 @@ class RecursiveFieldImageArena:
         action_kind: str = "field-cell-action",
         output_kind: str = "coordinate-output-morphism",
         signature_kind: str = "diamond-semantic-signature",
+        retain_occurrence_authority: bool = False,
     ) -> None:
+        if type(retain_occurrence_authority) is not bool:
+            raise TypeError("field image authority retention requires a boolean")
         if any(
             owner.ledger is not ledger for owner in (sources, geometries, interfaces)
         ):
@@ -687,7 +643,7 @@ class RecursiveFieldImageArena:
             self._bindings,
             node_count=lambda: 0,
             payloads=self._bindings.items,
-            evict=self.clear_bindings,
+            evict=None if retain_occurrence_authority else self.clear_bindings,
         )
 
     def admit_domain(
@@ -878,6 +834,8 @@ class RecursiveFieldImageArena:
         interface_record = domain.interfaces.resolve(record.interface)
         if interface_record.signature != key.signature:
             raise ValueError("field image interface has another port signature")
+        if type(record.summary) is ParametricFieldImageSummary:
+            record.summary.validate_range(domain.interfaces)
         normalized_geometry = self.geometries.resolve(record.geometry)
         if record.geometry != key.geometry:
             raise ValueError("field image geometry differs from its request")

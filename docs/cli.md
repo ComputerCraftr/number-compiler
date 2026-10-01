@@ -253,3 +253,16 @@ trials separately. The work cap is not a cap on individual candidate trials.
 Verification markers use the existing bounded process cache, while bypassed
 queries retain only their own ledger-owned admission marker. Repeated demands
 still hash the immutable compressed certificate; those bytes are charged.
+
+### Homogeneous growth projections
+
+Collatz's requested `clock` value includes `homogeneous_growth`, with exact
+`growths=H`, `halvings=D`, `radix=10` and
+`homogeneous_radix_order=floor(H log10(3) - D log10(2))`.
+Antihydra's requested `mahler` associated action uses the same fields with
+`H=D=R`, derived from its admitted return extent. This is the homogeneous
+multiplier's radix order, not the endpoint's digit width or a safety result;
+source offsets, caps and existing clock meanings remain separate.
+These projections use certified rational bounds, and a precision/work refusal
+never returns an approximate result. Digit-only and metrics-only queries do
+not request them. There is no growth-word selector.

@@ -2,10 +2,17 @@
 
 from __future__ import annotations
 
-from collections.abc import Callable
+from collections.abc import Callable, Iterable, Iterator
+from contextlib import contextmanager
 
 from number_compiler.arithmetic.formula.formula import FormulaArena, FormulaRoot
 from number_compiler.arithmetic.formula.types import RadixSpec
+from number_compiler.arithmetic.polynomials.twisted_observer import (
+    TwistedCylinderProjection,
+    first_mirror_obstruction,
+)
+from number_compiler.resources.ledger import ResourceLedger
+from number_compiler.resources.stores import LedgerList
 
 
 def mirror_palindrome(width: int, digit: Callable[[int], int]) -> bool:
@@ -16,6 +23,74 @@ def mirror_palindrome(width: int, digit: Callable[[int], int]) -> bool:
         if digit(i) != digit(width - 1 - i):
             return False
     return True
+
+
+@contextmanager
+def _completed_output_buffer(
+    width: int,
+    digits: Iterable[int],
+    *,
+    ledger: ResourceLedger,
+    scratch: LedgerList[int],
+) -> Iterator[LedgerList[int]]:
+    """Reserve and release one complete output for mirrored-coordinate queries.
+
+    Powered output is supplied in least-significant-first order. Its transient
+    buffer and the shared observer's defect scratch are reserved before the
+    stream is consumed, so mirrored positions need no temporal point queries.
+    """
+    if type(width) is not int or width < 1:
+        raise ValueError("positive target width required")
+    if type(ledger) is not ResourceLedger or type(scratch) is not LedgerList:
+        raise TypeError("mirror output requires a ledger-owned scratch list")
+    if (
+        scratch.ledger is not ledger
+        or scratch.append_only
+        or scratch.nodes_per_entry != 2
+    ):
+        raise ValueError("mirror output scratch belongs to another ledger or policy")
+    if scratch:
+        raise RuntimeError("mirror output scratch is already in use")
+    with ledger.reservation(scratch.owner, entries=width, nodes=2 * width):
+        try:
+            for digit in digits:
+                if len(scratch) >= width:
+                    raise ValueError("completed output stream exceeds its width")
+                scratch.append(digit)
+            if len(scratch) != width:
+                raise ValueError("completed output stream width mismatch")
+            yield scratch
+        finally:
+            scratch.clear()
+
+
+def mirror_obstruction_from_output(
+    width: int,
+    digits: Iterable[int],
+    *,
+    ledger: ResourceLedger,
+    scratch: LedgerList[int],
+    first_width: int = 1,
+) -> TwistedCylinderProjection | None:
+    """Compute the exact obstruction from a single completed output stream."""
+    if type(first_width) is not int or first_width < 1:
+        raise ValueError("positive first-sheet width required")
+    with _completed_output_buffer(width, digits, ledger=ledger, scratch=scratch):
+        return first_mirror_obstruction(
+            width, scratch.__getitem__, first_width=first_width
+        )
+
+
+def mirror_palindrome_from_output(
+    width: int,
+    digits: Iterable[int],
+    *,
+    ledger: ResourceLedger,
+    scratch: LedgerList[int],
+) -> bool:
+    """Avoid repeated temporal-prefix observation for each mirrored digit pair."""
+    with _completed_output_buffer(width, digits, ledger=ledger, scratch=scratch):
+        return mirror_palindrome(width, scratch.__getitem__)
 
 
 def next_result_is_palindrome(

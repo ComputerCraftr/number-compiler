@@ -21,9 +21,6 @@ from number_compiler.hashlife.execution.continuations.higher_macro_composer impo
 from number_compiler.hashlife.execution.continuations.higher_semantic import (
     HigherSemanticArena,
 )
-from number_compiler.hashlife.execution.continuations.higher_types import (
-    HigherExpressionID,
-)
 from number_compiler.hashlife.execution.continuations.provider_absorption import (
     ProviderAbsorptionArena,
 )
@@ -33,9 +30,12 @@ from number_compiler.hashlife.execution.continuations.provider_image_input impor
 from number_compiler.hashlife.execution.field_executor import (
     FieldImageCandidate,
 )
+from number_compiler.hashlife.execution.field_image_summaries import (
+    ParametricFieldImageSummary,
+    ParametricFieldRangeSummary,
+)
 from number_compiler.hashlife.execution.field_images import (
     FieldImageID,
-    ParametricFieldImageSummary,
     RecursiveFieldImageArena,
     SourceCellArena,
     SourceCellID,
@@ -177,6 +177,12 @@ class _ReverseRecursiveFieldAdapter:
             if self._source_extents.get(current) is not None:
                 continue
             record = self.sources.resolve(current)
+            if record.uniform_symbol is not None:
+                self._source_extents[current] = (
+                    0 if record.uniform_symbol == self.blank else record.width
+                )
+                self.ledger.bump("reverse_uniform_source_extent_resolutions")
+                continue
             if record.level == 0:
                 if record.source_tile.symbol is None:
                     raise AssertionError("reverse source leaf has no symbol")
@@ -205,14 +211,6 @@ class _ReverseRecursiveFieldAdapter:
             raise AssertionError("reverse source extent was not published")
         return found
 
-    @staticmethod
-    def _expression_component(value: object, role: str) -> HigherExpressionID:
-        if type(value) is not HigherExpressionID:
-            raise TypeError(
-                f"reverse completed child {role} is not a scalar expression"
-            )
-        return value
-
     def _macro_from_completed(
         self,
         image: FieldImageID,
@@ -235,18 +233,21 @@ class _ReverseRecursiveFieldAdapter:
             raise TypeError("reverse completed child requires a parametric summary")
         if image_record.summary.extent_bound != source_record.width:
             raise ValueError("reverse completed child has another extent bound")
-        interface = self.interfaces.resolve(image_record.interface)
-        components = interface.components
+        summary = image_record.summary
+        summary.validate_range(self.interfaces)
+        range_summary = summary.range_summary
+        if range_summary is None:
+            raise ValueError("reverse completed child lost its exact range summary")
         return SourceBoundHigherMacro(
             image_record.interface,
             image_record.output,
             source_record.width,
             self._source_extent(source),
-            self._expression_component(components.activity, "activity"),
-            self._expression_component(components.first_active, "first_active"),
-            self._expression_component(components.last_active, "last_active"),
-            self._expression_component(components.extent, "extent"),
-            self._expression_component(components.growth, "growth"),
+            range_summary.activity,
+            range_summary.first_active,
+            range_summary.last_active,
+            range_summary.extent,
+            range_summary.growth,
         )
 
     def _join_completed(
@@ -306,12 +307,23 @@ class _ReverseRecursiveFieldAdapter:
         self._composers[action] = found
         return found
 
-    @staticmethod
-    def _candidate(macro: SourceBoundHigherMacro) -> FieldImageCandidate:
+    def _candidate(self, macro: SourceBoundHigherMacro) -> FieldImageCandidate:
+        range_summary = ParametricFieldRangeSummary(
+            macro.activity,
+            macro.first_active,
+            macro.last_active,
+            macro.extent,
+            macro.growth,
+        )
+        summary = ParametricFieldImageSummary(
+            macro.interface,
+            macro.width,
+            range_summary,
+        )
         return FieldImageCandidate(
             macro.interface,
             macro.output,
-            ParametricFieldImageSummary(macro.interface, macro.width),
+            summary,
         )
 
     def _compile(

@@ -472,24 +472,29 @@ class ReverseFieldActionArena:
         return self._output_key(reference)
 
     def temporal_action(self, reference: FieldCellActionID) -> RadialMultiplier:
-        """Return the exact centered temporal action ``(q, r)``.
+        """Return the radial exponents recorded on this algebraic action.
 
-        Reverse/add occurrence selection may carry innovation, carry, output,
-        admission and geometric data, but after rebasing an authenticated
-        source occurrence to its target origin the linear action is exactly
-        ``U -> 2**q * (1+z)**r * U``.  Therefore only the no-growth and growth
-        counts belong to temporal ActionID.
+        The action ID does not itself carry source authority. Its ``growth``
+        exponent is the physical width-growth count only when the producer
+        authenticated and composed source-specific successor clauses. The
+        recursive cutover's current generic primitive has growth zero for all
+        sources, so this projection must not be used to infer that occurrence's
+        active width.
         """
         action = self.resolve(reference)
         return RadialMultiplier(action.radial.no_growth, action.radial.growth)
 
-    def semantic_identity(self, reference: FieldCellActionID) -> SemanticIdentity:
+    def semantic_identity(
+        self, reference: FieldCellActionID, *, audit: bool = False
+    ) -> SemanticIdentity:
         """Return the centered temporal semantic identity, never occurrence data.
 
         The complete field-action record is an occurrence/interface carrier.
         Its innovation, carry summaries, residual/output bindings and geometry
         deliberately do not split this identity.
         """
+        if type(audit) is not bool:
+            raise TypeError("identity audit selection must be Boolean")
         action = self.resolve(reference)
         if type(action.radial) is not PowerTwoCyclotomicRadialQuotient:
             raise ValueError("reverse action radial coordinates changed")
@@ -497,14 +502,22 @@ class ReverseFieldActionArena:
             action.radial.__post_init__()
         except (TypeError, ValueError) as error:
             raise ValueError("reverse action radial coordinates changed") from error
-        self.ledger.bump("reverse_field_action_semantic_identity_requests")
-        if reference in self._semantic_identities:
-            cached = self._semantic_identities[reference]
+        if audit:
             self.ledger.bump(
-                "reverse_field_action_identity_validation_radial_bit_work",
+                "reverse_payload_audit_identity_operand_bits",
                 max(1, action.radial.no_growth.bit_length())
                 + max(1, action.radial.growth.bit_length()),
             )
+        else:
+            self.ledger.bump("reverse_field_action_semantic_identity_requests")
+        if reference in self._semantic_identities:
+            cached = self._semantic_identities[reference]
+            if not audit:
+                self.ledger.bump(
+                    "reverse_field_action_identity_validation_radial_bit_work",
+                    max(1, action.radial.no_growth.bit_length())
+                    + max(1, action.radial.growth.bit_length()),
+                )
             issued = self._semantic_identity_issued.get(reference)
             if not valid_radial_memo(
                 reference,
@@ -517,10 +530,15 @@ class ReverseFieldActionArena:
                 len(self._actions),
             ):
                 raise ValueError("cached reverse semantic identity lost its seal")
-            self.ledger.bump("reverse_field_action_semantic_identity_cache_hits")
+            if not audit:
+                self.ledger.bump("reverse_field_action_semantic_identity_cache_hits")
             return cached[3]
         if reference in self._semantic_identity_issued:
             raise ValueError("reverse semantic identity lost its issued cache record")
+        if audit:
+            # Explicit audits may check a capacity-bypassed identity, but must
+            # never publish a memo or inflate execution cache counters.
+            return build_radial_identity(action.radial)
 
         self.ledger.bump("reverse_field_action_semantic_identity_cache_misses")
         radial = action.radial

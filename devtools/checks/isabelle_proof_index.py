@@ -31,6 +31,15 @@ _ML_FILE_ARGUMENT = re.compile(
 # empty mapping is deliberate: a standalone mathematical theory must not be
 # presented as a production refinement merely because it is registered.
 COUNTERPARTS: dict[str, tuple[str, ...]] = {
+    "Homogeneous_Growth_Scale": (
+        "src/number_compiler/arithmetic/fields/homogeneous_growth.py",
+        "src/number_compiler/arithmetic/fields/mechanical_readout.py",
+        "tests/arithmetic/fields/test_homogeneous_growth.py",
+    ),
+    "Weighted_Partial_Growth_Action": (
+        "devtools/verification/reverse_growth_moore.py",
+        "tests/sequences/reverse_add/test_growth_moore_verification.py",
+    ),
     "Comma_Normalized_Cycle": (
         "src/number_compiler/sequences/comma/cycle_actions.py",
         "src/number_compiler/sequences/comma/action_arena.py",
@@ -435,6 +444,7 @@ def _ml_file_references(text: str, path: Path) -> tuple[str, ...]:
 
 def build_index() -> dict[str, object]:
     sessions = parse_sessions((ISABELLE / "ROOT").read_text())
+    source_texts: dict[str, str] = {}
     declared: dict[
         str, tuple[Path, tuple[str, ...], str, tuple[str, ...], tuple[str, ...]]
     ] = {}
@@ -449,6 +459,7 @@ def build_index() -> dict[str, object]:
             )
         if name in declared:
             raise ValueError(f"duplicate theory declaration: {name}")
+        source_texts[name] = text
         declared[name] = (
             path,
             imports,
@@ -556,7 +567,6 @@ def build_index() -> dict[str, object]:
             raise ValueError(f"{theory}: missing mapped counterparts {missing}")
 
     entries = []
-    source_texts = {name: row[0].read_text() for name, row in declared.items()}
     token_uses: dict[str, set[str]] = {}
     for theory, contents in source_texts.items():
         contents = executable_text(contents)

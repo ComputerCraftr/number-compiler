@@ -9,13 +9,16 @@ from fractions import Fraction
 from devtools.verification.oracles.sequence_arithmetic import (
     collatz_literal,
 )
+from devtools.verification.oracles.sequence_arithmetic import (
+    reverse_add_literal as literal_reverse_add,
+)
 from number_compiler.arithmetic.carry.reverse_sector_transfer import (
     ReverseCarrySectorTransfer,
 )
 from number_compiler.arithmetic.fields.consumer_pullback import SaturatingAffineAction
 from number_compiler.hashlife.execution.dyadic_return_records import DyadicReturnLaw
 
-__all__ = ("collatz_literal",)
+__all__ = ("collatz_literal", "literal_reverse_add")
 
 
 def rational_action_components(

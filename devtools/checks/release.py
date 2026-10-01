@@ -32,15 +32,18 @@ from devtools.checks.test_run_evidence import (
 from devtools.paths import isabelle_root
 from devtools.runs import EvidenceRun
 
-# Exact seven-module selection retained from the pre-migration P0 manifest.
+# Canonical P0 owners. Runtime gates live with their family or shared runtime,
+# while theorem/release obligations retain their proof-owner modules.
 P0 = (
-    "tests/sequences/collatz/test_linear_bisimulation_checkpoint.py",
+    "tests/sequences/collatz/test_source_image_runtime.py",
+    "tests/sequences/reverse_add/test_source_image_runtime.py",
+    "tests/validation/runtime/test_cross_family_runtime_reporting.py",
+    "tests/hashlife/observation/test_runtime_reporting.py",
     "tests/validation/proofs/test_antihydra_release.py",
     "tests/validation/proofs/test_family_digit_cylinder_cutover.py",
     "tests/validation/proofs/test_reverse_generic_range_constructor.py",
     "tests/validation/proofs/test_reverse_temporal_publisher_cutover.py",
     "tests/validation/proofs/test_shadow_jet_primality_release.py",
-    "tests/validation/proofs/test_temporal_runtime_reporting.py",
 )
 
 

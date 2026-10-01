@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from collections.abc import Callable, Mapping
-from typing import TypeVar
+from typing import Never, TypeVar
 
 import pytest
 
@@ -95,3 +95,8 @@ def assert_clean_payloads(ledger: ResourceLedger) -> None:
         payloads.forbidden_future_payloads,
         payloads.unbounded_future_integers,
     ) == (0, 0, 0)
+
+
+def forbid_explicit_lowering(*args: object, **kwargs: object) -> Never:
+    """Poison crossing from a point/width observer to explicit lowering."""
+    raise AssertionError("point/width crossed an explicit lowering boundary")

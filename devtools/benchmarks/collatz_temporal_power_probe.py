@@ -509,6 +509,8 @@ def balanced_scaling(
 
     The independent scalar reference runs outside all reported timings. Its
     cost is test-oracle work, not evidence for the production construction.
+    ``repeat`` reuses a NumberCompiler term; ``process-warm`` creates a fresh
+    compiler for each trial and can reuse only admitted process-cache records.
     """
     fingerprint = source_fingerprint(ROOT)
     rows: list[dict[str, object]] = []
@@ -543,8 +545,10 @@ def balanced_scaling(
                 arguments += ["--info", "mahler"]
         request = parse_request(arguments)
         assert request is not None
+        if mode == "process-warm":
+            NumberCompiler.clear_shared_cache()
         retained = NumberCompiler()
-        if mode == "repeat":
+        if mode in ("repeat", "process-warm"):
             warm = QueryContext(request, retained)
             warm.term.materialize(max_bits=1_000_000)
             warm.information()
@@ -850,7 +854,9 @@ def main() -> int:
         "--indices", nargs="+", type=int, default=(16, 32, 64, 128, 256, 512, 1024)
     )
     parser.add_argument("--trials", type=int, default=5)
-    parser.add_argument("--mode", choices=("cold", "repeat", "bypass"), default="cold")
+    parser.add_argument(
+        "--mode", choices=("cold", "repeat", "process-warm", "bypass"), default="cold"
+    )
     parser.add_argument(
         "--pattern", choices=("random", "repeating", "cycle", "long"), default="random"
     )

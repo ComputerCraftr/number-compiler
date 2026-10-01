@@ -1,4 +1,4 @@
-"""Exact occurrence reuse preserves source authority and direct small actions."""
+"""Exact associated-action reuse preserves source authority and small actions."""
 
 from __future__ import annotations
 
@@ -6,6 +6,7 @@ from typing import cast
 
 import pytest
 
+from number_compiler.resources.ledger import ResourceLedger
 from number_compiler.resources.metric_collection import collect_ledger_metrics
 from number_compiler.resources.process_cache import (
     CacheRecordIssuerMismatch,
@@ -13,6 +14,10 @@ from number_compiler.resources.process_cache import (
     ProcessCache,
 )
 from number_compiler.sequences.antihydra import mahler_cache
+from number_compiler.sequences.antihydra.arithmetic_images import (
+    ANTIHYDRA_ARITHMETIC_LAW,
+    AntihydraArithmeticImageWorkspace,
+)
 from number_compiler.sequences.antihydra.mahler_action import associated_action
 from number_compiler.sequences.antihydra.runtime import AntihydraArithmeticTerm
 
@@ -40,14 +45,14 @@ def test_late_observer_warm_query_skips_exact_constructor_and_metrics_stay_read_
     cache: ProcessCache, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     cold, expected = _query()
-    assert cold.ledger.counters["mahler_hashlife_occurrence_misses"] == 1
-    assert cold.ledger.counters["mahler_hashlife_occurrence_publications"] == 1
+    assert cold.ledger.counters["mahler_hashlife_action_misses"] == 1
+    assert cold.ledger.counters["mahler_hashlife_action_publications"] == 1
     monkeypatch.setattr(mahler_cache, "_build_action", _forbidden)
     warm, actual = _query()
     assert actual == expected
-    assert warm.ledger.counters["mahler_hashlife_occurrence_process_hits"] == 1
-    assert warm.ledger.counters["mahler_hashlife_occurrence_exact_hits"] == 1
-    assert warm.ledger.counters["mahler_hashlife_occurrence_applied_hits"] == 1
+    assert warm.ledger.counters["mahler_hashlife_action_process_hits"] == 1
+    assert warm.ledger.counters["mahler_hashlife_action_exact_hits"] == 1
+    assert "mahler_hashlife_action_applied_hits" not in warm.ledger.counters
     before = cache.stats()
     version = warm.ledger.mutation_version
     metrics = collect_ledger_metrics(warm.ledger)
@@ -81,9 +86,9 @@ def test_small_mahler_actions_never_acquire_process_cache(
     monkeypatch.setattr(mahler_cache, "get_process_cache", _forbidden)
     term, actual = _query(extent)
     assert actual == expected
-    assert term.ledger.counters["mahler_hashlife_occurrence_lookups"] == 0
-    assert term.ledger.counters["mahler_hashlife_occurrence_policy_bypasses"] == 1
-    assert term.ledger.counters["mahler_hashlife_occurrence_bypasses"] == 0
+    assert term.ledger.counters["mahler_hashlife_action_lookups"] == 0
+    assert term.ledger.counters["mahler_hashlife_action_policy_bypasses"] == 1
+    assert term.ledger.counters["mahler_hashlife_action_bypasses"] == 0
 
 
 def test_changed_public_source_rejected_before_warm_cache_use(
@@ -117,11 +122,11 @@ def test_tiny_shared_capacity_falls_back_without_changing_exact_output(
     monkeypatch.setattr(mahler_cache, "get_process_cache", lambda: tiny)
     term, actual = _query()
     assert actual == expected
-    assert term.ledger.counters["mahler_hashlife_occurrence_bypasses"] == 1
+    assert term.ledger.counters["mahler_hashlife_action_bypasses"] == 1
     assert tiny.stats().entries == tiny.stats().active_leases == 0
 
 
-def test_outer_observer_counts_refused_issued_write(
+def test_associated_action_counts_refused_issued_write(
     monkeypatch: pytest.MonkeyPatch,
     publication_blocked_cache: ProcessCache,
 ) -> None:
@@ -130,8 +135,8 @@ def test_outer_observer_counts_refused_issued_write(
     monkeypatch.setattr(mahler_cache, "get_process_cache", lambda: constrained)
     term, actual = _query()
     assert actual == expected
-    assert term.ledger.counters["mahler_hashlife_occurrence_bypasses"] == 1
-    assert term.ledger.counters.get("mahler_hashlife_occurrence_publications", 0) == 0
+    assert term.ledger.counters["mahler_hashlife_action_bypasses"] == 1
+    assert term.ledger.counters.get("mahler_hashlife_action_publications", 0) == 0
     assert constrained.stats().entries == constrained.stats().active_leases == 0
 
 
@@ -222,9 +227,9 @@ def test_issued_valid_shaped_action_must_match_admitted_transfer(
     with pytest.raises(ValueError, match="differs from the admitted transfer"):
         mahler_cache.cached_associated_action(workspace)
     counters = term.ledger.counters
-    assert counters["mahler_hashlife_occurrence_admission_rejections"] == 1
+    assert counters["mahler_hashlife_action_admission_rejections"] == 1
     assert counters["mahler_hashlife_failed_work"] == 1
-    assert counters["mahler_hashlife_occurrence_process_hits"] == 0
+    assert counters["mahler_hashlife_action_process_hits"] == 0
     assert cache.stats().active_leases == 0
 
 
@@ -243,10 +248,10 @@ def test_public_process_lease_cannot_forge_outer_mahler_action(
     with pytest.raises(CacheRecordIssuerMismatch, match="publisher capability"):
         mahler_cache.cached_associated_action(workspace)
     counters = term.ledger.counters
-    assert counters["mahler_hashlife_occurrence_lookups"] == 2
-    assert counters["mahler_hashlife_occurrence_admission_rejections"] == 1
+    assert counters["mahler_hashlife_action_lookups"] == 2
+    assert counters["mahler_hashlife_action_admission_rejections"] == 1
     assert counters["mahler_hashlife_failed_work"] == 1
-    assert counters["mahler_hashlife_occurrence_process_hits"] == 0
+    assert counters["mahler_hashlife_action_process_hits"] == 0
     assert cache.stats().active_leases == 0
 
 
@@ -255,3 +260,110 @@ def test_engine_cache_option_is_read_only_after_construction() -> None:
     with pytest.raises(AttributeError):
         object.__setattr__(term.engine, "shared_cache", True)
     assert term.engine.shared_cache is False
+
+
+class _AdmittedActionWorkspace:
+    """Minimal post-admission view for isolating the pure action cache key."""
+
+    def __init__(
+        self,
+        *,
+        seed: int,
+        residue: int,
+        precision: int,
+        lift: int,
+        upper: int,
+        intercept: int,
+        lower: int,
+    ) -> None:
+        from types import SimpleNamespace
+
+        self.seed = seed
+        self.returns = 1024
+        self.shared_cache = True
+        self.law = ANTIHYDRA_ARITHMETIC_LAW
+        self.ledger = ResourceLedger()
+        self.root_source = object()
+        self._source = SimpleNamespace(residue=residue, precision=precision, lift=lift)
+        self._summary = SimpleNamespace(
+            transfer=SimpleNamespace(upper=upper, offset=intercept, lower=lower)
+        )
+
+    def saturated_summary(self) -> object:
+        return self._summary
+
+    def source_node(self, _source: object) -> object:
+        return self._source
+
+    def mahler_root_wire(self) -> None:
+        return None
+
+
+def _pure_action_workspace(
+    *, seed: int, residue: int, precision: int, lift: int, offset: int = 0
+) -> _AdmittedActionWorkspace:
+    return _AdmittedActionWorkspace(
+        seed=seed,
+        residue=residue,
+        precision=precision,
+        lift=lift,
+        upper=3**1024 + offset,
+        intercept=0,
+        lower=2**1024,
+    )
+
+
+def test_pure_action_cache_reuses_equal_transfer_across_source_metadata(
+    cache: ProcessCache, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    first = _pure_action_workspace(
+        seed=8,
+        residue=8,
+        precision=11,
+        lift=17,
+    )
+    expected = mahler_cache.cached_associated_action(
+        cast(AntihydraArithmeticImageWorkspace, first)
+    )
+    second = _pure_action_workspace(
+        seed=40,
+        residue=8,
+        precision=19,
+        lift=29,
+    )
+    monkeypatch.setattr(mahler_cache, "_build_action", _forbidden)
+    actual = mahler_cache.cached_associated_action(
+        cast(AntihydraArithmeticImageWorkspace, second)
+    )
+    assert actual == expected
+    assert second.ledger.counters["mahler_hashlife_action_exact_hits"] == 1
+    assert second.ledger.counters["mahler_hashlife_action_process_hits"] == 1
+    assert "mahler_hashlife_action_applied_hits" not in second.ledger.counters
+
+
+def test_pure_action_key_rejects_finite_alias_with_different_exact_transfer(
+    cache: ProcessCache,
+) -> None:
+    first = _pure_action_workspace(
+        seed=8,
+        residue=8,
+        precision=11,
+        lift=17,
+    )
+    expected = mahler_cache.cached_associated_action(
+        cast(AntihydraArithmeticImageWorkspace, first)
+    )
+    second = _pure_action_workspace(
+        seed=40,
+        residue=12,
+        precision=19,
+        lift=29,
+        offset=1,
+    )
+    actual = mahler_cache.cached_associated_action(
+        cast(AntihydraArithmeticImageWorkspace, second)
+    )
+    assert actual == mahler_cache._build_action(1024, 12, 3**1024 + 1, 0, 2**1024)
+    assert actual != expected
+    assert second.ledger.counters["mahler_hashlife_action_misses"] == 1
+    assert second.ledger.counters["mahler_hashlife_action_exact_hits"] == 0

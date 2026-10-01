@@ -1,5 +1,9 @@
 # Linear bisimulation checkpoint release
 
+Historical checkpoint: names and results below describe the recorded source.
+For current runtime test owners and audit commands, see
+[development guidance](../../development.md#reproducible-release-commands).
+
 Status: **checkpoint implementation complete; higher-rung logarithmic HashLife closure remains open**.
 
 This checkpoint removes the release-blocking sequential family/radix replay paths from the bounded production route without restoring exact future trees or provider-history carriers.

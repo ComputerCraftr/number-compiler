@@ -104,6 +104,7 @@ def collect_ledger_metrics(
     else:
         audit = PayloadAudit(0, 0, 0)
     audit_counters = {
+        "reverse_payload_audit_identity_operand_bits",
         "collatz_d8_payload_audit_local_symbols",
         "dyadic_payload_audit_branch_steps",
         "dyadic_payload_audit_operand_bits",
@@ -121,6 +122,17 @@ def collect_ledger_metrics(
         "antihydra_payload_audit_projection_fragment_operand_bits",
         "antihydra_payload_audit_projection_fragment_steps",
     }
+    if audit_payloads:
+        # Occurrence binding validation reaches the ordinary identity validator.
+        # Its bounded checks are charged audit work; they may not allocate or
+        # publish anything (the mutation-version check below still enforces that).
+        audit_counters.update(
+            {
+                "reverse_field_action_semantic_identity_requests",
+                "reverse_field_action_semantic_identity_cache_hits",
+                "reverse_field_action_identity_validation_radial_bit_work",
+            }
+        )
     if ledger.mutation_version != source_version or any(
         ledger.counters.get(key, 0) != snapshot.counters.get(key, 0)
         for key in ledger.counters.keys() | snapshot.counters.keys()

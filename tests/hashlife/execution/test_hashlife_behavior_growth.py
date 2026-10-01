@@ -1,0 +1,83 @@
+"""HashLife behavior and metric observations shared across families."""
+
+import pytest
+
+from number_compiler.sequences.collatz.block_power import PoweredCollatzTerm
+from number_compiler.sequences.reverse_add.power import ReverseAddPoweredTerm
+from tests.support.source_image_assertions import assert_source_image_behavior
+
+
+@pytest.mark.validation  # N=64 executed Collatz release metrics and inventory.
+def test_collatz_hashlife_reports_source_image_work() -> None:
+    _, after = assert_source_image_behavior(PoweredCollatzTerm(27, 64))
+    assert after.temporal_quotient_family == "collatz-dyadic-source-image"
+    assert after.temporal_quotient_state_class_bound == 0
+    assert after.temporal_quotient_action_class_bound == 0
+    assert after.seed_application_temporal_action_nodes > 0
+    assert after.seed_application_temporal_description_nodes > 0
+    counters = after.resource_work_counters
+    assert counters.get("collatz_physical_temporal_run_actions", 0) > 0
+    assert counters.get("source_image_primitive_applications", 0) > 0
+    assert counters.get("source_image_publications", 0) > 0
+
+
+def test_seed_payload_description_is_independent_of_temporal_generation() -> None:
+    reverse_small = ReverseAddPoweredTerm(196, 8).behavior_metrics()
+    reverse_large = ReverseAddPoweredTerm(196, 16).behavior_metrics()
+    assert (
+        reverse_small.seed_payload_tile_nodes == reverse_large.seed_payload_tile_nodes
+    )
+    collatz_small = PoweredCollatzTerm(27, 8).behavior_metrics()
+    collatz_large = PoweredCollatzTerm(27, 16).behavior_metrics()
+    assert (
+        collatz_small.seed_payload_tile_nodes == collatz_large.seed_payload_tile_nodes
+    )
+
+
+@pytest.mark.validation  # Both families at N=64, including warm image reuse.
+def test_action_metrics_report_image_publication_and_warm_response_reuse() -> None:
+    reverse_expected = 196
+    for _ in range(64):
+        reverse_expected += int(str(reverse_expected)[::-1])
+    for term in (ReverseAddPoweredTerm(196, 64), PoweredCollatzTerm(27, 64)):
+        if isinstance(term, ReverseAddPoweredTerm):
+            assert term.digits() == tuple(map(int, reversed(str(reverse_expected))))
+        else:
+            expected = 27
+            for _ in range(term.steps):
+                expected = 3 * expected + 1 if expected & 1 else expected // 2
+            assert term.materialize(max_bits=10_000) == expected
+        term.digit(0)
+        public = term.metrics()
+        if isinstance(term, PoweredCollatzTerm):
+            counters = public.resource_work_counters
+            publications = counters.get("source_image_publications", 0)
+            assert publications > 0
+            assert public.temporal_parent_requests == 0
+            assert public.temporal_parent_compositions == 0
+            assert term._power is None
+            hits = counters.get("microblock_hits", 0)
+            term.digit(0)
+            repeated = term.metrics()
+            assert (
+                repeated.resource_work_counters.get("source_image_publications", 0)
+                == publications
+            )
+            assert repeated.resource_work_counters.get("microblock_hits", 0) > hits
+            continue
+        counters = public.resource_work_counters
+        publications = counters["source_image_publications"]
+        projection_publications = counters["source_image_projection_publications"]
+        assert publications > 0 and projection_publications > 0
+        term.digit(0)
+        repeated_public = term.metrics()
+        assert (
+            repeated_public.resource_work_counters["source_image_publications"]
+            == publications
+        )
+        assert (
+            repeated_public.resource_work_counters[
+                "source_image_projection_publications"
+            ]
+            == projection_publications
+        )

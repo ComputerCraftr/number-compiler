@@ -82,7 +82,7 @@ def test_diamond_roles_cannot_reclassify_a_packed_history_as_an_action() -> None
 def test_runtime_image_publication_is_accounted_and_reused() -> None:
     from number_compiler.sequences.collatz.block_power import PoweredCollatzTerm
     from tests.support.source_image_assertions import (
-        assert_physical_publications,
+        assert_collatz_source_publications,
         assert_source_image_replay_stable,
     )
 
@@ -92,7 +92,7 @@ def test_runtime_image_publication_is_accounted_and_reused() -> None:
     from number_compiler.resources.metric_collection import collect_ledger_metrics
 
     counters = dict(term._ledger.counters)
-    assert_physical_publications(counters)
+    assert_collatz_source_publications(counters)
     assert collect_ledger_metrics(term._ledger).resource_audit_complete == 1
     assert cold.resource_accounting_mismatch == 0
     assert cold.whole_word_sweeps == cold.whole_word_symbol_visits == 0

@@ -26,7 +26,6 @@ from number_compiler.sequences.reverse_add.power import (
     ReverseAddPoweredTerm,
     pair_field_from_integer,
 )
-from tests.support.assertions import assert_rejected_atomically
 from tests.support.reverse_higher_interface import _direct_step
 
 
@@ -218,12 +217,31 @@ def test_failed_lazy_image_demand_is_terminal_and_auditable(
     assert publisher._image_binding is None
     assert publisher._image_failure is not None
     assert not audit_higher_payloads(publisher.ledger).invalid
-    assert_rejected_atomically(
-        publisher.ledger,
-        lambda: publisher.point(0),
-        RuntimeError,
-        match="previously failed",
+    before = publisher.ledger.snapshot()
+    with pytest.raises(RuntimeError, match="previously failed"):
+        publisher.point(0)
+    after = publisher.ledger.snapshot()
+    assert (after.entries, after.nodes, after.peak_entries, after.peak_nodes) == (
+        before.entries,
+        before.nodes,
+        before.peak_entries,
+        before.peak_nodes,
     )
+    assert after.inventory == before.inventory
+    counter_delta = {
+        key: after.counters.get(key, 0) - before.counters.get(key, 0)
+        for key in before.counters.keys() | after.counters.keys()
+        if after.counters.get(key, 0) != before.counters.get(key, 0)
+    }
+    assert counter_delta == {
+        "reverse_field_action_semantic_identity_requests": 1,
+        "reverse_field_action_semantic_identity_cache_hits": 1,
+        "reverse_field_action_identity_validation_radial_bit_work": 4,
+    }
+    full_audit = collect_ledger_metrics(publisher.ledger)
+    assert full_audit.resource_audit_complete == 1
+    assert full_audit.resource_accounting_mismatch == 0
+    assert full_audit.resource_audit_unknown_payloads == 0
     publisher.close()
     with pytest.raises(ValueError, match="closed reverse publisher"):
         publisher.point(0)
@@ -418,14 +436,14 @@ def test_reference_publisher_work_remains_visible_in_runtime_metrics() -> None:
     metrics = term.metrics()
     assert metrics.higher_action_continuation_requests > 0
     assert metrics.higher_concrete_operation_evaluations > 0
-    # Detailed Python metrics explicitly audit the shared canonical owner;
-    # CLI snapshot reporting is tested separately for demand laziness.
-    assert metrics.resource_audit_complete == 1
-    # The reference now shares canonical production arithmetic and its auditor.
+    # Runtime metrics are scalar snapshots; the explicit collector owns the
+    # payload and inventory audit after the reference publisher has run.
+    assert metrics.resource_audit_complete == 0
+    assert metrics.resource_accounting_mismatch == 0
     oracle_audit = collect_ledger_metrics(term._ledger)
     assert oracle_audit.resource_audit_complete == 1
+    assert oracle_audit.resource_accounting_mismatch == 0
     assert oracle_audit.resource_audit_unknown_payloads == 0
-    assert metrics.resource_accounting_mismatch == 0
 
 
 def test_publisher_preserves_budget_refusal() -> None:

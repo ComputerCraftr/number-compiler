@@ -9,10 +9,15 @@ import pytest
 
 from number_compiler.arithmetic.contracts.block_effect import BlockContextBudgetExceeded
 from number_compiler.hashlife.actions.field_actions import CoordinateOutputMorphismID
+from number_compiler.hashlife.execution.continuations.higher_types import (
+    HigherExpressionID,
+)
 from number_compiler.hashlife.execution.recursive_outputs import (
+    _STREAM_FRAME_NODES,
     RecursiveCoordinateMorphismArena,
     RecursiveOutputBranch,
 )
+from number_compiler.hashlife.interfaces.diamond_quotient import LocalInterfaceID
 from number_compiler.resources.higher_payload_audit import audit_higher_payloads
 from tests.support.reverse_higher_interface import _direct_step
 from tests.support.reverse_higher_runtime import (
@@ -101,7 +106,7 @@ def test_stream_failed_allocation_releases_pending_frames() -> None:
     outputs, root, left, right = _spatial((7, 18, 7, 19))
     owner = outputs.ledger.inventory()[outputs._stream_owner]
     assert owner.entries == owner.nodes == 0
-    outputs.ledger.max_nodes = outputs.ledger.nodes + 6
+    outputs.ledger.max_nodes = outputs.ledger.nodes + _STREAM_FRAME_NODES
     with pytest.raises(BlockContextBudgetExceeded):
         tuple(outputs.iter_observe_range(root, 0, 4, left, right))
     assert not outputs._stream_frames
@@ -152,6 +157,41 @@ def test_stream_callback_failure_after_yield_releases_frames() -> None:
     outputs._evaluate = failed_boundary
     with pytest.raises(LookupError, match="boundary evaluation failed"):
         tuple(stream)
+    assert not outputs._stream_frames
+    assert all(item.accounting_delta == 0 for item in outputs.ledger.inventory())
+
+
+@pytest.mark.parametrize("cancel", (False, True))
+def test_first_emission_does_not_evaluate_pending_right_branches(
+    monkeypatch: pytest.MonkeyPatch, cancel: bool
+) -> None:
+    word = (7, 18, 7, 19) * 4
+    outputs, root, left, right = _spatial(word)
+    component = outputs._component
+
+    def demanded_component(
+        interface: LocalInterfaceID, role: str
+    ) -> HigherExpressionID:
+        if role == "boundary_left":
+            raise AssertionError("undemanded right branch evaluated eagerly")
+        return component(interface, role)
+
+    stream = outputs.iter_observe_range(root, 0, len(word), left, right)
+    try:
+        with monkeypatch.context() as patch:
+            patch.setattr(outputs, "_component", demanded_component)
+            assert next(stream) == _direct_step(word, 10)[0]
+            assert (
+                outputs.ledger.counters["recursive_output_stream_boundary_evaluations"]
+                == len(word).bit_length() - 1
+            )
+        if not cancel:
+            assert tuple(stream) == _direct_step(word, 10)[1:]
+            assert outputs.ledger.counters[
+                "recursive_output_stream_boundary_evaluations"
+            ] == 2 * (len(word) - 1)
+    finally:
+        stream.close()
     assert not outputs._stream_frames
     assert all(item.accounting_delta == 0 for item in outputs.ledger.inventory())
 

@@ -251,7 +251,7 @@ def test_symbolic_width_admission_matches_exact_bounded_endpoints() -> None:
         ((1, 5), (2, 3), (0, 4), (3, 2)),
     ),
 )
-def test_reverse_run_comparison_matches_bounded_integer_reference(
+def test_source_word_comparison_matches_bounded_integer_reference(
     runs: tuple[tuple[int, int], ...],
 ) -> None:
     from number_compiler.arithmetic.automata.program_word import from_runs
@@ -273,7 +273,7 @@ def test_reverse_run_comparison_matches_bounded_integer_reference(
         (1 << (2 * len(digits))) - 1,
     )
     for boundary in boundaries:
-        observed, comparisons = CollatzSourcePublisher._word_leq_integer(
+        observed, comparisons = CollatzSourcePublisher._source_word_leq_integer(
             word,
             boundary,
             ledger=ledger,
@@ -290,7 +290,7 @@ def test_reverse_run_comparison_matches_bounded_integer_reference(
     assert ledger.entries == ledger.nodes == 0
 
 
-def test_most_significant_mismatch_does_not_exhaust_reverse_run_tail() -> None:
+def test_most_significant_source_word_mismatch_does_not_exhaust_run_tail() -> None:
 
     word, lowest, original = _word_with_low_tail()
     object.__setattr__(lowest, "symbol", None)
@@ -298,7 +298,9 @@ def test_most_significant_mismatch_does_not_exhaust_reverse_run_tail() -> None:
         # Both operands have three radix-4 digits, and 3 > 2 at the most
         # significant digit. Reaching the deliberately malformed low tail would
         # prove that comparison had first exhausted/materialized every run.
-        observed, comparisons = CollatzSourcePublisher._word_leq_integer(word, 2 << 4)
+        observed, comparisons = CollatzSourcePublisher._source_word_leq_integer(
+            word, 2 << 4
+        )
         assert observed is False and comparisons == 1
     finally:
         object.__setattr__(lowest, "symbol", original)
@@ -316,7 +318,7 @@ def test_long_common_prefix_uses_balanced_block_work() -> None:
     frontier: LedgerList[tuple[CanonicalWord, int, int]] = ledger.make_list(
         frontier_owner, append_only=False
     )
-    observed, comparisons = CollatzSourcePublisher._word_leq_integer(
+    observed, comparisons = CollatzSourcePublisher._source_word_leq_integer(
         word,
         value,
         ledger=ledger,
@@ -333,7 +335,7 @@ def test_long_common_prefix_uses_balanced_block_work() -> None:
     assert ledger.entries == ledger.nodes == 0
 
 
-def test_reverse_block_failure_releases_admission_frontier() -> None:
+def test_source_word_block_failure_releases_admission_frontier() -> None:
     from number_compiler.resources.ledger import ResourceLedger
 
     word, lowest, original = _word_with_low_tail()
@@ -345,7 +347,7 @@ def test_reverse_block_failure_releases_admission_frontier() -> None:
     object.__setattr__(lowest, "symbol", None)
     try:
         with pytest.raises(AssertionError):
-            CollatzSourcePublisher._word_leq_integer(
+            CollatzSourcePublisher._source_word_leq_integer(
                 word,
                 (3 << 4) | (1 << 2),
                 ledger=ledger,

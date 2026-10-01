@@ -5,10 +5,10 @@ from typing import Never
 
 import pytest
 
-from devtools.verification.collatz_symbolic_action import CollatzSymbolicActionArena
-from devtools.verification.extensional_family_application import (
-    ExtensionalFamilyApplication,
+from devtools.verification.collatz_c4_reference import (
+    CollatzC4ReferenceApplication,
 )
+from devtools.verification.collatz_symbolic_action import CollatzSymbolicActionArena
 from devtools.verification.lazy_collatz import LazyCollatzApplication
 from number_compiler.arithmetic.contracts.physical_collatz_kernel import (
     PhysicalCollatzFourBlockEffect,
@@ -56,9 +56,9 @@ def test_public_collatz_route_does_not_load_c4_or_legacy_executors(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     monkeypatch.setattr(PhysicalCollatzFourBlockEffect, "__post_init__", _poison)
-    monkeypatch.setattr(ExtensionalFamilyApplication, "__init__", _poison)
-    monkeypatch.setattr(ExtensionalFamilyApplication, "_apply_machine", _poison)
-    monkeypatch.setattr(ExtensionalFamilyApplication, "_run_verified_rungs", _poison)
+    monkeypatch.setattr(CollatzC4ReferenceApplication, "__init__", _poison)
+    monkeypatch.setattr(CollatzC4ReferenceApplication, "_apply_machine", _poison)
+    monkeypatch.setattr(CollatzC4ReferenceApplication, "_run_verified_rungs", _poison)
     monkeypatch.setattr(LazyCollatzApplication, "advance_physical", _poison)
     monkeypatch.setattr(CollatzGermTransitionCache, "advance", _poison)
     monkeypatch.setattr(CollatzGermTransitionCache, "advance_many", _poison)

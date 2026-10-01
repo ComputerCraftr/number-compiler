@@ -342,6 +342,177 @@ unbounded reachable-image closure theorem.  Extending the prefix requires a
 general proof that the two-port scan equals @{term step} on every valid pair
 field, including growth and blank-tail publication.\<close>
 
+text \<open>A blank cell is not the identity on the left producer port: it marks
+the beginning of the blank tail.  It is nevertheless a finite idempotent
+residual.  The right producer port ignores blank cells, and only the first
+blank can publish a terminal carry digit.\<close>
+
+definition reverse_left_blank_residual ::
+    "reverse_left_port \<Rightarrow> reverse_left_port" where
+  "reverse_left_blank_residual l = reverse_left_advance l 19"
+
+definition reverse_right_blank_residual ::
+    "reverse_right_port \<Rightarrow> reverse_right_port" where
+  "reverse_right_blank_residual r = reverse_right_advance r 19"
+
+lemma reverse_left_blank_residual_idempotent:
+  "reverse_left_blank_residual (reverse_left_blank_residual l) =
+    reverse_left_blank_residual l"
+  by (cases l) (simp add: reverse_left_blank_residual_def
+      reverse_left_advance_def)
+
+lemma reverse_left_blank_residual_not_identity:
+  "reverse_left_blank_residual reverse_left_initial \<noteq>
+    reverse_left_initial"
+  by (simp add: reverse_left_blank_residual_def reverse_left_initial_def
+      reverse_left_advance_def)
+
+lemma reverse_right_blank_residual_identity:
+  "reverse_right_blank_residual r = r"
+  by (simp add: reverse_right_blank_residual_def reverse_right_advance_def)
+
+lemma reverse_emit_first_blank_exact:
+  "reverse_emit l 19 r =
+    (if rp_sink l then 19
+     else if \<not> rp_blank_seen l \<and> rp_previous l \<noteq> None
+          \<and> rp_carry l
+     then the (rp_previous l) mod 10 + 1
+     else 19)"
+  by (cases l) (auto simp: reverse_emit_def reverse_operands_def
+      split: if_splits option.splits)
+
+lemma reverse_emit_after_first_blank_is_blank:
+  "reverse_emit (reverse_left_blank_residual l) 19 r = 19"
+  by (cases l) (auto simp: reverse_left_blank_residual_def
+      reverse_left_advance_def reverse_emit_def reverse_operands_def
+      split: if_splits option.splits)
+
+lemma reverse_right_fold_blank_ray:
+  "reverse_right_fold (replicate n 19) = reverse_right_initial"
+  by (induct n) (simp_all add: reverse_right_advance_def)
+
+lemma reverse_left_blank_residual_advance:
+  "reverse_left_advance l 19 = reverse_left_blank_residual l"
+  by (simp add: reverse_left_blank_residual_def)
+
+lemma reverse_two_port_scan_from_blank_residual:
+  "reverse_two_port_scan_from (reverse_left_blank_residual l)
+      (replicate n 19) = replicate n 19"
+proof (induction n)
+  case 0
+  then show ?case by simp
+next
+  case (Suc n)
+  have stable:
+    "reverse_left_advance (reverse_left_blank_residual l) 19 =
+      reverse_left_blank_residual l"
+    using reverse_left_blank_residual_idempotent[of l]
+    by (simp only: reverse_left_blank_residual_def)
+  show ?case
+    using Suc.IH
+    by (simp only: replicate_Suc reverse_two_port_scan_from.simps
+        reverse_right_fold_blank_ray reverse_emit_after_first_blank_is_blank
+        stable Suc.IH)
+qed
+
+lemma reverse_two_port_scan_from_blank_ray:
+  "reverse_two_port_scan_from l (replicate (Suc n) 19) =
+    [reverse_emit l 19 reverse_right_initial] @ replicate n 19"
+proof -
+  have split:
+    "reverse_two_port_scan_from l (replicate (Suc n) 19) =
+      reverse_emit l 19 (reverse_right_fold (replicate n 19)) #
+        reverse_two_port_scan_from
+          (reverse_left_blank_residual l) (replicate n 19)"
+    by (simp only: replicate_Suc reverse_two_port_scan_from.simps
+        reverse_left_blank_residual_advance)
+  show ?thesis
+    using split
+    by (simp only: reverse_right_fold_blank_ray
+        reverse_two_port_scan_from_blank_residual append.simps)
+qed
+
+text \<open>The following lemmas apply only to an explicit exterior suffix of
+blank pair cells. They do not classify a temporal-machine EXIT state or infer
+that a source occurrence has such an exterior. The right carry port ignores
+that suffix, while the left port and output retain the first blank boundary.\<close>
+
+lemma reverse_right_fold_append_blank_ray:
+  "reverse_right_fold (xs @ replicate n 19) = reverse_right_fold xs"
+  by (induction xs) (simp_all add: reverse_right_advance_def
+      reverse_right_fold_blank_ray)
+
+lemma reverse_two_port_scan_active_blank_exterior:
+  "reverse_two_port_scan_from l (xs @ replicate (Suc n) 19) =
+    reverse_two_port_scan_from l (xs@[19]) @ replicate n 19"
+proof (induction xs arbitrary: l)
+  case Nil
+  have blank_ray:
+    "reverse_two_port_scan_from l (replicate (Suc n) 19) =
+      [reverse_emit l 19 reverse_right_initial] @ replicate n 19"
+    by (rule reverse_two_port_scan_from_blank_ray)
+  have singleton:
+    "reverse_two_port_scan_from l [19] =
+      [reverse_emit l 19 reverse_right_initial]"
+    by (simp add: reverse_two_port_scan_from.simps)
+  show ?case using blank_ray singleton by simp
+next
+  case (Cons s xs)
+  have left_fold:
+    "reverse_right_fold (xs @ replicate (Suc n) 19) = reverse_right_fold xs"
+    by (rule reverse_right_fold_append_blank_ray)
+  have right_fold:
+    "reverse_right_fold (xs@[19]) = reverse_right_fold xs"
+    using reverse_right_fold_append_blank_ray[of xs 1] by simp
+  have suffix:
+    "reverse_two_port_scan_from (reverse_left_advance l s)
+        (xs @ replicate (Suc n) 19) =
+      reverse_two_port_scan_from (reverse_left_advance l s) (xs@[19]) @
+        replicate n 19"
+    using Cons.IH[of "reverse_left_advance l s"] .
+  show ?case
+    using suffix left_fold right_fold
+    by (simp only: append.simps reverse_two_port_scan_from.simps(2))
+qed
+
+lemma reverse_strip_blank_tail_extra:
+  "strip_blank_tail (xs@[19]) = strip_blank_tail xs"
+  by (induction xs) simp_all
+
+lemma reverse_strip_blank_tail_append_ray:
+  "strip_blank_tail (xs @ replicate n 19) = strip_blank_tail xs"
+proof (induction n arbitrary: xs)
+  case 0
+  then show ?case by simp
+next
+  case (Suc n)
+  have split:
+    "xs @ replicate (Suc n) 19 = (xs@[19]) @ replicate n 19"
+    by (simp add: append_assoc)
+  have suffix:
+    "strip_blank_tail ((xs@[19]) @ replicate n 19) = strip_blank_tail (xs@[19])"
+    using Suc.IH[of "xs@[19]"] .
+  show ?case
+    using split suffix reverse_strip_blank_tail_extra[of xs]
+    by simp
+qed
+
+lemma reverse_two_port_publisher_active_blank_exterior:
+  "reverse_two_port_publisher (xs @ replicate n 19) =
+    reverse_two_port_publisher xs"
+proof -
+  have scan:
+    "reverse_two_port_scan ((xs @ replicate n 19)@[19]) =
+      reverse_two_port_scan (xs@[19]) @ replicate n 19"
+    using reverse_two_port_scan_active_blank_exterior[of
+      reverse_left_initial xs n]
+    by (simp add: reverse_two_port_scan_def append_assoc
+        replicate_append_same)
+  show ?thesis
+    unfolding reverse_two_port_publisher_def
+    by (simp only: scan reverse_strip_blank_tail_append_ray)
+qed
+
 ML \<open>
   val _ = if null (Thm_Deps.all_oracles
     @{thms carry_then_apply carry_out_append_one reverse_right_fold_forward
@@ -354,7 +525,17 @@ ML \<open>
       reverse_196_step_1 reverse_196_step_2
       reverse_196_reachable_0 reverse_196_reachable_1
       reverse_196_reachable_2 reverse_196_reachable_3
-      reverse_two_port_refines_source_generated_196_prefix}) then ()
+      reverse_two_port_refines_source_generated_196_prefix
+      reverse_left_blank_residual_idempotent
+      reverse_left_blank_residual_not_identity
+      reverse_right_blank_residual_identity
+      reverse_emit_first_blank_exact reverse_emit_after_first_blank_is_blank
+      reverse_right_fold_blank_ray reverse_left_blank_residual_advance
+      reverse_two_port_scan_from_blank_residual
+      reverse_two_port_scan_from_blank_ray
+      reverse_right_fold_append_blank_ray reverse_two_port_scan_active_blank_exterior
+      reverse_strip_blank_tail_extra reverse_strip_blank_tail_append_ray
+      reverse_two_port_publisher_active_blank_exterior}) then ()
     else error "Reverse 196 two-port refinement depends on an oracle";
 \<close>
 

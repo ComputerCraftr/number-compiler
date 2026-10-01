@@ -315,19 +315,17 @@ def test_terminal_digit_does_not_replay_prefix_and_partial_stream_is_charged() -
     descent_key = "reverse_recursive_pair_width_descents"
     before_descents = cutover.ledger.counters.get(descent_key, 0)
     pair_width = cutover.pair_width(occurrence)
-    one_width = cutover.ledger.counters[descent_key] - before_descents
+    assert cutover.ledger.counters[descent_key] > before_descents
     before_descents = cutover.ledger.counters[descent_key]
-    before = cutover.ledger.counters.get("reverse_recursive_direct_carry_steps", 0)
-    try:
+    key = "reverse_recursive_terminal_reset_prefix_symbols"
+    before = cutover.ledger.counters.get(key, 0)
+    # The first pair coefficient is decisive; symmetry gives terminal carry
+    # without the previous mandatory whole-word carry fold.
+    with pytest.raises(IndexError):
         cutover.digit(occurrence, pair_width)
-    except IndexError:
-        pass
-    assert (
-        cutover.ledger.counters.get("reverse_recursive_direct_carry_steps", 0) - before
-        == pair_width
-    )
+    assert cutover.ledger.counters[key] - before == 1
 
-    assert cutover.ledger.counters[descent_key] - before_descents == one_width
+    assert cutover.ledger.counters[descent_key] == before_descents
 
     before_digits = cutover.ledger.counters.get("reverse_recursive_streamed_digits", 0)
     stream = cutover.iter_digits(occurrence)
@@ -344,7 +342,7 @@ def test_terminal_digit_does_not_replay_prefix_and_partial_stream_is_charged() -
     ):
         before_descents = cutover.ledger.counters[descent_key]
         demand()
-        assert cutover.ledger.counters[descent_key] - before_descents == one_width
+        assert cutover.ledger.counters[descent_key] == before_descents
 
 
 def test_zero_source_admits_huge_power_without_constructing_the_power() -> None:

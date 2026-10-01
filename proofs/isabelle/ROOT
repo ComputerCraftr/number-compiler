@@ -15,6 +15,11 @@ session Shared_S_Arithmetic in shared = HOL +
     Dyadic_Balanced_Worklist
     Dyadic_Balanced_Arithmetic
 
+session Shared_Growth_Arithmetic in shared_growth = HOL +
+  options [document = false, quick_and_dirty = false, threads = 1]
+  theories
+    Homogeneous_Growth_Scale
+
 session Reverse_Residuals = HOL +
   options [document = false, quick_and_dirty = false, threads = 1]
   theories
@@ -171,7 +176,7 @@ session Decimal_196_Integration in integration_decimal = Temporal_Clock_Jumps +
 
 session Antihydra_Mahler_Integration in integration_mahler = Associated_Action_Core +
   options [document = false, quick_and_dirty = false, threads = 1]
-  sessions Antihydra
+  sessions Antihydra Shared_Growth_Arithmetic
   theories
     Antihydra_Mahler_Associated_Action
 
@@ -214,6 +219,7 @@ session Reverse_Growth_Admission in reverse_growth = Reverse_Residuals +
   options [document = false, quick_and_dirty = false, threads = 1]
   theories
     Reverse_Growth_Run_Admission
+    Weighted_Partial_Growth_Action
 
 session Comma_Arithmetic in comma = "HOL-Number_Theory" +
   options [document = false, quick_and_dirty = false, threads = 1]

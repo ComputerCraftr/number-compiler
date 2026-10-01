@@ -575,7 +575,7 @@ def test_collatz_transfer_path_never_calls_proof_generic_or_whole_word_routes(
         forbidden,
     )
     monkeypatch.setattr(
-        "devtools.verification.extensional_family_application.ExtensionalFamilyApplication._apply_machine",
+        "devtools.verification.collatz_c4_reference.CollatzC4ReferenceApplication._apply_machine",
         forbidden,
     )
     assert application.point(1) == 1

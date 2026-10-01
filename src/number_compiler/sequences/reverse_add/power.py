@@ -28,8 +28,14 @@ from number_compiler.arithmetic.polynomials.twisted_observer import (
 )
 from number_compiler.resources.ledger import ResourceLedger
 from number_compiler.resources.output_stream_metrics import (
+    closing_output_stream,
     initialize_output_stream_metrics,
     measured_output_stream,
+)
+from number_compiler.resources.stores import LedgerList
+from number_compiler.sequences.reverse_add.palindrome import (
+    mirror_obstruction_from_output,
+    mirror_palindrome_from_output,
 )
 
 if TYPE_CHECKING:
@@ -60,6 +66,7 @@ class ReverseAddPoweredTerm:
         "__weakref__",
         "_binding",
         "_ledger",
+        "_mirror_output_scratch",
         "_source_construction",
         "_workspace",
         "_workspace_identity",
@@ -83,6 +90,7 @@ class ReverseAddPoweredTerm:
         self._binding = (self.seed, self.generation, self.base)
         self._ledger = ResourceLedger(max_context_nodes, max_cache_entries)
         initialize_output_stream_metrics(self._ledger, "reverse_output_stream")
+        self._mirror_output_scratch: LedgerList[int] | None = None
         self._workspace: ReverseSourceImageWorkspace | None = None
         self._workspace_identity: ReverseSourceImageWorkspace | None = None
         self._source_construction: OriginalSourceConstruction | None = None
@@ -190,31 +198,57 @@ class ReverseAddPoweredTerm:
         width = self.width()
         return width if self.base == 2 else max(1, ceil(width * log2(self.base)))
 
-    def iter_digits(self) -> Iterator[int]:
+    def _measured_output_digits(self) -> Iterator[int]:
         def source() -> Iterator[int]:
             self._prepare_recursive_source_authority()
             yield from self._source_workspace().iter_digits()
 
         return measured_output_stream(self._ledger, "reverse_output_stream", source)
 
+    def iter_digits(self) -> Iterator[int]:
+        return self._measured_output_digits()
+
     def digits(self) -> tuple[int, ...]:
         return tuple(self.iter_digits())
 
     def is_palindrome(self) -> bool:
-        from number_compiler.sequences.reverse_add.palindrome import mirror_palindrome
+        width = self.width()
+        if width == 1:
+            return True
+        with closing_output_stream(self._measured_output_digits()) as digits:
+            return mirror_palindrome_from_output(
+                width,
+                digits,
+                ledger=self._ledger,
+                scratch=self._output_mirror_scratch(),
+            )
 
-        return mirror_palindrome(self.width(), self.digit)
+    def _output_mirror_scratch(self) -> LedgerList[int]:
+        scratch = self._mirror_output_scratch
+        if scratch is None:
+            owner = self._ledger.register(
+                "reverse-output-mirror-scratch", "explicit_lowering"
+            )
+            scratch = self._ledger.make_list(
+                owner, nodes_per_entry=2, append_only=False
+            )
+            self._mirror_output_scratch = scratch
+        return scratch
 
     def mirror_obstruction(
         self, *, first_width: int = 1
     ) -> TwistedCylinderProjection | None:
-        from number_compiler.arithmetic.polynomials.twisted_observer import (
-            first_mirror_obstruction,
-        )
-
-        return first_mirror_obstruction(
-            self.width(), self.digit, first_width=first_width
-        )
+        first_width = require_integer(first_width, "first sheet width", 1)
+        width = self.width()
+        scratch = self._output_mirror_scratch()
+        with closing_output_stream(self._measured_output_digits()) as digits:
+            return mirror_obstruction_from_output(
+                width,
+                digits,
+                ledger=self._ledger,
+                scratch=scratch,
+                first_width=first_width,
+            )
 
     def materialize(self, *, max_bits: int) -> int:
         max_bits = require_integer(max_bits, "output bit cap", 0)

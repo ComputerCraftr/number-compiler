@@ -38,7 +38,7 @@ from number_compiler.resources.ledger import ResourceLedger
 
 
 @dataclass(frozen=True, slots=True)
-class ExtensionalFamilyMetrics:
+class CollatzC4ReferenceMetrics:
     family: str
     temporal_state_classes: int
     temporal_action_classes: int
@@ -118,8 +118,8 @@ class _TransientMicroWord:
         return 0
 
 
-class ExtensionalFamilyApplication:
-    """Linear checkpoint executor over verified minimized finite machine rungs."""
+class CollatzC4ReferenceApplication:
+    """Bounded Collatz reference executor over verified minimized C4 rungs."""
 
     __slots__ = (
         "__weakref__",
@@ -135,7 +135,7 @@ class ExtensionalFamilyApplication:
         "blank",
         "certificate",
         "compiler",
-        "is_bisimulation_checkpoint_executor",
+        "is_collatz_c4_executor",
         "ledger",
         "logical_length",
         "microblocks",
@@ -181,7 +181,7 @@ class ExtensionalFamilyApplication:
         self._final_fills = 0
         self._bits = max(1, self.blank.bit_length())
         self._symbols_per_block = max(1, 64 // self._bits)
-        self.is_bisimulation_checkpoint_executor = True
+        self.is_collatz_c4_executor = True
         ledger.register_execution_root(self)
         ledger.bump("family_bisimulation_executor_instances", 1)
 
@@ -389,12 +389,12 @@ class ExtensionalFamilyApplication:
             and key.kind == "output"
         )
 
-    def metrics(self) -> ExtensionalFamilyMetrics:
+    def metrics(self) -> CollatzC4ReferenceMetrics:
         family = "collatz-bisimulation-c4-linear"
         # Verified minimized C^4 kernel: 50 LEFT / 90 RIGHT classes.
         state_classes = 50 + 90
         action_classes = 1
-        return ExtensionalFamilyMetrics(
+        return CollatzC4ReferenceMetrics(
             family=family,
             temporal_state_classes=state_classes,
             temporal_action_classes=action_classes,
@@ -414,4 +414,4 @@ class ExtensionalFamilyApplication:
         )
 
 
-__all__ = ["ExtensionalFamilyApplication", "ExtensionalFamilyMetrics"]
+__all__ = ["CollatzC4ReferenceApplication", "CollatzC4ReferenceMetrics"]

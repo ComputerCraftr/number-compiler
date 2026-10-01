@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import argparse
 import json
+from collections.abc import Hashable
 from unittest.mock import patch
 
 from devtools.verification import exact_oracle
@@ -18,13 +19,14 @@ from devtools.verification.reverse_geometry_context import (
 )
 from number_compiler.arithmetic.contracts.block_effect import BlockContextBudgetExceeded
 from number_compiler.arithmetic.fields.radix import reverse_pair_sums
+from number_compiler.projection.output_quotient import canonical_partition_labels
 
 
 def audit(context: ReverseGeometryContext, action: GeometryAction) -> dict[str, object]:
     e = context.expressions
     reached = e.reachable((*action.outputs, action.admitted))
     # Each slot after width has a domain/F5/parity role and a spatial orbit.
-    family_keys: dict[tuple[object, ...], int] = {}
+    family_keys: dict[Hashable, int] = {}
     family: dict[int, tuple[int, int]] = {}
     extent: dict[int, tuple[int, int] | None] = {}
     support: dict[int, int] = {}
@@ -67,7 +69,7 @@ def audit(context: ReverseGeometryContext, action: GeometryAction) -> dict[str, 
                 if node.kind == "table"
                 else node.data
             )
-        variants = []
+        variants: list[int] = []
         for reflected in (0, 1):
             children = []
             parent_span = extent[index]
@@ -89,11 +91,7 @@ def audit(context: ReverseGeometryContext, action: GeometryAction) -> dict[str, 
             else:
                 variant_payload = payload
             key = node.kind, node.size, variant_payload, tuple(children)
-            value = family_keys.get(key)
-            if value is None:
-                value = len(family_keys)
-                family_keys[key] = value
-            variants.append(value)
+            variants.extend(canonical_partition_labels((key,), labels=family_keys))
         family[index] = variants[0], variants[1]
     occurrences = [i for i in reached if e.nodes[i].kind == "table"]
     programs = {e.consumer_program(e.handle(i)) for i in occurrences}

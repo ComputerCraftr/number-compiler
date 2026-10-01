@@ -12,6 +12,9 @@ from number_compiler.hashlife.actions.field_actions import (
     CoordinateOutputMorphismID,
     FieldCellActionID,
 )
+from number_compiler.hashlife.execution.continuations.higher_blank_residual import (
+    primitive_blank_run_admitted,
+)
 from number_compiler.hashlife.execution.continuations.higher_interfaces import (
     HigherInterfaceRecord,
     HigherLocalInterfaceArena,
@@ -576,6 +579,23 @@ class HigherSpatialMacroComposer:
             growth,
         )
 
+    def _blank_run(self, level: int) -> SourceBoundHigherMacro:
+        """Build a complete blank output with one canonical transfer per level.
+
+        The first blank may emit growth. Later blanks are dead only after that
+        non-identity transfer. Output branches retain this order explicitly.
+        No source children or future occurrences are opened here.
+        """
+        result = self._bind_symbol_expression(
+            self.semantics.symbol(self.action, self.blank), source_extent=0, source=None
+        )
+        for _ in range(level):
+            self.ledger.bump("higher_blank_run_square_requests")
+            result = self._combine(result, result)
+            self.ledger.bump("higher_blank_run_squares")
+        self.ledger.bump("higher_blank_run_publications")
+        return result
+
     def _cell(self, source: SourceCellID) -> SourceBoundHigherMacro:
         # Validate the complete scoped identity before constructing or probing
         # an occurrence key.  In particular, a forged handle must not be able
@@ -597,6 +617,20 @@ class HigherSpatialMacroComposer:
             if current_key in self._bindings:
                 continue
             node = self.sources.resolve(current)
+            if (
+                node.uniform_symbol == self.blank
+                and not self.source_backed_temporal
+                and primitive_blank_run_admitted(
+                    self.semantics.schema,
+                    self.action,
+                )
+            ):
+                result = self._blank_run(node.level)
+                self.ledger.reserve(self._binding_owner, entries=1)
+                self._bindings[current_key] = result
+                self.ledger.bump("higher_spatial_parent_evaluations")
+                self.ledger.bump("spatial_parent_evaluations")
+                continue
             if node.level and not ready:
                 left, right = self.sources.children(current)
                 pending.extend(((current, True), (right, False), (left, False)))

@@ -13,6 +13,9 @@ from dataclasses import asdict
 from typing import Any
 
 from number_compiler.arithmetic.contracts.input_validation import require_integer
+from number_compiler.arithmetic.fields.mechanical_readout import (
+    homogeneous_growth_packet,
+)
 from number_compiler.arithmetic.polynomials.arithmetic_tile import (
     ArithmeticTile,
     ArithmeticTileSpec,
@@ -59,6 +62,9 @@ def observe_physical_clock(
             "real_prime_exponents": clock.real_prime_exponents,
             "two_adic_exponent": clock.two_adic_exponent,
             "three_adic_exponent": clock.three_adic_exponent,
+            "homogeneous_growth": asdict(
+                homogeneous_growth_packet(clock.homogeneous_growth, term._ledger)
+            ),
         },
         **(
             {
@@ -172,6 +178,9 @@ def observe_collatz(
             "real_prime_exponents": clock.real_prime_exponents,
             "two_adic_exponent": clock.two_adic_exponent,
             "three_adic_exponent": clock.three_adic_exponent,
+            "homogeneous_growth": asdict(
+                homogeneous_growth_packet(clock.homogeneous_growth, arena._ledger)
+            ),
         }
     elif kind == "modular":
         value = asdict(observer.modular(root, modulus))

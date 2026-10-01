@@ -31,3 +31,11 @@ def collatz_literal(seed: int, steps: int) -> int:
     for _ in range(steps):
         value = 3 * value + 1 if value & 1 else value // 2
     return value
+
+
+def reverse_add_literal(seed: int, steps: int) -> int:
+    """Compute a bounded decimal reverse/add prefix without production code."""
+    value = seed
+    for _ in range(steps):
+        value += int(str(value)[::-1])
+    return value

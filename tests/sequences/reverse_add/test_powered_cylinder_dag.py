@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from collections.abc import Iterator
 from typing import Never
 
 import pytest
@@ -15,7 +16,10 @@ from number_compiler.hashlife.observation.tile_cylinder import _sheet
 from number_compiler.hashlife.tiles.tiles import TileAlphabet, TileArena
 from number_compiler.resources.ledger import ResourceLedger
 from number_compiler.resources.metric_collection import collect_ledger_metrics
+from number_compiler.resources.stores import LedgerList
+from number_compiler.sequences.reverse_add import power as powered_module
 from number_compiler.sequences.reverse_add.power import ReverseAddPoweredTerm
+from tests.support.reverse_cutover import assert_mirror_scratch_released
 
 
 @pytest.mark.parametrize("seed", (196, 89, 99, 121))
@@ -35,7 +39,11 @@ def test_powered_mirror_consumes_tiles_without_point_queries(
     monkeypatch.setattr(ReverseAddPoweredTerm, "digit", forbidden)
     assert term.mirror_obstruction() == reference
     counters = term._ledger.counters
-    assert counters["tile_cylinder_node_evaluations"] > 0
+    # Reverse powered terms observe the completed recursive output grammar as
+    # one measured stream; recursive stream emissions replace tile-sheet visits.
+    assert counters["reverse_recursive_streamed_digits"] == len(digits)
+    assert counters["reverse_output_stream_emitted_digits"] == len(digits)
+    assert counters.get("temporal_point_requests", 0) == 0
     assert counters.get("point_response_requests", 0) == 0
     for account in term._ledger.inventory():
         if account.name.startswith("tile-cylinder-"):
@@ -44,11 +52,90 @@ def test_powered_mirror_consumes_tiles_without_point_queries(
     assert collect_ledger_metrics(term._ledger).resource_audit_complete == 1
     assert term.metrics().resource_audit_complete == 1
     assert term.metrics().forbidden_future_payloads == 0
+    assert_mirror_scratch_released(term)
     owners = len(term._ledger.inventory())
     assert term.mirror_obstruction(first_width=2) == first_mirror_obstruction(
         len(digits), digits.__getitem__, first_width=2
     )
     assert len(term._ledger.inventory()) == owners
+
+
+def test_powered_mirror_closes_and_accounts_for_cancelled_output(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    term = ReverseAddPoweredTerm(196, 3)
+
+    def abort_after_one_digit(
+        _width: int,
+        digits: Iterator[int],
+        *,
+        ledger: ResourceLedger,
+        scratch: LedgerList[int],
+        first_width: int = 1,
+    ) -> Never:
+        assert ledger is term._ledger
+        assert not scratch
+        _ = first_width
+        next(digits)
+        raise RuntimeError("observer stopped after its first output digit")
+
+    monkeypatch.setattr(
+        powered_module,
+        "mirror_obstruction_from_output",
+        abort_after_one_digit,
+    )
+    with pytest.raises(RuntimeError, match="observer stopped"):
+        term.mirror_obstruction()
+
+    counters = term._ledger.counters
+    assert counters["reverse_output_stream_requests"] == 1
+    assert counters["reverse_output_stream_emitted_digits"] == 1
+    assert counters["reverse_output_stream_cancellations"] == 1
+    assert counters["reverse_output_stream_failures"] == 0
+    assert counters.get("temporal_point_requests", 0) == 0
+
+
+def test_powered_mirror_budget_refusal_leaves_scratch_empty() -> None:
+    term = ReverseAddPoweredTerm(196, 3)
+    width = term.width()
+    ledger = term._ledger
+    before = ledger.entries, ledger.nodes
+    ledger.max_nodes = ledger.nodes + 2 * width - 1
+
+    with pytest.raises(BlockContextBudgetExceeded):
+        term.mirror_obstruction()
+
+    scratch = term._mirror_output_scratch
+    assert scratch is not None and not scratch
+    scratch_account = next(
+        item for item in ledger.inventory() if item.owner == scratch.owner
+    )
+    assert scratch_account.entries == scratch_account.nodes == 0
+    assert (ledger.entries, ledger.nodes) == before
+    assert ledger.counters["reverse_output_stream_requests"] == 0
+    assert ledger.counters["reverse_output_stream_emitted_digits"] == 0
+    assert collect_ledger_metrics(ledger).resource_audit_complete == 1
+
+
+def test_plain_output_does_not_allocate_mirror_scratch() -> None:
+    term = ReverseAddPoweredTerm(196, 0)
+    assert term._mirror_output_scratch is None
+    assert tuple(term.iter_digits()) == (6, 9, 1)
+    assert term._mirror_output_scratch is None
+
+
+def test_powered_mirror_validates_sheet_before_width_discovery(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    term = ReverseAddPoweredTerm(196, 3)
+
+    def forbidden(_term: ReverseAddPoweredTerm) -> int:
+        raise AssertionError("invalid mirror sheet requested output width")
+
+    monkeypatch.setattr(ReverseAddPoweredTerm, "width", forbidden)
+    with pytest.raises(ValueError, match="first sheet width"):
+        term.mirror_obstruction(first_width=0)
+    assert term._workspace is None
 
 
 @pytest.mark.parametrize("width,sign", ((1, 1), (2, -1), (3, -1), (4, 1)))

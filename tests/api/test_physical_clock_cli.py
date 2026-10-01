@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+from fractions import Fraction
 from typing import Never
 
 import pytest
@@ -74,7 +75,16 @@ def test_physical_clock_cli_uses_bound_interface(
     info = json.loads(capsys.readouterr().out)["info"]
     result = info["clock"]
     _, odd = _reference(seed, ticks)
-    assert result["value"] == {
+    growth = result["value"]["homogeneous_growth"]
+    assert (growth["growths"], growth["halvings"], growth["radix"]) == (
+        odd,
+        ticks - odd,
+        10,
+    )
+    order = growth["homogeneous_radix_order"]
+    gain = Fraction(3**odd, 2 ** (ticks - odd))
+    assert Fraction(10) ** order <= gain < Fraction(10) ** (order + 1)
+    assert {k: v for k, v in result["value"].items() if k != "homogeneous_growth"} == {
         "events": odd,
         "divisions": ticks - odd,
         "physical_ticks": ticks,
@@ -166,3 +176,35 @@ def test_cli_physical_output_cannot_rebuild_joint_table(
     assert metrics["schema_version"] == 8
     assert metrics["action"]["publications"] > 0
     assert metrics["construction"]["source_image_publications"] > 0
+
+
+def test_digits_and_metrics_do_not_request_homogeneous_readout(
+    monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    from number_compiler.api import cylinder_observation
+
+    monkeypatch.setattr(cylinder_observation, "homogeneous_growth_packet", _forbidden)
+    assert (
+        main(
+            [
+                "collatz",
+                "--nth",
+                "16",
+                "--seed",
+                "27",
+                "--info",
+                "metrics",
+                "--format",
+                "json",
+            ]
+        )
+        == 0
+    )
+    row = json.loads(capsys.readouterr().out)
+    assert int(row["value"]) == _reference(27, 16)[0]
+    assert all(
+        value is None
+        for value in row["info"]["metrics"]["execution_metrics"][
+            "growth_readout"
+        ].values()
+    )

@@ -1,6 +1,7 @@
 theory Antihydra_Mahler_Associated_Action
   imports "Associated_Action_Core.Associated_Action_Pullback"
     "Antihydra.Antihydra_Mahler_Skew"
+    "Shared_Growth_Arithmetic.Homogeneous_Growth_Scale"
 begin
 
 text \<open>The production Mahler consumer indexes its bit actions by the
@@ -61,6 +62,59 @@ definition mahler_nf_then :: "mahler_nf \<Rightarrow> mahler_nf \<Rightarrow> ma
 
 definition mahler_nf_identity :: mahler_nf where
   "mahler_nf_identity = \<lparr>nf_R=0, nf_B=0, nf_C=None\<rparr>"
+
+text \<open>The exponent stored by the live integer normal form is also its
+homogeneous growth extent.  The projection forgets affine numerator and cap
+data only for the growth consumer; the complete normal form remains the owner
+for source-dependent arithmetic.\<close>
+
+definition mahler_temporal_growth_extent :: "nat \<Rightarrow> homogeneous_growth_scale" where
+  "mahler_temporal_growth_extent R =
+    homogeneous_growth_power mahler_temporal_growth_unit R"
+
+definition mahler_nf_growth_projection :: "mahler_nf \<Rightarrow> homogeneous_growth_scale" where
+  "mahler_nf_growth_projection A = mahler_temporal_growth_extent (nf_R A)"
+
+lemma mahler_temporal_growth_extent_pair:
+  "mahler_temporal_growth_extent R = \<lparr>growths=R, halvings=R\<rparr>"
+  by (simp add: mahler_temporal_growth_extent_def
+      homogeneous_growth_power_def mahler_temporal_growth_unit_def)
+
+theorem mahler_nf_extent_projection:
+  "mahler_nf_growth_projection A =
+    \<lparr>growths=nf_R A, halvings=nf_R A\<rparr>"
+  by (simp add: mahler_nf_growth_projection_def
+      mahler_temporal_growth_extent_pair)
+
+theorem mahler_nf_growth_projection_then:
+  "mahler_nf_growth_projection (mahler_nf_then A B) =
+    homogeneous_growth_then (mahler_nf_growth_projection A)
+      (mahler_nf_growth_projection B)"
+  by (cases A; cases B; simp add: mahler_nf_growth_projection_def
+      mahler_temporal_growth_extent_def mahler_nf_then_def
+      homogeneous_growth_power_def homogeneous_growth_then_def
+      mahler_temporal_growth_unit_def algebra_simps)
+
+theorem mahler_nf_live_scale_exact:
+  "action_scale (mahler_nf_action A) =
+    homogeneous_growth_ratio (mahler_nf_growth_projection A)"
+  by (simp add: mahler_nf_action_def mahler_nf_growth_projection_def
+      mahler_temporal_growth_extent_def mahler_nf_gain_def mahler_nf_den_def
+      homogeneous_growth_ratio_def homogeneous_growth_power_def
+      mahler_temporal_growth_unit_def field_simps power_add algebra_simps)
+
+theorem mahler_nf_growth_power_exact:
+  "homogeneous_growth_ratio (mahler_nf_growth_projection A) =
+    (3/2::rat)^(nf_R A)"
+  using mahler_nf_live_scale_exact[of A]
+  by (simp add: mahler_temporal_extent_exact
+      mahler_nf_growth_projection_def mahler_temporal_growth_extent_def)
+
+lemma mahler_nf_growth_projection_radix_slope:
+  "homogeneous_growth_radix_slope (mahler_nf_growth_projection A) b =
+    of_nat (nf_R A) * (ln 3 - ln 2) / ln (of_nat b)"
+  by (simp add: homogeneous_growth_radix_slope_def
+      mahler_nf_extent_projection algebra_simps)
 
 lemma mahler_nf_then_identity:
   "mahler_nf_then mahler_nf_identity A = A"
@@ -364,6 +418,9 @@ ML \<open>
   val _ = if null (Thm_Deps.all_oracles
     @{thms mahler_bit_action_admitted mahler_nf_action_admitted
       mahler_nf_then_identity mahler_nf_identity_action mahler_nf_action_then
+      mahler_temporal_growth_extent_pair mahler_nf_extent_projection
+      mahler_nf_growth_projection_then mahler_nf_live_scale_exact
+      mahler_nf_growth_power_exact mahler_nf_growth_projection_radix_slope
       mahler_bit_action_negative_unsaturated
       mahler_negative_cap_preserved mahler_negative_cap_fold
       mahler_centered_11_actual_tail_cap

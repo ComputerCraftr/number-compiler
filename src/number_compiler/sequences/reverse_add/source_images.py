@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from collections.abc import Hashable, Iterator
+from contextlib import ExitStack
 from dataclasses import dataclass
 from typing import cast
 
@@ -11,13 +12,12 @@ from number_compiler.arithmetic.contracts.exact_tree_context import (
 )
 from number_compiler.arithmetic.contracts.input_validation import require_integer
 from number_compiler.arithmetic.contracts.scoped_handles import (
-    ArenaHandle,
-    ArenaToken,
     ExactSource,
 )
 from number_compiler.arithmetic.formula.skew_residue_laws import (
     skew_normalized_digit,
 )
+from number_compiler.hashlife.execution.field_images import FieldImageID
 from number_compiler.hashlife.execution.source_bound_images import (
     SourceBoundImageAdapter,
     SourceImageCandidate,
@@ -28,10 +28,15 @@ from number_compiler.hashlife.execution.source_bound_images import (
 )
 from number_compiler.hashlife.execution.tile_scheduler import TileScheduler
 from number_compiler.resources.ledger import OwnedMemo, ResourceLedger
-from number_compiler.resources.stores import LedgerList
 from number_compiler.sequences.reverse_add.recursive_cutover import (
     ReverseRecursiveOccurrence,
     ReverseRecursiveTemporalCutover,
+)
+from number_compiler.sequences.reverse_add.source_actions import (
+    ReverseActionArena,
+    ReverseActionID,
+    ReverseActionNode,
+    ReverseSource,
 )
 from number_compiler.sequences.reverse_add.source_chamber import (
     SameCarryChamberRejected,
@@ -53,257 +58,11 @@ MAX_COMPLETED_CHILD_FALLBACK_STEPS = 128
 
 
 @dataclass(frozen=True, slots=True)
-class ReverseSource(ArenaHandle):
-    """Authenticated handle for the original input digits."""
-
-
-@dataclass(frozen=True, slots=True)
-class _ReverseSourceRecord:
-    exact: ExactSource
-
-
-@dataclass(frozen=True, slots=True)
-class ReverseActionID(ArenaHandle):
-    """Ledger-owned identity of one canonical reverse/add temporal action."""
-
-
-@dataclass(frozen=True, slots=True)
-class ReverseActionNode:
-    steps: int
-    before: ReverseActionID | None
-    after: ReverseActionID | None
-    depth: int
-
-
-@dataclass(frozen=True, slots=True)
 class ReverseImagePayload:
-    """Image metadata only; endpoint digits are always reconstructed on demand."""
+    """Chronological action and optional authenticated completed pair occurrence."""
 
     action: ReverseActionID
-
-
-class ReverseActionArena:
-    """Canonical, authenticated binary descriptors for powers of one step."""
-
-    _KIND = "reverse-source-action"
-    _SOURCE_KIND = "reverse-source"
-
-    def __init__(self, ledger: ResourceLedger) -> None:
-        if type(ledger) is not ResourceLedger:
-            raise TypeError("reverse action arena requires a resource ledger")
-        self.ledger = ledger
-        self.owner = ArenaToken("reverse-source-actions")
-        prefix = f"reverse-source-actions-{ledger.owner_count}"
-        self._nodes = OwnedMemo[int, ReverseActionNode](
-            ledger,
-            ledger.register(prefix + "-nodes", "reverse_source_action"),
-            nodes_per_entry=1,
-        )
-        self._normal = OwnedMemo[int, ReverseActionID](
-            ledger,
-            ledger.register(prefix + "-normal", "reverse_source_action_normal_form"),
-            composition_entries=True,
-        )
-        self._sources = OwnedMemo[int, _ReverseSourceRecord](
-            ledger,
-            ledger.register(prefix + "-sources", "reverse_original_source"),
-            nodes_per_entry=1,
-        )
-        self._workspace_owner = ledger.register(
-            prefix + "-workspace", "reverse_source_action_workspace"
-        )
-        self._workspace: LedgerList[tuple[int, bool]] = ledger.make_list(
-            self._workspace_owner, append_only=False
-        )
-        ledger.register_container(
-            self._workspace_owner,
-            self._workspace,
-            node_count=lambda: len(self._workspace),
-            payloads=lambda: self._workspace,
-        )
-        self._source_authority: (
-            tuple[_ReverseSourceRecord, ExactSource, tuple[int, ...], int] | None
-        ) = None
-        self._closed = False
-        try:
-            identity = self._append(ReverseActionNode(0, None, None, 0))
-            primitive = self._append(ReverseActionNode(1, None, None, 1))
-        except BaseException:
-            self._normal.dispose()
-            self._nodes.dispose()
-            self._sources.dispose()
-            self.ledger.mark_disposed(self._workspace_owner)
-            self.owner = ArenaToken("failed-reverse-source-actions")
-            self._closed = True
-            raise
-        self.identity, self.primitive = identity, primitive
-
-    def _check_open(self) -> None:
-        if self._closed:
-            raise ValueError("disposed reverse action arena")
-
-    def _append(self, node: ReverseActionNode) -> ReverseActionID:
-        local_id = len(self._nodes)
-        handle = ReverseActionID(self.owner, self._KIND, local_id)
-        self._nodes[local_id] = node
-        try:
-            self._normal[node.steps] = handle
-        except BaseException:
-            del self._nodes[local_id]
-            raise
-        return handle
-
-    def node(self, action: ReverseActionID) -> ReverseActionNode:
-        self._check_open()
-        if type(action) is not ReverseActionID:
-            raise TypeError("reverse/add image requires a scoped action ID")
-        action.validate(self.owner, self._KIND, size=len(self._nodes))
-        node = self._nodes[action.local_id]
-        if self._normal.get(node.steps) != action:
-            raise ValueError("reverse action normal form was altered")
-        if action.local_id == 0:
-            if node != ReverseActionNode(0, None, None, 0):
-                raise ValueError("reverse identity action was altered")
-        elif action.local_id == 1:
-            if node != ReverseActionNode(1, None, None, 1):
-                raise ValueError("reverse primitive action was altered")
-        else:
-            if (
-                type(node.steps) is not int
-                or node.steps < 2
-                or type(node.before) is not ReverseActionID
-                or type(node.after) is not ReverseActionID
-                or node.before.local_id >= action.local_id
-                or node.after.local_id >= action.local_id
-            ):
-                raise ValueError("reverse composite action was altered")
-            node.before.validate(self.owner, self._KIND, size=action.local_id)
-            node.after.validate(self.owner, self._KIND, size=action.local_id)
-            before = self._nodes[node.before.local_id]
-            after = self._nodes[node.after.local_id]
-            if (
-                self._normal.get(before.steps) != node.before
-                or self._normal.get(after.steps) != node.after
-                or before.steps + after.steps != node.steps
-                or node.depth != 1 + max(before.depth, after.depth)
-            ):
-                raise ValueError("reverse composite action geometry was altered")
-        return node
-
-    def admit_source(self, seed: int, base: int) -> ReverseSource:
-        self._check_open()
-        if self._source_authority is not None:
-            raise ValueError("reverse action arena already owns an original source")
-        digits: list[int] = []
-        value = seed
-        while True:
-            digits.append(value % base)
-            value //= base
-            if not value:
-                break
-        exact = ExactSource(tuple(digits), base, orbit="reverse-add")
-        record = _ReverseSourceRecord(exact)
-        handle = ReverseSource(self.owner, self._SOURCE_KIND, 0)
-        self._sources[0] = record
-        self._source_authority = record, exact, exact.digits, exact.base
-        return handle
-
-    def source(self, source: ReverseSource) -> ExactSource:
-        self._check_open()
-        if type(source) is not ReverseSource:
-            raise TypeError("reverse/add image requires a scoped source ID")
-        source.validate(self.owner, self._SOURCE_KIND, size=len(self._sources))
-        record = self._sources[source.local_id]
-        authority = self._source_authority
-        if (
-            authority is None
-            or record is not authority[0]
-            or record.exact is not authority[1]
-            or record.exact.digits is not authority[2]
-            or record.exact.base != authority[3]
-            or record.exact.orbit != "reverse-add"
-            or record.exact.blank != 0
-            or record.exact.extent is not None
-            or record.exact.alphabet_size is not None
-        ):
-            raise ValueError("reverse original source authority was altered")
-        return record.exact
-
-    def action(self, steps: int) -> ReverseActionID:
-        self._check_open()
-        steps = require_integer(steps, "reverse/add steps", 0)
-        found = self._normal.get(steps)
-        if found is not None:
-            self.node(found)
-            return found
-        if self._workspace:
-            raise RuntimeError("reverse action construction workspace is active")
-        credit = 0
-        starting_nodes = len(self._nodes)
-
-        def push(item: tuple[int, bool]) -> None:
-            nonlocal credit
-            self.ledger.reserve(self._workspace_owner, entries=1, nodes=1)
-            credit += 1
-            self._workspace.append(item)
-
-        try:
-            push((steps, False))
-            while self._workspace:
-                current, expanded = self._workspace.pop()
-                self.ledger.release(self._workspace_owner, entries=1, nodes=1)
-                credit -= 1
-                if self._normal.get(current) is not None:
-                    continue
-                left_steps = current // 2
-                right_steps = current - left_steps
-                if not expanded:
-                    push((current, True))
-                    if self._normal.get(right_steps) is None:
-                        push((right_steps, False))
-                    if self._normal.get(left_steps) is None:
-                        push((left_steps, False))
-                    continue
-                before = self._normal[left_steps]
-                after = self._normal[right_steps]
-                depth = 1 + max(self.node(before).depth, self.node(after).depth)
-                self._append(ReverseActionNode(current, before, after, depth))
-            return self._normal[steps]
-        except BaseException:
-            while self._workspace:
-                self._workspace.pop()
-            if credit:
-                self.ledger.release(self._workspace_owner, entries=credit, nodes=credit)
-            while len(self._nodes) > starting_nodes:
-                local_id = len(self._nodes) - 1
-                node = self._nodes[local_id]
-                del self._normal[node.steps]
-                del self._nodes[local_id]
-            raise
-
-    def compose(
-        self, before: ReverseActionID, after: ReverseActionID
-    ) -> ReverseActionID:
-        return self.action(self.node(before).steps + self.node(after).steps)
-
-    @property
-    def operator_nodes(self) -> int:
-        return max(0, len(self._nodes) - 1)
-
-    @property
-    def compose_operations(self) -> int:
-        return sum(node.steps >= 2 for node in self._nodes.values())
-
-    def dispose(self) -> None:
-        if self._closed:
-            return
-        self._normal.dispose()
-        self._nodes.dispose()
-        self._sources.dispose()
-        self.ledger.mark_disposed(self._workspace_owner)
-        self._source_authority = None
-        self.owner = ArenaToken("disposed-reverse-source-actions")
-        self._closed = True
+    occurrence: FieldImageID | None = None
 
 
 def _source_digit(source: ExactSource, position: int) -> int:
@@ -312,7 +71,7 @@ def _source_digit(source: ExactSource, position: int) -> int:
 
 class _ReverseSourceImageAdapter(SourceBoundImageAdapter):
     family = "reverse-add"
-    semantic_version = "source-cylinder-v5-composed-carry-ports"
+    semantic_version = "source-cylinder-v6-completed-occurrence"
 
     def __init__(self, actions: ReverseActionArena) -> None:
         self.actions = actions
@@ -355,8 +114,13 @@ class _ReverseSourceImageAdapter(SourceBoundImageAdapter):
             raise ValueError("reverse recursive authority requires source and horizon")
         if self._recursive_construction is not None:
             self._recursive_construction.validate_source()
-            if self._recursive_maximum_steps != steps:
-                raise ValueError("reverse recursive authority horizon changed")
+            if (
+                self._recursive_maximum_steps != steps
+                or self._recursive_source is not source
+            ):
+                raise ValueError(
+                    "reverse recursive authority source or horizon changed"
+                )
             return
         digits = source.digits
         width = len(digits)
@@ -398,6 +162,7 @@ class _ReverseSourceImageAdapter(SourceBoundImageAdapter):
                 )
         self._recursive_construction = construction
         self._recursive_maximum_steps = steps
+        self._recursive_source = source
 
     def dispose(self) -> None:
         if self._ports is not None:
@@ -406,7 +171,7 @@ class _ReverseSourceImageAdapter(SourceBoundImageAdapter):
         if self._recursive is not None:
             self._recursive.dispose()
             self._recursive = None
-            self._recursive_source = None
+        self._recursive_source = None
         self._recursive_construction = None
         self._recursive_occurrences.dispose()
 
@@ -419,10 +184,17 @@ class _ReverseSourceImageAdapter(SourceBoundImageAdapter):
         block is applied through provider substitution, whose spatial parent joins
         are functions of their two completed child images.
         """
-        found = self._recursive_occurrences.get(steps)
+        authority = self._recursive_source
+        if authority is not None and (
+            authority is not source
+            or authority.digits is not source.digits
+            or authority.base != source.base
+        ):
+            raise ValueError("reverse recursive fallback source changed")
+        found = self._recursive_for_steps(steps)
         if found is not None:
             self.ledger.bump("reverse_source_recursive_occurrence_hits")
-            return found
+            return found[1]
         cutover = self._recursive
         if cutover is None:
             construction = self._recursive_construction
@@ -440,18 +212,28 @@ class _ReverseSourceImageAdapter(SourceBoundImageAdapter):
             self._recursive = cutover
             self._recursive_source = source
         else:
-            authority = self._recursive_source
-            if (
-                authority is not source
-                or authority.digits is not source.digits
-                or authority.base != source.base
-            ):
-                raise ValueError("reverse recursive fallback source changed")
             if steps > cutover.maximum_steps:
                 raise ReverseCylinderConstructionUnavailable(
                     "reverse recursive fallback exceeded its admitted temporal horizon"
                 )
-        occurrence = cutover.pair_image(steps)
+        prefix: ReverseRecursiveOccurrence | None = None
+        for length, candidate in self._recursive_occurrences.items():
+            self.ledger.bump("reverse_source_completed_prefix_checks")
+            if (
+                type(length) is not int
+                or type(candidate) is not ReverseRecursiveOccurrence
+                or candidate.temporal_steps != length
+            ):
+                raise ValueError("reverse occurrence memo has another duration")
+            if length < steps and (prefix is None or length > prefix.temporal_steps):
+                prefix = candidate
+        occurrence = (
+            cutover.pair_image(steps)
+            if prefix is None
+            else cutover.apply_to_occurrence(prefix, steps - prefix.temporal_steps)
+        )
+        if prefix is not None:
+            self.ledger.bump("reverse_source_completed_prefix_applications")
         if occurrence.temporal_steps != steps:
             raise AssertionError((occurrence.temporal_steps, steps))
         self._recursive_occurrences[steps] = occurrence
@@ -461,10 +243,18 @@ class _ReverseSourceImageAdapter(SourceBoundImageAdapter):
     def _recursive_for_steps(
         self, steps: int
     ) -> tuple[ReverseRecursiveTemporalCutover, ReverseRecursiveOccurrence] | None:
+        if type(steps) is not int or steps < 1:
+            raise ValueError("recursive occurrence requires a positive exact duration")
         occurrence = self._recursive_occurrences.get(steps)
         cutover = self._recursive
-        if occurrence is None or cutover is None:
+        if occurrence is None:
             return None
+        if (
+            cutover is None
+            or type(occurrence) is not ReverseRecursiveOccurrence
+            or occurrence.temporal_steps != steps
+        ):
+            raise ValueError("reverse occurrence memo has another owner or duration")
         cutover.validate_occurrence(occurrence)
         return cutover, occurrence
 
@@ -481,7 +271,74 @@ class _ReverseSourceImageAdapter(SourceBoundImageAdapter):
     def validate_payload(self, payload: Hashable) -> None:
         if type(payload) is not ReverseImagePayload:
             raise TypeError("reverse/add image has another payload sort")
-        self.actions.node(payload.action)
+        steps = self.actions.node(payload.action).steps
+        if payload.occurrence is not None:
+            if type(payload.occurrence) is not FieldImageID:
+                raise TypeError("reverse completed payload requires a field image")
+            completed = self._recursive_for_steps(steps)
+            if completed is None or completed[1].image != payload.occurrence:
+                raise ValueError("reverse payload differs from its issued occurrence")
+
+    def _validate_view(self, view: SourceImageView) -> ReverseImagePayload:
+        self.validate_source(view.binding.source)
+        self.validate_payload(view.payload)
+        payload = cast(ReverseImagePayload, view.payload)
+        steps = self.actions.node(payload.action).steps
+        origin = self.actions.source(cast(ReverseSource, view.binding.source))
+        expected_ports: tuple[int, ...]
+        expected_precision: int | None
+        if payload.occurrence is None:
+            expected_ports = (0,) if steps == 0 else (0, 1) if steps <= 2 else (0, 0)
+            expected_precision = len(origin.digits) + (steps if steps <= 2 else 0)
+        else:
+            expected_ports = ()
+            expected_precision = None
+        if (
+            view.binding.family != self.family
+            or view.binding.semantic_version != self.semantic_version
+            or view.binding.action != payload.action
+            or view.binding.extent != steps
+            or view.binding.radix != origin.base
+            or view.binding.orientation != 1
+            or view.failure_prefix is not None
+            or view.binding.boundary_ports != expected_ports
+            or view.binding.precision != expected_precision
+        ):
+            raise ValueError("reverse image action and source binding disagree")
+        return payload
+
+    def _extend_completed(
+        self, action: ReverseActionID, source: SourceImageView
+    ) -> SourceImageCandidate:
+        """Apply a later block to the published provider, never to its seed."""
+        payload = self._validate_view(source)
+        before_steps = self.actions.node(payload.action).steps
+        additional = self.actions.node(action).steps
+        completed = self._recursive_for_steps(before_steps)
+        if payload.occurrence is None or completed is None:
+            raise ReverseCylinderConstructionUnavailable(
+                "reverse/add source cylinder has no completed provider occurrence"
+            )
+        total = before_steps + additional
+        cutover, occurrence = completed
+        if total > min(cutover.maximum_steps, MAX_COMPLETED_CHILD_FALLBACK_STEPS):
+            raise ReverseCylinderConstructionUnavailable(
+                "reverse/add completed provider exceeds its admitted temporal horizon"
+            )
+        cumulative = self.actions.compose(payload.action, action)
+        cached = self._recursive_for_steps(total)
+        if cached is None:
+            target = cutover.apply_to_occurrence(occurrence, additional)
+            self._recursive_occurrences[total] = target
+        else:
+            target = cached[1]
+            self.ledger.bump("reverse_source_completed_parent_hits")
+        self.ledger.bump("reverse_source_completed_provider_applications")
+        return SourceImageCandidate(
+            ReverseImagePayload(cumulative, target.image),
+            total,
+            radix=source.binding.radix,
+        )
 
     def identity_action(self, source: Hashable) -> ReverseActionID:
         self.validate_source(source)
@@ -518,9 +375,21 @@ class _ReverseSourceImageAdapter(SourceBoundImageAdapter):
         self, action: Hashable, source: SourceImageView
     ) -> SourceImageCandidate:
         self.validate_action(action)
-        self.validate_payload(source.payload)
+        payload = self._validate_view(source)
         exact = cast(ReverseActionID, action)
         node = self.actions.node(exact)
+        if node.steps not in (0, 1):
+            raise ValueError("reverse primitive application requires an atomic action")
+        if node.steps == 0:
+            return SourceImageCandidate(
+                payload,
+                source.binding.extent,
+                boundary_ports=source.binding.boundary_ports,
+                radix=source.binding.radix,
+                precision=source.binding.precision,
+            )
+        if cast(ReverseImagePayload, source.payload).occurrence is not None:
+            return self._extend_completed(exact, source)
         prior_steps = self.actions.node(
             cast(ReverseImagePayload, source.payload).action
         ).steps
@@ -549,7 +418,7 @@ class _ReverseSourceImageAdapter(SourceBoundImageAdapter):
         demand: SourceImageDemand | None,
     ) -> SourceImageCandidate | None:
         self.validate_action(action)
-        self.validate_payload(source.payload)
+        self._validate_view(source)
         if demand is not None:
             demand.__post_init__()
         steps = self.actions.node(cast(ReverseActionID, action)).steps
@@ -560,6 +429,8 @@ class _ReverseSourceImageAdapter(SourceBoundImageAdapter):
             raise ValueError(
                 "reverse composite application requires at least two steps"
             )
+        if cast(ReverseImagePayload, source.payload).occurrence is not None:
+            return self._extend_completed(cast(ReverseActionID, action), source)
         if source_steps == 0 and steps == 2:
             origin = self.actions.source(cast(ReverseSource, source.binding.source))
             cumulative = self.actions.compose(
@@ -586,14 +457,14 @@ class _ReverseSourceImageAdapter(SourceBoundImageAdapter):
                         "reverse/add source cylinder completed-child fallback is "
                         f"bounded to {MAX_COMPLETED_CHILD_FALLBACK_STEPS} temporal steps"
                     ) from exc
-                self._recursive_occurrence(origin, steps)
+                occurrence = self._recursive_occurrence(origin, steps)
                 cumulative = self.actions.compose(
                     cast(ReverseImagePayload, source.payload).action,
                     cast(ReverseActionID, action),
                 )
                 self.ledger.bump("reverse_source_completed_child_publications")
                 return SourceImageCandidate(
-                    ReverseImagePayload(cumulative),
+                    ReverseImagePayload(cumulative, occurrence.image),
                     source.binding.extent + steps,
                     boundary_ports=(),
                     radix=origin.base,
@@ -626,24 +497,40 @@ class _ReverseSourceImageAdapter(SourceBoundImageAdapter):
         after: SourceImageView,
     ) -> SourceImageCandidate:
         self.validate_action(action)
-        del source, before, after
-        steps = self.actions.node(cast(ReverseActionID, action)).steps
-        raise ReverseCylinderConstructionUnavailable(
-            "reverse/add composite chronology is unavailable; "
-            f"cannot construct {steps} temporal steps"
+        original = self._validate_view(source)
+        middle = self._validate_view(before)
+        final = self._validate_view(after)
+        children = self.action_children(action)
+        if (
+            children is None
+            or before.binding.source != source.binding.source
+            or after.binding.source != source.binding.source
+            or middle.action != self.actions.compose(original.action, children[0])
+            or final.action != self.actions.compose(middle.action, children[1])
+        ):
+            raise ValueError("reverse chronological children have another binding")
+        if final.occurrence is None:
+            raise ReverseCylinderConstructionUnavailable(
+                "reverse chronology requires a completed final occurrence"
+            )
+        self.ledger.bump("reverse_source_completed_chronological_joins")
+        return SourceImageCandidate(
+            final,
+            after.binding.extent,
+            radix=after.binding.radix,
         )
 
     def admitted_input_key(
         self, action: Hashable, source: SourceImageView
     ) -> Hashable | None:
         self.validate_action(action)
-        self.validate_payload(source.payload)
+        payload = self._validate_view(source)
         action_steps = self.actions.node(cast(ReverseActionID, action)).steps
         source_steps = self.actions.node(
             cast(ReverseImagePayload, source.payload).action
         ).steps
         total = source_steps + action_steps
-        if total >= 2 and source_steps != 0:
+        if total >= 2 and source_steps != 0 and payload.occurrence is None:
             self.ledger.bump("reverse_cylinder_construction_failures")
             raise ReverseCylinderConstructionUnavailable(
                 "reverse/add source cylinder construction is unavailable for "
@@ -711,20 +598,10 @@ class _ReverseSourceImageAdapter(SourceBoundImageAdapter):
     def project(
         self, image: SourceImageView, demand: SourceImageDemand
     ) -> SourceImageProjection:
-        self.validate_payload(image.payload)
-        payload = cast(ReverseImagePayload, image.payload)
+        payload = self._validate_view(image)
         source = self.actions.source(cast(ReverseSource, image.binding.source))
         source_width = len(source.digits)
         steps = self.actions.node(payload.action).steps
-        if (
-            payload.action != image.binding.action
-            or image.binding.extent != steps
-            or image.binding.family != self.family
-            or image.binding.semantic_version != self.semantic_version
-            or image.binding.radix != source.base
-            or image.binding.orientation != 1
-        ):
-            raise ValueError("reverse image action and source binding disagree")
         if demand == SourceImageDemand("width"):
             if steps == 0:
                 return SourceImageProjection(source_width)
@@ -793,7 +670,7 @@ class _ReverseSourceImageAdapter(SourceBoundImageAdapter):
             yield 1
 
     def first_failure(self, image: SourceImageView) -> None:
-        self.validate_payload(image.payload)
+        self._validate_view(image)
 
 
 class ReverseSourceImageWorkspace:
@@ -816,23 +693,21 @@ class ReverseSourceImageWorkspace:
         self.ledger = ledger
         ledger.bump("temporal_point_requests", 0)
         ledger.bump("temporal_length_requests", 0)
-        actions = ReverseActionArena(ledger)
-        scheduler: TileScheduler | None = None
-        try:
+        with ExitStack() as rollback:
+            actions = ReverseActionArena(ledger)
+            rollback.callback(actions.dispose)
             source = actions.admit_source(seed, base)
             root_action = actions.action(steps)
             scheduler = TileScheduler.source_only(ledger)
+            rollback.callback(scheduler.dispose_source_images)
             adapter = _ReverseSourceImageAdapter(actions)
+            rollback.callback(adapter.dispose)
             if 3 <= steps <= MAX_COMPLETED_CHILD_FALLBACK_STEPS:
                 adapter.prepare_recursive_authority(
                     actions.source(source), steps, source_construction
                 )
             scheduler.register_source_image_adapter(adapter)
-        except BaseException:
-            if scheduler is not None:
-                scheduler.dispose_source_images()
-            actions.dispose()
-            raise
+            rollback.pop_all()
         self.actions = actions
         self.source = source
         self.root_action = root_action
@@ -978,6 +853,7 @@ class ReverseSourceImageWorkspace:
 __all__ = [
     "ReverseActionArena",
     "ReverseActionID",
+    "ReverseActionNode",
     "ReverseCylinderConstructionUnavailable",
     "ReverseSource",
     "ReverseSourceImageWorkspace",

@@ -151,6 +151,8 @@ def _radix_string(value: int, base: int) -> str:
 
 
 def _render_value(term: ProjectedNumberTerm, *, output_base: int, max_bits: int) -> str:
+    output_base = _integer(output_base, "--output-base", 2, len(_DIGITS))
+    max_bits = _integer(max_bits, "--max-output-bits", 1)
     ledger = _term_ledger(term)
     if ledger is None:
         return _render_value_body(term, output_base=output_base, max_bits=max_bits)
@@ -169,8 +171,6 @@ def _render_value(term: ProjectedNumberTerm, *, output_base: int, max_bits: int)
 def _render_value_body(
     term: ProjectedNumberTerm, *, output_base: int, max_bits: int
 ) -> str:
-    output_base = _integer(output_base, "--output-base", 2, len(_DIGITS))
-    max_bits = _integer(max_bits, "--max-output-bits", 1)
     bit_extent: Extent
     if isinstance(term.payload, PoweredReverseAddTermPayload):
         powered = term.payload.term

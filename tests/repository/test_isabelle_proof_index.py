@@ -43,6 +43,32 @@ def test_index_retains_statement_assumptions_attributes_and_location(
     assert theories[0]["counterparts"] == ()
 
 
+def test_theory_inventory_uses_one_source_snapshot_per_pass(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    directory = _fixture(tmp_path, monkeypatch)
+    theory = directory / "Sample.thy"
+    read_text = Path.read_text
+    reads: list[Path] = []
+
+    def changing_source(path: Path) -> str:
+        text = read_text(path)
+        if path == theory:
+            reads.append(path)
+            # Simulate an editor saving between inventory phases. Metadata and
+            # declarations must describe the same read, never a mixed theory.
+            path.write_text(text.replace("bounded", "replacement"))
+        return text
+
+    monkeypatch.setattr(Path, "read_text", changing_source)
+    result = index.build_index()
+    theories = result["theories"]
+    assert isinstance(theories, list)
+    assert reads == [theory]
+    assert theories[0]["oracle_audit_theorems"] == ("bounded",)
+    assert theories[0]["declarations"][0]["name"] == "bounded"
+
+
 @pytest.mark.parametrize(
     "fault", ["missing", "duplicate", "orphan", "unaudited", "counterpart"]
 )

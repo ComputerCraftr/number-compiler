@@ -12,10 +12,12 @@ from number_compiler.hashlife.actions.field_actions import FieldCellActionID
 from number_compiler.hashlife.execution.tile_kernel import PrimitiveTileKernelAdapter
 from number_compiler.hashlife.execution.tile_scheduler import (
     ChildContext,
+    TileApplication,
     TileScheduler,
 )
 from number_compiler.hashlife.interfaces.diamond_kernel import DiamondKernelArena
 from number_compiler.hashlife.interfaces.diamond_quotient import DiamondQuotientArena
+from number_compiler.hashlife.observation.tile_projection import LazyProjection
 from number_compiler.hashlife.tiles.tile_ports import ResultWiring
 from number_compiler.hashlife.tiles.tile_results import CompletedResultArena
 from number_compiler.hashlife.tiles.tiles import (
@@ -239,3 +241,20 @@ def runtime_source_children(
     node = tiles.resolve(source.tile)
     assert node.left is not None and node.right is not None
     return ledger, tiles, adapter, primitive, scheduler, source, node
+
+
+def powered_application(
+    projection: LazyProjection,
+    steps: int = 4,
+) -> tuple[PrimitiveTileKernelAdapter, FieldCellActionID, TileApplication]:
+    primitive = projection._application
+    adapter = primitive.scheduler.adapter
+    assert type(adapter) is PrimitiveTileKernelAdapter
+    action = adapter.power(primitive.action, steps)
+    application = primitive.scheduler.application(
+        action,
+        primitive.source,
+        adapter.initial_ports(action),
+        adapter.wiring(action),
+    )
+    return adapter, action, application

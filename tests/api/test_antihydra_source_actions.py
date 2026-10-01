@@ -272,7 +272,8 @@ def test_public_cli_warm_root_skips_both_cold_arithmetic_owners(
         ]
         == 1
     )
-    assert not payload.term.ledger.counters.get("mahler_hashlife_occurrence_lookups", 0)
+    assert "mahler_hashlife_action_lookups" not in payload.term.ledger.counters
+    assert "mahler_hashlife_occurrence_lookups" not in payload.term.ledger.counters
     assert source_cache.stats().active_leases == 0
 
 

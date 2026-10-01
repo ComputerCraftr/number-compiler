@@ -113,6 +113,22 @@ python -m devtools.checks.release --suite unit --output-dir results/runs/unit-re
 
 The command preserves the existing unit, P0, proof and quality selections and their resource guards. Failure evidence remains a failure; a historical baseline comparison is separate from acceptance. Developer code uses `devtools.paths.isabelle_root()` to locate the canonical `proofs/isabelle/` tree.
 
+Runtime release checks live with their actual family under `tests/sequences/`,
+shared runtime checks under `tests/hashlife/` or `tests/validation/runtime/`,
+and compiler-facing checks under `tests/api/`. Expensive runtime checks retain
+`validation` membership. A runtime assertion is not a proof merely because it
+was historically stored under `tests/validation/proofs/`.
+[`release.P0`](../devtools/checks/release.py) is the canonical explicit selection;
+moving a test requires preserving its selected instances and recording its old
+and new node IDs. Shared publication/replay assertions live in
+[`source_image_assertions.py`](../tests/support/source_image_assertions.py).
+
+The cross-family source-image benchmark is
+`python -m devtools.benchmarks.source_image_runtime_audit`. It checks exact
+outputs, replay and accounting; its name does not claim a bisimulation proof.
+The Collatz C4 reference executor is developer-only and remains forbidden on
+production import paths.
+
 Scaffold a Sunday-start topic with `python -m devtools.checks.sprint_scaffold --week-start YYYY-MM-DD --topic TOPIC --title TITLE`. The tool registers the topic and regenerates weekly topic links/counts without replacing authored topic content. Run it again with `--check` to verify generated navigation.
 
 ## Shared audit and arithmetic owners

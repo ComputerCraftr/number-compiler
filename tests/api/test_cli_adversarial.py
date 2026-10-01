@@ -23,6 +23,7 @@ from number_compiler.api.number_api import (
 from number_compiler.arithmetic.contracts.block_effect import BlockContextBudgetExceeded
 from number_compiler.arithmetic.formula.formula import FormulaArena, root_from_values
 from number_compiler.arithmetic.formula.types import RadixSpec
+from number_compiler.resources.metric_collection import collect_ledger_metrics
 from number_compiler.resources.temporal_diagnostics import (
     collect_temporal_diagnostics_snapshot,
 )
@@ -460,18 +461,21 @@ def test_emitted_execution_metrics_match_actual_rendered_term_ledger(
     assert resources["audit_complete"] is False
     assert resources["accounting_mismatch"] is None
     assert execution["reporting"]["inspected_inventory_rows"] == 0
-    # The full Python API remains the explicit owner of semantic and inventory
-    # checks; CLI snapshot reporting does not silently perform that audit.
+    # Runtime Python metrics remain a non-auditing snapshot. The separate
+    # ledger collector owns semantic and inventory checks.
     monkeypatch.undo()
-    full = term.payload.power_metrics()
-    assert full.resource_audit_complete
-    assert full.resource_accounting_mismatch == 0
+    runtime = term.payload.power_metrics()
+    assert runtime.resource_audit_complete == 0
+    assert runtime.resource_accounting_mismatch == 0
+    full_audit = collect_ledger_metrics(term.payload.term._ledger)
+    assert full_audit.resource_audit_complete == 1
+    assert full_audit.resource_accounting_mismatch == 0
     assert all(
         row.accounting_delta == 0
-        for row in full.resource_inventory
+        for row in full_audit.resource_inventory
         if row.accounting_delta is not None
     )
-    assert full.resource_work_counters
+    assert full_audit.resource_work_counters
 
 
 @pytest.mark.parametrize("family, extra", [("196", []), ("collatz", ["--seed", "27"])])

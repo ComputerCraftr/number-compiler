@@ -1,4 +1,4 @@
-"""Check exact powered outputs, replay stability and retained-resource accounting."""
+"""Audit source-image outputs, replay stability and retained-resource accounting."""
 
 from __future__ import annotations
 
@@ -8,6 +8,9 @@ from time import perf_counter
 from devtools.paths import report_directory, repository_root
 from devtools.verification.oracles.sequence_arithmetic import (
     collatz_literal as _collatz_scalar,
+)
+from devtools.verification.oracles.sequence_arithmetic import (
+    reverse_add_literal as _reverse_scalar,
 )
 from number_compiler.sequences.collatz.block_power import PoweredCollatzTerm
 from number_compiler.sequences.reverse_add.power import ReverseAddPoweredTerm
@@ -19,14 +22,6 @@ INDICES = (16, 32, 64, 128, 256)
 def _metric_int(value: object) -> int:
     if type(value) is not int:
         raise AssertionError(("runtime-metric-is-not-an-exact-integer", value))
-    return value
-
-
-def _reverse_scalar(steps: int) -> int:
-    value = 196
-    for _ in range(steps):
-        text = str(value)
-        value += int(text[::-1])
     return value
 
 
@@ -81,7 +76,7 @@ def run() -> dict[str, object]:
     reverse = []
     collatz = []
     for n in INDICES:
-        reverse.append(_row(ReverseAddPoweredTerm(196, n), _reverse_scalar(n), n))
+        reverse.append(_row(ReverseAddPoweredTerm(196, n), _reverse_scalar(196, n), n))
         collatz.append(
             _row(PoweredCollatzTerm(140137, n), _collatz_scalar(140137, n), n)
         )
@@ -109,8 +104,8 @@ def run() -> dict[str, object]:
 def main() -> int:
     result = run()
     out = (
-        report_directory("devtools.benchmarks.linear_bisimulation_checkpoint")
-        / "linear_bisimulation_checkpoint_v1.json"
+        report_directory("devtools.benchmarks.source_image_runtime_audit")
+        / "source_image_runtime_audit_v1.json"
     )
     out.parent.mkdir(exist_ok=True)
     out.write_text(json.dumps(result, indent=2, sort_keys=True) + "\n")

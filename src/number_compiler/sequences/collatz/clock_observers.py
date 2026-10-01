@@ -12,6 +12,7 @@ from dataclasses import dataclass
 from typing import TYPE_CHECKING, TypeVar, cast
 
 from number_compiler.arithmetic.contracts.block_effect import BlockContextBudgetExceeded
+from number_compiler.arithmetic.fields.homogeneous_growth import HomogeneousGrowthScale
 from number_compiler.arithmetic.fields.morphism_core import modular_power
 from number_compiler.arithmetic.fields.skew_transfer import SkewTransfer
 from number_compiler.arithmetic.fields.tropical import TropicalMatrix
@@ -43,6 +44,11 @@ class SArithmeticClock:
     @property
     def physical_ticks(self) -> int:
         return self.events + self.divisions
+
+    @property
+    def homogeneous_growth(self) -> HomogeneousGrowthScale:
+        """Project the admitted odd/division counts without rediscovering events."""
+        return HomogeneousGrowthScale(self.events, self.divisions)
 
     @property
     def real_prime_exponents(self) -> tuple[int, int]:

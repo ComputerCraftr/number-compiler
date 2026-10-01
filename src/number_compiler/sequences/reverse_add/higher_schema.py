@@ -33,6 +33,23 @@ class ReverseHigherActionSchema:
         primitive: FieldCellActionID,
         terminal: FieldCellActionID,
     ) -> None:
+        if (
+            primitive == terminal
+            or primitive == actions.identity
+            or terminal == actions.identity
+        ):
+            raise ValueError(
+                "reverse higher kernels require distinct nonidentity atoms"
+            )
+        primitive_record = actions.resolve(primitive)
+        terminal_record = actions.resolve(terminal)
+        if (
+            actions.action_children(primitive) is not None
+            or actions.action_children(terminal) is not None
+        ):
+            raise ValueError("reverse higher kernels cannot be temporal composites")
+        if primitive_record.base != terminal_record.base:
+            raise ValueError("reverse higher kernels must use one radix")
         self.actions = actions
         self.ledger: ResourceLedger = actions.ledger
         self.identity = actions.identity
@@ -155,6 +172,25 @@ class ReverseHigherActionSchema:
             if candidate == action:
                 return codec
         raise ValueError("reverse higher operation requires a primitive action")
+
+    def primitive_blank_run(self, action: FieldCellActionID) -> bool:
+        """Admit the decimal first-blank/stable-tail law for atomic kernels only.
+
+        This is spatial saturation, not a certificate for a temporal composite.
+        Pair and terminal kernels both have an idempotent left blank transfer,
+        an identity right transfer, and blank output after the first blank.
+        """
+        if type(action) is not FieldCellActionID:
+            raise TypeError("expected a reverse field-action ID")
+        field = self.actions.resolve(action)
+        if action not in (self.primitive, self.terminal) or field.base != 10:
+            return False
+        effect = self._primitive_after_validation(action).effect
+        return (
+            effect.blank_left_tail == 1
+            and effect.blank_right_tail == 0
+            and effect.stable_blank_output
+        )
 
     def state_count(self, action: FieldCellActionID, side: int) -> int:
         direction = self._side(side)

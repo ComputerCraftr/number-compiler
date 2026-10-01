@@ -135,7 +135,7 @@ class CollatzSourcePublisher:
         )
 
     @staticmethod
-    def _word_leq_integer(
+    def _source_word_leq_integer(
         word: SourceWord,
         limit: int,
         *,
@@ -298,7 +298,7 @@ class CollatzSourcePublisher:
         if germ.multiplier == 0:
             return True, 0
         quotient = (boundary - germ.offset) // germ.multiplier
-        return cls._word_leq_integer(
+        return cls._source_word_leq_integer(
             germ.suffix,
             quotient,
             ledger=ledger,

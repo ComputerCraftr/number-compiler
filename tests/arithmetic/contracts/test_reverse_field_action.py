@@ -188,6 +188,36 @@ def test_reverse_semantic_identity_memo_hits_after_validating_action_handle(
     )
 
 
+@pytest.mark.parametrize("warm", (False, True))
+def test_reverse_identity_audit_never_publishes_or_counts_execution_hits(
+    warm: bool, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    arena = _arena()
+    reference = arena.identity
+    if warm:
+        arena.semantic_identity(reference)
+    before = arena.ledger.snapshot()
+    identities = dict(arena._semantic_identities)
+
+    def forbidden(*_args: object, **_kwargs: object) -> None:
+        raise AssertionError("audit entered execution identity construction")
+
+    with monkeypatch.context() as patch:
+        patch.setattr(arena, "_compute_semantic_identity", forbidden)
+        identity = arena.semantic_identity(reference, audit=True)
+    after = arena.ledger.snapshot()
+    assert before.entries == after.entries
+    assert before.nodes == after.nodes
+    assert dict(arena._semantic_identities) == identities
+    changes = {
+        key
+        for key in before.counters.keys() | after.counters.keys()
+        if before.counters.get(key, 0) != after.counters.get(key, 0)
+    }
+    assert changes == {"reverse_payload_audit_identity_operand_bits"}
+    assert identity == arena.semantic_identity(reference)
+
+
 def test_reverse_semantic_identity_cache_seals_exact_radial_coordinates() -> None:
     from number_compiler.resources.field_action_payload_audit import (
         audit_field_action_payloads,

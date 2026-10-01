@@ -7,6 +7,7 @@ threshold is a consumer; neither it nor the ledger authorizes another source.
 
 from __future__ import annotations
 
+from dataclasses import asdict
 from typing import TYPE_CHECKING
 
 from number_compiler.arithmetic.fields.consumer_pullback import (
@@ -15,6 +16,10 @@ from number_compiler.arithmetic.fields.consumer_pullback import (
     HalfOpenInterval,
     SaturatingAffineAction,
     ThresholdDemand,
+)
+from number_compiler.arithmetic.fields.homogeneous_growth import HomogeneousGrowthScale
+from number_compiler.arithmetic.fields.mechanical_readout import (
+    homogeneous_growth_packet,
 )
 from number_compiler.hashlife.execution.source_bound_images import SourceImageDemand
 from number_compiler.sequences.antihydra.arithmetic_images import (
@@ -101,6 +106,11 @@ def _action_packet(
     return {
         "source_binding": result.source_binding,
         "extent": result.returns,
+        "homogeneous_growth": asdict(
+            homogeneous_growth_packet(
+                HomogeneousGrowthScale(result.returns, result.returns), result.ledger
+            )
+        ),
         "bit_convention": "parity_of_centered_D_equals_a_minus_one",
         "scale": rational_packet(semantic.scale),
         "offset": rational_packet(semantic.offset),

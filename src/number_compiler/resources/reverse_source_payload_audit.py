@@ -122,6 +122,9 @@ def audit_reverse_source_payloads(
         ReverseRecursiveOccurrence,
         ReverseRecursiveTemporalCutover,
     )
+    from number_compiler.sequences.reverse_add.source_actions import (
+        _ReverseSourceRecord,
+    )
     from number_compiler.sequences.reverse_add.source_images import (
         MAX_COMPLETED_CHILD_FALLBACK_STEPS,
         ReverseActionArena,
@@ -130,7 +133,6 @@ def audit_reverse_source_payloads(
         ReverseSource,
         ReverseSourceImageWorkspace,
         _ReverseSourceImageAdapter,
-        _ReverseSourceRecord,
     )
     from number_compiler.sequences.reverse_add.source_ports import SourceCarryPorts
 
@@ -480,7 +482,9 @@ def audit_reverse_source_payloads(
                             is recursive.outputs.owner
                             and declaration.morphism_sort.kind == recursive.outputs.kind
                             and interface.kernel
-                            == recursive.actions.semantic_identity(composer_action)
+                            == recursive.actions.semantic_identity(
+                                composer_action, audit=True
+                            )
                             and interface.inputs == expected_ports
                             and interface.phase_count
                             == action_record.geometry.phase_count

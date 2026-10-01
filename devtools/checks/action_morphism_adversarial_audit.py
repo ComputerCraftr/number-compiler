@@ -53,7 +53,11 @@ CASES = {
     "final_boundary_regressions": (
         "tests/arithmetic/contracts/test_final_boundary_audit.py",
     ),
-    "source_handle_scope": ("tests/hashlife/actions/test_source_handle_audit.py",),
+    "source_handle_scope": (
+        "tests/resources/test_recursive_field_images.py",
+        "tests/resources/test_dyadic_return_audit.py::test_foreign_handle_with_equal_shape_is_not_local_authority",
+        "tests/resources/test_dyadic_return_audit.py::test_audit_rejects_foreign_composite_source_authority",
+    ),
     "application_dag_boundary": (
         "tests/arithmetic/contracts/test_application_dag_boundary.py",
     ),
@@ -63,7 +67,7 @@ CASES = {
     "resource_metric_units": ("tests/projection/test_resource_metric_units.py",),
     "early_transfer_lookup": ("tests/validation/proofs/test_early_transfer_lookup.py",),
     "reverse_release_metric_units": (
-        "tests/sequences/reverse_add/test_reverse_temporal_power_probe.py::test_reverse_release_probe_reports_spatial_interval_classes_and_actual_discovery",
+        "tests/sequences/reverse_add/test_reverse_temporal_power_probe.py::test_reverse_release_probe_requires_measured_source_image_execution",
     ),
     "reverse_extensional_transfer_boundary": (
         "tests/validation/proofs/test_reverse_transfer_boundary.py",
@@ -73,9 +77,9 @@ CASES = {
         "tests/validation/proofs/test_proof_oracle_boundary.py",
     ),
     "public_metrics": (
-        "tests/sequences/reverse_add/test_dyadic_hashlife.py::test_bounded_temporal_application_replaces_generic_recursive_macrocell_history",
-        "tests/sequences/collatz/test_hashlife_behavior_growth.py::test_reverse_hashlife_metrics_distinguish_interval_effects_from_carry_functions",
-        "tests/sequences/collatz/test_hashlife_behavior_growth.py::test_action_metrics_separate_composition_from_nonlinear_discovery",
+        "tests/sequences/reverse_add/test_reverse_temporal_power_probe.py::test_reverse_production_requires_exact_output_and_source_image_evidence",
+        "tests/sequences/reverse_add/test_hashlife_behavior_growth.py::test_reverse_source_image_reports_exact_output_and_publications",
+        "tests/hashlife/execution/test_hashlife_behavior_growth.py::test_action_metrics_report_image_publication_and_warm_response_reuse",
         "tests/validation/proofs/test_spacetime_cache_integrity.py::test_retained_cache_accounting_matches_independently_observed_containers",
         "tests/resources/test_lazy_reporting.py::test_forged_reservation_counts_fail_independent_reconciliation",
         "tests/resources/test_lazy_reporting.py::test_radix_registry_audits_actual_projection_and_rejects_hidden_payloads",
@@ -106,7 +110,7 @@ CASES = {
     ),
     "symbolic_offset_lowering": (
         "tests/resources/test_lazy_reporting.py::test_payload_audit_detects_future_digits_and_unbounded_arithmetic",
-        "tests/sequences/collatz/test_lazy_collatz_adversarial.py::test_public_point_never_creates_lowering_capability",
+        "tests/hashlife/execution/test_lowering_capability_poison.py::test_public_point_never_creates_lowering_capability",
         "tests/sequences/collatz/test_lazy_radix_adversarial.py",
     ),
     "budget_enforcement": (

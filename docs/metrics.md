@@ -88,9 +88,28 @@ do not initiate deep payload or ownership audits. Explicit
 reporting is separate from the CLI snapshot collector, which never traverses
 retained payloads.
 
+Reverse completed-range validation counts `field_range_summary_validations`
+and `field_range_summary_validation_expressions` at publication and recovery;
+these are admission work, not cache hits. Explicit reverse payload audits charge
+`reverse_payload_audit_identity_operand_bits` without changing execution-cache
+counters or publishing semantic identities. Ordinary metric snapshots do not
+perform this audit work.
+
 Powered interface `requests`/`early_hits` measure lookups only.
 `publication_requests`, successful `publications` and `late_aliases` are
 separate; publishing an already-known interface is not an execution cache hit.
+Reverse exact-width reuse is exposed in `observations` through
+`reverse_recursive_pair_width_cache_hits`, `reverse_recursive_pair_width_cache_misses`,
+`reverse_recursive_pair_width_publications`, `reverse_recursive_pair_width_descents`
+and `reverse_recursive_pair_width_failures`. Lookup misses include failed searches;
+publications count only completed searches. These are occurrence-bound observation
+counters, not authenticated producer growth or temporal-construction savings.
+Missing instrumentation remains null. Metric snapshots do not calculate width.
+Reverse terminal growth reports `reverse_recursive_terminal_reset_prefix_symbols`,
+`reverse_recursive_terminal_reset_hits` and `reverse_recursive_terminal_neutral_fields`.
+These measure the symmetry-based first-reset consumer; they do not include or
+replace separately charged higher temporal evaluation. `reverse_recursive_direct_carry_steps`
+counts actual forward digit normalization, not a removed whole-word width fold.
 Final digit-stream emissions include reverse/add's terminal carry. Underlying
 recursive pair-symbol visits remain separate from final output. Stream requests,
 emissions, cancellations and failures are charged at consumption, including
@@ -127,8 +146,8 @@ Digit-stream admission runs at first consumption. Resetting the shared cache
 during consumption invalidates that stream before its next digit is emitted.
 
 The macrocell `cache_scope` distinguishes `source_cylinder` application reuse
-from Mahler's `complete_associated_observer` memo. The latter reuses exact
-consumer coefficients for an already admitted image; it is not an all-level
+from Mahler's `complete_associated_action` memo. The latter reuses exact
+consumer coefficients after the receiving image is admitted; it is not an all-level
 temporal constructor or a claim of skipped source discovery.
 When an admitted Mahler source occurrence supplies both its arithmetic summary
 and associated action, the scope is `source_occurrence_associated_action`.
@@ -148,7 +167,14 @@ comparison a construction failure.
 
 Mahler's `source_action` and `outer_observer` lanes are both reported when
 present. The first measures admitted complete source actions; the second
-measures exact whole-observation memo retrieval. Their hits are not added.
+measures exact associated-action retrieval, with scope
+`process_complete_associated_action`. Its counters use
+`mahler_hashlife_action_*`, replacing the misleading
+`mahler_hashlife_occurrence_*` prefix. The action key retains every exact
+constructor input and law; source seed, lift and precision are checked at
+receiving-image admission rather than duplicated in this pure-action key.
+An action hit is not an occurrence application or skipped child discovery;
+unmeasured application and parent-hit fields remain null. Their hits are not added.
 No number of semantic interning hits or temporal depth is converted into
 occurrence applications or estimated work saved.
 
@@ -160,3 +186,18 @@ in the Antihydra row's `source_action` lane, separate from its `occurrence` lane
 A parent hit skips cold arithmetic discovery; it does not mean a Mahler observer
 was requested. No Mahler binding is published for digit-only requests. Small
 and cache-bypassed digit requests leave this lane uninstrumented (`null`).
+
+## Homogeneous growth and canonical gain reuse
+
+Schema 8 separates Collatz canonical-gain lookup from occurrence application.
+The macrocell row's `gain_local_hits` and `gain_process_hits` count retrievals of
+`3^H`; they are never added to occurrence or semantic-action hits.
+`gain_key_operand_bits`, `gain_construction_operand_bits`,
+`gain_validation_operand_bits` and `gain_bypasses` retain their distinct costs.
+
+`growth_readout` describes demanded exact homogeneous radix arithmetic:
+work, operand bits, precision bits, refinements, exact rational cases, bounded
+integer-ratio cases, identity shortcuts, memo hits,
+continued-fraction requests and budget refusals. Missing instrumentation is null. These
+are observation costs, not measurements of nonlinear source discovery or the
+number of actual endpoint growth events. Metrics snapshots perform no readout.

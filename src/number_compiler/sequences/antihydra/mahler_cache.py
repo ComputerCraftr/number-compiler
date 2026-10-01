@@ -1,9 +1,10 @@
-"""Bounded reuse of complete, source-authenticated finite Mahler actions.
+"""Bounded reuse of exact Mahler actions derived from admitted images.
 
-Exact predicate offsets and caps are occurrence data. A finite deck/safety/
-harmonic quotient is insufficient authority for this cache. The caller first
-authenticates its scheduler image; the complete source, law, extent, transfer
-and consumer convention qualify the shared lease. No branch word is rebuilt.
+Exact predicate offsets and caps are payload, never finite-observer aliases.
+The caller authenticates its scheduler image first; a process lease is then
+qualified by every input to the pure action constructor and its pinned law.
+Source occurrence authority is not transferred by this cache. No branch word
+is rebuilt.
 """
 
 from __future__ import annotations
@@ -31,6 +32,7 @@ if TYPE_CHECKING:
 
 
 _ASSOCIATED_ACTION_PUBLISHER = object()
+_ASSOCIATED_ACTION_CACHE_VERSION = "complete-action-v2-exact-inputs"
 
 
 def _build_action(
@@ -135,7 +137,7 @@ def _matches_admitted_transfer(
             abs(value).bit_length()
             for value in (cap.numerator, cap.denominator, 2 * lower)
         )
-    ledger.bump("mahler_hashlife_occurrence_validation_operand_bits", operand_bits)
+    ledger.bump("mahler_hashlife_action_validation_operand_bits", operand_bits)
     return (
         scale.numerator * lower == upper * scale.denominator
         and offset.numerator * lower == offset_numerator * offset.denominator
@@ -179,19 +181,17 @@ def cached_associated_action(
     if type(workspace.shared_cache) is not bool:
         raise TypeError("shared_cache must be a bool")
     for metric in (
-        "occurrence_lookups",
-        "occurrence_exact_hits",
-        "occurrence_transported_hits",
-        "occurrence_local_hits",
-        "occurrence_process_hits",
-        "occurrence_misses",
-        "occurrence_publications",
-        "occurrence_applied_hits",
-        "occurrence_applied_parent_hits",
-        "occurrence_admission_rejections",
-        "occurrence_bypasses",
-        "occurrence_disabled_bypasses",
-        "occurrence_policy_bypasses",
+        "action_lookups",
+        "action_exact_hits",
+        "action_process_hits",
+        "action_misses",
+        "action_publications",
+        "action_admission_rejections",
+        "action_bypasses",
+        "action_disabled_bypasses",
+        "action_policy_bypasses",
+        "action_key_operand_bits",
+        "action_validation_operand_bits",
         "failed_work",
     ):
         ledger.bump("mahler_hashlife_" + metric, 0)
@@ -199,22 +199,19 @@ def cached_associated_action(
     # or capacity refusals. Disabled reuse takes precedence over size policy.
     if not workspace.shared_cache or workspace.returns < 1024:
         reason = "disabled" if not workspace.shared_cache else "policy"
-        ledger.bump(f"mahler_hashlife_occurrence_{reason}_bypasses")
+        ledger.bump(f"mahler_hashlife_action_{reason}_bypasses")
         return _build_action(*args)
     cache = get_process_cache()
     if not cache.enabled:
-        ledger.bump("mahler_hashlife_occurrence_disabled_bypasses")
+        ledger.bump("mahler_hashlife_action_disabled_bypasses")
         return _build_action(*args)
     qualification = cast(
         tuple[ImmutableValue, ...],
         (
             MACHINE_SHA256,
-            workspace.seed,
-            workspace.returns,
             workspace.law.descriptor,
-            source.residue,
-            source.precision,
-            source.lift,
+            args[0],
+            args[1],
             transfer.upper,
             transfer.offset,
             transfer.lower,
@@ -222,29 +219,28 @@ def cached_associated_action(
         ),
     )
     ledger.bump(
-        "mahler_hashlife_occurrence_key_operand_bits",
-        workspace.seed.bit_length()
-        + workspace.returns.bit_length()
-        + source.residue.bit_length()
-        + source.precision.bit_length()
-        + source.lift.bit_length()
+        "mahler_hashlife_action_key_operand_bits",
+        args[0].bit_length()
+        + args[1].bit_length()
         + transfer.upper.bit_length()
         + abs(transfer.offset).bit_length()
         + transfer.lower.bit_length(),
     )
     try:
         lease = cache.acquire(
-            "mahler-associated-action", "complete-occurrence-v1", qualification
+            "mahler-associated-action",
+            _ASSOCIATED_ACTION_CACHE_VERSION,
+            qualification,
         )
     except BlockContextBudgetExceeded:
-        ledger.bump("mahler_hashlife_occurrence_bypasses")
+        ledger.bump("mahler_hashlife_action_bypasses")
         return _build_action(*args)
     with lease:
-        ledger.bump("mahler_hashlife_occurrence_lookups")
+        ledger.bump("mahler_hashlife_action_lookups")
         try:
             found = lease.get_issued((), _ASSOCIATED_ACTION_PUBLISHER)
         except CacheRecordIssuerMismatch:
-            ledger.bump("mahler_hashlife_occurrence_admission_rejections")
+            ledger.bump("mahler_hashlife_action_admission_rejections")
             ledger.bump("mahler_hashlife_failed_work")
             raise
         if found is not MISSING:
@@ -257,20 +253,19 @@ def cached_associated_action(
                         "Mahler cached action differs from the admitted transfer"
                     )
             except (TypeError, ValueError, ArithmeticError):
-                ledger.bump("mahler_hashlife_occurrence_admission_rejections")
+                ledger.bump("mahler_hashlife_action_admission_rejections")
                 ledger.bump("mahler_hashlife_failed_work")
                 raise
-            # The lease qualification includes the complete source, extent,
-            # law, and admitted transfer, so this is exact and process-local
-            # to the shared observer cache. Returning the action is its use.
-            ledger.bump("mahler_hashlife_occurrence_process_hits")
-            ledger.bump("mahler_hashlife_occurrence_exact_hits")
-            ledger.bump("mahler_hashlife_occurrence_applied_hits")
+            # This immutable value is a pure action, not a source occurrence.
+            # Exact constructor inputs qualify reuse; the caller has already
+            # authenticated the receiving image at the projection boundary.
+            ledger.bump("mahler_hashlife_action_process_hits")
+            ledger.bump("mahler_hashlife_action_exact_hits")
             return action
-        ledger.bump("mahler_hashlife_occurrence_misses")
+        ledger.bump("mahler_hashlife_action_misses")
         action = _build_action(*args)
         if lease.put_issued((), _encode(action), _ASSOCIATED_ACTION_PUBLISHER):
-            ledger.bump("mahler_hashlife_occurrence_publications")
+            ledger.bump("mahler_hashlife_action_publications")
         else:
-            ledger.bump("mahler_hashlife_occurrence_bypasses")
+            ledger.bump("mahler_hashlife_action_bypasses")
         return action

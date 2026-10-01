@@ -67,6 +67,70 @@ fun source_no_growth_count :: "nat \<Rightarrow> nat list \<Rightarrow> nat" whe
 | "source_no_growth_count (Suc n) ss =
     (if carry_out False ss then 0 else 1) + source_no_growth_count n (step ss)"
 
+text \<open>This count is computed from the actual source carry at each temporal
+successor. It is not inferred from a finite radial observer or from an extent
+expression. The following recurrence is the source-side producer contract;
+it does not yet identify a Python action payload with this count.\<close>
+
+lemma step_length_exact:
+  "length (step ss) = length ss + (if carry_out False ss then 1 else 0)"
+  by (simp add: step_def digits_def)
+
+theorem source_run_length_exact:
+  "length (run step n ss) = length ss + source_growth_count n ss"
+proof (induct n arbitrary: ss)
+  case 0
+  then show ?case by simp
+next
+  case (Suc n)
+  have ih: "length (run step n (step ss)) =
+      length (step ss) + source_growth_count n (step ss)"
+    by (rule Suc.hyps[of "step ss"])
+  show ?case using ih step_length_exact[of ss]
+    by (simp; arith)
+qed
+
+theorem source_growth_count_chronological:
+  "source_growth_count (a+b) ss = source_growth_count a ss +
+    source_growth_count b (run step a ss)"
+proof (induct a arbitrary: ss)
+  case 0
+  then show ?case by simp
+next
+  case (Suc a)
+  have ih: "source_growth_count (a+b) (step ss) =
+      source_growth_count a (step ss) +
+        source_growth_count b (run step a (step ss))"
+    by (rule Suc.hyps[of "step ss"])
+  show ?case using ih by (simp; arith)
+qed
+
+definition source_growth_phase :: "nat \<Rightarrow> nat list \<Rightarrow> nat" where
+  "source_growth_phase n ss = source_growth_count n ss mod 10"
+
+definition source_width_phase :: "nat \<Rightarrow> nat list \<Rightarrow> nat" where
+  "source_width_phase n ss = length (run step n ss) mod 10"
+
+lemma source_growth_phase_chronological:
+  "source_growth_phase (a+b) ss =
+    (source_growth_phase a ss + source_growth_phase b (run step a ss)) mod 10"
+  using source_growth_count_chronological[of a b ss]
+  by (simp add: source_growth_phase_def mod_add_eq)
+
+lemma source_width_phase_exact:
+  "source_width_phase n ss =
+    (length ss + source_growth_count n ss) mod 10"
+  by (simp add: source_width_phase_def source_run_length_exact)
+
+lemma source_width_phase_chronological:
+  "source_width_phase (a+b) ss =
+    (source_width_phase a ss + source_growth_phase b (run step a ss)) mod 10"
+  using source_run_length_exact[of "a+b" ss]
+    source_run_length_exact[of a ss]
+    source_growth_count_chronological[of a b ss]
+  by (simp add: source_width_phase_def source_growth_phase_def mod_add_eq
+      algebra_simps)
+
 lemma source_growth_accounting:
   "source_growth_count n ss + source_no_growth_count n ss = n"
   by (induct n arbitrary: ss) auto
@@ -150,7 +214,10 @@ composing admitted blocks. No spatial scan or grammar-size bound follows.\<close
 
 ML \<open>
   val _ = if null (Thm_Deps.all_oracles
-    @{thms source_growth_requires_edge source_growth_edge_successor
+    @{thms step_length_exact source_run_length_exact
+      source_growth_count_chronological source_growth_phase_chronological
+      source_width_phase_exact source_width_phase_chronological
+      source_growth_requires_edge source_growth_edge_successor
       source_growth_rank_decreases source_growth_potential source_radial_growth_bound
       source_live_radial_age source_196_live_radial_age
       source_four_step_no_growth source_block_parity_forcing

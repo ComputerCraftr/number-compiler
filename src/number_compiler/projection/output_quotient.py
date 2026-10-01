@@ -11,7 +11,7 @@ audit.
 
 from __future__ import annotations
 
-from collections.abc import Iterable, Sequence
+from collections.abc import Hashable, Iterable, Sequence
 from dataclasses import dataclass
 from enum import Enum
 
@@ -78,6 +78,22 @@ class ProjectionMachineQuotient:
         return self.class_ids == self.initial_class_ids
 
 
+def canonical_partition_labels(
+    signatures: Iterable[Hashable], *, labels: dict[Hashable, int] | None = None
+) -> tuple[int, ...]:
+    """Assign first-seen labels, optionally extending an existing partition."""
+    if labels is None:
+        labels = {}
+    result: list[int] = []
+    for signature in signatures:
+        label = labels.get(signature)
+        if label is None:
+            label = len(labels)
+            labels[signature] = label
+        result.append(label)
+    return tuple(result)
+
+
 def minimize_projection_machine(
     outputs: Sequence[int] | Iterable[int],
     successors: Sequence[int] | Iterable[int],
@@ -104,13 +120,7 @@ def minimize_projection_machine(
         signatures = tuple(
             (values[index], classes[next_states[index]]) for index in range(size)
         )
-        ids: dict[tuple[int, int], int] = {}
-        new_classes: list[int] = []
-        for signature in signatures:
-            if signature not in ids:
-                ids[signature] = len(ids)
-            new_classes.append(ids[signature])
-        updated = tuple(new_classes)
+        updated = canonical_partition_labels(signatures)
         if updated == classes:
             break
         classes = updated
