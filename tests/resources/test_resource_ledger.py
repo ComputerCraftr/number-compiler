@@ -5,6 +5,7 @@ import pytest
 from number_compiler.arithmetic.contracts.block_effect import BlockContextBudgetExceeded
 from number_compiler.arithmetic.contracts.scoped_handles import ArenaHandle, ArenaToken
 from number_compiler.resources.ledger import OwnedMemo, ResourceLedger
+from number_compiler.resources.ownership import audit_execution_ownership
 from number_compiler.resources.stores import LedgerDict
 from tests.support.assertions import assert_rejected_atomically
 
@@ -98,6 +99,65 @@ def test_owned_memo_accounts_updates_eviction_and_clear() -> None:
     assert tuple(ledger.iter_payloads()) == ((owner, 2), (owner, "second"))
     memo.clear()
     assert (ledger.entries, ledger.nodes) == (0, 0)
+
+
+def test_owned_memo_charges_dynamic_payload_nodes_atomically() -> None:
+    ledger = ResourceLedger(max_nodes=8, max_cache_entries=3)
+    owner = ledger.register("dynamic-memo", "ACTION_PROGRAM")
+    memo: OwnedMemo[str, tuple[int, ...]] = OwnedMemo(
+        ledger,
+        owner,
+        node_cost=lambda key, value: len(key) + len(value),
+    )
+    memo["a"] = (1, 2)
+    assert (ledger.entries, ledger.nodes) == (1, 4)
+    assert ledger.inventory()[owner].accounting_delta == 0
+    memo["a"] = (1,)
+    assert (ledger.entries, ledger.nodes) == (1, 3)
+    memo["b"] = (3, 4)
+    before = ledger.snapshot()
+    with pytest.raises(BlockContextBudgetExceeded):
+        memo["c"] = (5, 6)
+    assert ledger.snapshot() == before and "c" not in memo
+    assert memo.pop("a") == (1,)
+    assert (ledger.entries, ledger.nodes) == (1, 4)
+    assert ledger.inventory()[owner].accounting_delta == 0
+    memo.clear()
+    assert (ledger.entries, ledger.nodes) == (0, 0)
+
+
+def test_dynamic_memo_cost_metadata_uses_its_registered_mapping() -> None:
+    ledger = ResourceLedger(max_nodes=16, max_cache_entries=4)
+    owner = ledger.register("audited-dynamic-memo", "ACTION_PROGRAM")
+    memo: OwnedMemo[str, tuple[int, ...]] = OwnedMemo(
+        ledger, owner, node_cost=lambda key, value: len(key) + len(value)
+    )
+    memo["a"] = (1, 2)
+
+    assert memo["a"] == (1, 2)
+    assert not hasattr(memo, "_costs")
+    assert audit_execution_ownership(ledger).violations == ()
+    assert tuple(ledger.iter_payloads()) == (
+        (owner, "a"),
+        (owner, (1, 2)),
+    )
+
+    memo["a"] = (3,)
+    assert ledger.inventory()[owner].accounting_delta == 0
+    assert memo.pop("a") == (3,)
+    assert (ledger.entries, ledger.nodes) == (0, 0)
+
+
+def test_owned_memo_rejects_invalid_dynamic_node_cost_without_mutation() -> None:
+    ledger = ResourceLedger()
+    owner = ledger.register("invalid-dynamic-memo", "ACTION_PROGRAM")
+    memo: OwnedMemo[int, str] = OwnedMemo(
+        ledger, owner, node_cost=lambda _key, _value: -1
+    )
+    before = ledger.snapshot()
+    with pytest.raises(ValueError, match="payload node cost"):
+        memo[0] = "value"
+    assert ledger.snapshot() == before and len(memo) == 0
 
 
 def test_higher_runtime_environment_nodes_reconcile_on_clear() -> None:

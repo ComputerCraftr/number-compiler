@@ -71,6 +71,7 @@ class _Bindings:
     def __init__(self, root: ast.Module) -> None:
         self.owner: dict[ast.AST, _Scope] = {}
         self.inner: dict[ast.AST, _Scope] = {}
+        self._resolved: dict[tuple[ast.AST, str], tuple[_Scope | None, str]] = {}
         outer = _Scope(None, "external")
         pending: list[tuple[ast.AST, _Scope]] = [(root, outer)]
         while pending:
@@ -211,20 +212,32 @@ class _Bindings:
             counts[owner] = counts.get(owner, 0) + 1
 
     def resolve(self, node: ast.AST, name: str) -> tuple[_Scope | None, str]:
+        key = (node, name)
+        cached = self._resolved.get(key)
+        if cached is not None:
+            return cached
         start = self.owner[node]
         scope: _Scope | None = start
+        result: tuple[_Scope | None, str]
         while scope is not None:
             if name in scope.globals:
-                return None, name
+                result = (None, name)
+                self._resolved[key] = result
+                return result
             if name in scope.bound and name not in scope.nonlocals:
                 if scope.kind in {"external", "class"}:
-                    return None, name
-                return scope, name
+                    result = (None, name)
+                else:
+                    result = (scope, name)
+                self._resolved[key] = result
+                return result
             scope = scope.parent
             # Methods/closures do not capture class namespace attributes.
             if scope is not None and scope.kind == "class" and start.kind != "class":
                 scope = scope.parent
-        return None, name
+        result = (None, name)
+        self._resolved[key] = result
+        return result
 
 
 def _without_docstring(body: Sequence[ast.stmt]) -> list[ast.stmt]:
@@ -379,28 +392,30 @@ def _bodies(
 
 def _substantial_bodies(
     function: ast.FunctionDef | ast.AsyncFunctionDef | ast.Lambda,
+    subtree_sizes: Mapping[ast.AST, tuple[int, int, int]],
 ) -> list[list[ast.stmt]]:
     # Reject small fragments before allocating scopes or serializing syntax.
     bodies = _bodies(function)
-    root = bodies[0][0] if isinstance(function, ast.Lambda) else function
-    sizes: dict[ast.AST, tuple[int, int, int]] = {}
-    for node in reversed(list(ast.walk(root))):
-        children = [sizes[child] for child in ast.iter_child_nodes(node)]
-        sizes[node] = (
-            int(isinstance(node, (ast.stmt, ast.expr)))
-            + sum(size for size, _, _ in children),
-            int(isinstance(node, ast.stmt)) + sum(count for _, count, _ in children),
-            int(isinstance(node, _OPERATIONS)) + sum(count for _, _, count in children),
-        )
+    if isinstance(function, ast.Lambda):
+        expression_size = subtree_sizes[function.body]
+        size = expression_size[0] + 1
+        statements = expression_size[1] + 1
+        operations = expression_size[2]
+        if size >= MIN_CLONE_NODES and (
+            statements >= MIN_CLONE_STATEMENTS
+            or operations >= MIN_SINGLE_STATEMENT_OPERATIONS
+        ):
+            return bodies
+        return []
     return [
         body
         for body in bodies
-        if sum(sizes[node][0] for node in body) >= MIN_CLONE_NODES
+        if sum(subtree_sizes[node][0] for node in body) >= MIN_CLONE_NODES
         and (
-            sum(sizes[node][1] for node in body) >= MIN_CLONE_STATEMENTS
+            sum(subtree_sizes[node][1] for node in body) >= MIN_CLONE_STATEMENTS
             or (
                 len(body) == 1
-                and sum(sizes[node][2] for node in body)
+                and sum(subtree_sizes[node][2] for node in body)
                 >= MIN_SINGLE_STATEMENT_OPERATIONS
             )
         )
@@ -418,10 +433,22 @@ def duplicate_bodies(
     groups: dict[bytes, list[_Candidate]] = {}
     for path, tree in sorted(parsed_sources.items()):
         bindings: _Bindings | None = None
-        for function in ast.walk(tree):
+        nodes = list(ast.walk(tree))
+        subtree_sizes: dict[ast.AST, tuple[int, int, int]] = {}
+        for node in reversed(nodes):
+            children = [subtree_sizes[child] for child in ast.iter_child_nodes(node)]
+            subtree_sizes[node] = (
+                int(isinstance(node, (ast.stmt, ast.expr)))
+                + sum(size for size, _, _ in children),
+                int(isinstance(node, ast.stmt))
+                + sum(count for _, count, _ in children),
+                int(isinstance(node, _OPERATIONS))
+                + sum(count for _, _, count in children),
+            )
+        for function in nodes:
             if not isinstance(function, _FUNCTIONS):
                 continue
-            bodies = _substantial_bodies(function)
+            bodies = _substantial_bodies(function, subtree_sizes)
             if not bodies:
                 continue
             if bindings is None:
@@ -444,10 +471,10 @@ def duplicate_bodies(
                 if span in seen:
                     continue
                 seen.add(span)
-                tokens, nodes, statements, operations = _tokens(
+                tokens, node_count, statements, operations = _tokens(
                     body, bindings, function
                 )
-                if nodes < MIN_CLONE_NODES or (
+                if node_count < MIN_CLONE_NODES or (
                     statements < MIN_CLONE_STATEMENTS
                     and not (
                         len(body) == 1 and operations >= MIN_SINGLE_STATEMENT_OPERATIONS
@@ -458,7 +485,9 @@ def duplicate_bodies(
                     tokens, ensure_ascii=True, separators=(",", ":")
                 ).encode("ascii")
                 digest = hashlib.sha256(canonical).digest()
-                groups.setdefault(digest, []).append(_Candidate(site, canonical, nodes))
+                groups.setdefault(digest, []).append(
+                    _Candidate(site, canonical, node_count)
+                )
     reports: list[tuple[CloneSite, ...]] = []
     covered: dict[str, list[tuple[tuple[int, int], tuple[int, int]]]] = {}
     # Keep compact, unambiguously serialized tokens for exact collision checks.

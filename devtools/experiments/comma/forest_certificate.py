@@ -295,9 +295,11 @@ def main() -> None:
     print(json.dumps(document, indent=2))
 
 
-if __name__ == "__main__":
-    main()
-
-
 def _phase_period(leading: int, last_digit: int) -> tuple[int, int]:
     return phase_period(leading, last_digit)
+
+
+if __name__ == "__main__":
+    from devtools.runs import run_reported
+
+    raise SystemExit(run_reported(main))

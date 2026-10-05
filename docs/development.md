@@ -5,23 +5,21 @@ Use the environment's tools from the repository root:
 
 ```bash
 ruff format .
-ruff format --check .
-ruff check .
-mypy
-mypy --no-incremental
+python -m devtools.checks.release --suite quality
 python -m devtools.checks.repository_policy
 python -m devtools.checks.docs_index
 python -m devtools.checks.isabelle_proof_index
-pytest
+python -m devtools.checks.release --suite unit
 ```
 
 Strict mypy checks the configured maintained roots `src`, `tests`, and `devtools`.
 Maintained executable reproductions live under `devtools`; reviewed weekly records live under `docs/sprints`. New raw evidence goes to ignored `results/runs`; old local logs and scripts remain historical evidence, not maintained launchers. Repository-wide Ruff checks include every remaining authored Python file. There are no mypy error exclusions or inline mypy/Ruff suppressions
 in the maintained roots.
 
-Development minimums are pytest 9.1.1, mypy 2.3.1, Ruff 0.16.7 and setuptools
-84.0.0, checked against PyPI on September 14, 2026. Runtime installation remains
-dependency-free and supports Python 3.11 and newer.
+Use the development dependency versions declared in `pyproject.toml`; validation
+records the effective toolchain. The timeout plugin is explicitly pinned and
+loaded by the shared runner. Runtime installation remains dependency-free and
+supports Python 3.11 and newer.
 
 ## Executable source policy
 
@@ -29,7 +27,7 @@ The policy owner is [`repository_policy.py`](../devtools/checks/repository_polic
 with regression gates in [`test_repository_policy.py`](../tests/repository/test_repository_policy.py)
 and [`test_python_clones.py`](../tests/repository/test_python_clones.py). Run
 `python -m devtools.checks.repository_policy` for machine-readable violations;
-`pytest tests/repository/test_repository_policy.py tests/repository/test_python_clones.py`
+`python -m devtools.checks.release --suite unit --select tests/repository/test_repository_policy.py --select tests/repository/test_python_clones.py`
 checks both the implementation and the actual repository. The quality release
 suite runs the same owner and fails on any violation.
 
@@ -65,15 +63,24 @@ thresholds. Existing violations keep the command and repository test red.
 
 ## Unit and exhaustive validation suites
 
-The default `pytest` command runs the unit suite. Exhaustive proof construction,
-research sweeps and end-to-end release workloads run separately:
+Repository pytest execution must use the shared runner. Direct invocations fail
+before collection with the equivalent guarded command. The unit selection excludes
+`validation`; `all` includes the complete serial Python suite and other release gates.
+Repeated `--select` arguments execute the exact requested paths or node IDs,
+including their validation-marked cases; they report `serial-selected`, not a
+complete unit or full-suite result:
 
 ```bash
-pytest                         # unit suite; target below five minutes, serial
-pytest -m validation           # exhaustive and release validation
-pytest -m ''                   # both suites, including every release blocker
-pytest -m validation tests/sequences/reverse_add  # focused validation
+python -m devtools.checks.release --suite unit
+python -m devtools.checks.release --suite all
+python -m devtools.checks.release --suite unit --select tests/repository/test_process_guard.py
 ```
+
+To locate expensive functions in a failing performance selection, add `--profile`.
+The runner writes `unit.pstats` (or `p0.pstats`) beside the phase timing log. Read
+it with Python's `pstats` module. Profiling includes collection and fixture work,
+retains the same execution limits, and is development-only; its overhead must not
+be confused with an unprofiled acceptance measurement.
 
 The validation directory contains independent proofs and research experiments.
 Long integration workloads beside their subsystem tests carry the `validation`
@@ -98,20 +105,49 @@ authored-source checks. All authored Python shares the 1,000-line limit and the
 prohibition on direct or mutual recursion. Formatting is not compressed to evade
 that limit.
 
-Historical evidence keeps its original fingerprint. New passing evidence uses
-the versioned authored-source fingerprint and a fresh unfiltered serial run.
-An interrupted run or one whose sources changed is diagnostic, not release evidence.
+Historical evidence keeps its original source attribution and limits. It cannot
+certify the current commit.
 
 ## Reproducible release commands
 
-Use `python -m devtools.checks.release --suite SUITE --output-dir PATH`, choosing `quality`, `unit`, `proofs`, `p0` or `all`. Each run creates fresh guarded evidence with fingerprint version 5. For example:
+Use `python -m devtools.checks.release --suite SUITE`, choosing `quality`, `unit`,
+`proofs`, `p0` or `all`. Optional `--output-dir PATH` must be a fresh directory.
+The authoritative limits live in
+[`validation_policy.py`](../devtools/checks/validation_policy.py).
 
-```sh
-python -m devtools.checks.release --suite quality --output-dir results/runs/quality-review
-python -m devtools.checks.release --suite unit --output-dir results/runs/unit-review
-```
+| Run | Wall-clock ceiling | Aggregate process-tree memory |
+| --- | --- | --- |
+| Individual Python test, including fixtures and teardown | 60 seconds | 4 GiB |
+| Python selection or full suite | 300 seconds; each test still 60 seconds | 4 GiB |
+| Standalone validation or probe command | 60 seconds | 4 GiB |
+| Each Isabelle session | 60 seconds | 6 GiB across the build tree |
 
-The command preserves the existing unit, P0, proof and quality selections and their resource guards. Failure evidence remains a failure; a historical baseline comparison is separate from acceptance. Developer code uses `devtools.paths.isabelle_root()` to locate the canonical `proofs/isabelle/` tree.
+A single explicit test-node invocation also has a 60-second outer deadline.
+Collection and initialization count toward invocation limits. Python runs serially.
+The pinned `pytest-timeout` plugin uses thread termination with debugger suppression
+disabled; an interrupted report is incomplete evidence. Nested commands inherit the
+remaining deadline. Timeout markers, environment overrides and competing settings
+are rejected. Short watchdog-test inputs do not alter this policy. Existing
+workload latency assertions remain measured assertions; they do not install
+separate signal alarms or reset the test deadline.
+
+Isabelle uses four prover threads, `parallel_proofs=1`, `timeout_scale=1`, and one
+building session (`-j 1`). Java has a 1-GiB maximum; Poly/ML has a 4-GiB maximum.
+One dependency-aware build applies the native 60-second timeout to each session.
+The outer orchestration fail-safe is `60 × (dependency-session count + 1)`,
+using Isabelle’s native graph including installed session dependencies; it never extends a session deadline. Select sessions with repeated
+`--session SESSION`, or omit them for the aggregate build. Reused heaps are reported
+separately from rebuilt sessions and do not demonstrate cold-build performance.
+
+Development runs allow dirty work and record Git HEAD, tree object, object format
+and dirty status. They cannot certify a commit or supply reusable release evidence.
+`--acceptance` requires clean committed source and uses one isolated detached Git
+worktree for the selected run, checking Git cleanliness before and after execution.
+The runner never stages, commits or discards user work. Generated output stays
+ignored and separate. Changed acceptance sources invalidate the evidence.
+No recursive source fingerprint, inode snapshot or filesystem watcher substitutes
+for Git. Artifact integrity checksums and Isabelle dependency checking remain valid.
+Developer code locates proofs through `devtools.paths.isabelle_root()`.
 
 Runtime release checks live with their actual family under `tests/sequences/`,
 shared runtime checks under `tests/hashlife/` or `tests/validation/runtime/`,
@@ -144,6 +180,15 @@ Scaffold a Sunday-start topic with `python -m devtools.checks.sprint_scaffold --
   source syntax. This is a conservative navigation reader, not Isabelle's
   elaborated AST or proof checker. Registered sessions come from `ROOT`; builds
   and oracle checks remain required.
+- [`isabelle_source_analysis.py`](../devtools/checks/isabelle_source_analysis.py)
+  inventories supported declarations and reports nontrivial structural duplicate
+  candidates and declarations without observed incoming references. Argument
+  order, literals, operators and external names remain significant. These are
+  review findings: exported facts, automation attributes, ML antiquotations and
+  dynamic extensions prevent a lexical reader from proving a theorem unused.
+  Unsupported syntax is reported explicitly. The adversarial parser tests cover
+  scope, shadowing, quoted fake commands and cross-file references; a shared
+  `by simp` proof script alone is not duplicate mathematical logic.
 - F2 and F5 transports share the radix-exponent decomposition in
   [`affine_transport.py`](../src/number_compiler/arithmetic/polynomials/affine_transport.py).
   Their annihilation, coefficient and coordinate laws remain distinct.
@@ -186,21 +231,10 @@ Use the existing `devtools.benchmarks.pytest_timing` plugin for separate
 collection/setup/call/teardown evidence. Never share warmed production caches
 between independent tests to improve timings.
 
-During the tile cutover, run expensive checks and probes through the shared
-watchdog, one worker group at a time:
-
-```bash
-python -m devtools.checks.process_guard \
-  --output /tmp/probe-001.log --report /tmp/probe-001.json \
-  -- python -m pytest tests/repository/test_process_guard.py -q
-```
-
-Use fresh output paths. The defaults are a 35-second probe deadline, a 1 GiB
-sampled group-footprint limit and an 8 MiB retained log. A full serial release
-run uses `--timeout 300`; do not raise gates to accommodate slow execution.
-Use `python -m pytest` for the unit gate and `python -m pytest -m ''` for the full
-release gate. Explicit validation may be diagnosed in bounded subsystem runs;
-those partial runs must not be reported as complete release evidence.
+Run checks serially through the shared release runner. Standalone probes use the
+same process guard and fixed 60-second / 4-GiB policy; no custom timeout flags are
+needed. Partial selections remain diagnostic and cannot establish a full-suite pass.
+The guard retains at most 8 MiB of command output.
 Memory sampling is not a hard allocation cap and can miss peaks between
 samples. macOS measurement uses `proc_pid_rusage` physical footprint, because
 RSS alone omits compressed/swapped memory. Linux uses RSS plus swap, with that
@@ -228,11 +262,11 @@ evidence, and application allocation budgets remain independently enforced.
 
 Use `python -m devtools.checks.package_release --output-dir results/runs/package-review` for a clean staged wheel build and installed-distribution verification. The tool stages current source in a fresh directory, builds the wheel in isolation, and exercises the installed CLI and kernel admission outside the checkout. Package identity comes from current project metadata; stale local build products cannot supply deleted modules.
 
-Canonical probe entry points accept `--output-dir PATH`. Choose a fresh directory for every invocation; an existing directory is rejected. Without this option, a unique timestamp/UUID directory is allocated under `results/runs/`. Reports share the invocation's directory and `manifest.json`, which records command, tool versions, metrics schema, limits, source fingerprints before/after, and completion outcome. An unguarded probe records that limits were not enforced. Interrupted or source-changed work remains diagnostic. Raw JSON, logs and profiles stay local; summarize scoped conclusions in the reviewed sprint topic.
+Canonical probe entry points accept `--output-dir PATH`. Choose a fresh directory for every invocation; an existing directory is rejected. Without this option, a unique timestamp/UUID directory is allocated under `results/runs/`. Reports share the invocation's directory and `manifest.json`, which records command, tool versions, metrics schema, limits, Git provenance, effective limits, and completion outcome. Interrupted work remains diagnostic; dirty development runs never certify a commit. Raw JSON, logs and profiles stay local; summarize scoped conclusions in the reviewed sprint topic.
 
 For configurable current public-route comparisons, use `python -m devtools.benchmarks.public_query_comparison --family collatz --horizons 16 32 64 --trials 5 --modes cold warm bypass --bases 2 10 --output-dir results/runs/public-query-review`. The report retains warm priming and all CLI/point samples; it measures route agreement and states its timing scope without introducing a release threshold.
 
-New evidence uses fingerprint version 5: project configuration plus authored files and assets under `src`, `tests`, `devtools`, and `proofs`, excluding tool caches and generated distribution metadata. Historical fingerprints are unchanged.
+New evidence uses Git object identities and an explicit development/acceptance mode. Historical fingerprint evidence remains unchanged and cannot be upgraded to current acceptance evidence.
 
 Summarize new benchmark evidence in the appropriate topic file under
 `docs/sprints/week-of-YYYY-MM-DD/`, using the **Sunday** start date.
@@ -246,7 +280,7 @@ not create another versioned microtask report.
   connection and a canonical reproduction command. Update the existing account
   when a result changes rather than appending another implementation milestone.
 - **Weekly sprints:** dated changes, patch provenance, cache fixes, rejected
-  implementations, benchmark tables, validation counts and source fingerprints.
+  implementations, benchmark tables, validation counts and source provenance.
   Weeks run Sunday–Saturday. Keep `README.md` as a short topic index; append
   records to the relevant family or shared-infrastructure file, not the index.
   Give each record its actual date or date range. File cross-week work once in
@@ -305,7 +339,7 @@ Historical fingerprints and reported passes do not certify a later source tree.
 
 Generate fresh evidence with canonical `devtools` commands. Historical checkpoint launchers have been retired; their recorded commands describe those historical runs only. Comparisons may require a separately measured baseline. Use a fresh run directory and preserve it locally
 while reviewing a result. Keep concise conclusions, commands, limitations and
-source fingerprints in reviewed summaries; do not paste console transcripts.
+source provenance in reviewed summaries; do not paste console transcripts.
 
 This retention policy does not change release gates. Full release evidence must
 still be generated and checked against the current source, using the existing

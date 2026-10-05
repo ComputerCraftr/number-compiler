@@ -317,6 +317,47 @@ class SemanticFunctionArena:
         root = transaction.substitution(function.local_id, items)
         return transaction.finish(transaction.admissible(root))
 
+    def map_atoms(
+        self,
+        function: SemanticFunctionID,
+        output: AtomSort,
+        mapping: tuple[int, ...],
+    ) -> SemanticFunctionID:
+        """Relabel a finite atom channel while preserving invalid inputs.
+
+        This is an extensional terminal transform: decisions and input ports
+        stay fixed, equal mapped leaves reduce through the ordinary semantic
+        interner, and input-domain invalidity remains invalid. It is useful for
+        deriving consumer predicates such as one Boolean equality column per
+        output atom without enumerating the function's input space.
+        """
+        source = self.resolve(function).signature.output
+        if type(source) is not AtomSort or type(output) is not AtomSort:
+            raise ValueError("atom mapping requires finite atom input and output sorts")
+        if (
+            type(mapping) is not tuple
+            or len(mapping) != source.cardinality
+            or any(
+                type(value) is not int or not 0 <= value < output.cardinality
+                for value in mapping
+            )
+        ):
+            raise ValueError("atom mapping must cover the source sort exactly")
+        signature = FunctionSignature(self.signature(function).inputs, output)
+        with _Transaction(self) as transaction:
+
+            def transform(terminal: SemanticTerminal) -> int:
+                if terminal.kind == "invalid":
+                    return transaction.terminal(signature, terminal)
+                if terminal.kind != "atom" or terminal.value is None:
+                    raise ValueError("atom mapping encountered a non-atom terminal")
+                return transaction.terminal(
+                    signature, SemanticTerminal("atom", mapping[terminal.value])
+                )
+
+            root = transaction.map_terminals(function.local_id, signature, transform)
+            return transaction.finish(transaction.admissible(root))
+
     def _replacements(
         self,
         inputs: tuple[FinitePort, ...],

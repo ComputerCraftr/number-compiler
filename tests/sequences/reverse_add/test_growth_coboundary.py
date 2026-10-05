@@ -13,6 +13,8 @@ from devtools.verification.reverse_geometry_context import ReverseGeometryContex
 from devtools.verification.threshold_expressions import ThresholdExpressions
 from number_compiler.arithmetic.carry.event_memory import carry_field, pair_step
 
+pytestmark = pytest.mark.validation
+
 
 def test_four_distinct_sources_have_one_growth_occurrence() -> None:
     occurrences = set()

@@ -11,13 +11,12 @@ import argparse
 import json
 import subprocess
 import sys
+from datetime import UTC, datetime
 from pathlib import Path
-from tempfile import TemporaryDirectory
+from uuid import uuid4
 
 from devtools.checks.test_run_evidence import (
-    collect_required,
     minimal_selectors,
-    pytest_environment,
     validate_evidence,
 )
 from devtools.paths import repository_root
@@ -190,44 +189,58 @@ def run_cases(names: tuple[str, ...]) -> dict[str, dict[str, object]]:
     selectors = tuple(
         dict.fromkeys(selector for name in names for selector in CASES[name])
     )
-    required = collect_required(ROOT, selectors)
-    with TemporaryDirectory(prefix="morphism-audit-") as directory:
-        report = Path(directory) / "junit.xml"
-        completed = subprocess.run(
-            [
-                sys.executable,
-                "-m",
-                "pytest",
-                "-q",
-                "-o",
-                "addopts=",
-                "-m",
-                "",
-                *minimal_selectors(selectors),
-                f"--junitxml={report}",
-            ],
-            cwd=ROOT,
-            capture_output=True,
-            text=True,
-            check=False,
-            env=pytest_environment(),
+    run_parent = ROOT / "results" / "runs"
+    run_parent.mkdir(parents=True, exist_ok=True)
+    run_directory = run_parent / (
+        datetime.now(UTC).strftime("%Y%m%dT%H%M%SZ") + "-morphism-" + uuid4().hex
+    )
+    command = [
+        sys.executable,
+        "-m",
+        "devtools.checks.release",
+        "--suite",
+        "unit",
+        "--output-dir",
+        str(run_directory),
+    ]
+    for selector in minimal_selectors(selectors):
+        command.extend(("--select", selector))
+    completed = subprocess.run(
+        command,
+        cwd=ROOT,
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    report = run_directory / "unit.xml"
+    if completed.returncode != 0 or not report.exists():
+        raise RuntimeError(
+            "adversarial regression union failed:\n"
+            f"{completed.stdout}\n{completed.stderr}"
         )
-        if completed.returncode != 0 or not report.exists():
-            raise RuntimeError(
-                "adversarial regression union failed:\n"
-                f"{completed.stdout}\n{completed.stderr}"
-            )
-        durations = validate_evidence(report, ROOT, required)
-        return {
-            name: _case_result(
-                name,
-                required,
-                durations,
-                evidence=str(report),
-                execution_reused=False,
-            )
-            for name in names
-        }
+    durations = validate_evidence(
+        report,
+        ROOT,
+        require_clean=False,
+        require_acceptance=False,
+    )
+    required = tuple(durations)
+    for selector in selectors:
+        if not any(
+            node == selector or node.startswith((selector + "::", selector + "["))
+            for node in required
+        ):
+            raise ValueError(f"guarded run omitted requested selector {selector}")
+    return {
+        name: _case_result(
+            name,
+            required,
+            durations,
+            evidence=str(report),
+            execution_reused=False,
+        )
+        for name in names
+    }
 
 
 def run_case(name: str) -> dict[str, object]:
@@ -269,8 +282,21 @@ def main() -> None:
         selectors = tuple(
             dict.fromkeys(selector for name in names for selector in CASES[name])
         )
-        required = collect_required(ROOT, selectors)
-        durations = validate_evidence(args.junit, ROOT, required)
+        durations = validate_evidence(
+            args.junit,
+            ROOT,
+            require_clean=True,
+            require_acceptance=True,
+        )
+        required = tuple(durations)
+        if any(
+            not any(
+                node == selector or node.startswith((selector + "::", selector + "["))
+                for node in required
+            )
+            for selector in selectors
+        ):
+            parser.error("reused JUnit evidence omits a requested audit selector")
         checks = {
             name: _case_result(
                 name,
@@ -298,4 +324,6 @@ def main() -> None:
 
 
 if __name__ == "__main__":
-    main()
+    from devtools.runs import run_reported
+
+    raise SystemExit(run_reported(main))

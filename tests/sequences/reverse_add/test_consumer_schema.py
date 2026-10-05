@@ -7,6 +7,8 @@ from devtools.verification.reverse_geometry_context import ReverseGeometryContex
 from devtools.verification.threshold_expressions import ThresholdExpressions
 from number_compiler.arithmetic.contracts.block_effect import BlockContextBudgetExceeded
 
+pytestmark = pytest.mark.validation
+
 
 def test_shared_schema_preserves_distinct_bindings_and_exact_composition() -> None:
     e = ThresholdExpressions()

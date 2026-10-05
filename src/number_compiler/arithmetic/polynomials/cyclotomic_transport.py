@@ -58,10 +58,37 @@ class PowerTwoCyclotomicRadialQuotient:
     exact_zero: bool = False
 
     def __post_init__(self) -> None:
-        m, bits = int(self.classes), int(self.bits)
-        q, r = int(self.no_growth), int(self.growth)
+        integer_coordinates = (
+            self.classes,
+            self.bits,
+            self.no_growth,
+            self.growth,
+            self.scalar_v2,
+            self.remainder_growth,
+        )
+        if any(type(value) is not int for value in integer_coordinates):
+            raise TypeError("radial quotient coordinates require exact integers")
+        if type(self.exact_zero) is not bool:
+            raise TypeError("radial quotient exact_zero must be Boolean")
+        if self.unit_residue is not None and (
+            type(self.unit_residue) is not tuple
+            or any(type(value) is not int for value in self.unit_residue)
+        ):
+            raise TypeError("radial quotient residue must be an exact integer tuple")
+
+        m, bits = self.classes, self.bits
+        q, r = self.no_growth, self.growth
         if not is_power_of_two(m) or bits <= 0 or q < 0 or r < 0:
             raise ValueError(self)
+        transport = power_two_cyclotomic_transport(m, q, r)
+        if (
+            self.exact_zero != transport.exact_zero
+            or self.scalar_v2 != transport.scalar_v2
+            or self.remainder_growth != transport.remainder_growth
+        ):
+            raise ValueError(
+                "radial quotient derived coordinates disagree with exponents"
+            )
         if self.scalar_v2 < 0 or not 0 <= self.remainder_growth < m:
             raise ValueError(self)
         if self.exact_zero or self.scalar_v2 >= bits:
@@ -69,6 +96,15 @@ class PowerTwoCyclotomicRadialQuotient:
                 raise ValueError("annihilated radial quotient has no unit remainder")
         elif self.unit_residue is None or len(self.unit_residue) != m:
             raise ValueError("live radial quotient requires one z**m+1 residue")
+        else:
+            reduced_bits = bits - self.scalar_v2
+            if any(
+                value < 0 or value.bit_length() > reduced_bits
+                for value in self.unit_residue
+            ):
+                raise ValueError(
+                    "radial quotient residue is outside its reduced modulus"
+                )
 
     @property
     def steps(self) -> int:

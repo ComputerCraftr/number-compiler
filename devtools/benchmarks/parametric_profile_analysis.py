@@ -318,7 +318,7 @@ def analyze(reports: Sequence[Mapping[str, Any]]) -> dict[str, Any]:
             valid = all(
                 row.get("representation_audits_complete", False)
                 and row.get("exact_completed_observations", False)
-                and row.get("source_unchanged", False)
+                and isinstance(row.get("git_source"), dict)
                 for row in selected
             )
             groups[f"{family}.{series}"] = {
@@ -361,9 +361,9 @@ def analyze(reports: Sequence[Mapping[str, Any]]) -> dict[str, Any]:
         "inventory_units": "Reference-only containers declaring zero owned nodes and no node-count callback contribute cache slots, not an unavailable node series. Charged nodes with no observed count remain unknown.",
         "source_input_costs": "Construction work and actual original source widths are included, separately from powered queries.",
         "warm_queries": "Immediate repeat, adjacent point and revisited point have separate per-phase work series; no response register is used.",
-        "source_fingerprints": sorted(
-            {row.get("source_fingerprint", "") for row in rows}
-        ),
+        "git_sources": [row.get("git_source") for row in rows],
+        "evidence_mode": "development",
+        "cacheable": False,
         "groups": groups,
     }
 

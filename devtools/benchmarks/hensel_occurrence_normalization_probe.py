@@ -49,6 +49,12 @@ def report() -> dict[str, int | bool]:
     }
 
 
-if __name__ == "__main__":
+def _command() -> None:
     with exact_oracle():
         print(json.dumps(report(), indent=2))
+
+
+if __name__ == "__main__":
+    from devtools.runs import run_reported
+
+    raise SystemExit(run_reported(_command))

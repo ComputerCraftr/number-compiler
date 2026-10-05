@@ -59,7 +59,7 @@ definition reverse_left_fold :: "nat list \<Rightarrow> reverse_left_port" where
 
 lemma carry_out_append_one:
   "carry_out c (xs@[s]) = carry_apply (domain s) (carry_out c xs)"
-  by (simp add: carry_out_def fold_append)
+  by (simp add: carry_out_append carry_out_def)
 
 theorem reverse_right_fold_forward:
   "carry_apply (rp_forward (reverse_right_fold ss)) c =

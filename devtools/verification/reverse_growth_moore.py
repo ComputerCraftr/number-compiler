@@ -373,6 +373,12 @@ def audit_growth_moore() -> dict[str, object]:
     }
 
 
-if __name__ == "__main__":
+def _command() -> None:
     with exact_oracle():
         print(asdict(audit_d5_growth_projection()))
+
+
+if __name__ == "__main__":
+    from devtools.runs import run_reported
+
+    raise SystemExit(run_reported(_command))

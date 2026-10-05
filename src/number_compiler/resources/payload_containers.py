@@ -39,7 +39,12 @@ def audit_mapping_items(value: Mapping[_K, _V]) -> tuple[tuple[_K, _V], ...]:
                 for owner, container in store.ledger.iter_containers()
             )
         ):
-            return cast(tuple[tuple[_K, _V], ...], tuple(store._data.items()))
+            rows = tuple(store._data.items())
+            if current.node_cost is not None:
+                rows = tuple(
+                    (key, current._audited_value(value)) for key, value in rows
+                )
+            return cast(tuple[tuple[_K, _V], ...], rows)
     if (
         type(current) is LedgerDict
         and current.ledger.is_factory_container(current)

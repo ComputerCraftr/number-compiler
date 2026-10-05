@@ -10,19 +10,19 @@ struct
       val (lookup, lookup_stats) = Comma_Decade_Rank_Lookup.make_lookup
         {numeral_context = Comma_Entry_Arithmetic.numeral_context,
          natural_context = Comma_Entry_Arithmetic.natural_context} ctxt
-        @{thm comma_decade_rank_codes_def} @{thm comma_decade_rank_candidate_def}
+        @{thm comma_decade_rank_codes_def} @{thm comma_decade_rank_candidate_on_valid_def}
       fun natural t = (case try HOLogic.dest_number t of
         SOME (typ, n) => typ = @{typ nat} andalso n >= 0
       | NONE => can HOLogic.dest_nat t)
       fun convert ct = (case Thm.term_of ct of
           Const (name, _) $ (source as Const (constructor, _) $ r $ x) =>
-            if name = @{const_name comma_decade_rank_candidate} andalso
+            if name = @{const_name comma_decade_rank_candidate_on_valid} andalso
                 constructor = @{const_name Comma_Decade} andalso natural r andalso natural x
             then SOME (lookup source RS @{thm eq_reflection}) else NONE
         | _ => NONE)
       val procedure = Simplifier.make_simproc ctxt
         {name = "comma_fast_rank_lookup", kind = Simplifier.Simproc,
-         lhss = [@{term comma_decade_rank_candidate} $
+         lhss = [@{term comma_decade_rank_candidate_on_valid} $
            Var (("s", 0), @{typ comma_decade_state})],
          proc = fn _ => fn _ => convert, identifier = []}
       val evaluation = (#context core |> Simplifier.add_proc procedure) addsimps
@@ -53,7 +53,7 @@ struct
         else error "Invalid fast rank phase range"
       fun nat n = HOLogic.mk_number @{typ nat} n
       val proposition = HOLogic.mk_Trueprop
-        (@{term comma_fast_decade_bounded_rank_range} $ @{term comma_decade_rank_candidate} $
+        (@{term comma_fast_decade_bounded_rank_range} $ @{term comma_decade_rank_candidate_on_valid} $
           nat 26 $ nat lo $ nat hi)
       val label = "Fast rank range: lo=" ^ Int.toString lo ^ " hi=" ^ Int.toString hi
       val _ = Comma_Fast_Kernel.report (label ^ " status=started")

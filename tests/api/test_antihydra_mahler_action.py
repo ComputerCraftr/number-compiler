@@ -36,7 +36,6 @@ raise SystemExit(main(sys.argv[1:]))
         [sys.executable, "-c", code, "antihydra", "--nth", "2", "--info", kind],
         capture_output=True,
         text=True,
-        timeout=10,
         check=False,
     )
     assert result.returncode == 0, result.stderr

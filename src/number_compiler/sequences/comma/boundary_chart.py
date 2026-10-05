@@ -16,9 +16,10 @@ from number_compiler.sequences.comma.arithmetic import (
     CycleTransfer,
     _sector_child_increments,
     classify_near_port,
-    cycle_power_residue,
-    cycle_transfer,
+    entry_headroom,
 )
+from number_compiler.sequences.comma.cyclotomic_clock import CyclotomicClock
+from number_compiler.sequences.comma.domain import canonical_entry_coordinate
 
 PERIOD = 924
 MAX_CHART_MOVES = 4096
@@ -61,6 +62,15 @@ class ChartMove:
     literal_increment: int = 0
 
 
+@dataclass(frozen=True, slots=True)
+class NearChartTarget:
+    """Value-only result of one physical Near transition."""
+
+    next_chart: BoundaryChart | None
+    fork_a: int | None
+    literal_increment: int
+
+
 def initial_chart(kind: Literal["N", "Z"], a: int) -> BoundaryChart:
     if kind not in ("N", "Z") or type(a) is not int or not 2 <= a <= 9:
         raise ValueError("invalid comma boundary constructor")
@@ -71,10 +81,12 @@ def initial_chart(kind: Literal["N", "Z"], a: int) -> BoundaryChart:
     )
 
 
-def _validate_chart(residue: int, chart: BoundaryChart) -> None:
+def _validate_chart(residue: int | CyclotomicClock, chart: BoundaryChart) -> None:
     if (
-        type(residue) is not int
-        or not 0 <= residue < PERIOD
+        not (
+            type(residue) is CyclotomicClock
+            or (type(residue) is int and 0 <= residue < PERIOD)
+        )
         or chart.kind not in ("entry", "near")
         or any(
             type(v) is not int for v in (chart.leading, chart.delta, chart.coordinate)
@@ -82,14 +94,25 @@ def _validate_chart(residue: int, chart: BoundaryChart) -> None:
         or not 1 <= chart.leading <= 9
         or chart.delta < 0
         or chart.coordinate < 0
-        or (chart.kind == "entry" and chart.coordinate > 98)
+        or (
+            chart.kind == "entry"
+            and not canonical_entry_coordinate(chart.leading, chart.coordinate)
+        )
         or (chart.kind == "near" and not 1 <= chart.coordinate <= 540)
     ):
         raise ValueError("invalid comma boundary chart")
 
 
+def near_chart_target(chart: BoundaryChart) -> NearChartTarget:
+    """Select a Near child without constructing weights or cycle metadata."""
+    _validate_chart(0, chart)
+    if chart.kind != "near":
+        raise ValueError("Near target selection requires a Near chart")
+    return _near_chart_target_validated(chart)
+
+
 def chart_step(
-    residue: int,
+    residue: int | CyclotomicClock,
     chart: BoundaryChart,
     *,
     charge_bits: Callable[[int], None] | None = None,
@@ -102,20 +125,19 @@ def chart_step(
     """
     _validate_chart(residue, chart)
     f, delta, x = chart.leading, chart.delta, chart.coordinate
-    if charge_bits is not None:
-        charge_bits(residue.bit_length() + delta.bit_length() + x.bit_length() + 16)
-    if chart.kind == "entry":
-        transfer = cycle_transfer(f, x % 10)
-        phase = (residue + delta) % PERIOD
-        power = cycle_power_residue(
-            transfer.displacement, phase, charge_bits=charge_bits
+    if charge_bits is not None and chart.kind == "near":
+        phase_bits = (
+            14 if isinstance(residue, CyclotomicClock) else residue.bit_length()
         )
-        extra = int(f < 9)
-        headroom = 1 + extra + (power - x - 1 - extra) % transfer.displacement
-        if charge_bits is not None:
-            charge_bits(
-                transfer.period.bit_length() + x.bit_length() + headroom.bit_length()
-            )
+        charge_bits(phase_bits + delta.bit_length() + x.bit_length() + 16)
+    if chart.kind == "entry":
+        transfer, headroom = entry_headroom(
+            f,
+            x,
+            residue,
+            exponent_delta=delta,
+            charge_bits=charge_bits,
+        )
         return ChartMove(
             BoundaryChart("near", f, delta, headroom),
             ChartWeight(
@@ -127,25 +149,46 @@ def chart_step(
             cycle=transfer,
         )
 
-    digit = (-x) % 10
-    increments = _sector_child_increments(f, digit, x)
-    if not increments:
-        return ChartMove(None, ZERO_WEIGHT, terminal_chart=chart)
-    if len(increments) == 2:
-        return ChartMove(None, ZERO_WEIGHT, fork_a=f + 1, terminal_chart=chart)
-    increment = increments[0]
-    if x > increment:
+    near_target = _near_chart_target_validated(chart)
+    if near_target.next_chart is None:
         return ChartMove(
-            BoundaryChart("near", f, delta, x - increment),
-            UNIT_WEIGHT,
-            literal_increment=increment,
+            None,
+            ZERO_WEIGHT,
+            fork_a=near_target.fork_a,
+            terminal_chart=chart,
         )
     return ChartMove(
-        BoundaryChart(
-            "entry", f + 1 if f < 9 else 1, delta + int(f == 9), increment - x
-        ),
+        near_target.next_chart,
         UNIT_WEIGHT,
-        literal_increment=increment,
+        literal_increment=near_target.literal_increment,
+    )
+
+
+def _near_chart_target_validated(chart: BoundaryChart) -> NearChartTarget:
+    """Shared Near law for callers that already validated their chart."""
+    leading, delta, coordinate = chart.leading, chart.delta, chart.coordinate
+    digit = (-coordinate) % 10
+    increments = _sector_child_increments(leading, digit, coordinate)
+    if not increments:
+        return NearChartTarget(None, None, 0)
+    if len(increments) == 2:
+        return NearChartTarget(None, leading + 1, 0)
+    increment = increments[0]
+    if coordinate > increment:
+        return NearChartTarget(
+            BoundaryChart("near", leading, delta, coordinate - increment),
+            None,
+            increment,
+        )
+    return NearChartTarget(
+        BoundaryChart(
+            "entry",
+            leading + 1 if leading < 9 else 1,
+            delta + int(leading == 9),
+            increment - coordinate,
+        ),
+        None,
+        increment,
     )
 
 

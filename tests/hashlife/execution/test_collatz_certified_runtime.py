@@ -10,6 +10,9 @@ import pytest
 from number_compiler.arithmetic.contracts.block_effect import BoundarySide
 from number_compiler.arithmetic.functions.finite_port_action import PortVariable
 from number_compiler.hashlife.actions.field_actions import FieldCellActionID
+from number_compiler.hashlife.execution.dyadic_return_images import (
+    DyadicReturnImageWorkspace,
+)
 from number_compiler.hashlife.execution.tile_scheduler import TileScheduler
 from number_compiler.hashlife.tiles.tile_boundaries import BoundaryTileOperands
 from number_compiler.hashlife.tiles.tile_ports import (
@@ -255,12 +258,21 @@ def test_noncycle_point_does_not_eagerly_observe_width_channels() -> None:
 
 
 @pytest.mark.validation  # N=64 end-to-end temporal execution poison gate.
-def test_temporal_prefix_evaluation_does_not_reenter_output_observer(
+def test_temporal_prefix_uses_admitted_image_without_observer_reentry(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
+    from number_compiler.hashlife.execution import dyadic_return_observers
+
     original = TileScheduler.point
+    original_cell = dyadic_return_observers.binary_cell
     active = peak = 0
+    cell_calls = 0
     empty_boundaries = BoundaryTileOperands()
+
+    def checked_cell(workspace: DyadicReturnImageWorkspace, position: int) -> int:
+        nonlocal cell_calls
+        cell_calls += 1
+        return original_cell(workspace, position)
 
     def checked(
         self: TileScheduler,
@@ -292,10 +304,21 @@ def test_temporal_prefix_evaluation_does_not_reenter_output_observer(
         finally:
             active -= 1
 
+    def endpoint_reconstruction_forbidden(*_args: object, **_kwargs: object) -> Never:
+        raise AssertionError("prefix observation reconstructed the source endpoint")
+
+    monkeypatch.setattr(dyadic_return_observers, "binary_cell", checked_cell)
     monkeypatch.setattr(TileScheduler, "point", checked)
+    monkeypatch.setattr(
+        PoweredCollatzTerm, "_source_numerator", endpoint_reconstruction_forbidden
+    )
     term = PoweredCollatzTerm(27, 64)
     assert term.digit(0) == (_physical(27, 64) & 1)
-    assert peak == 1
+    assert cell_calls == 1
+    assert peak == 0
+    assert term._workspace is not None
+    assert term._workspace.ledger is term._ledger
+    assert term._ledger.counters.get("collatz_physical_point_germ_demands", 0) == 1
 
 
 @pytest.mark.parametrize("steps", (16, 32))

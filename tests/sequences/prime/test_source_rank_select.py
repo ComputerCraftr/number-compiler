@@ -17,6 +17,8 @@ from number_compiler.sequences.prime.select import (
     nth_prime_at_or_after,
 )
 
+pytestmark = pytest.mark.usefixtures("isolated_process_cache")
+
 
 def reference_primes(high: int) -> list[int]:
     return [n for n in range(2, high + 1) if all(n % d for d in range(2, isqrt(n) + 1))]

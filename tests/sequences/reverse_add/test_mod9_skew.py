@@ -13,6 +13,8 @@ from devtools.verification.threshold_expressions import ThresholdExpressions
 from number_compiler.arithmetic.carry.event_memory import pair_step
 from number_compiler.arithmetic.fields.radix import reverse_pair_sums
 
+pytestmark = pytest.mark.validation
+
 
 def test_all_point_ports_and_two_operand_consumers() -> None:
     e = ThresholdExpressions()

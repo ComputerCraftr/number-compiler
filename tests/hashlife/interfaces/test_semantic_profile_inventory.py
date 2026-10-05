@@ -29,6 +29,7 @@ from number_compiler.hashlife.interfaces.semantic_reachable_profile import (
 )
 from number_compiler.hashlife.interfaces.semantic_structures import StructureArena
 from number_compiler.resources.metric_collection import collect_ledger_metrics
+from number_compiler.resources.payload_audit import audit_registered_payloads
 from tests.support.assertions import assert_forbidden_payloads_read_only
 from tests.support.diamond_query import build
 
@@ -231,6 +232,35 @@ def test_profile_interner_cannot_borrow_an_equal_profile_from_another_arena() ->
     assert arena is not None
     arena.keys[codec.request.action] = foreign
     assert_forbidden_payloads_read_only(app.runtime.ledger)
+
+
+def test_profile_table_audit_rechecks_frozen_mutations_on_next_query() -> None:
+    app, arena, _, structures, codec = setup()
+    assert arena is not None
+    function = arena.component(codec, 1, structures)
+    from number_compiler.arithmetic.functions.finite_function_types import BOOL
+
+    all_valid = structures.functions.atom(FunctionSignature(codec.ports, BOOL), 1)
+    node = structures.nodes[function.local_id]
+    assert node.valid != all_valid
+    assert (
+        audit_registered_payloads(
+            app.runtime.ledger, fresh=True
+        ).forbidden_future_payloads
+        == 0
+    )
+
+    # A new inventory pass must inspect the current frozen record, not reuse
+    # the previous query's successful table-audit result.
+    object.__setattr__(node, "valid", all_valid)
+    before = app.runtime.ledger.snapshot()
+    assert (
+        audit_registered_payloads(
+            app.runtime.ledger, fresh=True
+        ).forbidden_future_payloads
+        > 0
+    )
+    assert app.runtime.ledger.snapshot() == before
 
 
 def test_bypassed_frozen_key_mutation_is_reported_instead_of_crashing() -> None:

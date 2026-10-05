@@ -1,10 +1,13 @@
 """Current scheduler work, separated from retired interpreter compatibility names."""
 
+from time import perf_counter
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
     from number_compiler.hashlife.tiles.tile_results import CompletedResultArena
 
+from number_compiler.resources.ledger import ResourceLedger
+from number_compiler.resources.metric_collection import collect_ledger_metrics
 from number_compiler.resources.metric_records import LedgerMetrics
 
 _COUNTERS = (
@@ -29,6 +32,29 @@ _COUNTERS = (
     "local_interface_nodes",
     "field_action_nodes",
 )
+
+
+def explicit_resource_audit(
+    ledger: ResourceLedger,
+) -> tuple[LedgerMetrics, float, dict[str, int]]:
+    """Run and time a charged payload/ownership audit outside query metrics.
+
+    Public metric snapshots are intentionally read-only and do not force a
+    deep resource walk. Benchmarks that require audited accounting must call
+    this explicitly after the measured query, and report the audit's own work
+    separately from construction and observation.
+    """
+    before = dict(ledger.counters)
+    started = perf_counter()
+    metrics = collect_ledger_metrics(ledger)
+    elapsed = perf_counter() - started
+    after = dict(ledger.counters)
+    work = {
+        name: value - before.get(name, 0)
+        for name, value in sorted(after.items())
+        if value != before.get(name, 0)
+    }
+    return metrics, elapsed, work
 
 
 def projection_accounting(metrics: LedgerMetrics) -> dict[str, int]:

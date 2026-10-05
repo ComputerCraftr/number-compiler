@@ -6,7 +6,6 @@ from collections.abc import Hashable
 import pytest
 
 from number_compiler.api import cli
-from number_compiler.api.number_api import NumberCompiler
 from number_compiler.hashlife.execution.dyadic_return_records import (
     DyadicAggregateSummary,
 )
@@ -26,6 +25,8 @@ from number_compiler.sequences.prime.select import PrimePrefixRank
 from number_compiler.sequences.prime.successor_action import (
     PrimeSuccessorImageAdapter,
 )
+
+pytestmark = pytest.mark.usefixtures("isolated_process_cache")
 
 
 @pytest.mark.parametrize(
@@ -94,7 +95,6 @@ def test_prime_cli_consumes_shared_source_images(
         demands.append((adapter.family, demand))
         return result
 
-    NumberCompiler().clear_shared_cache()
     monkeypatch.setattr(TileScheduler, "source_image_demanded", traced)
     monkeypatch.setattr(PrimeSuccessorImageAdapter, "apply_composite", filtered)
     monkeypatch.setattr(PrimePrefixRank, "count_leq", retired)

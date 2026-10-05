@@ -16,6 +16,8 @@ from number_compiler.sequences.comma.action_arena import CommaActionArena, _Acti
 from number_compiler.sequences.comma.power import CommaImagePayload, CommaTerm
 from tests.support.comma_oracles import literal_children
 
+pytestmark = pytest.mark.usefixtures("isolated_process_cache")
+
 
 @pytest.mark.parametrize("leading", range(1, 10))
 @pytest.mark.parametrize("digit", range(10))

@@ -1,29 +1,10 @@
 theory Comma_Sector_Base_Masks
-  imports Comma_Sector_Mask_Constructor Comma_Orbit_Words
+  imports Comma_Sector_Rows_Core Comma_Orbit_Words
 begin
 
 text \<open>Base masks are filtered from already checked sparse response rows.
 The complete response is retained until its crossing admission and exact
 exponent delta have been checked. No 924-phase predicate is evaluated here.\<close>
-
-fun comma_sector_base_admitted :: "comma_round_result \<Rightarrow> bool" where
-  "comma_sector_base_admitted (Comma_Round_Cross (Comma_Entry f d x)) =
-    (f=1 \<and> d=1 \<and> x\<le>90)"
-| "comma_sector_base_admitted (Comma_Round_Cross (Comma_Near f d h)) = False"
-| "comma_sector_base_admitted (Comma_Round_Fork a d) = (d=0)"
-| "comma_sector_base_admitted (Comma_Round_Landmine d) = (d=0)"
-| "comma_sector_base_admitted Comma_Round_Invalid = False"
-
-fun comma_sector_base_project :: "comma_round_result \<Rightarrow> comma_word_result" where
-  "comma_sector_base_project (Comma_Round_Cross (Comma_Entry f d x)) =
-    (if f=1 \<and> d=1 \<and> x\<le>90 then Comma_Word_Live (comma_offset_orbit x)
-     else Comma_Word_Invalid)"
-| "comma_sector_base_project (Comma_Round_Cross (Comma_Near f d h)) = Comma_Word_Invalid"
-| "comma_sector_base_project (Comma_Round_Fork a d) =
-    (if d=0 then Comma_Word_Stop 0 (Comma_Terminal_Fork a) else Comma_Word_Invalid)"
-| "comma_sector_base_project (Comma_Round_Landmine d) =
-    (if d=0 then Comma_Word_Stop 0 Comma_Terminal_Landmine else Comma_Word_Invalid)"
-| "comma_sector_base_project Comma_Round_Invalid = Comma_Word_Invalid"
 
 definition comma_sector_output_mask ::
   "(comma_round_result \<Rightarrow> 'a) \<Rightarrow> 'a \<Rightarrow> comma_sector_rows \<Rightarrow> nat" where
@@ -51,24 +32,6 @@ proof -
     by (auto simp only: comma_sector_output_mask_member; blast)
 qed
 
-lemma comma_sector_base_project_refines:
-  assumes source: "r<924" "x\<le>90"
-    and exact: "comma_sector_mask_value 1 x r=out"
-    and admitted: "comma_sector_base_admitted out"
-  shows "comma_sector_base_project out =
-    comma_word_project comma_offset_orbit (comma_decade_block_atom (Comma_Decade r x))"
-proof -
-  have control: "comma_fast_decade_control (Comma_Decade r x)=comma_decade_decode r out"
-    using exact by (simp add: comma_sector_mask_value_def comma_fast_decade_control.simps)
-  have valid: "comma_decade_admitted (Comma_Decade r x)" using source by simp
-  show ?thesis
-    apply (simp only: comma_decade_block_atom_def valid if_True control)
-    using admitted
-    apply (cases out; auto)
-    subgoal for target by (cases target) auto
-    done
-qed
-
 lemma comma_sector_base_rows_refine:
   assumes index: "i<46" and phase: "r<924"
     and rows: "comma_sector_rows_refine
@@ -86,7 +49,8 @@ proof -
   have bound: "?x\<le>90" by (rule comma_orbit_representative_index(1)[OF index])
   have projected: "comma_sector_base_project out=
     comma_word_project comma_offset_orbit (comma_decade_block_atom (Comma_Decade r ?x))"
-    by (rule comma_sector_base_project_refines[OF phase bound exact admitted[OF member]])
+    by (rule comma_sector_base_project_refines[OF phase bound _ admitted[OF member]])
+      (use exact in \<open>simp add: comma_sector_mask_value_def\<close>)
   have word: "comma_orbit_word 0 r i=comma_sector_base_project out"
     using projected phase index
     by (simp only: comma_orbit_word_def comma_decade_block_power.simps; simp)

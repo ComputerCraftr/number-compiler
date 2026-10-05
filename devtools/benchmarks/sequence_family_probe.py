@@ -363,7 +363,7 @@ def main() -> None:
     )
 
 
-if __name__ == "__main__":
+def _command() -> None:
     import sys
 
     if len(sys.argv) == 3 and sys.argv[1] == "--worker":
@@ -377,3 +377,9 @@ if __name__ == "__main__":
             raise SystemExit(f"unknown worker: {sys.argv[2]}")
     else:
         main()
+
+
+if __name__ == "__main__":
+    from devtools.runs import run_reported
+
+    raise SystemExit(run_reported(_command))

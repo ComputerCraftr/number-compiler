@@ -27,26 +27,61 @@ lemma crt_digit_coordinates_exact:
     and "crt_digit a e mod 5 = a"
     and "crt_digit a e mod 2 = e"
 proof -
-  have a_cases: "a = 0 \<or> a = 1 \<or> a = 2 \<or> a = 3 \<or> a = 4"
-    using assms(1) by (rule nat_less_five_cases)
+  have a_parity: "a mod 2 < 2" by simp
+  have a_parity_cases: "a mod 2 = 0 \<or> a mod 2 = 1"
+    by (rule nat_less_two_cases[OF a_parity])
   have e_cases: "e = 0 \<or> e = 1"
-    using assms(2) by (rule nat_less_two_cases)
+    by (rule nat_less_two_cases[OF assms(2)])
   show "crt_digit a e < 10"
-    using a_cases e_cases by (elim disjE; simp add: crt_digit_def)
+    using assms by (simp add: crt_digit_def; arith)
   show "crt_digit a e mod 5 = a"
-    using a_cases e_cases by (elim disjE; simp add: crt_digit_def)
+    using assms by (simp add: crt_digit_def mod_add_eq)
   show "crt_digit a e mod 2 = e"
-    using a_cases e_cases by (elim disjE; simp add: crt_digit_def)
+  proof (cases "a mod 2 = e")
+    case True
+    then show ?thesis by (simp add: crt_digit_def)
+  next
+    case False
+    have shift: "(a+5) mod 2=(a mod 2+1) mod 2"
+      by (subst mod_add_eq[symmetric]; simp)
+    show ?thesis using a_parity_cases e_cases False
+      by (elim disjE; simp add: crt_digit_def shift)
+  qed
 qed
 
 lemma crt_digit_inverse:
   assumes "d < 10"
   shows "crt_digit (d mod 5) (d mod 2) = d"
 proof -
-  have d_cases: "d = 0 \<or> d = 1 \<or> d = 2 \<or> d = 3 \<or> d = 4 \<or>
-      d = 5 \<or> d = 6 \<or> d = 7 \<or> d = 8 \<or> d = 9"
-    using assms by (rule nat_less_ten_cases)
-  show ?thesis using d_cases by (elim disjE; simp add: crt_digit_def)
+  show ?thesis
+  proof (cases "d < 5")
+    case True
+    then show ?thesis by (simp add: crt_digit_def)
+  next
+    case False
+    then have lower: "5 \<le> d" by simp
+    let ?t = "d - 5"
+    have t_bound: "?t < 5" using assms lower by arith
+    have split: "d = ?t + 5" using lower by arith
+    have residue: "d mod 5 = ?t"
+    proof -
+      have "d mod 5 = (?t+5) mod 5"
+        by (rule arg_cong[OF split])
+      also have "... = ?t" using t_bound by simp
+      finally show ?thesis .
+    qed
+    have parity_shift: "(?t+5) mod 2=(?t mod 2+1) mod 2"
+      by (subst mod_add_eq[symmetric]; simp)
+    have d_parity: "d mod 2=(?t mod 2+1) mod 2"
+      using arg_cong[OF split, of "\<lambda>n. n mod 2"] parity_shift by metis
+    have t_parity_cases: "?t mod 2 = 0 \<or> ?t mod 2 = 1"
+      by (rule nat_less_two_cases) simp
+    have mismatch: "?t mod 2 \<noteq> d mod 2"
+      using t_parity_cases d_parity by (elim disjE; simp)
+    show ?thesis
+      unfolding crt_digit_def
+      by (simp only: residue mismatch if_False; use lower in arith)
+  qed
 qed
 
 lemma parity_addition_coordinates:

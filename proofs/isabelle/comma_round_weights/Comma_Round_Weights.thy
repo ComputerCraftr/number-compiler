@@ -6,16 +6,39 @@ text \<open>Literal weight is an observation of canonical weighted Next edges.
 The control round never evaluates these weights. At a concrete admitted
 exponent the chart refinement supplies their literal interpretation.\<close>
 
-fun comma_round_weighted_prefix ::
+fun comma_weighted_prefix_using ::
+  "(nat \<Rightarrow> comma_finite_position \<Rightarrow> comma_weighted_move) \<Rightarrow>
+    nat \<Rightarrow> nat \<Rightarrow> nat \<Rightarrow> comma_finite_position \<Rightarrow>
+    comma_finite_position \<Rightarrow> nat \<Rightarrow> bool" where
+  "comma_weighted_prefix_using step p r 0 source terminal weight =
+    (source = terminal \<and> weight = 0)"
+| "comma_weighted_prefix_using step p r (Suc n) source terminal weight =
+    (\<exists>successor local_weight rest.
+      step (r mod 924) source = Comma_WNext successor local_weight \<and>
+      comma_weighted_prefix_using step p r n successor terminal rest \<and>
+      weight = comma_chart_weight_value p local_weight + rest)"
+
+definition comma_round_weighted_prefix ::
   "nat \<Rightarrow> nat \<Rightarrow> nat \<Rightarrow> comma_finite_position \<Rightarrow>
     comma_finite_position \<Rightarrow> nat \<Rightarrow> bool" where
+  "comma_round_weighted_prefix p r n source terminal weight =
+    comma_weighted_prefix_using comma_weighted_step p r n source terminal weight"
+
+lemma comma_round_weighted_prefix_zero [simp]:
   "comma_round_weighted_prefix p r 0 source terminal weight =
     (source = terminal \<and> weight = 0)"
-| "comma_round_weighted_prefix p r (Suc n) source terminal weight =
+  by (simp add: comma_round_weighted_prefix_def)
+
+lemma comma_round_weighted_prefix_suc [simp]:
+  "comma_round_weighted_prefix p r (Suc n) source terminal weight =
     (\<exists>successor local_weight rest.
       comma_weighted_step (r mod 924) source = Comma_WNext successor local_weight \<and>
       comma_round_weighted_prefix p r n successor terminal rest \<and>
       weight = comma_chart_weight_value p local_weight + rest)"
+  by (simp add: comma_round_weighted_prefix_def)
+
+lemmas comma_round_weighted_prefix_simps =
+  comma_round_weighted_prefix_zero comma_round_weighted_prefix_suc
 
 lemma comma_round_weighted_prefix_erasure:
   "comma_round_prefix_steps n r source terminal =
@@ -194,7 +217,7 @@ next
     "comma_weighted_step (r mod 924) source = Comma_WNext successor local_weight"
     and tail: "comma_round_weighted_prefix p r n successor terminal rest"
     and weight: "weight = comma_chart_weight_value p local_weight + rest"
-    using Suc.prems(1) by (simp only: comma_round_weighted_prefix.simps; blast)
+    using Suc.prems(1) by (simp only: comma_round_weighted_prefix_simps; blast)
   have finite: "comma_finite_step (r mod 924) source = Comma_Next successor"
     by (simp only: comma_finite_step_def move comma_erase_weight.simps)
   have next_valid: "comma_round_admitted successor"

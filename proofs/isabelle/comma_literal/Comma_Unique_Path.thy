@@ -44,6 +44,37 @@ next
   then show ?case using step.IH first(2) by simp
 qed
 
+text \<open>A certified unique occurrence supplies the same uniquely
+determined endpoint at every shorter literal prefix.\<close>
+
+lemma comma_unique_literal_path_prefix:
+  assumes unique: "comma_unique_literal_path total_steps source endpoint"
+    and bound: "n \<le> total_steps"
+  shows "\<exists>middle. comma_unique_literal_path n source middle"
+  using unique bound
+proof (induction n arbitrary: total_steps source endpoint)
+  case 0
+  show ?case
+    by (intro exI[of _ source]) (simp add: comma_unique_literal_path.zero)
+next
+  case (Suc n)
+  obtain total_tail where total_eq: "total_steps = Suc total_tail"
+    using Suc.prems(2) by (cases total_steps) auto
+  have bound_tail: "n \<le> total_tail"
+    using Suc.prems(2) total_eq by simp
+  obtain successor_value where first:
+      "(\<And>v. comma_child source v \<longleftrightarrow> v = successor_value)"
+    and suffix: "comma_unique_literal_path total_tail successor_value endpoint"
+    using Suc.prems(1) total_eq
+    by (cases rule: comma_unique_literal_path.cases) auto
+  obtain middle where prefix:
+      "comma_unique_literal_path n successor_value middle"
+    using Suc.IH[OF suffix bound_tail] by blast
+  show ?case
+    by (intro exI[of _ middle])
+      (rule comma_unique_literal_path.step[OF first prefix])
+qed
+
 lemma comma_unique_literal_path_from_points:
   assumes edges: "\<And>j v. j < n \<Longrightarrow>
     (comma_child (point j) v \<longleftrightarrow> v = point (Suc j))"

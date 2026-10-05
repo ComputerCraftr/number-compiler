@@ -28,6 +28,10 @@ datatype comma_decade_terminal =
     Comma_Terminal_Fork nat
   | Comma_Terminal_Landmine
 
+fun comma_summary_outcome :: "nat \<Rightarrow> comma_decade_terminal \<Rightarrow> comma_finite_outcome" where
+  "comma_summary_outcome n (Comma_Terminal_Fork a)=Comma_Fork_At a n"
+| "comma_summary_outcome n Comma_Terminal_Landmine=Comma_Landmine_At n"
+
 definition comma_fast_decade_summary_step ::
   "(comma_decade_state \<Rightarrow> nat) \<Rightarrow>
    (comma_decade_state \<Rightarrow> comma_decade_terminal) \<Rightarrow>
@@ -87,6 +91,57 @@ inductive comma_decade_exact_summary ::
 | crossing: "comma_decade_control s=Comma_Decade_Continue t \<Longrightarrow>
     comma_decade_exact_summary t n terminal \<Longrightarrow>
     comma_decade_exact_summary s (Suc n) terminal"
+
+lemma comma_finite_fork_digit_bounds:
+  assumes step: "comma_finite_step r position=Comma_Fork a d"
+  shows "2\<le>a \<and> a\<le>9"
+  using step
+  by (cases position)
+    (auto simp: comma_finite_step_def comma_weighted_step_def Let_def
+      split: if_splits)
+
+lemma comma_decade_terminal_fork_bounds:
+  assumes summary: "comma_decade_exact_summary s h terminal"
+  shows "(case terminal of Comma_Terminal_Fork a \<Rightarrow> 2\<le>a \<and> a\<le>9
+    | Comma_Terminal_Landmine \<Rightarrow> True)"
+  using summary
+proof (induction rule: comma_decade_exact_summary.induct)
+  case (fork s a)
+  obtain r x where state: "s=Comma_Decade r x" by (cases s) auto
+  obtain n t event where close:
+    "comma_round_close r (Comma_Entry 1 0 x)=(n,t,event)"
+    by (cases "comma_round_close r (Comma_Entry 1 0 x)") auto
+  have decoded:
+    "comma_decade_decode r event=Comma_Decade_Fork a 0"
+    using fork.hyps by (simp only: state comma_decade_control.simps close prod.case)
+  have event: "event=Comma_Round_Fork a 0"
+  proof (cases event)
+    case (Comma_Round_Fork fork_a fork_delta)
+    then show ?thesis using decoded by simp
+  next
+    case (Comma_Round_Landmine delta)
+    then show ?thesis using decoded by simp
+  next
+    case (Comma_Round_Cross target)
+    then show ?thesis using decoded
+      by (cases target) (auto simp: comma_decade_decode.simps split: if_splits)
+  next
+    case Comma_Round_Invalid
+    then show ?thesis using decoded by simp
+  qed
+  have finite:
+    "comma_finite_step (r mod 924) t=Comma_Fork a 0"
+    using comma_round_close_refines_trace[OF close] event by simp
+  have bounds: "2\<le>a \<and> a\<le>9"
+    by (rule comma_finite_fork_digit_bounds[OF finite])
+  show ?case using bounds by simp
+next
+  case (landmine s)
+  then show ?case by simp
+next
+  case (crossing s t h terminal)
+  then show ?case by simp
+qed
 
 text \<open>The induction consumes the local recurrence law directly. A domain
 classifier may prove that law symbolically; enumerating the source rectangle

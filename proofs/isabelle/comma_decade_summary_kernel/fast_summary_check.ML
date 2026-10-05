@@ -85,12 +85,12 @@ struct
       val (rank_lookup, rank_stats) = Comma_Decade_Rank_Lookup.make_lookup
         {numeral_context = Comma_Entry_Arithmetic.numeral_context,
          natural_context = Comma_Entry_Arithmetic.natural_context} ctxt
-        @{thm comma_decade_rank_codes_def} @{thm comma_decade_rank_candidate_def}
+        @{thm comma_decade_rank_codes_def} @{thm comma_decade_rank_candidate_on_valid_def}
       val (terminal_lookup, terminal_stats) = Comma_Decade_Rank_Lookup.make_lookup
         {numeral_context = Comma_Entry_Arithmetic.numeral_context,
          natural_context = Comma_Entry_Arithmetic.natural_context} ctxt
         @{thm comma_decade_terminal_codes_def}
-        @{thm comma_decade_terminal_code_candidate_def}
+        @{thm comma_decade_terminal_code_candidate_on_valid_def}
       fun natural t = (case try HOLogic.dest_number t of
         SOME (typ, n) => typ = @{typ nat} andalso n >= 0
       | NONE => can HOLogic.dest_nat t)
@@ -107,18 +107,18 @@ struct
            lhss = [pattern], proc = fn _ => fn _ => convert, identifier = []}
         end
       val rank_proc = unary_proc "comma_summary_rank_lookup"
-        @{const_name comma_decade_rank_candidate}
-        (@{term comma_decade_rank_candidate} $ Var (("s",0), @{typ comma_decade_state}))
+        @{const_name comma_decade_rank_candidate_on_valid}
+        (@{term comma_decade_rank_candidate_on_valid} $ Var (("s",0), @{typ comma_decade_state}))
         rank_lookup
       val terminal_proc = unary_proc "comma_summary_terminal_lookup"
-        @{const_name comma_decade_terminal_code_candidate}
-        (@{term comma_decade_terminal_code_candidate} $ Var (("s",0), @{typ comma_decade_state}))
+        @{const_name comma_decade_terminal_code_candidate_on_valid}
+        (@{term comma_decade_terminal_code_candidate_on_valid} $ Var (("s",0), @{typ comma_decade_state}))
         terminal_lookup
       val evaluation = (#context core
         |> Simplifier.add_proc rank_proc
         |> Simplifier.add_proc terminal_proc) addsimps
         @{thms comma_fast_decade_summary_step_def comma_fast_decade_summary_range_def
-          comma_decade_admitted.simps comma_decade_terminal_candidate_def
+          comma_decade_admitted.simps comma_decade_terminal_candidate_on_valid_def
           comma_terminal_from_code_eval}
       fun stats () =
         let val r = rank_stats (); val t = terminal_stats (); val l = lens_stats () in
@@ -145,11 +145,16 @@ struct
         else error "Invalid summary phase range"
       fun nat n = HOLogic.mk_number @{typ nat} n
       val proposition = HOLogic.mk_Trueprop
-        (@{term comma_fast_decade_summary_range} $ @{term comma_decade_rank_candidate} $
-          @{term comma_decade_terminal_candidate} $ nat lo $ nat hi)
+        (@{term comma_fast_decade_summary_range} $ @{term comma_decade_rank_candidate_on_valid} $
+          @{term comma_decade_terminal_candidate_on_valid} $ nat lo $ nat hi)
       val started = Time.now ()
-      val theorem = #certify engine (Goal.prove ctxt [] [] proposition
-        (fn _ => simp_tac (#context engine) 1))
+      val evaluation_started = Time.now ()
+      val theorem = Goal.prove ctxt [] [] proposition
+        (fn _ => simp_tac (#context engine) 1)
+      val evaluation_ms = Time.toMilliseconds (Time.- (Time.now (), evaluation_started))
+      val audit_started = Time.now ()
+      val audited = #certify engine theorem
+      val audit_ms = Time.toMilliseconds (Time.- (Time.now (), audit_started))
       val _ = if Thm.nprems_of theorem = 0 andalso null (Thm.hyps_of theorem)
           andalso Thm.prop_of theorem aconv proposition then ()
         else error "Decade summary range is not an exact closed theorem"
@@ -157,7 +162,9 @@ struct
         Comma_Fast_Kernel.report
           ("Decade summary range lo=" ^ Int.toString lo ^
            " hi=" ^ Int.toString hi ^ " evaluation_ms=" ^
+           LargeInt.toString evaluation_ms ^ " audit_ms=" ^
+           LargeInt.toString audit_ms ^ " total_ms=" ^
            LargeInt.toString (Time.toMilliseconds (Time.- (Time.now (), started))) ^
            " " ^ #stats engine ())
-    in theorem end
+    in audited end
 end

@@ -231,3 +231,133 @@ a missing package initializer or a changed source and are not passes.
 **Remaining obligations.** This ownership repair does not close the reverse
 constructor, special-number recovery or non-halting failures. Those positive
 gates remain active under their corrected owners.
+
+## October 3 — semantic identity, proof ownership and lifecycle audit
+
+**Objective.** Use three adversarial reviewers to find concrete cache-authority,
+proof-ownership, duplicated arithmetic and lifecycle defects. Extend the shared
+Isabelle navigation parser without presenting lexical analysis as a proof of
+semantic equivalence or theorem deadness.
+
+**Changes.** Exact radial authority records reject Boolean/numeric aliases,
+mutable residue payloads and inconsistent derived coordinates through the
+existing transport owner. Evidence contexts reject nested or closed re-entry
+before changing process bytecode state. Sparse publication consumes the checked
+base definition directly; the second mutable B1 table store and reconstructed
+comparison payload are removed. Publisher shape checks precede proof work.
+Comma's Schur quotient reuses reverse/add's `digit_value`; the downstream theorem
+name remains available. The unused rank `canonical_theorem` wrapper is deleted.
+
+The shared source analyzer reports supported nontrivial alpha-normalized bodies,
+qualified references, exported declarations without observed callers, dynamic
+references and unsupported syntax. Proof inventory reuses its source snapshots.
+Tests challenge argument order, literal and type differences, recursive self
+references, shadowing, anonymous lemmas, fake quoted commands, ML calls and
+same-named source files. Duplicate grouping occurs once per tree; the quality
+runner does not repeat the inventory inside source policy. The final report covers
+5,512 declarations, with no duplicate candidates in the supported fragment,
+78 unused-review candidates, 761 unknown-reference findings and 1,820 unsupported
+construct findings. These are scope limits, not proofs of global absence.
+
+**Established results.** All 339 focused parser, cache, radial, lifecycle and
+ownership tests pass. Whole-tree strict typing, pinned Ruff 0.16.9, formatting,
+source policy, documentation, proof inventory, installed-wheel checks and proof
+boundary audit pass. The four affected Isabelle sessions are checked under
+60-second/4-GiB guards. The sparse smoke checks reject malformed owners, lengths,
+open payloads and assumed definitions before exercising a synthetic five-square
+publication. This is not a concrete B1/B32 construction result.
+
+**Rejected approaches.** Deleting exported facts merely because lexical callers
+are absent; merging actions solely by finite projections; recomputing polynomial
+residues on every warm cache validation; treating identical short proof scripts
+as duplicate mathematics; running the same source analysis in two quality gates.
+The latter caused an intermediate 35-second policy timeout and was removed.
+
+**Validation/provenance.** Frozen v5 source
+`80287dcbca2b5f08d2f43050ea32890fadc84b51180dd5ffe10985da5c7d62bf`.
+All paths below are ignored local evidence, not portable artifacts.
+
+| Scope | Evidence | Result |
+| --- | --- | --- |
+| Quality and focused tests | `results/runs/20261003T131208Z-3f094fa6c3f646b08b93422df4548073` | All checks pass; 339 tests; policy 28.334 s, tests 59.009 guarded s |
+| Schur carry, rank data, sparse audit | `results/runs/20261003T130831Z-290610844f8e4cdea524a7acdd0a43c7` | These three sessions complete; Native19 child exited zero but process descendants required retirement, so the combined manifest is not green |
+| Native19 confirmation | `results/runs/20261003T131150Z-8ea3d8007ab04820888de58e9dedad85` | Clean completed rerun; retained build reused |
+| Final source-analysis report | `results/runs/20261003T131554Z-e5843f569aa940f8bf5a4641a5d199f1` | Review-only duplicate/unused/unsupported inventory |
+
+**Remaining obligations.** No aggregate Isabelle, full-unit or P0 pass is claimed
+for this audit. Unused-declaration candidates require theorem export, automation
+and ML review before deletion. The concrete B1 timeout, B32 publication and
+production forest/fuel cutover remain open; these cleanup passes neither remove
+those gates nor justify deleting production admission.
+
+
+## October 3 — Exit-snapshot race and pinned tool evidence
+
+**Objective.** Prevent stale process membership and foreign tool versions from
+mislabeling guarded proof/quality evidence.
+
+**Changes.** The process guard now refreshes authorized descendant membership
+after observing leader exit. Normal sampling and exit checks share one owner,
+including PID/start identity and live process-group anchors. This also removes
+stale membership from the old reused-root branch. A paired,
+deterministic integration regression covers a disappeared helper and a helper
+that remains live; the actual background-worker termination test is retained.
+The run manifest no longer overwrites the interpreter's Ruff package version
+with a different PATH executable. The release runner invokes Ruff through that
+same interpreter.
+
+**Established results.** The isolated watchdog/evidence selection passed all
+43 tests. The final combined selection passed 615 tests; whole-tree strict
+mypy, pinned Ruff, formatting, source policy, documentation and proof inventory
+passed. Limits and failure assertions were not relaxed.
+
+**Rejected approaches.** No grace period, successful-child override, ignored
+live descendant, or success-on-cleanup rule was added. Earlier
+`descendants_retired` records retain their original outcome; the race is not
+proof that every historical cleanup report was false.
+
+**Validation/provenance.** Source v5
+`3e13bb4bc87acc5175657b8ecece0864e78e202d863d6680ade464c6c51bd6a8`.
+Isolated tests: local evidence
+`results/runs/20261003T232938Z-25737b01700b48789d7c7c61f1860e1f`.
+Combined quality/tests:
+`results/runs/20261003T233012Z-221d3e47c6db4899a108022969a64136`.
+The combined tests took 72.759 guarded seconds under 300 seconds/1 GiB;
+source policy took 32.523 seconds under 35 seconds/1 GiB. Proof inventory:
+130 sessions and 280 theories. The linked
+[comma record](comma.md#october-3--external-cyclotomic-clock-and-source-selected-endpoint-b1)
+records the separate kernel checks and their scope.
+
+**Remaining work.** Full-unit, installed-wheel, P0 and aggregate-proof release
+acceptance remain separate. This watchdog correction changes evidence
+classification, not mathematical admission or production sequence semantics.
+
+
+**October 3 follow-up: process identity and cleanup races.** A fast direct child
+could be reaped before the first process snapshot bound its identity, losing
+its descendant authority. The guard now postpones `poll()` until identity is
+bound. If binding fails, cleanup signals the owned new-session group while the
+unreaped child pins its PID, confirms the group has no live members before
+reaping, and preserves the existing cleanup deadline. Already-reaped unbound
+children never authorize numeric process-group signaling.
+
+Retirement inspection failures now produce structured `measurement_failed`
+evidence, preserve the original diagnostic, close the pipe and attempt to kill
+and reap the owned child. They never claim successful descendant cleanup. A
+later development run encountered Darwin EPERM while sampling PID 42877; its
+exact exit history was not captured. The sampler now handles the independently
+tested race by refreshing identity on EPERM/EACCES: an absent, zombie or replaced
+PID contributes zero for the old identity; a matching live process permits at
+most two read attempts and remains a failure if unreadable. The Darwin usage
+layout was checked against the installed SDK. No timeout, memory limit or
+live-process failure assertion was relaxed.
+
+The shared snapshot test helper replaces duplicated setup without losing
+fresh-exit, fast-leader, deadline, PID-reuse or snapshot-failure assertions.
+Frozen quality and the combined 693-test selection pass on source v5
+`cb80e00ef22e5704079106e78c7667807712dbecb5471228ccf81fb7d8c86da4`.
+Local evidence: `results/runs/20261004T042212Z-793dc0cf644148358423bcf8a9265e2f`.
+Source policy took 32.179 seconds under 35 seconds/1 GiB and reports no line,
+recursion or duplicate-body violations. Tests took 80.834 guarded seconds under
+300 seconds/1 GiB. These fixes harden evidence collection; they do not certify
+the blocked comma publisher or replace complete release acceptance.

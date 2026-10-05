@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from copy import copy
-from typing import cast
+from typing import Never, cast
 
 import pytest
 
@@ -316,19 +316,37 @@ def test_tile_radix_rejects_legacy_numeric_coordinate_aliases_before_work(
 
 @pytest.mark.parametrize("steps", (4, 64))
 @pytest.mark.validation  # Fixed large-source physical/radix release witness.
-def test_large_seed_collatz_radix_uses_current_tile_observation(steps: int) -> None:
+def test_large_seed_collatz_radix_uses_admitted_image_projection(
+    steps: int, monkeypatch: pytest.MonkeyPatch
+) -> None:
     from number_compiler.projection.lazy_radix import collatz_radix_digit
     from number_compiler.sequences.collatz.block_power import PoweredCollatzTerm
 
+    original = PoweredCollatzTerm._admitted_radix_digit
+    calls = 0
+
+    def tracked(term: PoweredCollatzTerm, radix: int, position: int) -> int:
+        nonlocal calls
+        calls += 1
+        return original(term, radix, position)
+
+    def endpoint_reconstruction_forbidden(*_args: object, **_kwargs: object) -> Never:
+        raise AssertionError("radix point reconstructed the source endpoint")
+
+    monkeypatch.setattr(PoweredCollatzTerm, "_admitted_radix_digit", tracked)
+    monkeypatch.setattr(
+        PoweredCollatzTerm, "_source_numerator", endpoint_reconstruction_forbidden
+    )
     expected = 598926
     for _ in range(steps):
         expected = expected // 2 if expected % 2 == 0 else 3 * expected + 1
     term = PoweredCollatzTerm(598926, steps)
     assert collatz_radix_digit(term, 3, 0) == expected % 3
-    observation = term._radix_projections[3]._tile_observation
-    assert type(observation) is TileRadixObservation
-    assert observation.scheduler.ledger is term._ledger
-    assert term._ledger.counters.get("tile_radix_interface_observations", 0) > 0
+    assert calls == 1
+    assert term._workspace is not None
+    assert term._workspace.ledger is term._ledger
+    assert term._ledger.counters.get("source_image_projection_publications", 0) > 0
+    assert term._ledger.counters.get("collatz_image_radix_demands", 0) > 0
 
 
 def test_adjacent_digits_consume_completed_quotient_tiles() -> None:

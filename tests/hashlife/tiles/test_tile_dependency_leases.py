@@ -531,7 +531,6 @@ application = scheduler.application(
         check=False,
         capture_output=True,
         text=True,
-        timeout=30,
     )
     assert observed.returncode == 0, observed.stderr
     assert "Exception ignored in:" not in observed.stderr

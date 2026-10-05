@@ -205,7 +205,7 @@ def main() -> CarryRadixMetrics:
     return metrics
 
 
-if __name__ == "__main__":
+def _command() -> None:
     result = main()
     reverse = result["reverse_add_196"]
     print(
@@ -217,3 +217,9 @@ if __name__ == "__main__":
     )
     print("collatz profiles", len(result["collatz"]))
     print("special closure profiles", len(result["special_closure"]))
+
+
+if __name__ == "__main__":
+    from devtools.runs import run_reported
+
+    raise SystemExit(run_reported(_command))

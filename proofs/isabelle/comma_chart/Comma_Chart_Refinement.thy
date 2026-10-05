@@ -117,6 +117,15 @@ proof -
   show ?thesis using upper chart_sum by simp
 qed
 
+lemma comma_entry_control_formula:
+  "comma_finite_step r (Comma_Entry f delta entry_offset) =
+    (if f < 1 \<or> 9 < f \<or> 98 < entry_offset \<or>
+        comma_finite_period f (entry_offset mod 10) = 0
+     then Comma_Invalid
+     else Comma_Next (Comma_Near f delta
+       (comma_finite_headroom f r delta entry_offset)))"
+  by (simp add: comma_finite_step_def Let_def)
+
 lemma comma_near_control_formula:
   "comma_finite_step residue (Comma_Near f delta H) =
     (if f < 1 \<or> 9 < f \<or> H = 0 \<or> 540 < H then Comma_Invalid

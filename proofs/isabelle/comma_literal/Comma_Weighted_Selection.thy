@@ -173,6 +173,81 @@ inductive comma_indexed_trace ::
           int (comma_chart_value p position)) # rows)
       outcome terminal"
 
+lemma comma_control_trace_indexed:
+  assumes trace: "comma_finite_trace_ok (p mod 924) positions outcome"
+  shows "\<exists>rows. comma_indexed_trace p (hd positions) rows outcome
+      (last positions) \<and>
+    sum_list (map fst rows) =
+      sum_list (map (comma_finite_next_weight p) (butlast positions))"
+  using trace
+proof (induction positions arbitrary: outcome)
+  case Nil
+  then show ?case by simp
+next
+  case (Cons position tail)
+  show ?case
+  proof (cases tail)
+    case Nil
+    show ?thesis
+    proof (cases "comma_weighted_step (p mod 924) position")
+      case (Comma_WNext successor weight)
+      then show ?thesis using Cons.prems Nil
+        by (simp add: comma_finite_step_def del: comma_weighted_step_def)
+    next
+      case (Comma_WFork terminal a delta)
+      have owner: "terminal = position"
+        by (rule comma_weighted_terminal_is_source,
+            rule disjI1, rule Comma_WFork)
+      have local_trace: "comma_indexed_trace p position []
+          (Comma_Fork_At a delta) position"
+        using comma_indexed_trace.fork Comma_WFork owner by blast
+      show ?thesis using Cons.prems Nil Comma_WFork owner local_trace
+        by (auto simp: comma_finite_step_def del: comma_weighted_step_def)
+    next
+      case (Comma_WLandmine terminal delta)
+      have owner: "terminal = position"
+        by (rule comma_weighted_terminal_is_source[where a=0],
+            rule disjI2, rule Comma_WLandmine)
+      have local_trace: "comma_indexed_trace p position []
+          (Comma_Landmine_At delta) position"
+        using comma_indexed_trace.landmine Comma_WLandmine owner by blast
+      show ?thesis using Cons.prems Nil Comma_WLandmine owner local_trace
+        by (auto simp: comma_finite_step_def del: comma_weighted_step_def)
+    next
+      case Comma_WInvalid
+      then show ?thesis using Cons.prems Nil
+        by (simp add: comma_finite_step_def del: comma_weighted_step_def)
+    qed
+  next
+    case (Cons successor rest)
+    have step: "comma_finite_step (p mod 924) position = Comma_Next successor"
+      using Cons.prems Cons by simp
+    obtain local_weight where weighted:
+      "comma_weighted_step (p mod 924) position =
+        Comma_WNext successor local_weight"
+      using step by (cases "comma_weighted_step (p mod 924) position")
+        (auto simp: comma_finite_step_def del: comma_weighted_step_def)
+    have tail_trace: "comma_finite_trace_ok (p mod 924) tail outcome"
+      using Cons.prems Cons by simp
+    obtain rows where ih:
+      "comma_indexed_trace p (hd tail) rows outcome (last tail)"
+      "sum_list (map fst rows) =
+        sum_list (map (comma_finite_next_weight p) (butlast tail))"
+      using Cons.IH[OF tail_trace] by blast
+    have suffix:
+      "comma_indexed_trace p successor rows outcome (last (successor # rest))"
+      "sum_list (map fst rows) =
+        sum_list (map (comma_finite_next_weight p) (butlast (successor # rest)))"
+      using ih Cons by simp_all
+    have amount: "comma_finite_next_weight p position =
+        comma_chart_weight_value p local_weight"
+      by (simp only: comma_finite_next_weight_def weighted comma_weighted_move.case)
+    show ?thesis
+      using comma_indexed_trace.advance[OF weighted suffix(1)] suffix(2) Cons amount
+      by (auto simp del: comma_weighted_step_def)
+  qed
+qed
+
 lemma comma_indexed_trace_weighted_run:
   assumes trace: "comma_indexed_trace p position rows outcome terminal"
   shows "comma_finite_weighted_run (Suc (length rows)) p position =

@@ -3,22 +3,27 @@
 from __future__ import annotations
 
 import argparse
-import hashlib
 import json
 import os
-import subprocess
-import sys
 import xml.etree.ElementTree as ET
 from pathlib import Path
 
+from devtools.git_source import git_source
 from devtools.paths import repository_root
 
-FINGERPRINT_BEFORE = "number_compiler_source_before"
-FINGERPRINT_AFTER = "number_compiler_source_after"
+GIT_COMMIT_BEFORE = "number_compiler_git_commit_before"
+GIT_COMMIT_AFTER = "number_compiler_git_commit_after"
+GIT_TREE_BEFORE = "number_compiler_git_tree_before"
+GIT_TREE_AFTER = "number_compiler_git_tree_after"
+GIT_OBJECT_FORMAT_BEFORE = "number_compiler_git_object_format_before"
+GIT_OBJECT_FORMAT_AFTER = "number_compiler_git_object_format_after"
+GIT_DIRTY_BEFORE = "number_compiler_git_dirty_before"
+GIT_DIRTY_AFTER = "number_compiler_git_dirty_after"
+PROVENANCE_MODE = "number_compiler_provenance_mode"
+PROVENANCE_MODE_ENV = "NUMBER_COMPILER_EVIDENCE_MODE"
 MANIFEST = "number_compiler_test_manifest"
 NODE_ID = "number_compiler_nodeid"
 EXECUTION_MODE = "number_compiler_execution_mode"
-FINGERPRINT_VERSION = 5
 
 
 def classify_execution_mode(
@@ -73,91 +78,20 @@ def minimal_selectors(selectors: tuple[str, ...]) -> tuple[str, ...]:
     )
 
 
-def authored_source_paths(
-    root: Path, *, include_directories: bool = False
-) -> tuple[Path, ...]:
-    """Canonical semantic inputs shared by fingerprints and revision guards."""
-    paths = {root / "pyproject.toml"}
-    if include_directories:
-        paths.add(root)
-    for folder in ("src", "tests", "devtools", "proofs"):
-        if include_directories and (root / folder).is_dir():
-            paths.add(root / folder)
-        paths.update(
-            path
-            for path in (root / folder).rglob("*")
-            if (path.is_file() or (include_directories and path.is_dir()))
-            and path.name != ".DS_Store"
-            and not any(
-                part in {"__pycache__", ".mypy_cache", ".ruff_cache", ".pytest_cache"}
-                for part in path.parts
-            )
-            and not any(part.endswith(".egg-info") for part in path.parts)
-        )
-    return tuple(
-        path
-        for path in sorted(paths)
-        if path.is_file() or (include_directories and path.is_dir())
-    )
-
-
-def source_fingerprint(root: Path) -> str:
-    digest = hashlib.sha256()
-    digest.update(f"number-compiler-authored-source-v{FINGERPRINT_VERSION}\0".encode())
-    for path in authored_source_paths(root):
-        name, data = path.relative_to(root).as_posix().encode(), path.read_bytes()
-        digest.update(len(name).to_bytes(8, "big"))
-        digest.update(name)
-        digest.update(len(data).to_bytes(8, "big"))
-        digest.update(data)
-    return digest.hexdigest()
-
-
-def collect_required(root: Path, selectors: tuple[str, ...]) -> tuple[str, ...]:
-    """Collect current exact node IDs without creating or warming an engine."""
-    before = source_fingerprint(root)
-    completed = subprocess.run(
-        [
-            sys.executable,
-            "-m",
-            "pytest",
-            "--collect-only",
-            "-q",
-            "-o",
-            "addopts=",
-            *minimal_selectors(selectors),
-        ],
-        cwd=root,
-        capture_output=True,
-        text=True,
-        check=False,
-        env=pytest_environment(),
-    )
-    if source_fingerprint(root) != before:
-        raise ValueError("source tree changed during required test collection")
-    if completed.returncode:
-        raise ValueError(
-            f"cannot collect required tests:\n{completed.stdout}\n{completed.stderr}"
-        )
-    return parse_collection(completed.stdout)
-
-
-def parse_collection(output: str) -> tuple[str, ...]:
-    """Decode the canonical pytest node list shared by guarded suite runners."""
-    nodes = tuple(
-        line.strip()
-        for line in output.splitlines()
-        if line.startswith("tests/") and "::" in line
-    )
-    if not nodes or len(set(nodes)) != len(nodes):
-        raise ValueError("required test collection is empty or contains duplicates")
-    return nodes
-
-
 def validate_evidence(
-    path: Path, root: Path, required: tuple[str, ...]
+    path: Path,
+    root: Path,
+    required: tuple[str, ...] | None = None,
+    *,
+    require_clean: bool = True,
+    require_acceptance: bool = False,
+    require_acceptance_verified: bool | None = None,
 ) -> dict[str, float]:
-    """Return test durations only after rejecting stale or incomplete evidence."""
+    """Validate JUnit and return durations; acceptance reuse requires a run manifest.
+
+    ``require_acceptance_verified=False`` is reserved for the release runner's
+    in-flight JUnit check, before detached-worktree cleanup has completed.
+    """
     tree = ET.parse(path).getroot()
     suites = tuple(tree.iter("testsuite"))
     if len(suites) != 1:
@@ -169,14 +103,32 @@ def validate_evidence(
         if key in properties:
             raise ValueError("duplicate evidence property")
         properties[key] = prop.get("value", "")
-    fingerprint = source_fingerprint(root)
-    if any(
-        properties.get(name) != fingerprint
-        for name in (FINGERPRINT_BEFORE, FINGERPRINT_AFTER)
+    live = git_source(root)
+    before = (
+        properties.get(GIT_COMMIT_BEFORE),
+        properties.get(GIT_TREE_BEFORE),
+        properties.get(GIT_OBJECT_FORMAT_BEFORE),
+        properties.get(GIT_DIRTY_BEFORE),
+    )
+    after = (
+        properties.get(GIT_COMMIT_AFTER),
+        properties.get(GIT_TREE_AFTER),
+        properties.get(GIT_OBJECT_FORMAT_AFTER),
+        properties.get(GIT_DIRTY_AFTER),
+    )
+    live_revision = (live.commit, live.tree, live.object_format)
+    before_revision = before[:3]
+    after_revision = after[:3]
+    mode = properties.get(PROVENANCE_MODE)
+    must_be_clean = require_clean or require_acceptance or mode == "acceptance"
+    if (
+        (must_be_clean and (live.dirty or before[3] != "false" or after[3] != "false"))
+        or mode not in {"development", "acceptance"}
+        or (require_acceptance and mode != "acceptance")
+        or before_revision != live_revision
+        or after_revision != live_revision
     ):
-        raise ValueError(
-            "test evidence is stale or its source tree changed during execution"
-        )
+        raise ValueError("test evidence is dirty, stale, or changed during execution")
     manifest = json.loads(properties.get(MANIFEST, "null"))
     if (
         type(manifest) is not list
@@ -204,24 +156,88 @@ def validate_evidence(
         tests[names[0]] = duration
     if len(tests) != int(suite.get("tests", "-1")) or set(manifest) != set(tests):
         raise ValueError("test results do not cover their complete collection manifest")
-    if not required or any(node not in tests for node in required):
+    expected_nodes = tuple(manifest) if required is None else required
+    if not expected_nodes or any(node not in tests for node in expected_nodes):
         raise ValueError("test evidence is missing required regression nodes")
+    verify_acceptance = (
+        (require_acceptance or mode == "acceptance")
+        if require_acceptance_verified is None
+        else require_acceptance_verified
+    )
+    if verify_acceptance:
+        if mode != "acceptance":
+            raise ValueError("reusable evidence requires acceptance provenance")
+        _validate_acceptance_manifest(path, live)
     return tests
+
+
+def _validate_acceptance_manifest(path: Path, source: object) -> None:
+    """Bind reusable JUnit to its completed, verified run manifest."""
+    from devtools.git_source import GitSource
+
+    if not isinstance(source, GitSource):
+        raise TypeError("source must be a GitSource")
+    manifest_path = path.parent / "manifest.json"
+    try:
+        manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError) as error:
+        raise ValueError("reusable evidence has no readable run manifest") from error
+    if (
+        not isinstance(manifest, dict)
+        or manifest.get("evidence_mode") != "acceptance"
+        or manifest.get("outcome") != "completed"
+        or manifest.get("acceptance_verified") is not True
+        or manifest.get("cacheable") is not True
+        or manifest.get("reusable") is not True
+    ):
+        raise ValueError("run manifest has not verified acceptance completion")
+    before = manifest.get("git_source_before")
+    after = manifest.get("git_source_after")
+    expected = source.as_dict()
+    if (
+        not isinstance(before, dict)
+        or not isinstance(after, dict)
+        or before != after
+        or before != expected
+        or before.get("git_dirty") is not False
+    ):
+        raise ValueError("run manifest Git source is not clean and current")
+    expected_xml = str(path.resolve())
+    steps = manifest.get("steps")
+    if not isinstance(steps, list) or not any(
+        isinstance(step, dict)
+        and isinstance(step.get("command"), list)
+        and f"--junitxml={expected_xml}" in step["command"]
+        for step in steps
+    ):
+        raise ValueError("run manifest does not bind this JUnit selection")
 
 
 def validate_serial_release(
     path: Path,
     root: Path,
-    required: tuple[str, ...],
+    required: tuple[str, ...] | None = None,
+    *,
+    require_clean: bool = True,
+    require_acceptance: bool = False,
+    require_acceptance_verified: bool | None = None,
 ) -> dict[str, object]:
     """Assess the unfiltered serial release run, independently of query metrics.
 
     ``required`` must come from unfiltered collection on the current tree.
     A passing targeted run remains reusable audit evidence, but is not a full
     release run. Missing execution metadata cannot imply serial execution.
+    The unverified-acceptance override is only for that in-flight runner path.
     """
-    durations = validate_evidence(path, root, required)
-    if set(durations) != set(required):
+    durations = validate_evidence(
+        path,
+        root,
+        required,
+        require_clean=require_clean,
+        require_acceptance=require_acceptance,
+        require_acceptance_verified=require_acceptance_verified,
+    )
+    if required is not None and set(durations) != set(required):
         raise ValueError("serial release requires the exact unfiltered test manifest")
     suite = next(ET.parse(path).getroot().iter("testsuite"))
     properties = {
@@ -237,8 +253,19 @@ def validate_serial_release(
     if not 0 <= suite_seconds < float("inf"):
         raise ValueError("serial release has invalid complete-suite duration")
     slowest = sorted(durations.items(), key=lambda item: (-item[1], item[0]))[:20]
+    source = git_source(root)
+    properties = {
+        prop.get("name"): prop.get("value")
+        for prop in suite.findall("./properties/property")
+    }
+    acceptance = properties.get(PROVENANCE_MODE) == "acceptance"
+    acceptance_verified = acceptance and require_acceptance_verified is not False
     return {
-        "source_fingerprint": source_fingerprint(root),
+        **source.as_dict(),
+        "provenance_mode": properties.get(PROVENANCE_MODE),
+        "acceptance_verified": acceptance_verified,
+        "cacheable": acceptance_verified and not source.dirty,
+        "reusable": acceptance_verified and not source.dirty,
         "execution_mode": "serial-unfiltered",
         "test_count": len(durations),
         "complete_suite_seconds": suite_seconds,
@@ -258,12 +285,12 @@ def main() -> int:
     parser.add_argument("junit", type=Path)
     options = parser.parse_args()
     root = repository_root()
-    # Callers cannot supply a selected manifest to the release command.
-    required = collect_required(root, ("tests",))
-    report = validate_serial_release(options.junit, root, required)
+    report = validate_serial_release(options.junit, root, require_acceptance=True)
     print(json.dumps(report, indent=2))
     return 0 if report["serial_time_gate_passed"] else 1
 
 
 if __name__ == "__main__":
-    raise SystemExit(main())
+    from devtools.runs import run_reported
+
+    raise SystemExit(run_reported(main))

@@ -9,15 +9,6 @@ The terminal event closes that frontier once; no recursive control replay or
 suffix-history cache is used. Global finite-quotient classification and future
 branch safety remain separate obligations.\<close>
 
-lemma comma_round_witness_entry_equation:
-  "comma_finite_step r (Comma_Entry f delta entry_offset) =
-    (if f < 1 \<or> 9 < f \<or> 98 < entry_offset \<or>
-        comma_finite_period f (entry_offset mod 10) = 0
-     then Comma_Invalid
-     else Comma_Next (Comma_Near f delta
-       (comma_finite_headroom f r delta entry_offset)))"
-  by (simp add: comma_finite_step_def Let_def)
-
 lemma comma_round_witness_near_transport:
   "comma_finite_step r (Comma_Near f delta h) =
     comma_shift_move delta (comma_finite_step 0 (Comma_Near f 0 h))"
@@ -228,7 +219,7 @@ ML \<open>
 
 ML \<open>
   val _ = if null (Thm_Deps.all_oracles
-    @{thms comma_round_witness_entry_equation comma_round_witness_near_transport
+    @{thms comma_entry_control_formula comma_round_witness_near_transport
       comma_sector_occurrence_certificate comma_terminal_occurrence_certificate
       comma_occurrence_certificate_then comma_weighted_germ_frontier_then
       comma_weighted_germ_frontier_stop comma_round_germ_control_refines})

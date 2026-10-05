@@ -307,6 +307,250 @@ classifier recurrence independently of rank checking.
 `comma_boundary_macro_exists_from_residual_classifier` connects a classifier
 satisfying that recurrence to successful boundary construction. This is a
 **conditional theorem**: the concrete source classifier is still required.
+The deletion gate is `comma_decade_residual_classifier_ok C` for an executable
+compact constructor, with proved totality and exact occurrence reconstruction.
+The [partial classifier interface](../../proofs/isabelle/comma_compact_classifier/Comma_Compact_Decade_Classifier.thy)
+proves successful-result stability and exact-summary soundness. If a refining
+one-decade constructor succeeds within 27 inspections on every admitted
+source, the interface derives the recurrence and height at most 26. This is a
+**conditional theorem**, not a proof that the native constructor terminates. `comma_residual_classifier_B32` supplies powering
+once those premises hold; another generic block algebra is unnecessary.
+Q15 sharing alone does not preserve Q19 timing (fork coefficients 3 and 6
+provide a regression witness). Complement-normalized reset defects likewise
+need correlated carry/occurrence transport, not equality of fixed-port outputs.
+These are reconstruction obligations, not counterexamples to a complete
+transported constructor. M204/T50/M111 class counts cannot discharge them.
+**Checked local arithmetic.** The
+[pair-field owner](../../proofs/isabelle/comma_vieta_root/Comma_Pair_Field.thy)
+proves the zero-inclusive center
+`mu = (d + 10 - (f+1) div 2) mod 5` by parity and wrap cases.
+`comma_pair_center_next` then derives `mu - f` modulo five, or `mu - 2*f`
+when the raw predecessor is zero, without unfolding pair-field arithmetic.
+The [Schur owner](../../proofs/isabelle/comma_schur_carry/Comma_Schur_Carry.thy)
+proves the executable binary/radix-five split equals decimal quotient and
+remainder, reusing the shared carry monoid. These local laws do not supply the
+compact decade classifier or its occurrence reconstruction.
+The [Native19 bridge](../../proofs/isabelle/comma_native19_carry/Comma_Native19_Carry.thy)
+reuses the shared decimal codec; the
+[factored port](../../proofs/isabelle/comma_factored_port/Comma_Factored_Port_Carrier.thy)
+retains sector and orientation for exact zero-inclusive port reconstruction.
+The [six-element reset monoid](../../proofs/isabelle/comma_reset_germ/Comma_Reset_Germ.thy)
+forgets earlier reset events but cannot erase complete weighted outputs.
+The [terminal occurrence bridge](../../proofs/isabelle/comma_occurrence_semantic/Comma_Decade_Occurrence_Semantic.thy)
+retains literal prefixes and complete fork children without the total-macro
+owner. Its extension across decade crossings remains an **open obligation**.
+
+**Checked recursive observation.** The
+[pair language](../../proofs/isabelle/comma_pair_language/Comma_Recursive_Pair_Language.thy)
+composes rightmost carry-reset domain, F2/F5 defect residues and first-defect
+center; its all-neutral predicate is derived from the absent first defect.
+Append and square laws are proved symbolically, with only length modulo four
+needed for F5 transport. Bare residue equality is not weighted-action equality.
+The [even-action theorem](../../proofs/isabelle/comma_pair_language/Comma_Even_Port_Action.thy)
+proves a fixed-sector reduced-response right congruence for every complete even
+block. Sector-five aliases share weight but retain different exact endpoints
+and partial locators. **Finite experiment:** independent Moore refinement
+finds 90 classes at B1 and 86 at B2 through B1024 for the declared weighted
+observer. This does not establish native decade refinement or its structural
+termination measure. Those remain **open obligations** before forest deletion.
+
+
+**Temporal observation boundary.** The exact
+[port cover](../../proofs/isabelle/comma_pair_language/Comma_Temporal_Port_Cover.thy)
+retains the admitted orientation sheet over the 86 even-response keys, giving
+90 physical ports. Endpoint-only time normalization has 181 arbitrary classes
+and 14 dyadic classes; these are not complete branch-action identities.
+The [weighted factorization](../../proofs/isabelle/comma_pair_language/Comma_Temporal_Action.thy)
+separates the exact dwell cocycle from the bounded port remainder. A port move,
+a dwell row, a literal child transition and a decimal exponent increment are
+different units.
+
+The [radix-nine word](../../proofs/isabelle/comma_pair_language/Comma_Radix9_Pair_Word.thy)
+uses the existing carry domain: `(domain(s), s mod 9)` decodes a leaf sum
+exactly for `0 ≤ s ≤ 18`. Its ordered block merge is
+`F9(AB) = (F9(A) + 2^|A| F9(B)) mod 9`; the multiplier needs only length modulo
+six. This residue does not recover an arbitrary block or its midpoint.
+
+**Finite experiment:** the bounded joint-observer audit includes endpoints,
+nine core responses, Q21, F9, reset and first-defect outputs. Its declared clock
+pairs one fixed-sector port move with one harmonic tick. It tests 13,863
+arbitrary signatures and 62 dyadic signatures, including the two transient
+separation witnesses. The separate 46-orbit-word observer is not included.
+These counts are audit evidence, not native decade semantics or a release
+certificate. The universal F9 temporal-period theorem and native clock bridge
+remain open.
+
+**Cutover obligations.** Construct the native decade classifier and prove its
+complete ordered child semantics across chart changes. Prove a structural
+termination measure, then derive future live/loser descent and the generated
+source-20 return from that owner. Until these are checked, the old decade,
+future-rank and run-list owners cannot be deleted merely because a local
+observer repeats. An optional observer must not become an eager CLI demand.
+
+The rank-free losing semantics already has a shared owner:
+[`comma_all_branches_terminate`](../../proofs/isabelle/comma_cutover/Comma_Future_Safety.thy)
+and its structural-induction theorem `comma_termination_excludes_infinite_path`.
+Reuse these with native children rather than introducing a second losing
+predicate. This generic graph theorem does not construct native children,
+lift a compressed edge to literal child steps, prove the unique live-child
+property, or implement a survivor selector. The current literal boundary
+induction still uses `comma_total_macro`. A native recursive classifier also
+needs well-founded continuation on its full executable domain, with invalid
+states rejected; admitted-only bounded experiments do not establish that.
+Classifier failure must remain distinct from a genuine landmine with no children;
+mapping an unresolved result to `[]` would falsely prove it losing.
+
+The native replacement has the following dependency order. These are required
+interfaces, not definitions already implemented by the local quotient.
+
+| Owner | Required result before replacing release authority |
+| --- | --- |
+| Native one-decade action | Executable compact arithmetic; exact ordered outcome equals the current reference on admitted states, without calling that reference. |
+| Native recursive classifier | Well-founded continuation, explicit invalid-input rejection and admitted totality; derive the height bound of 26 afterward. The old 27-step fold becomes a differential oracle. |
+| Native boundary publication | Exact literal prefix, endpoint, transition weight and complete child alternatives, proved across recursive decade crossings without `Comma_Total_Macro`. |
+| Future semantics | Instantiate the shared inductive termination predicate with validated native children; prove unique live continuation and the source-20 live/losing pair. |
+| Executable survivor selection | Compute the live child and exponent transport from compact coordinates, with all rejected siblings proved losing. A live-state table or a noncomputable choice is not this constructor. |
+
+Numeric rank may be a derived height of a losing proof; it need not be an input
+to live/loser semantics. Replacing rank lookup alone does not supply the native
+classifier, its termination proof or the executable survivor selector.
+
+### Two-digit carry generator
+
+**Exact arithmetic specification.** For a fixed selected sector `f`, write
+`k = 100 H + x`, with `x = 10 t + d < 100`. The low carries are
+`c0 = (d + f) div 10` and `c1 = (t + d + c0) div 10`. Both are binary.
+On the neutral pair `t+d=9`, sector 5 sends suffix 54 to 99 with
+`(c0,c1)=(0,0)`, and suffix 45 to 100 with `(1,1)`. The neutral carry domain
+at `t+d=9` transmits `c0`; it does not mean that the carry is zero.
+
+The exact suffix action is `x ↦ 11x+f (mod 100)`. Its CRT coordinates are
+`(x mod 4, x mod 25)`, and its power is
+`((1+10n)x + f(n+5n(n-1))) mod 100`. The duration phase has period 50;
+the exact carry count is separate from that phase. If `D_f(d,n)` is the
+existing fixed-sector displacement, then
+`N1 = (x + D_f(d,n)) div 100` and `H' = H + N1`.
+Complete digit cycles and a tail shorter than ten compute this displacement;
+there is no need to retain the represented carry word.
+
+The lower carry is a rational mechanical word (the periodic analogue of a
+Sturmian word). The upper carry is generally **not** Sturmian. At elapsed
+time `n`, a higher wire `j ≥ 2` fires exactly when the current `c1` fires and
+`H + N1 + 1` is divisible by `10^(j-1)`. Thus higher spatial carries demand
+a high-prefix residue, not another stored itinerary.
+
+**Scope.** The sector must remain admitted throughout a powered application.
+The CRT phase is not a complete decade or future key: identical low suffixes
+at different exponent phases can have different Entry targets. For example,
+Entry `(1,0,0)` has Near headroom 180 at exponent residue 5 and 420 at
+residue 6. Harmonic phase, high-prefix precision and the crossing guard remain
+necessary. Q86, Native19 and F9 can be derived local views; deleting their
+proof dependencies requires the corresponding projection and continuation
+theorems, not merely the 50-phase suffix identity.
+
+### Exact exponent transport across decade re-entry
+
+**Checked occurrence lift, conditional on an exact summary.**
+[Comma_Decade_Occurrence_Lift](../../proofs/isabelle/comma_decade_occurrence_lift/Comma_Decade_Occurrence_Lift.thy)
+proves that `comma_decade_exact_summary s h tau`, together with an admitted
+source at physical exponent `p`, yields a literal prefix ending at exponent
+`p+h`. Each continuing decade contributes one exact exponent increment.
+The terminal children are the ordered N/Z pair at `p+h`, or the empty list
+for a landmine. This is induction over the existing semantic summary; it does
+not evaluate `comma_finite_run`, supply a fuel bound, or enumerate a rank table.
+
+The resulting phase is `(p+h) mod 924`. It is a projection of exact transport,
+not a replacement for it. The runtime `WeightedBoundaryAction` already adds
+exact exponent deltas chronologically; the unweighted future Moore observer
+erases these coefficients. Exact C1/borrow amounts likewise belong to the
+receiving occurrence and cannot be copied between residue-equivalent exponents.
+
+**Checked physical C1 occurrence.**
+[Comma_C1_Occurrence](../../proofs/isabelle/comma_c1_occurrence/Comma_C1_Occurrence.thy)
+connects an admitted fixed-sector powered C1 return to its literal path and
+physical endpoint. For two independently admitted durations, the endpoint
+high-difference change is the difference of C1 counts plus the source borrow
+minus the target borrow. The accompanying suffix-difference theorem proves
+that this signed quantity reconstructs the physical integer difference.
+These guards do not authorize crossing a sector or identify a whole N/Z macro
+with a synchronized local return.
+
+**Open constructor obligation.** The decade lift does not produce an exact summary
+for every admitted input. A native classifier must establish that existence
+and its recurrence before the global survivor proof can consume it. A macro
+edge means a literal prefix followed by a terminal child edge; equating it
+with one `comma_child` edge from the starting boundary is incorrect. A C1
+suffix re-sector operation also needs a physical seam proof before it can
+transport an occurrence across sectors.
+
+### Sibling borrow and survivor observation
+
+For synchronized adjacent sectors `f,f+1`, let
+`delta=(x_B-x_A) mod 100`, `d=x_A mod 10`, and `b=[x_B<x_A]`.
+The normalized high difference is `D=H_B-H_A-b`. Its signed innovation is
+`zeta=c1_B-c1_A+b-b_next`, with the exact local formula
+
+```text
+delta_next = (11 delta + 1) mod 100
+d_next = (d + f) mod 10
+zeta = (11 delta + 1) div 100 - delta div 10 - [d + delta mod 10 >= 10]
+D_next = D + zeta
+```
+
+The subtraction is signed. Physical `c1` is the two-column addition carry;
+`(11x+f) div 100` is not that carry. A powered difference return uses completed
+C1 returns and telescoping endpoint borrows. Exact innovation remains an
+occurrence quantity, not a finite semantic identifier.
+
+**Checked local refinement.**
+[Comma_C1_Borrow_Cocycle](../../proofs/isabelle/comma_c1_borrow/Comma_C1_Borrow_Cocycle.thy)
+proves the delta and signed innovation laws, connects them to actual admitted
+one-step C1 phases (`comma_c1_borrow_innovation_one_step_exact`), and proves
+chronological telescoping (`comma_c1_borrow_innovation_add`). Adjacent sectors
+and synchronized duration remain essential premises; unequal-duration complete
+sibling macros require their separate occurrence transport.
+
+**Finite experiment versus constructor.** The downloaded borrow/Vieta audit
+constructs the existing complete boundary graph, chooses representative
+exponents, and obtains each carry total from the difference of endpoint high
+prefixes. Its pointed-root audit calls the algorithmic losing-rank computation.
+It can test the reported partitions; it does not construct a native selector
+from the local borrow formula or prove transport to all exponents. For boundary
+`(N,2,10 mod 924)`, the reported exact borrow total is
+`999800000000000` at exponent 10 and that value times `10^924` at exponent
+934. The exact total needs affine occurrence transport, not an unproved
+exponent-independent semantic identity. Replacing
+named losing subtrees by one dead root changes the observed transition system:
+the pointed view retains only the selected live transition.
+
+The constructive revision accumulates carries from sector fragments and uses
+greatest-fixed-point pruning without numeric ranks. These improve the audit's
+construction boundary, but the fragments and ordered children still come from
+the existing macro constructor. Child counts must be evaluated at the actual
+receiving exponent: parent `N(5,921)` reaches children with residue 5 at exponent
+929. Reusing their exponent-5 counts would replace `90000*10^924` by `90000`
+in the sibling innovation. This is an occurrence-transport error, not evidence
+against the finite quotient. Cycle traversal, exponent gain and live-fiber
+checks remain separate from native all-exponent refinement.
+
+**Conditional checked theorem.**
+[The shared selector theorem](../../proofs/isabelle/comma_future_selector/Comma_Future_Selector.thy)
+proves dead iff terminating, live iff an infinite path exists, and uniqueness
+of the nonterminating child. Its locale requires complete admitted children,
+a well-founded dead relation, and a successor-closed selected live child with
+dead rejected siblings. No concrete comma selector currently instantiates
+those obligations. Numeric rank and losing-level stabilization are unnecessary
+for this implication, but its premises still require proof.
+
+**Boundary correction.** After removing two low digits from `a*10^p-1` or
+`a*10^p`, the uniform nine/zero tail has precision `p-2`. Therefore the simplified
+N/Z carry formula is valid only for `2 <= j < p`. The top wire retains the exact
+high-prefix residue. For `N(2,5)=199999`, `H=1999`, duration zero and sector one,
+wire four fires while wire five does not; extending the uniform-tail shortcut
+to `j=p` would incorrectly assert wire five. The
+[boundary carry theorem](../../proofs/isabelle/comma_c1_generator/Comma_C1_Boundary_Carry.thy)
+uses the corrected range.
+
 Rank corollaries live downstream in `Comma_Fast_Decade_Rank`; generic summary
 transport and powered-boundary consumers do not import them. Uniqueness makes
 the macro independent of a successful fuel value, but that semantic definition
@@ -321,13 +565,6 @@ proves that replacing the chart's absolute gain by `(residue+delta) mod 924`
 commutes with one canonical control move, including terminal outcomes.
 This observation forgets exponent gain: weighted application must retain it
 separately. It is not a termination or infinite-path theorem.
-
-The named theorem `comma_decade_state_future_congruent` in
-[the decade-control theory](../../proofs/isabelle/comma_decade/Comma_Decade_Control.thy)
-lifts this erasure to an entire round from an Entry-1 occurrence. Its result
-observes terminal residue phase and normalized crossing state. Raw fork gains
-0 and 924 are different, even when these observations agree; weights, absolute
-endpoints and scheduler authority are not identified by the theorem.
 
 **Implemented construction and checked local theorem.** For each
 catalog displacement `P`, the eventual power period `T(P)` lies in
@@ -516,6 +753,85 @@ logical symbols map `0` to Z and `1` to N.
 These partitions erase exact weights and guards; equal classes cannot transfer
 an occurrence's displacement. Tables are built only by explicit developer
 checks, never by package import or CLI execution. M4175/R29 were not reproduced.
+
+**Direct spatial constructor.** The [Q19 arithmetic owner](../../src/number_compiler/sequences/comma/cycle_spatial.py)
+classifies one port without a graph or minimization. Put `g=gcd(f,10)` and
+`L=10/g`. If `g` divides `d`, its class is `(L,j)` with
+`j=(d/g)*(f/g)^(-1) mod L`; otherwise its class is `(L,None)`.
+The observation is `(j=1,L)`. A punctured move sends phases 0 and 1 to
+`L-1`, decrements other phases, and preserves `None`. There are ten classes
+at period 10, six at period 5 and three at period 2. Zero remains a transient
+source. Exact weights, fork coefficients and decade continuation are not part
+of this observation. The Python owner powers these cyclic moves by modular
+arithmetic. This is port-move time, not decimal-exponent phase.
+The [Q19 theory](../../proofs/isabelle/comma_cycle_spatial_moore/Comma_Cycle_Spatial_Moore.thy)
+contains the corresponding inverse-based classifier, finite port checks and
+source-iteration refinement; build evidence is recorded separately in the sprint.
+
+**Summary versus source constructor.** The supplied T50/M204/M111 reconstruction
+reads candidate heights and terminal labels, then forms countdown descriptors.
+Its radial check encodes an already-known fork coefficient as `9*(11-a)` and
+inverts that encoding. It does not yet compute that cocycle from the source.
+Sources `(r,x)=(1,0)` and `(13,0)` both have summary `(2,Landmine)` and the same
+reported M111 class, but their first B1 live fibers are 12 and 23. A replacement
+observer therefore needs independently constructed occurrence transport as well
+as the summary class. This witness does not rule out such a complete quotient.
+The expanded B1 Moore census is available only by explicitly requesting
+`--expanded-moore-baseline` from the developer audit; it is not a production
+classifier or a default minimization pass.
+
+**External selector clock.** The [clock owner](../../src/number_compiler/sequences/comma/cyclotomic_clock.py)
+stores occurrence characters `(r mod 4,r mod 3,r mod 7,r mod 11)`. The local
+periods 1, 2, 3, 6, 22 and 28 are projections of that clock, not six action
+identities. Exact CRT projection feeds the existing nine-core residue owner;
+no endpoint-specific phase table is needed. This selector does not replace
+elapsed-time weights or source-dependent guards. In particular, equal phase
+modulo 22 need not give equal phase modulo 28. The
+[endpoint refinement](../../proofs/isabelle/comma_decisive_endpoint_quotient/Comma_Decisive_Endpoint_Quotient.thy)
+connects the core/clock key to the exact Entry endpoint on `x≤89+f` and proves
+fuel-free sector recursion equivalent to B1. Sparse B1 publication and future
+observer minimization remain separate obligations; neither a small core catalog
+nor a downstream summary census proves them.
+
+**Terminal control and occurrence weight.** For a valid terminal summary, put
+`J=a-2` for `Fork a` (`2≤a≤9`) and `J=8` for Landmine. The exact sector-level
+first-hit weight is `D=9*H+J`, where `H` counts complete continuing decades.
+It reconstructs `H=D div 9` and the terminal from `D mod 9`; composition after
+`n` continuing decades adds `9*n`. The
+[weighted-stop theorem](../../proofs/isabelle/comma_terminal_weight/Comma_Terminal_Weight.thy)
+defines these rules inductively and proves equivalence to the exact summary:
+source control has no height coordinate, and `D` is the returned occurrence
+weight. This is not a one-state ordinary Moore quotient, and `D` is not the literal sequence
+transition count. Neither storing `D` instead of `(H,terminal)` nor a small
+terminal alphabet by itself reduces the number of distinct exact output rows.
+The [terminal audit](../../devtools/verification/comma_b1_terminal_audit.py)
+constructs the weight from source transitions without rank/terminal tables:
+`python -m devtools.verification.comma_b1_terminal_audit --full --full-future`.
+Its finite experiment and the weighted refinement remain distinct from global
+infinite-path admission and sparse-publisher performance.
+
+**C1 landmine recognition.** The checked Near theorem uses `B=h-1` and proves
+that sector 9 is terminal Landmine exactly when `18≤B≤81` and `B mod 9=0`,
+for admitted Near headrooms. Inside that band only the residue test remains;
+outside it the bounds cannot be dropped. The Python endpoint owner applies
+this shared arithmetic predicate before allocating a generic boundary chart.
+The returned Landmine control contains neither headroom nor complete-decade
+height. Exact source headroom remains occurrence data, and terminal distance
+remains the returned weight `D=9H+8`.
+
+
+**Checked conditional sparse consumer.** The
+[sparse summary theorem](../../proofs/isabelle/comma_native_summary/Comma_Native_Summary.thy)
+assumes complete B32 partial certificates over every phase of all 46 fibers,
+and that each retained label is `Stop h terminal` with `h≤26`. It then proves
+that executable lookup returns an exact decade summary for every admitted
+`(phase, offset)`. The
+[occurrence corollary](../../proofs/isabelle/comma_native_summary_occurrence/Comma_Native_Summary_Occurrence.thy)
+preserves the literal prefix, exact exponent gain and ordered terminal children.
+These assumptions concern the checked constructor output, not an external table.
+The concrete base-mask/power instance remains an open performance and kernel gate.
+Independent finite reconstruction agrees on all 84,084 admitted states, but
+cannot discharge that gate or authorize runtime branch selection.
 
 **Unchecked global theorem layer.**
 [Comma_Global_Future_Safety](../../proofs/isabelle/comma_future_global/Comma_Global_Future_Safety.thy)

@@ -32,10 +32,6 @@ struct
       |> fold Simplifier.add_simp @{thms comma_finite_guard_extra_def Let_def}
     end
 
-  fun diagnostic_timeout label f x =
-    Timeout.apply (Time.fromSeconds 5) f x
-      handle Timeout.TIMEOUT _ => error ("Round witness timeout: " ^ label)
-
   fun memo_certified require_generation certify {hit, miss} table key compute =
     (require_generation ();
      case Termtab.lookup (!table) key of
@@ -60,7 +56,7 @@ struct
           error "Round witness source generation changed; discard the entire owner")
       val _ = require_generation ()
       val _ = warning "round witness: evaluator setup"
-      val local_ctxt = diagnostic_timeout "evaluator setup" evaluator ctxt
+      val local_ctxt = evaluator ctxt
       val _ = warning "round witness: evaluator ready"
       val recursive_rules = round_rules local_ctxt
       val _ = if null recursive_rules then ()
@@ -128,7 +124,7 @@ struct
          powers = @{thms comma_compiled_power_facts}}
       val step_ctxt = (put_simpset HOL_basic_ss ctxt
         |> Simplifier.add_cong @{thm if_weak_cong}) addsimps
-        @{thms comma_round_witness_entry_equation comma_near_control_formula Let_def}
+        @{thms comma_entry_control_formula comma_near_control_formula Let_def}
       val headroom_ctxt = put_simpset HOL_basic_ss ctxt addsimps
         @{thms comma_finite_headroom_def Let_def}
       (* Composition consumes proved germ equations only. Inheriting the global
@@ -170,8 +166,7 @@ struct
           val calls = if near then near_conversions else entry_conversions
           val elapsed = if near then near_conversion_elapsed else entry_conversion_elapsed
           val _ = calls := !calls + 1
-          val th = measured elapsed
-            (diagnostic_timeout "local finite step" local_conversion) (Thm.cterm_of ctxt t)
+          val th = measured elapsed local_conversion (Thm.cterm_of ctxt t)
           val _ = if trace then warning ("round witness: local done " ^
             Thm.string_of_thm ctxt th) else ()
         in th end
@@ -563,15 +558,7 @@ struct
           val _ = current_phase := SOME phase
           val r = numeral phase
           val admission = prove_true (@{term comma_round_admitted} $ source)
-          val (equation, complete) = measured round_elapsed
-            (fn source => Timeout.apply (Time.fromSeconds 5) (round_once r) source
-              handle Timeout.TIMEOUT _ => error
-                ("Round witness timeout: one-pass weighted round; normalization_ms=" ^
-                 LargeInt.toString (Time.toMilliseconds (!normalization_elapsed)) ^
-                 "; selector_ms=" ^ LargeInt.toString (Time.toMilliseconds (!selector_elapsed)) ^
-                 "; compatibility_ms=" ^
-                 LargeInt.toString (Time.toMilliseconds (!compatibility_elapsed)) ^
-                 "; oracle_ms=" ^ LargeInt.toString (#milliseconds (certificate_stats ())))) source
+          val (equation, complete) = measured round_elapsed (round_once r) source
           val _ = if Thm.term_of (Thm.lhs_of (equation RS @{thm eq_reflection})) aconv
               (@{term comma_round_close} $ r $ source) then ()
             else error "Weighted round lost its exact occurrence binding"
@@ -737,16 +724,7 @@ struct
           val _ = current_phase := SOME phase
           val r = numeral phase
           val admission = prove_true (@{term comma_round_admitted} $ source)
-          val result = Timeout.apply (Time.fromSeconds 5)
-            (fn () => observe_once r source admission) ()
-            handle Timeout.TIMEOUT _ => error
-              ("Round witness timeout: projected round observation; sectors=" ^
-               Int.toString (!observation_sectors) ^ "; links=" ^
-               Int.toString (!observation_links) ^ "; normalization_ms=" ^
-               LargeInt.toString (Time.toMilliseconds (!observation_normalization_elapsed)) ^
-               "; arithmetic_ms=" ^
-               LargeInt.toString (Time.toMilliseconds (!composition_elapsed)) ^
-               "; oracle_ms=" ^ LargeInt.toString (#milliseconds (certificate_stats ())))
+          val result = observe_once r source admission
           val _ = if Thm.term_of (Thm.lhs_of (#observation result RS @{thm eq_reflection}))
               aconv (@{term comma_round_observation} $ r $ source) then ()
             else error "Observation lost its weighted-owner projection binding"
@@ -778,7 +756,8 @@ struct
             [#observation result]
           val decoded_eq = decoded RS @{thm eq_reflection}
           val result_eq = Simplifier.rewrite
-            (near_arithmetic_ctxt addsimps @{thms comma_decade_decode.simps})
+            (near_arithmetic_ctxt addsimps @{thms comma_decade_decode.simps
+              comma_decade_root_admitted_entry})
             (Thm.rhs_of decoded_eq)
           val equation = certify (object_eq (Thm.transitive decoded_eq result_eq))
           val expected = @{term comma_decade_observed_control} $

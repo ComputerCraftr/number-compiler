@@ -30,6 +30,7 @@ from number_compiler.sequences.comma.certificates import (
 from tests.support.comma_oracles import assert_phase_period
 
 
+@pytest.mark.validation
 def test_finite_forest_and_first_fork_are_reproducible() -> None:
     expected = json.loads(
         (

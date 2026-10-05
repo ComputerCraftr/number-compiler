@@ -310,7 +310,7 @@ def profile(
     }
 
 
-if __name__ == "__main__":
+def _command() -> None:
     parser = argparse.ArgumentParser()
     parser.add_argument("--steps", type=int, required=True)
     parser.add_argument("--cap", type=int, default=180000)
@@ -323,3 +323,9 @@ if __name__ == "__main__":
             sort_keys=True,
         )
     )
+
+
+if __name__ == "__main__":
+    from devtools.runs import run_reported
+
+    raise SystemExit(run_reported(_command))

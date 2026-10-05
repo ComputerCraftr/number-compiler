@@ -19,6 +19,8 @@ from number_compiler.sequences.collatz.temporal_run_quotient import (
 )
 from tests.support.reference_arithmetic import literal_dyadic_orbit
 
+pytestmark = pytest.mark.usefixtures("isolated_process_cache")
+
 
 def test_warm_complete_germ_skips_discovery_for_another_high_fiber(
     monkeypatch: pytest.MonkeyPatch,

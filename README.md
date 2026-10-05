@@ -53,7 +53,8 @@ The HashLife production cutover is unfinished. Structural cleanup does not prove
 sublinear execution or satisfy the five-minute runtime release gate. The
 [current release status](docs/release-status.md) records the remaining blockers.
 
-For development, `pytest` runs the unit suite; `pytest -m validation` runs
-exhaustive proofs, research and release workloads. Use `pytest -m ''` for both.
+For development, `python -m devtools.checks.release --suite unit` runs the unit
+suite; `--suite all` includes exhaustive and release workloads. Repeated
+`--select PATH_OR_NODEID` arguments select focused tests. Direct pytest is rejected.
 See the [checking guide](docs/development.md) for resource controls and evidence
 requirements. A unit pass does not certify the unfinished runtime release.

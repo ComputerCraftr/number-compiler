@@ -7,6 +7,7 @@ import pytest
 from devtools.verification.comma_semantic_quotients import (
     CommaFutureGraph,
     CommaFutureMooreQuotient,
+    CommaPortMooreQuotient,
     boundary_production_port,
     build_future_graph,
     build_future_production_macro_quotient,
@@ -15,6 +16,10 @@ from devtools.verification.comma_semantic_quotients import (
     build_q19_production_ports,
     future_homogeneous_run_audit,
     future_rank_refinement_audit,
+)
+from number_compiler.arithmetic.carry.carry_monoid import apply_carry_fn
+from number_compiler.arithmetic.formula.decimal_pair_coordinates import (
+    decimal_pair_carry_action,
 )
 from number_compiler.sequences.comma.arithmetic import (
     comma_port_next,
@@ -35,6 +40,16 @@ def temporal_quotient(future_graph: CommaFutureGraph) -> CommaFutureMooreQuotien
     return build_future_temporal_quotient(future_graph)
 
 
+@pytest.fixture(scope="module")
+def q15() -> CommaPortMooreQuotient:
+    return build_q15_nonzero_ports()
+
+
+@pytest.fixture(scope="module")
+def q19() -> CommaPortMooreQuotient:
+    return build_q19_production_ports()
+
+
 @pytest.mark.parametrize("leading", range(1, 10))
 @pytest.mark.parametrize("digit", range(10))
 def test_port_arithmetic_exactly_punctures_zero_once(leading: int, digit: int) -> None:
@@ -50,9 +65,9 @@ def test_port_arithmetic_rejects_noncanonical_inputs(leading: int, digit: int) -
         comma_port_previous(leading, digit)
 
 
-def test_q15_and_q19_are_fixed_point_observers_with_distinct_zero_scope() -> None:
-    q15 = build_q15_nonzero_ports()
-    q19 = build_q19_production_ports()
+def test_q15_and_q19_are_fixed_point_observers_with_distinct_zero_scope(
+    q15: CommaPortMooreQuotient, q19: CommaPortMooreQuotient
+) -> None:
     assert len(q15.ports) == 81
     assert q15.classes == q15.fixed_classes == 15
     assert len(q19.ports) == 90
@@ -65,6 +80,38 @@ def test_q15_and_q19_are_fixed_point_observers_with_distinct_zero_scope() -> Non
     # agree under Q19 while their exact radial displacements differ.
     assert q19.class_for_port(1, 0) == q19.class_for_port(3, 0)
     assert cycle_transfer(1, 0).displacement != cycle_transfer(3, 0).displacement
+
+
+def test_complement_reset_germ_is_conjugacy_not_fixed_port_equality() -> None:
+    # These are real f=1 ports: (d,p)=(1,0) and (9,8). Their
+    # complement-normalized defects agree, but their carry functions do not.
+    # The full proposal retains occurrence transport; this tests its necessity,
+    # not a counterexample to a complete transported action.
+    sums = tuple(d + comma_port_previous(1, d) for d in (1, 9))
+    assert sums == (1, 17)
+    assert (sums[0] - 9) % 5 == -(sums[1] - 9) % 5 == 2
+    lower, upper = (decimal_pair_carry_action(symbol) for symbol in sums)
+    for incoming in (0, 1):
+        assert apply_carry_fn(lower, incoming) != apply_carry_fn(upper, incoming)
+        assert apply_carry_fn(upper, 1 - incoming) == (
+            1 - apply_carry_fn(lower, incoming)
+        )
+
+
+def test_fork_q15_sharing_requires_occurrence_rebase_for_q19_timing(
+    q15: CommaPortMooreQuotient, q19: CommaPortMooreQuotient
+) -> None:
+    # Use the production N-cylinder ports for exact fork coefficients 3 and 6.
+    # Q15 shares the puncture response; the receiving coefficient must still
+    # recover the distinct physical periods. This is not a failure of a
+    # complete action which retains that coefficient outside its semantic ID.
+    left, right = (
+        boundary_production_port(BoundaryState("N", coefficient, 10))
+        for coefficient in (3, 6)
+    )
+    assert q15.class_for_port(*left) == q15.class_for_port(*right)
+    assert q19.class_for_port(*left) != q19.class_for_port(*right)
+    assert cycle_transfer(*left).period != cycle_transfer(*right).period
 
 
 def _terminal(

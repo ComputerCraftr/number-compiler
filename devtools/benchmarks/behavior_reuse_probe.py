@@ -20,7 +20,7 @@ from typing import cast
 from unittest.mock import patch
 
 from devtools.benchmarks.causal_tile_growth_probe import WORK_FIELDS, _runtime
-from devtools.checks.test_run_evidence import source_fingerprint
+from devtools.git_source import git_source
 from devtools.paths import repository_root
 
 ROOT = repository_root()
@@ -103,7 +103,7 @@ def worker(steps: int, width: int, enabled: bool) -> dict[str, object]:
         raise ValueError("behavior probe requires positive exact temporal depth")
     if type(width) is not int or width < 2 or width & (width - 1):
         raise ValueError("behavior probe requires a dyadic width of at least two")
-    fingerprint = source_fingerprint(ROOT)
+    source = git_source(ROOT).as_dict()
     start = perf_counter()
     ledger, tiles, adapter, primitive, scheduler = _runtime(10)
     alphabet = adapter.alphabet(primitive)
@@ -153,7 +153,9 @@ def worker(steps: int, width: int, enabled: bool) -> dict[str, object]:
                 "steps": steps,
                 "width": width,
                 "pid": os.getpid(),
-                "fingerprint": fingerprint,
+                "git_source": source,
+                "evidence_mode": "development",
+                "cacheable": False,
                 "cold_seconds": query_end - start,
                 "query_seconds": query_end - query_start,
                 "warm_point_and_width_seconds": warm_end - warm_start,
@@ -171,13 +173,12 @@ def worker(steps: int, width: int, enabled: bool) -> dict[str, object]:
             }
     finally:
         source.close()
-    row["fingerprint_after"] = source_fingerprint(ROOT)
     return row
 
 
 def fresh_series(output: Path, width: int) -> None:
     records: list[dict[str, object]] = []
-    fingerprint = source_fingerprint(ROOT)
+    source = git_source(ROOT).as_dict()
     for enabled in (True, False):
         for steps in HORIZONS:
             for trial in range(5):
@@ -199,18 +200,13 @@ def fresh_series(output: Path, width: int) -> None:
                         cwd=ROOT,
                         capture_output=True,
                         text=True,
-                        timeout=35,
                         check=True,
                     )
                     row = json.loads(result.stdout)
                     status = (
                         "complete"
-                        if (
-                            row["fingerprint"]
-                            == fingerprint
-                            == row["fingerprint_after"]
-                        )
-                        else "source_changed"
+                        if row["git_source"] == source
+                        else "git_state_changed"
                     )
                 except (subprocess.SubprocessError, ValueError, KeyError) as error:
                     row, status = {"error": str(error)}, "incomplete"
@@ -227,7 +223,9 @@ def fresh_series(output: Path, width: int) -> None:
                 output.write_text(
                     json.dumps(
                         {
-                            "fingerprint": fingerprint,
+                            "git_source": source,
+                            "evidence_mode": "development",
+                            "cacheable": False,
                             "records": records,
                             "summary": summarize(records),
                         },

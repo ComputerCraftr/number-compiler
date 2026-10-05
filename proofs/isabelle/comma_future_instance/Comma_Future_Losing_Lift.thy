@@ -1,5 +1,5 @@
 theory Comma_Future_Losing_Lift
-  imports Comma_Future_Literal_Bridge
+  imports Comma_Future_Literal_Bridge Comma_Arithmetic.Comma_Literal_Path
 begin
 
 lemma comma_indexed_trace_terminal_landmine:
@@ -58,17 +58,6 @@ proof -
     by (rule comma_weighted_landmine_no_literal_child[OF exponent
       comma_indexed_trace_terminal_landmine[OF trace]])
   show ?thesis using unique stop by blast
-qed
-
-lemma comma_infinite_literal_prefix:
-  assumes edges: "\<And>j. comma_child (path j) (path (Suc j))"
-  shows "comma_literal_path n (path 0) (path n)"
-proof (induction n)
-  case 0
-  then show ?case by (rule comma_literal_path.zero)
-next
-  case (Suc n)
-  show ?case by (rule comma_literal_path_snoc[OF Suc.IH edges])
 qed
 
 theorem comma_descending_loser_no_infinite_literal_path:

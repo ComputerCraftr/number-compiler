@@ -53,7 +53,7 @@ def build() -> bytes:
     return header + transitions[0] + transitions[1] + outputs
 
 
-if __name__ == "__main__":
+def _command() -> None:
     raw = build()
     packed = zlib.compress(raw, level=9)
     path = repository_root() / "src/number_compiler/kernels/physical_collatz_four.zlib"
@@ -61,3 +61,9 @@ if __name__ == "__main__":
     print("raw_sha256", hashlib.sha256(raw).hexdigest())
     print("packed_sha256", hashlib.sha256(packed).hexdigest())
     print("raw_bytes", len(raw), "packed_bytes", len(packed))
+
+
+if __name__ == "__main__":
+    from devtools.runs import run_reported
+
+    raise SystemExit(run_reported(_command))

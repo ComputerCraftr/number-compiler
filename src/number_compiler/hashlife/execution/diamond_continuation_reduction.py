@@ -121,9 +121,7 @@ class PrimitiveContinuationReducer:
             raise ValueError(
                 "finite continuation requires an already admitted primitive domain"
             )
-        handle = self.kernels._kernel_ids[
-            _effect_key(self.runtime.actions.primitive(node.sort.action))
-        ]
+        handle = self.kernels._kernel_ids[_effect_key(primitive.effect)]
         return node.sort, handle
 
     def _support(

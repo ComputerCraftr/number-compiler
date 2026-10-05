@@ -44,5 +44,11 @@ def run_probe() -> dict[str, object]:
     }
 
 
-if __name__ == "__main__":
+def _command() -> None:
     print(json.dumps(run_probe(), indent=2))
+
+
+if __name__ == "__main__":
+    from devtools.runs import run_reported
+
+    raise SystemExit(run_reported(_command))

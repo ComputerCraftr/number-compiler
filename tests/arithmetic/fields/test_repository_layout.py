@@ -1,7 +1,7 @@
 import ast
 from dataclasses import dataclass
-from functools import lru_cache
-from hashlib import sha256
+
+import pytest
 
 from devtools.paths import repository_root
 
@@ -15,26 +15,10 @@ class _SourceFacts:
     definitions: tuple[tuple[str, str], ...]
 
 
-def _production_source_signature() -> str:
-    source = ROOT / "src" / "number_compiler"
-    digest = sha256()
-    for path in sorted(source.rglob("*.py")):
-        digest.update(path.relative_to(source).as_posix().encode("utf-8"))
-        digest.update(b"\0")
-        digest.update(path.read_bytes())
-        digest.update(b"\0")
-    return digest.hexdigest()
-
-
-@lru_cache(maxsize=2)
-def _production_source_facts(
-    signature: str,
-) -> tuple[_SourceFacts, ...]:
-    """Parse one frozen production tree once for all repository policy tests."""
+@pytest.fixture(scope="module")
+def _production_facts() -> tuple[_SourceFacts, ...]:
     source = ROOT / "src" / "number_compiler"
     rows: list[_SourceFacts] = []
-    if type(signature) is not str or not signature:
-        raise ValueError("production source facts require a content digest")
     for path in sorted(source.rglob("*.py")):
         relative = path.relative_to(source).as_posix()
         tree = ast.parse(path.read_text(), filename=str(path))
@@ -53,13 +37,11 @@ def _production_source_facts(
     return tuple(rows)
 
 
-def _production_facts() -> tuple[_SourceFacts, ...]:
-    return _production_source_facts(_production_source_signature())
-
-
-def _production_definitions(*, functions_only: bool = False) -> dict[str, list[str]]:
+def _production_definitions(
+    facts: tuple[_SourceFacts, ...], *, functions_only: bool = False
+) -> dict[str, list[str]]:
     definitions: dict[str, list[str]] = {}
-    for row in _production_facts():
+    for row in facts:
         for name, kind in row.definitions:
             if not functions_only or kind == "function":
                 definitions.setdefault(name, []).append(row.relative_path)
@@ -74,11 +56,11 @@ def test_repository_uses_canonical_source_and_developer_packages() -> None:
     assert not (ROOT / "src" / "reverse_add").exists()
 
 
-def test_production_compiler_keeps_analysis_and_test_code_out_of_runtime_graph() -> (
-    None
-):
+def test_production_compiler_keeps_analysis_and_test_code_out_of_runtime_graph(
+    _production_facts: tuple[_SourceFacts, ...],
+) -> None:
     forbidden_roots = {"tests", "devtools", "bench", "research"}
-    for row in _production_facts():
+    for row in _production_facts:
         assert not any(name.split(".")[0] in forbidden_roots for name in row.imports), (
             row.relative_path,
             row.imports,
@@ -90,8 +72,10 @@ def test_production_compiler_keeps_analysis_and_test_code_out_of_runtime_graph()
     assert "from .release" not in compiler
 
 
-def test_canonical_arithmetic_primitives_are_not_reimplemented() -> None:
-    defs = _production_definitions(functions_only=True)
+def test_canonical_arithmetic_primitives_are_not_reimplemented(
+    _production_facts: tuple[_SourceFacts, ...],
+) -> None:
+    defs = _production_definitions(_production_facts, functions_only=True)
     assert defs.get("digits_lsd") == ["arithmetic/fields/radix.py"]
     assert defs.get("smallest_factor") == ["sequences/prime/set.py"]
     assert not defs.get("_bits")
@@ -113,8 +97,10 @@ def test_prime_projector_encoding_experiments_are_physically_separated() -> None
         assert name not in text
 
 
-def test_shared_morphism_core_has_no_legacy_parallel_power_types() -> None:
-    definitions = _production_definitions()
+def test_shared_morphism_core_has_no_legacy_parallel_power_types(
+    _production_facts: tuple[_SourceFacts, ...],
+) -> None:
+    definitions = _production_definitions(_production_facts)
     assert definitions.get("binary_power") == ["arithmetic/fields/morphism_core.py"]
     assert definitions.get("LazyLoweringCache") == [
         "arithmetic/fields/morphism_core.py"
@@ -128,7 +114,9 @@ def test_shared_morphism_core_has_no_legacy_parallel_power_types() -> None:
         assert not definitions.get(legacy)
 
 
-def test_special_certificate_compiler_path_has_no_classical_recurrence_owner() -> None:
+def test_special_certificate_compiler_path_has_no_classical_recurrence_owner(
+    _production_facts: tuple[_SourceFacts, ...],
+) -> None:
     src = ROOT / "src" / "number_compiler"
     compiler = (src / "api/sequence_compiler.py").read_text()
     special = src
@@ -155,7 +143,7 @@ def test_special_certificate_compiler_path_has_no_classical_recurrence_owner() -
     assert not (production / "digit_power.py").exists()
     assert (ROOT / "devtools/verification/oracles/classical_ceiling.py").is_file()
     assert (ROOT / "devtools/verification/oracles/digit_power.py").is_file()
-    definitions = _production_definitions()
+    definitions = _production_definitions(_production_facts)
     for recurrence in (
         "fermat_classical_ceiling",
         "mersenne_classical_ceiling",
@@ -273,8 +261,10 @@ def test_special_slow_oracles_are_explicit_opt_in_not_root_exports() -> None:
     assert (ROOT / "devtools" / "verification" / "special_source_program.py").is_file()
 
 
-def test_shared_cross_family_arithmetic_has_one_owner_per_primitive() -> None:
-    definitions = _production_definitions()
+def test_shared_cross_family_arithmetic_has_one_owner_per_primitive(
+    _production_facts: tuple[_SourceFacts, ...],
+) -> None:
+    definitions = _production_definitions(_production_facts)
 
     assert definitions.get("polynomial_multiply") == [
         "arithmetic/polynomials/polynomial.py"
@@ -365,9 +355,11 @@ def test_number_compiler_cli_and_projection_api_are_physically_separated() -> No
     assert "def _render_value" not in cli
 
 
-def test_duplicate_helper_and_carrier_cleanup_stays_canonical() -> None:
+def test_duplicate_helper_and_carrier_cleanup_stays_canonical(
+    _production_facts: tuple[_SourceFacts, ...],
+) -> None:
     src = ROOT / "src" / "number_compiler"
-    definitions = _production_definitions()
+    definitions = _production_definitions(_production_facts)
 
     # One valuation implementation owns the shared 2-adic primitive.  The
     # public collatz_pair.v2 spelling is an import alias, not a second body.
@@ -409,9 +401,9 @@ def test_duplicate_helper_and_carrier_cleanup_stays_canonical() -> None:
     assert not (ROOT / "bench" / "special_lazy_hotpath_probe.py").exists()
 
 
-def test_collatz_character_observers_stay_before_exact_valuation_and_germ_paths() -> (
-    None
-):
+def test_collatz_character_observers_stay_before_exact_valuation_and_germ_paths(
+    _production_facts: tuple[_SourceFacts, ...],
+) -> None:
     src = ROOT / "src" / "number_compiler"
     character = (src / "sequences/collatz/character.py").read_text()
     raw = (src / "sequences/collatz/raw_field.py").read_text()
@@ -449,7 +441,7 @@ def test_collatz_character_observers_stay_before_exact_valuation_and_germ_paths(
 
     # Shared radix/sentinel arithmetic remains owned by collatz_raw_field; the
     # character layer imports it rather than growing parallel helpers.
-    defs = _production_definitions(functions_only=True)
+    defs = _production_definitions(_production_facts, functions_only=True)
     assert defs.get("power4_radix_bits") == ["sequences/collatz/raw_field.py"]
     assert defs.get("collatz_sentinel_digit") == ["sequences/collatz/raw_field.py"]
 
@@ -506,7 +498,9 @@ def test_distribution_metadata_owns_number_compiler_cli_without_legacy_package()
     assert not (ROOT / "src" / "reverse_add").exists()
 
 
-def test_reverse_add_slab_removed_and_spatial_prefix_has_one_owner() -> None:
+def test_reverse_add_slab_removed_and_spatial_prefix_has_one_owner(
+    _production_facts: tuple[_SourceFacts, ...],
+) -> None:
     src = ROOT / "src" / "number_compiler"
     for removed in (
         "carry_slab_power.py",
@@ -516,7 +510,7 @@ def test_reverse_add_slab_removed_and_spatial_prefix_has_one_owner() -> None:
     ):
         assert not (src / removed).exists(), removed
 
-    definitions = _production_definitions()
+    definitions = _production_definitions(_production_facts)
     assert definitions.get("FiniteMonoid") == ["arithmetic/carry/prefix_monoid.py"]
     assert definitions.get("FormulaPrefixMonoidProjection") == [
         "arithmetic/carry/prefix_monoid.py"

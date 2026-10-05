@@ -12,21 +12,36 @@ PUBLIC_PACKAGES = frozenset(
 DEVELOPER_ROOTS = frozenset({"devtools", "tests", "bench", "research", "proofs"})
 
 
-def module_inventory(root: Path) -> dict[str, Path]:
+def module_inventory(
+    root: Path, *, module_paths: tuple[Path, ...] | None = None
+) -> dict[str, Path]:
     """Give each retained authored module exactly one qualified name."""
     modules: dict[str, Path] = {}
-    for directory in (root / "src", root / "devtools", root / "tests"):
-        base = root / "src" if directory.name == "src" else root
-        for path in sorted(directory.rglob("*.py")):
-            if "__pycache__" in path.parts:
-                continue
-            parts = path.relative_to(base).with_suffix("").parts
-            if parts[-1] == "__init__":
-                parts = parts[:-1]
-            name = ".".join(parts)
-            if name in modules:
-                raise ValueError(f"duplicate module identity: {name}")
-            modules[name] = path
+    if module_paths is None:
+        paths = tuple(
+            path
+            for directory in (root / "src", root / "devtools", root / "tests")
+            for path in directory.rglob("*.py")
+            if "__pycache__" not in path.parts
+        )
+    else:
+        paths = module_paths
+    for path in sorted(paths):
+        if path.is_relative_to(root / "src"):
+            base = root / "src"
+        elif path.is_relative_to(root / "devtools") or path.is_relative_to(
+            root / "tests"
+        ):
+            base = root
+        else:
+            continue
+        parts = path.relative_to(base).with_suffix("").parts
+        if parts[-1] == "__init__":
+            parts = parts[:-1]
+        name = ".".join(parts)
+        if name in modules:
+            raise ValueError(f"duplicate module identity: {name}")
+        modules[name] = path
     return modules
 
 
@@ -34,10 +49,11 @@ def package_violations(
     root: Path,
     *,
     parsed_sources: Mapping[Path, ast.Module] | None = None,
+    module_paths: tuple[Path, ...] | None = None,
 ) -> tuple[str, ...]:
     """Check ownership without importing or executing the modules being audited."""
     violations: list[str] = []
-    modules = module_inventory(root)
+    modules = module_inventory(root, module_paths=module_paths)
     for module, path in modules.items():
         for directory in path.parents:
             if directory in (root, root / "src"):

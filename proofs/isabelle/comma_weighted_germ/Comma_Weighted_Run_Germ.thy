@@ -236,7 +236,7 @@ proof (cases "comma_weighted_step (r mod 924) (Comma_Near f delta h)")
     using comma_finite_near_next_weight[of p f delta h target] finite Comma_WNext
     by (simp add: comma_finite_next_weight_def phase del: comma_weighted_step_def)
   have path: "comma_round_weighted_prefix p r 1 (Comma_Near f delta h) target 1"
-    unfolding One_nat_def comma_round_weighted_prefix.simps
+    unfolding One_nat_def comma_round_weighted_prefix_simps
     apply (rule exI[of _ target])
     apply (rule exI[of _ weight])
     apply (rule exI[of _ 0])

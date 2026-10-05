@@ -19,8 +19,8 @@ local_setup \<open>fn lthy =>
       if mid <> mid' then error "Nonadjacent decade summary ranges" else
       let
         val rule = Drule.infer_instantiate lthy
-          [(("height",0), @{cterm comma_decade_rank_candidate}),
-           (("terminal",0), @{cterm comma_decade_terminal_candidate}),
+          [(("height",0), @{cterm comma_decade_rank_candidate_on_valid}),
+           (("terminal",0), @{cterm comma_decade_terminal_candidate_on_valid}),
            (("lo",0), Thm.cterm_of lthy (nat lo)),
            (("mid",0), Thm.cterm_of lthy (nat mid)),
            (("hi",0), Thm.cterm_of lthy (nat hi))]
@@ -39,7 +39,7 @@ local_setup \<open>fn lthy =>
       (Comma_Entry_Arithmetic.natural_context lthy addsimps [checked_range])
       @{thm comma_fast_decade_summary_range_full}
     val expected = @{prop "comma_decade_summary_checked
-      comma_decade_rank_candidate comma_decade_terminal_candidate"}
+      comma_decade_rank_candidate_on_valid comma_decade_terminal_candidate_on_valid"}
     val _ = if Thm.prop_of full aconv expected andalso Thm.nprems_of full=0
         andalso null (Thm.hyps_of full) andalso null (Thm_Deps.all_oracles [full])
       then () else error "Incomplete decade summary coverage"
@@ -48,15 +48,15 @@ local_setup \<open>fn lthy =>
 
 corollary comma_decade_summary_candidate_exact:
   assumes "comma_decade_admitted s"
-  shows "comma_decade_exact_summary s (comma_decade_rank_candidate s)
-    (comma_decade_terminal_candidate s)"
+  shows "comma_decade_exact_summary s (comma_decade_rank_candidate_on_valid s)
+    (comma_decade_terminal_candidate_on_valid s)"
   by (rule comma_decade_summary_checked_sound
     [OF comma_decade_summary_candidate_checked assms])
 
 corollary comma_summary_boundary_candidate_correct:
   assumes "comma_boundary_valid q"
-  shows "comma_fast_total_boundary comma_decade_rank_candidate
-    comma_decade_terminal_candidate q = Some (comma_total_macro q)"
+  shows "comma_fast_total_boundary comma_decade_rank_candidate_on_valid
+    comma_decade_terminal_candidate_on_valid q = Some (comma_total_macro q)"
   by (rule comma_fast_total_boundary_correct
     [OF comma_decade_summary_candidate_checked assms])
 

@@ -68,7 +68,6 @@ assert main(arguments) == 0
         capture_output=True,
         text=True,
         check=False,
-        timeout=5,
     )
     assert completed.returncode == 0, completed.stderr
 
@@ -103,6 +102,5 @@ else:
         capture_output=True,
         text=True,
         check=False,
-        timeout=5,
     )
     assert completed.returncode == 0, completed.stderr

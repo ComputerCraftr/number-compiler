@@ -17,7 +17,7 @@ to their recorded checkout, not later source.
 
 Each paper distinguishes definitions, assumptions, checked results, implemented
 construction, finite experiments and open obligations. Patch histories,
-profiling details and source-fingerprinted validation belong in the weekly
+profiling details and Git-attributed validation belong in the weekly
 records below; see the [placement guide](development.md#documentation-placement).
 
 - [Shared actions, cylinders, and resource ownership](research/shared.md)

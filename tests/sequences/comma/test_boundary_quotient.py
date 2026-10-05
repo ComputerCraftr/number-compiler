@@ -7,6 +7,7 @@ from typing import Literal
 
 import pytest
 
+from number_compiler.arithmetic.fields.consumer_pullback import ZERO as ZERO_Q
 from number_compiler.sequences.comma import boundary_quotient
 from number_compiler.sequences.comma.arithmetic import (
     comma_children,
@@ -18,6 +19,7 @@ from number_compiler.sequences.comma.arithmetic import (
 from number_compiler.sequences.comma.boundary_quotient import (
     AffineWeight,
     BoundaryState,
+    SectorFragment,
     construct_macro,
 )
 from tests.support.comma_oracles import literal_children as _literal_children
@@ -137,6 +139,94 @@ def test_affine_weight_refuses_nonintegral_or_forged_components() -> None:
         AffineWeight(1, 0, 3).evaluate(1)
     with pytest.raises(ValueError, match="invalid comma affine"):
         AffineWeight(1, 0, 0)
+
+
+def test_affine_zero_and_identity_fastpaths_preserve_shared_ownership() -> None:
+    zero = boundary_quotient._ZERO_AFFINE
+    assert boundary_quotient._constant(0) is zero
+    assert boundary_quotient._from_weight(AffineWeight(0, 0, 1)) is zero
+    assert zero.weight() is boundary_quotient._ZERO_WEIGHT
+
+    affine = boundary_quotient._from_weight(AffineWeight(1, 2, 3))
+    assert zero.plus(affine) is affine
+    assert affine.plus(zero) is affine
+    assert affine.times(1) is affine
+    assert affine.times(0) is zero
+    assert affine.times(3).weight() == AffineWeight(1, 2, 1)
+    assert affine.plus(boundary_quotient._constant(1)).weight() == AffineWeight(1, 5, 3)
+
+    # The former ExactRational construction rejected bool despite bool being
+    # an int subclass; fastpaths must keep that strict input behavior.
+    with pytest.raises(TypeError, match="components must be integers"):
+        boundary_quotient._constant(False)
+    with pytest.raises(TypeError, match="components must be integers"):
+        affine.times(False)
+
+
+def test_indexed_macro_zero_period_preserves_nonzero_cycle_displacement() -> None:
+    source = BoundaryState("Z", 2, 5)
+    fragment = SectorFragment(
+        leading=2,
+        entering_digit=0,
+        complete_cycles=AffineWeight(0, 1, 1),
+        period=0,
+        displacement=5,
+        maximum_guard=0,
+        literal_steps=0,
+        literal_increment=0,
+    )
+    source_value = boundary_quotient._Affine(
+        boundary_quotient._integer_rational(source.a),
+        ZERO_Q,
+    )
+    template = boundary_quotient._indexed_macro(
+        source,
+        "landmine",
+        0,
+        None,
+        boundary_quotient._ZERO_AFFINE,
+        source_value.plus(boundary_quotient._constant(5)),
+        (),
+        [fragment],
+        None,
+        None,
+    )
+
+    assert template.weight.evaluate(5) == 0
+    assert template.endpoint.evaluate(5) == source.value(5) + 5
+
+
+@pytest.mark.parametrize(
+    "state",
+    (
+        BoundaryState("N", 2, 10),
+        BoundaryState("Z", 2, 10),
+        BoundaryState("N", 5, 921),
+        BoundaryState("Z", 8, 7),
+    ),
+)
+def test_indexed_affine_fastpaths_match_literal_macro_reference(
+    state: BoundaryState,
+) -> None:
+    exponent = state.exponent_residue
+    if exponent < 5:
+        exponent += 924
+    expected_endpoint, expected_steps, expected_children = _reference_macro(
+        state.value(exponent)
+    )
+    for grouped_near in (False, True):
+        macro = construct_macro(state, grouped_near=grouped_near)
+        assert macro.endpoint.evaluate(exponent) == expected_endpoint
+        assert macro.weight.evaluate(exponent) == expected_steps
+        assert (macro.outcome == "fork") == (len(expected_children) == 2)
+        if expected_children:
+            assert (
+                tuple(
+                    child.value(exponent + macro.exponent_delta)
+                    for child in macro.ordered_children
+                )
+                == expected_children
+            )
 
 
 def test_constant_weight_never_allocates_receiving_exponent(

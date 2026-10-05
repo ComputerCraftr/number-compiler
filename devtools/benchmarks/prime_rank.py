@@ -140,7 +140,6 @@ def main() -> None:
                 check=True,
                 capture_output=True,
                 text=True,
-                timeout=5,
             )
             reports["candidate"][name + "-bypass"] = json.loads(run.stdout)
     for name in ("prime", "prime-start"):

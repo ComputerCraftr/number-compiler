@@ -413,10 +413,6 @@ def metrics_dict() -> dict[str, object]:
     }
 
 
-if __name__ == "__main__":
-    print(json.dumps(metrics_dict(), indent=2, sort_keys=True))
-
-
 __all__ = [
     "TwoPrimaryDepthViewAudit",
     "TwoPrimaryPhaseClockAudit",
@@ -424,3 +420,13 @@ __all__ = [
     "two_primary_depth_view_audits",
     "two_primary_phase_clock_audits",
 ]
+
+
+def _command() -> None:
+    print(json.dumps(metrics_dict(), indent=2, sort_keys=True))
+
+
+if __name__ == "__main__":
+    from devtools.runs import run_reported
+
+    raise SystemExit(run_reported(_command))

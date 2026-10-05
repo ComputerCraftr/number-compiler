@@ -18,6 +18,74 @@ def canonical_partition(signatures: tuple[object, ...]) -> tuple[int, ...]:
     return tuple(identities[signature] for signature in signatures)
 
 
+def class_members(
+    class_ids: Sequence[int], classes: int
+) -> tuple[tuple[int, ...], ...]:
+    """Group state indices by a complete, densely numbered partition."""
+    if type(classes) is not int or classes < 0:
+        raise ValueError("finite observer class count must be nonnegative")
+    groups: list[list[int]] = [[] for _ in range(classes)]
+    for state, class_id in enumerate(class_ids):
+        if type(class_id) is not int or not 0 <= class_id < classes:
+            raise ValueError("finite observer class id leaves its partition")
+        groups[class_id].append(state)
+    if any(not group for group in groups):
+        raise ValueError("finite observer partition contains an empty class")
+    return tuple(tuple(group) for group in groups)
+
+
+def map_partition_row(
+    row: Sequence[int | None], class_ids: Sequence[int]
+) -> tuple[int | None, ...]:
+    """Map ordered state targets to their class ids, preserving forbidden slots."""
+    mapped: list[int | None] = []
+    for target in row:
+        if target is None:
+            mapped.append(None)
+        elif type(target) is not int or not 0 <= target < len(class_ids):
+            raise ValueError("finite observer target leaves its partition")
+        else:
+            mapped.append(class_ids[target])
+    return tuple(mapped)
+
+
+def partition_quotient_rows(
+    rows: Sequence[Sequence[int | None]],
+    class_ids: Sequence[int],
+    classes: int,
+) -> tuple[tuple[int | None, ...], ...]:
+    """Build one mapped row per class, validating successor congruence."""
+    if len(rows) != len(class_ids):
+        raise ValueError("finite observer rows and classes must have equal size")
+    members = class_members(class_ids, classes)
+    mapped = tuple(map_partition_row(row, class_ids) for row in rows)
+    quotient: list[tuple[int | None, ...]] = []
+    for group in members:
+        row = mapped[group[0]]
+        if any(mapped[state] != row for state in group[1:]):
+            raise ValueError("finite observer partition is not successor closed")
+        quotient.append(row)
+    return tuple(quotient)
+
+
+def closed_partition_quotient_rows(
+    rows: Sequence[Sequence[int | None]], class_ids: Sequence[int], classes: int
+) -> tuple[tuple[int, ...], ...]:
+    """Build quotient rows for a graph whose every ordered edge is admitted."""
+    if any(target is None for row in rows for target in row):
+        raise ValueError("closed finite observer graph contains a forbidden edge")
+    quotient = partition_quotient_rows(rows, class_ids, classes)
+    dense: list[tuple[int, ...]] = []
+    for row in quotient:
+        dense_row: list[int] = []
+        for target in row:
+            if target is None:
+                raise AssertionError("closed quotient introduced a forbidden edge")
+            dense_row.append(target)
+        dense.append(tuple(dense_row))
+    return tuple(dense)
+
+
 def partition_equivalent(first: Sequence[Hashable], second: Sequence[Hashable]) -> bool:
     """Test equality of partitions in linear time, independent of label names."""
     if len(first) != len(second):

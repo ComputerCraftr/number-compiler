@@ -223,6 +223,12 @@ proof -
   then show ?thesis by (simp only: full)
 qed
 
+lemma comma_mask_and_preserves_bounded:
+  assumes left: "take_bit 924 (a::nat)=a"
+    and right: "take_bit 924 b=b"
+  shows "take_bit 924 (a AND b)=a AND b"
+  using left right by (simp add: take_bit_and)
+
 lemma comma_mask_or_full:
   assumes bounded: "take_bit 924 (a::nat)=a"
     and full: "mask 924=full"
@@ -259,6 +265,10 @@ lemma comma_guard_take_num_one:
   "take_bit_num 1 (Num.Bit1 k) = Some Num.One"
   by (simp_all only: One_nat_def take_bit_num_simps option.case)
 
+lemma comma_guard_take_one_one:
+  "take_bit 1 (1 :: nat) = 1"
+  by simp
+
 lemma comma_guard_take_one_numeral:
   "take_bit 1 (numeral (Num.Bit0 k) :: nat) = 0"
   "take_bit 1 (numeral (Num.Bit1 k) :: nat) = 1"
@@ -274,8 +284,9 @@ ML \<open>
       comma_mask_and_zero comma_mask_and_self comma_mask_or_zero comma_mask_or_self
       comma_mask_and_swap comma_mask_or_swap
       comma_mask_phase_class_bounded comma_mask_and_full comma_mask_or_full
+      comma_mask_and_preserves_bounded
       comma_guard_shifted_pattern comma_guard_drop_one_numeral
-      comma_guard_take_num_one comma_guard_take_one_numeral}) then ()
+      comma_guard_take_num_one comma_guard_take_one_one comma_guard_take_one_numeral}) then ()
     else error "Symbolic sector mask refinement depends on an oracle";
 \<close>
 

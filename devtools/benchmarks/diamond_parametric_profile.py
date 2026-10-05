@@ -13,16 +13,19 @@ import json
 import logging
 import os
 import resource
-import signal
 import subprocess
 import sys
-from collections.abc import Callable, Iterator
-from contextlib import contextmanager
-from dataclasses import fields
+from collections.abc import Callable
+from dataclasses import asdict, fields
 from pathlib import Path
 from time import perf_counter, process_time
 from typing import Any
 
+from devtools.checks.validation_policy import (
+    PYTHON_COMMAND_SECONDS,
+    PYTHON_MEMORY_BYTES,
+)
+from devtools.git_source import git_source
 from devtools.paths import repository_root
 from number_compiler.arithmetic.contracts.block_effect import BlockContextBudgetExceeded
 from number_compiler.hashlife.observation.diamond_parametric_query import (
@@ -35,29 +38,10 @@ from number_compiler.resources.metric_collection import collect_ledger_metrics
 from number_compiler.sequences.reverse_add.power import ReverseAddPoweredTerm
 
 ROOT = repository_root()
-PHASE_SECONDS = 35
 CACHE_ENTRIES = 180_000
 STEPS = (16, 32, 64, 128, 256)
 WIDTHS = (16, 32, 64, 128, 256, 512)
 _LOGGER = logging.getLogger(__name__)
-
-
-class PhaseTimeout(TimeoutError):
-    pass
-
-
-@contextmanager
-def deadline() -> Iterator[None]:
-    def interrupt(signum: int, frame: object) -> None:
-        raise PhaseTimeout(f"phase exceeded {PHASE_SECONDS} seconds")
-
-    prior = signal.signal(signal.SIGALRM, interrupt)
-    signal.setitimer(signal.ITIMER_REAL, PHASE_SECONDS)
-    try:
-        yield
-    finally:
-        signal.setitimer(signal.ITIMER_REAL, 0)
-        signal.signal(signal.SIGALRM, prior)
 
 
 def rss_bytes() -> int:
@@ -66,27 +50,14 @@ def rss_bytes() -> int:
     )
 
 
-def source_fingerprint() -> str:
-    digest = hashlib.sha256()
-    paths = sorted((ROOT / "src").rglob("*.py")) + sorted(
-        (ROOT / "src/number_compiler/kernels").glob("*")
-    )
-    for path in (*paths, Path(__file__).resolve()):
-        if path.is_file():
-            digest.update(str(path.relative_to(ROOT)).encode())
-            digest.update(path.read_bytes())
-    return digest.hexdigest()
-
-
 def measured(operation: Callable[[], object]) -> dict[str, Any]:
     start, cpu = perf_counter(), process_time()
     try:
-        with deadline():
-            value = operation()
+        value = operation()
         status, error = "ok", None
-    except (PhaseTimeout, BlockContextBudgetExceeded) as exc:
+    except (TimeoutError, BlockContextBudgetExceeded) as exc:
         value = None
-        status = "timeout" if isinstance(exc, PhaseTimeout) else "budget_exceeded"
+        status = "timeout" if isinstance(exc, TimeoutError) else "budget_exceeded"
         error = f"{type(exc).__name__}: {exc}"
     except Exception as exc:
         _LOGGER.debug("benchmark phase failed", exc_info=True)
@@ -109,6 +80,7 @@ def inventory(ledger: ResourceLedger) -> dict[str, Any]:
         for field in fields(report)
         if field.name != "resource_inventory"
     }
+    result["temporal_diagnostics"] = asdict(report.temporal_diagnostics)
     result["resource_inventory"] = [
         {
             field.name: getattr(row, field.name)
@@ -194,7 +166,7 @@ def oracle(family: str, seed: int, steps: int) -> tuple[int, int, int]:
 
 
 def worker(family: str, steps: int, width: int | None = None) -> dict[str, Any]:
-    fingerprint = source_fingerprint()
+    source = git_source(ROOT)
     seed = source_seed(family, width)
     ledger = ResourceLedger(max_cache_entries=CACHE_ENTRIES)
     phases: list[dict[str, Any]] = []
@@ -292,11 +264,9 @@ def worker(family: str, steps: int, width: int | None = None) -> dict[str, Any]:
         for audit in audits
     )
     exact = all(row.get("exact", True) for row in phases)
-    unchanged = fingerprint == source_fingerprint()
     blockers = ["execution_phase_failed"] if not ready else []
     blockers += [] if audit_complete else ["representation_audit_failed_or_incomplete"]
     blockers += [] if exact else ["incorrect_observation"]
-    blockers += [] if unchanged else ["source_changed_during_case"]
     return {
         "family": family,
         "steps": steps,
@@ -311,8 +281,9 @@ def worker(family: str, steps: int, width: int | None = None) -> dict[str, Any]:
         "extent": built[0][1] if built else None,
         "phases": phases,
         "pid": os.getpid(),
-        "source_fingerprint": fingerprint,
-        "source_unchanged": unchanged,
+        "git_source": source.as_dict(),
+        "evidence_mode": "development",
+        "cacheable": False,
     }
 
 
@@ -330,25 +301,14 @@ def fresh_case(family: str, steps: int, width: int | None) -> dict[str, Any]:
     if width is not None:
         command.extend(("--width", str(width)))
     environment = dict(os.environ)
-    try:
-        completed = subprocess.run(
-            command,
-            cwd=ROOT,
-            env=environment,
-            text=True,
-            capture_output=True,
-            timeout=14 * PHASE_SECONDS + 10,
-            check=False,
-        )
-    except subprocess.TimeoutExpired:
-        return {
-            "family": family,
-            "steps": steps,
-            "requested_source_width": width,
-            "status": "worker_timeout",
-            "phases": None,
-            "result": None,
-        }
+    completed = subprocess.run(
+        command,
+        cwd=ROOT,
+        env=environment,
+        text=True,
+        capture_output=True,
+        check=False,
+    )
     if completed.returncode:
         return {
             "family": family,
@@ -402,7 +362,11 @@ def main() -> None:
     report = {
         "profile_schema": 1,
         "candidate": "direct higher parametric diamond queries",
-        "limits": {"phase_seconds": PHASE_SECONDS, "cache_entries": CACHE_ENTRIES},
+        "limits": {
+            "command_seconds": PYTHON_COMMAND_SECONDS,
+            "memory_bytes": PYTHON_MEMORY_BYTES,
+            "cache_entries": CACHE_ENTRIES,
+        },
         "timing_scope": "query only; audits excluded; concurrent external validation may affect wall time",
         "rss_scope": "fresh worker lifetime, including preceding audits; not additive workspace bytes",
         "response_register": False,

@@ -23,7 +23,11 @@ from devtools.benchmarks.causal_tile_growth_probe import (
     series_report,
 )
 from devtools.checks.process_guard import run_guarded
-from devtools.checks.test_run_evidence import source_fingerprint
+from devtools.checks.validation_policy import (
+    PYTHON_COMMAND_SECONDS,
+    PYTHON_MEMORY_BYTES,
+)
+from devtools.git_source import GitSource, git_source, same_git_revision
 from devtools.paths import repository_root
 from number_compiler.resources.temporal_diagnostics import METRICS_SCHEMA_VERSION
 
@@ -43,8 +47,8 @@ class TrialRecord(TypedDict, total=False):
     sampled_peak_bytes: int
     memory_measurement: str
     memory_samples: int
-    source_before: str
-    source_after: str
+    git_source_before: dict[str, str | bool]
+    git_source_after: dict[str, str | bool]
     row: dict[str, object]
 
 
@@ -64,8 +68,8 @@ class ProbeManifest(RegionManifest):
     spatial_widths: list[int]
     fixed_width: int
     fresh_process_trials_per_sample: int
-    worker_watchdog_seconds: int
-    worker_memory_limit_bytes: int
+    invocation_limit_seconds: int
+    memory_limit_bytes: int
 
 
 class SampleReport(TypedDict):
@@ -81,11 +85,15 @@ class SampleReport(TypedDict):
 
 class CausalProbeReport(TypedDict):
     metrics_schema_version: int
-    source_fingerprint: str
-    source_unchanged: bool
+    git_source_before: dict[str, str | bool]
+    git_source_after: dict[str, str | bool]
+    git_revision_unchanged: bool
+    evidence_mode: str
+    cacheable: bool
+    reusable: bool
     fresh_process_trials_per_sample: int
-    worker_watchdog_seconds: int
-    worker_memory_limit_bytes: int
+    invocation_limit_seconds: int
+    memory_limit_bytes: int
     timed_environment: dict[str, str]
     default_release_horizons: list[int]
     release_manifest_complete: bool
@@ -108,8 +116,8 @@ class CausalProbeReport(TypedDict):
 ROOT = repository_root()
 HORIZONS = (16, 32, 64, 128, 256, 512, 1024)
 TRIALS = 5
-WORKER_TIMEOUT_SECONDS = 35
-WORKER_MEMORY_LIMIT_BYTES = 1024**3
+INVOCATION_LIMIT_SECONDS = PYTHON_COMMAND_SECONDS
+MEMORY_LIMIT_BYTES = PYTHON_MEMORY_BYTES
 RELEASE_FIXED_WIDTH = 16
 _TIMING_FIELDS = (
     "setup_seconds",
@@ -122,7 +130,7 @@ _TIMING_FIELDS = (
 def worker(
     scenario: str, temporal_steps: int, spatial_width: int, coordinate: int
 ) -> dict[str, object]:
-    fingerprint = source_fingerprint(ROOT)
+    source = git_source(ROOT)
     row, _ledger = cold_row(
         scenario, temporal_steps, spatial_width, coordinate=coordinate
     )
@@ -132,8 +140,8 @@ def worker(
         "spatial_width": spatial_width,
         "coordinate": coordinate,
         "pid": os.getpid(),
-        "source_before": fingerprint,
-        "source_after": source_fingerprint(ROOT),
+        "git_source_before": source.as_dict(),
+        "git_source_after": git_source(ROOT).as_dict(),
         "row": asdict(row),
     }
 
@@ -215,8 +223,7 @@ def _command(
 def _one_trial(
     request: tuple[str, int, int, int],
     trial: int,
-    fingerprint: str,
-    timeout: int,
+    source: GitSource,
 ) -> TrialRecord:
     _scenario, _temporal_steps, _spatial_width, _coordinate = request
     command = _command(*request)
@@ -227,8 +234,8 @@ def _one_trial(
             tuple(command),
             output=output,
             cwd=ROOT,
-            timeout=timeout,
-            memory_bytes=WORKER_MEMORY_LIMIT_BYTES,
+            timeout=PYTHON_COMMAND_SECONDS,
+            memory_bytes=MEMORY_LIMIT_BYTES,
         )
         worker_output = output.read_text()
     if guard.outcome == "timeout":
@@ -236,7 +243,7 @@ def _one_trial(
             *request,
             trial,
             "timed_out",
-            reason=f"worker exceeded {timeout}s watchdog",
+            reason="worker exhausted the shared command deadline",
             stdout=worker_output,
         )
         failure["process_wall_seconds"] = perf_counter() - process_started
@@ -307,11 +314,11 @@ def _one_trial(
         failure["process_wall_seconds"] = process_wall_seconds
         return failure
     if (
-        parsed.get("source_before") != fingerprint
-        or parsed.get("source_after") != fingerprint
+        parsed.get("git_source_before") != source.as_dict()
+        or parsed.get("git_source_after") != source.as_dict()
     ):
         failure = _failure(
-            *request, trial, "failed", reason="worker source fingerprint changed"
+            *request, trial, "failed", reason="worker Git state differed from parent"
         )
         failure["process_wall_seconds"] = process_wall_seconds
         return failure
@@ -470,7 +477,6 @@ def _manifest(
     spatial_widths: tuple[int, ...],
     fixed_width: int,
     trials: int,
-    timeout: int,
 ) -> ProbeManifest:
     groups = _requests(horizons, spatial_widths, fixed_width)
     return {
@@ -478,8 +484,8 @@ def _manifest(
         "spatial_widths": list(spatial_widths),
         "fixed_width": fixed_width,
         "fresh_process_trials_per_sample": trials,
-        "worker_watchdog_seconds": timeout,
-        "worker_memory_limit_bytes": WORKER_MEMORY_LIMIT_BYTES,
+        "invocation_limit_seconds": INVOCATION_LIMIT_SECONDS,
+        "memory_limit_bytes": MEMORY_LIMIT_BYTES,
         "requests": [_request_record(request) for request in _flat_requests(groups)],
     }
 
@@ -490,10 +496,9 @@ def run_fresh_process_probe(
     spatial_widths: tuple[int, ...] = HORIZONS,
     fixed_width: int = 16,
     trials: int = TRIALS,
-    timeout: int = WORKER_TIMEOUT_SECONDS,
 ) -> CausalProbeReport:
-    if type(trials) is not int or trials < 1 or type(timeout) is not int or timeout < 1:
-        raise ValueError("fresh causal probe requires positive exact trial limits")
+    if type(trials) is not int or trials < 1:
+        raise ValueError("fresh causal probe requires a positive exact trial count")
     if not horizons or not spatial_widths or fixed_width < 3:
         raise ValueError("fresh causal probe requires nonempty source-containing axes")
     axes = (*horizons, *spatial_widths, fixed_width)
@@ -501,7 +506,7 @@ def run_fresh_process_probe(
         type(value) is not int or value < 1 or value & (value - 1) for value in axes
     ):
         raise ValueError("fresh causal probe axes require exact powers of two")
-    fingerprint = source_fingerprint(ROOT)
+    source = git_source(ROOT)
     samples: dict[str, list[SampleReport]] = {}
     representatives: dict[str, list[CausalGrowthRow]] = {}
     request_sets = _requests(horizons, spatial_widths, fixed_width)
@@ -509,15 +514,12 @@ def run_fresh_process_probe(
         samples[label] = []
         representatives[label] = []
         for request in requests:
-            trial_rows = [
-                _one_trial(request, trial, fingerprint, timeout)
-                for trial in range(trials)
-            ]
+            trial_rows = [_one_trial(request, trial, source) for trial in range(trials)]
             representative, sample = _aggregate(request, trial_rows, trials)
             samples[label].append(sample)
             if representative is not None:
                 representatives[label].append(representative)
-    after = source_fingerprint(ROOT)
+    after = git_source(ROOT)
     reports = {
         "fixed_width_temporal": series_report(
             representatives["fixed_width_temporal"],
@@ -535,12 +537,12 @@ def run_fresh_process_probe(
             axis="temporal_steps",
         ),
     }
-    source_unchanged = after == fingerprint
+    revision_unchanged = same_git_revision(source, after)
     collection_complete = all(
         sample["status"] == "MEASURED" for group in samples.values() for sample in group
     )
     diagnostic_accepted = (
-        source_unchanged
+        revision_unchanged
         and collection_complete
         and all(report["status"] == "MEASURED_PASS" for report in reports.values())
     )
@@ -563,14 +565,13 @@ def run_fresh_process_probe(
         and spatial_widths == HORIZONS
         and fixed_width == RELEASE_FIXED_WIDTH
         and trials == TRIALS
-        and timeout == WORKER_TIMEOUT_SECONDS
         and requested_requests == required_requests
     )
     release_blockers: list[str] = []
     if not release_manifest_complete:
         release_blockers.append("release_manifest_incomplete")
-    if not source_unchanged:
-        release_blockers.append("source_changed_during_measurement")
+    if not revision_unchanged:
+        release_blockers.append("git_revision_changed_during_measurement")
     if not collection_complete:
         release_blockers.append("measurement_collection_incomplete")
     if any(report["status"] != "MEASURED_PASS" for report in reports.values()):
@@ -579,11 +580,15 @@ def run_fresh_process_probe(
     observed = set(observed_requests)
     return {
         "metrics_schema_version": METRICS_SCHEMA_VERSION,
-        "source_fingerprint": fingerprint,
-        "source_unchanged": source_unchanged,
+        "git_source_before": source.as_dict(),
+        "git_source_after": after.as_dict(),
+        "git_revision_unchanged": revision_unchanged,
+        "evidence_mode": os.environ.get("NUMBER_COMPILER_EVIDENCE_MODE", "development"),
+        "cacheable": False,
+        "reusable": False,
         "fresh_process_trials_per_sample": trials,
-        "worker_watchdog_seconds": timeout,
-        "worker_memory_limit_bytes": WORKER_MEMORY_LIMIT_BYTES,
+        "invocation_limit_seconds": INVOCATION_LIMIT_SECONDS,
+        "memory_limit_bytes": MEMORY_LIMIT_BYTES,
         "timed_environment": {
             "python_executable": sys.executable,
             "python_version": sys.version,
@@ -591,15 +596,12 @@ def run_fresh_process_probe(
         },
         "default_release_horizons": list(HORIZONS),
         "release_manifest_complete": release_manifest_complete,
-        "requested_manifest": _manifest(
-            horizons, spatial_widths, fixed_width, trials, timeout
-        ),
+        "requested_manifest": _manifest(horizons, spatial_widths, fixed_width, trials),
         "required_manifest": _manifest(
             HORIZONS,
             HORIZONS,
             RELEASE_FIXED_WIDTH,
             TRIALS,
-            WORKER_TIMEOUT_SECONDS,
         ),
         "observed_manifest": {
             "requests": [_request_record(request) for request in observed_requests]

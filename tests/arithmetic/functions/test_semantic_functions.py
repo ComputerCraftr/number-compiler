@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from collections.abc import Callable
 from functools import partial
 from itertools import product
 from typing import Literal, cast
@@ -19,6 +20,7 @@ from number_compiler.arithmetic.functions.finite_function_types import (
     ProductSort,
     SemanticFunctionID,
     SemanticSort,
+    SemanticTerminal,
 )
 from number_compiler.arithmetic.functions.finite_port_action import PortVariable
 from number_compiler.arithmetic.functions.semantic_function_transactions import (
@@ -122,6 +124,47 @@ def test_non_power_of_two_admissibility_and_curried_invalid_codes() -> None:
             assert arena.evaluate(child, {y.variable: b}) == actual
         else:
             assert arena.evaluate(curried, {x.variable: a}).kind == "invalid"
+
+
+def test_atom_relabeling_preserves_scope_and_failure_releases_workspace(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    arena = SemanticFunctionArena(ResourceLedger())
+    x, y, source_sort = ternary_xy_ports()
+    source = arena.variable((x, y), x, source_sort)
+    mapping = (1, 0, 1)
+    relabeled = arena.map_atoms(source, BOOL, mapping)
+    assert arena.signature(relabeled).inputs == (x, y)
+    for left, right in product(range(4), repeat=2):
+        value = arena.evaluate(relabeled, {x.variable: left, y.variable: right})
+        if left == 3 or right == 3:
+            assert value.kind == "invalid"
+        else:
+            assert value.value == mapping[left]
+    for invalid_mapping in ((0, 1), (0, 1, 2), (False, 1, 0)):
+        assert_rejected_atomically(
+            arena.ledger,
+            partial(arena.map_atoms, source, BOOL, invalid_mapping),
+            ValueError,
+        )
+    retained = tuple(arena.nodes), tuple(arena.keys.items())
+    entries, nodes = arena.ledger.entries, arena.ledger.nodes
+    original = _Transaction.map_terminals
+
+    def interrupt_after_relabeling(
+        transaction: _Transaction,
+        root: int,
+        signature: FunctionSignature,
+        transform: Callable[[SemanticTerminal], int],
+    ) -> int:
+        original(transaction, root, signature, transform)
+        raise RuntimeError("interrupted atom relabeling")
+
+    monkeypatch.setattr(_Transaction, "map_terminals", interrupt_after_relabeling)
+    with pytest.raises(RuntimeError, match="interrupted atom relabeling"):
+        arena.map_atoms(source, AtomSort("new-consumer", 4), (3, 2, 1))
+    assert (tuple(arena.nodes), tuple(arena.keys.items())) == retained
+    assert (arena.ledger.entries, arena.ledger.nodes) == (entries, nodes)
 
 
 def test_warm_operations_skip_child_rewrites_and_eviction_preserves_ids(

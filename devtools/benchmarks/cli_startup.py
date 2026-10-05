@@ -60,7 +60,6 @@ def _install(wheel: Path, directory: Path, environment: dict[str, str]) -> Path:
         check=True,
         env=environment,
         capture_output=True,
-        timeout=15,
     )
     python = directory / ("Scripts/python.exe" if os.name == "nt" else "bin/python")
     subprocess.run(
@@ -68,7 +67,6 @@ def _install(wheel: Path, directory: Path, environment: dict[str, str]) -> Path:
         check=True,
         env=environment,
         capture_output=True,
-        timeout=15,
     )
     return python
 
@@ -129,7 +127,6 @@ def compare(
                         capture_output=True,
                         text=True,
                         check=True,
-                        timeout=5,
                     )
                     measurements[label].append(perf_counter() - started)
                     if completed.stderr:

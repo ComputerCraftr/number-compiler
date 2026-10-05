@@ -24,6 +24,10 @@ SemanticIdentityMemoRecord: TypeAlias = tuple[
 def build_radial_identity(
     radial: PowerTwoCyclotomicRadialQuotient,
 ) -> SemanticIdentity:
+    if type(radial) is not PowerTwoCyclotomicRadialQuotient:
+        raise TypeError("reverse radial identity requires an exact quotient")
+    if type(radial.no_growth) is not int or type(radial.growth) is not int:
+        raise TypeError("reverse radial identity coordinates require exact integers")
     return SemanticIdentity(
         "reverse-centered-radial-action-v1",
         (

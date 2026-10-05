@@ -157,7 +157,33 @@ def left_earliest(
     )
 
 
-if __name__ == "__main__":
+def mirror_machine(
+    machine: LazyBimachine,
+) -> LazyBimachine:
+    from number_compiler.arithmetic.automata.transducer import DFA, LazyBimachine
+
+    A = machine.alphabet
+    left = DFA(
+        A, machine.right.start, dict(machine.right.trans), machine.right.states, False
+    )
+    right = DFA(
+        A, machine.left.start, dict(machine.left.trans), machine.left.states, True
+    )
+
+    def emit(left_state: int, a: int, r: int) -> None | tuple[int, ...]:
+        w = machine.emit(r, a, left_state)
+        return None if w is None else tuple(reversed(w))
+
+    return LazyBimachine(machine.base, A, left, right, emit, cache_enabled=False)
+
+
+def right_earliest(
+    machine: LazyBimachine,
+) -> LazyBimachine:
+    return mirror_machine(left_earliest(mirror_machine(machine)))
+
+
+def _command() -> None:
     import random
     import time
 
@@ -197,35 +223,6 @@ if __name__ == "__main__":
         time.perf_counter() - t,
         q2.metrics,
     )
-
-
-def mirror_machine(
-    machine: LazyBimachine,
-) -> LazyBimachine:
-    from number_compiler.arithmetic.automata.transducer import DFA, LazyBimachine
-
-    A = machine.alphabet
-    left = DFA(
-        A, machine.right.start, dict(machine.right.trans), machine.right.states, False
-    )
-    right = DFA(
-        A, machine.left.start, dict(machine.left.trans), machine.left.states, True
-    )
-
-    def emit(left_state: int, a: int, r: int) -> None | tuple[int, ...]:
-        w = machine.emit(r, a, left_state)
-        return None if w is None else tuple(reversed(w))
-
-    return LazyBimachine(machine.base, A, left, right, emit, cache_enabled=False)
-
-
-def right_earliest(
-    machine: LazyBimachine,
-) -> LazyBimachine:
-    return mirror_machine(left_earliest(mirror_machine(machine)))
-
-
-if __name__ == "__main__":
     print("--- right after left T1 ---")
     er = right_earliest(e)
     qr = minimize_bimachine(er)
@@ -255,3 +252,9 @@ if __name__ == "__main__":
         time.perf_counter() - t,
         qr2.metrics,
     )
+
+
+if __name__ == "__main__":
+    from devtools.runs import run_reported
+
+    raise SystemExit(run_reported(_command))

@@ -96,7 +96,6 @@ def test_package_import_and_cold_warm_queries_work_with_proof_imports_blocked() 
         env=env,
         capture_output=True,
         text=True,
-        timeout=120,
         check=False,
     )
     assert result.returncode == 0, result.stdout + result.stderr

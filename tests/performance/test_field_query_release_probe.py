@@ -4,12 +4,13 @@ from __future__ import annotations
 
 import json
 import subprocess
-from subprocess import CompletedProcess, TimeoutExpired
+from subprocess import CompletedProcess
 from typing import NotRequired, TypedDict
 
 import pytest
 
 import devtools.benchmarks.field_query_release_probe as probe
+from devtools.git_source import GitSource
 
 
 def _assert_failed_samples(result: probe.FieldProbeReport, reason: str) -> None:
@@ -31,11 +32,12 @@ def _metrics(scale: int) -> dict[str, int]:
 
 
 def _worker_row(family: str, horizon: int, scale: int) -> WorkerFixture:
+    source = GitSource("commit", "tree", "sha1", False).as_dict()
     return {
         "family": family,
         "horizon": horizon,
-        "source_before": "frozen",
-        "source_after": "frozen",
+        "git_source_before": source,
+        "git_source_after": source,
         "audit_unchanged": True,
         "digit": 1,
         "repeat_digit": 1,
@@ -44,43 +46,45 @@ def _worker_row(family: str, horizon: int, scale: int) -> WorkerFixture:
     }
 
 
-def test_release_probe_covers_the_full_unchanged_watchdog_series() -> None:
+def test_release_probe_covers_the_full_series_under_shared_command_policy() -> None:
     assert probe.HORIZONS == (16, 32, 64, 128, 256, 512, 1024)
-    assert probe.WORKER_TIMEOUT_SECONDS == 35
+    assert probe.INVOCATION_LIMIT_SECONDS == 60
 
 
-def test_failed_and_timed_out_workers_remain_in_complete_collection(
+def test_failed_workers_remain_in_complete_collection(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    monkeypatch.setattr(probe, "source_fingerprint", lambda _root: "frozen")
+    monkeypatch.setattr(
+        probe, "git_source", lambda _root: GitSource("commit", "tree", "sha1", False)
+    )
     calls = 0
 
     def fake_run(
         command: list[str], **kwargs: object
     ) -> subprocess.CompletedProcess[str]:
         nonlocal calls
-        assert kwargs["timeout"] == 35
+        assert "timeout" not in kwargs
         family, horizon = command[-3], int(command[-1])
         calls += 1
         if calls == 1:
-            raise TimeoutExpired(command, 35, output="partial", stderr="watchdog")
-        if calls == 2:
             return CompletedProcess(command, 7, "", "failed")
         row = _worker_row(family, horizon, horizon)
         return CompletedProcess(command, 0, json.dumps(row), "")
 
     monkeypatch.setattr(subprocess, "run", fake_run)
     result = probe.run_probe()
-    assert result["source_unchanged"] is True
+    assert result["git_revision_unchanged"] is True
+    assert result["evidence_mode"] == "development"
+    assert result["cacheable"] is False
+    assert result["reusable"] is False
     assert result["collection_complete"] is True
     assert result["measurement_series_complete"] is False
     assert result["status"] == "RED"
     assert result["release_complete"] is False
     assert "measurement-only" in result["status_scope"]
     assert len(result["rows"]) == 2 * len(probe.HORIZONS)
-    assert result["rows"][0]["status"] == "timed_out"
-    assert result["rows"][0]["stdout"] == "partial"
-    assert result["rows"][1]["status"] == "failed"
+    assert result["rows"][0]["status"] == "failed"
+    assert result["rows"][1]["status"] == "passed"
     for family in result["families"].values():
         if family["series_complete"] is False:
             assert "measurement_series_incomplete" in family["release_blockers"]
@@ -115,7 +119,9 @@ def test_invalid_worker_json_is_retained_as_failed_sample(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     monkeypatch.setattr(probe, "HORIZONS", (16,))
-    monkeypatch.setattr(probe, "source_fingerprint", lambda _root: "frozen")
+    monkeypatch.setattr(
+        probe, "git_source", lambda _root: GitSource("commit", "tree", "sha1", False)
+    )
     monkeypatch.setattr(
         subprocess,
         "run",
@@ -129,19 +135,23 @@ def test_parent_source_consistency_is_reported_separately_from_worker_claims(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     monkeypatch.setattr(probe, "HORIZONS", (16, 32))
-    monkeypatch.setattr(probe, "source_fingerprint", lambda _root: "frozen")
+    monkeypatch.setattr(
+        probe, "git_source", lambda _root: GitSource("commit", "tree", "sha1", False)
+    )
 
     def fake_run(
         command: list[str], **_kwargs: object
     ) -> subprocess.CompletedProcess[str]:
         family, horizon = command[-3], int(command[-1])
         row = _worker_row(family, horizon, horizon)
-        row["source_after"] = "changed-in-worker"
+        row["git_source_after"] = GitSource(
+            "different", "tree", "sha1", False
+        ).as_dict()
         return CompletedProcess(command, 0, json.dumps(row), "")
 
     monkeypatch.setattr(subprocess, "run", fake_run)
     result = probe.run_probe()
-    assert result["source_unchanged"] is True
+    assert result["git_revision_unchanged"] is True
     assert result["worker_sources_consistent"] is False
     assert result["measurement_series_complete"] is True
     assert result["status"] == "RED"
@@ -151,7 +161,9 @@ def test_malformed_metrics_are_retained_as_failure_instead_of_aborting(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     monkeypatch.setattr(probe, "HORIZONS", (16,))
-    monkeypatch.setattr(probe, "source_fingerprint", lambda _root: "frozen")
+    monkeypatch.setattr(
+        probe, "git_source", lambda _root: GitSource("commit", "tree", "sha1", False)
+    )
 
     def fake_run(
         command: list[str], **_kwargs: object
@@ -254,8 +266,8 @@ def test_primitive_pair_absorption_cannot_claim_a_powered_public_cutover() -> No
 class WorkerFixture(TypedDict):
     family: str
     horizon: int
-    source_before: str
-    source_after: str
+    git_source_before: dict[str, str | bool]
+    git_source_after: dict[str, str | bool]
     audit_unchanged: bool
     digit: int
     repeat_digit: int

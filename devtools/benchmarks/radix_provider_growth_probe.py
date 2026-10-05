@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
 import resource
 import subprocess
 import sys
@@ -11,7 +12,11 @@ from pathlib import Path
 from time import perf_counter
 from typing import Any
 
-from devtools.checks.test_run_evidence import source_fingerprint
+from devtools.checks.validation_policy import (
+    PYTHON_COMMAND_SECONDS,
+    PYTHON_MEMORY_BYTES,
+)
+from devtools.git_source import git_source, same_git_revision
 from devtools.paths import repository_root
 from number_compiler.sequences.collatz.block_power import PoweredCollatzTerm
 
@@ -67,7 +72,7 @@ def cold_row(coordinate: int) -> dict[str, Any]:
 
 
 def run_probe() -> dict[str, Any]:
-    fingerprint = source_fingerprint(ROOT)
+    before = git_source(ROOT)
     rows = []
     for coordinate in (0, 5, 10, 15):
         process = subprocess.run(
@@ -81,15 +86,25 @@ def run_probe() -> dict[str, Any]:
             check=True,
             capture_output=True,
             text=True,
-            timeout=35,
         )
         rows.append(json.loads(process.stdout))
-    after = source_fingerprint(ROOT)
+    after = git_source(ROOT)
+    worker_sources_consistent = all(
+        row.get("git_source_before") == row.get("git_source_after") == before.as_dict()
+        for row in rows
+    )
+    acceptance = os.environ.get("NUMBER_COMPILER_EVIDENCE_MODE") == "acceptance"
     return {
         "schema": 6,
-        "source_before": fingerprint,
-        "source_after": after,
-        "source_unchanged": fingerprint == after,
+        "git_source_before": before.as_dict(),
+        "git_source_after": after.as_dict(),
+        "git_revision_unchanged": same_git_revision(before, after),
+        "worker_sources_consistent": worker_sources_consistent,
+        "evidence_mode": "acceptance" if acceptance else "development",
+        "cacheable": False,
+        "reusable": False,
+        "invocation_limit_seconds": PYTHON_COMMAND_SECONDS,
+        "memory_limit_bytes": PYTHON_MEMORY_BYTES,
         "seed": 140137,
         "physical_ticks": 11,
         "radix": 3,
@@ -107,7 +122,11 @@ def main() -> None:
     parser.add_argument("--worker", type=int, choices=(0, 5, 10, 15))
     args = parser.parse_args()
     if args.worker is not None:
-        print(json.dumps(cold_row(args.worker)))
+        source = git_source(ROOT)
+        row = cold_row(args.worker)
+        row["git_source_before"] = source.as_dict()
+        row["git_source_after"] = git_source(ROOT).as_dict()
+        print(json.dumps(row))
         return
     if args.output is None:
         parser.error("--output is required")

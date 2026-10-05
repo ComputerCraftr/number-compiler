@@ -7,7 +7,7 @@ import json
 from time import perf_counter
 
 from devtools.benchmarks.tile_projection_accounting import projection_accounting
-from devtools.checks.test_run_evidence import source_fingerprint
+from devtools.git_source import git_source, same_git_revision
 from devtools.paths import repository_root
 from number_compiler.api.number_api import (
     CommaTermPayload,
@@ -199,7 +199,7 @@ def main() -> None:
     if args.family != "a367620" and args.mode == "bypass":
         parser.error("--mode bypass is currently available for a367620 only")
     root = repository_root()
-    before = source_fingerprint(root)
+    before = git_source(root)
     rows = (
         comma_arithmetic_requests(
             args.mode, args.trials, indices, certified=not args.arithmetic_only
@@ -212,13 +212,14 @@ def main() -> None:
             for steps in (8, 16, 32)
         ]
     )
-    after = source_fingerprint(root)
+    after = git_source(root)
+    revision_unchanged = same_git_revision(before, after)
     print(
         json.dumps(
             {
-                "source_before": before,
-                "source_after": after,
-                "source_unchanged": before == after,
+                "git_source_before": before.as_dict(),
+                "git_source_after": after.as_dict(),
+                "git_revision_unchanged": revision_unchanged,
                 "scope": (
                     (
                         "finite arithmetic only; certificate admission excluded; "
@@ -236,8 +237,8 @@ def main() -> None:
             indent=2,
         )
     )
-    if before != after:
-        raise AssertionError("source changed during the measurement")
+    if not revision_unchanged:
+        raise AssertionError("Git revision changed during the measurement")
 
 
 if __name__ == "__main__":

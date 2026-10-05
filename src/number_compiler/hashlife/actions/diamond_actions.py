@@ -302,14 +302,19 @@ class TemporalActionArena:
         return handle
 
     def primitive_reference(self, action: ActionProgramID) -> ActionProgramID:
+        return self._primitive_binding(action)[0]
+
+    def _primitive_binding(
+        self, action: ActionProgramID
+    ) -> tuple[ActionProgramID, BlockEffect]:
+        """Resolve both ownership boundaries once for a primitive lookup."""
         node = self.resolve(action)
         if node.kind != "atom":
             raise ValueError("temporal action is not a primitive")
         handle = ActionProgramID(
             self.compiler.token, "action-program", node.compiler_id
         )
-        self.compiler.resolve(handle)
-        return handle
+        return handle, self.compiler.resolve(handle)
 
     def _intern(self, node: TemporalActionNode) -> ActionProgramID:
         found = self._ids.get(node)
@@ -382,10 +387,7 @@ class TemporalActionArena:
         return self._handle(resolved[reference.local_id])
 
     def primitive(self, action: ActionProgramID) -> BlockEffect:
-        node = self.resolve(action)
-        if node.kind != "atom":
-            raise ValueError("temporal action is not a primitive")
-        return self.compiler.resolve(self.primitive_reference(action))
+        return self._primitive_binding(action)[1]
 
     def compose(
         self, before: ActionProgramID, after: ActionProgramID

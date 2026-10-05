@@ -4,7 +4,7 @@ begin
 
 text \<open>
   The bounded D2 source chamber used by
-  @{file "../../../experiments/reverse_add/edge_interior_regions.py"}.
+  @{file "../../../devtools/experiments/reverse_add/edge_interior_regions.py"}.
   The source has edge value a and interior pair value 2*b.  The two carry
   regions are represented as functions on the complete integer line, so the
   statements include their exterior zero support.  This is only the stated

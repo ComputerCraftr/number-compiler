@@ -1,4 +1,4 @@
-"""Schema-seven probe separating compiled images from actual projection work.
+"""Schema-eight probe separating compiled images from actual projection work.
 
 Compact binary action syntax and a small image graph do not certify output
 absorption. Report concrete continuation work, semantic interpreter frames,
@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import itertools
 import json
+import os
 from collections.abc import Mapping, Sequence
 from time import perf_counter
 
@@ -16,7 +17,12 @@ from devtools.benchmarks.temporal_probe_support import (
     common_temporal_blockers,
     shared_cutover_sources,
 )
+from devtools.benchmarks.tile_projection_accounting import (
+    explicit_resource_audit,
+)
 from devtools.checks.dependency_graph import source_syntax
+from devtools.checks.test_run_evidence import PROVENANCE_MODE_ENV
+from devtools.git_source import git_source, same_git_revision
 from devtools.paths import report_output, repository_root
 
 ROOT = repository_root()
@@ -88,6 +94,7 @@ def _production_projection_rows() -> list[dict[str, object]]:
             )
         after_replay = term._ledger.counters
         behavior = term.behavior_metrics()
+        audit, audit_seconds, audit_work = explicit_resource_audit(term._ledger)
         counters = metrics.resource_work_counters
         source_publications = counters.get("source_image_publications", 0)
         projection_publications = counters.get(
@@ -100,12 +107,12 @@ def _production_projection_rows() -> list[dict[str, object]]:
         if behavior.unquotiented_recursive_application_description_nodes:
             raise AssertionError(("generic-residual-reappeared", generation, behavior))
         if (
-            not metrics.resource_audit_complete
-            or metrics.resource_accounting_mismatch
-            or metrics.forbidden_future_payloads
-            or metrics.retained_unbounded_future_integers
+            not audit.resource_audit_complete
+            or audit.resource_accounting_mismatch
+            or audit.forbidden_future_payloads
+            or audit.retained_unbounded_future_integers
         ):
-            raise AssertionError(("lazy-resource-audit-failed", generation, metrics))
+            raise AssertionError(("explicit-resource-audit-failed", generation, audit))
         rows.append(
             {
                 "generation": generation,
@@ -122,10 +129,15 @@ def _production_projection_rows() -> list[dict[str, object]]:
                 "resource_ledger_nodes": metrics.resource_ledger_nodes,
                 "resource_observed_entries": metrics.resource_observed_entries,
                 "resource_observed_nodes": metrics.resource_observed_nodes,
-                "resource_accounting_mismatch": metrics.resource_accounting_mismatch,
-                "resource_audit_complete": metrics.resource_audit_complete,
-                "forbidden_future_payloads": metrics.forbidden_future_payloads,
-                "retained_unbounded_future_integers": metrics.retained_unbounded_future_integers,
+                "resource_accounting_mismatch": audit.resource_accounting_mismatch,
+                "resource_audit_complete": audit.resource_audit_complete,
+                "resource_audit_unknown_payloads": audit.resource_audit_unknown_payloads,
+                "resource_unregistered_containers": audit.resource_unregistered_containers,
+                "resource_unregistered_payload_resolvers": (
+                    audit.resource_unregistered_payload_resolvers
+                ),
+                "forbidden_future_payloads": audit.forbidden_future_payloads,
+                "retained_unbounded_future_integers": audit.retained_unbounded_future_integers,
                 "compiler_program_nodes": metrics.compiler_program_nodes,
                 "application_program_nodes": metrics.application_program_nodes,
                 "bounded_limb_operations": metrics.bounded_limb_operations,
@@ -151,9 +163,11 @@ def _production_projection_rows() -> list[dict[str, object]]:
                 "source_action_nodes": term.operator_nodes,
                 "source_action_compositions": term.compose_operations,
                 "resource_accounting_exact": (
-                    metrics.resource_audit_complete == 1
-                    and metrics.resource_accounting_mismatch == 0
+                    audit.resource_audit_complete == 1
+                    and audit.resource_accounting_mismatch == 0
                 ),
+                "explicit_resource_audit_seconds": audit_seconds,
+                "explicit_resource_audit_work_counters": audit_work,
                 "projection_seconds": elapsed,
                 "recursive_value_cache_entries": metrics.recursive_value_cache_entries,
                 "unquotiented_recursive_application_nodes": behavior.unquotiented_recursive_application_description_nodes,
@@ -311,12 +325,15 @@ def run_probe() -> dict[str, object]:
 
 
 def main() -> int:
-    from devtools.checks.test_run_evidence import source_fingerprint
-
-    fingerprint = source_fingerprint(ROOT)
+    before = git_source(ROOT)
     result = run_probe()
-    result["source_fingerprint"] = fingerprint
-    result["source_unchanged"] = fingerprint == source_fingerprint(ROOT)
+    after = git_source(ROOT)
+    result["git_source_before"] = before.as_dict()
+    result["git_source_after"] = after.as_dict()
+    result["git_revision_unchanged"] = same_git_revision(before, after)
+    result["evidence_mode"] = os.environ.get(PROVENANCE_MODE_ENV, "development")
+    result["cacheable"] = False
+    result["reusable"] = False
     out = report_output(
         "devtools.benchmarks.reverse_temporal_power_probe", "report.json"
     )

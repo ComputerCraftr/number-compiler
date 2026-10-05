@@ -14,6 +14,7 @@ from number_compiler.arithmetic.contracts.scoped_handles import (
     ArenaToken,
 )
 from number_compiler.arithmetic.functions.finite_function_types import (
+    BOOL,
     AtomSort,
     FinitePort,
     FunctionSort,
@@ -37,6 +38,7 @@ from number_compiler.hashlife.interfaces.semantic_structures import (
     StructureID,
 )
 from number_compiler.resources.ledger import ResourceLedger
+from number_compiler.resources.payload_containers import audit_mapping_items
 from number_compiler.resources.stores import LedgerDict, LedgerList
 
 if TYPE_CHECKING:
@@ -62,6 +64,10 @@ class SemanticProfilePayloadRegistry:
         self.valid_objects: set[int] = set()
         self.invalid_bindings: set[tuple[int, int]] = set()
         self.profiles: dict[ArenaToken, tuple[bool, ...]] = {}
+        # Reuse only within this inventory pass.  The key binds the current
+        # record, codec, component, and node shape so a product child or a
+        # later query cannot inherit another decoder's audit result.
+        self._part_audits: dict[tuple[object, ...], bool] = {}
         actual = dict(ledger.iter_containers())
         self.arenas = tuple(
             root
@@ -132,7 +138,7 @@ class SemanticProfilePayloadRegistry:
                     self.invalid_bindings.update(
                         ((arena.key_owner, id(action)), (arena.key_owner, id(handle)))
                     )
-            for key, codec in arena.records._data.items():
+            for key, codec in audit_mapping_items(arena.records):
                 try:
                     valid = self._codec(arena, key, codec)
                 except (ValueError, TypeError, AttributeError, IndexError, KeyError):
@@ -148,7 +154,7 @@ class SemanticProfilePayloadRegistry:
                             (arena.records.owner, id(codec)),
                         )
                     )
-            for decode_key, result in arena.decodes._data.items():
+            for decode_key, result in audit_mapping_items(arena.decodes):
                 try:
                     valid = (
                         type(decode_key) is ReachableDecodeKey
@@ -356,30 +362,62 @@ class SemanticProfilePayloadRegistry:
             )
         return self._part(arena, codec, component, node)
 
-    @staticmethod
     def _part(
+        self,
         arena: SemanticProfileArena,
         codec: ReachableCodec,
         component: int,
         node: StructuredNode,
     ) -> bool:
+        definition = arena.nodes[codec.profile.local_id].definition
+        key = (
+            id(arena),
+            id(codec),
+            id(definition),
+            component,
+            id(node),
+            node.kind,
+            node.signature,
+            node.atom,
+            node.valid,
+            node.body,
+            node.components,
+            node.bound,
+        )
+        if key in self._part_audits:
+            return self._part_audits[key]
+        valid = self._audit_part(arena, codec, component, node, definition)
+        self._part_audits[key] = valid
+        return valid
+
+    @staticmethod
+    def _audit_part(
+        arena: SemanticProfileArena,
+        codec: ReachableCodec,
+        component: int,
+        node: StructuredNode,
+        definition: C4PairLeftCertificate,
+    ) -> bool:
         structures = arena.structures
         assert structures is not None
         target = AtomSort("primitive-left-state", 50)
         argument = FinitePort(PortVariable(0, 0, "semantic-argument", 0), 90)
-        definition = arena.nodes[codec.profile.local_id].definition
         if component == 1:
             if (
                 node.kind != "function"
                 or node.signature.output != FunctionSort((argument,), target)
                 or node.body is None
                 or len(node.bound) != 1
-                or not _valid_domain(structures, node.valid, codec.ports[0])
             ):
                 return False
             body = structures.resolve(node.body)
             return _table_agrees(
-                structures, body.atom, codec.ports[0], node.bound[0], definition
+                structures,
+                body.atom,
+                codec.ports[0],
+                node.bound[0],
+                definition,
+                domain=node.valid,
             )
         return (
             node.kind == "atom"
@@ -394,16 +432,45 @@ def _table_agrees(
     code: FinitePort,
     argument: FinitePort | None,
     definition: C4PairLeftCertificate,
+    *,
+    domain: SemanticFunctionID | None = None,
 ) -> bool:
-    """Walk existing Boolean decisions and check each fixed-domain cube."""
+    """Check outputs and optional parent domain in one Boolean-DAG walk."""
     if value is None:
         return False
     factored = structures.bits.resolve(value)
     functions = structures.functions
-    roots = tuple(item.local_id for item in (*factored.bits, factored.valid))
+    expected_inputs = (code,) if argument is None else (code, argument)
+    target = AtomSort("primitive-left-state", 50)
+    if (
+        len(factored.signature.inputs) != len(expected_inputs)
+        or set(factored.signature.inputs) != set(expected_inputs)
+        or factored.signature.output != target
+    ):
+        return False
+    if domain is not None:
+        domain_function = functions.resolve(domain)
+        if (
+            domain_function.signature.inputs != (code,)
+            or domain_function.signature.output != BOOL
+        ):
+            return False
+    roots = tuple(
+        item.local_id
+        for item in (
+            *factored.bits,
+            factored.valid,
+            *((domain,) if domain is not None else ()),
+        )
+    )
     pending = [(roots, 0, 0, 0, 0)]
+    visited: set[tuple[tuple[int, ...], int, int, int, int]] = set()
     while pending:
         current, code_mask, code_value, arg_mask, arg_value = pending.pop()
+        visit_key = (current, code_mask, code_value, arg_mask, arg_value)
+        if visit_key in visited:
+            continue
+        visited.add(visit_key)
         nodes = tuple(functions.nodes[index] for index in current)
         decisions = [node.variable for node in nodes if node.variable is not None]
         if decisions:
@@ -413,6 +480,8 @@ def _table_agrees(
                 code.variable.side,
                 code.variable.role,
             ):
+                if not 0 <= variable.bit < code.bits:
+                    return False
                 mask, number = code_mask | 1 << variable.bit, code_value
                 for bit in (0, 1):
                     child = tuple(
@@ -433,6 +502,8 @@ def _table_agrees(
                 argument.variable.side,
                 argument.variable.role,
             ):
+                if not 0 <= variable.bit < argument.bits:
+                    return False
                 for bit in (0, 1):
                     child = tuple(
                         (node.high if bit else node.low)
@@ -452,18 +523,28 @@ def _table_agrees(
             else:
                 return False
             continue
-        if any(node.terminal is None or node.terminal.kind != "atom" for node in nodes):
+        if any(
+            node.terminal is None
+            or node.terminal.kind != "atom"
+            or type(node.terminal.value) is not int
+            for node in nodes
+        ):
             return False
         terminals = tuple(node.terminal for node in nodes)
+        output_count = len(factored.bits)
         observed = sum(
             terminal.value << bit
-            for bit, terminal in enumerate(terminals[:-1])
+            for bit, terminal in enumerate(terminals[:output_count])
             if terminal is not None
         )
-        last = terminals[-1]
-        assert last is not None
-        valid = last.value
+        valid_terminal = terminals[output_count]
+        domain_terminal = terminals[output_count + 1] if domain is not None else None
+        assert valid_terminal is not None
+        valid = valid_terminal.value
         for ordinal in _cube_values(code.bits, code_mask, code_value):
+            expected_domain = int(ordinal < 1234)
+            if domain_terminal is not None and domain_terminal.value != expected_domain:
+                return False
             for selector in _cube_values(
                 0 if argument is None else argument.bits, arg_mask, arg_value
             ):
@@ -471,11 +552,13 @@ def _table_agrees(
                 if valid != int(admitted):
                     return False
                 if admitted:
-                    state = definition.states[ordinal]
+                    reachable_state = definition.states[ordinal]
                     expected = (
-                        state.anchor
+                        reachable_state.anchor
                         if argument is None
-                        else definition.functions[state.continuation][selector]
+                        else definition.functions[reachable_state.continuation][
+                            selector
+                        ]
                     )
                     if observed != expected:
                         return False
@@ -516,39 +599,6 @@ def _request_exact(request: CodecRequest) -> bool:
         and _port_exact(request.namespace)
         and request.namespace.bit == 0
     )
-
-
-def _valid_domain(
-    structures: StructureArena, function: SemanticFunctionID, code: FinitePort
-) -> bool:
-    pending = [(function.local_id, 0, 0)]
-    while pending:
-        identity, mask, value = pending.pop()
-        node = structures.functions.nodes[identity]
-        if node.variable is not None:
-            variable = node.variable
-            if (variable.time, variable.side, variable.role) != (
-                code.variable.time,
-                code.variable.side,
-                code.variable.role,
-            ):
-                return False
-            pending.extend(
-                (
-                    (node.low, mask | 1 << variable.bit, value),
-                    (node.high, mask | 1 << variable.bit, value | 1 << variable.bit),
-                )
-            )
-        else:
-            terminal = node.terminal
-            if terminal is None or terminal.kind != "atom":
-                return False
-            if any(
-                terminal.value != int(ordinal < 1234)
-                for ordinal in _cube_values(code.bits, mask, value)
-            ):
-                return False
-    return True
 
 
 class ProfileStorageMetrics(TypedDict):

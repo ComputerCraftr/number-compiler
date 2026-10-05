@@ -3,8 +3,12 @@ from itertools import product
 import pytest
 
 from number_compiler.arithmetic.functions.finite_observer import (
+    class_members,
+    closed_partition_quotient_rows,
+    map_partition_row,
     minimize_finite_observer,
     partition_equivalent,
+    partition_quotient_rows,
 )
 from number_compiler.arithmetic.functions.finite_unary import minimize_unary_moore
 
@@ -37,6 +41,39 @@ def test_admission_is_observable_and_frontier_references_are_rejected() -> None:
     for rows in (((2,), (1,)), ((-1,), (1,)), ((True,), (1,)), ((0,), ())):
         with pytest.raises(ValueError):
             minimize_finite_observer(rows, (0, 0))
+
+
+def test_partition_helpers_preserve_class_members_and_forbidden_slots() -> None:
+    assert class_members((0, 1, 0, 2, 1), 3) == (
+        (0, 2),
+        (1, 4),
+        (3,),
+    )
+    assert map_partition_row((None, 3, 1), (4, 6, 8, 10)) == (None, 10, 6)
+    with pytest.raises(ValueError, match="class count"):
+        class_members((0,), -1)
+    with pytest.raises(ValueError, match="empty class"):
+        class_members((0, 2), 3)
+    with pytest.raises(ValueError, match="target leaves"):
+        map_partition_row((2,), (0, 1))
+
+
+def test_partition_quotient_rows_validate_successor_congruence() -> None:
+    class_ids = (0, 0, 1, 1)
+    assert partition_quotient_rows(
+        ((0, None), (1, None), (2, None), (3, None)),
+        class_ids,
+        2,
+    ) == ((0, None), (1, None))
+    assert closed_partition_quotient_rows(
+        ((0, 1), (1, 0), (2, 3), (3, 2)),
+        class_ids,
+        2,
+    ) == ((0, 0), (1, 1))
+    with pytest.raises(ValueError, match="not successor closed"):
+        partition_quotient_rows(((0,), (2,), (0,)), (0, 0, 1), 2)
+    with pytest.raises(ValueError, match="forbidden edge"):
+        closed_partition_quotient_rows(((None,),), (0,), 1)
 
 
 def test_fixed_point_matches_all_distinguishing_words_on_small_closed_graphs() -> None:

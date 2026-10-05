@@ -18,7 +18,8 @@ from time import perf_counter
 from typing import Any, TypedDict
 from unittest.mock import patch
 
-from devtools.checks.test_run_evidence import source_fingerprint
+from devtools.checks.validation_policy import PYTHON_COMMAND_SECONDS
+from devtools.git_source import git_source, same_git_revision
 from devtools.paths import repository_root
 from number_compiler.resources.temporal_diagnostics import METRICS_SCHEMA_VERSION
 
@@ -35,8 +36,12 @@ class FamilyProbeReport(TypedDict):
 
 class FieldProbeReport(TypedDict):
     metrics_schema_version: int
-    source_fingerprint: str
-    source_unchanged: bool
+    git_source_before: dict[str, str | bool]
+    git_source_after: dict[str, str | bool]
+    git_revision_unchanged: bool
+    evidence_mode: str
+    cacheable: bool
+    reusable: bool
     worker_sources_consistent: bool
     collection_complete: bool
     measurement_series_complete: bool
@@ -44,7 +49,7 @@ class FieldProbeReport(TypedDict):
     logarithmic_execution_claim: bool
     status_scope: str
     release_complete: bool
-    worker_watchdog_seconds: int
+    invocation_limit_seconds: int
     families: dict[str, FamilyProbeReport]
     status: str
     rows: list[dict[str, object]]
@@ -52,7 +57,7 @@ class FieldProbeReport(TypedDict):
 
 ROOT = repository_root()
 HORIZONS = (16, 32, 64, 128, 256, 512, 1024)
-WORKER_TIMEOUT_SECONDS = 35
+INVOCATION_LIMIT_SECONDS = PYTHON_COMMAND_SECONDS
 METRICS = (
     "metrics_schema_version",
     "new_canonical_field_images_published",
@@ -144,7 +149,7 @@ def worker(family: str, horizon: int) -> dict[str, object]:
     from number_compiler.sequences.collatz.block_power import PoweredCollatzTerm
     from number_compiler.sequences.reverse_add.power import ReverseAddPoweredTerm
 
-    fingerprint = source_fingerprint(ROOT)
+    source_before = git_source(ROOT)
     with (
         patch.object(MicroblockCache, "get", _no_microblock),
         patch.object(MicroblockCache, "put", _no_microblock),
@@ -178,8 +183,8 @@ def worker(family: str, horizon: int) -> dict[str, object]:
         "family": family,
         "horizon": horizon,
         "pid": os.getpid(),
-        "source_before": fingerprint,
-        "source_after": source_fingerprint(ROOT),
+        "git_source_before": source_before.as_dict(),
+        "git_source_after": git_source(ROOT).as_dict(),
         "digit": value,
         "repeat_digit": repeat,
         "width": width,
@@ -332,7 +337,7 @@ def _metric_observed(row: Mapping[str, object], field: str) -> bool:
 
 
 def run_probe() -> FieldProbeReport:
-    before = source_fingerprint(ROOT)
+    before = git_source(ROOT)
     rows: list[dict[str, object]] = []
     for family in ("reverse", "collatz"):
         for horizon in HORIZONS:
@@ -352,16 +357,13 @@ def run_probe() -> FieldProbeReport:
                     capture_output=True,
                     text=True,
                     check=False,
-                    timeout=WORKER_TIMEOUT_SECONDS,
                 )
-            except subprocess.TimeoutExpired as error:
+            except OSError as error:
                 row = _worker_failure(
                     family,
                     horizon,
-                    "timed_out",
-                    stdout=_text(error.stdout),
-                    stderr=_text(error.stderr),
-                    reason=f"worker exceeded {WORKER_TIMEOUT_SECONDS}s watchdog",
+                    "failed",
+                    reason=f"worker could not start: {error}",
                 )
             else:
                 if run.returncode:
@@ -419,10 +421,10 @@ def run_probe() -> FieldProbeReport:
             timing = row.get("cold_seconds")
             detail = f"{timing:.4f}s" if type(timing) is float else str(row["status"])
             print(f"{family} N={horizon}: {detail}", flush=True)
-    after = source_fingerprint(ROOT)
-    source_unchanged = before == after
+    after = git_source(ROOT)
+    revision_unchanged = same_git_revision(before, after)
     worker_sources_consistent = all(
-        row.get("source_before") == row.get("source_after") == before
+        row.get("git_source_before") == row.get("git_source_after") == before.as_dict()
         for row in rows
         if row.get("status") == "passed"
     )
@@ -440,7 +442,7 @@ def run_probe() -> FieldProbeReport:
         if row.get("status") == "passed"
     )
     accepted = (
-        source_unchanged
+        revision_unchanged
         and worker_sources_consistent
         and series_complete
         and observations_valid
@@ -448,8 +450,12 @@ def run_probe() -> FieldProbeReport:
     )
     return {
         "metrics_schema_version": METRICS_SCHEMA_VERSION,
-        "source_fingerprint": before,
-        "source_unchanged": source_unchanged,
+        "git_source_before": before.as_dict(),
+        "git_source_after": after.as_dict(),
+        "git_revision_unchanged": revision_unchanged,
+        "evidence_mode": os.environ.get("NUMBER_COMPILER_EVIDENCE_MODE", "development"),
+        "cacheable": False,
+        "reusable": False,
         "worker_sources_consistent": worker_sources_consistent,
         "collection_complete": len(rows) == 2 * len(HORIZONS),
         "measurement_series_complete": series_complete,
@@ -457,7 +463,7 @@ def run_probe() -> FieldProbeReport:
         "logarithmic_execution_claim": False,
         "status_scope": "measurement-only; not a release completion decision",
         "release_complete": False,
-        "worker_watchdog_seconds": WORKER_TIMEOUT_SECONDS,
+        "invocation_limit_seconds": PYTHON_COMMAND_SECONDS,
         "families": family_reports,
         "status": "GREEN" if accepted else "RED",
         "rows": rows,

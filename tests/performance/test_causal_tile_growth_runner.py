@@ -12,6 +12,7 @@ import pytest
 import devtools.benchmarks.causal_tile_growth_runner as runner
 from devtools.benchmarks.causal_tile_growth_probe import CausalGrowthRow
 from devtools.checks.process_guard import GuardResult
+from devtools.git_source import GitSource
 
 
 def _guard(outcome: str, returncode: int = 0) -> GuardResult:
@@ -21,7 +22,7 @@ def _guard(outcome: str, returncode: int = 0) -> GuardResult:
         child_returncode=returncode,
         elapsed_seconds=0.1,
         sampled_peak_bytes=1024,
-        memory_limit_bytes=runner.WORKER_MEMORY_LIMIT_BYTES,
+        memory_limit_bytes=runner.MEMORY_LIMIT_BYTES,
         memory_measurement="test",
         sample_interval_seconds=0.05,
         samples=1,
@@ -60,21 +61,22 @@ def _row() -> CausalGrowthRow:
     return row
 
 
-def test_release_runner_keeps_five_trials_and_full_horizon_manifest() -> None:
+def test_release_runner_keeps_five_trials_and_standard_invocation_policy() -> None:
     assert runner.TRIALS == 5
     assert runner.HORIZONS == (16, 32, 64, 128, 256, 512, 1024)
-    assert runner.WORKER_TIMEOUT_SECONDS == 35
-    assert runner.WORKER_MEMORY_LIMIT_BYTES == 1024**3
+    assert runner.INVOCATION_LIMIT_SECONDS == 60
+    assert runner.MEMORY_LIMIT_BYTES == 4 * 1024**3
 
 
 def test_worker_timeout_remains_missing_evidence(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    monkeypatch.setattr(runner, "source_fingerprint", lambda _root: "frozen")
+    source = GitSource("commit", "tree", "sha1", False)
+    monkeypatch.setattr(runner, "git_source", lambda _root: source)
 
     def timed_out(command: tuple[str, ...], **kwargs: object) -> GuardResult:
-        assert kwargs["timeout"] == 7
-        assert kwargs["memory_bytes"] == 1024**3
+        assert kwargs["timeout"] == 60
+        assert kwargs["memory_bytes"] == 4 * 1024**3
         assert kwargs["cwd"] == runner.ROOT
         cast(Path, kwargs["output"]).write_text("partial")
         return _guard("timeout", -9)
@@ -85,7 +87,6 @@ def test_worker_timeout_remains_missing_evidence(
         spatial_widths=(4, 8),
         fixed_width=4,
         trials=1,
-        timeout=7,
     )
     assert result["status"] == "RED"
     assert result["collection_complete"] is False
@@ -107,8 +108,8 @@ def test_worker_fingerprint_is_checked_before_row_payload(
         "temporal_steps": 4,
         "spatial_width": 4,
         "coordinate": 1,
-        "source_before": "changed",
-        "source_after": "changed",
+        "git_source_before": GitSource("other", "tree", "sha1", False).as_dict(),
+        "git_source_after": GitSource("other", "tree", "sha1", False).as_dict(),
         "row": {"malformed": True},
     }
 
@@ -123,9 +124,10 @@ def test_worker_fingerprint_is_checked_before_row_payload(
         raise AssertionError("row decoded before source identity was validated")
 
     monkeypatch.setattr(runner, "_parse_row", forbidden)
-    result = runner._one_trial(("fixed-width", 4, 4, 1), 0, "frozen", 35)
+    source = GitSource("commit", "tree", "sha1", False)
+    result = runner._one_trial(("fixed-width", 4, 4, 1), 0, source)
     assert result["status"] == "failed"
-    assert result["failure_reason"] == "worker source fingerprint changed"
+    assert result["failure_reason"] == "worker Git state differed from parent"
 
 
 def test_completed_worker_without_memory_sample_is_missing_evidence(
@@ -139,7 +141,7 @@ def test_completed_worker_without_memory_sample_is_missing_evidence(
             child_returncode=0,
             elapsed_seconds=0.1,
             sampled_peak_bytes=None,
-            memory_limit_bytes=runner.WORKER_MEMORY_LIMIT_BYTES,
+            memory_limit_bytes=runner.MEMORY_LIMIT_BYTES,
             memory_measurement="test",
             sample_interval_seconds=0.05,
             samples=0,
@@ -148,7 +150,9 @@ def test_completed_worker_without_memory_sample_is_missing_evidence(
         )
 
     monkeypatch.setattr(runner, "run_guarded", completed)
-    result = runner._one_trial(("fixed-width", 4, 4, 1), 0, "frozen", 35)
+    result = runner._one_trial(
+        ("fixed-width", 4, 4, 1), 0, GitSource("commit", "tree", "sha1", False)
+    )
     assert result["status"] == "failed"
     assert result["failure_reason"] == "worker guard produced no memory samples"
 
@@ -161,8 +165,8 @@ def test_successful_trial_retains_memory_evidence(
         "temporal_steps": 4,
         "spatial_width": 4,
         "coordinate": 1,
-        "source_before": "frozen",
-        "source_after": "frozen",
+        "git_source_before": GitSource("commit", "tree", "sha1", False).as_dict(),
+        "git_source_after": GitSource("commit", "tree", "sha1", False).as_dict(),
         "row": asdict(_row()),
     }
 
@@ -171,7 +175,9 @@ def test_successful_trial_retains_memory_evidence(
         return _guard("completed")
 
     monkeypatch.setattr(runner, "run_guarded", completed)
-    result = runner._one_trial(("fixed-width", 4, 4, 1), 0, "frozen", 35)
+    result = runner._one_trial(
+        ("fixed-width", 4, 4, 1), 0, GitSource("commit", "tree", "sha1", False)
+    )
     assert result["sampled_peak_bytes"] == 1024
     assert result["memory_measurement"] == "test"
     assert result["memory_samples"] == 1
@@ -227,13 +233,13 @@ def test_worker_row_rejects_negative_counters_and_nonfinite_time() -> None:
 def test_passing_subset_remains_red_for_missing_release_manifest(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    monkeypatch.setattr(runner, "source_fingerprint", lambda _root: "frozen")
+    source = GitSource("commit", "tree", "sha1", False)
+    monkeypatch.setattr(runner, "git_source", lambda _root: source)
 
     def passed(
         request: tuple[str, int, int, int],
         trial: int,
-        fingerprint: str,
-        timeout: object,
+        source_identity: GitSource,
     ) -> runner.TrialRecord:
         scenario, temporal_steps, spatial_width, coordinate = request
         row = replace(
@@ -254,8 +260,8 @@ def test_passing_subset_remains_red_for_missing_release_manifest(
             "spatial_width": spatial_width,
             "coordinate": coordinate,
             "trial": trial,
-            "source_before": fingerprint,
-            "source_after": fingerprint,
+            "git_source_before": source_identity.as_dict(),
+            "git_source_after": source_identity.as_dict(),
             "row": asdict(row),
             "process_wall_seconds": 0.3,
             "status": "passed",
@@ -267,7 +273,6 @@ def test_passing_subset_remains_red_for_missing_release_manifest(
         spatial_widths=(4, 8),
         fixed_width=4,
         trials=1,
-        timeout=35,
     )
     assert result["diagnostic_status"] == "MEASURED_PASS"
     assert result["status"] == "RED"
@@ -286,8 +291,8 @@ def test_exact_default_protocol_is_required_for_release_measurement() -> None:
         runner.HORIZONS,
         runner.RELEASE_FIXED_WIDTH,
         runner.TRIALS,
-        runner.WORKER_TIMEOUT_SECONDS,
     )
     assert required["fresh_process_trials_per_sample"] == 5
-    assert required["worker_watchdog_seconds"] == 35
+    assert required["invocation_limit_seconds"] == 60
+    assert required["memory_limit_bytes"] == 4 * 1024**3
     assert len(required["requests"]) == 3 * len(runner.HORIZONS)

@@ -8,6 +8,7 @@ not assumed. This endpoint-only API is not a public tile-cache admission gate.
 from __future__ import annotations
 
 from dataclasses import dataclass
+from itertools import repeat
 
 from devtools.experiments.reverse_add.factored_planes import (
     PlaneAlgebra,
@@ -15,6 +16,7 @@ from devtools.experiments.reverse_add.factored_planes import (
     PlaneID,
 )
 from number_compiler.arithmetic.automata.program_word import (
+    iter_runs,
     prune_stale_program_word_memos,
 )
 from number_compiler.arithmetic.carry.carry_monoid import CarryFn
@@ -143,18 +145,20 @@ class FactoredReverseCarrier:
         if type(values) is not tuple or not values:
             raise ValueError("source must be an immutable nonempty pair field")
         coordinates = tuple(decimal_factored_coordinates(v) for v in values)
+        if any(values[i] != values[-1 - i] for i in range(len(values) // 2)):
+            raise ValueError("reverse pair carrier must be symmetric")
+        if len(values) % 2 and values[len(values) // 2] % 2:
+            raise ValueError("odd-width pair center must be even")
         p = self.planes
         p.clear_work()
         try:
-            cell = TemporalCell(
+            return TemporalCell(
                 p.from_values(
                     "domain", tuple(DOMAINS.index(g) for g, _, _ in coordinates)
                 ),
                 p.from_values("f5", tuple(a for _, a, _ in coordinates)),
                 p.from_values("bool", tuple(b for _, _, b in coordinates)),
             )
-            self.validate(cell)
-            return cell
         finally:
             p.clear_work()
 
@@ -163,17 +167,17 @@ class FactoredReverseCarrier:
     ) -> TemporalCell:
         """Admit a counted source directly in its three coordinate alphabets."""
         require_endpoint_construction()
-        decimal_factored_value(domain, alpha, beta)
+        value = decimal_factored_value(domain, alpha, beta)
+        if type(width) is int and width > 0 and width % 2 and value % 2:
+            raise ValueError("odd-width pair center must be even")
         p = self.planes
         p.clear_work()
         try:
-            cell = TemporalCell(
+            return TemporalCell(
                 p.constant("domain", DOMAINS.index(domain), width),
                 p.constant("f5", alpha, width),
                 p.constant("bool", beta, width),
             )
-            self.validate(cell)
-            return cell
         finally:
             p.clear_work()
 
@@ -252,14 +256,29 @@ class FactoredReverseCarrier:
         p.clear_work()
         try:
             width = self.validate(cell)
-            return tuple(
-                decimal_factored_value(
-                    DOMAINS[p.atom(cell.domain, i)],
-                    p.atom(cell.f5, i),
-                    p.atom(cell.half, i),
+            domains = iter_runs(p.resolve(cell.domain, "domain"))
+            alpha = iter(iter_runs(p.resolve(cell.f5, "f5")))
+            beta = iter(iter_runs(p.resolve(cell.half, "bool")))
+            domain_value, domain_left = next(domains)
+            alpha_value, alpha_left = next(alpha)
+            beta_value, beta_left = next(beta)
+            output: list[int] = []
+            while len(output) < width:
+                span = min(domain_left, alpha_left, beta_left)
+                value = decimal_factored_value(
+                    DOMAINS[domain_value], alpha_value, beta_value
                 )
-                for i in range(width)
-            )
+                output.extend(repeat(value, span))
+                domain_left -= span
+                alpha_left -= span
+                beta_left -= span
+                if domain_left == 0 and len(output) < width:
+                    domain_value, domain_left = next(domains)
+                if alpha_left == 0 and len(output) < width:
+                    alpha_value, alpha_left = next(alpha)
+                if beta_left == 0 and len(output) < width:
+                    beta_value, beta_left = next(beta)
+            return tuple(output)
         finally:
             p.clear_work()
 

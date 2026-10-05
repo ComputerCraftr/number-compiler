@@ -1,91 +1,80 @@
-"""Unit, exhaustive-validation, and release collections stay distinct."""
+"""Canonical suite partitions rely on one collection and one JUnit manifest."""
 
 from __future__ import annotations
 
-import json
-import subprocess
-import sys
-import tomllib
+import os
 from pathlib import Path
+from types import SimpleNamespace
+from typing import cast
 
-from devtools.checks.test_run_evidence import collect_required, pytest_environment
+import pytest
+
+from devtools.checks.test_run_evidence import (
+    classify_execution_mode,
+    pytest_environment,
+)
 from devtools.paths import repository_root
+from tests.conftest import pytest_collection_modifyitems
 
 ROOT = repository_root()
 
 
-def _temporary_suite(root: Path) -> tuple[Path, tuple[Path, ...]]:
-    configured = tomllib.loads((ROOT / "pyproject.toml").read_text())["tool"]["pytest"][
-        "ini_options"
-    ]
-    config = root / "pyproject.toml"
-    config.write_text(
-        "[tool.pytest.ini_options]\n"
-        f"testpaths = {json.dumps(configured['testpaths'])}\n"
-        f"addopts = {json.dumps(configured['addopts'])}\n"
-        f"markers = {json.dumps(configured['markers'])}\n"
-    )
-    tests = root / "tests"
-    validation = tests / "validation"
-    validation.mkdir(parents=True)
-    ordinary = tests / "test_partition_samples.py"
-    ordinary.write_text(
-        "import pytest\n\n"
-        "def test_unit_sample():\n"
-        "    pass\n\n"
-        "@pytest.mark.validation\n"
-        "def test_explicit_validation_sample():\n"
-        "    pass\n"
-    )
-    automatic = validation / "test_automatic_sample.py"
-    automatic.write_text("def test_automatic_validation_sample():\n    pass\n")
-    return config, (ordinary, automatic)
+class _Item:
+    def __init__(self, path: Path) -> None:
+        self.path = path
+        self.config = SimpleNamespace(rootpath=ROOT)
+        self.nodeid = f"{path.relative_to(ROOT).as_posix()}::test_sample"
+        self.user_properties: list[tuple[str, str]] = []
+        self.markers: set[str] = set()
+
+    def add_marker(self, marker: object) -> None:
+        name = getattr(marker, "name", None)
+        assert isinstance(name, str)
+        self.markers.add(name)
 
 
-def _collected(
-    config: Path, selectors: tuple[Path, ...], marker: str | None
-) -> frozenset[str]:
-    command = [
-        sys.executable,
-        "-m",
-        "pytest",
-        "-c",
-        str(config),
-        "-p",
-        "tests.conftest",
-        "--collect-only",
-        "-q",
-    ]
-    if marker is not None:
-        command.extend(("-m", marker))
-    command.extend(str(path) for path in selectors)
-    completed = subprocess.run(
-        command,
-        cwd=ROOT,
-        capture_output=True,
-        text=True,
-        check=False,
-        timeout=30,
-        env=pytest_environment(),
+def test_test_collection_assigns_validation_partition_automatically() -> None:
+    ordinary = _Item(ROOT / "tests/test_partition_sample.py")
+    automatic_validation = _Item(ROOT / "tests/validation/test_sample.py")
+    pytest_collection_modifyitems(
+        [cast(pytest.Item, ordinary), cast(pytest.Item, automatic_validation)]
     )
-    assert completed.returncode == 0, completed.stdout + completed.stderr
-    return frozenset(
-        line.rsplit("::", 1)[-1]
-        for line in completed.stdout.splitlines()
-        if "::test_" in line
-    )
+    assert "validation" not in ordinary.markers
+    assert "validation" in automatic_validation.markers
 
 
-def test_configured_partitions_and_release_collection_preserve_every_case(
-    tmp_path: Path,
+def test_guarded_pytest_environment_drops_external_filters(
+    monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    config, selectors = _temporary_suite(tmp_path)
-    unit = "test_unit_sample"
-    explicit = "test_explicit_validation_sample"
-    automatic = "test_automatic_validation_sample"
-    assert _collected(config, selectors, None) == {unit}
-    assert _collected(config, selectors, "validation") == {explicit, automatic}
-    assert _collected(config, selectors, "") == {unit, explicit, automatic}
-    assert {
-        node.rsplit("::", 1)[-1] for node in collect_required(tmp_path, ("tests",))
-    } == {unit, explicit, automatic}
+    monkeypatch.setenv("PYTEST_ADDOPTS", "-k fast")
+    monkeypatch.setenv("PYTEST_PLUGINS", "filter_plugin")
+    environment = pytest_environment()
+    assert "PYTEST_ADDOPTS" not in environment
+    assert "PYTEST_PLUGINS" not in environment
+    assert environment["PYTEST_DISABLE_PLUGIN_AUTOLOAD"] == "1"
+    assert os.environ["PYTEST_ADDOPTS"] == "-k fast"
+
+
+@pytest.mark.parametrize(
+    ("expression", "expected"),
+    (
+        ("not validation", "serial-unit"),
+        ("validation", "serial-validation"),
+        ("", "serial-unfiltered"),
+    ),
+)
+def test_execution_mode_classifies_release_and_validation_partitions(
+    expression: str,
+    expected: str,
+) -> None:
+    assert (
+        classify_execution_mode(
+            mark_expression=expression,
+            parallel=False,
+            keyword="",
+            deselected=False,
+            last_failed=False,
+            collection_args=("tests",),
+        )
+        == expected
+    )

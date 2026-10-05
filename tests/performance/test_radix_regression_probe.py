@@ -19,7 +19,18 @@ from tests.support.report_values import object_record
 
 def complete() -> dict[str, object]:
     return {
-        "source_unchanged": True,
+        "git_source_before": {
+            "git_commit": "commit",
+            "git_tree": "tree",
+            "git_object_format": "sha1",
+            "git_dirty": False,
+        },
+        "git_source_after": {
+            "git_commit": "commit",
+            "git_tree": "tree",
+            "git_object_format": "sha1",
+            "git_dirty": False,
+        },
         "construction": {"status": "ok"},
         "cold": {"status": "ok", "seconds": COLD_LIMIT, "value": 2},
         "repeat": {"status": "ok", "seconds": REPEAT_LIMIT, "value": 2},
@@ -46,7 +57,7 @@ def test_probe_accepts_exact_fixed_limits_without_changing_trial_count() -> None
         ("repeat", "seconds", 0.010001),
         ("cold", "value", 1),
         ("repeat", "status", "unavailable"),
-        ("cold", "status", "timeout"),
+        ("cold", "status", "error"),
         ("audit", "resource_audit_complete", 0),
         ("audit", "representation_boundary_complete", 0),
         ("audit", "forbidden_future_payloads", 1),
@@ -64,11 +75,13 @@ def test_slow_incomplete_wrong_or_failed_audit_is_not_accepted(
 
 
 @pytest.mark.parametrize(
-    "field", ("source_unchanged", "no_response_or_microblock_assistance")
+    "field", ("git_source_after", "no_response_or_microblock_assistance")
 )
-def test_source_changes_or_forbidden_acceleration_are_not_accepted(field: str) -> None:
+def test_git_state_changes_or_forbidden_acceleration_are_not_accepted(
+    field: str,
+) -> None:
     row = complete()
-    row[field] = False
+    row[field] = False if field != "git_source_after" else {"git_commit": "changed"}
     assert not trial_passes(row)
 
 

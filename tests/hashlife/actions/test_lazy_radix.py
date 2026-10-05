@@ -9,8 +9,8 @@ from number_compiler.projection.lazy_radix import RadixProjection, collatz_radix
 from number_compiler.resources.ledger import ResourceLedger
 from number_compiler.resources.metric_collection import collect_ledger_metrics
 from number_compiler.sequences.collatz.block_power import PoweredCollatzTerm
+from tests.support.performance_assertions import performance_bound
 from tests.support.reference_arithmetic import collatz_literal as _collatz
-from tests.support.runtime_limits import deadline
 
 
 @pytest.mark.validation  # Complete 12-source, four-radix point matrix.
@@ -31,7 +31,7 @@ def test_nonbinary_public_point_queries_never_lower_binary_endpoints(
         for radix in (3, 6, 10, 36):
             payload = PoweredCollatzTermPayload(term, radix)
             digits = digits_lsd(expected, radix)
-            with deadline(
+            with performance_bound(
                 35, f"radix {radix} point matrix for seed {seed}, steps {steps}"
             ):
                 assert tuple(payload.digit(i) for i in range(len(digits))) == tuple(

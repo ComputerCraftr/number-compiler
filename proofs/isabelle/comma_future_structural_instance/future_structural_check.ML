@@ -13,7 +13,10 @@ struct
           comma_summary_boundary_children_def comma_fast_total_boundary_def
           comma_decade_summary_resume.simps comma_boundary_states_def
           comma_boundary_valid_def comma_finite_initial_def
-          comma_rank_candidate_def comma_rank_code_at_def
+          comma_decade_rank_candidate_on_valid_def
+          comma_decade_terminal_candidate_on_valid_def
+          comma_rank_candidate_on_valid_def comma_rank_lookup_def
+          comma_rank_lookup_result.case comma_rank_code_at_def
           comma_boundary_kind.simps comma_finite_outcome.case
           option.case option.map option.inject option.distinct
           list.distinct list.inject list.map concat.simps append.simps
@@ -29,9 +32,9 @@ struct
       fun nat n = HOLogic.mk_number @{typ nat} n
       val proposition = HOLogic.mk_Trueprop
         (@{term comma_future_descent_phase_range} $
-          @{term comma_decade_rank_candidate} $
-          @{term comma_decade_terminal_candidate} $
-          @{term comma_rank_candidate} $ nat lo $ nat hi)
+          @{term comma_decade_rank_candidate_on_valid} $
+          @{term comma_decade_terminal_candidate_on_valid} $
+          @{term comma_rank_candidate_on_valid} $ nat lo $ nat hi)
       val started = Time.now ()
       val theorem = #certify engine (Goal.prove ctxt [] [] proposition
         (fn _ => simp_tac (#context engine) 1))

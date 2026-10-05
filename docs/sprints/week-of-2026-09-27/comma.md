@@ -30,6 +30,8 @@ Open obligations retain their recorded scope; consult [current release gates](..
 
 ## Records
 
+- [October 1: run-word integration and direct summary refinement](#october-1--run-word-integration-and-direct-summary-refinement)
+
 - [September 30: executable future quotients and phase reuse](#september-30--executable-future-quotients-and-phase-reuse)
 
 - [September 30: normalized cycle reuse and proof memos](#september-30--normalized-cycle-reuse-and-proof-memos)
@@ -2244,3 +2246,1740 @@ The earlier 56.749-second baseline and this run are not a paired latency study.
 Complete the checked rejected-sibling proof and selected literal-path/weighted
 runtime integration before forest/fuel deletion. Warm boundary reuse and the
 restored focused build do not establish a cold aggregate proof bound.
+
+
+## October 1 — run-word integration and direct summary refinement
+
+**Objective.** Integrate the downloaded run-level cycle proof selectively and
+remove unnecessary proof replay without claiming that the production forest or
+fuel boundary has already been replaced.
+
+**Changes.** The generic run-word theory is independent of the concrete table
+instance. The concrete run instance inherits the checked structural heap, and
+the global safety session inherits the run instance. This preserves completed
+ML setup rather than reloading it through a non-parent session import. The old
+selected-return and exact-rank instances remain independently buildable audit
+sessions. A parsed dependency regression checks their exclusion from global
+future safety.
+
+The existing summary outcome, resume and fast-boundary definitions now have
+one owner, `Comma_Decade_Summary_Semantic`. Its direct refinement uses literal
+round closure and the inductive exact decade summary. The old transport owner
+imports those definitions and retains its compatibility theorems. The new
+owner has no `Comma_Total_Macro` dependency; this does not yet remove that
+dependency from downstream child/weight lifting.
+
+**Established results.** The downloaded cycle has 140 runs, 314 decisions,
+143 N and 171 Z choices. Its 139 supplied distinguishing positions were
+independently checked. The minimality claim is scoped to rotations of the
+fixed cyclic observer emitting complete `(choice, length)` pairs. It is not a
+minimality theorem for arbitrary production source cylinders.
+
+**Rejected approaches.** The archive's older summary kernel eagerly builds
+all 91 coordinate lenses and removes the live lazy-cache checks. That reversion
+was rejected. Unrelated reverse and Mahler proof changes and deleted growth
+session registrations were not imported. No candidate table or Python census
+is admitted as a theorem premise, and no phase is removed from a cache key
+without an exact transport theorem.
+
+**Validation/provenance.** Source archive SHA-256:
+`652e764fa6aa6627cd485c83b83d0ee41363ac353e1fb23b2adf1fea9d0d3697`.
+Report SHA-256:
+`666ea2a4188f9b931b03db388a2463b9908a5545df66f8ee24354a2bbb66a3e0`.
+The separately named patch was not available; integration used the verified
+archive. Kernel builds exposed invalid `code_simp` syntax, incomplete bounded
+witness proofs, and incorrect induction bindings/chained facts in the download;
+these were repaired rather than treated as passed static checks.
+
+The first two requested 60-second / 4-GiB builds both timed out in the existing
+`Comma_Decade_Summary_Checked` prerequisite, before executing the new run
+checker. Their unchanged-source evidence is local at
+`results/runs/20261001T224337Z-b68e90e36ed64b7284952b021228ade2`.
+The direct semantic refinement passed its kernel build at
+`results/runs/20261001T225125Z-ebd77087af834911a0e3fb84a000d165`;
+final scoped confirmation is at
+`results/runs/20261001T231758Z-49d92a412f074e0fae2b58ea420fc58d`.
+The generic run-word session also passes. Whole-tree mypy, Ruff, formatting,
+source policy, proof inventory and proof-boundary audits pass; 90 focused
+repository tests pass (one existing validation-marked test deselected).
+Quality evidence is local at
+`results/runs/20261001T231642Z-137a4a6a94b046bf967f59242d5a3640`, source v5
+`3f8c80a1ffbe7595a4fe1915228f94baf7a0415f95cc31e2be685b8564b3ce85`.
+Both concrete/global sessions again timed out in their summary prerequisite at
+`results/runs/20261001T231206Z-de5a3d07275d463dbbf61e4ba3411ab0`, source
+`3e68bf359d1c4657480777946b3065bc3b96288b8d2cb0c81a3358f6824c3a93`.
+The only later proof-source change annotates the ML fold's complete record type
+to avoid an unresolved flexible record. The concrete checker is still not
+kernel-validated. Old temporary profiling checkpoints were removed.
+
+**Remaining obligations.** Finish the 924-phase summary certificate, concrete
+structural/run instances and global/root proof within the unchanged limit.
+Control equality under the 46-offset quotient alone does not prove height and
+terminal-label equality: the existing lifting theorem requires both. Complete
+ordered-child and weighted literal refinement before deleting the production
+forest or the old semantic macro. No CLI activation or performance claim is
+made by this proof-only integration.
+
+
+## October 1 — algebraic classifier prerequisites and reconstruction gates
+
+**Objective.** Apply the corrected constructor-first review: make the compact
+classifier prove the physical recurrence and reconstruct the exact occurrence
+before removing the table-backed release owner, fuel or production forest.
+
+**Changes.** Local decimal Schur arithmetic reuses the existing carry monoid.
+The executable two-division law refines multiplication by ten; reset proofs
+retain polarity and erase only incoming Boolean carry. Pair encoding and
+threshold-gap proofs now derive symbolically from the predecessor split,
+instead of executing an 81-port simplifier. Existing theorem interfaces and
+aggregate audit statements remain available. The predecessor split admits
+zero and is shared by orientation and center proofs. The center proof uses
+four explicit parity/wrap cases and normalizes the half-sum before modulo five;
+it no longer expands pair fields or asks Presburger arithmetic to discover
+the split. The punctured successor proof composes one or two predecessor
+translations through that closed form. The direct boundary-summary
+owner now takes the local recurrence as its primary premise; its former
+checked-table theorem is a compatibility corollary.
+
+**Established results.** Independent Python checks cover the factored pair
+coordinates and punctured F5 update on all 90 ports, including zero. The nine
+coprime-core arithmetic and its Isabelle refinement were already present and
+were reused without another harmonic implementation. New regressions show
+why equal complement-normalized reset defects do not imply equality on a
+fixed carry input, and why Q15-equal forks 3 and 6 still need their occurrence
+coefficient to recover different Q19 timing. These are reconstruction scope
+checks, not counterexamples to complete transported actions.
+
+**Rejected approaches.** No production state was merged on reset defect or
+Q15 alone. No M204/T50/M111 count was used as a constructor or termination
+premise. No phase mask, exact-rank table or Python census replaced the missing
+commuting theorem. The old summary timeout was not hidden by changing its
+budget or removing its release assertions.
+
+**Validation/provenance.** Inputs are the supplied algebraic-constructor,
+reset-rebase and classifier-refinement reviews, respectively SHA-256:
+`52dcaa090b2bd7ca99234ca9382be69b2f693b418b46494c271d672903dcaefd`,
+`3ba4419f4f3724729b17d19820d0138e0225d52b62c8560ab4ba2cc2762a7aea`,
+`d07d47d61625f8e8c4e55b2a7f77e484ca1f5ba50af84a1c8a2676b06f24a5fb`.
+The follow-up closed-center review has SHA-256
+`f22b83725bb479e4dfdc5d061726c5a134410c5a59307661e94d9370ce3ac949`.
+It separates the zero-inclusive predecessor split, the exact half-sum, and the
+F5 update so later composition need not unfold the physical pair field.
+Final source v5: `a470fde18c65f24670683307031be374e702d03612858f7c741ef092848a861c`.
+All four scoped sessions pass: `Comma_Schur_Carry`, `Comma_Vieta_Root`,
+`Comma_Decade_Summary_Semantic` and `Comma_Run_Moore`. The Vieta build takes
+22.947 guarded seconds with 2,731,216,952 sampled bytes, within 60 seconds /
+4 GiB. Evidence is local at
+`results/runs/20261002T022815Z-bc4380260a2743a38f686eeaf32bb0b7`.
+The initial orientation timeout was eliminated by reusing the predecessor
+split instead of repeating arithmetic rewrites; the center timeout was
+eliminated by explicit parity/wrap normalization. Temporary profiling writes
+were removed before final validation.
+
+Whole-tree strict mypy (1,657 sources), pinned Ruff, formatting, source policy,
+documentation, proof inventory (100 sessions / 241 theories) and boundary audit
+pass. The focused repository/comma selection passes 238 tests in 17.35 seconds;
+five existing validation-marked tests are deselected, with no new marks or
+weakened assertions. Evidence is local at
+`results/runs/20261002T022908Z-0bb8e49597d944eaae8848f3d2447135`.
+The independent review caught an auxiliary-port witness labeled as a production
+N-cylinder port; the test now obtains `(a-1,9)` from the canonical boundary
+helper. The reviewer confirmed that the primary summary theorem has no table
+or fuel dependency and that the concrete run/global checker still does.
+Full units, P0 and the unchanged blocked concrete/global sessions were not
+rerun for these local arithmetic changes; their prior outcomes remain separate.
+
+**Remaining obligations.** Implement the concrete constructor and discharge
+`comma_decade_residual_classifier_ok C` without the checked-table premise.
+Prove the one-decade encode/step/decode square, the height bound, normalized
+composition, and exact fork/landmine occurrence reconstruction. Reuse
+`comma_residual_classifier_sound` and `comma_residual_classifier_B32`; another
+generic powering framework is unnecessary. Then rebase structural and run
+instances, complete global/root and weighted-consumer checks, and remove
+forest/fuel. None of those gates is closed by these local proofs. Runtime
+Python and production admission are unchanged.
+
+## October 1 — shared Native19 carrier and partial-classifier interface
+
+**Objective.** Replace duplicated local carry representations and make the
+remaining totality and literal-child obligations explicit before retiring the
+physical summary tables, fuel owner or production forest.
+
+**Changes.** The local port proof reuses `native_cocycle` and `encode_cocycle`
+from the reverse/add arithmetic owner. Sector, bounded carrier and orientation
+reconstruct the zero-inclusive physical port. The existing pair arithmetic
+lemma is generalized to include digit zero; center and puncture proofs remain
+the canonical transport lemmas. The reset observer is a six-element last-event
+monoid, with complement invariance and an explicit witness separating reset
+identity from full digit/output identity. No second Python decimal codec or
+family scheduler is introduced.
+
+**Established results.** The integrated classifier interface defines a partial
+bounded fold and proves stability after a successful result, exact-summary
+soundness and agreement with the existing block semantics. Its
+`classifier_ok` theorem requires both one-decade refinement and totality at
+27 inspections. The derived `h <= 26` bound is conditional on that totality;
+choosing 27 as the evaluator budget does not prove termination. The provisional
+sector-response constructor is an exact reference, not an optimized Native19
+constructor: it still builds phase alternatives before selecting a response.
+That wrapper was not added as a second evaluator. Direct terminal-occurrence
+lemmas retain a literal path and the complete fork/landmine child relation;
+crossing induction is still required. They import the terminal-event owner,
+avoiding a redundant summary-proof branch during kernel checking.
+
+**Rejected approaches.** M204 observations are not treated as successor states.
+No complete-output merge follows from last-reset equality, and no runtime
+admission may use `the None`. No terminal/rank table or 84,084-row enumeration
+is used to prove the new local arithmetic. The existing forest is retained
+until native constructor totality, exact literal reconstruction and global
+future safety are checked together.
+
+**Validation/provenance.** Classifier-interface input:
+`A367620_NC5_COMPACT_CLASSIFIER_INTERFACE.patch`, SHA-256
+`22382677831e63d6ae96652591b6dbb2a377164b7be1c146d3f416efd8d3d51a`.
+The attachment explicitly leaves native one-decade refinement and totality
+unproved. The preceding representation review has SHA-256
+`ced92b900bf25df4bb1741a9c36ac6459c1807dfb344ad85fa668ec27e0272e0`;
+the classifier review has SHA-256
+`8ee3bd3dbdda47db486a2aa3cec6b506876fd23a9f42843c94a575fa245ce244`.
+Final source v5:
+`2747060b0ad68d1b3c6a18e8f4b45782f2f5311c88f83c89e796582b574311e3`.
+
+All ten scoped Isabelle sessions pass: `Reverse_Residuals`,
+`Comma_Schur_Carry`, `Comma_Reset_Germ`, `Comma_Native19_Carry`,
+`Comma_Vieta_Root`, `Comma_Factored_Port_Carrier`,
+`Comma_Compact_Decade_Classifier`, `Comma_Decade_Occurrence_Semantic`,
+`Comma_Decade_Summary_Semantic` and `Comma_Run_Moore`.
+Final cached confirmation takes 14.856 guarded seconds and 1,711,394,152
+sampled bytes, within 60 seconds / 4 GiB. Evidence is local at
+`results/runs/20261002T034302Z-f3358246e050416b87730e86c6c49481`.
+Developmental checks repaired invalid proof steps from the patch and replaced
+broad modular automation that hit 60 seconds with explicit congruence laws.
+The resulting Native19 build took 13.153 seconds on its developmental source;
+that timing is not a fresh build measurement of the final fingerprint.
+
+Whole-tree strict mypy (1,657 sources), Ruff 0.16.9, formatting, source policy,
+documentation, proof inventory (105 sessions / 246 theories) and proof boundary
+audit pass. Focused tests pass 249 cases in 16.84 seconds; five existing
+validation-marked cases are deselected. This includes the shared decimal-codec
+checks, all 90 ports and proof dependency assertions. Evidence is local at
+`results/runs/20261002T034149Z-170dd97de61048948a002ef2b8fdf5a1`.
+No runtime behavior, assertion thresholds or release selections changed.
+Full units, P0, wheel and aggregate/global proof builds were not repeated for
+this proof-only refinement; their prior open gates remain separately recorded.
+
+Independent reviewers checked zero-inclusive admission, shared codec ownership,
+reset/output separation, conditional totality and the absence of a native
+constructor. The inventory deliberately does not label the new generic
+classifier or terminal lemmas as completed production refinement.
+
+**Remaining obligations.** Construct `comma_native_decade_control`, prove its
+commuting theorem and `comma_native_decade_total_27`, then instantiate the
+classifier and rebase future structural safety through exact literal children.
+Only that chain can remove production forest admission and the old fuel owner.
+
+## October 1 — recursive pair language and complete-even response quotient
+
+**Objective.** Test the newly supplied recursive quotient against the live
+weighted port semantics, then prove its compositional laws before changing
+native decade admission or deleting forest/fuel dependencies.
+
+**Changes.** Added a bounded developer audit whose dyadic parent consumes two
+completed child blocks. It retains exact endpoint and weight separately from
+the reduced observer. The pair language composes the existing physical carry
+monoid, signed-defect residues, length modulo four and first-defect center.
+`None` supplies the all-neutral predicate without a duplicate flag; no defect
+position or literal word is retained in a block. Literal word construction
+exists only in the independent bounded test oracle.
+
+Added `Comma_Recursive_Pair_Language` and `Comma_Even_Port_Action`, using the
+existing decimal carry, factored port and weighted action owners. Registered
+their session and production-boundary inventory entries. Their current Python
+counterpart is a developer audit, not an installed replacement constructor.
+No second scheduler, production cache or branch selector was added.
+
+**Established results.** The kernel checks associativity, admitted merge
+closure, append/square evaluation, first-defect and neutral composition,
+signed-defect residues, and exact F5 length reduction modulo four. The
+sector-five formulas prove, for every natural n and each d in 1..4, that the
+2*n-step occurrences beginning at d and d+5 both gain n*(2*d+6), retaining
+endpoints d and d+5 respectively. `comma_even_port_key_right_congruence`
+therefore covers arbitrary complete even blocks in a fixed sector; it does
+not merge partial locators, exact occurrences or future decade re-entry.
+
+The independent finite Moore audit observes `(sector, source Q19, weight)`
+and follows the actual block endpoint. It finds 90 classes at B1 and 86 at
+B2 through B1024. Source-center, midpoint and first-defect keys have no false
+merges at B2+. Removing the puncture produces nine conflicting classes at B4+.
+Exact `(sector, endpoint, weight)` occurrences remain 90: four endpoint
+conflicts exist inside the 86-key partition. This distinction is deliberate,
+not a failed complete-occurrence quotient.
+
+**Rejected approaches.** No bare Q21 or Q86 key authorizes substituting an
+exact endpoint. A concrete witness is sector 5 with sources 1 and 6: both
+complete two-port blocks have weight 8, but first-child weights are 1 and 7,
+so row 1 selects different partial blocks. No M204/T50 census, assumed M111
+count, 84,084-row table or discovered finite rank supplies the new theorem.
+The infinite-branch claim and native totality remain separate obligations.
+
+**Validation/provenance.** Review SHA-256:
+`79d5d9f8a315fa1a7a8c6a853e8cc4ca830901ed1fc26b8101423f7c97e4c96e`.
+Final source v5:
+`074238afdf7b5943b69b7f971fa009dc880bd1264d46aa6060d75235f677de03`.
+The new session builds in 27.774 guarded seconds with 3,065,811,240 sampled
+bytes, below 60 seconds / 4 GiB, without skipped proofs, axioms or oracles.
+Evidence is local at
+`results/runs/20261002T044125Z-8c020ed02d42462b944d29704ca044d8`.
+Whole-tree strict mypy (1,659 sources), Ruff 0.16.9, formatting, source policy,
+documentation, proof inventory (106 sessions / 248 theories) and boundary audit
+pass. The focused selection passes 269 tests in 17.99 seconds with five
+pre-existing validation-marked cases deselected. It includes all three-leaf
+pair words, all 90 ports through B1024, alternate parenthesizations, exact
+midpoints, invalid leaves and incompatible child seams. Evidence is local at
+`results/runs/20261002T044207Z-4329e2d507464051848c5974e494e5b8`.
+The standalone quotient audit uses the common guarded evidence runner and is
+recorded at `results/runs/20261002T044331Z-d870a85737d54a75a62daf3be7e0d9e5`.
+
+**Remaining obligations.** Compose the recursive observation with exact
+occurrence potentials, nine-core response, reset action and live phase to
+construct `comma_native_decade_control`; prove its commuting theorem and a
+strictly decreasing native measure bounded below 27. The review names this
+measure but does not define it. Then instantiate the existing classifier,
+prove literal reconstruction across decade crossings, rebase global/root
+safety and weighted consumers, and delete their old dependencies together.
+The current local quotient theorem does not complete those steps. Production
+CLI, forest admission and fuel owners are unchanged. Full units, P0, wheel and
+aggregate/global Isabelle were not rerun for this proof/audit-only change;
+prior release holds remain active.
+
+
+## October 1 — temporal observer scope, radix-nine words and native cutover ownership
+
+**Objective.** Incorporate the revised temporal and radix-nine observations,
+remove unnecessary local construction, and identify the actual native owners
+required before forest/fuel deletion.
+
+**Changes.** Added an exact admitted orientation cover of the 90 ports over
+86 even-response keys, bounded endpoint-time application, and weighted port
+factorization with one startup and fewer than nine tail moves. Time classes
+remain port-only projections; exact dwell weights remain occurrence data.
+Identity application now returns its existing admitted cover. Arithmetic
+transition and new-cover admission charges remain separate. The production
+punctured port and new local helper share one zero-inclusive dwell formula.
+
+Added the bounded joint observer audit including Q21, F9, reset, first defect,
+endpoints and nine core harmonics. F9 stores only length modulo six and its
+residue modulo nine. It is developer verification, never an implicit CLI
+observation. Added a shared power-phase lemma used by both F5 and F9 proofs,
+plus domain/mod-9 decoding and recursive append/square refinement. Registered
+all new theories in the existing local proof session and proof inventory.
+The session now inherits the checked Entry heap, with the same ancestor closure,
+instead of reevaluating Entry proofs in its local heap. The dependency regression
+checks that closure explicitly. A temporal associativity proof also instantiates
+three small representative facts separately rather than asking one broad
+`blast` invocation to discover all three.
+
+The repository policy checker now prunes already-ignored generated and virtual
+environment directories before descent. It still checks authored nested paths
+such as `src/results`; a regression instruments the visited directories.
+
+**Established results.** The finite joint audit reproduces 13,863 distinct
+signatures and 62 dyadic signatures, with F9 included. The two transient
+witnesses remain distinct. F9 repeats with period 180 after the first move
+through the tested horizon. These are observations of a declared abstract
+clock, which advances a port and a harmonic phase together; a native decade
+or exponent tick has not been identified with that clock. The separate
+46-orbit-word channel is not part of this audit.
+
+**Rejected approaches.** Do not promote 181/14 endpoint classes to a complete
+branch action, substitute equal-weight aliases for exact source ports, or
+interpret a port move as a literal child step. Reuse the existing
+`comma_all_branches_terminate` and `comma_termination_excludes_infinite_path`
+instead of adding another generic losing predicate. Neither a repeated local
+observer nor the generic induction defines the native survivor selector.
+Invalid/failed classification must not become an empty child list: that would
+incorrectly certify a failure as a landmine. Reject invalid inputs before
+recursive continuation, or prove well-foundedness for the entire executable
+domain.
+
+**Validation/provenance.** Reviews are integration inputs, not release evidence.
+SHA-256 values: temporal refinement
+`bed6819ee9a3a00e06f1278c082cfff8c2ae1d98d37512163a45e19209723958`;
+radix-nine refinement
+`7ed6713955e641212d9ca90bba738229c8d711c4a8000aaafebac09f5e733fd5`;
+native-owner refinement
+`6b8543e49ef6f3ba7380a7664d01421b57832badc15b9b8e51ca8c46e2bdfd6b`;
+rank-free/native-selector refinement
+`5a01c53e78137f5a9649e19118a22570695eaa9bfe0595310e040d8891758a76`.
+Final v5 source fingerprint:
+`f8c064f384a444e449e9b2f589f0cbe19a119c6f1f75b9ed03281cfa65d15f04`.
+Provisional failures, including proof-script repairs and the policy timeout,
+retain their original logs; source-changed runs do not certify the final tree.
+
+| Validation | Command/scope | Outcome and limits | Local evidence |
+| --- | --- | --- | --- |
+| Kernel build | `isabelle build -b -j 1 -o threads=1 -o parallel_proofs=0 -d proofs/isabelle Comma_Recursive_Pair_Language` | PASS, 33.116 s / 3,445,215,792 sampled bytes; 60 s / 4 GiB; Entry heap reused, local theories rebuilt, `quick_and_dirty=false` | `results/runs/20261002T054814Z-82a4bb2a8e3b41a68b295afaad75eef0` |
+| Whole-tree quality | Strict mypy, Ruff 0.16.9, formatting, source/documentation policy, proof inventory and boundary audit | PASS; 1,663 typed sources, 106 sessions / 251 theories; source policy 30.000 s / 826,852,432 bytes under 35 s / 1 GiB | `results/runs/20261002T054858Z-c649b349139e40ecbd794f8eb1e88aa7` |
+| Focused tests | Repository proof/policy checks, comma CLI, temporal cover/observer, pair language, punctured/semantic ports and decimal cocycle; `-m 'not validation'` | 403 passed / 9 deselected; 70.33 pytest s, 70.869 guarded s / 857,277,592 bytes under 300 s / 1 GiB | Same run, `focused.xml`; manifest retains exact selection |
+
+Full units, P0, installed wheel and aggregate/global Isabelle were not rerun.
+The two final runs have identical before/after fingerprints. These local
+results establish neither a production CLI speedup nor forest/fuel deletion.
+
+**Remaining obligations.** Construct the native one-decade action, prove its
+complete ordered child refinement across chart/sector re-entry, and establish
+well-founded continuation. The 27 bound becomes a consequence, not an input.
+Lift classified continuation to literal occurrences and weights. Instantiate
+rank-free losing semantics with these native children and prove an executable
+unique-live-child selector, source-20 entry/return and root exclusion. Remove
+the old tables, fuel and forest only together with that replacement. The
+universal full observer/F9 temporal-period theorem also remains open. No
+production branch authority or CLI release boundary changed in this work.
+
+## October 2 — C1 carry cocycle and table-free physical-prefix selection
+
+**Date range.** October 2, 2026.
+
+**Objective.** Replace stored local observer structure with exact arithmetic,
+while keeping local sector admission distinct from global future safety.
+
+**Changes.** Removed the 17 stored weighted locator trees from the live Near
+classifier. It now removes complete physical cycles, bisects the remaining
+prefix interval, retains the selected displacement, and constructs one
+punctured port. The exact lower/upper prefix and terminal guards are checked;
+no prefix word or second displacement reconstruction is needed.
+
+Added a local C1 generator storing `(f, x mod 4, x mod 25)`, with exact powered
+phase, additive carry count, guarded source application, and high-prefix/wire
+projections. Completed child counts compose without rerunning the displacement
+constructor. Existing fixed-sector displacement arithmetic remains the single
+cycle owner. Optional work/operand callbacks preserve caller budgets; no new
+scheduler or global family cache was introduced. Audit corrections cover the
+budgeted displacement method, malformed phases/returns, child binding,
+pre-allocation charging and huge precision requests.
+
+**Established results.** The C1 count is an additive cocycle over the powered
+low suffix; its initial high prefix remains source data. C0 is rational
+mechanical, while C1 is not generally Sturmian. Neither wire determines the
+future branch at a sector seam without the native continuation classifier.
+The two native Entry examples `(1,0,0)` at harmonic phases 5 and 6 have different
+Near outcomes (180 and 420); local suffix equality is not future congruence.
+
+**Rejected approaches.** Do not erase Q86/Native19 proof dependencies by calling
+the new local generator a complete branch selector. Those layers are presently
+proof/audit consumers, not the live Entry evaluator. Do not identify EXIT with
+blank, count work from represented duration, or treat a source-changed proof
+run as evidence for the final tree.
+
+**Assertion disposition.** The historical locator-table dimension/1083-optimal
+comparison assertion was retired with its table implementation. Replacement
+coverage checks exact bounded literal behavior, at most four distinct prefix
+queries, and one selected-port construction. The previous canonical-plus-
+selected allocation expectation now requires only the selected port. The
+boundary-chart test still poisons modular powering and now also requires zero
+inverse calls. No output, branch-safety or source-authority assertion was
+removed.
+
+**Validation/provenance.** Input reviews are proposals, not release evidence.
+SHA-256: F9 event orbit
+`4ea0b8d76d662715d238f6433954ef0385facff70606e9050f141ca916d1275d`;
+corrected defect arithmetic
+`c3504b3c79f5874429434241a1417a79c1e5b59ec5b6c48ed9f68db76bb2e3e7`;
+separate carry itineraries
+`283f3d5ad8269144e2191a6d1699ac6b8906b25cdfa53acb1ee13bf203a83809`;
+C1 generator plan
+`b7b85a8c7cc7db3cfe97f05eb237de9c0b960f663d7fb6f917c348c38b378b50`.
+Validation is recorded below. Provisional runs and proof failures remain in
+local `results/runs/`; source-changed runs do not certify the final tree.
+
+**Survivor refinement and audit.** The later reviews add a signed sibling
+borrow innovation and selector completeness. Implemented local adjacent-sector
+borrow returns using the existing C1 owner, completed-child composition and
+source-bound high-prefix reconstruction. The shared selector theorem requires
+complete admitted children, a well-founded dead relation, and a selected live
+child whose siblings are dead; it does not construct those premises.
+
+Independent review corrected the N/Z boundary formula to `2 <= j < p`.
+At `N(2,5)`, stripping two digits gives `H=1999`; the top wire cannot use the
+uniform-tail shortcut. A regression and a separate boundary theorem preserve
+that distinction. The reviewer reproduced the local 80,000-state signed formula.
+
+The downloaded future experiment reproduced 10,027 borrow classes, an exact
+3,279-class partition match, and 315 pointed states. Its counts are endpoint-
+derived and its survivor labels come from `future_losing_ranks`; it is an audit,
+not a native c1/borrow selector. The original reported cycle length merely
+copied the live population. The canonical reproduction adds actual cycle
+traversal, exponent-gain and live-fiber checks. An exponent-transport witness
+is retained: for `(N,2,10 mod 924)`, the exact borrow total at exponent 934 is
+its exponent-10 value `999800000000000` times `10^924`.
+
+Additional review SHA-256 values: selector completeness
+`b648603102bebb3475ec7881c5920a27d259f64331d2b41583a9abb7acca02f9`;
+difference/borrow proposal
+`0af6eeb9de338698aee57e872c9aad2c7d72e3daa467c309634531f533bbba9b`;
+Moore experiment
+`fb083ea141c87a687e649f9e40f40a165e60e852cf26729cf189d7dd2ea7d6d7`.
+Downloaded inputs: `comma_borrow_vieta_audit.py`
+`ef13084c1cb5d3b8c6582b70cc88e5972efc2f8367c8b07f7de66b8391dc126c`;
+`comma_pointed_vieta_audit.py`
+`b02f6451078b956ba2177f321eddc081e1023a3bf922b634ffee334717df04ec`;
+`A367620_COMMA_BORROW_POINTED_VIETA_AUDITS.patch`
+`a488dfe3275a201717120a59a189fad5098f902be99b44f6f56193cb2c094a29`;
+`A367620_vieta.md`
+`5abd1045adda1b01a090bb21c9057170938b9685057664806710a7a75a6e0796`.
+Original-script reproduction took 5.315 seconds and 30,523,920 sampled bytes
+under 35 seconds / 1 GiB, at local evidence
+`results/runs/20261002T123500Z-a324a481208843d294d194ee0f5a39f9`.
+That run predates the later audit repairs and final source freeze.
+
+**Constructive audit revision.** The newer download accumulates C1 from sector
+fragments and prunes the finite child graph without numeric ranks. Its macro
+teacher remains `construct_macro`; this does not discharge native refinement.
+Independent review found an occurrence-exponent error: `N(5,921)` advances eight
+exponents, so children with residue 5 must be evaluated at 929, not 5. The
+sibling innovation differs by `10^924`. The port retains actual receiving
+exponents and the earlier cycle, +924 gain and live-fiber checks; the shared
+powered C1 implementation replaces the download's additional orbit cache.
+
+Input SHA-256 values: original audit report
+`408580a47e97c75e8e67326fd2eb332180cbb23d61286c6bfb78ebfc5c7c79c4`;
+constructive report
+`3ae6d512d9568a2fc5a04fdfaf6fc7ecbf5ce78bc3297a210ad1f1eaf46ac3cc`;
+constructive borrow script
+`26540c6288595b2850bd589d0a26bc319bd1d8ecf68c078f4f6d234c57192c3e`;
+constructive pointed wrapper
+`f4e01775fbf7fc4d91480aecb25aec8eb5507eecb62ed91ede9c7a27ae20b3e7`;
+constructive patch
+`0bf3db32001ec1b358472924158a572fb0a04c16e489a9cbb009e96aabe7a923`.
+
+The first corrected full constructive audit hit its 35-second limit; it is not
+a passing reproduction (`results/runs/20261002T130538Z-a279e8f214dc4f33a064cf75e54451b1`).
+A separate 25-second diagnostic profile reached 4,413 macro constructions and
+reported 9,744,374 rational initializations; weighted prefix indexing dominated
+that sample. This is diagnostic evidence, not a full workload measurement:
+`results/runs/20261002T130754Z-e79a26203a5f4d279e5efc18b76636f4`.
+The arithmetic owner now reuses exact zero/identity affine objects, scales
+rational components without a temporary scalar rational, and skips genuinely
+zero cycle contributions. Fragment charging, total-weight equality and endpoint
+equality remain checked. A zero-period/nonzero-displacement regression prevents
+confusing the period with a zero action.
+
+A five-trial comparison constructed the same 96 macros using the prior and new
+affine owners, with current chart arithmetic shared and imports excluded.
+Every complete template, prefix and fragment was equal. Rational initializations
+fell from 229,894 to 99,868 per trial (56.56%); median time fell from 0.247917 to
+0.162860 seconds (34.31%). This is a post-import arithmetic microbenchmark,
+not a full CLI or global-construction bound. Local evidence:
+`results/runs/20261002T132428Z-0cc890439c6b4c24a73e225f6924a44b`.
+The full constructive audit still timed out at 35.150 seconds after this change
+(604,144,576 sampled bytes):
+`results/runs/20261002T131613Z-c96c4530cc3046be9369052f46b4f1a3`.
+No corrected full-graph reproduction is claimed.
+
+Independent reviewers checked exact affine identities, actual-exponent child
+keys, ordered fork slots, forbidden-edge preservation, and dense quotient-class
+validation. Shared finite-observer helpers replace duplicate partition logic.
+The local Isabelle borrow theorem now connects the signed formula to the
+physical one-step phase/count semantics and proves chronological telescoping;
+it does not identify unequal-duration full N/Z sibling macros with one
+synchronized adjacent-sector return.
+
+
+**Final frozen validation.** Authored-source fingerprint v5:
+`a2ac992186fc3fc42d61276848b9a31705a625adb3be7637ead940b6001762e9`.
+The following three runs retain identical before/after fingerprints. Provisional
+lint, typing and clone-policy failures were fixed without changing assertions or
+thresholds; their earlier evidence remains local.
+
+| Validation | Command/scope | Outcome and limits | Local evidence |
+| --- | --- | --- | --- |
+| Whole-tree quality | Strict mypy, Ruff 0.16.9, formatting, source/docs policy, proof index/boundary audit | PASS; 1,669 typed sources; 111 sessions / 259 theories; policy 31.239 s / 832,308,304 sampled bytes under 35 s / 1 GiB | `results/runs/20261002T133533Z-9f85df87595847f0b82a1c171abd1f48` |
+| Focused tests | Repository, comma CLI, finite observer, carry/borrow, constructive audit and existing arithmetic/temporal tests; exact selection in manifest | 574 passed / 9 deselected; 65.64 pytest s, 66.164 guarded s / 865,453,208 bytes under 300 s / 1 GiB | Same run, `focused.xml` |
+| Scoped Isabelle | `Comma_C1_Carry_Generator`, `Comma_C1_Phase_Power`, `Comma_C1_Borrow_Cocycle`, `Comma_Future_Selector`, `Comma_Prefix_Selection` | All PASS; 5.530–8.806 guarded seconds per session under 60 s / 4 GiB; checked heaps reused, `quick_and_dirty=false` | `results/runs/20261002T133744Z-56852c85566d4079b46d96014d7bfbef` |
+| Pointed audit | `python -m devtools.verification.comma_borrow_vieta_audit --pointed-only --output-dir <fresh-run>` | PASS, 6.329 s under 35 s / 1 GiB; 14,784 total, 14,470 losing, 314 live; one complete 314-cycle, +924 gain, 143 N / 171 Z; 315 pointed classes | `results/runs/20261002T133844Z-c664830eee8d4923b3e464e9e30678cc` |
+| Final affine confirmation | Same 96 macros and five trials; exact full-template equality; reproduction saved with evidence | PASS, 2.657 guarded s; allocations unchanged at 229,894→99,868; medians 0.239769→0.159398 s (33.52% reduction) | Same run, `affine-reproduction.py` and `affine-comparison.log` |
+
+The pointed audit does not evaluate C1 returns or numeric losing ranks. It still
+uses the chart-derived finite graph and representative exponents; its report
+explicitly marks all-exponent transport and native selector proof false. The
+new borrow theory had a fresh kernel build before the final heap confirmations:
+`results/runs/20261002T131416Z-f21468304af34fa0abc999765c5b6272`.
+Full units, P0, installed wheel and aggregate/global Isabelle were not rerun.
+No full constructive carry audit pass or production forest removal is claimed.
+
+**Remaining obligations.** Native sector re-entry and one-decade construction,
+complete ordered children, well-founded continuation, literal/weighted lift,
+executable survivor selection, source-20 return and root exclusion remain the
+forest/fuel cutover boundary. The local C1 generator is not their replacement.
+Production forest admission remains active until those connected theorems and
+consumer gates pass.
+
+
+**Follow-up: exact exponent and occurrence transport (October 2).** The new
+reviews distinguish exact width from its phase projection. Inspection confirms
+that `WeightedBoundaryAction.exponent_delta` was already exact; the unweighted
+Moore projection erases it. No replacement growth coordinate was added.
+
+The new `Comma_Decade_Occurrence_Lift` proves by induction that an admitted
+exact decade summary transports physical exponent `p` to `p+h`, preserves a
+literal prefix, and returns the complete ordered terminal children. It does
+not evaluate the fueled boundary run or enumerate rank rows. This is a
+conditional lifting theorem: existence of the native summary for every
+admitted source is still an open constructor obligation.
+
+The audit occurrence owner binds finite phase to the exact receiving exponent,
+checks supplied fixed-sector fragments and literal seams, and accumulates C1
+counts and width. Its child return represents the separate terminal fork edge;
+it is not a direct child of the starting boundary. The existing audit now uses
+this owner instead of duplicating fragment evaluation. It remains bounded,
+chart-teacher-dependent verification code, with no CLI admission consumer.
+
+Independent review found a stale-template defect: a published return could
+consume a changed affine weight. Shallow snapshots now authenticate consumed
+header/weight fields; child targets are derived from the validated return.
+Regressions cover mutated weights, physical exponent transport and terminal
+fork indexing. Suffix projections avoid source materialization, but constructing
+the full audit prefix still materializes the source under the supplied bit
+budget. No arbitrary-exponent symbolic runtime bound is claimed.
+
+Input provenance: exact-width review SHA-256
+`612bc5e0eae795aa9a194397159e7703d20e0bd842029688f1b1d7268dfeafa7`;
+occurrence/refinement review SHA-256
+`a061643216772c87b877733373d0607bc90d33285d73a0df4f3b8fe68380ac05`.
+
+All Isabelle invocations in this follow-up use the same aggregate process-tree
+watchdog: 60 seconds and 4 GiB, with `quick_and_dirty=false`. Java's 1-GiB heap
+cap is a component cap, leaving room for Poly/ML; it is not the process-tree
+limit. A fresh full ordered-child lifting build passed in 46.318 guarded seconds
+with 2,371,260,232 sampled bytes. Its source changed during unrelated worker
+edits, so that diagnostic run is not frozen release evidence:
+`results/runs/20261002T140846Z-08653346b48444eeb04b935efabeb5b4`.
+
+
+`Comma_C1_Occurrence` additionally proves admitted fixed-sector literal paths,
+physical endpoints, and the borrow difference for independently admitted
+prefix durations. No synchronization of full sibling macros is assumed.
+Both new sessions pass on frozen authored-source fingerprint v5
+`4a0dd969829155debcffbd2bded3257aaf3d3f86e3a7acab165d512e87521f62`:
+`Comma_C1_Occurrence` 13.468 s / 1,771,310,848 sampled bytes;
+`Comma_Decade_Occurrence_Lift` 8.209 s / 1,491,668,088 bytes, reusing its checked
+heap. Evidence:
+`results/runs/20261002T142300Z-f0b811c4d7bd49e7bfbd2c89797e99ab`.
+No new axioms, skipped proofs or theorem oracles were introduced.
+
+The remaining deletion obligation is constructive: produce
+`comma_decade_exact_summary` for every admitted boundary from the compact
+native recurrence, then instantiate the future selector and its source/root
+and weighted-consumer refinements. Neither this lift nor the finite chart audit
+proves that existence. Production forest admission, fuel-dependent owners and
+their required data therefore remain; this follow-up does not claim cutover.
+
+
+Frozen follow-up quality evidence:
+`results/runs/20261002T142400Z-33c225c9a22a4530ba96b172d00b9b15`.
+Before/after fingerprints both equal `4a0dd969829155debcffbd2bded3257aaf3d3f86e3a7acab165d512e87521f62`.
+Strict mypy passes on 1,671 sources; pinned Ruff 0.16.9, formatting, source
+policy, docs, proof inventory (113 sessions / 261 theories) and boundary audit
+pass. Source policy used 29.040 seconds / 834,028,624 sampled bytes.
+The expanded focused slice passed 600 tests, with 9 existing validation-marked
+cases deselected by the unchanged `not validation` selection; pytest took
+62.97 seconds, guarded execution 63.469 seconds / 867,189,888 bytes.
+No full-unit, P0, installed-wheel, global/aggregate proof or full constructive
+audit pass is claimed. The earlier quality run overlapped a proof edit and is
+retained as provisional evidence, not current certification.
+
+
+**Follow-up: sparse B32 publication and native lookup (October 2).** The
+external gate is reproduced locally: 46 fibers, 4,535 merged B32 rows, full
+phase coverage, zero Live/Invalid masks and maximum Stop height 26. The 163
+B16 live phase bits remain real. The sharp witness is fiber 24, representative
+68, phase 42, stopping at Fork 5 with height 26. A second pass compares the
+complete sparse outcome/height against the external exact block evaluator on
+all 84,084 admitted states, with zero mismatches; the old rank data is used
+only afterward as a height differential oracle. This is external executable
+corroboration, not an Isabelle certificate or a production consumer.
+
+Input provenance: `test_sparse_b32_gate.py` SHA-256
+`4a0e94805fcee830481bbacc880d59fc3f14477ff77cd3012b46a41a8d0131fa`;
+review SHA-256
+`c0b5e0013062b65431ea505267bebc84a7927045706ebf5f01819502450bcd06`.
+Local audit evidence is ignored at
+`results/runs/20261002T152116Z-90838b410b6a45dba979178353801f62`.
+The supplied script's standalone hard-coded `/mnt/data` paths are not used by
+the local wrapper; the input script is hash-pinned and imported without running
+its standalone entry point.
+
+The clean `Comma_Sparse_Core` session now owns arithmetic, sparse composition
+and mask construction. Legacy `Comma_Mask_Safety` retains its existing total-
+macro dependency in a separate session. The response/mask smoke theories have
+moved to `Comma_Sparse_Audit`, retaining their assertions without replaying the
+smokes in the constructor heap. Dependency tests prohibit total-macro and rank
+ancestors in the new sparse/native chain. Required theories remain registered.
+
+The new executable sparse lookup proves exact output from checked partial
+coverage. `comma_sparse_decade_summary_total_exact` then derives summary
+existence from full B32 coverage and Stop-height certificates. The occurrence
+corollary transports exact exponents, literal prefixes and ordered children.
+These generic results passed the kernel, but still assume the concrete B32
+certificate. The new proof-producing power publisher and concrete native
+adapter do not turn that premise into a theorem merely by being registered.
+
+A proposed bounded subnumeral proof cache was rejected and reverted. It reduced
+microbenchmark conversion counts but regressed the complete base workload:
+58 rows versus 60 within the old nested 40-second cutoff, with heavy eviction.
+The nested cutoff has now been removed; one outer 60-second/4-GiB process-tree
+watchdog controls every Isabelle invocation. No arithmetic/fuel assertion was
+removed by that limit correction.
+
+The first single-limit base probe still timed out at 60.109 seconds, using
+2,111,214,560 sampled bytes. It published 55 of 430 reachable sector rows before
+interruption, preceding any temporal square. Profile data localizes the cost
+to 924-bit intersection/union proof construction in sector joins. Its outer
+manifest is source-changed because an unrelated publisher edit overlapped;
+it is diagnostic timeout evidence only:
+`results/runs/20261002T152512Z-f9d829237d3844d9b3b7f33b881d2047`.
+
+No runtime branch selector, redundant rank/forest table or fueled authority
+has been deleted. Concrete base/B32 certification, the future selector and
+source/root/weighted-consumer refinements remain necessary for that deletion.
+
+
+The sparse publisher now prunes host-detected empty rotated intersections before
+requesting a kernel mask proof; nonempty fragments still require the checked
+rotation/intersection theorem, and complete publication still requires full
+phase coverage. Reported Live/Invalid counts are explicitly row counts, not
+phase populations. The new bounded smoke exercises nonuniform wraparound,
+shifted right-hand stops, inactive left-hand stops, exact-label OR merging and
+rejection of incomplete coverage. It does not replace the positive B32 gate.
+
+That kernel smoke exposed an actual shared packed-arithmetic defect:
+`comma_rotate_phase 1 1` retained `of_bool False` and `take_bit 1 1` instead of
+returning a closed numeral. Explicit checked rules now normalize those boundary
+cases. Publisher repairs also correct reversed fold arguments, source-level
+numeral normalization and the distinction between object-level universal
+quantification and a rule's meta-level premise. Named Stop rows fold the
+existing proof instead of proving the same predicate twice.
+
+Independent review confirms that the native chain imports no external candidate
+table and preserves every moved smoke assertion. It also confirms the intended
+remaining boundary: `Comma_Global_Future_Safety` still consumes the existing
+structural classification; it has not been rebased onto the unverified native
+instance. Legacy mask safety is explicitly outside the clean chain.
+
+
+Frozen scoped proof evidence:
+`results/runs/20261002T154614Z-cb1e7e50ca1546d48886533d4395c403`.
+Before/after authored-source fingerprint v5:
+`ab36c835193e50567f4814c9e0fa2b6dde97b9dc4b0a43231348a69aa8ff6c6a`.
+Under the uniform 60-second/4-GiB guard, `Comma_Sparse_Audit` passes in
+27.465 seconds / 2,103,267,312 sampled bytes; `Comma_Native_Summary` in
+14.813 seconds / 2,013,122,496 bytes; `Comma_Native_Summary_Occurrence` in
+48.292 seconds / 2,516,783,016 bytes. Their prerequisite algebra compiled;
+no oracle, skipped proof or new axiom was introduced. The concrete B32
+instance remains a separate positive gate.
+
+
+The final frozen base retry remains red:
+`results/runs/20261002T154811Z-071a3372754041b797b684012c70e73e`,
+same `ab36c835` fingerprint, timeout at 60.115 seconds / 1,543,606,784 sampled
+bytes. It published 69 of 430 sector rows, with 772 child transports and 398
+mask merges before interruption. Those are work counters; differing diagnostic
+progress is not treated as a performance acceptance result. No B32 square was
+reached and no forest/fuel admission was removed.
+
+
+The final stale-record audit added a strict host-value binding check: each mask
+used for pruning must be a closed natural numeral equal to its cached integer.
+A new adversarial smoke supplies nonzero mask bits with cached value zero and
+poisons arithmetic; it must reject before pruning or proof construction. The
+full-scope theorem already prevented incorrect publication, so this is a
+malformed-record validation repair rather than a claim of kernel unsoundness.
+
+Pre-repair quality evidence on `ab36c835` is retained at
+`results/runs/20261002T154941Z-861f7569eaf5433ea540df80342f272b`:
+strict mypy, Ruff, formatting, source/documentation policy, proof inventory
+(120 sessions / 267 theories), boundary audit, and 607 focused tests pass.
+Nine existing validation-marked tests remain outside the unchanged focused
+selection. This run does not certify the subsequent stale-record repair.
+
+
+Final scoped proof confirmation after the stale-record repair:
+`results/runs/20261002T155228Z-dbe83f05f8b3438aab7f24725eacfcb4`.
+Before/after fingerprint v5 is
+`5d8e0bca42ccce52b3f9b8e0d95891b247481c19bd6952999297d0eb420b6408`.
+Sparse audit passes in 27.326 seconds / 2,333,954,224 sampled bytes, and the
+occurrence confirmation in 9.594 seconds / 1,649,429,768 bytes. The latter
+reuses its checked heap; fresh occurrence evidence retains its earlier source
+fingerprint. The base producer's unchanged dependency closure was not rerun
+merely for the downstream record check; its last full attempt remains red.
+
+
+Final quality/focused evidence:
+`results/runs/20261002T155347Z-12a6b44077fe40c38e2f0107465bc8ad`,
+before/after fingerprint `5d8e0bca42ccce52b3f9b8e0d95891b247481c19bd6952999297d0eb420b6408`.
+Strict mypy passes on 1,671 sources; Ruff 0.16.9, formatting, source policy,
+documentation, proof inventory (120 sessions / 267 theories) and boundary audit
+pass. Policy used 28.336 seconds / 833,520,720 sampled bytes. The focused slice
+passes 607 tests in 61.39 pytest seconds (61.862 guarded seconds /
+867,288,216 sampled bytes), with the same nine validation-marked cases
+excluded by `not validation`. No full-unit, P0, wheel, global or aggregate
+Isabelle pass is claimed. Forest/fuel cutover remains incomplete.
+
+
+### October 2 continuation: duplicate proof and instrumentation audit
+
+Objective: remove confirmed duplicate/dead construction work without using
+cleanup as evidence for fuel or production forest deletion.
+
+Changes and assertion disposition:
+
+| Removed owner or work | Retained claim / replacement |
+| --- | --- |
+| Failed `response_base_constructor.ML`, constructor theory, row-normalization theory and isolated smoke (695 lines) | This prototype never supplied release authority. Its parent-row proof rebuilding timed out; generic complete-response and live-mask refinement remains. The failed source snapshot is local evidence only. |
+| Prototype-only zero-head and singleton-projection lemmas | No surviving consumer after removing the prototype; existing sparse positive gates remain unchanged. |
+| `rank_data_definition.ML` and `terminal_data_definition.ML` | One `candidate_data_definition.ML` owns exact 924×91 ragged data. The two original candidate data sets remain untrusted inputs to the existing checker. |
+| Synthetic padding to 1024×96 | Removed 14,220 padding entries per table. Admitted indices retain the same radix-16 path; exposed ML lookup rejects invalid states before table traversal. This is an entry count, not a measured byte saving. |
+| `comma_decade_control_operations` | No consumer found; live control and closed-control theorems retained. |
+| Publisher-local carry append law and unused Schur composition wrapper | `Reverse_Residuals.carry_out_append`, HOL `fold_append`, and existing `carry_then_apply`; harmonic and two-port consumers use the shared laws. |
+| Four unconditional sparse-report scans | One explicitly requested profile scan, with diagnostic visits/time separate from cumulative constructor operations. |
+| Combined evaluation/certification timing | Separate `evaluation_ms`, `audit_ms`, and inclusive `total_ms`. |
+
+Generic row definitions and transport proofs moved to
+`Comma_Sector_Rows_Core`; both the old constructor and new root-response
+projection use that owner. Row-list equality is not claimed to be a canonical
+semantic ID. C1 borrow equations remain distinct from the carry monoid: their
+subtraction polarity and scale-100 recurrence are necessary.
+
+Independent review checked ragged indexing, local memo authority, invalid-domain
+admission, and theorem consumers. The grouping is
+`924 = 3*256 + 9*16 + 12`, with `91 = 5*16 + 11` columns. An initially incorrect
+review arithmetic expression was corrected before acceptance. Candidate value
+zero outside the domain is not a safety certificate; the checked recurrence
+requires admission, and the ML API rejects those requests. Canonicalization and
+failed lookup work remain timed.
+
+Regression coverage checks the final `(923,90)` cells, radix boundaries,
+malformed row dimensions/alphabet and invalid requests without table lookup.
+These are representation/admission checks, not proof of the candidate data's
+semantic truth. The loader uses Isabelle's `chop_groups`, not another private
+list splitter. No full 84,084-state scan is added to a smoke test.
+
+Review inputs (external local files, not portable evidence links):
+
+| Input | SHA-256 |
+| --- | --- |
+| Attachment `252c99cb-76ea-4025-bfc5-15c6d50805e8/Pasted text.txt` | `f60abf279254ee94288c019fae7a0a4045f9e2c4d9db06eb4a9b70bcb472099c` |
+| Attachment `6e1e7c12-4e20-47ef-b2e1-374648b32735/Pasted text.txt` | `c6d1d6d850ede74a5dfc693b4c5e7fbc622d9241517156c96361d49f32383dcb` |
+
+Rejected approach: whole-parent-row transport still rebuilt accumulated data
+proofs. The diagnostic run
+`results/runs/20261003T015730Z-dee35a4531ac49879209aedeb62ac8b8`
+completed the `(8,1)` parent after 27.688 seconds, then timed out during root
+projection. It was never production evidence. Its removed source is retained
+inside that ignored run directory; no obsolete source owner remains registered.
+
+Remaining obligations: a checked shared response-DAG mask producer must publish
+only the root rows, connect to sparse B32 and native recurrence refinement, then
+supply global future safety and runtime admission. The current sparse base still
+uses the old constructor. Rank/terminal inputs and production forest/fuel cannot
+be deleted on the strength of these generic proofs or cleanup alone.
+
+
+Frozen audit validation (v5
+`5e8e6d359a8da8f5edb7893577f23b796645cf5bdd57ee261d007cdfa0b91fe1`):
+
+| Scope | Evidence path (local/CI) | Result |
+| --- | --- | --- |
+| Response rows and summary kernel | `results/runs/20261003T022018Z-24ebf82ac8e8463fa8e19a5030142eb8` | PASS: 30.023 s / 3,416,545,112 bytes and 25.601 s / 2,655,244,632 bytes. Includes final-cell, chunk-seam and invalid lookup assertions. |
+| Sparse audit and carry consumers | `results/runs/20261003T022140Z-aaa21d7a8e0541a8ab1c2110b147e6c3` | PASS: sparse 26.772 s / 2,384,416,536 bytes; width 10.323 s; terminal 9.137 s; Schur 4.216 s. |
+| Quality and focused tests | `results/runs/20261003T022302Z-c0b2cf2dcdd44c3e833029b6f4cc22cd` | Mypy 1,671 sources, Ruff 0.16.9, formatting, policy, inventory 121/269 and boundary audit PASS. 608 focused tests PASS, same nine validation cases deselected. Documentation initially found two links to the removed loaders; they were replaced with the shared owner. |
+
+Every proof invocation used 60 seconds / 4 GiB. Initial dependent builds exceeded
+60 seconds while rebuilding prerequisite sessions after the dead control helper
+was removed; those failed runs are retained. The final scoped passes reuse those
+checked heaps and are not a claim that an uncached aggregate build fits the bound.
+No proof round or phase range was split to manufacture a concrete totality pass.
+The old concrete sparse-base gate was not rerun as though cleanup alone repaired
+its constructor, and neither production forest nor fuel admission was removed.
+
+The summary smoke reports cold `evaluation_ms=5100`, `audit_ms=28`,
+`total_ms=5129`; those are distinct stages, not a new global performance bound.
+No full-unit, P0, installed-wheel or aggregate Isabelle result is claimed here.
+
+
+Documentation repair confirmation:
+`results/runs/20261003T022606Z-803b4b5a405d476192b7727a45503502` passes
+on the same authored-source fingerprint. Both stale loader links now reference
+the one shared candidate-data owner. The earlier failed documentation step is
+retained in its original manifest rather than overwritten.
+
+### October 2 — fail-closed proof interfaces and native global connections
+
+Objective: remove invalid-state aliases from public proof APIs, audit theorem
+provenance transitively and connect native summaries to the global root proof.
+
+Changes:
+
+- Future rank lookup now distinguishes invalid, unranked and ranked states.
+  Invalid digits/phases are rejected before subtraction or table selection;
+  raw indices at or beyond 14,784 return `None` instead of wrapping.
+- Decade height and terminal APIs return options for invalid states. Internal
+  total candidate adapters are explicitly named `_on_valid`; they remain
+  candidate definitions, not native constructor authority.
+- Sparse base/B32 row selectors guard the 46-fiber domain. Invalid adapters
+  return an explicit Invalid response, never an unchecked list element.
+- The candidate generator no longer writes the authored HOL lookup owner.
+  Its regression preserves a sentinel owner and still detects corrupted data.
+- A shared transitive theorem-dependency audit rejects hidden forest/fuel
+  dependencies. The native producer gate additionally rejects candidate-data
+  authority; the global gate permits independently checked classifications.
+- The native occurrence bridge now proves uniqueness of the literal prefix.
+  The ordinary occurrence theorem is a corollary, deleting its duplicate proof.
+  Global root entry consumes the native summary rather than rebuilding finite,
+  weighted and indexed traces. Its 91-input totality obligation follows from
+  native summary totality rather than a second concrete B32 evaluation.
+
+Established scope: these changes close API ambiguity and connect conditional
+proof interfaces. They do not produce the concrete sparse B32 certificate,
+prove the complete lexicographically earliest infinite branch or remove the
+production forest. The global dependency gates intentionally remain positive
+obligations until the actual fuel-dependent theorem path is replaced.
+
+Rejected diagnosis: the terminal-data timeout was not caused by loading its ML
+literal alone. The session parent forced heavy sibling theories to be checked
+again. Inheriting the residual-core heap made data definition approximately
+1.5 seconds; validation still uses the same 60-second/4-GiB invocation limits.
+Native summary equality transport also uses direct theorem transitivity instead
+of invoking the full simplifier on powered words.
+
+Review provenance: attachment
+`a52ee60e-99bd-456c-8d61-a5136bde7d8c/Pasted text.txt`, SHA-256
+`e48d5333efd88ce958609986d39476d7be69ac1dfb0ef4db669b1ed3af3fcb4d`.
+Authors and independent audit workers had separate API, occurrence/global and
+sparse/dependency scopes. Only the coordinator ran serialized builds.
+
+Validation and remaining obligations are recorded below. Historical or
+source-changed runs are not evidence for the final frozen source.
+
+
+Frozen proof validation (v5
+`002b9821af160272255817ec59bcca5337b83b8e8f25f7d9d3bc4f72ce10e046`)
+is retained at
+`results/runs/20261003T035259Z-c214d44769624071a2a1a22a48079205`
+(local/CI evidence, not a portable download):
+
+| Scope | Outcome | Guarded time / sampled process bytes |
+| --- | --- | --- |
+| Native unique occurrence / complete ordered children | PASS | 23.162 s / 3,029,864,768 |
+| Tagged future-rank lookup | PASS, prerequisite heap reused | 7.225 s / 1,579,830,512 |
+| Decade lookup kernel | PASS, prerequisite heap reused | 8.239 s / 1,544,490,128 |
+| Sparse and transitive dependency smoke | PASS, prerequisite heap reused | 9.535 s / 1,995,623,976 |
+| Concrete native instance | TIMEOUT at sparse-base prerequisite | 60.192 s / 1,493,389,704 |
+
+The concrete run published 67 of 430 sector rows and stopped while publishing
+`(8,45)`. It did not produce B32, global future safety or a runtime admission
+certificate. Those required positive gates remain red.
+
+Every invocation used the 60-second/4-GiB aggregate process guard, one job,
+one proof thread and `parallel_proofs=0`. Final diagnostic runs additionally
+set Java to `-Xms128m -Xmx512m` and Poly/ML to `--maxheap 1500`; these are internal
+heap caps, not a reduction or increase of the aggregate acceptance limit.
+The exact ML wrapper is retained as `isabelle-ml-budget.sh` in the run directory.
+Earlier source-changed, memory-limit, timeout and proof-error runs remain intact.
+The final scoped checks reuse checked prerequisite heaps and do not establish a
+fresh aggregate build bound.
+
+The summary now composes established equations with `trans` and `iffD1` instead
+of asking the simplifier to inspect a powered response. A shared child-list
+projection lemma replaces repeated branch case proofs. Native Summary inherits
+the existing occurrence-lift heap; Native Summary Occurrence inherits Native
+Summary, so the combined consumer does not recheck both sibling proof branches.
+No new phase shard, axiom, oracle or skipped proof was introduced.
+
+The subsequent frozen quality run used v5
+`3c3c81d22dae06b53c4e3d836571d834996611d4a0f185fd0df7fff8dbf13188`
+at `results/runs/20261003T035754Z-f5e9da2bfd4a416c9e2de6917c779d7f`
+(local/CI evidence). Strict typing, pinned Ruff, formatting, repository policy,
+documentation, proof inventory and proof-boundary checks passed. The focused
+suite passed 608 tests with nine existing validation selections deselected;
+the explicit generator validation passed three tests. This is scoped quality
+evidence, not a full unit, P0, wheel or aggregate Isabelle pass. It predates the
+following whole-fiber and arbitrary-path changes and cannot certify them.
+
+The follow-up review (`b84ea453-974a-4053-89d8-c2e02c2a619b`, SHA-256
+`ea403455e48daf91a14d18ad9fb55a16c955e686f6403c127dce742f909edd13`) identifies two
+independent remaining obligations: publish B32 as checked data transforms with
+one refinement per fiber, and iterate the exact occurrence bridge at every
+fork of an arbitrary infinite literal path. The implementation work now targets
+those interfaces. A first-fork uniqueness result remains explicitly weaker
+than uniqueness or lexicographic minimality of the complete infinite path.
+
+The next review (`e7195881-5af0-4e1c-af41-008c06be9fb6`, SHA-256
+`e3cc723500e3e73364efa4e15174dd708c32f94bf0da3be0c99622daccf837d7`)
+separates canonical admission, concrete B32 construction, arbitrary-path
+projection, native rank descent, and global uniqueness into independent gates.
+The canonical predicates now distinguish the coarse arithmetic box (`x≤98`),
+the sector envelope (`x≤89+f`) and the decade root (`f=1`, `x≤90`).
+The Python chart rejects fabricated entries before arithmetic; independent
+literal-child tests cover all nine maximal crossing targets, including 9→1.
+These envelopes are necessary coordinate bounds, not reachability certificates.
+
+Named root-to-sector-to-round conversions replace repeated local `90→98`
+proofs. The native arbitrary-path projection retains exact exponents and
+complete children. Its rank induction now recurses through a smaller-child
+helper rather than carrying endpoints and weighted occurrences. The concrete
+Entry wrapper keeps its arbitrary exponent in the actual starting value;
+it does not substitute `100000+x` except at exponent five. Global Root uses
+this wrapper instead of repeating unique-prefix and endpoint recovery.
+The native strict-descent premise remains explicit: neither B32 nor an
+unranked table cell proves an infinite continuation by itself.
+
+Response parent joins now use checked shallow conversions to consume completed
+child equations without recursively simplifying their returned trees. Optional
+stage probes distinguish root construction from sparse projection; B32 probes
+separate host composition, normalization and kernel equation proofs. The old
+aggregate timeout cannot establish which later theorem failed. Diagnostic
+source-changed runs remain local evidence only; no timeout limit was raised.
+Production forest/fuel deletion still requires the concrete B32 certificate,
+native child descent, survivor continuation and full earliest-path bridge.
+
+The follow-up authority review (`5d5ad595-8f59-4264-8c63-7ebbdd3049ff`,
+SHA-256 `dfa3ba8a894ceac8ea194ca499712d33685af826d7be8bdcd27ad14e0e4f1e01`)
+correctly rejects the hybrid Global Future dependency as release evidence.
+Final global endpoints must use the native-clean dependency gate; a weaker
+fuel-only audit cannot authorize cutover. Concrete native strict descent and
+survivor continuation remain missing, so this tighter gate is intentionally
+not described as a completed global proof.
+
+One proposed generalization needs a mathematical correction. The scale bounds
+alone do not admit the current CRT phase quotient: displacement 480 occurs
+at sector 3, and `10^3 mod 480 = 40` while `10^(3+924) mod 480 = 160`.
+Exponent four similarly gives 400 versus 160. Both scales exceed 98 and 540.
+Exponent five stabilizes at 160. Independent regression tests record these
+witnesses. Generic well-founded reasoning does not need exponent five, but
+the concrete periodic occurrence adapter still needs CRT stabilization, not
+merely a large-enough chart. Removing that admission premise would be unsound.
+
+The October 2 follow-up reviews (`f2309aad-87ce-4d5d-8f64-105f47f1b9d8`,
+SHA-256 `41c7fc76f7b811147f6ec48faf8173bf2d995bd8fb9c9042024d8d2cb9ff96ad`,
+and `b3bd0375-c1e0-44b7-9d88-989e95099e9b`, SHA-256
+`d58b3309acf673b0c80db97048412f9cf0db1b1bf39d6613d6e4b36fa06e156c`)
+separate the already available CRT core from two unfinished concrete publishers.
+The core residue now supplies the native weighted-step headroom; a shared
+step/prefix owner avoids copying the branch arithmetic. Physical exponent
+admission still requires primary saturation at five. The arithmetic-only phase
+identity does not require a physical exponent.
+
+B1 is being changed from response-tree nodes with attached equations to a
+row-data recurrence with one generic inductive refinement. A kernel check caught
+a pre-step/successor mismatch in the first draft; it is not accepted evidence.
+B32's intermediate 46-fiber equation lists have been deleted. Its publisher
+now checks six whole-table equations (base normalization and five squares),
+using one predecessor equation per level. The concrete instance also requires
+46 fibers, 4,535 merged rows, Stop-only height at most 26, and the sharp
+fiber-24/phase-42 Fork-5 witness at height 26.
+
+The new generic table-power refinement passed the kernel in 16.068 guarded
+seconds, with 2,697,973,792 sampled bytes. This scoped run had unchanged v5
+fingerprint `63b8d1c2fa23e1de5bf109d5c3ea8718d91ce428d008e538bea9067001ba02c0`;
+evidence is local/CI text path
+`results/runs/20261003T063551Z-a3bb7f85b18f459db86f4d8f9848f4bb`.
+It certifies the generic algebra only, not the concrete B1 or B32 values.
+Subsequent edits require new evidence. All invocations retain the 60-second,
+4-GiB guard. Rebuilt prerequisite sessions are reported separately; a timeout
+before the target session starts is not attributed to that target's theorem.
+
+A separate duplicate Near-case proof was replaced by one stronger canonical
+successor lemma, reused for the coarse and canonical admission conclusions.
+That diagnostic decade build finished in 46.007 guarded seconds at
+1,990,643,264 sampled bytes; concurrent source changes prevent release use.
+Concrete base publication, B32 publication, native child descent, survivor
+continuation and global earliest-path refinement remain mandatory. Production
+forest admission and fuel have not been removed on the basis of these partial
+results.
+
+The corrected data-row induction passed in 14.540 guarded seconds at
+2,665,205,696 sampled bytes, v5
+`e686c059843b9086b932c3cb5c2e9949cec91863d33f779308438cad710ac8c1`.
+Unused response-result/live projection definitions and proofs were then deleted.
+The new B1 publisher compiled but its first root timed out: setup took 331 ms,
+and the full guarded run took 60.126 seconds at 1,749,652,112 sampled bytes.
+That unchanged source was
+`29d1961b18a3caa9ced5defc8fb366f96b9684195993cf8b02979630fc53a4a5`;
+evidence is local/CI text path
+`results/runs/20261003T070213Z-b176774f49bc4c7386e9ac4e906314f5`.
+Independent audit located repeated 924-phase predicate construction bypassing
+the existing checked short-period mask producer; a wrapper alias alone cannot
+fix that work. The next integration connects the packed guard proof and proves
+the full-arity missing-child mask empty.
+
+Native core occurrence transport and arbitrary-path descent now pass the kernel.
+The final scoped boundary build took 20.778 seconds at 1,829,850,928 sampled bytes,
+with unchanged v5
+`bf9b3190c47d5672c0965812223f0ceb34e8ab921154b4f11e322568555bf88a`;
+evidence is local/CI text path
+`results/runs/20261003T071157Z-a184941ca5334bfe935e813b61417eaf`.
+Its strict transitive dependency audit rejects old fuel/forest authorities.
+The descent theorem is conditional on the actual complete native child
+certificate; it does not certify a supplied rank table or the global survivor
+path. Production forest/fuel removal remains gated on those concrete results.
+
+Independent follow-up audit found a malformed-short-table lookup and a smoke
+theory still calling the removed sparse ML cell API. The lookup now checks the
+actual list length; the smoke checks retained HOL composition/normalization
+instead. Its preserved assertions are rotated nonuniform live masks, equal-label
+merging, invalid propagation and valid/invalid admission, plus new short-table
+rejection. The dependency-audit smoke still rejects a retired dependency hidden
+behind a harmless wrapper. The repaired sparse audit passed in 25.475 seconds
+at 2,510,164,240 sampled bytes on unchanged v5
+`29a60f8e98d003a9f4f6295a583d959a8979eb1f2368103ae6140131b77df5e6`,
+local/CI evidence path
+`results/runs/20261003T072230Z-df1d117792ef4432a1f6a5eee4183327`.
+
+The proof inventory now recognizes executed strict native-audit calls and
+resolves their closed theorem bindings. Captured failures, strings, comments
+and unsupported dynamic expressions cannot certify an inventory entry.
+The diagnostic focused selection reached 644 passes with nine pre-existing
+validation cases deselected. Source changed during that run, so it is not
+frozen release evidence; the invalid-string warning and closure-binding lint
+findings discovered in this edit were repaired before the final check.
+
+The next representation-shape review found that the previous short-table
+repair validated an element index, not the 46-fiber container. A one-row table
+could still expose row zero. The replacement rejects every malformed table at
+lookup, square and power boundaries; regressions cover lengths 0, 1, 45 and 47
+and access to an existing row. Exact 46-row access remains independently
+covered. B32's public optional accessor now checks the same shape, and its
+fiber count follows from the checked whole-table equation rather than another
+literal-table expansion. Stop admission also requires bounded 924-bit masks;
+the host parser rejects malformed masks and live indices before composition.
+These are separate from semantic coverage and theorem-authority checks.
+
+The dead distinct-label/full-input mask scan was deleted. Normalization now
+uses merge sort and adjacent merging; host squares build one vector for child
+lookup instead of repeatedly traversing the right table. Six whole-table
+proof boundaries remain, but their generic simplifier replay has not yet been
+replaced by a directed table converter. No concrete B32 performance claim is
+made from this host-side change.
+
+The relocated finite-branching/literal-path owner passed `Comma_Arithmetic` in
+49.641 seconds at 3,115,913,992 sampled bytes after repairing a malformed
+Isabelle symbol and specializing the path variable in a theorem application.
+Evidence is local/CI text path
+`results/runs/20261003T075034Z-40ff3c9f9d9242868411aa75fc9c1c07`.
+A proposed second memo recurrence was removed before publication: its refinement
+was incomplete and its association-list cache would introduce linear logical
+lookups. The next B1 gate tests directed short-mask/AND conversion against the
+already checked row recurrence; it does not claim a checked hashed worklist.
+
+## October 3 — powered occurrence and concrete publisher repair
+
+**Objective.** Connect the compact occurrence proof to future-path safety and
+remove repeated proof normalization before replacing production forest admission.
+
+**Changes.** The C1 occurrence interface now consumes the checked powered return
+while retaining the exact literal path weight. The native safe-run proofs
+construct their accumulated weights explicitly; endpoint and phase arithmetic
+is normalized before logical inference. This replaces proof searches that spent
+the timeout trying to reconcile differently associated sums. The arbitrary-path
+bridge projects an actual infinite literal path through the complete native
+child relation and excludes ranked children by well-founded descent.
+
+The sparse publisher now checks exact 46-fiber shape, publishes six whole-table
+equations, and exports the final equation without another simplifier replay.
+Its production conversion is exercised by the synthetic five-square smoke.
+Mandatory response-conversion failures now abort publication instead of being
+swallowed by optional bottom-up conversion. Parent map/zip/append conversions
+walk the list spine without reopening completed child payloads. The remaining
+row-normalization cost is still measured separately.
+
+The checked normalizer now uses a publication-local cache keyed by the complete
+typed normalization request, including labels and masks. The cache retains at
+most 256 root equations and never shares proofs across contexts. The synthetic
+publisher measured 272 actual hits and four misses, eliminating repeated proofs
+of identical rows. An independent audit found no authority or lifetime bypass.
+The obsolete sector-mask constructor was moved out of production Core into its
+audit session; its existing regression coverage remains registered.
+
+Occurrence tuple decomposition now uses the generic product-surjectivity lemma
+instead of running constructor simplification. The arbitrary-path uniqueness
+proof uses explicit occurrence and child-observation elimination. Its strong
+induction compares every literal index, rather than only the first fork.
+The same tuple-only repair now covers the two decade occurrence-lift cases
+and the concrete base publisher's output-admission lemma. Phase-piece guard
+rewriting targets the scope and its matching restriction guard, without
+descending into completed child rows.
+The shared row conversion now projects list lengths and row masks before
+arithmetic normalization, and reuses the canonical theorem-dependency certifier.
+Exported roots still receive the independent builtin oracle audit. New negative
+checks reject callbacks with premises or hypotheses before reading their LHS.
+The shared row theory now proves fused empty/cons restriction-filter laws and
+the unconditional zero-guard result by induction. These allow the producer to
+skip zero-guard rows without constructing their masked intermediate list.
+Closedness is checked once on the input to that conversion, rather than on
+every remaining tail. A zero-guard regression poisons mask evaluation and uses
+a symbolic list of length `10^100`, so passing cannot require expanding it.
+
+**Established results.** The C1 powered occurrence and generic native
+arbitrary-path bridge passed their scoped kernel builds. Neither supplies the
+concrete B32 coverage certificate. The synthetic sparse test validates the real
+publisher on small data; it does not certify the production 4,535-row result.
+The runtime certificate marker now binds the first-fork index and value, as well
+as the existing certificate metadata. Its focused regression suite has 11 passes.
+The generic all-index path-agreement theorem passed the kernel on `9a0b6525`;
+it remains conditional on concrete sparse coverage and the checked native
+descent relation. It does not establish the missing concrete certificate or
+infinite-path existence by itself.
+The source-20 specialization and unique infinite-path corollary have also been
+wired into `Comma_Global_Future_Safety`. They remain unbuilt: their concrete
+B32 dependency is still red. No runtime admission relies on these new statements.
+
+**Rejected approaches.** A staged `full_rewrite` still traversed completed child
+rows repeatedly. Replacing the outer map/zip simplification reduced the largest
+measured piece stage from 19,921 ms to 11,548 ms, but root zero still timed out in
+final normalization. This is not a B1 acceptance result. Generic occurrence
+induction is also not evidence of literal runtime replay: the previous occurrence
+proof checkpoints took about two seconds, independently of imported heap work.
+The directed length conversion reduced the measured 78-row sort from 5,475 ms
+to 2,482 ms, but the concrete B1 run still timed out. Its phase-piece map also
+retained whole-list simplifier passes; those are separate from dependency-audit
+cost, which was effectively zero at the measured join.
+The fused restriction/filter run on `f46eec10` reduced the large map-spine
+stage to 2,093 ms, but still timed out before publishing root zero. Its 78-row
+normalization took 3,691 ms. These are measured local improvements, not a
+completed B1 or forest-cutover result.
+Targeted guard conversion first exposed two implementation regressions: omitted
+normalization inside the guard and a pair rule that left `fst`/`snd` projections
+on the child rows. Both were fixed rather than caught as optional failures.
+The final `a7ceef27` run completed 126 phase joins before the 60-second timeout;
+root zero remained unfinished. Map conversion and normalization still accounted
+for 17,775 ms and 17,799 ms respectively. No concrete certificate was published.
+An initial data-certificate draft was rejected and deleted: it duplicated
+existing lemmas and did not constrain its proposed output function correctly.
+The global audit now uses a directly declared theorem list understood by the
+proof inventory. The old single-endpoint source assertion was replaced with
+the same strict-audit requirement plus explicit coverage of the existing
+future-safety endpoint and both new all-index endpoints. No oracle, native
+dependency, or closed-theorem requirement was removed.
+
+**Validation/provenance.** Each Isabelle invocation retained the 60-second,
+4-GiB aggregate limit. Recent runs used an 800-MiB Poly/ML heap cap. A later
+runner audit found that Isabelle clears `_JAVA_OPTIONS`: the attempted 512-MiB
+Java cap recorded in the manifests was ineffective, and the build logs show
+the installed 4-GiB Java setting. The aggregate guard still enforced 4 GiB.
+The corrected invocation sets `ISABELLE_TOOL_JAVA_OPTIONS` after Isabelle's
+environment initialization; subsequent records must confirm that value in the
+build log. Checked prerequisite heaps were reused.
+The canonical release runner now applies a 512-MiB Java and 600-MiB Poly/ML cap
+inside the initialized Isabelle environment, beneath the unchanged aggregate
+4-GiB guard. Its command-ordering and cache-authority regressions passed together
+(22 tests).
+These source-specific results do not certify subsequent edits.
+
+| Check | Source v5 | Outcome | Guarded time / sampled bytes | Local/CI evidence directory |
+| --- | --- | --- | --- | --- |
+| `Comma_Sparse_Audit` | `72e75859` | PASS; actual publisher, synthetic input | 30.845 s / 3,338,560,560 | `results/runs/20261003T093033Z-0b75365710874c6d8ecd854d54381e78` |
+| `Comma_Sparse_Audit`, checked normalization reuse | `e9420def` | PASS; 272 hits / 4 misses; synthetic input | 32.211 s / 1,271,136,368 | `results/runs/20261003T104137Z-56c17b8c45b64f8c83af4517a7347816` |
+| Release runner and certificate cache | `a722e5e7` | 22 PASS | 17.791 s / 93,329,424 | `results/runs/20261003T104632Z-97edaaeaf3ab4393839e6b2fc4234f7f` |
+| Native all-index path agreement | `9a0b6525` | Kernel exit 0; guard retired descendants | 25.178 s / 1,327,038,696 | `results/runs/20261003T113429Z-5c298bbaaa6f47f49079dd91d1f8e8b7` |
+| Fused restriction/filter and zero-guard audit | `f46eec10` | Kernel exit 0; guard retired descendants | 35.044 s / 1,398,308,832 | `results/runs/20261003T115521Z-8bf1de0ba218428b8deff1ff06fd6a17` |
+| Concrete B1 after fused restriction/filter | `f46eec10` | TIMEOUT; first root unfinished | 60.221 s / 1,272,746,072 | Same run as the fused audit above |
+| Decade occurrence lift, tuple-only decomposition | `e5e82bf4` | Kernel exit 0; guard retired descendants | 47.408 s / 1,328,373,800; theorem stages 623 ms | `results/runs/20261003T121226Z-b7da337715904e758c6cce5bc68bc411` |
+| Concrete B1 after targeted guard conversion | `a7ceef27` | TIMEOUT; first root unfinished | 60.222 s / 1,257,930,672 | `results/runs/20261003T121833Z-106a4af4b3ec440088324821a4ddca22` |
+| Native summary / occurrence / all-index boundary confirmation | `a7ceef27` | All kernel exit 0; summary guard retired descendants; other two completed | 34.995 / 43.926 / 26.205 s; peak 1,426,522,224 bytes | `results/runs/20261003T121954Z-b467758f0a704b138a9004c12cf077f5` |
+| Focused tests and independent rank-data regression | `e58f0faf` | 674 PASS / 9 existing validation deselections; 3 rank tests PASS | 81.669 s / 874,038,448 bytes; rank 0.676 s / 46,236,200 bytes | `results/runs/20261003T122502Z-13a99775f63a4e27a751a4f6c93976f4` |
+| Final whole-tree quality and installed wheel | `e58f0faf` | All checks PASS on unchanged source | Canonical 35-second / 1-GiB guard per check | `results/runs/20261003T122722Z-0570a73c99744e54a8ee1b4fd49c7ba9` |
+| `Comma_C1_Occurrence` | `3eb58c8c` | PASS | 11.805 s / 2,473,972,040 | `results/runs/20261003T093335Z-7445f03dc5c9438cac51d1a97aa88d58` |
+| `Comma_Native_Boundary` | `1858c164` | Kernel exit 0; guard retired descendants | 25.157 s / 3,629,794,520 | `results/runs/20261003T100053Z-d465c1b7d5504c91a225ee80f4624f45` |
+| `Comma_Sparse_Base_Instance` before the spine conversion | `e29b5e27` | TIMEOUT; first root unfinished | 60.232 s / 2,645,586,368 | `results/runs/20261003T095245Z-859a4107b74048f786c521e06e83338b` |
+
+**Remaining obligations.** Complete the concrete B1 and B32 publishers under
+the unchanged limits, check the native finite classification and iterated global
+path proof, then replace the runtime branch admission and remove the forest.
+Production still verifies the forest on a cold value query, including index 1.
+No forest deletion, global earliest-path result, aggregate build, or complete
+release validation is claimed by the scoped results above.
+
+## October 3 — B1 quotient integration and sufficiency audit
+
+**Objective.** Replace the timed-out response-row producer only after an exact
+source-selected B1 quotient and its refinement are established. Review input
+SHA-256: `826b6e9954567842d41661477a60260a0171207ed3ad54fabd56820a09e1607c`.
+The three-agent review confirms that the current concrete B1 publisher still
+uses `comma_response_data_rows`; imports alone cannot transfer its authority.
+
+**Changes.** Added `Comma_AddSub_Entry_Core_Bridge`: the C1 source suffix and
+recursive-core power residue reconstruct the existing Entry diagonal key, which
+then feeds the exact weighted locator and sector target. Its positive dependency
+gate requires the recursive-core refinement and reduced-key locator theorem.
+This is an Entry bridge, not the missing complete B1 observer. No B32 producer or
+native future theorem was rewritten.
+
+The shared dependency audit now walks named proof nodes transitively, memoizing
+proof serials and theorem names. General theorems may retain explicit premises;
+closed-instance checks additionally reject those premises. Both reject hypotheses
+and oracles. Kernel negative tests cover a forbidden authority hidden behind
+named wrappers, similar-name substitution and assumed endpoints. The proof index
+recognizes the new calls and does not count captured negative tests as release
+audits. An initial review caught and corrected a false assumption that
+`Thm_Deps.thm_deps` traverses named descendants automatically.
+
+**Established results.** The complete-domain development audit compares 42,504
+canonical states using the existing chart arithmetic as an explicitly identified
+teacher. Independent small literal-child tests check that teacher. Keys never
+contain reference outputs or raw phase/index fields. Source-local derived views
+cannot distinguish equal C1 suffixes, so the first candidate retains that exact
+suffix; later candidates add actual core residues. The observation is the B1
+`Comma_Word` projection, with successor-key transport checked separately.
+
+| Candidate | Classes | Result |
+| --- | ---: | --- |
+| Source-local C1 | 46 | Observation and successor conflicts |
+| C1 plus source-sector mod-460 residue | 1,012 | Observation and successor conflicts |
+| C1 plus all 17 displacement residues | 42,504 | No conflicts, but no state compression |
+| Post-construction Moore refinement | 17,293 | Nine refinement rounds; requires the full reference graph |
+
+A concrete collision is fiber 0 at phases 1 and 23: the mod-460 residues agree,
+but B1 returns `Live 12` and `Live 39`, respectively. Their transported successors
+are `(12,2)` and `(39,24)`. The audit also adds separating core coordinates from
+successive witnesses, rather than concealing collisions with endpoint data.
+Adding moduli 460, 140 and 290 successively gives 1,012, 3,036 and 42,504
+classes; the last candidate has no conflicts but retains the whole domain.
+The powered C1/borrow/Native19/pair/temporal source map is not implemented by
+these source-local/core keys. These experiments therefore neither refute that
+combined quotient nor establish a production construction bound.
+
+**Rejected approaches.** Optimizing the old response interpreter again;
+claiming that fixed-sector carry theorems already prove decade closure;
+identifying decimal exponent phase with port-move time; adding a teacher's
+endpoint to a purported source-only key; treating post-construction minimization
+as a compact constructor; deleting forest admission after an Entry-only proof.
+
+**Validation/provenance.** Source v5
+`60422c82c1848d3940352d899c6b8317d5e012253153ea8f8eb25047ec6f9b36`.
+Ignored local proof evidence:
+`results/runs/20261003T213118Z-85fc77879fe04be28b664c7be1c0a769`.
+Dependency smoke, Entry bridge and native summary occurrence completed in 5.577,
+47.742 and 41.217 seconds, respectively, each under 60 seconds/4 GiB. Their
+sampled peaks were 655,068,136, 1,305,419,744 and 1,347,039,176 bytes. Checked
+prerequisite heaps were reused. The first bridge invocation exceeded 60 seconds
+while rebuilding three prerequisite sessions and is retained as a failed run at
+`results/runs/20261003T212043Z-330c881967584965af88c3cbcc32924c`.
+
+Final quality, complete-domain audit and focused-test evidence is local at
+`results/runs/20261003T213315Z-1026752eb28948408d342e02c7ebc6ad`.
+All 260 focused tests passed in 28.89 seconds. Strict typing, pinned Ruff,
+formatting, source policy, documentation and proof inventory checks passed.
+Installed-wheel validation exceeded 35 seconds after building the wheel; a
+package-only retry also timed out under the unchanged limit, recorded at
+`results/runs/20261003T213917Z-8e7ee2eb087c4a03a4e92e1dcad41f43`.
+Neither attempt establishes installed-package acceptance.
+The external graph audit is not an Isabelle certificate. No full-unit, P0 or
+aggregate-proof acceptance is claimed by these focused results.
+
+**Remaining obligations.** Define a complete B1 observation/continuation from
+the source-selected carry/core action, prove its successor closure, and replace
+the response-row producer with that owner. Then run concrete B1 before B32 and
+the native global chain. Production forest/fuel authority remains in place;
+this turn does not claim the requested full B1 cutover is complete.
+
+## October 3 — Direct Q19 constructor and downloaded decade-quotient audit
+
+**Objective.** Replace post-construction quotient discovery with a source
+classifier where its semantics are established, and audit the supplied parallel
+B1 replacement chain before changing release authority.
+
+**Changes.** `CycleSpatialState` computes Q19 from a gcd and modular inverse,
+without enumerating 90 ports. Its powered readout uses modular arithmetic and
+preserves the initial zero transient. The pair-language and future-quotient
+research consumers now use this owner; independent Moore minimization remains
+a test oracle. The expanded B1 graph minimization is opt-in through
+`--expanded-moore-baseline`; unrequested class/round counts remain null.
+`Comma_Cycle_Spatial_Moore` checks the same classifier and port transition,
+registers the 19-class image, and proves repeated port-step refinement by
+induction. Port duration does not become a decimal-exponent clock.
+
+**Established results.** The direct Python partition agrees with all 90-port
+Moore classes. Bounded literal powers cover every source port; large-duration
+composition, invalid states, zero, no-zero orbits and separated exact weights
+have regression coverage. Independent review found no arithmetic or authority
+defect in this local owner. Build and final test outcomes are recorded below.
+
+**Downloaded evidence and rejected approaches.** The newly supplied
+`t50_m204_m111_reconstruction.zip` includes 84,084 source rows, class maps and a
+script. The script reads candidate rank/terminal tables before assigning the
+50/204/111 summary classes. Its fixed-point transition decrements supplied
+height; its radial payload is computed from the already-known fork coefficient
+and then inverted. This is a useful summary census, not a source-selected B1
+constructor. No downloaded class table was installed in production.
+
+The supplied CSV gives `(r,x)=(1,0)` and `(13,0)` the same T50/M204/M111 IDs
+(39/115/100), height 2, landmine terminal and absent radial payload. Current
+arithmetic independently gives first B1 live fibers 12 and 23. The bounded
+regression retains both complete three-observation traces. This rejects
+terminal-summary-only selection, not an occurrence-aware quotient whose
+source transport is independently constructed. Existing residual-core summary
+powering already covers the countdown algebra; it was not duplicated.
+
+**Validation/provenance.** Inputs, SHA-256:
+
+| Input | SHA-256 |
+| --- | --- |
+| First review (`611c2485`) | `4bbcb44815e85b8ffe9b233efe7f0f96e851edcefd724e6ddcd6194e136344d7` |
+| Parallel-chain review (`0b74c670`) | `10db83e9c50fcddc11591ae03d60d9be50b3ee191118458b73f21795da3b85a5` |
+| Reconstruction archive | `d5e690a0f28b88530239f07b017b13ff9dfd3cf293c7b9a04f5c91ebae06632b` |
+| Reconstruction script | `d5d278eb4919cb3b0e4c158e2c169ed9c4e06e448bfacf6380cc3f093cb8f914` |
+| Executable-quotients patch | `69cd133f53d085a1e15b078244e00b9053f96ad263932fd7a62405daf14fc7eb` |
+
+**Checked proof freeze.** Source v5
+`0a0592c8886de99afdeee01055be9ca0ff4800de5f5d29d1404848d067caef07`.
+`Comma_Cycle_Spatial_Moore` passed in 28.347 seconds with a sampled peak of
+1,274,871,776 bytes, under 60 seconds/4 GiB. Existing prerequisite heaps were
+reused. Local evidence:
+`results/runs/20261003T220741Z-746898ec6b194ea08e810c5bc80f4fdf`.
+The proof checks all 90 port cases and inductively refines repeated source
+steps; Python's closed modular power formula additionally has differential and
+composition tests, but no separate kernel theorem for that formula is claimed.
+The final ancestry audit requires the step-refinement theorem and rejects
+retired native proof authorities. Initial draft type, syntax and simplifier
+failures were fixed; their run logs remain in ignored evidence storage.
+
+**Final focused validation.** On the same `0a0592c8` source, all 357 focused
+tests passed in 48.33 pytest seconds (48.877 guarded seconds, 300-second/1-GiB
+limit). Whole-tree strict mypy, pinned Ruff, formatting, source policy,
+documentation and proof inventory passed. Source policy took 30.469 seconds;
+all individual quality checks remained below 35 seconds/1 GiB. Local evidence:
+`results/runs/20261003T220823Z-79d8f752eb9a4fffa9ba58918358d3f7`.
+No full-unit, installed-wheel, P0, B1/B32 or aggregate Isabelle acceptance is
+claimed by this focused repair.
+
+**Remaining obligations.** Construct the native source-selected decade class
+and radial occurrence transport before exposing an M111 B1 observer. The
+current B1 publisher remains response-backed. No B32/global theorem, forest
+admission, fuel requirement or CLI route changed in this repair. The new
+Q19 theorem is local authority, not a complete B1 refinement.
+
+
+## October 3 — External cyclotomic clock and source-selected endpoint B1
+
+**Objective.** Construct B1 from the source Entry arithmetic without retaining
+an endpoint-by-phase table or using terminal summaries as source classifiers.
+
+**Changes.** The external clock stores the four characters modulo 4, 3, 7 and
+11. Local projections feed the existing nine core residue actions. Entry
+headroom and Near-child selection are shared with the weighted chart owner;
+the new endpoint observer does not construct weighted records. Its B1 worklist
+advances strictly to the next sector and needs at most eight such advances.
+The 46 source representatives, 446 endpoint census and 2,505 minimal-period cells
+are reconstructed only in tests, not installed as runtime tables.
+
+The new Isabelle endpoint recursion terminates by the decreasing number of
+remaining sectors and refines the existing B1 atom. The generic output-admission
+lemma moved from the concrete response publisher to the shared sector-mask
+owner, removing a duplicate proof. The clock proof checks small CRT bases and
+transports arbitrary shifts symbolically. Recursive equations are unfolded once
+at the proof boundary instead of placed in a recursive simplifier set.
+
+**Established results.** The executable endpoint constructor matches the
+independent chart reference on all 84,084 admitted decade inputs. The test-only
+reachable census matches 446 endpoints, including period counts
+166/21/75/134/22/28 for periods 1/2/3/6/22/28. Clock projection and residue tests
+cover all 924 phases. Exact-type checks reject forged clock subclasses and
+boolean payload aliases; budget refusal precedes Entry arithmetic.
+
+**Rejected approaches.** No 2,505-entry endpoint table, terminal/rank lookup,
+post-hoc trajectory minimization, or per-source 924-phase scan was added to the
+constructor. A canonical arithmetic occurrence is not a ledger admission
+certificate. The reported Boolean elapsed-time polynomial and 36-to-19 future
+observer have not been recovered as executable owners here and are not claimed
+by the clock projection theorem.
+
+**Validation/provenance.** The input archive
+`b1_source_classifier_reconstruction.zip` has SHA-256
+`430d151a669954e18a520fd84ad34eb407bb4a711c6e478705481162d706d6e5`.
+Initial focused runtime checks passed 225 tests in 20.51 seconds, but concurrent
+proof edits invalidate their whole-source attribution; local evidence is
+`results/runs/20261003T225541Z-f60c8e1edd0b4cd3a923bb895afd78b7`.
+The endpoint theory passed on source v5
+`92bb79fd67531092968f39a07d824443c7fa33b4d8f208f5f85caf69a39deeeb`
+in 25.442 seconds with a sampled peak of 1,284,530,288 bytes. Existing prerequisite
+heaps were reused under 60 seconds/4 GiB. Local evidence:
+`results/runs/20261003T225715Z-5d863c70313d46fbaa141887e39f8962`.
+A broader run passed 364 focused tests, Ruff, formatting, policy, documentation
+and proof inventory, but found five strict-mypy narrowing errors. Those were
+fixed without relaxing exact-type input checks. The manifest's global-Ruff
+version override was also removed; the canonical release runner now executes
+Ruff through the same interpreter whose package version it records. That
+initial quality run is retained at
+`results/runs/20261003T225755Z-192f2fc6ca3048648e511fa3ade92ca1`.
+**Connected proof freeze.** Source v5
+`82e434f43fffd61efd2e6287d9e42236e41470e2e89f08a54dd81929ac759b8b`.
+The explicit core/clock bridge covers all canonical Entry sectors with
+`x≤89+f`, returns the checked weighted port, and proves the exact Near target.
+Its transitive audits require the existing core, locator and clock theorems and
+reject retired native authorities. An initial session ancestry choice repeated
+C1/core proof work and exceeded 60 seconds before reaching the new theory.
+Changing the session parent to the checked AddSub Entry bridge and narrowing
+the clock simplification resolved that import cost without increasing limits.
+
+The final endpoint kernel rebuild exited zero in 55.985 seconds, sampled peak
+1,432,141,792 bytes. The guard classified it `descendants_retired`, not a clean
+process pass; local evidence retains that outcome at
+`results/runs/20261003T231541Z-4929464aa1e64bc38ba874ce3b0edcb1`.
+The same-source recheck completed cleanly for both sessions, reusing the checked
+heaps: clock 6.477 seconds and endpoint 8.858 seconds, each under 60 seconds/4 GiB.
+Local evidence:
+`results/runs/20261003T231729Z-61cb8588296246bf92a92bc790cf114f`.
+The cold cleanup qualification is not erased by this cached recheck.
+
+**Final quality freeze.** On source v5
+`3e13bb4bc87acc5175657b8ecece0864e78e202d863d6680ade464c6c51bd6a8`,
+615 focused tests passed in 72.17 pytest seconds. Whole-tree strict mypy, pinned
+Ruff, formatting, source policy, documentation and the 130-session/280-theory
+proof inventory passed. Local evidence:
+`results/runs/20261003T233012Z-221d3e47c6db4899a108022969a64136`.
+The [watchdog repair](repository.md#october-3--exit-snapshot-race-and-pinned-tool-evidence)
+fixes the confirmed stale exit-snapshot race without accepting live descendants.
+
+**Remaining obligations.** Replace the concrete sparse B1 response publisher
+with a proof-producing core/endpoint constructor, then validate B32 and the
+native global safety chain. The endpoint observer alone supplies neither elapsed
+literal weights nor infinite-path admission. Forest/fuel removal and the CLI
+cutover remain blocked on those distinct gates. No full-unit, P0, installed-wheel
+or aggregate Isabelle pass is inferred from these focused results.
+
+**Direct constructor follow-up.** The executable Isabelle Entry target now uses
+the external clock, recursive core and weighted locator directly; its Near
+target uses the closed germ. The former fast target is a refinement reference,
+not the executed target definition. The local packet theorem preserves both
+the returned Near position and its next move over each source-local phase
+class. Generic base-output projection moved to `Comma_Orbit_Words`, avoiding
+an import of the response-row proof layer. The clock shift proof now splits
+the six supported projection periods explicitly instead of using broad proof
+search.
+
+On source v5
+`e8fc29293e109251f15448add606a3211dfaf3128f275388fddb4d8853e327ab`,
+the selected endpoint session rebuilt cleanly in 49.828 seconds with sampled
+peak 1,363,218,448 bytes under 60 seconds/4 GiB. Prerequisite heaps were reused;
+this is not an aggregate clean build. Local evidence:
+`results/runs/20261004T001845Z-55f2e3026774440cb2af7f426cc2084b`.
+Earlier syntax and packet-rewrite failures remain in their separate run
+directories. No source changes occurred during the passing invocation.
+
+**Observer boundary audit.** The opt-in structural audit independently recovers
+36 period words, a 58-node trie and 19 minimized Boolean-language states.
+These states recognize the period-word language; they do not select the exact
+B1 output. Offset 10 at phases 40 and 44 has the same period word but different
+live fibers, 13 and 22. All 46 source representatives remain distinguishable
+as exact B1 actions using phases 0 and 1. The full language experiment completed
+under the 35-second/1-GiB probe guard; local evidence:
+`results/runs/20261003T235553Z-f19b85b92d594dcca6c73cec8902e935`.
+The prior 52-state trial retained terminal-output sets and therefore minimized
+a different observer. Neither experiment supplies the missing sparse publisher.
+
+
+### October 3 — weighted terminal control and landmine cleanup
+
+**Date range:** October 3, 2026 (Phoenix; evidence filenames use UTC).
+
+**Objective.** Remove terminal headroom/height from control identities while
+preserving source authority and the exact stopping-distance output.
+
+**Changes.** Added the weighted terminal relation `D=9H+J`, with `J=a-2` for
+Fork a and `J=8` for Landmine. The C1 Near theorem recognizes Landmine by
+`18≤h-1≤81` and `(h-1) mod 9=0`; no eight-row table is a proof premise.
+Python applies the shared predicate after occurrence validation and work
+admission, before generic boundary-chart allocation. Poison tests cover all
+eight landmine headrooms and multiple clocks, exact-type rejection and budget
+failure. The finite audit now compares decoded weights with independently
+retained source outcomes, preventing a decoder from checking itself.
+
+**Established results.** The full source audit covers 42,504 cases: 30,231
+immediate Live results, 6,507 Forks and 5,766 Landmines. Future traversal returns
+204 distinct exact `D` values, zero terminal ambiguities and maximum H=26.
+All 46 roots remain distinguishable by eventual Fork/Landmine observations
+across the external clock; erasing height does not prove a one-state ordinary
+Moore quotient.
+
+**Concrete deletions.** Removed the unused 105-line decade-observation derived
+view and its profiling/oracle-audit entries after checking all formal and
+Python references. The live round phase transport, control closure and rank
+termination lemmas remain. Current documentation no longer presents the
+retired view as a production connection; its earlier dated evidence above
+remains historical. Also removed three unused Compact B1 lemmas and the
+unregistered 287-line experimental ML publisher, which had unsafe mask/int
+conversion and lacked complete root binding.
+
+**Rejected approaches.** Dropping the landmine band, erasing the source's exact
+headroom, or treating exact sparse-output sorting keys as semantic cache keys
+would be unsound. Encoding a stopping distance as `D` does not establish a
+smaller exact-output row population or literal-term weights. Broad proof search
+over unbound occurrence arguments caused a 60-second corollary timeout;
+explicit theorem instantiation removes that search.
+
+**Validation/provenance.** The complete terminal audit passed in 14.674 seconds
+with a sampled peak of 24,986,104 bytes on source v5
+`ad5ae04951fef6fb0e18361fbc7316338beed548f061023f99dae87720d17b88`,
+under the 35-second/1-GiB probe guard. Local evidence:
+`results/runs/20261004T013106Z-572fd1b6a56f4b3f99c9b2c709574528`.
+The weighted/C1 theory and the shortened decade-control session subsequently
+passed kernel builds; those development runs had concurrent source edits and
+do not certify the final tree. Final frozen checks are recorded below.
+
+**Concrete publisher follow-up.** Production B1 now imports `Comma_Compact_B1`
+and directly projects/prunes packet rows. The old response constructor and its
+proof-producing merge sort are not on this path. Removed the unloaded
+1,000-line `response_base_constructor.ML`, with malformed-output/root-authority
+checks retained in the compact instance. Removed Global Root's unused
+Summary Transport import and matching session edge; its global kernel rebuild
+remains downstream of B1/B32.
+
+Recursive masks are now symbolic CRT classes. The checked intersection theorem
+returns either an empty scope or one class modulo the lcm; numeral masks are
+requested only for the published output. The phase-scope theorem and generic
+compact refinement passed together in 24.558 seconds (sampled peak
+1,325,686,824 bytes) under 60 seconds/4 GiB on source v5
+`e0bc7e629eb0a56a309616a3960ce6a0286924be1d641727132740619fcfccc2`.
+Local evidence: `results/runs/20261004T030301Z-a172aad6b6aa49c5909c6f93eeba5ab2`.
+That result does not certify the later ML publisher changes. The first concrete
+symbolic-scope run still timed out: root 0 requested 7,040 intersections (2,494
+distinct) before the limit. Eliminating intermediate masks alone was therefore
+insufficient. Filtering incompatible clock residues before packet construction
+now has a checked generic refinement: `Comma_Compact_B1` passed in 26.315
+seconds with a sampled peak of 1,377,849,456 bytes on source v5
+`418117a5b4893ff398285f84a516e86a6e6756e20de6751b1e1f2c12fc07c2ce`.
+Local evidence: `results/runs/20261004T031750Z-e112bbd0933e453faa457996af3b19f1`.
+The concrete publisher still timed out under 60 seconds/4 GiB: root 0 took
+45.753 seconds to normalize its symbolic rows before final mask publication.
+This is a concrete failure despite the passing generic refinement.
+
+**Scope-cache reproduction.** A separate iterative audit uses the shared Entry,
+Near and chart arithmetic, without rank/response tables. Root 0 reproduces
+881 calls and 881 distinct `(source,scope)` keys, 269 source states, 495 terminal
+leaves, 46 output labels, 537 scopes and 448 singleton scopes. Across all 46
+roots it measures 38,695 distinct full keys, zero repeated full keys even across
+roots, 22,206 terminal leaves and 430 shared source states. Each root covers
+exactly 924 terminal phases. Thus another cache of accumulated scopes would
+avoid no repeated continuation calls in this audit. A reusable source-only
+object must retain its dependence on the external clock; caching one selected
+outcome under the source alone would be wrong. These graph counts do not prove
+a runtime speedup or the size of an unrestricted source-transducer closure.
+
+Reproduction: `python -m devtools.verification.comma_b1_scope_audit --all-roots`.
+The corrected complete run took 0.878 seconds, sampled peak 29,540,856 bytes, under
+35 seconds/1 GiB, on source v5
+`285b551483adf9b232b50aa47c8aa58ac5b5fa6e67442dd6fe96147ac1581560`.
+Local evidence: `results/runs/20261004T033358Z-43b593f7662b4ec1af9af2a5cc26ba78`.
+The audit itself has one traversal per root; source sets and full cache keys
+are collected together, avoiding a duplicate counting pass. Raw evidence remains
+ignored. This is an independent reconstruction of the supplied review, not a
+kernel certificate or production evaluator. Independent review corrected Live
+output labels to use the same orbit projection as Isabelle and reject malformed
+decade crossings through the shared canonical-domain predicate. Eight focused
+audit tests pass; the corrected projection leaves these counts unchanged.
+
+**Remaining obligations.** Concrete compact B1 publication, B32 and the global
+future-safety connection still gate forest/fuel removal. The weighted native
+summary and occurrence consumer have passed development kernel runs; changes
+during those runs prevent treating them as frozen release evidence. Local
+proofs and endpoint tests do not authorize removing production admission.
+
+
+**Source-continuation follow-up (October 3).** The reusable object is a complete
+clock-dependent local action, not one clock-selected result under a source-only
+key. The new verification arena removes `delta` from the source key, applies it
+through the external clock, and interns local controls bottom-up through child
+IDs. Exact Fork position and Live fiber remain observable. Source-specific
+occurrence fragments stay outside the control interner; they are diagnostic
+fragments, not a proved complete weighted action. Snapshots are immutable,
+malformed/cyclic IDs fail, and evaluation uses strict child-ID decrease rather
+than a nine-step fuel counter. Failed discovery discards partial publication
+and records the discarded work separately; retry is tested after both the first
+and the hundredth action evaluation.
+
+The complete differential audit matches all 42,504 B1 occurrences. It constructs
+430 source continuations and 3,455 local action slots, with 2,841 completed local
+action retrievals from 3,271 source requests. There are **zero semantic interning
+merges** in this closure. A separate poisoned warm-compile test prohibits cold
+arithmetic; warm compilation, local retrieval and pending deduplication have
+distinct counters. These results establish prototype reuse, not a production
+speedup or global Moore minimality. Near complete-cycle residual factoring is
+still unimplemented.
+
+`Comma_Source_Continuation_DAG`, registered in `Comma_Compact_B1`, proves local
+clock rebasing, equality-of-ID application, exact packet transport and decreasing
+successors. Its IDs retain exact normalized successor addresses. This theorem
+does not yet refine the Python interner or replace the live scope-expanding ML
+publisher. No production forest or fuel admission was removed.
+
+**Frozen validation/provenance.** All following results use source v5
+`cb80e00ef22e5704079106e78c7667807712dbecb5471228ccf81fb7d8c86da4`.
+The selected clean `Comma_Compact_B1` build passed in 28.324 guarded seconds,
+sampled peak 1,402,036,264 bytes, under 60 seconds/4 GiB. Local evidence:
+`results/runs/20261004T042502Z-a513d14edd55426f918e4b47b9e7b712`.
+The source-continuation audit took 5.190 seconds and 20,791,800 sampled bytes
+under 35 seconds/1 GiB; local evidence:
+`results/runs/20261004T042545Z-314f77c8b82b476cb5f91b610fdc625f`.
+Reproduce with
+`python -m devtools.verification.comma_b1_source_continuation --differential`.
+Whole-tree typing, Ruff, formatting, source policy, documentation and proof
+inventory pass; 693 focused tests pass in 80.834 guarded seconds under
+300 seconds/1 GiB. Local evidence:
+`results/runs/20261004T042212Z-793dc0cf644148358423bcf8a9265e2f`.
+Earlier source-changed runs are development evidence only. The live B1 publisher,
+B32 and global future-safety cutover remain separate red gates.
+
+## October 3 — Common-clock return rebasing and standard proof limits
+
+**Objective.** Recover the labeled `430 → 327 → 294` return quotient while
+keeping physical clock progression distinct from template translation. Use the
+canonical release runner for every Isabelle build: one 60-second / aggregate
+4-GiB limit for the complete selected invocation, with standard runtime settings.
+
+**Changes.** Symbolic CRT return functions share primitive clock substitutions
+and validity masks. Lazy least-rotation selection compares labeled outputs and
+constructs one translated function per complete return, without a dense
+924-element output row. Explicit full candidate selections use the same
+lexicographic convention. Occurrence bindings retain their physical shift
+separately. Failed-publication rollback restores allocation counters.
+
+The generic graph refinement now covers the 46 indexed representative roots
+and consumes the checked source-continuation application theorem. New rebase
+lemmas preserve labels and select the receiving child's offset after advancing
+the physical clock. The generic future bridge proves arbitrary infinite-path
+projection, losing-state exclusion and unique surviving-child selection under
+its explicit occurrence and structural-check assumptions.
+
+**Established results.** The symbolic audit constructs 327 complete labeled
+functions and 294 translated representatives from 430 structural continuations.
+It performs 327 translated-function constructions, 336,880 phase reads and
+168,440 comparisons; those reads are measured work, not free normalization.
+The generic B1/graph/rebase and future theories pass the canonical selected build.
+
+**Rejected approaches.** Arena-handle ordering is not a canonical labeled
+rotation. A template shift cannot replace the physical successor clock. Neither
+the finite census nor these generic theorems establishes the concrete B1/B32
+publisher, global quotient minimality or production admission. Temporary proof
+wrappers and source-changed runs are not current release evidence.
+
+**Validation provenance.** All times below are guarded wall times. Evidence is
+local under ignored `results/runs/`; paths are provenance text, not download links.
+Source v5 A is `7507920c819c63c949a649c529d23e2a7a1f98cc8117210341812c69040d1f28`.
+Source v5 B is `e05314bacead21bd9fe9795f08527608b658a17840130490051c929e9682a179`;
+the only intervening source change migrates the delta-binding test to the public
+`source_address` API while preserving equal-CID and shifted-evaluation assertions.
+
+| Scope | Source | Command / limits | Outcome | Local run |
+| --- | --- | --- | --- | --- |
+| Selected kernel build | A | `python -m devtools.checks.release --suite proofs --session Comma_Semantic_B1 --session Comma_Semantic_Future`; 60 s / 4 GiB | PASS, 31.609 s, 1,348,874,232 sampled bytes; prerequisite heaps reused | `20261004T065322Z-1b523ec1389a42e8a9a5edd383aaf145` |
+| Symbolic common-shift audit | A | `python -m devtools.verification.comma_b1_source_continuation --symbolic-clock-quotient`; 35 s / 1 GiB | PASS, 15.553 s, 48,267,816 sampled bytes; 294 representatives | `20261004T065420Z-51c92da5f5b0477ea8d2dd60878e068f` |
+| Whole-tree quality and package | A | `python -m devtools.checks.release --suite quality`; 35 s / 1 GiB per command | Typing, Ruff, formatting, policy, docs and inventory PASS; package TIMEOUT after wheel creation, installed validation incomplete | `20261004T065458Z-830d52347bbe4d13af5e2b1643cabd99` |
+| Selected kernel recheck | B | Same canonical selected command; 60 s / 4 GiB | PASS, 10.252 s; checked session heaps reused, no cold-build claim | `20261004T065835Z-7eb1a272ea76405b8277ff6383b18ec4` |
+| Focused regression selection | B | Canonical pytest selections recorded in manifest; 300 s / 1 GiB | 46 PASS, 35.424 s; runner limits, generic future contracts, symbolic returns, source continuations and bindings | `20261004T065910Z-37cf2dd5f301495384c49a60e293e48d` |
+
+**Remaining work.** Connect the normalized concrete publisher and its certificate
+to B1/B32 and global future safety, then validate production consumers before
+removing forest/fuel admission. The symbolic Python owner is still an optional
+audit consumer. Installed-wheel, full-unit and aggregate-proof acceptance remain
+open; the passing focused results do not close those gates.

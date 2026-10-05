@@ -1,5 +1,6 @@
 theory Comma_Source_Entry_Witness
   imports Comma_Literal_Bridge.Comma_Macro_Selection
+    Comma_Entry_Arithmetic.Comma_Entry_Arithmetic
 begin
 
 text \<open>The following charts are untrusted source-20 candidate data.
@@ -200,51 +201,31 @@ next
   qed
 qed
 
-text \<open>Only closed gcd equations are installed for chart evaluation.
-The recursive gcd equation must not rewrite the symbolic case branches of
-the weighted transition while those branches are being simplified.\<close>
+text \<open>Reuse the checked arithmetic catalog for local chart edges. Control
+checking does not construct unused weighted payloads, and shared period/power
+facts avoid rebuilding the same closed arithmetic for every occurrence.\<close>
 
-lemma comma_source_gcd_numerals [simp]:
-  "gcd (1::nat) 10 = 1"
-  "gcd (2::nat) 10 = 2"
-  "gcd (3::nat) 10 = 1"
-  "gcd (4::nat) 10 = 2"
-  "gcd (5::nat) 10 = 5"
-  "gcd (6::nat) 10 = 2"
-  "gcd (7::nat) 10 = 1"
-  "gcd (8::nat) 10 = 2"
-  "gcd (9::nat) 10 = 1"
-  by (simp_all add: gcd_nat.simps)
+lemmas comma_source_control_simps =
+  comma_entry_control_formula comma_near_control_formula
+  comma_finite_headroom_def comma_finite_guard_extra_def
+  comma_power_residue_def comma_short_period_def Let_def
+  comma_compiled_cycle_length_facts comma_compiled_period_facts
+  comma_compiled_short_period_facts comma_compiled_power_facts
 
-lemma comma_source_period_probe:
-  "comma_finite_period 1 3 = 460"
-  by (simp add: comma_finite_period_def Let_def)
+ML \<open>
+  fun comma_source_arithmetic_context ctxt =
+    Comma_Entry_Arithmetic.natural_context ctxt addsimps
+      @{thms comma_source_control_simps comma_finite_move.inject
+        comma_finite_move.distinct comma_finite_position.inject
+        comma_finite_position.distinct list_all_Nil_iff list_all_Cons_iff
+        zip.simps list.sel list.case list.distinct list.inject last.simps
+        of_nat_numeral of_nat_0 of_nat_1 zmod_zminus1_eq_if zmod_zminus2_eq_if};
+\<close>
 
-lemma comma_source_power_probe:
-  "comma_power_residue 460 5 = 180"
-  by (simp add: comma_power_residue_def comma_short_period_def)
-
-lemma comma_source_headroom_probe:
-  "comma_finite_headroom 1 5 0 3 = 177"
-  apply (simp only: comma_finite_headroom_def Let_def)?
-  apply (simp only: comma_finite_period_def Let_def)?
-  by (simp add: comma_finite_guard_extra_def
-    comma_power_residue_def comma_short_period_def)
-
-lemma comma_source_entry_probe:
-  "comma_finite_step 5 (Comma_Entry 1 0 3) =
-    Comma_Next (Comma_Near 1 0 177)"
-  apply (simp only: comma_finite_step_def comma_weighted_step_def
-    comma_finite_position.case Let_def)
-  apply (simp only: comma_finite_headroom_def Let_def)?
-  apply (simp only: comma_finite_period_def Let_def)?
-  by (simp add: comma_finite_guard_extra_def
-    comma_power_residue_def comma_short_period_def)
-
-lemma comma_source_near_probe:
-  "comma_finite_step 5 (Comma_Near 1 0 177) =
-    Comma_Next (Comma_Near 1 0 146)"
-  by (simp add: comma_near_control_formula Let_def)
+method_setup comma_source_control = \<open>
+  Scan.succeed (fn ctxt => SIMPLE_METHOD'
+    (simp_tac (comma_source_arithmetic_context ctxt)))
+\<close>
 
 lemma comma_source_tail_trace_0:
   "comma_finite_trace_ok 5
@@ -257,23 +238,13 @@ proof -
       comma_finite_step 5 left = Comma_Next right)
       (zip comma_source_tail_positions_0
         (tl comma_source_tail_positions_0))"
-    unfolding comma_source_tail_positions_0_def apply (simp del: comma_weighted_step_def)
-    apply (simp only: comma_finite_next_weight_def comma_finite_step_def
-      comma_weighted_step_def comma_finite_position.case Let_def)
-    apply (simp only: comma_finite_headroom_def Let_def)?
-    apply (simp only: comma_finite_period_def Let_def)?
-    by (simp add: comma_finite_guard_extra_def comma_power_residue_def
-      comma_short_period_def comma_chart_weight_value_def comma_cycle_length_def)
+    unfolding comma_source_tail_positions_0_def
+    by comma_source_control
   have seam: "comma_finite_step 5 (last comma_source_tail_positions_0) =
       Comma_Next (hd comma_source_tail_positions_1)"
     unfolding comma_source_tail_positions_0_def
-      comma_source_tail_positions_1_def apply (simp del: comma_weighted_step_def)
-    apply (simp only: comma_finite_next_weight_def comma_finite_step_def
-      comma_weighted_step_def comma_finite_position.case Let_def)
-    apply (simp only: comma_finite_headroom_def Let_def)?
-    apply (simp only: comma_finite_period_def Let_def)?
-    by (simp add: comma_finite_guard_extra_def comma_power_residue_def
-      comma_short_period_def comma_chart_weight_value_def comma_cycle_length_def)
+      comma_source_tail_positions_1_def
+    by comma_source_control
   have nonempty: "comma_source_tail_positions_0 \<noteq> []"
     by (simp add: comma_source_tail_positions_0_def)
   show ?thesis
@@ -291,23 +262,13 @@ proof -
       comma_finite_step 5 left = Comma_Next right)
       (zip comma_source_tail_positions_1
         (tl comma_source_tail_positions_1))"
-    unfolding comma_source_tail_positions_1_def apply (simp del: comma_weighted_step_def)
-    apply (simp only: comma_finite_next_weight_def comma_finite_step_def
-      comma_weighted_step_def comma_finite_position.case Let_def)
-    apply (simp only: comma_finite_headroom_def Let_def)?
-    apply (simp only: comma_finite_period_def Let_def)?
-    by (simp add: comma_finite_guard_extra_def comma_power_residue_def
-      comma_short_period_def comma_chart_weight_value_def comma_cycle_length_def)
+    unfolding comma_source_tail_positions_1_def
+    by comma_source_control
   have seam: "comma_finite_step 5 (last comma_source_tail_positions_1) =
       Comma_Next (hd comma_source_tail_positions_2)"
     unfolding comma_source_tail_positions_1_def
-      comma_source_tail_positions_2_def apply (simp del: comma_weighted_step_def)
-    apply (simp only: comma_finite_next_weight_def comma_finite_step_def
-      comma_weighted_step_def comma_finite_position.case Let_def)
-    apply (simp only: comma_finite_headroom_def Let_def)?
-    apply (simp only: comma_finite_period_def Let_def)?
-    by (simp add: comma_finite_guard_extra_def comma_power_residue_def
-      comma_short_period_def comma_chart_weight_value_def comma_cycle_length_def)
+      comma_source_tail_positions_2_def
+    by comma_source_control
   have nonempty: "comma_source_tail_positions_1 \<noteq> []"
     by (simp add: comma_source_tail_positions_1_def)
   show ?thesis
@@ -325,23 +286,13 @@ proof -
       comma_finite_step 5 left = Comma_Next right)
       (zip comma_source_tail_positions_2
         (tl comma_source_tail_positions_2))"
-    unfolding comma_source_tail_positions_2_def apply (simp del: comma_weighted_step_def)
-    apply (simp only: comma_finite_next_weight_def comma_finite_step_def
-      comma_weighted_step_def comma_finite_position.case Let_def)
-    apply (simp only: comma_finite_headroom_def Let_def)?
-    apply (simp only: comma_finite_period_def Let_def)?
-    by (simp add: comma_finite_guard_extra_def comma_power_residue_def
-      comma_short_period_def comma_chart_weight_value_def comma_cycle_length_def)
+    unfolding comma_source_tail_positions_2_def
+    by comma_source_control
   have seam: "comma_finite_step 5 (last comma_source_tail_positions_2) =
       Comma_Next (hd comma_source_tail_positions_3)"
     unfolding comma_source_tail_positions_2_def
-      comma_source_tail_positions_3_def apply (simp del: comma_weighted_step_def)
-    apply (simp only: comma_finite_next_weight_def comma_finite_step_def
-      comma_weighted_step_def comma_finite_position.case Let_def)
-    apply (simp only: comma_finite_headroom_def Let_def)?
-    apply (simp only: comma_finite_period_def Let_def)?
-    by (simp add: comma_finite_guard_extra_def comma_power_residue_def
-      comma_short_period_def comma_chart_weight_value_def comma_cycle_length_def)
+      comma_source_tail_positions_3_def
+    by comma_source_control
   have nonempty: "comma_source_tail_positions_2 \<noteq> []"
     by (simp add: comma_source_tail_positions_2_def)
   show ?thesis
@@ -359,23 +310,13 @@ proof -
       comma_finite_step 5 left = Comma_Next right)
       (zip comma_source_tail_positions_3
         (tl comma_source_tail_positions_3))"
-    unfolding comma_source_tail_positions_3_def apply (simp del: comma_weighted_step_def)
-    apply (simp only: comma_finite_next_weight_def comma_finite_step_def
-      comma_weighted_step_def comma_finite_position.case Let_def)
-    apply (simp only: comma_finite_headroom_def Let_def)?
-    apply (simp only: comma_finite_period_def Let_def)?
-    by (simp add: comma_finite_guard_extra_def comma_power_residue_def
-      comma_short_period_def comma_chart_weight_value_def comma_cycle_length_def)
+    unfolding comma_source_tail_positions_3_def
+    by comma_source_control
   have seam: "comma_finite_step 5 (last comma_source_tail_positions_3) =
       Comma_Next (hd comma_source_tail_positions_4)"
     unfolding comma_source_tail_positions_3_def
-      comma_source_tail_positions_4_def apply (simp del: comma_weighted_step_def)
-    apply (simp only: comma_finite_next_weight_def comma_finite_step_def
-      comma_weighted_step_def comma_finite_position.case Let_def)
-    apply (simp only: comma_finite_headroom_def Let_def)?
-    apply (simp only: comma_finite_period_def Let_def)?
-    by (simp add: comma_finite_guard_extra_def comma_power_residue_def
-      comma_short_period_def comma_chart_weight_value_def comma_cycle_length_def)
+      comma_source_tail_positions_4_def
+    by comma_source_control
   have nonempty: "comma_source_tail_positions_3 \<noteq> []"
     by (simp add: comma_source_tail_positions_3_def)
   show ?thesis
@@ -393,23 +334,13 @@ proof -
       comma_finite_step 5 left = Comma_Next right)
       (zip comma_source_tail_positions_4
         (tl comma_source_tail_positions_4))"
-    unfolding comma_source_tail_positions_4_def apply (simp del: comma_weighted_step_def)
-    apply (simp only: comma_finite_next_weight_def comma_finite_step_def
-      comma_weighted_step_def comma_finite_position.case Let_def)
-    apply (simp only: comma_finite_headroom_def Let_def)?
-    apply (simp only: comma_finite_period_def Let_def)?
-    by (simp add: comma_finite_guard_extra_def comma_power_residue_def
-      comma_short_period_def comma_chart_weight_value_def comma_cycle_length_def)
+    unfolding comma_source_tail_positions_4_def
+    by comma_source_control
   have seam: "comma_finite_step 5 (last comma_source_tail_positions_4) =
       Comma_Next (hd comma_source_tail_positions_5)"
     unfolding comma_source_tail_positions_4_def
-      comma_source_tail_positions_5_def apply (simp del: comma_weighted_step_def)
-    apply (simp only: comma_finite_next_weight_def comma_finite_step_def
-      comma_weighted_step_def comma_finite_position.case Let_def)
-    apply (simp only: comma_finite_headroom_def Let_def)?
-    apply (simp only: comma_finite_period_def Let_def)?
-    by (simp add: comma_finite_guard_extra_def comma_power_residue_def
-      comma_short_period_def comma_chart_weight_value_def comma_cycle_length_def)
+      comma_source_tail_positions_5_def
+    by comma_source_control
   have nonempty: "comma_source_tail_positions_4 \<noteq> []"
     by (simp add: comma_source_tail_positions_4_def)
   show ?thesis
@@ -424,22 +355,12 @@ proof -
       comma_finite_step 5 left = Comma_Next right)
       (zip comma_source_tail_positions_5
         (tl comma_source_tail_positions_5))"
-    unfolding comma_source_tail_positions_5_def apply (simp del: comma_weighted_step_def)
-    apply (simp only: comma_finite_next_weight_def comma_finite_step_def
-      comma_weighted_step_def comma_finite_position.case Let_def)
-    apply (simp only: comma_finite_headroom_def Let_def)?
-    apply (simp only: comma_finite_period_def Let_def)?
-    by (simp add: comma_finite_guard_extra_def comma_power_residue_def
-      comma_short_period_def comma_chart_weight_value_def comma_cycle_length_def)
+    unfolding comma_source_tail_positions_5_def
+    by comma_source_control
   have terminal: "comma_finite_step 5 (last comma_source_tail_positions_5) =
       Comma_Fork 2 5"
-    unfolding comma_source_tail_positions_5_def apply (simp del: comma_weighted_step_def)
-    apply (simp only: comma_finite_next_weight_def comma_finite_step_def
-      comma_weighted_step_def comma_finite_position.case Let_def)
-    apply (simp only: comma_finite_headroom_def Let_def)?
-    apply (simp only: comma_finite_period_def Let_def)?
-    by (simp add: comma_finite_guard_extra_def comma_power_residue_def
-      comma_short_period_def comma_chart_weight_value_def comma_cycle_length_def)
+    unfolding comma_source_tail_positions_5_def
+    by comma_source_control
   have nonempty: "comma_source_tail_positions_5 \<noteq> []"
     by (simp add: comma_source_tail_positions_5_def)
   show ?thesis
@@ -506,85 +427,86 @@ lemma comma_source_tail_shape:
     comma_source_tail_positions_2_def comma_source_tail_positions_3_def
     comma_source_tail_positions_4_def comma_source_tail_positions_5_def)
 
+lemma comma_source_near_weight:
+  "comma_finite_next_weight p (Comma_Near f delta h) =
+    (case comma_finite_step (p mod 924) (Comma_Near f delta h) of
+       Comma_Next next \<Rightarrow> 1 | _ \<Rightarrow> 0)"
+  by (simp add: comma_finite_next_weight_def comma_finite_step_def
+      comma_chart_weight_value_def Let_def split: if_splits)
+
+lemma comma_source_entry_weight:
+  "comma_finite_next_weight p (Comma_Entry f delta offset) =
+    (if f < 1 \<or> 9 < f \<or> 98 < offset \<or>
+        comma_finite_period f (offset mod 10) = 0
+     then 0
+     else comma_chart_weight_value p
+       (Comma_Chart_Weight (comma_cycle_length f) delta
+         (- int (comma_cycle_length f *
+           (offset + comma_finite_headroom f (p mod 924) delta offset)))
+         (comma_finite_period f (offset mod 10))))"
+  by (simp add: comma_finite_next_weight_def Let_def)
+
+method_setup comma_source_weight = \<open>
+  Scan.succeed (fn ctxt => SIMPLE_METHOD' (simp_tac
+    (comma_source_arithmetic_context ctxt addsimps
+      @{thms comma_source_near_weight comma_source_entry_weight
+        comma_chart_weight_value_def comma_chart_weight.case
+        comma_finite_move.case list.map sum_list.Cons sum_list.Nil
+        power_numeral_even power_numeral_odd power_0 power_one_right})))
+\<close>
+
 lemma comma_source_tail_weight_0:
   "sum_list (map (comma_finite_next_weight 5) comma_source_tail_positions_0) = 17204"
-  unfolding comma_source_tail_positions_0_def apply (simp del: comma_weighted_step_def)
-    apply (simp only: comma_finite_next_weight_def comma_finite_step_def
-      comma_weighted_step_def comma_finite_position.case Let_def)
-    apply (simp only: comma_finite_headroom_def Let_def)?
-    apply (simp only: comma_finite_period_def Let_def)?
-    by (simp add: comma_finite_guard_extra_def comma_power_residue_def
-      comma_short_period_def comma_chart_weight_value_def comma_cycle_length_def)
+  unfolding comma_source_tail_positions_0_def
+    by comma_source_weight
 
 lemma comma_source_tail_weight_1:
   "sum_list (map (comma_finite_next_weight 5) comma_source_tail_positions_1) = 179836"
-  unfolding comma_source_tail_positions_1_def apply (simp del: comma_weighted_step_def)
-    apply (simp only: comma_finite_next_weight_def comma_finite_step_def
-      comma_weighted_step_def comma_finite_position.case Let_def)
-    apply (simp only: comma_finite_headroom_def Let_def)?
-    apply (simp only: comma_finite_period_def Let_def)?
-    by (simp add: comma_finite_guard_extra_def comma_power_residue_def
-      comma_short_period_def comma_chart_weight_value_def comma_cycle_length_def)
+  unfolding comma_source_tail_positions_1_def
+    by comma_source_weight
 
 lemma comma_source_tail_weight_2:
   "sum_list (map (comma_finite_next_weight 5) comma_source_tail_positions_2) = 1782971"
-  unfolding comma_source_tail_positions_2_def apply (simp del: comma_weighted_step_def)
-    apply (simp only: comma_finite_next_weight_def comma_finite_step_def
-      comma_weighted_step_def comma_finite_position.case Let_def)
-    apply (simp only: comma_finite_headroom_def Let_def)?
-    apply (simp only: comma_finite_period_def Let_def)?
-    by (simp add: comma_finite_guard_extra_def comma_power_residue_def
-      comma_short_period_def comma_chart_weight_value_def comma_cycle_length_def)
+  unfolding comma_source_tail_positions_2_def
+    by comma_source_weight
 
 lemma comma_source_tail_weight_3:
   "sum_list (map (comma_finite_next_weight 5) comma_source_tail_positions_3) = 17371823"
-  unfolding comma_source_tail_positions_3_def apply (simp del: comma_weighted_step_def)
-    apply (simp only: comma_finite_next_weight_def comma_finite_step_def
-      comma_weighted_step_def comma_finite_position.case Let_def)
-    apply (simp only: comma_finite_headroom_def Let_def)?
-    apply (simp only: comma_finite_period_def Let_def)?
-    by (simp add: comma_finite_guard_extra_def comma_power_residue_def
-      comma_short_period_def comma_chart_weight_value_def comma_cycle_length_def)
+  unfolding comma_source_tail_positions_3_def
+    by comma_source_weight
 
 lemma comma_source_tail_weight_4:
   "sum_list (map (comma_finite_next_weight 5) comma_source_tail_positions_4) = 176242784"
-  unfolding comma_source_tail_positions_4_def apply (simp del: comma_weighted_step_def)
-    apply (simp only: comma_finite_next_weight_def comma_finite_step_def
-      comma_weighted_step_def comma_finite_position.case Let_def)
-    apply (simp only: comma_finite_headroom_def Let_def)?
-    apply (simp only: comma_finite_period_def Let_def)?
-    by (simp add: comma_finite_guard_extra_def comma_power_residue_def
-      comma_short_period_def comma_chart_weight_value_def comma_cycle_length_def)
+  unfolding comma_source_tail_positions_4_def
+    by comma_source_weight
 
 lemma comma_source_tail_weight_5:
   "sum_list (map (comma_finite_next_weight 5) comma_source_tail_positions_5) = 217391301"
-  unfolding comma_source_tail_positions_5_def apply (simp del: comma_weighted_step_def)
-    apply (simp only: comma_finite_next_weight_def comma_finite_step_def
-      comma_weighted_step_def comma_finite_position.case Let_def)
-    apply (simp only: comma_finite_headroom_def Let_def)?
-    apply (simp only: comma_finite_period_def Let_def)?
-    by (simp add: comma_finite_guard_extra_def comma_power_residue_def
-      comma_short_period_def comma_chart_weight_value_def comma_cycle_length_def)
+  unfolding comma_source_tail_positions_5_def
+    by comma_source_weight
 
 lemma comma_source_tail_weight:
   "sum_list (map (comma_finite_next_weight 5)
     (butlast comma_source_tail_positions)) = 412985919"
 proof -
+  have nonempty: "comma_source_tail_positions_5 \<noteq> []"
+    by (simp add: comma_source_tail_positions_5_def)
+  have last_position: "last comma_source_tail_positions_5 = Comma_Near 1 5 82"
+    by (simp add: comma_source_tail_positions_5_def)
   have final_zero:
     "comma_finite_next_weight 5 (Comma_Near 1 5 82) = 0"
-    by (simp add: comma_finite_next_weight_def Let_def)
+    by (simp add: comma_source_near_weight comma_near_control_formula Let_def)
   have final_split: "sum_list (map (comma_finite_next_weight 5)
       comma_source_tail_positions_5) =
     sum_list (map (comma_finite_next_weight 5)
       (butlast comma_source_tail_positions_5)) +
       comma_finite_next_weight 5 (last comma_source_tail_positions_5)"
-    by (simp add: comma_source_tail_positions_5_def)
+    using arg_cong[OF append_butlast_last_id[OF nonempty],
+      where f="\<lambda>xs. sum_list (map (comma_finite_next_weight 5) xs)"]
+    by simp
   have final: "sum_list (map (comma_finite_next_weight 5)
       (butlast comma_source_tail_positions_5)) = 217391301"
-    using comma_source_tail_weight_5 final_split final_zero
-    by (simp add: comma_source_tail_positions_5_def)
-  have nonempty: "comma_source_tail_positions_5 \<noteq> []"
-    by (simp add: comma_source_tail_positions_5_def)
+    using comma_source_tail_weight_5 final_split final_zero last_position by simp
   show ?thesis using comma_source_tail_weight_0 comma_source_tail_weight_1
     comma_source_tail_weight_2 comma_source_tail_weight_3
     comma_source_tail_weight_4 final nonempty

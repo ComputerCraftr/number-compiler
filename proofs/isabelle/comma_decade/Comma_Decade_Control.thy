@@ -2,6 +2,10 @@ theory Comma_Decade_Control
   imports Comma_Round_Totality.Comma_Round_Closure
 begin
 
+ML_file "../shared/proof_profile.ML"
+
+ML \<open>val comma_decade_checkpoint = Comma_Proof_Profile.timer "Decade control"\<close>
+
 text \<open>Admission and the decimal exponent shift belong to the chart
 occurrence.  A round retains only its counted canonical control effect.\<close>
 
@@ -12,9 +16,80 @@ fun comma_round_admitted :: "comma_finite_position \<Rightarrow> bool" where
     (1 \<le> f \<and> f \<le> 9 \<and>
       1 \<le> headroom \<and> headroom \<le> 540)"
 
+text \<open>
+The round kernel above intentionally uses the coarse Entry envelope
+\(x \le 98\).  Published sector responses and decade roots use the
+canonical subdomains below.  Keeping these predicates here gives the
+decoder and all downstream control code one owner for the boundary;
+it does not change coarse round admission.
+\<close>
+
+definition comma_sector_entry_bound :: "nat \<Rightarrow> nat \<Rightarrow> bool" where
+  "comma_sector_entry_bound f x =
+    (1 \<le> f \<and> f \<le> 9 \<and> x \<le> 89 + f)"
+
+definition comma_sector_entry_admitted ::
+    "comma_finite_position \<Rightarrow> bool" where
+  "comma_sector_entry_admitted position =
+    (case position of
+      Comma_Entry f delta x \<Rightarrow> comma_sector_entry_bound f x
+    | Comma_Near f delta h \<Rightarrow> False)"
+
+definition comma_decade_root_admitted ::
+    "comma_finite_position \<Rightarrow> bool" where
+  "comma_decade_root_admitted position =
+    (case position of
+      Comma_Entry f delta x \<Rightarrow> f = 1 \<and> x \<le> 90
+    | Comma_Near f delta h \<Rightarrow> False)"
+
+lemma comma_sector_entry_admitted_entry [simp]:
+  "comma_sector_entry_admitted (Comma_Entry f delta x) =
+    (1 \<le> f \<and> f \<le> 9 \<and> x \<le> 89 + f)"
+  by (simp add: comma_sector_entry_admitted_def comma_sector_entry_bound_def)
+
+lemma comma_sector_entry_admitted_near [simp]:
+  "comma_sector_entry_admitted (Comma_Near f delta h) = False"
+  by (simp add: comma_sector_entry_admitted_def)
+
+lemma comma_decade_root_admitted_entry [simp]:
+  "comma_decade_root_admitted (Comma_Entry f delta x) =
+    (f = 1 \<and> x \<le> 90)"
+  by (simp add: comma_decade_root_admitted_def)
+
+lemma comma_decade_root_admitted_near [simp]:
+  "comma_decade_root_admitted (Comma_Near f delta h) = False"
+  by (simp add: comma_decade_root_admitted_def)
+
+definition comma_canonical_position_admitted ::
+    "comma_finite_position \<Rightarrow> bool" where
+  "comma_canonical_position_admitted position =
+    (case position of
+      Comma_Entry f delta x \<Rightarrow> comma_sector_entry_bound f x
+    | Comma_Near f delta h \<Rightarrow>
+        1 \<le> f \<and> f \<le> 9 \<and> 1 \<le> h \<and> h \<le> 540)"
+
+lemma comma_canonical_position_entry [simp]:
+  "comma_canonical_position_admitted (Comma_Entry f delta x) =
+    comma_sector_entry_bound f x"
+  by (simp add: comma_canonical_position_admitted_def)
+
+lemma comma_canonical_position_near [simp]:
+  "comma_canonical_position_admitted (Comma_Near f delta h) =
+    (1 \<le> f \<and> f \<le> 9 \<and> 1 \<le> h \<and> h \<le> 540)"
+  by (simp add: comma_canonical_position_admitted_def)
+
+lemma comma_canonical_position_implies_round_admitted:
+  assumes "comma_canonical_position_admitted position"
+  shows "comma_round_admitted position"
+  using assms
+  by (cases position; simp add: comma_canonical_position_admitted_def
+      comma_sector_entry_bound_def; arith)
+
 fun comma_round_delta :: "comma_finite_position \<Rightarrow> nat" where
   "comma_round_delta (Comma_Entry f delta offset) = delta"
 | "comma_round_delta (Comma_Near f delta headroom) = delta"
+
+ML \<open>comma_decade_checkpoint "comma_round_admitted_not_invalid"\<close>
 
 lemma comma_round_admitted_not_invalid:
   assumes valid: "comma_round_admitted source"
@@ -34,6 +109,22 @@ next
   show ?thesis using valid
     by (simp add: Comma_Near comma_finite_step_def
       comma_weighted_step_def Let_def split: if_splits)
+qed
+
+ML \<open>comma_decade_checkpoint "comma_round_next_admitted"\<close>
+
+lemma comma_near_next_canonical:
+  assumes sector: "1\<le>f" "f\<le>9"
+    and headroom: "1\<le>h" "h\<le>540"
+    and move: "comma_finite_step (residue mod 924) (Comma_Near f delta h)=
+      Comma_Next target"
+  shows "comma_canonical_position_admitted target"
+proof -
+  have digit: "(10-h mod 10) mod 10\<le>9" by simp
+  show ?thesis using move sector headroom digit
+    by (auto simp: comma_canonical_position_admitted_def
+      comma_sector_entry_bound_def comma_finite_step_def
+      comma_weighted_step_def Let_def split: if_splits; arith)
 qed
 
 lemma comma_round_next_admitted:
@@ -67,13 +158,11 @@ next
   have f: "1 \<le> f" "f \<le> 9"
     and headroom: "1 \<le> headroom" "headroom \<le> 540"
     using valid by (simp_all add: Comma_Near)
-  let ?d = "(10 - headroom mod 10) mod 10"
-  have digit: "?d \<le> 9" by simp
+  have canonical: "comma_canonical_position_admitted target"
+    by (rule comma_near_next_canonical[OF f headroom])
+      (use move in \<open>simp only: Comma_Near\<close>)
   show ?thesis
-    using move f headroom digit
-    by (auto simp: Comma_Near comma_finite_step_def
-      comma_weighted_step_def Let_def
-      split: if_splits; arith)
+    by (rule comma_canonical_position_implies_round_admitted[OF canonical])
 qed
 
 lemma comma_round_next_delta:
@@ -164,6 +253,8 @@ lemma comma_round_step_shift:
     comma_shift_move k (comma_finite_step (((r+k) mod 924) mod 924) p)"
   using comma_finite_step_phase_shift[of "r mod 924" k p]
   by (simp add: mod_add_left_eq)
+
+ML \<open>comma_decade_checkpoint "comma_round_close_phase_shift"\<close>
 
 lemma comma_round_close_phase_shift:
   "comma_round_close r (comma_shift_position k p) =
@@ -306,7 +397,8 @@ fun comma_decade_decode :: "nat \<Rightarrow> comma_round_result \<Rightarrow> c
   "comma_decade_decode r (Comma_Round_Fork a d) = Comma_Decade_Fork a d"
 | "comma_decade_decode r (Comma_Round_Landmine d) = Comma_Decade_Landmine d"
 | "comma_decade_decode r (Comma_Round_Cross (Comma_Entry f d x)) =
-    (if f = 1 then Comma_Decade_Continue (Comma_Decade ((r+d) mod 924) x)
+    (if comma_decade_root_admitted (Comma_Entry f d x)
+     then Comma_Decade_Continue (Comma_Decade ((r+d) mod 924) x)
       else Comma_Decade_Invalid)"
 | "comma_decade_decode r (Comma_Round_Cross (Comma_Near f d h)) = Comma_Decade_Invalid"
 | "comma_decade_decode r Comma_Round_Invalid = Comma_Decade_Invalid"
@@ -316,10 +408,7 @@ fun comma_decade_control :: "comma_decade_state \<Rightarrow> comma_decade_outco
     (case comma_round_close r (Comma_Entry 1 0 x) of
       (n,t,result) \<Rightarrow> comma_decade_decode r result)"
 
-fun comma_decade_control_operations :: "comma_decade_state \<Rightarrow> nat" where
-  "comma_decade_control_operations (Comma_Decade r x) =
-    (case comma_round_close r (Comma_Entry 1 0 x) of
-      (n,t,result) \<Rightarrow> comma_round_consumed_steps n result)"
+ML \<open>comma_decade_checkpoint "comma_decade_control_closed"\<close>
 
 lemma comma_decade_control_closed:
   assumes valid: "comma_decade_admitted s"
@@ -371,6 +460,8 @@ inductive comma_decade_finishes :: "comma_decade_state \<Rightarrow> nat \<Right
 | crossing: "comma_decade_control s = Comma_Decade_Continue q \<Longrightarrow>
     comma_decade_finishes q n \<Longrightarrow> comma_decade_finishes s (Suc n)"
 
+ML \<open>comma_decade_checkpoint "comma_decade_checked_rank_totality"\<close>
+
 theorem comma_decade_checked_rank_totality:
   assumes checked: "comma_decade_rank_check rank"
     and valid: "comma_decade_admitted s"
@@ -404,117 +495,12 @@ proof (induction "rank s" arbitrary: s rule: less_induct)
     then show ?thesis using check by simp
   qed
 qed
-
-
-text \<open>Raw terminal results retain absolute delta, so raw decoding is not
-invariant under history erasure. The following separate control observation
-records terminal residue phases and normalized crossing targets. It never
-identifies absolute endpoints, literal weights, or source/index authority.\<close>
-
-datatype comma_decade_observation =
-    Comma_Observe_Fork nat nat
-  | Comma_Observe_Landmine nat
-  | Comma_Observe_Continue comma_decade_state
-  | Comma_Observe_Invalid
-
-fun comma_decade_observe_result ::
-  "nat \<Rightarrow> comma_round_result \<Rightarrow> comma_decade_observation" where
-  "comma_decade_observe_result r (Comma_Round_Fork a delta) =
-    Comma_Observe_Fork a ((r+delta) mod 924)"
-| "comma_decade_observe_result r (Comma_Round_Landmine delta) =
-    Comma_Observe_Landmine ((r+delta) mod 924)"
-| "comma_decade_observe_result r (Comma_Round_Cross (Comma_Entry f delta x)) =
-    (if f = 1 then Comma_Observe_Continue (Comma_Decade ((r+delta) mod 924) x)
-      else Comma_Observe_Invalid)"
-| "comma_decade_observe_result r (Comma_Round_Cross (Comma_Near f delta h)) =
-    Comma_Observe_Invalid"
-| "comma_decade_observe_result r Comma_Round_Invalid = Comma_Observe_Invalid"
-
-fun comma_decade_observe_control ::
-  "nat \<Rightarrow> comma_decade_outcome \<Rightarrow> comma_decade_observation" where
-  "comma_decade_observe_control r (Comma_Decade_Fork a delta) =
-    Comma_Observe_Fork a ((r+delta) mod 924)"
-| "comma_decade_observe_control r (Comma_Decade_Landmine delta) =
-    Comma_Observe_Landmine ((r+delta) mod 924)"
-| "comma_decade_observe_control r (Comma_Decade_Continue q) = Comma_Observe_Continue q"
-| "comma_decade_observe_control r Comma_Decade_Invalid = Comma_Observe_Invalid"
-
-lemma comma_decade_observe_decode:
-  "comma_decade_observe_result r result =
-    comma_decade_observe_control r (comma_decade_decode r result)"
-proof (cases result)
-  case (Comma_Round_Cross position)
-  then show ?thesis by (cases position) simp_all
-qed simp_all
-
-definition comma_decade_of :: "nat \<Rightarrow> nat \<Rightarrow> nat \<Rightarrow> comma_decade_state" where
-  "comma_decade_of r delta x = Comma_Decade ((r+delta) mod 924) x"
-
-definition comma_decade_outcome_of ::
-  "nat \<Rightarrow> nat \<Rightarrow> nat \<Rightarrow> comma_decade_observation" where
-  "comma_decade_outcome_of r delta x =
-    (case comma_round_close r (Comma_Entry 1 delta x) of
-      (n,t,result) \<Rightarrow> comma_decade_observe_result r result)"
-
-lemma comma_decade_observe_shift:
-  "comma_decade_observe_result r (comma_shift_round_result delta result) =
-    comma_decade_observe_result ((r+delta) mod 924) result"
-proof (cases result)
-  case (Comma_Round_Cross position)
-  then show ?thesis by (cases position)
-    (simp_all add: mod_add_left_eq mod_add_right_eq algebra_simps)
-qed (simp_all add: mod_add_left_eq mod_add_right_eq algebra_simps)
-
-lemma comma_decade_outcome_normalized:
-  "comma_decade_outcome_of r delta x =
-    comma_decade_outcome_of ((r+delta) mod 924) 0 x"
-proof -
-  obtain n t result where answer:
-    "comma_round_close ((r+delta) mod 924) (Comma_Entry 1 0 x) = (n,t,result)"
-    by (cases "comma_round_close ((r+delta) mod 924) (Comma_Entry 1 0 x)") auto
-  show ?thesis
-    by (simp only: comma_decade_outcome_of_def
-      comma_round_close_phase_normalized[of r 1 delta x]
-      answer comma_shift_round_close_def prod.case comma_decade_observe_shift)
-qed
-
-lemma comma_decade_outcome_control_commutes:
-  "comma_decade_outcome_of r delta x =
-    comma_decade_observe_control ((r+delta) mod 924)
-      (comma_decade_control (comma_decade_of r delta x))"
-proof -
-  let ?phase = "(r+delta) mod 924"
-  obtain n t result where answer:
-    "comma_round_close ?phase (Comma_Entry 1 0 x) = (n,t,result)"
-    by (cases "comma_round_close ?phase (Comma_Entry 1 0 x)") auto
-  have canonical: "comma_decade_outcome_of ?phase 0 x =
-    comma_decade_observe_control ?phase (comma_decade_control (Comma_Decade ?phase x))"
-    by (simp only: comma_decade_outcome_of_def comma_decade_control.simps
-      answer prod.case comma_decade_observe_decode)
-  show ?thesis using comma_decade_outcome_normalized[of r delta x] canonical
-    by (simp only: comma_decade_of_def)
-qed
-
-theorem comma_decade_state_future_congruent:
-  assumes same: "comma_decade_of r1 delta1 x1 = comma_decade_of r2 delta2 x2"
-  shows "comma_decade_outcome_of r1 delta1 x1 = comma_decade_outcome_of r2 delta2 x2"
-proof -
-  have phase: "(r1+delta1) mod 924 = (r2+delta2) mod 924" and offset: "x1 = x2"
-    using same by (simp_all add: comma_decade_of_def)
-  show ?thesis
-    using comma_decade_outcome_normalized[of r1 delta1 x1]
-      comma_decade_outcome_normalized[of r2 delta2 x2]
-    by (simp only: phase offset)
-qed
-
 ML \<open>
   val _ = if null (Thm_Deps.all_oracles
     @{thms comma_round_close_admitted comma_round_close_phase_shift
       comma_round_close_phase_normalized comma_round_close_crossing_shape
-      comma_decade_control_closed comma_decade_checked_rank_totality
-      comma_decade_observe_shift comma_decade_outcome_normalized
-      comma_decade_outcome_control_commutes
-      comma_decade_state_future_congruent})
+      comma_decade_control_closed comma_decade_checked_rank_totality})
     then () else error "Comma decade control depends on an oracle";
 \<close>
+ML \<open>comma_decade_checkpoint "complete"\<close>
 end

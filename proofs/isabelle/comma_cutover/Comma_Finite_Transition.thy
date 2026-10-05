@@ -74,17 +74,17 @@ fun comma_erase_weight ::
     Comma_Landmine delta"
 | "comma_erase_weight Comma_WInvalid = Comma_Invalid"
 
-definition comma_weighted_step ::
-  "nat \<Rightarrow> comma_finite_position \<Rightarrow>
-    comma_weighted_move" where
-  "comma_weighted_step residue position =
+definition comma_weighted_step_with_headroom ::
+  "(nat \<Rightarrow> nat \<Rightarrow> nat \<Rightarrow> nat \<Rightarrow> nat) \<Rightarrow>
+    nat \<Rightarrow> comma_finite_position \<Rightarrow> comma_weighted_move" where
+  "comma_weighted_step_with_headroom headroom_of residue position =
     (case position of
       Comma_Entry f delta offset \<Rightarrow>
         if f < 1 \<or> 9 < f \<or> 98 < offset \<or>
            comma_finite_period f (offset mod 10) = 0
         then Comma_WInvalid
         else
-          (let h = comma_finite_headroom f residue delta offset;
+          (let h = headroom_of f residue delta offset;
                P = comma_finite_period f (offset mod 10);
                L = comma_cycle_length f
            in Comma_WNext (Comma_Near f delta h)
@@ -115,11 +115,18 @@ definition comma_weighted_step ::
                     (cross - headroom)) (Comma_Chart_Weight 0 0 1 1)
                 else Comma_WLandmine position delta)))"
 
+definition comma_weighted_step ::
+  "nat \<Rightarrow> comma_finite_position \<Rightarrow>
+    comma_weighted_move" where
+  "comma_weighted_step residue position =
+    comma_weighted_step_with_headroom comma_finite_headroom residue position"
+
 definition comma_finite_step ::
   "nat \<Rightarrow> comma_finite_position \<Rightarrow> comma_finite_move" where
   "comma_finite_step residue position =
     comma_erase_weight (comma_weighted_step residue position)"
 
+declare comma_weighted_step_with_headroom_def [simp]
 declare comma_weighted_step_def [simp]
 
 lemma comma_finite_step_is_erasure:

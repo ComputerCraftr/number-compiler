@@ -10,6 +10,9 @@ from collections.abc import Callable
 from dataclasses import dataclass
 from math import gcd
 
+from number_compiler.sequences.comma.cyclotomic_clock import CyclotomicClock
+from number_compiler.sequences.comma.domain import coarse_entry_coordinate
+
 # The nine coprime kernels are shared. Each admitted physical displacement
 # retains its primary lift and exponent-five seed; those occurrence weights
 # cannot be identified merely because their cores agree.
@@ -32,175 +35,6 @@ _CYCLE_POWER_LIFTS = {
     480: (3, 160, 1),
     520: (13, 40, 4),
     540: (27, 20, 5),
-}
-
-
-# Static alphabetic locators for the 17 weighted occurrences of nine actions.
-# Nodes: (split row, left index, right index); leaves: (-digit, lower, upper).
-# Branches retain exact ordered intervals, including digit 9. No query builds
-# a trace or classifies the whole boundary graph. Exhaustively checked in tests.
-_PORT_LOCATORS: dict[tuple[int, int], tuple[tuple[int, int, int], ...]] = {
-    (1, 0): (
-        (18, 1, 4),
-        (9, 2, 3),
-        (-9, 0, 9),
-        (-8, 9, 18),
-        (31, 5, 8),
-        (25, 6, 7),
-        (-7, 18, 25),
-        (-6, 25, 31),
-        (40, 9, 12),
-        (36, 10, 11),
-        (-5, 31, 36),
-        (-4, 36, 40),
-        (43, 13, 14),
-        (-3, 40, 43),
-        (45, 15, 16),
-        (-2, 43, 45),
-        (-1, 45, 46),
-    ),
-    (2, 0): (
-        (9, 1, 2),
-        (-8, 0, 9),
-        (15, 3, 4),
-        (-6, 9, 15),
-        (19, 5, 6),
-        (-4, 15, 19),
-        (-2, 19, 21),
-    ),
-    (2, 1): (
-        (9, 1, 2),
-        (-9, 0, 9),
-        (17, 3, 4),
-        (-7, 9, 17),
-        (22, 5, 6),
-        (-5, 17, 22),
-        (25, 7, 8),
-        (-3, 22, 25),
-        (-1, 25, 26),
-    ),
-    (3, 0): (
-        (22, 1, 8),
-        (13, 2, 7),
-        (8, 3, 4),
-        (-7, 0, 8),
-        (12, 5, 6),
-        (-4, 8, 12),
-        (-1, 12, 13),
-        (-8, 13, 22),
-        (38, 9, 14),
-        (29, 10, 13),
-        (27, 11, 12),
-        (-5, 22, 27),
-        (-2, 27, 29),
-        (-9, 29, 38),
-        (45, 15, 16),
-        (-6, 38, 45),
-        (-3, 45, 48),
-    ),
-    (4, 0): (
-        (9, 1, 4),
-        (7, 2, 3),
-        (-6, 0, 7),
-        (-2, 7, 9),
-        (18, 5, 6),
-        (-8, 9, 18),
-        (-4, 18, 22),
-    ),
-    (4, 1): (
-        (11, 1, 4),
-        (8, 2, 3),
-        (-7, 0, 8),
-        (-3, 8, 11),
-        (20, 5, 6),
-        (-9, 11, 20),
-        (26, 7, 8),
-        (-5, 20, 26),
-        (-1, 26, 27),
-    ),
-    (5, 0): ((-5, 0, 6),),
-    (5, 1): ((7, 1, 2), (-6, 0, 7), (-1, 7, 8)),
-    (5, 2): ((8, 1, 2), (-7, 0, 8), (-2, 8, 10)),
-    (5, 3): ((9, 1, 2), (-8, 0, 9), (-3, 9, 12)),
-    (5, 4): ((9, 1, 2), (-9, 0, 9), (-4, 9, 14)),
-    (6, 0): (
-        (14, 1, 4),
-        (5, 2, 3),
-        (-4, 0, 5),
-        (-8, 5, 14),
-        (16, 5, 6),
-        (-2, 14, 16),
-        (-6, 16, 23),
-    ),
-    (6, 1): (
-        (15, 1, 4),
-        (6, 2, 3),
-        (-5, 0, 6),
-        (-9, 6, 15),
-        (19, 5, 6),
-        (-3, 15, 19),
-        (27, 7, 8),
-        (-7, 19, 27),
-        (-1, 27, 28),
-    ),
-    (7, 0): (
-        (20, 1, 6),
-        (11, 2, 5),
-        (4, 3, 4),
-        (-3, 0, 4),
-        (-6, 4, 11),
-        (-9, 11, 20),
-        (38, 7, 12),
-        (29, 8, 11),
-        (23, 9, 10),
-        (-2, 20, 23),
-        (-5, 23, 29),
-        (-8, 29, 38),
-        (44, 13, 16),
-        (39, 14, 15),
-        (-1, 38, 39),
-        (-4, 39, 44),
-        (-7, 44, 52),
-    ),
-    (8, 0): (
-        (15, 1, 6),
-        (8, 2, 5),
-        (3, 3, 4),
-        (-2, 0, 3),
-        (-4, 3, 8),
-        (-6, 8, 15),
-        (-8, 15, 24),
-    ),
-    (8, 1): (
-        (18, 1, 6),
-        (10, 2, 5),
-        (4, 3, 4),
-        (-3, 0, 4),
-        (-5, 4, 10),
-        (-7, 10, 18),
-        (27, 7, 8),
-        (-9, 18, 27),
-        (-1, 27, 29),
-    ),
-    (9, 0): (
-        (27, 1, 12),
-        (14, 2, 9),
-        (5, 3, 6),
-        (2, 4, 5),
-        (-1, 0, 2),
-        (-2, 2, 5),
-        (9, 7, 8),
-        (-3, 5, 9),
-        (-4, 9, 14),
-        (20, 10, 11),
-        (-5, 14, 20),
-        (-6, 20, 27),
-        (44, 13, 16),
-        (35, 14, 15),
-        (-7, 27, 35),
-        (-8, 35, 44),
-        (-9, 44, 54),
-    ),
 }
 
 
@@ -247,7 +81,7 @@ def recursive_core_residue(core: int, exponent: int) -> int:
 
 def cycle_power_residue(
     displacement: int,
-    residue: int,
+    residue: int | CyclotomicClock,
     *,
     charge_bits: Callable[[int], None] | None = None,
 ) -> int:
@@ -258,10 +92,9 @@ def cycle_power_residue(
     data. A shared halfcycle/rotation evaluator selects the core residue.
     This arithmetic identity supplies no infinite-branch admission.
     """
-    if (
-        type(displacement) is not int
-        or type(residue) is not int
-        or not 0 <= residue < 924
+    if type(displacement) is not int or not (
+        type(residue) is CyclotomicClock
+        or (type(residue) is int and 0 <= residue < 924)
     ):
         raise ValueError("invalid comma power residue")
     lift = _CYCLE_POWER_LIFTS.get(displacement)
@@ -276,7 +109,11 @@ def cycle_power_residue(
         if charge_bits is not None:
             charge_bits(17 + displacement.bit_length())
         return primary * seed
-    exponent = (residue - 5) % period
+    exponent = (
+        residue.phase(period, shift=-5)
+        if isinstance(residue, CyclotomicClock)
+        else (residue - 5) % period
+    )
     if charge_bits is not None:
         charge_bits(
             12 * core.bit_length()
@@ -284,7 +121,7 @@ def cycle_power_residue(
             + 2 * core.bit_length()
             + primary.bit_length()
             + displacement.bit_length()
-            + residue.bit_length()
+            + (14 if isinstance(residue, CyclotomicClock) else residue.bit_length())
             + period.bit_length()
             + 3
         )
@@ -453,6 +290,18 @@ def _cycle_displacement(
     )
 
 
+def comma_port_dwell(leading: int, digit: int) -> int:
+    """Exact zero-inclusive dwell of one physical comma-port transition."""
+    if (
+        type(leading) is not int
+        or not 1 <= leading <= 9
+        or type(digit) is not int
+        or not 0 <= digit <= 9
+    ):
+        raise ValueError("invalid comma port dwell")
+    return digit + int(leading == 9 or 9 - leading <= digit < 9)
+
+
 def cycle_transfer(leading: int, entering_digit: int) -> CycleTransfer:
     if type(leading) is not int or not 1 <= leading <= 9:
         raise ValueError("cycle leading digit must be 1 through 9")
@@ -473,6 +322,165 @@ def cycle_transfer(leading: int, entering_digit: int) -> CycleTransfer:
         displacement,
         displacement + int(leading < 9),
     )
+
+
+def _validate_cycle_transfer_binding(
+    transfer: CycleTransfer, leading: int, digit: int
+) -> None:
+    """Check a reusable transfer against its exact source cylinder."""
+    if type(transfer) is not CycleTransfer or any(
+        type(field) is not int
+        for field in (
+            transfer.leading,
+            transfer.entering_digit,
+            transfer.period,
+            transfer.displacement,
+            transfer.maximum_guard,
+        )
+    ):
+        raise ValueError("cycle transfer fields require exact integers")
+    if not 1 <= transfer.leading <= 9 or not 0 <= transfer.entering_digit <= 9:
+        raise ValueError("cycle transfer has an invalid phase")
+    divisor = gcd(transfer.leading, 10)
+    period = 10 // divisor
+    displacement = _cycle_displacement(
+        transfer.leading, transfer.entering_digit, divisor, period
+    )
+    if (
+        transfer.period != period
+        or transfer.displacement != displacement
+        or transfer.maximum_guard != displacement + int(transfer.leading < 9)
+    ):
+        raise ValueError("cycle transfer does not match its phase arithmetic")
+    if leading != transfer.leading or digit != transfer.entering_digit:
+        raise ValueError("cycle transfer has another entering cylinder")
+
+
+def _validate_entry_headroom_input(
+    leading: int,
+    coordinate: int,
+    residue: int | CyclotomicClock,
+    exponent_delta: int,
+) -> None:
+    if (
+        not coarse_entry_coordinate(leading, coordinate)
+        or type(exponent_delta) is not int
+        or exponent_delta < 0
+        or not (
+            type(residue) is CyclotomicClock
+            or (type(residue) is int and 0 <= residue < 924)
+        )
+    ):
+        raise ValueError("invalid comma Entry headroom input")
+
+
+def entry_headroom_from_transfer(
+    leading: int,
+    coordinate: int,
+    residue: int | CyclotomicClock,
+    transfer: CycleTransfer,
+    *,
+    exponent_delta: int = 0,
+    charge_bits: Callable[[int], None] | None = None,
+) -> int:
+    """Evaluate Entry headroom using a validated, source-bound transfer.
+
+    ``residue`` is the external occurrence clock.  A small integer residue is
+    accepted for existing callers; clock-backed callers project only onto the
+    admitted cycle's core period.  The transfer must be the exact arithmetic
+    action for ``(leading, coordinate % 10)``; its phase is not interchangeable
+    with the external clock. Publication callers separately check the
+    sector-dependent canonical Entry envelope.
+    """
+    _validate_entry_headroom_input(leading, coordinate, residue, exponent_delta)
+    _validate_cycle_transfer_binding(transfer, leading, coordinate % 10)
+    return _entry_headroom_from_validated_transfer(
+        leading,
+        coordinate,
+        residue,
+        transfer,
+        exponent_delta=exponent_delta,
+        charge_bits=charge_bits,
+    )
+
+
+def _entry_headroom_from_validated_transfer(
+    leading: int,
+    coordinate: int,
+    residue: int | CyclotomicClock,
+    transfer: CycleTransfer,
+    *,
+    exponent_delta: int = 0,
+    charge_bits: Callable[[int], None] | None = None,
+) -> int:
+    """Evaluate headroom after an internal producer validated the binding."""
+    if charge_bits is not None:
+        phase_bits = (
+            14 if isinstance(residue, CyclotomicClock) else residue.bit_length()
+        )
+        charge_bits(
+            leading.bit_length()
+            + coordinate.bit_length()
+            + exponent_delta.bit_length()
+            + phase_bits
+            + 16
+        )
+    if isinstance(residue, CyclotomicClock):
+        if exponent_delta == 0:
+            power = cycle_power_residue(
+                transfer.displacement, residue, charge_bits=charge_bits
+            )
+        else:
+            phase = residue.phase(
+                cycle_residue_period(transfer.displacement),
+                shift=exponent_delta,
+            )
+            power = cycle_power_residue(
+                transfer.displacement, phase, charge_bits=charge_bits
+            )
+    else:
+        phase = (residue + exponent_delta) % 924
+        power = cycle_power_residue(
+            transfer.displacement, phase, charge_bits=charge_bits
+        )
+    extra = int(leading < 9)
+    headroom = 1 + extra + (power - coordinate - 1 - extra) % transfer.displacement
+    if charge_bits is not None:
+        charge_bits(
+            transfer.period.bit_length()
+            + coordinate.bit_length()
+            + headroom.bit_length()
+        )
+    return headroom
+
+
+def entry_headroom(
+    leading: int,
+    coordinate: int,
+    residue: int | CyclotomicClock,
+    *,
+    exponent_delta: int = 0,
+    charge_bits: Callable[[int], None] | None = None,
+) -> tuple[CycleTransfer, int]:
+    """Return an Entry transfer and headroom on the coarse arithmetic domain.
+
+    This compatibility entry point constructs the transfer once and delegates
+    to the same validated arithmetic core. Callers processing several clock
+    phases for one source should retain the transfer and use
+    :func:`entry_headroom_from_transfer`, which checks the supplied source
+    binding before evaluation.
+    """
+    _validate_entry_headroom_input(leading, coordinate, residue, exponent_delta)
+    transfer = cycle_transfer(leading, coordinate % 10)
+    headroom = _entry_headroom_from_validated_transfer(
+        leading,
+        coordinate,
+        residue,
+        transfer,
+        exponent_delta=exponent_delta,
+        charge_bits=charge_bits,
+    )
+    return transfer, headroom
 
 
 def phase_prefix_displacement(leading: int, entering_digit: int, steps: int) -> int:
@@ -535,7 +543,7 @@ def punctured_digit_port(
         leading,
         digit,
         (digit + leading + extra) % 10,
-        digit + int(9 - leading <= digit < 9) if extra else digit + 1,
+        comma_port_dwell(leading, digit),
         comma_port_next(leading, digit),
     )
 
@@ -554,8 +562,9 @@ def classify_near_port(
     from the original forward digit orbit, plus complete phase cycles.
     The caller authenticates headroom against its source chart. Immediate
     boundaries with headroom <= int(leading < 9) are handled by that caller.
-    Every constructed port and search comparison is charged. A static
-    alphabetic tree selects one port without walking skipped ports.
+    Every constructed port, residual arithmetic operation and comparison is
+    charged. Monotone prefix selection constructs only the selected port; no
+    stored observer tree or prefix word is needed.
     """
     if (
         type(leading) is not int
@@ -575,75 +584,69 @@ def classify_near_port(
     transfer = cycle_transfer(leading, orbit)
     whole_cycles, remainder = divmod(headroom - 1 - extra, transfer.displacement)
     reduced_headroom = 1 + extra + remainder
-    # Canonical nonzero predecessor of the orbit residue, matching the
-    # signed Entry-to-port chart used by the proof owner.
-    first_digit = 10 - leading + orbit % divisor
-    inverse = pow(leading // divisor, -1, period)
-    first_phase = ((first_digit - orbit) // divisor * inverse) % period
-    port = punctured_digit_port(
-        leading, first_digit, charge_work=charge_work, charge_bits=charge_bits
-    )
-    if charge_work is not None:
-        charge_work(first_phase)
-    first_headroom = (
-        phase_prefix_displacement(leading, orbit, first_phase)
-        + 10 * first_digit
-        + leading
-        + extra
-        - port.point_germ
-    )
-    if (first_headroom - reduced_headroom) % 10:
-        raise ArithmeticError("comma Near port is not on its diagonal")
-    row = ((first_headroom - reduced_headroom) // 10) % (transfer.displacement // 10)
-    tree = _PORT_LOCATORS[leading, orbit % divisor]
-    node = tree[0]
+    # Select the largest physical prefix within the remaining displacement.
+    # Complete cycles are already removed; the search has at most ten positions.
+    # Retain the displacement at the lower endpoint instead of reevaluating it.
+    lower, upper = 0, period
+    displacement = 0
     comparisons = 0
-    while node[0] > 0:
-        comparisons += 1
+    while lower + 1 < upper:
+        middle = (lower + upper) // 2
         if charge_work is not None:
-            charge_work(1)
+            charge_work(middle + 2)
         if charge_bits is not None:
-            charge_bits(row.bit_length() + node[0].bit_length() + 8)
-        node = tree[node[1] if row < node[0] else node[2]]
-    digit, lower, upper = -node[0], node[1], node[2]
-    if not lower <= row < upper:
-        raise ArithmeticError("comma weighted locator has an invalid interval")
-    row -= lower
-    if digit != first_digit:
-        port = punctured_digit_port(
-            leading,
-            digit,
-            charge_work=charge_work,
-            charge_bits=charge_bits,
-        )
-    if upper - lower != port.dwell:
-        raise ArithmeticError("comma weighted locator has an invalid dwell")
+            charge_bits(64 * middle + 32)
+        prefix = phase_prefix_displacement(leading, orbit, middle)
+        comparisons += 1
+        if prefix <= remainder:
+            lower, displacement = middle, prefix
+        else:
+            upper = middle
+    active = (orbit + lower * leading) % 10
+    port = punctured_digit_port(
+        leading, active, charge_work=charge_work, charge_bits=charge_bits
+    )
+    terminal_headroom = reduced_headroom - displacement
+    if not (
+        displacement <= remainder < displacement + 10 * active + leading
+        and extra < terminal_headroom <= 10 * active + leading + extra
+    ):
+        raise ArithmeticError("comma selected prefix has an invalid terminal guard")
+    row_numerator = 10 * active + leading + extra - port.point_germ - terminal_headroom
+    if row_numerator < 0 or row_numerator % 10:
+        raise ArithmeticError("comma selected prefix is not on its diagonal")
+    row = row_numerator // 10
+    if not 0 <= row < port.dwell:
+        raise ArithmeticError("comma selected prefix has an invalid dwell")
     if charge_work is not None:
-        charge_work(4)
-    terminal_headroom = 10 * port.digit + leading + extra - port.point_germ - 10 * row
-    phase_steps = ((port.digit - orbit) // divisor * inverse) % period
-    physical_steps = whole_cycles * period + phase_steps
-    if charge_work is not None:
-        charge_work(4 + phase_steps)
+        charge_work(8)
     if charge_bits is not None:
-        charge_bits(
-            first_headroom.bit_length()
-            + row.bit_length()
-            + physical_steps.bit_length()
-            + terminal_headroom.bit_length()
-            + 4 * headroom.bit_length()
-            + 32
-        )
+        charge_bits(4 * headroom.bit_length() + 64)
+    physical_steps = whole_cycles * period + lower
+    # The retained lower-prefix displacement is the proved complete-period
+    # decomposition. Check its balance without running the prefix engine again.
     if (
-        terminal_headroom <= extra
-        or terminal_headroom > 10 * port.digit + leading + extra
-        or headroom - phase_prefix_displacement(leading, orbit, physical_steps)
+        headroom - (whole_cycles * transfer.displacement + displacement)
         != terminal_headroom
     ):
-        raise ArithmeticError("comma weighted port has an inconsistent physical prefix")
+        raise ArithmeticError("comma selected prefix has an inconsistent balance")
     return NearPortReturn(
-        physical_steps, terminal_headroom, port.digit, row, whole_cycles, 1, comparisons
+        physical_steps, terminal_headroom, active, row, whole_cycles, 1, comparisons
     )
+
+
+def is_sector9_landmine_headroom(headroom: int) -> bool:
+    """Recognize the exact C1 landmine seam in sector nine.
+
+    For a validated sector-nine Near endpoint, write ``B = h - 1``.  The
+    terminal condition is exactly ``18 <= B <= 81`` with ``B`` divisible by
+    nine.  This is a terminal fast path only; the headroom remains occurrence
+    data and is not promoted into the endpoint action identity.
+    """
+    if type(headroom) is not int:
+        return False
+    b = headroom - 1
+    return 18 <= b <= 81 and b % 9 == 0
 
 
 def safe_complete_cycles(
@@ -684,32 +687,7 @@ def safe_complete_cycles_from_sector(
         raise ValueError("invalid authenticated comma sector port")
     if type(remaining_steps) is not int or remaining_steps < 0:
         raise ValueError("remaining steps must be nonnegative")
-    if type(transfer) is not CycleTransfer or any(
-        type(field) is not int
-        for field in (
-            transfer.leading,
-            transfer.entering_digit,
-            transfer.period,
-            transfer.displacement,
-            transfer.maximum_guard,
-        )
-    ):
-        raise ValueError("cycle transfer fields require exact integers")
-    if not 1 <= transfer.leading <= 9 or not 0 <= transfer.entering_digit <= 9:
-        raise ValueError("cycle transfer has an invalid phase")
-    divisor = gcd(transfer.leading, 10)
-    period = 10 // divisor
-    displacement = _cycle_displacement(
-        transfer.leading, transfer.entering_digit, divisor, period
-    )
-    if (
-        transfer.period != period
-        or transfer.displacement != displacement
-        or transfer.maximum_guard != displacement + int(transfer.leading < 9)
-    ):
-        raise ValueError("cycle transfer does not match its phase arithmetic")
-    if leading != transfer.leading or digit != transfer.entering_digit:
-        raise ValueError("cycle transfer has another entering cylinder")
+    _validate_cycle_transfer_binding(transfer, leading, digit)
     by_target = remaining_steps // transfer.period
     # comma_safe_cycle_count_maximal: c positive copies have guard
     # G + (c-1)*D < H. Solve this once rather than allocating and evaluating
@@ -749,12 +727,16 @@ __all__ = [
     "PuncturedDigitPort",
     "classify_near_port",
     "comma_children",
+    "comma_port_dwell",
     "comma_port_next",
     "comma_port_previous",
     "cycle_power_residue",
     "cycle_residue_period",
     "cycle_transfer",
     "decimal_sector",
+    "entry_headroom",
+    "entry_headroom_from_transfer",
+    "is_sector9_landmine_headroom",
     "leading_digit",
     "phase_prefix_displacement",
     "punctured_digit_port",

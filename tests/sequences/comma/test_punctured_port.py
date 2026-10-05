@@ -8,11 +8,50 @@ from math import gcd
 
 import pytest
 
+from number_compiler.arithmetic.carry.carry_monoid import CarryFn
+from number_compiler.arithmetic.formula.decimal_pair_coordinates import (
+    decimal_cocycle_coordinates,
+    decimal_cocycle_value,
+    decimal_pair_carry_action,
+)
 from number_compiler.sequences.comma import arithmetic
 from number_compiler.sequences.comma.arithmetic import (
     classify_near_port,
     punctured_digit_port,
 )
+
+
+@pytest.mark.parametrize("leading", range(1, 10))
+def test_factored_pair_reconstructs_zero_inclusive_ports_and_f5_step(
+    leading: int,
+) -> None:
+    """Audit the proposed local algebra, without assuming a future quotient."""
+    seen = set()
+    for digit in range(10):
+        previous = arithmetic.comma_port_previous(leading, digit)
+        pair_sum = digit + previous
+        difference = digit + 9 - previous
+        phase = pair_sum // 2 % 5
+        assert phase == (digit + 10 - (leading + 1) // 2) % 5
+        carry = decimal_pair_carry_action(pair_sum)
+        orientation = int(digit >= leading)
+        assert difference == leading - 1 + 10 * orientation
+        native = decimal_cocycle_coordinates(pair_sum)
+        assert native == (carry, pair_sum % 5, pair_sum % 2)
+        assert decimal_cocycle_value(*native) == pair_sum
+        # The exact shared carrier, sector and orientation reconstruct the port;
+        # neither a raw pair tuple nor another parity definition is necessary.
+        assert (decimal_cocycle_value(*native) + difference - 9) // 2 == digit
+        reconstructed_sum = 2 * phase + leading % 2 + 10 * int(carry is CarryFn.CONST1)
+        assert reconstructed_sum == pair_sum
+        assert (reconstructed_sum + difference - 9) // 2 == digit
+        seen.add((native, orientation))
+        successor = arithmetic.comma_port_next(leading, digit)
+        successor_previous = (successor - leading) % 10
+        assert (successor + successor_previous) // 2 % 5 == (
+            phase - leading * (2 if previous == 0 else 1)
+        ) % 5
+    assert len(seen) == 10
 
 
 def _literal_near_prefix(leading: int, headroom: int) -> tuple[int, int]:
@@ -120,7 +159,7 @@ def test_punctured_weighted_cycles_recover_the_17_period_moduli() -> None:
     assert len(all_weights) == len(set(all_weights)) == 17
 
 
-def test_classifier_uses_the_proved_canonical_cycle_seed(
+def test_classifier_preserves_source_phase_without_constructing_a_seed(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     original = arithmetic.punctured_digit_port
@@ -143,10 +182,8 @@ def test_classifier_uses_the_proved_canonical_cycle_seed(
         for digit in range(10):
             calls.clear()
             result = classify_near_port(leading, 1000 - digit)
-            assert calls[0] == (
-                leading,
-                10 - leading + digit % gcd(leading, 10),
-            )
+            assert calls == [(leading, result.active_digit)]
+            assert result.active_digit % gcd(leading, 10) == digit % gcd(leading, 10)
             assert (result.physical_steps, result.terminal_headroom) == (
                 _literal_near_prefix(leading, 1000 - digit)
             )
@@ -368,95 +405,32 @@ def test_all_450_weighted_rows_keep_both_interval_bounds_and_source_headroom() -
     assert checked == 450
 
 
-def test_static_locator_catalog_covers_exact_weighted_intervals_and_is_optimal() -> (
-    None
-):
-    total_comparisons = old_comparisons = 0
-    expected_keys = {
-        (leading, orbit)
-        for leading in range(1, 10)
-        for orbit in range(gcd(leading, 10))
-    }
-    assert set(arithmetic._PORT_LOCATORS) == expected_keys
-    for leading, orbit in sorted(expected_keys):
-        digit = seed = 10 - leading + orbit
-        expected_leaves: list[tuple[int, int, int]] = []
-        prefix = 0
-        while not expected_leaves or digit != seed:
-            port = punctured_digit_port(leading, digit)
-            expected_leaves.append((-digit, prefix, prefix + port.dwell))
-            prefix += port.dwell
-            digit = port.next_digit
-        tree = arithmetic._PORT_LOCATORS[leading, orbit]
-        assert type(tree) is tuple
-        visited = set()
-        leaves = []
+def test_near_selection_has_bounded_prefix_work_without_observer_tables(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    original = arithmetic.phase_prefix_displacement
+    calls: list[int] = []
 
-        pending = [(0, 0, prefix)]
-        while pending:
-            index, lower, upper = pending.pop()
-            assert 0 <= index < len(tree)
-            assert index not in visited
-            visited.add(index)
-            node = tree[index]
-            assert type(node) is tuple
-            assert len(node) == 3 and all(type(value) is int for value in node)
-            split, left, right = node
-            if split < 0:
-                assert (left, right) == (lower, upper)
-                assert lower < upper
-                leaves.append(node)
-            else:
-                assert lower < split < upper
-                pending.append((right, split, upper))
-                pending.append((left, lower, split))
+    def measured(leading: int, digit: int, steps: int) -> int:
+        assert 0 < steps < 10 // gcd(leading, 10)
+        calls.append(steps)
+        return original(leading, digit, steps)
 
-        assert len(visited) == len(tree)
-        assert leaves == expected_leaves
-        # Independently minimize weighted path length over all alphabetic
-        # binary split positions. Leaf order and every physical dwell stay fixed.
-        weights = [upper - lower for _, lower, upper in expected_leaves]
-        costs: dict[tuple[int, int], int] = {}
-        for size in range(1, len(weights) + 1):
-            for lower in range(len(weights) - size + 1):
-                upper = lower + size
-                costs[lower, upper] = (
-                    0
-                    if size == 1
-                    else sum(weights[lower:upper])
-                    + min(
-                        costs[lower, split] + costs[split, upper]
-                        for split in range(lower + 1, upper)
-                    )
-                )
-        orbit_comparisons = 0
-        for row in range(prefix):
-            node = tree[0]
-            comparisons = 0
-            while node[0] > 0:
-                comparisons += 1
-                node = tree[node[1] if row < node[0] else node[2]]
-            headroom = 10 * prefix - orbit - 10 * row
+    monkeypatch.setattr(arithmetic, "phase_prefix_displacement", measured)
+    for leading in range(1, 10):
+        for headroom in range(1 + int(leading < 9), 541):
+            calls.clear()
             result = classify_near_port(leading, headroom)
-            assert result.locator_comparisons == comparisons
+            assert len(calls) == result.locator_comparisons <= 4
+            assert len(calls) == len(set(calls))
             assert result.port_visits == 1
-            assert (result.active_digit, result.occurrence_row) == (
-                -node[0],
-                row - node[1],
-            )
-            orbit_comparisons += comparisons
-            old_comparisons += next(
-                index + 1
-                for index, (_, _, upper) in enumerate(expected_leaves)
-                if row < upper
-            )
-        assert orbit_comparisons == costs[0, len(weights)]
-        total_comparisons += orbit_comparisons
-    assert old_comparisons == 1564
-    assert total_comparisons == 1083
+            assert (
+                result.physical_steps,
+                result.terminal_headroom,
+            ) == _literal_near_prefix(leading, headroom)
 
 
-def test_runtime_constructs_only_canonical_and_selected_ports(
+def test_runtime_constructs_only_the_selected_port(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     original = arithmetic.punctured_digit_port
@@ -480,11 +454,6 @@ def test_runtime_constructs_only_canonical_and_selected_ports(
             calls.clear()
             work: list[int] = []
             result = classify_near_port(leading, headroom, charge_work=work.append)
-            seed = 10 - leading + (-headroom) % gcd(leading, 10)
-            expected = [(leading, seed)]
-            if result.active_digit != seed:
-                expected.append((leading, result.active_digit))
-            assert calls == expected
-            # Each decision is explicitly charged. The selected-leaf visit
-            # does not hide comparisons, including the zero-comparison singleton.
+            assert calls == [(leading, result.active_digit)]
+            # Each comparison and bounded prefix term is explicitly charged.
             assert sum(work) >= result.locator_comparisons + len(calls)

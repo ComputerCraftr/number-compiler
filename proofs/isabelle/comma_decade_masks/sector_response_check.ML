@@ -244,7 +244,7 @@ struct
           comma_guard_push_one_numeral
           comma_guard_drop_one_numeral
           comma_guard_take_one_numeral
-          comma_guard_take_num_one
+          comma_guard_take_num_one comma_guard_take_one_one of_bool_eq
           or_numerals(1,2,5,8)}
       (* One bounded arithmetic cache owns closed root equations, never source
          rows or intermediate numeral suffixes. Full typed terms are its keys. *)
@@ -302,6 +302,20 @@ struct
             val _ = packed_memo := Termtab.update (key,theorem) (!packed_memo)
             val _ = packed_back := key :: !packed_back
           in theorem end)
+      fun mask_trim bits = Termtab.lookup (!packed_memo) (trim_key bits)
+      fun publish_trim bits theorem =
+        let
+          val key = trim_key bits
+        in
+          case Termtab.lookup (!packed_memo) key of
+            SOME existing => validate_equation key existing
+          | NONE =>
+              let
+                val checked = checked_equation key theorem
+                val published = packed_publish key checked
+                val _ = trim_seeds := !trim_seeds + 1
+              in published end
+        end
       val num_steps = map (fn theorem => theorem RS @{thm eq_reflection})
         @{thms and_num.simps or_num.simps}
       (* Constructor validation avoids decoding every descending suffix into
@@ -434,8 +448,34 @@ struct
             else if zero_left then (false,Thm.transitive (swap left right) (identity
                 (if conjunction then @{thm comma_mask_and_zero} else @{thm comma_mask_or_zero}) right))
             else general ()
-        in if already_checked then validate_equation requested result
-          else checked_equation requested result end)
+          val equation = if already_checked then validate_equation requested result
+            else checked_equation requested result
+          val _ = if not conjunction then () else
+            let
+              val result_value = Thm.term_of (Thm.rhs_of equation)
+              val result_key = trim_key result_value
+            in
+              case Termtab.lookup (!packed_memo) result_key of
+                SOME existing => ignore (validate_equation result_key existing)
+              | NONE =>
+                  (case (mask_trim left, mask_trim right) of
+                    (SOME left_bound, SOME right_bound) =>
+                      let
+                        val bound_rule = Drule.infer_instantiate ctxt
+                          [( ("a",0), Thm.cterm_of ctxt left),
+                           ( ("b",0), Thm.cterm_of ctxt right)]
+                          @{thm comma_mask_and_preserves_bounded}
+                        val bounded = bound_rule OF
+                          [left_bound RS @{thm meta_eq_to_obj_eq},
+                           right_bound RS @{thm meta_eq_to_obj_eq}]
+                        val bounded = bounded RS @{thm eq_reflection}
+                        val bounded = Conv.fconv_rule
+                          (Conv.top_sweep_rewrs_conv [equation] ctxt) bounded
+                        val _ = publish_trim result_value bounded
+                      in () end
+                  | _ => ())
+            end
+        in equation end)
       fun mask_and left right = mask_binary true left right
       fun mask_or left right = mask_binary false left right
       fun mask_rotate shift bits = packed_request (fn () =>
@@ -549,9 +589,9 @@ struct
           val start = Time.now ()
           val result = Exn.capture (fn () =>
             let
-              val _ = if member (op =) [1, 2, 3, 6, 22, 28] period
+              val _ = if 0 < period andalso period <= 924 andalso 924 mod period = 0
                   andalso 0 <= residue andalso residue < period andalso shift >= 0 then ()
-                else error "Guard requires a supported short period and admitted residue/shift"
+                else error "Guard requires a divisor of 924 and admitted residue/shift"
               val expression = @{term comma_phase_class} $ nat period $ nat shift $ nat residue
             in case Termtab.lookup (!classes) expression of
               SOME theorem => (hits := !hits + 1; theorem)
@@ -575,10 +615,14 @@ struct
                 val _ = if Thm.term_of (Thm.lhs_of theorem) aconv expression then ()
                   else error "Guard publication lost period/residue/shift identity"
                 val bits = Thm.term_of (Thm.rhs_of theorem)
-                val trim = (@{thm comma_mask_phase_class_bounded} OF
-                  [theorem RS @{thm meta_eq_to_obj_eq}]) RS @{thm eq_reflection}
-                val _ = trim_seeds := !trim_seeds + 1
-                val _ = packed_publish (trim_key bits) (checked_equation (trim_key bits) trim)
+                val trim_equation_key = trim_key bits
+                val _ = (case mask_trim bits of
+                  SOME existing => ignore (validate_equation trim_equation_key existing)
+                | NONE =>
+                    let
+                      val trim = (@{thm comma_mask_phase_class_bounded} OF
+                        [theorem RS @{thm meta_eq_to_obj_eq}]) RS @{thm eq_reflection}
+                    in ignore (publish_trim bits trim) end)
                 val _ = if period = 1 andalso shift = 0 andalso residue = 0 then
                   full_word := SOME (certify (Thm.transitive
                     (Thm.symmetric (@{thm comma_guard_full_phase} RS @{thm eq_reflection})) theorem))
@@ -620,6 +664,7 @@ struct
         " guard_failures=" ^ Int.toString (!failures) ^
         " guard_inclusive_ms=" ^ LargeInt.toString (Time.toMilliseconds (!elapsed))
     in {guard = guard, mask_and = mask_and, mask_or = mask_or, mask_rotate = mask_rotate,
+      mask_trim = mask_trim,
       stats = stats, report = report, certification = certification,
       packed_stats = fn () => {lookups = !packed_lookups, hits = !packed_hits,
         misses = !packed_misses, failures = !packed_failures,

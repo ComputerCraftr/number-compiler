@@ -43,7 +43,6 @@ def test_empty_fragment_cache_does_not_import_observation_executor() -> None:
         check=True,
         capture_output=True,
         text=True,
-        timeout=5,
     )
 
 

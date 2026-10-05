@@ -1,3 +1,5 @@
+from typing import cast
+
 import pytest
 
 from devtools.verification import exact_oracle
@@ -9,10 +11,98 @@ from number_compiler.arithmetic.fields.radial_innovation import (
     ReverseWidthPhaseAction,
 )
 from number_compiler.arithmetic.polynomials.cyclotomic_transport import (
+    PowerTwoCyclotomicRadialQuotient,
     power_two_cyclotomic_radial_quotient,
 )
 from number_compiler.arithmetic.polynomials.digit_cyclotomic import CyclotomicDigitBlock
 from number_compiler.sequences.collatz.pair import valuation_itinerary_slab
+from number_compiler.sequences.reverse_add.semantic_identity_cache import (
+    build_radial_identity,
+)
+
+
+@pytest.mark.parametrize(
+    "field",
+    (
+        "classes",
+        "bits",
+        "no_growth",
+        "growth",
+        "scalar_v2",
+        "remainder_growth",
+    ),
+)
+@pytest.mark.parametrize("alias", (True, 1.0))
+def test_power_two_radial_record_rejects_numeric_identity_aliases(
+    field: str, alias: object
+) -> None:
+    radial = power_two_cyclotomic_radial_quotient(4, 3, 1, bits=8)
+    coordinates: dict[str, object] = {
+        "classes": radial.classes,
+        "bits": radial.bits,
+        "no_growth": radial.no_growth,
+        "growth": radial.growth,
+        "scalar_v2": radial.scalar_v2,
+        "remainder_growth": radial.remainder_growth,
+    }
+    coordinates[field] = alias
+    with pytest.raises(TypeError, match="exact integers"):
+        PowerTwoCyclotomicRadialQuotient(
+            cast(int, coordinates["classes"]),
+            cast(int, coordinates["bits"]),
+            cast(int, coordinates["no_growth"]),
+            cast(int, coordinates["growth"]),
+            cast(int, coordinates["scalar_v2"]),
+            cast(int, coordinates["remainder_growth"]),
+            radial.unit_residue,
+        )
+
+
+def test_power_two_radial_quotient_rejects_mutable_and_mistyped_payloads() -> None:
+    radial = power_two_cyclotomic_radial_quotient(4, 3, 1, bits=8)
+    assert radial.unit_residue is not None
+    with pytest.raises(TypeError, match="exact integer tuple"):
+        PowerTwoCyclotomicRadialQuotient(
+            radial.classes,
+            radial.bits,
+            radial.no_growth,
+            radial.growth,
+            radial.scalar_v2,
+            radial.remainder_growth,
+            cast(tuple[int, ...], list(radial.unit_residue)),
+        )
+    with pytest.raises(TypeError, match="Boolean"):
+        PowerTwoCyclotomicRadialQuotient(
+            radial.classes,
+            radial.bits,
+            radial.no_growth,
+            radial.growth,
+            radial.scalar_v2,
+            radial.remainder_growth,
+            radial.unit_residue,
+            cast(bool, 1),
+        )
+
+    object.__setattr__(radial, "growth", True)
+    with pytest.raises(TypeError, match="exact integers"):
+        radial.__post_init__()
+    with pytest.raises(TypeError, match="exact integers"):
+        build_radial_identity(radial)
+
+
+def test_power_two_radial_quotient_rejects_inconsistent_derived_coordinates() -> None:
+    radial = power_two_cyclotomic_radial_quotient(4, 3, 9, bits=12)
+    assert radial.unit_residue is not None
+    with pytest.raises(ValueError, match="derived coordinates"):
+        PowerTwoCyclotomicRadialQuotient(
+            radial.classes,
+            radial.bits,
+            radial.no_growth,
+            radial.growth,
+            radial.scalar_v2 - 1,
+            radial.remainder_growth,
+            radial.unit_residue,
+        )
 
 
 def test_power_two_radial_quotient_reconstructs_exact_cyclotomic_multiplier() -> None:

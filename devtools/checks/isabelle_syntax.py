@@ -7,6 +7,7 @@ Unsupported source layout raises ValueError instead of inventing dependencies.
 from __future__ import annotations
 
 import re
+from collections.abc import Iterable
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -18,6 +19,15 @@ class Session:
     parent: str
     dependencies: tuple[str, ...]
     theories: tuple[str, ...]
+
+
+@dataclass(frozen=True)
+class RootOption:
+    """One key/value item in a ROOT ``options [...]`` block."""
+
+    line: int
+    name: str
+    value: str
 
 
 def mask_comments(text: str) -> str:
@@ -52,7 +62,7 @@ def mask_comments(text: str) -> str:
     return "".join(output)
 
 
-_DOCUMENT_START = re.compile(r"(?m)^text(?:_raw)?\s+\\<open>")
+_DOCUMENT_START = re.compile(r"(?m)^[ \t]*text(?:_raw)?\s+\\<open>")
 _OPEN = "\\<open>"
 _CLOSE = "\\<close>"
 
@@ -170,18 +180,23 @@ _SESSION = re.compile(
     r'(?m)^session\s+(\w+)(?:\s+in\s+("[^"]+"|[^\s=]+))?\s*='
     r'\s+("[^"]+"|[^\s+]+)\s*\+'
 )
+_ROOT_OPTIONS = re.compile(r"\boptions\s*\[")
 _DEPENDENCIES = re.compile(r"(?m)^\s{2}sessions\s+(.+)$")
 _THEORIES = re.compile(r"(?ms)^\s{2}theories\s*\n(.*?)(?=^\s{2}\w|\Z)")
 _THEORY = re.compile(r"(?m)^\s*theory\s+([A-Za-z][A-Za-z0-9_]*)\s+imports\s+")
 _TOKEN = re.compile(r'"(?:\\.|[^"\\])*"|[A-Za-z0-9_./-]+')
 
 
-_ML_START = re.compile(r"(?m)^ML(?:_val)?\s+\\<open>")
+_ML_START = re.compile(r"(?m)^[ \t]*ML(?:_val|_prf)?\s+\\<open>")
+_DYNAMIC_CARTOUCHE_START = re.compile(
+    r"(?m)^[ \t]*(?:ML(?:_val|_prf)?|local_setup|setup)\s+\\<open>"
+)
 
 
-def ml_cartouche_spans(text: str) -> tuple[tuple[int, int, str], ...]:
-    """Locate top-level ML commands without accepting quoted fake commands."""
-    starts = unquoted_matches(_ML_START, text)
+def _cartouche_spans(
+    text: str, pattern: re.Pattern[str]
+) -> tuple[tuple[int, int, str], ...]:
+    starts = unquoted_matches(pattern, text)
     blocks: list[tuple[int, int, str]] = []
     previous_end = 0
     for match in starts:
@@ -205,10 +220,20 @@ def ml_cartouche_spans(text: str) -> tuple[tuple[int, int, str], ...]:
             else:
                 offset += 1
         if depth:
-            raise ValueError("unterminated Isabelle ML cartouche")
+            raise ValueError("unterminated Isabelle dynamic cartouche")
         blocks.append((match.start(), offset, text[match.end() : offset - len(_CLOSE)]))
         previous_end = offset
     return tuple(blocks)
+
+
+def ml_cartouche_spans(text: str) -> tuple[tuple[int, int, str], ...]:
+    """Locate top-level ML commands without accepting quoted fake commands."""
+    return _cartouche_spans(text, _ML_START)
+
+
+def dynamic_cartouche_spans(text: str) -> tuple[tuple[int, int, str], ...]:
+    """Locate ML/setup cartouches whose contents are dynamically interpreted."""
+    return _cartouche_spans(text, _DYNAMIC_CARTOUCHE_START)
 
 
 def ml_cartouches(text: str) -> tuple[str, ...]:
@@ -219,11 +244,21 @@ def navigation_text(text: str) -> str:
     """Keep theorem statements, but mask ML command bodies for declarations."""
     clean = executable_text(text)
     output = list(clean)
-    for start, end, _ in ml_cartouche_spans(clean):
+    for start, end, _ in dynamic_cartouche_spans(clean):
         for position in range(start, end):
             if output[position] != "\n":
                 output[position] = " "
     return "".join(output)
+
+
+def unquoted_numeric_case_facts(text: str) -> tuple[int, ...]:
+    """Reject generated case names whose dot otherwise ends an Isar proof."""
+    clean = navigation_text(text)
+    pattern = re.compile(r"(?<![\w.])\d+\.(?:prems|hyps|IH)\b")
+    return tuple(
+        clean.count("\n", 0, match.start()) + 1
+        for match in unquoted_matches(pattern, clean)
+    )
 
 
 def _theory_entries(block: str, session: str) -> tuple[str, ...]:
@@ -309,6 +344,94 @@ def parse_sessions(text: str) -> tuple[Session, ...]:
                     for dependency in (session.parent, *session.dependencies)
                 )
     return tuple(sessions)
+
+
+def root_option_assignments(text: str) -> tuple[RootOption, ...]:
+    """Read assignments in ROOT options blocks, ignoring comments and strings.
+
+    This intentionally handles only the lexical shape needed by policy checks;
+    it does not attempt to validate Isabelle option names or their types.
+    """
+    clean = mask_comments(text)
+    assignments: list[RootOption] = []
+    for match in unquoted_matches(_ROOT_OPTIONS, clean):
+        start = match.end()
+        offset = start
+        depth = 1
+        quoted = False
+        while offset < len(clean) and depth:
+            char = clean[offset]
+            if quoted and char == "\\":
+                offset += 2
+                continue
+            if char == '"':
+                quoted = not quoted
+            elif not quoted and char == "[":
+                depth += 1
+            elif not quoted and char == "]":
+                depth -= 1
+                if depth == 0:
+                    break
+            offset += 1
+        if depth:
+            raise ValueError("unterminated ROOT options block")
+
+        content = clean[start:offset]
+        item_start = 0
+        quoted = False
+        item_offset = 0
+        items: list[tuple[int, str]] = []
+        while item_offset < len(content):
+            char = content[item_offset]
+            if quoted and char == "\\":
+                item_offset += 2
+                continue
+            if char == '"':
+                quoted = not quoted
+            elif char == "," and not quoted:
+                items.append((item_start, content[item_start:item_offset]))
+                item_start = item_offset + 1
+            item_offset += 1
+        items.append((item_start, content[item_start:]))
+        for item_start, item in items:
+            name, separator, value = item.partition("=")
+            if separator and name.strip():
+                leading = len(item) - len(item.lstrip())
+                line = clean.count("\n", 0, start + item_start) + 1
+                line += item[:leading].count("\n")
+                assignments.append(RootOption(line, name.strip(), value.strip()))
+    return tuple(assignments)
+
+
+def session_dependency_closure(
+    sessions: tuple[Session, ...], selected: Iterable[str]
+) -> tuple[str, ...]:
+    """Return selected local sessions and their ROOT-declared dependencies.
+
+    Isabelle installation parents such as ``HOL`` are absent from ``sessions``
+    and therefore do not count as project sessions.  The result follows ROOT
+    declaration order, which keeps selection manifests deterministic.
+    """
+    by_name = {session.name: session for session in sessions}
+    requested = tuple(dict.fromkeys(selected))
+    missing = tuple(name for name in requested if name not in by_name)
+    if missing:
+        raise ValueError(f"unknown Isabelle session selection: {', '.join(missing)}")
+
+    reached: set[str] = set()
+    pending = list(requested)
+    while pending:
+        name = pending.pop()
+        if name in reached:
+            continue
+        reached.add(name)
+        session = by_name[name]
+        pending.extend(
+            dependency
+            for dependency in (session.parent, *session.dependencies)
+            if dependency in by_name and dependency not in reached
+        )
+    return tuple(session.name for session in sessions if session.name in reached)
 
 
 def parse_theory_header(text: str, path: Path) -> tuple[str, tuple[str, ...]]:

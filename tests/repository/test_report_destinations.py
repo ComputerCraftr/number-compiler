@@ -5,6 +5,7 @@ from pathlib import Path
 import pytest
 
 from devtools import paths
+from tests.support.git_repositories import commit_fixture
 
 
 def test_current_reports_use_canonical_module_ownership(
@@ -12,6 +13,7 @@ def test_current_reports_use_canonical_module_ownership(
 ) -> None:
     monkeypatch.setattr(paths, "repository_root", lambda: tmp_path)
     (tmp_path / "pyproject.toml").write_text('[project]\nversion="0.0.0"\n')
+    commit_fixture(tmp_path)
     history = tmp_path / "results" / "historical-root-checkpoints" / "report.md"
     history.parent.mkdir(parents=True)
     history.write_text("original checkpoint")

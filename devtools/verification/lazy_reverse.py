@@ -57,6 +57,7 @@ class ReverseRangeRequest:
     generation: int
     stop: int
     level: int = 1
+    previous_lookup_missed: bool = False
 
 
 @dataclass(frozen=True, slots=True)
@@ -565,7 +566,11 @@ class LazyReverseApplication:
         """Demand a complete parent effect using only child ActionIDs."""
         generation, stop, level = request.generation, request.stop, request.level
         self.ledger.bump("reverse_range_requests")
-        found = self._range_action(generation, stop, level)
+        found = (
+            None
+            if request.previous_lookup_missed
+            else self._range_action(generation, stop, level)
+        )
         if found is not None:
             return found
         key, reflected = self._range_key(generation, stop, level)
@@ -626,7 +631,11 @@ class LazyReverseApplication:
                 if summary is None:
                     summary = cast(
                         TransferSummaryID,
-                        (yield ReverseRangeRequest(generation, position)),
+                        (
+                            yield ReverseRangeRequest(
+                                generation, position, previous_lookup_missed=True
+                            )
+                        ),
                     )
             if summary is not None:
                 code = self._carry_code_from_summary(summary)

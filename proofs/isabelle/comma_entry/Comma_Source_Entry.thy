@@ -796,110 +796,28 @@ lemma comma_source20_to_p5:
   using comma_literal_path_append[OF comma_source20_startup
     comma_source107_to_p5] by simp
 
-lemma comma_source_weighted_run_literal:
-  assumes exponent: "5 \<le> p"
-    and run: "comma_finite_weighted_run fuel p position =
-      Some (outcome,weight,terminal)"
-  shows "comma_literal_path weight
-    (comma_chart_value p position) (comma_chart_value p terminal)"
-proof -
-  obtain rows where rows:
-    "comma_indexed_trace p position rows outcome terminal"
-    "sum_list (map fst rows) = weight"
-    using comma_weighted_run_indexed_trace[OF run] by blast
-  have refined: "comma_refined_indexed_trace p position rows outcome terminal"
-    using comma_indexed_trace_is_refined[OF exponent rows(1)] .
-  show ?thesis
-    using comma_refined_indexed_trace_terminal_path[OF refined] rows(2)
-    by simp
-qed
-
-lemma comma_source_control_trace_weighted:
-  assumes trace:
-    "comma_finite_trace_ok (p mod 924) positions outcome"
-  shows "comma_finite_weighted_run (length positions) p
-      (hd positions) =
-    Some (outcome,
-      sum_list (map (comma_finite_next_weight p)
-        (butlast positions)),last positions)"
-  using trace
-proof (induction positions arbitrary: outcome)
-  case Nil
-  then show ?case by simp
-next
-  case (Cons position tail)
-  show ?case
-  proof (cases tail)
-    case Nil
-    show ?thesis
-    proof (cases "comma_weighted_step (p mod 924) position")
-      case (Comma_WNext successor weight)
-      then show ?thesis using Cons.prems Nil
-        by (simp add: comma_finite_step_def del: comma_weighted_step_def)
-    next
-      case (Comma_WFork terminal a delta)
-      have owner: "terminal = position"
-        by (rule comma_weighted_terminal_is_source,
-            rule disjI1, rule Comma_WFork)
-      show ?thesis using Cons.prems Nil Comma_WFork owner
-        by (simp add: comma_finite_step_def del: comma_weighted_step_def)
-    next
-      case (Comma_WLandmine terminal delta)
-      have owner: "terminal = position"
-        by (rule comma_weighted_terminal_is_source[where a=0],
-            rule disjI2, rule Comma_WLandmine)
-      show ?thesis using Cons.prems Nil Comma_WLandmine owner
-        by (simp add: comma_finite_step_def del: comma_weighted_step_def)
-    next
-      case Comma_WInvalid
-      then show ?thesis using Cons.prems Nil
-        by (simp add: comma_finite_step_def del: comma_weighted_step_def)
-    qed
-  next
-    case (Cons successor rest)
-    have step: "comma_finite_step (p mod 924) position =
-        Comma_Next successor"
-      using Cons.prems Cons by simp
-    obtain local_weight where weighted:
-      "comma_weighted_step (p mod 924) position =
-        Comma_WNext successor local_weight"
-      using step by (cases "comma_weighted_step (p mod 924) position")
-        (auto simp: comma_finite_step_def del: comma_weighted_step_def)
-    have tail_trace:
-      "comma_finite_trace_ok (p mod 924) (successor # rest) outcome"
-      using Cons.prems Cons by simp
-    have original_tail_trace:
-      "comma_finite_trace_ok (p mod 924) tail outcome"
-      using tail_trace Cons by simp
-    have ih: "comma_finite_weighted_run (length tail) p (hd tail) =
-      Some (outcome,
-        sum_list (map (comma_finite_next_weight p) (butlast tail)),last tail)"
-      using Cons.IH[OF original_tail_trace] .
-    have suffix: "comma_finite_weighted_run (length (successor # rest)) p
-        (hd (successor # rest)) =
-      Some (outcome,
-        sum_list (map (comma_finite_next_weight p)
-          (butlast (successor # rest))),last (successor # rest))"
-      using ih Cons by simp
-    have amount: "comma_finite_next_weight p position =
-        comma_chart_weight_value p local_weight"
-      using weighted
-      by (simp only: comma_finite_next_weight_def weighted comma_weighted_move.case)
-    show ?thesis using suffix weighted Cons amount
-      by (simp del: comma_weighted_step_def)
-  qed
-qed
-
-lemma comma_source20_weighted_tail:
-  "comma_finite_weighted_run 230 5 (Comma_Entry 1 0 3) =
-    Some (Comma_Fork_At 2 5,412985919,Comma_Near 1 5 82)"
-  using comma_source_control_trace_weighted[where p=5, simplified, OF comma_source_tail_trace]
+lemma comma_source20_indexed_tail:
+  "\<exists>rows. comma_indexed_trace 5 (Comma_Entry 1 0 3) rows
+      (Comma_Fork_At 2 5) (Comma_Near 1 5 82) \<and>
+    sum_list (map fst rows) = 412985919"
+  using comma_control_trace_indexed[where p=5, simplified, OF comma_source_tail_trace]
     comma_source_tail_shape comma_source_tail_weight by simp
+
 lemma comma_source20_weighted_tail_literal:
   "comma_literal_path 412985919 100003 19999999918"
-  using comma_source_weighted_run_literal
-    [OF _ comma_source20_weighted_tail]
-  by (simp add: comma_chart_value_def)
+proof -
+  obtain rows where rows:
+    "comma_indexed_trace 5 (Comma_Entry 1 0 3) rows
+      (Comma_Fork_At 2 5) (Comma_Near 1 5 82)"
+    "sum_list (map fst rows) = 412985919"
+    using comma_source20_indexed_tail by blast
+  have refined: "comma_refined_indexed_trace 5 (Comma_Entry 1 0 3) rows
+      (Comma_Fork_At 2 5) (Comma_Near 1 5 82)"
+    by (rule comma_indexed_trace_is_refined[OF _ rows(1)]) simp
+  show ?thesis
+    using comma_refined_indexed_trace_terminal_path[OF refined] rows(2)
+    by (simp add: comma_chart_value_def)
+qed
 
 text \<open>This proves a literal path to the fork value. Uniqueness of every
 preceding child is a separate obligation; the path alone does not establish
@@ -922,9 +840,8 @@ ML \<open>
     @{thms comma_source_fixed_iter_mono comma_source_fixed_sector_path
       comma_source_fixed_period_eval comma_source20_startup
       comma_source107_to_p5 comma_source20_to_p5
-      comma_source_weighted_run_literal
-      comma_source_control_trace_weighted
-      comma_source20_weighted_tail comma_source20_weighted_tail_literal
+      comma_control_trace_indexed
+      comma_source20_indexed_tail comma_source20_weighted_tail_literal
       comma_source20_to_fork comma_source20_first_fork_children})
     then () else error "Comma source-entry proof depends on an oracle";
 \<close>

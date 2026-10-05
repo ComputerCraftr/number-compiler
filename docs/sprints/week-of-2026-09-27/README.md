@@ -10,8 +10,8 @@ Period: 2026-09-27 through 2026-10-03 (Sunday–Saturday).
 | Topic | Records |
 | --- | ---: |
 | [Antihydra and Mahler](antihydra-mahler.md) | 5 |
-| [Comma / A367620](comma.md) | 26 |
-| [Repository, tooling and validation](repository.md) | 5 |
+| [Comma / A367620](comma.md) | 37 |
+| [Repository, tooling and validation](repository.md) | 7 |
 | [Reverse/add](reverse-add.md) | 12 |
 | [Shared execution and cross-family integration](shared.md) | 14 |
 <!-- sprint-topics:end -->

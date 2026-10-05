@@ -109,7 +109,8 @@ struct
       comma_cycle_length_fast_def comma_finite_period_fast_def
       comma_finite_headroom_fast_def comma_power_residue_fast_def
       comma_power_table_def comma_short_period_def comma_round_crossing_def
-      comma_decade_decode.simps comma_decade_outcome.case
+      comma_decade_decode.simps comma_decade_root_admitted_entry
+      comma_decade_outcome.case
       comma_finite_move.case comma_finite_position.case comma_round_result.case sum.case
       list_all_Nil_iff list_all_Cons_iff
       upt_rec nth_Cons' of_nat_numeral of_nat_0 of_nat_1

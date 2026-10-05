@@ -31,6 +31,10 @@ lemma carry_from_domain:
 definition carry_out :: "bool \<Rightarrow> nat list \<Rightarrow> bool" where
   "carry_out c ss = fold (\<lambda>s c. carry_apply (domain s) c) ss c"
 
+lemma carry_out_append:
+  "carry_out c (xs@ys) = carry_out (carry_out c xs) ys"
+  by (simp add: carry_out_def fold_append)
+
 lemma carry_depends_only_on_domains:
   assumes "map domain xs = map domain ys"
   shows "carry_out c xs = carry_out c ys"
@@ -171,6 +175,7 @@ qed
 
 ML \<open>
   val checked = @{thms carry_then_apply carry_from_domain carry_depends_only_on_domains
+    carry_out_append
     two_event_key_has_no_total_successor five_examples_separated_by_three_events
     factor_through_iff contextual_successor_iff iterate_commutes invariant_quotient_exists};
   val _ = if null (Thm_Deps.all_oracles checked) then ()

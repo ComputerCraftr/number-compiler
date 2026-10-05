@@ -7,7 +7,7 @@ import pytest
 from number_compiler.projection.lazy_radix import RadixProjection, collatz_radix_digit
 from number_compiler.resources.metric_collection import collect_ledger_metrics
 from number_compiler.sequences.collatz.block_power import PoweredCollatzTerm
-from tests.support.runtime_limits import deadline
+from tests.support.performance_assertions import performance_bound
 
 
 def test_recursive_radix_replay_backend_is_absent() -> None:
@@ -28,7 +28,7 @@ def test_recursive_radix_replay_backend_is_absent() -> None:
 def test_former_134m_request_fixture_is_bounded_block_work() -> None:
     """Run the complete 14-digit public regression and accounting audit."""
     term = PoweredCollatzTerm(140137, 11)
-    with deadline(35, "seed 140137 step 11 radix-3 bounded block projection"):
+    with performance_bound(35, "seed 140137 step 11 radix-3 bounded block projection"):
         digits: list[int | str] = []
         for index in range(14):
             try:

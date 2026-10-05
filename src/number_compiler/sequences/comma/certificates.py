@@ -39,7 +39,17 @@ def new_certificate_memo(ledger: ResourceLedger) -> CertificateMemo:
 def _admission_marker(generation: int) -> tuple[tuple[str, str], str]:
     local_key = (CERTIFICATE_ID, f"{CERTIFICATE_SHA256}:{generation}")
     tag = blake2b(
-        repr((local_key, 20, 10, CERTIFIED_MAX_INDEX, FIRST_FORK_CHILDREN)).encode(),
+        repr(
+            (
+                local_key,
+                20,
+                10,
+                CERTIFIED_MAX_INDEX,
+                FIRST_FORK_INDEX,
+                FIRST_FORK_VALUE,
+                FIRST_FORK_CHILDREN,
+            )
+        ).encode(),
         key=_CACHE_AUTHORITY,
         digest_size=32,
     ).hexdigest()

@@ -8,6 +8,7 @@ from pathlib import Path
 
 import pytest
 
+from devtools.checks import python_clones
 from devtools.checks.python_clones import duplicate_bodies
 
 SOURCE = '''
@@ -29,6 +30,59 @@ def clones(tmp_path: Path, left: str, right: str) -> int:
         path.write_text(content)
         trees[path] = ast.parse(content)
     return len(duplicate_bodies(tmp_path, trees))
+
+
+def test_duplicate_body_sizes_are_computed_in_one_module_walk(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    path = tmp_path / "nested.py"
+    path.write_text(SOURCE)
+    tree = ast.parse(SOURCE)
+    original_walk = ast.walk
+    walked: list[ast.AST] = []
+
+    def count_walk(node: ast.AST) -> list[ast.AST]:
+        walked.append(node)
+        return list(original_walk(node))
+
+    monkeypatch.setattr(ast, "walk", count_walk)
+    duplicate_bodies(tmp_path, {path: tree})
+    assert walked == [tree]
+
+
+def test_binding_resolution_is_cached_per_ast_node_and_analysis() -> None:
+    tree = ast.parse(
+        "def outer(value):\n"
+        " state = value\n"
+        " def inner(argument):\n"
+        "  return state + argument\n"
+        " return inner\n"
+    )
+    bindings = python_clones._Bindings(tree)
+    outer = next(
+        node
+        for node in ast.walk(tree)
+        if isinstance(node, ast.FunctionDef) and node.name == "outer"
+    )
+    reference = next(
+        node
+        for node in ast.walk(tree)
+        if isinstance(node, ast.Name)
+        and node.id == "state"
+        and isinstance(node.ctx, ast.Load)
+    )
+
+    first = bindings.resolve(reference, "state")
+    cached_entry_count = len(bindings._resolved)
+    assert first == (bindings.inner[outer], "state")
+    assert bindings.resolve(reference, "state") is first
+    assert len(bindings._resolved) == cached_entry_count
+
+    other_analysis = python_clones._Bindings(tree)
+    other = other_analysis.resolve(reference, "state")
+    assert other[0] is other_analysis.inner[outer]
+    assert other[0] is not first[0]
+    assert other[1] == first[1]
 
 
 def renamed(source: str) -> str:

@@ -49,7 +49,12 @@ def test_certified_route_matches_exact_reverse_oracle(
     with pytest.raises(IndexError):
         term.digit(term.maximum_width)
     assert term.digits() == expected
-    assert all(row.accounting_delta == 0 for row in term._ledger.inventory())
+    inventory = term._ledger.inventory()
+    assert all(
+        row.accounting_delta == 0
+        or (row.accounting_delta is None and row.entries == 0 and row.nodes == 0)
+        for row in inventory
+    )
     assert not term._ledger.counters.get("sequential_generation_advances", 0)
 
 

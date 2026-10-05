@@ -23,6 +23,8 @@ from number_compiler.arithmetic.formula.decimal_pair_coordinates import (
     decimal_normalized_pair_sum,
 )
 
+pytestmark = pytest.mark.validation
+
 
 def test_mirror_pair_and_domain_chart_are_exact_for_all_ports() -> None:
     expressions = ThresholdExpressions()

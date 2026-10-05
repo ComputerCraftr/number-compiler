@@ -33,19 +33,21 @@ class CanonicalWord:
     right: CanonicalWord | None = None
 
     def __post_init__(self) -> None:
-        if any(
-            type(value) is not int
-            for value in (
-                self.node_id,
-                self.length,
-                self.run_count,
-                self.run_length,
-            )
+        if (
+            type(self.node_id) is not int
+            or type(self.length) is not int
+            or type(self.run_count) is not int
+            or type(self.run_length) is not int
         ):
             raise TypeError(
                 "canonical word identities and extents require exact integers"
             )
-        if self.node_id <= 0 or min(self.length, self.run_count, self.run_length) < 0:
+        if (
+            self.node_id <= 0
+            or self.length < 0
+            or self.run_count < 0
+            or self.run_length < 0
+        ):
             raise ValueError("invalid canonical word identity or extent")
         if self.run_count == 0:
             valid = (
@@ -90,7 +92,6 @@ def _record_source_visit(metrics: RunTraversalMetrics | None) -> None:
 
 
 EMPTY = CanonicalWord(next(_IDS), 0, 0)
-_WORDS: weakref.WeakValueDictionary[int, CanonicalWord] = weakref.WeakValueDictionary()
 _WORD_DEFINITIONS: dict[
     int, tuple[int, int, int, int | None, int, int | None, int | None]
 ] = {}
@@ -114,7 +115,6 @@ def _definition(
 
 def _publish_word(word: CanonicalWord) -> None:
     local_id = word.node_id
-    _WORDS[local_id] = word
     _WORD_DEFINITIONS[local_id] = _definition(word)
     if word.symbol is not None:
         bounds: tuple[int, int] | None = (word.symbol, word.symbol)
@@ -178,9 +178,12 @@ def _validate_word(word: CanonicalWord) -> None:
     if type(word) is not CanonicalWord:
         raise TypeError("expected an exact canonical word")
     word.__post_init__()
-    if _WORDS.get(word.node_id) is not word or _WORD_DEFINITIONS.get(
-        word.node_id
-    ) != _definition(word):
+    reference = _WORD_WATCHES.get(word.node_id)
+    if (
+        reference is None
+        or reference() is not word
+        or _WORD_DEFINITIONS.get(word.node_id) != _definition(word)
+    ):
         raise ValueError("canonical word identity is foreign or stale")
 
 
@@ -559,35 +562,57 @@ def concat(left: CanonicalWord, right: CanonicalWord) -> CanonicalWord:
     a = last_run(left)
     b = first_run(right)
     if a.symbol == b.symbol:
-        lp = slice_runs(left, 0, left.run_count - 1)
-        rs = slice_runs(right, 1, right.run_count - 1)
+        lp = _word_tasks(("SLICE", left, 0, left.run_count - 1))
+        rs = _word_tasks(("SLICE", right, 1, right.run_count - 1))
         if a.symbol is None:
             raise AssertionError(a)
         merged = run(int(a.symbol), a.run_length + b.run_length)
-        out = concat_disjoint(concat_disjoint(lp, merged), rs)
+        prefix = _word_tasks(("JOIN", lp, merged))
+        out = _word_tasks(("JOIN", prefix, rs))
     else:
-        out = concat_disjoint(left, right)
+        out = _word_tasks(("JOIN", left, right))
     _put(_JOIN, key, out)
     return out
 
 
 def from_values(values: Iterable[int]) -> CanonicalWord:
-    out = EMPTY
-    for v in values:
-        out = concat(out, leaf(v))
-    return out
+    return from_runs((value, 1) for value in values)
+
+
+def _append_run_block(
+    blocks: list[CanonicalWord], symbol: int, count_value: int
+) -> None:
+    """Carry equal-sized run blocks, keeping a logarithmic construction frontier."""
+    node = run(symbol, count_value)
+    while blocks and blocks[-1].run_count == node.run_count:
+        node = _raw_node(blocks.pop(), node)
+    blocks.append(node)
 
 
 def from_runs(runs: Iterable[tuple[int, int]]) -> CanonicalWord:
     """Build a canonical word from ``(symbol, count)`` pairs without expansion."""
-    out = EMPTY
+    blocks: list[CanonicalWord] = []
+    pending_symbol = 0
+    pending_count = 0
     for symbol, count_value in runs:
         if type(symbol) is not int or type(count_value) is not int:
             raise TypeError("word runs require exact integer symbols and lengths")
         if count_value < 0:
             raise ValueError(count_value)
         if count_value:
-            out = concat(out, run(symbol, count_value))
+            if pending_count and symbol != pending_symbol:
+                _append_run_block(blocks, pending_symbol, pending_count)
+                pending_count = 0
+            pending_symbol = symbol
+            pending_count += count_value
+    if pending_count:
+        _append_run_block(blocks, pending_symbol, pending_count)
+    out = EMPTY
+    # Descending powers of two form precisely the canonical run-count split.
+    # Joining from the right constructs each final node once, without slicing
+    # and rebalancing every growing prefix.
+    for block in reversed(blocks):
+        out = _raw_node(block, out)
     return out
 
 
@@ -885,19 +910,19 @@ def prune_stale_program_word_memos(*, amortized: bool = False) -> int:
     visited = 0
     for slice_key in tuple(_SLICE):
         visited += 1
-        if slice_key[0] not in _WORDS:
+        if slice_key[0] not in _WORD_WATCHES:
             _SLICE.pop(slice_key, None)
     for join_key in tuple(_JOIN):
         visited += 1
-        if join_key[0] not in _WORDS or join_key[1] not in _WORDS:
+        if join_key[0] not in _WORD_WATCHES or join_key[1] not in _WORD_WATCHES:
             _JOIN.pop(join_key, None)
     for cap_key in tuple(_NORMALIZE_RUN_CAP):
         visited += 1
-        if cap_key[0] not in _WORDS:
+        if cap_key[0] not in _WORD_WATCHES:
             _NORMALIZE_RUN_CAP.pop(cap_key, None)
     for reverse_key in tuple(_REVERSE):
         visited += 1
-        if reverse_key not in _WORDS:
+        if reverse_key not in _WORD_WATCHES:
             _REVERSE.pop(reverse_key, None)
     survivors = len(_SLICE) + len(_JOIN) + len(_NORMALIZE_RUN_CAP) + len(_REVERSE)
     _NEXT_PRUNE_SIZE = max(256, 2 * survivors)

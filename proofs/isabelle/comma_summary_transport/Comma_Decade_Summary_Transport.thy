@@ -1,5 +1,7 @@
 theory Comma_Decade_Summary_Transport
-  imports Comma_Decade_Residual_Core.Comma_Decade_Residual_Core Comma_Total_Macro.Comma_Total_Macro
+  imports Comma_Decade_Residual_Core.Comma_Decade_Residual_Core
+    Comma_Decade_Summary_Semantic.Comma_Decade_Summary_Semantic
+    Comma_Total_Macro.Comma_Total_Macro
 begin
 
 fun comma_shift_finite_outcome :: "nat \<Rightarrow> comma_finite_outcome \<Rightarrow> comma_finite_outcome" where
@@ -20,10 +22,6 @@ next
       cases "comma_finite_step ((r+k) mod 924) source";
       simp add: Suc.IH)
 qed
-
-fun comma_summary_outcome :: "nat \<Rightarrow> comma_decade_terminal \<Rightarrow> comma_finite_outcome" where
-  "comma_summary_outcome n (Comma_Terminal_Fork a)=Comma_Fork_At a n"
-| "comma_summary_outcome n Comma_Terminal_Landmine=Comma_Landmine_At n"
 
 lemma comma_summary_outcome_shift:
   "comma_shift_finite_outcome k (comma_summary_outcome n terminal)=
@@ -110,29 +108,6 @@ next
   show ?case using run by (auto simp only: source comma_decade_state.case)
 qed
 
-
-fun comma_decade_summary_resume ::
-  "(comma_decade_state \<Rightarrow> nat) \<Rightarrow>
-   (comma_decade_state \<Rightarrow> comma_decade_terminal) \<Rightarrow>
-   nat \<Rightarrow> comma_round_result \<Rightarrow> comma_finite_outcome option" where
-  "comma_decade_summary_resume height terminal r (Comma_Round_Fork a d)=Some (Comma_Fork_At a d)"
-| "comma_decade_summary_resume height terminal r (Comma_Round_Landmine d)=Some (Comma_Landmine_At d)"
-| "comma_decade_summary_resume height terminal r (Comma_Round_Cross (Comma_Entry f d x))=
-    (let s=Comma_Decade ((r+d) mod 924) x in
-      if f=1 \<and> comma_decade_admitted s then
-        Some (comma_summary_outcome (height s+d) (terminal s)) else None)"
-| "comma_decade_summary_resume height terminal r (Comma_Round_Cross (Comma_Near f d h))=None"
-| "comma_decade_summary_resume height terminal r Comma_Round_Invalid=None"
-
-definition comma_fast_total_boundary ::
-  "(comma_decade_state \<Rightarrow> nat) \<Rightarrow>
-   (comma_decade_state \<Rightarrow> comma_decade_terminal) \<Rightarrow>
-   comma_boundary_state \<Rightarrow> comma_finite_outcome option" where
-  "comma_fast_total_boundary height terminal q =
-    (if comma_boundary_valid q then
-      comma_decade_summary_resume height terminal (snd (snd q))
-        (comma_fast_round_aux 9 (snd (snd q)) (comma_finite_initial q))
-     else None)"
 
 theorem comma_fast_total_boundary_refines:
   assumes checked: "comma_decade_summary_checked height terminal"

@@ -20,6 +20,9 @@ from number_compiler.arithmetic.contracts.scoped_handles import (
 from number_compiler.arithmetic.fields.radial_innovation import (
     ReverseAddCyclotomicInnovationBlock,
 )
+from number_compiler.arithmetic.polynomials.cyclotomic_transport import (
+    power_two_cyclotomic_radial_quotient,
+)
 from number_compiler.hashlife.actions.field_actions import (
     CoordinateOutputMorphismID,
     FieldCellActionID,
@@ -235,11 +238,43 @@ def test_reverse_semantic_identity_cache_seals_exact_radial_coordinates() -> Non
     assert not audit_field_action_payloads(arena.ledger).invalid
 
     action = arena.resolve(reference)
-    object.__setattr__(action.radial, "growth", action.radial.growth + 1)
+    replacement = power_two_cyclotomic_radial_quotient(
+        action.radial.classes,
+        action.radial.no_growth,
+        action.radial.growth + 1,
+        bits=action.radial.bits,
+    )
+    for field in (
+        "classes",
+        "bits",
+        "no_growth",
+        "growth",
+        "scalar_v2",
+        "remainder_growth",
+        "unit_residue",
+        "exact_zero",
+    ):
+        object.__setattr__(action.radial, field, getattr(replacement, field))
     with pytest.raises(
         ValueError, match="cached reverse semantic identity lost its seal"
     ):
         arena.semantic_identity(reference)
+
+
+def test_reverse_semantic_identity_rejects_aliased_radial_coordinates() -> None:
+    arena = _arena()
+    action = arena.resolve(arena.identity)
+    object.__setattr__(action.radial, "growth", True)
+    with pytest.raises(ValueError, match="radial coordinates changed"):
+        arena.semantic_identity(arena.identity)
+
+
+def test_reverse_semantic_identity_rejects_inconsistent_radial_valuation() -> None:
+    arena = _arena()
+    action = arena.resolve(arena.identity)
+    object.__setattr__(action.radial, "scalar_v2", action.radial.scalar_v2 + 1)
+    with pytest.raises(ValueError, match="radial coordinates changed"):
+        arena.semantic_identity(arena.identity)
 
 
 def test_reverse_semantic_identity_cache_rejects_foreign_stale_and_swapped_handles() -> (

@@ -7,6 +7,13 @@ import json
 import re
 from pathlib import Path
 
+from devtools.checks.isabelle_source_analysis import (
+    IsabelleAnalysis,
+    IsabelleDeclaration,
+    analysis_report,
+    analyze_isabelle_source,
+    extract_isabelle_declarations,
+)
 from devtools.checks.isabelle_syntax import (
     executable_text,
     first_documentation_scope,
@@ -16,6 +23,7 @@ from devtools.checks.isabelle_syntax import (
     parse_sessions,
     parse_theory_header,
     unquoted_matches,
+    unquoted_numeric_case_facts,
 )
 from devtools.paths import isabelle_root, repository_root
 
@@ -63,11 +71,74 @@ COUNTERPARTS: dict[str, tuple[str, ...]] = {
         "tests/sequences/collatz/test_temporal_run_quotient.py",
     ),
     "Comma_Macro_Constructor": (),
+    "Comma_Canonical_Domain": (
+        "src/number_compiler/sequences/comma/domain.py",
+        "src/number_compiler/sequences/comma/boundary_chart.py",
+        "tests/sequences/comma/test_boundary_chart.py",
+    ),
     "Comma_Vieta_Root_Frame": (),
     "Comma_Root_Pair_Port": (),
     "Comma_Pair_Field": (),
+    "Comma_Native19_Carry": (
+        "src/number_compiler/arithmetic/formula/decimal_pair_coordinates.py",
+        "tests/arithmetic/formula/test_decimal_cocycle_coordinates.py",
+    ),
+    "Comma_Reset_Germ": (),
+    "Comma_Factored_Port_Carrier": ("tests/sequences/comma/test_punctured_port.py",),
+    "Comma_Compact_Decade_Classifier": (),
+    "Comma_Decade_Occurrence_Semantic": (),
+    "Comma_Decade_Occurrence_Lift": (),
+    "Comma_C1_Occurrence": (
+        "src/number_compiler/sequences/comma/carry_generator.py",
+        "tests/sequences/comma/test_carry_generator.py",
+    ),
+    "Comma_Recursive_Pair_Language": (
+        "devtools/verification/comma_pair_language.py",
+        "tests/sequences/comma/test_pair_language.py",
+    ),
+    "Comma_Radix9_Pair_Word": (
+        "devtools/verification/comma_temporal_observers.py",
+        "tests/sequences/comma/test_temporal_observers.py",
+    ),
+    "Comma_Even_Port_Action": ("tests/sequences/comma/test_pair_language.py",),
+    "Comma_Temporal_Port_Cover": (
+        "src/number_compiler/sequences/comma/temporal_cover.py",
+        "tests/sequences/comma/test_temporal_cover.py",
+    ),
+    "Comma_Temporal_Action": (
+        "src/number_compiler/sequences/comma/temporal_cover.py",
+        "tests/sequences/comma/test_temporal_cover.py",
+    ),
     "Comma_Entry_Port_Anchor": (),
     "Comma_Entry_Port_Refinement": (),
+    "Comma_Prefix_Selection": (
+        "src/number_compiler/sequences/comma/arithmetic.py",
+        "tests/sequences/comma/test_punctured_port.py",
+    ),
+    "Comma_C1_Phase": (
+        "src/number_compiler/sequences/comma/carry_generator.py",
+        "tests/sequences/comma/test_carry_generator.py",
+    ),
+    "Comma_C1_Phase_Power": (
+        "src/number_compiler/sequences/comma/carry_generator.py",
+        "tests/sequences/comma/test_carry_generator.py",
+    ),
+    "Comma_C1_Return": (
+        "src/number_compiler/sequences/comma/carry_generator.py",
+        "tests/sequences/comma/test_carry_generator.py",
+    ),
+    "Comma_C1_Borrow_Cocycle": (
+        "src/number_compiler/sequences/comma/borrow_cocycle.py",
+        "tests/sequences/comma/test_borrow_cocycle.py",
+    ),
+    "Comma_C1_Boundary_Carry": (
+        "src/number_compiler/sequences/comma/carry_generator.py",
+        "tests/sequences/comma/test_carry_generator.py",
+    ),
+    "Comma_C1_Carry_Cylinder": (
+        "src/number_compiler/sequences/comma/carry_generator.py",
+        "tests/sequences/comma/test_carry_generator.py",
+    ),
     "Comma_Finite_Transition": (
         "src/number_compiler/sequences/comma/boundary_chart.py",
         "src/number_compiler/sequences/comma/boundary_quotient.py",
@@ -85,6 +156,17 @@ COUNTERPARTS: dict[str, tuple[str, ...]] = {
         "src/number_compiler/sequences/comma/arithmetic.py",
         "tests/sequences/comma/test_frobenius_recurrence.py",
     ),
+    "Comma_Cyclotomic_Clock": (
+        "src/number_compiler/sequences/comma/cyclotomic_clock.py",
+        "src/number_compiler/sequences/comma/arithmetic.py",
+        "tests/sequences/comma/test_cyclotomic_clock.py",
+    ),
+    "Comma_Decisive_Endpoint_Quotient": (
+        "src/number_compiler/sequences/comma/decisive_endpoint.py",
+        "tests/sequences/comma/test_b1_quotient.py",
+    ),
+    "Comma_Compact_B1": (),
+    "Comma_Terminal_Weight": (),
     "Comma_Chart_Refinement": (
         "src/number_compiler/sequences/comma/boundary_chart.py",
         "tests/sequences/comma/test_boundary_chart.py",
@@ -121,6 +203,15 @@ COUNTERPARTS: dict[str, tuple[str, ...]] = {
     "Comma_Sector_Alphabet": (),
     "Comma_Decade_Helix": (),
     "Comma_Decade_Orbit_Quotient": ("devtools/experiments/comma/temporal_masks.py",),
+    "Comma_Sparse_Power_Algebra": (),
+    "Comma_Sparse_Power_Smoke": (),
+    "Comma_Sparse_Power_Instance": (),
+    "Comma_Response_Rows": (),
+    "Comma_Sector_Rows_Core": (),
+    "Comma_Native_Summary": (),
+    "Comma_Native_Summary_Instance": (),
+    "Comma_Native_Summary_Occurrence": (),
+    "Comma_Native_Boundary": (),
     "Comma_Decade_Masks": ("devtools/experiments/comma/temporal_masks.py",),
     "Comma_Orbit_Words": ("devtools/experiments/comma/temporal_masks.py",),
     "Comma_Sector_Response": ("devtools/experiments/comma/temporal_masks.py",),
@@ -200,6 +291,7 @@ COUNTERPARTS: dict[str, tuple[str, ...]] = {
     "Comma_Boundary_Primitives": (),
     "Comma_Literal_Path": (),
     "Comma_Weighted_Macro": (),
+    "Comma_Future_Selector": (),
     "Comma_Future_Safety": (),
     "Comma_Checked_Ranks": (),
     "Comma_Period_Guard": (
@@ -384,31 +476,231 @@ def _audited_theorems(text: str) -> tuple[str, ...]:
     clean = executable_text(text)
     for block in ml_cartouches(clean):
         block = re.sub(r'"(?:\\.|[^"\\])*"', '""', block)
-        bindings = dict(
-            re.findall(r"\bval\s+(\w+)\s*=\s*@\{thms?\s+(.*?)\}", block, re.DOTALL)
-        )
+
+        def names_from_body(body: str) -> tuple[str, ...]:
+            body = body.strip()
+            if (
+                not body
+                or re.fullmatch(
+                    r"[A-Za-z][A-Za-z0-9_'.]*(?:\s+[A-Za-z][A-Za-z0-9_'.]*)*",
+                    body,
+                )
+                is None
+            ):
+                raise ValueError(
+                    "require_native_clean antiquotation is not a closed "
+                    "theorem-name list"
+                )
+            return tuple(body.split())
+
+        def names_from_antiquotation(expression: str) -> tuple[str, ...] | None:
+            match = re.fullmatch(r"@\{thms?\s+(.*?)\}", expression, re.DOTALL)
+            if match is None:
+                return None
+            return names_from_body(match.group(1))
+
+        def resolve_native_argument(
+            expression: str, bound_theorems: dict[str, str]
+        ) -> tuple[str, ...]:
+            expression = expression.strip()
+            direct = names_from_antiquotation(expression)
+            if direct is not None:
+                if not direct:
+                    raise ValueError("require_native_clean theorem list is empty")
+                return direct
+            if re.fullmatch(r"[A-Za-z][A-Za-z0-9_']*", expression):
+                bound = bound_theorems.get(expression)
+                resolved = None if bound is None else names_from_body(bound)
+                if resolved:
+                    return resolved
+                raise ValueError(
+                    "require_native_clean theorem variable is not a closed "
+                    "thm/thms antiquotation"
+                )
+            if expression.startswith("[") and expression.endswith("]"):
+                contents = expression[1:-1]
+                token_pattern = re.compile(
+                    r"@\{thms?\s+.*?\}|[A-Za-z][A-Za-z0-9_']*", re.DOTALL
+                )
+                tokens = tuple(token_pattern.finditer(contents))
+                remainder = token_pattern.sub("", contents)
+                if not re.fullmatch(r"[\s,]*", remainder):
+                    raise ValueError("require_native_clean list has unsupported syntax")
+                if any(
+                    not token.group(0).startswith("@{")
+                    and token.group(0) not in bound_theorems
+                    for token in tokens
+                ):
+                    raise ValueError(
+                        "require_native_clean list contains an unresolved "
+                        "theorem variable"
+                    )
+                resolved_names: list[str] = []
+                for token in tokens:
+                    item = token.group(0)
+                    if item.startswith("@{"):
+                        item_names = names_from_antiquotation(item)
+                        if item_names is None:
+                            raise ValueError(
+                                "require_native_clean list has invalid "
+                                "theorem antiquotation"
+                            )
+                    else:
+                        item_names = names_from_body(bound_theorems[item])
+                    resolved_names.extend(item_names)
+                if resolved_names:
+                    return tuple(resolved_names)
+            raise ValueError("unsupported require_native_clean theorem argument")
+
+        binding_assignment = re.compile(r"\bval\s+([A-Za-z_][A-Za-z0-9_']*|_)\s*=")
+        binding_assignments = tuple(binding_assignment.finditer(block))
+
+        def theorem_bindings_before(
+            offset: int,
+            assignments: tuple[re.Match[str], ...] = binding_assignments,
+            source: str = block,
+        ) -> dict[str, str]:
+            bound_theorems: dict[str, str] = {}
+            for assignment in assignments:
+                if assignment.start() >= offset:
+                    break
+                binding = assignment.group(1)
+                if binding == "_":
+                    continue
+                # A later value shadows an earlier theorem list even when its
+                # right-hand side is not a closed antiquotation.
+                bound_theorems.pop(binding, None)
+                antiquotation = re.match(
+                    r"\s*@\{thms?\s+(.*?)\}",
+                    source[assignment.end() :],
+                    re.DOTALL,
+                )
+                if antiquotation is None:
+                    continue
+                trailing = source[assignment.end() + antiquotation.end() :]
+                if re.match(r"\s*(?:;\s*)?(?:val\b|$)", trailing):
+                    bound_theorems[binding] = antiquotation.group(1)
+            return bound_theorems
+
         pattern = (
             r"\bval\s+_\s*=\s*if\s+null\s*\(\s*Thm_Deps\.all_oracles\s+"
             r"(@\{thms?\s+.*?\}|[A-Za-z]\w*)\s*\)\s*then\s*\(\s*\)\s*else\s+error\b"
         )
-        for argument in re.findall(pattern, block, re.DOTALL):
+        for audit in re.finditer(pattern, block, re.DOTALL):
+            argument = audit.group(1)
             direct = re.fullmatch(r"@\{thms?\s+(.*?)\}", argument, re.DOTALL)
-            body = direct.group(1) if direct is not None else bindings.get(argument, "")
-            names.extend(re.findall(r"[A-Za-z][A-Za-z0-9_'.]*", body))
+            if direct is not None:
+                names.extend(names_from_body(direct.group(1)))
+            else:
+                names.extend(
+                    resolve_native_argument(
+                        argument, theorem_bindings_before(audit.start())
+                    )
+                )
+
+        authority_methods = {
+            "require_expected_paths",
+            "require_closed_expected_paths",
+            "require_native_closed_expected_paths",
+            "require_paths",
+        }
+        audit_methods = {
+            "names",
+            "require_native_clean",
+            "audit_fuel_free_global",
+            *authority_methods,
+        }
+        audit_references = tuple(
+            re.finditer(
+                r"\bComma_Proof_Dependency_Audit\s*\.\s*"
+                r"([A-Za-z][A-Za-z0-9_']*)\b",
+                block,
+            )
+        )
+        unknown_methods = sorted(
+            {reference.group(1) for reference in audit_references} - audit_methods
+        )
+        if unknown_methods:
+            raise ValueError(
+                "unsupported Comma_Proof_Dependency_Audit methods: "
+                + ", ".join(unknown_methods)
+            )
+
+        direct_call = re.compile(
+            r"\bval\s+([A-Za-z_][A-Za-z0-9_']*|_)\s*=\s*"
+            r"Comma_Proof_Dependency_Audit\s*\.\s*"
+            r"([A-Za-z][A-Za-z0-9_']*)\b"
+        )
+        direct_calls = tuple(direct_call.finditer(block))
+        captured_call = re.compile(
+            r"Exn\.capture\s*\(\s*fn\s*\(\s*\)\s*=>\s*"
+            r"Comma_Proof_Dependency_Audit\.(?:require_native_clean|"
+            r"audit_fuel_free_global|require_expected_paths|"
+            r"require_closed_expected_paths|require_native_closed_expected_paths|"
+            r"require_paths)\b",
+            re.DOTALL,
+        )
+        captured_spans = tuple(match.span() for match in captured_call.finditer(block))
+        direct_reference_offsets = {
+            match.start(0) + match.group(0).find("Comma_Proof_Dependency_Audit")
+            for match in direct_calls
+        }
+        for reference in audit_references:
+            if reference.start() in direct_reference_offsets:
+                continue
+            if any(start <= reference.start() < end for start, end in captured_spans):
+                continue
+            raise ValueError("unsupported Comma_Proof_Dependency_Audit invocation form")
+
+        for call in direct_calls:
+            binding, method = call.groups()
+            if method == "names":
+                continue
+            rest = block[call.end() :]
+            context_and_label = re.match(r'\s+@\{context\}\s+""\s+', rest)
+            if context_and_label is None:
+                # A bare function reference is not an executed dependency audit.
+                if re.match(r"\s*(?:;\s*)?(?=val\b|$)", rest):
+                    continue
+                raise ValueError(f"unsupported {method} invocation syntax or arguments")
+            if binding != "_":
+                raise ValueError(
+                    f"executed {method} call is not a release audit binding"
+                )
+            argument_text = rest[context_and_label.end() :]
+            if method in authority_methods:
+                authorities = re.match(r'\[\s*""(?:\s*,\s*"")*\s*\]\s+', argument_text)
+                if authorities is None:
+                    raise ValueError(f"unsupported {method} authority list")
+                argument_text = argument_text[authorities.end() :]
+            argument = re.match(
+                r"(?:@\{thms?\s+.*?\}|\[[^\]]*\]|"
+                r"[A-Za-z][A-Za-z0-9_']*)",
+                argument_text,
+                re.DOTALL,
+            )
+            if argument is None:
+                raise ValueError(f"unsupported {method} theorem argument")
+            trailing = argument_text[argument.end() :]
+            if re.match(r"\s*(?:;\s*)?(?=val\b|$)", trailing) is None:
+                raise ValueError(f"unsupported trailing arguments to {method}")
+            resolved = resolve_native_argument(
+                argument.group(0), theorem_bindings_before(call.start())
+            )
+            if method in audit_methods - {"names"}:
+                names.extend(resolved)
     return tuple(dict.fromkeys(names))
 
 
-def _declarations(text: str) -> tuple[dict[str, object], ...]:
-    """Lexical navigation inventory; Isabelle remains the authority on statements."""
-    text = navigation_text(text)
-    starts = unquoted_matches(
-        re.compile(r"(?m)^(lemma|theorem|corollary)\s+([A-Za-z][A-Za-z0-9_']*)"),
-        text,
-    )
+def _declaration_records(
+    declarations: tuple[IsabelleDeclaration, ...],
+) -> tuple[dict[str, object], ...]:
+    """Render an already parsed lexical inventory for navigation output."""
     rows: list[dict[str, object]] = []
-    for index, match in enumerate(starts):
-        end = starts[index + 1].start() if index + 1 < len(starts) else len(text)
-        body = text[match.end() : end]
+    for declaration in declarations:
+        if declaration.command not in {"lemma", "theorem", "corollary"}:
+            continue
+        body = declaration.body.lstrip().removeprefix(declaration.name)
         proofs = unquoted_matches(re.compile(r"(?m)(?:^|\s)(?:by|proof)\s"), body)
         proof = proofs[0] if proofs else None
         statement = (
@@ -416,12 +708,17 @@ def _declarations(text: str) -> tuple[dict[str, object], ...]:
         )
         rows.append(
             {
-                "name": match.group(2),
-                "line": text.count("\n", 0, match.start()) + 1,
+                "name": declaration.name,
+                "line": declaration.line,
                 "statement_and_assumptions": statement.strip(),
             }
         )
     return tuple(rows)
+
+
+def _declarations(text: str) -> tuple[dict[str, object], ...]:
+    """Lexical navigation inventory; Isabelle remains the authority on statements."""
+    return _declaration_records(extract_isabelle_declarations(text))
 
 
 def _ml_file_references(text: str, path: Path) -> tuple[str, ...]:
@@ -445,11 +742,22 @@ def _ml_file_references(text: str, path: Path) -> tuple[str, ...]:
 def build_index() -> dict[str, object]:
     sessions = parse_sessions((ISABELLE / "ROOT").read_text())
     source_texts: dict[str, str] = {}
+    source_texts_by_path: dict[Path, str] = {}
+    source_analyses: dict[Path, IsabelleAnalysis] = {}
     declared: dict[
         str, tuple[Path, tuple[str, ...], str, tuple[str, ...], tuple[str, ...]]
     ] = {}
     for path in sorted(ISABELLE.rglob("*.thy")):
         text = path.read_text()
+        invalid_case_facts = unquoted_numeric_case_facts(text)
+        if invalid_case_facts:
+            raise ValueError(
+                f"{path}: quote numeric case fact names at lines {invalid_case_facts}"
+            )
+        # One immutable analysis object serves the per-theory inventory and
+        # whole-tree duplicate/unused analysis below. Keeping it local to this
+        # build preserves freshness when an authored source changes.
+        source_analysis = analyze_isabelle_source(text, path, include_duplicates=False)
         name, imports = parse_theory_header(text, path)
         dangerous = global_simp_registrations(text, "gcd_nat.simps")
         if dangerous:
@@ -460,6 +768,8 @@ def build_index() -> dict[str, object]:
         if name in declared:
             raise ValueError(f"duplicate theory declaration: {name}")
         source_texts[name] = text
+        source_texts_by_path[path] = text
+        source_analyses[path] = source_analysis
         declared[name] = (
             path,
             imports,
@@ -575,7 +885,7 @@ def build_index() -> dict[str, object]:
     for name in sorted(declared):
         path, imports, scope, audit, _ = declared[name]
         text = source_texts[name]
-        declarations = _declarations(text)
+        declarations = _declaration_records(source_analyses[path].declarations)
         uses = {}
         for declaration in declarations:
             theorem = str(declaration["name"])
@@ -592,7 +902,8 @@ def build_index() -> dict[str, object]:
                 "declarations": declarations,
                 "lexical_uses_including_ML_and_attributes": uses,
                 "verification_command": (
-                    f"isabelle build -b -d proofs/isabelle {registered[name]}"
+                    ".venv/bin/python -m devtools.checks.release --suite proofs "
+                    f"--session {registered[name]}"
                     if name in registered
                     else "build an importing session"
                 ),
@@ -603,6 +914,9 @@ def build_index() -> dict[str, object]:
         "schema_version": 1,
         "root": "proofs/isabelle/ROOT",
         "ml_files": ml_entries,
+        "source_analysis": analysis_report(
+            ISABELLE, source_texts_by_path, source_analyses
+        ),
         "sessions": [
             {
                 "session": session.name,
@@ -647,4 +961,6 @@ def main() -> int:
 
 
 if __name__ == "__main__":
-    raise SystemExit(main())
+    from devtools.runs import run_reported
+
+    raise SystemExit(run_reported(main))

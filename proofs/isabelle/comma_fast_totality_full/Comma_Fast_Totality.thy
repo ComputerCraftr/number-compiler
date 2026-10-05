@@ -17,7 +17,7 @@ local_setup \<open>fn lthy =>
       if mid <> mid' then error "Nonadjacent fast rank ranges" else
       let
         val rule = Drule.infer_instantiate lthy
-          [(("rank",0), @{cterm comma_decade_rank_candidate}),
+          [(("rank",0), @{cterm comma_decade_rank_candidate_on_valid}),
            (("bound",0), Thm.cterm_of lthy (nat 26)),
            (("lo",0), Thm.cterm_of lthy (nat lo)),
            (("mid",0), Thm.cterm_of lthy (nat mid)),
@@ -34,7 +34,7 @@ local_setup \<open>fn lthy =>
     val ranges = map (fn i => (i, i+1)) (0 upto 923)
     val (_, _, checked) = reduce (map certify ranges)
     val expected = @{prop "comma_fast_decade_bounded_rank_range
-      comma_decade_rank_candidate 26 0 924"}
+      comma_decade_rank_candidate_on_valid 26 0 924"}
     val _ = if Thm.prop_of checked aconv expected andalso
         Thm.nprems_of checked=0 andalso null (Thm.hyps_of checked) andalso
         null (Thm_Deps.all_oracles [checked]) then ()
@@ -43,7 +43,7 @@ local_setup \<open>fn lthy =>
     ((Binding.name "comma_decade_bounded_rank_candidate_checked", []), [checked]) lthy) end\<close>
 
 theorem comma_decade_rank_candidate_checked:
-  "comma_decade_rank_check comma_decade_rank_candidate"
+  "comma_decade_rank_check comma_decade_rank_candidate_on_valid"
   by (rule comma_fast_decade_bounded_rank_range_sound(1)
     [OF comma_decade_bounded_rank_candidate_checked])
 

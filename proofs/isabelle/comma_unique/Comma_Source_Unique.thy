@@ -3,6 +3,8 @@ theory Comma_Source_Unique
     Comma_Literal_Bridge.Comma_Unique_Path
 begin
 
+ML_file "../shared/Proof_Dependency_Audit.ML"
+
 lemma comma_source20_tail_unique:
   "comma_unique_literal_path 412985919 100003 19999999918"
 proof -
@@ -10,7 +12,7 @@ proof -
     "comma_indexed_trace 5 (Comma_Entry 1 0 3) rows
       (Comma_Fork_At 2 5) (Comma_Near 1 5 82)"
     "sum_list (map fst rows) = 412985919"
-    using comma_weighted_run_indexed_trace[OF comma_source20_weighted_tail] by blast
+    using comma_source20_indexed_tail by blast
   show ?thesis using comma_source_indexed_unique_path[OF rows(1)] rows(2)
     by (simp add: comma_chart_value_def)
 qed
@@ -668,6 +670,10 @@ corollary comma_source20_fork_endpoint_unique:
   using comma_unique_literal_path_endpoint[OF comma_source20_to_fork_unique assms] .
 
 ML \<open>
+  val _ = Comma_Proof_Dependency_Audit.require_native_clean @{context}
+    "Source-20 exact entry and unique prelude"
+    @{thms comma_source20_to_fork comma_source20_to_fork_unique
+      comma_source20_fork_endpoint_unique};
   val _ = if null (Thm_Deps.all_oracles
     @{thms comma_unique_literal_path_append comma_unique_literal_path_literal
       comma_unique_literal_path_endpoint comma_unique_literal_path_from_points

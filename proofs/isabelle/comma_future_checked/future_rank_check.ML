@@ -13,7 +13,8 @@ struct
           comma_fast_boundary_children_def comma_fast_boundary_macro_def
           comma_fast_boundary_run_numeral comma_finite_initial_def
           comma_future_rank_row_def comma_future_rank_check_def
-          comma_rank_candidate_def comma_rank_code_at_def
+          comma_rank_candidate_on_valid_def comma_rank_lookup_def
+          comma_rank_lookup_result.case comma_rank_code_at_def
           comma_boundary_kind.simps comma_finite_outcome.case
           option.case option.map option.inject option.distinct
           list.distinct list.inject list.map concat.simps append.simps
@@ -49,7 +50,7 @@ struct
       val context = #context engine
       val row = HOLogic.mk_Trueprop
         (@{term comma_future_rank_row} $ HOLogic.mk_number @{typ nat} 28 $
-          @{term comma_rank_candidate} $
+          @{term comma_rank_candidate_on_valid} $
           HOLogic.mk_prod (@{term Comma_N},
             HOLogic.mk_prod (HOLogic.mk_number @{typ nat} 2,
               HOLogic.mk_number @{typ nat} 0)))

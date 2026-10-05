@@ -49,9 +49,13 @@ lemma harmonic_emit_mod_five [simp]:
   "harmonic_emit k p c ds mod 5 = harmonic_emit k p c ds"
   using harmonic_emit_less_five by simp
 
+lemma carry_finish_fold:
+  "carry_finish c ds = fold carry_apply ds c"
+  by (induction ds arbitrary: c) simp_all
+
 lemma carry_finish_append [simp]:
   "carry_finish c (xs @ ys) = carry_finish (carry_finish c xs) ys"
-  by (induction xs arbitrary: c) simp_all
+  by (simp only: carry_finish_fold fold_append comp_apply)
 
 lemma advance_phase_append [simp]:
   "advance_phase p (xs @ ys) = advance_phase (advance_phase p xs) ys"
@@ -237,7 +241,8 @@ theorem all_equal_action_ten_period:
       prefix_harmonic_ten_period)
 
 ML \<open>
-  val checked = @{thms harmonic_emit_append port_action_spatial_composition
+  val checked = @{thms carry_finish_fold carry_finish_append
+    harmonic_emit_append port_action_spatial_composition
     prefix_harmonic_ten_period first_decisive_carry_coalesces
     first_decisive_harmonic_difference radix2_population radix3_population
     even_odd_linear_inversion occupancy_code_capacity border_code_capacity

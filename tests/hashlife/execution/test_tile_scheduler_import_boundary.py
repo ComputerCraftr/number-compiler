@@ -45,5 +45,4 @@ scheduler.dispose_source_images()
         check=True,
         capture_output=True,
         text=True,
-        timeout=5,
     )

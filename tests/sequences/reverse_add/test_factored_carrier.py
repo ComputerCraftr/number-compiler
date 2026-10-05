@@ -89,6 +89,21 @@ def test_three_planes_agree_with_independent_successors(seed: int) -> None:
             assert carrier.decode(cell) == field
 
 
+def test_decode_traverses_plane_runs_instead_of_revalidating_each_point(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    carrier = FactoredReverseCarrier()
+    source = (3, 5, 5, 3)
+    with exact_oracle():
+        cell = carrier.source(source)
+
+        def forbidden(*_args: object, **_kwargs: object) -> Never:
+            raise AssertionError("run decoder performed pointwise plane reads")
+
+        monkeypatch.setattr(carrier.planes, "atom", forbidden)
+        assert carrier.decode(cell) == source
+
+
 @pytest.mark.parametrize("length", (1, 4, 1_000_000, 10**100))
 def test_uniform_control_uses_only_small_coordinate_atoms(
     length: int, monkeypatch: pytest.MonkeyPatch
@@ -243,6 +258,38 @@ def test_invalid_or_foreign_channels_and_point_scope_are_rejected() -> None:
     with pytest.raises(BlockContextBudgetExceeded):
         carrier.successor(q)
     assert not carrier.planes._gates
+
+
+def test_source_admission_uses_input_symmetry_and_center_before_plane_validation(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    carrier = FactoredReverseCarrier()
+
+    def forbidden(*_args: object, **_kwargs: object) -> Never:
+        raise AssertionError("source construction revalidated its own planes")
+
+    with monkeypatch.context() as scoped:
+        scoped.setattr(carrier, "validate", forbidden)
+        with exact_oracle():
+            source = carrier.source((2, 4, 4, 2))
+            uniform = carrier.uniform(CarryFn.CONST0, 2, 0, 3)
+
+    with exact_oracle():
+        assert carrier.validate(source) == 4
+        assert carrier.validate(uniform) == 3
+
+
+def test_uniform_admission_rejects_odd_center_before_building_planes(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    carrier = FactoredReverseCarrier()
+
+    def forbidden(*_args: object, **_kwargs: object) -> Never:
+        raise AssertionError("invalid uniform source constructed planes")
+
+    monkeypatch.setattr(carrier.planes, "constant", forbidden)
+    with exact_oracle(), pytest.raises(ValueError, match="center"):
+        carrier.uniform(CarryFn.CONST0, 2, 1, 1)
 
 
 def test_independent_observations_release_their_workspaces() -> None:

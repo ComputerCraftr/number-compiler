@@ -267,4 +267,6 @@ def selftest() -> None:
 
 
 if __name__ == "__main__":
-    selftest()
+    from devtools.runs import run_reported
+
+    raise SystemExit(run_reported(selftest))

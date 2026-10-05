@@ -7,6 +7,7 @@ import json
 from itertools import product
 from pathlib import Path
 from time import perf_counter
+from typing import Never
 from unittest.mock import patch
 
 from devtools.experiments.reverse_add.cocycle_carrier import CocycleReverseCarrier
@@ -109,6 +110,10 @@ def native_macro(seed: int, steps: int) -> dict[str, object]:
     }
 
 
+def _forbidden_pair_reconstruction(*_args: object, **_kwargs: object) -> Never:
+    raise AssertionError("successor decoded or re-encoded a pair word")
+
+
 def exhaustive(
     width: int, first: int | None = None, limit: int | None = None
 ) -> dict[str, object]:
@@ -123,30 +128,27 @@ def exhaustive(
             raise ValueError("first coefficient is outside this width's universe")
         axes[0] = range(first, first + 1)
     carrier = FactoredReverseCarrier()
+    encode, decode = carrier.source, carrier.decode
     count = 0
     started = perf_counter()
-    for half in product(*axes):
-        field = half + (half[:-1] if width % 2 else half)[::-1]
-        q = carrier.source(field)
-        expected, growth = pair_step(field, 10)
-        with (
-            patch.object(
-                carrier,
-                "decode",
-                side_effect=AssertionError("successor decoded a pair word"),
-            ),
-            patch.object(
-                carrier,
-                "source",
-                side_effect=AssertionError("successor re-encoded a pair word"),
-            ),
-        ):
+    # The same poison applies to every successor. Keep the original bound
+    # methods solely for independent input/output checks, avoiding two fresh
+    # MagicMocks and exception objects for each member of the finite universe.
+    with (
+        patch.object(carrier, "decode", _forbidden_pair_reconstruction),
+        patch.object(carrier, "source", _forbidden_pair_reconstruction),
+    ):
+        for half in product(*axes):
+            field = half + (half[:-1] if width % 2 else half)[::-1]
+            q = encode(field)
+            expected, growth = pair_step(field, 10)
             out, observed_growth = carrier.successor(q)
-        if carrier.decode(out) != expected or observed_growth != growth:
-            raise AssertionError((field, expected, carrier.decode(out)))
-        count += 1
-        if limit is not None and count >= limit:
-            break
+            observed = decode(out)
+            if observed != expected or observed_growth != growth:
+                raise AssertionError((field, expected, observed))
+            count += 1
+            if limit is not None and count >= limit:
+                break
     return {
         "width": width,
         "first": first,
@@ -306,4 +308,6 @@ def main() -> None:
 
 
 if __name__ == "__main__":
-    main()
+    from devtools.runs import run_reported
+
+    raise SystemExit(run_reported(main))

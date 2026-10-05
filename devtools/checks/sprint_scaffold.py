@@ -76,7 +76,7 @@ def refresh_index(folder: Path, start: date, *, check: bool = False) -> bool:
             f"{start + timedelta(days=6)} (Sunday–Saturday).\n\n"
             "[Documentation index](../../index.md#sprint-history-and-provenance)\n\n"
             f"## Topics\n\n{block}\n\n## Provenance\n\n"
-            "Topic records preserve original dates, source fingerprints, commands "
+            "Topic records preserve original dates, source provenance, commands "
             "and outcomes. Raw evidence remains local or in CI.\n"
         )
     changed = not path.exists() or path.read_text() != updated
@@ -154,4 +154,6 @@ def main() -> int:
 
 
 if __name__ == "__main__":
-    raise SystemExit(main())
+    from devtools.runs import run_reported
+
+    raise SystemExit(run_reported(main))

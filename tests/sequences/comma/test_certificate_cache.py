@@ -80,7 +80,24 @@ def test_reset_during_admission_publication_removes_failed_local_entry(
     cache = get_process_cache()
     cache.reset()
     try:
-        certificates.require_certified_index(1, ResourceLedger(), 1_000_000)
+        # Seed the already-verified shared payload directly. This test targets
+        # invalidation during local publication, not the cold package verifier;
+        # the cold read/hash path has independent coverage above.
+        with cache.acquire(
+            "comma-prefix-certificate",
+            certificates.CERTIFICATE_ID,
+            (20, 10, certificates.CERTIFICATE_SHA256),
+        ) as lease:
+            generation = lease.stats().generation
+            _local_key, tag = certificates._admission_marker(generation)
+            assert lease.put(
+                (
+                    certificates.CERTIFIED_MAX_INDEX,
+                    certificates.FIRST_FORK_INDEX,
+                    certificates.FIRST_FORK_VALUE,
+                ),
+                (certificates.CERTIFICATE_SHA256, tag),
+            )
         ledger = ResourceLedger()
         memo = certificates.new_certificate_memo(ledger)
         original_set = OwnedMemo.__setitem__
@@ -111,6 +128,21 @@ def test_foreign_admission_is_rejected_before_asset_access(
     memo = certificates.new_certificate_memo(ResourceLedger())
     with pytest.raises(ValueError, match="foreign comma certificate admission"):
         certificates.require_certified_index(1, ResourceLedger(), 1_000_000, memo=memo)
+
+
+@pytest.mark.parametrize(
+    ("field", "replacement"),
+    [("FIRST_FORK_VALUE", 19_999_999_917), ("FIRST_FORK_INDEX", 412_987_858)],
+)
+def test_admission_marker_binds_first_fork_metadata(
+    monkeypatch: pytest.MonkeyPatch, field: str, replacement: int
+) -> None:
+    """A local memo cannot survive a changed fork witness."""
+    original = certificates._admission_marker(0)
+    monkeypatch.setattr(certificates, field, replacement)
+    changed = certificates._admission_marker(0)
+    assert changed[0] == original[0]
+    assert changed[1] != original[1]
 
 
 @pytest.mark.parametrize("marker", ["forged", "é" * 64, "x" * 100_000])

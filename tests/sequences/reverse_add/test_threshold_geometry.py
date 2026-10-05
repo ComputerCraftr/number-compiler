@@ -17,6 +17,8 @@ from number_compiler.arithmetic.formula.symmetry_frame import (
 )
 from number_compiler.arithmetic.functions.decision import MultiTerminalDecisionArena
 
+pytestmark = pytest.mark.validation
+
 
 def test_harmonic_kernel_collision_changes_threshold_geometry() -> None:
     left = (8,) * 9

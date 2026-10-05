@@ -12,6 +12,74 @@ ML_file "fast_summary_check.ML"
 
 local_setup \<open>fn lthy =>
   let
+    fun make_lookup codes candidate = Comma_Decade_Rank_Lookup.make_lookup
+      {numeral_context = Comma_Entry_Arithmetic.numeral_context,
+       natural_context = Comma_Entry_Arithmetic.natural_context} lthy codes candidate
+    val (rank_lookup, rank_stats) = make_lookup
+      @{thm comma_decade_rank_codes_def} @{thm comma_decade_rank_candidate_on_valid_def}
+    val (terminal_lookup, terminal_stats) = make_lookup
+      @{thm comma_decade_terminal_codes_def}
+      @{thm comma_decade_terminal_code_candidate_on_valid_def}
+    val rank_edge = rank_lookup @{term "Comma_Decade 923 90"}
+    val terminal_edge = terminal_lookup @{term "Comma_Decade 923 90"}
+    fun expected_error message result =
+      (case result of Exn.Exn (ERROR actual) => actual = message | _ => false)
+    fun rejected_before_table lookup count_lookups state =
+      let
+        val prior = count_lookups ()
+        val result = Exn.capture lookup state
+        val after = count_lookups ()
+      in expected_error "Candidate lookup outside admitted decade domain" result andalso
+        prior = after end
+    val invalid_rank_phase = rejected_before_table rank_lookup
+      (fn () => #lookups (rank_stats ()))
+      @{term "Comma_Decade 924 90"}
+    val invalid_rank_offset = rejected_before_table rank_lookup
+      (fn () => #lookups (rank_stats ()))
+      @{term "Comma_Decade 923 91"}
+    val invalid_terminal_phase = rejected_before_table terminal_lookup
+      (fn () => #lookups (terminal_stats ()))
+      @{term "Comma_Decade 924 90"}
+    val invalid_terminal_offset = rejected_before_table terminal_lookup
+      (fn () => #lookups (terminal_stats ()))
+      @{term "Comma_Decade 923 91"}
+    fun nat n = HOLogic.mk_number @{typ nat} n
+    val constructor = Const (@{const_name Comma_Decade},
+      @{typ nat} --> @{typ nat} --> @{typ comma_decade_state})
+    fun check_samples lookup candidate rows =
+      let
+        val samples = [(0,0), (15,15), (16,16), (255,79),
+          (256,80), (911,90), (912,80), (923,90)]
+        fun check (r,x) =
+          let
+            val state = constructor $ nat r $ nat x
+            val code = Char.ord (String.sub (List.nth (rows, r), x)) - Char.ord #"A"
+            val wanted = HOLogic.mk_Trueprop (HOLogic.mk_eq
+              (Const (candidate, @{typ comma_decade_state} --> @{typ nat}) $ state, nat code))
+          in Thm.prop_of (lookup state) aconv wanted end
+      in forall check samples end
+    val rank_samples = check_samples rank_lookup
+      @{const_name comma_decade_rank_candidate_on_valid} comma_decade_candidate_rows
+    val terminal_samples = check_samples terminal_lookup
+      @{const_name comma_decade_terminal_code_candidate_on_valid} comma_decade_terminal_candidate_rows
+    val _ = if Thm.prop_of rank_edge aconv
+          @{prop "comma_decade_rank_candidate_on_valid (Comma_Decade 923 90) = 6"} andalso
+        Thm.prop_of terminal_edge aconv
+          @{prop "comma_decade_terminal_code_candidate_on_valid (Comma_Decade 923 90) = 5"} andalso
+        forall (fn th => null (Thm.hyps_of th) andalso Thm.nprems_of th = 0 andalso
+          null (Thm_Deps.all_oracles [th])) [rank_edge, terminal_edge] andalso
+        rank_samples andalso terminal_samples andalso
+        invalid_rank_phase andalso invalid_rank_offset andalso
+        invalid_terminal_phase andalso invalid_terminal_offset then ()
+      else error "Ragged candidate table boundary/domain audit failed"
+    val (_, lthy) = Local_Theory.note
+      ((Binding.name "comma_decade_rank_final_cell_checked", []), [rank_edge]) lthy
+    val (_, lthy) = Local_Theory.note
+      ((Binding.name "comma_decade_terminal_final_cell_checked", []), [terminal_edge]) lthy
+  in lthy end\<close>
+
+local_setup \<open>fn lthy =>
+  let
     val engine = Comma_Decade_Summary_Kernel.make lthy
     val empty = #lens_stats engine ()
     val _ = if #lookups empty = 0 andalso #hits empty = 0 andalso

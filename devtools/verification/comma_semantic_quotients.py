@@ -14,7 +14,10 @@ from typing import Literal
 
 from number_compiler.arithmetic.functions.finite_observer import (
     FiniteObserverMinimization,
+    class_members,
+    map_partition_row,
     minimize_finite_observer,
+    partition_quotient_rows,
 )
 from number_compiler.sequences.comma.arithmetic import (
     comma_port_next,
@@ -23,6 +26,7 @@ from number_compiler.sequences.comma.arithmetic import (
 )
 from number_compiler.sequences.comma.boundary_chart import PERIOD, chart_moves
 from number_compiler.sequences.comma.boundary_quotient import BoundaryState
+from number_compiler.sequences.comma.cycle_spatial import CycleSpatialState
 
 BranchSymbol = Literal[0, 1]
 _BRANCH_SLOT: dict[BranchSymbol, int] = {0: 1, 1: 0}
@@ -79,17 +83,22 @@ def _build_port_quotient(*, include_zero: bool) -> CommaPortMooreQuotient:
             f"comma port quotient closed at {minimized.classes}, expected {expected}"
         )
 
-    members: list[list[int]] = [[] for _ in range(minimized.classes)]
-    for state, class_id in enumerate(minimized.class_ids):
-        members[class_id].append(state)
+    members = class_members(minimized.class_ids, minimized.classes)
     quotient_rows: list[tuple[int, ...]] = []
     quotient_outputs: list[Hashable] = []
     for member_group in members:
         representative = member_group[0]
-        target_class = minimized.class_ids[transitions[representative]]
+        target_class = map_partition_row(
+            (transitions[representative],), minimized.class_ids
+        )[0]
+        if target_class is None:
+            raise AssertionError("comma port transition was forbidden")
         output = outputs[representative]
         for state in member_group[1:]:
-            if minimized.class_ids[transitions[state]] != target_class:
+            other_target = map_partition_row(
+                (transitions[state],), minimized.class_ids
+            )[0]
+            if other_target != target_class:
                 raise AssertionError("comma port class is not successor closed")
             if outputs[state] != output:
                 raise AssertionError("comma port class merged distinct observations")
@@ -178,31 +187,23 @@ def _quotient_rows(
     minimization: FiniteObserverMinimization,
     outputs: tuple[Hashable, ...],
 ) -> tuple[tuple[tuple[int | None, int | None], ...], tuple[Hashable, ...]]:
-    members: list[list[int]] = [[] for _ in range(minimization.classes)]
-    for state, class_id in enumerate(minimization.class_ids):
-        members[class_id].append(state)
+    members = class_members(minimization.class_ids, minimization.classes)
+    quotient_rows = partition_quotient_rows(
+        raw_rows, minimization.class_ids, minimization.classes
+    )
     rows: list[tuple[int | None, int | None]] = []
     class_outputs: list[Hashable] = []
-    for group in members:
+    for group, row in zip(members, quotient_rows, strict=True):
         representative = group[0]
-        row_values = [
-            None if target is None else minimization.class_ids[target]
-            for target in raw_rows[representative]
-        ]
+        row_values = row
         if len(row_values) != 2:
             raise AssertionError("comma future row lost its ordered fork slots")
-        row = (row_values[0], row_values[1])
+        row_pair = (row_values[0], row_values[1])
         output = outputs[representative]
         for state in group[1:]:
-            other_values = [
-                None if target is None else minimization.class_ids[target]
-                for target in raw_rows[state]
-            ]
-            if len(other_values) != 2 or tuple(other_values) != row:
-                raise AssertionError("comma future class is not a right congruence")
             if outputs[state] != output:
                 raise AssertionError("comma future class merged distinct observations")
-        rows.append(row)
+        rows.append(row_pair)
         class_outputs.append(output)
     return tuple(rows), tuple(class_outputs)
 
@@ -261,9 +262,9 @@ def build_future_production_macro_quotient(
     graph: CommaFutureGraph,
 ) -> CommaFutureMooreQuotient:
     """Build T3279 refined by the closed, zero-inclusive Q19 observation."""
-    ports = build_q19_production_ports()
     outputs = tuple(
-        ports.class_for_port(*boundary_production_port(state)) for state in graph.states
+        CycleSpatialState.from_port(*boundary_production_port(state))
+        for state in graph.states
     )
     return _minimize_future(graph, outputs, 4_986)
 
@@ -313,9 +314,7 @@ def future_rank_refinement_audit(
     """Audit termination ranks after independently constructing T3279."""
     rank = future_losing_ranks(graph)
 
-    members: list[list[int]] = [[] for _ in range(quotient.classes)]
-    for state, class_id in enumerate(quotient.class_ids):
-        members[class_id].append(state)
+    members = class_members(quotient.class_ids, quotient.classes)
     mixed = sum(1 for group in members if len({rank[state] for state in group}) != 1)
     if mixed:
         raise AssertionError("comma future Moore class mixes termination ranks")

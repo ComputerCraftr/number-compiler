@@ -4,9 +4,6 @@ struct
   fun canonical_term numeral_context ctxt term = Thm.term_of (Thm.rhs_of
     (Simplifier.rewrite (numeral_context ctxt) (Thm.cterm_of ctxt term)))
 
-  fun canonical_theorem numeral_context ctxt theorem =
-    Simplifier.simplify (numeral_context ctxt) theorem
-
   fun timed elapsed failed f x =
     let
       val start = Time.now ()
@@ -78,12 +75,26 @@ struct
       fun rank_unmeasured raw_state =
         let
           val state = canonical_term numeral_context ctxt raw_state
+          val _ =
+            (case strip_comb state of
+              (Const (name, _), [phase, offset]) =>
+                if name <> @{const_name Comma_Decade} then
+                  error "Candidate lookup requires a decade state"
+                else
+                  (case (try HOLogic.dest_number phase, try HOLogic.dest_number offset) of
+                    (SOME (phase_type, r), SOME (offset_type, x)) =>
+                      if phase_type = @{typ nat} andalso offset_type = @{typ nat} andalso
+                          0 <= r andalso r < 924 andalso 0 <= x andalso x <= 90
+                        then () else error "Candidate lookup outside admitted decade domain"
+                  | _ => error "Candidate lookup requires numeral phase and offset")
+            | _ => error "Candidate lookup requires a concrete decade state")
           val rank_head = case HOLogic.dest_eq
               (HOLogic.dest_Trueprop (Thm.prop_of rank_def)) of
             (Const (name, _) $ _, _) => Const (name, fastype_of state --> @{typ nat})
           | _ => error "Expected unary candidate rank definition"
           val opened = Simplifier.rewrite
-            (scalar addsimps [rank_def] addsimps @{thms comma_decade_state.case})
+            (scalar addsimps [rank_def] addsimps
+              @{thms comma_decade_state.case comma_decade_admitted.simps})
             (Thm.cterm_of ctxt (rank_head $ state))
           val indices = arithmetic (Thm.rhs_of opened)
           val selected = lookup (Thm.rhs_of indices)

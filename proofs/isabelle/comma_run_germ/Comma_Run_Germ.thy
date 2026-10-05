@@ -94,7 +94,7 @@ next
     using step by (auto simp: comma_finite_step_def comma_weighted_step_def
       Let_def split: if_splits)
   show ?case
-    unfolding comma_round_weighted_prefix.simps
+    unfolding comma_round_weighted_prefix_simps
     apply (rule exI[of _ "Comma_Near f delta j"])
     apply (rule exI[of _ "Comma_Chart_Weight 0 0 1 1"])
     apply (rule exI[of _ n])
@@ -292,7 +292,7 @@ next
       have path: "comma_round_weighted_prefix p r (Suc k)
         (Comma_Entry f delta x) (Comma_Near g d u)
         (comma_chart_weight_value p weight+k)"
-        unfolding comma_round_weighted_prefix.simps
+        unfolding comma_round_weighted_prefix_simps
         apply (rule exI[of _ "Comma_Near g d h"])
         apply (rule exI[of _ weight])
         apply (rule exI[of _ k])

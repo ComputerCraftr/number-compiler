@@ -6,7 +6,10 @@ from typing import Literal, Never, cast
 
 import pytest
 
-from number_compiler.arithmetic.contracts.block_effect import BlockContextBudgetExceeded
+from number_compiler.arithmetic.contracts.block_effect import (
+    BlockContextBudgetExceeded,
+    BlockEffect,
+)
 from number_compiler.arithmetic.contracts.exact_tree_context import source_reads_only
 from number_compiler.arithmetic.contracts.scoped_handles import (
     ActionProgramID,
@@ -47,6 +50,28 @@ def test_temporal_adapter_imports_binary_dag_and_keeps_real_identity() -> None:
     assert actions.node(result).exponent == 1 << 30
     assert len(actions._nodes) < 40
     assert all(row.accounting_delta == 0 for row in ledger.inventory())
+
+
+def test_primitive_lookup_validates_compiler_binding_once(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    _, compiler, actions, _, first, second = arenas()
+    resolve = compiler.resolve
+    reads: list[ActionProgramID] = []
+
+    def observed(handle: ActionProgramID) -> BlockEffect:
+        reads.append(handle)
+        return resolve(handle)
+
+    monkeypatch.setattr(compiler, "resolve", observed)
+    assert actions.primitive(first).base == 10
+    assert len(reads) == 1
+    with pytest.raises(ValueError, match="not a primitive"):
+        actions.primitive(actions.compose(first, second))
+    _, _, _, _, foreign, _ = arenas()
+    with pytest.raises(ValueError):
+        actions.primitive(foreign)
+    assert len(reads) == 1
 
 
 def test_nested_images_normalize_before_cell_lookup_without_emission() -> None:

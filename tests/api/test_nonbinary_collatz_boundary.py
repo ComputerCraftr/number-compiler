@@ -9,7 +9,7 @@ import pytest
 from devtools.verification.lazy_collatz import LazyCollatzApplication
 from number_compiler.api.number_api import NumberCompiler, PoweredCollatzTermPayload
 from number_compiler.sequences.collatz.block_power import PoweredCollatzTerm
-from tests.support.runtime_limits import deadline
+from tests.support.performance_assertions import performance_bound
 
 
 @pytest.mark.parametrize("radix", (3, 6, 12))
@@ -18,7 +18,7 @@ from tests.support.runtime_limits import deadline
 def test_public_nonbinary_points_poison_every_lowering_layer(
     monkeypatch: pytest.MonkeyPatch, radix: int, seed: int, steps: int
 ) -> None:
-    with deadline(
+    with performance_bound(
         35, f"nonbinary boundary for seed {seed}, steps {steps}, radix {radix}"
     ):
         _check_public_nonbinary_points(monkeypatch, radix, seed, steps)

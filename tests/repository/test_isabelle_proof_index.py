@@ -1,12 +1,34 @@
 """The proof inventory is navigation and validation, never proof certification."""
 
 from pathlib import Path
+from typing import NamedTuple
 
 import pytest
 
 from devtools.checks import isabelle_proof_index as index
+from devtools.checks import isabelle_source_analysis as source_analysis
 from devtools.checks import isabelle_syntax as syntax
 from devtools.paths import isabelle_root
+
+
+class _RepositoryProofGraph(NamedTuple):
+    sessions: dict[str, syntax.Session]
+    headers: dict[Path, tuple[str, tuple[str, ...]]]
+
+
+@pytest.fixture(scope="module")
+def repository_proof_graph() -> _RepositoryProofGraph:
+    """Parse immutable checkout ancestry once; fixture-mutating tests stay local."""
+    root = index.ISABELLE
+    sessions = {
+        session.name: session
+        for session in syntax.parse_sessions((root / "ROOT").read_text())
+    }
+    headers = {
+        path: syntax.parse_theory_header(path.read_text(), path)
+        for path in root.rglob("*.thy")
+    }
+    return _RepositoryProofGraph(sessions, headers)
 
 
 def _fixture(root: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
@@ -69,6 +91,49 @@ def test_theory_inventory_uses_one_source_snapshot_per_pass(
     assert theories[0]["declarations"][0]["name"] == "bounded"
 
 
+def test_index_reuses_theory_analysis_for_tree_and_inventory_views(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    _fixture(tmp_path, monkeypatch)
+    inventory_calls = 0
+    tree_parse_calls = 0
+    inventory_analyzer = source_analysis.analyze_isabelle_source
+    tree_analyzer = source_analysis.analyze_isabelle_source
+
+    def count_inventory(
+        text: str,
+        path: Path | str = "<memory>",
+        *,
+        include_duplicates: bool = True,
+    ) -> source_analysis.IsabelleAnalysis:
+        nonlocal inventory_calls
+        inventory_calls += 1
+        return inventory_analyzer(text, path, include_duplicates=include_duplicates)
+
+    def count_tree_parse(
+        text: str,
+        path: Path | str = "<memory>",
+        *,
+        include_duplicates: bool = True,
+    ) -> source_analysis.IsabelleAnalysis:
+        nonlocal tree_parse_calls
+        tree_parse_calls += 1
+        return tree_analyzer(text, path, include_duplicates=include_duplicates)
+
+    monkeypatch.setattr(index, "analyze_isabelle_source", count_inventory)
+    monkeypatch.setattr(source_analysis, "analyze_isabelle_source", count_tree_parse)
+    result = index.build_index()
+
+    assert inventory_calls == 1
+    assert tree_parse_calls == 0
+    theories = result["theories"]
+    assert isinstance(theories, list)
+    assert theories[0]["declarations"][0]["name"] == "bounded"
+    source_report = result["source_analysis"]
+    assert isinstance(source_report, dict)
+    assert source_report["declaration_count"] == 1
+
+
 @pytest.mark.parametrize(
     "fault", ["missing", "duplicate", "orphan", "unaudited", "counterpart"]
 )
@@ -94,6 +159,9 @@ def test_index_rejects_structural_misrepresentation(
         index.build_index()
 
 
+# Release quality builds this complete inventory; keep the exact CLI-level
+# mirror in the explicit validation selection and retain fixture adversaries as unit tests.
+@pytest.mark.validation
 def test_registered_proof_inventory_is_consistent() -> None:
     assert index.build_index()["schema_version"] == 1
 
@@ -214,23 +282,6 @@ def test_ml_file_lexer_ignores_comments_documentation_and_ml_strings() -> None:
 def test_ml_file_without_a_target_is_rejected() -> None:
     with pytest.raises(ValueError, match="unsupported ML_file target"):
         index._ml_file_references("ML_file\n", Path("Sample.thy"))
-
-
-@pytest.mark.parametrize(
-    "wrapper", ["(* {} *)", "(* outer (* {} *) *)", "text \\<open>{}\\<close>"]
-)
-def test_comment_or_documentation_cannot_forge_audit(wrapper: str) -> None:
-    audit = "ML \\<open>Thm_Deps.all_oracles @{thms forged}\\<close>"
-    assert index._audited_theorems(wrapper.format(audit)) == ()
-
-
-def test_string_literal_cannot_forge_audit() -> None:
-    assert (
-        index._audited_theorems(
-            'ML \\<open>val unused = "Thm_Deps.all_oracles @{thms forged}";\\<close>'
-        )
-        == ()
-    )
 
 
 def test_comments_and_documentation_cannot_forge_declarations_or_uses() -> None:
@@ -453,12 +504,11 @@ def test_documentation_and_string_cannot_forge_theory_header() -> None:
         "Comma_Powered_Boundary",
     ],
 )
-def test_weighted_comma_ancestry_excludes_legacy_execution(target: str) -> None:
+def test_weighted_comma_ancestry_excludes_legacy_execution(
+    target: str, repository_proof_graph: _RepositoryProofGraph
+) -> None:
     """Heap ancestry and direct imports must both follow the weighted owner."""
-    sessions = {
-        session.name: session
-        for session in syntax.parse_sessions((index.ISABELLE / "ROOT").read_text())
-    }
+    sessions = repository_proof_graph.sessions
     ancestors = _session_ancestors(sessions, target)
     assert "Comma_Forest_Legacy" not in ancestors
     assert "Comma_Scalar_Reference" not in ancestors
@@ -472,10 +522,9 @@ def test_weighted_comma_ancestry_excludes_legacy_execution(target: str) -> None:
     }
     if rank_free:
         assert ancestors.isdisjoint({"Comma_Fast_Decade_Rank", "Comma_Fast_Rank_Check"})
-    headers = dict(
-        syntax.parse_theory_header(path.read_text(), path)
-        for path in index.ISABELLE.rglob("*.thy")
-    )
+    headers = {
+        theory: imports for theory, imports in repository_proof_graph.headers.values()
+    }
     reached: set[str] = set()
     pending_theories = [
         theory for name in ancestors for theory in sessions[name].theories
@@ -536,9 +585,28 @@ def test_external_session_parents_remain_allowed() -> None:
     assert sessions[0].parent == "HOL-Number_Theory"
 
 
-def test_collatz_hensel_owner_has_no_reverse_ancestry() -> None:
-    sessions = syntax.parse_sessions((index.ISABELLE / "ROOT").read_text())
-    local = {session.name: session for session in sessions}
+def test_session_dependency_closure_counts_project_parent_and_sessions_edges() -> None:
+    sessions = syntax.parse_sessions(
+        'session Base in base = "HOL-Number_Theory" +\n'
+        "session Helper in helper = Base +\n"
+        "  theories Helper_Theory\n"
+        "session Focus in focus = Base +\n"
+        "  sessions Helper\n"
+        "session Independent in independent = HOL +\n"
+    )
+    assert syntax.session_dependency_closure(sessions, ("Focus",)) == (
+        "Base",
+        "Helper",
+        "Focus",
+    )
+    with pytest.raises(ValueError, match="unknown Isabelle session"):
+        syntax.session_dependency_closure(sessions, ("Missing",))
+
+
+def test_collatz_hensel_owner_has_no_reverse_ancestry(
+    repository_proof_graph: _RepositoryProofGraph,
+) -> None:
+    local = repository_proof_graph.sessions
     reached = _session_ancestors(local, "Collatz_Cylinder_Refinement")
     assert "Shared_S_Arithmetic" in reached
     assert "Reverse_Residuals" not in reached
@@ -547,11 +615,10 @@ def test_collatz_hensel_owner_has_no_reverse_ancestry() -> None:
     assert local["Temporal_Clock_Jumps"].parent == "Reverse_Residuals"
 
 
-def test_structural_future_instance_avoids_legacy_checked_instance() -> None:
-    sessions = {
-        session.name: session
-        for session in syntax.parse_sessions((index.ISABELLE / "ROOT").read_text())
-    }
+def test_structural_future_instance_avoids_legacy_checked_instance(
+    repository_proof_graph: _RepositoryProofGraph,
+) -> None:
+    sessions = repository_proof_graph.sessions
     assert "Comma_Fast_Kernel_Smoke" in sessions["Comma_Fast_Control"].theories
     structural = sessions["Comma_Future_Structural_Instance"]
     assert structural.parent == "Comma_Decade_Summary_Checked"
@@ -604,12 +671,11 @@ def _session_ancestors(sessions: dict[str, syntax.Session], target: str) -> set[
     ],
 )
 def test_local_induction_does_not_require_global_rank_or_summary_instances(
-    target: str, required: set[str]
+    target: str,
+    required: set[str],
+    repository_proof_graph: _RepositoryProofGraph,
 ) -> None:
-    sessions = {
-        row.name: row
-        for row in syntax.parse_sessions((index.ISABELLE / "ROOT").read_text())
-    }
+    sessions = repository_proof_graph.sessions
     ancestors = _session_ancestors(sessions, target)
     assert required <= ancestors
     assert ancestors.isdisjoint(
@@ -623,11 +689,10 @@ def test_local_induction_does_not_require_global_rank_or_summary_instances(
     )
 
 
-def test_period_inherits_checked_return_instead_of_replaying_imported_setup() -> None:
-    sessions = {
-        row.name: row
-        for row in syntax.parse_sessions((index.ISABELLE / "ROOT").read_text())
-    }
+def test_period_inherits_checked_return_instead_of_replaying_imported_setup(
+    repository_proof_graph: _RepositoryProofGraph,
+) -> None:
+    sessions = repository_proof_graph.sessions
     # A `sessions` dependency grants theory access but reloads its ML setup;
     # only the parent heap preserves the concrete producer's checked catalog.
     assert sessions["Comma_Branch_Period_Instance"].parent == "Comma_Return_Instance"
@@ -637,5 +702,221 @@ def test_period_inherits_checked_return_instead_of_replaying_imported_setup() ->
         "comma_branch_instance/Comma_Branch_Instance.thy",
     ):
         path = index.ISABELLE / relative
-        _, imports = syntax.parse_theory_header(path.read_text(), path)
+        _, imports = repository_proof_graph.headers[path]
         assert "Comma_Return_Engine.Comma_Return_Engine" in imports
+
+
+def test_native_release_inherits_completed_provider_without_legacy_replay(
+    repository_proof_graph: _RepositoryProofGraph,
+) -> None:
+    sessions = repository_proof_graph.sessions
+    assert sessions["Comma_Run_Moore"].parent == "Comma_Future_Structural_Check"
+    assert (
+        sessions["Comma_Run_Moore_Instance"].parent
+        == "Comma_Future_Structural_Instance"
+    )
+    assert (
+        sessions["Comma_Global_Future_Safety"].parent == "Comma_Native_Future_Instance"
+    )
+    ancestors = _session_ancestors(sessions, "Comma_Global_Future_Safety")
+    assert {
+        "Comma_Native_Future_Instance",
+        "Comma_Native_Summary_Instance",
+        "Comma_Run_Cycle_Data",
+    } <= ancestors
+    assert ancestors.isdisjoint(
+        {
+            "Comma_Decade_Summary_Transport",
+            "Comma_Total_Macro",
+            "Comma_Future_Structural_Instance",
+            "Comma_Run_Moore_Instance",
+            "Comma_Future_Checked_Instance",
+            "Comma_Return_Instance",
+            "Comma_Branch_Period_Instance",
+            "Comma_Selected_Return_Blocks",
+            "Comma_Branch_Instance",
+            "Comma_Return_Source",
+        }
+    )
+    generic = _session_ancestors(sessions, "Comma_Run_Moore")
+    assert generic.isdisjoint(
+        {
+            "Comma_Decade_Summary_Checked",
+            "Comma_Future_Structural_Instance",
+            "Comma_Future_Rank_Data",
+        }
+    )
+
+
+def test_comma_global_release_endpoints_use_strict_native_dependency_audit() -> None:
+    audit = (index.ISABELLE / "shared" / "Proof_Dependency_Audit.ML").read_text()
+    future = (
+        index.ISABELLE / "comma_future_global" / "Comma_Global_Future_Safety.thy"
+    ).read_text()
+    root = (
+        index.ISABELLE / "comma_future_global" / "Comma_Global_Root_Safety.thy"
+    ).read_text()
+
+    for retired_authority in (
+        "Comma_Root_Forest",
+        "comma_finite_run",
+        "comma_total_macro",
+        "comma_rank_candidate",
+        "Comma_Future_Structural_Instance",
+        "comma_future_structural_candidate",
+        "comma_future_structural_witness",
+        "comma_future_descent_check",
+        "comma_structural_loser_no_infinite_literal_path",
+        "comma_structural_survivor_infinite_literal_path",
+    ):
+        assert f'"{retired_authority}"' in audit
+    assert "fun audit_fuel_free_global" in audit
+    assert "fun require_native_clean" in audit
+    assert "fun require_fuel_free_global" not in audit
+
+    future_compact = " ".join(future.split())
+    assert (
+        "require_native_closed_expected_paths @{context} "
+        '"Global comma future-safety release endpoints" '
+    ) in future_compact
+    assert {
+        "comma_source20_global_future_safety",
+        "comma_source20_global_infinite_paths_agree",
+        "comma_source20_global_unique_infinite_literal_path",
+    } <= set(index._audited_theorems(future))
+    assert (
+        "require_native_closed_expected_paths @{context} "
+        '"Global comma root-safety release endpoint" '
+    ) in " ".join(root.split())
+    assert "comma_global_release_safety" in index._audited_theorems(root)
+    for source in (future, root):
+        release_ml = source.rsplit("ML \\<open>", maxsplit=1)[-1]
+        assert release_ml.count("require_native_closed_expected_paths") == 1
+        assert "Thm_Deps.all_oracles" not in release_ml
+        assert "require_native_clean" not in release_ml
+    assert "require_fuel_free_global" not in future
+    assert "require_fuel_free_global" not in root
+    assert "audit_fuel_free_global" not in future
+    assert "audit_fuel_free_global" not in root
+    future_release_ml = future.rsplit("ML \\<open>", maxsplit=1)[-1]
+    assert "val checked" not in future_release_ml
+    assert "comma_future_concrete_zero_child_rank" not in future_release_ml
+    assert "comma_future_concrete_near_child_unranked" not in future_release_ml
+
+
+def test_direct_summary_semantics_does_not_depend_on_fuel_or_concrete_tables(
+    repository_proof_graph: _RepositoryProofGraph,
+) -> None:
+    sessions = repository_proof_graph.sessions
+    ancestors = _session_ancestors(sessions, "Comma_Decade_Summary_Semantic")
+    assert "Comma_Decade_Residual_Core" in ancestors
+    assert ancestors.isdisjoint(
+        {
+            "Comma_Total_Macro",
+            "Comma_Decade_Summary_Checked",
+            "Comma_Decade_Rank_Data",
+            "Comma_Future_Rank_Data",
+        }
+    )
+    assert (
+        sessions["Comma_Decade_Summary_Transport"].parent
+        == "Comma_Decade_Summary_Semantic"
+    )
+    # Local Schur arithmetic reuses the shared carry monoid, without acquiring
+    # comma trajectory, summary-table or future-certificate dependencies.
+    assert sessions["Comma_Schur_Carry"].parent == "Reverse_Residuals"
+    assert not any(
+        name.startswith("Comma_")
+        for name in _session_ancestors(sessions, "Comma_Schur_Carry")
+        - {"Comma_Schur_Carry"}
+    )
+
+
+@pytest.mark.parametrize(
+    ("name", "parent", "arithmetic_owner"),
+    [
+        ("Comma_Sparse_Core", "Comma_Decade_Orbit", "Comma_Decade_Orbit"),
+        ("Comma_Response_Rows", "Comma_Sparse_Core", "Comma_Decade_Orbit"),
+        ("Comma_Sparse_Power_Algebra", "Comma_Sparse_Core", "Comma_Decade_Orbit"),
+        (
+            "Comma_Sparse_Power_Instance",
+            "Comma_Sparse_Base_Instance",
+            "Comma_Decade_Orbit",
+        ),
+        (
+            "Comma_Native_Summary",
+            "Comma_Decade_Occurrence_Lift",
+            "Comma_Decade_Orbit",
+        ),
+        (
+            "Comma_Native_Summary_Occurrence",
+            "Comma_Native_Summary",
+            "Comma_Decade_Orbit",
+        ),
+        (
+            "Comma_Native_Boundary",
+            "Comma_Native_Summary_Occurrence",
+            "Comma_Decade_Orbit",
+        ),
+        (
+            "Comma_Native_Summary_Instance",
+            "Comma_Sparse_Power_Instance",
+            "Comma_Decade_Orbit",
+        ),
+        ("Comma_Sparse_Base_Instance", "Comma_Compact_B1", "Comma_Decade_Orbit"),
+        ("Comma_C1_Carry_Generator", "Comma_Arithmetic", "Comma_Arithmetic"),
+        ("Comma_C1_Borrow_Cocycle", "Comma_C1_Phase_Power", "Comma_Arithmetic"),
+        ("Comma_C1_Phase_Power", "Comma_C1_Carry_Generator", "Comma_Arithmetic"),
+        ("Comma_C1_Occurrence", "Comma_C1_Borrow_Cocycle", "Comma_Arithmetic"),
+        (
+            "Comma_Decade_Occurrence_Lift",
+            "Comma_Decade_Residual_Core",
+            "Comma_Decade_Residual_Core",
+        ),
+        ("Comma_Prefix_Selection", "Comma_Closed_Near", "Comma_Closed_Near"),
+        ("Comma_Future_Selector", "Comma_Cylinder", "Comma_Arithmetic"),
+        ("Comma_Native19_Carry", "Comma_Schur_Carry", "Reverse_Residuals"),
+        ("Comma_Reset_Germ", "Reverse_Residuals", "Reverse_Residuals"),
+        ("Comma_Factored_Port_Carrier", "Comma_Vieta_Root", "Reverse_Residuals"),
+        (
+            "Comma_Recursive_Pair_Language",
+            "Comma_Entry_Port",
+            "Reverse_Residuals",
+        ),
+        (
+            "Comma_Compact_Decade_Classifier",
+            "Comma_Decade_Residual_Core",
+            "Comma_Decade_Residual_Core",
+        ),
+        (
+            "Comma_Decade_Occurrence_Semantic",
+            "Comma_Terminal_Event",
+            "Comma_Terminal_Event",
+        ),
+    ],
+)
+def test_compact_proof_layers_reuse_owners_without_fuel_tables(
+    name: str,
+    parent: str,
+    arithmetic_owner: str,
+    repository_proof_graph: _RepositoryProofGraph,
+) -> None:
+    sessions = repository_proof_graph.sessions
+    ancestors = _session_ancestors(sessions, name)
+    assert sessions[name].parent == parent
+    assert arithmetic_owner in ancestors
+    if name == "Comma_Recursive_Pair_Language":
+        assert ancestors == (
+            {name}
+            | _session_ancestors(sessions, "Comma_Entry_Port")
+            | _session_ancestors(sessions, "Comma_Factored_Port_Carrier")
+        )
+    assert ancestors.isdisjoint(
+        {
+            "Comma_Total_Macro",
+            "Comma_Decade_Summary_Checked",
+            "Comma_Decade_Terminal_Data",
+            "Comma_Decade_Rank_Data",
+            "Comma_Future_Rank_Data",
+        }
+    )

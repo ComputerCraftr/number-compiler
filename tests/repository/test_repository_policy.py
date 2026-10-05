@@ -1,13 +1,18 @@
+import os
+from collections.abc import Callable, Iterator
 from pathlib import Path
 
 import pytest
 
+from devtools.checks import repository_policy as policy_checker
 from devtools.checks.repository_policy import (
     MAX_SOURCE_LINES,
+    isabelle_session_option_violations,
     physical_line_count,
     recursion_cycles,
     repository_policy_report,
     source_line_violations,
+    validation_entrypoint_violations,
 )
 from devtools.paths import repository_root
 
@@ -19,6 +24,9 @@ def policy_report() -> dict[str, object]:
     return repository_policy_report(ROOT)
 
 
+# Release quality runs the same whole-tree report once; keep its individual
+# conformance assertions in the explicit validation selection, not default unit.
+@pytest.mark.validation
 def test_all_source_files_stay_at_or_below_the_single_global_line_cap(
     policy_report: dict[str, object],
 ) -> None:
@@ -26,18 +34,184 @@ def test_all_source_files_stay_at_or_below_the_single_global_line_cap(
     assert policy_report["source_line_violations"] == ()
 
 
+def test_aggregate_policy_report_uses_one_authored_source_walk(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    package = tmp_path / "src" / "number_compiler"
+    package.mkdir(parents=True)
+    (package / "__init__.py").write_text('"""test package"""\n')
+    tests = tmp_path / "tests"
+    tests.mkdir()
+    (tests / "__init__.py").write_text('"""Temporary policy test package."""\n')
+    (tests / "test_sample.py").write_text("def sample() -> int:\n    return 1\n")
+    original_walk = policy_checker._iter_authored_files
+    walk_calls = 0
+
+    def count_walks(root: Path) -> tuple[Path, ...]:
+        nonlocal walk_calls
+        walk_calls += 1
+        return original_walk(root)
+
+    monkeypatch.setattr(policy_checker, "_iter_authored_files", count_walks)
+    report = repository_policy_report(tmp_path)
+    assert walk_calls == 1
+    assert report["source_line_violations"] == ()
+    assert report["package_violations"] == ()
+
+
+@pytest.mark.validation
+def test_repository_root_has_no_session_level_execution_overrides(
+    policy_report: dict[str, object],
+) -> None:
+    assert policy_report["isabelle_session_option_violations"] == ()
+
+
+@pytest.mark.validation
 def test_repository_python_call_graph_has_no_direct_or_mutual_recursion(
     policy_report: dict[str, object],
 ) -> None:
     assert policy_report["recursion_cycles"] == ()
 
 
+@pytest.mark.validation
 def test_repository_has_no_substantial_alpha_equivalent_logic(
     policy_report: dict[str, object],
 ) -> None:
     assert policy_report["duplicate_bodies"] == (), (
         "Duplicate logic: run python -m devtools.checks.repository_policy for exact locations"
     )
+
+
+def test_isabelle_session_execution_options_are_centralized(tmp_path: Path) -> None:
+    root = tmp_path / "proofs" / "isabelle" / "ROOT"
+    root.parent.mkdir(parents=True)
+    root.write_text(
+        "(* options [threads=1] is only a comment *)\n"
+        "session Base = HOL +\n"
+        "  options [document = false, quick_and_dirty = false]\n"
+        "  theories Base_Theory\n"
+    )
+    assert isabelle_session_option_violations(tmp_path) == ()
+
+    root.write_text(
+        "session Base = HOL +\n"
+        "  options [document = false, threads = 1, timeout = 900]\n"
+        "  theories Base_Theory\n"
+    )
+    assert isabelle_session_option_violations(tmp_path) == (
+        "proofs/isabelle/ROOT:2: session option threads=1 overrides shared policy",
+        "proofs/isabelle/ROOT:2: session option timeout=900 overrides shared policy",
+    )
+
+
+def test_isabelle_execution_policy_finds_inline_and_multiline_options(
+    tmp_path: Path,
+) -> None:
+    root = tmp_path / "proofs" / "isabelle" / "ROOT"
+    root.parent.mkdir(parents=True)
+    root.write_text(
+        'session Inline = HOL + options [document=false, label="threads=1"]\n'
+        "  theories Inline_Theory\n"
+        "session Multiline = HOL +\n"
+        "  options [document = false,\n"
+        '    note = "parallel_proofs=9,timeout=900",\n'
+        "    parallel_proofs = 2,\n"
+        "    timeout_scale = 3]\n"
+        "  theories Multiline_Theory\n"
+        "(* session Hidden = HOL + options [threads=1] *)\n"
+    )
+    assert isabelle_session_option_violations(tmp_path) == (
+        "proofs/isabelle/ROOT:6: session option parallel_proofs=2 overrides shared policy",
+        "proofs/isabelle/ROOT:7: session option timeout_scale=3 overrides shared policy",
+    )
+
+
+def test_validation_entrypoints_require_the_runner_and_block_direct_pytest(
+    tmp_path: Path,
+) -> None:
+    checks = tmp_path / "devtools" / "checks"
+    checks.mkdir(parents=True)
+    (checks / "unguarded.py").write_text(
+        "def main():\n    return 0\n\n"
+        'if __name__ == "__main__":\n'
+        "    def unused():\n"
+        "        from devtools.runs import run_reported\n"
+        "        return run_reported(main)\n"
+        "    raise SystemExit(main())\n"
+    )
+    (checks / "direct.py").write_text(
+        "import subprocess\nimport sys\n\n"
+        "def main():\n"
+        '    subprocess.run([sys.executable, "-m", "pytest"])\n'
+        "    return \"subprocess.run([sys.executable, '-m', 'pytest'])\"\n\n"
+        'if __name__ == "__main__":\n'
+        "    from devtools.runs import run_reported\n"
+        "    raise SystemExit(run_reported(main))\n"
+    )
+    (checks / "reversed.py").write_text(
+        "def main():\n    return 0\n\n"
+        'if "__main__" == __name__:\n'
+        "    from ..runs import run_reported\n"
+        "    raise SystemExit(run_reported(main))\n"
+    )
+    (checks / "unreachable.py").write_text(
+        "def main():\n    return 0\n\n"
+        'if __name__ == "__main__":\n'
+        "    if False:\n"
+        "        from devtools.runs import run_reported\n"
+        "        run_reported(main)\n"
+        "    raise SystemExit(main())\n"
+    )
+    (checks / "aliased_launchers.py").write_text(
+        "import subprocess as sp\n"
+        "import pytest as pt\n"
+        "from subprocess import run as launch\n"
+        "from pytest import main as pytest_main\n"
+        "import sys as runtime\n\n"
+        "def main():\n"
+        '    sp.run([runtime.executable, "-m", "pytest"])\n'
+        '    launch(["pytest", "tests/sample.py"])\n'
+        '    pt.main(["tests/sample.py"])\n'
+        '    pytest_main(["tests/sample.py"])\n\n'
+        'if __name__ == "__main__":\n'
+        "    from devtools.runs import run_reported as report\n"
+        "    raise SystemExit(report(main))\n"
+    )
+    assert validation_entrypoint_violations(tmp_path) == (
+        "devtools/checks/aliased_launchers.py:10: pytest must be launched by the shared release runner",
+        "devtools/checks/aliased_launchers.py:11: pytest must be launched by the shared release runner",
+        "devtools/checks/aliased_launchers.py:8: pytest must be launched by the shared release runner",
+        "devtools/checks/aliased_launchers.py:9: pytest must be launched by the shared release runner",
+        "devtools/checks/direct.py:5: pytest must be launched by the shared release runner",
+        "devtools/checks/unguarded.py:4: standalone validation entry point must call run_reported",
+        "devtools/checks/unreachable.py:4: standalone validation entry point must call run_reported",
+    )
+
+
+def test_isabelle_review_uses_the_shared_source_analysis(tmp_path: Path) -> None:
+    from devtools.checks.isabelle_source_analysis import analysis_report
+
+    proofs = tmp_path / "proofs" / "isabelle"
+    proofs.mkdir(parents=True)
+    (proofs / "Example.thy").write_text(
+        'definition first where "first x = x * 2 + 1"\n'
+        'definition second where "second y = y * 2 + 1"\n'
+    )
+    review = analysis_report(proofs)
+    assert review["duplicates"]
+
+
+def test_proof_inventory_uses_shared_declaration_owner() -> None:
+    from devtools.checks.isabelle_proof_index import _declarations
+
+    declarations = _declarations(
+        '  lemma real: "True" by simp\n'
+        '  text \\<open>lemma fake: "False" by simp\\<close>\n'
+        '  ML_prf \\<open>val x = "lemma also_fake: False"\\<close>\n'
+    )
+    assert [entry["name"] for entry in declarations] == ["real"]
+    assert declarations[0]["line"] == 1
+    assert declarations[0]["statement_and_assumptions"] == ': "True"'
 
 
 def test_recursion_cycle_checker_detects_direct_and_cross_module_mutual_cycles(
@@ -175,6 +349,52 @@ def test_generated_run_sources_are_not_authored_policy_inputs(tmp_path: Path) ->
     authored.write_text(generated.read_text())
     assert source_line_violations(tmp_path)
     assert recursion_cycles(tmp_path)
+
+
+def test_policy_walk_prunes_generated_roots_before_descending(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    for relative in (
+        "results/runs/large/ignored.py",
+        ".venv/lib/python/site-packages/ignored.py",
+    ):
+        generated = tmp_path / relative
+        generated.parent.mkdir(parents=True, exist_ok=True)
+        generated.write_text(
+            "def obsolete():\n    return obsolete()\n" + "# raw\n" * 1001
+        )
+
+    authored = tmp_path / "src/results/authored.py"
+    authored.parent.mkdir(parents=True)
+    authored.write_text("def cycle():\n    return cycle()\n" + "# authored\n" * 999)
+
+    visited: list[Path] = []
+    original_walk = os.walk
+
+    def recording_walk(
+        root: Path,
+        topdown: bool = True,
+        onerror: Callable[[OSError], None] | None = None,
+        followlinks: bool = False,
+    ) -> Iterator[tuple[str, list[str], list[str]]]:
+        for current, dirnames, filenames in original_walk(
+            root,
+            topdown=topdown,
+            onerror=onerror,
+            followlinks=followlinks,
+        ):
+            visited.append(Path(current).relative_to(tmp_path))
+            yield current, dirnames, filenames
+
+    monkeypatch.setattr(os, "walk", recording_walk)
+    assert source_line_violations(tmp_path) == (("src/results/authored.py", 1001),)
+    assert recursion_cycles(tmp_path) == (("results.authored:cycle",),)
+    assert Path("src/results") in visited
+    assert not any(
+        relative.parts and relative.parts[0] in {"results", ".venv"}
+        for relative in visited
+    )
 
 
 def test_recursive_local_aliases_and_lambdas_are_not_escape_hatches(

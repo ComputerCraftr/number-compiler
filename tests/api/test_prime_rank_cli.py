@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import json
-from collections.abc import Iterator
 from types import SimpleNamespace
 from typing import cast
 
@@ -12,12 +11,7 @@ from number_compiler.api.cli_context import QueryContext
 from number_compiler.api.cli_requests import QueryRequest, parse_request
 from number_compiler.api.number_api import NumberCompiler, ProjectedNumberTerm
 
-
-@pytest.fixture(autouse=True)
-def cold_process_cache() -> Iterator[None]:
-    NumberCompiler.clear_shared_cache()
-    yield
-    NumberCompiler.clear_shared_cache()
+pytestmark = pytest.mark.usefixtures("isolated_process_cache")
 
 
 @pytest.mark.parametrize("invalid", (0, 1, None, "yes"))

@@ -5,6 +5,7 @@ from __future__ import annotations
 import argparse
 import itertools
 import json
+import os
 from dataclasses import asdict
 from importlib import import_module
 from random import Random
@@ -16,10 +17,12 @@ from devtools.benchmarks.temporal_probe_support import (
     shared_cutover_sources,
 )
 from devtools.benchmarks.tile_projection_accounting import (
+    explicit_resource_audit,
     projection_accounting,
 )
 from devtools.checks.dependency_graph import source_syntax
-from devtools.checks.test_run_evidence import source_fingerprint
+from devtools.checks.test_run_evidence import PROVENANCE_MODE_ENV
+from devtools.git_source import git_source, same_git_revision
 from devtools.paths import report_directory, repository_root
 from devtools.runs import run_reported
 from number_compiler.api.cli_context import QueryContext
@@ -131,6 +134,7 @@ def _projection_rows() -> list[dict[str, object]]:
         if term.digit(0) != low:
             raise AssertionError(("source-image-replay-mismatch", steps, low))
         replay_publications = term._ledger.counters
+        audit, audit_seconds, audit_work = explicit_resource_audit(term._ledger)
         diagnostic = metrics.temporal_diagnostics
         if diagnostic.schema_version != metrics.metrics_schema_version:
             raise AssertionError(("temporal-diagnostic-schema-mismatch", steps))
@@ -211,13 +215,10 @@ def _projection_rows() -> list[dict[str, object]]:
             raise AssertionError(("direct-composite-cutover-missing", steps))
         if metrics.direct_powered_point_queries != 1:
             raise AssertionError(("not-direct-point", steps, metrics))
-        if not metrics.resource_audit_complete or metrics.resource_accounting_mismatch:
-            raise AssertionError(("incomplete-resource-inventory", steps, metrics))
-        if (
-            metrics.forbidden_future_payloads
-            or metrics.retained_unbounded_future_integers
-        ):
-            raise AssertionError(("future-payload-retained", steps, metrics))
+        if not audit.resource_audit_complete or audit.resource_accounting_mismatch:
+            raise AssertionError(("incomplete-explicit-resource-audit", steps, audit))
+        if audit.forbidden_future_payloads or audit.retained_unbounded_future_integers:
+            raise AssertionError(("future-payload-retained", steps, audit))
         rows.append(
             {
                 **scheduler_work,
@@ -238,16 +239,23 @@ def _projection_rows() -> list[dict[str, object]]:
                     == first_publications.get("source_image_projection_publications", 0)
                 ),
                 "resource_accounting_exact": (
-                    metrics.resource_audit_complete == 1
-                    and metrics.resource_accounting_mismatch == 0
+                    audit.resource_audit_complete == 1
+                    and audit.resource_accounting_mismatch == 0
                 ),
+                "explicit_resource_audit_seconds": audit_seconds,
+                "explicit_resource_audit_work_counters": audit_work,
                 "steps": steps,
                 "index_bits": max(1, steps.bit_length()),
                 "schema_version": metrics.metrics_schema_version,
-                "resource_audit_complete": metrics.resource_audit_complete,
-                "resource_accounting_mismatch": metrics.resource_accounting_mismatch,
-                "forbidden_future_payloads": metrics.forbidden_future_payloads,
-                "retained_unbounded_future_integers": metrics.retained_unbounded_future_integers,
+                "resource_audit_complete": audit.resource_audit_complete,
+                "resource_accounting_mismatch": audit.resource_accounting_mismatch,
+                "resource_audit_unknown_payloads": audit.resource_audit_unknown_payloads,
+                "resource_unregistered_containers": audit.resource_unregistered_containers,
+                "resource_unregistered_payload_resolvers": (
+                    audit.resource_unregistered_payload_resolvers
+                ),
+                "forbidden_future_payloads": audit.forbidden_future_payloads,
+                "retained_unbounded_future_integers": audit.retained_unbounded_future_integers,
                 "retained_entries": metrics.resource_ledger_entries,
                 "cache_slots": metrics.cache_slots,
                 "exact_source_occurrences": metrics.exact_source_occurrences,
@@ -512,7 +520,7 @@ def balanced_scaling(
     ``repeat`` reuses a NumberCompiler term; ``process-warm`` creates a fresh
     compiler for each trial and can reuse only admitted process-cache records.
     """
-    fingerprint = source_fingerprint(ROOT)
+    before_source = git_source(ROOT)
     rows: list[dict[str, object]] = []
     for steps in indices:
         seed = (
@@ -629,12 +637,14 @@ def balanced_scaling(
                     "peak_nodes": ledger.peak_nodes,
                 }
             )
-    after = source_fingerprint(ROOT)
-    if after != fingerprint:
-        raise AssertionError("source changed during temporal scaling probe")
+    after_source = git_source(ROOT)
     return {
-        "source_before": fingerprint,
-        "source_after": after,
+        "git_source_before": before_source.as_dict(),
+        "git_source_after": after_source.as_dict(),
+        "git_revision_unchanged": same_git_revision(before_source, after_source),
+        "evidence_mode": os.environ.get(PROVENANCE_MODE_ENV, "development"),
+        "cacheable": False,
+        "reusable": False,
         "scope": "public query in warm interpreter; full audit timed separately; finite workload evidence",
         "timing_scope": {
             "construction_seconds": "source-image construction plus exact endpoint demand",
@@ -661,7 +671,7 @@ def limb_projection(
     # The payload imports the radix provider lazily. Exclude one-time Python
     # module loading from per-term demand work without warming any term/cache.
     import_module("number_compiler.projection.lazy_radix")
-    fingerprint = source_fingerprint(ROOT)
+    before_source = git_source(ROOT)
     rows: list[dict[str, object]] = []
     for steps in indices:
         seed_bits = max(256, steps)
@@ -833,12 +843,14 @@ def limb_projection(
                         },
                     }
                 )
-    after = source_fingerprint(ROOT)
-    if after != fingerprint:
-        raise AssertionError("source changed during limb projection probe")
+    after_source = git_source(ROOT)
     return {
-        "source_before": fingerprint,
-        "source_after": after,
+        "git_source_before": before_source.as_dict(),
+        "git_source_after": after_source.as_dict(),
+        "git_revision_unchanged": same_git_revision(before_source, after_source),
+        "evidence_mode": os.environ.get(PROVENANCE_MODE_ENV, "development"),
+        "cacheable": False,
+        "reusable": False,
         "scope": "fresh public Collatz payloads; independent literal oracle outside timings",
         "construction_note": "source images constructed before projection timing; no CLI constructor speedup inferred",
         "rows": rows,

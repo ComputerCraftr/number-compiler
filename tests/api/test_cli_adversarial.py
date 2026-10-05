@@ -356,7 +356,6 @@ def test_real_cli_invalid_option_exits_without_traceback() -> None:
         env=dict(os.environ),
         capture_output=True,
         text=True,
-        timeout=10,
         check=False,
     )
     assert result.returncode == 2

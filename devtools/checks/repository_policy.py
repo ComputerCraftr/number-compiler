@@ -7,6 +7,7 @@ Python recursion applies to the checker itself as well as production code.
 from __future__ import annotations
 
 import ast
+import os
 from collections.abc import Mapping
 from dataclasses import dataclass
 from pathlib import Path
@@ -49,12 +50,7 @@ def _module_name(root: Path, path: Path) -> str:
 
 
 def _iter_python_files(root: Path) -> tuple[Path, ...]:
-    files: list[Path] = []
-    for path in root.rglob("*.py"):
-        if _ignored_source_path(path.relative_to(root)):
-            continue
-        files.append(path)
-    return tuple(sorted(files))
+    return tuple(path for path in _iter_authored_files(root) if path.suffix == ".py")
 
 
 def _ignored_source_path(relative: Path) -> bool:
@@ -64,12 +60,54 @@ def _ignored_source_path(relative: Path) -> bool:
     )
 
 
+def _iter_authored_files(root: Path) -> tuple[Path, ...]:
+    """List repository files without descending into generated directories."""
+    files: list[Path] = []
+    for directory, dirnames, filenames in os.walk(
+        root, topdown=True, followlinks=False
+    ):
+        parent = Path(directory)
+        relative_parent = parent.relative_to(root)
+        dirnames[:] = sorted(
+            name
+            for name in dirnames
+            if not _ignored_source_path(relative_parent / name)
+        )
+        for name in filenames:
+            path = parent / name
+            if path.is_file():
+                files.append(path)
+    return tuple(sorted(files))
+
+
 def _parsed_python_sources(root: Path) -> dict[Path, ast.Module]:
     """Parse a fresh repository snapshot for one aggregate policy report."""
     return {
         path: ast.parse(path.read_text(encoding="utf-8"), filename=str(path))
         for path in _iter_python_files(root)
     }
+
+
+@dataclass(frozen=True, slots=True)
+class _PolicySnapshot:
+    authored_files: tuple[Path, ...]
+    source_line_counts: dict[Path, int]
+    parsed_python: dict[Path, ast.Module]
+
+
+def _policy_snapshot(root: Path) -> _PolicySnapshot:
+    """Read and parse one authored-source snapshot for aggregate policy checks."""
+    files = _iter_authored_files(root)
+    counts: dict[Path, int] = {}
+    parsed: dict[Path, ast.Module] = {}
+    for path in files:
+        if path.suffix not in SOURCE_SUFFIXES and path.name not in SOURCE_FILENAMES:
+            continue
+        text = path.read_text(encoding="utf-8")
+        counts[path] = text.count("\n") + int(bool(text) and not text.endswith("\n"))
+        if path.suffix == ".py":
+            parsed[path] = ast.parse(text, filename=str(path))
+    return _PolicySnapshot(files, counts, parsed)
 
 
 def physical_line_count(path: Path) -> int:
@@ -85,19 +123,60 @@ def physical_line_count(path: Path) -> int:
 def source_line_violations(
     root: Path,
     limit: int = MAX_SOURCE_LINES,
+    *,
+    authored_files: tuple[Path, ...] | None = None,
+    line_counts: Mapping[Path, int] | None = None,
 ) -> tuple[tuple[str, int], ...]:
     """Check every authored Python source, including tests and developer tools."""
     violations: list[tuple[str, int]] = []
-    for path in sorted(p for p in root.rglob("*") if p.is_file()):
+    for path in (
+        _iter_authored_files(root) if authored_files is None else authored_files
+    ):
         rel = path.relative_to(root)
         if path.suffix not in SOURCE_SUFFIXES and path.name not in SOURCE_FILENAMES:
             continue
-        if _ignored_source_path(rel):
-            continue
-        lines = physical_line_count(path)
+        lines = (
+            line_counts[path]
+            if line_counts is not None and path in line_counts
+            else physical_line_count(path)
+        )
         if lines > int(limit):
             violations.append((rel.as_posix(), lines))
     return tuple(violations)
+
+
+def isabelle_session_option_violations(root: Path) -> tuple[str, ...]:
+    """Reject per-session execution settings that bypass the shared policy."""
+    from devtools.checks.isabelle_syntax import root_option_assignments
+
+    root_file = Path(root) / "proofs" / "isabelle" / "ROOT"
+    if not root_file.is_file():
+        return ()
+    options = root_option_assignments(root_file.read_text(encoding="utf-8"))
+    policy_settings = {"threads", "parallel_proofs", "timeout", "timeout_scale"}
+    violations: list[str] = []
+    for option in options:
+        if option.name in policy_settings:
+            violations.append(
+                f"proofs/isabelle/ROOT:{option.line}: session option "
+                f"{option.name}={option.value} overrides shared policy"
+            )
+    return tuple(violations)
+
+
+def validation_entrypoint_violations(
+    root: Path,
+    parsed_sources: Mapping[Path, ast.Module] | None = None,
+) -> tuple[str, ...]:
+    from devtools.checks.validation_entrypoints import (
+        validation_entrypoint_violations as inspect_entrypoints,
+    )
+
+    root = Path(root).resolve()
+    sources = (
+        parsed_sources if parsed_sources is not None else _parsed_python_sources(root)
+    )
+    return inspect_entrypoints(root, sources, lambda path: _module_name(root, path))
 
 
 def _function_catalog(
@@ -700,19 +779,32 @@ def repository_policy_report(root: Path) -> dict[str, object]:
     )
 
     root = Path(root).resolve()
-    parsed_sources = _parsed_python_sources(root)
+    snapshot = _policy_snapshot(root)
+    parsed_sources = snapshot.parsed_python
     return {
         "max_source_lines": MAX_SOURCE_LINES,
         "clone_minimum_expression_statement_nodes": MIN_CLONE_NODES,
         "clone_minimum_statements": MIN_CLONE_STATEMENTS,
         "clone_minimum_single_statement_operations": MIN_SINGLE_STATEMENT_OPERATIONS,
-        "source_line_violations": source_line_violations(root),
+        "source_line_violations": source_line_violations(
+            root,
+            authored_files=snapshot.authored_files,
+            line_counts=snapshot.source_line_counts,
+        ),
+        "isabelle_session_option_violations": isabelle_session_option_violations(root),
+        "validation_entrypoint_violations": validation_entrypoint_violations(
+            root, parsed_sources
+        ),
         "recursion_cycles": recursion_cycles(root, parsed_sources=parsed_sources),
         "duplicate_bodies": tuple(
             tuple(asdict(site) for site in group)
             for group in duplicate_bodies(root, parsed_sources)
         ),
-        "package_violations": package_violations(root, parsed_sources=parsed_sources),
+        "package_violations": package_violations(
+            root,
+            parsed_sources=parsed_sources,
+            module_paths=tuple(parsed_sources),
+        ),
     }
 
 
@@ -720,10 +812,12 @@ __all__ = [
     "MAX_SOURCE_LINES",
     "SOURCE_FILENAMES",
     "SOURCE_SUFFIXES",
+    "isabelle_session_option_violations",
     "physical_line_count",
     "recursion_cycles",
     "repository_policy_report",
     "source_line_violations",
+    "validation_entrypoint_violations",
 ]
 
 
@@ -738,6 +832,8 @@ def main() -> int:
     return int(
         bool(
             report["source_line_violations"]
+            or report["isabelle_session_option_violations"]
+            or report["validation_entrypoint_violations"]
             or report["recursion_cycles"]
             or report["duplicate_bodies"]
             or report["package_violations"]
@@ -746,4 +842,6 @@ def main() -> int:
 
 
 if __name__ == "__main__":
-    raise SystemExit(main())
+    from devtools.runs import run_reported
+
+    raise SystemExit(run_reported(main))

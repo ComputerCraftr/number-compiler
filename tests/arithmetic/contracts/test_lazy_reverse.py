@@ -62,6 +62,25 @@ def test_carry_code_preserves_k1_distinct_from_identity() -> None:
     assert application._carry_code_from_summary(summary) == 2
 
 
+def test_carry_range_miss_is_not_looked_up_twice(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    application = LazyReverseApplication(10, 0, 1, (7, 18, 7))
+    original = application._range_action
+    parent_lookups: list[tuple[int, int, int]] = []
+
+    def track_range_action(
+        generation: int, stop: int, level: int = 1
+    ) -> TransferSummaryID | None:
+        if (generation, stop, level) == (0, 2, 1):
+            parent_lookups.append((generation, stop, level))
+        return original(generation, stop, level)
+
+    monkeypatch.setattr(application, "_range_action", track_range_action)
+    application._evaluate(("carry", 0, 2), OrderedDict())
+    assert parent_lookups == [(0, 2, 1)]
+
+
 @pytest.mark.validation  # Full N=256 representation and retention workload.
 def test_lazy_reverse_256_keeps_programs_and_range_functions_only() -> None:
     tiles_before = tile_arena_metrics()["intern_misses"]

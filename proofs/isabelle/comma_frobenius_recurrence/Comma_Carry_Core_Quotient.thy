@@ -382,6 +382,52 @@ proof -
   show ?thesis by (simp only: same comma_core_power_residue_refines[OF catalog])
 qed
 
+text \<open>The native occurrence layer retains the physical exponent, while
+the carry action consumes only the finite phase residue.  This bridge is the
+single point where the normalized \(5+t\) core representative is related to
+an arbitrary physical exponent past primary saturation.  It deliberately
+reuses the checked power-residue refinement above; no second CRT or period
+calculation is performed here.\<close>
+
+lemma comma_recursive_core_physical_exponent:
+  assumes catalog: "P\<in>comma_cycle_displacements"
+    and lower: "5\<le>p"
+  shows "comma_recursive_core_power_residue P (p mod 924)=10^p mod P"
+proof -
+  have core:
+    "comma_recursive_core_power_residue P (p mod 924) =
+      comma_power_residue P (p mod 924)"
+    by (rule comma_recursive_core_power_residue_refines[OF catalog])
+  have physical:
+    "comma_power_residue P (p mod 924)=10^p mod P"
+    by (rule comma_power_residue_correct[OF catalog lower])
+  show ?thesis using core physical by simp
+qed
+
+text \<open>Finite headroom has no physical exponent premise. The quotient
+refines every phase; primary saturation belongs only to the physical occurrence
+bridge above, not to each finite transition.\<close>
+
+lemma comma_finite_headroom_recursive_core:
+  fixes f r delta offset :: nat
+  assumes sector: "1\<le>f" "f\<le>9"
+  defines "P \<equiv> comma_finite_period f (offset mod 10)"
+    and "e \<equiv> comma_finite_guard_extra f"
+  shows "comma_finite_headroom f r delta offset =
+    1 + e + nat ((int (comma_recursive_core_power_residue P
+      ((r + delta) mod 924)) - int offset - int (1 + e)) mod int P)"
+proof -
+  have catalog: "P\<in>comma_cycle_displacements"
+    using comma_finite_period_in_catalog sector
+    unfolding P_def by auto
+  have core: "comma_power_residue P ((r+delta) mod 924) =
+      comma_recursive_core_power_residue P ((r+delta) mod 924)"
+    by (rule comma_recursive_core_power_residue_refines[OF catalog, symmetric])
+  show ?thesis
+    unfolding comma_finite_headroom_def
+    by (simp only: Let_def P_def[symmetric] e_def[symmetric] core)
+qed
+
 ML \<open>
   val _ = if null (Thm_Deps.all_oracles
     @{thms comma_phase_carry_orbit_conjugacy
@@ -393,7 +439,9 @@ ML \<open>
       comma_core_power_fixed_period comma_recursive_core_checks
       comma_recursive_core_catalog_checked comma_core_modular_period_repeated
       comma_recursive_core_phase comma_recursive_core_residue_refines
-      comma_recursive_core_power_residue_refines}) then ()
+      comma_recursive_core_power_residue_refines
+      comma_recursive_core_physical_exponent
+      comma_finite_headroom_recursive_core}) then ()
     else error "Comma carry/core quotient depends on an oracle";
 \<close>
 

@@ -215,6 +215,12 @@ def audit_width_phases(seed: int, *, steps: int = 256) -> WidthPhaseAudit:
     return WidthPhaseAudit(seed, tuple(widths), tuple(sorted(reached)), total_growth)
 
 
-if __name__ == "__main__":
+def _command() -> None:
     with exact_oracle():
         print(json.dumps(asdict(audit_exit_refinement()), indent=2))
+
+
+if __name__ == "__main__":
+    from devtools.runs import run_reported
+
+    raise SystemExit(run_reported(_command))

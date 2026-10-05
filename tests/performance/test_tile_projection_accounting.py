@@ -8,6 +8,13 @@ from devtools.benchmarks.tile_projection_accounting import projection_accounting
 from number_compiler.resources.metric_records import HashLifeProjectionMetrics
 
 
+def _row_int(row: dict[str, object], name: str) -> int:
+    value = row[name]
+    if not isinstance(value, int) or isinstance(value, bool):
+        raise TypeError((name, value))
+    return value
+
+
 def test_scheduler_leaf_work_is_reported_and_retired_work_is_rejected() -> None:
     metrics = HashLifeProjectionMetrics(
         point_queries=0,
@@ -48,7 +55,7 @@ def test_scheduler_leaf_work_is_reported_and_retired_work_is_rejected() -> None:
 
 @pytest.mark.validation
 @pytest.mark.parametrize("family", ["reverse", "collatz"])
-def test_public_probe_reports_current_scheduler_work(
+def test_public_probe_reports_current_family_work(
     family: str, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     if family == "reverse":
@@ -62,12 +69,24 @@ def test_public_probe_reports_current_scheduler_work(
         monkeypatch.setattr(collatz, "PROJECTION_STEPS", (16,))
         rows = collatz._projection_rows()
     row = rows[0]
-    assert row["sequential_generation_advances"] == 0
-    leaf_work = row["tile_scheduler_leaf_function_applications"]
-    assert isinstance(leaf_work, int) and leaf_work > 0
-    requests = row["completed_result_requests"]
-    assert isinstance(requests, int) and requests > 0
-    assert row["explicitly_lowered_digits"] == 0
-    profile = row["retained_result_profile"]
-    assert isinstance(profile, dict)
-    assert profile["entries"] == row["completed_result_entries"]
+    if family == "reverse":
+        # The production reverse consumer is now the authenticated source-image
+        # projection owner. These checks replace the retired tile-leaf and
+        # completed-result-profile assertions without manufacturing equivalent
+        # scheduler counts. Keep temporal higher-runtime work visible as a real
+        # diagnostic; its acceptance gate lives in the probe report.
+        assert _row_int(row, "source_image_publications") > 0
+        assert _row_int(row, "source_image_projection_publications") > 0
+        assert row["source_image_replay_stable"] is True
+        assert row["runtime_image_matches_scalar"] is True
+        assert row["resource_accounting_exact"] is True
+        assert type(row["higher_concrete_operation_evaluations"]) is int
+    else:
+        assert _row_int(row, "sequential_generation_advances") == 0
+        assert _row_int(row, "explicitly_lowered_digits") == 0
+        assert _row_int(row, "source_image_projection_publications") > 0
+        assert _row_int(row, "collatz_image_radix_demands") > 0
+        assert _row_int(row, "direct_powered_point_queries") == 1
+        assert row["runtime_image_matches_scalar"] is True
+        assert row["source_image_replay_publications_stable"] is True
+        assert row["resource_accounting_exact"] is True

@@ -119,9 +119,9 @@ def test_source_initial_profile_compiles_actual_c4_fourth_right_summary() -> Non
         LowerFinite,
     )
     from tests.support.c4_summary_artifact import fresh_c4_fourth_right_summary
-    from tests.support.runtime_limits import deadline
+    from tests.support.performance_assertions import performance_bound
 
-    with deadline(35, "profiled C4 fourth RIGHT16 compilation"):
+    with performance_bound(35, "profiled C4 fourth RIGHT16 compilation"):
         artifact = fresh_c4_fourth_right_summary()
         runtime, pair = artifact.runtime, artifact.pair
         profile = runtime.semantic_compiler.source_initial_profile(pair)

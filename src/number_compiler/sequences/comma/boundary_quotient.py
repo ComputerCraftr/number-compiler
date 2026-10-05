@@ -12,7 +12,15 @@ from dataclasses import dataclass
 from math import gcd
 from typing import Literal
 
-from number_compiler.arithmetic.fields.consumer_pullback import ExactRational
+from number_compiler.arithmetic.fields.consumer_pullback import (
+    ONE as _Q_ONE,
+)
+from number_compiler.arithmetic.fields.consumer_pullback import (
+    ZERO as _Q_ZERO,
+)
+from number_compiler.arithmetic.fields.consumer_pullback import (
+    ExactRational,
+)
 from number_compiler.sequences.comma.arithmetic import (
     _sector_child_increments,
     phase_prefix_displacement,
@@ -126,6 +134,9 @@ class AffineWeight:
         if remainder:
             raise ValueError("comma weight is not integral at this exponent")
         return value
+
+
+_ZERO_WEIGHT = AffineWeight(0, 0, 1)
 
 
 @dataclass(frozen=True, slots=True)
@@ -266,12 +277,37 @@ class _Affine:
     offset: Q
 
     def plus(self, other: _Affine) -> _Affine:
+        if other.is_zero:
+            return self
+        if self.is_zero:
+            return other
+        if self.slope.numerator == 0 and other.slope.numerator == 0:
+            return _Affine(_Q_ZERO, self.offset + other.offset)
         return _Affine(self.slope + other.slope, self.offset + other.offset)
 
     def times(self, value: int) -> _Affine:
-        return _Affine(self.slope * Q(value), self.offset * Q(value))
+        if type(value) is not int:
+            raise TypeError("exact rational components must be integers")
+        if value == 0 or self.is_zero:
+            return _ZERO_AFFINE
+        if value == 1:
+            return self
+        return _Affine(
+            _scale_rational(self.slope, value),
+            _scale_rational(self.offset, value),
+        )
+
+    @property
+    def is_zero(self) -> bool:
+        return self.slope.numerator == 0 and self.offset.numerator == 0
 
     def weight(self) -> AffineWeight:
+        if self.is_zero:
+            return _ZERO_WEIGHT
+        if self.slope.numerator == 0:
+            return AffineWeight(0, self.offset.numerator, self.offset.denominator)
+        if self.offset.numerator == 0:
+            return AffineWeight(self.slope.numerator, 0, self.slope.denominator)
         denominator = self.slope.denominator * self.offset.denominator
         return AffineWeight(
             self.slope.numerator * self.offset.denominator,
@@ -280,14 +316,65 @@ class _Affine:
         )
 
 
+_ZERO_AFFINE = _Affine(_Q_ZERO, _Q_ZERO)
+
+
+def _integer_rational(value: int) -> Q:
+    if type(value) is not int:
+        raise TypeError("exact rational components must be integers")
+    if value == 0:
+        return _Q_ZERO
+    if value == 1:
+        return _Q_ONE
+    return Q(value)
+
+
+def _scale_rational(value: Q, factor: int) -> Q:
+    if type(factor) is not int:
+        raise TypeError("exact rational components must be integers")
+    if factor == 0 or value.numerator == 0:
+        return _Q_ZERO
+    if factor == 1:
+        return value
+    if value.denominator == 1:
+        return _integer_rational(value.numerator * factor)
+    return Q(value.numerator * factor, value.denominator)
+
+
 def _constant(value: int) -> _Affine:
-    return _Affine(Q(0), Q(value))
+    if type(value) is not int:
+        raise TypeError("exact rational components must be integers")
+    if value == 0:
+        return _ZERO_AFFINE
+    return _Affine(_Q_ZERO, _integer_rational(value))
 
 
 def _from_weight(weight: AffineWeight) -> _Affine:
+    if any(
+        type(part) is not int
+        for part in (
+            weight.numerator_scale,
+            weight.numerator_offset,
+            weight.denominator,
+        )
+    ):
+        raise TypeError("exact rational components must be integers")
+    if weight.denominator == 0:
+        raise ValueError("exact rational denominator cannot be zero")
+    if weight.numerator_scale == 0 and weight.numerator_offset == 0:
+        return _ZERO_AFFINE
+    if weight.denominator == 1:
+        return _Affine(
+            _integer_rational(weight.numerator_scale),
+            _integer_rational(weight.numerator_offset),
+        )
     return _Affine(
-        Q(weight.numerator_scale, weight.denominator),
-        Q(weight.numerator_offset, weight.denominator),
+        _Q_ZERO
+        if weight.numerator_scale == 0
+        else Q(weight.numerator_scale, weight.denominator),
+        _Q_ZERO
+        if weight.numerator_offset == 0
+        else Q(weight.numerator_offset, weight.denominator),
     )
 
 
@@ -303,10 +390,10 @@ def _indexed_macro(
     charge: Callable[[int], None] | None,
     charge_bits: Callable[[int], None] | None,
 ) -> MacroTemplate:
-    prefix_weights = [_constant(0).weight()]
-    prefix_displacements = [_constant(0).weight()]
-    total_weight = _constant(0)
-    total_displacement = _constant(0)
+    prefix_weights = [_ZERO_WEIGHT]
+    prefix_displacements = [_ZERO_WEIGHT]
+    total_weight = _ZERO_AFFINE
+    total_displacement = _ZERO_AFFINE
     for fragment in fragments:
         if charge is not None:
             charge(1)
@@ -332,20 +419,33 @@ def _indexed_macro(
                     )
                 )
             )
-        cycles = _from_weight(fragment.complete_cycles)
-        total_weight = total_weight.plus(
-            cycles.times(fragment.period).plus(_constant(fragment.literal_steps))
+        complete_cycles = fragment.complete_cycles
+        if (
+            complete_cycles.numerator_scale == 0
+            and complete_cycles.numerator_offset == 0
+        ):
+            # Literal fragments have a true zero cycle weight, so skip both
+            # zero affine actions without assuming anything from period alone.
+            cycle_weight = _ZERO_AFFINE
+            cycle_displacement = _ZERO_AFFINE
+        else:
+            cycles = _from_weight(complete_cycles)
+            cycle_weight = cycles.times(fragment.period)
+            cycle_displacement = cycles.times(fragment.displacement)
+        total_weight = total_weight.plus(cycle_weight).plus(
+            _constant(fragment.literal_steps)
         )
-        total_displacement = total_displacement.plus(
-            cycles.times(fragment.displacement).plus(
-                _constant(fragment.literal_increment)
-            )
+        total_displacement = total_displacement.plus(cycle_displacement).plus(
+            _constant(fragment.literal_increment)
         )
         prefix_weights.append(total_weight.weight())
         prefix_displacements.append(total_displacement.weight())
     if total_weight != weight:
         raise AssertionError("comma indexed macro weight differs from construction")
-    source_value = _Affine(Q(source.a), Q(-1 if source.kind == "N" else 0))
+    source_value = _Affine(
+        _integer_rational(source.a),
+        _integer_rational(-1 if source.kind == "N" else 0),
+    )
     if source_value.plus(total_displacement) != endpoint:
         raise AssertionError("comma indexed macro endpoint differs from construction")
     return MacroTemplate(

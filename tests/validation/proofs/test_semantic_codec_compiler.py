@@ -28,7 +28,7 @@ from tests.support.c4_summary_artifact import (
     fresh_c4_fourth_right_summary,
 )
 from tests.support.diamond_continuation_reduction import literal
-from tests.support.runtime_limits import deadline
+from tests.support.performance_assertions import performance_bound
 from tests.support.semantic_state_codec import paired_tiny, tiny
 
 if TYPE_CHECKING:
@@ -185,7 +185,7 @@ def test_unsupported_higher_lambda_domain_rejects_without_registering_codec() ->
 
 
 def test_actual_c4_fourth_power_right_summary_accepts_its_paired_binder() -> None:
-    with deadline(35, "C4 fourth-power RIGHT16 semantic compilation"):
+    with performance_bound(35, "C4 fourth-power RIGHT16 semantic compilation"):
         _check_actual_c4_fourth_power_right_summary()
 
 

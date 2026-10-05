@@ -5,7 +5,7 @@ from __future__ import annotations
 from collections.abc import Callable, Iterable, Iterator, MutableMapping, Sized
 from contextlib import contextmanager
 from dataclasses import dataclass, field
-from typing import Generic, Literal, TypeVar
+from typing import Generic, Literal, TypeVar, cast
 from weakref import ReferenceType, ref
 
 from number_compiler.arithmetic.contracts.block_effect import BlockContextBudgetExceeded
@@ -674,8 +674,16 @@ _K = TypeVar("_K")
 _V = TypeVar("_V")
 
 
+@dataclass(frozen=True, slots=True)
+class _DynamicMemoValue(Generic[_V]):
+    """Payload and its retained cost stored together in the owned mapping."""
+
+    value: _V
+    nodes: int
+
+
 class OwnedMemo(MutableMapping[_K, _V], Generic[_K, _V]):
-    """An independently inventoried memo with pre-insertion reservations."""
+    """An inventoried memo with fixed or payload-dependent node reservations."""
 
     def __init__(
         self,
@@ -683,17 +691,22 @@ class OwnedMemo(MutableMapping[_K, _V], Generic[_K, _V]):
         owner: int,
         *,
         nodes_per_entry: int = 0,
+        node_cost: Callable[[_K, _V], int] | None = None,
         evictable: bool = False,
         composition_entries: bool = False,
     ) -> None:
         require_integer(nodes_per_entry, "nodes per entry", 0)
         if type(evictable) is not bool or type(composition_entries) is not bool:
             raise TypeError("memo policy flags must be booleans")
+        if node_cost is not None and nodes_per_entry:
+            raise ValueError("dynamic memo cost cannot be combined with a fixed cost")
         self.ledger = ledger
         self.owner = owner
         self.nodes_per_entry = nodes_per_entry
+        self.node_cost = node_cost
+        self._dynamic_nodes = 0
         self._disposed = False
-        self._data: MutableMapping[_K, _V] = ledger.make_dict(
+        self._data: MutableMapping[_K, _V | _DynamicMemoValue[_V]] = ledger.make_dict(
             owner, nodes_per_entry=nodes_per_entry
         )
         ledger.register_execution_root(self)
@@ -714,35 +727,98 @@ class OwnedMemo(MutableMapping[_K, _V], Generic[_K, _V]):
         return len(self._data)
 
     def _node_count(self) -> int:
+        if self.node_cost is not None:
+            return self._dynamic_nodes
         return len(self._data) * self.nodes_per_entry
+
+    def _entry_nodes(self, key: _K, value: _V) -> int:
+        if self.node_cost is None:
+            return self.nodes_per_entry
+        payload_nodes = require_integer(
+            self.node_cost(key, value), "memo payload node cost", 0
+        )
+        # One retained node accounts for the immutable cost metadata wrapper.
+        return payload_nodes + 1
 
     def _payloads(self) -> Iterable[object]:
         from number_compiler.resources.payload_containers import audit_mapping_items
 
-        for key, value in audit_mapping_items(self._data):
+        for key, value in audit_mapping_items(self):
             yield key
             yield value
 
+    def _audited_value(self, value: object) -> object:
+        if self.node_cost is None:
+            return value
+        if not isinstance(value, _DynamicMemoValue):
+            raise TypeError("dynamic memo entry has invalid cost metadata")
+        return value.value
+
     def __getitem__(self, key: _K) -> _V:
         self._check_open()
-        return self._data[key]
+        value = self._data[key]
+        if self.node_cost is not None:
+            if not isinstance(value, _DynamicMemoValue):
+                raise TypeError("dynamic memo entry has invalid cost metadata")
+            return cast(_V, value.value)
+        return cast(_V, value)
 
     def __setitem__(self, key: _K, value: _V) -> None:
         self._check_open()
         if key in self._data:
-            self._data[key] = value
+            if self.node_cost is None:
+                self._data[key] = value
+                return
+            previous = self._data[key]
+            if not isinstance(previous, _DynamicMemoValue):
+                raise TypeError("dynamic memo entry has invalid cost metadata")
+            old_cost = previous.nodes
+            new_cost = self._entry_nodes(key, value)
+            difference = new_cost - old_cost
+            if difference > 0:
+                self.ledger.reserve(self.owner, nodes=difference)
+            try:
+                self._data[key] = _DynamicMemoValue(value, new_cost)
+            except BaseException:
+                self._data[key] = previous
+                if difference > 0:
+                    self.ledger.release(self.owner, nodes=difference)
+                raise
+            self._dynamic_nodes += difference
+            if difference < 0:
+                self.ledger.release(self.owner, nodes=-difference)
             return
-        self.ledger.reserve(self.owner, entries=1, nodes=self.nodes_per_entry)
+        nodes = self._entry_nodes(key, value)
+        self.ledger.reserve(self.owner, entries=1, nodes=nodes)
         try:
-            self._data[key] = value
+            if self.node_cost is not None:
+                stored_value: _V | _DynamicMemoValue[_V] = _DynamicMemoValue(
+                    value, nodes
+                )
+            else:
+                stored_value = value
+            self._data[key] = stored_value
         except BaseException:
-            self.ledger.release(self.owner, entries=1, nodes=self.nodes_per_entry)
+            if key in self._data:
+                del self._data[key]
+            self.ledger.release(self.owner, entries=1, nodes=nodes)
             raise
+        if self.node_cost is not None:
+            self._dynamic_nodes += nodes
 
     def __delitem__(self, key: _K) -> None:
         self._check_open()
+        value = self._data[key]
+        if self.node_cost is not None:
+            if not isinstance(value, _DynamicMemoValue):
+                raise TypeError("dynamic memo entry has invalid cost metadata")
+            nodes = value.nodes
+        else:
+            nodes = self.nodes_per_entry
         del self._data[key]
-        self.ledger.release(self.owner, entries=1, nodes=self.nodes_per_entry)
+        if self.node_cost is not None:
+            self._dynamic_nodes -= nodes
+        self.ledger.release(self.owner, entries=1, nodes=nodes)
 
     def __len__(self) -> int:
         self._check_open()
@@ -755,8 +831,15 @@ class OwnedMemo(MutableMapping[_K, _V], Generic[_K, _V]):
     def clear(self) -> None:
         self._check_open()
         size = len(self._data)
+        nodes = (
+            self._dynamic_nodes
+            if self.node_cost is not None
+            else size * self.nodes_per_entry
+        )
         self._data.clear()
-        self.ledger.release(self.owner, entries=size, nodes=size * self.nodes_per_entry)
+        if self.node_cost is not None:
+            self._dynamic_nodes = 0
+        self.ledger.release(self.owner, entries=size, nodes=nodes)
 
     def _evict(self) -> None:
         if not self._disposed:

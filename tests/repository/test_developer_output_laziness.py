@@ -12,6 +12,7 @@ from typing import Never
 import pytest
 
 from devtools import paths, runs
+from tests.support.git_repositories import commit_fixture
 
 OUTPUT_MODULES = (
     "collatz_raw_field_probe",
@@ -67,6 +68,7 @@ def test_explicit_output_dir_contains_all_invoked_report_outputs(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     (tmp_path / "pyproject.toml").write_text('[project]\nversion="0.0.0"\n')
+    commit_fixture(tmp_path)
     destination = tmp_path / "chosen-run"
     monkeypatch.setattr(paths, "repository_root", lambda: tmp_path)
     monkeypatch.setattr(runs, "repository_root", lambda: tmp_path)

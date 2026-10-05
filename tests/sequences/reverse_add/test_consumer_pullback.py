@@ -11,6 +11,8 @@ from devtools.verification.reverse_successor_image_audit import _sources
 from devtools.verification.threshold_expressions import ThresholdExpressions
 from number_compiler.arithmetic.contracts.block_effect import BlockContextBudgetExceeded
 
+pytestmark = pytest.mark.validation
+
 
 def test_substitution_resolves_condition_before_rebuilding_unused_branch() -> None:
     e = ThresholdExpressions()

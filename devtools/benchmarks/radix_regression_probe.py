@@ -1,8 +1,9 @@
 """Five isolated trials of the fixed original-source ternary regression.
 
 Run: python -m devtools.benchmarks.radix_regression_probe --output NEW.json
-The .25s cold and .01s repeat limits are fixed, including phase watchdogs.
-Construction and read-only inventory audit have separate clocks. This route
+The .25s cold and .01s repeat values are measurement acceptance thresholds;
+the shared command guard is the only watchdog. Construction and inventory audit
+have separate clocks. This route
 uses the original-input ternary identity for odd physical C1, not a full
 HashLife executor. Existing evidence files are never overwritten.
 """
@@ -14,7 +15,6 @@ import json
 import logging
 import os
 import resource
-import signal
 import statistics
 import subprocess
 import sys
@@ -25,7 +25,7 @@ from pathlib import Path
 from time import perf_counter, process_time
 from typing import Any
 
-from devtools.checks.test_run_evidence import source_fingerprint
+from devtools.git_source import git_source, same_git_revision
 from devtools.paths import report_output, repository_root
 from number_compiler.projection.lazy_radix import collatz_radix_digit
 from number_compiler.resources.metric_collection import collect_ledger_metrics
@@ -39,38 +39,22 @@ REPEAT_LIMIT = 0.01
 _LOGGER = logging.getLogger(__name__)
 
 
-class PhaseTimeout(TimeoutError):
-    pass
-
-
-def measured(
-    operation: Callable[[], Any], limit: float | None = None
-) -> tuple[Any, dict[str, Any]]:
-    def expired(signum: object, frame: object) -> None:
-        raise PhaseTimeout(f"query exceeded its fixed {limit}s acceptance limit")
-
-    old_handler = signal.signal(signal.SIGALRM, expired) if limit is not None else None
+def measured(operation: Callable[[], Any]) -> tuple[Any, dict[str, Any]]:
     start, cpu = perf_counter(), process_time()
     try:
-        if limit is not None:
-            signal.setitimer(signal.ITIMER_REAL, limit)
         value = operation()
         status, error = "ok", None
     except Exception as exc:
         _LOGGER.debug("radix regression trial failed", exc_info=True)
         value = None
-        status = "timeout" if isinstance(exc, PhaseTimeout) else "error"
+        status = "error"
         error = f"{type(exc).__name__}: {exc}"
     finally:
         seconds, cpu_seconds = perf_counter() - start, process_time() - cpu
-        if limit is not None:
-            signal.setitimer(signal.ITIMER_REAL, 0)
-            signal.signal(signal.SIGALRM, old_handler)
     return value, {
         "status": status,
         "seconds": seconds,
         "cpu_seconds": cpu_seconds,
-        "limit_seconds": limit,
         "error": error,
     }
 
@@ -108,10 +92,8 @@ def snapshot(term: PoweredCollatzTerm) -> dict[str, Any]:
     }
 
 
-def query(
-    term: PoweredCollatzTerm, limit: float, before: dict[str, Any]
-) -> dict[str, Any]:
-    value, result = measured(lambda: collatz_radix_digit(term, 3, 3), limit)
+def query(term: PoweredCollatzTerm, before: dict[str, Any]) -> dict[str, Any]:
+    value, result = measured(lambda: collatz_radix_digit(term, 3, 3))
     after = snapshot(term)
     result.update(
         value=value,
@@ -127,7 +109,7 @@ def query(
 
 def trial_passes(row: dict[str, Any]) -> bool:
     if (
-        not row.get("source_unchanged")
+        row.get("git_source_before") != row.get("git_source_after")
         or row.get("construction", {}).get("status") != "ok"
     ):
         return False
@@ -152,7 +134,7 @@ def trial_passes(row: dict[str, Any]) -> bool:
 
 
 def worker() -> dict[str, Any]:
-    fingerprint = source_fingerprint(ROOT)
+    source = git_source(ROOT)
     term, construction = measured(
         lambda: PoweredCollatzTerm(
             SEED, 1, max_context_nodes=5000, max_cache_entries=10000
@@ -160,14 +142,14 @@ def worker() -> dict[str, Any]:
     )
     row: dict[str, Any] = {
         "pid": os.getpid(),
-        "source_before": fingerprint,
+        "git_source_before": source.as_dict(),
         "construction": construction,
     }
     if term is not None:
         construction["snapshot"] = snapshot(term)
-        row["cold"] = query(term, COLD_LIMIT, construction["snapshot"])
+        row["cold"] = query(term, construction["snapshot"])
         if row["cold"]["status"] == "ok":
-            row["repeat"] = query(term, REPEAT_LIMIT, row["cold"]["snapshot"])
+            row["repeat"] = query(term, row["cold"]["snapshot"])
         else:
             row["repeat"] = {
                 "status": "unavailable",
@@ -207,8 +189,7 @@ def worker() -> dict[str, Any]:
             and report.retained_point_response_scalars == 0
             and report.exact_microblock_entries == 0
         )
-    row["source_after"] = source_fingerprint(ROOT)
-    row["source_unchanged"] = row["source_after"] == fingerprint
+    row["git_source_after"] = git_source(ROOT).as_dict()
     row["process_peak_rss_bytes"] = resource.getrusage(
         resource.RUSAGE_SELF
     ).ru_maxrss * (1 if sys.platform == "darwin" else 1024)
@@ -217,7 +198,7 @@ def worker() -> dict[str, Any]:
 
 
 def run_trials() -> dict[str, Any]:
-    before = source_fingerprint(ROOT)
+    before = git_source(ROOT)
     rows = []
     environment = dict(os.environ)
     environment.pop("PYTHONPATH", None)
@@ -250,9 +231,10 @@ def run_trials() -> dict[str, Any]:
             stderr=completed.stderr,
         )
         rows.append(row)
-    after = source_fingerprint(ROOT)
-    unchanged = before == after and all(
-        row.get("source_before") == before and row.get("source_after") == before
+    after = git_source(ROOT)
+    unchanged = same_git_revision(before, after) and all(
+        row.get("git_source_before") == before.as_dict()
+        and row.get("git_source_after") == before.as_dict()
         for row in rows
     )
     accepted = unchanged and all(
@@ -285,11 +267,14 @@ def run_trials() -> dict[str, Any]:
         "fresh_process_trials": TRIALS,
         "cold_limit_seconds": COLD_LIMIT,
         "repeat_limit_seconds": REPEAT_LIMIT,
-        "timing_method": "perf_counter and process_time; imports, fingerprints and audits outside query timers",
+        "timing_method": "perf_counter and process_time; imports, Git metadata and audits outside query timers",
         "counter_units": "runtime operation counts and named high-water marks; deltas of maxima are not additive work",
-        "source_before": before,
-        "source_after": after,
-        "source_unchanged": unchanged,
+        "git_source_before": before.as_dict(),
+        "git_source_after": after.as_dict(),
+        "git_revision_unchanged": unchanged,
+        "evidence_mode": os.environ.get("NUMBER_COMPILER_EVIDENCE_MODE", "development"),
+        "cacheable": False,
+        "reusable": False,
         "median_seconds": medians,
         "rows": rows,
     }

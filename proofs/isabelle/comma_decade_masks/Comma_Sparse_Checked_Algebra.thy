@@ -109,7 +109,8 @@ proof (rule comma_sparse_partial_singleton)
   have projected: "comma_sector_base_project out=
     comma_word_project comma_offset_orbit
       (comma_decade_block_atom (Comma_Decade r (comma_offset_representatives!i)))"
-    by (rule comma_sector_base_project_refines[OF phase offset source admitted])
+    by (rule comma_sector_base_project_refines[OF phase offset _ admitted])
+      (use source in \<open>simp add: comma_sector_mask_value_def\<close>)
   show "comma_orbit_word 0 r i=comma_sector_base_project out"
     using phase index projected
     by (simp only: comma_orbit_word_def comma_decade_block_power.simps; simp)

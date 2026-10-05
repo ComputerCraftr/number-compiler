@@ -47,12 +47,15 @@ def test_rank_generator_checks_both_semantic_side_files(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     output = tmp_path / "Comma_Rank_Data.thy"
+    authored = "authored fail-closed lookup and its checked lemmas\n"
+    output.write_text(authored)
     codes = [0] * generator.PADDED_COUNT
     monkeypatch.setattr(generator, "_candidate_ranks", lambda: codes)
     monkeypatch.setattr(
         sys, "argv", ["generate_rank_candidate", "--output", str(output)]
     )
     generator.main()
+    assert output.read_text() == authored
     assert set(tmp_path.iterdir()) == {
         output,
         tmp_path / "Comma_Rank_Data_N.thy",
@@ -62,6 +65,7 @@ def test_rank_generator_checks_both_semantic_side_files(
         sys, "argv", ["generate_rank_candidate", "--output", str(output), "--check"]
     )
     generator.main()
+    assert output.read_text() == authored
     (tmp_path / "Comma_Rank_Data_Z.thy").write_text("corrupted candidate")
     with pytest.raises(SystemExit, match="Comma_Rank_Data_Z"):
         generator.main()

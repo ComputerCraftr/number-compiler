@@ -241,5 +241,11 @@ def build_report() -> dict[str, object]:
     }
 
 
-if __name__ == "__main__":
+def _command() -> None:
     print(json.dumps(build_report(), indent=2, sort_keys=True))
+
+
+if __name__ == "__main__":
+    from devtools.runs import run_reported
+
+    raise SystemExit(run_reported(_command))

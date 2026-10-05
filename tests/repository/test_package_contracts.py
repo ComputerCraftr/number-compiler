@@ -14,6 +14,7 @@ from devtools.paths import repository_root
 ROOT = repository_root()
 
 
+@pytest.mark.validation  # Whole-tree ownership is also mandatory in quality policy.
 def test_package_ownership_is_derived_and_unambiguous() -> None:
     assert package_violations(ROOT) == ()
     modules = module_inventory(ROOT)

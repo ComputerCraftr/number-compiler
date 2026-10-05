@@ -2,10 +2,6 @@ theory Reverse_196_Publisher_Refinement
   imports Reverse_196_Universal_Emit Reverse_Invariant
 begin
 
-lemma carry_out_append:
-  "carry_out c (xs@ys) = carry_out (carry_out c xs) ys"
-  by (simp add: carry_out_def fold_append)
-
 lemma emit_nth_carry_prefix:
   assumes "i < length ss"
   shows "emit c ss ! i =

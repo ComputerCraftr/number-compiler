@@ -1,0 +1,949 @@
+"""Generate a source-derived candidate certificate for semantic FutureCID.
+
+This is an audit/certificate producer, not a branch classifier.  It builds
+the finite boundary graph from the shared chart arithmetic, retains exact
+terminal control and ordered N/Z slots, and computes a stable Moore map.  The
+Isabelle instance must check the emitted map against its semantic provider;
+none of the Python output is proof authority.
+
+Occurrence quantities (phase, exponent advance, affine weight, terminal
+endpoint, C1 counts and widths) are returned alongside the map and never used
+as CID identity.  C1 low-phase/borrow observations are reported separately so
+the checked theory can either prove them as projections or preserve the
+occurrence data needed to reconstruct them.
+"""
+
+from __future__ import annotations
+
+import argparse
+import base64
+import json
+from collections.abc import Callable
+from dataclasses import dataclass
+from pathlib import Path
+from typing import Literal, TypeVar
+
+from number_compiler.arithmetic.functions.finite_observer import (
+    canonical_partition,
+    class_members,
+    map_partition_row,
+    partition_equivalent,
+    partition_quotient_rows,
+)
+from number_compiler.sequences.comma.boundary_chart import PERIOD
+from number_compiler.sequences.comma.boundary_quotient import (
+    BoundaryState,
+    MacroTemplate,
+    construct_macro,
+)
+from number_compiler.sequences.comma.occurrence import (
+    BoundaryOccurrence,
+    OccurrencePrefixReturn,
+)
+
+Control = tuple[Literal["fork", "landmine"], int | None]
+RawRow = tuple[int | None, int | None]
+ClassRow = tuple[int | None, int | None]
+_HolItem = TypeVar("_HolItem")
+
+
+@dataclass(frozen=True, slots=True)
+class FutureRefinementCollision:
+    """A pair rejected from one provisional CID by ordered child behavior."""
+
+    round_index: int
+    provisional_class: int
+    left_state: BoundaryState
+    right_state: BoundaryState
+    left_mapped_children: ClassRow
+    right_mapped_children: ClassRow
+
+
+@dataclass(frozen=True, slots=True)
+class C1SeamObservation:
+    """Finite low-phase observation at a represented occurrence."""
+
+    n_terminal_suffix: int
+    z_terminal_suffix: int
+    source_borrow: int
+    target_borrow: int
+
+
+@dataclass(frozen=True, slots=True)
+class C1OccurrencePayload:
+    """Occurrence facts kept outside the FutureCID key."""
+
+    represented_exponent: int
+    exponent_delta: int
+    macro_weight: tuple[int, int, int]
+    terminal_endpoint: tuple[int, int, int]
+    n_count: int | None
+    z_count: int | None
+    borrow_innovation: int | None
+    seam: C1SeamObservation | None
+
+
+@dataclass(frozen=True, slots=True)
+class SeamProjectionCollision:
+    """Counterexample to deriving the sampled C1 seam from a candidate CID."""
+
+    cid: int
+    left_state: BoundaryState
+    right_state: BoundaryState
+    left_seam: C1SeamObservation | None
+    right_seam: C1SeamObservation | None
+
+
+@dataclass(frozen=True, slots=True)
+class SemanticFutureCandidate:
+    states: tuple[BoundaryState, ...]
+    controls: tuple[Control, ...]
+    class_ids: tuple[int, ...]
+    class_controls: tuple[Control, ...]
+    class_children: tuple[ClassRow, ...]
+    class_ranks: tuple[int | None, ...]
+    occurrence_payloads: tuple[C1OccurrencePayload, ...]
+    refinement_collisions: tuple[FutureRefinementCollision, ...]
+    seam_projection_collision: SeamProjectionCollision | None
+    refinement_rounds: int
+
+    @property
+    def seam_is_projected_from_cid(self) -> bool:
+        return self.seam_projection_collision is None
+
+    def certificate_record(self) -> dict[str, object]:
+        """Return a deterministic, JSON-ready untrusted checker input."""
+        packed_ids = _encode_unsigned_varints(
+            self.class_ids, max_value=_candidate_universe_size() - 1
+        )
+        return {
+            "format": "comma-semantic-future-candidate-v1",
+            "authority": "untrusted-source-derived-candidate",
+            "state_universe": "kind=N,Z; a=2..9; residue=0..923; nested-order",
+            "controls": [list(control) for control in self.class_controls],
+            "class_of_state_varint_base64": base64.b64encode(packed_ids).decode(
+                "ascii"
+            ),
+            "ordered_children": [list(row) for row in self.class_children],
+            "class_rank_candidate": list(self.class_ranks),
+            "refinement_rounds": self.refinement_rounds,
+            "refinement_collision_witnesses": [
+                {
+                    "round": witness.round_index,
+                    "provisional_class": witness.provisional_class,
+                    "left_state": _state_record(witness.left_state),
+                    "right_state": _state_record(witness.right_state),
+                    "left_ordered_children": list(witness.left_mapped_children),
+                    "right_ordered_children": list(witness.right_mapped_children),
+                }
+                for witness in self.refinement_collisions
+            ],
+            "seam_is_projected_from_cid": self.seam_is_projected_from_cid,
+            "seam_projection_collision": (
+                None
+                if self.seam_projection_collision is None
+                else {
+                    "cid": self.seam_projection_collision.cid,
+                    "left_state": _state_record(
+                        self.seam_projection_collision.left_state
+                    ),
+                    "right_state": _state_record(
+                        self.seam_projection_collision.right_state
+                    ),
+                    "left_seam": _seam_record(self.seam_projection_collision.left_seam),
+                    "right_seam": _seam_record(
+                        self.seam_projection_collision.right_seam
+                    ),
+                }
+            ),
+        }
+
+    def occurrence_payload_record(self) -> dict[str, object]:
+        """Return the exact occurrence evidence, separate from CID/rank data."""
+        return {
+            "format": "comma-semantic-future-occurrence-payload-v1",
+            "authority": "untrusted-source-derived-occurrence-audit",
+            "state_universe": "kind=N,Z; a=2..9; residue=0..923; nested-order",
+            "occurrence_payloads": [
+                {
+                    "represented_exponent": item.represented_exponent,
+                    "exponent_delta": item.exponent_delta,
+                    "macro_weight": list(item.macro_weight),
+                    "terminal_endpoint": list(item.terminal_endpoint),
+                    "n_count": item.n_count,
+                    "z_count": item.z_count,
+                    "borrow_innovation": item.borrow_innovation,
+                    "seam": _seam_record(item.seam),
+                }
+                for item in self.occurrence_payloads
+            ],
+        }
+
+
+def _state_record(state: BoundaryState) -> list[object]:
+    return [state.kind, state.a, state.exponent_residue]
+
+
+def _candidate_universe_size() -> int:
+    return len(("N", "Z")) * len(range(2, 10)) * PERIOD
+
+
+def _encode_unsigned_varints(values: tuple[int, ...], *, max_value: int) -> bytes:
+    """Pack the source-state-to-CID map without duplicating edge rows."""
+    if type(max_value) is not int or max_value < 0:
+        raise ValueError("candidate CID varint bound must be nonnegative")
+    result = bytearray()
+    for value in values:
+        if type(value) is not int or not 0 <= value <= max_value:
+            raise ValueError("candidate class id leaves its declared universe")
+        remaining = value
+        while remaining >= 0x80:
+            result.append((remaining & 0x7F) | 0x80)
+            remaining >>= 7
+        result.append(remaining)
+    return bytes(result)
+
+
+def _decode_unsigned_varints(
+    payload: bytes, *, max_values: int, max_value: int
+) -> tuple[int, ...]:
+    """Decode and canonicalize the compact CID binding stream."""
+    if type(payload) is not bytes:
+        raise TypeError("candidate CID binding must be bytes")
+    if (
+        type(max_values) is not int
+        or max_values < 0
+        or type(max_value) is not int
+        or max_value < 0
+    ):
+        raise ValueError("candidate CID decoder bounds must be nonnegative")
+    max_bytes = max(1, (max_value.bit_length() + 6) // 7)
+    if len(payload) > max_values * max_bytes:
+        raise ValueError("candidate CID payload exceeds its bounded shape")
+    values: list[int] = []
+    value = 0
+    shift = 0
+    current_bytes = 0
+    for byte in payload:
+        current_bytes += 1
+        if current_bytes > max_bytes:
+            raise ValueError("candidate CID varint exceeds its bounded width")
+        value |= (byte & 0x7F) << shift
+        if byte & 0x80:
+            shift += 7
+            continue
+        if value > max_value:
+            raise ValueError("candidate CID value leaves its declared universe")
+        values.append(value)
+        if len(values) > max_values:
+            raise ValueError("candidate CID payload has too many values")
+        value = 0
+        shift = 0
+        current_bytes = 0
+    if current_bytes != 0:
+        raise ValueError("truncated candidate CID varint")
+    decoded = tuple(values)
+    if _encode_unsigned_varints(decoded, max_value=max_value) != payload:
+        raise ValueError("candidate CID varints are not canonically encoded")
+    return decoded
+
+
+def _validate_class_map(
+    class_ids: tuple[object, ...], class_count: int
+) -> tuple[int, ...]:
+    if type(class_count) is not int or class_count <= 0:
+        raise ValueError("candidate class table must be nonempty")
+    source_size = _candidate_universe_size()
+    if len(class_ids) != source_size:
+        raise ValueError("candidate map does not cover the declared source universe")
+    if class_count > source_size:
+        raise ValueError("candidate class table exceeds the source universe")
+    normalized: list[int] = []
+    for cid in class_ids:
+        if type(cid) is not int or not 0 <= cid < class_count:
+            raise ValueError("candidate map contains an out-of-range CID")
+        normalized.append(cid)
+    dense_ids = tuple(normalized)
+    class_members(dense_ids, class_count)
+    return dense_ids
+
+
+def _as_class_row(row: tuple[int | None, ...]) -> ClassRow:
+    if len(row) != 2:
+        raise AssertionError("candidate transition row changed its ordered arity")
+    return row[0], row[1]
+
+
+def _validate_class_rows(
+    controls: tuple[object, ...], children: tuple[object, ...]
+) -> tuple[tuple[Control, ...], tuple[ClassRow, ...]]:
+    if not controls or len(controls) != len(children):
+        raise ValueError("candidate class controls and edges have different shapes")
+    class_count = len(controls)
+    normalized_controls: list[Control] = []
+    normalized_children: list[ClassRow] = []
+    for control, row in zip(controls, children, strict=True):
+        if not isinstance(control, (tuple, list)) or len(control) != 2:
+            raise ValueError("candidate control is malformed")
+        if control[0] == "fork":
+            if type(control[1]) is not int or not 2 <= control[1] <= 9:
+                raise ValueError("candidate fork lost its exact coefficient")
+        elif control[0] == "landmine" and control[1] is None:
+            pass
+        else:
+            raise ValueError("candidate control is neither Fork a nor Landmine")
+        if not isinstance(row, (tuple, list)) or len(row) != 2:
+            raise ValueError("candidate did not retain both ordered edge slots")
+        mapped: list[int | None] = []
+        for target in row:
+            if target is None:
+                mapped.append(None)
+            elif type(target) is int and 0 <= target < class_count:
+                mapped.append(target)
+            else:
+                raise ValueError("candidate child class leaves its quotient")
+        if control[0] == "landmine" and mapped != [None, None]:
+            raise ValueError("landmine candidate row has children")
+        if control[0] == "fork" and any(target is None for target in mapped):
+            raise ValueError("fork candidate lost an ordered child")
+        normalized_controls.append((control[0], control[1]))
+        normalized_children.append((mapped[0], mapped[1]))
+    return tuple(normalized_controls), tuple(normalized_children)
+
+
+def _write_new(path: Path, content: str) -> None:
+    """Write new evidence or generated theory data without replacing prior work."""
+    path.parent.mkdir(parents=True, exist_ok=True)
+    with path.open("x", encoding="utf-8", newline="\n") as target:
+        target.write(content)
+
+
+def _seam_record(seam: C1SeamObservation | None) -> list[int] | None:
+    if seam is None:
+        return None
+    return [
+        seam.n_terminal_suffix,
+        seam.z_terminal_suffix,
+        seam.source_borrow,
+        seam.target_borrow,
+    ]
+
+
+def _canonical_exponent(state: BoundaryState) -> int:
+    residue = state.exponent_residue
+    return residue if residue >= 5 else residue + PERIOD
+
+
+def _state_index(states: tuple[BoundaryState, ...]) -> dict[BoundaryState, int]:
+    result = {state: index for index, state in enumerate(states)}
+    if len(result) != len(states):
+        raise AssertionError("boundary source enumeration contains duplicate states")
+    return result
+
+
+def _control(macro: MacroTemplate) -> Control:
+    if macro.outcome == "landmine":
+        if macro.destination_a is not None or macro.ordered_children:
+            raise AssertionError("landmine source row carries fork payload")
+        return ("landmine", None)
+    if macro.outcome != "fork" or macro.destination_a is None:
+        raise AssertionError("boundary source row has no exact terminal control")
+    if tuple(child.kind for child in macro.ordered_children) != ("N", "Z"):
+        raise AssertionError("fork source row lost ordered N/Z children")
+    if any(child.a != macro.destination_a for child in macro.ordered_children):
+        raise AssertionError("fork control disagrees with its child constructors")
+    return ("fork", macro.destination_a)
+
+
+def _rows(
+    macros: tuple[MacroTemplate, ...],
+    indices: dict[BoundaryState, int],
+) -> tuple[RawRow, ...]:
+    result: list[RawRow] = []
+    for macro in macros:
+        if not macro.ordered_children:
+            result.append((None, None))
+            continue
+        if len(macro.ordered_children) != 2:
+            raise AssertionError("source macro has an unexpected child arity")
+        try:
+            result.append(
+                (
+                    indices[macro.ordered_children[0]],
+                    indices[macro.ordered_children[1]],
+                )
+            )
+        except KeyError as exc:
+            raise AssertionError(
+                "source child left the declared boundary universe"
+            ) from exc
+    return tuple(result)
+
+
+def _c1_payloads(
+    states: tuple[BoundaryState, ...],
+    macros: tuple[MacroTemplate, ...],
+    indices: dict[BoundaryState, int],
+) -> tuple[C1OccurrencePayload, ...]:
+    """Build C1 child returns at each exact canonical receiving exponent."""
+    cache: dict[tuple[int, int], OccurrencePrefixReturn] = {}
+    payloads: list[C1OccurrencePayload] = []
+    for state, macro in zip(states, macros, strict=True):
+        represented = _canonical_exponent(state)
+        receiving = represented + macro.exponent_delta
+        weight = (
+            macro.weight.numerator_scale,
+            macro.weight.numerator_offset,
+            macro.weight.denominator,
+        )
+        endpoint = (
+            macro.endpoint.numerator_scale,
+            macro.endpoint.numerator_offset,
+            macro.endpoint.denominator,
+        )
+        if not macro.ordered_children:
+            payloads.append(
+                C1OccurrencePayload(
+                    represented,
+                    macro.exponent_delta,
+                    weight,
+                    endpoint,
+                    None,
+                    None,
+                    None,
+                    None,
+                )
+            )
+            continue
+        returned: list[OccurrencePrefixReturn] = []
+        for child in macro.ordered_children:
+            if receiving % PERIOD != child.exponent_residue:
+                raise AssertionError("source exponent transport changed child phase")
+            child_index = indices[child]
+            key = (child_index, receiving)
+            action = cache.get(key)
+            if action is None:
+                action = OccurrencePrefixReturn(
+                    BoundaryOccurrence(child, receiving), macros[child_index]
+                )
+                cache[key] = action
+            returned.append(action)
+        n_action, z_action = returned
+        n_start = n_action.source.c1_phase()
+        z_start = z_action.source.c1_phase()
+        n_end = n_action.terminal_c1_phase
+        z_end = z_action.terminal_c1_phase
+        source_borrow = int(z_start.suffix < n_start.suffix)
+        target_borrow = int(z_end.suffix < n_end.suffix)
+        seam = C1SeamObservation(
+            n_end.suffix,
+            z_end.suffix,
+            source_borrow,
+            target_borrow,
+        )
+        innovation = (
+            z_action.c1_count - n_action.c1_count + source_borrow - target_borrow
+        )
+        payloads.append(
+            C1OccurrencePayload(
+                represented,
+                macro.exponent_delta,
+                weight,
+                endpoint,
+                n_action.c1_count,
+                z_action.c1_count,
+                innovation,
+                seam,
+            )
+        )
+    return tuple(payloads)
+
+
+def _refine_with_witnesses(
+    rows: tuple[RawRow, ...],
+    controls: tuple[Control, ...],
+    states: tuple[BoundaryState, ...],
+) -> tuple[tuple[int, ...], tuple[FutureRefinementCollision, ...], int]:
+    """Refine exact-control blocks by mapped ordered children to a fixed point."""
+    classes = canonical_partition(
+        tuple(
+            (control, tuple(target is not None for target in row))
+            for control, row in zip(controls, rows, strict=True)
+        )
+    )
+    witnesses: list[FutureRefinementCollision] = []
+    round_index = 0
+    while True:
+        mapped = tuple(_as_class_row(map_partition_row(row, classes)) for row in rows)
+        signatures = tuple(
+            (classes[index], mapped[index]) for index in range(len(states))
+        )
+        refined = canonical_partition(signatures)
+        old_groups = class_members(classes, max(classes, default=-1) + 1)
+        for old_class, group in enumerate(old_groups):
+            representative = group[0]
+            for index in group[1:]:
+                if mapped[representative] != mapped[index]:
+                    witnesses.append(
+                        FutureRefinementCollision(
+                            round_index,
+                            old_class,
+                            states[representative],
+                            states[index],
+                            mapped[representative],
+                            mapped[index],
+                        )
+                    )
+                    # One auditable witness per split provisional class and
+                    # refinement round is enough; remaining members are
+                    # already covered by the exact signature comparison.
+                    break
+        round_index += 1
+        if partition_equivalent(classes, refined):
+            return refined, tuple(witnesses), round_index
+        classes = refined
+
+
+def _quotient_rows(
+    rows: tuple[RawRow, ...],
+    controls: tuple[Control, ...],
+    class_ids: tuple[int, ...],
+) -> tuple[tuple[Control, ...], tuple[ClassRow, ...]]:
+    classes = max(class_ids, default=-1) + 1
+    members = class_members(class_ids, classes)
+    quotient_rows = partition_quotient_rows(rows, class_ids, classes)
+    outputs: list[Control] = []
+    child_rows: list[ClassRow] = []
+    for cid, group in enumerate(members):
+        representative = group[0]
+        control = controls[representative]
+        children = quotient_rows[cid]
+        for index in group[1:]:
+            if controls[index] != control:
+                raise AssertionError("candidate CID merged distinct terminal controls")
+        if len(children) != 2:
+            raise AssertionError("candidate CID did not preserve both ordered slots")
+        outputs.append(control)
+        child_rows.append((children[0], children[1]))
+    return tuple(outputs), tuple(child_rows)
+
+
+def _class_rank_candidate(
+    controls: tuple[Control, ...], children: tuple[ClassRow, ...]
+) -> tuple[int | None, ...]:
+    """Derive and locally check least finite losing ranks on candidate CIDs."""
+    controls, children = _validate_class_rows(controls, children)
+    if len(controls) != len(children):
+        raise AssertionError("candidate controls and child rows have different sizes")
+    ranks: list[int | None] = [0 if row == (None, None) else None for row in children]
+    while True:
+        newly: dict[int, int] = {}
+        for cid, (control, row) in enumerate(zip(controls, children, strict=True)):
+            if ranks[cid] is not None:
+                continue
+            if control[0] == "landmine":
+                if row != (None, None):
+                    raise AssertionError("candidate landmine has ordered children")
+                newly[cid] = 0
+                continue
+            if control[0] != "fork" or None in row:
+                raise AssertionError("candidate fork lost one of its ordered children")
+            child_ranks = tuple(ranks[target] for target in row if target is not None)
+            if len(child_ranks) == 2 and all(rank is not None for rank in child_ranks):
+                known = tuple(rank for rank in child_ranks if rank is not None)
+                newly[cid] = 1 + max(known)
+        if not newly:
+            break
+        for cid, new_rank in newly.items():
+            ranks[cid] = new_rank
+
+    for cid, (control, row) in enumerate(zip(controls, children, strict=True)):
+        rank = ranks[cid]
+        if control[0] == "landmine":
+            if rank is None or row != (None, None):
+                raise AssertionError("candidate rank checker rejected a landmine row")
+            continue
+        child_ranks = tuple(ranks[target] for target in row if target is not None)
+        if rank is None:
+            if sum(child_rank is None for child_rank in child_ranks) != 1:
+                raise AssertionError(
+                    f"candidate CID {cid} has no unique unranked ordered child"
+                )
+        elif any(
+            child_rank is None or child_rank >= rank for child_rank in child_ranks
+        ):
+            raise AssertionError(f"candidate CID {cid} violates strict rank descent")
+    return tuple(ranks)
+
+
+def _reencode_candidate(
+    input_path: Path,
+    candidate_path: Path,
+    occurrence_path: Path,
+    isabelle_data_path: Path | None = None,
+) -> dict[str, object]:
+    """Validate dimensions and compact a prior raw candidate without rebuilding it."""
+    raw_source: object = json.loads(input_path.read_text(encoding="utf-8"))
+    if not isinstance(raw_source, dict):
+        raise TypeError("candidate JSON root must be an object")
+    source: dict[str, object] = {}
+    for key, value in raw_source.items():
+        if not isinstance(key, str):
+            raise TypeError("candidate JSON object keys must be strings")
+        source[key] = value
+    if source.get("format") != "comma-semantic-future-candidate-v1":
+        raise ValueError("input is not a v1 semantic future candidate")
+
+    def list_field(name: str) -> list[object]:
+        value = source.get(name)
+        if not isinstance(value, list):
+            raise TypeError(f"candidate field {name!r} must be a list")
+        return value
+
+    states = list_field("states")
+    class_ids = list_field("class_of_state")
+    controls = list_field("controls")
+    children = list_field("ordered_children")
+    payloads = list_field("occurrence_payloads")
+    refinement_witnesses = list_field("refinement_collision_witnesses")
+    if len(states) != len(class_ids) or len(payloads) != len(states):
+        raise ValueError("source map or occurrence payload has the wrong universe size")
+    if len(states) != _candidate_universe_size():
+        raise ValueError("candidate does not cover the declared source universe")
+    if len(controls) != len(children):
+        raise ValueError("class controls and ordered child rows have different sizes")
+    expected_states = (
+        [kind, a, residue]
+        for kind in ("N", "Z")
+        for a in range(2, 10)
+        for residue in range(PERIOD)
+    )
+    if any(
+        actual != expected
+        for actual, expected in zip(states, expected_states, strict=True)
+    ):
+        raise ValueError("candidate source-state ordering is not canonical")
+    class_count = len(controls)
+    dense_ids = _validate_class_map(tuple(class_ids), class_count)
+    max_cid = _candidate_universe_size() - 1
+    packed_ids = _encode_unsigned_varints(dense_ids, max_value=max_cid)
+    if (
+        _decode_unsigned_varints(
+            packed_ids, max_values=_candidate_universe_size(), max_value=max_cid
+        )
+        != dense_ids
+    ):
+        raise AssertionError("candidate CID binding failed its codec round trip")
+    normalized_controls, normalized_children = _validate_class_rows(
+        tuple(controls), tuple(children)
+    )
+    rank_candidate = _class_rank_candidate(normalized_controls, normalized_children)
+    paths = [candidate_path.resolve(), occurrence_path.resolve()]
+    if isabelle_data_path is not None:
+        paths.append(isabelle_data_path.resolve())
+    if len(set(paths)) != len(paths) or input_path.resolve() in paths:
+        raise ValueError("candidate inputs and outputs must have distinct paths")
+    if any(path.exists() for path in paths):
+        raise FileExistsError("candidate outputs must be new files")
+    compact = {
+        "format": "comma-semantic-future-candidate-v2",
+        "authority": "untrusted-source-derived-candidate",
+        "state_universe": "kind=N,Z; a=2..9; residue=0..923; nested-order",
+        "class_of_state_varint_base64": base64.b64encode(packed_ids).decode("ascii"),
+        "controls": [list(control) for control in normalized_controls],
+        "ordered_children": [list(row) for row in normalized_children],
+        "class_rank_candidate": list(rank_candidate),
+        "refinement_rounds": source.get("refinement_rounds"),
+        "refinement_collision_witnesses": refinement_witnesses,
+        "seam_is_projected_from_cid": source.get("seam_is_projected_from_cid"),
+        "seam_projection_collision": source.get("seam_projection_collision"),
+    }
+    occurrence = {
+        "format": "comma-semantic-future-occurrence-payload-v1",
+        "authority": "untrusted-source-derived-occurrence-audit",
+        "state_universe": compact["state_universe"],
+        "occurrence_payloads": payloads,
+    }
+    _write_new(
+        candidate_path,
+        json.dumps(compact, sort_keys=True, separators=(",", ":")) + "\n",
+    )
+    _write_new(
+        occurrence_path,
+        json.dumps(occurrence, sort_keys=True, separators=(",", ":")) + "\n",
+    )
+    if isabelle_data_path is not None:
+        _write_new(
+            isabelle_data_path,
+            _render_candidate_data_theory(
+                dense_ids,
+                tuple(normalized_controls),
+                tuple(normalized_children),
+                rank_candidate,
+            ),
+        )
+    candidate_bytes = candidate_path.stat().st_size
+    occurrence_bytes = occurrence_path.stat().st_size
+    isabelle_lines = (
+        None
+        if isabelle_data_path is None
+        else len(isabelle_data_path.read_text(encoding="utf-8").splitlines())
+    )
+    return {
+        "input": str(input_path),
+        "candidate_output": str(candidate_path),
+        "occurrence_output": str(occurrence_path),
+        "isabelle_data_output": (
+            None if isabelle_data_path is None else str(isabelle_data_path)
+        ),
+        "source_map_entries": len(dense_ids),
+        "classes": class_count,
+        "ranked_classes": sum(rank is not None for rank in rank_candidate),
+        "class_rows": len(normalized_controls),
+        "collision_witnesses": len(refinement_witnesses),
+        "seam_projected_from_cid": compact["seam_is_projected_from_cid"],
+        "candidate_bytes": candidate_bytes,
+        "occurrence_bytes": occurrence_bytes,
+        "isabelle_data_lines": isabelle_lines,
+    }
+
+
+def _hol_list_definition(
+    name: str,
+    hol_type: str,
+    values: tuple[_HolItem, ...],
+    render: Callable[[_HolItem], str],
+) -> str:
+    lines = [
+        f'definition {name} :: "{hol_type}" where',
+        f'  "{name} =',
+        "    [",
+    ]
+    rendered = [render(value) for value in values]
+    chunks = [rendered[index : index + 40] for index in range(0, len(rendered), 40)]
+    for index, chunk in enumerate(chunks):
+        suffix = "," if index + 1 < len(chunks) else ""
+        lines.append("      " + ", ".join(chunk) + suffix)
+    lines.append('    ]"')
+    return "\n".join(lines)
+
+
+def _render_candidate_data_theory(
+    class_ids: tuple[int, ...],
+    controls: tuple[Control, ...],
+    children: tuple[ClassRow, ...],
+    ranks: tuple[int | None, ...],
+) -> str:
+    """Render reviewed compact candidate data, with no physical edge table."""
+    if not (len(controls) == len(children) == len(ranks)):
+        raise ValueError("candidate class data vectors have inconsistent lengths")
+
+    def control_term(control: Control) -> str:
+        if control[0] == "landmine":
+            if control[1] is not None:
+                raise ValueError("landmine candidate carries a fork coefficient")
+            return "Comma_Future_Landmine"
+        if type(control[1]) is not int:
+            raise ValueError("fork candidate lost its exact coefficient")
+        return f"Comma_Future_Fork {control[1]}"
+
+    def child_term(value: int | None) -> str:
+        return "None" if value is None else f"Some {value}"
+
+    def child_pair_term(row: ClassRow) -> str:
+        return f"({child_term(row[0])}, {child_term(row[1])})"
+
+    def rank_term(value: int | None) -> str:
+        return "None" if value is None else f"Some {value}"
+
+    definitions = (
+        _hol_list_definition(
+            "comma_semantic_future_candidate_class_ids",
+            "nat list",
+            tuple(class_ids),
+            str,
+        ),
+        _hol_list_definition(
+            "comma_semantic_future_candidate_controls",
+            "comma_future_control list",
+            tuple(controls),
+            control_term,
+        ),
+        _hol_list_definition(
+            "comma_semantic_future_candidate_children",
+            "(nat option \\<times> nat option) list",
+            tuple(children),
+            child_pair_term,
+        ),
+        _hol_list_definition(
+            "comma_semantic_future_candidate_ranks",
+            "nat option list",
+            tuple(ranks),
+            rank_term,
+        ),
+    )
+    return (
+        "theory Comma_Semantic_Future_Candidate_Data\n"
+        "  imports Comma_Semantic_B1_Instance.Comma_Semantic_Summary_Instance\n"
+        "begin\n\n"
+        "text \\<open>Untrusted, source-derived Moore candidate data.  The concrete\n"
+        "semantic provider and the rank-row checker validate this map before\n"
+        "any infinite-path theorem uses it.  The source-state binding is a CID\n"
+        "map only; control, ordered child edges, and candidate ranks occur once\n"
+        "per CID.  Occurrence weights and C1 payloads are stored separately.\n"
+        "This theory contains no native rank table or source transition table.\n"
+        "\\<close>\n\n" + "\n\n".join(definitions) + "\n\nend\n"
+    )
+
+
+def _seam_collision(
+    class_ids: tuple[int, ...],
+    states: tuple[BoundaryState, ...],
+    payloads: tuple[C1OccurrencePayload, ...],
+) -> SeamProjectionCollision | None:
+    representatives: dict[int, int] = {}
+    for index, cid in enumerate(class_ids):
+        first = representatives.setdefault(cid, index)
+        if payloads[first].seam != payloads[index].seam:
+            return SeamProjectionCollision(
+                cid,
+                states[first],
+                states[index],
+                payloads[first].seam,
+                payloads[index].seam,
+            )
+    return None
+
+
+def build_semantic_future_candidate() -> SemanticFutureCandidate:
+    """Construct the exact-control Moore candidate without count assertions.
+
+    The returned CID is a candidate map only.  A concrete Isabelle instance
+    must check each map, control, and ordered-child equation against its
+    provider before using it in a rank check.
+    """
+    states = tuple(
+        BoundaryState(kind, a, residue)
+        for kind in ("N", "Z")
+        for a in range(2, 10)
+        for residue in range(PERIOD)
+    )
+    indices = _state_index(states)
+    macros = tuple(construct_macro(state, grouped_near=True) for state in states)
+    controls = tuple(_control(macro) for macro in macros)
+    rows = _rows(macros, indices)
+    payloads = _c1_payloads(states, macros, indices)
+    class_ids, witnesses, rounds = _refine_with_witnesses(rows, controls, states)
+    class_controls, class_children = _quotient_rows(rows, controls, class_ids)
+    class_ranks = _class_rank_candidate(class_controls, class_children)
+    return SemanticFutureCandidate(
+        states,
+        controls,
+        class_ids,
+        class_controls,
+        class_children,
+        class_ranks,
+        payloads,
+        witnesses,
+        _seam_collision(class_ids, states, payloads),
+        rounds,
+    )
+
+
+__all__ = [
+    "C1OccurrencePayload",
+    "C1SeamObservation",
+    "FutureRefinementCollision",
+    "SeamProjectionCollision",
+    "SemanticFutureCandidate",
+    "build_semantic_future_candidate",
+]
+
+
+def main() -> None:
+    parser = argparse.ArgumentParser(
+        description="Generate an untrusted source-derived semantic FutureCID candidate"
+    )
+    parser.add_argument(
+        "--output",
+        type=Path,
+        required=True,
+        help="fresh run-directory path for the untrusted JSON certificate",
+    )
+    parser.add_argument(
+        "--occurrence-output",
+        type=Path,
+        help="separate fresh run-directory path for occurrence-only C1/weight data",
+    )
+    parser.add_argument(
+        "--reencode-input",
+        type=Path,
+        help="compact an existing v1 candidate without rebuilding source arithmetic",
+    )
+    parser.add_argument(
+        "--isabelle-data-output",
+        type=Path,
+        help="emit the compact class-map/class-row theory data at this source path",
+    )
+    args = parser.parse_args()
+    if args.reencode_input is not None:
+        occurrence_output = args.occurrence_output or args.output.with_name(
+            args.output.stem + ".occurrence.json"
+        )
+        print(
+            json.dumps(
+                _reencode_candidate(
+                    args.reencode_input,
+                    args.output,
+                    occurrence_output,
+                    args.isabelle_data_output,
+                ),
+                sort_keys=True,
+            )
+        )
+        return
+    candidate = build_semantic_future_candidate()
+    occurrence_output = args.occurrence_output or args.output.with_name(
+        args.output.stem + ".occurrence.json"
+    )
+    if args.output.resolve() == occurrence_output.resolve():
+        raise ValueError("candidate and occurrence outputs must be separate files")
+    if args.output.exists() or occurrence_output.exists():
+        raise FileExistsError("candidate outputs must be new files")
+    _write_new(
+        args.output,
+        json.dumps(
+            candidate.certificate_record(), sort_keys=True, separators=(",", ":")
+        )
+        + "\n",
+    )
+    _write_new(
+        occurrence_output,
+        json.dumps(
+            candidate.occurrence_payload_record(),
+            sort_keys=True,
+            separators=(",", ":"),
+        )
+        + "\n",
+    )
+    print(
+        json.dumps(
+            {
+                "output": str(args.output),
+                "states": len(candidate.states),
+                "classes": len(candidate.class_controls),
+                "ranked_classes": sum(
+                    rank is not None for rank in candidate.class_ranks
+                ),
+                "refinement_rounds": candidate.refinement_rounds,
+                "collision_witnesses": len(candidate.refinement_collisions),
+                "seam_projected_from_cid": candidate.seam_is_projected_from_cid,
+                "occurrence_output": str(occurrence_output),
+            },
+            sort_keys=True,
+        )
+    )
+
+
+if __name__ == "__main__":
+    main()

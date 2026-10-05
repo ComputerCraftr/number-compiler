@@ -169,4 +169,123 @@ ML \<open>
       comma_orbit_word_refines comma_orbit_word_square comma_orbit_masks_refine})
     then () else error "Orbit word refinement depends on an oracle";
 \<close>
+text \<open>Round-output admission and projection belong to the orbit-word
+interface, independently of any response-row constructor.\<close>
+
+fun comma_sector_base_admitted :: "comma_round_result \<Rightarrow> bool" where
+  "comma_sector_base_admitted (Comma_Round_Cross (Comma_Entry f d x)) =
+    (comma_decade_root_admitted (Comma_Entry f d x) \<and> d=1)"
+| "comma_sector_base_admitted (Comma_Round_Cross (Comma_Near f d h)) = False"
+| "comma_sector_base_admitted (Comma_Round_Fork a d) = (d=0)"
+| "comma_sector_base_admitted (Comma_Round_Landmine d) = (d=0)"
+| "comma_sector_base_admitted Comma_Round_Invalid = False"
+
+fun comma_sector_base_project :: "comma_round_result \<Rightarrow> comma_word_result" where
+  "comma_sector_base_project (Comma_Round_Cross (Comma_Entry f d x)) =
+    (if comma_decade_root_admitted (Comma_Entry f d x) \<and> d=1
+     then Comma_Word_Live (comma_offset_orbit x)
+     else Comma_Word_Invalid)"
+| "comma_sector_base_project (Comma_Round_Cross (Comma_Near f d h)) = Comma_Word_Invalid"
+| "comma_sector_base_project (Comma_Round_Fork a d) =
+    (if d=0 then Comma_Word_Stop 0 (Comma_Terminal_Fork a) else Comma_Word_Invalid)"
+| "comma_sector_base_project (Comma_Round_Landmine d) =
+    (if d=0 then Comma_Word_Stop 0 Comma_Terminal_Landmine else Comma_Word_Invalid)"
+| "comma_sector_base_project Comma_Round_Invalid = Comma_Word_Invalid"
+
+lemma comma_sector_base_project_refines:
+  assumes source: "r<924" "x\<le>90"
+    and exact: "comma_fast_round_aux 9 r (Comma_Entry 1 0 x)=out"
+    and admitted: "comma_sector_base_admitted out"
+  shows "comma_sector_base_project out =
+    comma_word_project comma_offset_orbit (comma_decade_block_atom (Comma_Decade r x))"
+proof -
+  have control: "comma_fast_decade_control (Comma_Decade r x)=comma_decade_decode r out"
+    using exact by (simp add: comma_fast_decade_control.simps)
+  have valid: "comma_decade_admitted (Comma_Decade r x)" using source by simp
+  show ?thesis
+    apply (simp only: comma_decade_block_atom_def valid if_True control)
+    using admitted
+    apply (cases out; auto)
+    subgoal for target by (cases target) auto
+    done
+qed
+
+lemma comma_sector_base_output_admitted:
+  assumes offset: "x\<le>90"
+    and observed_result: "comma_fast_round_aux 9 r (Comma_Entry 1 0 x)=out"
+  shows "comma_sector_base_admitted out"
+proof -
+  have valid: "comma_round_admitted (Comma_Entry 1 0 x)"
+    using offset by simp
+  have enough: "Suc (9-comma_sector_number (Comma_Entry 1 0 x))\<le>9"
+    by simp
+  have fast:
+    "comma_fast_round_aux 9 r (Comma_Entry 1 0 x) =
+      snd (snd (comma_round_close r (Comma_Entry 1 0 x)))"
+    by (rule comma_fast_round_aux_correct[OF valid enough])
+  obtain steps terminal result where close:
+    "comma_round_close r (Comma_Entry 1 0 x)=(steps,terminal,result)"
+    by (metis surj_pair)
+  have result_eq: "result=out"
+    using fast observed_result close by simp
+  have trace: "comma_round_prefix_steps steps r (Comma_Entry 1 0 x) terminal \<and>
+      (case result of
+        Comma_Round_Fork a delta \<Rightarrow>
+          comma_finite_step (r mod 924) terminal=Comma_Fork a delta
+      | Comma_Round_Landmine delta \<Rightarrow>
+          comma_finite_step (r mod 924) terminal=Comma_Landmine delta
+      | Comma_Round_Cross target \<Rightarrow>
+          comma_finite_step (r mod 924) terminal=Comma_Next target \<and>
+            comma_round_crossing terminal target
+      | Comma_Round_Invalid \<Rightarrow>
+          comma_finite_step (r mod 924) terminal=Comma_Invalid)"
+    by (rule comma_round_close_refines_trace[OF close])
+  have result_not_invalid: "result\<noteq>Comma_Round_Invalid"
+    by (rule comma_round_close_admitted(2)[OF close valid])
+  have delta: "comma_round_delta terminal=0"
+    using comma_round_close_delta[OF close valid] by simp
+  show ?thesis
+  proof (cases out)
+    case (Comma_Round_Fork a d)
+    have event:
+      "comma_finite_step (r mod 924) terminal=Comma_Fork a d"
+      using trace result_eq Comma_Round_Fork by auto
+    have d_zero: "d=0"
+      using event delta
+      by (cases terminal)
+        (auto simp: comma_finite_step_def comma_weighted_step_def Let_def
+          split: if_splits)
+    show ?thesis using Comma_Round_Fork d_zero
+      by (simp add: comma_sector_base_admitted.simps)
+  next
+    case (Comma_Round_Landmine d)
+    have event:
+      "comma_finite_step (r mod 924) terminal=Comma_Landmine d"
+      using trace result_eq Comma_Round_Landmine by auto
+    have d_zero: "d=0"
+      using event delta
+      by (cases terminal)
+        (auto simp: comma_finite_step_def comma_weighted_step_def Let_def
+          split: if_splits)
+    show ?thesis using Comma_Round_Landmine d_zero
+      by (simp add: comma_sector_base_admitted.simps)
+  next
+    case (Comma_Round_Cross target)
+    obtain d h next_offset where terminal:
+        "terminal=Comma_Near 9 d h"
+      and target: "target=Comma_Entry 1 (Suc d) next_offset"
+      and next_bound: "next_offset\<le>90"
+      using comma_round_close_crossing_shape[of r "Comma_Entry 1 0 x"
+        steps terminal target] close result_eq Comma_Round_Cross by blast
+    have d_zero: "d=0" using delta terminal by simp
+    show ?thesis using Comma_Round_Cross target next_bound d_zero
+      by (simp add: comma_sector_base_admitted.simps
+        comma_decade_root_admitted_def)
+  next
+    case Comma_Round_Invalid
+    then show ?thesis using result_not_invalid result_eq by simp
+  qed
+qed
+
+
 end

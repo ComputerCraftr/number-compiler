@@ -24,6 +24,11 @@ from number_compiler.sequences.comma.boundary_quotient import (
     BoundaryState,
     construct_macro,
 )
+from number_compiler.sequences.comma.domain import (
+    canonical_entry_coordinate,
+    coarse_entry_coordinate,
+    decade_root_coordinate,
+)
 from tests.support.comma_oracles import literal_children as _literal_children
 
 
@@ -430,6 +435,72 @@ def test_invalid_chart_fails_before_any_modular_power(
         chart_step(10, chart)
 
 
+@pytest.mark.parametrize(
+    ("leading", "coordinate", "expected"),
+    [
+        (1, 90, True),
+        (1, 91, False),
+        (1, 98, False),
+        (2, 91, True),
+        (2, 92, False),
+        (9, 98, True),
+        (9, 99, False),
+    ],
+)
+def test_canonical_entry_domain_is_sector_specific(
+    leading: int, coordinate: int, expected: bool
+) -> None:
+    assert canonical_entry_coordinate(leading, coordinate) is expected
+
+
+def test_coarse_and_canonical_entry_domains_remain_distinct() -> None:
+    assert coarse_entry_coordinate(1, 98)
+    assert not canonical_entry_coordinate(1, 98)
+    assert (
+        sum(coarse_entry_coordinate(f, x) for f in range(1, 10) for x in range(99))
+        == 891
+    )
+    assert (
+        sum(canonical_entry_coordinate(f, x) for f in range(1, 10) for x in range(99))
+        == 855
+    )
+
+
+def test_fabricated_sector_one_entry_is_rejected_before_power(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    assert decade_root_coordinate(1, 90)
+    assert not decade_root_coordinate(1, 91)
+
+    def forbidden(*_args: int) -> object:
+        raise AssertionError("invalid chart performed cycle construction")
+
+    monkeypatch.setattr(boundary_chart, "entry_headroom", forbidden)
+    with pytest.raises(ValueError, match="invalid comma boundary chart"):
+        chart_step(10, BoundaryChart("entry", 1, 0, 98))
+
+
+@pytest.mark.parametrize("leading", range(1, 10))
+def test_runtime_chart_step_uses_each_sector_canonical_limit(leading: int) -> None:
+    limit = 89 + leading
+    move = chart_step(10, BoundaryChart("entry", leading, 0, limit))
+    assert move.next_chart is not None
+    with pytest.raises(ValueError, match="invalid comma boundary chart"):
+        chart_step(10, BoundaryChart("entry", leading, 0, limit + 1))
+
+
+@pytest.mark.parametrize("leading", range(1, 10))
+def test_near_one_crossing_targets_the_canonical_entry_boundary(leading: int) -> None:
+    source = BoundaryChart("near", leading, 0, 1)
+    move = chart_step(10, source)
+    assert move.next_chart == (
+        BoundaryChart("entry", leading + 1, 0, 90 + leading)
+        if leading < 9
+        else BoundaryChart("entry", 1, 1, 90)
+    )
+    assert _literal_children(_value(source, 10)) == (_value(move.next_chart, 10),)
+
+
 def test_small_power_periods_cover_every_cycle_and_exponent_residue() -> None:
     displacements = {
         arithmetic.cycle_transfer(f, d).displacement
@@ -447,6 +518,17 @@ def test_small_power_periods_cover_every_cycle_and_exponent_residue() -> None:
                 representative + 1848,
             ):
                 assert actual == pow(10, exponent, displacement)
+
+
+@pytest.mark.parametrize("exponent", (3, 4))
+def test_chart_scale_alone_does_not_admit_periodic_phase_transport(
+    exponent: int,
+) -> None:
+    displacement = arithmetic.cycle_transfer(3, 0).displacement
+    assert displacement == 480
+    assert 10**exponent > 98 and 10**exponent >= 540
+    assert pow(10, exponent, displacement) != pow(10, exponent + 924, displacement)
+    assert pow(10, 5, displacement) == pow(10, 5 + 924, displacement)
 
 
 def test_entry_uses_recursive_cores_without_modular_power(
@@ -467,7 +549,7 @@ def test_entry_uses_recursive_cores_without_modular_power(
     for residue in (0, 4, 5, 10, 923):
         construct_macro(BoundaryState("N", 2, residue))
         construct_macro(BoundaryState("N", 2, residue), grouped_near=True)
-    assert inverse_moduli
+    assert not inverse_moduli
 
 
 @pytest.mark.parametrize("core", (1, 3, 7, 11, 13, 21, 23, 27, 29))

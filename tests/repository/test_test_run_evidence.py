@@ -11,15 +11,23 @@ import pytest
 
 from devtools.checks.test_run_evidence import (
     EXECUTION_MODE,
-    FINGERPRINT_AFTER,
-    FINGERPRINT_BEFORE,
+    GIT_COMMIT_AFTER,
+    GIT_COMMIT_BEFORE,
+    GIT_DIRTY_AFTER,
+    GIT_DIRTY_BEFORE,
+    GIT_OBJECT_FORMAT_AFTER,
+    GIT_OBJECT_FORMAT_BEFORE,
+    GIT_TREE_AFTER,
+    GIT_TREE_BEFORE,
     MANIFEST,
     NODE_ID,
+    PROVENANCE_MODE,
     classify_execution_mode,
-    source_fingerprint,
     validate_evidence,
     validate_serial_release,
 )
+from devtools.git_source import git_source
+from tests.support.git_repositories import commit_fixture
 
 if TYPE_CHECKING:
     import pathlib
@@ -33,14 +41,23 @@ def report(
 ]:
     root = tmp_path / "tree"
     (root / "src").mkdir(parents=True)
+    (root / "pyproject.toml").write_text("[project]\nname='fixture'\n")
     (root / "src" / "a.py").write_text("value = 1\n")
-    fingerprint = source_fingerprint(root)
+    commit_fixture(root)
+    source = git_source(root)
     nodes = ("tests/test_a.py::test_a", "tests/test_a.py::test_b[0]")
     suite = ET.Element("testsuite", tests="2", failures="0", errors="0", skipped="0")
     properties = ET.SubElement(suite, "properties")
     for name, value in (
-        (FINGERPRINT_BEFORE, fingerprint),
-        (FINGERPRINT_AFTER, fingerprint),
+        (GIT_COMMIT_BEFORE, source.commit),
+        (GIT_COMMIT_AFTER, source.commit),
+        (GIT_TREE_BEFORE, source.tree),
+        (GIT_TREE_AFTER, source.tree),
+        (GIT_OBJECT_FORMAT_BEFORE, source.object_format),
+        (GIT_OBJECT_FORMAT_AFTER, source.object_format),
+        (GIT_DIRTY_BEFORE, "false"),
+        (GIT_DIRTY_AFTER, "false"),
+        (PROVENANCE_MODE, "acceptance"),
         (MANIFEST, json.dumps(nodes)),
     ):
         ET.SubElement(properties, "property", name=name, value=value)
@@ -49,7 +66,37 @@ def report(
         props = ET.SubElement(case, "properties")
         ET.SubElement(props, "property", name=NODE_ID, value=node)
     path = tmp_path / "run.xml"
+    _write_run_manifest(path, source.as_dict(), verified=True)
     return root, path, suite, nodes
+
+
+def _write_run_manifest(
+    path: Path, source: dict[str, str | bool], *, verified: bool
+) -> None:
+    (path.parent / "manifest.json").write_text(
+        json.dumps(
+            {
+                "schema_version": 2,
+                "evidence_mode": "acceptance",
+                "outcome": "completed",
+                "acceptance_verified": verified,
+                "cacheable": verified,
+                "reusable": verified,
+                "git_source_before": source,
+                "git_source_after": source,
+                "steps": [
+                    {
+                        "command": [
+                            "python",
+                            "-m",
+                            "pytest",
+                            f"--junitxml={path.resolve()}",
+                        ]
+                    }
+                ],
+            }
+        )
+    )
 
 
 def save(path: pathlib.Path, suite: xml.etree.ElementTree.Element[str]) -> None:
@@ -62,6 +109,53 @@ def test_complete_frozen_evidence_is_reusable_without_warming_an_engine(
     root, path, suite, nodes = report(tmp_path)
     save(path, suite)
     assert validate_evidence(path, root, nodes) == dict.fromkeys(nodes, 0.5)
+    assert validate_evidence(path, root) == dict.fromkeys(nodes, 0.5)
+
+
+@pytest.mark.parametrize("verified", [False, True])
+def test_reusable_acceptance_junit_requires_verified_sibling_manifest(
+    tmp_path: Path, verified: bool
+) -> None:
+    root, path, suite, nodes = report(tmp_path)
+    save(path, suite)
+    source = git_source(root)
+    _write_run_manifest(path, source.as_dict(), verified=verified)
+    if verified:
+        assert validate_evidence(path, root, nodes, require_acceptance=True)
+    else:
+        with pytest.raises(ValueError, match="not verified"):
+            validate_evidence(path, root, nodes, require_acceptance=True)
+
+
+def test_acceptance_mode_requires_manifest_by_default(tmp_path: Path) -> None:
+    root, path, suite, nodes = report(tmp_path)
+    save(path, suite)
+    (path.parent / "manifest.json").unlink()
+    with pytest.raises(ValueError, match="no readable run manifest"):
+        validate_evidence(path, root, nodes)
+
+
+def test_inflight_acceptance_is_explicitly_nonreusable(tmp_path: Path) -> None:
+    root, path, suite, nodes = report(tmp_path)
+    suite.set("time", "1.0")
+    ET.SubElement(
+        _required(suite, "properties"),
+        "property",
+        name=EXECUTION_MODE,
+        value="serial-unfiltered",
+    )
+    save(path, suite)
+    (path.parent / "manifest.json").unlink()
+    report_data = validate_serial_release(
+        path,
+        root,
+        nodes,
+        require_acceptance=True,
+        require_acceptance_verified=False,
+    )
+    assert report_data["acceptance_verified"] is False
+    assert report_data["cacheable"] is False
+    assert report_data["reusable"] is False
 
 
 @pytest.mark.parametrize(
@@ -87,9 +181,9 @@ def test_missing_stale_or_unsuccessful_evidence_cannot_pass(
     if mutation == "source":
         (root / "src" / "a.py").write_text("value = 2\n")
     elif mutation == "during":
-        _required(
-            suite, './properties/property[@name="' + FINGERPRINT_AFTER + '"]'
-        ).set("value", "stale")
+        _required(suite, './properties/property[@name="' + GIT_TREE_AFTER + '"]').set(
+            "value", "stale"
+        )
     elif mutation == "missing_manifest":
         props = _required(suite, "properties")
         assert props is not None
@@ -145,7 +239,7 @@ def test_package_contract_changes_invalidate_passing_evidence(
     target = root / manifest
     target.parent.mkdir(parents=True, exist_ok=True)
     target.write_text("changed package contract\n")
-    with pytest.raises(ValueError, match="stale"):
+    with pytest.raises(ValueError, match="dirty|stale"):
         validate_evidence(path, root, nodes)
 
 
