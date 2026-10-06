@@ -73,6 +73,15 @@ def apply_source_image(
     adapter.validate_action(action)
     self.ledger.bump("source_image_application_requests")
     split = adapter if isinstance(adapter, SourceBoundSplitContextAdapter) else None
+    transaction_factory = (
+        adapter.composite_transaction
+        if isinstance(adapter, SourceBoundCompositeTransactionalAdapter)
+        else None
+    )
+
+    def candidate_transaction() -> AbstractContextManager[None]:
+        return nullcontext() if transaction_factory is None else transaction_factory()
+
     origin = self._origin(adapter, source)
     workspace = self._workspace
     if workspace.running or len(workspace):
@@ -161,12 +170,31 @@ def apply_source_image(
                             _ApplyKey(adapter_key, cached.source, frame.action),
                             cached.result,
                         )
-                        candidate = adapter.transport_reuse(
-                            frame.action,
-                            cached_source,
-                            cached_result,
-                            source_view,
-                        )
+                        with candidate_transaction():
+                            candidate = adapter.transport_reuse(
+                                frame.action,
+                                cached_source,
+                                cached_result,
+                                source_view,
+                            )
+                            result = _publish_candidate(
+                                self,
+                                adapter,
+                                apply_key,
+                                source_view,
+                                frame.action,
+                                candidate,
+                                None,
+                                split is not None,
+                            )
+                        push_value(result)
+                        self.ledger.bump("source_image_relative_transfer_hits")
+                        continue
+                self.ledger.bump("source_image_application_misses")
+                children = adapter.action_children(frame.action)
+                if children is None:
+                    with candidate_transaction():
+                        candidate = adapter.apply_primitive(frame.action, source_view)
                         result = _publish_candidate(
                             self,
                             adapter,
@@ -174,26 +202,9 @@ def apply_source_image(
                             source_view,
                             frame.action,
                             candidate,
-                            None,
+                            relative_key,
                             split is not None,
                         )
-                        push_value(result)
-                        self.ledger.bump("source_image_relative_transfer_hits")
-                        continue
-                self.ledger.bump("source_image_application_misses")
-                children = adapter.action_children(frame.action)
-                if children is None:
-                    candidate = adapter.apply_primitive(frame.action, source_view)
-                    result = _publish_candidate(
-                        self,
-                        adapter,
-                        apply_key,
-                        source_view,
-                        frame.action,
-                        candidate,
-                        relative_key,
-                        split is not None,
-                    )
                     push_value(result)
                     self.ledger.bump("source_image_primitive_applications")
                     continue
@@ -217,12 +228,7 @@ def apply_source_image(
                         "source image children do not compose to their parent"
                     )
                 if isinstance(adapter, SourceBoundCompositeAdapter):
-                    transaction = (
-                        adapter.composite_transaction()
-                        if isinstance(adapter, SourceBoundCompositeTransactionalAdapter)
-                        else nullcontext()
-                    )
-                    with transaction:
+                    with candidate_transaction():
                         composite_candidate = adapter.apply_composite(
                             frame.action, source_view, demand
                         )

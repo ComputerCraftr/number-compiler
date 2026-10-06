@@ -49,9 +49,12 @@ def test_all_point_demands_normalize_each_output_once(steps: int, width: int) ->
     normalized = ledger.counters.get("reverse_source_mod9_digit_reconstructions", 0)
     assert normalized - before <= len(expected)
     assert ledger.counters.get("reverse_source_pullback_predecessor_search", 0) == 0
-    assert ledger.counters["reverse_source_ports_source_reads"] <= 20 * width
-    assert ledger.counters["reverse_source_ports_interval_publications"] <= 5 * width
-    assert ledger.counters["reverse_source_ports_postorder_frames"] <= 20 * width
+    assert ledger.counters.get("reverse_source_ports_source_reads", 0) <= 20 * width
+    assert (
+        ledger.counters.get("reverse_source_ports_interval_publications", 0)
+        <= 5 * width
+    )
+    assert ledger.counters.get("reverse_source_ports_postorder_frames", 0) <= 20 * width
     workspace.dispose()
     assert ledger.nodes == ledger.entries == 0
 
@@ -80,10 +83,12 @@ def test_same_carry_admission_runs_once_for_width_and_digits() -> None:
     ledger = ResourceLedger()
     workspace = ReverseSourceImageWorkspace(ledger, 1001, 3)
     assert workspace.width() == 4
-    before = ledger.counters["reverse_source_chamber_guard_coordinates"]
     assert tuple(workspace.iter_digits()) == (8, 0, 0, 8)
+    before = ledger.counters["reverse_source_chamber_guard_coordinates"]
+    assert before > 0
     assert tuple(workspace.digit(i) for i in range(4)) == (8, 0, 0, 8)
-    assert ledger.counters["reverse_source_chamber_guard_coordinates"] == before
+    assert tuple(workspace.iter_digits()) == (8, 0, 0, 8)
+    assert ledger.counters.get("reverse_source_chamber_guard_coordinates", 0) == before
     assert ledger.counters["reverse_source_chamber_admissions"] == 1
 
 

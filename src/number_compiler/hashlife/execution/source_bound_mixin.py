@@ -30,6 +30,12 @@ class SourceBoundImageMixin:
     def register_source_image_adapter(self, adapter: SourceBoundImageAdapter) -> None:
         self._source_image_core().register(adapter)
 
+    def source_origin_image(
+        self, adapter: SourceBoundImageAdapter, source: Hashable
+    ) -> SourceImageID:
+        """Admit an original source without executing an identity action."""
+        return self._source_image_core()._origin(adapter, source)
+
     def source_image(
         self,
         adapter: SourceBoundImageAdapter,
@@ -54,6 +60,14 @@ class SourceBoundImageMixin:
         demand: SourceImageDemand,
     ) -> SourceImageProjection:
         return self._source_image_core().projection(adapter, image, demand)
+
+    def cached_source_projection(
+        self,
+        adapter: SourceBoundImageAdapter,
+        image: SourceImageID,
+        demand: SourceImageDemand,
+    ) -> SourceImageProjection | None:
+        return self._source_image_core().cached_projection(adapter, image, demand)
 
     def source_first_failure(
         self,

@@ -3,14 +3,15 @@
 from __future__ import annotations
 
 from collections.abc import Hashable, Iterator
-from contextlib import ExitStack
 from dataclasses import dataclass
 from typing import cast
 
+from number_compiler.arithmetic.contracts.block_effect import (
+    BlockContextBudgetExceeded,
+)
 from number_compiler.arithmetic.contracts.exact_tree_context import (
     OriginalSourceConstruction,
 )
-from number_compiler.arithmetic.contracts.input_validation import require_integer
 from number_compiler.arithmetic.contracts.scoped_handles import (
     ExactSource,
 )
@@ -22,12 +23,14 @@ from number_compiler.hashlife.execution.source_bound_images import (
     SourceBoundImageAdapter,
     SourceImageCandidate,
     SourceImageDemand,
-    SourceImageID,
     SourceImageProjection,
     SourceImageView,
 )
-from number_compiler.hashlife.execution.tile_scheduler import TileScheduler
-from number_compiler.resources.ledger import OwnedMemo, ResourceLedger
+from number_compiler.resources.ledger import OwnedMemo
+from number_compiler.sequences.reverse_add.q19_output import (
+    ReversePairOutputOccurrence,
+    ReversePairQ19OutputOwner,
+)
 from number_compiler.sequences.reverse_add.recursive_cutover import (
     ReverseRecursiveOccurrence,
     ReverseRecursiveTemporalCutover,
@@ -45,24 +48,34 @@ from number_compiler.sequences.reverse_add.source_chamber import (
     validate_same_carry_chamber,
 )
 from number_compiler.sequences.reverse_add.source_ports import SourceCarryPorts
+from number_compiler.sequences.reverse_add.source_workspace import (
+    ReverseSourceImageWorkspace,
+)
+from number_compiler.sequences.reverse_add.successor_width import (
+    compile_reverse_successor_width,
+)
 
 
 class ReverseCylinderConstructionUnavailable(ValueError):
     """The requested temporal image needs the unbuilt successor cylinder."""
 
 
-# Cold completed-child migration is deliberately bounded.  Same-carry chambers
-# retain their existing arbitrary-horizon path; rejected chambers above this
-# horizon remain fail-closed until the higher semantic emission path is wired.
+# The legacy nondecimal completed-child fallback is deliberately bounded.
+# Decimal output uses its exact scheduler-owned Q19 occurrence without this cap.
 MAX_COMPLETED_CHILD_FALLBACK_STEPS = 128
 
 
 @dataclass(frozen=True, slots=True)
 class ReverseImagePayload:
-    """Chronological action and optional authenticated completed pair occurrence."""
+    """Chronological action and one authenticated completed-output form."""
 
     action: ReverseActionID
     occurrence: FieldImageID | None = None
+    pair_output: ReversePairOutputOccurrence | None = None
+
+    def __post_init__(self) -> None:
+        if self.occurrence is not None and self.pair_output is not None:
+            raise ValueError("reverse image cannot carry two completed outputs")
 
 
 def _source_digit(source: ExactSource, position: int) -> int:
@@ -71,11 +84,15 @@ def _source_digit(source: ExactSource, position: int) -> int:
 
 class _ReverseSourceImageAdapter(SourceBoundImageAdapter):
     family = "reverse-add"
-    semantic_version = "source-cylinder-v6-completed-occurrence"
+    semantic_version = "source-cylinder-v8-successor-width-projection"
 
-    def __init__(self, actions: ReverseActionArena) -> None:
+    def __init__(
+        self, actions: ReverseActionArena, *, successor_width_root: ReverseActionID
+    ) -> None:
         self.actions = actions
         self.ledger = actions.ledger
+        self._successor_width_root = successor_width_root
+        self.actions.node(successor_width_root)
         self._ports: SourceCarryPorts | None = None
         self._recursive: ReverseRecursiveTemporalCutover | None = None
         self._recursive_construction: OriginalSourceConstruction | None = None
@@ -88,6 +105,10 @@ class _ReverseSourceImageAdapter(SourceBoundImageAdapter):
             OwnedMemo(self.ledger, recursive_owner)
         )
         self._recursive_source: ExactSource | None = None
+        self._q19_owner: ReversePairQ19OutputOwner | None = None
+        self._q19_source: ExactSource | None = None
+        self._q19_mode_source: ExactSource | None = None
+        self._successor_width_workspace_owner: int | None = None
 
     def ports(self, source: ExactSource) -> SourceCarryPorts:
         """One source-bound spatial projection shared by every consumer."""
@@ -112,6 +133,8 @@ class _ReverseSourceImageAdapter(SourceBoundImageAdapter):
         """
         if type(source) is not ExactSource or type(steps) is not int or steps < 1:
             raise ValueError("reverse recursive authority requires source and horizon")
+        if source.base == 10:
+            return
         if self._recursive_construction is not None:
             self._recursive_construction.validate_source()
             if (
@@ -171,9 +194,17 @@ class _ReverseSourceImageAdapter(SourceBoundImageAdapter):
         if self._recursive is not None:
             self._recursive.dispose()
             self._recursive = None
+        if self._q19_owner is not None:
+            self._q19_owner.dispose()
+            self._q19_owner = None
+        self._q19_source = None
+        self._q19_mode_source = None
         self._recursive_source = None
         self._recursive_construction = None
         self._recursive_occurrences.dispose()
+        if self._successor_width_workspace_owner is not None:
+            self.ledger.mark_disposed(self._successor_width_workspace_owner)
+            self._successor_width_workspace_owner = None
 
     def _recursive_occurrence(
         self, source: ExactSource, steps: int
@@ -272,12 +303,24 @@ class _ReverseSourceImageAdapter(SourceBoundImageAdapter):
         if type(payload) is not ReverseImagePayload:
             raise TypeError("reverse/add image has another payload sort")
         steps = self.actions.node(payload.action).steps
+        if payload.occurrence is not None and payload.pair_output is not None:
+            raise ValueError("reverse image cannot carry two completed outputs")
         if payload.occurrence is not None:
             if type(payload.occurrence) is not FieldImageID:
                 raise TypeError("reverse completed payload requires a field image")
             completed = self._recursive_for_steps(steps)
             if completed is None or completed[1].image != payload.occurrence:
                 raise ValueError("reverse payload differs from its issued occurrence")
+        if payload.pair_output is not None:
+            owner = self._q19_owner
+            source = self._q19_source
+            # Action nodes are source-independent. The enclosing view binds this
+            # owner to the exact original source; here validate its issued root.
+            if owner is None or source is None:
+                raise ValueError("Q19 output payload has no live source owner")
+            owner.validate(payload.pair_output)
+            if payload.pair_output.temporal_steps != steps:
+                raise ValueError("Q19 output and action have different durations")
 
     def _validate_view(self, view: SourceImageView) -> ReverseImagePayload:
         self.validate_source(view.binding.source)
@@ -287,7 +330,15 @@ class _ReverseSourceImageAdapter(SourceBoundImageAdapter):
         origin = self.actions.source(cast(ReverseSource, view.binding.source))
         expected_ports: tuple[int, ...]
         expected_precision: int | None
-        if payload.occurrence is None:
+        if payload.pair_output is not None:
+            owner = self._q19_owner
+            if origin.base != 10 or owner is None or self._q19_source is not origin:
+                raise ValueError("Q19 output belongs to another source")
+            if payload.pair_output.temporal_steps != steps:
+                raise ValueError("Q19 output and action have different durations")
+            expected_ports = ()
+            expected_precision = None
+        elif payload.occurrence is None:
             expected_ports = (0,) if steps == 0 else (0, 1) if steps <= 2 else (0, 0)
             expected_precision = len(origin.digits) + (steps if steps <= 2 else 0)
         else:
@@ -388,6 +439,35 @@ class _ReverseSourceImageAdapter(SourceBoundImageAdapter):
                 radix=source.binding.radix,
                 precision=source.binding.precision,
             )
+        exact_source = self.actions.source(cast(ReverseSource, source.binding.source))
+        if exact_source.base == 10:
+            if payload.pair_output is None:
+                if self.actions.node(payload.action).steps != 0:
+                    raise ReverseCylinderConstructionUnavailable(
+                        "decimal pair output lost its completed source occurrence"
+                    )
+                owner = self._q19_owner
+                if owner is None:
+                    owner = ReversePairQ19OutputOwner(
+                        self.ledger, exact_source.digits, base=exact_source.base
+                    )
+                    self._q19_owner = owner
+                    self._q19_source = exact_source
+                elif self._q19_source is not exact_source:
+                    raise ValueError("decimal pair owner is bound to another source")
+                pair_output = owner.initial
+            else:
+                if self._q19_source is not exact_source or self._q19_owner is None:
+                    raise ValueError("decimal pair occurrence has another source owner")
+                pair_output = self._q19_owner.apply_pair_step(payload.pair_output)
+            cumulative = self.actions.compose(payload.action, exact)
+            return SourceImageCandidate(
+                ReverseImagePayload(cumulative, pair_output=pair_output),
+                source.binding.extent + node.steps,
+                boundary_ports=(),
+                radix=exact_source.base,
+                precision=None,
+            )
         if cast(ReverseImagePayload, source.payload).occurrence is not None:
             return self._extend_completed(exact, source)
         prior_steps = self.actions.node(
@@ -421,7 +501,16 @@ class _ReverseSourceImageAdapter(SourceBoundImageAdapter):
         self._validate_view(source)
         if demand is not None:
             demand.__post_init__()
+        origin = self.actions.source(cast(ReverseSource, source.binding.source))
+        payload = cast(ReverseImagePayload, source.payload)
         steps = self.actions.node(cast(ReverseActionID, action)).steps
+        if origin.base == 10 and (
+            self._q19_mode_source is origin or payload.pair_output is not None
+        ):
+            # Keep the canonical scheduler's completed-parent cache check first,
+            # then let its postorder action traversal apply the spatial pair
+            # transducer once per temporal primitive.
+            return None
         source_steps = self.actions.node(
             cast(ReverseImagePayload, source.payload).action
         ).steps
@@ -452,6 +541,24 @@ class _ReverseSourceImageAdapter(SourceBoundImageAdapter):
                     origin, steps, self.ledger, ports=self.ports(origin)
                 )
             except SameCarryChamberRejected as exc:
+                if origin.base == 10:
+                    # This fallback retains each primitive image until reset.
+                    # Use only an absolute storage lower bound: prior prefixes
+                    # may already occupy entries. A powered replacement must
+                    # remove this implementation-specific admission check.
+                    cache_limit = self.ledger.max_cache_entries
+                    if cache_limit is not None and steps > cache_limit:
+                        raise BlockContextBudgetExceeded(
+                            "cache budget exceeded before Q19 source-image "
+                            f"descent: at least {steps} retained cache entries "
+                            f"are required, limit is {cache_limit}"
+                        ) from exc
+                    # Decimal output has the canonical Q19 scheduler route.
+                    # Select it only after the existing same-carry admission
+                    # rejects this source, keeping admitted algebra actions
+                    # intact and avoiding the legacy recursive fallback.
+                    self._q19_mode_source = origin
+                    return None
                 if steps > MAX_COMPLETED_CHILD_FALLBACK_STEPS:
                     raise ReverseCylinderConstructionUnavailable(
                         "reverse/add source cylinder completed-child fallback is "
@@ -509,7 +616,7 @@ class _ReverseSourceImageAdapter(SourceBoundImageAdapter):
             or final.action != self.actions.compose(middle.action, children[1])
         ):
             raise ValueError("reverse chronological children have another binding")
-        if final.occurrence is None:
+        if final.occurrence is None and final.pair_output is None:
             raise ReverseCylinderConstructionUnavailable(
                 "reverse chronology requires a completed final occurrence"
             )
@@ -530,7 +637,12 @@ class _ReverseSourceImageAdapter(SourceBoundImageAdapter):
             cast(ReverseImagePayload, source.payload).action
         ).steps
         total = source_steps + action_steps
-        if total >= 2 and source_steps != 0 and payload.occurrence is None:
+        if (
+            total >= 2
+            and source_steps != 0
+            and payload.occurrence is None
+            and payload.pair_output is None
+        ):
             self.ledger.bump("reverse_cylinder_construction_failures")
             raise ReverseCylinderConstructionUnavailable(
                 "reverse/add source cylinder construction is unavailable for "
@@ -602,6 +714,48 @@ class _ReverseSourceImageAdapter(SourceBoundImageAdapter):
         source = self.actions.source(cast(ReverseSource, image.binding.source))
         source_width = len(source.digits)
         steps = self.actions.node(payload.action).steps
+        if demand.name == "successor-width":
+            if source.base != 10 or steps != 0 or len(demand.parameters) != 2:
+                raise ValueError("successor width demand needs a decimal source origin")
+            root_action, requested_steps = demand.parameters
+            if type(root_action) is not ReverseActionID:
+                raise TypeError("successor width demand needs a scoped action ID")
+            if root_action != self._successor_width_root:
+                raise ValueError("successor width demand has another root action")
+            if type(requested_steps) is not int or requested_steps < 3:
+                raise ValueError("successor width demand needs an exact horizon")
+            action_node = self.actions.node(root_action)
+            if (
+                action_node.steps != requested_steps
+                or self.actions.action(requested_steps) != root_action
+            ):
+                raise ValueError("successor width demand action and horizon disagree")
+            scratch_owner = self._successor_width_workspace_owner
+            if source.digits != (0,) and scratch_owner is None:
+                scratch_owner = self.ledger.register(
+                    f"reverse-successor-width-workspace-{self.ledger.owner_count}",
+                    "reverse_successor_width_workspace",
+                )
+                self._successor_width_workspace_owner = scratch_owner
+            width_action = compile_reverse_successor_width(
+                source.digits,
+                requested_steps,
+                ledger=self.ledger,
+                scratch_owner=scratch_owner,
+            )
+            return SourceImageProjection(width_action)
+        if payload.pair_output is not None:
+            owner = self._q19_owner
+            if owner is None or self._q19_source is not source:
+                raise ValueError("decimal pair output lost its source owner")
+            if demand == SourceImageDemand("width"):
+                return SourceImageProjection(payload.pair_output.output_width)
+            if demand.name != "digit" or len(demand.parameters) != 1:
+                raise ValueError("unsupported decimal pair output demand")
+            position = demand.parameters[0]
+            if type(position) is not int:
+                raise TypeError("decimal digit coordinate must be an integer")
+            return SourceImageProjection(owner.digit(payload.pair_output, position))
         if demand == SourceImageDemand("width"):
             if steps == 0:
                 return SourceImageProjection(source_width)
@@ -671,183 +825,6 @@ class _ReverseSourceImageAdapter(SourceBoundImageAdapter):
 
     def first_failure(self, image: SourceImageView) -> None:
         self._validate_view(image)
-
-
-class ReverseSourceImageWorkspace:
-    """Demanded reverse/add image bound to one original source and one action."""
-
-    def __init__(
-        self,
-        ledger: ResourceLedger,
-        seed: int,
-        steps: int,
-        *,
-        base: int = 10,
-        source_construction: OriginalSourceConstruction | None = None,
-    ) -> None:
-        if type(ledger) is not ResourceLedger:
-            raise TypeError("reverse source workspace requires a resource ledger")
-        seed = require_integer(seed, "seed", 0)
-        steps = require_integer(steps, "reverse/add steps", 0)
-        base = require_integer(base, "base", 2)
-        self.ledger = ledger
-        ledger.bump("temporal_point_requests", 0)
-        ledger.bump("temporal_length_requests", 0)
-        with ExitStack() as rollback:
-            actions = ReverseActionArena(ledger)
-            rollback.callback(actions.dispose)
-            source = actions.admit_source(seed, base)
-            root_action = actions.action(steps)
-            scheduler = TileScheduler.source_only(ledger)
-            rollback.callback(scheduler.dispose_source_images)
-            adapter = _ReverseSourceImageAdapter(actions)
-            rollback.callback(adapter.dispose)
-            if 3 <= steps <= MAX_COMPLETED_CHILD_FALLBACK_STEPS:
-                adapter.prepare_recursive_authority(
-                    actions.source(source), steps, source_construction
-                )
-            scheduler.register_source_image_adapter(adapter)
-            rollback.pop_all()
-        self.actions = actions
-        self.source = source
-        self.root_action = root_action
-        self.scheduler = scheduler
-        self.adapter = adapter
-        self.steps = steps
-        self.base = base
-        self._image: SourceImageID | None = None
-        self._disposed = False
-        self._authority = (
-            ledger,
-            actions,
-            source,
-            root_action,
-            scheduler,
-            adapter,
-            steps,
-            base,
-            source_construction,
-        )
-        ledger.register_execution_root(self)
-
-    def _check_open(self) -> None:
-        if self._disposed:
-            raise ValueError("disposed reverse source workspace")
-        (
-            ledger,
-            actions,
-            source,
-            root_action,
-            scheduler,
-            adapter,
-            steps,
-            base,
-            source_construction,
-        ) = self._authority
-        if (
-            self.ledger is not ledger
-            or self.actions is not actions
-            or self.source != source
-            or self.root_action != root_action
-            or self.scheduler is not scheduler
-            or self.adapter is not adapter
-            or self.steps != steps
-            or self.base != base
-            or (
-                source_construction is not None
-                and adapter._recursive_construction is not source_construction
-            )
-            or adapter.actions is not actions
-            or adapter.ledger is not ledger
-            or scheduler.ledger is not ledger
-        ):
-            raise ValueError("reverse source workspace binding was altered")
-        actions.source(source)
-        actions.node(root_action)
-        if actions.node(root_action).steps != steps:
-            raise ValueError("reverse source workspace action was altered")
-        image = self._image
-        if image is not None:
-            view = scheduler._source_image_core().view(image)
-            if view.binding.source != source or view.binding.action != root_action:
-                raise ValueError("reverse source workspace image binding was altered")
-
-    def _demanded_image(self, demand: SourceImageDemand) -> SourceImageID:
-        self._check_open()
-        found = self._image
-        if found is None:
-            found = self.scheduler.source_image_demanded(
-                self.adapter, self.source, self.root_action, demand
-            )
-            self._image = found
-        return found
-
-    @property
-    def operator_nodes(self) -> int:
-        return self.actions.operator_nodes
-
-    @property
-    def compose_operations(self) -> int:
-        return self.actions.compose_operations
-
-    @property
-    def syntax_depth_bound(self) -> int:
-        return self.actions.node(self.root_action).depth
-
-    def digit(self, position: int) -> int:
-        position = require_integer(position, "digit coordinate")
-        self.ledger.bump("temporal_point_requests")
-        demand = SourceImageDemand("digit", (position,))
-        image = self._demanded_image(demand)
-        return cast(
-            int, self.scheduler.source_projection(self.adapter, image, demand).value
-        )
-
-    def width(self) -> int:
-        self.ledger.bump("temporal_length_requests")
-        demand = SourceImageDemand("width")
-        image = self._demanded_image(demand)
-        return cast(
-            int, self.scheduler.source_projection(self.adapter, image, demand).value
-        )
-
-    def iter_digits(self) -> Iterator[int]:
-        self._check_open()
-        self._demanded_image(SourceImageDemand("width"))
-        if self.steps == 0:
-            yield from self.actions.source(self.source).digits
-            return
-        if self.steps == 2:
-            yield from self.adapter.iter_second_digits(self.actions.source(self.source))
-            return
-        if self.steps >= 3:
-            recursive = self.adapter._recursive_for_steps(self.steps)
-            if recursive is not None:
-                cutover, occurrence = recursive
-                yield from cutover.iter_digits(occurrence)
-                return
-            yield from self.adapter.iter_same_carry_digits(
-                self.actions.source(self.source), self.steps
-            )
-            return
-        yield from self.adapter.iter_primitive_digits(self.actions.source(self.source))
-
-    def dispose(self) -> None:
-        if self._disposed:
-            return
-        scheduler = self._authority[4]
-        actions = self._authority[1]
-        try:
-            try:
-                scheduler.dispose_source_images()
-            finally:
-                try:
-                    self._authority[5].dispose()
-                finally:
-                    actions.dispose()
-        finally:
-            self._image = None
-            self._disposed = True
 
 
 __all__ = [

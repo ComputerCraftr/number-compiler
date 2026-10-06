@@ -201,3 +201,46 @@ integer-ratio cases, identity shortcuts, memo hits,
 continued-fraction requests and budget refusals. Missing instrumentation is null. These
 are observation costs, not measurements of nonlinear source discovery or the
 number of actual endpoint growth events. Metrics snapshots perform no readout.
+
+Collatz's `collatz_physical_tape_width_compositions`,
+`collatz_physical_tape_width_repeat_operations` and
+`collatz_physical_tape_width_operand_bits` charge width-summary construction
+alongside already admitted runs and cycles. Width displacements and extrema
+are result metadata in the optional clock packet, not accumulated work
+counters. An unavailable width summary does not imply a zero displacement.
+
+The `affine_width` lane reports exact leading-bit interval decisions:
+requests, operand-bit work, interval checks, precision refinements, full-precision
+boundary decisions and failed work. These counters measure deciding a width
+from an admitted nonnegative affine source view; they do not count source
+discovery or emitted digits. A width decision refines an ambiguous interval
+instead of rounding it. Uninstrumented fields remain null, and reading this
+lane never evaluates an affine view.
+
+`macrocells[].width_projection` counts source-qualified width-summary lookups,
+local/process retrievals, misses and publications. These retrievals do not count
+as applying an occurrence. Collatz endpoint cylinders may transport across high
+fibers, but their exact width summaries require the same high fiber.
+
+`construction.reverse_pair_steps` counts executed pair-grammar transitions;
+`construction.reverse_pair_sections` counts their newly evaluated spatial
+sections. They remain visible when the higher output evaluator is unused.
+Zero higher-evaluator work alone does not establish powered cold construction.
+
+`construction.reverse_successor_rows` and `reverse_successor_spatial_bits`
+measure the transient successor-width producer separately from completed
+pair-grammar construction. `reverse_successor_pair_symbols` and
+`reverse_successor_event_symbols` charge its pair and carry-event operands.
+`reverse_successor_bootstrap_rows` counts actual rows before the carry-history
+cutover; the decimal event-memory horizon is 20, rather than an eight-step
+powered startup certificate.
+These are executed work, not accumulated growth or represented time. A cached
+width projection avoids repeating this work, but does not provide a completed
+output grammar or prove a sublinear cold constructor.
+
+`construction.reverse_successor_transport_updates` counts coefficient updates in
+the live-event polynomial reconstruction. Each update includes two products, an
+addition and a modular reduction; schedule, binomial and modular-power work is
+not included in this counter. A spatial-row count alone does not measure that
+reconstruction. Like the other optional constructor fields, it remains null
+when that owner has not run.

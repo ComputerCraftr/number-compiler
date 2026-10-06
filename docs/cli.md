@@ -125,13 +125,13 @@ checked certificate; a finite trace cannot supply it.
 
 ## Decimal reverse/add availability
 
-Decimal reverse/add supports a bounded completed-child fallback through 128
-iterations when the existing same-carry clause does not apply. For example,
-`number-compiler 196 --nth 20` emits `70446464506`. Larger rejected-chamber queries
-still refuse with exit 2; raising an output budget does not construct the missing
-generic temporal action. Other admitted clauses and radices keep their existing
-behavior. This bounded availability does not close the powered-construction or
-performance release gates.
+Decimal reverse/add uses an authenticated decimal pair-output owner when the
+same-carry clause does not apply. For example, `number-compiler 196 --nth 20`
+emits `70446464506`. The old decimal 128-iteration cap is removed; requests still
+obey their resource budgets. Length-only queries can retain a scalar successor
+summary without constructing the output grammar. This remains a sequential cold
+constructor, and its availability does not close the powered-construction or
+performance gates. Nondecimal fallback limits are unchanged.
 
 ## Antihydra arithmetic and physical observations
 
@@ -266,3 +266,10 @@ source offsets, caps and existing clock meanings remain separate.
 These projections use certified rational bounds, and a precision/work refusal
 never returns an approximate result. Digit-only and metrics-only queries do
 not request them. There is no growth-word selector.
+
+The physical Collatz `clock` packet also includes `width_tape`. When the
+admitted run or exact cycle already supplies its width walk, this reports
+binary (`radix=2`) source/target widths and the relative displacement and
+prefix extrema in `blank`. It is `null` when an applied macro has no retained
+width-walk certificate. Reading it never starts another trajectory or tape
+compiler. It is not a complete carry tape or a decimal-width projection.

@@ -99,12 +99,27 @@ next
     by (simp add: Cons.IH[symmetric] effect_then_def effect_atom_def Let_def absorb)
 qed
 
+lemma effect_word_blank_ledger_projection:
+  "(blank_delta (blank_ledger_word weight bs),
+      blank_minimum (blank_ledger_word weight bs)) =
+    (effect_delta (effect_word bs), effect_minimum (effect_word bs))"
+  using effect_word_safety[of bs]
+  by (simp add: blank_ledger_word_def)
+
 lemma effect_word_events:
   "effect_events (effect_word bs) = sum_list (map events bs)"
   by (induction bs) (simp_all add: effect_identity_def effect_then_def effect_atom_def)
 
 definition source_effect :: "nat \<Rightarrow> nat \<Rightarrow> dyadic_effect" where
   "source_effect n x = effect_word (dyadic_source_word step label x n)"
+
+lemma source_effect_blank_ledger_projection:
+  "(blank_delta (blank_ledger_word weight
+       (dyadic_source_word step label x n)),
+      blank_minimum (blank_ledger_word weight
+       (dyadic_source_word step label x n))) =
+    (effect_delta (source_effect n x), effect_minimum (source_effect n x))"
+  by (simp add: source_effect_def effect_word_blank_ledger_projection)
 
 lemma source_effect_low:
   "source_effect n (x mod 2^n) = source_effect n x"
@@ -115,6 +130,14 @@ lemma source_effect_append:
   "source_effect (a+b) x = effect_then (source_effect a x)
     (source_effect b (dyadic_source_orbit step x a))"
   by (simp add: source_effect_def dyadic_source_word_append effect_word_append)
+
+lemma source_effect_blank_ledger_append:
+  "blank_ledger_word weight (dyadic_source_word step label x (a+b)) =
+    blank_ledger_then
+      (blank_ledger_word weight (dyadic_source_word step label x a))
+      (blank_ledger_word weight
+        (dyadic_source_word step label (dyadic_source_orbit step x a) b))"
+  by (simp add: dyadic_source_word_append blank_ledger_word_append)
 
 lemma source_effect_equation:
   "upper (effect_skew (source_effect n x)) * int x +
@@ -338,6 +361,9 @@ ML \<open>
       dyadic_arithmetic_constructor.construct_source_effect_endpoint
       dyadic_arithmetic_constructor.execute_balanced_endpoint
       dyadic_arithmetic_constructor.execute_balanced_prefix_safety
+      dyadic_arithmetic_constructor.effect_word_blank_ledger_projection
+      dyadic_arithmetic_constructor.source_effect_blank_ledger_projection
+      dyadic_arithmetic_constructor.source_effect_blank_ledger_append
       dyadic_arithmetic_constructor.source_effect_reduced_numerator})
     then () else error "Balanced arithmetic refinement depends on an oracle";
 \<close>

@@ -12,18 +12,36 @@ repeat exponent, never the represented characters.
 
 from __future__ import annotations
 
-from collections.abc import Iterable, Sequence
+from collections.abc import Iterable, MutableMapping, MutableSequence, Sequence
 from dataclasses import dataclass
+from typing import Protocol, TypeVar
 
 from number_compiler.arithmetic.automata.guard import record_slp_metrics
 from number_compiler.arithmetic.automata.transducer import (
-    LazyBimachine,
     transduction_midpoints,
 )
 from number_compiler.arithmetic.contracts.iterative_queries import push_binary_children
 from number_compiler.arithmetic.fields.radix import bit_width
 
 _bits = bit_width
+_InternKey = TypeVar("_InternKey")
+
+
+class _StateStart(Protocol):
+    @property
+    def start(self) -> int: ...
+
+    def step(self, state: int, symbol: int) -> int | None: ...
+
+
+class _SLPTransducer(Protocol):
+    @property
+    def left(self) -> _StateStart: ...
+
+    @property
+    def right(self) -> _StateStart: ...
+
+    def emit(self, left: int, symbol: int, right: int) -> tuple[int, ...] | None: ...
 
 
 @dataclass(frozen=True, slots=True)
@@ -55,10 +73,10 @@ class SLPArena:
     __slots__ = ("_cat", "_rep", "_term", "empty_id", "nodes")
 
     def __init__(self) -> None:
-        self.nodes: list[SLPNode] = []
-        self._term: dict[int, int] = {}
-        self._cat: dict[tuple[int, int], int] = {}
-        self._rep: dict[tuple[int, int], int] = {}
+        self.nodes: MutableSequence[SLPNode] = []
+        self._term: MutableMapping[int, int] = {}
+        self._cat: MutableMapping[tuple[int, int], int] = {}
+        self._rep: MutableMapping[tuple[int, int], int] = {}
         self.empty_id = self._add("EMPTY", 0)
 
     def _add(self, kind: str, length: int, **kw: int) -> int:
@@ -66,6 +84,19 @@ class SLPArena:
         self.nodes.append(SLPNode(q, kind, int(length), **kw))
         record_slp_metrics(nodes=1)
         return q
+
+    def _add_interned(
+        self,
+        kind: str,
+        length: int,
+        table: MutableMapping[_InternKey, int],
+        key: _InternKey,
+        **kw: int,
+    ) -> int:
+        """Publish one interned node; subclasses may make this atomic/ledgered."""
+        node = self._add(kind, length, **kw)
+        table[key] = node
+        return node
 
     def empty(self) -> int:
         return self.empty_id
@@ -75,9 +106,7 @@ class SLPArena:
         old = self._term.get(symbol)
         if old is not None:
             return old
-        q = self._add("TERM", 1, symbol=symbol)
-        self._term[symbol] = q
-        return q
+        return self._add_interned("TERM", 1, self._term, symbol, symbol=symbol)
 
     def concat(self, left: int, right: int) -> int:
         left, right = int(left), int(right)
@@ -89,14 +118,14 @@ class SLPArena:
         old = self._cat.get(key)
         if old is not None:
             return old
-        q = self._add(
+        return self._add_interned(
             "CONCAT",
             self.nodes[left].length + self.nodes[right].length,
+            self._cat,
+            key,
             left=left,
             right=right,
         )
-        self._cat[key] = q
-        return q
 
     def repeat(self, child: int, count: int) -> int:
         child, count = int(child), int(count)
@@ -116,9 +145,9 @@ class SLPArena:
         old = self._rep.get(key)
         if old is not None:
             return old
-        q = self._add("REPEAT", n.length * count, child=child, count=count)
-        self._rep[key] = q
-        return q
+        return self._add_interned(
+            "REPEAT", n.length * count, self._rep, key, child=child, count=count
+        )
 
     def concat_many(self, nodes: Iterable[int]) -> int:
         row = [int(q) for q in nodes if int(q) != self.empty_id]
@@ -234,14 +263,14 @@ class BimachineSLPProjector:
         "section_calls",
     )
 
-    def __init__(self, machine: LazyBimachine, arena: SLPArena):
+    def __init__(self, machine: _SLPTransducer, arena: SLPArena):
         self.machine = machine
         self.arena = arena
-        self._fwd: dict[tuple[int, int], int | None] = {}
-        self._rev: dict[tuple[int, int], int | None] = {}
-        self._block: dict[tuple[int, int, int], int] = {}
-        self._fwd_power: dict[tuple[int, int, int], int | None] = {}
-        self._rev_power: dict[tuple[int, int, int], int | None] = {}
+        self._fwd: MutableMapping[tuple[int, int], int | None] = {}
+        self._rev: MutableMapping[tuple[int, int], int | None] = {}
+        self._block: MutableMapping[tuple[int, int, int], int] = {}
+        self._fwd_power: MutableMapping[tuple[int, int, int], int | None] = {}
+        self._rev_power: MutableMapping[tuple[int, int, int], int | None] = {}
         self.section_calls = 0
 
     def _action(self, q: int, state: int, *, right: bool) -> int | None:

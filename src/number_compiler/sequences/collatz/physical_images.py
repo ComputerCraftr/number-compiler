@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from collections.abc import Hashable, Iterator
+from dataclasses import replace
 
 from number_compiler.hashlife.execution.dyadic_return_images import (
     DyadicCycleSummary,
@@ -21,6 +22,10 @@ from number_compiler.hashlife.execution.source_bound_images import (
     SourceImageView,
 )
 from number_compiler.resources.ledger import ResourceLedger
+from number_compiler.sequences.collatz.tape_width import (
+    CollatzTapeWidthSummary,
+    cycle_width_summary,
+)
 
 COLLATZ_PHYSICAL_LAW = DyadicReturnLaw(
     family="collatz-physical-source-image",
@@ -30,6 +35,7 @@ COLLATZ_PHYSICAL_LAW = DyadicReturnLaw(
     weights=(0, 1),
     cycle=DyadicReturnCycle((1, 4, 2)),
 )
+_TAPE_WIDTH_PORT = "collatz-tape-width-summary-v1"
 
 
 class CollatzPhysicalImageWorkspace(DyadicReturnImageWorkspace):
@@ -43,17 +49,64 @@ class CollatzPhysicalImageWorkspace(DyadicReturnImageWorkspace):
         *,
         retain_chronology: bool = True,
         shared_cache: bool = False,
+        include_width_spine: bool = False,
     ) -> None:
         if type(retain_chronology) is not bool:
             raise TypeError("Collatz chronology choice must be Boolean")
         if type(shared_cache) is not bool:
             raise TypeError("shared cache flag must be Boolean")
+        if type(include_width_spine) is not bool:
+            raise TypeError("width-spine demand must be Boolean")
         self._shared_cache = shared_cache
         self._retain_chronology = retain_chronology
+        self._include_width_spine = include_width_spine
         super().__init__(ledger, seed, steps, COLLATZ_PHYSICAL_LAW)
 
     def retain_chronological_support(self) -> bool:
         return self._retain_chronology
+
+    @property
+    def tape_width_summary(self) -> CollatzTapeWidthSummary | None:
+        """Return only width data sealed in the root source-image publication."""
+        view = self.scheduler._source_image_core().view(self.root_image)
+        if (
+            view.binding.source != self.root_source
+            or view.binding.action != self.root_action
+            or view.binding.extent != self.steps
+        ):
+            raise ValueError("Collatz width summary belongs to another root action")
+        summaries: list[CollatzTapeWidthSummary] = []
+        for port in view.binding.boundary_ports:
+            if type(port) is tuple and len(port) == 2 and port[0] == _TAPE_WIDTH_PORT:
+                summary = port[1]
+                if type(summary) is not CollatzTapeWidthSummary:
+                    raise ValueError("Collatz width publication has another sort")
+                summaries.append(summary)
+        if len(summaries) > 1:
+            raise ValueError("Collatz root image has duplicate width summaries")
+        if not summaries:
+            return None
+        summary = summaries[0]
+        if (
+            summary.source_width != self.seed.bit_length()
+            or summary.physical_ticks != self.steps
+        ):
+            raise ValueError("Collatz width summary geometry differs from root action")
+        return summary
+
+    @staticmethod
+    def _attach_tape_width_summary(
+        candidate: SourceImageCandidate,
+        summary: CollatzTapeWidthSummary,
+    ) -> SourceImageCandidate:
+        if type(candidate) is not SourceImageCandidate:
+            raise TypeError("Collatz width summary needs a source-image candidate")
+        if type(summary) is not CollatzTapeWidthSummary:
+            raise TypeError("Collatz width summary has another output sort")
+        return replace(
+            candidate,
+            boundary_ports=(*candidate.boundary_ports, (_TAPE_WIDTH_PORT, summary)),
+        )
 
     def admitted_input_key(
         self, action: Hashable, source: SourceImageView
@@ -139,6 +192,34 @@ class CollatzPhysicalImageWorkspace(DyadicReturnImageWorkspace):
             return None
         return self.complete_composite_candidate(action, source)
 
+    def _compressed_cycle_candidate(
+        self,
+        action: object,
+        source: SourceImageView,
+    ) -> SourceImageCandidate | None:
+        candidate = super()._compressed_cycle_candidate(action, source)
+        if candidate is None:
+            return None
+        if source.binding.source != self.root_source or action != self.root_action:
+            return candidate
+        ports = candidate.boundary_ports
+        if (
+            type(ports) is not tuple
+            or len(ports) != 7
+            or ports[0] != self.law.descriptor
+            or ports[1] != "singleton-cycle"
+            or type(ports[3]) is not int
+        ):
+            raise ValueError("pinned Collatz cycle candidate lost its source phase")
+        if type(action) is not DyadicReturnActionID:
+            raise TypeError("pinned Collatz cycle requires an action ID")
+        if self._include_width_spine:
+            summary = cycle_width_summary(
+                self.ledger, ports[3], self.action_node(action).width
+            )
+            return self._attach_tape_width_summary(candidate, summary)
+        return candidate
+
     def primitive_run_candidate(
         self,
         action: object,
@@ -211,11 +292,17 @@ class CollatzPhysicalImageWorkspace(DyadicReturnImageWorkspace):
             self._bump("temporal_routing_operand_bits", source_bits)
             source_value = self._source_value(admitted)
             self._bump("temporal_run_routes")
+        demand_width = (
+            self._include_width_spine
+            and source.binding.source == self.root_source
+            and action == self.root_action
+        )
         quotient = compile_collatz_temporal_run_quotient(
             source_value,
             width,
             ledger=self.ledger,
             shared_cache=self._shared_cache,
+            include_width_spine=demand_width,
         )
         cycle = None
         if quotient.cycle_repetitions:
@@ -247,7 +334,7 @@ class CollatzPhysicalImageWorkspace(DyadicReturnImageWorkspace):
             )
         # Constant transfer is valid only for this authenticated exact source.
         # It avoids retaining a growing affine prefix or chronological run list.
-        return publish_exact_run_candidate(
+        candidate = publish_exact_run_candidate(
             self,
             action,
             source,
@@ -257,6 +344,15 @@ class CollatzPhysicalImageWorkspace(DyadicReturnImageWorkspace):
             0,
             cycle,
         )
+        if (
+            quotient.tape_width_summary is not None
+            and source.binding.source == self.root_source
+            and action == self.root_action
+        ):
+            candidate = self._attach_tape_width_summary(
+                candidate, quotient.tape_width_summary
+            )
+        return candidate
 
     def segments(self) -> Iterator[tuple[int, int, int]]:
         return self.branch_segments()

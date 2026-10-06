@@ -5,10 +5,18 @@ from __future__ import annotations
 import pytest
 
 from number_compiler.arithmetic.contracts.scoped_handles import ExactSource
+from number_compiler.hashlife.execution.source_bound_images import SourceImageDemand
 from number_compiler.resources.ledger import ResourceLedger
+from number_compiler.sequences.reverse_add.source_actions import ReverseActionID
 from number_compiler.sequences.reverse_add.source_images import (
     ReverseSourceImageWorkspace,
     _ReverseSourceImageAdapter,
+)
+from number_compiler.sequences.reverse_add.source_workspace import (
+    ReverseSourceImageWorkspace as DirectReverseSourceImageWorkspace,
+)
+from number_compiler.sequences.reverse_add.successor_width import (
+    ReverseSuccessorWidthSummary,
 )
 from tests.support.reverse_source_length import (
     fused_two_step_width,
@@ -37,6 +45,50 @@ def _step(value: int, base: int) -> int:
     for digit in _digits(value, base):
         reflected = reflected * base + digit
     return value + reflected
+
+
+def test_workspace_direct_import_matches_the_legacy_module_export() -> None:
+    assert ReverseSourceImageWorkspace is DirectReverseSourceImageWorkspace
+
+
+def test_successor_projection_rejects_bool_stale_foreign_and_other_root_actions() -> (
+    None
+):
+    workspace = ReverseSourceImageWorkspace(ResourceLedger(), 196, 3)
+    other = ReverseSourceImageWorkspace(ResourceLedger(), 196, 3)
+    workspace.width()
+    image = workspace._width_image
+    assert image is not None
+    view = workspace.scheduler._source_image_core().view(image)
+
+    with pytest.raises(ValueError, match="exact horizon"):
+        workspace.adapter.project(
+            view,
+            SourceImageDemand("successor-width", (workspace.root_action, True)),
+        )
+    with pytest.raises(ValueError, match="another root action"):
+        workspace.adapter.project(
+            view,
+            SourceImageDemand("successor-width", (other.root_action, 3)),
+        )
+    different_action = workspace.actions.action(4)
+    with pytest.raises(ValueError, match="another root action"):
+        workspace.adapter.project(
+            view,
+            SourceImageDemand("successor-width", (different_action, 4)),
+        )
+    stale_action = ReverseActionID(
+        workspace.root_action.owner,
+        workspace.root_action.kind,
+        workspace.root_action.local_id + 1000,
+    )
+    with pytest.raises(ValueError, match="another root action"):
+        workspace.adapter.project(
+            view,
+            SourceImageDemand("successor-width", (stale_action, 3)),
+        )
+    workspace.dispose()
+    other.dispose()
 
 
 @pytest.mark.parametrize(
@@ -117,6 +169,106 @@ def test_length_queries_retain_no_pairs_or_carries() -> None:
     assert ledger.counters["reverse_source_length_pair_reads"] <= 514
 
 
+def test_maximum_width_tightens_only_after_the_completed_width_projection() -> None:
+    from number_compiler.sequences.reverse_add.power import ReverseAddPoweredTerm
+
+    term = ReverseAddPoweredTerm(196, 3)
+    conservative = len(_digits(196, 10)) + 3
+    assert term.maximum_width == conservative == 6
+    assert term._workspace is None
+
+    assert term.width() == 4
+    workspace = term._workspace
+    assert workspace is not None
+    assert workspace._image is None
+    assert workspace.adapter._q19_owner is None
+    misses = term._ledger.counters.get("source_image_projection_misses", 0)
+    assert term.maximum_width == 4
+    assert term.maximum_width == 4
+    assert term._ledger.counters.get("source_image_projection_misses", 0) == misses
+    assert term.digits() == (6, 3, 4, 7)
+    assert workspace._image is not None
+    assert workspace.adapter._q19_owner is not None
+    assert term._ledger.counters["reverse_successor_tape_width_compilations"] == 1
+
+
+def test_maximum_width_drops_to_conservative_after_its_image_owner_is_cleared() -> None:
+    from number_compiler.sequences.reverse_add.power import ReverseAddPoweredTerm
+
+    term = ReverseAddPoweredTerm(196, 3)
+    assert term.width() == 4
+    workspace = term._workspace
+    assert workspace is not None
+    workspace.scheduler.clear_source_images()
+
+    assert term.maximum_width == 6
+
+
+def test_maximum_width_rejects_a_mutated_source_action_binding() -> None:
+    from number_compiler.sequences.reverse_add.power import ReverseAddPoweredTerm
+
+    term = ReverseAddPoweredTerm(196, 3)
+    assert term.width() == 4
+    term.generation = 4
+
+    with pytest.raises(ValueError, match="source/action binding changed"):
+        _ = term.maximum_width
+
+
+def test_maximum_width_does_not_trust_a_replaced_cached_projection() -> None:
+    from number_compiler.hashlife.execution.source_bound_images import (
+        SourceImageProjection,
+    )
+    from number_compiler.sequences.reverse_add.power import ReverseAddPoweredTerm
+
+    term = ReverseAddPoweredTerm(196, 3)
+    assert term.width() == 4
+    workspace = term._workspace
+    assert workspace is not None
+    from dataclasses import replace
+
+    core = workspace.scheduler._source_image_core()
+    key = next(iter(core._projections))
+    core._projections[key] = replace(
+        core._projections[key], projection=SourceImageProjection(99)
+    )
+
+    with pytest.raises(ValueError, match="projection record was altered"):
+        _ = term.maximum_width
+
+
+def test_maximum_width_falls_back_when_the_retained_projection_is_missing() -> None:
+    from number_compiler.hashlife.execution.source_bound_images import (
+        SourceImageDemand,
+    )
+    from number_compiler.sequences.reverse_add.power import ReverseAddPoweredTerm
+
+    term = ReverseAddPoweredTerm(196, 3)
+    assert term.width() == 4
+    workspace = term._workspace
+    assert workspace is not None
+    image = workspace._width_image
+    assert image is not None
+    core = workspace.scheduler._source_image_core()
+    demand = SourceImageDemand(
+        "successor-width", (workspace.root_action, workspace.steps)
+    )
+    key = image, demand
+    record = core._projections.pop(key)
+    assert isinstance(record.projection.value, ReverseSuccessorWidthSummary)
+    assert record.projection.value.target_width == 4
+    core._publication_seals.drop_projection(key)
+    core.ledger.release(core._projection_owner, entries=1, nodes=1)
+    misses = term._ledger.counters.get("source_image_projection_misses", 0)
+
+    # Neither a direct cache lookup nor maximum_width may rebuild this result.
+    assert core.cached_projection(workspace.adapter, image, demand) is None
+    assert term._ledger.counters.get("source_image_projection_misses", 0) == misses
+
+    assert term.maximum_width == 6
+    assert term._ledger.counters.get("source_image_projection_misses", 0) == misses
+
+
 @pytest.mark.parametrize("base", [2, 3, 10, 16])
 def test_all_small_sources_match_two_literal_lengths(base: int) -> None:
     for seed in range(1024):
@@ -192,3 +344,28 @@ def test_long_neutral_gap_is_not_researched_at_every_boundary(width: int) -> Non
     assert tuple(iter_second_pairs(source, ledger)) == expected
     assert ledger.counters["reverse_source_pullback_predecessor_search"] <= width
     assert ledger.counters["reverse_source_pullback_pair_reads"] <= 5 * width
+
+
+def test_zero_point_demand_checks_workspace_authority() -> None:
+    workspace = ReverseSourceImageWorkspace(ResourceLedger(), 0, 20)
+    workspace.steps = 21
+    with pytest.raises(ValueError, match="binding was altered"):
+        workspace.digit(0)
+    workspace.steps = 20
+    assert workspace.digit(0) == 0
+    assert workspace._image is None
+    workspace.dispose()
+    with pytest.raises(ValueError, match="disposed"):
+        workspace.digit(0)
+
+
+def test_decimal_rejects_unused_recursive_authority_before_allocation() -> None:
+    from number_compiler.arithmetic.contracts.exact_tree_context import (
+        OriginalSourceConstruction,
+    )
+
+    ledger = ResourceLedger()
+    construction = OriginalSourceConstruction(ExactSource((7, 8, 7), 10))
+    with pytest.raises(ValueError, match="do not consume recursive source authority"):
+        ReverseSourceImageWorkspace(ledger, 196, 20, source_construction=construction)
+    assert ledger.nodes == ledger.entries == ledger.owner_count == 0

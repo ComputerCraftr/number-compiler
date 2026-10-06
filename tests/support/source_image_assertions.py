@@ -1,6 +1,7 @@
 """Canonical work taxonomy assertions for source-image release evidence."""
 
-from collections.abc import Mapping
+from collections.abc import Iterator, Mapping
+from typing import Protocol
 
 from number_compiler.resources.metric_collection import collect_ledger_metrics
 from number_compiler.resources.metric_records import HashLifeBehaviorMetrics
@@ -8,6 +9,23 @@ from number_compiler.sequences.collatz.block_power import PoweredCollatzTerm
 from number_compiler.sequences.reverse_add.power import ReverseAddPoweredTerm
 
 SourceImageTerm = PoweredCollatzTerm | ReverseAddPoweredTerm
+
+
+class DigitObservers(Protocol):
+    def iter_digits(self) -> Iterator[int]: ...
+
+    def width(self) -> int: ...
+
+    def digit(self, position: int) -> int: ...
+
+
+def assert_exact_digit_observers(
+    result: DigitObservers, expected: tuple[int, ...]
+) -> None:
+    """Check streaming, authenticated extent and every point against one oracle."""
+    assert tuple(result.iter_digits()) == expected
+    assert result.width() == len(expected)
+    assert tuple(result.digit(i) for i in range(len(expected))) == expected
 
 
 def assert_source_image_runtime_bridge(term: SourceImageTerm, family: str) -> None:

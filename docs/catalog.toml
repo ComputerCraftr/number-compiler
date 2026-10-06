@@ -382,3 +382,11 @@ kind = "sprint-topic"
 topic = "comma"
 status = "current"
 week_start = "2026-10-04"
+
+[[document]]
+id = "sprint-2026-10-04-output-tape-integration"
+path = "docs/sprints/week-of-2026-10-04/output-tape-integration.md"
+kind = "sprint-topic"
+topic = "output-tape-integration"
+status = "current"
+week_start = "2026-10-04"

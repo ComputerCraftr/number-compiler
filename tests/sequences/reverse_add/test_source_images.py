@@ -24,60 +24,45 @@ from number_compiler.sequences.reverse_add.source_images import (
     ReverseSourceImageWorkspace,
 )
 from number_compiler.sequences.reverse_add.source_ports import SourceCarryPorts
+from tests.support.reference_arithmetic import literal_reverse_add_digits
 from tests.support.reverse_cutover import assert_completed_child_work
-
-
-def _digits(value: int, base: int) -> tuple[int, ...]:
-    result: list[int] = []
-    while True:
-        result.append(value % base)
-        value //= base
-        if not value:
-            return tuple(result)
-
-
-def _reverse_add(value: int, steps: int, base: int) -> int:
-    for _ in range(steps):
-        source = _digits(value, base)
-        reverse = sum(
-            digit * base**position for position, digit in enumerate(reversed(source))
-        )
-        value += reverse
-    return value
+from tests.support.source_image_assertions import assert_exact_digit_observers
 
 
 @pytest.mark.parametrize(
     ("seed", "base"), ((0, 10), (196, 10), (999, 10), (11, 2), (41, 3))
 )
 def test_identity_and_one_primitive_are_exact(seed: int, base: int) -> None:
-    source = _digits(seed, base)
-    reverse = sum(value * base**position for position, value in enumerate(source[::-1]))
-    for steps, expected in ((0, seed), (1, seed + reverse)):
+    for steps in (0, 1):
         workspace = ReverseSourceImageWorkspace(
             ResourceLedger(), seed, steps, base=base
         )
         digits = tuple(workspace.iter_digits())
-        assert digits == _digits(expected, base)
+        assert digits == literal_reverse_add_digits(seed, steps, base)
         assert workspace.width() == len(digits)
         assert tuple(workspace.digit(i) for i in range(len(digits))) == digits
 
 
 def test_one_step_stream_is_linear_and_retains_no_endpoint_word() -> None:
     workspace = ReverseSourceImageWorkspace(ResourceLedger(), 196, 1)
-    before = workspace.ledger.counters.get("reverse_source_carry_coordinates", 0)
     assert tuple(workspace.iter_digits()) == (7, 8, 8)
-    work = workspace.ledger.counters["reverse_source_carry_coordinates"] - before
-    assert work == 3
+    counters = workspace.ledger.counters
+    assert counters.get("reverse_q19_primitive_pair_applications", 0) == 0
+    assert counters["recursive_output_stream_emitted_digits"] == 3
     image = workspace._image
     assert image is not None
     payload = workspace.scheduler._source_image_core().view(image).payload
     assert not hasattr(payload, "digits")
+    assert isinstance(payload, ReverseImagePayload)
+    assert payload.pair_output is not None
+    assert payload.pair_output.temporal_steps == 1
+    assert workspace.adapter._q19_source is workspace.actions.source(workspace.source)
 
 
 @pytest.mark.parametrize("seed", (1, 196, int("4" * 128 + "5" * 128)))
 def test_one_step_stream_needs_no_random_access_carry_prefix(seed: int) -> None:
     workspace = ReverseSourceImageWorkspace(ResourceLedger(), seed, 1)
-    expected = _digits(_reverse_add(seed, 1, 10), 10)
+    expected = literal_reverse_add_digits(seed, 1)
     assert tuple(workspace.iter_digits()) == expected
     assert (
         workspace.ledger.counters.get("reverse_source_ports_layer_1_carry_queries", 0)
@@ -101,10 +86,8 @@ def test_fused_second_step_matches_reference_without_midpoint(
     monkeypatch.setattr(adapter_type, "iter_primitive_digits", forbidden)
     monkeypatch.setattr(adapter_type, "_carry_and_digit", forbidden, raising=False)
     monkeypatch.setattr(adapter_type, "_width", forbidden)
-    expected = _digits(_reverse_add(seed, 2, base), base)
-    assert tuple(workspace.iter_digits()) == expected
-    assert workspace.width() == len(expected)
-    assert tuple(workspace.digit(i) for i in range(len(expected))) == expected
+    expected = literal_reverse_add_digits(seed, 2, base)
+    assert_exact_digit_observers(workspace, expected)
     assert workspace.ledger.counters.get("source_image_primitive_applications", 0) == 0
     assert (
         workspace.ledger.counters["reverse_source_two_step_pullback_publications"] == 1
@@ -120,8 +103,8 @@ def test_fused_second_step_matches_reference_without_midpoint(
 )
 def test_fused_second_step_full_output_has_linear_source_work(seed: int) -> None:
     workspace = ReverseSourceImageWorkspace(ResourceLedger(), seed, 2)
-    assert tuple(workspace.iter_digits()) == _digits(_reverse_add(seed, 2, 10), 10)
-    width = len(_digits(seed, 10))
+    assert tuple(workspace.iter_digits()) == literal_reverse_add_digits(seed, 2)
+    width = len(literal_reverse_add_digits(seed, 0))
     assert workspace.ledger.counters["reverse_source_pullback_pair_reads"] <= 8 * width
 
 
@@ -130,7 +113,7 @@ def test_second_step_stream_uses_one_physical_carry_without_prefix_queries(
     seed: int, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     workspace = ReverseSourceImageWorkspace(ResourceLedger(), seed, 2)
-    expected = _digits(_reverse_add(seed, 2, 10), 10)
+    expected = literal_reverse_add_digits(seed, 2)
     assert workspace.width() == len(expected)
     before = workspace.ledger.counters.get(
         "reverse_source_ports_layer_2_carry_queries", 0
@@ -156,7 +139,7 @@ def test_second_step_stream_uses_one_physical_carry_without_prefix_queries(
 def test_large_second_step_stream_eliminates_random_access_prefix_work(
     seed: int,
 ) -> None:
-    expected = _digits(_reverse_add(seed, 2, 10), 10)
+    expected = literal_reverse_add_digits(seed, 2)
     streamed = ReverseSourceImageWorkspace(ResourceLedger(), seed, 2)
     assert tuple(streamed.iter_digits()) == expected
     stream_second_queries = streamed.ledger.counters.get(
@@ -206,16 +189,15 @@ def test_count_only_d2_image_cannot_authorize_a_right_half() -> None:
 
 @pytest.mark.parametrize(
     ("seed", "steps", "expected"),
-    ((1, 3, 8), (10, 4, 88), (11, 3, 88), (1001, 3, 8008)),
+    ((1, 3, (8,)), (10, 4, (8, 8)), (11, 3, (8, 8)), (1001, 3, (8, 0, 0, 8))),
 )
 def test_powered_same_carry_chamber_is_exact(
-    seed: int, steps: int, expected: int
+    seed: int, steps: int, expected: tuple[int, ...]
 ) -> None:
     workspace = ReverseSourceImageWorkspace(ResourceLedger(), seed, steps)
-    digits = _digits(expected, 10)
-    assert workspace.width() == len(digits)
-    assert tuple(workspace.iter_digits()) == digits
-    assert tuple(workspace.digit(i) for i in range(len(digits))) == digits
+    assert workspace.width() == len(expected)
+    assert tuple(workspace.iter_digits()) == expected
+    assert tuple(workspace.digit(i) for i in range(len(expected))) == expected
     assert workspace.ledger.counters["reverse_source_same_carry_publications"] == 1
     assert workspace.ledger.counters.get("source_image_primitive_applications", 0) == 0
 
@@ -264,7 +246,7 @@ def test_completed_child_parent_join_never_recompiles_nonleaf_source(
         ReverseRecursiveTemporalCutover, "digit_image", forbidden_terminal_image
     )
     workspace = ReverseSourceImageWorkspace(ResourceLedger(), 196, 20)
-    expected = _digits(_reverse_add(196, 20, 10), 10)
+    expected = literal_reverse_add_digits(196, 20)
     assert workspace.width() == len(expected)
     assert tuple(workspace.iter_digits()) == expected
     assert workspace.digit(0) == expected[0]
@@ -277,7 +259,7 @@ def test_direct_pair_image_uses_joined_children_and_checks_occurrence_authority(
 ) -> None:
     ledger = ResourceLedger()
     cutover = ReverseRecursiveTemporalCutover(
-        ledger, _digits(196, 10), base=10, maximum_steps=3
+        ledger, literal_reverse_add_digits(196, 0), base=10, maximum_steps=3
     )
     original_compile = _ReverseRecursiveFieldAdapter._compile
 
@@ -300,7 +282,7 @@ def test_direct_pair_image_uses_joined_children_and_checks_occurrence_authority(
     with pytest.raises(ValueError, match="authority/source/action|duration"):
         cutover.validate_occurrence(wrong_action)
     foreign = ReverseRecursiveTemporalCutover(
-        ResourceLedger(), _digits(89, 10), base=10, maximum_steps=3
+        ResourceLedger(), literal_reverse_add_digits(89, 0), base=10, maximum_steps=3
     )
     wrong_source = replace(occurrence, source=foreign.source)
     with pytest.raises(ValueError, match="authority/source/action"):
@@ -309,7 +291,7 @@ def test_direct_pair_image_uses_joined_children_and_checks_occurrence_authority(
 
 def test_terminal_digit_does_not_replay_prefix_and_partial_stream_is_charged() -> None:
     cutover = ReverseRecursiveTemporalCutover(
-        ResourceLedger(), _digits(196, 10), base=10, maximum_steps=3
+        ResourceLedger(), literal_reverse_add_digits(196, 0), base=10, maximum_steps=3
     )
     occurrence = cutover.pair_image(3)
     descent_key = "reverse_recursive_pair_width_descents"
@@ -352,15 +334,17 @@ def test_zero_source_admits_huge_power_without_constructing_the_power() -> None:
     assert tuple(workspace.iter_digits()) == (0,)
     assert workspace.digit(0) == 0
     assert workspace.operator_nodes <= 2 * steps.bit_length()
-    assert workspace.ledger.counters["reverse_source_chamber_admissions"] >= 1
+    assert workspace.ledger.counters["reverse_successor_tape_fixed_point_hits"] == 1
+    assert workspace.adapter._q19_owner is None
+    assert workspace._image is None
 
 
 @pytest.mark.parametrize("base", [2, 3, 10])
 def test_two_step_small_sources_against_independent_arithmetic(base: int) -> None:
     for seed in range(512):
         workspace = ReverseSourceImageWorkspace(ResourceLedger(), seed, 2, base=base)
-        assert tuple(workspace.iter_digits()) == _digits(
-            _reverse_add(seed, 2, base), base
+        assert tuple(workspace.iter_digits()) == literal_reverse_add_digits(
+            seed, 2, base
         )
         workspace.dispose()
         assert workspace.ledger.nodes == workspace.ledger.entries == 0
@@ -380,6 +364,19 @@ def test_composite_demand_uses_completed_children_without_primitive_descent(
     assert workspace.digit(0) == 6
     counters = workspace.ledger.counters
     assert_completed_child_work(counters)
+
+
+def test_successor_width_demand_does_not_admit_an_output_image() -> None:
+    workspace = ReverseSourceImageWorkspace(ResourceLedger(), 196, 20)
+    assert workspace.width() == 11
+    counters = workspace.ledger.counters
+    assert counters.get("reverse_q19_primitive_pair_applications", 0) == 0
+    assert workspace._image is None
+    assert workspace.adapter._q19_owner is None
+    assert counters["reverse_successor_tape_width_compilations"] == 1
+    assert counters["reverse_successor_tape_rows"] == 20
+    assert counters["reverse_successor_tape_bootstrap_rows"] == 20
+    workspace.dispose()
 
 
 def test_undemanded_scheduler_entry_publishes_completed_child_image_without_primitive(

@@ -20,7 +20,10 @@ from number_compiler.hashlife.execution.continuations.higher_semantic import (
 from number_compiler.hashlife.interfaces.diamond_quotient import LocalInterfaceID
 from number_compiler.hashlife.tiles.tiles import TileID
 from number_compiler.sequences.reverse_add.power import ReverseAddPoweredTerm
-from tests.support.reverse_cutover import assert_completed_child_work
+from tests.support.reverse_cutover import (
+    assert_completed_child_work,
+    assert_q19_output_authority,
+)
 from tests.support.reverse_higher_interface import _direct_step
 from tests.support.tile_kernel import _runtime, _tile
 
@@ -89,7 +92,11 @@ def test_public_reverse_digits_use_canonical_reachable_images(
     counters = term._ledger.counters
     assert counters["source_image_publications"] > 0
     assert counters["source_image_projection_publications"] > 0
-    if generation <= 2:
+    if generation == 1:
+        assert_q19_output_authority(term)
+        assert counters.get("reverse_q19_primitive_pair_applications", 0) == 0
+        assert counters["reverse_q19_point_region_visits"] > 0
+    elif generation == 2:
         assert counters["reverse_source_mod9_digit_reconstructions"] > 0
         assert counters["reverse_source_ports_source_reads"] > 0
     else:

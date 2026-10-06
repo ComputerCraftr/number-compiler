@@ -1,8 +1,8 @@
 # Balanced dyadic return: executable refinement map
 
 This map identifies the production objects modeled by the shared dyadic source,
-skew, worklist and prefix-safety theories. Build evidence and its source
-fingerprint belong in the weekly record. A checked executable Isabelle model
+skew, worklist and prefix-safety theories. Build evidence and its Git provenance
+belong in the weekly record. A checked executable Isabelle model
 and a reviewed Python mapping are distinct from verification of Python itself.
 
 ## Production contract
@@ -47,6 +47,45 @@ and a reviewed Python mapping are distinct from verification of Python itself.
   shortcut before this function. Antihydra has no cycle shortcut.
 
 ## Theorem-to-runtime map
+
+`Prefix_Effect.blank_ledger_word_append` and
+`blank_ledger_repeat_closed_form` model the shared Python `BlankLedger`:
+displacement, minimum prefix and maximum prefix, with chronological composition
+and closed-form repetition. The lower lane uses the original displacement;
+the upper lane uses its negation. The word and repetition theorems describe an
+already authenticated sequence of displacements. They do not authorize repeating
+a source action or merging occurrences that share a width summary.
+
+The focused `Prefix_Effect_Core` build passed in 13 seconds under the standard
+guard in development run `20261006T035426Z-fa2cefa96bee4de78ea54117a7525b42`.
+This does not discharge the reverse successor constructor or global Comma
+release obligations.
+
+`Comma_C1_Borrow_Cocycle.comma_c1_borrow_ledger_append` applies this shared
+composition to the native C1 one-step innovation word, transporting both source
+phases at the split. Its delta theorem recovers the existing accumulated borrow
+innovation; its one-step formula keeps phase admission and adjacent-sector
+hypotheses. This session passed in 15 seconds in
+`20261006T035905Z-35325afc192a4b918eebd4c9c1d1ff88`.
+
+`Dyadic_Balanced_Arithmetic.source_effect_blank_ledger_projection` identifies
+the shared lower/delta projection with the existing constructed source safety
+summary. `source_effect_blank_ledger_append` composes the full summary across
+source-word segments. The existing dyadic effect has no upper-extremum field;
+the theorem does not invent that field. `Shared_S_Arithmetic` passed in 33
+seconds in `20261006T035935Z-1828ec575bb341d88c6a447fa518590b`.
+These bridges share the algebra without identifying Comma innovations with
+Collatz width increments or Mahler safety predicates.
+
+`Reverse_Threshold_Cocycle.native_source_width` proves that pair width is
+source width plus `native_growth_count`, defined by producer growth flags along
+actual successors rather than by subtracting endpoint lengths.
+`native_source_growth_count_add` composes that count at the returned successor;
+`native_terminal_output_length` keeps final digit carry separate. The
+`Reverse_Residuals` session passed in 19 seconds in
+`20261006T040930Z-d19d058fa0e5462786c4ee2ab8708476`. The model still uses exact
+list successors; this proves the width equation, not a compressed temporal
+transducer implementation or its cost.
 
 `Maximal_Run_Arithmetic` models the homogeneous contractions used by
 `collatz/temporal_run_quotient.py` and `antihydra/arithmetic_images.py`:
@@ -98,12 +137,13 @@ Python still refuses the request rather than satisfying a success theorem.
 Build the concrete bridge (which builds its registered dependencies) with:
 
 ```console
-isabelle build -d proofs/isabelle -j 1 -o threads=1 -o parallel_proofs=0 Balanced_Dyadic_Integration
+.venv/bin/python -m devtools.checks.release --suite proofs --session Balanced_Dyadic_Integration
 ```
 
 The new theories audit exported theorem dependencies for oracles. Session
 registration disables quick-and-dirty proofs. The project guard remains
-60 seconds / 4 GiB per Isabelle check.
+60 seconds per Isabelle session, 6 GiB across the process tree and four prover
+threads, with one session building at a time.
 
 The bounded differential checks in
 [`test_balanced_proof_refinement.py`](../../tests/hashlife/execution/test_balanced_proof_refinement.py)

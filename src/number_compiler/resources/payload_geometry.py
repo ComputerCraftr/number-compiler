@@ -14,6 +14,7 @@ from number_compiler.arithmetic.contracts.scoped_handles import (
     LoweringCapability,
     TransferSummaryID,
 )
+from number_compiler.arithmetic.fields.blank_ledger import BlankLedger
 from number_compiler.arithmetic.fields.consumer_pullback import (
     AssociatedActionID,
     AssociatedActionRecord,
@@ -49,6 +50,10 @@ from number_compiler.hashlife.tiles.tile_result_records import (
 from number_compiler.projection.digit_terminal import _DigitLeftState
 from number_compiler.projection.microblock_cache import MicroblockKey
 from number_compiler.projection.point_response import PointResponse
+from number_compiler.sequences.collatz.tape_width import CollatzTapeWidthSummary
+from number_compiler.sequences.reverse_add.successor_width import (
+    ReverseSuccessorWidthSummary,
+)
 
 
 def geometry_field_policy() -> dict[type[object], frozenset[str]]:
@@ -82,6 +87,17 @@ def geometry_field_policy() -> dict[type[object], frozenset[str]]:
         ExactRational: frozenset(("numerator", "denominator")),
         ThresholdDemand: frozenset(),
         SaturatingAffineAction: frozenset(),
+        BlankLedger: frozenset(("delta", "minimum", "maximum")),
+        ReverseSuccessorWidthSummary: frozenset(("steps", "source_width")),
+        CollatzTapeWidthSummary: frozenset(
+            (
+                "source_width",
+                "target_width",
+                "physical_ticks",
+                "normalized_symbols",
+                "odd_steps",
+            )
+        ),
         AssociatedActionID: frozenset(("local_id",)),
         AssociatedActionRecord: frozenset(("semantic_id", "logical_extent")),
         AssociatedScalarSource: frozenset(),

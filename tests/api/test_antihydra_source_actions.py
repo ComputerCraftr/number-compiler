@@ -136,12 +136,40 @@ def test_integer_normal_forms_match_independent_scalar_prefixes() -> None:
         assert actual_cap == cap
         bit = source & 1
         source, scale, offset, cap = literal_mahler_step(source, scale, offset, cap)
-        normal = normal.then_with_gain(
-            mahler_source_actions.MahlerSourceBoundSafetyAction(
-                1, -12 * bit, 6 if bit else 18
-            ),
-            3,
-        )
+        normal = normal.then_bit(bit)
+
+
+@pytest.mark.parametrize("epsilon", (0, 1))
+def test_source_bound_one_bit_constructor_is_the_exact_predicate_action(
+    epsilon: int,
+) -> None:
+    normal = mahler_source_actions.MahlerSourceBoundSafetyAction.one_bit(epsilon)
+    assert normal.wire() == (1, -12 * epsilon, 18 if epsilon == 0 else 6)
+    scale, offset, cap = rational_action_components(normal.to_action())
+    assert scale == Fraction(3, 2)
+    assert offset == Fraction(-3 * epsilon, 2)
+    assert cap == (Fraction(9, 4) if epsilon == 0 else Fraction(3, 4))
+
+
+def test_source_bound_bit_composition_matches_exact_saturating_actions() -> None:
+    from number_compiler.arithmetic.fields.consumer_pullback import (
+        ExactRational,
+        SaturatingAffineAction,
+    )
+
+    for word in ((), (0,), (1,), (1, 0, 1), (0, 1, 0, 0, 1)):
+        source_action = mahler_source_actions.MahlerSourceBoundSafetyAction()
+        direct_action = SaturatingAffineAction.identity()
+        for bit in word:
+            source_action = source_action.then_bit(bit)
+            direct_action = direct_action.then(
+                SaturatingAffineAction(
+                    ExactRational(3, 2),
+                    ExactRational(-3 * bit, 2),
+                    ExactRational(9, 4) if bit == 0 else ExactRational(3, 4),
+                )
+            )
+        assert source_action.to_action() == direct_action
 
 
 @pytest.mark.parametrize(
@@ -153,12 +181,7 @@ def test_finite_aliases_retain_distinct_exact_occurrence_coefficients(
     normal = mahler_source_actions.MahlerSourceBoundSafetyAction()
     for _ in range(16):
         bit = source & 1
-        normal = normal.then_with_gain(
-            mahler_source_actions.MahlerSourceBoundSafetyAction(
-                1, -12 * bit, 6 if bit else 18
-            ),
-            3,
-        )
+        normal = normal.then_bit(bit)
         source = (3 * source + bit) // 2
     assert normal.wire() == (16, offset, cap)
 

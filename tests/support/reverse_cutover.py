@@ -1,13 +1,44 @@
 """Shared containment checks for retired reverse temporal execution paths."""
 
+from __future__ import annotations
+
 import importlib.util
 from collections.abc import Callable, Mapping
-from typing import Never
+from typing import TYPE_CHECKING, Never
 
 import pytest
 
 from devtools.experiments.reverse_add import uniform_projection_reference
 from number_compiler.sequences.reverse_add.power import ReverseAddPoweredTerm
+
+if TYPE_CHECKING:
+    from number_compiler.sequences.reverse_add.q19_output import (
+        ReversePairOutputOccurrence,
+    )
+    from number_compiler.sequences.reverse_add.source_workspace import (
+        ReverseSourceImageWorkspace,
+    )
+
+
+def assert_q19_output_authority(
+    term: ReverseAddPoweredTerm,
+) -> tuple[ReverseSourceImageWorkspace, ReversePairOutputOccurrence]:
+    """Authenticate the issued decimal output independently of legacy owners."""
+    from number_compiler.sequences.reverse_add.source_images import ReverseImagePayload
+
+    workspace = term._workspace
+    assert workspace is not None
+    image = workspace._image
+    assert image is not None
+    payload = workspace.scheduler._source_image_core().view(image).payload
+    assert isinstance(payload, ReverseImagePayload)
+    occurrence = payload.pair_output
+    assert occurrence is not None
+    owner = workspace.adapter._q19_owner
+    assert owner is not None
+    owner.validate(occurrence)
+    assert occurrence.temporal_steps == term.generation
+    return workspace, occurrence
 
 
 def forbid_uniform_context_compilation(

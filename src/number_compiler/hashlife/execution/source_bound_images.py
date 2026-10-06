@@ -824,12 +824,13 @@ class SourceBoundSchedulerCore:
         ):
             raise ValueError("source image application binding was altered")
 
-    def projection(
+    def cached_projection(
         self,
         adapter: SourceBoundImageAdapter,
         image: SourceImageID,
         demand: SourceImageDemand,
-    ) -> SourceImageProjection:
+    ) -> SourceImageProjection | None:
+        """Authenticate a retained projection without constructing on a miss."""
         adapter_key = self._registered(adapter)
         record = self.resolve(image)
         if record.adapter_key != adapter_key:
@@ -863,6 +864,19 @@ class SourceBoundSchedulerCore:
             found.projection.__post_init__()
             self.ledger.bump("source_image_projection_hits")
             return found.projection
+        return None
+
+    def projection(
+        self,
+        adapter: SourceBoundImageAdapter,
+        image: SourceImageID,
+        demand: SourceImageDemand,
+    ) -> SourceImageProjection:
+        found = self.cached_projection(adapter, image, demand)
+        if found is not None:
+            return found
+        record = self.resolve(image)
+        key = image, demand
         self.ledger.bump("source_image_projection_misses")
         projected = adapter.project(self._view_record(image, record), demand)
         if type(projected) is not SourceImageProjection:

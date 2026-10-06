@@ -4,6 +4,7 @@ import pytest
 
 from number_compiler.resources.metric_collection import collect_ledger_metrics
 from number_compiler.sequences.reverse_add.power import ReverseAddPoweredTerm
+from tests.support.reverse_cutover import assert_q19_output_authority
 
 
 def reference(seed: int, generations: int) -> int:
@@ -71,21 +72,26 @@ def test_public_reverse_summary_eviction_preserves_result_and_program_identity()
     term = ReverseAddPoweredTerm(196, 32)
     expected = term.digit(3)
     before = term.metrics()
+    workspace, occurrence = assert_q19_output_authority(term)
+    q19_steps = term._ledger.counters.get("reverse_q19_primitive_pair_applications", 0)
+    q19_visits = term._ledger.counters.get("reverse_q19_pair_output_nodes_visited", 0)
+    assert q19_steps == 31 and q19_visits > 0
     term._ledger.evict_query_memos()
     assert term.digit(3) == expected
     after = term.metrics()
     assert after.action_program_nodes == before.action_program_nodes
-    # Query summaries are evictable, while the completed recursive occurrence
-    # remains the authoritative semantic result.  Re-answering the coordinate
-    # must not republish the occurrence or reapply another temporal provider.
+    # Query summaries are evictable, while the authenticated Q19 occurrence
+    # remains the output authority. Re-answering it must not reapply a pair step.
     assert (
         after.bounded_application_nonlinear_branch_evaluations
         == before.bounded_application_nonlinear_branch_evaluations
     )
     counters = term._ledger.counters
-    assert counters.get("reverse_source_recursive_occurrence_publications", 0) == 1
-    assert counters.get("reverse_source_completed_child_publications", 0) == 1
-    assert counters.get("reverse_recursive_provider_applications", 0) == 5
+    retained_workspace, retained_occurrence = assert_q19_output_authority(term)
+    assert retained_workspace is workspace
+    assert retained_occurrence == occurrence
+    assert counters.get("reverse_q19_primitive_pair_applications", 0) == q19_steps
+    assert counters.get("reverse_q19_pair_output_nodes_visited", 0) == q19_visits
     assert after.temporal_parent_compositions == before.temporal_parent_compositions
     assert after.resource_accounting_mismatch == 0
     assert collect_ledger_metrics(term._ledger).resource_audit_complete == 1

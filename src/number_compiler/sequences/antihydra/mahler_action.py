@@ -176,10 +176,25 @@ class MahlerWorkspace:
         # source adapter), which validates the complete dyadic image once.
         self._validate_binding(result)
         workspace = self.source_workspace
+        projected: object
         try:
-            projected = workspace.scheduler.source_projection(
-                workspace, workspace.root_image, _MAHLER_DEMAND
-            ).value
+            if result.returns == 1:
+                # Source validation above authenticates the pinned seed and
+                # return extent. Its only centered bit is (8 - 1) mod 2 = 1,
+                # so construct this leaf directly in the shared source-action
+                # normal form instead of requesting a second projection.
+                from number_compiler.sequences.antihydra.mahler_source_actions import (
+                    MahlerSourceBoundSafetyAction,
+                )
+
+                if workspace.seed != 8 or workspace.returns != result.returns:
+                    raise ValueError("Mahler one-bit leaf has another admitted source")
+                first_bit = (workspace.seed - 1) & 1
+                projected = MahlerSourceBoundSafetyAction.one_bit(first_bit).to_action()
+            else:
+                projected = workspace.scheduler.source_projection(
+                    workspace, workspace.root_image, _MAHLER_DEMAND
+                ).value
         except BaseException:
             result.ledger.bump("mahler_associated_publication_rollbacks")
             raise

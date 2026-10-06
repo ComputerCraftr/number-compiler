@@ -120,6 +120,10 @@ class QueryContext:
                     radix=q.radix,
                     start=q.start,
                 )
+                if q.family == "collatz" and "clock" in q.info:
+                    collatz_payload = self._term.payload
+                    assert isinstance(collatz_payload, PoweredCollatzTermPayload)
+                    collatz_payload.term.prepare_width_spine()
         return self._term
 
     def information(self) -> dict[str, Any]:

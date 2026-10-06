@@ -104,6 +104,7 @@ def collect_ledger_metrics(
     else:
         audit = PayloadAudit(0, 0, 0)
     audit_counters = {
+        "reverse_pair_output_audit_entries",
         "reverse_payload_audit_identity_operand_bits",
         "collatz_d8_payload_audit_local_symbols",
         "dyadic_payload_audit_branch_steps",

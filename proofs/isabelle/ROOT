@@ -277,6 +277,7 @@ session Comma_C1_Phase_Power in comma_c1_phase_power = Comma_C1_Carry_Generator 
 
 session Comma_C1_Borrow_Cocycle in comma_c1_borrow = Comma_C1_Phase_Power +
   options [document = false, quick_and_dirty = false]
+  sessions Prefix_Effect_Core
   theories
     Comma_C1_Borrow_Cocycle
 

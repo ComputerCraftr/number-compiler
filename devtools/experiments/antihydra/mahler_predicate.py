@@ -16,9 +16,11 @@ from number_compiler.arithmetic.fields.consumer_pullback import (
 from number_compiler.arithmetic.fields.consumer_pullback import (
     SaturatingAffineAction,
 )
+from number_compiler.sequences.antihydra.mahler_source_actions import (
+    MahlerSourceBoundSafetyAction,
+)
 
 ZERO = Q(0)
-THREE_HALVES = Q(3, 2)
 
 
 def mahler_bit_action(epsilon: int) -> SaturatingAffineAction:
@@ -28,13 +30,7 @@ def mahler_bit_action(epsilon: int) -> SaturatingAffineAction:
     has cap ``9/4`` and a one bit has cap ``3/4``; both apply the affine map
     ``3/2 * (margin - epsilon)`` to a finite incoming margin.
     """
-    if type(epsilon) is not int or epsilon not in (0, 1):
-        raise ValueError("Mahler epsilon must be zero or one")
-    return SaturatingAffineAction(
-        THREE_HALVES,
-        Q(-3 * epsilon, 2),
-        Q(9, 4) if epsilon == 0 else Q(3, 4),
-    )
+    return MahlerSourceBoundSafetyAction.one_bit(epsilon).to_action()
 
 
 def mahler_odd_event_action(exponent: int) -> SaturatingAffineAction:

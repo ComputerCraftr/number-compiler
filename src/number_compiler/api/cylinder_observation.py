@@ -51,11 +51,22 @@ def observe_physical_clock(
     if ticks and term.maximum_width > max_digits:
         raise ValueError("physical clock target exceeds digit budget")
     clock = term.s_arithmetic_clock()
+    workspace = term._workspace
+    width_tape = None if workspace is None else workspace.tape_width_summary
     return {
         "family": "collatz",
         "kind": "physical-clock",
         "scope": "source-bound physical powered result, including the 1-4-2 cycle",
         "requested_ticks": ticks,
+        "width_tape": (
+            None
+            if width_tape is None
+            else {
+                "radix": 2,
+                "scope": "exact physical width walk",
+                **asdict(width_tape),
+            }
+        ),
         "value": {
             **asdict(clock),
             "physical_ticks": clock.physical_ticks,

@@ -72,6 +72,34 @@ def test_arithmetic_mahler_and_hensel_do_not_construct_physical_roof(
     assert term.ledger.counters.get("physical_roof_construction_requests", 0) == 0
 
 
+def test_one_return_uses_source_bound_bit_without_aggregate_projection(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    term = AntihydraArithmeticTerm(1, shared_cache=False)
+    result = term.result()
+    workspace = term.arithmetic_workspace
+    assert workspace is not None
+
+    def forbidden_projection(*_args: object, **_kwargs: object) -> None:
+        raise AssertionError("one-return Mahler leaf requested aggregate projection")
+
+    monkeypatch.setattr(
+        type(workspace.scheduler), "source_projection", forbidden_projection
+    )
+    packet = associated_action(result)
+    assert _rational(packet["scale"]) == Fraction(3, 2)
+    assert _rational(packet["offset"]) == Fraction(-3, 2)
+    assert _rational(packet["cap"]) == Fraction(3, 4)
+
+    original_seed = workspace.seed
+    object.__setattr__(workspace, "seed", original_seed + 1)
+    try:
+        with pytest.raises(ValueError, match="source image was changed"):
+            associated_action(result)
+    finally:
+        object.__setattr__(workspace, "seed", original_seed)
+
+
 def test_physical_adapter_authenticates_arithmetic_once(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -190,8 +218,8 @@ def test_antihydra_and_mahler_consume_the_shared_saturated_publication(
     prior = len(published)
     action = associated_action(result)
     # Public source validation reads the aggregate twice (result and endpoint).
-    # The Mahler projector reads it once; packet serialization does not reread.
-    assert len(published) == prior + 3
+    # The Mahler projector consumes the authenticated image summary directly.
+    assert len(published) == prior + 2
     assert action["extent"] == 65
     assert action["first_failure"] == 2
     assert result.first_failure_index is None

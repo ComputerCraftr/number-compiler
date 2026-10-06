@@ -64,6 +64,9 @@ def test_uninstrumented_lanes_are_unavailable_not_zero() -> None:
     assert record.construction.source_image_adapter_registrations is None
     assert record.construction.arithmetic_result_publications is None
     assert record.construction.bootstrap_admission_steps is None
+    assert record.construction.reverse_successor_rows is None
+    assert record.construction.reverse_successor_spatial_bits is None
+    assert record.construction.reverse_successor_transport_updates is None
     assert record.demand.point_requests is None
     assert record.demand.length_requests is None
     assert record.stream.requests is None
@@ -76,6 +79,25 @@ def test_uninstrumented_lanes_are_unavailable_not_zero() -> None:
     assert record.growth_readout.exact_rational_cases is None
     assert record.growth_readout.bounded_exact_ratio_cases is None
     assert (record.resources.entries, record.resources.nodes) == (3, 4)
+
+
+def test_successor_work_remains_separate_from_growth_and_cache_hits() -> None:
+    ledger = ResourceLedger()
+    ledger.bump("reverse_successor_tape_rows", 32)
+    ledger.bump("reverse_successor_tape_spatial_bits", 421)
+    ledger.bump("reverse_successor_tape_pair_operand_symbols", 837)
+    ledger.bump("reverse_successor_tape_event_symbols", 209)
+    ledger.bump("reverse_successor_tape_reconstruction_coefficient_updates", 512)
+    before = dict(ledger.counters)
+    record = collect_temporal_diagnostics_snapshot(ledger)
+    assert record.construction.reverse_successor_rows == 32
+    assert record.construction.reverse_successor_spatial_bits == 421
+    assert record.construction.reverse_successor_pair_symbols == 837
+    assert record.construction.reverse_successor_event_symbols == 209
+    assert record.construction.reverse_successor_transport_updates == 512
+    assert record.application.applied_hits is None
+    assert record.growth_readout.work is None
+    assert ledger.counters == before
 
 
 def test_growth_readout_keeps_exact_ratio_and_log_work_separate() -> None:
@@ -701,3 +723,45 @@ def test_mahler_source_action_and_outer_observer_reuse_are_separate_lanes() -> N
     assert record.outer_observer_scope == "process_complete_associated_action"
     assert record.outer_observer.unclassified_hits is None
     assert ledger.counters == before
+
+
+def test_affine_width_reporting_reads_only_existing_measurements() -> None:
+    from number_compiler.arithmetic.fields.affine_width import nonnegative_affine_width
+
+    assert _collect({}).affine_width.requests is None
+    ledger = ResourceLedger()
+    assert nonnegative_affine_width(3 << 9998, 0, 3, 1, ledger) == 10002
+    before = dict(ledger.counters)
+    measured = _collect(before).affine_width
+    assert measured.requests == 1
+    assert measured.interval_checks == 1
+    assert measured.refinements == measured.exact_boundaries == measured.failures == 0
+    assert measured.operand_bits is not None and measured.operand_bits < 128
+    assert ledger.counters == before
+
+
+def test_width_spine_retrieval_is_not_an_occurrence_application() -> None:
+    counters = {
+        "collatz_hashlife_width_spine_lookups": 5,
+        "collatz_hashlife_width_spine_local_hits": 2,
+        "collatz_hashlife_width_spine_process_hits": 1,
+        "collatz_hashlife_width_spine_misses": 2,
+    }
+    record = _collect(counters).macrocells[0]
+    assert record.width_projection.requests == 5
+    assert record.width_projection.local_hits == 2
+    assert record.width_projection.process_hits == 1
+    assert record.width_projection.applied_hits is None
+    assert record.occurrence.requests is None
+
+
+def test_reverse_pair_work_remains_visible_without_higher_evaluator_work() -> None:
+    counters = {
+        "reverse_q19_primitive_pair_applications": 31,
+        "reverse_q19_pair_output_nodes_visited": 360,
+    }
+    result = _collect(counters)
+    assert result.construction.reverse_pair_steps == 31
+    assert result.construction.reverse_pair_sections == 360
+    assert result.observations.higher_concrete_operation_evaluations is None
+    assert _collect({}).construction.reverse_pair_steps is None

@@ -57,6 +57,14 @@ class TemporalConstruction:
     source_image_adapter_registrations: int | None = None
     arithmetic_result_publications: int | None = None
     bootstrap_admission_steps: int | None = None
+    reverse_pair_steps: int | None = None
+    reverse_pair_sections: int | None = None
+    reverse_successor_rows: int | None = None
+    reverse_successor_bootstrap_rows: int | None = None
+    reverse_successor_spatial_bits: int | None = None
+    reverse_successor_pair_symbols: int | None = None
+    reverse_successor_event_symbols: int | None = None
+    reverse_successor_transport_updates: int | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -261,6 +269,7 @@ class TemporalMacrocellWork:
     occurrence: TemporalReuseLane
     source_action: TemporalReuseLane = TemporalReuseLane()
     outer_observer: TemporalReuseLane = TemporalReuseLane()
+    width_projection: TemporalReuseLane = TemporalReuseLane()
     outer_observer_scope: str | None = None
     merges: int | None = None
     max_level: int | None = None
@@ -284,6 +293,18 @@ class TemporalMacrocellWork:
 
 
 @dataclass(frozen=True, slots=True)
+class TemporalAffineWidth:
+    """Charged exact width comparisons, distinct from growth or emitted digits."""
+
+    requests: int | None = None
+    operand_bits: int | None = None
+    interval_checks: int | None = None
+    refinements: int | None = None
+    exact_boundaries: int | None = None
+    failures: int | None = None
+
+
+@dataclass(frozen=True, slots=True)
 class TemporalExecutionDiagnostics:
     """Compact schema-eight view beside the preserved raw work counters."""
 
@@ -296,6 +317,7 @@ class TemporalExecutionDiagnostics:
     stream: TemporalStreamDemand = TemporalStreamDemand()
     observations: TemporalObservations = TemporalObservations()
     growth_readout: TemporalGrowthReadout = TemporalGrowthReadout()
+    affine_width: TemporalAffineWidth = TemporalAffineWidth()
     family_work: tuple[TemporalFamilyWork, ...] = ()
     macrocells: tuple[TemporalMacrocellWork, ...] = ()
     comma: TemporalCommaWork = TemporalCommaWork()
@@ -492,6 +514,7 @@ def _macrocell_work(counters: Mapping[str, int]) -> tuple[TemporalMacrocellWork,
                 outer_observer_scope=(
                     "process_complete_associated_action" if family == "mahler" else None
                 ),
+                width_projection=_macrocell_reuse(counters, prefix, "width_spine"),
                 merges=_count(counters, f"{prefix}merges"),
                 max_level=_count(counters, f"{prefix}max_level"),
                 primitive_steps=_count(counters, f"{prefix}primitive_steps"),
@@ -678,6 +701,28 @@ def collect_temporal_diagnostics(
                 counters, "arithmetic_result_publications"
             ),
             bootstrap_admission_steps=bootstrap,
+            reverse_pair_steps=_count(
+                counters, "reverse_q19_primitive_pair_applications"
+            ),
+            reverse_pair_sections=_count(
+                counters, "reverse_q19_pair_output_nodes_visited"
+            ),
+            reverse_successor_rows=_count(counters, "reverse_successor_tape_rows"),
+            reverse_successor_bootstrap_rows=_count(
+                counters, "reverse_successor_tape_bootstrap_rows"
+            ),
+            reverse_successor_spatial_bits=_count(
+                counters, "reverse_successor_tape_spatial_bits"
+            ),
+            reverse_successor_pair_symbols=_count(
+                counters, "reverse_successor_tape_pair_operand_symbols"
+            ),
+            reverse_successor_event_symbols=_count(
+                counters, "reverse_successor_tape_event_symbols"
+            ),
+            reverse_successor_transport_updates=_count(
+                counters, "reverse_successor_tape_reconstruction_coefficient_updates"
+            ),
         ),
         demand=TemporalDemand(
             point_requests=_count(counters, "temporal_point_requests"),
@@ -691,6 +736,14 @@ def collect_temporal_diagnostics(
             integer_conversion_operand_bits=_count(
                 counters, "cli_render_integer_conversion_operand_bits"
             ),
+        ),
+        affine_width=TemporalAffineWidth(
+            requests=_count(counters, "affine_width_requests"),
+            operand_bits=_count(counters, "affine_width_operand_bits"),
+            interval_checks=_count(counters, "affine_width_interval_checks"),
+            refinements=_count(counters, "affine_width_refinements"),
+            exact_boundaries=_count(counters, "affine_width_exact_boundaries"),
+            failures=_count(counters, "affine_width_failures"),
         ),
         growth_readout=TemporalGrowthReadout(
             work=_count(counters, "growth_arithmetic_work"),

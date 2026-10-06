@@ -77,6 +77,8 @@ def test_admitted_chamber_stream_does_not_repeat_point_prefixes(
     source = ExactSource((1,) * 257, 10)
     workspace = ReverseSourceImageWorkspace(ResourceLedger(), int("1" * 257), 3)
     assert workspace.width() == len(source.digits)
+    # Scalar width does not admit digit ports; the first point demand does.
+    assert workspace.digit(0) == 8
 
     def forbidden(*_args: object) -> int:
         raise AssertionError("stream repeated point-prefix demand")

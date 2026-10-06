@@ -100,7 +100,7 @@ def test_public_point_and_width_reject_discarded_exact_future_tree(
         )
     else:
         collatz_workspace = term._source_image()
-        monkeypatch.setattr(type(collatz_workspace), "summary", eager_callback)
+        monkeypatch.setattr(type(collatz_workspace), "image_node", eager_callback)
     with pytest.raises(ExactTreeConstructionForbidden):
         if observer == "digit":
             term.digit(0)
@@ -211,9 +211,7 @@ def test_point_callback_cannot_relabel_future_digits_as_a_new_original_source() 
         relabel()
 
 
-def test_public_explicit_lowering_releases_exact_global_arena_in_fresh_process() -> (
-    None
-):
+def test_public_explicit_lowering_releases_q19_output_arena_in_fresh_process() -> None:
     import os
     import subprocess
     import sys
@@ -223,11 +221,30 @@ def test_public_explicit_lowering_releases_exact_global_arena_in_fresh_process()
 import gc
 from number_compiler import ReverseAddPoweredTerm
 from number_compiler.arithmetic.fields.dyadic_tile import tile_arena_metrics
+from number_compiler.sequences.reverse_add.source_images import ReverseImagePayload
 assert tile_arena_metrics()['canonical_nodes'] == 0
 term = ReverseAddPoweredTerm(196, 16)
 output = term.digits()
-assert output and tile_arena_metrics()['canonical_nodes'] > 0
-del output, term
+assert output
+workspace = term._workspace
+assert workspace is not None
+owner = workspace.adapter._q19_owner
+assert owner is not None
+image = workspace._image
+assert image is not None
+payload = workspace.scheduler._source_image_core().view(image).payload
+assert isinstance(payload, ReverseImagePayload)
+assert payload.pair_output is not None
+owner.validate(payload.pair_output)
+assert payload.pair_output.output_width == len(output)
+assert any(
+    item.role == 'reverse_pair_output_grammar' and item.entries > 0
+    for item in term._ledger.inventory()
+)
+assert tile_arena_metrics()['canonical_nodes'] == 0
+workspace.dispose()
+assert term._ledger.entries == term._ledger.nodes == 0
+del output, owner, workspace, term
 gc.collect()
 assert tile_arena_metrics()['canonical_nodes'] == 0
 """

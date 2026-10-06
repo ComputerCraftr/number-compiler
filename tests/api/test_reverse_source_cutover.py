@@ -6,14 +6,16 @@ from typing import Never
 
 import pytest
 
+from number_compiler.api import cli
 from number_compiler.api.cli import main
+from number_compiler.api.number_api import NumberCompiler
+from number_compiler.arithmetic.contracts.block_effect import BlockContextBudgetExceeded
 from number_compiler.arithmetic.functions import residual
 from number_compiler.hashlife.execution.tile_causal import CausalTileEngine
 from number_compiler.hashlife.observation.hashlife_projection import HashLifeBlockIndex
 from number_compiler.resources.metric_collection import collect_ledger_metrics
 from number_compiler.sequences.reverse_add.power import ReverseAddPoweredTerm
 from number_compiler.sequences.reverse_add.source_images import (
-    ReverseCylinderConstructionUnavailable,
     _ReverseSourceImageAdapter,
 )
 from tests.support.reverse_cutover import (
@@ -81,24 +83,41 @@ def test_completed_child_constructor_answers_rejected_same_carry_without_legacy_
     assert counters.get("sequential_generation_advances", 0) == 0
 
 
+def test_large_exact_output_replaces_the_retired_architectural_refusal(
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    from tests.support.reference_arithmetic import literal_reverse_add_digits
+
+    expected = literal_reverse_add_digits(196, 1024)
+    assert main(["196", "--nth", "1024"]) == 0
+    captured = capsys.readouterr()
+    assert captured.out == "".join(map(str, reversed(expected))) + "\n"
+    assert captured.err == ""
+
+
 @pytest.mark.parametrize("steps", [1024, 10**9])
-def test_unmigrated_large_power_still_refuses_without_legacy_work(
+def test_large_power_respects_explicit_cache_budget_before_primitive_descent(
     steps: int,
     monkeypatch: pytest.MonkeyPatch,
     capsys: pytest.CaptureFixture[str],
 ) -> None:
     monkeypatch.setattr(CausalTileEngine, "__init__", _forbidden)
     monkeypatch.setattr(HashLifeBlockIndex, "__init__", _forbidden)
+    compiler = NumberCompiler(max_context_nodes=512, max_cache_entries=512)
+    monkeypatch.setattr(cli, "NumberCompiler", lambda: compiler)
     assert main(["196", "--nth", str(steps)]) == 2
     captured = capsys.readouterr()
     assert captured.out == ""
-    assert "cylinder" in captured.err.lower()
-    term = ReverseAddPoweredTerm(196, steps)
-    for demand in (lambda: term.digit(0), term.width, term.digits):
-        with pytest.raises(ReverseCylinderConstructionUnavailable):
-            demand()
-    assert term._ledger.counters.get("source_image_primitive_applications", 0) == 0
-    assert term._ledger.counters.get("sequential_generation_advances", 0) == 0
+    assert "budget" in captured.err.lower()
+    for point in (False, True):
+        term = ReverseAddPoweredTerm(196, steps, max_cache_entries=512)
+        with pytest.raises(BlockContextBudgetExceeded):
+            if point:
+                term.digit(0)
+            else:
+                term.digits()
+        assert term._ledger.counters.get("source_image_primitive_applications", 0) == 0
+        assert term._ledger.counters.get("sequential_generation_advances", 0) == 0
 
 
 def test_metrics_leave_missing_constructor_lazy(

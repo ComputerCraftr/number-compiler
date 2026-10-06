@@ -333,9 +333,14 @@ class _BimachineBuilder:
             rt[q, p1] = done_r
         right = DFA(alphabet, start_r, rt, tuple(range(len(rdata))), True)
 
+        # The resolver outlives construction. Retain only immutable finite law
+        # data, rather than the mutable worklists used to discover its states.
+        left_data = tuple(ldata)
+        frozen_right_data = tuple(rdata)
+
         def emit(left_state: int, a: int, r: int) -> tuple[int, ...] | None:
-            ld = ldata[left_state]
-            rd = rdata[r]
+            ld = left_data[left_state]
+            rd = frozen_right_data[r]
             if left_state == start_l and a in (p0, p1) and rd[0] == "A" and rd[1]:
                 parity = a - (2 * b - 1)
                 _, _, center, first_excl = rd

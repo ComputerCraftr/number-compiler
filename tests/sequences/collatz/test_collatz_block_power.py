@@ -117,6 +117,99 @@ def test_collatz_recursive_images_do_not_use_retired_spatial_or_replay_paths(
     assert counters.get("whole_word_symbol_visits", 0) == 0
 
 
+@pytest.mark.parametrize("seed,steps", ((1, 1), (27, 16), (17, 29), (255, 33)))
+def test_collatz_width_uses_admitted_affine_width_without_output_numerator(
+    seed: int, steps: int, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    def forbidden(*_args: object, **_kwargs: object) -> Never:
+        raise AssertionError("width demand constructed the affine output numerator")
+
+    monkeypatch.setattr(PoweredCollatzTerm, "_source_numerator", forbidden)
+    expected = seed
+    for _ in range(steps):
+        expected = _physical(expected)
+
+    term = PoweredCollatzTerm(seed, steps)
+    assert term.width() == expected.bit_length()
+    assert term._ledger.counters["affine_width_requests"] == 1
+    assert term.width() == expected.bit_length()
+    assert term._ledger.counters["affine_width_requests"] == 1
+
+
+def test_collatz_huge_cycle_width_uses_constant_image_without_huge_denominator(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    def forbidden(*_args: object, **_kwargs: object) -> Never:
+        raise AssertionError("cycle width constructed an affine output numerator")
+
+    monkeypatch.setattr(PoweredCollatzTerm, "_source_numerator", forbidden)
+    steps = 10**12
+    term = PoweredCollatzTerm(1, steps)
+    assert term.width() == (1, 4, 2)[steps % 3].bit_length()
+    assert term._ledger.counters["affine_width_requests"] == 1
+    assert term._ledger.counters.get("collatz_physical_aggregate_demands", 0) == 0
+    workspace = term._workspace
+    assert workspace is not None
+    image = workspace.image_node(workspace.root_payload)
+    assert image.summary.transfer.upper == 0
+    assert image.summary.transfer.lower == 1
+
+
+@pytest.mark.parametrize("seed,steps", [(27, 16), (1, 10**12)])
+def test_collatz_requested_clock_width_uses_sealed_tape_summary(
+    seed: int,
+    steps: int,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from number_compiler.sequences.collatz import block_power
+
+    term = PoweredCollatzTerm(seed, steps)
+    clock = term.s_arithmetic_clock()
+    workspace = term._workspace
+    assert workspace is not None
+    summary = workspace.tape_width_summary
+    assert summary is not None
+    assert summary.physical_ticks == steps
+    assert clock.events == summary.odd_steps
+    affine_width_requests = term._ledger.counters.get("affine_width_requests", 0)
+    aggregate_demands = term._ledger.counters.get(
+        "collatz_physical_aggregate_demands", 0
+    )
+    if seed == 1:
+        expected = (1, 4, 2)[steps % 3]
+    else:
+        expected = seed
+        for _ in range(steps):
+            expected = _physical(expected)
+
+    def forbidden(*_args: object, **_kwargs: object) -> Never:
+        raise AssertionError("sealed tape width fell through to affine width work")
+
+    monkeypatch.setattr(PoweredCollatzTerm, "_source_numerator", forbidden)
+    monkeypatch.setattr(block_power, "nonnegative_affine_width", forbidden)
+    assert term.width() == summary.source_width + summary.blank.delta
+    assert term.width() == summary.target_width == expected.bit_length()
+    assert (
+        term._ledger.counters.get("affine_width_requests", 0) == affine_width_requests
+    )
+    assert (
+        term._ledger.counters.get("collatz_physical_aggregate_demands", 0)
+        == aggregate_demands
+    )
+
+
+def test_collatz_requested_clock_width_rejects_changed_action_binding() -> None:
+    term = PoweredCollatzTerm(27, 16)
+    term.s_arithmetic_clock()
+    workspace = term._workspace
+    assert workspace is not None
+    assert workspace.tape_width_summary is not None
+
+    term.steps += 1
+    with pytest.raises(ValueError, match="another source/action"):
+        term.width()
+
+
 @pytest.mark.validation
 def test_high_entropy_collatz_point_uses_balanced_source_cylinder() -> None:
     """A cold N-bit source publishes one root and charges balanced precision."""

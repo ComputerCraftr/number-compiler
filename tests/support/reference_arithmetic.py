@@ -18,7 +18,43 @@ from number_compiler.arithmetic.carry.reverse_sector_transfer import (
 from number_compiler.arithmetic.fields.consumer_pullback import SaturatingAffineAction
 from number_compiler.hashlife.execution.dyadic_return_records import DyadicReturnLaw
 
-__all__ = ("collatz_literal", "literal_reverse_add")
+__all__ = ("collatz_literal", "literal_reverse_add", "literal_reverse_add_digits")
+
+
+def literal_reverse_add_digits(
+    seed: int, steps: int, base: int = 10
+) -> tuple[int, ...]:
+    """Return LSD-first digits from the independent reverse/add oracle.
+
+    Decimal cases share the canonical literal oracle.  Other radices use a
+    small direct arithmetic loop so scheduler tests can compare the existing
+    nondecimal path without duplicating digit conversion in each test module.
+    """
+    if type(seed) is not int or seed < 0:
+        raise ValueError("reverse/add seed must be a nonnegative integer")
+    if type(steps) is not int or steps < 0:
+        raise ValueError("reverse/add steps must be a nonnegative integer")
+    if type(base) is not int or base < 2:
+        raise ValueError("reverse/add base must be at least two")
+
+    value = literal_reverse_add(seed, steps) if base == 10 else seed
+    if base != 10:
+        for _ in range(steps):
+            digits = _radix_digits(value, base)
+            reverse = sum(
+                digit * base**index for index, digit in enumerate(reversed(digits))
+            )
+            value += reverse
+    return _radix_digits(value, base)
+
+
+def _radix_digits(value: int, base: int) -> tuple[int, ...]:
+    digits: list[int] = []
+    while True:
+        value, digit = divmod(value, base)
+        digits.append(digit)
+        if value == 0:
+            return tuple(digits)
 
 
 def rational_action_components(

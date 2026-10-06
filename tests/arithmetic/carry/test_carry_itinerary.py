@@ -1,3 +1,5 @@
+import pytest
+
 from devtools.benchmarks.pair_encoding import pair_from_int as _pair_from_int
 from devtools.verification.consumer_fixtures import carry_seed_rows
 from number_compiler.arithmetic.carry.carry_itinerary import (
@@ -18,6 +20,7 @@ from number_compiler.arithmetic.carry.carry_itinerary import (
     negacyclic_transport_kernel,
     pair_field_preimage_count,
     polynomial_growth_operator_rank,
+    reconstruct_pair_from_live_event_suffix,
     reverse_add_base_pm_advance,
     reverse_add_base_pm_residues,
     reverse_add_base_squared_minus_one_residue,
@@ -289,3 +292,23 @@ def _decimal_growth_trace() -> list[int]:
         pair, growth = pair_step(pair, 10)
         growths.append(growth)
     return growths
+
+
+@pytest.mark.parametrize("coefficient", (0, 10))
+def test_live_reconstruction_counts_completed_updates_even_when_output_is_invalid(
+    coefficient: int,
+) -> None:
+    # Two event widths, 2 then 3, produce 2*2 + 3 coefficient updates.
+    # This checks arithmetic accounting; it does not admit a source itinerary.
+    events = ((coefficient, coefficient), (0, 0, 0))
+    updates: list[int] = []
+    if coefficient:
+        with pytest.raises(ValueError, match="not a valid certified pair itinerary"):
+            reconstruct_pair_from_live_event_suffix(
+                events, record_updates=updates.append
+            )
+    else:
+        assert reconstruct_pair_from_live_event_suffix(
+            events, record_updates=updates.append
+        ) == (0, 0, 0)
+    assert updates == [7]

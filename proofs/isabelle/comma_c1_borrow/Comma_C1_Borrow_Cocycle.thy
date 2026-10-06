@@ -1,5 +1,6 @@
 theory Comma_C1_Borrow_Cocycle
   imports Comma_C1_Phase_Power.Comma_C1_Phase_Power
+    Prefix_Effect_Core.Prefix_Effect
 begin
 
 text \<open>Local adjacent-sector suffix algebra.  The sector guard is explicit:
@@ -315,6 +316,65 @@ lemma comma_c1_borrow_innovation_add:
   unfolding comma_c1_borrow_innovation_def
   by (simp add: comma_c1_count_add comma_c1_iter_add algebra_simps)
 
+fun comma_c1_borrow_innovation_word ::
+    "comma_c1_phase \<Rightarrow> comma_c1_phase \<Rightarrow> nat \<Rightarrow> int list" where
+  "comma_c1_borrow_innovation_word P Q 0 = []"
+| "comma_c1_borrow_innovation_word P Q (Suc n) =
+    comma_c1_borrow_innovation_word P Q n @
+      [comma_c1_borrow_innovation (comma_c1_iter n P)
+        (comma_c1_iter n Q) 1]"
+
+lemma comma_c1_borrow_innovation_word_sum:
+  "sum_list (comma_c1_borrow_innovation_word P Q n) =
+    comma_c1_borrow_innovation P Q n"
+proof (induction n)
+  case 0
+  then show ?case
+    by (simp add: comma_c1_borrow_innovation_def comma_c1_iter.simps)
+next
+  case (Suc n)
+  have cocycle:
+    "comma_c1_borrow_innovation P Q (Suc n) =
+      comma_c1_borrow_innovation P Q n +
+        comma_c1_borrow_innovation (comma_c1_iter n P) (comma_c1_iter n Q) 1"
+    using comma_c1_borrow_innovation_add[of P Q n 1] by simp
+  show ?case using Suc.IH cocycle by simp
+qed
+
+lemma comma_c1_borrow_innovation_word_append:
+  "comma_c1_borrow_innovation_word P Q (m + n) =
+    comma_c1_borrow_innovation_word P Q m @
+      comma_c1_borrow_innovation_word (comma_c1_iter m P)
+        (comma_c1_iter m Q) n"
+proof (induction n)
+  case 0
+  then show ?case by simp
+next
+  case (Suc n)
+  show ?case
+    using Suc.IH
+    by (simp add: comma_c1_iter_add add.assoc)
+qed
+
+definition comma_c1_borrow_ledger ::
+    "comma_c1_phase \<Rightarrow> comma_c1_phase \<Rightarrow> nat \<Rightarrow> blank_ledger" where
+  "comma_c1_borrow_ledger P Q n =
+    blank_ledger_word id (comma_c1_borrow_innovation_word P Q n)"
+
+lemma comma_c1_borrow_ledger_delta:
+  "blank_delta (comma_c1_borrow_ledger P Q n) =
+    comma_c1_borrow_innovation P Q n"
+  unfolding comma_c1_borrow_ledger_def blank_ledger_word_def
+  by (simp add: prefix_summary_delta comma_c1_borrow_innovation_word_sum)
+
+lemma comma_c1_borrow_ledger_append:
+  "comma_c1_borrow_ledger P Q (m + n) =
+    blank_ledger_then (comma_c1_borrow_ledger P Q m)
+      (comma_c1_borrow_ledger (comma_c1_iter m P) (comma_c1_iter m Q) n)"
+  unfolding comma_c1_borrow_ledger_def
+  by (simp only: comma_c1_borrow_innovation_word_append
+      blank_ledger_word_append)
+
 
 definition comma_c1_borrow_step_innovation_formula ::
     "comma_c1_phase \<Rightarrow> comma_c1_phase \<Rightarrow> int" where
@@ -399,6 +459,16 @@ proof -
   show ?thesis using assembled local_exact by simp
 qed
 
+lemma comma_c1_borrow_ledger_one_step_exact:
+  assumes p_admitted: "comma_c1_phase_admitted P"
+    and q_admitted: "comma_c1_phase_admitted Q"
+    and adjacent: "c1_sector Q = c1_sector P + 1"
+  shows "blank_delta (comma_c1_borrow_ledger P Q 1) =
+      comma_c1_borrow_step_innovation_formula P Q"
+  using comma_c1_borrow_ledger_delta[of P Q 1]
+    comma_c1_borrow_innovation_one_step_exact[OF p_admitted q_admitted adjacent]
+  by simp
+
 lemma comma_c1_borrow_high_cocycle:
   fixes HA HB cA cB b b' :: nat
   defines "D \<equiv> int HB - int HA - int b"
@@ -415,7 +485,11 @@ ML \<open>
     comma_c1_borrow_output_balance_arithmetic
     comma_c1_borrow_output_balance comma_c1_borrow_delta_step
     comma_c1_borrow_innovation_exact comma_c1_borrow_innovation_add
+    comma_c1_borrow_innovation_word_sum
+    comma_c1_borrow_innovation_word_append
+    comma_c1_borrow_ledger_delta comma_c1_borrow_ledger_append
     comma_c1_borrow_innovation_one_step_exact
+    comma_c1_borrow_ledger_one_step_exact
     comma_c1_borrow_high_cocycle};
   val _ = if null (Thm_Deps.all_oracles checked) then ()
     else error "C1 borrow cocycle proof depends on an oracle";

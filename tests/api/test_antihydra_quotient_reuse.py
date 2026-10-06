@@ -22,10 +22,10 @@ def test_mahler_serialization_demands_one_aggregate_and_no_segments() -> None:
     packet = associated_action(result)
 
     assert packet["extent"] == 128
-    # Two reads authenticate the public result and one builds the demanded
-    # Mahler action. The packet itself consumes the already published transfer.
+    # Two reads authenticate the public result. The Mahler action consumes the
+    # already-published transfer without requesting another aggregate wrapper.
     assert (
-        result.ledger.counters["antihydra_arithmetic_aggregate_demands"] - before == 3
+        result.ledger.counters["antihydra_arithmetic_aggregate_demands"] - before == 2
     )
     assert result.ledger.counters["mahler_source_composed_image_reads"] == 1
     assert not term._segments_ready

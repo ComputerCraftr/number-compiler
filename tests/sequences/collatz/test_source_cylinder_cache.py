@@ -3,6 +3,7 @@
 import pytest
 
 from number_compiler.arithmetic.contracts.block_effect import BlockContextBudgetExceeded
+from number_compiler.arithmetic.fields.blank_ledger import BlankLedger
 from number_compiler.resources.ledger import ResourceLedger
 from number_compiler.resources.process_cache import clear_process_cache
 from number_compiler.resources.temporal_diagnostics import (
@@ -13,6 +14,7 @@ from number_compiler.sequences.collatz.physical_images import COLLATZ_PHYSICAL_L
 from number_compiler.sequences.collatz.source_cylinder_cache import (
     CollatzDyadicMacros,
 )
+from number_compiler.sequences.collatz.tape_width import CollatzTapeWidthSummary
 from number_compiler.sequences.collatz.temporal_dyadic import D8TemporalTable
 from number_compiler.sequences.collatz.temporal_run_quotient import (
     compile_collatz_temporal_run_quotient,
@@ -22,10 +24,66 @@ from tests.support.reference_arithmetic import literal_dyadic_orbit
 pytestmark = pytest.mark.usefixtures("isolated_process_cache")
 
 
+def test_width_spine_is_source_qualified_when_endpoint_cylinder_transports() -> None:
+    clear_process_cache()
+    source = (1 << 200) + 931386509544713451
+    current = source
+    widths = [current.bit_length()]
+    odd_steps = 0
+    for _ in range(16):
+        if current & 1:
+            raw = 3 * current + 1
+            odd_steps += 1
+            widths.append(raw.bit_length())
+            current = raw // 2
+        else:
+            current //= 2
+        widths.append(current.bit_length())
+    ticks = 16 + odd_steps
+    summary = CollatzTapeWidthSummary(
+        widths[0],
+        widths[-1],
+        ticks,
+        16,
+        odd_steps,
+        BlankLedger(
+            widths[-1] - widths[0],
+            min(widths) - widths[0],
+            max(widths) - widths[0],
+        ),
+    )
+    with CollatzDyadicMacros(ResourceLedger(), shared_cache=True) as macros:
+        assert macros.remember(
+            source, 16, odd_steps, current, tape_width_summary=summary
+        )
+        assert macros.ledger.counters["collatz_hashlife_width_spine_publications"] == 1
+        exact = macros.lookup_largest_with_width(source, 16, ticks)
+        assert exact is not None and exact[1] == summary
+        original_maximum = summary.blank.maximum
+        object.__setattr__(summary.blank, "maximum", -10_000)
+        try:
+            with pytest.raises(ValueError):
+                macros.lookup_width_summary(source, 16)
+        finally:
+            object.__setattr__(summary.blank, "maximum", original_maximum)
+    with CollatzDyadicMacros(ResourceLedger(), shared_cache=True) as macros:
+        exact = macros.lookup_largest_with_width(source, 16, ticks)
+        assert exact is not None and exact[1] == summary
+        assert macros.ledger.counters["collatz_hashlife_width_spine_process_hits"] == 1
+        assert (
+            macros.ledger.counters.get("collatz_hashlife_width_spine_publications", 0)
+            == 0
+        )
+        transported_source = source + (2 << 200)
+        transported = macros.lookup_largest_with_width(transported_source, 16, ticks)
+        assert transported is not None and transported[0] == exact[0]
+        assert transported[1] is None
+    clear_process_cache()
+
+
 def test_warm_complete_germ_skips_discovery_for_another_high_fiber(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    clear_process_cache()
     source = (1 << 200) + 931386509544713451
     compile_collatz_temporal_run_quotient(
         source, 1000, ledger=ResourceLedger(), shared_cache=True

@@ -131,6 +131,7 @@ def audit_collatz_d8_payloads(ledger: ResourceLedger) -> PhysicalSupportPayloadA
     inventory = {row.owner: row for row in ledger.inventory()}
     approved: set[int] = set()
     invalid: set[tuple[int, int]] = set()
+    canonical_rows: dict[int, tuple[int, int]] = {}
     # A D8 table is finite source-residue algebra, not an unbounded itinerary.
     # Reconstruct each retained row on two independent small scalar lifts so
     # neither its claimed odd count nor its target origin is trusted.
@@ -140,7 +141,7 @@ def audit_collatz_d8_payloads(ledger: ResourceLedger) -> PhysicalSupportPayloadA
         if table_inventory.role != "collatz_d8_local_table":
             continue
         table = containers.get(table_owner)
-        table_approved: set[int] = set()
+        local_table_approved: set[int] = set()
         try:
             table_valid = (
                 type(table) is LedgerDict
@@ -179,7 +180,113 @@ def audit_collatz_d8_payloads(ledger: ResourceLedger) -> PhysicalSupportPayloadA
                     if record != (ones, low) or high - low != 3**ones:
                         table_valid = False
                         break
-                    table_approved.add(id(record))
+                    local_table_approved.add(id(record))
+                    canonical_rows[residue] = record
+            if table_valid:
+                approved.update(local_table_approved)
+                approved.add(id(table))
+            else:
+                invalid.add((table_owner, id(table)))
+        except (AttributeError, ArithmeticError, KeyError, TypeError, ValueError):
+            invalid.add((table_owner, id(table)))
+
+    for table_owner, table_inventory in inventory.items():
+        if table_inventory.role != "collatz_d8_width_prefix_table":
+            continue
+        table = containers.get(table_owner)
+        table_approved: set[int] = set()
+        try:
+            table_valid = (
+                type(table) is LedgerDict
+                and table.ledger is ledger
+                and table.owner == table_owner
+                and table.write_once
+                and table.nodes_per_entry == 24
+                and ledger.is_factory_container(table)
+                and table_inventory.name == "collatz-physical-d8-width-prefix-table"
+                and table_inventory.scope == "ENGINE_OWNED"
+                and table_inventory.accounting_delta == 0
+                and not table_inventory.disposed
+                and table_inventory.entries == len(table)
+                and table_inventory.nodes == 24 * len(table)
+                and len(table) <= 256
+            )
+            if table_valid:
+                assert type(table) is LedgerDict
+                for residue, record in table.items():
+                    row = canonical_rows.get(residue)
+                    if (
+                        type(residue) is not int
+                        or not 0 <= residue < 256
+                        or row is None
+                        or type(record) is not tuple
+                        or len(record) != 2
+                        or type(record[0]) is not tuple
+                        or len(record[0]) != 9
+                        or any(
+                            type(prefix) is not tuple
+                            or len(prefix) != 2
+                            or any(type(value) is not int for value in prefix)
+                            for prefix in record[0]
+                        )
+                        or type(record[1]) is not int
+                        or not 0 <= record[1] < 256
+                    ):
+                        table_valid = False
+                        break
+                    prefixes, odd_mask = record
+                    low, high, ones = residue + 256, residue + 512, 0
+                    expected: list[tuple[int, int]] = [(1, 0)]
+                    multiplier, offset = 1, 0
+                    for step in range(8):
+                        bit = low & 1
+                        ones += bit
+                        if bit:
+                            low = (3 * low + 1) // 2
+                            high = (3 * high + 1) // 2
+                            multiplier, offset = (
+                                3 * multiplier,
+                                3 * offset + (1 << step),
+                            )
+                        else:
+                            low //= 2
+                            high //= 2
+                        expected.append((multiplier, offset))
+                    ledger.bump("collatz_d8_payload_audit_local_symbols", 16)
+                    if (
+                        prefixes != tuple(expected)
+                        or odd_mask.bit_count() != ones
+                        or (odd_mask >> 8) != 0
+                        or row[0] != ones
+                        or row[1] != low - 3**ones
+                        or high - low != 3**ones
+                        or (prefixes[8][0] * residue + prefixes[8][1]) // 256 != row[1]
+                        or (prefixes[8][0] * residue + prefixes[8][1]) % 256
+                    ):
+                        table_valid = False
+                        break
+                    for source in (residue + 256, residue + 512):
+                        state = source
+                        for step, (gain, shift) in enumerate(expected):
+                            numerator = gain * source + shift
+                            if (
+                                numerator % (1 << step)
+                                or numerator // (1 << step) != state
+                            ):
+                                table_valid = False
+                                break
+                            if step < 8:
+                                state = (
+                                    (3 * state + 1) // 2
+                                    if (odd_mask >> step) & 1
+                                    else state // 2
+                                )
+                        if not table_valid:
+                            break
+                    if not table_valid:
+                        break
+                    table_approved.update((id(record), id(prefixes)))
+                    table_approved.update(map(id, prefixes))
             if table_valid:
                 approved.update(table_approved)
                 approved.add(id(table))

@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from collections.abc import Iterator
+from contextlib import contextmanager
 from dataclasses import dataclass, replace
 from typing import cast
 
@@ -14,6 +16,7 @@ from number_compiler.hashlife.execution.source_bound_images import (
     SourceImageProjection,
     SourceImageView,
     _ApplyKey,
+    _RelativeKey,
 )
 from number_compiler.hashlife.execution.source_image_seals import publication_seal
 from number_compiler.resources.ledger import ResourceLedger
@@ -280,6 +283,101 @@ def test_relative_cache_distinguishes_boolean_and_integer_inputs() -> None:
     assert ledger.counters.get("source_image_relative_transfer_hits", 0) == 0
     assert ledger.counters["source_image_relative_transfer_publications"] == 2
     assert not _source_audit(ledger, core).invalid
+
+
+class _TransactionalDecimal(_DecimalAdapter):
+    """Track adapter records that must roll back with failed scheduler commits."""
+
+    def __init__(self, ledger: ResourceLedger) -> None:
+        super().__init__(ledger)
+        self.records: list[str] = []
+
+    @contextmanager
+    def composite_transaction(self) -> Iterator[None]:
+        checkpoint = len(self.records)
+        try:
+            yield
+        except BaseException:
+            del self.records[checkpoint:]
+            raise
+
+    def apply_primitive(
+        self, action: object, source: SourceImageView
+    ) -> SourceImageCandidate:
+        self.records.append("primitive")
+        return super().apply_primitive(action, source)
+
+    def transport_reuse(
+        self,
+        action: object,
+        cached_source: SourceImageView,
+        cached_result: SourceImageView,
+        source: SourceImageView,
+    ) -> SourceImageCandidate:
+        self.records.append("relative")
+        return super().transport_reuse(action, cached_source, cached_result, source)
+
+
+def test_primitive_adapter_records_roll_back_when_scheduler_publication_fails(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    ledger = ResourceLedger()
+    core = SourceBoundSchedulerCore(ledger)
+    adapter = _TransactionalDecimal(ledger)
+    core.register(adapter)
+    core._origin(adapter, 0)
+    before = ledger.snapshot()
+
+    def reject_publication(*_args: object, **_kwargs: object) -> SourceImageID:
+        raise RuntimeError("injected scheduler publication failure")
+
+    monkeypatch.setattr(core, "_publish_application_result", reject_publication)
+    with pytest.raises(RuntimeError, match="injected scheduler publication failure"):
+        core.apply(adapter, 0, _Action((8,)))
+
+    assert adapter.records == []
+    assert core._applications == {}
+    after = ledger.snapshot()
+    assert (after.entries, after.nodes) == (before.entries, before.nodes)
+
+
+def test_relative_adapter_records_roll_back_when_scheduler_publication_fails(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    ledger = ResourceLedger()
+    core = SourceBoundSchedulerCore(ledger)
+    adapter = _TransactionalDecimal(ledger)
+    core.register(adapter)
+    core.apply(adapter, 0, _Action((8,)))
+    records_before = tuple(adapter.records)
+    applications_before = len(core._applications)
+    publish = core._publish_application_result
+
+    def reject_second_source(
+        key: _ApplyKey,
+        source: object,
+        cumulative_action: object,
+        candidate: SourceImageCandidate,
+        *,
+        relative_key: _RelativeKey | None,
+    ) -> SourceImageID:
+        if source == 9:
+            raise RuntimeError("injected relative publication failure")
+        return publish(
+            key,
+            source,
+            cumulative_action,
+            candidate,
+            relative_key=relative_key,
+        )
+
+    monkeypatch.setattr(core, "_publish_application_result", reject_second_source)
+    with pytest.raises(RuntimeError, match="injected relative publication failure"):
+        core.apply(adapter, 9, _Action((8,)))
+
+    assert tuple(adapter.records) == records_before
+    assert len(core._applications) == applications_before
+    assert ledger.counters.get("source_image_relative_transfer_hits", 0) == 0
 
 
 @pytest.mark.parametrize("demanded_first", [False, True])

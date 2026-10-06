@@ -116,5 +116,7 @@ def test_reverse_final_stream_metrics_include_terminal_carry() -> None:
     assert report.stream.requests == 1
     assert report.stream.emitted == len(expected) == 7
     assert report.stream.cancellations == report.stream.failures == 0
-    assert counters["recursive_output_stream_emitted_digits"] == 6
+    # Q19's paired recurrence emits six pair digits here and the authenticated
+    # final carry supplies the seventh public digit.
+    assert counters["recursive_output_stream_emitted_digits"] == len(expected) == 7
     assert term._ledger.counters == counters

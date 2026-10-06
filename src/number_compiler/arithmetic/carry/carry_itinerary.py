@@ -452,7 +452,10 @@ def live_event_suffix_length(events: Sequence[Sequence[int]], *, base: int = 10)
 
 
 def reconstruct_pair_from_live_event_suffix(
-    events: Sequence[Sequence[int]], *, base: int = 10
+    events: Sequence[Sequence[int]],
+    *,
+    base: int = 10,
+    record_updates: Callable[[int], None] | None = None,
 ) -> tuple[int, ...]:
     """Reconstruct an endpoint from a *certified* live event suffix.
 
@@ -472,14 +475,20 @@ def reconstruct_pair_from_live_event_suffix(
     modulus = 1 << pair_plane_bits(base)
     target_width = widths[-1]
     out = [0] * target_width
-    for j, event in enumerate(rows):
-        tail = growths[j:]
-        r = sum(tail)
-        q = len(tail) - r
-        scale = pow(2, q, modulus)
-        for i, value in enumerate(event):
-            for k in range(r + 1):
-                out[i + k] = (out[i + k] + value * scale * comb(r, k)) % modulus
+    updates = 0
+    try:
+        for j, event in enumerate(rows):
+            tail = growths[j:]
+            r = sum(tail)
+            q = len(tail) - r
+            scale = pow(2, q, modulus)
+            for i, value in enumerate(event):
+                for k in range(r + 1):
+                    out[i + k] = (out[i + k] + value * scale * comb(r, k)) % modulus
+                    updates += 1
+    finally:
+        if record_updates is not None:
+            record_updates(updates)
     pair_max = 2 * (int(base) - 1)
     result = tuple(out)
     if any(not 0 <= value <= pair_max for value in result) or result != result[::-1]:

@@ -87,8 +87,9 @@ def test_warm_reverse_point_bypasses_projection_and_retains_one_response(
         for key, value in term._ledger.counters.items()
         if value != before.get(key, 0)
     }
+    # The complete Q19 payload has 25 audited seal visits on this warm request.
     assert changes == {
-        "source_image_seal_validation_visits": 18,
+        "source_image_seal_validation_visits": 25,
         "source_image_projection_requests": 1,
         "source_image_projection_hits": 1,
         "temporal_point_requests": 1,

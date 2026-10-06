@@ -151,7 +151,10 @@ def cached_associated_action(
     workspace: AntihydraArithmeticImageWorkspace,
 ) -> SaturatingAffineAction:
     """Consume the image authenticated by the scheduler projection boundary."""
-    transfer = workspace.saturated_summary().transfer
+    # The scheduler projection has already authenticated this image.  Keep
+    # consuming its published transfer directly; wrapping it as a saturated
+    # aggregate creates a second observation of the same summary.
+    transfer = workspace.summary().transfer
     source = workspace.source_node(workspace.root_source)
     ledger = workspace.ledger
     ledger.bump("mahler_source_composed_image_reads")

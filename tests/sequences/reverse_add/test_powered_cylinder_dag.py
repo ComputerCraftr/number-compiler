@@ -19,7 +19,10 @@ from number_compiler.resources.metric_collection import collect_ledger_metrics
 from number_compiler.resources.stores import LedgerList
 from number_compiler.sequences.reverse_add import power as powered_module
 from number_compiler.sequences.reverse_add.power import ReverseAddPoweredTerm
-from tests.support.reverse_cutover import assert_mirror_scratch_released
+from tests.support.reverse_cutover import (
+    assert_mirror_scratch_released,
+    assert_q19_output_authority,
+)
 
 
 @pytest.mark.parametrize("seed", (196, 89, 99, 121))
@@ -39,10 +42,13 @@ def test_powered_mirror_consumes_tiles_without_point_queries(
     monkeypatch.setattr(ReverseAddPoweredTerm, "digit", forbidden)
     assert term.mirror_obstruction() == reference
     counters = term._ledger.counters
-    # Reverse powered terms observe the completed recursive output grammar as
-    # one measured stream; recursive stream emissions replace tile-sheet visits.
-    assert counters["reverse_recursive_streamed_digits"] == len(digits)
+    # The Q19 pair grammar is the completed output authority; its digit stream
+    # feeds the measured output consumer without point or tile-sheet visits.
     assert counters["reverse_output_stream_emitted_digits"] == len(digits)
+    # The third digit word normalizes the pair field after two transitions.
+    assert counters["reverse_q19_primitive_pair_applications"] == 2
+    assert counters["reverse_q19_pair_output_nodes_visited"] > 0
+    assert_q19_output_authority(term)
     assert counters.get("temporal_point_requests", 0) == 0
     assert counters.get("point_response_requests", 0) == 0
     for account in term._ledger.inventory():

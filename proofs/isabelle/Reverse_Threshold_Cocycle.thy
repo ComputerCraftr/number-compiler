@@ -309,6 +309,95 @@ next
     by (simp only: native_macro.simps Suc.IH double funpow_add comp_apply)
 qed
 
+lemma native_emit_length:
+  "length (native_emit c xs) = length xs"
+proof (induction xs arbitrary: c)
+  case Nil
+  then show ?case by simp
+next
+  case (Cons x xs)
+  obtain g a e where x: "x = (g,a,e)" by (cases x) auto
+  have ih: "length (native_emit (carry_apply g c) xs) = length xs"
+    using Cons.IH[of "carry_apply g c"] .
+  show ?case using x ih by simp
+qed
+
+lemma native_digits_length:
+  "length (native_digits xs) = length xs +
+    (if native_growth xs then 1 else 0)"
+  unfolding native_digits_def
+  by (simp add: native_emit_length)
+
+lemma native_step_length:
+  "length (native_step xs) = length xs +
+    (if native_growth xs then 1 else 0)"
+  unfolding native_step_def
+  by (simp add: native_digits_length)
+
+text \<open>The growth count is the chronological sum of producer growth flags
+along the actual native successor states. It is not defined as an endpoint
+length difference. The terminal digit word is a separate projection: after
+n pair steps, it may include the next producer's final carry bit.\<close>
+
+fun native_growth_count :: "nat \<Rightarrow> native_cocycle list \<Rightarrow> nat" where
+  "native_growth_count 0 xs = 0"
+| "native_growth_count (Suc n) xs =
+    (if native_growth xs then 1 else 0) +
+      native_growth_count n (native_step xs)"
+
+lemma native_growth_count_add:
+  "native_growth_count (m + n) xs =
+    native_growth_count m xs +
+      native_growth_count n ((native_step ^^ m) xs)"
+proof (induction m arbitrary: n xs)
+  case 0
+  then show ?case by simp
+next
+  case (Suc m)
+  show ?case
+    using Suc.IH[of n "native_step xs"]
+    by (simp del: funpow.simps(2)
+        add: funpow_Suc_right add.assoc)
+qed
+
+lemma native_iteration_length:
+  "length ((native_step ^^ n) xs) =
+    length xs + native_growth_count n xs"
+proof (induction n arbitrary: xs)
+  case 0
+  then show ?case by simp
+next
+  case (Suc n)
+  show ?case
+    using Suc.IH[of "native_step xs"] native_step_length[of xs]
+    by (simp del: funpow.simps(2)
+        add: funpow_Suc_right native_growth_count.simps add.assoc)
+qed
+
+theorem native_source_growth_count_add:
+  "native_growth_count (m + n) (map encode_cocycle ss) =
+    native_growth_count m (map encode_cocycle ss) +
+      native_growth_count n (map encode_cocycle ((step ^^ m) ss))"
+  using native_growth_count_add[of m n "map encode_cocycle ss"]
+    native_iteration_refines[of m ss]
+  by simp
+
+theorem native_source_width:
+  "length ((step ^^ n) ss) =
+    length ss + native_growth_count n (map encode_cocycle ss)"
+  using native_iteration_length[of n "map encode_cocycle ss"]
+    native_iteration_refines[of n ss]
+  by simp
+
+theorem native_terminal_output_length:
+  "length (native_digits ((native_step ^^ n) (map encode_cocycle ss))) =
+    length ((step ^^ n) ss) +
+      (if carry_out False ((step ^^ n) ss) then 1 else 0)"
+  using native_digits_length[of "(native_step ^^ n) (map encode_cocycle ss)"]
+    native_iteration_refines[of n ss]
+    native_growth_refines[of "(step ^^ n) ss"]
+  by simp
+
 ML \<open>
   val _ = if null (Thm_Deps.all_oracles
     @{thms crt_digit_coordinates_exact crt_digit_inverse
@@ -316,6 +405,10 @@ ML \<open>
       decimal_sum_digit_mod kappa_and_eq_domain_exact
       output_crt_threshold_exact normalized_output_crt_threshold_exact
       decimal_kappa_cocycle native_emit_refines native_growth_refines
+      native_emit_length native_digits_length native_step_length
+      native_growth_count_add native_iteration_length
+      native_source_growth_count_add native_source_width
+      native_terminal_output_length
       native_digits_refines native_add_refines native_step_refines
       native_iteration_refines native_terminal_emission_refines native_macro_refines}) then ()
     else error "Threshold cocycle proof depends on an oracle";

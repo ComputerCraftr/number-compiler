@@ -137,9 +137,13 @@ def audit_reverse_source_payloads(
     from number_compiler.sequences.reverse_add.source_ports import SourceCarryPorts
 
     inventory = {item.owner: item for item in ledger.inventory()}
-    approved: set[int] = set()
-    recognized: set[int] = set()
-    invalid: set[tuple[int, int]] = set()
+    from number_compiler.resources.reverse_pair_output_audit import (
+        audit_reverse_pair_output_roots,
+    )
+
+    approved, recognized, invalid = audit_reverse_pair_output_roots(
+        ledger, roots, containers
+    )
     # Spatial carry products are projections, not source or successor identities.
     # Audit geometry and source ownership without invoking any runtime evaluator.
     for ports in roots:
@@ -678,6 +682,16 @@ def audit_reverse_source_payloads(
                 )
                 and root.root_action == actions._normal.get(root.steps)
             )
+        q19_owner = getattr(root.adapter, "_q19_owner", None)
+        if q19_owner is not None:
+            valid &= (
+                id(q19_owner) in approved
+                and q19_owner.ledger is ledger
+                and root.adapter._q19_source is source
+                and type(source) is ExactSource
+                and q19_owner._digits is source.digits
+                and q19_owner.base == source.base == 10
+            )
         if root_action is not None:
             valid &= root_action.steps == root.steps
 
@@ -768,8 +782,12 @@ def audit_reverse_source_payloads(
                 type(handle) is ReverseSource and handle is root.source
             ) or action_handle_valid(handle):
                 approved.add(id(handle))
-        cached_image = root._image
-        if cached_image is not None:
+        for cached_image, expected_action in (
+            (root._image, root.root_action),
+            (root._width_image, actions.identity),
+        ):
+            if cached_image is None:
+                continue
             cached_valid = False
             core = getattr(root.scheduler, "_source_images", None)
             if (
@@ -786,7 +804,7 @@ def audit_reverse_source_payloads(
                 cached_valid = (
                     type(image_record) is _ImageRecord
                     and image_record.binding.source == root.source
-                    and image_record.binding.action == root.root_action
+                    and image_record.binding.action == expected_action
                     and image_record.adapter_key
                     == (root.adapter.family, root.adapter.semantic_version)
                     and core._adapters.get(image_record.adapter_key) is root.adapter

@@ -208,3 +208,92 @@ def test_digits_and_metrics_do_not_request_homogeneous_readout(
             "growth_readout"
         ].values()
     )
+
+
+@pytest.mark.parametrize("seed,ticks", ((11, 1), (27, 8), (1, 103), (16, 3)))
+def test_width_tape_clock_reuses_the_admitted_run(
+    seed: int, ticks: int, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from number_compiler.api.cylinder_observation import observe_physical_clock
+    from number_compiler.sequences.collatz import temporal_run_quotient
+
+    term = PoweredCollatzTerm(seed, ticks)
+    term.s_arithmetic_clock()
+    monkeypatch.setattr(
+        temporal_run_quotient, "compile_collatz_temporal_run_quotient", _forbidden
+    )
+    monkeypatch.setattr(PoweredCollatzTerm, "digits", _forbidden)
+    widths = [seed.bit_length()]
+    current = seed
+    for _ in range(ticks):
+        current = 3 * current + 1 if current & 1 else current // 2
+        widths.append(current.bit_length())
+    before = term._ledger.counters.get("collatz_physical_tape_width_compositions", 0)
+    packet = observe_physical_clock(
+        seed,
+        ticks,
+        max_ticks=1000,
+        max_digits=1000,
+        _term=term,
+        _include_metrics=False,
+    )
+    summary = packet["width_tape"]
+    assert summary is not None
+    assert summary["radix"] == 2
+    assert summary["source_width"] == widths[0]
+    assert summary["target_width"] == widths[-1]
+    assert summary["blank"] == {
+        "delta": widths[-1] - widths[0],
+        "minimum": min(widths) - widths[0],
+        "maximum": max(widths) - widths[0],
+    }
+    assert (
+        term._ledger.counters.get("collatz_physical_tape_width_compositions", 0)
+        == before
+    )
+    assert "work_counters" not in packet
+
+
+@pytest.mark.parametrize("render_value", (False, True))
+def test_cli_prepares_demanded_d8_width_before_value_rendering(
+    render_value: bool, capsys: pytest.CaptureFixture[str]
+) -> None:
+    arguments = [
+        "collatz",
+        "--seed",
+        "27",
+        "--nth",
+        "64",
+        "--info",
+        "clock",
+        "--format",
+        "json",
+    ]
+    if not render_value:
+        arguments.append("--no-value")
+    assert main(arguments) == 0
+    packet = json.loads(capsys.readouterr().out)
+    width = packet["info"]["clock"]["width_tape"]
+    assert width is not None
+    endpoint, _ = _reference(27, 64)
+    assert width["target_width"] == endpoint.bit_length()
+    assert width["physical_ticks"] == 64
+
+
+def test_clock_width_payload_is_independent_of_work_counters(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from number_compiler.api.cylinder_observation import observe_physical_clock
+
+    term = PoweredCollatzTerm(27, 64)
+    term.s_arithmetic_clock()
+    before = observe_physical_clock(27, 64, max_ticks=1000, max_digits=1000, _term=term)
+    assert before["width_tape"] is not None
+    for counter in tuple(term._ledger.counters):
+        if "width" in counter or "tape" in counter or "growth" in counter:
+            term._ledger.counters[counter] = 10**12
+    monkeypatch.setattr(PoweredCollatzTerm, "_source_numerator", _forbidden)
+    monkeypatch.setattr(PoweredCollatzTerm, "digits", _forbidden)
+    after = observe_physical_clock(27, 64, max_ticks=1000, max_digits=1000, _term=term)
+    assert after["width_tape"] == before["width_tape"]
+    assert after["value"] == before["value"]

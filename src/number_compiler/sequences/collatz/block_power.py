@@ -42,6 +42,7 @@ from number_compiler.arithmetic.contracts.scoped_handles import (
     ActionProgramID,
     ExactSource,
 )
+from number_compiler.arithmetic.fields.affine_width import nonnegative_affine_width
 from number_compiler.arithmetic.fields.radix import (
     bit_width,
     digits_lsd,
@@ -289,6 +290,7 @@ class PoweredCollatzTerm:
         "_shared_cache",
         "_source_construction",
         "_width_bound",
+        "_width_spine_demanded",
         "_workspace",
         "_workspace_binding",
         "compose_operations",
@@ -347,7 +349,8 @@ class PoweredCollatzTerm:
         self._max_context_nodes = max_context_nodes
         self._max_cache_entries = max_cache_entries
         self._workspace: CollatzPhysicalImageWorkspace | None = None
-        self._workspace_binding: tuple[object, object, object] | None = None
+        self._workspace_binding: tuple[object, object, object, bool] | None = None
+        self._width_spine_demanded = False
         radix_owner = self._ledger.register(
             "radix-applications", "application_index", "INDEX_OWNED"
         )
@@ -438,11 +441,13 @@ class PoweredCollatzTerm:
                 self.steps,
                 retain_chronology=False,
                 shared_cache=self._shared_cache,
+                include_width_spine=self._width_spine_demanded,
             )
             self._workspace_binding = (
                 workspace.root_source,
                 workspace.root_action,
                 workspace.root_payload,
+                workspace._include_width_spine,
             )
             self._workspace = workspace
         if (
@@ -452,6 +457,7 @@ class PoweredCollatzTerm:
             or workspace.steps != self.steps
             or workspace.law != COLLATZ_PHYSICAL_LAW
             or workspace.retain_chronological_support()
+            or workspace._include_width_spine != self._width_spine_demanded
         ):
             raise ValueError("Collatz source image belongs to another term")
         workspace.validate_source(workspace.root_source)
@@ -459,7 +465,12 @@ class PoweredCollatzTerm:
         image = workspace.image_node(workspace.root_payload)
         if (
             self._workspace_binding
-            != (workspace.root_source, workspace.root_action, workspace.root_payload)
+            != (
+                workspace.root_source,
+                workspace.root_action,
+                workspace.root_payload,
+                workspace._include_width_spine,
+            )
             or image.source != workspace.root_source
             or image.action != workspace.root_action
             or image.summary.width != self.steps
@@ -632,8 +643,42 @@ class PoweredCollatzTerm:
             return len(self.seed_digits)
         found = self._active_width
         if found is None:
-            numerator, divisor = self._source_numerator()
-            found = max(1, numerator.bit_length() - (divisor.bit_length() - 1))
+            workspace = self._source_image()
+            tape_width = workspace.tape_width_summary
+            if tape_width is not None:
+                # The workspace validates this sealed root-source/action port
+                # after _source_image has checked the term binding. Its blank
+                # displacement is the exact endpoint-width change, so no
+                # affine coefficient or endpoint is needed for this demand.
+                found = tape_width.source_width + tape_width.blank.delta
+            else:
+                image = workspace.image_node(workspace.root_payload)
+                transfer = image.summary.transfer
+                if (
+                    transfer.lower <= 0
+                    or transfer.lower.bit_count() != 1
+                    or transfer.upper < 0
+                    or transfer.offset < 0
+                ):
+                    raise ArithmeticError(
+                        "Collatz source image lost its nonnegative dyadic width law"
+                    )
+                denominator_exponent = transfer.lower.bit_length() - 1
+                numerator_width = nonnegative_affine_width(
+                    self.seed,
+                    0,
+                    transfer.upper,
+                    transfer.offset,
+                    self._ledger,
+                )
+                # Exact singleton cycle/run publications can have a constant
+                # transfer (upper=0, lower=1); its width is still a projection
+                # of the admitted source image. More generally use the
+                # denominator actually sealed in that image, rather than
+                # allocating 2**steps or treating physical time as an exponent.
+                found = numerator_width - denominator_exponent
+            if found <= 0:
+                raise ArithmeticError("positive Collatz image has no active bits")
             self._active_width = found
         else:
             self._source_image()  # Cached extent is not live image authority.
@@ -642,6 +687,11 @@ class PoweredCollatzTerm:
     @property
     def estimated_bit_length(self) -> int:
         return self.width()
+
+    def prepare_width_spine(self) -> None:
+        """Request exact intermediate widths before the source image is built."""
+        if self._workspace is None:
+            self._width_spine_demanded = True
 
     @source_reads_only
     def s_arithmetic_clock(self) -> SArithmeticClock:
@@ -655,6 +705,10 @@ class PoweredCollatzTerm:
 
         if self.steps == 0:
             return SArithmeticClock(0, 0)
+        # The clock observer is the explicit width-spine consumer. Request it
+        # only before the source image is first built; an already published
+        # ordinary image is reused with its optional summary absent.
+        self.prepare_width_spine()
         odd = self._source_image().odd_steps()
         if not 0 <= odd <= self.steps:
             raise ValueError("bound Collatz result has an invalid physical clock")

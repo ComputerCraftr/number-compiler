@@ -61,6 +61,20 @@ class MahlerSourceBoundSafetyAction:
         elif self.cap_hat is None:
             raise ValueError("nonempty Mahler source action requires a finite cap")
 
+    @classmethod
+    def one_bit(cls, epsilon: int) -> MahlerSourceBoundSafetyAction:
+        """Return the exact source-normal-form action for one admitted bit.
+
+        This is the same min-plus action used by the finite Mahler predicate:
+        ``3/2 * (margin - epsilon)``, capped at ``9/4`` for zero and ``3/4``
+        for one.  Keeping the bit action in the source-bound normal form lets
+        consumers compose it with the scheduler's existing coefficient type.
+        """
+        if type(epsilon) is not int or epsilon not in (0, 1):
+            raise ValueError("Mahler epsilon must be zero or one")
+        # to_action divides offsets and caps by 2^(extent + 2) = 8 here.
+        return cls(1, -12 * epsilon, 18 if epsilon == 0 else 6)
+
     def then_with_gain(
         self, after: MahlerSourceBoundSafetyAction, gain: int
     ) -> MahlerSourceBoundSafetyAction:
@@ -81,6 +95,10 @@ class MahlerSourceBoundSafetyAction:
             less=lt,
         )
         return MahlerSourceBoundSafetyAction(self.extent + after.extent, offset, cap)
+
+    def then_bit(self, epsilon: int) -> MahlerSourceBoundSafetyAction:
+        """Compose one more exact bit using the Mahler source gain ``3``."""
+        return self.then_with_gain(self.one_bit(epsilon), 3)
 
     def to_action(self) -> SaturatingAffineAction:
         self.__post_init__()
@@ -388,6 +406,41 @@ class MahlerOccurrenceConsumer:
             raise
         self._retrieved(source, publisher, "process")
         return node
+
+    def normal_action(self, width: int, residue: int) -> MahlerSourceBoundSafetyAction:
+        """Return the exact action from a successful lookup, without replay."""
+        record = self.records.get((width, residue))
+        if record is None:
+            raise KeyError("Mahler action was not admitted in this occurrence")
+        node, action, _publisher = record
+        self._check(node, action)
+        return action
+
+    def publish_action(
+        self,
+        summary: DyadicImageSummary,
+        action: MahlerSourceBoundSafetyAction,
+        *,
+        publisher: int,
+    ) -> None:
+        """Publish a scheduler-composed normal form under its exact image."""
+        if type(summary) is not DyadicImageSummary:
+            raise TypeError("Mahler action publication needs its exact image summary")
+        if type(action) is not MahlerSourceBoundSafetyAction:
+            raise TypeError("Mahler action publication has another normal form")
+        node = _SupportNode(
+            summary.width,
+            summary.residue,
+            summary.transfer,
+            summary.odd_steps,
+            summary.delta,
+            summary.minimum,
+            None,
+            None,
+            summary.cycle,
+            True,
+        )
+        self._store(node, action, publisher)
 
     def _retrieved(self, source: int, publisher: int, location: str) -> None:
         self.count(f"source_action_{location}_hits")

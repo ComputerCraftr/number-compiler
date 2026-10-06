@@ -121,6 +121,8 @@ class ReverseAddPoweredTerm:
     def _prepare_recursive_source_authority(self) -> None:
         if (self.seed, self.generation, self.base) != self._binding:
             raise ValueError("reverse/add term source/action binding changed")
+        if self.base == 10:
+            return
         from number_compiler.sequences.reverse_add.source_images import (
             MAX_COMPLETED_CHILD_FALLBACK_STEPS,
         )
@@ -165,6 +167,18 @@ class ReverseAddPoweredTerm:
 
     @property
     def maximum_width(self) -> int:
+        if (self.seed, self.generation, self.base) != self._binding:
+            raise ValueError("reverse/add term source/action binding changed")
+        workspace = self._workspace
+        if workspace is not None:
+            if (
+                workspace is not self._workspace_identity
+                or workspace.ledger is not self._ledger
+            ):
+                raise ValueError("reverse/add term workspace binding changed")
+            completed = workspace.completed_width_if_cached()
+            if completed is not None:
+                return completed
         return len(digits_lsd(self.seed, self.base)) + self.generation
 
     def digit(self, position: int) -> int:

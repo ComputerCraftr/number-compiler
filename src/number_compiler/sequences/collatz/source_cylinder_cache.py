@@ -11,16 +11,22 @@ from dataclasses import dataclass
 from typing import Self
 
 from number_compiler.arithmetic.contracts.block_effect import BlockContextBudgetExceeded
+from number_compiler.arithmetic.fields.blank_ledger import BlankLedger
 from number_compiler.resources.ledger import OwnedMemo, ResourceLedger
 from number_compiler.resources.process_cache import (
     MISSING,
     CacheRecordIssuerMismatch,
     get_process_cache,
 )
+from number_compiler.sequences.collatz.tape_width import (
+    CollatzTapeWidthSummary,
+    compose_width_ledger,
+)
 
 # Trusted producer-path marker only; CacheLease does not prove Collatz semantics.
 _OCCURRENCE_PUBLISHER = object()
 _GAIN_PUBLISHER = object()
+_WIDTH_SPINE_PUBLISHER = object()
 
 
 def _canonical_gain(odd_symbols: int) -> int:
@@ -157,6 +163,8 @@ class CollatzDyadicMacros:
     VERSION = "collatz-normalized-cylinder-v3-fiber-gain"
     GAIN_VERSION = "exact-v2-exponent-payload"
     GAIN_LIMIT = 4096
+    WIDTH_SPINE_LIMIT = 4096
+    WIDTH_SPINE_VERSION = "collatz-exact-source-width-spine-v1"
 
     def __init__(self, ledger: ResourceLedger, *, shared_cache: bool = False) -> None:
         if type(ledger) is not ResourceLedger or type(shared_cache) is not bool:
@@ -188,6 +196,16 @@ class CollatzDyadicMacros:
             "gain_validation_operand_bits",
             "gain_bypasses",
             "gain_evictions",
+            "width_spine_lookups",
+            "width_spine_local_hits",
+            "width_spine_process_hits",
+            "width_spine_misses",
+            "width_spine_publications",
+            "width_spine_bypasses",
+            "width_spine_evictions",
+            "width_spine_admission_rejections",
+            "width_spine_key_operand_bits",
+            "width_spine_payload_operand_bits",
         ):
             self._bump(metric, 0)
         self.shared_cache = shared_cache
@@ -201,6 +219,14 @@ class CollatzDyadicMacros:
             evictable=True,
             nodes_per_entry=2,
         )
+        self.width_spines: OwnedMemo[tuple[int, int, int], CollatzTapeWidthSummary] = (
+            OwnedMemo(
+                ledger,
+                ledger.register(prefix + "-exact-width-spines", "query_memo"),
+                evictable=True,
+                nodes_per_entry=10,
+            )
+        )
         self.gains: OwnedMemo[int, _CanonicalGain] = OwnedMemo(
             ledger,
             ledger.register(prefix + "-gains", "query_memo"),
@@ -208,10 +234,12 @@ class CollatzDyadicMacros:
         )
         # A binary frontier of already executed, adjacent source occurrences.
         # Endpoints are transient construction data, never shared-cache identity.
-        self.frontier: OwnedMemo[int, tuple[int, int]] = OwnedMemo(
+        self.frontier: OwnedMemo[
+            int, tuple[int, int, CollatzTapeWidthSummary | None]
+        ] = OwnedMemo(
             ledger,
             ledger.register(prefix + "-frontier", "execution_stack"),
-            nodes_per_entry=1,
+            nodes_per_entry=10,
         )
         ledger.register_execution_root(self)
 
@@ -224,6 +252,7 @@ class CollatzDyadicMacros:
             return
         self._closed = True
         self.occurrences.dispose()
+        self.width_spines.dispose()
         self.gains.dispose()
         self.frontier.dispose()
 
@@ -497,13 +526,24 @@ class CollatzDyadicMacros:
         width: int,
         ones: int,
         endpoint: int,
+        *,
+        tape_width_summary: CollatzTapeWidthSummary | None = None,
     ) -> bool:
         self._check_open()
         residue, key_bits = _admit_source_key(source, width)
         if type(ones) is not int or not 0 <= ones <= width:
             raise ValueError("Collatz macro odd count is invalid")
+        if tape_width_summary is not None:
+            self._validate_width_summary(tape_width_summary, source, width)
+            if (
+                tape_width_summary.odd_steps != ones
+                or tape_width_summary.target_width != endpoint.bit_length()
+            ):
+                raise ValueError("Collatz width spine differs from occurrence action")
         self._bump("key_operand_bits", key_bits)
         if (width, residue) in self.occurrences:
+            if tape_width_summary is not None:
+                self._remember_exact_width(source, width, tape_width_summary)
             return False
         try:
             gain = self._gain(ones)
@@ -531,10 +571,61 @@ class CollatzDyadicMacros:
             self._bump("failed_work")
             raise
         self._share(source, cell)
+        if tape_width_summary is not None:
+            self._remember_exact_width(source, width, tape_width_summary)
         return True
 
+    def _remember_exact_width(
+        self,
+        source: int,
+        width: int,
+        summary: CollatzTapeWidthSummary,
+    ) -> None:
+        residue, _ = _admit_source_key(source, width)
+        fiber = source >> width
+        key = (width, residue, fiber)
+        self._validate_width_summary(summary, source, width)
+        if key in self.width_spines:
+            existing = self.width_spines[key]
+            self._validate_width_summary(existing, source, width)
+            if existing != summary:
+                raise ValueError(
+                    "conflicting Collatz width spines for one exact source"
+                )
+            return
+        retained = self._retain_width_summary(key, summary)
+        shared = self._share_width_summary(key, summary)
+        if retained or shared:
+            self._bump("width_spine_publications")
+
+    def _compose_width_summaries(
+        self,
+        before: CollatzTapeWidthSummary | None,
+        after: CollatzTapeWidthSummary | None,
+    ) -> CollatzTapeWidthSummary | None:
+        if before is None or after is None:
+            return None
+        if before.target_width != after.source_width:
+            raise ValueError("adjacent Collatz width summaries do not meet")
+        blank = compose_width_ledger(self.ledger, before.blank, after.blank)
+        return CollatzTapeWidthSummary(
+            before.source_width,
+            after.target_width,
+            before.physical_ticks + after.physical_ticks,
+            before.normalized_symbols + after.normalized_symbols,
+            before.odd_steps + after.odd_steps,
+            blank,
+        )
+
     def observe(
-        self, source: int, width: int, ones: int, endpoint: int, *, anchor: int
+        self,
+        source: int,
+        width: int,
+        ones: int,
+        endpoint: int,
+        *,
+        anchor: int,
+        tape_width_summary: CollatzTapeWidthSummary | None = None,
     ) -> None:
         """Retain useful dyadic submacros from the existing producer, once.
 
@@ -549,6 +640,15 @@ class CollatzDyadicMacros:
         if width < 8 or width & (width - 1) or endpoint <= 2:
             self.frontier.clear()
             return
+        if tape_width_summary is not None:
+            self._validate_width_summary(tape_width_summary, source, width)
+            if (
+                tape_width_summary.normalized_symbols != width
+                or tape_width_summary.odd_steps != ones
+                or tape_width_summary.physical_ticks != width + ones
+                or tape_width_summary.target_width != endpoint.bit_length()
+            ):
+                raise ValueError("Collatz observed width spine differs from segment")
         if any(smaller < width for smaller in self.frontier):
             # A shorter unmatched suffix separates this block from any earlier
             # block of the same width. They must never be composed as adjacent.
@@ -564,17 +664,26 @@ class CollatzDyadicMacros:
             if (
                 (root_prefix or useful_join)
                 and 16 <= width <= source.bit_length()
-                and self.remember(source, width, ones, endpoint)
+                and self.remember(
+                    source,
+                    width,
+                    ones,
+                    endpoint,
+                    tape_width_summary=tape_width_summary,
+                )
                 and useful_join
             ):
                 self._interior_records += 1
             left = self.frontier.pop(width, None)
             if left is None:
-                self.frontier[width] = source, ones
+                self.frontier[width] = (source, ones, tape_width_summary)
                 break
-            source, left_ones = left
+            source, left_ones, left_summary = left
             ones += left_ones
             width *= 2
+            tape_width_summary = self._compose_width_summaries(
+                left_summary, tape_width_summary
+            )
             joined = True
             self._bump("occurrence_frontier_joins")
 
@@ -591,3 +700,185 @@ class CollatzDyadicMacros:
                 self.rejected_fit()
             width //= 2
         return None
+
+    def lookup_largest_with_width(
+        self, source: int, width: int, physical_ticks: int
+    ) -> tuple[CollatzDyadicOccurrence, CollatzTapeWidthSummary | None] | None:
+        """Select the largest endpoint macro and its exact-source width spine.
+
+        The endpoint macro may transport to any high fiber with the same low
+        residue. Its width spine is fetched from a separate exact-fiber key and
+        is therefore absent for a transported source unless that exact source
+        was itself admitted during an earlier construction.
+        """
+        found = self.lookup_largest(source, width, physical_ticks)
+        if found is None:
+            return None
+        return found, self.lookup_width_summary(source, found.width)
+
+    def lookup_width_summary(
+        self, source: int, width: int
+    ) -> CollatzTapeWidthSummary | None:
+        """Look up a completed width spine only for its exact source fiber."""
+        self._check_open()
+        residue, _ = _admit_source_key(source, width)
+        fiber = source >> width
+        key = (width, residue, fiber)
+        self._bump("width_spine_lookups")
+        self._bump(
+            "width_spine_key_operand_bits",
+            width.bit_length() + residue.bit_length() + fiber.bit_length(),
+        )
+        if key in self.width_spines:
+            local = self.width_spines[key]
+            try:
+                if type(local) is not CollatzTapeWidthSummary:
+                    raise ValueError("local Collatz width spine has another sort")
+                self._validate_width_summary(local, source, width)
+            except (TypeError, ValueError):
+                self._bump("width_spine_admission_rejections")
+                self._bump("failed_work")
+                raise
+            self._bump("width_spine_local_hits")
+            return local
+        if not self.shared_cache:
+            self._bump("width_spine_misses")
+            return None
+        cache = get_process_cache()
+        if not cache.enabled:
+            self._bump("width_spine_bypasses")
+            self._bump("width_spine_misses")
+            return None
+        try:
+            lease = cache.acquire(
+                "collatz-dyadic-width-spine", self.WIDTH_SPINE_VERSION, key
+            )
+        except BlockContextBudgetExceeded:
+            self._bump("width_spine_bypasses")
+            self._bump("width_spine_misses")
+            return None
+        with lease:
+            try:
+                payload = lease.get_issued(("summary",), _WIDTH_SPINE_PUBLISHER)
+            except CacheRecordIssuerMismatch:
+                self._bump("width_spine_admission_rejections")
+                self._bump("failed_work")
+                raise
+            if payload is MISSING:
+                self._bump("width_spine_misses")
+                return None
+            try:
+                summary = self._decode_width_summary(payload, source, width)
+                self._retain_width_summary(key, summary)
+            except (TypeError, ValueError, BlockContextBudgetExceeded):
+                self._bump("width_spine_admission_rejections")
+                self._bump("failed_work")
+                raise
+            self._bump("width_spine_process_hits")
+            return summary
+
+    def _validate_width_summary(
+        self, summary: CollatzTapeWidthSummary, source: int, width: int
+    ) -> None:
+        if type(summary) is not CollatzTapeWidthSummary:
+            raise ValueError("Collatz exact width spine is malformed or detached")
+        if type(summary.blank) is not BlankLedger:
+            raise ValueError("Collatz exact width spine has a foreign blank ledger")
+        # Frozen dataclasses can still be tampered with through object.__setattr__.
+        # Re-run canonical validation before trusting any cached field.
+        summary.blank.__post_init__()
+        summary.__post_init__()
+        if (
+            summary.source_width != source.bit_length()
+            or summary.normalized_symbols != width
+            or summary.physical_ticks != width + summary.odd_steps
+            or summary.odd_steps > width
+            or summary.target_width <= 0
+            or summary.blank.delta != summary.target_width - summary.source_width
+        ):
+            raise ValueError("Collatz exact width spine is malformed or detached")
+
+    def _decode_width_summary(
+        self, payload: object, source: int, width: int
+    ) -> CollatzTapeWidthSummary:
+        if (
+            type(payload) is not tuple
+            or len(payload) != 8
+            or any(type(value) is not int for value in payload)
+        ):
+            raise ValueError("Collatz shared width spine payload is invalid")
+        (
+            source_width,
+            target_width,
+            physical,
+            normalized,
+            odd,
+            delta,
+            minimum,
+            maximum,
+        ) = payload
+        summary = CollatzTapeWidthSummary(
+            source_width,
+            target_width,
+            physical,
+            normalized,
+            odd,
+            BlankLedger(delta, minimum, maximum),
+        )
+        self._validate_width_summary(summary, source, width)
+        self._bump(
+            "width_spine_payload_operand_bits", sum(v.bit_length() for v in payload)
+        )
+        return summary
+
+    def _retain_width_summary(
+        self,
+        key: tuple[int, int, int],
+        summary: CollatzTapeWidthSummary,
+    ) -> bool:
+        if key in self.width_spines:
+            return False
+        if len(self.width_spines) >= self.WIDTH_SPINE_LIMIT:
+            del self.width_spines[next(iter(self.width_spines))]
+            self._bump("width_spine_evictions")
+        try:
+            self.width_spines[key] = summary
+        except BlockContextBudgetExceeded:
+            self._bump("width_spine_bypasses")
+            return False
+        return True
+
+    def _share_width_summary(
+        self,
+        key: tuple[int, int, int],
+        summary: CollatzTapeWidthSummary,
+    ) -> bool:
+        if not self.shared_cache:
+            return False
+        cache = get_process_cache()
+        if not cache.enabled:
+            self._bump("width_spine_bypasses")
+            return False
+        try:
+            lease = cache.acquire(
+                "collatz-dyadic-width-spine", self.WIDTH_SPINE_VERSION, key
+            )
+        except BlockContextBudgetExceeded:
+            self._bump("width_spine_bypasses")
+            return False
+        with lease:
+            published = lease.put_issued(
+                ("summary",),
+                (
+                    summary.source_width,
+                    summary.target_width,
+                    summary.physical_ticks,
+                    summary.normalized_symbols,
+                    summary.odd_steps,
+                    *summary.blank.as_tuple(),
+                ),
+                _WIDTH_SPINE_PUBLISHER,
+            )
+            if not published:
+                self._bump("width_spine_bypasses")
+            return published

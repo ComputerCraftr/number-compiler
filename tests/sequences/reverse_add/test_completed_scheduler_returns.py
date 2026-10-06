@@ -1,4 +1,8 @@
-"""Scheduler publications retain and consume the admitted reverse occurrence."""
+"""Nondecimal recursive publications retain the admitted reverse occurrence.
+
+Decimal producer no-replay gates remain in test_source_images and the public
+cutover tests; this module exercises the distinct recursive field-image owner.
+"""
 
 from __future__ import annotations
 
@@ -21,6 +25,7 @@ from number_compiler.sequences.reverse_add.source_images import (
     ReverseSourceImageWorkspace,
     _ReverseSourceImageAdapter,
 )
+from tests.support.reference_arithmetic import literal_reverse_add_digits
 
 
 def _forbid_reconstruction(*_args: object, **_kwargs: object) -> Never:
@@ -35,16 +40,13 @@ def _view(workspace: ReverseSourceImageWorkspace, steps: int) -> SourceImageView
 
 
 def _expected(steps: int) -> tuple[int, ...]:
-    value = 196
-    for _ in range(steps):
-        value += int(str(value)[::-1])
-    return tuple(int(digit) for digit in reversed(str(value)))
+    return literal_reverse_add_digits(1, steps, 3)
 
 
 def test_scheduler_extends_completed_return_without_source_reconstruction(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    workspace = ReverseSourceImageWorkspace(ResourceLedger(), 196, 20)
+    workspace = ReverseSourceImageWorkspace(ResourceLedger(), 1, 20, base=3)
     first = _view(workspace, 4)
     assert isinstance(first.payload, ReverseImagePayload)
     assert first.payload.occurrence is not None
@@ -71,7 +73,7 @@ def test_scheduler_extends_completed_return_without_source_reconstruction(
 def test_scheduler_child_chronology_consumes_completed_provider(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    workspace = ReverseSourceImageWorkspace(ResourceLedger(), 196, 16)
+    workspace = ReverseSourceImageWorkspace(ResourceLedger(), 1, 16, base=3)
     original = workspace.adapter.apply_composite
     action = workspace.actions.action(8)
 
@@ -98,7 +100,7 @@ def test_complete_parent_hit_does_not_descend_again(
     monkeypatch: pytest.MonkeyPatch,
     evict: bool,
 ) -> None:
-    workspace = ReverseSourceImageWorkspace(ResourceLedger(), 196, 16)
+    workspace = ReverseSourceImageWorkspace(ResourceLedger(), 1, 16, base=3)
     before = _view(workspace, 4)
     after = _view(workspace, 8)
     cutover = workspace.adapter._recursive
@@ -115,12 +117,12 @@ def test_complete_parent_hit_does_not_descend_again(
 
 @pytest.mark.parametrize("damage", ("foreign", "missing", "action", "source"))
 def test_completed_payload_rejects_foreign_or_mismatched_authority(damage: str) -> None:
-    workspace = ReverseSourceImageWorkspace(ResourceLedger(), 196, 16)
+    workspace = ReverseSourceImageWorkspace(ResourceLedger(), 1, 16, base=3)
     view = _view(workspace, 4)
     assert isinstance(view.payload, ReverseImagePayload)
     original = view.payload
     if damage == "foreign":
-        other = ReverseSourceImageWorkspace(ResourceLedger(), 196, 16)
+        other = ReverseSourceImageWorkspace(ResourceLedger(), 1, 16, base=3)
         payload = _view(other, 4).payload
         assert isinstance(payload, ReverseImagePayload)
         view = replace(view, payload=replace(original, occurrence=payload.occurrence))
@@ -131,23 +133,23 @@ def test_completed_payload_rejects_foreign_or_mismatched_authority(damage: str) 
             view, payload=replace(original, action=workspace.actions.action(8))
         )
     else:
-        other = ReverseSourceImageWorkspace(ResourceLedger(), 295, 16)
+        other = ReverseSourceImageWorkspace(ResourceLedger(), 2, 16, base=3)
         view = replace(view, binding=replace(view.binding, source=other.source))
     with pytest.raises(ValueError):
         workspace.adapter.project(view, SourceImageDemand("width"))
 
 
 def test_cached_occurrence_validates_source_before_returning() -> None:
-    workspace = ReverseSourceImageWorkspace(ResourceLedger(), 196, 16)
+    workspace = ReverseSourceImageWorkspace(ResourceLedger(), 1, 16, base=3)
     _view(workspace, 4)
-    other = ReverseSourceImageWorkspace(ResourceLedger(), 295, 16)
+    other = ReverseSourceImageWorkspace(ResourceLedger(), 2, 16, base=3)
     with pytest.raises(ValueError, match="source changed"):
         workspace.adapter._recursive_occurrence(other.actions.source(other.source), 4)
 
 
 @pytest.mark.parametrize("cached_steps", (4, 8))
 def test_occurrence_memo_rejects_duration_alias(cached_steps: int) -> None:
-    workspace = ReverseSourceImageWorkspace(ResourceLedger(), 196, 16)
+    workspace = ReverseSourceImageWorkspace(ResourceLedger(), 1, 16, base=3)
     _view(workspace, 4)
     adapter = workspace.adapter
     occurrence = adapter._recursive_occurrences[4]
@@ -158,8 +160,8 @@ def test_occurrence_memo_rejects_duration_alias(cached_steps: int) -> None:
 
 
 def test_prepared_authority_cannot_change_before_first_construction() -> None:
-    workspace = ReverseSourceImageWorkspace(ResourceLedger(), 196, 16)
-    other = ReverseSourceImageWorkspace(ResourceLedger(), 295, 16)
+    workspace = ReverseSourceImageWorkspace(ResourceLedger(), 1, 16, base=3)
+    other = ReverseSourceImageWorkspace(ResourceLedger(), 2, 16, base=3)
     assert workspace.adapter._recursive is None
     with pytest.raises(ValueError, match="source or horizon changed"):
         workspace.adapter.prepare_recursive_authority(
@@ -172,7 +174,7 @@ def test_prepared_authority_cannot_change_before_first_construction() -> None:
 def test_direct_application_validates_input_binding(
     composite: bool, damage: str
 ) -> None:
-    workspace = ReverseSourceImageWorkspace(ResourceLedger(), 196, 16)
+    workspace = ReverseSourceImageWorkspace(ResourceLedger(), 1, 16, base=3)
     original = _view(workspace, 0)
     binding = original.binding
     if damage == "extent":
@@ -190,7 +192,7 @@ def test_direct_application_validates_input_binding(
 
 
 def test_identity_preserves_completed_input_contract() -> None:
-    workspace = ReverseSourceImageWorkspace(ResourceLedger(), 196, 16)
+    workspace = ReverseSourceImageWorkspace(ResourceLedger(), 1, 16, base=3)
     for steps in (0, 1, 2, 4):
         source = _view(workspace, steps)
         candidate = workspace.adapter.apply_primitive(
@@ -204,8 +206,8 @@ def test_identity_preserves_completed_input_contract() -> None:
 
 @pytest.mark.parametrize("damage", ("extent", "ports", "precision", "source"))
 def test_failure_observer_authenticates_the_complete_binding(damage: str) -> None:
-    workspace = ReverseSourceImageWorkspace(ResourceLedger(), 196, 16)
-    other = ReverseSourceImageWorkspace(ResourceLedger(), 295, 16)
+    workspace = ReverseSourceImageWorkspace(ResourceLedger(), 1, 16, base=3)
+    other = ReverseSourceImageWorkspace(ResourceLedger(), 2, 16, base=3)
     try:
         view = _view(workspace, 4)
         workspace.adapter.first_failure(view)
@@ -244,5 +246,5 @@ def test_failed_preparation_disposes_the_unregistered_adapter(
         _ReverseSourceImageAdapter, "prepare_recursive_authority", failed_preparation
     )
     with pytest.raises(LookupError, match="before adapter registration"):
-        ReverseSourceImageWorkspace(ledger, 196, 16)
+        ReverseSourceImageWorkspace(ledger, 1, 16, base=3)
     assert ledger.entries == ledger.nodes == 0

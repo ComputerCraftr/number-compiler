@@ -33,14 +33,22 @@ from contextlib import nullcontext
 from dataclasses import dataclass
 from typing import overload
 
+from number_compiler.arithmetic.fields.blank_ledger import BlankLedger
 from number_compiler.arithmetic.fields.morphism_core import AffineCocycle, binary_power
 from number_compiler.arithmetic.fields.root_semifield import RootSemifieldElement
 from number_compiler.arithmetic.fields.two_adic import v2_positive
 from number_compiler.hashlife.execution.dyadic_return_runs import RunArithmeticWorkspace
 from number_compiler.resources.ledger import ResourceLedger
+from number_compiler.sequences.collatz.tape_width import (
+    CollatzWidthSpineAccumulator,
+    charge_width_repeat,
+)
 from number_compiler.sequences.collatz.temporal_dyadic import (
     D8CylinderFrame,
     D8TemporalTable,
+)
+from number_compiler.sequences.collatz.temporal_run_result import (
+    CollatzTemporalRunQuotient,
 )
 
 _F5 = 5
@@ -367,6 +375,20 @@ def root_fiber_certificate(
     )
 
 
+def _append_dyadic_f5(
+    normalized: CollatzF5AffineAction,
+    physical: CollatzF5AffineAction,
+    multiplier: int,
+    target_origin: int,
+    residue: int,
+) -> tuple[CollatzF5AffineAction, CollatzF5AffineAction]:
+    # Admitted dyadic widths are multiples of four, so 2**width = 1 mod 5.
+    action = CollatzF5AffineAction(
+        multiplier % 5, (target_origin - multiplier * residue) % 5
+    )
+    return normalized.then(action), physical.then(action)
+
+
 def _run_zero_f5(length: int) -> CollatzF5AffineAction:
     if type(length) is not int or length <= 0:
         raise ValueError("zero run length must be positive")
@@ -384,130 +406,6 @@ def _run_one_f5(length: int) -> CollatzF5AffineAction:
 _CYCLE_F5 = HENSEL_ONE_F5.then(HENSEL_ZERO_F5)
 
 
-@dataclass(frozen=True, slots=True)
-class CollatzTemporalRunQuotient:
-    """Arithmetic run result; scheduler publication supplies source authority."""
-
-    source: int
-    physical_ticks: int
-    endpoint: int
-    odd_ticks: int
-    division_ticks: int
-    normalized_symbols: int
-    phase: int
-    run_actions: int
-    zero_run_symbols: int
-    one_run_symbols: int
-    cycle_repetitions: int
-    normalized_f5: CollatzF5AffineAction | None
-    physical_f5: CollatzF5AffineAction | None
-    root_certificate: CollatzRootFiberCertificate | None
-
-    def __post_init__(self) -> None:
-        if any(
-            type(value) is not int
-            for value in (
-                self.source,
-                self.physical_ticks,
-                self.endpoint,
-                self.odd_ticks,
-                self.division_ticks,
-                self.normalized_symbols,
-                self.phase,
-                self.run_actions,
-                self.zero_run_symbols,
-                self.one_run_symbols,
-                self.cycle_repetitions,
-            )
-        ):
-            raise TypeError("Collatz temporal quotient fields require exact integers")
-        if self.source <= 0 or self.endpoint <= 0 or self.physical_ticks < 0:
-            raise ValueError("Collatz temporal quotient requires positive exact states")
-        if self.phase not in (0, 1):
-            raise ValueError("Collatz temporal phase must be zero or one")
-        if self.odd_ticks + self.division_ticks != self.physical_ticks:
-            raise ValueError("Collatz physical clock does not sum to requested ticks")
-        if self.zero_run_symbols + self.one_run_symbols != self.normalized_symbols:
-            raise ValueError("Collatz run symbols do not sum to normalized width")
-        if (
-            self.normalized_symbols != self.division_ticks
-            or self.one_run_symbols + self.phase != self.odd_ticks
-        ):
-            raise ValueError("Collatz normalized clock lost its pending odd half-step")
-        if (
-            self.normalized_f5 is not None
-            and self.normalized_f5 not in F5_AFFINE_ALPHABET
-        ):
-            raise ValueError("Collatz temporal quotient has a foreign F5 action")
-        if (
-            self.physical_f5 is not None
-            and self.physical_f5.apply(self.source) != self.endpoint % _F5
-        ):
-            raise ValueError("Collatz F5 temporal action disagrees with endpoint")
-
-    @property
-    def semantic_key(self) -> tuple[object, ...]:
-        """Exact result descriptor, excluding construction-work counters."""
-        return (
-            self.source,
-            self.physical_ticks,
-            self.endpoint,
-            self.odd_ticks,
-            self.division_ticks,
-            self.normalized_symbols,
-            self.phase,
-            self.normalized_f5,
-            self.physical_f5,
-        )
-
-    @property
-    def width(self) -> int:
-        return self.endpoint.bit_length()
-
-    @property
-    def description_bits(self) -> int:
-        integers = (
-            self.source,
-            self.physical_ticks,
-            self.endpoint,
-            self.odd_ticks,
-            self.division_ticks,
-            self.normalized_symbols,
-            self.phase,
-            self.run_actions,
-            self.zero_run_symbols,
-            self.one_run_symbols,
-            self.cycle_repetitions,
-        )
-        bits = sum(max(1, value.bit_length()) for value in integers)
-        for action in (self.normalized_f5, self.physical_f5):
-            if action is not None:
-                bits += action.scale.bit_length() + max(1, action.offset.bit_length())
-        if self.root_certificate is not None:
-            bits += sum(
-                max(1, value.bit_length())
-                for value in (
-                    self.root_certificate.depth,
-                    self.root_certificate.support_size,
-                    self.root_certificate.amplitude_square,
-                    self.root_certificate.powered_symbols,
-                )
-            )
-        return bits
-
-    def radix_digit(self, radix: int, position: int) -> int:
-        if type(radix) is not int or radix < 2:
-            raise ValueError("radix must be at least two")
-        if type(position) is not int or position < 0:
-            raise IndexError(position)
-        if position and position * (radix.bit_length() - 1) >= self.width:
-            raise IndexError(position)
-        place = int(radix**position)
-        if place > self.endpoint and position:
-            raise IndexError(position)
-        return self.endpoint // place % radix
-
-
 def compile_collatz_temporal_run_quotient(
     seed: int,
     physical_ticks: int,
@@ -515,6 +413,7 @@ def compile_collatz_temporal_run_quotient(
     ledger: ResourceLedger,
     include_f5: bool = False,
     shared_cache: bool = False,
+    include_width_spine: bool = False,
 ) -> CollatzTemporalRunQuotient:
     """Compile the exact source-bound action without a parity itinerary.
 
@@ -535,6 +434,8 @@ def compile_collatz_temporal_run_quotient(
         raise TypeError("F5 projection selection must be Boolean")
     if type(shared_cache) is not bool:
         raise TypeError("shared cache flag must be Boolean")
+    if type(include_width_spine) is not bool:
+        raise TypeError("width-spine demand must be Boolean")
     from number_compiler.sequences.collatz.source_cylinder_cache import (
         CollatzDyadicMacros,
     )
@@ -557,6 +458,10 @@ def compile_collatz_temporal_run_quotient(
         physical_f5 = CollatzF5AffineAction.identity() if include_f5 else None
         odd_ticks = division_ticks = normalized = phase = 0
         run_actions = zero_symbols = one_symbols = cycle_repetitions = 0
+        width_spine = CollatzWidthSpineAccumulator(
+            ledger, requested=include_width_spine
+        )
+
         d8_table: D8TemporalTable | None = None
         lookup_enabled = macros is not None
         previous_source, previous_width, previous_ones = seed, 0, 0
@@ -576,7 +481,14 @@ def compile_collatz_temporal_run_quotient(
                     one_symbols - previous_ones,
                     current,
                     anchor=seed,
+                    tape_width_summary=width_spine.segment_summary(
+                        previous_source.bit_length(),
+                        current.bit_length(),
+                        normalized - previous_width,
+                        one_symbols - previous_ones,
+                    ),
                 )
+                width_spine.reset_segment()
             previous_source, previous_width, previous_ones = (
                 current,
                 normalized,
@@ -596,6 +508,10 @@ def compile_collatz_temporal_run_quotient(
                         cycle_f5 = _CYCLE_F5.power(repetitions)
                         normalized_f5 = normalized_f5.then(cycle_f5)
                         physical_f5 = physical_f5.then(cycle_f5)
+                    if width_spine.complete:
+                        cycle_blank = BlankLedger(0, 0, 2)
+                        charge_width_repeat(ledger, cycle_blank, repetitions)
+                        width_spine.record(cycle_blank.repeat(repetitions))
                     remaining = tail
                     ledger.bump("collatz_physical_temporal_cycle_pump_requests")
                     ledger.bump(
@@ -617,9 +533,21 @@ def compile_collatz_temporal_run_quotient(
                 limit = min(remaining, max(8, current.bit_length()))
                 width = 1 << (limit.bit_length() - 1)
                 scratch.require_bits(16 * (current.bit_length() + 2 * width + 32))
-                cell = macros.lookup_largest(current, width, remaining)
-                if cell is None:
-                    lookup_enabled = False
+                if include_width_spine and width_spine.complete:
+                    selected_with_width = macros.lookup_largest_with_width(
+                        current, width, remaining
+                    )
+                    if selected_with_width is None:
+                        cell = None
+                        macro_width = None
+                        lookup_enabled = False
+                    else:
+                        cell, macro_width = selected_with_width
+                else:
+                    cell = macros.lookup_largest(current, width, remaining)
+                    macro_width = None
+                    if cell is None:
+                        lookup_enabled = False
                 endpoint = cell.apply(current) if cell is not None else 0
                 if cell is not None and endpoint > 2:
                     width = cell.width
@@ -630,12 +558,29 @@ def compile_collatz_temporal_run_quotient(
                         # Every admitted width is dyadic and >=8, hence a
                         # multiple of four: 2**width == 1 in F5. Both the
                         # centered gain and translated offset need no division.
-                        f5 = CollatzF5AffineAction(
-                            cell.multiplier % 5,
-                            (cell.target_origin - cell.multiplier * cell.residue) % 5,
+                        normalized_f5, physical_f5 = _append_dyadic_f5(
+                            normalized_f5,
+                            physical_f5,
+                            cell.multiplier,
+                            cell.target_origin,
+                            cell.residue,
                         )
-                        normalized_f5 = normalized_f5.then(f5)
-                        physical_f5 = physical_f5.then(f5)
+                    if include_width_spine and width_spine.complete:
+                        if macro_width is None:
+                            width_spine.invalidate()
+                        else:
+                            if (
+                                macro_width.source_width != current.bit_length()
+                                or macro_width.normalized_symbols != width
+                                or macro_width.odd_steps != cell.odd_symbols
+                                or macro_width.physical_ticks
+                                != width + cell.odd_symbols
+                                or macro_width.target_width != endpoint.bit_length()
+                            ):
+                                raise ValueError(
+                                    "cached Collatz width spine differs from macro"
+                                )
+                            width_spine.record(macro_width.blank)
                     current = endpoint
                     odd_ticks += cell.odd_symbols
                     division_ticks += width
@@ -675,13 +620,23 @@ def compile_collatz_temporal_run_quotient(
                         )
                         ledger.bump("collatz_physical_temporal_d8_endpoint_evaluations")
                         if endpoint > 2:
-                            if normalized_f5 is not None and physical_f5 is not None:
-                                f5 = CollatzF5AffineAction(
-                                    multiplier % 5,
-                                    (target_origin - multiplier * (current & 255)) % 5,
+                            if include_width_spine and width_spine.complete:
+                                d8_frame = D8CylinderFrame(current)
+                                advanced = D8CylinderFrame(
+                                    current, 8, target_origin, multiplier
                                 )
-                                normalized_f5 = normalized_f5.then(f5)
-                                physical_f5 = physical_f5.then(f5)
+                                d8_width = d8_table._width_summary_for_transition(
+                                    d8_frame, advanced, ones, current.bit_length()
+                                )
+                                width_spine.record(d8_width.blank)
+                            if normalized_f5 is not None and physical_f5 is not None:
+                                normalized_f5, physical_f5 = _append_dyadic_f5(
+                                    normalized_f5,
+                                    physical_f5,
+                                    multiplier,
+                                    target_origin,
+                                    low,
+                                )
                             current = endpoint
                             odd_ticks += ones
                             division_ticks += 8
@@ -695,6 +650,7 @@ def compile_collatz_temporal_run_quotient(
                             continue
                 else:
                     frame = D8CylinderFrame(current)
+                    frame_width = current.bit_length()
                     ledger.bump("collatz_physical_temporal_d8_source_window_bits", 8)
                     accepted = 0
                     # This bounded cursor consumes source windows, not a sequence
@@ -744,16 +700,21 @@ def compile_collatz_temporal_run_quotient(
                             )
                         if not advanced.above_cycle():
                             break
-                        if normalized_f5 is not None and physical_f5 is not None:
-                            # 2**8 = 1 mod 5. Translation is occurrence data,
-                            # pulled back to the original source chart here.
-                            multiplier = 3**ones
-                            f5 = CollatzF5AffineAction(
-                                multiplier % 5,
-                                (target_origin - multiplier * residue) % 5,
+                        if include_width_spine and width_spine.complete:
+                            d8_width = d8_table._width_summary_for_transition(
+                                frame, advanced, ones, frame_width
                             )
-                            normalized_f5 = normalized_f5.then(f5)
-                            physical_f5 = physical_f5.then(f5)
+                            width_spine.record(d8_width.blank)
+                            frame_width = d8_width.target_width
+                        if normalized_f5 is not None and physical_f5 is not None:
+                            multiplier = 3**ones
+                            normalized_f5, physical_f5 = _append_dyadic_f5(
+                                normalized_f5,
+                                physical_f5,
+                                multiplier,
+                                target_origin,
+                                residue,
+                            )
                         frame = advanced
                         accepted += 1
                         odd_ticks += ones
@@ -795,6 +756,14 @@ def compile_collatz_temporal_run_quotient(
                 length = min(available, remaining)
                 before_bits = current.bit_length()
                 current >>= length
+                if width_spine.complete:
+                    after_bits = current.bit_length()
+                    segment = BlankLedger(
+                        after_bits - before_bits,
+                        min(0, after_bits - before_bits),
+                        max(0, after_bits - before_bits),
+                    )
+                    width_spine.record(segment)
                 if normalized_f5 is not None and physical_f5 is not None:
                     f5 = _run_zero_f5(length)
                     normalized_f5 = normalized_f5.then(f5)
@@ -820,6 +789,13 @@ def compile_collatz_temporal_run_quotient(
                 before_bits = current.bit_length()
                 power3 = 3**complete
                 current = power3 * ((current + 1) >> complete) - 1
+                if width_spine.complete:
+                    displacement = current.bit_length() - before_bits
+                    # Every normalized odd boundary grows monotonically; the
+                    # raw 3*x+1 cell is at most one bit above the final
+                    # normalized boundary of this maximal odd run.
+                    segment = BlankLedger(displacement, 0, displacement + 1)
+                    width_spine.record(segment)
                 if normalized_f5 is not None and physical_f5 is not None:
                     f5 = _run_one_f5(complete)
                     normalized_f5 = normalized_f5.then(f5)
@@ -843,11 +819,20 @@ def compile_collatz_temporal_run_quotient(
                 if complete >= available or remaining != 1 or not current & 1:
                     continue
                 scratch.require_bits(8 * (current.bit_length() + 4 * control_bits + 18))
+                before_bits = current.bit_length()
                 ledger.bump(
                     "collatz_physical_temporal_run_operand_bits",
                     current.bit_length() + 2,
                 )
                 current = 3 * current + 1
+                if width_spine.complete:
+                    displacement = current.bit_length() - before_bits
+                    segment = BlankLedger(
+                        displacement,
+                        min(0, displacement),
+                        max(0, displacement),
+                    )
+                    width_spine.record(segment)
                 if physical_f5 is not None:
                     physical_f5 = physical_f5.then(ODD_HALF_F5)
                 odd_ticks += 1
@@ -864,6 +849,12 @@ def compile_collatz_temporal_run_quotient(
                     one_symbols - previous_ones,
                     current,
                     anchor=seed,
+                    tape_width_summary=width_spine.segment_summary(
+                        previous_source.bit_length(),
+                        current.bit_length(),
+                        normalized - previous_width,
+                        one_symbols - previous_ones,
+                    ),
                 )
             macros._bump(
                 "primitive_steps",
@@ -877,6 +868,14 @@ def compile_collatz_temporal_run_quotient(
         ledger.bump("collatz_physical_temporal_division_ticks", division_ticks)
         ledger.bump(
             "collatz_physical_temporal_endpoint_operand_bits", current.bit_length()
+        )
+
+        tape_width_summary = width_spine.finish(
+            seed.bit_length(),
+            current.bit_length(),
+            physical_ticks,
+            division_ticks,
+            odd_ticks,
         )
 
         return CollatzTemporalRunQuotient(
@@ -894,6 +893,7 @@ def compile_collatz_temporal_run_quotient(
             normalized_f5,
             physical_f5,
             certificate,
+            tape_width_summary,
         )
 
 
