@@ -21,10 +21,12 @@ from number_compiler.arithmetic.fields.radix import (
     reverse_radix_integer,
 )
 from number_compiler.arithmetic.functions.state_reduction import (
-    CollatzValuationState,
     ReverseAddGrowthState,
 )
-from number_compiler.sequences.collatz.pair import accelerated_odd_collatz
+from number_compiler.sequences.collatz.pair import (
+    CollatzValuationState,
+    accelerated_odd_collatz,
+)
 from number_compiler.sequences.prime.lane_quotient import (
     compile_prime_block_lane_quotient,
 )

@@ -1,0 +1,9 @@
+session Balanced_Dyadic_Integration in integration_dyadic = Shared_S_Arithmetic +
+  options [document = false, quick_and_dirty = false]
+  sessions Collatz_Cylinder_Refinement Antihydra Antihydra_Mahler_Integration
+    Source_Cache_Integration
+  theories
+    Balanced_Dyadic_Families
+    Maximal_Run_Arithmetic
+    Collatz_Reduced_Precision
+    Dyadic_Parity_Inverse_Arithmetic

@@ -511,6 +511,7 @@ class PrimitiveSuccessorClause:
         """Release the binding lease; the shared arena and source ports stay live."""
         if self._closed:
             return
+        self.arena.ledger.remove_payload_audit_contract(self, "reverse_add")
         count = len(self._binding_store)
         self._binding_store._rollback_unpublished(0)
         seal_count = len(self._seals)
@@ -650,6 +651,11 @@ def primitive_successor_clause(
         )
         result.validate()
         arena.ledger.register_execution_root(result)
+        from number_compiler.sequences.reverse_add.cylinder_payload_audit import (
+            register_primitive_successor_clause_contract,
+        )
+
+        register_primitive_successor_clause_contract(result)
     except BaseException:
         if result is not None:
             result.close()

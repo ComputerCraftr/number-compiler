@@ -3515,7 +3515,7 @@ gate requires the recursive-core refinement and reduced-key locator theorem.
 This is an Entry bridge, not the missing complete B1 observer. No B32 producer or
 native future theorem was rewritten.
 
-The shared dependency audit now walks named proof nodes transitively, memoizing
+The Comma proof dependency audit (then stored under the shared tree) walks named proof nodes transitively, memoizing
 proof serials and theorem names. General theorems may retain explicit premises;
 closed-instance checks additionally reject those premises. Both reject hypotheses
 and oracles. Kernel negative tests cover a forbidden authority hidden behind

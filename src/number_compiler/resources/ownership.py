@@ -21,6 +21,7 @@ from weakref import ReferenceType
 
 from number_compiler.resources.ledger import OwnedMemo, ResourceLedger
 from number_compiler.resources.payload_containers import audit_mapping_items
+from number_compiler.resources.payload_contracts import PayloadAuditContractAudit
 from number_compiler.resources.stores import LedgerDict, LedgerList
 
 
@@ -84,9 +85,13 @@ def audit_execution_ownership(
             "_names",
             "_factory_containers",
             "_execution_roots",
+            "_payload_audit_contracts",
             "counters",
         )
     }
+    issued_contract_snapshot = ledger._payload_audit_snapshot
+    if type(issued_contract_snapshot) is PayloadAuditContractAudit:
+        bookkeeping.add(id(issued_contract_snapshot))
     bookkeeping.update(id(account.roots) for account in ledger._accounts)
     violations: list[OwnershipViolation] = []
     seen: set[int] = set()

@@ -31,13 +31,15 @@ from devtools.experiments.power_numbers.terminal_etale_square import (
 )
 from number_compiler.arithmetic.fields.idempotent_output import (
     IdempotentModElement,
-    IdempotentSpecialDigitBlock,
 )
 from number_compiler.arithmetic.fields.morphism_core import QuadraticPower
 from number_compiler.projection.output_quotient import (
     BinaryOutputCoordinate,
     audit_binary_source_factor,
     minimize_projection_machine,
+)
+from number_compiler.sequences.power_numbers.idempotent_output import (
+    IdempotentSpecialDigitBlock,
 )
 from number_compiler.sequences.power_numbers.numbers import (
     FermatNumberSpec,

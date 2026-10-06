@@ -188,6 +188,64 @@ class SourceBoundImageAdapter(Protocol):
 
 
 @runtime_checkable
+class SourceBoundImageBindingAuditor(Protocol):
+    """Optional pure audit for one already-published image binding.
+
+    Resource audits use this extension when a family can validate the complete
+    source/action/payload/geometry relationship without mutating execution
+    state or charging query work. It is deliberately separate from the
+    scheduler protocol so existing adapters need not invent a redundant
+    checker when their ownership is already audited elsewhere.
+    """
+
+    def audit_image_binding(
+        self,
+        binding: SourceImageBinding,
+        payload: Hashable,
+        failure_prefix: Hashable | None,
+    ) -> tuple[Hashable, ...] | None: ...
+
+
+_SOURCE_BOUND_ADAPTER_METHODS = (
+    "validate_source",
+    "validate_action",
+    "validate_payload",
+    "identity_action",
+    "action_children",
+    "compose_actions",
+    "admit_source",
+    "apply_primitive",
+    "compose_chronological",
+    "admitted_input_key",
+    "transport_reuse",
+    "project",
+    "first_failure",
+)
+
+
+def source_bound_adapter_shape(
+    adapter: SourceBoundImageAdapter, ledger: ResourceLedger
+) -> bool:
+    """Check the exact callable surface admitted by source-image registration."""
+    try:
+        if adapter.ledger is not ledger:
+            return False
+        if type(adapter.family) is not str or not adapter.family:
+            return False
+        if type(adapter.semantic_version) is not str or not adapter.semantic_version:
+            return False
+        if any(
+            not callable(getattr(adapter, name, None))
+            for name in _SOURCE_BOUND_ADAPTER_METHODS
+        ):
+            return False
+        auditor = getattr(adapter, "audit_image_binding", None)
+        return auditor is None or callable(auditor)
+    except (AttributeError, RuntimeError, TypeError, ValueError):
+        return False
+
+
+@runtime_checkable
 class SourceBoundCompositeAdapter(Protocol):
     """Construct a complete image using a demand to select the construction.
 
@@ -212,6 +270,8 @@ class SourceBoundCompositeAdapter(Protocol):
 @dataclass(frozen=True, slots=True)
 class _ImageRecord:
     adapter_key: tuple[str, str]
+    adapter: SourceBoundImageAdapter
+    binding_audit_required: bool
     binding: SourceImageBinding
     payload: Hashable
     failure_prefix: int | None
@@ -479,22 +539,7 @@ class SourceBoundSchedulerCore:
             return
         if found is not None:
             raise ValueError("source image semantic domain already has another owner")
-        methods = (
-            "validate_source",
-            "validate_action",
-            "validate_payload",
-            "identity_action",
-            "action_children",
-            "compose_actions",
-            "admit_source",
-            "apply_primitive",
-            "compose_chronological",
-            "admitted_input_key",
-            "transport_reuse",
-            "project",
-            "first_failure",
-        )
-        if any(not callable(getattr(adapter, name, None)) for name in methods):
+        if not source_bound_adapter_shape(adapter, self.ledger):
             raise TypeError("source image adapter has an incomplete family contract")
         self.ledger.reserve(self._adapter_owner, entries=1)
         try:
@@ -574,13 +619,19 @@ class SourceBoundSchedulerCore:
                     record.payload,
                     record.failure_prefix,
                     record.publication_provenance,
+                    id(record.adapter),
+                    record.binding_audit_required,
                 ),
                 record.publication_snapshot,
                 self.ledger,
             )
         ):
             raise ValueError("source image publication record was altered")
-        if self._adapters.get(record.adapter_key) is None:
+        if self._adapters.get(
+            record.adapter_key
+        ) is not record.adapter or record.binding_audit_required is not callable(
+            getattr(record.adapter, "audit_image_binding", None)
+        ):
             raise ValueError("source image lost its semantic adapter")
         if (
             record.binding.family,
@@ -641,11 +692,15 @@ class SourceBoundSchedulerCore:
                 candidate.payload,
                 candidate.failure_prefix,
                 publication_provenance,
+                id(adapter),
+                callable(getattr(adapter, "audit_image_binding", None)),
             ),
             self.ledger,
         )
         record = _ImageRecord(
             adapter_key,
+            adapter,
+            callable(getattr(adapter, "audit_image_binding", None)),
             binding,
             candidate.payload,
             candidate.failure_prefix,

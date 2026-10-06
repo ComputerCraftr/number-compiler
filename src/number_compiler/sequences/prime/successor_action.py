@@ -17,6 +17,7 @@ from typing import cast
 from number_compiler.arithmetic.contracts.scoped_handles import ArenaHandle, ArenaToken
 from number_compiler.hashlife.execution.source_bound_images import (
     SourceBoundImageAdapter,
+    SourceImageBinding,
     SourceImageCandidate,
     SourceImageDemand,
     SourceImageProjection,
@@ -201,6 +202,9 @@ class PrimeSuccessorActionArena:
             self._nodes = nodes
             self._normal_forms = normal_forms
             self._ports = ports
+            self._audit_nodes = nodes._data
+            self._audit_normal_forms = normal_forms._data
+            self._audit_ports = ports._data
             self._next_node = 0
             self._closed = False
             self._check_budget(4)
@@ -218,6 +222,11 @@ class PrimeSuccessorActionArena:
             )
             self._normal_forms[0] = self.identity
             self._normal_forms[self.descriptor.parent_period] = self.base
+            from number_compiler.sequences.prime.payload_audit import (
+                register_prime_action_audit,
+            )
+
+            register_prime_action_audit(self)
         except BaseException:
             for memo in (ports, normal_forms, nodes):
                 if memo is not None:
@@ -622,6 +631,7 @@ class PrimeSuccessorActionArena:
     def close(self) -> None:
         if self._closed:
             return
+        self.rank.ledger.remove_payload_audit_contract(self, "prime")
         self._ports.dispose()
         self._normal_forms.dispose()
         self._nodes.dispose()
@@ -677,31 +687,23 @@ class PrimeSuccessorImageAdapter(SourceBoundImageAdapter):
         self.arena.validate_descriptor(payload.descriptor)
         node = self.arena.node(payload.action)
         q = self.arena.descriptor.fresh_prime
-        if (
-            any(
-                type(value) is not int
-                for value in (
-                    payload.entering_phase,
-                    payload.outgoing_phase,
-                    payload.parent_survivors,
-                    payload.deleted_survivors,
-                    payload.surviving_values,
-                )
-            )
-            or not 0 <= payload.entering_phase < q
-            or not 0 <= payload.outgoing_phase < q
-            or payload.outgoing_phase != (payload.entering_phase + node.width) % q
-            or payload.parent_survivors > node.width
-            or min(
-                payload.parent_survivors,
-                payload.deleted_survivors,
-                payload.surviving_values,
-            )
-            < 0
-            or payload.deleted_survivors + payload.surviving_values
-            != payload.parent_survivors
-        ):
-            raise ValueError("invalid prime successor image payload")
+        from number_compiler.sequences.prime.payload_audit import (
+            validate_prime_payload_fields,
+        )
+
+        validate_prime_payload_fields(payload, node.width, q)
+
+    def audit_image_binding(
+        self,
+        binding: SourceImageBinding,
+        payload: object,
+        failure_prefix: Hashable | None,
+    ) -> None:
+        from number_compiler.sequences.prime.payload_audit import (
+            audit_prime_image_binding,
+        )
+
+        audit_prime_image_binding(self, binding, payload, failure_prefix)
 
     def identity_action(self, source: Hashable) -> PrimeSuccessorActionID:
         self.validate_source(source)

@@ -28,6 +28,7 @@ from number_compiler.arithmetic.contracts.scoped_handles import (
 )
 from number_compiler.arithmetic.contracts.semantic_identity import SemanticIdentity
 from number_compiler.arithmetic.fields.morphism_core import binary_power
+from number_compiler.hashlife.execution.tile_execution_adapter import FamilyTileHooks
 from number_compiler.resources.ledger import ResourceLedger
 
 
@@ -144,8 +145,16 @@ class ProgramComposition:
 
 
 class LazyCompiler:
-    def __init__(self, ledger: ResourceLedger) -> None:
+    def __init__(
+        self,
+        ledger: ResourceLedger,
+        *,
+        family_hooks: FamilyTileHooks | None = None,
+    ) -> None:
+        if family_hooks is not None and type(family_hooks) is not FamilyTileHooks:
+            raise TypeError("lazy compiler requires canonical family hooks")
         self.ledger, self.token = ledger, ArenaToken("operator-compiler")
+        self.family_hooks = family_hooks
         ledger.register_execution_root(self)
         # A ledger can host several independent compilers.  Use its next
         # registration ordinal only as a human-readable namespace; all
@@ -165,12 +174,13 @@ class LazyCompiler:
             node_count=lambda: len(self._nodes),
             payloads=self._payloads,
         )
-        ledger.register_container(
-            self.index_owner,
-            self._ids,
-            payloads=lambda: self._ids.items(),
-            composition_count=self._composition_count,
-        )
+
+    def bind_family_hooks(self, family_hooks: FamilyTileHooks) -> None:
+        if type(family_hooks) is not FamilyTileHooks:
+            raise TypeError("lazy compiler requires canonical family hooks")
+        if self.family_hooks is not None and self.family_hooks is not family_hooks:
+            raise ValueError("lazy compiler is already bound to another family")
+        self.family_hooks = family_hooks
 
     @property
     def ids(self) -> Mapping[object, int]:
@@ -193,7 +203,7 @@ class LazyCompiler:
         self._validate_program(effect)
         if isinstance(effect, ProgramComposition):
             return effect
-        clone = immutable_atom(effect)
+        clone = immutable_atom(effect, family_hooks=self.family_hooks)
         key = _effect_key(effect)
         found = self._ids.get(key)
         if found is not None:
@@ -208,7 +218,7 @@ class LazyCompiler:
 
         # Reject any unsupported/cyclic child before publishing even a valid
         # sibling. Import is an admission boundary, not incremental validation.
-        admission_visits = admit_effect(effect)
+        admission_visits = admit_effect(effect, family_hooks=self.family_hooks)
         imported: dict[int, BlockEffect] = {}
         stack = [(effect, False)]
         visits = 0
@@ -248,11 +258,11 @@ class LazyCompiler:
         # unknown atom or retain a mutable compatibility runtime as syntax.
         shared = first is second
         if not isinstance(first, ProgramComposition):
-            first = immutable_atom(first)
+            first = immutable_atom(first, family_hooks=self.family_hooks)
         if shared:
             second = first
         elif not isinstance(second, ProgramComposition):
-            second = immutable_atom(second)
+            second = immutable_atom(second, family_hooks=self.family_hooks)
         if first.base != second.base or first.blank != second.blank:
             raise ValueError("incompatible program alphabets")
         # Assign canonical child identities before the parent lookup. New atoms

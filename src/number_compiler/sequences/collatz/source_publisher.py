@@ -10,6 +10,7 @@ Collatz source trajectory.
 from __future__ import annotations
 
 from dataclasses import dataclass, field
+from typing import cast
 
 from number_compiler.arithmetic.automata.program_word import (
     CanonicalWord,
@@ -346,7 +347,7 @@ class CollatzSourcePublisher:
         source_digits = tuple(digits_lsd(self.seed, 4))
         germ = CollatzAffineSuffixGerm.from_word(from_values(source_digits))
         event_root = self.events.identity
-        support = self.supports.identity
+        support = cast(PhysicalSupport, self.supports.identity)
         discovered = 0
         digit_work = 0
         admission_comparisons = 0
@@ -414,7 +415,7 @@ class CollatzSourcePublisher:
             id(published.physical_support),
             published.physical_support.node_id,
             published.physical_support.ticks,
-            published.physical_support.odd_ticks,
+            published.physical_support.true_count,
             published.physical_support.parity,
             id(published.physical_support.left),
             id(published.physical_support.right),
@@ -442,7 +443,7 @@ class CollatzSourcePublisher:
             or published.requested_events != self.requested_events
             or not 0 <= published.discovered_events <= self.requested_events
             or published.event_root.effect.events != published.discovered_events
-            or published.physical_support.odd_ticks != published.discovered_events
+            or published.physical_support.true_count != published.discovered_events
             or published.physical_support.ticks
             != published.event_root.effect.physical_steps
             or published.discovery_digit_work < 0

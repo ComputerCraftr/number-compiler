@@ -1,4 +1,4 @@
-"""Independent ownership audit for retained Collatz shadow-support programs."""
+"""Independent ownership audit for retained ordered Boolean support programs."""
 
 from __future__ import annotations
 
@@ -16,9 +16,9 @@ class PhysicalSupportPayloadAudit:
 def audit_physical_support_payloads(
     ledger: ResourceLedger,
 ) -> PhysicalSupportPayloadAudit:
-    from number_compiler.sequences.collatz.physical_support import (
-        PhysicalSupport,
-        PhysicalSupportArena,
+    from number_compiler.hashlife.tiles.ordered_boolean_support import (
+        OrderedBooleanSupport,
+        OrderedBooleanSupportArena,
     )
 
     containers = dict(ledger.iter_containers())
@@ -26,7 +26,7 @@ def audit_physical_support_payloads(
     approved: set[int] = set()
     invalid: set[tuple[int, int]] = set()
     for root in ledger.iter_execution_roots():
-        if type(root) is not PhysicalSupportArena:
+        if not isinstance(root, OrderedBooleanSupportArena):
             continue
         raw_owners = root._node_owner, root._join_owner, root._concat_owner
         if any(type(owner) is not int for owner in raw_owners):
@@ -34,16 +34,16 @@ def audit_physical_support_payloads(
             continue
         node_owner, join_owner, concat_owner = raw_owners
         stores = (
-            (node_owner, root._nodes, "physical_shadow_support"),
+            (node_owner, root._nodes, "ordered_boolean_support"),
             (
                 join_owner,
                 root._joins,
-                "physical_shadow_support_composition",
+                "ordered_boolean_support_composition",
             ),
             (
                 concat_owner,
                 root._concats,
-                "physical_shadow_support_composition",
+                "ordered_boolean_support_composition",
             ),
         )
         valid = (
@@ -59,7 +59,11 @@ def audit_physical_support_payloads(
         )
         for index, node in enumerate(root._nodes):
             try:
-                valid &= type(node) is PhysicalSupport and node.node_id == index
+                valid &= (
+                    isinstance(node, OrderedBooleanSupport)
+                    and type(node) is root._support_node_type
+                    and node.node_id == index
+                )
                 root.validate(node)
             except (TypeError, ValueError, AttributeError, IndexError):
                 valid = False
@@ -76,7 +80,8 @@ def audit_physical_support_payloads(
                         type(key) is tuple
                         and len(key) == 2
                         and all(type(part) is int for part in key)
-                        and type(node) is PhysicalSupport
+                        and isinstance(node, OrderedBooleanSupport)
+                        and type(node) is root._support_node_type
                     )
                     root.validate(node)
                 except (TypeError, ValueError, AttributeError, IndexError):

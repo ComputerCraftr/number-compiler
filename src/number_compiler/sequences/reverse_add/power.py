@@ -272,7 +272,7 @@ class ReverseAddPoweredTerm:
         return value_from_lsd_digits(self.iter_digits(), self.base)
 
     def behavior_metrics(self) -> HashLifeBehaviorMetrics:
-        from number_compiler.resources.reverse_behavior_metrics import (
+        from number_compiler.sequences.reverse_add.behavior_metrics import (
             reverse_behavior_metrics,
         )
 

@@ -23,11 +23,11 @@ from number_compiler.arithmetic.fields.radix import iter_digits_lsd
 from number_compiler.arithmetic.fields.symbolic_extent import (
     CoordinatePresentation,
     Extent,
-    ReverseAddExtent,
     extent_json_value,
 )
 from number_compiler.resources.ledger import ResourceLedger
 from number_compiler.resources.output_stream_metrics import closing_output_stream
+from number_compiler.sequences.reverse_add.extent import ReverseAddExtent
 
 _DIGITS = "0123456789abcdefghijklmnopqrstuvwxyz"
 _DIGIT_BYTES = _DIGITS.encode("ascii")

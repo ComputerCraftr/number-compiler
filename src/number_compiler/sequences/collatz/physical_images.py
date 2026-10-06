@@ -17,11 +17,19 @@ from number_compiler.hashlife.execution.dyadic_return_images import (
     DyadicReturnSupportID,
 )
 from number_compiler.hashlife.execution.source_bound_images import (
+    SourceImageBinding,
     SourceImageCandidate,
     SourceImageDemand,
     SourceImageView,
 )
+from number_compiler.hashlife.execution.source_image_seals import _typed_equal
 from number_compiler.resources.ledger import ResourceLedger
+from number_compiler.resources.payload_contracts import (
+    PayloadAuditContribution,
+    PayloadAuditEntry,
+    PayloadAuditStoreBinding,
+    register_payload_audit_contract,
+)
 from number_compiler.sequences.collatz.tape_width import (
     CollatzTapeWidthSummary,
     cycle_width_summary,
@@ -36,6 +44,52 @@ COLLATZ_PHYSICAL_LAW = DyadicReturnLaw(
     cycle=DyadicReturnCycle((1, 4, 2)),
 )
 _TAPE_WIDTH_PORT = "collatz-tape-width-summary-v1"
+
+
+def _register_physical_image_audit(root: CollatzPhysicalImageWorkspace) -> None:
+    register_payload_audit_contract(
+        root.ledger,
+        root,
+        "collatz",
+        (
+            PayloadAuditStoreBinding(
+                root.width_owner, "by_width", "dyadic_return_action_index"
+            ),
+        ),
+        audit_collatz_physical_image_workspace,
+    )
+
+
+def audit_collatz_physical_image_workspace(
+    ledger: object, root: object
+) -> PayloadAuditContribution:
+    """Validate Collatz root, law, and owned store before generic payload walks."""
+    if (
+        type(ledger) is not ResourceLedger
+        or type(root) is not CollatzPhysicalImageWorkspace
+    ):
+        raise TypeError("Collatz physical-image audit received a foreign root")
+    if root.ledger is not ledger or root._closed:
+        return PayloadAuditContribution(
+            (), (PayloadAuditEntry(root.width_owner, root),)
+        )
+    try:
+        root._validate_law()
+        if (
+            root.law.descriptor != COLLATZ_PHYSICAL_LAW.descriptor
+            or type(root.seed) is not int
+            or root.seed < 0
+            or type(root.steps) is not int
+            or root.steps < 0
+            or root._law_snapshot != root.law.descriptor
+            or type(root._closed) is not bool
+        ):
+            raise ValueError("physical image root authority differs from Collatz")
+    except (ArithmeticError, AttributeError, IndexError, TypeError, ValueError):
+        return PayloadAuditContribution(
+            (), (PayloadAuditEntry(root.width_owner, root),)
+        )
+    return PayloadAuditContribution()
 
 
 class CollatzPhysicalImageWorkspace(DyadicReturnImageWorkspace):
@@ -61,6 +115,128 @@ class CollatzPhysicalImageWorkspace(DyadicReturnImageWorkspace):
         self._retain_chronology = retain_chronology
         self._include_width_spine = include_width_spine
         super().__init__(ledger, seed, steps, COLLATZ_PHYSICAL_LAW)
+        try:
+            _register_physical_image_audit(self)
+        except BaseException:
+            self.dispose()
+            raise
+
+    def audit_image_binding(
+        self,
+        binding: SourceImageBinding,
+        payload: Hashable,
+        failure_prefix: Hashable | None,
+    ) -> tuple[Hashable, ...]:
+        """Validate exact Collatz image metadata and its optional width port."""
+        if type(binding) is not SourceImageBinding:
+            raise TypeError("Collatz image audit requires its exact binding")
+        self.validate_source(binding.source)
+        self.validate_action(binding.action)
+        self.validate_payload(payload)
+        source_id = binding.source
+        action_id = binding.action
+        if (
+            type(source_id) is not DyadicReturnSourceID
+            or type(action_id) is not DyadicReturnActionID
+        ):
+            raise TypeError("Collatz binding needs local source and action IDs")
+        source = self.source_node(source_id)
+        action = self.action_node(action_id)
+        # Exact-source images retain the resolution of that authenticated
+        # source even when a compressed cycle/composite spans more steps.
+        # A non-exact cylinder image instead carries the temporal width that
+        # its low-bit source prefix certifies. The identity action preserves
+        # source precision in either case.
+        expected_precision = (
+            source.precision if source.exact or action.width == 0 else action.width
+        )
+        if (
+            binding.family != self.family
+            or binding.semantic_version != self.semantic_version
+            or binding.extent != action.width
+            or binding.orientation != 1
+            or binding.radix != 2
+            or binding.precision != expected_precision
+            or failure_prefix is not None
+        ):
+            raise ValueError("Collatz source-image authority differs from root")
+        if type(payload) is not DyadicReturnImageID:
+            raise TypeError("Collatz source image has another payload")
+        image = self.image_node(payload)
+        if image.source != source_id or image.action != action_id:
+            raise ValueError("Collatz source image payload differs from its binding")
+        summary = image.summary
+        self.validate_payload(payload)
+
+        width_ports: list[tuple[object, ...]] = []
+        for port in binding.boundary_ports:
+            if (
+                type(port) is tuple
+                and port
+                and type(port[0]) is str
+                and port[0] == _TAPE_WIDTH_PORT
+            ):
+                if len(port) != 2:
+                    raise ValueError("Collatz width port has an invalid shape")
+                width_ports.append(port)
+        if len(width_ports) > 1:
+            raise ValueError("Collatz root has duplicate width ports")
+
+        ordinary = tuple(
+            port
+            for port in binding.boundary_ports
+            if all(port is not width_port for width_port in width_ports)
+        )
+        cycle = summary.cycle
+        expected_transfer_port = (
+            self.law.descriptor,
+            summary.transfer.upper,
+            summary.transfer.offset,
+            summary.transfer.lower,
+            summary.odd_steps,
+        )
+        valid_port = _typed_equal(ordinary, expected_transfer_port)
+        if cycle is not None:
+            expected_cycle_port = (
+                self.law.descriptor,
+                "singleton-cycle",
+                cycle.entry_steps,
+                cycle.cycle_phase,
+                cycle.cycles,
+                cycle.remainder,
+                cycle.terminal_phase,
+            )
+            valid_port = valid_port or _typed_equal(ordinary, expected_cycle_port)
+        if not valid_port:
+            raise ValueError("Collatz image transfer/cycle port is inconsistent")
+
+        if not width_ports:
+            return ()
+        if (
+            not self._include_width_spine
+            or source_id != self.root_source
+            or action_id != self.root_action
+            or not source.exact
+        ):
+            raise ValueError("unrequested Collatz width summary was published")
+        numerator = summary.transfer.upper * self.seed + summary.transfer.offset
+        endpoint, remainder = divmod(numerator, summary.transfer.lower)
+        if remainder or endpoint < 0:
+            raise ValueError("Collatz root transfer is not an exact endpoint")
+        port = width_ports[0]
+        width = port[1]
+        if type(width) is not CollatzTapeWidthSummary:
+            raise TypeError("Collatz width port has another summary sort")
+        width.__post_init__()
+        if (
+            width.source_width != self.seed.bit_length()
+            or width.target_width != endpoint.bit_length()
+            or width.physical_ticks != self.steps
+            or width.odd_steps != summary.odd_steps
+            or width.normalized_symbols + width.odd_steps != self.steps
+        ):
+            raise ValueError("Collatz width port disagrees with its exact image")
+        return (port, width, width.blank)
 
     def retain_chronological_support(self) -> bool:
         return self._retain_chronology

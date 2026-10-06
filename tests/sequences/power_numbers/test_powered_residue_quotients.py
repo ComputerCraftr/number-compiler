@@ -28,7 +28,6 @@ from number_compiler.arithmetic.carry.carry_normalization import (
 )
 from number_compiler.arithmetic.fields.adic_morphism import (
     ValuationSensitivityMorphism,
-    collatz_slab_padic3,
     fermat_shifted_square_sensitivity,
     mersenne_successor_2adic_sensitivity,
     mersenne_successor_padic2,
@@ -45,6 +44,7 @@ from number_compiler.arithmetic.polynomials.digit_convolution import (
 from number_compiler.sequences.collatz.parity import (
     collatz_parity_slab,
     collatz_parity_word,
+    collatz_slab_padic3,
 )
 from number_compiler.sequences.power_numbers.factor_morphism import (
     batched_special_factor_witness,

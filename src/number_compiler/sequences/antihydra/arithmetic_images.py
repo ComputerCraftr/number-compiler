@@ -145,6 +145,11 @@ class AntihydraArithmeticImageWorkspace(DyadicReturnImageWorkspace):
             self._mahler_consumer = None
             if consumer is not None:
                 consumer.close()
+        from number_compiler.sequences.antihydra.payload_audit import (
+            register_antihydra_payload_contract,
+        )
+
+        register_antihydra_payload_contract(self)
 
     def dispose(self) -> None:
         bindings = self.mahler_bindings

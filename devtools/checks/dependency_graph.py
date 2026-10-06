@@ -24,11 +24,12 @@ class SourceSyntax:
     export_modules: frozenset[str]
     dynamic_imports: frozenset[str]
     unknown_dynamic_import: bool
+    dynamic_import_routes: frozenset[tuple[str, str | None]]
 
 
-def source_syntax(path: Path) -> SourceSyntax:
+def source_syntax(path: Path, *, tree: ast.Module | None = None) -> SourceSyntax:
     """Index executable Python syntax without importing the target module."""
-    tree = _tree(path)
+    tree = tree if tree is not None else _tree(path)
     export_tables = {"__all__", "_EXPORT_MODULES"}
     identifiers: set[str] = set()
     imports: set[str] = set()
@@ -37,6 +38,7 @@ def source_syntax(path: Path) -> SourceSyntax:
     exports: set[str] = set()
     export_modules: set[str] = set()
     dynamic_imports: set[str] = set()
+    dynamic_import_routes: set[tuple[str, str | None]] = set()
     unknown_dynamic_import = False
     dynamic_loaders = {"__import__", "import_module"}
     for declaration in ast.walk(tree):
@@ -135,6 +137,31 @@ def source_syntax(path: Path) -> SourceSyntax:
                     and type(node.args[0].value) is str
                 ):
                     dynamic_imports.add(node.args[0].value)
+                    package_argument = next(
+                        (
+                            keyword.value
+                            for keyword in node.keywords
+                            if keyword.arg == "package"
+                        ),
+                        None,
+                    )
+                    if (
+                        package_argument is None
+                        and node.args[0].value.startswith(".")
+                        and len(node.args) > 1
+                    ):
+                        package_argument = node.args[1]
+                    if package_argument is None:
+                        package = None
+                    elif (
+                        isinstance(package_argument, ast.Constant)
+                        and type(package_argument.value) is str
+                    ):
+                        package = package_argument.value
+                    else:
+                        package = None
+                        unknown_dynamic_import = True
+                    dynamic_import_routes.add((node.args[0].value, package))
                 else:
                     unknown_dynamic_import = True
     return SourceSyntax(
@@ -146,7 +173,54 @@ def source_syntax(path: Path) -> SourceSyntax:
         frozenset(export_modules),
         frozenset(dynamic_imports),
         unknown_dynamic_import,
+        frozenset(dynamic_import_routes),
     )
+
+
+def module_package(path: Path, source_root: Path = SRC) -> tuple[str, ...]:
+    """Qualified package containing an implementation or package initializer."""
+    relative = path.resolve().relative_to(source_root.resolve())
+    return ("number_compiler", *relative.parent.parts)
+
+
+def import_references(
+    path: Path,
+    *,
+    source_root: Path = SRC,
+    tree: ast.Module | None = None,
+) -> tuple[tuple[int, str], ...]:
+    """Resolve every syntactic import, retaining source lines and local imports.
+
+    The result includes imports under ``TYPE_CHECKING`` and in function bodies.
+    Relative imports are resolved against the importing module's package.
+    """
+    path = Path(path).resolve()
+    source_root = Path(source_root).resolve()
+    package = module_package(path, source_root)
+    parsed = tree if tree is not None else _tree(path)
+    references: list[tuple[int, str]] = []
+    for node in ast.walk(parsed):
+        if isinstance(node, ast.Import):
+            references.extend((node.lineno, alias.name) for alias in node.names)
+            continue
+        if not isinstance(node, ast.ImportFrom):
+            continue
+        if node.level:
+            keep = max(0, len(package) - node.level + 1)
+            base_parts = package[:keep]
+        else:
+            base_parts = ()
+        if node.module:
+            base_parts = (*base_parts, *node.module.split("."))
+        base = ".".join(base_parts)
+        if base:
+            references.append((node.lineno, base))
+        for alias in node.names:
+            if alias.name != "*":
+                target = ".".join(part for part in (base, alias.name) if part)
+                if target:
+                    references.append((node.lineno, target))
+    return tuple(references)
 
 
 def _tree(path: Path) -> ast.Module:
@@ -165,8 +239,7 @@ def _module_path(name: str) -> Path:
 
 def _package_imports(path: Path) -> set[str]:
     """Qualified runtime imports, preserving subpackages and module aliases."""
-    relative = path.relative_to(SRC).with_suffix("").parts
-    package = ("number_compiler", *relative[:-1])
+    package = module_package(path, SRC)
     out: set[str] = set()
     pending = list(ast.iter_child_nodes(_tree(path)))
     while pending:

@@ -1,0 +1,4 @@
+session Comma_Reset_Germ in comma_reset_germ = Reverse_Residuals +
+  options [document = false, quick_and_dirty = false]
+  theories
+    Comma_Reset_Germ

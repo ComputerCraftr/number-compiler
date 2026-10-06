@@ -1,0 +1,1157 @@
+{
+  "declaration_extraction_claims": [
+    {
+      "claim": "generic carry-domain type/actions and decimal domain classifier moved to shared owner",
+      "destinations": [
+        {
+          "declarations": [
+            "carry_apply",
+            "carry_domain",
+            "carry_then",
+            "carry_then_apply",
+            "domain"
+          ],
+          "path": "proofs/isabelle/shared/arithmetic/carry_dynamics/Shared_Carry_Domain.thy"
+        }
+      ],
+      "old_source": "proofs/isabelle/Reverse_Residuals.thy"
+    },
+    {
+      "claim": "generic radix-five/binary digit and exact scalar full-adder arithmetic moved to shared owner",
+      "destinations": [
+        {
+          "declarations": [
+            "add_alpha",
+            "add_beta",
+            "add_domain",
+            "add_high",
+            "alpha_threshold",
+            "digit_value",
+            "full_adder_domain_exact",
+            "full_adder_gate_exact",
+            "majority3",
+            "majority3_is_boolean_majority",
+            "nat_less_five_cases",
+            "nat_less_two_cases",
+            "normalization_gate_exact",
+            "normalization_wrap",
+            "normalize_alpha",
+            "normalize_beta",
+            "xor3",
+            "xor3_is_boolean_xor"
+          ],
+          "path": "proofs/isabelle/shared/arithmetic/carry_dynamics/Shared_Decimal_Cocycle_Core.thy"
+        }
+      ],
+      "old_source": "proofs/isabelle/Reverse_Factored_Channels.thy"
+    },
+    {
+      "claim": "generic CRT digit, decimal cocycle and Native19 coordinate definitions moved to shared owner; temporal word refinement remains reverse-specific",
+      "destinations": [
+        {
+          "declarations": [
+            "cocycle_output_domain",
+            "crt_digit",
+            "crt_digit_coordinates_exact",
+            "crt_digit_inverse",
+            "decimal_kappa",
+            "decimal_kappa_cocycle",
+            "decimal_kappa_cocycle_normalized",
+            "decimal_sum_digit",
+            "decimal_sum_digit_mod",
+            "digit_channels",
+            "encode_cocycle",
+            "kappa_and_eq_domain_exact",
+            "nat_less_ten_cases",
+            "native_cocycle",
+            "normalized_output_crt_threshold_exact",
+            "output_crt_threshold_exact",
+            "parity_addition_coordinates",
+            "parity_normalization_exact",
+            "parity_normalize_alpha",
+            "parity_normalize_epsilon"
+          ],
+          "path": "proofs/isabelle/shared/arithmetic/carry_dynamics/Shared_Decimal_Cocycle_Core.thy"
+        }
+      ],
+      "old_source": "proofs/isabelle/Reverse_Threshold_Cocycle.thy"
+    },
+    {
+      "claim": "generic carry fold, prefix, wire and emitting-action laws moved to shared owner; family radix-2/3 observer retained",
+      "destinations": [
+        {
+          "declarations": [
+            "advance_phase",
+            "advance_phase_append",
+            "advance_phase_by_length",
+            "all_equal_carry",
+            "carry_finish",
+            "carry_finish_append",
+            "carry_finish_equal_prefix",
+            "carry_finish_fold",
+            "first_decisive_carry_coalesces"
+          ],
+          "path": "proofs/isabelle/shared/arithmetic/carry_dynamics/Shared_Carry_Tape.thy"
+        }
+      ],
+      "old_source": "proofs/isabelle/Reverse_Carry_Harmonic_Ports.thy"
+    },
+    {
+      "claim": "generic carry-wire and supplied birth-tape algebra moved to shared owner; Collatz recurrence/F5-specific laws retained",
+      "destinations": [
+        {
+          "declarations": [
+            "all_equal_prefix_preserves_incoming",
+            "apply_wires",
+            "carry_bits",
+            "carry_from_bits",
+            "carry_projection",
+            "carry_projection_spatial_composition",
+            "carry_wires",
+            "compose_emitting",
+            "compose_wires",
+            "domain_prefix_carry",
+            "domain_prefix_carry_composition",
+            "emitting_action_projects_to_carry_composition",
+            "emitting_projection_application",
+            "identity_wires_apply",
+            "identity_wires_valid",
+            "last_above_sets_prefix_carry",
+            "last_below_resets_prefix_carry",
+            "last_decisive_domain_determines_prefix_carry",
+            "staircase_port",
+            "three_reachable_carry_ports",
+            "valid_wires",
+            "valid_wires_compose",
+            "valid_wires_stay_reachable",
+            "wire_word_action",
+            "wire_word_action_exact",
+            "wire_word_action_valid",
+            "wire_word_scan",
+            "wire_word_scan_append"
+          ],
+          "path": "proofs/isabelle/shared/arithmetic/carry_dynamics/Shared_Carry_Tape.thy"
+        },
+        {
+          "declarations": [
+            "annihilated_jet_future_consumer",
+            "at_least_five_births_source_independence",
+            "five_step_linear_harmonic_source_death",
+            "five_step_same_birth_source_independence",
+            "harmonic_multiplier",
+            "harmonic_multiplier_product",
+            "harmonic_run",
+            "harmonic_run_append",
+            "harmonic_run_source_difference",
+            "last_five_births_erase_earlier_jet"
+          ],
+          "path": "proofs/isabelle/shared/arithmetic/carry_dynamics/Shared_Affine_Birth_Tape.thy"
+        }
+      ],
+      "old_source": "proofs/isabelle/Collatz_Harmonic_Ports.thy"
+    },
+    {
+      "claim": "generic Mealy action retained as shared; natural three-port specialization moved to Collatz family",
+      "destinations": [
+        {
+          "declarations": [
+            "additive_shift_action",
+            "bool_endpoint_row",
+            "carry_is_endpoint_view",
+            "compose_endpoint",
+            "compose_mealy",
+            "compose_mealy_associative",
+            "endpoint_application_homomorphism",
+            "endpoint_projection",
+            "endpoint_projection_homomorphism",
+            "endpoint_projection_ignores_emission",
+            "external_shift_commutes_with_composition",
+            "identity_mealy",
+            "identity_mealy_left",
+            "identity_mealy_right",
+            "mealy_response",
+            "monotone_bool_endpoint",
+            "monotone_bool_has_three_rows",
+            "port_mealy",
+            "shift_mealy",
+            "shifted_actions_commute",
+            "three_bool_rows_are_realized"
+          ],
+          "path": "proofs/isabelle/shared/arithmetic/carry_dynamics/Port_Valued_Mealy.thy"
+        },
+        {
+          "declarations": [
+            "collatz_three_port_closure",
+            "collatz_three_port_composition",
+            "collatz_three_port_row"
+          ],
+          "path": "proofs/isabelle/families/collatz/temporal_collatz/Collatz_Three_Port_Projection.thy"
+        }
+      ],
+      "old_source": "proofs/isabelle/Port_Valued_Mealy.thy"
+    },
+    {
+      "claim": "scalar Schur digit quotient now depends only on shared decimal arithmetic",
+      "destinations": [
+        {
+          "declarations": [
+            "comma_schur_I_power",
+            "comma_schur_carry_power",
+            "comma_schur_construct_refines",
+            "comma_schur_decimal_split",
+            "comma_schur_exact_quotient",
+            "comma_schur_last_non_neutral_reset_wins",
+            "comma_schur_quotient",
+            "comma_schur_quotient_def",
+            "comma_schur_reset_absorbs_prefix",
+            "comma_schur_reset_after_neutral_run",
+            "comma_schur_reset_polarities_are_distinct",
+            "comma_schur_split_exact_quotient",
+            "comma_schur_split_ranges"
+          ],
+          "path": "proofs/isabelle/families/comma/comma_schur_carry/Comma_Schur_Carry.thy"
+        }
+      ],
+      "old_source": "proofs/isabelle/comma_schur_carry/Comma_Schur_Carry.thy"
+    },
+    {
+      "claim": "Native19 comma consumer imports shared decimal cocycle and comma Schur family theory",
+      "destinations": [
+        {
+          "declarations": [
+            "comma_native19_admitted",
+            "comma_native19_decode",
+            "comma_native19_decode_encode",
+            "comma_native19_encode_admitted",
+            "comma_native19_encode_decode",
+            "comma_native19_encode_injective",
+            "comma_native19_full_adder_coordinates",
+            "comma_native19_range",
+            "comma_native19_to_schur",
+            "comma_schur_native19_parity",
+            "comma_schur_to_native19"
+          ],
+          "path": "proofs/isabelle/families/comma/comma_native19_carry/Comma_Native19_Carry.thy"
+        }
+      ],
+      "old_source": "proofs/isabelle/comma_native19_carry/Comma_Native19_Carry.thy"
+    },
+    {
+      "claim": "small indexed-list normalization lemmas and CRT local-cover fixtures moved to a same-session arithmetic helper without changing theorem statements or dependencies",
+      "old_source": "proofs/isabelle/families/comma/comma_semantic_b1_instance/Comma_Semantic_B1_Occurrence_Publication.thy",
+      "destinations": [
+        {
+          "path": "proofs/isabelle/families/comma/comma_semantic_b1_instance/Comma_Semantic_B1_Occurrence_Arithmetic.thy",
+          "declarations": [
+            "comma_indexed_all_zero",
+            "comma_indexed_all_Suc",
+            "comma_selected_length_nil",
+            "comma_selected_length_cons",
+            "comma_semantic_b1_crt_local_cover_fixture_parent",
+            "comma_semantic_b1_crt_local_cover_fixture_rebased_parent",
+            "comma_semantic_b1_crt_local_cover_fixtures"
+          ]
+        }
+      ]
+    }
+  ],
+  "isabelle_root": "proofs/isabelle",
+  "new_sessions": [
+    {
+      "owner": "shared",
+      "reason": "Shared family-agnostic carry, decimal cocycle, tape and Mealy laws extracted from family owners.",
+      "root_file": "proofs/isabelle/shared/ROOT",
+      "session": "Shared_Carry_Dynamics",
+      "session_path": "proofs/isabelle/shared/arithmetic/carry_dynamics"
+    }
+  ],
+  "registration": {
+    "directory_edges": [
+      {
+        "entries": [
+          "shared",
+          "families",
+          "integration"
+        ],
+        "file": "proofs/isabelle/ROOTS"
+      },
+      {
+        "entries": [
+          "reverse_add",
+          "collatz",
+          "antihydra",
+          "comma",
+          "prime"
+        ],
+        "file": "proofs/isabelle/families/ROOTS"
+      },
+      {
+        "entries": [
+          "temporal_cylinders",
+          "etale",
+          "associated_actions",
+          "decimal_reverse_add",
+          "antihydra_mahler",
+          "dyadic",
+          "source_cache",
+          "comma_reverse_add"
+        ],
+        "file": "proofs/isabelle/integration/ROOTS"
+      }
+    ],
+    "discovery_roots": [
+      "proofs/isabelle/ROOTS",
+      "proofs/isabelle/families/ROOTS",
+      "proofs/isabelle/integration/ROOTS",
+      "proofs/isabelle/shared/ROOT"
+    ],
+    "former_root": "proofs/isabelle/ROOT"
+  },
+  "schema_version": 1,
+  "scope_note": "Records source ownership and registration migration only; it does not certify proof validity, session build status, or production refinement.",
+  "sessions_by_old_path": {
+    "proofs/isabelle": {
+      "new_root_file": "proofs/isabelle/families/reverse_add/ROOT",
+      "new_session_path": "proofs/isabelle/families/reverse_add/reverse_residuals",
+      "owner": "family/reverse_add",
+      "session": "Reverse_Residuals"
+    },
+    "proofs/isabelle/antihydra": {
+      "new_root_file": "proofs/isabelle/families/antihydra/ROOT",
+      "new_session_path": "proofs/isabelle/families/antihydra/antihydra",
+      "owner": "family/antihydra",
+      "session": "Antihydra"
+    },
+    "proofs/isabelle/comma": {
+      "new_root_file": "proofs/isabelle/families/comma/ROOT",
+      "new_session_path": "proofs/isabelle/families/comma/comma",
+      "owner": "family/comma",
+      "session": "Comma_Arithmetic"
+    },
+    "proofs/isabelle/comma_addsub_b1": {
+      "new_root_file": "proofs/isabelle/families/comma/ROOT",
+      "new_session_path": "proofs/isabelle/families/comma/comma_addsub_b1",
+      "owner": "family/comma",
+      "session": "Comma_AddSub_Entry_Core_Bridge"
+    },
+    "proofs/isabelle/comma_branch_induction": {
+      "new_root_file": "proofs/isabelle/families/comma/ROOT",
+      "new_session_path": "proofs/isabelle/families/comma/comma_branch_induction",
+      "owner": "family/comma",
+      "session": "Comma_Branch_Induction"
+    },
+    "proofs/isabelle/comma_branch_instance": {
+      "new_root_file": "proofs/isabelle/families/comma/ROOT",
+      "new_session_path": "proofs/isabelle/families/comma/comma_branch_instance",
+      "owner": "family/comma",
+      "session": "Comma_Branch_Instance"
+    },
+    "proofs/isabelle/comma_branch_period": {
+      "new_root_file": "proofs/isabelle/families/comma/ROOT",
+      "new_session_path": "proofs/isabelle/families/comma/comma_branch_period",
+      "owner": "family/comma",
+      "session": "Comma_Branch_Period"
+    },
+    "proofs/isabelle/comma_branch_period_instance": {
+      "new_root_file": "proofs/isabelle/families/comma/ROOT",
+      "new_session_path": "proofs/isabelle/families/comma/comma_branch_period_instance",
+      "owner": "family/comma",
+      "session": "Comma_Branch_Period_Instance"
+    },
+    "proofs/isabelle/comma_c1_borrow": {
+      "new_root_file": "proofs/isabelle/families/comma/ROOT",
+      "new_session_path": "proofs/isabelle/families/comma/comma_c1_borrow",
+      "owner": "family/comma",
+      "session": "Comma_C1_Borrow_Cocycle"
+    },
+    "proofs/isabelle/comma_c1_generator": {
+      "new_root_file": "proofs/isabelle/families/comma/ROOT",
+      "new_session_path": "proofs/isabelle/families/comma/comma_c1_generator",
+      "owner": "family/comma",
+      "session": "Comma_C1_Carry_Generator"
+    },
+    "proofs/isabelle/comma_c1_occurrence": {
+      "new_root_file": "proofs/isabelle/families/comma/ROOT",
+      "new_session_path": "proofs/isabelle/families/comma/comma_c1_occurrence",
+      "owner": "family/comma",
+      "session": "Comma_C1_Occurrence"
+    },
+    "proofs/isabelle/comma_c1_phase_power": {
+      "new_root_file": "proofs/isabelle/families/comma/ROOT",
+      "new_session_path": "proofs/isabelle/families/comma/comma_c1_phase_power",
+      "owner": "family/comma",
+      "session": "Comma_C1_Phase_Power"
+    },
+    "proofs/isabelle/comma_chart": {
+      "new_root_file": "proofs/isabelle/families/comma/ROOT",
+      "new_session_path": "proofs/isabelle/families/comma/comma_chart",
+      "owner": "family/comma",
+      "session": "Comma_Chart_Bridge"
+    },
+    "proofs/isabelle/comma_chart_action": {
+      "new_root_file": "proofs/isabelle/families/comma/ROOT",
+      "new_session_path": "proofs/isabelle/families/comma/comma_chart_action",
+      "owner": "family/comma",
+      "session": "Comma_Chart_Action"
+    },
+    "proofs/isabelle/comma_closed_near": {
+      "new_root_file": "proofs/isabelle/families/comma/ROOT",
+      "new_session_path": "proofs/isabelle/families/comma/comma_closed_near",
+      "owner": "family/comma",
+      "session": "Comma_Closed_Near"
+    },
+    "proofs/isabelle/comma_compact_b1": {
+      "new_root_file": "proofs/isabelle/families/comma/ROOT",
+      "new_session_path": "proofs/isabelle/families/comma/comma_compact_b1",
+      "owner": "family/comma",
+      "session": "Comma_Compact_B1"
+    },
+    "proofs/isabelle/comma_compact_classifier": {
+      "new_root_file": "proofs/isabelle/families/comma/ROOT",
+      "new_session_path": "proofs/isabelle/families/comma/comma_compact_classifier",
+      "owner": "family/comma",
+      "session": "Comma_Compact_Decade_Classifier"
+    },
+    "proofs/isabelle/comma_cutover": {
+      "new_root_file": "proofs/isabelle/families/comma/ROOT",
+      "new_session_path": "proofs/isabelle/families/comma/comma_cutover",
+      "owner": "family/comma",
+      "session": "Comma_Cylinder"
+    },
+    "proofs/isabelle/comma_cycle_spatial_moore": {
+      "new_root_file": "proofs/isabelle/families/comma/ROOT",
+      "new_session_path": "proofs/isabelle/families/comma/comma_cycle_spatial_moore",
+      "owner": "family/comma",
+      "session": "Comma_Cycle_Spatial_Moore"
+    },
+    "proofs/isabelle/comma_cyclotomic_clock": {
+      "new_root_file": "proofs/isabelle/families/comma/ROOT",
+      "new_session_path": "proofs/isabelle/families/comma/comma_cyclotomic_clock",
+      "owner": "family/comma",
+      "session": "Comma_Cyclotomic_Clock"
+    },
+    "proofs/isabelle/comma_decade": {
+      "new_root_file": "proofs/isabelle/families/comma/ROOT",
+      "new_session_path": "proofs/isabelle/families/comma/comma_decade",
+      "owner": "family/comma",
+      "session": "Comma_Decade_Totality"
+    },
+    "proofs/isabelle/comma_decade_blocks": {
+      "new_root_file": "proofs/isabelle/families/comma/ROOT",
+      "new_session_path": "proofs/isabelle/families/comma/comma_decade_blocks",
+      "owner": "family/comma",
+      "session": "Comma_Decade_Blocks"
+    },
+    "proofs/isabelle/comma_decade_helix": {
+      "new_root_file": "proofs/isabelle/families/comma/ROOT",
+      "new_session_path": "proofs/isabelle/families/comma/comma_decade_helix",
+      "owner": "family/comma",
+      "session": "Comma_Decade_Helix"
+    },
+    "proofs/isabelle/comma_decade_layer_check": {
+      "new_root_file": "proofs/isabelle/families/comma/ROOT",
+      "new_session_path": "proofs/isabelle/families/comma/comma_decade_layer_check",
+      "owner": "family/comma",
+      "session": "Comma_Decade_Layer_Check"
+    },
+    "proofs/isabelle/comma_decade_layer_full": {
+      "new_root_file": "proofs/isabelle/families/comma/ROOT",
+      "new_session_path": "proofs/isabelle/families/comma/comma_decade_layer_full",
+      "owner": "family/comma",
+      "session": "Comma_Decade_Layer_Instance"
+    },
+    "proofs/isabelle/comma_decade_layer_smoke": {
+      "new_root_file": "proofs/isabelle/families/comma/ROOT",
+      "new_session_path": "proofs/isabelle/families/comma/comma_decade_layer_smoke",
+      "owner": "family/comma",
+      "session": "Comma_Decade_Layer_Smoke"
+    },
+    "proofs/isabelle/comma_decade_masks": {
+      "new_root_file": "proofs/isabelle/families/comma/ROOT",
+      "new_session_path": "proofs/isabelle/families/comma/comma_decade_masks",
+      "owner": "family/comma",
+      "session": "Comma_Sparse_Core"
+    },
+    "proofs/isabelle/comma_decade_occurrence_lift": {
+      "new_root_file": "proofs/isabelle/families/comma/ROOT",
+      "new_session_path": "proofs/isabelle/families/comma/comma_decade_occurrence_lift",
+      "owner": "family/comma",
+      "session": "Comma_Decade_Occurrence_Lift"
+    },
+    "proofs/isabelle/comma_decade_orbit": {
+      "new_root_file": "proofs/isabelle/families/comma/ROOT",
+      "new_session_path": "proofs/isabelle/families/comma/comma_decade_orbit",
+      "owner": "family/comma",
+      "session": "Comma_Decade_Orbit"
+    },
+    "proofs/isabelle/comma_decade_orbit_layer": {
+      "new_root_file": "proofs/isabelle/families/comma/ROOT",
+      "new_session_path": "proofs/isabelle/families/comma/comma_decade_orbit_layer",
+      "owner": "family/comma",
+      "session": "Comma_Decade_Orbit_Layer"
+    },
+    "proofs/isabelle/comma_decade_orbit_layer_full": {
+      "new_root_file": "proofs/isabelle/families/comma/ROOT",
+      "new_session_path": "proofs/isabelle/families/comma/comma_decade_orbit_layer_full",
+      "owner": "family/comma",
+      "session": "Comma_Decade_Orbit_Layer_Instance"
+    },
+    "proofs/isabelle/comma_decade_rank_data": {
+      "new_root_file": "proofs/isabelle/families/comma/ROOT",
+      "new_session_path": "proofs/isabelle/families/comma/comma_decade_rank_data",
+      "owner": "family/comma",
+      "session": "Comma_Decade_Rank_Data"
+    },
+    "proofs/isabelle/comma_decade_residual_core": {
+      "new_root_file": "proofs/isabelle/families/comma/ROOT",
+      "new_session_path": "proofs/isabelle/families/comma/comma_decade_residual_core",
+      "owner": "family/comma",
+      "session": "Comma_Decade_Residual_Core"
+    },
+    "proofs/isabelle/comma_decade_summary_checked": {
+      "new_root_file": "proofs/isabelle/families/comma/ROOT",
+      "new_session_path": "proofs/isabelle/families/comma/comma_decade_summary_checked",
+      "owner": "family/comma",
+      "session": "Comma_Decade_Summary_Checked"
+    },
+    "proofs/isabelle/comma_decade_summary_kernel": {
+      "new_root_file": "proofs/isabelle/families/comma/ROOT",
+      "new_session_path": "proofs/isabelle/families/comma/comma_decade_summary_kernel",
+      "owner": "family/comma",
+      "session": "Comma_Decade_Summary_Kernel"
+    },
+    "proofs/isabelle/comma_decade_terminal_data": {
+      "new_root_file": "proofs/isabelle/families/comma/ROOT",
+      "new_session_path": "proofs/isabelle/families/comma/comma_decade_terminal_data",
+      "owner": "family/comma",
+      "session": "Comma_Decade_Terminal_Data"
+    },
+    "proofs/isabelle/comma_decisive_endpoint_quotient": {
+      "new_root_file": "proofs/isabelle/families/comma/ROOT",
+      "new_session_path": "proofs/isabelle/families/comma/comma_decisive_endpoint_quotient",
+      "owner": "family/comma",
+      "session": "Comma_Decisive_Endpoint_Quotient"
+    },
+    "proofs/isabelle/comma_dependency_audit_smoke": {
+      "new_root_file": "proofs/isabelle/families/comma/ROOT",
+      "new_session_path": "proofs/isabelle/families/comma/audit/comma_dependency_audit_smoke",
+      "owner": "family/comma",
+      "session": "Comma_Proof_Dependency_Audit_Smoke"
+    },
+    "proofs/isabelle/comma_entry": {
+      "new_root_file": "proofs/isabelle/families/comma/ROOT",
+      "new_session_path": "proofs/isabelle/families/comma/comma_entry",
+      "owner": "family/comma",
+      "session": "Comma_Source_Entry"
+    },
+    "proofs/isabelle/comma_entry_arithmetic": {
+      "new_root_file": "proofs/isabelle/families/comma/ROOT",
+      "new_session_path": "proofs/isabelle/families/comma/comma_entry_arithmetic",
+      "owner": "family/comma",
+      "session": "Comma_Entry_Arithmetic"
+    },
+    "proofs/isabelle/comma_entry_port": {
+      "new_root_file": "proofs/isabelle/families/comma/ROOT",
+      "new_session_path": "proofs/isabelle/families/comma/comma_entry_port",
+      "owner": "family/comma",
+      "session": "Comma_Entry_Port"
+    },
+    "proofs/isabelle/comma_entry_witness": {
+      "new_root_file": "proofs/isabelle/families/comma/ROOT",
+      "new_session_path": "proofs/isabelle/families/comma/comma_entry_witness",
+      "owner": "family/comma",
+      "session": "Comma_Source_Entry_Witness"
+    },
+    "proofs/isabelle/comma_factored_port": {
+      "new_root_file": "proofs/isabelle/families/comma/ROOT",
+      "new_session_path": "proofs/isabelle/families/comma/comma_factored_port",
+      "owner": "family/comma",
+      "session": "Comma_Factored_Port_Carrier"
+    },
+    "proofs/isabelle/comma_fast_arithmetic": {
+      "new_root_file": "proofs/isabelle/families/comma/ROOT",
+      "new_session_path": "proofs/isabelle/families/comma/comma_fast_arithmetic",
+      "owner": "family/comma",
+      "session": "Comma_Fast_Arithmetic"
+    },
+    "proofs/isabelle/comma_fast_control": {
+      "new_root_file": "proofs/isabelle/families/comma/ROOT",
+      "new_session_path": "proofs/isabelle/families/comma/comma_fast_control",
+      "owner": "family/comma",
+      "session": "Comma_Fast_Control"
+    },
+    "proofs/isabelle/comma_fast_rank": {
+      "new_root_file": "proofs/isabelle/families/comma/ROOT",
+      "new_session_path": "proofs/isabelle/families/comma/comma_fast_rank",
+      "owner": "family/comma",
+      "session": "Comma_Fast_Decade_Rank"
+    },
+    "proofs/isabelle/comma_fast_rank_check": {
+      "new_root_file": "proofs/isabelle/families/comma/ROOT",
+      "new_session_path": "proofs/isabelle/families/comma/comma_fast_rank_check",
+      "owner": "family/comma",
+      "session": "Comma_Fast_Rank_Check"
+    },
+    "proofs/isabelle/comma_fast_rank_smoke": {
+      "new_root_file": "proofs/isabelle/families/comma/ROOT",
+      "new_session_path": "proofs/isabelle/families/comma/comma_fast_rank_smoke",
+      "owner": "family/comma",
+      "session": "Comma_Fast_Rank_Smoke"
+    },
+    "proofs/isabelle/comma_fast_totality": {
+      "new_root_file": "proofs/isabelle/families/comma/ROOT",
+      "new_session_path": "proofs/isabelle/families/comma/comma_fast_totality",
+      "owner": "family/comma",
+      "session": "Comma_Fast_Totality_Check"
+    },
+    "proofs/isabelle/comma_fast_totality_full": {
+      "new_root_file": "proofs/isabelle/families/comma/ROOT",
+      "new_session_path": "proofs/isabelle/families/comma/comma_fast_totality_full",
+      "owner": "family/comma",
+      "session": "Comma_Fast_Totality"
+    },
+    "proofs/isabelle/comma_fast_totality_smoke": {
+      "new_root_file": "proofs/isabelle/families/comma/ROOT",
+      "new_session_path": "proofs/isabelle/families/comma/comma_fast_totality_smoke",
+      "owner": "family/comma",
+      "session": "Comma_Fast_Totality_Smoke"
+    },
+    "proofs/isabelle/comma_frobenius_entry": {
+      "new_root_file": "proofs/isabelle/families/comma/ROOT",
+      "new_session_path": "proofs/isabelle/families/comma/comma_frobenius_entry",
+      "owner": "family/comma",
+      "session": "Comma_Frobenius_Entry"
+    },
+    "proofs/isabelle/comma_frobenius_recurrence": {
+      "new_root_file": "proofs/isabelle/families/comma/ROOT",
+      "new_session_path": "proofs/isabelle/families/comma/comma_frobenius_recurrence",
+      "owner": "family/comma",
+      "session": "Comma_Frobenius_Recurrence"
+    },
+    "proofs/isabelle/comma_future_checked": {
+      "new_root_file": "proofs/isabelle/families/comma/ROOT",
+      "new_session_path": "proofs/isabelle/families/comma/comma_future_checked",
+      "owner": "family/comma",
+      "session": "Comma_Future_Checked_Instance"
+    },
+    "proofs/isabelle/comma_future_global": {
+      "new_root_file": "proofs/isabelle/families/comma/ROOT",
+      "new_session_path": "proofs/isabelle/families/comma/comma_future_global",
+      "owner": "family/comma",
+      "session": "Comma_Global_Future_Safety"
+    },
+    "proofs/isabelle/comma_future_instance": {
+      "new_root_file": "proofs/isabelle/families/comma/ROOT",
+      "new_session_path": "proofs/isabelle/families/comma/comma_future_instance",
+      "owner": "family/comma",
+      "session": "Comma_Future_Check"
+    },
+    "proofs/isabelle/comma_future_rank_data": {
+      "new_root_file": "proofs/isabelle/families/comma/ROOT",
+      "new_session_path": "proofs/isabelle/families/comma/comma_future_rank_data",
+      "owner": "family/comma",
+      "session": "Comma_Future_Rank_Data"
+    },
+    "proofs/isabelle/comma_future_selector": {
+      "new_root_file": "proofs/isabelle/families/comma/ROOT",
+      "new_session_path": "proofs/isabelle/families/comma/comma_future_selector",
+      "owner": "family/comma",
+      "session": "Comma_Future_Selector"
+    },
+    "proofs/isabelle/comma_future_source": {
+      "new_root_file": "proofs/isabelle/families/comma/ROOT",
+      "new_session_path": "proofs/isabelle/families/comma/comma_future_source",
+      "owner": "family/comma",
+      "session": "Comma_Future_Source"
+    },
+    "proofs/isabelle/comma_future_structural": {
+      "new_root_file": "proofs/isabelle/families/comma/ROOT",
+      "new_session_path": "proofs/isabelle/families/comma/comma_future_structural",
+      "owner": "family/comma",
+      "session": "Comma_Future_Structural_Check"
+    },
+    "proofs/isabelle/comma_future_structural_instance": {
+      "new_root_file": "proofs/isabelle/families/comma/ROOT",
+      "new_session_path": "proofs/isabelle/families/comma/comma_future_structural_instance",
+      "owner": "family/comma",
+      "session": "Comma_Future_Structural_Instance"
+    },
+    "proofs/isabelle/comma_interior_cache": {
+      "new_root_file": "proofs/isabelle/families/comma/ROOT",
+      "new_session_path": "proofs/isabelle/families/comma/comma_interior_cache",
+      "owner": "family/comma",
+      "session": "Comma_Interior_Cache"
+    },
+    "proofs/isabelle/comma_legacy": {
+      "new_root_file": "proofs/isabelle/families/comma/ROOT",
+      "new_session_path": "proofs/isabelle/families/comma/comma_legacy",
+      "owner": "family/comma",
+      "session": "Comma_Forest_Legacy"
+    },
+    "proofs/isabelle/comma_literal": {
+      "new_root_file": "proofs/isabelle/families/comma/ROOT",
+      "new_session_path": "proofs/isabelle/families/comma/comma_literal",
+      "owner": "family/comma",
+      "session": "Comma_Literal_Bridge"
+    },
+    "proofs/isabelle/comma_mask_safety": {
+      "new_root_file": "proofs/isabelle/families/comma/ROOT",
+      "new_session_path": "proofs/isabelle/families/comma/comma_mask_safety",
+      "owner": "family/comma",
+      "session": "Comma_Decade_Masks"
+    },
+    "proofs/isabelle/comma_native19_carry": {
+      "new_root_file": "proofs/isabelle/families/comma/ROOT",
+      "new_session_path": "proofs/isabelle/families/comma/comma_native19_carry",
+      "owner": "family/comma",
+      "session": "Comma_Native19_Carry"
+    },
+    "proofs/isabelle/comma_native_boundary": {
+      "new_root_file": "proofs/isabelle/families/comma/ROOT",
+      "new_session_path": "proofs/isabelle/families/comma/comma_native_boundary",
+      "owner": "family/comma",
+      "session": "Comma_Native_Boundary"
+    },
+    "proofs/isabelle/comma_native_future_instance": {
+      "new_root_file": "proofs/isabelle/families/comma/ROOT",
+      "new_session_path": "proofs/isabelle/families/comma/comma_native_future_instance",
+      "owner": "family/comma",
+      "session": "Comma_Native_Future_Instance"
+    },
+    "proofs/isabelle/comma_native_summary": {
+      "new_root_file": "proofs/isabelle/families/comma/ROOT",
+      "new_session_path": "proofs/isabelle/families/comma/comma_native_summary",
+      "owner": "family/comma",
+      "session": "Comma_Native_Summary"
+    },
+    "proofs/isabelle/comma_native_summary_instance": {
+      "new_root_file": "proofs/isabelle/families/comma/ROOT",
+      "new_session_path": "proofs/isabelle/families/comma/comma_native_summary_instance",
+      "owner": "family/comma",
+      "session": "Comma_Native_Summary_Instance"
+    },
+    "proofs/isabelle/comma_native_summary_occurrence": {
+      "new_root_file": "proofs/isabelle/families/comma/ROOT",
+      "new_session_path": "proofs/isabelle/families/comma/comma_native_summary_occurrence",
+      "owner": "family/comma",
+      "session": "Comma_Native_Summary_Occurrence"
+    },
+    "proofs/isabelle/comma_near_period": {
+      "new_root_file": "proofs/isabelle/families/comma/ROOT",
+      "new_session_path": "proofs/isabelle/families/comma/comma_near_period",
+      "owner": "family/comma",
+      "session": "Comma_Near_Period"
+    },
+    "proofs/isabelle/comma_occurrence_semantic": {
+      "new_root_file": "proofs/isabelle/families/comma/ROOT",
+      "new_session_path": "proofs/isabelle/families/comma/comma_occurrence_semantic",
+      "owner": "family/comma",
+      "session": "Comma_Decade_Occurrence_Semantic"
+    },
+    "proofs/isabelle/comma_pair_language": {
+      "new_root_file": "proofs/isabelle/families/comma/ROOT",
+      "new_session_path": "proofs/isabelle/families/comma/comma_pair_language",
+      "owner": "family/comma",
+      "session": "Comma_Recursive_Pair_Language"
+    },
+    "proofs/isabelle/comma_powered_boundary": {
+      "new_root_file": "proofs/isabelle/families/comma/ROOT",
+      "new_session_path": "proofs/isabelle/families/comma/comma_powered_boundary",
+      "owner": "family/comma",
+      "session": "Comma_Powered_Boundary"
+    },
+    "proofs/isabelle/comma_prefix_selection": {
+      "new_root_file": "proofs/isabelle/families/comma/ROOT",
+      "new_session_path": "proofs/isabelle/families/comma/comma_prefix_selection",
+      "owner": "family/comma",
+      "session": "Comma_Prefix_Selection"
+    },
+    "proofs/isabelle/comma_rank": {
+      "new_root_file": "proofs/isabelle/families/comma/ROOT",
+      "new_session_path": "proofs/isabelle/families/comma/comma_rank",
+      "owner": "family/comma",
+      "session": "Comma_Round_Witness_Check"
+    },
+    "proofs/isabelle/comma_rank_slice": {
+      "new_root_file": "proofs/isabelle/families/comma/ROOT",
+      "new_session_path": "proofs/isabelle/families/comma/comma_rank_slice",
+      "owner": "family/comma",
+      "session": "Comma_Round_Phase_Slice"
+    },
+    "proofs/isabelle/comma_regression": {
+      "new_root_file": "proofs/isabelle/families/comma/ROOT",
+      "new_session_path": "proofs/isabelle/families/comma/comma_regression",
+      "owner": "family/comma",
+      "session": "Comma_Trace_Regression"
+    },
+    "proofs/isabelle/comma_reset_germ": {
+      "new_root_file": "proofs/isabelle/integration/comma_reverse_add/ROOT",
+      "new_session_path": "proofs/isabelle/integration/comma_reverse_add/comma_reset_germ",
+      "owner": "integration/comma_reverse_add",
+      "session": "Comma_Reset_Germ"
+    },
+    "proofs/isabelle/comma_response_base": {
+      "new_root_file": "proofs/isabelle/families/comma/ROOT",
+      "new_session_path": "proofs/isabelle/families/comma/comma_response_base",
+      "owner": "family/comma",
+      "session": "Comma_Response_Rows"
+    },
+    "proofs/isabelle/comma_return_engine": {
+      "new_root_file": "proofs/isabelle/families/comma/ROOT",
+      "new_session_path": "proofs/isabelle/families/comma/comma_return_engine",
+      "owner": "family/comma",
+      "session": "Comma_Return_Engine"
+    },
+    "proofs/isabelle/comma_return_induction": {
+      "new_root_file": "proofs/isabelle/families/comma/ROOT",
+      "new_session_path": "proofs/isabelle/families/comma/comma_return_induction",
+      "owner": "family/comma",
+      "session": "Comma_Return_Induction"
+    },
+    "proofs/isabelle/comma_return_instance": {
+      "new_root_file": "proofs/isabelle/families/comma/ROOT",
+      "new_session_path": "proofs/isabelle/families/comma/comma_return_instance",
+      "owner": "family/comma",
+      "session": "Comma_Return_Instance"
+    },
+    "proofs/isabelle/comma_return_source": {
+      "new_root_file": "proofs/isabelle/families/comma/ROOT",
+      "new_session_path": "proofs/isabelle/families/comma/comma_return_source",
+      "owner": "family/comma",
+      "session": "Comma_Return_Source"
+    },
+    "proofs/isabelle/comma_round": {
+      "new_root_file": "proofs/isabelle/families/comma/ROOT",
+      "new_session_path": "proofs/isabelle/families/comma/comma_round",
+      "owner": "family/comma",
+      "session": "Comma_Round_Totality"
+    },
+    "proofs/isabelle/comma_round_weights": {
+      "new_root_file": "proofs/isabelle/families/comma/ROOT",
+      "new_session_path": "proofs/isabelle/families/comma/comma_round_weights",
+      "owner": "family/comma",
+      "session": "Comma_Round_Weights"
+    },
+    "proofs/isabelle/comma_run_cycle_data": {
+      "new_root_file": "proofs/isabelle/families/comma/ROOT",
+      "new_session_path": "proofs/isabelle/families/comma/comma_run_cycle_data",
+      "owner": "family/comma",
+      "session": "Comma_Run_Cycle_Data"
+    },
+    "proofs/isabelle/comma_run_germ": {
+      "new_root_file": "proofs/isabelle/families/comma/ROOT",
+      "new_session_path": "proofs/isabelle/families/comma/comma_run_germ",
+      "owner": "family/comma",
+      "session": "Comma_Run_Germ"
+    },
+    "proofs/isabelle/comma_run_moore": {
+      "new_root_file": "proofs/isabelle/families/comma/ROOT",
+      "new_session_path": "proofs/isabelle/families/comma/comma_run_moore",
+      "owner": "family/comma",
+      "session": "Comma_Run_Moore"
+    },
+    "proofs/isabelle/comma_run_moore_instance": {
+      "new_root_file": "proofs/isabelle/families/comma/ROOT",
+      "new_session_path": "proofs/isabelle/families/comma/comma_run_moore_instance",
+      "owner": "family/comma",
+      "session": "Comma_Run_Moore_Instance"
+    },
+    "proofs/isabelle/comma_scalar": {
+      "new_root_file": "proofs/isabelle/families/comma/ROOT",
+      "new_session_path": "proofs/isabelle/families/comma/comma_scalar",
+      "owner": "family/comma",
+      "session": "Comma_Scalar_Reference"
+    },
+    "proofs/isabelle/comma_schur_carry": {
+      "new_root_file": "proofs/isabelle/families/comma/ROOT",
+      "new_session_path": "proofs/isabelle/families/comma/comma_schur_carry",
+      "owner": "family/comma",
+      "session": "Comma_Schur_Carry"
+    },
+    "proofs/isabelle/comma_sector_mask_audit": {
+      "new_root_file": "proofs/isabelle/families/comma/ROOT",
+      "new_session_path": "proofs/isabelle/families/comma/comma_sector_mask_audit",
+      "owner": "family/comma",
+      "session": "Comma_Sector_Mask_Audit"
+    },
+    "proofs/isabelle/comma_sector_mask_instance": {
+      "new_root_file": "proofs/isabelle/families/comma/ROOT",
+      "new_session_path": "proofs/isabelle/families/comma/comma_sector_mask_instance",
+      "owner": "family/comma",
+      "session": "Comma_Sector_Mask_Instance"
+    },
+    "proofs/isabelle/comma_selected_return_blocks": {
+      "new_root_file": "proofs/isabelle/families/comma/ROOT",
+      "new_session_path": "proofs/isabelle/families/comma/comma_selected_return_blocks",
+      "owner": "family/comma",
+      "session": "Comma_Selected_Return_Blocks"
+    },
+    "proofs/isabelle/comma_semantic_b1": {
+      "new_root_file": "proofs/isabelle/families/comma/ROOT",
+      "new_session_path": "proofs/isabelle/families/comma/comma_semantic_b1",
+      "owner": "family/comma",
+      "session": "Comma_Semantic_B1"
+    },
+    "proofs/isabelle/comma_semantic_b1_instance": {
+      "new_root_file": "proofs/isabelle/families/comma/ROOT",
+      "new_session_path": "proofs/isabelle/families/comma/comma_semantic_b1_instance",
+      "owner": "family/comma",
+      "session": "Comma_Semantic_B1_Instance"
+    },
+    "proofs/isabelle/comma_semantic_future": {
+      "new_root_file": "proofs/isabelle/families/comma/ROOT",
+      "new_session_path": "proofs/isabelle/families/comma/comma_semantic_future",
+      "owner": "family/comma",
+      "session": "Comma_Semantic_Future"
+    },
+    "proofs/isabelle/comma_semantic_future_instance": {
+      "new_root_file": "proofs/isabelle/families/comma/ROOT",
+      "new_session_path": "proofs/isabelle/families/comma/comma_semantic_future_instance",
+      "owner": "family/comma",
+      "session": "Comma_Semantic_Future_Instance"
+    },
+    "proofs/isabelle/comma_semantic_graph_instance": {
+      "new_root_file": "proofs/isabelle/families/comma/ROOT",
+      "new_session_path": "proofs/isabelle/families/comma/comma_semantic_graph_instance",
+      "owner": "family/comma",
+      "session": "Comma_Semantic_Graph_Instance"
+    },
+    "proofs/isabelle/comma_short_phase": {
+      "new_root_file": "proofs/isabelle/families/comma/ROOT",
+      "new_session_path": "proofs/isabelle/families/comma/comma_short_phase",
+      "owner": "family/comma",
+      "session": "Comma_Short_Phase"
+    },
+    "proofs/isabelle/comma_sparse_audit": {
+      "new_root_file": "proofs/isabelle/families/comma/ROOT",
+      "new_session_path": "proofs/isabelle/families/comma/comma_sparse_audit",
+      "owner": "family/comma",
+      "session": "Comma_Sparse_Audit"
+    },
+    "proofs/isabelle/comma_sparse_instance": {
+      "new_root_file": "proofs/isabelle/families/comma/ROOT",
+      "new_session_path": "proofs/isabelle/families/comma/comma_sparse_instance",
+      "owner": "family/comma",
+      "session": "Comma_Sparse_Base_Instance"
+    },
+    "proofs/isabelle/comma_sparse_power": {
+      "new_root_file": "proofs/isabelle/families/comma/ROOT",
+      "new_session_path": "proofs/isabelle/families/comma/comma_sparse_power",
+      "owner": "family/comma",
+      "session": "Comma_Sparse_Power_Instance"
+    },
+    "proofs/isabelle/comma_sparse_power_algebra": {
+      "new_root_file": "proofs/isabelle/families/comma/ROOT",
+      "new_session_path": "proofs/isabelle/families/comma/comma_sparse_power_algebra",
+      "owner": "family/comma",
+      "session": "Comma_Sparse_Power_Algebra"
+    },
+    "proofs/isabelle/comma_summary_semantic": {
+      "new_root_file": "proofs/isabelle/families/comma/ROOT",
+      "new_session_path": "proofs/isabelle/families/comma/comma_summary_semantic",
+      "owner": "family/comma",
+      "session": "Comma_Decade_Summary_Semantic"
+    },
+    "proofs/isabelle/comma_summary_transport": {
+      "new_root_file": "proofs/isabelle/families/comma/ROOT",
+      "new_session_path": "proofs/isabelle/families/comma/comma_summary_transport",
+      "owner": "family/comma",
+      "session": "Comma_Decade_Summary_Transport"
+    },
+    "proofs/isabelle/comma_terminal_event": {
+      "new_root_file": "proofs/isabelle/families/comma/ROOT",
+      "new_session_path": "proofs/isabelle/families/comma/comma_terminal_event",
+      "owner": "family/comma",
+      "session": "Comma_Terminal_Event"
+    },
+    "proofs/isabelle/comma_terminal_weight": {
+      "new_root_file": "proofs/isabelle/families/comma/ROOT",
+      "new_session_path": "proofs/isabelle/families/comma/comma_terminal_weight",
+      "owner": "family/comma",
+      "session": "Comma_Terminal_Weight"
+    },
+    "proofs/isabelle/comma_total_macro": {
+      "new_root_file": "proofs/isabelle/families/comma/ROOT",
+      "new_session_path": "proofs/isabelle/families/comma/comma_total_macro",
+      "owner": "family/comma",
+      "session": "Comma_Total_Macro"
+    },
+    "proofs/isabelle/comma_totality": {
+      "new_root_file": "proofs/isabelle/families/comma/ROOT",
+      "new_session_path": "proofs/isabelle/families/comma/comma_totality",
+      "owner": "family/comma",
+      "session": "Comma_Quotient_Totality"
+    },
+    "proofs/isabelle/comma_unique": {
+      "new_root_file": "proofs/isabelle/families/comma/ROOT",
+      "new_session_path": "proofs/isabelle/families/comma/comma_unique",
+      "owner": "family/comma",
+      "session": "Comma_Source_Uniqueness"
+    },
+    "proofs/isabelle/comma_vieta_root": {
+      "new_root_file": "proofs/isabelle/families/comma/ROOT",
+      "new_session_path": "proofs/isabelle/families/comma/comma_vieta_root",
+      "owner": "family/comma",
+      "session": "Comma_Vieta_Root"
+    },
+    "proofs/isabelle/comma_weighted_germ": {
+      "new_root_file": "proofs/isabelle/families/comma/ROOT",
+      "new_session_path": "proofs/isabelle/families/comma/comma_weighted_germ",
+      "owner": "family/comma",
+      "session": "Comma_Weighted_Run_Germ"
+    },
+    "proofs/isabelle/comma_weighted_round": {
+      "new_root_file": "proofs/isabelle/families/comma/ROOT",
+      "new_session_path": "proofs/isabelle/families/comma/comma_weighted_round",
+      "owner": "family/comma",
+      "session": "Comma_Weighted_Round"
+    },
+    "proofs/isabelle/etale": {
+      "new_root_file": "proofs/isabelle/integration/etale/ROOT",
+      "new_session_path": "proofs/isabelle/integration/etale/etale",
+      "owner": "integration/etale",
+      "session": "Etale_Primary_Carry"
+    },
+    "proofs/isabelle/integration": {
+      "new_root_file": "proofs/isabelle/integration/associated_actions/ROOT",
+      "new_session_path": "proofs/isabelle/integration/associated_actions/integration",
+      "owner": "integration/associated_actions",
+      "session": "Associated_Action_Core"
+    },
+    "proofs/isabelle/integration_cache": {
+      "new_root_file": "proofs/isabelle/integration/source_cache/ROOT",
+      "new_session_path": "proofs/isabelle/integration/source_cache/integration_cache",
+      "owner": "integration/source_cache",
+      "session": "Source_Cache_Integration"
+    },
+    "proofs/isabelle/integration_decimal": {
+      "new_root_file": "proofs/isabelle/integration/decimal_reverse_add/ROOT",
+      "new_session_path": "proofs/isabelle/integration/decimal_reverse_add/integration_decimal",
+      "owner": "integration/decimal_reverse_add",
+      "session": "Decimal_196_Integration"
+    },
+    "proofs/isabelle/integration_dyadic": {
+      "new_root_file": "proofs/isabelle/integration/dyadic/ROOT",
+      "new_session_path": "proofs/isabelle/integration/dyadic/integration_dyadic",
+      "owner": "integration/dyadic",
+      "session": "Balanced_Dyadic_Integration"
+    },
+    "proofs/isabelle/integration_mahler": {
+      "new_root_file": "proofs/isabelle/integration/antihydra_mahler/ROOT",
+      "new_session_path": "proofs/isabelle/integration/antihydra_mahler/integration_mahler",
+      "owner": "integration/antihydra_mahler",
+      "session": "Antihydra_Mahler_Integration"
+    },
+    "proofs/isabelle/integration_prime": {
+      "new_root_file": "proofs/isabelle/families/prime/ROOT",
+      "new_session_path": "proofs/isabelle/families/prime/integration_prime",
+      "owner": "family/prime",
+      "session": "Prime_Deterministic_Refinement"
+    },
+    "proofs/isabelle/integration_prime_selection": {
+      "new_root_file": "proofs/isabelle/families/prime/ROOT",
+      "new_session_path": "proofs/isabelle/families/prime/integration_prime_selection",
+      "owner": "family/prime",
+      "session": "Prime_Selection_Initialization"
+    },
+    "proofs/isabelle/mahler_safety": {
+      "new_root_file": "proofs/isabelle/integration/antihydra_mahler/ROOT",
+      "new_session_path": "proofs/isabelle/integration/antihydra_mahler/mahler_safety",
+      "owner": "integration/antihydra_mahler",
+      "session": "Mahler_Safety_Cylinders"
+    },
+    "proofs/isabelle/mahler_transport": {
+      "new_root_file": "proofs/isabelle/integration/antihydra_mahler/ROOT",
+      "new_session_path": "proofs/isabelle/integration/antihydra_mahler/mahler_transport",
+      "owner": "integration/antihydra_mahler",
+      "session": "Mahler_Source_Transport"
+    },
+    "proofs/isabelle/prefix_effect": {
+      "new_root_file": "proofs/isabelle/shared/ROOT",
+      "new_session_path": "proofs/isabelle/shared/prefix_effect/core",
+      "owner": "shared",
+      "session": "Prefix_Effect_Core"
+    },
+    "proofs/isabelle/prime_wheel": {
+      "new_root_file": "proofs/isabelle/families/prime/ROOT",
+      "new_session_path": "proofs/isabelle/families/prime/prime_wheel",
+      "owner": "family/prime",
+      "session": "Prime_Wheel_Bridge"
+    },
+    "proofs/isabelle/reverse_growth": {
+      "new_root_file": "proofs/isabelle/families/reverse_add/ROOT",
+      "new_session_path": "proofs/isabelle/families/reverse_add/reverse_growth",
+      "owner": "family/reverse_add",
+      "session": "Reverse_Growth_Admission"
+    },
+    "proofs/isabelle/reverse_length": {
+      "new_root_file": "proofs/isabelle/families/reverse_add/ROOT",
+      "new_session_path": "proofs/isabelle/families/reverse_add/reverse_length",
+      "owner": "family/reverse_add",
+      "session": "Reverse_Cylinder_Length_Refinement"
+    },
+    "proofs/isabelle/reverse_terminal": {
+      "new_root_file": "proofs/isabelle/families/reverse_add/ROOT",
+      "new_session_path": "proofs/isabelle/families/reverse_add/reverse_terminal",
+      "owner": "family/reverse_add",
+      "session": "Reverse_Digit_Terminal"
+    },
+    "proofs/isabelle/shared": {
+      "new_root_file": "proofs/isabelle/shared/ROOT",
+      "new_session_path": "proofs/isabelle/shared/arithmetic/s_arithmetic",
+      "owner": "shared",
+      "session": "Shared_S_Arithmetic"
+    },
+    "proofs/isabelle/shared_growth": {
+      "new_root_file": "proofs/isabelle/shared/ROOT",
+      "new_session_path": "proofs/isabelle/shared/arithmetic/growth",
+      "owner": "shared",
+      "session": "Shared_Growth_Arithmetic"
+    },
+    "proofs/isabelle/temporal_clocks": {
+      "new_root_file": "proofs/isabelle/integration/temporal_cylinders/ROOT",
+      "new_session_path": "proofs/isabelle/integration/temporal_cylinders/temporal_clocks",
+      "owner": "integration/temporal_cylinders",
+      "session": "Temporal_Clock_Jumps"
+    },
+    "proofs/isabelle/temporal_collatz": {
+      "new_root_file": "proofs/isabelle/families/collatz/ROOT",
+      "new_session_path": "proofs/isabelle/families/collatz/temporal_collatz",
+      "owner": "family/collatz",
+      "session": "Collatz_Cylinder_Refinement"
+    },
+    "proofs/isabelle/temporal_forcing": {
+      "new_root_file": "proofs/isabelle/integration/temporal_cylinders/ROOT",
+      "new_session_path": "proofs/isabelle/integration/temporal_cylinders/temporal_forcing",
+      "owner": "integration/temporal_cylinders",
+      "session": "Cylinder_Forcing_Automata"
+    },
+    "proofs/isabelle/temporal_radial": {
+      "new_root_file": "proofs/isabelle/shared/ROOT",
+      "new_session_path": "proofs/isabelle/shared/cylinder_algebra/radial",
+      "owner": "shared",
+      "session": "Cylinder_Radial_Algebra"
+    }
+  },
+  "comma_ml_concurrency_review": {
+    "resources": [
+      {
+        "mutable_state": "Unsynchronized refs are allocated inside conversion/constructor calls and captured by invocation-local closures; no module-global mutable table or counter.",
+        "path": "proofs/isabelle/families/comma/comma_entry_arithmetic/selected_list_conversion.ML",
+        "review": "No synchronization change needed while each family conversion instance remains invocation-owned."
+      },
+      {
+        "mutable_state": "No mutable ML references; optional profile output appends one diagnostic line.",
+        "path": "proofs/isabelle/families/comma/comma_entry_arithmetic/proof_profile.ML",
+        "review": "Comma diagnostic-only; runner serializes sessions. The log destination is external to shared runtime state."
+      },
+      {
+        "mutable_state": "No mutable ML references; functions use invocation-local traversal state.",
+        "path": "proofs/isabelle/families/comma/comma_entry_arithmetic/Proof_Dependency_Audit.ML",
+        "review": "Family proof audit has no shared cache or counter."
+      }
+    ],
+    "session_threads": 4
+  },
+  "source_commit": "d6fc72685aab9ed5c63701d46fcff7b2fbfa967d"
+}

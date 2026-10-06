@@ -24,10 +24,10 @@ from number_compiler.arithmetic.contracts.block_effect import (
     BlockContextBudget,
     BoundarySide,
 )
-from number_compiler.arithmetic.contracts.physical_collatz_kernel import (
+from number_compiler.sequences.collatz.physical_kernel import (
     PhysicalCollatzFourBlockEffect,
 )
-from number_compiler.arithmetic.contracts.physical_collatz_pair_certificate import (
+from number_compiler.sequences.collatz.physical_pair_certificate import (
     ARTIFACT_PATH,
     C4PairLeftCertificate,
     ReachableLeftState,
@@ -175,7 +175,7 @@ def test_archive_rejects_malformed_trailing_or_oversized(
 def test_production_loader_never_trusts_self_signed_alternative(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    import number_compiler.arithmetic.contracts.physical_collatz_pair_certificate as domain
+    import number_compiler.sequences.collatz.physical_pair_certificate as domain
 
     load_verified_c4_pair_left()  # A previous successful call must not bypass verification.
     path = tmp_path / "modified.zlib"

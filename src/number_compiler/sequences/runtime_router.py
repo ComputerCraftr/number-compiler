@@ -12,6 +12,7 @@ from number_compiler.arithmetic.contracts.temporal_family import (
 from number_compiler.hashlife.actions.lazy_compiler import LazyCompiler
 from number_compiler.hashlife.execution.bounded_application import (
     BoundedTemporalApplication,
+    validate_certified_application_inputs,
 )
 from number_compiler.projection.microblock_cache import MicroblockCache
 from number_compiler.resources.ledger import ResourceLedger
@@ -29,32 +30,63 @@ def build_certified_field_application(
     microblocks: MicroblockCache,
 ) -> BoundedTemporalApplication:
     """Return a verified family application or fail before generic execution."""
-    certificate.validate(effect)
-    if (
-        type(source_geometry) is not SourceGeometry
-        or type(microblocks) is not MicroblockCache
-    ):
-        raise TypeError("certified family execution requires exact owned resources")
-    if (
-        compiler.ledger is not ledger
-        or source_geometry.ledger is not ledger
-        or microblocks.ledger is not ledger
-    ):
-        raise ValueError("certified family execution requires one index ledger")
-    # Admission must be complete before the rejection counter changes.  In
-    # particular, a caller cannot attach a valid certificate to an equivalent
-    # but foreign compiler node and use this fail-closed seam as a late probe.
+    validate_certified_application_inputs(
+        effect,
+        source,
+        logical_length=logical_length,
+        certificate=certificate,
+        ledger=ledger,
+        compiler=compiler,
+        source_geometry=source_geometry,
+        microblocks=microblocks,
+    )
+    family_hooks = compiler.family_hooks
+    pair_transfer_factory = None
+    if certificate.family == "collatz":
+        from number_compiler.sequences.collatz.tile_family_hooks import (
+            collatz_tile_hooks_for_effect,
+        )
+
+        canonical_hooks = collatz_tile_hooks_for_effect(effect)
+        if canonical_hooks is None:
+            raise ValueError("certified Collatz execution received another effect")
+        if family_hooks is not None and family_hooks is not canonical_hooks:
+            raise ValueError("certified Collatz compiler has another family adapter")
+        family_hooks = canonical_hooks
+        if family_hooks.owns_compatibility(effect):
+            effect = family_hooks.lower_compatibility(effect, compiler)
+        else:
+            from number_compiler.arithmetic.contracts.kernel_admission import (
+                admit_effect,
+            )
+
+            # Pure admission precedes binding so an unsupported certificate
+            # cannot leave family state attached to a reusable compiler.
+            admit_effect(effect, family_hooks=family_hooks)
+            if compiler.family_hooks is None:
+                compiler.bind_family_hooks(family_hooks)
+    else:
+        if family_hooks is not None:
+            raise ValueError("reverse/add compiler has another family adapter")
+        from number_compiler.sequences.reverse_add.tile_pair_transfer import (
+            ReverseAddFinitePairTransferFactory,
+        )
+
+        pair_transfer_factory = ReverseAddFinitePairTransferFactory()
+    # Admission must be complete before the rejection counter changes. In
+    # particular, an equivalent but foreign compiler node cannot use this
+    # fail-closed seam as a late probe.
     compiler.reference(effect)
-    if type(logical_length) is not int or logical_length < len(source):
-        raise ValueError("certified family execution requires its exact source extent")
-    source_geometry.require_source(source, effect.blank)
-    if certificate.family not in ("reverse-add", "collatz"):
-        raise ValueError("unknown certified temporal family")
     from number_compiler.hashlife.observation.tile_projection import (
         build_tile_projection,
     )
 
-    return build_tile_projection(effect, source_geometry)
+    return build_tile_projection(
+        effect,
+        source_geometry,
+        family_hooks=family_hooks,
+        pair_transfer_factory=pair_transfer_factory,
+    )
 
 
 __all__ = ["build_certified_field_application"]

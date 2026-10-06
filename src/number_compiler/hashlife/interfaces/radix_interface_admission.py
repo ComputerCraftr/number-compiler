@@ -118,9 +118,11 @@ def validate_radix_components(
     radix = first.radix
     expected = SymbolicBinaryDivisionEffect(radix).canonical_key()
     behavior = interface.kernel.behavior
-    from number_compiler.hashlife.execution.tile_kernel import _CONTRACT
+    from number_compiler.hashlife.execution.tile_kernel_contract import (
+        TILE_KERNEL_CONTRACT,
+    )
 
-    if behavior != (_CONTRACT, expected):
+    if behavior != (TILE_KERNEL_CONTRACT, expected):
         raise ValueError(
             "numeric division functions require their exact kernel certificate"
         )

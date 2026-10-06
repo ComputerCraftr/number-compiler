@@ -108,7 +108,7 @@ from io import StringIO
 from importlib.util import find_spec
 from importlib.resources import files
 import number_compiler as api
-from number_compiler.arithmetic.contracts.physical_collatz_kernel import PhysicalCollatzFourBlockEffect
+from number_compiler.sequences.collatz.physical_kernel import PhysicalCollatzFourBlockEffect
 assert all(hasattr(api, name) for name in api.__all__)
 assert not hasattr(api, 'ComposedBlockEffect')
 assert api.ReverseAddPoweredTerm(196, 0).digit(0) == 6
@@ -327,10 +327,14 @@ print(json.dumps({'public_exports': len(api.__all__), 'kernel_left_states': kern
             ],
             cwd=work,
             env=environment,
-            check=True,
+            check=False,
             capture_output=True,
             text=True,
         )
+        if smoke.returncode:
+            print(smoke.stdout, end="")
+            print(smoke.stderr, end="", file=sys.stderr)
+            smoke.check_returncode()
         cli = subprocess.run(
             [
                 str(python),

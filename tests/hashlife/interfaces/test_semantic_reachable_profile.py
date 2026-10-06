@@ -7,9 +7,6 @@ from typing import TYPE_CHECKING, Never
 
 import pytest
 
-from number_compiler.arithmetic.contracts.physical_collatz_kernel import (
-    PhysicalCollatzFourBlockEffect,
-)
 from number_compiler.arithmetic.functions.finite_function_types import (
     AtomSort,
     FunctionSignature,
@@ -23,6 +20,9 @@ from number_compiler.hashlife.interfaces.semantic_reachable_profile import (
     SemanticProfileArena,
 )
 from number_compiler.hashlife.interfaces.semantic_structures import StructureArena
+from number_compiler.sequences.collatz.physical_kernel import (
+    PhysicalCollatzFourBlockEffect,
+)
 from tests.support.assertions import assert_rejected_atomically
 from tests.support.diamond_query import build
 
@@ -47,7 +47,7 @@ def setup() -> tuple[
     runtime.kernel(primitive)
     pair = runtime.actions.compose(primitive, primitive)
     arena = SemanticProfileArena(runtime)
-    profile = arena.c4_pair_left(pair)
+    profile = arena.source_initial_profile(pair)
     structures = StructureArena(
         BitFunctionArena(runtime.ledger, runtime.semantic_functions)
     )
@@ -100,7 +100,7 @@ def test_foreign_profiles_codecs_and_wrong_domain_reject_before_warm_mutation() 
     runtime, arena, profile, structures, codec = setup()
     arena.component(codec, 0, structures)
     other = SemanticProfileArena(runtime)
-    other_profile = other.c4_pair_left(codec.request.action)
+    other_profile = other.source_initial_profile(codec.request.action)
     before = runtime.ledger.snapshot()
     with pytest.raises(ValueError):
         arena.resolve(other_profile)
@@ -194,7 +194,7 @@ def test_decoder_late_node_budget_failure_is_atomic() -> None:
 def test_profile_loader_failure_releases_reservations(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    import number_compiler.arithmetic.contracts.physical_collatz_pair_certificate as domain
+    import number_compiler.sequences.collatz.physical_pair_certificate as certificate
 
     app = build(PhysicalCollatzFourBlockEffect(), (0,), 8, 1)
     pair = app.runtime.actions.compose(app.root, app.root)
@@ -203,13 +203,12 @@ def test_profile_loader_failure_releases_reservations(
     def broken() -> Never:
         raise ValueError("bad artifact")
 
-    # The proof loader is deliberately imported at the admission boundary so
-    # production modules do not retain the proof certificate. Patch the
-    # forwarding proof facade that the boundary resolves.
-    monkeypatch.setattr(domain, "load_verified_c4_pair_left", broken)
+    # The family hook resolves this import lazily when admitting the source
+    # profile, so patch the module that provides the proof-loader function.
+    monkeypatch.setattr(certificate, "load_verified_c4_pair_left", broken)
     before = app.runtime.ledger.snapshot()
     with pytest.raises(ValueError, match="bad artifact"):
-        arena.c4_pair_left(pair)
+        arena.source_initial_profile(pair)
     after = app.runtime.ledger.snapshot()
     assert (after.entries, after.nodes, after.inventory) == (
         before.entries,

@@ -181,8 +181,8 @@ _SESSION = re.compile(
     r'\s+("[^"]+"|[^\s+]+)\s*\+'
 )
 _ROOT_OPTIONS = re.compile(r"\boptions\s*\[")
-_DEPENDENCIES = re.compile(r"(?m)^\s{2}sessions\s+(.+)$")
-_THEORIES = re.compile(r"(?ms)^\s{2}theories\s*\n(.*?)(?=^\s{2}\w|\Z)")
+_DEPENDENCIES = re.compile(r"(?ms)^[ \t]{2}sessions\s+(.*?)(?=^[ \t]{2}\w|\Z)")
+_THEORIES = re.compile(r"(?ms)^[ \t]{2}theories\s+(.*?)(?=^[ \t]{2}\w|\Z)")
 _THEORY = re.compile(r"(?m)^\s*theory\s+([A-Za-z][A-Za-z0-9_]*)\s+imports\s+")
 _TOKEN = re.compile(r'"(?:\\.|[^"\\])*"|[A-Za-z0-9_./-]+')
 
@@ -261,6 +261,19 @@ def unquoted_numeric_case_facts(text: str) -> tuple[int, ...]:
     )
 
 
+def named_type_and_locale_declarations(text: str) -> frozenset[str]:
+    """Read simple authored carrier declarations for relocation inventories."""
+    pattern = re.compile(
+        r"(?m)^[ \t]*(?:datatype|type_synonym|record|locale)\s+"
+        r"(?:(?:'[A-Za-z_][\w']*|\([^)]*\))\s+)?"
+        r"(?P<name>[A-Za-z_][\w']*)\s*="
+    )
+    return frozenset(
+        match.group("name")
+        for match in unquoted_matches(pattern, navigation_text(text))
+    )
+
+
 def _theory_entries(block: str, session: str) -> tuple[str, ...]:
     """Keep every ROOT theory entry, or reject syntax we cannot interpret."""
     entries: list[str] = []
@@ -305,7 +318,14 @@ def parse_sessions(text: str) -> tuple[Session, ...]:
             if theory_match
             else ()
         )
-        directory = Path(match.group(2).strip('"') if match.group(2) else ".")
+        raw_directory = match.group(2)
+        if (
+            raw_directory
+            and not raw_directory.startswith('"')
+            and re.fullmatch(r"[A-Za-z0-9_]+", raw_directory) is None
+        ):
+            raise ValueError(f"{match.group(1)}: ROOT session path requires quotes")
+        directory = Path(raw_directory.strip('"') if raw_directory else ".")
         if directory.is_absolute() or ".." in directory.parts:
             raise ValueError(f"{match.group(1)}: session directory escapes theory root")
         sessions.append(
@@ -313,10 +333,18 @@ def parse_sessions(text: str) -> tuple[Session, ...]:
                 match.group(1),
                 directory,
                 match.group(3).strip('"'),
-                tuple(dependency_match.group(1).split()) if dependency_match else (),
+                _theory_entries(dependency_match.group(1), match.group(1))
+                if dependency_match
+                else (),
                 theories,
             )
         )
+    validate_sessions(tuple(sessions))
+    return tuple(sessions)
+
+
+def validate_sessions(sessions: tuple[Session, ...]) -> None:
+    """Check uniqueness and ancestry across all registered ROOT files."""
     if len({session.name for session in sessions}) != len(sessions):
         raise ValueError("duplicate Isabelle session declaration")
     if len({session.directory for session in sessions}) != len(sessions):
@@ -343,7 +371,6 @@ def parse_sessions(text: str) -> tuple[Session, ...]:
                     (dependency, False)
                     for dependency in (session.parent, *session.dependencies)
                 )
-    return tuple(sessions)
 
 
 def root_option_assignments(text: str) -> tuple[RootOption, ...]:

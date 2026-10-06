@@ -29,6 +29,9 @@ from number_compiler.hashlife.interfaces.diamond_kernel import (
 from number_compiler.projection.digit_terminal import DigitNormalizeBlockEffect
 from number_compiler.resources.ledger import ResourceLedger
 from number_compiler.sequences.collatz.block_power import CollatzPhysicalBlockEffect
+from number_compiler.sequences.collatz.tile_family_hooks import (
+    collatz_tile_hooks_for_effect,
+)
 from tests.support.assertions import assert_rejected_atomically
 
 
@@ -66,6 +69,16 @@ def assignment(
     }
 
 
+def _arena_for(effect: BlockEffect) -> DiamondKernelArena:
+    arena = DiamondKernelArena()
+    hooks = collatz_tile_hooks_for_effect(effect)
+    if hooks is not None and (
+        hooks.owns_effect(effect) or hooks.owns_compatibility(effect)
+    ):
+        arena.bind_family_hooks(hooks)
+    return arena
+
+
 @pytest.mark.parametrize(
     "effect",
     [
@@ -78,7 +91,7 @@ def assignment(
 def test_complete_primitive_scalar_interfaces_preserve_every_declared_state(
     effect: BlockEffect,
 ) -> None:
-    arena = DiamondKernelArena()
+    arena = _arena_for(effect)
     handle = arena.intern(effect)
     assert arena.intern(effect) == handle
     kernel = arena.kernel(handle)
@@ -102,8 +115,9 @@ def test_complete_primitive_scalar_interfaces_preserve_every_declared_state(
 def test_parametric_collatz_functions_are_complete_and_preserve_blank_behavior() -> (
     None
 ):
-    arena = DiamondKernelArena()
-    handle = arena.intern(CollatzPhysicalBlockEffect())
+    effect = CollatzPhysicalBlockEffect()
+    arena = _arena_for(effect)
+    handle = arena.intern(effect)
     kernel = arena.kernel(handle)
     lp, sp, rp = (PortVariable(0, side, "kernel", 0) for side in range(3))
     left = arena.variable(kernel.left_count, lp)
@@ -163,10 +177,11 @@ def test_simultaneous_substitution_preserves_parametric_function_identity() -> N
 
 
 def test_foreign_handles_and_invalid_domains_fail_before_warm_work() -> None:
-    a, b = DiamondKernelArena(), DiamondKernelArena()
+    effect = CollatzPhysicalBlockEffect()
+    a, b = _arena_for(effect), _arena_for(effect)
     ka, kb = (
-        a.intern(CollatzPhysicalBlockEffect()),
-        b.intern(CollatzPhysicalBlockEffect()),
+        a.intern(effect),
+        b.intern(effect),
     )
     state, symbol = a.constant(6, 0), a.constant(3, 0)
     a.advance_expression(ka, BoundarySide.LEFT, state, symbol)
@@ -253,8 +268,9 @@ def test_nonblank_observer_is_complete_for_physical_and_pair_alphabets(
 
 
 def test_absorber_classification_matches_complete_primitive_alphabet() -> None:
-    arena = DiamondKernelArena()
-    kernel = arena.kernel(arena.intern(CollatzPhysicalBlockEffect()))
+    effect = CollatzPhysicalBlockEffect()
+    arena = _arena_for(effect)
+    kernel = arena.kernel(arena.intern(effect))
     for side in BoundarySide:
         for state in range(len(kernel.domain(side))):
             expected = all(
@@ -268,8 +284,9 @@ def test_absorber_classification_matches_complete_primitive_alphabet() -> None:
 
 
 def test_universal_primitive_templates_are_substituted_without_reenumeration() -> None:
-    arena = DiamondKernelArena()
-    kernel = arena.intern(CollatzPhysicalBlockEffect())
+    effect = CollatzPhysicalBlockEffect()
+    arena = _arena_for(effect)
+    kernel = arena.intern(effect)
 
     def variables(
         time: int,

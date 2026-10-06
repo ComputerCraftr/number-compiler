@@ -177,6 +177,11 @@ class CollatzPoweredLocalCodec:
         self.spatial_hits = 0
         self.semantic_alias_hits = 0
         self.mirror_alias_hits = 0
+        from number_compiler.sequences.collatz.payload_audit import (
+            register_collatz_local_codec_contract,
+        )
+
+        register_collatz_local_codec_contract(self)
 
     def _handle(
         self,

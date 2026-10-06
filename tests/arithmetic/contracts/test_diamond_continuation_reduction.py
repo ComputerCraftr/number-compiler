@@ -5,15 +5,15 @@ from typing import Never
 import pytest
 
 from number_compiler.arithmetic.contracts.block_effect import BoundarySide
-from number_compiler.arithmetic.contracts.physical_collatz_kernel import (
-    PhysicalCollatzFourBlockEffect,
-)
 from number_compiler.hashlife.execution.continuations.diamond_expression_eval import (
     LowerFinite,
 )
 from number_compiler.hashlife.execution.diamond_continuation_reduction import (
     CompilePrimitiveFunction,
     NormalizePrimitiveLambda,
+)
+from number_compiler.sequences.collatz.physical_kernel import (
+    PhysicalCollatzFourBlockEffect,
 )
 from tests.support.assertions import assert_rejected_atomically
 from tests.support.diamond_continuation_reduction import (

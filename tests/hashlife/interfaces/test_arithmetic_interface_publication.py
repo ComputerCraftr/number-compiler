@@ -25,6 +25,7 @@ from number_compiler.resources.stores import (
     _TrackedDict,
 )
 from number_compiler.sequences.collatz.block_power import CollatzPhysicalBlockEffect
+from number_compiler.sequences.collatz.tile_family_hooks import collatz_tile_hooks
 from tests.support.diamond_quotient import division_interface
 
 
@@ -72,7 +73,9 @@ def test_arithmetic_interface_store_failure_rolls_back_publication(
     ledger = ResourceLedger()
     source = ExactSource((1,), 2, blank=2, extent=1, alphabet_size=2)
     with build_tile_projection(
-        CollatzPhysicalBlockEffect(), SourceGeometry(ledger, source)
+        CollatzPhysicalBlockEffect(),
+        SourceGeometry(ledger, source),
+        family_hooks=collatz_tile_hooks(),
     ) as projection:
         _unused_adapter_binding, _unused_action_binding, interface_id, arena = (
             division_interface(projection)
@@ -128,7 +131,9 @@ def test_arithmetic_interface_reservation_failure_cancels_before_publication(
     ledger = ResourceLedger()
     source = ExactSource((1,), 2, blank=2, extent=1, alphabet_size=2)
     with build_tile_projection(
-        CollatzPhysicalBlockEffect(), SourceGeometry(ledger, source)
+        CollatzPhysicalBlockEffect(),
+        SourceGeometry(ledger, source),
+        family_hooks=collatz_tile_hooks(),
     ) as projection:
         _unused_adapter_binding, _unused_action_binding, interface_id, arena = (
             division_interface(projection)

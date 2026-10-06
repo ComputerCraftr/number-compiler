@@ -9,7 +9,8 @@ from number_compiler.resources.higher_readonly import (
     audit_identity_index,
     audit_schema_call,
 )
-from number_compiler.resources.ledger import ResourceInventory, ResourceLedger
+from number_compiler.resources.ledger import ResourceLedger
+from number_compiler.resources.payload_contracts import PayloadAuditContractAudit
 
 
 @dataclass(frozen=True, slots=True)
@@ -18,24 +19,26 @@ class HigherPayloadAudit:
     invalid: frozenset[tuple[int, int]]
 
 
-def audit_higher_payloads(ledger: ResourceLedger) -> HigherPayloadAudit:
+def audit_higher_payloads(
+    ledger: ResourceLedger,
+    contracts: PayloadAuditContractAudit | None = None,
+) -> HigherPayloadAudit:
     """Validate issued higher DAG records through their owning arenas."""
+    if contracts is None or not contracts.is_current_for(ledger):
+        contracts = ledger.audit_payload_contracts()
+    approved: set[int] = {value for _, value in contracts.approved}
+    invalid: set[tuple[int, int]] = set(contracts.invalid)
     legacy_prefixes = (
         "number_compiler.hashlife.execution.continuations.",
         "number_compiler.hashlife.execution.recursive_outputs",
-        "number_compiler.sequences.reverse_add.higher_interface",
     )
     if not any(
         type(root).__module__.startswith(legacy_prefixes)
         for root in ledger.iter_execution_roots()
     ):
-        return HigherPayloadAudit(frozenset(), frozenset())
+        return HigherPayloadAudit(frozenset(approved), frozenset(invalid))
 
     from number_compiler.hashlife.actions.diamond_actions import PortSignatureID
-    from number_compiler.hashlife.actions.field_actions import (
-        CoordinateOutputMorphismID,
-        FieldCellActionID,
-    )
     from number_compiler.hashlife.execution.continuations.higher_bimachine import (
         HigherBimachineRuntime,
         _Emit,
@@ -48,7 +51,6 @@ def audit_higher_payloads(ledger: ResourceLedger) -> HigherPayloadAudit:
         HigherLocalInterfaceArena,
         HigherMacroComponents,
         HigherMacroInterface,
-        HigherPort,
     )
     from number_compiler.hashlife.execution.continuations.higher_macro_composer import (
         HigherSpatialMacroComposer,
@@ -70,7 +72,6 @@ def audit_higher_payloads(ledger: ResourceLedger) -> HigherPayloadAudit:
     from number_compiler.hashlife.execution.continuations.higher_types import (
         FieldStateSort,
         HigherExpression,
-        HigherExpressionID,
         HigherFunction,
     )
     from number_compiler.hashlife.execution.continuations.higher_values import (
@@ -101,25 +102,8 @@ def audit_higher_payloads(ledger: ResourceLedger) -> HigherPayloadAudit:
     from number_compiler.resources.higher_value_record_audit import (
         valid_runtime_value_record,
     )
-    from number_compiler.sequences.collatz.range_runtime import (
-        CollatzRadix4Range,
-        CollatzRadix4RangeArena,
-        CollatzRadix4RangeID,
-    )
-    from number_compiler.sequences.reverse_add.field_action import (
-        ReverseFieldActionArena,
-    )
-    from number_compiler.sequences.reverse_add.higher_interface import (
-        ReverseHigherInterfaceCompilation,
-        ReverseHigherInterfaceCompiler,
-    )
-    from number_compiler.sequences.reverse_add.higher_schema import (
-        ReverseHigherActionSchema,
-    )
 
     containers = dict(ledger.iter_containers())
-    approved: set[int] = set()
-    invalid: set[tuple[int, int]] = set()
 
     def store(owner: int, value: object) -> bool:
         return containers.get(owner) is value
@@ -343,131 +327,6 @@ def audit_higher_payloads(ledger: ResourceLedger) -> HigherPayloadAudit:
                         id(root._higher_keys),
                     )
                 )
-        elif type(root) is ReverseHigherInterfaceCompiler:
-            inventory = {item.owner: item for item in ledger.inventory()}
-            cache_inventory = inventory.get(root._cache_owner)
-            cache_valid = (
-                type(cache_inventory) is ResourceInventory
-                and containers.get(root._cache_owner) is root._cache
-                and cache_inventory.role == "query_memo"
-                and cache_inventory.entries == len(root._cache)
-                and cache_inventory.observed_entries == len(root._cache)
-                and cache_inventory.nodes == 0
-                and cache_inventory.observed_nodes in (None, 0)
-                and cache_inventory.payloads_registered
-                and not cache_inventory.disposed
-            )
-            valid_root = (
-                root.ledger is ledger
-                and type(root.actions) is ReverseFieldActionArena
-                and type(root.schema) is ReverseHigherActionSchema
-                and type(root.semantics) is HigherSemanticArena
-                and type(root.runtime) is HigherBimachineRuntime
-                and type(root.interfaces) is HigherLocalInterfaceArena
-                and root.actions.ledger is ledger
-                and root.schema.actions is root.actions
-                and root.semantics.schema is root.schema
-                and root.runtime.semantics is root.semantics
-                and root.interfaces.semantics is root.semantics
-                and cache_valid
-            )
-            compilations_valid = valid_root
-            for action, compilation in root._cache.items():
-                valid = (
-                    valid_root
-                    and type(action) is FieldCellActionID
-                    and type(compilation) is ReverseHigherInterfaceCompilation
-                    and compilation.action == action
-                )
-                try:
-                    root.actions.validate_action(action)
-                    action_record = root.actions.resolve(action)
-                    valid &= compilation.output_morphism == action_record.output
-                    valid &= (
-                        type(compilation.output_morphism) is CoordinateOutputMorphismID
-                    )
-                    compiler_signature = root.interfaces.interface(
-                        compilation.signature
-                    )
-                    compiler_interface_record = root.interfaces.resolve(
-                        compilation.interface
-                    )
-                    valid &= type(compiler_signature) is HigherMacroInterface
-                    valid &= type(compiler_interface_record) is HigherInterfaceRecord
-                    valid &= (
-                        compiler_interface_record.signature == compilation.signature
-                    )
-                    valid &= (
-                        compiler_signature.kernel
-                        == root.actions.semantic_identity(action)
-                    )
-                    valid &= (
-                        compiler_signature.phase_count
-                        == action_record.geometry.phase_count
-                    )
-                    valid &= (
-                        root.interfaces._validate_components(
-                            compilation.signature, compiler_interface_record.components
-                        )
-                        is compiler_signature
-                    )
-                    valid &= (
-                        compiler_interface_record.components.normalization
-                        == compiler_interface_record.components.output
-                    )
-                    expected_ports = (
-                        (compilation.left, "left-boundary"),
-                        (compilation.symbol, "source-symbol"),
-                        (compilation.right, "right-boundary"),
-                    )
-                    valid &= (
-                        type(compiler_signature.inputs) is tuple
-                        and len(compiler_signature.inputs) == 3
-                    )
-                    valid &= all(
-                        type(port) is HigherPort
-                        and type(variable) is HigherExpressionID
-                        and port.variable == variable
-                        and port.role == role
-                        for port, (variable, role) in zip(
-                            compiler_signature.inputs, expected_ports, strict=True
-                        )
-                    )
-                    expected_sorts = (
-                        root.semantics.state_sort(action, 0),
-                        root.semantics.symbol_sort(action),
-                        root.semantics.state_sort(action, 1),
-                    )
-                    for (variable, role), expected_sort in zip(
-                        expected_ports, expected_sorts, strict=True
-                    ):
-                        expression = root.semantics.expression(variable)
-                        valid &= (
-                            expression.kind == "variable"
-                            and expression.role == role
-                            and expression.sort == expected_sort
-                            and not expression.children
-                        )
-                except (TypeError, ValueError, IndexError, KeyError, AttributeError):
-                    valid = False
-                if valid:
-                    approved.update(
-                        (
-                            id(action),
-                            id(compilation),
-                            id(compilation.signature),
-                            id(compilation.interface),
-                            id(compilation.output_morphism),
-                            id(compilation.left),
-                            id(compilation.symbol),
-                            id(compilation.right),
-                        )
-                    )
-                else:
-                    invalid.add((root._cache_owner, id(compilation)))
-                    compilations_valid = False
-            if compilations_valid:
-                approved.add(id(root._cache))
         elif type(root) is RecursiveCoordinateMorphismArena:
             valid_root = (
                 root.ledger is ledger
@@ -552,43 +411,6 @@ def audit_higher_payloads(ledger: ResourceLedger) -> HigherPayloadAudit:
                     records_valid = False
             if records_valid:
                 approved.update((id(root._nodes), id(root._keys)))
-        elif type(root) is CollatzRadix4RangeArena:
-            valid_root = (
-                root.ledger is ledger
-                and store(root._node_owner, root._nodes)
-                and store(root._key_owner, root._keys)
-                and store(root._binding_owner, root._bindings)
-            )
-            records_valid = valid_root
-            for range_index, range_record in enumerate(root._nodes):
-                valid = type(range_record) is CollatzRadix4Range
-                try:
-                    range_record.__post_init__()
-                    valid &= root._keys.get(range_record) == range_index
-                    root.resolve(
-                        CollatzRadix4RangeID(
-                            root.owner,
-                            root._KIND,
-                            range_index,
-                        )
-                    )
-                except (TypeError, ValueError, KeyError, AttributeError):
-                    valid = False
-                if valid:
-                    approved.add(id(range_record))
-                else:
-                    invalid.add((root._node_owner, id(range_record)))
-                    records_valid = False
-            bindings_valid = valid_root
-            for range_source, range_action in root._bindings.items():
-                try:
-                    root.sources.resolve(range_source)
-                    root.resolve(range_action)
-                except (TypeError, ValueError, KeyError, AttributeError):
-                    bindings_valid = False
-                    invalid.add((root._binding_owner, id(range_source)))
-            if records_valid and bindings_valid:
-                approved.update((id(root._nodes), id(root._keys), id(root._bindings)))
         elif type(root) is HigherTemporalProviderEvaluator:
             valid_root = root.ledger is ledger and store(
                 root._binding_owner, root._bindings

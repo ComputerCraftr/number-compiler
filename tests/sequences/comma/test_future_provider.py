@@ -199,6 +199,16 @@ def test_provider_rejects_digest_changes_to_control_children_or_rank(
             )
 
 
+def _assert_rejected_candidate_field(
+    field: str, replacement: object, message: str
+) -> None:
+    record = _candidate_record()
+    record[field] = replacement
+    _charges, charge_work = _work_log()
+    with pytest.raises(ValueError, match=message):
+        future_provider.parse_future_candidate(record, charge_work=charge_work)
+
+
 @pytest.mark.parametrize(
     ("field", "replacement", "message"),
     [
@@ -210,11 +220,7 @@ def test_provider_rejects_digest_changes_to_control_children_or_rank(
 def test_parser_rejects_version_universe_and_rank_type_mismatch(
     field: str, replacement: object, message: str
 ) -> None:
-    record = _candidate_record()
-    record[field] = replacement
-    _charges, charge_work = _work_log()
-    with pytest.raises(ValueError, match=message):
-        future_provider.parse_future_candidate(record, charge_work=charge_work)
+    _assert_rejected_candidate_field(field, replacement, message)
 
 
 @pytest.mark.parametrize(
@@ -261,11 +267,7 @@ def test_parser_rejects_malformed_control_and_ordered_child_rows(
     replacement: object,
     message: str,
 ) -> None:
-    record = _candidate_record()
-    record[field] = replacement
-    _charges, charge_work = _work_log()
-    with pytest.raises(ValueError, match=message):
-        future_provider.parse_future_candidate(record, charge_work=charge_work)
+    _assert_rejected_candidate_field(field, replacement, message)
 
 
 def test_parser_rejects_truncated_noncanonical_and_out_of_range_source_maps() -> None:

@@ -23,8 +23,9 @@ its executable and raw measurement environment have not been recovered.
 The [comparison](research/reverse-add.md#comparison-with-the-current-output-morphism-gates)
 separates those results from current production cutover acceptance.
 
-Original generated measurements remain under [results](../results/). Reviewed
-checkpoint prose is consolidated by ISO week, while ignored logs, profiles and
+Original generated measurements remain in the local, ignored `results/` directory,
+which is not included in clean acceptance checkouts. Reviewed
+checkpoint prose is consolidated by Sunday-start week, while ignored logs, profiles and
 fingerprints retain their original evidence paths. Current validation is
 recorded separately in [release status](release-status.md).
 

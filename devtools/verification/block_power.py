@@ -13,6 +13,7 @@ from number_compiler.arithmetic.contracts.block_effect import (
     BlockContextBudget,
     BlockContextBudgetExceeded,
     BlockEffect,
+    BlockEffectAdmissionAdapter,
     BoundarySide,
 )
 from number_compiler.arithmetic.contracts.block_kernel import (
@@ -31,7 +32,11 @@ if TYPE_CHECKING:
 
 
 def compose_block_effects(
-    first: BlockEffect, second: BlockEffect, *, budget: BlockContextBudget
+    first: BlockEffect,
+    second: BlockEffect,
+    *,
+    budget: BlockContextBudget,
+    family_hooks: BlockEffectAdmissionAdapter | None = None,
 ) -> BlockEffect:
     from number_compiler.arithmetic.automata.guard import record_symbolic_op
 
@@ -40,7 +45,7 @@ def compose_block_effects(
         raise ValueError((first.base, second.base))
     from devtools.verification.block_composed import ComposedBlockEffect
 
-    return ComposedBlockEffect(first, second, budget=budget)
+    return ComposedBlockEffect(first, second, budget=budget, family_hooks=family_hooks)
 
 
 def _operator_depth(root: BlockEffect | None) -> int:

@@ -3,9 +3,6 @@
 from dataclasses import dataclass
 
 from devtools.verification.c4_summary_artifact import c4_fourth_right_summary
-from number_compiler.arithmetic.contracts.physical_collatz_kernel import (
-    PhysicalCollatzFourBlockEffect,
-)
 from number_compiler.arithmetic.contracts.scoped_handles import ActionProgramID
 from number_compiler.hashlife.actions.diamond_actions import CellID
 from number_compiler.hashlife.execution.continuations.diamond_expression_closures import (
@@ -13,6 +10,9 @@ from number_compiler.hashlife.execution.continuations.diamond_expression_closure
 )
 from number_compiler.hashlife.execution.continuations.diamond_runtime import (
     DiamondRuntime,
+)
+from number_compiler.sequences.collatz.physical_kernel import (
+    PhysicalCollatzFourBlockEffect,
 )
 from tests.support.diamond_query import build
 

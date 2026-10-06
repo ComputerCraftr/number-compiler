@@ -14,10 +14,10 @@ from number_compiler.api.sequence_types import (
 )
 from number_compiler.arithmetic.fields.digit_formula import DigitSpec
 from number_compiler.arithmetic.fields.radix import symbol_runs
-from number_compiler.arithmetic.functions.state_reduction import (
+from number_compiler.projection.collatz_orbits.binary import collatz_orbit_formulas
+from number_compiler.sequences.collatz.pair import (
     CollatzValuationState,
 )
-from number_compiler.projection.collatz_orbits.binary import collatz_orbit_formulas
 from number_compiler.sequences.collatz.radix import (
     collatz_orbit_formulas_local_composite_radix,
     collatz_orbit_formulas_ternary,
@@ -74,9 +74,6 @@ def _compile_collatz(
     valuation_state_classes = valuation_state_max_bits = 0
     future_valuation_roots: tuple[CollatzFutureValuationRoot, ...] = ()
     if diagnostics:
-        from number_compiler.arithmetic.fields.adic_morphism import (
-            collatz_slab_padic3,
-        )
         from number_compiler.sequences.collatz.frame import (
             CollatzFutureValuationRoot,
         )
@@ -86,6 +83,7 @@ def _compile_collatz(
         from number_compiler.sequences.collatz.parity import (
             collatz_parity_slab,
             collatz_parity_word_from_valuations,
+            collatz_slab_padic3,
         )
         from number_compiler.sequences.collatz.raw_field import (
             collatz_sentinel_orbit,

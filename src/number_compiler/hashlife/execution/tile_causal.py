@@ -199,8 +199,9 @@ class CausalTileEngine(CausalTileAPI):
         )
 
     def _release_workspace(self) -> None:
-        if self.adapter._reverse_morphism_transfer is not None:
-            self.adapter._reverse_morphism_transfer.clear_bindings()
+        pair_transfer = self.adapter.pair_transfer
+        if pair_transfer is not None:
+            pair_transfer.clear_bindings()
         for result in reversed(self._result_leases):
             result.close()
         self._result_leases.clear()

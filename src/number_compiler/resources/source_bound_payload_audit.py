@@ -3,10 +3,11 @@
 from __future__ import annotations
 
 from collections.abc import Mapping
-from dataclasses import dataclass
+from dataclasses import dataclass, field, fields, is_dataclass
 
 from number_compiler.hashlife.execution.source_bound_images import (
     _IMAGE_RECORD_SEAL,
+    SourceBoundImageBindingAuditor,
     SourceBoundSchedulerCore,
     SourceImageID,
     _ApplyKey,
@@ -14,6 +15,7 @@ from number_compiler.hashlife.execution.source_bound_images import (
     _ProjectionRecord,
     _RelativeApplication,
     _RelativeKey,
+    source_bound_adapter_shape,
 )
 from number_compiler.hashlife.execution.source_image_seals import (
     _typed_equal,
@@ -39,10 +41,15 @@ def _resolve_readonly(core: SourceBoundSchedulerCore, image: object) -> _ImageRe
                 record.payload,
                 record.failure_prefix,
                 record.publication_provenance,
+                id(record.adapter),
+                record.binding_audit_required,
             ),
             record.publication_snapshot,
         )
-        or core._adapters.get(record.adapter_key) is None
+        or core._adapters.get(record.adapter_key) is not record.adapter
+        or not source_bound_adapter_shape(record.adapter, core.ledger)
+        or record.binding_audit_required
+        is not callable(getattr(record.adapter, "audit_image_binding", None))
         or (record.binding.family, record.binding.semantic_version)
         != record.adapter_key
     ):
@@ -64,12 +71,40 @@ def _provenance(
     return provenance
 
 
+def _sealed_port_members(ports: tuple[object, ...]) -> dict[int, object]:
+    """Index only immutable tuple/frozen-record members of published ports."""
+    members: dict[int, object] = {}
+    pending = list(ports)
+    while pending:
+        value = pending.pop()
+        identity = id(value)
+        if identity in members:
+            continue
+        members[identity] = value
+        if type(value) is tuple:
+            pending.extend(value)
+        elif is_dataclass(value):
+            params: object | None = getattr(type(value), "__dataclass_params__", None)
+            if params is None or not getattr(params, "frozen", False):
+                raise TypeError("published boundary port contains a mutable record")
+            pending.extend(getattr(value, item.name) for item in fields(value))
+    return members
+
+
 @dataclass(frozen=True, slots=True)
 class SourceBoundPayloadAudit:
     cores: tuple[SourceBoundSchedulerCore, ...]
     approved: frozenset[int]
     recognized: frozenset[int]
     invalid: frozenset[tuple[int, int]]
+    _invalid_ids: frozenset[int] = field(init=False, repr=False, compare=False)
+
+    def __post_init__(self) -> None:
+        object.__setattr__(
+            self,
+            "_invalid_ids",
+            frozenset(identity for _, identity in self.invalid),
+        )
 
     def recognizes(self, value: object) -> bool:
         return type(value) is SourceImageID or id(value) in self.recognized
@@ -78,12 +113,14 @@ class SourceBoundPayloadAudit:
         if type(value) is SourceImageID:
             for core in self.cores:
                 try:
-                    _resolve_readonly(core, value)
+                    record = _resolve_readonly(core, value)
                 except (TypeError, ValueError, IndexError, AttributeError):
                     continue
-                return True
+                return (
+                    id(record) in self.approved and id(record) not in self._invalid_ids
+                )
             return False
-        return id(value) in self.approved
+        return id(value) in self.approved and id(value) not in self._invalid_ids
 
 
 def audit_source_bound_payloads(
@@ -91,7 +128,7 @@ def audit_source_bound_payloads(
     roots: tuple[object, ...],
     containers: Mapping[int, object],
 ) -> SourceBoundPayloadAudit:
-    """Validate stores, external seals, and memo provenance without callbacks."""
+    """Validate publication provenance and optional pure family binding hooks."""
     cores = tuple(
         root
         for root in roots
@@ -102,6 +139,7 @@ def audit_source_bound_payloads(
     approved: set[int] = set()
     recognized: set[int] = set()
     invalid: set[tuple[int, int]] = set()
+    valid_adapter_ids: set[int] = set()
     for core in cores:
         stores = (
             (core._adapter_owner, core._adapters),
@@ -128,84 +166,74 @@ def audit_source_bound_payloads(
                     and type(adapter.family) is str
                     and type(adapter.semantic_version) is str
                     and adapter_key == (adapter.family, adapter.semantic_version)
-                    and adapter.ledger is ledger
+                    and source_bound_adapter_shape(adapter, ledger)
                 )
             except (AttributeError, TypeError, ValueError, RuntimeError):
                 valid_adapter = False
             if not valid_adapter:
                 invalid.add((core._adapter_owner, id(adapter_key)))
             else:
+                valid_adapter_ids.add(id(adapter))
                 approved.update((id(adapter_key), id(adapter)))
-                if (
-                    type(adapter).__module__
-                    == "number_compiler.sequences.prime.successor_action"
-                ):
-                    from number_compiler.resources.prime_source_payload_audit import (
-                        audit_prime_source_adapter,
-                    )
-
-                    try:
-                        prime_approved, prime_recognized, prime_invalid = (
-                            audit_prime_source_adapter(
-                                adapter,
-                                ledger,
-                                containers,
-                                tuple(core._nodes),
-                                core._node_owner,
-                            )
-                        )
-                    except (
-                        AttributeError,
-                        TypeError,
-                        ValueError,
-                        IndexError,
-                        KeyError,
-                        RuntimeError,
-                    ):
-                        invalid.add((core._adapter_owner, id(adapter)))
-                        continue
-                    approved.update(prime_approved)
-                    recognized.update(prime_recognized)
-                    invalid.update(prime_invalid)
-                elif (
-                    type(adapter).__module__ == "number_compiler.sequences.comma.power"
-                ):
-                    from number_compiler.resources.comma_source_payload_audit import (
-                        audit_comma_source_adapter,
-                    )
-
-                    try:
-                        comma_approved, comma_recognized, comma_invalid = (
-                            audit_comma_source_adapter(
-                                adapter,
-                                ledger,
-                                containers,
-                                core._node_owner,
-                            )
-                        )
-                    except (
-                        AttributeError,
-                        TypeError,
-                        ValueError,
-                        IndexError,
-                        KeyError,
-                        RuntimeError,
-                    ):
-                        invalid.add((core._adapter_owner, id(adapter)))
-                        continue
-                    approved.update(comma_approved)
-                    recognized.update(comma_recognized)
-                    invalid.update(comma_invalid)
         valid_nodes: dict[int, _ImageRecord] = {}
         linked_nodes: set[int] = set()
         for local_id, record in enumerate(core._nodes):
             recognized.add(id(record))
+            family_approved_objects: tuple[object, ...] = ()
             try:
                 image = SourceImageID(core.owner, core._KIND, local_id)
                 resolved = _resolve_readonly(core, image)
                 if resolved is not record:
                     raise ValueError("source image resolution changed its record")
-            except (TypeError, ValueError, IndexError, AttributeError):
+                record_adapter = core._adapters.get(record.adapter_key)
+                if (
+                    record_adapter is not record.adapter
+                    or id(record_adapter) not in valid_adapter_ids
+                    or record.binding_audit_required
+                    is not callable(
+                        getattr(record_adapter, "audit_image_binding", None)
+                    )
+                ):
+                    raise ValueError("image record lost its exact registered adapter")
+                if record.binding_audit_required:
+                    if not isinstance(record_adapter, SourceBoundImageBindingAuditor):
+                        raise TypeError("source adapter audit hook is not callable")
+                    family_approved = record_adapter.audit_image_binding(
+                        record.binding,
+                        record.payload,
+                        record.failure_prefix,
+                    )
+                    if family_approved is not None:
+                        if type(family_approved) is not tuple:
+                            raise TypeError(
+                                "image binding audit returned an untyped port approval"
+                            )
+                        boundary_members = _sealed_port_members(
+                            record.binding.boundary_ports
+                        )
+                        if len({id(value) for value in family_approved}) != len(
+                            family_approved
+                        ):
+                            raise ValueError(
+                                "image binding audit repeated a boundary object"
+                            )
+                        for value in family_approved:
+                            if (
+                                id(value) not in boundary_members
+                                or boundary_members[id(value)] is not value
+                            ):
+                                raise ValueError(
+                                    "image binding audit approved a foreign boundary object"
+                                )
+                        family_approved_objects = family_approved
+            except (
+                TypeError,
+                ValueError,
+                IndexError,
+                KeyError,
+                AttributeError,
+                RuntimeError,
+            ):
                 invalid.add((core._node_owner, id(record)))
             else:
                 valid_nodes[local_id] = record
@@ -219,6 +247,8 @@ def audit_source_bound_payloads(
                 )
                 approved.update(map(id, values))
                 recognized.update(map(id, values))
+                approved.update(map(id, family_approved_objects))
+                recognized.update(map(id, family_approved_objects))
         for origin_key, image in core._origins.items():
             recognized.update((id(origin_key), id(image)))
             try:

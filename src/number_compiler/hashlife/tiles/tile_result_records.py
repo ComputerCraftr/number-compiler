@@ -11,6 +11,7 @@ from number_compiler.hashlife.behavior.future_behavior import (
 )
 from number_compiler.hashlife.behavior.reverse_bound_output import ReverseBoundOutput
 from number_compiler.hashlife.interfaces.diamond_quotient import LocalInterfaceID
+from number_compiler.hashlife.tiles.ordered_boolean_support import OrderedBooleanSupport
 from number_compiler.hashlife.tiles.tile_boundaries import (
     EMPTY_BOUNDARY_TILES,
     BoundaryTileOperands,
@@ -22,7 +23,6 @@ from number_compiler.hashlife.tiles.tile_ports import (
     ResultWiring,
 )
 from number_compiler.hashlife.tiles.tiles import TileAlphabetID, TileID
-from number_compiler.sequences.collatz.physical_support import PhysicalSupport
 
 
 @dataclass(frozen=True, slots=True)
@@ -217,7 +217,7 @@ class CompletedInterfaceResult:
     physical_ticks: int = 0
     event_weight: int = 0
     frame_shift: int = 0
-    physical_support: PhysicalSupport | None = field(default=None, kw_only=True)
+    physical_support: OrderedBooleanSupport | None = field(default=None, kw_only=True)
     bound_reverse_output: ReverseBoundOutput | None = field(default=None, kw_only=True)
     _publication_owner: object | None = None
     _publication_snapshot: tuple[object, ...] | None = None
@@ -246,12 +246,12 @@ class CompletedInterfaceResult:
         if self.physical_ticks < 0 or self.event_weight < 0:
             raise ValueError("completed interface weights cannot be negative")
         if self.physical_support is not None:
-            if type(self.physical_support) is not PhysicalSupport:
+            if not isinstance(self.physical_support, OrderedBooleanSupport):
                 raise TypeError("completed interface has another shadow-support sort")
             self.physical_support.owner.validate(self.physical_support)
             if self.physical_support.ticks and (
                 self.physical_support.ticks != self.physical_ticks
-                or self.physical_support.odd_ticks != self.event_weight
+                or self.physical_support.true_count != self.event_weight
             ):
                 raise ValueError("completed interface support disagrees with weights")
         if self.bound_reverse_output is not None:
@@ -385,7 +385,7 @@ class CompletedResult:
     outgoing_boundaries: BoundaryTileOperands = EMPTY_BOUNDARY_TILES
     fusion: FusedBoundaryContract | None = None
     observed_input_ports: tuple[int, ...] | None = None
-    physical_support: PhysicalSupport | None = None
+    physical_support: OrderedBooleanSupport | None = None
 
     def __post_init__(self) -> None:
         if type(self.output) is not TileID:
@@ -420,7 +420,7 @@ class CompletedResult:
         ):
             raise TypeError("observed input ports require exact immutable integers")
         if self.physical_support is not None:
-            if type(self.physical_support) is not PhysicalSupport:
+            if not isinstance(self.physical_support, OrderedBooleanSupport):
                 raise TypeError("completed result has another shadow-support sort")
             self.physical_support.owner.validate(self.physical_support)
 
@@ -603,7 +603,7 @@ def _physical_support_snapshot(value: object) -> tuple[object, ...] | None:
         getattr(value, "owner", None),
         getattr(value, "node_id", None),
         getattr(value, "ticks", None),
-        getattr(value, "odd_ticks", None),
+        getattr(value, "true_count", None),
         getattr(value, "parity", None),
         id(getattr(value, "left", None)),
         id(getattr(value, "right", None)),

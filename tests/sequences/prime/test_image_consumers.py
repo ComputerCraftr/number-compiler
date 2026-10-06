@@ -149,6 +149,30 @@ def test_payload_rejects_boolean_counts_and_wrong_phase() -> None:
         dag.close()
 
 
+def test_image_binding_audit_is_read_only_and_rejects_failure_prefix() -> None:
+    dag = CoprimeRankDAG((2, 3), max_states=20_000, max_work=200_000)
+    arena = PrimeSuccessorActionArena(dag, 5)
+    adapter = PrimeSuccessorImageAdapter(arena)
+    scheduler = TileScheduler.source_only(dag.ledger)
+    scheduler.register_source_image_adapter(adapter)
+    try:
+        image = scheduler.source_image(
+            adapter,
+            PrimeSuccessorSource(arena.descriptor_id, 0),
+            arena.prefix(11),
+        )
+        view = scheduler._source_image_core().view(image)
+        counters = dict(dag.ledger.counters)
+        adapter.audit_image_binding(view.binding, view.payload, None)
+        with pytest.raises(ValueError, match="failure prefix"):
+            adapter.audit_image_binding(view.binding, view.payload, 0)
+        assert dict(dag.ledger.counters) == counters
+    finally:
+        scheduler.dispose_source_images()
+        arena.close()
+        dag.close()
+
+
 @pytest.mark.parametrize("nested", [False, True])
 @pytest.mark.parametrize("phase", range(5))
 @pytest.mark.parametrize("forbidden", [(0,), (0, 2)])

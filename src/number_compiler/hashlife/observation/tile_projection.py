@@ -13,6 +13,11 @@ from number_compiler.arithmetic.contracts.exact_tree_context import (
 from number_compiler.arithmetic.contracts.scoped_handles import ExactSource
 from number_compiler.arithmetic.contracts.source_geometry import SourceGeometry
 from number_compiler.hashlife.actions.field_actions import FieldCellActionID
+from number_compiler.hashlife.execution.tile_execution_adapter import (
+    FamilyTileHooks,
+    FinitePairTransfer,
+    FinitePairTransferFactory,
+)
 from number_compiler.hashlife.execution.tile_scheduler import (
     TileApplication,
     TileScheduler,
@@ -33,8 +38,10 @@ if TYPE_CHECKING:
     )
     from number_compiler.hashlife.actions.lazy_compiler import LazyCompiler
     from number_compiler.hashlife.observation.tile_cylinder import TileCylinderWorkspace
+    from number_compiler.hashlife.tiles.ordered_boolean_support import (
+        OrderedBooleanSupport,
+    )
     from number_compiler.hashlife.tiles.tile_context import TemporalCocycle
-    from number_compiler.sequences.collatz.physical_support import PhysicalSupport
 
 
 def _close_all(values: list[tuple[int, TileLease]]) -> None:
@@ -241,7 +248,7 @@ class LazyProjection:
         )
 
     @source_reads_only
-    def physical_support(self) -> PhysicalSupport:
+    def physical_support(self) -> OrderedBooleanSupport:
         """Demand the source-bound ordered support from the normal interface path."""
         application = self._open()
         application.validate_execution()
@@ -254,7 +261,7 @@ class LazyProjection:
         support.owner.validate(support)
         if (
             support.ticks != result.physical_ticks
-            or support.odd_ticks != result.event_weight
+            or support.true_count != result.event_weight
         ):
             raise ValueError("bound support disagrees with interface weights")
         self.ledger.bump("tile_projection_physical_support_observations")
@@ -330,25 +337,34 @@ class LazyProjection:
         self.close()
 
 
-def primitive_tile_power(effect: BlockEffect) -> tuple[BlockEffect, ...] | None:
+def primitive_tile_power(
+    effect: BlockEffect,
+    *,
+    family_hooks: FamilyTileHooks | None = None,
+) -> tuple[BlockEffect, ...] | None:
     """Recognize admitted primitive syntax without inferring an arithmetic family."""
     from number_compiler.arithmetic.contracts.block_effect import _effect_key
     from number_compiler.arithmetic.contracts.block_kernel import BaseBlockEffect
     from number_compiler.hashlife.actions.lazy_compiler import ProgramComposition
     from number_compiler.projection.digit_terminal import DigitNormalizeBlockEffect
-    from number_compiler.sequences.collatz.block_power import CollatzPhysicalBlockEffect
 
-    primitives = (
-        BaseBlockEffect,
-        CollatzPhysicalBlockEffect,
-        DigitNormalizeBlockEffect,
+    primitives = (BaseBlockEffect, DigitNormalizeBlockEffect)
+    is_primitive = type(effect) in primitives or (
+        family_hooks is not None and family_hooks.owns_effect(effect)
     )
-    if type(effect) in primitives:
+    if is_primitive:
         return (effect,)
+    if type(effect) is not ProgramComposition:
+        return None
+    first_is_primitive = type(effect.first) in primitives or (
+        family_hooks is not None and family_hooks.owns_effect(effect.first)
+    )
+    second_is_primitive = type(effect.second) in primitives or (
+        family_hooks is not None and family_hooks.owns_effect(effect.second)
+    )
     if (
-        type(effect) is ProgramComposition
-        and type(effect.first) in primitives
-        and type(effect.second) in primitives
+        first_is_primitive
+        and second_is_primitive
         and (
             _effect_key(effect.first) == _effect_key(effect.second)
             or (
@@ -363,69 +379,60 @@ def primitive_tile_power(effect: BlockEffect) -> tuple[BlockEffect, ...] | None:
 
 
 def build_primitive_projection(
-    effect: BlockEffect, geometry: SourceGeometry
+    effect: BlockEffect,
+    geometry: SourceGeometry,
+    *,
+    family_hooks: FamilyTileHooks | None = None,
+    pair_transfer_factory: FinitePairTransferFactory | None = None,
 ) -> LazyProjection:
     """Admit a supported primitive action into the shared tile execution path."""
-    if primitive_tile_power(effect) is None:
+    if primitive_tile_power(effect, family_hooks=family_hooks) is None:
         raise TypeError("unsupported canonical tile primitive composition")
-    return build_tile_projection(effect, geometry)
+    return build_tile_projection(
+        effect,
+        geometry,
+        family_hooks=family_hooks,
+        pair_transfer_factory=pair_transfer_factory,
+    )
 
 
 def lower_fixed_tile_compatibility(
     effect: BlockEffect,
     compiler: LazyCompiler,
+    family_hooks: FamilyTileHooks | None = None,
 ) -> BlockEffect:
-    """Lower the exact proof C4 facade to the production physical action DAG.
-
-    The type is imported only after the caller presents the proof definition's
-    exact name. Its immutable metadata and table digest are validated before
-    the four-step primitive composition is built in the caller's compiler.
-    Proof boundary states never enter the tile adapter.
-    """
-    if type(effect).__name__ != "PhysicalCollatzFourBlockEffect":
+    """Lower a family's checked compatibility artifact at its runtime boundary."""
+    if family_hooks is None or not family_hooks.owns_compatibility(effect):
         return effect
-    from number_compiler.arithmetic.contracts.physical_collatz_kernel import (
-        PhysicalCollatzFourBlockEffect,
-    )
     from number_compiler.hashlife.actions.lazy_compiler import LazyCompiler
-    from number_compiler.sequences.collatz.compilation import (
-        compile_collatz_physical_power,
-    )
 
-    if type(effect) is not PhysicalCollatzFourBlockEffect:
-        return effect
     if type(compiler) is not LazyCompiler:
-        raise TypeError("fixed C4 lowering requires the canonical compiler")
-    validate_fixed_tile_compatibility(effect)
-    lowered = compile_collatz_physical_power(compiler, 4).root
-    if lowered is None or lowered.exponent != 4:
-        raise AssertionError("fixed C4 lowering lost its physical span")
-    return lowered
+        raise TypeError("compatibility lowering requires the canonical compiler")
+    family_hooks.validate_compatibility(effect)
+    return family_hooks.lower_compatibility(effect, compiler)
 
 
-def validate_fixed_tile_compatibility(effect: BlockEffect) -> None:
-    """Validate the exact proof C4 facade without allocating runtime state."""
-    if type(effect).__name__ != "PhysicalCollatzFourBlockEffect":
+def validate_fixed_tile_compatibility(
+    effect: BlockEffect,
+    family_hooks: FamilyTileHooks | None = None,
+) -> None:
+    """Validate a recognized compatibility artifact before runtime allocation."""
+    if family_hooks is None or not family_hooks.owns_compatibility(effect):
         return
-    from number_compiler.arithmetic.contracts.physical_collatz_kernel import (
-        PhysicalCollatzFourBlockEffect,
-        is_verified_physical_four,
-    )
-
-    if type(effect) is not PhysicalCollatzFourBlockEffect:
-        raise ValueError("fixed C4 lowering requires its exact proof definition")
     try:
-        verified = is_verified_physical_four(effect)
+        family_hooks.validate_compatibility(effect)
     except (TypeError, ValueError) as error:
         raise ValueError(
-            "fixed C4 lowering requires its immutable certificate"
+            "compatibility lowering requires its immutable certificate"
         ) from error
-    if not verified:
-        raise ValueError("fixed C4 lowering requires its immutable certificate")
 
 
 def build_tile_projection(
-    effect: BlockEffect, geometry: SourceGeometry
+    effect: BlockEffect,
+    geometry: SourceGeometry,
+    *,
+    family_hooks: FamilyTileHooks | None = None,
+    pair_transfer_factory: FinitePairTransferFactory | None = None,
 ) -> LazyProjection:
     """Publish one tile runtime, retiring unissued arenas if construction fails."""
     from number_compiler.resources.construction_scope import RuntimeConstruction
@@ -433,11 +440,20 @@ def build_tile_projection(
     if type(geometry) is not SourceGeometry:
         raise TypeError("tile projection requires authenticated source geometry")
     with RuntimeConstruction(geometry.ledger):
-        return _build_tile_projection(effect, geometry)
+        return _build_tile_projection(
+            effect,
+            geometry,
+            family_hooks=family_hooks,
+            pair_transfer_factory=pair_transfer_factory,
+        )
 
 
 def _build_tile_projection(
-    effect: BlockEffect, geometry: SourceGeometry
+    effect: BlockEffect,
+    geometry: SourceGeometry,
+    *,
+    family_hooks: FamilyTileHooks | None = None,
+    pair_transfer_factory: FinitePairTransferFactory | None = None,
 ) -> LazyProjection:
     """Compile a binary operator DAG into one canonical tile application.
 
@@ -472,16 +488,22 @@ def _build_tile_projection(
     )
     from number_compiler.hashlife.tiles.tile_results import CompletedResultArena
     from number_compiler.projection.digit_terminal import DigitNormalizeBlockEffect
-    from number_compiler.sequences.collatz.block_power import CollatzPhysicalBlockEffect
 
-    if type(effect) not in (
+    if family_hooks is not None and type(family_hooks) is not FamilyTileHooks:
+        raise TypeError("tile projection requires canonical family hooks")
+    if pair_transfer_factory is not None and not isinstance(
+        pair_transfer_factory, FinitePairTransferFactory
+    ):
+        raise TypeError("tile projection requires a typed pair-transfer factory")
+
+    supported = type(effect) in (
         ProgramComposition,
         BaseBlockEffect,
         FiniteBlockEffect,
         DigitNormalizeBlockEffect,
         NonblankBlockEffect,
-        CollatzPhysicalBlockEffect,
-    ):
+    ) or (family_hooks is not None and family_hooks.owns_effect(effect))
+    if not supported:
         from number_compiler.hashlife.actions.lazy_compiler import (
             UnsupportedInterfaceError,
         )
@@ -495,7 +517,21 @@ def _build_tile_projection(
     interfaces = DiamondQuotientArena(
         SemanticFunctionArena(ledger, cache_construction_reductions=True)
     )
-    adapter = PrimitiveTileKernelAdapter(tiles, DiamondKernelArena(ledger), interfaces)
+    pair_transfer = (
+        None if pair_transfer_factory is None else pair_transfer_factory.create(ledger)
+    )
+    if pair_transfer is not None and (
+        not isinstance(pair_transfer, FinitePairTransfer)
+        or pair_transfer.ledger is not ledger
+    ):
+        raise ValueError("tile pair-transfer factory returned a foreign strategy")
+    adapter = PrimitiveTileKernelAdapter(
+        tiles,
+        DiamondKernelArena(ledger),
+        interfaces,
+        family_hooks=family_hooks,
+        pair_transfer=pair_transfer,
+    )
     prefix = f"tile-program-import-{len(ledger.inventory())}"
     built_owner = ledger.register(prefix + "-completed", "query_memo")
     active_owner = ledger.register(prefix + "-pending", "query_memo")

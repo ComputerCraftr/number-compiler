@@ -15,9 +15,6 @@ from number_compiler.arithmetic.contracts.kernel_admission import (
     admit_effect,
     immutable_atom,
 )
-from number_compiler.arithmetic.contracts.physical_collatz_kernel import (
-    PhysicalCollatzFourBlockEffect,
-)
 from number_compiler.arithmetic.contracts.scoped_handles import (
     ActionProgramID,
     ArenaToken,
@@ -31,6 +28,10 @@ from number_compiler.hashlife.observation.diamond_observers import NonblankBlock
 from number_compiler.projection.digit_terminal import DigitNormalizeBlockEffect
 from number_compiler.resources.ledger import ResourceLedger
 from number_compiler.sequences.collatz.block_power import CollatzPhysicalBlockEffect
+from number_compiler.sequences.collatz.physical_kernel import (
+    PhysicalCollatzFourBlockEffect,
+)
+from number_compiler.sequences.collatz.tile_family_hooks import collatz_tile_hooks
 from tests.support.assertions import assert_rejected_atomically
 
 
@@ -51,11 +52,15 @@ def test_kernel_admission_preserves_complete_immutable_identity(
     | NonblankBlockEffect
     | PhysicalCollatzFourBlockEffect,
 ) -> None:
-    admitted = immutable_atom(effect)
+    hooks = collatz_tile_hooks()
+    admitted = immutable_atom(effect, family_hooks=hooks)
     assert type(admitted) is type(effect)
     assert admitted.canonical_key == effect.canonical_key
-    assert admit_effect(effect) == 1
-    assert immutable_definition(effect).canonical_key == effect.canonical_key
+    assert admit_effect(effect, family_hooks=hooks) == 1
+    assert (
+        immutable_definition(effect, family_hooks=hooks).canonical_key
+        == effect.canonical_key
+    )
 
 
 def test_compiler_and_definition_do_not_require_a_legacy_executor() -> None:

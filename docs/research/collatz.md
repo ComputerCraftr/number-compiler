@@ -164,29 +164,29 @@ of conflicts without reuse does not establish closure. See the
 
 ## Exact source and clock laws
 
-[`Collatz_Cylinder_Constructor.thy`](../../proofs/isabelle/temporal_collatz/Collatz_Cylinder_Constructor.thy)
+[`Collatz_Cylinder_Constructor.thy`](../../proofs/isabelle/families/collatz/temporal_collatz/Collatz_Cylinder_Constructor.thy)
 proves exact dyadic source splitting, block composition, physical-tick
 composition, and embedding of events in physical time. The constructor
 evaluation theorem applies to the defined finite cylinder; the explicit
 `phase_neutrality_does_not_fix_cylinder_action` lemma records why phase alone is
 not a quotient.
 
-[`Collatz_Physical_Cylinder_Lift.thy`](../../proofs/isabelle/temporal_collatz/Collatz_Physical_Cylinder_Lift.thy)
+[`Collatz_Physical_Cylinder_Lift.thy`](../../proofs/isabelle/families/collatz/temporal_collatz/Collatz_Physical_Cylinder_Lift.thy)
 proves branch words are dyadic source words and gives exact-precision affine and
 low-residue lifts. Its selector split and affine-leaf division assume the
 admitted branch/source construction.
 
-[`Collatz_Clock_Jumps.thy`](../../proofs/isabelle/temporal_collatz/Collatz_Clock_Jumps.thy)
+[`Collatz_Clock_Jumps.thy`](../../proofs/isabelle/families/collatz/temporal_collatz/Collatz_Clock_Jumps.thy)
 proves block composition, inverse-three conjugacy, Hensel prefix skips, mismatch
 death, one-hot radix-64 curvature, and normalized jet composition. A matching
 prefix permits the stated skip; a mismatch kills that forcing branch. Neither
 claim proves all future branches absent.
 
 The physical bound consumer in
-[`Physical_Collatz_Bound_Consumer.thy`](../../proofs/isabelle/etale/Physical_Collatz_Bound_Consumer.thy)
+[`Physical_Collatz_Bound_Consumer.thy`](../../proofs/isabelle/integration/etale/etale/Physical_Collatz_Bound_Consumer.thy)
 assigns odd-event ownership to the low boundary under its finite state cases and
 proves the compiled publisher/pullback refines that emission. The support theory
-[`Physical_Collatz_Support.thy`](../../proofs/isabelle/etale/Physical_Collatz_Support.thy)
+[`Physical_Collatz_Support.thy`](../../proofs/isabelle/integration/etale/etale/Physical_Collatz_Support.thy)
 exhibits sources with equal normalization but different offsets, proving that
 endpoint and weight do not determine support.
 
@@ -296,7 +296,7 @@ cap remain distinct retained consumers.
   with zero kernel discards the earlier kernel and offset before multiplying;
   it keeps the chronological step extent and validates compatible rings.
 - **Checked theorem:** `last_five_births_erase_earlier_jet` in
-  [Collatz_Harmonic_Ports](../../proofs/isabelle/Collatz_Harmonic_Ports.thy)
+  [Collatz_Harmonic_Ports](../../proofs/isabelle/families/collatz/temporal_collatz/Collatz_Harmonic_Ports.thy)
   derives suffix reduction from the existing same-birth source-independence
   theorem. The last five births are supplied, potentially source-dependent.
   They are not computed by the nilpotence theorem.
@@ -355,7 +355,7 @@ spatial bridge. Integer input size is still real work. The rule cannot repeat
 source-dependent emissions or skip temporal source discovery.
 
 **Proof owner.** `carry_then` and `carry_then_apply` now live once in
-[Reverse_Residuals](../../proofs/isabelle/Reverse_Residuals.thy), imported
+[Reverse_Residuals](../../proofs/isabelle/families/reverse_add/reverse_residuals/Reverse_Residuals.thy), imported
 by the reverse/add and Collatz branches. The Collatz harmonic theory proves
 nonempty-generator idempotence, spatial length-phase transport, cardinality 17,
 phase-zero closure, and the exact repetition formula. These are spatial laws;
@@ -506,7 +506,7 @@ were not accepted as replacements for the source-bound scheduler.
   cannot be inverted as cylinders. This utility is not a source constructor.
 - **Checked theorem:** `inverse_affine_max`, `prefix_safety_chronological`
   and `repeated_prefix_minimum_closed` in
-  [Associated_Action_Pullback.thy](../../proofs/isabelle/integration/Associated_Action_Pullback.thy)
+  [Associated_Action_Pullback.thy](../../proofs/isabelle/integration/associated_actions/integration/Associated_Action_Pullback.thy)
   establish inverse/max transport, chronological safety and the repetition
   formula by induction. The same theory passes an isolated HOL-based build
   with its oracle audit. The full integration build remains blocked by the

@@ -2,8 +2,9 @@
 
 from __future__ import annotations
 
-from collections.abc import Callable, Generator, Sequence
+from collections.abc import Callable, Generator, MutableMapping, Sequence
 from dataclasses import replace
+from typing import cast
 
 import pytest
 
@@ -294,3 +295,35 @@ def test_failed_successor_reconstruction_releases_traceback_scratch(
     assert workspace.completed_width_if_cached() is None
     workspace.dispose()
     assert workspace.ledger.nodes == workspace.ledger.entries == 0
+
+
+@pytest.mark.parametrize("store_name", ("terminal", "concat", "issued"))
+def test_q19_audit_rejects_numeric_alias_keys(store_name: str) -> None:
+    workspace = ReverseSourceImageWorkspace(ResourceLedger(), 196, 3)
+    try:
+        tuple(workspace.iter_digits())
+        owner = workspace.adapter._q19_owner
+        assert owner is not None
+        stores = {
+            "terminal": owner.arena._term,
+            "concat": owner.arena._cat,
+            "issued": owner._issued,
+        }
+        store = cast(MutableMapping[object, object], stores[store_name])
+        key = next(iter(store))
+        assert type(key) in (int, tuple)
+        alias = (
+            float(key)
+            if type(key) is int
+            else tuple(float(part) for part in cast(tuple[int, ...], key))
+        )
+        value = store.pop(key)
+        store[alias] = value
+        audit = workspace.ledger.audit_payload_contracts()
+        assert not audit.owns_root("reverse_add", owner, ledger=workspace.ledger)
+        store.pop(alias)
+        store[key] = value
+        repaired = workspace.ledger.audit_payload_contracts()
+        assert repaired.owns_root("reverse_add", owner, ledger=workspace.ledger)
+    finally:
+        workspace.dispose()

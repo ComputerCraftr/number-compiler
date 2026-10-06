@@ -10,11 +10,11 @@ from devtools.verification.collatz_c4_reference import (
 )
 from devtools.verification.collatz_symbolic_action import CollatzSymbolicActionArena
 from devtools.verification.lazy_collatz import LazyCollatzApplication
-from number_compiler.arithmetic.contracts.physical_collatz_kernel import (
-    PhysicalCollatzFourBlockEffect,
-)
 from number_compiler.sequences.collatz.block_power import PoweredCollatzTerm
 from number_compiler.sequences.collatz.germ_cache import CollatzGermTransitionCache
+from number_compiler.sequences.collatz.physical_kernel import (
+    PhysicalCollatzFourBlockEffect,
+)
 from tests.support.reference_arithmetic import (
     physical_collatz_literal as _physical_oracle,
 )

@@ -22,7 +22,7 @@ from number_compiler.arithmetic.functions.finite_unary import (
     UnaryQuotientMachine,
     unary_target_distance_machine,
 )
-from number_compiler.sequences.prime.set import jacobi_symbol
+from number_compiler.arithmetic.number_theory import jacobi_symbol
 
 
 class HigherTwoPowerCharacterUnavailable(RuntimeError):

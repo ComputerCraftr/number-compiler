@@ -19,12 +19,6 @@ from devtools.verification.immutable_artifacts import (
     UncachedBuild,
 )
 from number_compiler.arithmetic.contracts.block_effect import BlockContextBudgetExceeded
-from number_compiler.arithmetic.contracts.physical_collatz_kernel import (
-    PhysicalCollatzFourBlockEffect,
-)
-from number_compiler.arithmetic.contracts.physical_collatz_pair_certificate import (
-    kernel_digest,
-)
 from number_compiler.arithmetic.contracts.scoped_handles import (
     ExactSource,
     TransferSummaryID,
@@ -53,6 +47,12 @@ from number_compiler.hashlife.interfaces.diamond_boundary_expr import (
 from number_compiler.hashlife.interfaces.diamond_kernel import FiniteExpression
 from number_compiler.hashlife.interfaces.expression_transactions import _Transaction
 from number_compiler.resources.ledger import ResourceLedger
+from number_compiler.sequences.collatz.physical_kernel import (
+    PhysicalCollatzFourBlockEffect,
+)
+from number_compiler.sequences.collatz.physical_pair_certificate import (
+    kernel_digest,
+)
 
 if TYPE_CHECKING:
     from number_compiler.arithmetic.contracts.scoped_handles import ActionProgramID
@@ -795,7 +795,13 @@ def _build_isolated(digest: str) -> C4UnarySummaryArtifact:
     """Build shared proof data without borrowing the requesting index."""
     effect = PhysicalCollatzFourBlockEffect()
     ledger = ResourceLedger()
-    compiler = LazyCompiler(ledger)
+    from number_compiler.sequences.collatz.tile_family_hooks import (
+        collatz_compatibility_tile_hooks,
+    )
+
+    compiler = LazyCompiler(
+        ledger, family_hooks=collatz_compatibility_tile_hooks(effect)
+    )
     atom = compiler.atom(effect)
     source = ExactSource(
         (0, 1) * 8,

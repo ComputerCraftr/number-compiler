@@ -1,0 +1,23 @@
+session Prime_Wheel_Bridge in prime_wheel = "HOL-Number_Theory" +
+  options [document = false, quick_and_dirty = false]
+  theories
+    Prime_Wheel_Bridge
+    Prime_Wheel_Executor
+    Prime_Wheel_Skew_Actions
+session Prime_Deterministic_Refinement in integration_prime = Prime_Wheel_Bridge +
+  options [document = false, quick_and_dirty = false]
+  theories
+    Prime_Deterministic_Phi_Refinement
+    Prime_Deterministic_Worklist_Refinement
+    Prime_Python_Count_Transition_Refinement
+    Prime_Prefix_Image_Projection_Refinement
+    Prime_Odd_Window_Selection_Refinement
+    Prime_Odd_Window_Expansion_Refinement
+session Prime_Selection_Initialization in integration_prime_selection = Prime_Deterministic_Refinement +
+  options [document = false, quick_and_dirty = false]
+  theories
+    Prime_Selected_Prefix_Rank_Refinement
+    Prime_Retained_Prefix_Count_Refinement
+    Prime_Deterministic_Prefix_Extension_Refinement
+    Prime_Deterministic_Cover_Loop_Refinement
+    Prime_Selection_Initialization_Refinement

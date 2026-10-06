@@ -10,7 +10,7 @@ from __future__ import annotations
 from collections.abc import MutableMapping, MutableSequence
 from dataclasses import dataclass
 from itertools import islice
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Protocol, cast
 
 from number_compiler.arithmetic.contracts.block_effect import (
     BlockContextBudgetExceeded,
@@ -43,12 +43,29 @@ from number_compiler.hashlife.interfaces.semantic_structures import (
 from number_compiler.resources.ledger import OwnedMemo
 
 if TYPE_CHECKING:
-    from number_compiler.arithmetic.contracts.physical_collatz_pair_certificate import (
-        C4PairLeftCertificate,
-    )
     from number_compiler.hashlife.execution.continuations.diamond_runtime import (
         DiamondRuntime,
     )
+
+
+class _ReachableState(Protocol):
+    anchor: int
+    continuation: int
+
+
+class _ReachableDefinition(Protocol):
+    version: int
+    initial: int
+    kernel_digest: str
+    states: tuple[_ReachableState, ...]
+    functions: tuple[tuple[int, ...], ...]
+    transitions: tuple[tuple[int, int, int], ...]
+    predecessors: tuple[tuple[int, int], ...]
+    digest: str
+    profile_role: str
+    anchor_width: int
+    primitive_left_count: int
+    argument_count: int
 
 
 @dataclass(frozen=True, slots=True)
@@ -60,7 +77,7 @@ class SemanticProfileID(ArenaHandle):
 class SemanticReachableProfile:
     action: ActionProgramID
     side: int
-    definition: C4PairLeftCertificate
+    definition: _ReachableDefinition
 
 
 @dataclass(frozen=True, slots=True)
@@ -120,33 +137,12 @@ class SemanticProfileArena:
         )
         self.ledger.register_execution_root(self)
 
-    def _pair(self, action: ActionProgramID) -> None:
-        node = self.runtime.actions.resolve(action)
-        if node.kind != "compose":
-            raise UnsupportedInterfaceError("reachable profile requires exactly C4;C4")
-        for child in (node.first, node.second):
-            reference = self.runtime.actions.reference(child)
-            if self.runtime.actions.resolve(reference).kind != "atom":
-                raise UnsupportedInterfaceError(
-                    "reachable profile requires exactly C4;C4"
-                )
-            effect = self.runtime.actions.primitive(reference)
-            if type(effect).__name__ != "PhysicalCollatzFourBlockEffect":
-                raise UnsupportedInterfaceError(
-                    "reachable profile requires verified physical C4 atoms"
-                )
-            from number_compiler.arithmetic.contracts.physical_collatz_kernel import (
-                PhysicalCollatzFourBlockEffect,
+    def source_initial_profile(self, action: ActionProgramID) -> SemanticProfileID:
+        hooks = self.runtime.family_hooks
+        if hooks is None or not hooks.admits_source_profile(self.runtime, action):
+            raise UnsupportedInterfaceError(
+                "family has no certified reachable profile for this action"
             )
-
-            if type(effect) is not PhysicalCollatzFourBlockEffect:
-                raise UnsupportedInterfaceError(
-                    "reachable profile requires verified physical C4 atoms"
-                )
-            effect.validate()
-
-    def c4_pair_left(self, action: ActionProgramID) -> SemanticProfileID:
-        self._pair(action)
         found = self.keys.get(action)
         if found is not None:
             self.ledger.bump("semantic_reachable_profile_requests")
@@ -156,11 +152,10 @@ class SemanticProfileArena:
         self.ledger.bump("semantic_reachable_profile_requests")
         self.ledger.bump("semantic_reachable_profile_evaluations")
         try:
-            from number_compiler.arithmetic.contracts.physical_collatz_pair_certificate import (
-                load_verified_c4_pair_left,
+            definition = cast(
+                _ReachableDefinition,
+                hooks.source_profile(self.runtime, action),
             )
-
-            definition = load_verified_c4_pair_left()
         except BaseException:
             self.ledger.release(self.node_owner, entries=1, nodes=1)
             self.ledger.release(self.key_owner, entries=1)
@@ -202,15 +197,17 @@ class SemanticProfileArena:
                     "primitive profile domain must already be admitted"
                 )
             return (FinitePort(namespace, len(primitive.domain(BoundarySide(side)))),)
-        if action != record.action or side != record.side:
+        hooks = self.runtime.family_hooks
+        if (
+            action != record.action
+            or side != record.side
+            or hooks is None
+            or not hooks.admits_source_profile(self.runtime, action)
+        ):
             raise UnsupportedInterfaceError(
                 "profile has no certified domain for this composed input"
             )
-        from number_compiler.arithmetic.contracts.physical_collatz_pair_certificate import (
-            RAW_DIGEST,
-        )
-
-        role = f"z-reachable-c4-left/{RAW_DIGEST}/{namespace.role}"
+        role = f"{record.definition.profile_role}/{record.definition.digest}/{namespace.role}"
         return (
             FinitePort(
                 PortVariable(namespace.time, namespace.side, role, 0),
@@ -274,7 +271,7 @@ class SemanticProfileArena:
         outer = builder.circuit(ports)
         code = ports[0]
         valid = self._filter(outer, code, outer.one)
-        target = AtomSort("primitive-left-state", 50)
+        target = AtomSort("primitive-left-state", definition.primitive_left_count)
         if index == 0:
             anchor_leaves = {
                 index: tuple(
@@ -282,12 +279,15 @@ class SemanticProfileArena:
                     if index < len(definition.states)
                     and definition.states[index].anchor & (1 << bit)
                     else outer.zero
-                    for bit in range(6)
+                    for bit in range(definition.anchor_width)
                 )
                 for index in range(1 << code.bits)
             }
             self._table_work(
-                len(anchor_leaves), 6, len(definition.states), len(anchor_leaves)
+                len(anchor_leaves),
+                definition.anchor_width,
+                len(definition.states),
+                len(anchor_leaves),
             )
             roots = self._lookup(outer, code, anchor_leaves)
             signature = FunctionSignature(ports, target)
@@ -296,7 +296,10 @@ class SemanticProfileArena:
                 "semantic_reachable_decoder_table_cells", len(definition.states)
             )
             return self._publish_decode(builder, root, key)
-        argument = FinitePort(PortVariable(0, 0, "semantic-argument", 0), 90)
+        argument = FinitePort(
+            PortVariable(0, 0, "semantic-argument", 0),
+            definition.argument_count,
+        )
         aliases = _aliases(ports, (argument,))
         joint = _union_inputs(ports, aliases)
         circuit = builder.circuit(joint)
@@ -305,7 +308,7 @@ class SemanticProfileArena:
         # Build each fixed table column once, then select it by the primitive
         # argument. This traverses only the admitted immutable certificate.
         columns: dict[int, tuple[int, ...]] = {}
-        tables = _FixedTableLookup(self, circuit, code, 6)
+        tables = _FixedTableLookup(self, circuit, code, definition.anchor_width)
         for value in range(1 << selector.bits):
             values = (
                 tuple(
@@ -313,13 +316,13 @@ class SemanticProfileArena:
                     for state in definition.states
                 )
                 + (0,) * ((1 << code.bits) - len(definition.states))
-                if value < 90
+                if value < definition.argument_count
                 else (0,) * (1 << code.bits)
             )
             self.ledger.bump("semantic_reachable_decoder_padded_leaf_rows", len(values))
             self.ledger.bump(
                 "semantic_reachable_decoder_certificate_word_reads",
-                len(definition.states) if value < 90 else 0,
+                len(definition.states) if value < definition.argument_count else 0,
             )
             self._peak(
                 "semantic_reachable_decoder_numeric_column_slots_peak",
@@ -328,7 +331,7 @@ class SemanticProfileArena:
             columns[value] = tables.compile(values)
             self.ledger.bump(
                 "semantic_reachable_decoder_table_cells",
-                len(definition.states) if value < 90 else 0,
+                len(definition.states) if value < definition.argument_count else 0,
             )
         body_roots = self._lookup(circuit, selector, columns)
         body_valid = circuit.conjunction(

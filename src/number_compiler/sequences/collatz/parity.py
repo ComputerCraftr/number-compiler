@@ -25,16 +25,23 @@ from bisect import bisect_right
 from collections.abc import Iterable
 from dataclasses import dataclass, field
 from functools import lru_cache
+from typing import TYPE_CHECKING
 
 from number_compiler.arithmetic.contracts.input_validation import (
     normalized_integer_pair,
 )
+from number_compiler.arithmetic.fields.adic_morphism import PadicAffineMorphism
 from number_compiler.arithmetic.fields.morphism_core import DyadicAffineCocycle
 from number_compiler.arithmetic.fields.two_adic import inverse_dyadic_parity_word
 from number_compiler.arithmetic.polynomials.binomial_pow2 import (
     scaled_binomial_mod_pow2,
 )
 from number_compiler.resources.ledger import ResourceLedger
+
+if TYPE_CHECKING:
+    from number_compiler.arithmetic.fields.congruence_automaton import (
+        FactoredAffineMorphism,
+    )
 
 
 def normalized_collatz(n: int) -> int:
@@ -869,7 +876,64 @@ def valid_physical_branch_count(steps: int) -> int:
     return a
 
 
+@dataclass(frozen=True, slots=True)
+class CollatzFactoredResidueProjection:
+    """Odd-modulus projection of one exact Collatz parity slab."""
+
+    morphism: FactoredAffineMorphism
+    exponent_bit_work: int
+
+
+def compile_collatz_slab_factored(
+    slab: CollatzParitySlab, moduli: Iterable[int]
+) -> CollatzFactoredResidueProjection:
+    """Compile a parity slab as one exact affine map over odd moduli."""
+    from number_compiler.arithmetic.fields.congruence_automaton import (
+        FactoredAffineMorphism,
+    )
+
+    mods = tuple(map(int, moduli))
+    if not mods or any(modulus <= 1 or modulus % 2 == 0 for modulus in mods):
+        raise ValueError(mods)
+    width = int(slab.width)
+    ones = int(slab.ones)
+    offset = int(slab.offset)
+    multipliers: list[int] = []
+    offsets: list[int] = []
+    for modulus in mods:
+        inverse = pow(pow(2, width, modulus), -1, modulus)
+        multipliers.append((pow(3, ones, modulus) * inverse) % modulus)
+        offsets.append((offset * inverse) % modulus)
+    morphism = FactoredAffineMorphism(
+        mods, tuple(multipliers), tuple(offsets), width, 0
+    )
+    work = len(mods) * (max(1, width.bit_length()) + max(1, ones.bit_length()))
+    return CollatzFactoredResidueProjection(morphism, work)
+
+
+def collatz_slab_padic3(
+    slab: CollatzParitySlab, precision: int = 8
+) -> PadicAffineMorphism:
+    """Exact normalized Collatz slab modulo ``3**precision``."""
+    if type(precision) is not int:
+        raise TypeError("p-adic precision must be an exact integer")
+    modulus = 3**precision
+    width = int(slab.width)
+    ones = int(slab.ones)
+    offset = int(slab.offset)
+    inverse = pow(pow(2, width, modulus), -1, modulus)
+    return PadicAffineMorphism(
+        3,
+        precision,
+        (pow(3, ones, modulus) * inverse) % modulus,
+        (offset * inverse) % modulus,
+        width,
+        0,
+    )
+
+
 __all__ = [
+    "CollatzFactoredResidueProjection",
     "CollatzInverseStreamingProgram",
     "CollatzParityAdvance",
     "CollatzParityCursor",
@@ -891,6 +955,8 @@ __all__ = [
     "collatz_parity_slab",
     "collatz_parity_word",
     "collatz_parity_word_from_valuations",
+    "collatz_slab_padic3",
+    "compile_collatz_slab_factored",
     "normalized_collatz",
     "physical_collatz",
     "pow3_mod_pow2_binomial",

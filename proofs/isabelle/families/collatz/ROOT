@@ -1,0 +1,12 @@
+session Collatz_Cylinder_Refinement in temporal_collatz = Shared_S_Arithmetic +
+  options [document = false, quick_and_dirty = false]
+  sessions Shared_Carry_Dynamics
+  theories
+    Collatz_Clock_Jumps
+    Collatz_Cylinder_Constructor
+    Collatz_Physical_Cylinder_Lift
+    Collatz_Physical_One_Cycle
+    Collatz_Source_Hensel_Anchor_Refinement
+    Inverse_Three_Lift
+    Collatz_Harmonic_Ports
+    Collatz_Three_Port_Projection

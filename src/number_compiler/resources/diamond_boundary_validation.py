@@ -5,6 +5,7 @@ from __future__ import annotations
 from typing import TYPE_CHECKING
 
 from number_compiler.arithmetic.carry.carry_monoid import CarryFn
+from number_compiler.arithmetic.contracts.block_effect import BoundarySide
 from number_compiler.arithmetic.contracts.block_kernel import (
     BaseBlockEffect,
     FiniteBlockEffect,
@@ -38,7 +39,6 @@ from number_compiler.projection.digit_terminal import (
     DigitNormalizeBlockEffect,
     _DigitLeftState,
 )
-from number_compiler.sequences.collatz.block_power import CollatzPhysicalBlockEffect
 
 if TYPE_CHECKING:
     from number_compiler.hashlife.execution.diamond_payload import (
@@ -427,10 +427,7 @@ def _cell(self: DiamondPayloadRegistry, value: CellNode | _CellKey) -> bool:
 
 
 def _kernel_fields(self: DiamondPayloadRegistry, value: PrimitiveKernel) -> bool:
-    from number_compiler.hashlife.execution.diamond_payload import (
-        _integer,
-        _physical_four,
-    )
+    from number_compiler.hashlife.execution.diamond_payload import _integer
 
     if (
         value.ledger is not self.ledger
@@ -482,14 +479,55 @@ def _kernel_fields(self: DiamondPayloadRegistry, value: PrimitiveKernel) -> bool
             and value.left_count == 1
             and value.right_count == 2 * effect.radix
         )
-    if type(effect) is CollatzPhysicalBlockEffect:
-        return all(_integer(state, 0, 64) for state in (*value.left, *value.right))
-    if _physical_four(effect):
-        try:
-            effect.validate()
-        except (TypeError, ValueError):
-            return False
-        return value.left == tuple(range(50)) and value.right == tuple(range(90))
     if type(effect) is NonblankBlockEffect:
         return all(_integer(state, 0, 2) for state in (*value.left, *value.right))
+    kernel_arena = next(
+        (
+            arena
+            for arena in self.kernels
+            if any(candidate is value for candidate in arena._kernels)
+        ),
+        None,
+    )
+    hooks = value.family_hooks
+    if kernel_arena is None or hooks is None or kernel_arena.family_hooks is not hooks:
+        return False
+    owns_effect = hooks.owns_effect(effect)
+    owns_compatibility = hooks.owns_compatibility(effect)
+    if not (owns_effect or owns_compatibility):
+        return False
+    if owns_compatibility:
+        try:
+            hooks.validate_compatibility(effect)
+        except (TypeError, ValueError, OSError):
+            return False
+    state_bounds = getattr(effect, "diamond_boundary_state_bounds", None)
+    if callable(state_bounds):
+        try:
+            bounds = state_bounds()
+        except (TypeError, ValueError):
+            return False
+        return (
+            type(bounds) is tuple
+            and len(bounds) == 2
+            and all(type(bound) is int for bound in bounds)
+            and bounds[0] <= bounds[1]
+            and all(
+                _integer(state, bounds[0], bounds[1])
+                for state in (*value.left, *value.right)
+            )
+        )
+    boundary_universe = getattr(effect, "boundary_universe", None)
+    if callable(boundary_universe):
+        try:
+            left = boundary_universe(BoundarySide.LEFT)
+            right = boundary_universe(BoundarySide.RIGHT)
+        except (TypeError, ValueError, OSError):
+            return False
+        return (
+            type(left) is tuple
+            and type(right) is tuple
+            and value.left == left
+            and value.right == right
+        )
     return False

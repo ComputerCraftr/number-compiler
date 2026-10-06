@@ -69,15 +69,15 @@ def _primitive_parent_payload(
     right: int,
 ) -> CausalInterfacePayload | None:
     """Use a certified primitive parent interface before child descent."""
-    from number_compiler.arithmetic.contracts.block_effect import BoundarySide
     from number_compiler.arithmetic.contracts.block_kernel import BaseBlockEffect
     from number_compiler.arithmetic.radix_division import (
         certified_binary_division_radix,
     )
     from number_compiler.projection.digit_terminal import DigitNormalizeBlockEffect
-    from number_compiler.sequences.collatz.block_power import CollatzPhysicalBlockEffect
 
     kernel = engine._law(action)
+    hooks = engine.adapter.family_hooks
+    family_effect = hooks is not None and hooks.owns_effect(kernel.effect)
     zero_occurrence = (
         type(kernel.effect)
         in (
@@ -86,27 +86,14 @@ def _primitive_parent_payload(
         )
         or certified_binary_division_radix(kernel.effect) is not None
     )
-    if not zero_occurrence and type(kernel.effect) is not CollatzPhysicalBlockEffect:
+    if not zero_occurrence and not family_effect:
         return None
     occurrence = TemporalCocycle()
     support = None
-    if type(kernel.effect) is CollatzPhysicalBlockEffect:
-        # A physical Collatz action records one odd event only at the unique
-        # low boundary.  Reading that canonical leaf is logarithmic in the
-        # tile level.  Every other admitted left state proves that this tile
-        # is spatially above the unique boundary, so its event is already zero
-        # and the source read would be redundant.
-        at_low_boundary = left == kernel.initial(BoundarySide.LEFT)
-        if at_low_boundary:
-            low_symbol = engine.tiles.point(tile, 0)
-            odd = int(low_symbol == 1)
-        else:
-            odd = 0
-            engine.ledger.bump("collatz_physical_event_source_reads_elided")
-        occurrence = TemporalCocycle(event_weight=odd)
-        arena = engine.scheduler.physical_supports
-        support = (
-            (arena.odd if odd else arena.even) if at_low_boundary else arena.identity
+    if family_effect:
+        assert hooks is not None
+        occurrence, support = hooks.source_tile_observation(
+            engine.scheduler, action, tile, left, right
         )
     return primitive_interface_payload(
         engine.scheduler.results,
@@ -142,19 +129,9 @@ def _leaf(
     active = bool(engine.adapter._observe(interface, "activity", (left, right)))
     law = engine._law(action)
     support = None
-    from number_compiler.sequences.collatz.block_power import (
-        CollatzPhysicalBlockEffect,
-    )
-
-    if type(law.effect) is CollatzPhysicalBlockEffect:
-        from number_compiler.arithmetic.contracts.block_effect import BoundarySide
-
-        arena = engine.scheduler.physical_supports
-        support = (
-            (arena.odd if symbol == 1 else arena.even)
-            if left == law.initial(BoundarySide.LEFT)
-            else arena.identity
-        )
+    hooks = engine.adapter.family_hooks
+    if hooks is not None and hooks.owns_effect(law.effect):
+        support = hooks.symbol_support(engine.scheduler, action, symbol, (left, right))
     bound_reverse_output = (
         ReverseBoundOutput.leaf(law.base, output)
         if require_output and type(law.effect) is BaseBlockEffect

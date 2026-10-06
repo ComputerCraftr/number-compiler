@@ -123,9 +123,6 @@ def construct(
             seed, steps, max_cache_entries=CACHE_ENTRIES
         )
         return application, application.maximum_width, application._ledger
-    from number_compiler.arithmetic.contracts.physical_collatz_kernel import (
-        compile_physical_diamond,
-    )
     from number_compiler.arithmetic.contracts.scoped_handles import ExactSource
     from number_compiler.arithmetic.contracts.source_geometry import SourceGeometry
     from number_compiler.hashlife.actions.lazy_compiler import LazyCompiler
@@ -133,6 +130,9 @@ def construct(
         DiamondRuntime,
     )
     from number_compiler.hashlife.observation.diamond_query import DiamondApplication
+    from number_compiler.sequences.collatz.compilation import (
+        compile_physical_diamond,
+    )
 
     compiler = LazyCompiler(ledger)
     digits = tuple((seed >> index) & 1 for index in range(seed.bit_length()))

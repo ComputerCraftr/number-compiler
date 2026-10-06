@@ -390,7 +390,7 @@ It is not a counterexample to the complete parameterized skew-cylinder action.
 Likewise source 20 and source 46,676 share a finite key but reach 230 and
 531,671: source authority must remain separate from observer equality.
 
-The [joint algebra theory](../../../proofs/isabelle/mahler_transport/Mahler_Joint_Quotient_Algebra.thy)
+The [joint algebra theory](../../../proofs/isabelle/integration/antihydra_mahler/mahler_transport/Mahler_Joint_Quotient_Algebra.thy)
 checks bounded suffix composition, its base-three encoding modulo 729, and
 the distinct lane laws. It does not prove completeness of the experimental
 partitions or legal-continuation closure. Its registered
@@ -480,7 +480,7 @@ No second F5 alphabet or source recurrence is needed.
   independently checked fixed-carry compression. Composition count is
   `bit_length(n)-1+bit_count(n)`; no repeated numeral is expanded.
 
-The [spatial theory](../../../proofs/isabelle/mahler_transport/Mahler_Spatial_Carry_Pump.thy)
+The [spatial theory](../../../proofs/isabelle/integration/antihydra_mahler/mahler_transport/Mahler_Spatial_Carry_Pump.thy)
 adds `mahler_spatial_low_block_transport` and
 `antihydra_centered_spatial_low_block_transport`. For `D=u+2bv`, write
 `e=(3u+1) mod 2b` and `c=(3u+1) div 2b`. They prove

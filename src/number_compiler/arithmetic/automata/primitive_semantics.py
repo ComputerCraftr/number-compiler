@@ -13,6 +13,7 @@ from typing import Literal
 from number_compiler.arithmetic.contracts.block_effect import (
     BlockContextBudgetExceeded,
     BlockEffect,
+    BlockEffectAdmissionAdapter,
     BoundarySide,
 )
 from number_compiler.arithmetic.contracts.block_kernel import FiniteBlockEffect
@@ -69,11 +70,19 @@ class PrimitiveSemanticsAdapter:
     """Compile fixed primitive kernels into one shared semantic function arena."""
 
     def __init__(
-        self, kernels: DiamondKernelArena, functions: SemanticFunctionArena
+        self,
+        kernels: DiamondKernelArena,
+        functions: SemanticFunctionArena,
+        *,
+        family_hooks: BlockEffectAdmissionAdapter | None = None,
     ) -> None:
         if kernels.ledger is not functions.ledger:
             raise ValueError("primitive and semantic arenas must share one ledger")
+        admitted_hooks = kernels.family_hooks if family_hooks is None else family_hooks
+        if admitted_hooks is not kernels.family_hooks:
+            raise ValueError("primitive semantics must use the kernel's family hooks")
         self.kernels, self.functions, self.ledger = kernels, functions, kernels.ledger
+        self.family_hooks = admitted_hooks
         self.ledger.register_execution_root(self)
         prefix = f"primitive-semantics-{len(self.ledger.inventory())}"
         self.records: OwnedMemo[ActionProgramID, PrimitiveSemantics] = OwnedMemo(
@@ -85,7 +94,7 @@ class PrimitiveSemanticsAdapter:
             kernel = self.kernels.kernel(effect)
             handle = effect
         else:
-            definition = immutable_atom(effect)
+            definition = immutable_atom(effect, family_hooks=self.family_hooks)
             handle = self.kernels.intern(definition)
             kernel = self.kernels.kernel(handle)
         found = self.records.get(handle)

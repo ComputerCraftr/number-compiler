@@ -3,13 +3,10 @@
 from __future__ import annotations
 
 from dataclasses import replace
-from typing import TYPE_CHECKING, Never
+from typing import TYPE_CHECKING, Never, cast
 
 import pytest
 
-from number_compiler.arithmetic.contracts.physical_collatz_kernel import (
-    PhysicalCollatzFourBlockEffect,
-)
 from number_compiler.arithmetic.functions.finite_function_types import (
     AtomSort,
     FunctionSignature,
@@ -30,6 +27,12 @@ from number_compiler.hashlife.interfaces.semantic_reachable_profile import (
 from number_compiler.hashlife.interfaces.semantic_structures import StructureArena
 from number_compiler.resources.metric_collection import collect_ledger_metrics
 from number_compiler.resources.payload_audit import audit_registered_payloads
+from number_compiler.sequences.collatz.physical_kernel import (
+    PhysicalCollatzFourBlockEffect,
+)
+from number_compiler.sequences.collatz.physical_pair_certificate import (
+    C4PairLeftCertificate,
+)
 from tests.support.assertions import assert_forbidden_payloads_read_only
 from tests.support.diamond_query import build
 
@@ -128,7 +131,8 @@ def test_profile_or_codec_forgery_is_not_a_kernel_definition_exemption(
     if fault in ("digest-copy", "bool-state"):
         assert arena is not None
         record = arena.nodes[profile.local_id]
-        states = record.definition.states
+        definition = cast(C4PairLeftCertificate, record.definition)
+        states = definition.states
         state = replace(
             states[0],
             anchor=True if fault == "bool-state" else (states[0].anchor + 1) % 50,
@@ -136,11 +140,11 @@ def test_profile_or_codec_forgery_is_not_a_kernel_definition_exemption(
         object.__setattr__(
             record,
             "definition",
-            replace(record.definition, states=(state, *states[1:])),
+            replace(definition, states=(state, *states[1:])),
         )
     elif fault == "foreign-profile":
         other = SemanticProfileArena(runtime)
-        foreign = other.c4_pair_left(codec.request.action)
+        foreign = other.source_initial_profile(codec.request.action)
         assert arena is not None
         arena.records._data[key] = replace(codec, profile=foreign)
     elif fault == "wrong-side":
@@ -195,7 +199,7 @@ def test_admission_proof_profile_is_bound_to_exact_compiler_and_domain(
     key = ExpressionAdmissionKey(expression, True, profile)
     if fault == "foreign":
         other = SemanticProfileArena(runtime)
-        key = replace(key, profile=other.c4_pair_left(codec.request.action))
+        key = replace(key, profile=other.source_initial_profile(codec.request.action))
     elif fault == "scalar":
         object.__setattr__(key, "structured", False)
     runtime.semantic_compiler.admissions[key] = ExpressionDomainProof(key)
@@ -228,7 +232,7 @@ def test_function_decoder_parent_validity_is_not_inferred_from_body() -> None:
 def test_profile_interner_cannot_borrow_an_equal_profile_from_another_arena() -> None:
     app, arena, _, _, codec = setup()
     other = SemanticProfileArena(app.runtime)
-    foreign = other.c4_pair_left(codec.request.action)
+    foreign = other.source_initial_profile(codec.request.action)
     assert arena is not None
     arena.keys[codec.request.action] = foreign
     assert_forbidden_payloads_read_only(app.runtime.ledger)

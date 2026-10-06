@@ -19,9 +19,6 @@ from number_compiler.arithmetic.contracts.block_kernel import (
     BaseBlockEffect,
     FiniteBlockEffect,
 )
-from number_compiler.arithmetic.contracts.physical_collatz_kernel import (
-    PhysicalCollatzFourBlockEffect,
-)
 from number_compiler.arithmetic.contracts.scoped_handles import ActionProgramID
 from number_compiler.arithmetic.functions.finite_function_types import (
     AtomSort,
@@ -41,6 +38,10 @@ from number_compiler.hashlife.observation.diamond_observers import NonblankBlock
 from number_compiler.projection.digit_terminal import DigitNormalizeBlockEffect
 from number_compiler.resources.ledger import ResourceLedger
 from number_compiler.sequences.collatz.block_power import CollatzPhysicalBlockEffect
+from number_compiler.sequences.collatz.physical_kernel import (
+    PhysicalCollatzFourBlockEffect,
+)
+from number_compiler.sequences.collatz.tile_family_hooks import collatz_tile_hooks
 from tests.support.assertions import assert_rejected_atomically
 
 if TYPE_CHECKING:
@@ -54,7 +55,9 @@ if TYPE_CHECKING:
 def adapter() -> PrimitiveSemanticsAdapter:
     ledger = ResourceLedger()
     functions = SemanticFunctionArena(ledger)
-    return PrimitiveSemanticsAdapter(DiamondKernelArena(ledger), functions)
+    kernels = DiamondKernelArena(ledger)
+    kernels.bind_family_hooks(collatz_tile_hooks())
+    return PrimitiveSemanticsAdapter(kernels, functions)
 
 
 def identity(

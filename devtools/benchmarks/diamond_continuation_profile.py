@@ -11,9 +11,6 @@ from time import perf_counter
 from typing import TYPE_CHECKING
 
 from number_compiler.arithmetic.contracts.block_effect import BlockContextBudgetExceeded
-from number_compiler.arithmetic.contracts.physical_collatz_kernel import (
-    compile_physical_diamond,
-)
 from number_compiler.arithmetic.contracts.scoped_handles import ExactSource
 from number_compiler.arithmetic.contracts.source_geometry import SourceGeometry
 from number_compiler.hashlife.actions.lazy_compiler import LazyCompiler
@@ -40,6 +37,9 @@ from number_compiler.hashlife.observation.diamond_query import DiamondApplicatio
 from number_compiler.resources.ledger import ResourceLedger
 from number_compiler.resources.metric_collection import collect_ledger_metrics
 from number_compiler.sequences.collatz.block_power import CollatzPhysicalBlockEffect
+from number_compiler.sequences.collatz.compilation import (
+    compile_physical_diamond,
+)
 
 if TYPE_CHECKING:
     import typing

@@ -25,6 +25,7 @@ from number_compiler.hashlife.interfaces.diamond_quotient import (
     LocalInterfaceID,
     MacroComponents,
 )
+from number_compiler.hashlife.tiles.ordered_boolean_support import OrderedBooleanSupport
 from number_compiler.hashlife.tiles.tile_context import TemporalCocycle
 from number_compiler.hashlife.tiles.tile_ports import ResultWiring
 from number_compiler.hashlife.tiles.tile_result_records import (
@@ -33,7 +34,6 @@ from number_compiler.hashlife.tiles.tile_result_records import (
 )
 from number_compiler.hashlife.tiles.tile_results import CompletedResultArena
 from number_compiler.hashlife.tiles.tiles import TileID
-from number_compiler.sequences.collatz.physical_support import PhysicalSupport
 
 _BOUND_OUTPUT_SEAL = object()
 _BOUND_OUTPUT_REQUEST_SEAL = object()
@@ -94,7 +94,7 @@ class CausalInterfacePayload:
     physical_ticks: int = 0
     event_weight: int = 0
     frame_shift: int = 0
-    physical_support: PhysicalSupport | None = field(default=None, kw_only=True)
+    physical_support: OrderedBooleanSupport | None = field(default=None, kw_only=True)
     bound_reverse_output: ReverseBoundOutput | None = field(default=None, kw_only=True)
     _bound_output_owner: object | None = field(default=None, kw_only=True, repr=False)
     _bound_output_snapshot: tuple[object, ...] | None = field(
@@ -138,12 +138,12 @@ class CausalInterfacePayload:
         if self.physical_ticks < 0 or self.event_weight < 0:
             raise ValueError("causal interface weights cannot be negative")
         if self.physical_support is not None:
-            if type(self.physical_support) is not PhysicalSupport:
+            if not isinstance(self.physical_support, OrderedBooleanSupport):
                 raise TypeError("causal interface has another shadow-support sort")
             self.physical_support.owner.validate(self.physical_support)
             if self.physical_support.ticks and (
                 self.physical_support.ticks != self.physical_ticks
-                or self.physical_support.odd_ticks != self.event_weight
+                or self.physical_support.true_count != self.event_weight
             ):
                 raise ValueError("causal support disagrees with interface weights")
         if self.bound_reverse_output is not None:
@@ -368,7 +368,7 @@ def primitive_interface_payload(
     wiring: ResultWiring,
     occurrence: TemporalCocycle,
     *,
-    physical_support: PhysicalSupport | None = None,
+    physical_support: OrderedBooleanSupport | None = None,
 ) -> CausalInterfacePayload:
     """Bind one primitive action to an exact input without emitting its output."""
     authority = _authority(results)

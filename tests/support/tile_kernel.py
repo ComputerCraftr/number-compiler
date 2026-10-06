@@ -5,6 +5,7 @@ from __future__ import annotations
 from collections.abc import Sequence
 
 from number_compiler.arithmetic.contracts.block_effect import BlockEffect, BoundarySide
+from number_compiler.arithmetic.contracts.block_kernel import BaseBlockEffect
 from number_compiler.arithmetic.functions.semantic_functions import (
     SemanticFunctionArena,
 )
@@ -27,6 +28,11 @@ from number_compiler.hashlife.tiles.tiles import (
     TileRecord,
 )
 from number_compiler.resources.ledger import ResourceLedger
+from number_compiler.sequences.collatz.block_power import CollatzPhysicalBlockEffect
+from number_compiler.sequences.collatz.tile_family_hooks import collatz_tile_hooks
+from number_compiler.sequences.reverse_add.tile_pair_transfer import (
+    ReverseAddFinitePairTransferFactory,
+)
 
 
 def _runtime(
@@ -42,7 +48,24 @@ def _runtime(
     kernels = DiamondKernelArena(ledger)
     interfaces = DiamondQuotientArena(SemanticFunctionArena(ledger))
     tiles = TileArena(ledger)
-    adapter = PrimitiveTileKernelAdapter(tiles, kernels, interfaces)
+    hooks = collatz_tile_hooks() if type(effect) is CollatzPhysicalBlockEffect else None
+    # BaseBlockEffect names the reverse/add family at every radix. Its
+    # decimal-only morphism is an internal strategy branch, not its admission.
+    pair_transfer_factory = (
+        ReverseAddFinitePairTransferFactory()
+        if type(effect) is BaseBlockEffect
+        else None
+    )
+    pair_transfer = (
+        None if pair_transfer_factory is None else pair_transfer_factory.create(ledger)
+    )
+    adapter = PrimitiveTileKernelAdapter(
+        tiles,
+        kernels,
+        interfaces,
+        family_hooks=hooks,
+        pair_transfer=pair_transfer,
+    )
     action = adapter.admit(effect)
     results = CompletedResultArena(
         tiles,

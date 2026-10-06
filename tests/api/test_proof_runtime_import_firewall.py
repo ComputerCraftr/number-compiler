@@ -30,7 +30,7 @@ for query in queries:
 forbidden = (
     "devtools.verification.block_composed",
     "devtools.verification.block_runtime",
-    "number_compiler.arithmetic.contracts.physical_collatz_kernel",
+    "number_compiler.sequences.collatz.physical_kernel",
     "number_compiler.hashlife.execution.diamond_reverse_kernel",
     "devtools.verification.collatz_c4_reference",
 )

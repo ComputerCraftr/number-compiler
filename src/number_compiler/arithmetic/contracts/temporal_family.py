@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from collections.abc import Callable
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, Literal
 
@@ -105,16 +106,12 @@ def _verify_program(
     family: Family,
     ledger: ResourceLedger | None,
     output_encoding: OutputEncoding,
+    family_leaf_counts: Callable[[BlockEffect], tuple[int, int] | None] | None,
 ) -> None:
     """Check actual immutable kernel syntax, never just its claimed exponent."""
     from number_compiler.arithmetic.contracts.block_kernel import BaseBlockEffect
     from number_compiler.hashlife.actions.lazy_compiler import ProgramComposition
     from number_compiler.projection.digit_terminal import DigitNormalizeBlockEffect
-
-    if family == "collatz":
-        from number_compiler.sequences.collatz.block_power import (
-            CollatzPhysicalBlockEffect,
-        )
 
     facts: dict[int, tuple[int, int]] = {}
     active: set[int] = set()
@@ -150,27 +147,23 @@ def _verify_program(
             counts = 1, 0
         elif family == "reverse-add" and type(node) is DigitNormalizeBlockEffect:
             counts = 0, 1
-        elif family == "collatz" and type(node) is CollatzPhysicalBlockEffect:
-            counts = 1, 0
         else:
-            # C4 remains an explicit bounded Collatz oracle. Reverse/add has
-            # one arithmetic language: primitive BaseBlockEffect nodes plus
-            # its terminal digit normalization.
-            if family == "collatz":
-                from number_compiler.arithmetic.contracts.physical_collatz_kernel import (
-                    is_verified_physical_four,
-                )
-
-                if is_verified_physical_four(node):
-                    counts = 4, 0
-                else:
-                    raise ValueError(
-                        "operator has no certified arithmetic-family implementation"
-                    )
-            else:
+            family_counts = (
+                family_leaf_counts(node)
+                if family == "collatz" and family_leaf_counts is not None
+                else None
+            )
+            if family_counts is None:
                 raise ValueError(
                     "operator has no certified arithmetic-family implementation"
                 )
+            if (
+                type(family_counts) is not tuple
+                or len(family_counts) != 2
+                or any(type(value) is not int or value < 0 for value in family_counts)
+            ):
+                raise TypeError("family certificate leaf returned invalid counts")
+            counts = family_counts
         if counts[0] != node.exponent or counts[1] > 1:
             raise ValueError("arithmetic program does not match its declared semantics")
         facts[identity] = counts
@@ -186,6 +179,7 @@ def _issue_certificate(
     *,
     ledger: ResourceLedger | None = None,
     output_encoding: OutputEncoding | None = None,
+    family_leaf_counts: Callable[[BlockEffect], tuple[int, int] | None] | None = None,
 ) -> TemporalFamilyCertificate:
     """Issue only after checking the executable DAG's arithmetic language."""
     if (
@@ -203,7 +197,7 @@ def _issue_certificate(
         family == "collatz" and output != "binary"
     ):
         raise ValueError("invalid arithmetic output encoding")
-    _verify_program(effect, family, ledger, output)
+    _verify_program(effect, family, ledger, output, family_leaf_counts)
     encoding = "symmetric-pair" if family == "reverse-add" else "binary"
     identity = _effect_key(effect)
     return TemporalFamilyCertificate(

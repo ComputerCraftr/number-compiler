@@ -5,7 +5,11 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import ClassVar, Protocol, TypeGuard, cast
 
-from number_compiler.arithmetic.contracts.block_effect import BlockEffect, _effect_key
+from number_compiler.arithmetic.contracts.block_effect import (
+    BlockEffect,
+    BlockEffectAdmissionAdapter,
+    _effect_key,
+)
 from number_compiler.arithmetic.contracts.semantic_identity import SemanticIdentity
 
 
@@ -69,15 +73,20 @@ class BlockDefinition(Protocol):
 
 def immutable_definition(
     effect: BlockEffect | ComposedBlockDefinition,
+    *,
+    family_hooks: BlockEffectAdmissionAdapter | None = None,
 ) -> BlockDefinition:
-    """Strip execution owners; accept only known immutable primitive definitions."""
+    """Strip owners; family leaves require explicit admission hooks."""
     from number_compiler.arithmetic.contracts.kernel_admission import immutable_atom
 
     if type(effect) is ComposedBlockDefinition:
         return effect
     if is_compatibility_composition(effect):
         return effect.definition
-    return cast(BlockDefinition, immutable_atom(cast(BlockEffect, effect)))
+    return cast(
+        BlockDefinition,
+        immutable_atom(cast(BlockEffect, effect), family_hooks=family_hooks),
+    )
 
 
 @dataclass(frozen=True, slots=True, init=False, eq=False)
@@ -108,9 +117,15 @@ class ComposedBlockDefinition:
         self,
         first: BlockEffect | ComposedBlockDefinition,
         second: BlockEffect | ComposedBlockDefinition,
+        *,
+        family_hooks: BlockEffectAdmissionAdapter | None = None,
     ) -> None:
-        left = immutable_definition(first)
-        right = left if first is second else immutable_definition(second)
+        left = immutable_definition(first, family_hooks=family_hooks)
+        right = (
+            left
+            if first is second
+            else immutable_definition(second, family_hooks=family_hooks)
+        )
         if left.base != right.base or left.blank != right.blank:
             raise ValueError("composition definition alphabets do not match")
         stable = left.stable_blank_output and right.stable_blank_output

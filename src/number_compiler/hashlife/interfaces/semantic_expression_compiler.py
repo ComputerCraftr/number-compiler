@@ -174,7 +174,7 @@ class SemanticExpressionCompiler:
         self.expressions: BoundaryExpressionArena = runtime.higher.expressions
         self.ledger: ResourceLedger = runtime.ledger
         self.primitives: PrimitiveSemanticsAdapter = PrimitiveSemanticsAdapter(
-            runtime.kernels, functions
+            runtime.kernels, functions, family_hooks=runtime.family_hooks
         )
         self.ledger.register_execution_root(self)
         owner = self.ledger.register(
@@ -214,7 +214,7 @@ class SemanticExpressionCompiler:
         self.runtime.actions.resolve(action)
         if self.profiles is None:
             self.profiles = SemanticProfileArena(self.runtime)
-        return self.profiles.c4_pair_left(action)
+        return self.profiles.source_initial_profile(action)
 
     def _profile(
         self, profile: SemanticProfileID | None

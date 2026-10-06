@@ -28,6 +28,7 @@ from number_compiler.resources.ownership import audit_execution_ownership
 from number_compiler.resources.payload_audit import audit_registered_payloads
 from number_compiler.resources.stores import LedgerList
 from number_compiler.sequences.collatz.block_power import CollatzPhysicalBlockEffect
+from number_compiler.sequences.collatz.tile_family_hooks import collatz_tile_hooks
 from tests.support.diamond_quotient import curried_increment
 
 
@@ -76,6 +77,7 @@ def test_primitive_records_are_admitted_through_the_actual_kernel(
 ) -> None:
     ledger = ResourceLedger()
     kernels = DiamondKernelArena(ledger)
+    kernels.bind_family_hooks(collatz_tile_hooks())
     functions = SemanticFunctionArena(ledger)
     adapter = PrimitiveSemanticsAdapter(kernels, functions)
     adapter.compile(CollatzPhysicalBlockEffect())

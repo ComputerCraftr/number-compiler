@@ -14,12 +14,16 @@ from number_compiler.arithmetic.contracts.block_effect import (
     _state_key,
 )
 from number_compiler.sequences.collatz.block_power import CollatzPhysicalBlockEffect
+from number_compiler.sequences.collatz.tile_family_hooks import (
+    collatz_runtime_tile_hooks,
+)
 
 
 def build() -> bytes:
     budget = BlockContextBudget()
     c1 = CollatzPhysicalBlockEffect()
-    c2 = compose_block_effects(c1, c1, budget=budget)
+    hooks = collatz_runtime_tile_hooks()
+    c2 = compose_block_effects(c1, c1, budget=budget, family_hooks=hooks)
     effect = ComposedBlockEffect(c2, c2, budget=budget, _force_functional=True)
     left = effect.boundary_universe(BoundarySide.LEFT)
     right = effect.boundary_universe(BoundarySide.RIGHT)

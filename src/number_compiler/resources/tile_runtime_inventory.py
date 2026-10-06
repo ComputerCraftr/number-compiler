@@ -35,8 +35,10 @@ from number_compiler.hashlife.execution.tile_causal_tasks import (
 )
 from number_compiler.hashlife.execution.tile_fused_kernel import LeafProductKey
 from number_compiler.hashlife.execution.tile_kernel import (
-    _CONTRACT,
     PrimitiveTileKernelAdapter,
+)
+from number_compiler.hashlife.execution.tile_kernel_contract import (
+    TILE_KERNEL_CONTRACT,
 )
 from number_compiler.hashlife.execution.tile_scheduler import (
     TileApplication,
@@ -83,6 +85,7 @@ from number_compiler.resources.causal_workspace import (
 from number_compiler.resources.fused_traversal_inventory import (
     audit_fused_traversal_workspace,
 )
+from number_compiler.resources.payload_contracts import PayloadAuditContractAudit
 from number_compiler.resources.reverse_morphism_inventory import audit_reverse_morphisms
 from number_compiler.resources.reverse_residual_inventory import audit_reverse_residuals
 from number_compiler.resources.tile_reverse_output_inventory import (
@@ -108,10 +111,11 @@ def audit_tile_runtime(
     ledger: object,
     containers: Mapping[int, object],
     roots: tuple[object, ...],
+    contracts: PayloadAuditContractAudit | None = None,
 ) -> tuple[set[int], set[tuple[int, int]]]:
     """Validate action records and every retained application result pin."""
-    approved, invalid = audit_reverse_morphisms(ledger, roots)
-    invalid.update(audit_reverse_residuals(ledger, roots))
+    approved, invalid = audit_reverse_morphisms(ledger, roots, contracts)
+    invalid.update(audit_reverse_residuals(ledger, roots, contracts))
     adapters = tuple(root for root in roots if type(root) is PrimitiveTileKernelAdapter)
     schedulers = tuple(root for root in roots if type(root) is TileScheduler)
     physical_schedulers = tuple(
@@ -165,7 +169,7 @@ def audit_tile_runtime(
                 adapter.validate_action(action)
                 kernel = adapter.kernels.kernel(record.kernel)
                 declaration = adapter.quotients.interface(record.signature)
-                behavior = (_CONTRACT, _effect_key(kernel.effect))
+                behavior = (TILE_KERNEL_CONTRACT, _effect_key(kernel.effect))
                 declaration.kernel.validate()
                 valid &= (
                     declaration.kernel.behavior == behavior
@@ -196,10 +200,6 @@ def audit_tile_runtime(
                     )
                 )
                 if record.children is None:
-                    from number_compiler.sequences.collatz.block_power import (
-                        CollatzPhysicalBlockEffect,
-                    )
-
                     expected_key: ActionSemanticKey = (
                         "power",
                         record.kernel,
@@ -211,7 +211,11 @@ def audit_tile_runtime(
                         and type(record.cocycle) is TemporalCocycle
                         and type(record.spatial_events_add) is bool
                         and record.spatial_events_add
-                        == (type(kernel.effect) is CollatzPhysicalBlockEffect)
+                        == (
+                            adapter.family_hooks is not None
+                            and adapter.family_hooks.owns_effect(kernel.effect)
+                            and adapter.family_hooks.spatial_events_add
+                        )
                         and blank_context_metadata(record)
                         == (
                             kernel.effect.blank_left_tail,
@@ -404,7 +408,7 @@ def audit_tile_runtime(
                         type(interface.symbol) is int
                         and 0 <= interface.symbol <= kernel.blank
                         and declaration.kernel.behavior
-                        == (_CONTRACT, _effect_key(kernel.effect))
+                        == (TILE_KERNEL_CONTRACT, _effect_key(kernel.effect))
                         and kernel.blank in signatures.get(interface.signature, set())
                         and declaration.inputs == adapter._ports(kernel)
                         and declaration.outputs == adapter._output_sorts(kernel)

@@ -280,11 +280,11 @@ class CollatzC4ReferenceApplication:
                 "transient payload preflight and construction disagree"
             )
 
-        from number_compiler.arithmetic.contracts.physical_collatz_kernel import (
-            PhysicalCollatzFourBlockEffect,
-        )
         from number_compiler.sequences.collatz.block_power import (
             CollatzPhysicalBlockEffect,
+        )
+        from number_compiler.sequences.collatz.physical_kernel import (
+            PhysicalCollatzFourBlockEffect,
         )
 
         steps = self.certificate.steps

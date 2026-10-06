@@ -24,6 +24,7 @@ from number_compiler.resources.ledger import ResourceLedger
 from number_compiler.resources.metric_collection import collect_ledger_metrics
 from number_compiler.resources.stores import LedgerList
 from number_compiler.sequences.collatz.block_power import CollatzPhysicalBlockEffect
+from number_compiler.sequences.collatz.tile_family_hooks import collatz_tile_hooks
 
 
 @pytest.mark.parametrize(
@@ -42,6 +43,7 @@ def test_actual_complete_kernel_domains_pass_without_changing_work(
     | NonblankBlockEffect,
 ) -> None:
     arena = DiamondKernelArena()
+    arena.bind_family_hooks(collatz_tile_hooks())
     primitive = arena.intern(effect)
     expression = arena.constant(effect.blank + 1, 0)
     before = dict(arena.ledger.counters)
@@ -72,6 +74,7 @@ def test_foreign_and_unallocated_diamond_ids_are_not_semantic_payloads() -> None
 
 def test_unregistered_kernel_copy_cannot_confer_original_domain_authority() -> None:
     arena = DiamondKernelArena()
+    arena.bind_family_hooks(collatz_tile_hooks())
     primitive = arena.intern(CollatzPhysicalBlockEffect())
     original = arena.kernel(primitive)
     registry = DiamondPayloadRegistry(arena.ledger)

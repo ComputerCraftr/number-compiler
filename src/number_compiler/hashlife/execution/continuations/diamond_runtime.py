@@ -149,11 +149,13 @@ class DiamondRuntime:
     _generic_higher_runtime: GenericHigherRuntime
 
     def __init__(self, compiler: LazyCompiler, source: SourceGeometry) -> None:
+        self.family_hooks = compiler.family_hooks
         self.ledger = compiler.ledger
         self.ledger.register_execution_root(self)
         self.actions = TemporalActionArena(compiler)
         self.cells = ImageCellArena(self.actions, source)
         self.kernels = DiamondKernelArena(self.ledger)
+        self.kernels.bind_family_hooks(self.family_hooks)
         self.boundaries = BoundaryActionArena(self.actions, self.kernels, self.cells)
         self.pair_macros = PrimitivePairMacros(self.boundaries)
         self.primitive_pairs = PrimitivePairActions(

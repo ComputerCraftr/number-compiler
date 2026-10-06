@@ -146,6 +146,7 @@ class CollatzRadix4RangeArena:
             self._binding_owner,
             evictable=True,
         )
+        self._audit_bindings = self._bindings._data
         self.ledger.register_container(
             self._node_owner,
             self._nodes,
@@ -156,6 +157,11 @@ class CollatzRadix4RangeArena:
             self._key_owner, self._keys, payloads=self._keys.items
         )
         self.ledger.register_execution_root(self)
+        from number_compiler.sequences.collatz.payload_audit import (
+            register_collatz_range_contract,
+        )
+
+        register_collatz_range_contract(self)
 
     def resolve(self, reference: CollatzRadix4RangeID) -> CollatzRadix4Range:
         if type(reference) is not CollatzRadix4RangeID:

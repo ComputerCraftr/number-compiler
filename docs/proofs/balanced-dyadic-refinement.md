@@ -243,7 +243,7 @@ under scale at least one and nonnegative cap. Comma's translation guard uses
 the existing `repeated_prefix_minimum_closed` in that same theory. The
 different family guards and source classifiers are not interchangeable.
 
-The focused [comma ordered-root model](../../proofs/isabelle/comma_vieta_root/Comma_Vieta_Root_Frame.thy)
+The focused [comma ordered-root model](../../proofs/isabelle/families/comma/comma_vieta_root/Comma_Vieta_Root_Frame.thy)
 uses the actual phase/displacement definitions. Its bounded selector refines
 one local Near prefix, under explicit frame, alignment and headroom guards;
 its row port permits two root crossings. Neither this local constructor nor
@@ -281,7 +281,7 @@ about a supplied branch word or generic associativity closes the latter two.
 ### Finite D8 arithmetic specialization
 
 `collatz_d8_all_source_fibers` in
-[Dyadic_Parity_Inverse_Arithmetic](../../proofs/isabelle/integration_dyadic/Dyadic_Parity_Inverse_Arithmetic.thy)
+[Dyadic_Parity_Inverse_Arithmetic](../../proofs/isabelle/integration/dyadic/integration_dyadic/Dyadic_Parity_Inverse_Arithmetic.thy)
 proves `256 * H^8(x) = M(x mod 256) * x + B(x mod 256)`.
 The executable forward-coefficient recurrence supplies `M,B`, and
 `collatz_qprefix_low` establishes that every higher lift selects the same
@@ -322,7 +322,7 @@ closed under arbitrary temporal squaring.
 
 ### Cache consumption and focused proof ownership
 
-[Source_Cache_Consumption](../../proofs/isabelle/integration_cache/Source_Cache_Consumption.thy)
+[Source_Cache_Consumption](../../proofs/isabelle/integration/source_cache/integration_cache/Source_Cache_Consumption.thy)
 connects the cached Collatz width, residue, odd count, target origin and gain to
 the exact normalized orbit. `cached_occurrence_source_transport` proves
 application to any matching high fiber; `cached_occurrence_physical_consumer`

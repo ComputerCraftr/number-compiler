@@ -4,14 +4,20 @@ from devtools.paths import repository_root
 
 ROOT = repository_root()
 BASE_THEORY = (
-    ROOT / "proofs/isabelle/comma_sparse_instance/Comma_Sparse_Base_Instance.thy"
+    ROOT
+    / "proofs/isabelle/families/comma/comma_sparse_instance/Comma_Sparse_Base_Instance.thy"
 )
 POWER_THEORY = (
-    ROOT / "proofs/isabelle/comma_sparse_power/Comma_Sparse_Power_Instance.thy"
+    ROOT
+    / "proofs/isabelle/families/comma/comma_sparse_power/Comma_Sparse_Power_Instance.thy"
 )
-POWER_SMOKE = ROOT / "proofs/isabelle/comma_sparse_audit/Comma_Sparse_Power_Smoke.thy"
+POWER_SMOKE = (
+    ROOT
+    / "proofs/isabelle/families/comma/comma_sparse_audit/Comma_Sparse_Power_Smoke.thy"
+)
 POWER_CONSTRUCTOR = (
-    ROOT / "proofs/isabelle/comma_sparse_power_algebra/sparse_power_constructor.ML"
+    ROOT
+    / "proofs/isabelle/families/comma/comma_sparse_power_algebra/sparse_power_constructor.ML"
 )
 
 

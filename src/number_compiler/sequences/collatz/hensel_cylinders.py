@@ -9,47 +9,27 @@ from __future__ import annotations
 from dataclasses import dataclass
 
 from number_compiler.arithmetic.contracts.block_effect import BlockContextBudgetExceeded
+from number_compiler.arithmetic.fields.inverse_three_clock import (
+    MAX_DYADIC_CLOCK_BITS,
+)
+from number_compiler.arithmetic.fields.inverse_three_clock import (
+    three_dyadic_phase as _three_dyadic_phase,
+)
+from number_compiler.arithmetic.fields.inverse_three_clock import (
+    three_unit_phase as _three_unit_phase,
+)
+from number_compiler.arithmetic.fields.inverse_three_clock import (
+    validate_clock_natural as _natural,
+)
+from number_compiler.arithmetic.fields.inverse_three_clock import (
+    validate_clock_precision as _precision,
+)
 from number_compiler.arithmetic.fields.morphism_core import DyadicAffineCocycle
 from number_compiler.arithmetic.fields.two_adic import v2_nonzero
 
-MAX_CYLINDER_BITS = 16384
-
-
-def _natural(value: int, name: str) -> int:
-    if type(value) is not int:
-        raise TypeError(f"{name} must be an exact integer")
-    if value < 0:
-        raise ValueError(f"{name} must be nonnegative")
-    return value
-
-
-def _precision(bits: int) -> int:
-    _natural(bits, "precision")
-    if bits > MAX_CYLINDER_BITS:
-        raise BlockContextBudgetExceeded("Hensel precision budget exceeded")
-    return bits
-
-
-def three_unit_phase(exponent: int, bits: int) -> int:
-    """Return 3**h modulo 2**q without ever constructing 3**h."""
-    _natural(exponent, "exponent")
-    _precision(bits)
-    if bits == 0:
-        return 0
-    order_bits = 0 if bits == 1 else max(1, bits - 2)
-    phase = exponent & ((1 << order_bits) - 1)
-    return pow(3, phase, 1 << bits)
-
-
-def three_dyadic_phase(level: int, bits: int) -> int:
-    """3**(2**j) at live precision, including the exceptional j=0 case."""
-    _natural(level, "dyadic level")
-    _precision(bits)
-    if not bits:
-        return 0
-    if bits == 1 or level >= max(1, bits - 2):
-        return 1
-    return three_unit_phase(1 << level, bits)
+MAX_CYLINDER_BITS = MAX_DYADIC_CLOCK_BITS
+three_dyadic_phase = _three_dyadic_phase
+three_unit_phase = _three_unit_phase
 
 
 @dataclass(frozen=True, slots=True, order=True)

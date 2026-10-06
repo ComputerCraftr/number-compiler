@@ -8,6 +8,7 @@ import pytest
 from devtools.checks import isabelle_proof_index as index
 from devtools.checks import isabelle_source_analysis as source_analysis
 from devtools.checks import isabelle_syntax as syntax
+from devtools.checks.isabelle_registry import discover_sessions
 from devtools.paths import isabelle_root
 
 
@@ -20,10 +21,7 @@ class _RepositoryProofGraph(NamedTuple):
 def repository_proof_graph() -> _RepositoryProofGraph:
     """Parse immutable checkout ancestry once; fixture-mutating tests stay local."""
     root = index.ISABELLE
-    sessions = {
-        session.name: session
-        for session in syntax.parse_sessions((root / "ROOT").read_text())
-    }
+    sessions = {session.name: session for session in discover_sessions(root)}
     headers = {
         path: syntax.parse_theory_header(path.read_text(), path)
         for path in root.rglob("*.thy")
@@ -32,19 +30,28 @@ def repository_proof_graph() -> _RepositoryProofGraph:
 
 
 def _fixture(root: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
-    directory = isabelle_root(root)
-    directory.mkdir(parents=True)
-    (directory / "ROOT").write_text("session Example = HOL +\n  theories\n    Sample\n")
-    (directory / "Sample.thy").write_text(
+    proof_root = isabelle_root(root)
+    directory = proof_root / "families" / "example"
+    session_directory = directory / "Session"
+    session_directory.mkdir(parents=True)
+    (proof_root / "ROOTS").write_text("families/example\n")
+    (directory / "ROOT").write_text(
+        "session Example in Session = HOL +\n  theories\n    Sample\n"
+    )
+    (session_directory / "Sample.thy").write_text(
         "theory Sample imports Main begin\n"
         'lemma bounded [simp]: assumes "n = (0::nat)" shows "n < 1" by simp\n'
         'ML \\<open>val _ = if null (Thm_Deps.all_oracles @{thms bounded}) then () else error "oracle";\\<close>\n'
         "end\n"
     )
     monkeypatch.setattr(index, "ROOT", root)
-    monkeypatch.setattr(index, "ISABELLE", directory)
+    monkeypatch.setattr(index, "ISABELLE", proof_root)
     monkeypatch.setattr(index, "COUNTERPARTS", {})
     return directory
+
+
+def _sample(directory: Path) -> Path:
+    return directory / "Session" / "Sample.thy"
 
 
 def test_index_uses_canonical_isabelle_root() -> None:
@@ -69,12 +76,12 @@ def test_theory_inventory_uses_one_source_snapshot_per_pass(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     directory = _fixture(tmp_path, monkeypatch)
-    theory = directory / "Sample.thy"
+    theory = _sample(directory)
     read_text = Path.read_text
     reads: list[Path] = []
 
-    def changing_source(path: Path) -> str:
-        text = read_text(path)
+    def changing_source(path: Path, encoding: str | None = None) -> str:
+        text = read_text(path, encoding=encoding)
         if path == theory:
             reads.append(path)
             # Simulate an editor saving between inventory phases. Metadata and
@@ -142,14 +149,17 @@ def test_index_rejects_structural_misrepresentation(
 ) -> None:
     directory = _fixture(tmp_path, monkeypatch)
     if fault == "missing":
-        (directory / "Sample.thy").unlink()
+        _sample(directory).unlink()
     elif fault == "duplicate":
+        (directory / "Other").mkdir()
         with (directory / "ROOT").open("a") as output:
-            output.write("session Second = HOL +\n  theories\n    Sample\n")
+            output.write(
+                'session Second in Other = HOL +\n  theories\n    "../Session/Sample"\n'
+            )
     elif fault == "orphan":
         (directory / "Orphan.thy").write_text("theory Orphan imports Main begin end\n")
     elif fault == "unaudited":
-        path = directory / "Sample.thy"
+        path = _sample(directory)
         path.write_text(
             path.read_text().replace("Thm_Deps.all_oracles", "not_an_audit")
         )
@@ -180,7 +190,7 @@ def test_recursive_gcd_cannot_enter_global_simplifier(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch, declaration: str
 ) -> None:
     directory = _fixture(tmp_path, monkeypatch)
-    path = directory / "Sample.thy"
+    path = _sample(directory)
     path.write_text(path.read_text().replace("\nend\n", f"\n{declaration}\nend\n"))
     with pytest.raises(ValueError, match="recursive gcd rule globally registered"):
         index.build_index()
@@ -211,9 +221,9 @@ def test_index_accepts_unregistered_theory_reached_from_registered_root(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     directory = _fixture(tmp_path, monkeypatch)
-    sample = directory / "Sample.thy"
+    sample = _sample(directory)
     sample.write_text(sample.read_text().replace("imports Main", "imports Helper"))
-    (directory / "Helper.thy").write_text(
+    (directory / "Session" / "Helper.thy").write_text(
         'theory Helper imports Main begin lemma helper: "True" by simp\n'
         'ML \\<open>val _ = if null (Thm_Deps.all_oracles @{thms helper}) then () else error "oracle";\\<close>\n'
         "end\n"
@@ -229,7 +239,7 @@ def test_index_validates_ml_file_targets(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     directory = _fixture(tmp_path, monkeypatch)
-    sample = directory / "Sample.thy"
+    sample = _sample(directory)
     sample.write_text(
         sample.read_text().replace("\nend\n", '\nML_file "missing.ML"\nend\n')
     )
@@ -241,9 +251,11 @@ def test_index_rejects_ml_file_targets_outside_theory_root(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     directory = _fixture(tmp_path, monkeypatch)
-    sample = directory / "Sample.thy"
+    sample = _sample(directory)
     sample.write_text(
-        sample.read_text().replace("\nend\n", '\nML_file "../../outside.ML"\nend\n')
+        sample.read_text().replace(
+            "\nend\n", '\nML_file "../../../../outside.ML"\nend\n'
+        )
     )
     with pytest.raises(ValueError, match="ML_file target escapes theory root"):
         index.build_index()
@@ -254,20 +266,22 @@ def test_ml_file_inventory_resolves_relative_to_theory_source(
 ) -> None:
     directory = _fixture(tmp_path, monkeypatch)
     (directory / "child").mkdir()
-    (directory / "helper.ML").write_text("val helper = ()\n")
+    (directory / "Session" / "helper.ML").write_text("val helper = ()\n")
     (directory / "child" / "helper.ML").write_text("val other = ()\n")
-    (directory / "ROOT").write_text(
-        'session Example in child = HOL +\n  theories\n    "../Sample"\n'
-    )
-    sample = directory / "Sample.thy"
+    sample = _sample(directory)
     sample.write_text(
         sample.read_text().replace("\nend\n", '\nML_file "helper.ML"\nend\n')
     )
     rows = index.build_index()["ml_files"]
     assert isinstance(rows, list)
     by_path = {row["path"]: row for row in rows}
-    assert by_path["proofs/isabelle/helper.ML"]["referenced_by"] == ("Sample",)
-    assert by_path["proofs/isabelle/child/helper.ML"]["referenced_by"] == ()
+    assert by_path["proofs/isabelle/families/example/Session/helper.ML"][
+        "referenced_by"
+    ] == ("Sample",)
+    assert (
+        by_path["proofs/isabelle/families/example/child/helper.ML"]["referenced_by"]
+        == ()
+    )
 
 
 def test_ml_file_lexer_ignores_comments_documentation_and_ml_strings() -> None:
@@ -329,7 +343,7 @@ def test_comment_cannot_forge_theory_header_or_session(
     root.write_text(
         "(* session Forged = HOL +\n  theories\n    Forged *)\n" + root.read_text()
     )
-    sample = directory / "Sample.thy"
+    sample = _sample(directory)
     sample.write_text(
         "(* theory Forged imports Missing begin *)\n" + sample.read_text()
     )
@@ -373,14 +387,14 @@ def test_quoted_relative_theory_path_resolves_to_its_declared_owner(
     directory = _fixture(tmp_path, monkeypatch)
     (directory / "child").mkdir()
     (directory / "ROOT").write_text(
-        'session Example in child = HOL +\n  theories\n    "../Sample"\n'
+        'session Example in child = HOL +\n  theories\n    "../Session/Sample"\n'
     )
     rows = index.build_index()["theories"]
     assert isinstance(rows, list)
     assert rows[0]["theory"] == "Sample" and rows[0]["session"] == "Example"
 
 
-@pytest.mark.parametrize("entry", ('"../Sample"', '"../../outside"'))
+@pytest.mark.parametrize("entry", ('"../Session/Sample"', '"../../../../outside"'))
 def test_aliased_duplicate_and_escaping_theory_paths_are_rejected(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch, entry: str
 ) -> None:
@@ -402,7 +416,7 @@ def test_canonical_session_directory_aliases_are_rejected(
     except OSError as error:
         pytest.skip(f"cannot create session-directory symlink: {error}")
     (directory / "ROOT").write_text(
-        'session Example in child = HOL +\n  theories\n    "../Sample"\n'
+        'session Example in child = HOL +\n  theories\n    "../Session/Sample"\n'
         "session Alias in alias = HOL +\n"
     )
     with pytest.raises(
@@ -556,9 +570,9 @@ def test_imported_helper_requires_oracle_audit(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     directory = _fixture(tmp_path, monkeypatch)
-    sample = directory / "Sample.thy"
+    sample = _sample(directory)
     sample.write_text(sample.read_text().replace("imports Main", "imports Helper"))
-    (directory / "Helper.thy").write_text(
+    (directory / "Session" / "Helper.thy").write_text(
         'theory Helper imports Main begin lemma helper: "True" by simp end\n'
     )
     with pytest.raises(
@@ -698,8 +712,8 @@ def test_period_inherits_checked_return_instead_of_replaying_imported_setup(
     assert sessions["Comma_Branch_Period_Instance"].parent == "Comma_Return_Instance"
     assert sessions["Comma_Return_Instance"].parent == "Comma_Return_Engine"
     for relative in (
-        "comma_return_instance/Comma_Return_Instance.thy",
-        "comma_branch_instance/Comma_Branch_Instance.thy",
+        "families/comma/comma_return_instance/Comma_Return_Instance.thy",
+        "families/comma/comma_branch_instance/Comma_Branch_Instance.thy",
     ):
         path = index.ISABELLE / relative
         _, imports = repository_proof_graph.headers[path]
@@ -749,12 +763,19 @@ def test_native_release_inherits_completed_provider_without_legacy_replay(
 
 
 def test_comma_global_release_endpoints_use_strict_native_dependency_audit() -> None:
-    audit = (index.ISABELLE / "shared" / "Proof_Dependency_Audit.ML").read_text()
+    audit = (
+        index.ISABELLE
+        / "families/comma/comma_entry_arithmetic/Proof_Dependency_Audit.ML"
+    ).read_text()
     future = (
-        index.ISABELLE / "comma_future_global" / "Comma_Global_Future_Safety.thy"
+        index.ISABELLE
+        / "families/comma/comma_future_global"
+        / "Comma_Global_Future_Safety.thy"
     ).read_text()
     root = (
-        index.ISABELLE / "comma_future_global" / "Comma_Global_Root_Safety.thy"
+        index.ISABELLE
+        / "families/comma/comma_future_global"
+        / "Comma_Global_Root_Safety.thy"
     ).read_text()
 
     for retired_authority in (
@@ -824,7 +845,7 @@ def test_direct_summary_semantics_does_not_depend_on_fuel_or_concrete_tables(
     )
     # Local Schur arithmetic reuses the shared carry monoid, without acquiring
     # comma trajectory, summary-table or future-certificate dependencies.
-    assert sessions["Comma_Schur_Carry"].parent == "Reverse_Residuals"
+    assert sessions["Comma_Schur_Carry"].parent == "Shared_Carry_Dynamics"
     assert not any(
         name.startswith("Comma_")
         for name in _session_ancestors(sessions, "Comma_Schur_Carry")
@@ -875,13 +896,13 @@ def test_direct_summary_semantics_does_not_depend_on_fuel_or_concrete_tables(
         ),
         ("Comma_Prefix_Selection", "Comma_Closed_Near", "Comma_Closed_Near"),
         ("Comma_Future_Selector", "Comma_Cylinder", "Comma_Arithmetic"),
-        ("Comma_Native19_Carry", "Comma_Schur_Carry", "Reverse_Residuals"),
+        ("Comma_Native19_Carry", "Comma_Schur_Carry", "Shared_Carry_Dynamics"),
         ("Comma_Reset_Germ", "Reverse_Residuals", "Reverse_Residuals"),
-        ("Comma_Factored_Port_Carrier", "Comma_Vieta_Root", "Reverse_Residuals"),
+        ("Comma_Factored_Port_Carrier", "Comma_Vieta_Root", "Shared_Carry_Dynamics"),
         (
             "Comma_Recursive_Pair_Language",
             "Comma_Entry_Port",
-            "Reverse_Residuals",
+            "Shared_Carry_Dynamics",
         ),
         (
             "Comma_Compact_Decade_Classifier",

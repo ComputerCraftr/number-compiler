@@ -97,6 +97,29 @@ class ReverseCoordinateProgramArena:
         self.identity = self.intern(ReverseCoordinateProgram(base, 0, False))
         self.primitive = self.intern(ReverseCoordinateProgram(base, 1, False))
         self.terminal = self.intern(ReverseCoordinateProgram(base, 0, True))
+        from number_compiler.resources.payload_contracts import (
+            PayloadAuditStoreBinding,
+        )
+        from number_compiler.sequences.reverse_add.field_action_payload_audit import (
+            audit_reverse_field_action_owner,
+        )
+
+        ledger.register_payload_audit_contract(
+            self,
+            "reverse_add",
+            (
+                PayloadAuditStoreBinding(
+                    self._node_owner, "_nodes", "reverse_output_morphism"
+                ),
+                PayloadAuditStoreBinding(
+                    self._key_owner, "_keys", "reverse_output_interner"
+                ),
+                PayloadAuditStoreBinding(
+                    self._compose_owner, "_compose", "reverse_output_composition"
+                ),
+            ),
+            audit_reverse_field_action_owner,
+        )
 
     def _handle(self, local_id: int) -> CoordinateOutputMorphismID:
         return CoordinateOutputMorphismID(self.owner, self._KIND, local_id)

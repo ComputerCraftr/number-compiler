@@ -64,6 +64,22 @@ def test_inventory_counts_registered_owners_and_typed_roots_once() -> None:
     assert not ledger.inventory()[0].roots
 
 
+def test_owner_inventory_does_not_visit_unrelated_resolvers() -> None:
+    ledger = ResourceLedger()
+    selected = ledger.register("selected", "TRANSFER_SUMMARY")
+    unrelated = ledger.register("unrelated", "TRANSFER_SUMMARY")
+    ledger.reserve(selected, entries=1, nodes=2)
+    expected = ledger.inventory()[selected]
+
+    def forbidden() -> tuple[ArenaHandle, ...]:
+        raise AssertionError("single-owner audit visited an unrelated source")
+
+    ledger.register_container(unrelated, [], roots=forbidden)
+    assert ledger.inventory_owner(selected) == expected
+    with pytest.raises(AssertionError, match="unrelated source"):
+        ledger.inventory()
+
+
 def test_invalid_owner_and_negative_operations_do_not_change_ledger() -> None:
     ledger = ResourceLedger()
     owner = ledger.register("source", "EXACT_SOURCE")

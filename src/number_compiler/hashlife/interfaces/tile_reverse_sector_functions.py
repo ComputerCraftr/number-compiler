@@ -36,11 +36,13 @@ def validate_reverse_sectors(
     if type(sectors) is not ReverseCarrySectorTransfer:
         raise TypeError("reverse sectors require the canonical bounded transfer")
     sectors.__post_init__()
-    from number_compiler.hashlife.execution.tile_kernel import _CONTRACT
+    from number_compiler.hashlife.execution.tile_kernel_contract import (
+        TILE_KERNEL_CONTRACT,
+    )
 
     permitted = (
-        (_CONTRACT, ("base_block", 10)),
-        (_CONTRACT, ("digit-normalize-block", 10)),
+        (TILE_KERNEL_CONTRACT, ("base_block", 10)),
+        (TILE_KERNEL_CONTRACT, ("digit-normalize-block", 10)),
     )
     if sectors.base != 10 or interface.kernel.behavior not in permitted:
         raise ValueError("reverse sectors require the decimal pair-kernel profile")

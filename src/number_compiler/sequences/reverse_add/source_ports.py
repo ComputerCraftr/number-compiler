@@ -134,8 +134,10 @@ class SourceCarryPorts:
 
     __slots__ = (
         "__weakref__",
+        "_audit_cache",
         "_authority",
         "_cache",
+        "_cache_owner",
         "_closed",
         "_ledger",
         "_source",
@@ -189,10 +191,31 @@ class SourceCarryPorts:
             cache_owner,
         )
         self._cache = cache
+        self._cache_owner = cache_owner
+        self._audit_cache = cache._data
         self._workspace_owner = workspace_owner
         self._workspace_authority = workspace_owner
         self._closed = False
         ledger.register_execution_root(self)
+        from number_compiler.resources.payload_contracts import (
+            PayloadAuditStoreBinding,
+        )
+        from number_compiler.sequences.reverse_add.source_payload_audit import (
+            audit_reverse_source_owner,
+        )
+
+        ledger.register_payload_audit_contract(
+            self,
+            "reverse_add",
+            (
+                PayloadAuditStoreBinding(
+                    cache_owner,
+                    "_audit_cache",
+                    "reverse_source_carry_interval",
+                ),
+            ),
+            audit_reverse_source_owner,
+        )
 
     @property
     def source(self) -> ExactSource:

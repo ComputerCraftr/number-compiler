@@ -26,12 +26,17 @@ def test_unbalanced_support_concat_accounts_only_retained_entries() -> None:
         False,
         False,
     )
-    physical = tuple(
-        item for item in ledger.inventory() if item.role.startswith("physical_shadow")
+    support_owners = {
+        arena._node_owner,
+        arena._join_owner,
+        arena._concat_owner,
+    }
+    support_rows = tuple(
+        item for item in ledger.inventory() if item.owner in support_owners
     )
-    assert physical
-    assert all(item.entries == item.observed_entries for item in physical)
-    assert all(item.nodes == (item.observed_nodes or 0) for item in physical)
+    assert len(support_rows) == len(support_owners)
+    assert all(item.entries == item.observed_entries for item in support_rows)
+    assert all(item.nodes == (item.observed_nodes or 0) for item in support_rows)
     assert not audit_physical_support_payloads(ledger).invalid
 
 
@@ -39,7 +44,7 @@ def test_support_payload_audit_rejects_modified_program() -> None:
     ledger = ResourceLedger()
     arena = PhysicalSupportArena(max_nodes=64, ledger=ledger)
     support = arena.event(2)
-    object.__setattr__(support, "parity", True)
+    object.__setattr__(support, "true_count", support.true_count + 1)
     assert audit_physical_support_payloads(ledger).invalid
 
 

@@ -22,6 +22,7 @@ from number_compiler.hashlife.interfaces.semantic_bits import (
     FactoredFunctionID,
 )
 from number_compiler.resources.ledger import OwnedMemo
+from number_compiler.resources.payload_contracts import PayloadAuditStoreBinding
 from number_compiler.sequences.reverse_add.active_output import (
     CARRY_ACTION,
     PAIR,
@@ -52,10 +53,21 @@ class ReverseContextualResidualArena:
         self.output = ReverseActiveOutputArena(bits)
         self.ledger.register_execution_root(self)
         owner = self.ledger.register(
-            f"reverse-contextual-residual-{len(self.ledger.inventory())}", "query_memo"
+            f"reverse-contextual-residual-{self.ledger.owner_count}", "query_memo"
         )
         self._successors: OwnedMemo[_EdgeKey, FactoredFunctionID] = OwnedMemo(
             self.ledger, owner, nodes_per_entry=8, evictable=True
+        )
+        self._audit_successors = self._successors._data
+        from number_compiler.sequences.reverse_add.contextual_residual_audit import (
+            audit_reverse_contextual_residual,
+        )
+
+        self.ledger.register_payload_audit_contract(
+            self,
+            "reverse_add",
+            (PayloadAuditStoreBinding(owner, "_audit_successors", "query_memo"),),
+            audit_reverse_contextual_residual,
         )
 
     def carry_prefix(

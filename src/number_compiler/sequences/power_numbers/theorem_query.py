@@ -58,7 +58,7 @@ def _factored_projection(
     if factor_limit < 2:
         return None
     from number_compiler.api.sequence_terms import factored_word_projection
-    from number_compiler.arithmetic.fields.congruence_automaton import (
+    from number_compiler.sequences.prime.congruence import (
         FactoredPrimeAutomaton,
     )
 

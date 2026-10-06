@@ -51,9 +51,12 @@ def test_release_probe_covers_the_full_series_under_shared_command_policy() -> N
     assert probe.INVOCATION_LIMIT_SECONDS == 60
 
 
+@pytest.mark.parametrize("evidence_mode", ["development", "acceptance"])
 def test_failed_workers_remain_in_complete_collection(
     monkeypatch: pytest.MonkeyPatch,
+    evidence_mode: str,
 ) -> None:
+    monkeypatch.setenv("NUMBER_COMPILER_EVIDENCE_MODE", evidence_mode)
     monkeypatch.setattr(
         probe, "git_source", lambda _root: GitSource("commit", "tree", "sha1", False)
     )
@@ -74,7 +77,7 @@ def test_failed_workers_remain_in_complete_collection(
     monkeypatch.setattr(subprocess, "run", fake_run)
     result = probe.run_probe()
     assert result["git_revision_unchanged"] is True
-    assert result["evidence_mode"] == "development"
+    assert result["evidence_mode"] == evidence_mode
     assert result["cacheable"] is False
     assert result["reusable"] is False
     assert result["collection_complete"] is True

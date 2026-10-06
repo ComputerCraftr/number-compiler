@@ -1,7 +1,7 @@
-from number_compiler.arithmetic.fields.congruence_automaton import (
+from number_compiler.arithmetic.polynomials.primary_jet import primary_jet_from_digits
+from number_compiler.sequences.prime.congruence import (
     compile_prime_block_factored_decision,
 )
-from number_compiler.arithmetic.polynomials.primary_jet import primary_jet_from_digits
 from number_compiler.sequences.prime.coordinates import (
     prime_block_summary_hyperbolic_packed,
 )

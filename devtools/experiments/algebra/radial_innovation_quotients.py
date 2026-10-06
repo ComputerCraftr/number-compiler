@@ -16,7 +16,6 @@ from devtools.verification import exact_oracle
 from devtools.verification.carry_action_quotient import CarryResetSignature
 from number_compiler.arithmetic.automata.program_word import from_runs
 from number_compiler.arithmetic.carry.event_memory import forcing_event, pair_step
-from number_compiler.arithmetic.fields.adic_morphism import collatz_slab_padic3
 from number_compiler.arithmetic.fields.radial_innovation import (
     ReverseAddCyclotomicInnovationBlock,
 )
@@ -42,6 +41,7 @@ from number_compiler.sequences.collatz.pair import (
     accelerated_odd_collatz,
     valuation_itinerary_slab,
 )
+from number_compiler.sequences.collatz.parity import collatz_slab_padic3
 from number_compiler.sequences.collatz.root_germs import RationalPadicRootGerm
 
 

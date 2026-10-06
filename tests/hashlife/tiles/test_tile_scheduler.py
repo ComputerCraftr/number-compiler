@@ -21,6 +21,9 @@ from number_compiler.arithmetic.functions.semantic_functions import (
 )
 from number_compiler.hashlife.actions.diamond_actions import PortSignatureID
 from number_compiler.hashlife.actions.field_actions import FieldCellActionID
+from number_compiler.hashlife.execution.tile_execution_adapter import (
+    FamilyTileHooks,
+)
 from number_compiler.hashlife.execution.tile_scheduler import (
     TileApplication,
     TileScheduler,
@@ -119,6 +122,7 @@ class _Adapter:
     child_context_calls: int = 0
     active_calls: int = 0
     temporal_wirings: dict[tuple[str, int, int], ChildContext] | None = None
+    family_hooks: FamilyTileHooks | None = None
 
     complete_via_midpoint_tiles: bool = False
 

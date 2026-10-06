@@ -283,8 +283,9 @@ def test_source_change_preserves_process_failure(
         assert step["child_returncode"] == -15
 
 
+@pytest.mark.parametrize("elapsed", ["0:00:01", "0:01:01"])
 def test_release_proof_selection_preserves_aggregate_and_limits(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, elapsed: str
 ) -> None:
     from devtools.checks import release
 
@@ -319,14 +320,16 @@ def test_release_proof_selection_preserves_aggregate_and_limits(
         elif name == "proofs":
             (run.path / "proofs.log").write_text(
                 "Finished Base (0:00:01 elapsed time)\n"
-                "Finished Prefix_Effect_Core (0:00:01 elapsed time)\n"
+                f"Finished Prefix_Effect_Core ({elapsed} elapsed time)\n"
             )
         return True
 
     monkeypatch.setattr(release, "execute", execute)
     with EvidenceRun(root=tmp_path) as run:
-        assert release.proofs(run, "isabelle", ())
-        assert release.proofs(run, "isabelle", ("Prefix_Effect_Core",))
+        assert release.proofs(run, "isabelle", ()) is (elapsed == "0:00:01")
+        assert release.proofs(run, "isabelle", ("Prefix_Effect_Core",)) is (
+            elapsed == "0:00:01"
+        )
     assert calls[0][1] == ("isabelle", "version")
     assert "-D" in calls[1][1] and "-d" not in calls[1][1]
     assert "-D" in calls[2][1] and "-d" not in calls[2][1]
@@ -344,6 +347,12 @@ def test_release_proof_selection_preserves_aggregate_and_limits(
     ]
     steps = run.manifest.get("steps")
     assert isinstance(steps, list)
+    failures = [
+        step
+        for step in steps
+        if isinstance(step, dict) and step.get("name") == "proof-session-duration-gate"
+    ]
+    assert len(failures) == (0 if elapsed == "0:00:01" else 2)
     assert any(
         step.get("tool_versions") == {"isabelle": "Isabelle2026-1"}
         for step in steps

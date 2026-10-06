@@ -93,6 +93,11 @@ class ReverseHigherInterfaceCompiler:
             payloads=self._cache.items,
             evict=self.clear,
         )
+        from number_compiler.sequences.reverse_add.higher_interface_audit import (
+            register_reverse_higher_interface_contract,
+        )
+
+        register_reverse_higher_interface_contract(self)
 
     def clear(self) -> None:
         count = len(self._cache)

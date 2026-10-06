@@ -317,21 +317,26 @@ class CompletedResultArena:
         self._causal_tasks = tasks
 
     def attach_physical_supports(self, arena: object) -> None:
-        from number_compiler.sequences.collatz.physical_support import (
-            PhysicalSupportArena,
+        from number_compiler.hashlife.tiles.ordered_boolean_support import (
+            OrderedBooleanSupportArena,
         )
 
-        if type(arena) is not PhysicalSupportArena or arena.ledger is not self.ledger:
+        if (
+            not isinstance(arena, OrderedBooleanSupportArena)
+            or arena.ledger is not self.ledger
+        ):
             raise ValueError("physical support arena belongs to another index")
         if self._physical_supports is not None and self._physical_supports is not arena:
             raise ValueError("completed results already have a support arena")
         self._physical_supports = arena
 
     def validate_physical_support(self, support: object) -> None:
-        from number_compiler.sequences.collatz.physical_support import PhysicalSupport
+        from number_compiler.hashlife.tiles.ordered_boolean_support import (
+            OrderedBooleanSupport,
+        )
 
         arena = self._physical_supports
-        if arena is None or type(support) is not PhysicalSupport:
+        if arena is None or not isinstance(support, OrderedBooleanSupport):
             raise ValueError("completed result has no bound physical support arena")
         if support.owner is not arena:
             raise ValueError("completed result support belongs to another scheduler")

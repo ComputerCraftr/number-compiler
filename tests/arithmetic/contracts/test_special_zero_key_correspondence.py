@@ -17,7 +17,9 @@ ROOT = isabelle_root(Path(__file__).resolve().parents[3])
 
 
 def test_m11_zero_key_numeric_regression_agrees_with_arithmetic_tile() -> None:
-    theory = (ROOT / "etale/Mersenne_Zero_Key_Counterexample.thy").read_text()
+    theory = (
+        ROOT / "integration/etale/etale/Mersenne_Zero_Key_Counterexample.thy"
+    ).read_text()
     assert '"primary_root_key False 11 m11_zero_carry =' in theory
     assert "(False, -1, (14, 5))" in theory
 

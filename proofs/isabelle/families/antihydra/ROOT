@@ -1,0 +1,11 @@
+session Antihydra in antihydra = HOL +
+  options [document = false, quick_and_dirty = false]
+  sessions Shared_S_Arithmetic
+  theories
+    Antihydra_Literal_TM
+    Antihydra_Mahler_Skew
+    Antihydra_Source_Barrier
+    Antihydra_Family_Iteration
+    Antihydra_Arithmetic_Cylinder_Lift
+    Antihydra_Affine_Certificate
+    Antihydra_Macro_Grammar

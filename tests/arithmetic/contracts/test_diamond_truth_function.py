@@ -19,6 +19,7 @@ from number_compiler.hashlife.interfaces.diamond_truth_function import (
     compile_truth_function,
 )
 from number_compiler.sequences.collatz.block_power import CollatzPhysicalBlockEffect
+from number_compiler.sequences.collatz.tile_family_hooks import collatz_tile_hooks
 from tests.support.assertions import assert_rejected_atomically
 
 if TYPE_CHECKING:
@@ -77,6 +78,7 @@ def test_direct_boolean_builder_matches_reference_function_ids(
     side: BoundarySide,
 ) -> None:
     arena = DiamondKernelArena()
+    arena.bind_family_hooks(collatz_tile_hooks())
     kernel = arena.kernel(arena.intern(effect))
     domains = (
         (kernel.left_count, kernel.blank + 1, kernel.right_count)
@@ -94,6 +96,7 @@ def test_direct_boolean_builder_matches_reference_function_ids(
 
 def test_correlated_and_nontrivial_argument_functions_use_exact_ite_fallback() -> None:
     arena = DiamondKernelArena()
+    arena.bind_family_hooks(collatz_tile_hooks())
     kernel = arena.kernel(arena.intern(CollatzPhysicalBlockEffect()))
     port = PortVariable(0, 0, "shared", 0)
     left = arena.variable(kernel.left_count, port)
@@ -110,6 +113,8 @@ def test_correlated_and_nontrivial_argument_functions_use_exact_ite_fallback() -
 
 def test_foreign_boolean_argument_rejects_before_allocating() -> None:
     arena, other = DiamondKernelArena(), DiamondKernelArena()
+    arena.bind_family_hooks(collatz_tile_hooks())
+    other.bind_family_hooks(collatz_tile_hooks())
     kernel = arena.kernel(arena.intern(CollatzPhysicalBlockEffect()))
     left = other.expression(
         other.variable(kernel.left_count, PortVariable(0, 0, "foreign", 0))

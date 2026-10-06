@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from typing import cast
+
 from number_compiler.arithmetic.contracts.scoped_handles import ExactSource
 from number_compiler.resources.ledger import ResourceLedger
 from number_compiler.resources.metric_collection import collect_ledger_metrics
@@ -215,6 +217,36 @@ def test_q19_audit_rejects_foreign_occurrence_and_source_rebinding() -> None:
     workspace.dispose()
     foreign.dispose()
     assert ledger.entries == ledger.nodes == 0
+
+
+def test_source_image_rejects_same_owner_q19_occurrence_with_wrong_duration() -> None:
+    workspace = ReverseSourceImageWorkspace(ResourceLedger(), 196, 3)
+    tuple(workspace.iter_digits())
+    owner = workspace.adapter._q19_owner
+    image = workspace._image
+    assert owner is not None and image is not None
+    from number_compiler.sequences.reverse_add.source_images import (
+        ReverseImagePayload,
+    )
+
+    core = workspace.scheduler._source_image_core()
+    payload = cast(ReverseImagePayload, core.view(image).payload)
+    assert type(payload) is ReverseImagePayload
+    original = payload.pair_output
+    assert original is not None and original.temporal_steps == workspace.steps
+    wrong_duration = next(
+        occurrence
+        for occurrence in owner._issued.values()
+        if occurrence.temporal_steps != workspace.steps
+    )
+    assert wrong_duration.owner is original.owner
+
+    object.__setattr__(payload, "pair_output", wrong_duration)
+    audit = _audit(workspace)
+    assert id(workspace) not in audit.approved
+    object.__setattr__(payload, "pair_output", original)
+    assert id(workspace) in _audit(workspace).approved
+    workspace.dispose()
 
 
 def test_q19_disposal_releases_the_audited_output_grammar() -> None:

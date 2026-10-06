@@ -1,0 +1,33 @@
+session Prefix_Effect_Core in "prefix_effect/core" = HOL +
+  options [document = false, quick_and_dirty = false]
+  theories
+    Prefix_Effect
+session Shared_S_Arithmetic in "arithmetic/s_arithmetic" = HOL +
+  options [document = false, quick_and_dirty = false]
+  sessions Prefix_Effect_Core "HOL-Number_Theory"
+  theories
+    CRT_Predicate
+    S_Arithmetic_Skew
+    Hensel_Cylinders
+    Dyadic_Source_Lift
+    Dyadic_Prefix_Summary
+    Dyadic_Support_Descent
+    Dyadic_Balanced_Worklist
+    Dyadic_Balanced_Arithmetic
+session Shared_Growth_Arithmetic in "arithmetic/growth" = HOL +
+  options [document = false, quick_and_dirty = false]
+  theories
+    Homogeneous_Growth_Scale
+session Cylinder_Radial_Algebra in "cylinder_algebra/radial" = HOL +
+  options [document = false, quick_and_dirty = false]
+  theories
+    Cylinder_Radial_Event_Clock
+    Cylinder_Radial_Hypergeometric_Elimination
+session Shared_Carry_Dynamics in "arithmetic/carry_dynamics" = HOL +
+  options [document = false, quick_and_dirty = false]
+  theories
+    Shared_Carry_Domain
+    Shared_Decimal_Cocycle_Core
+    Shared_Carry_Tape
+    Shared_Affine_Birth_Tape
+    Port_Valued_Mealy

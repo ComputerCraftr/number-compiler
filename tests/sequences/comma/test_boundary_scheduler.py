@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from typing import cast
+from typing import Never, cast
 
 import pytest
 
@@ -10,6 +10,7 @@ from number_compiler.arithmetic.contracts.block_effect import (
     BlockContextBudgetExceeded,
 )
 from number_compiler.hashlife.execution.source_bound_images import SourceImageDemand
+from number_compiler.hashlife.execution.tile_scheduler import TileScheduler
 from number_compiler.resources.payload_audit import audit_registered_payloads
 from number_compiler.sequences.comma import action_arena, certificates
 from number_compiler.sequences.comma.action_arena import _Action
@@ -58,6 +59,25 @@ def test_decimal_output_uses_charged_shared_radix_stream() -> None:
     assert early.ledger.counters["comma_stream_requests"] == 1
     assert early.ledger.counters["comma_stream_cancellations"] == 1
     assert early.ledger.counters["comma_stream_failures"] == 0
+
+
+def test_binding_audit_does_not_allocate_images(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    term = CommaTerm(22)
+    term.materialize()
+    assert term._image is not None
+    view = term.scheduler._source_image_core().view(term._image)
+    counters = dict(term.ledger.counters)
+
+    def forbidden(_scheduler: TileScheduler) -> Never:
+        raise AssertionError("audit called the allocating image accessor")
+
+    monkeypatch.setattr(TileScheduler, "_source_image_core", forbidden)
+    term.adapter.audit_image_binding(view.binding, view.payload, None)
+    with pytest.raises(ValueError, match="failure prefix"):
+        term.adapter.audit_image_binding(view.binding, view.payload, 0)
+    assert dict(term.ledger.counters) == counters
 
 
 @pytest.mark.parametrize(

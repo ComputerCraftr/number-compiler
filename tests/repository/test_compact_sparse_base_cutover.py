@@ -1,18 +1,19 @@
 """Keep the production sparse B1 table on the compact endpoint owner."""
 
 from devtools.checks import isabelle_syntax
+from devtools.checks.isabelle_registry import discover_sessions
 from devtools.paths import repository_root
 
 ROOT = repository_root()
 BASE_THEORY = (
-    ROOT / "proofs/isabelle/comma_sparse_instance/Comma_Sparse_Base_Instance.thy"
+    ROOT
+    / "proofs/isabelle/families/comma/comma_sparse_instance/Comma_Sparse_Base_Instance.thy"
 )
-ISABELLE_ROOT = ROOT / "proofs/isabelle/ROOT"
+ISABELLE_ROOT = ROOT / "proofs/isabelle"
 
 
 def test_sparse_b1_retains_compact_authority_during_semantic_migration() -> None:
     theory = BASE_THEORY.read_text(encoding="utf-8")
-    root = ISABELLE_ROOT.read_text(encoding="utf-8")
 
     name, imports = isabelle_syntax.parse_theory_header(theory, BASE_THEORY)
     assert name == "Comma_Sparse_Base_Instance"
@@ -24,14 +25,13 @@ def test_sparse_b1_retains_compact_authority_during_semantic_migration() -> None
     assert "Comma_Compact_Sparse_Base_Constructor.make lthy" in theory
     assert "comma_sparse_base_semantic_output_matches_template" in theory
 
-    sessions = {
-        session.name: session for session in isabelle_syntax.parse_sessions(root)
-    }
+    sessions = {session.name: session for session in discover_sessions(ISABELLE_ROOT)}
     base_session = sessions["Comma_Sparse_Base_Instance"]
     assert base_session.parent == "Comma_Compact_B1"
     assert base_session.theories == ("Comma_Sparse_Base_Instance",)
     assert not (
-        ROOT / "proofs/isabelle/comma_response_base/response_base_constructor.ML"
+        ROOT
+        / "proofs/isabelle/families/comma/comma_response_base/response_base_constructor.ML"
     ).exists()
 
 

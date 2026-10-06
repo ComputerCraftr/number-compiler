@@ -284,6 +284,11 @@ class ProjectionOccurrenceCursor:
         self._token = ArenaToken("antihydra-projection-occurrences")
         self._active = False
         ledger.register_execution_root(self)
+        from number_compiler.sequences.antihydra.payload_audit import (
+            register_antihydra_payload_contract,
+        )
+
+        register_antihydra_payload_contract(self)
 
     @staticmethod
     def _segment_seal(
@@ -377,6 +382,9 @@ class ProjectionOccurrenceCursor:
             term.segment_owner,
             segments,
             len(segments),
+            term.result_owner,
+            term.result_publications,
+            len(term.result_publications),
             term.physical_owner,
             term.physical_publications,
             state.projection.width,

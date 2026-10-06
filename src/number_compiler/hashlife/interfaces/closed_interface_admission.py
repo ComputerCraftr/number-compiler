@@ -145,12 +145,17 @@ def validate_closed_components(
         raise ValueError(
             "reverse carry interfaces require all thirteen closed channels"
         )
-    from number_compiler.hashlife.execution.tile_kernel import _CONTRACT
+    from number_compiler.hashlife.execution.tile_kernel_contract import (
+        TILE_KERNEL_CONTRACT,
+    )
 
     first = values[0]
     assert type(first) is ReversePortFunction
     base = first.base
-    if interface.kernel.behavior != (_CONTRACT, _effect_key(BaseBlockEffect(base))):
+    if interface.kernel.behavior != (
+        TILE_KERNEL_CONTRACT,
+        _effect_key(BaseBlockEffect(base)),
+    ):
         raise ValueError("reverse carry functions require their exact kernel identity")
     left, right = interface.inputs
     if left.variable != PortVariable(

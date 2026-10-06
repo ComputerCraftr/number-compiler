@@ -7,6 +7,8 @@ import json
 import re
 from pathlib import Path
 
+from devtools.checks.isabelle_ownership_history import ownership_history
+from devtools.checks.isabelle_registry import discover_sessions, root_files
 from devtools.checks.isabelle_source_analysis import (
     IsabelleAnalysis,
     IsabelleDeclaration,
@@ -20,10 +22,13 @@ from devtools.checks.isabelle_syntax import (
     global_simp_registrations,
     ml_cartouches,
     navigation_text,
-    parse_sessions,
     parse_theory_header,
     unquoted_matches,
     unquoted_numeric_case_facts,
+)
+from devtools.checks.ownership_policy import (
+    check_isabelle_resource_owner,
+    isabelle_ownership_violations,
 )
 from devtools.paths import isabelle_root, repository_root
 
@@ -740,7 +745,7 @@ def _ml_file_references(text: str, path: Path) -> tuple[str, ...]:
 
 
 def build_index() -> dict[str, object]:
-    sessions = parse_sessions((ISABELLE / "ROOT").read_text())
+    sessions = discover_sessions(ISABELLE)
     source_texts: dict[str, str] = {}
     source_texts_by_path: dict[Path, str] = {}
     source_analyses: dict[Path, IsabelleAnalysis] = {}
@@ -778,6 +783,15 @@ def build_index() -> dict[str, object]:
             _ml_file_references(text, path),
         )
 
+    ownership_errors = isabelle_ownership_violations(
+        ROOT,
+        sessions=sessions,
+        theory_headers={
+            path: (name, imports) for name, (path, imports, _, _, _) in declared.items()
+        },
+    )
+    if ownership_errors:
+        raise ValueError("invalid proof ownership: " + "; ".join(ownership_errors))
     isabelle_path = ISABELLE.resolve()
     ml_references: dict[Path, list[str]] = {}
     for theory, (path, _, _, _, references) in declared.items():
@@ -789,6 +803,7 @@ def build_index() -> dict[str, object]:
                 )
             if not ml_target.is_file():
                 raise ValueError(f"{path}: missing ML_file target {ml_target}")
+            check_isabelle_resource_owner(isabelle_path, path.resolve(), ml_target)
             ml_references.setdefault(ml_target, []).append(theory)
 
     authored_ml: set[Path] = set()
@@ -912,7 +927,13 @@ def build_index() -> dict[str, object]:
         )
     return {
         "schema_version": 1,
-        "root": "proofs/isabelle/ROOT",
+        "ownership_history": ownership_history(
+            ROOT, sessions, source_analyses, source_texts_by_path
+        ),
+        "root": "proofs/isabelle",
+        "registrations": [
+            path.relative_to(ROOT).as_posix() for path in root_files(ISABELLE)
+        ],
         "ml_files": ml_entries,
         "source_analysis": analysis_report(
             ISABELLE, source_texts_by_path, source_analyses
@@ -921,6 +942,7 @@ def build_index() -> dict[str, object]:
             {
                 "session": session.name,
                 "directory": session.directory.as_posix(),
+                "audit_only": "audit" in session.directory.parts,
                 "parent": session.parent,
                 "dependencies": session.dependencies,
                 "theories": session.theories,

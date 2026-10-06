@@ -207,6 +207,24 @@ class BlockEffect(Protocol):
     def runtime_stats(self) -> dict[str, int]: ...
 
 
+class BlockEffectAdmissionAdapter(Protocol):
+    """Explicit family-owned admission for one exact immutable effect type."""
+
+    @property
+    def effect_type(self) -> type[BlockEffect]: ...
+
+    @property
+    def compatibility_type(self) -> type[BlockEffect] | None: ...
+
+    def owns_effect(self, effect: BlockEffect) -> bool: ...
+
+    def clone(self, effect: BlockEffect) -> BlockEffect: ...
+
+    def owns_compatibility(self, effect: BlockEffect) -> bool: ...
+
+    def validate_compatibility(self, effect: BlockEffect) -> None: ...
+
+
 _OPERATOR_IDS = count(1)
 _CONTEXT_IDS = count(1)
 
@@ -214,6 +232,7 @@ __all__ = [
     "BlockContextBudget",
     "BlockContextBudgetExceeded",
     "BlockEffect",
+    "BlockEffectAdmissionAdapter",
     "BoundarySide",
     "BoundaryState",
     "_cache_state_key",

@@ -1,0 +1,6 @@
+session Decimal_196_Integration in integration_decimal = Temporal_Clock_Jumps +
+  options [document = false, quick_and_dirty = false]
+  sessions Reverse_Digit_Terminal Associated_Action_Core
+  theories
+    Source_Chart_Selector_Fusion
+    Decimal_196_Terminal_Integration

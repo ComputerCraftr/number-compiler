@@ -23,6 +23,7 @@ from number_compiler.arithmetic.contracts.block_effect import (
     _OPERATOR_IDS,
     BlockContextBudget,
     BlockEffect,
+    BlockEffectAdmissionAdapter,
     BoundarySide,
     BoundaryState,
     _effect_key,
@@ -133,6 +134,7 @@ class ComposedBlockEffect(
         *,
         budget: BlockContextBudget,
         _definition: ComposedBlockDefinition | None = None,
+        family_hooks: BlockEffectAdmissionAdapter | None = None,
         _force_recursive: bool = False,
         _force_functional: bool = False,
         _ledger: ResourceLedger | None = None,
@@ -140,7 +142,7 @@ class ComposedBlockEffect(
         if first.base != second.base or first.blank != second.blank:
             raise ValueError((first.base, second.base, first.blank, second.blank))
         definition = (
-            ComposedBlockDefinition(first, second)
+            ComposedBlockDefinition(first, second, family_hooks=family_hooks)
             if _definition is None
             else _definition
         )

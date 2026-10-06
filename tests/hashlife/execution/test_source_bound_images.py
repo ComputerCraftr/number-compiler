@@ -10,6 +10,7 @@ import pytest
 from number_compiler.hashlife.execution.source_bound_images import (
     SourceBoundImageAdapter,
     SourceBoundSchedulerCore,
+    SourceImageBinding,
     SourceImageCandidate,
     SourceImageDemand,
     SourceImageID,
@@ -18,14 +19,12 @@ from number_compiler.hashlife.execution.source_bound_images import (
     _ApplyKey,
     _RelativeKey,
 )
-from number_compiler.hashlife.execution.source_image_seals import publication_seal
+from number_compiler.hashlife.execution.source_image_seals import (
+    PublicationSeal,
+    publication_seal,
+)
 from number_compiler.resources.ledger import ResourceLedger
 from number_compiler.resources.ownership import audit_execution_ownership
-from number_compiler.resources.payload_audit import audit_registered_payloads
-from number_compiler.resources.source_bound_payload_audit import (
-    audit_source_bound_payloads,
-)
-from number_compiler.sequences.reverse_add.power import ReverseAddPoweredTerm
 from tests.support.source_bound_images import (
     _Action,
     _DecimalAdapter,
@@ -34,6 +33,44 @@ from tests.support.source_bound_images import (
     assert_budget_refusal,
     one_image,
 )
+
+
+def _publication_snapshot(
+    ledger: ResourceLedger,
+    binding: SourceImageBinding,
+    payload: object,
+    failure_prefix: object | None,
+    provenance: tuple[str, object, object | None],
+) -> PublicationSeal:
+    return publication_seal(
+        (binding, payload, failure_prefix, provenance),
+        ledger,
+    )
+
+
+class _AuditedDecimalAdapter(_DecimalAdapter):
+    def __init__(self, ledger: ResourceLedger, *, reject: bool = False) -> None:
+        super().__init__(ledger)
+        self.binding_audits = 0
+        self.reject_binding = reject
+
+    def audit_image_binding(
+        self,
+        binding: SourceImageBinding,
+        payload: object,
+        failure_prefix: object | None,
+    ) -> None:
+        self.binding_audits += 1
+        if (
+            self.reject_binding
+            or failure_prefix is not None
+            or binding.family != self.family
+            or binding.semantic_version != self.semantic_version
+            or type(binding.source) is not int
+            or type(binding.action) is not _Action
+            or type(payload) is not int
+        ):
+            raise ValueError("invalid decimal source image binding")
 
 
 def test_composite_applies_after_to_the_exact_before_image_and_reuses_it() -> None:
@@ -103,6 +140,37 @@ def test_projection_cache_distinguishes_boolean_and_integer_parameters() -> None
     assert ledger.counters["source_image_projection_publications"] == 2
     assert ledger.counters["source_image_projection_hits"] == 1
     assert not _source_audit(ledger, core).invalid
+
+
+def test_optional_family_binding_audit_runs_once_without_runtime_work() -> None:
+    ledger = ResourceLedger()
+    core = SourceBoundSchedulerCore(ledger)
+    adapter = _AuditedDecimalAdapter(ledger)
+    core.register(adapter)
+    image = core.apply(adapter, 7, _Action((8,)))
+    before = ledger.snapshot().counters
+
+    audit = _source_audit(ledger, core)
+
+    assert audit.valid(image)
+    assert adapter.binding_audits == len(core._nodes)
+    assert ledger.snapshot().counters == before
+    core.dispose()
+
+
+def test_optional_family_binding_audit_rejects_bad_record() -> None:
+    ledger = ResourceLedger()
+    core = SourceBoundSchedulerCore(ledger)
+    adapter = _AuditedDecimalAdapter(ledger, reject=True)
+    core.register(adapter)
+    image = core.apply(adapter, 7, _Action((8,)))
+
+    audit = _source_audit(ledger, core)
+
+    assert adapter.binding_audits == len(core._nodes)
+    assert not audit.valid(image)
+    assert audit.invalid
+    core.dispose()
 
 
 def test_typed_demand_hashes_shared_descriptor_dags_without_expansion() -> None:
@@ -471,17 +539,13 @@ def test_origin_provenance_rejects_reflected_typed_key_change(
 
 
 def test_payload_audit_rejects_forged_seal_and_stale_image() -> None:
-    ledger, core, adapter = _runtime()
-    image = core.apply(adapter, 0, _Action((1,)))
-    record = core._nodes[image.local_id]
-    forged = publication_seal(
-        (
-            record.binding,
-            record.payload,
-            record.failure_prefix,
-            record.publication_provenance,
-        ),
+    ledger, core, _, image, record = one_image()
+    forged = _publication_snapshot(
         ledger,
+        record.binding,
+        record.payload,
+        record.failure_prefix,
+        record.publication_provenance,
     )
     core._nodes[image.local_id] = replace(record, publication_snapshot=forged)
     assert _source_audit(ledger, core).invalid
@@ -489,116 +553,23 @@ def test_payload_audit_rejects_forged_seal_and_stale_image() -> None:
     assert not _source_audit(ledger, core).valid(image)
 
 
-def test_prime_source_payload_audit_is_read_only_at_the_work_limit() -> None:
-    from number_compiler.sequences.prime.coprime_rank import CoprimeRankDAG
-    from number_compiler.sequences.prime.successor_action import (
-        PrimeSuccessorActionArena,
-        PrimeSuccessorImageAdapter,
-        PrimeSuccessorSource,
+def test_payload_audit_passes_failure_prefix_to_family_binding_auditor() -> None:
+    ledger, core, _, image, record = one_image()
+    failure_prefix = 7
+    seal = _publication_snapshot(
+        ledger,
+        record.binding,
+        record.payload,
+        failure_prefix,
+        record.publication_provenance,
     )
-
-    dag = CoprimeRankDAG((2, 3), max_states=1024, max_work=100_000)
-    arena = PrimeSuccessorActionArena(dag, 5)
-    adapter = PrimeSuccessorImageAdapter(arena)
-    core = SourceBoundSchedulerCore(dag.ledger)
-    core.register(adapter)
-    try:
-        action = arena.prefix(11)
-        image = core.apply_demanded(
-            adapter,
-            PrimeSuccessorSource(arena.descriptor_id, 0),
-            action,
-            SourceImageDemand("rank-before", (11,)),
-        )
-        core.projection(adapter, image, SourceImageDemand("rank-before", (11,)))
-        dag.max_work = dag.work
-        before, work = dag.ledger.snapshot(), dag.work
-        report = audit_registered_payloads(dag.ledger)
-        after = dag.ledger.snapshot()
-        assert (
-            report.forbidden_future_payloads,
-            report.unbounded_future_integers,
-            report.unknown_payloads,
-        ) == (0, 0, 0)
-        assert after == before
-        assert dag.work == work
-    finally:
-        core.dispose()
-        arena.close()
-        dag.close()
-
-
-@pytest.mark.parametrize("damage", ("node-width", "node-child", "container"))
-def test_prime_source_payload_audit_rejects_forged_arena_ownership(
-    damage: str,
-) -> None:
-    from number_compiler.sequences.prime.coprime_rank import CoprimeRankDAG
-    from number_compiler.sequences.prime.successor_action import (
-        PrimeSuccessorActionArena,
-        PrimeSuccessorImageAdapter,
-        PrimeSuccessorSource,
+    core._nodes[image.local_id] = replace(
+        record,
+        failure_prefix=failure_prefix,
+        publication_snapshot=seal,
     )
-
-    dag = CoprimeRankDAG((2, 3), max_states=1024, max_work=100_000)
-    arena = PrimeSuccessorActionArena(dag, 5)
-    adapter = PrimeSuccessorImageAdapter(arena)
-    core = SourceBoundSchedulerCore(dag.ledger)
-    core.register(adapter)
-    try:
-        core.apply(
-            adapter,
-            PrimeSuccessorSource(arena.descriptor_id, 0),
-            arena.prefix(11),
-        )
-        containers = dict(dag.ledger.iter_containers())
-        if damage == "node-width":
-            object.__setattr__(arena._nodes[2], "width", 99)
-        elif damage == "node-child":
-            composite = next(
-                node for node in arena._nodes.values() if node.before is not None
-            )
-            object.__setattr__(composite, "before", arena.descriptor_id)
-        else:
-            containers[arena._nodes.owner] = object()
-        audit = audit_source_bound_payloads(dag.ledger, (core,), containers)
-        assert audit.invalid
-    finally:
-        core.dispose()
-        arena.close()
-        dag.close()
-
-
-def test_prime_source_payload_audit_rejects_replaced_adapter_arena() -> None:
-    from number_compiler.sequences.prime.coprime_rank import CoprimeRankDAG
-    from number_compiler.sequences.prime.successor_action import (
-        PrimeSuccessorActionArena,
-        PrimeSuccessorImageAdapter,
-        PrimeSuccessorSource,
-    )
-
-    dag = CoprimeRankDAG((2, 3), max_states=1024, max_work=100_000)
-    foreign_dag = CoprimeRankDAG((2, 3), max_states=1024, max_work=100_000)
-    arena = PrimeSuccessorActionArena(dag, 5)
-    foreign = PrimeSuccessorActionArena(foreign_dag, 5)
-    adapter = PrimeSuccessorImageAdapter(arena)
-    core = SourceBoundSchedulerCore(dag.ledger)
-    core.register(adapter)
-    try:
-        core.apply(
-            adapter,
-            PrimeSuccessorSource(arena.descriptor_id, 0),
-            arena.prefix(7),
-        )
-        adapter.arena = foreign
-        audit = _source_audit(dag.ledger, core)
-        assert audit.invalid
-    finally:
-        adapter.arena = arena
-        core.dispose()
-        arena.close()
-        foreign.close()
-        dag.close()
-        foreign_dag.close()
+    audit = _source_audit(ledger, core)
+    assert (core._node_owner, id(core._nodes[image.local_id])) in audit.invalid
 
 
 def test_foreign_adapter_image_and_forged_binding_are_rejected() -> None:
@@ -722,23 +693,6 @@ def test_warm_projection_rechecks_adapter_authority_before_cache_hit() -> None:
     with pytest.raises(ValueError, match="payload authority was revoked"):
         core.projection(adapter, image, demand)
     assert adapter.projection_calls == 1
-
-
-def test_public_reverse_warm_projection_validates_binding_before_cache_hit() -> None:
-    term = ReverseAddPoweredTerm(196, 2)
-    expected = term.digit(0)
-    before_hits = term._ledger.counters.get("source_image_projection_hits", 0)
-    original = term.seed
-    term.seed = original + 1
-    try:
-        with pytest.raises(ValueError, match="binding changed"):
-            term.digit(0)
-        assert (
-            term._ledger.counters.get("source_image_projection_hits", 0) == before_hits
-        )
-    finally:
-        term.seed = original
-    assert term.digit(0) == expected
 
 
 def test_first_failure_survives_a_later_successful_primitive() -> None:
@@ -886,49 +840,3 @@ def test_payload_audit_rejects_malformed_registered_adapter_without_callbacks() 
         assert ledger.snapshot() == before
     finally:
         core.dispose()
-
-
-@pytest.mark.parametrize("damage", ("fresh-prime", "forbidden-residues", "port-count"))
-def test_prime_descriptor_authority_and_port_extent_are_immutable(damage: str) -> None:
-    from number_compiler.sequences.prime.coprime_rank import CoprimeRankDAG
-    from number_compiler.sequences.prime.successor_action import (
-        PrimeSuccessorActionArena,
-        PrimeSuccessorImageAdapter,
-        PrimeSuccessorSource,
-    )
-
-    dag = CoprimeRankDAG((2, 3, 5, 7), max_states=1024, max_work=100_000)
-    arena = PrimeSuccessorActionArena(dag, 11)
-    adapter = PrimeSuccessorImageAdapter(arena)
-    core = SourceBoundSchedulerCore(dag.ledger)
-    core.register(adapter)
-    try:
-        action = arena.prefix(1)
-        core.apply(adapter, PrimeSuccessorSource(arena.descriptor_id, 0), action)
-        if damage == "fresh-prime":
-            # Both fresh-prime phases on the old period are 1; phase checks alone
-            # cannot distinguish the admitted successor 11 from the later 19.
-            assert 210 % 11 == 210 % 19 == 1
-            object.__setattr__(arena.descriptor, "fresh_prime", 19)
-        elif damage == "forbidden-residues":
-            object.__setattr__(arena.descriptor, "forbidden_residues", (2,))
-        else:
-            effect = arena.port_effect(arena.base, 0)
-            too_many = arena.descriptor.parent_period + 1
-            object.__setattr__(effect, "parent_survivors", too_many)
-            object.__setattr__(
-                effect, "surviving_values", too_many - effect.deleted_survivors
-            )
-        before, work = dag.ledger.snapshot(), dag.work
-        assert _source_audit(dag.ledger, core).invalid
-        assert dag.ledger.snapshot() == before
-        assert dag.work == work
-        if damage != "port-count":
-            with pytest.raises(
-                ValueError, match="descriptor lost its source authority"
-            ):
-                arena.node(action)
-    finally:
-        core.dispose()
-        arena.close()
-        dag.close()

@@ -251,6 +251,18 @@ class AntihydraArithmeticTerm:
             payloads=lambda: self._segments,
             node_count=lambda: len(self._segments),
         )
+        self.result_owner = self.ledger.register(
+            f"antihydra.arithmetic.result.{term_serial}", "arithmetic_result"
+        )
+        self.result_publications: LedgerList[ArithmeticResult] = self.ledger.make_list(
+            self.result_owner, nodes_per_entry=1, append_only=False
+        )
+        self.ledger.register_container(
+            self.result_owner,
+            self.result_publications,
+            payloads=lambda: self.result_publications,
+            node_count=lambda: len(self.result_publications),
+        )
         self.physical_owner = self.ledger.register(
             f"antihydra.physical-result.{term_serial}", "physical_result"
         )
@@ -269,6 +281,11 @@ class AntihydraArithmeticTerm:
         self.arithmetic_workspace: AntihydraArithmeticImageWorkspace | None = None
         self.mahler_workspace: MahlerWorkspace | None = None
         self.ledger.register_execution_root(self)
+        from number_compiler.sequences.antihydra.payload_audit import (
+            register_antihydra_payload_contract,
+        )
+
+        register_antihydra_payload_contract(self)
 
     @property
     def _physical(self) -> Run | None:
@@ -455,11 +472,22 @@ class AntihydraArithmeticTerm:
         }
         for name, value in values.items():
             object.__setattr__(result, name, value)
+        self.ledger.reserve(self.result_owner, entries=1, nodes=1)
+        try:
+            self.result_publications.append(result)
+        except BaseException:
+            self.ledger.release(self.result_owner, entries=1, nodes=1)
+            raise
         self._result = result
         self.engine.count("arithmetic_result_publications")
         return result
 
     def _validate_result(self, result: ArithmeticResult) -> None:
+        if (
+            len(self.result_publications) != 1
+            or self.result_publications[0] is not result
+        ):
+            raise ValueError("retained Antihydra arithmetic result was changed")
         workspace = self.arithmetic_workspace
         if workspace is None:
             raise ValueError("retained Antihydra arithmetic support was changed")
@@ -702,6 +730,23 @@ class CylinderEngine:
         self.projection_fragments = ProjectionFragmentCache(self.ledger)
         self.projection_fragment_driver: object | None = None
         self.ledger.register_execution_root(self)
+        from number_compiler.sequences.antihydra.payload_audit import (
+            register_antihydra_payload_contract,
+        )
+
+        register_antihydra_payload_contract(self)
+
+    @property
+    def audit_memo_store(self) -> object:
+        """Expose the exact registered memo container to the audit contract."""
+        return self.memo._data
+
+    @property
+    def audit_arithmetic_memo_store(
+        self,
+    ) -> object:
+        """Expose the exact registered arithmetic container to the audit contract."""
+        return self.arithmetic_memo._data
 
     @property
     def shared_cache(self) -> bool:

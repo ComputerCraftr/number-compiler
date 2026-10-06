@@ -397,6 +397,11 @@ class CollatzFieldActionArena:
         self._composition_early_hits = 0
         self._early_hits = 0
         self._source_annihilation_derivations = 0
+        from number_compiler.sequences.collatz.payload_audit import (
+            register_collatz_field_action_contract,
+        )
+
+        register_collatz_field_action_contract(self)
 
     @property
     def nodes(self) -> tuple[CollatzFieldAction, ...]:

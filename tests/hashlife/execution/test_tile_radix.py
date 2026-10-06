@@ -40,6 +40,7 @@ from number_compiler.projection.tile_radix import (
 from number_compiler.resources.ledger import ResourceLedger
 from number_compiler.resources.payload_audit import audit_registered_payloads
 from number_compiler.sequences.collatz.block_power import CollatzPhysicalBlockEffect
+from number_compiler.sequences.collatz.tile_family_hooks import collatz_tile_hooks
 from tests.support.assertions import assert_rejected_atomically
 
 
@@ -66,7 +67,9 @@ def _runtime(
     quotients = DiamondQuotientArena(SemanticFunctionArena(ledger))
     tiles = TileArena(ledger)
     kernels = DiamondKernelArena(ledger)
-    adapter = PrimitiveTileKernelAdapter(tiles, kernels, quotients)
+    adapter = PrimitiveTileKernelAdapter(
+        tiles, kernels, quotients, family_hooks=collatz_tile_hooks()
+    )
     action = adapter.admit(_division_effect(radix))
     results = CompletedResultArena(
         tiles,
@@ -419,7 +422,9 @@ def test_actual_collatz_completed_tile_feeds_radix_projection(
     quotients = DiamondQuotientArena(SemanticFunctionArena(ledger))
     tiles = TileArena(ledger)
     kernels = DiamondKernelArena(ledger)
-    adapter = PrimitiveTileKernelAdapter(tiles, kernels, quotients)
+    adapter = PrimitiveTileKernelAdapter(
+        tiles, kernels, quotients, family_hooks=collatz_tile_hooks()
+    )
     collatz = adapter.admit(CollatzPhysicalBlockEffect())
     results = CompletedResultArena(
         tiles,
@@ -490,7 +495,11 @@ def test_collatz_radix_observation_composes_without_endpoint_completion(
     power = compile_collatz_physical_power(compiler, 2)
     assert power.root is not None
     source = ExactSource((1, 0, 1), 2, blank=2, extent=8, alphabet_size=2)
-    projection = build_tile_projection(power.root, SourceGeometry(ledger, source))
+    projection = build_tile_projection(
+        power.root,
+        SourceGeometry(ledger, source),
+        family_hooks=collatz_tile_hooks(),
+    )
     radix = TileRadixObservation(projection, 3)
     endpoint_emissions = ledger.counters.get("tile_endpoint_emissions", 0)
 
@@ -532,7 +541,11 @@ def test_warm_radix_observation_rejects_a_foreign_application_before_lookup() ->
         power = compile_collatz_physical_power(compiler, 2)
         assert power.root is not None
         source = ExactSource((1, 0, 1), 2, blank=2, extent=8, alphabet_size=2)
-        return build_tile_projection(power.root, SourceGeometry(ledger, source))
+        return build_tile_projection(
+            power.root,
+            SourceGeometry(ledger, source),
+            family_hooks=collatz_tile_hooks(),
+        )
 
     first = projection()
     second = projection()

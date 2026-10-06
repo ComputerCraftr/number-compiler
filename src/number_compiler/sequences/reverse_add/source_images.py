@@ -21,6 +21,7 @@ from number_compiler.arithmetic.formula.skew_residue_laws import (
 from number_compiler.hashlife.execution.field_images import FieldImageID
 from number_compiler.hashlife.execution.source_bound_images import (
     SourceBoundImageAdapter,
+    SourceImageBinding,
     SourceImageCandidate,
     SourceImageDemand,
     SourceImageProjection,
@@ -322,12 +323,32 @@ class _ReverseSourceImageAdapter(SourceBoundImageAdapter):
             if payload.pair_output.temporal_steps != steps:
                 raise ValueError("Q19 output and action have different durations")
 
+    def audit_image_binding(
+        self,
+        binding: SourceImageBinding,
+        payload: Hashable,
+        failure_prefix: Hashable | None,
+    ) -> None:
+        """Check published reverse bindings without discovering new images."""
+        self._validate_binding(binding, payload, failure_prefix)
+
     def _validate_view(self, view: SourceImageView) -> ReverseImagePayload:
-        self.validate_source(view.binding.source)
-        self.validate_payload(view.payload)
-        payload = cast(ReverseImagePayload, view.payload)
+        self._validate_binding(view.binding, view.payload, view.failure_prefix)
+        return cast(ReverseImagePayload, view.payload)
+
+    def _validate_binding(
+        self,
+        binding: SourceImageBinding,
+        payload_value: Hashable,
+        failure_prefix: Hashable | None,
+    ) -> None:
+        if type(binding) is not SourceImageBinding:
+            raise TypeError("reverse image audit requires its exact binding")
+        self.validate_source(binding.source)
+        self.validate_payload(payload_value)
+        payload = cast(ReverseImagePayload, payload_value)
         steps = self.actions.node(payload.action).steps
-        origin = self.actions.source(cast(ReverseSource, view.binding.source))
+        origin = self.actions.source(cast(ReverseSource, binding.source))
         expected_ports: tuple[int, ...]
         expected_precision: int | None
         if payload.pair_output is not None:
@@ -345,18 +366,17 @@ class _ReverseSourceImageAdapter(SourceBoundImageAdapter):
             expected_ports = ()
             expected_precision = None
         if (
-            view.binding.family != self.family
-            or view.binding.semantic_version != self.semantic_version
-            or view.binding.action != payload.action
-            or view.binding.extent != steps
-            or view.binding.radix != origin.base
-            or view.binding.orientation != 1
-            or view.failure_prefix is not None
-            or view.binding.boundary_ports != expected_ports
-            or view.binding.precision != expected_precision
+            binding.family != self.family
+            or binding.semantic_version != self.semantic_version
+            or binding.action != payload.action
+            or binding.extent != steps
+            or binding.radix != origin.base
+            or binding.orientation != 1
+            or failure_prefix is not None
+            or binding.boundary_ports != expected_ports
+            or binding.precision != expected_precision
         ):
             raise ValueError("reverse image action and source binding disagree")
-        return payload
 
     def _extend_completed(
         self, action: ReverseActionID, source: SourceImageView

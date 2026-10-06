@@ -93,6 +93,74 @@ class ReverseSourceImageWorkspace:
             source_construction,
         )
         ledger.register_execution_root(self)
+        self._audit_action_nodes = actions._nodes._data
+        self._audit_action_normal = actions._normal._data
+        self._audit_sources = actions._sources._data
+        self._audit_action_workspace = actions._workspace
+        self._audit_recursive_occurrences = adapter._recursive_occurrences._data
+        self._audit_source_contract_key: (
+            tuple[tuple[tuple[int, str, str], ...], tuple[int, ...]] | None
+        ) = None
+        self._register_source_payload_audit_contract()
+
+    def _register_source_payload_audit_contract(self) -> None:
+        from number_compiler.resources.payload_contracts import (
+            PayloadAuditStoreBinding,
+        )
+        from number_compiler.sequences.reverse_add.source_audit_bindings import (
+            bind_nested_source_stores,
+        )
+        from number_compiler.sequences.reverse_add.source_payload_audit import (
+            audit_reverse_source_owner,
+        )
+
+        bindings = (
+            PayloadAuditStoreBinding(
+                self.actions._nodes.owner,
+                "_audit_action_nodes",
+                "reverse_source_action",
+            ),
+            PayloadAuditStoreBinding(
+                self.actions._normal.owner,
+                "_audit_action_normal",
+                "reverse_source_action_normal_form",
+            ),
+            PayloadAuditStoreBinding(
+                self.actions._sources.owner,
+                "_audit_sources",
+                "reverse_original_source",
+            ),
+            PayloadAuditStoreBinding(
+                self.actions._workspace_owner,
+                "_audit_action_workspace",
+                "reverse_source_action_workspace",
+            ),
+            PayloadAuditStoreBinding(
+                self.adapter._recursive_occurrences.owner,
+                "_audit_recursive_occurrences",
+                "reverse_recursive_occurrence_binding",
+            ),
+            *bind_nested_source_stores(self),
+        )
+        binding_key = tuple(
+            (binding.owner, binding.attribute, binding.role) for binding in bindings
+        )
+        q19_owner = self.adapter._q19_owner
+        dependencies = () if q19_owner is None else (q19_owner,)
+        dependency_key = tuple(id(dependency) for dependency in dependencies)
+        contract_key = (binding_key, dependency_key)
+        if contract_key == self._audit_source_contract_key:
+            return
+        if self._audit_source_contract_key is not None:
+            self.ledger.remove_payload_audit_contract(self, "reverse_add")
+        self.ledger.register_payload_audit_contract(
+            self,
+            "reverse_add",
+            bindings,
+            audit_reverse_source_owner,
+            dependencies=dependencies,
+        )
+        self._audit_source_contract_key = contract_key
 
     def _check_open(self, *, check_image: bool = True) -> None:
         if self._disposed:
@@ -197,6 +265,7 @@ class ReverseSourceImageWorkspace:
                 self.adapter, self.source, self.root_action, demand
             )
             self._image = found
+        self._register_source_payload_audit_contract()
         if self.base == 10 and self.steps >= 3:
             from number_compiler.sequences.reverse_add.source_images import (
                 ReverseImagePayload,

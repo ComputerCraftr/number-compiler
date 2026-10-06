@@ -6,7 +6,6 @@ from typing import TYPE_CHECKING
 
 from number_compiler.hashlife.actions.field_actions import FieldCellActionID
 from number_compiler.hashlife.actions.lazy_compiler import UnsupportedInterfaceError
-from number_compiler.hashlife.execution.tile_collatz_root import initial_event_shift
 from number_compiler.hashlife.tiles.tile_boundaries import EMPTY_BOUNDARY_TILES
 from number_compiler.hashlife.tiles.tile_result_records import PoweredResultKey
 from number_compiler.hashlife.tiles.tile_results import ResultLease
@@ -58,7 +57,8 @@ def causal_point(
     scheduler.ledger.bump("powered_absorption_requests")
     scheduler.ledger.bump("powered_absorption_evaluations")
     engine = CausalTileEngine(scheduler)
-    root_shift = initial_event_shift(scheduler, key)
+    hooks = adapter.family_hooks
+    root_shift = None if hooks is None else hooks.shifted_event(scheduler, key)
     if root_shift is not None:
         primitive, shift = root_shift
         mapped = coordinate + shift
@@ -203,7 +203,8 @@ def causal_width_query(
         )
     scheduler.ledger.bump("powered_absorption_requests")
     scheduler.ledger.bump("powered_absorption_evaluations")
-    root_shift = initial_event_shift(scheduler, key)
+    hooks = adapter.family_hooks
+    root_shift = None if hooks is None else hooks.shifted_event(scheduler, key)
     if root_shift is not None:
         primitive, shift = root_shift
         node = scheduler.tiles.resolve(key.input)

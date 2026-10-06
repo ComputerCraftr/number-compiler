@@ -402,6 +402,11 @@ class ReverseFieldActionArena:
             output=output,
             geometry=geometry,
         )
+        from number_compiler.sequences.reverse_add.field_action_payload_audit import (
+            register_reverse_field_action_contract,
+        )
+
+        register_reverse_field_action_contract(self)
 
     @staticmethod
     def _validate_semantic_key(key: SemanticKey) -> None:

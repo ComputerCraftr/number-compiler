@@ -5,11 +5,14 @@ from __future__ import annotations
 from typing import TYPE_CHECKING, Protocol
 
 if TYPE_CHECKING:
+    from number_compiler.hashlife.execution.tile_execution_adapter import (
+        FamilyTileHooks,
+    )
     from number_compiler.hashlife.execution.tile_kernel import (
         PrimitiveTileKernelAdapter,
     )
 
-from number_compiler.arithmetic.contracts.block_effect import _effect_key
+from number_compiler.arithmetic.contracts.block_effect import BlockEffect, _effect_key
 from number_compiler.arithmetic.contracts.block_kernel import BaseBlockEffect
 from number_compiler.arithmetic.contracts.scoped_handles import ActionProgramID
 from number_compiler.arithmetic.polynomials.frobenius_sector import (
@@ -36,7 +39,6 @@ from number_compiler.hashlife.interfaces.diamond_kernel import (
 from number_compiler.hashlife.tiles.tile_context import TemporalCocycle
 from number_compiler.hashlife.tiles.tile_ports import ResultWiring
 from number_compiler.hashlife.tiles.tiles import TileArena, TileID
-from number_compiler.sequences.collatz.block_power import CollatzPhysicalBlockEffect
 
 
 class _ActionView(Protocol):
@@ -118,7 +120,26 @@ def validate_fused_wiring(
         raise ValueError("primitive fused wiring has no certified automorphism")
 
 
+def admit_family_effect(
+    effect: BlockEffect,
+    hooks: FamilyTileHooks | None,
+) -> BlockEffect:
+    """Admit a family primitive or reject its compatibility form precisely."""
+    if hooks is None:
+        raise ValueError(
+            "unsupported weighted runtime kernel: no certified family hook"
+        )
+    if hooks.owns_effect(effect):
+        return hooks.clone(effect)
+    if hooks.owns_compatibility(effect):
+        message = hooks.compatibility_tile_error(effect)
+        if message is not None:
+            raise ValueError(message)
+    raise ValueError("unsupported weighted runtime kernel: no certified family hook")
+
+
 __all__ = [
+    "admit_family_effect",
     "validate_action_record",
     "validate_fused_action",
     "validate_fused_wiring",
@@ -182,8 +203,7 @@ def validate_action_record(
             record.repetitions != 1
             or not record.homogeneous
             or self._action_keys.get(semantic_key) != action.local_id
-            or record.spatial_events_add
-            != (type(kernel.effect) is CollatzPhysicalBlockEffect)
+            or record.spatial_events_add != self._spatial_events_add(kernel.effect)
             or blank_metadata
             != (
                 kernel.effect.blank_left_tail,
@@ -248,7 +268,9 @@ def validate_action_record(
 def validate_action(
     self: PrimitiveTileKernelAdapter, action: FieldCellActionID
 ) -> None:
-    from number_compiler.hashlife.execution.tile_kernel import _CONTRACT
+    from number_compiler.hashlife.execution.tile_kernel_contract import (
+        TILE_KERNEL_CONTRACT,
+    )
 
     record, kernel = validate_action_record(self, action)
     signature = self.quotients.interface(record.signature)
@@ -258,7 +280,7 @@ def validate_action(
         if division_radix is not None
         else _effect_key(kernel.effect)
     )
-    if signature.kernel.behavior != (_CONTRACT, expected_kernel):
+    if signature.kernel.behavior != (TILE_KERNEL_CONTRACT, expected_kernel):
         raise ValueError("tile action signature differs from its kernel semantics")
     expected_reverse = (
         record.homogeneous

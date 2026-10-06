@@ -27,12 +27,12 @@ from __future__ import annotations
 
 from functools import cache
 
+from number_compiler.arithmetic.number_theory import smallest_factor
 from number_compiler.arithmetic.polynomials.polynomial import (
     evaluate_polynomial,
     polynomial_divide_exact,
     polynomial_power,
 )
-from number_compiler.sequences.prime.set import smallest_factor
 
 
 def is_power_of_two(value: int) -> bool:

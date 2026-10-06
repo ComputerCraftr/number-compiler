@@ -10,6 +10,7 @@ from number_compiler.arithmetic.contracts.scoped_handles import ArenaHandle, Are
 from number_compiler.hashlife.execution.source_bound_images import (
     SourceBoundImageAdapter,
     SourceBoundSchedulerCore,
+    SourceImageBinding,
     SourceImageCandidate,
     SourceImageDemand,
     SourceImageID,
@@ -119,6 +120,12 @@ class _AntihydraFragmentAdapter(SourceBoundImageAdapter):
             node_count=lambda: 20 * len(self._source_seals),
             payloads=self._source_seals.__iter__,
         )
+        self.ledger.register_execution_root(self)
+        from number_compiler.sequences.antihydra.payload_audit import (
+            register_antihydra_payload_contract,
+        )
+
+        register_antihydra_payload_contract(self)
 
     def configure(
         self,
@@ -282,6 +289,35 @@ class _AntihydraFragmentAdapter(SourceBoundImageAdapter):
 
     def validate_payload(self, payload: Hashable) -> None:
         self.resolve(cast(AntihydraFragmentID, payload))
+
+    def audit_image_binding(
+        self,
+        binding: SourceImageBinding,
+        payload: Hashable,
+        failure_prefix: Hashable | None,
+    ) -> None:
+        """Check the fragment's source/action extent without rebuilding it."""
+        if type(binding) is not SourceImageBinding:
+            raise TypeError("Antihydra image audit requires its exact binding")
+        self.validate_source(binding.source)
+        self.validate_action(binding.action)
+        self.validate_payload(payload)
+        _projection, key, _block = self._context()
+        action = cast(AntihydraFragmentAction, binding.action)
+        record = self.resolve(cast(AntihydraFragmentID, payload))
+        if (
+            binding.family != self.family
+            or binding.semantic_version != self.semantic_version
+            or binding.extent != record.consumed
+            or binding.boundary_ports != (key.source_owner, key.start)
+            or binding.orientation != 1
+            or binding.radix != 2
+            or binding.precision is not None
+            or action.offset != 0
+            or action.width != record.consumed
+            or failure_prefix is not None
+        ):
+            raise ValueError("Antihydra image binding metadata is inconsistent")
 
     def identity_action(self, source: Hashable) -> AntihydraFragmentAction:
         self.validate_source(source)

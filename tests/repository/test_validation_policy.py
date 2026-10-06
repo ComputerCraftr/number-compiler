@@ -204,6 +204,21 @@ def test_native_build_summary_separates_rebuilds_reuse_and_failure() -> None:
     ]
 
 
+def test_native_success_keeps_reported_elapsed_budget_failures_visible() -> None:
+    summary = release._session_build_summary(
+        "Finished At_Limit (0:01:00 elapsed time, 0:00:58 cpu time)\n"
+        "Finished Too_Slow (0:01:00.01 elapsed time, 0:00:58 cpu time)\n",
+        ("At_Limit", "Too_Slow", "Cached"),
+        succeeded=True,
+    )
+    assert summary["over_budget_finished_sessions"] == ["Too_Slow"]
+    assert summary["reused_sessions"] == ["Cached"]
+    assert summary["finished_session_elapsed_seconds"] == {
+        "At_Limit": 60.0,
+        "Too_Slow": 60.01,
+    }
+
+
 def test_acceptance_environment_does_not_inherit_external_python_paths(
     tmp_path: Path,
 ) -> None:

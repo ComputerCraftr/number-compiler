@@ -6,6 +6,10 @@ from dataclasses import dataclass
 from typing import TYPE_CHECKING
 
 from number_compiler.hashlife.interfaces.diamond_quotient import LocalInterfaceID
+from number_compiler.hashlife.tiles.ordered_boolean_support import OrderedBooleanSupport
+from number_compiler.hashlife.tiles.temporal_cocycle import (
+    TemporalCocycle as _TemporalCocycle,
+)
 from number_compiler.hashlife.tiles.tile_boundaries import (
     EMPTY_BOUNDARY_TILES,
     BoundaryTileOperands,
@@ -17,7 +21,8 @@ from number_compiler.hashlife.tiles.tile_ports import (
 )
 from number_compiler.hashlife.tiles.tile_result_records import CompletedResult
 from number_compiler.hashlife.tiles.tiles import TileID
-from number_compiler.sequences.collatz.physical_support import PhysicalSupport
+
+TemporalCocycle = _TemporalCocycle
 
 if TYPE_CHECKING:
     from number_compiler.hashlife.actions.field_actions import FieldCellActionID
@@ -45,7 +50,7 @@ class ResultSemantics:
     outgoing_boundaries: BoundaryTileOperands = EMPTY_BOUNDARY_TILES
     fusion: FusedBoundaryContract | None = None
     observed_input_ports: tuple[int, ...] | None = None
-    physical_support: PhysicalSupport | None = None
+    physical_support: OrderedBooleanSupport | None = None
 
     def __post_init__(self) -> None:
         _validate_boundary_shape(self.outgoing_boundaries)
@@ -78,7 +83,7 @@ class ResultSemantics:
         ):
             raise TypeError("observed input ports require exact immutable integers")
         if self.physical_support is not None:
-            if type(self.physical_support) is not PhysicalSupport:
+            if not isinstance(self.physical_support, OrderedBooleanSupport):
                 raise TypeError("result semantics has another shadow-support sort")
             self.physical_support.owner.validate(self.physical_support)
 
@@ -97,26 +102,6 @@ class ResultSemantics:
             self.observed_input_ports,
             self.physical_support,
         )
-
-
-@dataclass(frozen=True, slots=True)
-class TemporalCocycle:
-    physical_ticks: int = 0
-    event_weight: int = 0
-    frame_shift: int = 0
-
-    def __post_init__(self) -> None:
-        if any(
-            type(value) is not int
-            for value in (
-                self.physical_ticks,
-                self.event_weight,
-                self.frame_shift,
-            )
-        ):
-            raise TypeError("temporal cocycles require exact integers")
-        if self.physical_ticks < 0 or self.event_weight < 0:
-            raise ValueError("temporal cocycle weights cannot be negative")
 
 
 @dataclass(frozen=True, slots=True)

@@ -147,20 +147,22 @@ def source_line_violations(
 
 def isabelle_session_option_violations(root: Path) -> tuple[str, ...]:
     """Reject per-session execution settings that bypass the shared policy."""
+    from devtools.checks.isabelle_registry import root_files
     from devtools.checks.isabelle_syntax import root_option_assignments
 
-    root_file = Path(root) / "proofs" / "isabelle" / "ROOT"
-    if not root_file.is_file():
+    theory_root = Path(root) / "proofs" / "isabelle"
+    if not theory_root.is_dir():
         return ()
-    options = root_option_assignments(root_file.read_text(encoding="utf-8"))
     policy_settings = {"threads", "parallel_proofs", "timeout", "timeout_scale"}
     violations: list[str] = []
-    for option in options:
-        if option.name in policy_settings:
-            violations.append(
-                f"proofs/isabelle/ROOT:{option.line}: session option "
-                f"{option.name}={option.value} overrides shared policy"
-            )
+    for registration in root_files(theory_root):
+        options = root_option_assignments(registration.read_text(encoding="utf-8"))
+        for option in options:
+            if option.name in policy_settings:
+                violations.append(
+                    f"{registration.relative_to(root)}:{option.line}: session option "
+                    f"{option.name}={option.value} overrides shared policy"
+                )
     return tuple(violations)
 
 
@@ -770,6 +772,7 @@ def _cycles(graph: dict[str, set[str]]) -> tuple[tuple[str, ...], ...]:
 def repository_policy_report(root: Path) -> dict[str, object]:
     from dataclasses import asdict
 
+    from devtools.checks.ownership_policy import ownership_policy_violations
     from devtools.checks.package_contracts import package_violations
     from devtools.checks.python_clones import (
         MIN_CLONE_NODES,
@@ -792,6 +795,9 @@ def repository_policy_report(root: Path) -> dict[str, object]:
             line_counts=snapshot.source_line_counts,
         ),
         "isabelle_session_option_violations": isabelle_session_option_violations(root),
+        "ownership_violations": ownership_policy_violations(
+            root, parsed_sources=parsed_sources
+        ),
         "validation_entrypoint_violations": validation_entrypoint_violations(
             root, parsed_sources
         ),
@@ -833,6 +839,7 @@ def main() -> int:
         bool(
             report["source_line_violations"]
             or report["isabelle_session_option_violations"]
+            or report["ownership_violations"]
             or report["validation_entrypoint_violations"]
             or report["recursion_cycles"]
             or report["duplicate_bodies"]

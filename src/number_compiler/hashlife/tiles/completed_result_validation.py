@@ -342,7 +342,7 @@ def _validate_result(
         self.validate_physical_support(result.physical_support)
         if result.physical_support.ticks and (
             result.physical_support.ticks != result.physical_ticks
-            or result.physical_support.odd_ticks != result.event_weight
+            or result.physical_support.true_count != result.event_weight
         ):
             raise ValueError("physical support disagrees with result weights")
     output = _result_output(self, key, result)
@@ -447,7 +447,7 @@ def _validate_leased(
         self.validate_physical_support(result.physical_support)
         if result.physical_support.ticks and (
             result.physical_support.ticks != result.physical_ticks
-            or result.physical_support.odd_ticks != result.event_weight
+            or result.physical_support.true_count != result.event_weight
         ):
             raise ValueError("leased physical support disagrees with result weights")
     if tile.tile != result.output:

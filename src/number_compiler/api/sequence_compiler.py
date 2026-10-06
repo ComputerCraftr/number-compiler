@@ -156,7 +156,7 @@ class CanonicalSequenceCompiler:
                 from number_compiler.arithmetic.fields.adic_morphism import (
                     prime_translation_sensitivity,
                 )
-                from number_compiler.arithmetic.fields.congruence_automaton import (
+                from number_compiler.sequences.prime.congruence import (
                     FactoredPrimeAutomaton,
                 )
 

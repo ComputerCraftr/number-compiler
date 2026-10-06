@@ -1,0 +1,6 @@
+session Source_Cache_Integration in integration_cache = Shared_S_Arithmetic +
+  options [document = false, quick_and_dirty = false]
+  sessions Collatz_Cylinder_Refinement
+  theories
+    Collatz_Parity_Shift_Germ
+    Source_Cache_Consumption

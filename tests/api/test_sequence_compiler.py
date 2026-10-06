@@ -336,7 +336,7 @@ def test_special_source_compile_never_calls_factor_or_certificate_hot_paths(
     import number_compiler.sequences.power_numbers.certificate as special_certificate
     import number_compiler.sequences.power_numbers.numbers as special_numbers
     from number_compiler.api import sequence_terms
-    from number_compiler.arithmetic.fields import congruence_automaton
+    from number_compiler.sequences.prime import congruence
 
     def forbidden(*args: object, **kwargs: object) -> Never:
         raise AssertionError("theorem work reached raw special-source compiler")
@@ -348,7 +348,7 @@ def test_special_source_compile_never_calls_factor_or_certificate_hot_paths(
         special_numbers, "mersenne_composite_exponent_factor", forbidden
     )
     monkeypatch.setattr(
-        congruence_automaton.FactoredPrimeAutomaton,
+        congruence.FactoredPrimeAutomaton,
         "build",
         classmethod(lambda cls, *args, **kwargs: forbidden()),
     )
@@ -608,7 +608,7 @@ def test_semantic_and_diagnostic_compilations_have_distinct_cache_identity() -> 
 
 
 def test_factored_prime_automaton_build_is_canonical_across_family_compilers() -> None:
-    from number_compiler.arithmetic.fields.congruence_automaton import (
+    from number_compiler.sequences.prime.congruence import (
         FactoredPrimeAutomaton,
     )
 
@@ -643,7 +643,7 @@ def test_collatz_compilation_exposes_one_self_branching_successor_not_an_itinera
 def test_default_special_theorem_fails_closed_without_factor_or_recurrence(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    from number_compiler.arithmetic.fields import congruence_automaton
+    from number_compiler.sequences.prime import congruence
 
     def forbidden(*args: object, **kwargs: object) -> Never:
         raise AssertionError(
@@ -651,7 +651,7 @@ def test_default_special_theorem_fails_closed_without_factor_or_recurrence(
         )
 
     monkeypatch.setattr(
-        congruence_automaton.FactoredPrimeAutomaton,
+        congruence.FactoredPrimeAutomaton,
         "build",
         classmethod(lambda cls, *args, **kwargs: forbidden()),
     )

@@ -5,24 +5,17 @@ from typing import cast
 
 import pytest
 
-from number_compiler.arithmetic.contracts.scoped_handles import ArenaToken, ExactSource
-from number_compiler.arithmetic.contracts.source_geometry import SourceGeometry
+from number_compiler.arithmetic.contracts.scoped_handles import ArenaToken
 from number_compiler.hashlife.actions.diamond_actions import (
     CellID,
     FormalSymbolID,
     ImageCellArena,
 )
-from number_compiler.hashlife.actions.lazy_compiler import LazyCompiler
-from number_compiler.hashlife.execution.continuations.diamond_runtime import (
-    DiamondRuntime,
-)
 from number_compiler.hashlife.execution.diamond_payload import DiamondPayloadRegistry
 from number_compiler.hashlife.interfaces.diamond_boundary import ImageBinding
 from number_compiler.hashlife.interfaces.diamond_halos import RightHalo
 from number_compiler.projection.digit_terminal import DigitNormalizeBlockEffect
-from number_compiler.resources.ledger import ResourceLedger
 from number_compiler.resources.metric_collection import collect_ledger_metrics
-from number_compiler.resources.stores import LedgerList
 from tests.support.assertions import assert_rejected_atomically
 from tests.support.diamond_geometry_payloads import runtime
 
@@ -141,40 +134,6 @@ def test_complete_output_function_keys_exclude_observations_and_validate_interfa
         == before.primitive_transition_evaluations
     )
     assert after.primitive_output_evaluations == before.primitive_output_evaluations
-
-
-def test_finite_cycle_certificate_requires_actual_source_and_complete_phase_proof() -> (
-    None
-):
-    from number_compiler.hashlife.observation.diamond_query import DiamondApplication
-    from number_compiler.sequences.collatz.block_power import CollatzPhysicalBlockEffect
-
-    ledger = ResourceLedger()
-    compiler = LazyCompiler(ledger)
-    effect = compiler.atom(CollatzPhysicalBlockEffect())
-    source = ExactSource((1,), 2, blank=2, extent=8, alphabet_size=2)
-    geometry = SourceGeometry(ledger, source)
-    geometry.span(source.digits, 2, 8)
-    engine = DiamondRuntime(compiler, geometry)
-    action = engine.actions.power(engine.actions.intern(effect), 256)
-    application = DiamondApplication(engine, action)
-    record = application._cycles[0]
-    before = ledger.snapshot()
-    registry = DiamondPayloadRegistry(ledger)
-    assert registry.valid(record)
-    assert not registry.valid(replace(record))
-    assert not registry.valid(replace(record, source=ArenaToken("foreign")))
-    assert not registry.valid(replace(record, phase=(record.phase + 1) % 3))
-    report = collect_ledger_metrics(ledger)
-    assert ledger.snapshot() == before
-    assert report.representation_boundary_complete == 1
-    assert report.finite_cycle_certificate_nodes == 1
-    owner = ledger.register("forged finite cycle", "finite_cycle_certificate")
-    records: LedgerList[object]
-    records = ledger.make_list(owner)
-    ledger.reserve(owner, entries=1, nodes=1)
-    records.append(replace(record, phase=(record.phase + 1) % 3))
-    assert collect_ledger_metrics(ledger).representation_boundary_complete == 0
 
 
 def test_source_slice_and_certificate_construction_work_is_reported() -> None:

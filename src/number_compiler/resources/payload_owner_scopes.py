@@ -6,10 +6,14 @@ from collections.abc import Iterable
 from typing import cast
 
 from number_compiler.arithmetic.contracts.scoped_handles import ArenaToken
+from number_compiler.resources.ledger import ResourceLedger
+from number_compiler.resources.payload_contracts import PayloadAuditContractAudit
 
 
 def field_owner_scopes(
     execution_roots: Iterable[object],
+    contracts: PayloadAuditContractAudit,
+    ledger: ResourceLedger,
 ) -> tuple[set[ArenaToken], set[ArenaToken]]:
     roots = tuple(execution_roots)
     from number_compiler.hashlife.execution.recursive_outputs import (
@@ -18,48 +22,29 @@ def field_owner_scopes(
     from number_compiler.hashlife.interfaces.semantic_interfaces import (
         SemanticCoordinateOutputArena,
     )
-    from number_compiler.sequences.collatz.field_action import CollatzFieldActionArena
-
-    reverse_action_types: tuple[type[object], ...] = ()
-    reverse_output_types: tuple[type[object], ...] = ()
-    if any(
-        type(root).__module__
-        in (
-            "number_compiler.sequences.reverse_add.coordinate_program",
-            "number_compiler.sequences.reverse_add.field_action",
-        )
-        for root in roots
-    ):
-        from number_compiler.sequences.reverse_add.coordinate_program import (
-            ReverseCoordinateProgramArena,
-        )
-        from number_compiler.sequences.reverse_add.field_action import (
-            ReverseFieldActionArena,
-        )
-
-        reverse_action_types = (ReverseFieldActionArena,)
-        reverse_output_types = (
-            ReverseCoordinateProgramArena,
-            ReverseFieldActionArena,
-        )
 
     action_owners: set[ArenaToken] = set()
     output_owners: set[ArenaToken] = set()
     for root in roots:
-        if type(root) is CollatzFieldActionArena:
-            collatz_actions = root
-            action_owners.add(collatz_actions.owner)
-            output_owners.add(collatz_actions.output_owner)
-        elif type(root) in reverse_action_types:
-            reverse_action = cast(ReverseFieldActionArena, root)
-            action_owners.add(reverse_action.owner)
-            output_owners.add(reverse_action.output_owner)
-        elif type(root) in reverse_output_types:
-            reverse_output = cast(
-                ReverseCoordinateProgramArena | ReverseFieldActionArena,
-                root,
-            )
-            output_owners.add(reverse_output.owner)
+        module = type(root).__module__
+        is_collatz_action_owner = contracts.owns_root("collatz", root, ledger=ledger)
+        is_reverse_action_owner = (
+            module == "number_compiler.sequences.reverse_add.field_action"
+            and contracts.owns_root("reverse_add", root, ledger=ledger)
+        )
+        if is_collatz_action_owner or is_reverse_action_owner:
+            action_owner = getattr(root, "owner", None)
+            output_owner = getattr(root, "output_owner", None)
+            if type(action_owner) is ArenaToken and type(output_owner) is ArenaToken:
+                action_owners.add(action_owner)
+                output_owners.add(output_owner)
+        elif (
+            module == "number_compiler.sequences.reverse_add.coordinate_program"
+            and contracts.owns_root("reverse_add", root, ledger=ledger)
+        ):
+            output_owner = getattr(root, "owner", None)
+            if type(output_owner) is ArenaToken:
+                output_owners.add(output_owner)
         elif type(root) in (
             RecursiveCoordinateMorphismArena,
             SemanticCoordinateOutputArena,

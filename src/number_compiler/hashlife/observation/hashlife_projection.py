@@ -29,6 +29,7 @@ from number_compiler.hashlife.actions.lazy_compiler import (
 from number_compiler.hashlife.execution.bounded_application import (
     build_bounded_application,
 )
+from number_compiler.hashlife.execution.tile_execution_adapter import FamilyTileHooks
 from number_compiler.hashlife.observation.tile_projection import (
     LazyProjection,
     build_tile_projection,
@@ -47,12 +48,14 @@ if TYPE_CHECKING:
     from number_compiler.arithmetic.polynomials.twisted_observer import (
         TwistedCylinderProjection,
     )
+    from number_compiler.hashlife.tiles.ordered_boolean_support import (
+        OrderedBooleanSupport,
+    )
     from number_compiler.hashlife.tiles.tile_context import TemporalCocycle
     from number_compiler.resources.metric_records import (
         HashLifeBehaviorMetrics,
         HashLifeProjectionMetrics,
     )
-    from number_compiler.sequences.collatz.physical_support import PhysicalSupport
 
 
 class HashLifeBlockIndex:
@@ -73,6 +76,7 @@ class HashLifeBlockIndex:
         compiler: LazyCompiler | None = None,
         source_construction: OriginalSourceConstruction | None = None,
         microblocks: MicroblockCache | None = None,
+        family_hooks: FamilyTileHooks | None = None,
     ) -> None:
         logical_length = require_integer(logical_length, "logical source length", 0)
         values = tuple(source)
@@ -82,10 +86,6 @@ class HashLifeBlockIndex:
             raise ValueError("invalid source alphabet")
         if logical_length < len(values):
             raise ValueError("source exceeds logical extent")
-        # Authenticate the proof C4 facade before this index creates or
-        # registers any ledger-owned runtime object. Ordinary effects return
-        # without importing the proof definition.
-        validate_fixed_tile_compatibility(effect)
         original = ExactSource(
             values,
             effect.base,
@@ -96,6 +96,18 @@ class HashLifeBlockIndex:
         if source_construction is not None:
             OriginalSourceConstruction.validate_source(source_construction, original)
         self._certificate = certificate
+        if family_hooks is not None and type(family_hooks) is not FamilyTileHooks:
+            raise TypeError("HashLife index requires canonical family hooks")
+        if compiler is not None:
+            compiler_hooks = compiler.family_hooks
+            if family_hooks is None:
+                family_hooks = compiler_hooks
+            elif compiler_hooks is not None and compiler_hooks is not family_hooks:
+                raise ValueError("compiler is already bound to another family adapter")
+        self._family_hooks = family_hooks
+        # Authenticate a recognized compatibility artifact before this index
+        # creates or registers any ledger-owned runtime object.
+        validate_fixed_tile_compatibility(effect, family_hooks)
         if certificate is not None:
             certificate.validate(effect)
         self._ledger = (
@@ -111,8 +123,18 @@ class HashLifeBlockIndex:
         # Reject an impossible index before an entry-only compiler cache fills.
         self._ledger.check_capacity(entries=1, nodes=1)
         self._ledger.register_execution_root(self)
-        self._compiler = LazyCompiler(self._ledger) if compiler is None else compiler
-        effect = lower_fixed_tile_compatibility(effect, self._compiler)
+        self._compiler = (
+            LazyCompiler(self._ledger, family_hooks=family_hooks)
+            if compiler is None
+            else compiler
+        )
+        if compiler is not None and family_hooks is not None:
+            self._compiler.bind_family_hooks(family_hooks)
+        effect = lower_fixed_tile_compatibility(
+            effect,
+            self._compiler,
+            family_hooks=family_hooks,
+        )
         self._microblocks = (
             MicroblockCache.shared(
                 self._ledger,
@@ -128,7 +150,15 @@ class HashLifeBlockIndex:
             effect = self._compiler.import_effect(effect)
             if certificate is not None:
                 certificate = _issue_certificate(
-                    effect, certificate.family, certificate.steps, ledger=self._ledger
+                    effect,
+                    certificate.family,
+                    certificate.steps,
+                    ledger=self._ledger,
+                    family_leaf_counts=(
+                        None
+                        if family_hooks is None
+                        else family_hooks.program_leaf_counts
+                    ),
                 )
                 self._certificate = certificate
         else:
@@ -155,12 +185,13 @@ class HashLifeBlockIndex:
             compiler=self._compiler,
             source_geometry=self._source_geometry,
             microblocks=self._microblocks,
+            family_hooks=family_hooks,
         )
         self._bounded_application: LazyProjection | None
         if bounded is None:
             self._bounded_application = None
             self._lazy_application = build_tile_projection(
-                effect, self._source_geometry
+                effect, self._source_geometry, family_hooks=family_hooks
             )
         elif type(bounded) is LazyProjection:
             self._bounded_application = self._lazy_application = bounded
@@ -233,7 +264,7 @@ class HashLifeBlockIndex:
         return self._lazy_application.temporal_cocycle()
 
     @source_reads_only
-    def direct_physical_support(self) -> PhysicalSupport:
+    def direct_physical_support(self) -> OrderedBooleanSupport:
         if type(self._lazy_application) is not LazyProjection:
             raise ValueError("support observation requires its tile application")
         return self._lazy_application.physical_support()

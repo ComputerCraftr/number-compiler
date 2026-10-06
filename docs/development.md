@@ -148,6 +148,10 @@ ignored and separate. Changed acceptance sources invalidate the evidence.
 No recursive source fingerprint, inode snapshot or filesystem watcher substitutes
 for Git. Artifact integrity checksums and Isabelle dependency checking remain valid.
 Developer code locates proofs through `devtools.paths.isabelle_root()`.
+Registration discovery follows `ROOTS` through the shared Isabelle registry;
+session paths are relative to the common proof root. Moving a session does not
+change its deadline or reset the enclosing process budget. Nested registrations
+are subject to the same option checks as the former single `ROOT` file.
 
 Runtime release checks live with their actual family under `tests/sequences/`,
 shared runtime checks under `tests/hashlife/` or `tests/validation/runtime/`,
@@ -178,8 +182,10 @@ Scaffold a Sunday-start topic with `python -m devtools.checks.sprint_scaffold --
 - The Isabelle inventory uses
   [`isabelle_syntax.py`](../devtools/checks/isabelle_syntax.py) for its supported
   source syntax. This is a conservative navigation reader, not Isabelle's
-  elaborated AST or proof checker. Registered sessions come from `ROOT`; builds
-  and oracle checks remain required.
+  elaborated AST or proof checker. The
+  [`registration reader`](../devtools/checks/isabelle_registry.py) discovers all
+  `ROOT` files through `ROOTS`, checks the combined session graph and rejects
+  hidden registrations and path escapes. Builds and oracle checks remain required.
 - [`isabelle_source_analysis.py`](../devtools/checks/isabelle_source_analysis.py)
   inventories supported declarations and reports nontrivial structural duplicate
   candidates and declarations without observed incoming references. Argument
@@ -205,6 +211,33 @@ tests; higher summaries use the existing `SourceCellID` directly. Small shared
 helpers with live consumers are retained when merging would introduce circular
 imports or mix different semantic contracts.
 
+## Execution and proof ownership
+
+Production `arithmetic` owns parameterized mathematical laws, `hashlife` owns
+generic scheduler/application machinery, and `resources` owns accounting and
+lifetimes. Those layers must not import `sequences`, including through local or
+type-only imports. Family adapters supply recurrence parameters, source admission
+and family observations to the shared contracts. There is one `TileScheduler`;
+moving a family adapter does not introduce an executor or alter semantic IDs.
+
+Isabelle sources are grouped under `shared/<domain>/<session>`,
+`families/<family>/<session>` and `integration/<contract>/<session>`. Each session
+has one directory and keeps its declared name and native timeout. Shared theories
+do not import families; family-to-family bridges belong to integration owners.
+Generic carry/borrow equations are shared only when their hypotheses and transported
+phase conventions agree. Family safety, recurrence and source-admission statements
+remain with their family.
+
+Tests follow the mathematical or runtime owner. Migration records must map moved
+assertions and proof claims to their retained owner. Directory relocation cannot
+turn an existing failed constructor gate into a pass or make an audit theorem a
+production refinement. Lexical duplicate and unused-theorem findings require
+review of exports, automation attributes and dynamic ML references before deletion.
+Audit sessions live under their owner's `audit/` directory. Release theories,
+sessions and ML resources cannot depend on those audit-only implementations.
+The shared inventory checks those edges across all registrations discovered by
+the top-level `ROOTS`.
+
 ## Resource-controlled diagnostics
 
 Install the optional sampling profiler with `python -m pip install -e '.[profile]'`.
@@ -215,15 +248,14 @@ profiles are useful for hot paths; uninstrumented runs remain the latency
 baseline.
 
 ```bash
-python -m pyinstrument -r speedscope -o /tmp/collatz.speedscope.json \
-  -m number_compiler collatz --seed 931386509544713451 --nth 2000
-python -m cProfile -o /tmp/collatz.prof \
-  -m number_compiler collatz --seed 931386509544713451 --nth 2000
-python -m pstats /tmp/collatz.prof
+python -m devtools.checks.release --suite unit \
+  --select tests/sequences/collatz/test_source_image_runtime.py --profile
 ```
 
-Wrap expensive profiling invocations in the watchdog below. Capture successful
-output and the unprofiled exit status as well as the profile: `cProfile`'s
+The runner writes the profile beside its guarded timing and outcome records.
+Sampling or CLI profiling must likewise run inside an existing guarded probe;
+direct profiler commands are not an alternative validation launcher. Capture
+successful output and the unprofiled exit status as well as the profile: `cProfile`'s
 module runner can swallow `SystemExit`, so its zero exit status does not prove
 the CLI completed the request. The sampling CLI preserves that status in the
 checked environment. A fast budget refusal is not a performance improvement.
@@ -264,7 +296,7 @@ Use `python -m devtools.checks.package_release --output-dir results/runs/package
 
 Canonical probe entry points accept `--output-dir PATH`. Choose a fresh directory for every invocation; an existing directory is rejected. Without this option, a unique timestamp/UUID directory is allocated under `results/runs/`. Reports share the invocation's directory and `manifest.json`, which records command, tool versions, metrics schema, limits, Git provenance, effective limits, and completion outcome. Interrupted work remains diagnostic; dirty development runs never certify a commit. Raw JSON, logs and profiles stay local; summarize scoped conclusions in the reviewed sprint topic.
 
-For configurable current public-route comparisons, use `python -m devtools.benchmarks.public_query_comparison --family collatz --horizons 16 32 64 --trials 5 --modes cold warm bypass --bases 2 10 --output-dir results/runs/public-query-review`. The report retains warm priming and all CLI/point samples; it measures route agreement and states its timing scope without introducing a release threshold.
+For configurable current public-route comparisons, use `python -m devtools.benchmarks.public_query_comparison --family collatz --horizons 16 32 64 --trials 5 --modes cold warm bypass --bases 2 10 --position 0 --output-dir results/runs/public-query-review`. The report retains warm priming and all CLI/point samples; it measures route agreement and states its timing scope without introducing a release threshold. Point positions must be valid at every requested horizon, including cycle values.
 
 New evidence uses Git object identities and an explicit development/acceptance mode. Historical fingerprint evidence remains unchanged and cannot be upgraded to current acceptance evidence.
 

@@ -14,6 +14,7 @@ from number_compiler.arithmetic.fields.consumer_pullback import (
 )
 from number_compiler.hashlife.execution.source_bound_images import (
     SourceBoundImageAdapter,
+    SourceImageBinding,
     SourceImageCandidate,
     SourceImageDemand,
     SourceImageProjection,
@@ -83,6 +84,44 @@ class AssociatedActionSourceAdapter(SourceBoundImageAdapter):
         if type(payload) is not AssociatedScalarPayload:
             raise TypeError("associated scalar adapter requires its exact payload")
         payload.__post_init__()
+
+    def audit_image_binding(
+        self,
+        binding: SourceImageBinding,
+        payload: Hashable,
+        failure_prefix: Hashable | None,
+    ) -> None:
+        """Validate stored scalar metadata without replaying its action."""
+        if type(binding) is not SourceImageBinding:
+            raise TypeError("associated image audit requires its exact binding")
+        self.validate_source(binding.source)
+        self.validate_action(binding.action)
+        self.validate_payload(payload)
+        source = binding.source
+        assert type(source) is AssociatedScalarSource
+        assert type(binding.action) is AssociatedActionID
+        assert type(payload) is AssociatedScalarPayload
+        extent = self.arena.record(binding.action).logical_extent
+        if (
+            binding.family != self.family
+            or binding.semantic_version != self.semantic_version
+            or binding.extent != extent
+            or binding.orientation != 1
+            or binding.radix != 2
+            or binding.boundary_ports
+            or binding.precision is not None
+            or failure_prefix is not None
+            and (
+                type(failure_prefix) is not int
+                or not 0 <= failure_prefix <= binding.extent
+            )
+        ):
+            raise ValueError("associated image binding metadata is inconsistent")
+        if source.threshold is None:
+            if failure_prefix is not None:
+                raise ValueError("unconstrained associated image has a failure prefix")
+        elif failure_prefix is None and not source.threshold.evaluate(payload.value):
+            raise ValueError("associated image omitted a required failure prefix")
 
     def identity_action(self, source: Hashable) -> AssociatedActionID:
         self.validate_source(source)

@@ -2,8 +2,6 @@
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING, TypeGuard
-
 from number_compiler.arithmetic.contracts.block_effect import BoundarySide
 from number_compiler.arithmetic.contracts.scoped_handles import (
     ActionProgramID,
@@ -55,7 +53,6 @@ from number_compiler.hashlife.execution.diamond_certificate import (
 from number_compiler.hashlife.execution.diamond_continuation_payload import (
     ContinuationPayloadRegistry,
 )
-from number_compiler.hashlife.execution.diamond_cycles import PhysicalCycleProjection
 from number_compiler.hashlife.execution.diamond_demand_payload import (
     DemandPayloadRegistry,
 )
@@ -98,27 +95,10 @@ from number_compiler.hashlife.interfaces.diamond_unary import (
     UnaryKernelApplication,
 )
 from number_compiler.resources.ledger import ResourceLedger
-from number_compiler.sequences.collatz.block_power import CollatzPhysicalBlockEffect
-
-if TYPE_CHECKING:
-    from number_compiler.arithmetic.contracts.physical_collatz_kernel import (
-        PhysicalCollatzFourBlockEffect,
-    )
 
 
 def _integer(value: object, lower: int = 0, upper: int | None = None) -> bool:
     return type(value) is int and value >= lower and (upper is None or value < upper)
-
-
-def _physical_four(value: object) -> TypeGuard[PhysicalCollatzFourBlockEffect]:
-    """Recognize an explicitly retained proof C4 atom without eager import."""
-    if type(value).__name__ != "PhysicalCollatzFourBlockEffect":
-        return False
-    from number_compiler.arithmetic.contracts.physical_collatz_kernel import (
-        PhysicalCollatzFourBlockEffect,
-    )
-
-    return type(value) is PhysicalCollatzFourBlockEffect
 
 
 class DiamondPayloadRegistry:
@@ -165,7 +145,6 @@ class DiamondPayloadRegistry:
         PairMacroKey,
         PairMacroRecord,
         RightHalo,
-        PhysicalCycleProjection,
         ContextProgramID,
         ContextNode,
         ContextObservation,
@@ -286,8 +265,16 @@ class DiamondPayloadRegistry:
     def recognizes(self, value: object) -> bool:
         return (
             type(value) in self.record_types
+            or self._cycle_projection(value)
             or isinstance(value, ArenaHandle)
             and value.kind.startswith("diamond-")
+        )
+
+    def _cycle_projection(self, value: object) -> bool:
+        return any(
+            application.runtime.family_hooks is not None
+            and application.runtime.family_hooks.is_cycle_projection(value)
+            for application in self.applications
         )
 
     def _handle(self, value: object) -> bool:
@@ -411,8 +398,8 @@ class DiamondPayloadRegistry:
             return self._halo(value)
         if type(value) is RightResetCertificate:
             return self._right_reset(value)
-        if type(value) is PhysicalCycleProjection:
-            return self._physical_cycle(value)
+        if self._cycle_projection(value):
+            return self._family_cycle(value)
         if type(value) is DiamondCompositionCertificate:
             if (
                 type(value.kernels) is not tuple
@@ -700,8 +687,9 @@ class DiamondPayloadRegistry:
                 return value.radius == 0
             if node.kind == "atom":
                 effect = arena.runtime.actions.primitive(value.action)
-                if _physical_four(effect):
-                    return value.radius == 4
+                hooks = arena.runtime.family_hooks
+                if hooks is not None and hooks.owns_compatibility(effect):
+                    return value.radius == hooks.compatibility_halo(effect)
                 return value.radius in (None, 0, 1)
             first = arena._radii.get(actions.reference(node.first))
             second = arena._radii.get(actions.reference(node.second))
@@ -750,12 +738,9 @@ class DiamondPayloadRegistry:
                     and value.radius == left.radius + right.radius
                 )
             effect = actions.primitive(value.action)
-            if _physical_four(effect):
-                try:
-                    effect.validate()
-                except (TypeError, ValueError):
-                    return False
-                return value.radius == 4
+            hooks = arena.runtime.family_hooks
+            if hooks is not None and hooks.owns_compatibility(effect):
+                return value.radius == hooks.compatibility_reset_radius(effect)
             primitive = next(
                 (
                     kernel
@@ -778,69 +763,18 @@ class DiamondPayloadRegistry:
             return value.radius == 1
         return False
 
-    def _physical_cycle(self, value: PhysicalCycleProjection) -> bool:
-        if (
-            type(value.source) is not ArenaToken
-            or type(value.root) is not ActionProgramID
-            or value.root.kind != "diamond-action"
-            or not self._handle(value.root)
-            or not _integer(value.phase, 0, 3)
-            or not _integer(value.extent, 3)
-            or id(value) not in self.cycle_records
-        ):
+    def _family_cycle(self, value: object) -> bool:
+        if id(value) not in self.cycle_records:
             return False
         for application in self.applications:
-            if (
-                not any(record is value for record in application._cycles)
-                or value.root != application.root
+            hooks = application.runtime.family_hooks
+            if hooks is None or not hooks.is_cycle_projection(value):
+                continue
+            if value is not application._issued_cycle or not any(
+                record is value for record in application._cycles
             ):
                 continue
-            geometry = application.runtime.cells.source_geometry
-            source = geometry._construction.source
-            phase = {(1,): 0, (0, 0, 1): 1, (0, 1): 2}.get(source.digits)
-            if (
-                value.source is not geometry.token
-                or phase is None
-                or source.base != 2
-                or source.blank != 2
-                or geometry._read_root is None
-                or value.extent != geometry._read_root.length
-            ):
-                return False
-            actions = application.runtime.actions
-            residues: dict[int, int] = {}
-            pending = [(value.root.local_id, False)]
-            while pending:
-                index, ready = pending.pop()
-                if index in residues:
-                    continue
-                node = actions._nodes[index]
-                if node.kind == "identity":
-                    residues[index] = 0
-                elif node.kind == "atom":
-                    primitive = actions.compiler._nodes[node.compiler_id]
-                    if _physical_four(primitive):
-                        try:
-                            primitive.validate()
-                        except (TypeError, ValueError):
-                            return False
-                    elif type(primitive) is not CollatzPhysicalBlockEffect:
-                        return False
-                    residues[index] = primitive.exponent % 3
-                else:
-                    if not all(
-                        _integer(child, 0, index) for child in (node.first, node.second)
-                    ):
-                        return False
-                    if not ready:
-                        pending.extend(
-                            ((index, True), (node.second, False), (node.first, False))
-                        )
-                    else:
-                        residues[index] = (
-                            residues[node.first] + residues[node.second]
-                        ) % 3
-            return value.phase == (phase + residues[value.root.local_id]) % 3
+            return hooks.validate_cycle(application.runtime, application.root, value)
         return False
 
     def _original_cell(self, handle: CellID | FormalSymbolID) -> bool:

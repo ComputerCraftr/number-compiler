@@ -4,8 +4,7 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING
 
-from number_compiler.arithmetic.contracts.block_effect import BoundarySide
-from number_compiler.sequences.collatz.physical_support import PhysicalSupport
+from number_compiler.hashlife.tiles.ordered_boolean_support import OrderedBooleanSupport
 
 if TYPE_CHECKING:
     from number_compiler.hashlife.actions.field_actions import FieldCellActionID
@@ -18,38 +17,30 @@ def primitive_physical_support(
     action: FieldCellActionID,
     source: TileID,
     ports: tuple[int, ...],
-) -> PhysicalSupport | None:
+) -> OrderedBooleanSupport | None:
     """Return the unique low-boundary branch atom for a primitive scan."""
     from number_compiler.hashlife.execution.tile_kernel import (
         PrimitiveTileKernelAdapter,
-    )
-    from number_compiler.sequences.collatz.block_power import (
-        CollatzPhysicalBlockEffect,
     )
 
     adapter = scheduler.adapter
     if type(adapter) is not PrimitiveTileKernelAdapter:
         return None
+    hooks = adapter.family_hooks
+    if hooks is None:
+        return None
     record = adapter._action(action)
     if record.children is not None:
         return None
-    kernel = adapter.kernels.kernel(record.kernel)
-    if type(kernel.effect) is not CollatzPhysicalBlockEffect:
-        return None
     if len(ports) != 2:
         raise ValueError("physical support requires two admitted boundary ports")
-    symbol = scheduler.tiles.resolve(source).symbol
-    if ports[0] != kernel.initial(BoundarySide.LEFT) or symbol not in (0, 1):
-        return scheduler.physical_supports.identity
-    return (
-        scheduler.physical_supports.odd if symbol else scheduler.physical_supports.even
-    )
+    return hooks.physical_support(scheduler, action, source, ports)
 
 
 def spatial_physical_support(
-    left: PhysicalSupport | None,
-    right: PhysicalSupport | None,
-) -> PhysicalSupport | None:
+    left: OrderedBooleanSupport | None,
+    right: OrderedBooleanSupport | None,
+) -> OrderedBooleanSupport | None:
     """Select the one spatial child that owns the low-boundary tick."""
     a, b = left, right
     if a is None and b is None:
@@ -64,12 +55,12 @@ def spatial_physical_support(
 
 
 def temporal_physical_support(
-    before: PhysicalSupport | None,
-    after: PhysicalSupport | None,
+    before: OrderedBooleanSupport | None,
+    after: OrderedBooleanSupport | None,
     *,
     before_ticks: int,
     after_ticks: int,
-) -> PhysicalSupport | None:
+) -> OrderedBooleanSupport | None:
     """Concatenate source-rebased supports in chronological order."""
     a, b = before, after
     if a is None and b is None:

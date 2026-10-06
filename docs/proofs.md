@@ -1,7 +1,7 @@
 # Proof index and acceptance
 
 The Isabelle sources are registered in
-[`proofs/isabelle/ROOT`](../proofs/isabelle/ROOT). Registration
+[`proofs/isabelle/ROOTS`](../proofs/isabelle/ROOTS) and its registered owner `ROOT` files. Registration
 is the acceptance boundary: a theory file is not considered checked merely
 because it exists in the tree or is imported by an editor session.
 
@@ -13,7 +13,7 @@ they do not change the current validation configuration.
 
 ## Canonical spatial and finite-clock lemmas
 
-[`Reverse_Boundary_Germ_Local`](../proofs/isabelle/Reverse_Boundary_Germ_Local.thy)
+[`Reverse_Boundary_Germ_Local`](../proofs/isabelle/families/reverse_add/reverse_residuals/Reverse_Boundary_Germ_Local.thy)
 in `Reverse_Residuals` checks the finite Q95 boundary encoding, blank rejection,
 threshold carry, equality wire, reflected edge ordering and symbol-complement
 carry conjugacy. Its successor-factor theorem requires agreement on every
@@ -23,26 +23,26 @@ not an occurrence-parameterized temporal transformer. See the
 [candidate audit](research/reverse-add.md#three-cell-temporal-boundary-candidate)
 for the separate seed-196 clock/germ experiment.
 
-[`Mirror_Pair_Step`](../proofs/isabelle/Mirror_Pair_Step.thy) owns
+[`Mirror_Pair_Step`](../proofs/isabelle/families/reverse_add/reverse_residuals/Mirror_Pair_Step.thy) owns
 `palindrome_nth_reflect`; both publisher and growth branches import it. Its
 assumptions are palindrome admission and an in-range index. It is a spatial
 lemma, not temporal constructor refinement.
 
-[`Runtime_Cylinder_Refinement`](../proofs/isabelle/etale/Runtime_Cylinder_Refinement.thy)
+[`Runtime_Cylinder_Refinement`](../proofs/isabelle/integration/etale/etale/Runtime_Cylinder_Refinement.thy)
 proves finite semantic observer equations and bounded counterexamples.
 `reassociation_preserves_clock_transfer` and
 `event_clock_s_arithmetic_exponents` concern its event-word model; they do not
 bind the production source or supply terminal primality evidence.
 
 The common forward-carry append law is owned by
-[`Reverse_Residuals`](../proofs/isabelle/Reverse_Residuals.thy), beside `carry_out`.
+[`Reverse_Residuals`](../proofs/isabelle/families/reverse_add/reverse_residuals/Reverse_Residuals.thy), beside `carry_out`.
 Publisher and two-port proofs reuse it; the harmonic port folds reuse HOL's
 `fold_append`. Comma's scale-100 borrow equations remain separate because they
 express a different recurrence.
 
-[`Comma_Sector_Rows_Core`](../proofs/isabelle/comma_decade_masks/Comma_Sector_Rows_Core.thy)
+[`Comma_Sector_Rows_Core`](../proofs/isabelle/families/comma/comma_decade_masks/Comma_Sector_Rows_Core.thy)
 owns row coverage, restriction, joins and nonzero filtering. The generic
-[`response projection`](../proofs/isabelle/comma_response_base/Comma_Response_Rows.thy)
+[`response projection`](../proofs/isabelle/families/comma/comma_response_base/Comma_Response_Rows.thy)
 proves that filtering zero masks preserves the complete response. This is a
 root publication interface, not a concrete fast constructor: the old sparse
 base instance still owns production proof construction. The rejected parent-row
@@ -57,7 +57,7 @@ needed the decimal temporal constructor. The optional
 or aggregate acceptance target was removed.
 
 The new
-[Collatz_Saturated_Threshold_Composition](../proofs/isabelle/integration/Collatz_Saturated_Threshold_Composition.thy)
+[Collatz_Saturated_Threshold_Composition](../proofs/isabelle/integration/associated_actions/integration/Collatz_Saturated_Threshold_Composition.thy)
 connects the shared skew endpoint and finite inverse-threshold envelope:
 
 - `saturated_endpoint_then` and `saturated_safety_then` state chronological
@@ -86,7 +86,7 @@ python -m devtools.checks.release --suite proofs --session Associated_Action_Cor
 `Collatz_Cylinder_Refinement` checks
 `collatz_physical_admitted_leaf_loop_refinement` and
 `collatz_physical_d4_base_refinement` in
-[Collatz_Physical_Cylinder_Lift](../proofs/isabelle/temporal_collatz/Collatz_Physical_Cylinder_Lift.thy).
+[Collatz_Physical_Cylinder_Lift](../proofs/isabelle/families/collatz/temporal_collatz/Collatz_Physical_Cylinder_Lift.thy).
 The model matches the shared residue owner's bounded generator updates for
 the physical Collatz law: current value, affine numerator/denominator, branch
 labels, odd count, delta and minimum. Existing dyadic lift/split theorems justify
@@ -96,7 +96,7 @@ resource accounting or a sublinear cold constructor; see the
 
 The `Reverse_Digit_Terminal` session also checks
 `streamed_digits_refines_terminal` in
-[Reverse_Digit_Terminal_Refinement](../proofs/isabelle/reverse_terminal/Reverse_Digit_Terminal_Refinement.thy).
+[Reverse_Digit_Terminal_Refinement](../proofs/isabelle/families/reverse_add/reverse_terminal/Reverse_Digit_Terminal_Refinement.thy).
 It proves the single-carry streaming fold used by the D1/D2 output iterators
 equals the existing digit normalizer for admitted pair coefficients below 19.
 It does not construct those coefficients or prove arbitrary temporal closure.
@@ -300,7 +300,7 @@ theories audit their exported results with `Thm_Deps.all_oracles`. A successful
 focused build does not replace aggregate release validation.
 
 The same session includes
-[`Mahler_Cyclotomic_Boundary`](../proofs/isabelle/mahler_safety/Mahler_Cyclotomic_Boundary.thy):
+[`Mahler_Cyclotomic_Boundary`](../proofs/isabelle/integration/antihydra_mahler/mahler_safety/Mahler_Cyclotomic_Boundary.thy):
 
 | Result | Assumptions / scope | Executable connection |
 | --- | --- | --- |
@@ -371,7 +371,7 @@ not replace all-session release acceptance.
 
 ## Complete finite-interface admission
 
-[Reverse_196_Complete_Interface_Substitution](../proofs/isabelle/temporal_clocks/Reverse_196_Complete_Interface_Substitution.thy)
+[Reverse_196_Complete_Interface_Substitution](../proofs/isabelle/integration/temporal_cylinders/temporal_clocks/Reverse_196_Complete_Interface_Substitution.thy)
 models complete partial images. `canonical_partial_guard_extensional` identifies
 undefined and false rejection guards; `saturated_image_chronological_composition`
 connects simultaneous output substitution with chronological partial application.
@@ -567,20 +567,20 @@ result, a receiving occurrence and a proof dependency are different objects.
 
 | Object / owner | Identity and authority | Audit result |
 | --- | --- | --- |
-| [Entry jump and fast control](../proofs/isabelle/comma_fast_control/Comma_Fast_Kernel.thy) | Complete local jump: typed `(f,x,k)` with short phase `k`. Complete decade: typed receiving phase and source; local round continuations are ephemeral. Each engine captures one immutable context. | Jumps retain seam/crossing output; round children demand cached jumps without retaining phase-specific suffix proofs. Successful occurrence restoration precedes publication and hit accounting. Positive Entry offsets normalize to `(r+d) mod 924` and restore the exact result offset. Closed numeric admission guards share proofs by their complete typed propositions within the immutable engine. |
-| [Cold return construction](../proofs/isabelle/comma_return_engine/return_check.ML) | Exact source-bound rounds use the checked local phase transport; an explicit worklist composes their kernel theorems. | Completed suffix memo removed after 1,238 publications and zero hits. Only completed boundary traces are retained for downstream consumers. |
-| [Imported boundary traces](../proofs/isabelle/comma_return_engine/Comma_Return_Engine.thy) | Closed `comma_round_reaches` facts bind the literal N/Z constructor, digit and phase to `comma_finite_initial q`. Named theorem collections are context-owned; conflicting keys and schematic values are rejected. | The period session inherits the concrete return heap and requires 314 successfully applied boundary hits with zero new rounds before sibling checking. This avoids duplicate arithmetic; it does not prove missing sibling facts. |
-| [Sector clauses and guards](../proofs/isabelle/comma_decade_masks/sector_response_check.ML) | Clauses retain `(f,x,k)`; Near arithmetic uses `(f,h)` with checked rebinding. Periodic words use `(period,residue,count)`; packed arithmetic uses complete typed operations. | Arithmetic sharing does not erase the guard or receiving source. Packed caches keep bounded FIFO retention. |
-| [Complete guarded rows — audit owner](../proofs/isabelle/comma_sector_mask_audit/sector_mask_constructor.ML) | Rows/plans bind `(f,x)`; output merges occur within that source with proved guard union. Templates bind sector and complete theorem proposition. | Preserved in `Comma_Sector_Mask_Audit`; production base masks import the shared row semantics directly. This older constructor is not native B1 admission. |
-| [Summary transport](../proofs/isabelle/comma_decade_summary_kernel/fast_summary_check.ML) | Symbolic offset lens plus receiving phase; only control uses the proved orbit representative. | Height and terminal candidates retain their own occurrence checks. Control equality cannot authorize equal labels. |
-| [Weighted round witness](../proofs/isabelle/comma_rank/round_witness.ML) | Separate arithmetic, predicate, terminal and exact `(phase,source)` observation tables under one generation. | Existing checked transport and generation checks remain. Exact weights/guards are not shared using a control-only key. |
-| [Raw layers](../proofs/isabelle/comma_decade_layer_check/decade_layer_check.ML) and [orbit layers](../proofs/isabelle/comma_decade_orbit_layer/orbit_layer_check.ML) | `(level,phase)` encoded injectively after admission of `0≤phase<924`; separate owner for each representation. | Invalid phases rejected before lookup; failed construction removes newly published entries. The encoding is local, not a portable semantic ID. |
-| [Decade lookup](../proofs/isabelle/comma_decade_rank_data/rank_data_lookup.ML) and [future lookup](../proofs/isabelle/comma_future_rank_data/rank_table_lookup.ML) | Exact typed selected expression, with its defining table captured by the owner. | Rank and terminal definitions cannot share an unqualified integer index. Internal list reuse is data lookup, not a truth certificate. |
-| [Shared rank/terminal data loader](../proofs/isabelle/comma_decade_rank_data/candidate_data_definition.ML) | Level and child IDs inside separate, fresh construction arenas; exact ragged 924×91 extent. | Local numeric IDs never cross arenas. No synthetic padding; candidate definitions still require independent semantic checks. Admitted edge/chunk and invalid-domain lookup regressions live in the summary kernel. |
-| [Sparse theory publication](../proofs/isabelle/comma_sparse_instance/Comma_Sparse_Base_Instance.thy) | Root word data in theory storage, with source-matched root refinement. | Exact term equality protects merges; registering symbolic terms does not evaluate or certify concrete B32 data. |
-| [Dependency auditor](../proofs/isabelle/comma_entry_arithmetic/entry_arithmetic.ML) | Immutable Isabelle proof-node serials, committed after complete successful traversal; roots checked on each call. | Deliberately **not** keyed by semantic conclusion: two proofs of one proposition can have different oracle dependencies. |
+| [Entry jump and fast control](../proofs/isabelle/families/comma/comma_fast_control/Comma_Fast_Kernel.thy) | Complete local jump: typed `(f,x,k)` with short phase `k`. Complete decade: typed receiving phase and source; local round continuations are ephemeral. Each engine captures one immutable context. | Jumps retain seam/crossing output; round children demand cached jumps without retaining phase-specific suffix proofs. Successful occurrence restoration precedes publication and hit accounting. Positive Entry offsets normalize to `(r+d) mod 924` and restore the exact result offset. Closed numeric admission guards share proofs by their complete typed propositions within the immutable engine. |
+| [Cold return construction](../proofs/isabelle/families/comma/comma_return_engine/return_check.ML) | Exact source-bound rounds use the checked local phase transport; an explicit worklist composes their kernel theorems. | Completed suffix memo removed after 1,238 publications and zero hits. Only completed boundary traces are retained for downstream consumers. |
+| [Imported boundary traces](../proofs/isabelle/families/comma/comma_return_engine/Comma_Return_Engine.thy) | Closed `comma_round_reaches` facts bind the literal N/Z constructor, digit and phase to `comma_finite_initial q`. Named theorem collections are context-owned; conflicting keys and schematic values are rejected. | The period session inherits the concrete return heap and requires 314 successfully applied boundary hits with zero new rounds before sibling checking. This avoids duplicate arithmetic; it does not prove missing sibling facts. |
+| [Sector clauses and guards](../proofs/isabelle/families/comma/comma_decade_masks/sector_response_check.ML) | Clauses retain `(f,x,k)`; Near arithmetic uses `(f,h)` with checked rebinding. Periodic words use `(period,residue,count)`; packed arithmetic uses complete typed operations. | Arithmetic sharing does not erase the guard or receiving source. Packed caches keep bounded FIFO retention. |
+| [Complete guarded rows — audit owner](../proofs/isabelle/families/comma/comma_sector_mask_audit/sector_mask_constructor.ML) | Rows/plans bind `(f,x)`; output merges occur within that source with proved guard union. Templates bind sector and complete theorem proposition. | Preserved in `Comma_Sector_Mask_Audit`; production base masks import the shared row semantics directly. This older constructor is not native B1 admission. |
+| [Summary transport](../proofs/isabelle/families/comma/comma_decade_summary_kernel/fast_summary_check.ML) | Symbolic offset lens plus receiving phase; only control uses the proved orbit representative. | Height and terminal candidates retain their own occurrence checks. Control equality cannot authorize equal labels. |
+| [Weighted round witness](../proofs/isabelle/families/comma/comma_rank/round_witness.ML) | Separate arithmetic, predicate, terminal and exact `(phase,source)` observation tables under one generation. | Existing checked transport and generation checks remain. Exact weights/guards are not shared using a control-only key. |
+| [Raw layers](../proofs/isabelle/families/comma/comma_decade_layer_check/decade_layer_check.ML) and [orbit layers](../proofs/isabelle/families/comma/comma_decade_orbit_layer/orbit_layer_check.ML) | `(level,phase)` encoded injectively after admission of `0≤phase<924`; separate owner for each representation. | Invalid phases rejected before lookup; failed construction removes newly published entries. The encoding is local, not a portable semantic ID. |
+| [Decade lookup](../proofs/isabelle/families/comma/comma_decade_rank_data/rank_data_lookup.ML) and [future lookup](../proofs/isabelle/families/comma/comma_future_rank_data/rank_table_lookup.ML) | Exact typed selected expression, with its defining table captured by the owner. | Rank and terminal definitions cannot share an unqualified integer index. Internal list reuse is data lookup, not a truth certificate. |
+| [Shared rank/terminal data loader](../proofs/isabelle/families/comma/comma_decade_rank_data/candidate_data_definition.ML) | Level and child IDs inside separate, fresh construction arenas; exact ragged 924×91 extent. | Local numeric IDs never cross arenas. No synthetic padding; candidate definitions still require independent semantic checks. Admitted edge/chunk and invalid-domain lookup regressions live in the summary kernel. |
+| [Sparse theory publication](../proofs/isabelle/families/comma/comma_sparse_instance/Comma_Sparse_Base_Instance.thy) | Root word data in theory storage, with source-matched root refinement. | Exact term equality protects merges; registering symbolic terms does not evaluate or certify concrete B32 data. |
+| [Dependency auditor](../proofs/isabelle/families/comma/comma_entry_arithmetic/entry_arithmetic.ML) | Immutable Isabelle proof-node serials, committed after complete successful traversal; roots checked on each call. | Deliberately **not** keyed by semantic conclusion: two proofs of one proposition can have different oracle dependencies. |
 
-[Executable jump regressions](../proofs/isabelle/comma_fast_control/Comma_Fast_Kernel_Smoke.thy)
+[Executable jump regressions](../proofs/isabelle/families/comma/comma_fast_control/Comma_Fast_Kernel_Smoke.thy)
 compare the new constructor against the old sector equations, poison Entry
 sector-wrapper evaluation and warm-parent child access, and check changed
 phase/depth/source requests. Their session is `Comma_Fast_Control`. The summary
@@ -610,7 +610,7 @@ earliest-root proof. See the [cache and branch audit](sprints/week-of-2026-09-27
 
 `Comma_Branch_Period` retains rejected-smaller-sibling termination through safe-return append and repetition. Its concrete period instance is still unverified under the 60-second bound. The existential infinite-continuation corollary does not establish the selected literal choice trace or lexicographic minimality.
 
-[Selected return blocks](../proofs/isabelle/comma_selected_return_blocks/Comma_Selected_Return_Blocks.thy)
+[Selected return blocks](../proofs/isabelle/families/comma/comma_selected_return_blocks/Comma_Selected_Return_Blocks.thy)
 retain ordered alternatives and smaller-sibling termination in a compositional
 certificate tree. `comma_selected_block_then_certified` requires exact source
 adjacency; repetition and squaring require a closed loop. The builder keeps
@@ -621,9 +621,9 @@ registered smoke theory tests the actual builder without being imported by the
 period checker. This is proof composition, not a production CLI cutover or a
 cold-construction complexity theorem.
 
-The existing [Collatz cylinder constructor](../proofs/isabelle/temporal_collatz/Collatz_Cylinder_Constructor.thy) now proves `physical_collatz_distinct_time_actions`: input `2^m` distinguishes every pair of whole time actions with `n < m`. This justifies retaining exact duration in a complete source-independent action ID, while allowing source-bound cycle and high-fiber transport.
+The existing [Collatz cylinder constructor](../proofs/isabelle/families/collatz/temporal_collatz/Collatz_Cylinder_Constructor.thy) now proves `physical_collatz_distinct_time_actions`: input `2^m` distinguishes every pair of whole time actions with `n < m`. This justifies retaining exact duration in a complete source-independent action ID, while allowing source-bound cycle and high-fiber transport.
 
-The [shared dependency audit](../proofs/isabelle/shared/Proof_Dependency_Audit.ML)
+The [Comma proof dependency audit](../proofs/isabelle/families/comma/comma_entry_arithmetic/Proof_Dependency_Audit.ML)
 walks named theorem dependencies transitively. Native producer publication rejects
 candidate-data and forest/fuel authority; global endpoints reject forest/fuel
 authority while permitting checked classifications. Smoke proofs test hidden

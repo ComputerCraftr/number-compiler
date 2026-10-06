@@ -173,3 +173,47 @@ def test_huge_cycle_width_has_bounded_work_and_releases_its_publication(
     assert ledger.entries == ledger.nodes == 0
     with pytest.raises(ValueError):
         _ = workspace.tape_width_summary
+
+
+def test_width_port_requires_exact_endpoint_and_local_source_binding() -> None:
+    from dataclasses import replace
+
+    workspace = CollatzPhysicalImageWorkspace(
+        ResourceLedger(), 1, 1, include_width_spine=True
+    )
+    core = workspace.scheduler._source_image_core()
+    view = core.view(workspace.root_image)
+    ordinary = tuple(
+        port
+        for port in view.binding.boundary_ports
+        if not (
+            type(port) is tuple
+            and len(port) == 2
+            and port[0] == "collatz-tape-width-summary-v1"
+        )
+    )
+    summary = CollatzTapeWidthSummary(1, 3, 1, 0, 1, BlankLedger(2, 0, 2))
+    port = ("collatz-tape-width-summary-v1", summary)
+    binding = replace(view.binding, boundary_ports=(*ordinary, port))
+    approved = workspace.audit_image_binding(binding, view.payload, None)
+    assert approved == (port, summary, summary.blank)
+    assert approved[0] is port
+    assert approved[1] is summary
+    assert approved[2] is summary.blank
+
+    wrong_endpoint = CollatzTapeWidthSummary(1, 2, 1, 0, 1, BlankLedger(1, 0, 1))
+    malformed_port = ("collatz-tape-width-summary-v1", wrong_endpoint)
+    malformed_binding = replace(
+        view.binding,
+        boundary_ports=(*ordinary, malformed_port),
+    )
+    with pytest.raises(ValueError, match="width port disagrees"):
+        workspace.audit_image_binding(malformed_binding, view.payload, None)
+
+    foreign = CollatzPhysicalImageWorkspace(ResourceLedger(), 2, 1)
+    try:
+        foreign_binding = replace(view.binding, source=foreign.root_source)
+        with pytest.raises(ValueError):
+            workspace.audit_image_binding(foreign_binding, view.payload, None)
+    finally:
+        foreign.dispose()

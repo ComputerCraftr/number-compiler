@@ -19,6 +19,7 @@ from number_compiler.hashlife.observation.tile_projection import build_tile_proj
 from number_compiler.hashlife.tiles.tile_context import TemporalCocycle
 from number_compiler.resources.ledger import ResourceLedger
 from number_compiler.sequences.collatz.block_power import CollatzPhysicalBlockEffect
+from number_compiler.sequences.collatz.tile_family_hooks import collatz_tile_hooks
 from tests.support.assertions import assert_rejected_atomically
 from tests.support.diamond_quotient import division_interface
 
@@ -30,7 +31,9 @@ def test_numeric_parent_hit_does_not_expand_boolean_ports(
     ledger = ResourceLedger()
     source = ExactSource((1, 0, 1, 1), 2, blank=2, extent=4, alphabet_size=2)
     with build_tile_projection(
-        CollatzPhysicalBlockEffect(), SourceGeometry(ledger, source)
+        CollatzPhysicalBlockEffect(),
+        SourceGeometry(ledger, source),
+        family_hooks=collatz_tile_hooks(),
     ) as projection:
         adapter = projection.scheduler.adapter
         assert type(adapter) is PrimitiveTileKernelAdapter
@@ -65,7 +68,9 @@ def test_numeric_components_cannot_silently_narrow_admissibility() -> None:
     ledger = ResourceLedger()
     source = ExactSource((1, 0), 2, blank=2, extent=2, alphabet_size=2)
     with build_tile_projection(
-        CollatzPhysicalBlockEffect(), SourceGeometry(ledger, source)
+        CollatzPhysicalBlockEffect(),
+        SourceGeometry(ledger, source),
+        family_hooks=collatz_tile_hooks(),
     ) as projection:
         _unused_adapter_binding, _unused_action_binding, interface_id, arena = (
             division_interface(projection)

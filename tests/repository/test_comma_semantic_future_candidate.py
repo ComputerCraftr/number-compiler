@@ -91,7 +91,9 @@ def test_candidate_artifact_write_preserves_existing_evidence(tmp_path: Path) ->
 
 
 def test_compact_template_publication_preserves_shared_nodes_until_demand() -> None:
-    root = isabelle_root(repository_root()) / "comma_semantic_b1_instance"
+    root = (
+        isabelle_root(repository_root()) / "families/comma/comma_semantic_b1_instance"
+    )
     publication = executable_text(
         (root / "semantic_b1_occurrence_publication.ML").read_text(encoding="utf-8")
     )
@@ -132,13 +134,17 @@ def test_compact_lift_contract_keeps_rebase_and_binding_authority() -> None:
     root = isabelle_root(repository_root())
     source = executable_text(
         (
-            root / "comma_semantic_b1" / "Comma_Semantic_B1_CRT_Lift_Bindings.thy"
+            root
+            / "families/comma/comma_semantic_b1"
+            / "Comma_Semantic_B1_CRT_Lift_Bindings.thy"
         ).read_text(encoding="utf-8")
     )
     assert "Comma_B1_Lift_Goto_Ref nat nat nat" in source
     local_cover = executable_text(
         (
-            root / "comma_semantic_b1" / "Comma_Semantic_B1_CRT_Local_Cover.thy"
+            root
+            / "families/comma/comma_semantic_b1"
+            / "Comma_Semantic_B1_CRT_Local_Cover.thy"
         ).read_text(encoding="utf-8")
     )
     assert "comma_semantic_b1_crt_occurrence_beta child_occurrence" in local_cover
@@ -151,7 +157,9 @@ def test_compact_lift_contract_keeps_rebase_and_binding_authority() -> None:
 
 
 def test_b1_reuses_only_checked_closed_equations_and_constructor_values() -> None:
-    root = isabelle_root(repository_root()) / "comma_semantic_b1_instance"
+    root = (
+        isabelle_root(repository_root()) / "families/comma/comma_semantic_b1_instance"
+    )
     operation = (root / "semantic_b1_crt_operation_conversion.ML").read_text(
         encoding="utf-8"
     )
@@ -183,7 +191,7 @@ def test_b1_reuses_only_checked_closed_equations_and_constructor_values() -> Non
 def test_indexed_child_checks_preserve_source_authority_and_slot_shape() -> None:
     path = (
         isabelle_root(repository_root())
-        / "comma_semantic_b1"
+        / "families/comma/comma_semantic_b1"
         / "Comma_Semantic_B1_CRT_Lift_Bindings.thy"
     )
     declarations = {
@@ -239,9 +247,11 @@ def test_indexed_child_checks_preserve_source_authority_and_slot_shape() -> None
 
 def test_local_cover_checker_reuses_exact_requests_without_repainting_parents() -> None:
     proof_root = isabelle_root(repository_root())
-    root = proof_root / "comma_semantic_b1_instance"
+    root = proof_root / "families/comma/comma_semantic_b1_instance"
     retired_refinement = (
-        proof_root / "comma_semantic_b1" / "Comma_Semantic_B1_CRT_Lift_Refinement.thy"
+        proof_root
+        / "families/comma/comma_semantic_b1"
+        / "Comma_Semantic_B1_CRT_Lift_Refinement.thy"
     )
     assert not retired_refinement.exists()
     bindings = (

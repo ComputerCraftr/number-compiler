@@ -12,6 +12,12 @@ from collections.abc import Iterable
 from dataclasses import dataclass
 from math import gcd, isqrt
 
+from number_compiler.arithmetic.number_theory import (
+    is_prime_u64,
+    jacobi_symbol,
+    smallest_factor,
+)
+
 
 @dataclass(frozen=True, slots=True)
 class AdditiveTranslation:
@@ -124,93 +130,6 @@ class MultiplicativeSetOperator:
     @property
     def description_bits(self) -> int:
         return max(1, abs(self.origin).bit_length()) + 1 + self.shift.description_bits()
-
-
-def is_prime_u64(value: int) -> bool:
-    """Deterministic primality predicate for unsigned 64-bit integers.
-
-    This is the canonical bounded predicate used when compiler algebra needs an
-    auxiliary machine-word prime (for example a cyclotomic wheel field).  The
-    fixed Miller--Rabin bases are deterministic for ``n < 2**64``; this does
-    not replace :func:`smallest_factor`, which remains the factor-producing
-    primitive for sequence semantics.
-    """
-    n = int(value)
-    if n < 2 or n >= 1 << 64:
-        return False
-    small = (2, 3, 5, 7, 11, 13, 17, 19, 23, 29, 31, 37)
-    for prime in small:
-        if n == prime:
-            return True
-        if n % prime == 0:
-            return False
-    d = n - 1
-    s = 0
-    while d % 2 == 0:
-        d //= 2
-        s += 1
-    # Jim Sinclair / deterministic 64-bit basis set.
-    for base in (2, 325, 9375, 28178, 450775, 9780504, 1795265022):
-        a = base % n
-        if a == 0:
-            continue
-        x = pow(a, d, n)
-        if x in (1, n - 1):
-            continue
-        for _ in range(s - 1):
-            x = (x * x) % n
-            if x == n - 1:
-                break
-        else:
-            return False
-    return True
-
-
-def jacobi_symbol(a: int, n: int) -> int:
-    """Return the exact Jacobi symbol ``(a/n)`` for positive odd ``n``.
-
-    This Euclidean-style implementation is ring-safe: ``-1`` is a sound
-    certificate that ``a`` is not a square modulo ``n``; ``+1`` is only a
-    quadratic-residue certificate when ``n`` is known prime.
-    """
-    a, n = normalize_jacobi_inputs(a, n)
-    a %= n
-    result = 1
-    while a:
-        while not (a & 1):
-            a >>= 1
-            if n & 7 in (3, 5):
-                result = -result
-        a, n = n, a
-        if (a & 3) == 3 and (n & 3) == 3:
-            result = -result
-        a %= n
-    return result if n == 1 else 0
-
-
-def smallest_factor(n: int, *, max_divisor: int | None = None) -> int | None:
-    """Return the least proper factor of ``n`` or ``None`` when ``n`` is prime.
-
-    With ``max_divisor``, None means no factor within that bound, not primality.
-    This is the canonical bounded factor primitive shared by the prime and
-    special-number compilers.  It does not retain a prime table.
-    """
-    n = int(n)
-    if n < 2:
-        return None
-    if n == 2:
-        return None
-    if n % 2 == 0:
-        return 2
-    limit = isqrt(n)
-    if max_divisor is not None:
-        if type(max_divisor) is not int or max_divisor < 2:
-            raise ValueError("trial divisor bound must be at least two")
-        limit = min(limit, max_divisor)
-    for factor in range(3, limit + 1, 2):
-        if n % factor == 0:
-            return factor
-    return None
 
 
 def composite_convolution(n: int) -> bool:
@@ -483,11 +402,3 @@ __all__ = [
     "smallest_factor",
     "summarize_prime_bits",
 ]
-
-
-def normalize_jacobi_inputs(a: int, n: int) -> tuple[int, int]:
-    a = int(a)
-    n = int(n)
-    if n <= 0 or not (n & 1):
-        raise ValueError((a, n))
-    return a, n

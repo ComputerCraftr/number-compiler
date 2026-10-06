@@ -7,7 +7,7 @@ factored decision diagrams; no spatial word or temporal trajectory is stored.
 from __future__ import annotations
 
 from collections.abc import Mapping, MutableMapping, MutableSequence, Sequence
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import Literal, Protocol, cast
 
 from number_compiler.arithmetic.contracts.block_effect import (
@@ -31,6 +31,7 @@ from number_compiler.arithmetic.functions.finite_port_action import (
     PortVariable,
 )
 from number_compiler.arithmetic.radix_division import SymbolicBinaryDivisionEffect
+from number_compiler.hashlife.execution.tile_execution_adapter import FamilyTileHooks
 from number_compiler.hashlife.interfaces.primitive_behavior import (
     MAX_PRIMITIVE_BEHAVIOR_TABLE_ENTRIES,
     CertifiedLocalSymmetry,
@@ -66,6 +67,9 @@ class PrimitiveKernel:
     right: Sequence[BoundaryState]
     ledger: ResourceLedger
     behavior: PrimitiveBehaviorQuotient | None = None
+    family_hooks: FamilyTileHooks | None = field(
+        default=None, repr=False, compare=False
+    )
 
     @property
     def base(self) -> int:
@@ -171,14 +175,9 @@ class PrimitiveKernel:
     def observe(self, left: int, symbol: int, right: int) -> tuple[int, ...]:
         """Return occurrence metadata which is not implied by output digits.
 
-        Physical Collatz records one odd event at the unique low-boundary
-        leaf. Valuation and frame changes belong to higher temporal actions
-        for this primitive, so their local deltas are zero.
+        A family may attach a source-owned occurrence observer. Generic
+        kernels default to the identity occurrence cocycle.
         """
-        from number_compiler.sequences.collatz.block_power import (
-            CollatzPhysicalBlockEffect,
-        )
-
         self._check(left, self.left_count)
         self._check(right, self.right_count)
         self._check(symbol, self.blank + 1)
@@ -189,12 +188,10 @@ class PrimitiveKernel:
                 symbol,
                 self.behavior.right_classes[right],
             )
-        odd_event = int(
-            type(self.effect) is CollatzPhysicalBlockEffect
-            and left == self.initial(BoundarySide.LEFT)
-            and symbol == 1
-        )
-        return odd_event, 0, 0
+        hooks = self.family_hooks
+        if hooks is not None and hooks.owns_effect(self.effect):
+            return hooks.observe_primitive(self, left, symbol, right)
+        return 0, 0, 0
 
     def is_absorbing(self, side: BoundarySide, state: int) -> bool:
         """Check the complete primitive alphabet, never a sampled input word."""
@@ -264,6 +261,7 @@ class DiamondKernelArena:
 
     def __init__(self, ledger: ResourceLedger | None = None) -> None:
         self.ledger = ResourceLedger() if ledger is None else ledger
+        self.family_hooks: FamilyTileHooks | None = None
         self.owner = ArenaToken("diamond-kernels")
         self.ledger.register_execution_root(self)
         prefix = f"diamond-kernel-{len(self.ledger.inventory())}"
@@ -336,37 +334,41 @@ class DiamondKernelArena:
         )
         self.functions = FinitePortActionArena(self.ledger)
 
+    def bind_family_hooks(self, hooks: FamilyTileHooks | None) -> None:
+        if hooks is not None and type(hooks) is not FamilyTileHooks:
+            raise TypeError("kernel arena requires canonical family hooks")
+        if self.family_hooks is not None and self.family_hooks is not hooks:
+            raise ValueError("kernel arena is already bound to another family adapter")
+        self.family_hooks = hooks
+
     def intern(
         self,
         effect: BlockEffect,
         *,
         symmetry_witnesses: tuple[LocalSymmetryWitness, ...] | None = None,
     ) -> ActionProgramID:
-        from number_compiler.sequences.collatz.block_power import (
-            CollatzPhysicalBlockEffect,
-        )
-
         # Admission precedes all key lookups; a forged alias is not a kernel.
         common = (
             BaseBlockEffect,
             FiniteBlockEffect,
             DigitNormalizeBlockEffect,
-            CollatzPhysicalBlockEffect,
             NonblankBlockEffect,
             SymbolicBinaryDivisionEffect,
         )
         if type(effect) not in common:
-            # C4 is an explicit proof-oracle input. Keep its module out of the
-            # production import graph used by primitive Collatz execution.
-            from number_compiler.arithmetic.contracts.physical_collatz_kernel import (
-                PhysicalCollatzFourBlockEffect,
-            )
-
-            if type(effect) is not PhysicalCollatzFourBlockEffect:
+            if self.family_hooks is not None and self.family_hooks.owns_effect(effect):
+                # The compiler already admitted this immutable occurrence.
+                # Validate its family law without replacing the object bound
+                # by the chronological composition certificate.
+                self.family_hooks.clone(effect)
+            elif self.family_hooks is not None and self.family_hooks.owns_compatibility(
+                effect
+            ):
+                self.family_hooks.validate_compatibility(effect)
+            else:
                 raise TypeError(
                     "only complete immutable primitive kernels are admitted"
                 )
-            effect.validate()
         if type(effect) is SymbolicBinaryDivisionEffect:
             # Retain a canonical frozen definition instead of the caller's
             # instance.  Even deliberate ``object.__setattr__`` corruption of
@@ -398,9 +400,13 @@ class DiamondKernelArena:
                         "primitive kernel already has another symmetry certificate"
                     )
             return found
+        compatibility_artifact = (
+            self.family_hooks is not None
+            and self.family_hooks.owns_compatibility(effect)
+        )
         has_runtime_behavior = (
             not (type(effect) is FiniteBlockEffect and effect.exponent > 1)
-            and type(effect).__name__ != "PhysicalCollatzFourBlockEffect"
+            and not compatibility_artifact
             and type(effect) is not SymbolicBinaryDivisionEffect
         )
         if (
@@ -477,7 +483,9 @@ class DiamondKernelArena:
             # never its conceptual ``2 * radix`` right domain.
             left = tuple(item for item in left)
             right = tuple(item for item in right)
-            raw_kernel = PrimitiveKernel(effect, left, right, self.ledger)
+            raw_kernel = PrimitiveKernel(
+                effect, left, right, self.ledger, family_hooks=self.family_hooks
+            )
             behavior: PrimitiveBehaviorQuotient | None = None
             symmetry: CertifiedLocalSymmetry | None = None
             if has_runtime_behavior:
@@ -511,6 +519,7 @@ class DiamondKernelArena:
                 raw_kernel.right,
                 self.ledger,
                 behavior,
+                self.family_hooks,
             )
         except BaseException:
             for owner, entries, nodes in reversed(reservations):
@@ -609,7 +618,10 @@ class DiamondKernelArena:
         if (
             type(kernel.effect) is FiniteBlockEffect
             and kernel.effect.exponent > 1
-            or type(kernel.effect).__name__ == "PhysicalCollatzFourBlockEffect"
+            or (
+                kernel.family_hooks is not None
+                and kernel.family_hooks.owns_compatibility(kernel.effect)
+            )
         ):
             raise ValueError(
                 "powered proof-machine domains cannot enter runtime behavioral quotients"

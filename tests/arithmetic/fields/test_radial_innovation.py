@@ -4,7 +4,6 @@ import pytest
 
 from devtools.verification import exact_oracle
 from number_compiler.arithmetic.carry.event_memory import forcing_event, pair_step
-from number_compiler.arithmetic.fields.adic_morphism import collatz_slab_padic3
 from number_compiler.arithmetic.fields.radial_innovation import (
     ReverseAddCyclotomicInnovationBlock,
     ReverseWidthPhase,
@@ -15,7 +14,6 @@ from number_compiler.arithmetic.polynomials.cyclotomic_transport import (
     power_two_cyclotomic_radial_quotient,
 )
 from number_compiler.arithmetic.polynomials.digit_cyclotomic import CyclotomicDigitBlock
-from number_compiler.sequences.collatz.pair import valuation_itinerary_slab
 from number_compiler.sequences.reverse_add.semantic_identity_cache import (
     build_radial_identity,
 )
@@ -153,20 +151,6 @@ def test_reverse_add_innovation_composition_discards_multiplier_provenance() -> 
             composed.affine_morphism().canonical_key
             == direct.affine_morphism().canonical_key
         )
-
-
-def test_collatz_three_adic_radial_quotient_annihilates_old_source_at_precision() -> (
-    None
-):
-    valuations = (1, 4, 2, 1, 3, 1, 2, 5)
-    for precision in range(1, len(valuations) + 1):
-        slab = valuation_itinerary_slab(valuations[:precision])
-        affine = collatz_slab_padic3(slab, precision)
-        radial = affine.radial_quotient
-        assert radial.source_valuation == precision
-        assert radial.source_annihilated
-        assert radial.source_unit is None
-        assert radial.as_affine().canonical_key == affine.canonical_key
 
 
 @exact_oracle()

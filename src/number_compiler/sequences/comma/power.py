@@ -11,6 +11,7 @@ from number_compiler.arithmetic.contracts.scoped_handles import ArenaHandle, Are
 from number_compiler.arithmetic.fields.radix import iter_digits_lsd
 from number_compiler.hashlife.execution.source_bound_images import (
     SourceBoundImageAdapter,
+    SourceImageBinding,
     SourceImageCandidate,
     SourceImageDemand,
     SourceImageID,
@@ -87,6 +88,18 @@ class _CommaImageAdapter(SourceBoundImageAdapter):
         self.scheduler = scheduler
         self.ledger = arena.ledger
         self._term: CommaTerm | None = None
+
+    def audit_image_binding(
+        self,
+        binding: SourceImageBinding,
+        payload: object,
+        failure_prefix: Hashable | None,
+    ) -> None:
+        from number_compiler.sequences.comma.payload_audit import (
+            audit_comma_image_binding,
+        )
+
+        audit_comma_image_binding(self, binding, payload, failure_prefix)
 
     def validate_source(self, source: Hashable) -> None:
         self.arena.charge()
@@ -657,6 +670,20 @@ class CommaTerm:
         self._occurrence_seals: LedgerList[_Occurrence] = self.ledger.make_list(
             self._occurrence_seal_owner, append_only=False
         )
+        self._audit_action_nodes = self.arena._nodes
+        self._audit_action_keys = self.arena._keys
+        self._audit_action_snapshots = self.arena._snapshots
+        self._audit_boundary_templates = self.arena._boundary_templates
+        self._audit_boundary_seals = self.arena._boundary_seals
+        self._audit_boundary_seal_nodes = self.arena._boundary_seal_nodes
+        self._audit_boundary_nodes = self.arena._boundary_nodes
+        self._audit_occurrences = self._occurrences
+        self._audit_occurrence_seals = self._occurrence_seals
+        from number_compiler.sequences.comma.payload_audit import (
+            register_comma_term_audit,
+        )
+
+        register_comma_term_audit(self)
         self._value: int | None = None
         self._current_value = SOURCE
         self._current_index = 1

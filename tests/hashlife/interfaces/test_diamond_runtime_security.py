@@ -32,6 +32,7 @@ from number_compiler.hashlife.observation.diamond_observers import NonblankBlock
 from number_compiler.projection.digit_terminal import DigitNormalizeBlockEffect
 from number_compiler.resources.ledger import ResourceLedger
 from number_compiler.sequences.collatz.block_power import CollatzPhysicalBlockEffect
+from number_compiler.sequences.collatz.tile_family_hooks import collatz_tile_hooks
 from tests.support.assertions import assert_rejected_atomically
 
 if TYPE_CHECKING:
@@ -45,7 +46,7 @@ def setup() -> tuple[
     DiamondRuntime, ActionProgramID, ImageBinding, BoundaryStateID, BoundaryStateID
 ]:
     ledger = ResourceLedger()
-    compiler = LazyCompiler(ledger)
+    compiler = LazyCompiler(ledger, family_hooks=collatz_tile_hooks())
     atom = compiler.atom(CollatzPhysicalBlockEffect())
     geometry = SourceGeometry(
         ledger, ExactSource((1, 1, 0, 1, 1), 2, blank=2, extent=8)
@@ -196,6 +197,7 @@ def test_oversized_primitive_alphabets_reject_before_admission_work(
     effect: NonblankBlockEffect | DigitNormalizeBlockEffect,
 ) -> None:
     arena = DiamondKernelArena()
+    arena.bind_family_hooks(collatz_tile_hooks())
     arena.intern(CollatzPhysicalBlockEffect())
     assert_rejected_atomically(
         arena.ledger, lambda: arena.intern(effect), ValueError, match="64-bit"

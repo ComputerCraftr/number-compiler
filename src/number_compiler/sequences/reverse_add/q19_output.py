@@ -211,9 +211,9 @@ class _LedgerSLPArena(SLPArena):
         self.nodes: LedgerList[SLPNode] = ledger.make_list(
             self.owners[0], nodes_per_entry=1
         )
-        self._term = OwnedMemo(ledger, self.owners[1])
-        self._cat = OwnedMemo(ledger, self.owners[2])
-        self._rep = OwnedMemo(ledger, self.owners[3])
+        self._term: OwnedMemo[int, int] = OwnedMemo(ledger, self.owners[1])
+        self._cat: OwnedMemo[tuple[int, int], int] = OwnedMemo(ledger, self.owners[2])
+        self._rep: OwnedMemo[tuple[int, int], int] = OwnedMemo(ledger, self.owners[3])
         self.empty_id = self._add("EMPTY", 0)
 
     def _add(self, kind: str, length: int, **kw: int) -> int:
@@ -351,6 +351,81 @@ class ReversePairQ19OutputOwner:
         except BaseException:
             self.dispose()
             raise
+        self._audit_nodes = self.arena.nodes
+        self._audit_terms = self.arena._term._data
+        self._audit_concats = self.arena._cat._data
+        self._audit_repeats = self.arena._rep._data
+        self._audit_summaries = self._summaries._data
+        self._audit_issued = self._issued._data
+        (
+            self._audit_projector_forward,
+            self._audit_projector_reverse,
+            self._audit_projector_block,
+            self._audit_projector_forward_power,
+            self._audit_projector_reverse_power,
+        ) = tuple(memo._data for memo in self._projector_memos)
+        from number_compiler.resources.payload_contracts import (
+            PayloadAuditStoreBinding,
+        )
+        from number_compiler.sequences.reverse_add.q19_payload_audit import (
+            audit_reverse_pair_output_owner,
+        )
+
+        ledger.register_payload_audit_contract(
+            self,
+            "reverse_add",
+            (
+                PayloadAuditStoreBinding(
+                    self.arena.owners[0],
+                    "_audit_nodes",
+                    "reverse_pair_output_grammar",
+                ),
+                PayloadAuditStoreBinding(
+                    self.arena.owners[1],
+                    "_audit_terms",
+                    "reverse_pair_output_interner",
+                ),
+                PayloadAuditStoreBinding(
+                    self.arena.owners[2],
+                    "_audit_concats",
+                    "reverse_pair_output_interner",
+                ),
+                PayloadAuditStoreBinding(
+                    self.arena.owners[3],
+                    "_audit_repeats",
+                    "reverse_pair_output_interner",
+                ),
+                PayloadAuditStoreBinding(
+                    self._summary_owner,
+                    "_audit_summaries",
+                    "reverse_pair_q19_summary",
+                ),
+                PayloadAuditStoreBinding(
+                    self._issued_owner,
+                    "_audit_issued",
+                    "reverse_pair_output_occurrence",
+                ),
+                *(
+                    PayloadAuditStoreBinding(
+                        owner,
+                        attribute,
+                        "reverse_pair_projector_memo",
+                    )
+                    for owner, attribute in zip(
+                        self._projector_owners,
+                        (
+                            "_audit_projector_forward",
+                            "_audit_projector_reverse",
+                            "_audit_projector_block",
+                            "_audit_projector_forward_power",
+                            "_audit_projector_reverse_power",
+                        ),
+                        strict=True,
+                    )
+                ),
+            ),
+            audit_reverse_pair_output_owner,
+        )
 
     def _check_open(self) -> None:
         if self._disposed:

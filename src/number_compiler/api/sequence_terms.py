@@ -29,7 +29,7 @@ from number_compiler.arithmetic.polynomials.primary_jet import (
 )
 
 if TYPE_CHECKING:
-    from number_compiler.arithmetic.fields.congruence_automaton import (
+    from number_compiler.sequences.prime.congruence import (
         FactoredPrimeAutomaton,
     )
 
@@ -48,7 +48,7 @@ def factored_word_projection(
     calls = len(automaton.moduli)
     noncoprime = 0
     witness = None
-    from number_compiler.sequences.prime.set import smallest_factor
+    from number_compiler.arithmetic.number_theory import smallest_factor
 
     for residue, modulus in zip(state.residues, automaton.moduli):
         common = gcd(int(residue), int(modulus))

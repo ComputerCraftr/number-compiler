@@ -18,11 +18,18 @@ from number_compiler.hashlife.execution.diamond_primitive_demand import (
 from number_compiler.hashlife.interfaces.diamond_kernel import DiamondKernelArena
 from number_compiler.hashlife.observation.diamond_observers import NonblankBlockEffect
 from number_compiler.sequences.collatz.block_power import CollatzPhysicalBlockEffect
+from number_compiler.sequences.collatz.tile_family_hooks import collatz_tile_hooks
 from tests.support.arithmetic_fixtures import nonblank_demand
 from tests.support.assertions import assert_rejected_atomically
 
 if TYPE_CHECKING:
     from number_compiler.hashlife.interfaces.diamond_kernel import PrimitiveKernel
+
+
+def _collatz_kernels() -> DiamondKernelArena:
+    kernels = DiamondKernelArena()
+    kernels.bind_family_hooks(collatz_tile_hooks())
+    return kernels
 
 
 def oracle(
@@ -74,7 +81,7 @@ def oracle(
 def test_every_partial_collatz_primitive_pattern_matches_complete_oracle(
     operation: Literal["advance", "emit"], side: int
 ) -> None:
-    kernels = DiamondKernelArena()
+    kernels = _collatz_kernels()
     handle = kernels.intern(CollatzPhysicalBlockEffect())
     primitive = kernels.kernel(handle)
     demand = PrimitiveDemandOracle(kernels)
@@ -94,7 +101,7 @@ def test_every_partial_collatz_primitive_pattern_matches_complete_oracle(
 
 
 def test_absorbing_observer_certificate_drops_unknown_symbol_and_warm_work() -> None:
-    kernels = DiamondKernelArena()
+    kernels = _collatz_kernels()
     handle = kernels.intern(NonblankBlockEffect(2, 2))
     demand = PrimitiveDemandOracle(kernels)
     before = kernels.ledger.counters.get("primitive_transition_evaluations", 0)
@@ -119,10 +126,11 @@ def test_varying_pattern_stops_at_first_disagreeing_completion() -> None:
 
 
 def test_foreign_domains_and_malformed_warm_patterns_do_not_mutate_ledger() -> None:
-    kernels = DiamondKernelArena()
+    kernels = _collatz_kernels()
     handle = kernels.intern(CollatzPhysicalBlockEffect())
     demand = PrimitiveDemandOracle(kernels)
     other = DiamondKernelArena(kernels.ledger)
+    other.bind_family_hooks(collatz_tile_hooks())
     foreign = other.intern(CollatzPhysicalBlockEffect())
     demand.constant(handle, "advance", 1, (0, None))
     bad = (
@@ -165,7 +173,7 @@ def test_eviction_recomputes_the_universal_certificate() -> None:
 
 
 def test_demand_records_cannot_accept_future_word_payloads() -> None:
-    kernels = DiamondKernelArena()
+    kernels = _collatz_kernels()
     handle = kernels.intern(CollatzPhysicalBlockEffect())
     with pytest.raises(ValueError):
         PrimitiveDemandKey(handle, "emit", 0, (1 << 255, None, 0))
@@ -174,11 +182,11 @@ def test_demand_records_cannot_accept_future_word_payloads() -> None:
 
 
 def test_verified_four_step_kernel_blank_cofactor_checks_every_right_port() -> None:
-    from number_compiler.arithmetic.contracts.physical_collatz_kernel import (
+    from number_compiler.sequences.collatz.physical_kernel import (
         PhysicalCollatzFourBlockEffect,
     )
 
-    kernels = DiamondKernelArena()
+    kernels = _collatz_kernels()
     handle = kernels.intern(PhysicalCollatzFourBlockEffect())
     primitive = kernels.kernel(handle)
     demand = PrimitiveDemandOracle(kernels)
@@ -194,7 +202,7 @@ def test_verified_four_step_kernel_blank_cofactor_checks_every_right_port() -> N
 
 
 def test_collatz_odd_local_phase_does_not_demand_any_right_context() -> None:
-    kernels = DiamondKernelArena()
+    kernels = _collatz_kernels()
     handle = kernels.intern(CollatzPhysicalBlockEffect())
     primitive = kernels.kernel(handle)
     demand = PrimitiveDemandOracle(kernels)

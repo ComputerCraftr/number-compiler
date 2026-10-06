@@ -1,12 +1,12 @@
 """Keep semantic source/future proofs independent of eager concrete publishers."""
 
+from devtools.checks.isabelle_registry import discover_sessions
 from devtools.checks.isabelle_source_analysis import extract_isabelle_declarations
 from devtools.checks.isabelle_syntax import (
     dynamic_cartouche_spans,
     executable_text,
     ml_cartouches,
     navigation_text,
-    parse_sessions,
     parse_theory_header,
     session_dependency_closure,
 )
@@ -14,7 +14,7 @@ from devtools.paths import isabelle_root, repository_root
 
 THEORY_PATH = (
     isabelle_root(repository_root())
-    / "comma_semantic_future"
+    / "families/comma/comma_semantic_future"
     / "Comma_Semantic_Future.thy"
 )
 
@@ -55,11 +55,13 @@ def test_root_routes_share_literal_arithmetic_without_sharing_future_authority()
     None
 ):
     root = isabelle_root(repository_root())
-    shared = root / "comma_entry" / "Comma_Global_Root_Arithmetic.thy"
-    legacy = root / "comma_future_global" / "Comma_Global_Root_Safety.thy"
+    shared = root / "families/comma/comma_entry" / "Comma_Global_Root_Arithmetic.thy"
+    legacy = (
+        root / "families/comma/comma_future_global" / "Comma_Global_Root_Safety.thy"
+    )
     semantic = (
         root
-        / "comma_semantic_future_instance"
+        / "families/comma/comma_semantic_future_instance"
         / "Comma_Semantic_Global_Root_Bridge.thy"
     )
     helpers = {
@@ -69,14 +71,14 @@ def test_root_routes_share_literal_arithmetic_without_sharing_future_authority()
         "comma_infinite_root_first_p5_entry",
         "comma_p5_open_entries_have_root20",
     }
+    shared_source = shared.read_text()
     shared_names = {
         declaration.name
-        for declaration in extract_isabelle_declarations(shared.read_text(), shared)
+        for declaration in extract_isabelle_declarations(shared_source, shared)
     }
     assert helpers <= shared_names
-    shared_text = executable_text(shared.read_text())
+    shared_text = executable_text(shared_source)
     assert "comma_decimal_root_of.simps[simp del]" in shared_text
-    assert "Thm_Deps.all_oracles" not in shared_text
     for consumer in (legacy, semantic):
         text = consumer.read_text()
         _, imports = parse_theory_header(text, consumer)
@@ -86,13 +88,27 @@ def test_root_routes_share_literal_arithmetic_without_sharing_future_authority()
             for declaration in extract_isabelle_declarations(text, consumer)
         }
         assert helpers.isdisjoint(local_names)
+    # This helper theory imports only arithmetic/source foundations. Its local
+    # all_oracles block audits those helper lemmas; it is not future authority.
+    _, shared_imports = parse_theory_header(shared_source, shared)
+    assert shared_imports == (
+        "Comma_Source_Entry",
+        "Comma_Arithmetic.Comma_Decimal_Parent",
+        "Comma_Arithmetic.Comma_Child_Classification",
+    )
+    shared_audits = tuple(
+        body for body in ml_cartouches(shared_source) if "Thm_Deps.all_oracles" in body
+    )
+    assert len(shared_audits) == 1
+    assert helpers <= set(shared_audits[0].split())
+
     _, imports = parse_theory_header(semantic.read_text(), semantic)
     assert not any("Native" in name or "Forest" in name for name in imports)
 
 
 def test_semantic_path_bridge_retains_unique_prefix_at_the_selected_weight() -> None:
     root = isabelle_root(repository_root())
-    path = root / "comma_semantic_future" / "Comma_Semantic_Path.thy"
+    path = root / "families/comma/comma_semantic_future" / "Comma_Semantic_Path.thy"
     declarations = {
         item.name: item
         for item in extract_isabelle_declarations(
@@ -105,7 +121,9 @@ def test_semantic_path_bridge_retains_unique_prefix_at_the_selected_weight() -> 
     assert "comma_semantic_infinite_paths_agree" in declarations
     assert "comma_semantic_strong_occurrence_bridge_implies" in declarations
     native = (
-        root / "comma_native_boundary" / "Comma_Native_Path_Uniqueness.thy"
+        root
+        / "families/comma/comma_native_boundary"
+        / "Comma_Native_Path_Uniqueness.thy"
     ).read_text(encoding="utf-8")
     assert "comma_native_unique_path_prefix" not in native
     assert "comma_unique_literal_path_prefix" in native
@@ -113,7 +131,11 @@ def test_semantic_path_bridge_retains_unique_prefix_at_the_selected_weight() -> 
 
 def test_semantic_global_bridge_retains_every_infinite_path_not_one_witness() -> None:
     root = isabelle_root(repository_root())
-    path = root / "comma_semantic_future_instance" / "Comma_Semantic_Global_Safety.thy"
+    path = (
+        root
+        / "families/comma/comma_semantic_future_instance"
+        / "Comma_Semantic_Global_Safety.thy"
+    )
     source = path.read_text(encoding="utf-8")
     _, imports = parse_theory_header(source, path)
     assert "Comma_Semantic_Global_Root_Bridge" in imports
@@ -136,7 +158,11 @@ def test_semantic_global_bridge_retains_every_infinite_path_not_one_witness() ->
 
 def test_semantic_stop_occurrence_bridge_has_no_concrete_sparse_authority() -> None:
     root = isabelle_root(repository_root())
-    path = root / "comma_semantic_future" / "Comma_Semantic_B1_Future_Bridge.thy"
+    path = (
+        root
+        / "families/comma/comma_semantic_future"
+        / "Comma_Semantic_B1_Future_Bridge.thy"
+    )
     source = path.read_text(encoding="utf-8")
     name, imports = parse_theory_header(source, path)
     assert name == "Comma_Semantic_B1_Future_Bridge"
@@ -144,7 +170,7 @@ def test_semantic_stop_occurrence_bridge_has_no_concrete_sparse_authority() -> N
         "Comma_Semantic_B1.Comma_Semantic_B1_Power",
         "Comma_Native_Summary_Occurrence.Comma_Native_Summary_Occurrence",
     )
-    sessions = parse_sessions((root / "ROOT").read_text(encoding="utf-8"))
+    sessions = discover_sessions(root)
     closure = session_dependency_closure(sessions, ("Comma_Semantic_Future",))
     assert "Comma_Semantic_B1" in closure
     assert not {
@@ -159,7 +185,7 @@ def test_semantic_stop_occurrence_bridge_has_no_concrete_sparse_authority() -> N
 def test_semantic_source_slot_does_not_materialize_an_action_row() -> None:
     path = (
         isabelle_root(repository_root())
-        / "comma_semantic_b1"
+        / "families/comma/comma_semantic_b1"
         / "Comma_Semantic_B1_Table_Transform.thy"
     )
     declarations = {
@@ -177,7 +203,7 @@ def test_semantic_source_slot_does_not_materialize_an_action_row() -> None:
 
 def test_semantic_b1_does_not_build_the_physical_row_audit() -> None:
     root = isabelle_root(repository_root())
-    sessions = parse_sessions((root / "ROOT").read_text(encoding="utf-8"))
+    sessions = discover_sessions(root)
     closure = session_dependency_closure(sessions, ("Comma_Semantic_B1",))
     assert "Comma_Semantic_Graph_Instance" not in closure
     for name in (
@@ -189,17 +215,19 @@ def test_semantic_b1_does_not_build_the_physical_row_audit() -> None:
         "Comma_CRT_Apply",
         "Comma_CRT_Power",
     ):
-        text = (root / "comma_semantic_b1" / f"{name}.thy").read_text(encoding="utf-8")
+        text = (root / "families/comma/comma_semantic_b1" / f"{name}.thy").read_text(
+            encoding="utf-8"
+        )
         assert "Thm.consolidate" not in text
         assert "require_native_clean" in text
 
 
 def test_semantic_graph_reuses_the_canonical_packet_recurrence() -> None:
     root = isabelle_root(repository_root())
-    graph = root / "comma_semantic_b1" / "Comma_Semantic_Graph.thy"
+    graph = root / "families/comma/comma_semantic_b1" / "Comma_Semantic_Graph.thy"
     packet = (
         root
-        / "comma_decisive_endpoint_quotient"
+        / "families/comma/comma_decisive_endpoint_quotient"
         / "Comma_Decisive_Endpoint_Quotient.thy"
     )
     graph_names = {
@@ -221,10 +249,14 @@ def test_semantic_graph_reuses_the_canonical_packet_recurrence() -> None:
 def test_candidate_publication_does_not_require_physical_row_certificates() -> None:
     root = isabelle_root(repository_root())
     candidate = (
-        root / "comma_semantic_b1_instance" / "semantic_b1_template_constructor.ML"
+        root
+        / "families/comma/comma_semantic_b1_instance"
+        / "semantic_b1_template_constructor.ML"
     ).read_text(encoding="utf-8")
     foundation = (
-        root / "comma_semantic_b1" / "Comma_Semantic_B1_Table_Transform.thy"
+        root
+        / "families/comma/comma_semantic_b1"
+        / "Comma_Semantic_B1_Table_Transform.thy"
     ).read_text(encoding="utf-8")
     assert 'ML_file "semantic_b1_template_constructor.ML"' not in foundation
     assert all(
@@ -246,19 +278,27 @@ def test_candidate_publication_does_not_require_physical_row_certificates() -> N
     assert "comma_semantic_b1_source_slot_actions" in candidate
     assert "val columnT = @{typ comma_crt_column}" in candidate
     publisher = (
-        root / "comma_semantic_b1_instance" / "semantic_b1_occurrence_publication.ML"
+        root
+        / "families/comma/comma_semantic_b1_instance"
+        / "semantic_b1_occurrence_publication.ML"
     ).read_text(encoding="utf-8")
     # HOL serialization moved out of discovery so shared nodes survive until
     # publication; constructor identity and kernel checking remain unchanged.
     assert "@{term Comma_CRT_Node}" in publisher
     assert "#template_keys artifact" in publisher
     assert "HOLogic.mk_Collect" not in candidate
-    assert not (root / "comma_semantic_b1" / "semantic_b1_publication.ML").exists()
+    assert not (
+        root / "families/comma/comma_semantic_b1" / "semantic_b1_publication.ML"
+    ).exists()
 
 
 def test_root_instance_consumes_certified_occurrences_without_source_replay() -> None:
     root = isabelle_root(repository_root())
-    path = root / "comma_semantic_b1_instance" / "Comma_Semantic_B1_Instance.thy"
+    path = (
+        root
+        / "families/comma/comma_semantic_b1_instance"
+        / "Comma_Semantic_B1_Instance.thy"
+    )
     source = path.read_text(encoding="utf-8")
     declarations = {
         item.name: item for item in extract_isabelle_declarations(source, path)
@@ -280,7 +320,7 @@ def test_root_instance_consumes_certified_occurrences_without_source_replay() ->
 def test_power_definition_keeps_control_and_weight_separate() -> None:
     path = (
         isabelle_root(repository_root())
-        / "comma_semantic_b1_instance"
+        / "families/comma/comma_semantic_b1_instance"
         / "Comma_Semantic_B1_Instance.thy"
     )
     declarations = {
@@ -302,7 +342,9 @@ def test_power_definition_keeps_control_and_weight_separate() -> None:
 
 
 def test_online_publication_checks_shape_and_all_goto_children() -> None:
-    root = isabelle_root(repository_root()) / "comma_semantic_b1_instance"
+    root = (
+        isabelle_root(repository_root()) / "families/comma/comma_semantic_b1_instance"
+    )
     path = root / "Comma_Semantic_B1_Occurrence_Publication.thy"
     source = path.read_text(encoding="utf-8")
     declarations = {
@@ -372,7 +414,7 @@ def test_online_publication_checks_shape_and_all_goto_children() -> None:
 def test_candidate_fold_retains_child_occurrences_instead_of_physical_returns() -> None:
     path = (
         isabelle_root(repository_root())
-        / "comma_semantic_b1_instance"
+        / "families/comma/comma_semantic_b1_instance"
         / "semantic_b1_template_constructor.ML"
     )
     source = path.read_text(encoding="utf-8")
@@ -398,7 +440,7 @@ def test_candidate_fold_retains_child_occurrences_instead_of_physical_returns() 
 def test_candidate_occurrence_examples_are_executed_without_graph_discovery() -> None:
     path = (
         isabelle_root(repository_root())
-        / "comma_semantic_b1_instance"
+        / "families/comma/comma_semantic_b1_instance"
         / "semantic_b1_template_constructor.ML"
     )
     declarations = {
@@ -434,7 +476,7 @@ def test_candidate_occurrence_examples_are_executed_without_graph_discovery() ->
 
 
 def test_occurrence_fold_does_not_assume_a_child_physical_return_table() -> None:
-    root = isabelle_root(repository_root()) / "comma_semantic_b1"
+    root = isabelle_root(repository_root()) / "families/comma/comma_semantic_b1"
     path = root / "Comma_Semantic_B1_CRT_Occurrence_Fold.thy"
     source = path.read_text(encoding="utf-8")
     declarations = {
@@ -503,7 +545,7 @@ def test_occurrence_fold_does_not_assume_a_child_physical_return_table() -> None
 def test_occurrence_checker_keeps_clock_quantifiers_out_of_execution() -> None:
     path = (
         isabelle_root(repository_root())
-        / "comma_semantic_b1"
+        / "families/comma/comma_semantic_b1"
         / "Comma_Semantic_B1_CRT_Local_Cover.thy"
     )
     source = path.read_text(encoding="utf-8")
@@ -532,7 +574,7 @@ def test_occurrence_checker_keeps_clock_quantifiers_out_of_execution() -> None:
 
 
 def test_occurrence_induction_uses_actual_goto_decrease_and_required_children() -> None:
-    root = isabelle_root(repository_root()) / "comma_semantic_b1"
+    root = isabelle_root(repository_root()) / "families/comma/comma_semantic_b1"
     source = (root / "Comma_Semantic_B1_CRT_Occurrence_Fold.thy").read_text(
         encoding="utf-8"
     )
@@ -564,7 +606,7 @@ def test_occurrence_induction_uses_actual_goto_decrease_and_required_children() 
 
 def test_crt_lookup_reads_published_predicates_without_future_discovery() -> None:
     root = isabelle_root(repository_root())
-    path = root / "comma_semantic_b1" / "Comma_CRT_Power.thy"
+    path = root / "families/comma/comma_semantic_b1" / "Comma_CRT_Power.thy"
     declarations = {
         item.name: item
         for item in extract_isabelle_declarations(
@@ -591,7 +633,7 @@ def test_crt_lookup_reads_published_predicates_without_future_discovery() -> Non
 def test_stop_occurrence_bridge_covers_offsets_and_preserves_exponent_weight() -> None:
     path = (
         isabelle_root(repository_root())
-        / "comma_semantic_future"
+        / "families/comma/comma_semantic_future"
         / "Comma_Semantic_B1_Future_Bridge.thy"
     )
     declarations = {
@@ -622,7 +664,11 @@ def test_concrete_summary_consumes_checked_b32_and_instantiates_boundary_bridge(
     None
 ):
     root = isabelle_root(repository_root())
-    path = root / "comma_semantic_b1_instance" / "Comma_Semantic_Summary_Instance.thy"
+    path = (
+        root
+        / "families/comma/comma_semantic_b1_instance"
+        / "Comma_Semantic_Summary_Instance.thy"
+    )
     source = path.read_text(encoding="utf-8")
     declarations = {
         item.name: item for item in extract_isabelle_declarations(source, path)
@@ -638,7 +684,7 @@ def test_concrete_summary_consumes_checked_b32_and_instantiates_boundary_bridge(
     assert "[OF comma_semantic_decade_summary_provider_exact]" in source
     for retired in ("comma_checked_sparse_B32_rows", "comma_native_rank_measure"):
         assert retired not in executable_text(source)
-    sessions = parse_sessions((root / "ROOT").read_text(encoding="utf-8"))
+    sessions = discover_sessions(root)
     closure = session_dependency_closure(sessions, ("Comma_Semantic_B1_Instance",))
     assert "Comma_Semantic_Future" in closure
     assert not {
@@ -651,7 +697,7 @@ def test_concrete_summary_consumes_checked_b32_and_instantiates_boundary_bridge(
 def test_b32_instance_publishes_the_aggregate_range_certificate() -> None:
     path = (
         isabelle_root(repository_root())
-        / "comma_semantic_b1_instance"
+        / "families/comma/comma_semantic_b1_instance"
         / "Comma_Semantic_B1_Instance.thy"
     )
     text = path.read_text(encoding="utf-8")
@@ -671,7 +717,7 @@ def test_b32_instance_publishes_the_aggregate_range_certificate() -> None:
 def test_b32_weight_certificate_does_not_reopen_column_evaluation() -> None:
     source = (
         isabelle_root(repository_root())
-        / "comma_semantic_b1_instance"
+        / "families/comma/comma_semantic_b1_instance"
         / "semantic_b1_crt_conversion.ML"
     ).read_text(encoding="utf-8")
     assert "comma_crt_mdd_stop_weights_bounded242" in source
@@ -679,7 +725,7 @@ def test_b32_weight_certificate_does_not_reopen_column_evaluation() -> None:
     assert "comma_crt_eval" not in executable_text(source)
     projection = (
         isabelle_root(repository_root())
-        / "comma_semantic_b1_instance"
+        / "families/comma/comma_semantic_b1_instance"
         / "semantic_b1_b32_projection.ML"
     ).read_text(encoding="utf-8")
     assert "stop_weights: thm" in projection
@@ -698,277 +744,3 @@ def test_b32_weight_certificate_does_not_reopen_column_evaluation() -> None:
         "comma_semantic_b1_crt_power_rows",
     ):
         assert retired not in executable_text(source)
-
-
-def test_occurrence_certificate_waits_for_proof_and_preserves_memo_authority() -> None:
-    root = isabelle_root(repository_root()) / "comma_semantic_b1_instance"
-    publication = (root / "Comma_Semantic_B1_Occurrence_Publication.thy").read_text(
-        encoding="utf-8"
-    )
-    checker = (root / "semantic_b1_occurrence_check_cache.ML").read_text(
-        encoding="utf-8"
-    )
-    selector = (root.parent / "shared" / "selected_list_conversion.ML").read_text(
-        encoding="utf-8"
-    )
-    shared = (root / "semantic_b1_crt_operation_conversion.ML").read_text(
-        encoding="utf-8"
-    )
-    assert publication.index(
-        "definition comma_semantic_b1_crt_occurrence_data_checked"
-    ) < publication.index('ML_file "semantic_b1_occurrence_check_cache.ML"')
-    assert "by comma_semantic_b1_occurrence_check" in publication
-    assert publication.index("Thm.consolidate") < publication.index(
-        "stage=after-concrete-check"
-    )
-    for authority_check in (
-        "lhs aconv request",
-        "closed rhs",
-        "Thm.nprems_of theorem = 0",
-        "null (Thm.hyps_of theorem)",
-        "null (Thm.tpairs_of theorem)",
-    ):
-        assert authority_check in selector
-    assert "Comma_Selected_List_Conversion.validate_equation" in checker
-    assert "Simplifier.Congproc false" in checker
-    assert "Code_Simp.static_conv" in checker
-    assert "Simplifier.simpset_of evaluation_context" in checker
-    operation_setup = checker.split("val operation_context =", 1)[1].split(
-        "fun prove cterm =", 1
-    )[0]
-    initialize_operation_context = "operation_context_ref := SOME operation_context"
-    assert initialize_operation_context in operation_setup
-    assert operation_setup.index(initialize_operation_context) < operation_setup.index(
-        "val _ = code_conversion := SOME"
-    )
-    assert operation_setup.index(initialize_operation_context) < operation_setup.index(
-        "val _ = smoke"
-    )
-    assert "Termtab.delete request" in checker
-    assert "memo_capacity" in checker
-    # A kernel-valid equality can still have an unevaluated RHS. A plain
-    # congruence procedure must not advertise it as completed normalization.
-    publication_gate = checker.split("fun publish_completed", 1)[1].split(
-        "fun convert", 1
-    )[0]
-    assert "check_equation request theorem" in publication_gate
-    assert "status = {complete, nodes}" in publication_gate
-    assert "status = {complete, nodes}, reused_rhs, reused_closed}" in publication_gate
-    assert "value_nodes := !value_nodes + nodes" in publication_gate
-    assert (
-        "rhs_reuse_hits := !rhs_reuse_hits + 1" in publication_gate
-        and "closed_reuse_hits := !closed_reuse_hits + 1" in publication_gate
-    )
-    assert "make_equation_checker ctxt" in checker
-    assert "incomplete := Termtab.update" in publication_gate
-    assert "rejected_partial = publish_completed" in checker
-    assert "returned_by_congproc = memo_proc evaluation_context partial_key" in checker
-    assert "incomplete := Termtab.delete partial_request" in checker
-    assert "comma_semantic_b1_crt_geometry_fold accumulated entries" in checker
-    assert "fold_hits_before_projections" in checker
-    assert "fold_projections_are_exact" in checker
-    assert "fold accumulator smoke was not cold" not in checker
-    assert "crt_operation_base_patterns" in checker
-    assert "crt_operation_base_heads" in checker
-    assert "Comma_Entry_Arithmetic.natural_context ctxt" in checker
-    assert "selector_context_ref" in checker
-    assert "Let_def[abs_def]" in "".join(checker.split())
-    assert "Thm.beta_conversion true" in checker
-    assert "comma_crt_admitted lower column" in checker
-    # Fold and primitive CRT requests use the same operand-first converter;
-    # local copies previously drifted in HOL/meta-equation handling.
-    assert "fun geometry_fold_conversion" not in checker
-    assert "make_staged_operation_converter" in checker
-    assert "reflect_boundaries boundaries" in shared
-    assert "comma_crt_supported_node_short_circuit" in shared
-    assert "rule RS @{thm eq_reflection}" in shared
-    selected_check = checker.split("fun selected_geometry_rewrite", 1)[1].split(
-        "fun publish_completed", 1
-    )[0]
-    assert "selected_was_active = Termtab.defined (!active) selected_request" in (
-        selected_check
-    )
-    assert (
-        selected_check.index("val simplify_attempt = Exn.capture")
-        < (selected_check.index("Termtab.delete selected_request"))
-        < selected_check.index("Exn.release simplify_attempt")
-    )
-    assert "if selected_was_active then ()" in selected_check
-    assert "Termtab.update (selected_request, theorem)" not in selected_check
-
-
-def test_static_code_preparation_excludes_generated_catalogue_constants() -> None:
-    path = (
-        isabelle_root(repository_root())
-        / "comma_semantic_b1_instance"
-        / "semantic_b1_occurrence_check_cache.ML"
-    )
-    checker = path.read_text(encoding="utf-8")
-    primitive_roots = checker.split("val generic_constants =", 1)[1].split("val ", 1)[0]
-    assert (
-        "consts = filter_out (member (op =) operation_roots) generic_constants"
-        in checker
-    )
-    for generated in (
-        "comma_semantic_b1_crt_templates",
-        "comma_semantic_b1_crt_descriptors",
-        "comma_semantic_b1_crt_sources",
-        "comma_semantic_b1_crt_source_index",
-        "comma_semantic_b1_crt_root_occurrence_indices",
-        "comma_semantic_b1_crt_published",
-        "comma_semantic_b1_crt_occurrence_at_index",
-    ):
-        assert generated not in primitive_roots
-
-
-def test_occurrence_certificate_assembles_indexed_facts_without_catalogue_rewrite() -> (
-    None
-):
-    root = isabelle_root(repository_root()) / "comma_semantic_b1_instance"
-    checker = (root / "semantic_b1_occurrence_check_cache.ML").read_text(
-        encoding="utf-8"
-    )
-    indexed = checker.split("fun prove_list_all predicate range =", 1)[1].split(
-        "fun prove_expression", 1
-    )[0]
-    assert "prove_true (predicate $ numeral index)" in indexed
-    assert "Comma_Selected_List_Conversion.prove_indexed_list_all" in indexed
-    shared = (root.parent / "shared" / "selected_list_conversion.ML").read_text(
-        encoding="utf-8"
-    )
-    recurrence = shared.split("fun prove_indexed_list_all", 1)[1].split("fun make", 1)[
-        0
-    ]
-    assert "comma_indexed_all_Suc" in indexed
-    assert "comma_indexed_all_zero" in indexed
-    for caller_path in (
-        root / "Comma_Semantic_B1_Occurrence_Publication.thy",
-        root.parent
-        / "comma_semantic_future_instance"
-        / "Comma_Semantic_Future_Instance.thy",
-    ):
-        caller = executable_text(caller_path.read_text(encoding="utf-8"))
-        assert "Comma_Selected_List_Conversion.prove_indexed_list_all" in caller
-        assert (
-            "Comma_Semantic_B1_Occurrence_Check_Cache.prove_indexed_list_all"
-            not in caller
-        )
-        assert "zero_fact = @{thm comma_indexed_all_zero}" in caller
-        assert "step_fact = @{thm comma_indexed_all_Suc}" in caller
-    assert "Thm.prop_of head_proof aconv expected_head" in recurrence
-    assert "Thm.nprems_of head_proof = 0" in recurrence
-    assert "null (Thm.hyps_of head_proof)" in recurrence
-    assert "null (Thm.tpairs_of head_proof)" in recurrence
-    assert "HOLogic.dest_list" not in recurrence
-    assert "upt_rec" not in recurrence
-    assert "HOLogic.dest_list" not in indexed
-    assert "upt_rec" not in indexed
-    assert "Simplifier.full_rewrite" not in checker
-    assert "comma_semantic_b1_crt_source_index_for" not in checker
-    assert "comma_semantic_b1_crt_published" not in checker
-    dispatch = checker.split("fun prove_expression expression =", 1)[1].split(
-        "val definition", 1
-    )[0]
-    assert "HOLogic.dest_bin" in dispatch
-    assert "HOLogic.dest_conj" not in dispatch
-    assert "then prove_list_all predicate range" in dispatch
-    selector = (root.parent / "shared" / "selected_list_conversion.ML").read_text(
-        encoding="utf-8"
-    )
-    assert "suffix_memo" in selector
-    assert "_spine_node_visits=" in selector
-    assert "_selected_cells=" in selector
-    assert "_list_node_visits=" not in selector
-
-
-def test_selected_list_checks_each_nested_extent_before_cache_access() -> None:
-    path = isabelle_root(repository_root()) / "shared" / "selected_list_conversion.ML"
-    declarations = {
-        item.name: item
-        for item in extract_isabelle_declarations(
-            path.read_text(encoding="utf-8"), path
-        )
-        if item.ml
-    }
-    assert "make" in declarations
-    # Nested ML let declarations are outside the shared declaration subset.
-    body = executable_text(path.read_text(encoding="utf-8"))
-    lookup = body.split("fun lookup cterm =", 1)[1].split("and nth cterm =", 1)[0]
-    assert lookup.index("if not (in_extent cterm)") < lookup.index(
-        "Termtab.lookup (!memo) key"
-    )
-    assert "Conv.arg_conv lookup" in lookup
-    assert "extent_at extents depth" in body
-    conversion = body.split("fun convert cterm =", 1)[1].split("val pattern", 1)[0]
-    assert "else if owned_selector cterm then" in conversion
-    assert "else if in_extent cterm then" not in conversion
-    length_lookup = body.split("fun lookup_length cterm =", 1)[1].split(
-        "fun convert cterm =", 1
-    )[0]
-    assert "list_size_spine (Thm.rhs_of selected)" in length_lookup
-    assert "Simplifier.rewrite" not in length_lookup
-    publication = (
-        path.parent.parent
-        / "comma_semantic_b1_instance"
-        / "Comma_Semantic_B1_Occurrence_Publication.thy"
-    ).read_text(encoding="utf-8")
-    assert "nested_extent_regression" in publication
-    assert 'slot"} [2, 3]' in publication
-    assert "Exn.capture nested_select" in publication
-    assert "selected_suffix_index_two" in publication
-    assert "selected_suffix_index_three" in publication
-
-
-def test_occurrence_evaluator_is_created_only_for_a_validated_subgoal() -> None:
-    path = (
-        isabelle_root(repository_root())
-        / "comma_semantic_b1_instance"
-        / "semantic_b1_occurrence_check_cache.ML"
-    )
-    declarations = {
-        item.name: item
-        for item in extract_isabelle_declarations(
-            path.read_text(encoding="utf-8"), path
-        )
-        if item.ml
-    }
-    assert "tactic" in declarations
-    tactic = executable_text(path.read_text(encoding="utf-8")).split(
-        "fun tactic ctxt i =", 1
-    )[1]
-    assert tactic.index("fun solve") < tactic.index("val evaluator = make ctxt")
-    assert tactic.index("if request aconv expected") < tactic.index(
-        "val evaluator = make ctxt"
-    )
-
-
-def test_b1_terminal_projection_consumes_the_selected_endpoint_once() -> None:
-    root = isabelle_root(repository_root())
-    path = root / "comma_semantic_b1" / "Comma_Semantic_B1_Table_Transform.thy"
-    declarations = {
-        item.name: item
-        for item in extract_isabelle_declarations(
-            path.read_text(encoding="utf-8"), path
-        )
-    }
-    assert "comma_semantic_b1_source_slot_action_width_refines" in declarations
-    text = executable_text(path.read_text(encoding="utf-8"))
-    action = text.split("definition comma_semantic_b1_source_slot_action_width", 1)[
-        1
-    ].split("definition comma_semantic_b1_source_slot_actions", 1)[0]
-    assert action.count("comma_decisive_sector_target") == 1
-    assert "comma_near_terminal_width_j f h" in action
-    assert "Comma_Continuation_Landmine delta" in action
-    assert "Comma_Continuation_Fork (j + 2) delta" in action
-    assert "comma_decisive_endpoint_packet" not in action
-    actions = text.split("definition comma_semantic_b1_source_slot_actions", 1)[
-        1
-    ].split("lemma", 1)[0]
-    assert "map (comma_semantic_b1_source_slot_action_width source)" in actions
-    assert "comma_semantic_b1_source_slot_action_def[code del]" in text
-    assert "comma_semantic_b1_source_slot_action_code[code]" in text
-    equation = text.split("lemma comma_semantic_b1_source_slot_action_code", 1)[
-        1
-    ].split("proof", 1)[0]
-    assert "if comma_round_admitted source" in equation
-    assert "else comma_source_continuation_action_of_packet" in equation

@@ -36,6 +36,10 @@ from number_compiler.hashlife.tiles.tiles import (
 from number_compiler.projection.digit_terminal import DigitNormalizeBlockEffect
 from number_compiler.resources.ledger import ResourceLedger
 from number_compiler.sequences.collatz.block_power import CollatzPhysicalBlockEffect
+from number_compiler.sequences.collatz.tile_family_hooks import (
+    collatz_compatibility_tile_hooks,
+    collatz_tile_hooks,
+)
 from tests.support.assertions import assert_rejected_atomically
 from tests.support.tile_kernel import (
     _oracle,
@@ -369,13 +373,14 @@ def test_primitive_rejects_a_right_boundary_changed_by_dyadic_padding() -> None:
         TileArena(ledger),
         DiamondKernelArena(ledger),
         DiamondQuotientArena(SemanticFunctionArena(ledger)),
+        family_hooks=collatz_tile_hooks(),
     )
     with pytest.raises(ValueError, match="right boundary.*blank padding"):
         adapter.admit(effect)
 
 
 def test_weighted_tile_runtime_rejects_proof_c4_without_event_channel() -> None:
-    from number_compiler.arithmetic.contracts.physical_collatz_kernel import (
+    from number_compiler.sequences.collatz.physical_kernel import (
         PhysicalCollatzFourBlockEffect,
     )
 
@@ -384,6 +389,7 @@ def test_weighted_tile_runtime_rejects_proof_c4_without_event_channel() -> None:
         TileArena(ledger),
         DiamondKernelArena(ledger),
         DiamondQuotientArena(SemanticFunctionArena(ledger)),
+        family_hooks=collatz_compatibility_tile_hooks(PhysicalCollatzFourBlockEffect()),
     )
     with pytest.raises(ValueError, match="no certified odd-event output channel"):
         adapter.admit(PhysicalCollatzFourBlockEffect())

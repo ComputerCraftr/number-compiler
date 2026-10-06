@@ -7,6 +7,7 @@ from typing import cast
 
 from number_compiler.resources.field_image_domain_audit import indexed_record_matches
 from number_compiler.resources.ledger import ResourceLedger
+from number_compiler.resources.payload_contracts import PayloadAuditContractAudit
 
 
 @dataclass(frozen=True, slots=True)
@@ -15,7 +16,10 @@ class FieldImagePayloadAudit:
     invalid: frozenset[tuple[int, int]]
 
 
-def audit_field_image_payloads(ledger: ResourceLedger) -> FieldImagePayloadAudit:
+def audit_field_image_payloads(
+    ledger: ResourceLedger,
+    contracts: PayloadAuditContractAudit | None = None,
+) -> FieldImagePayloadAudit:
     containers = dict(ledger.iter_containers())
     roots = tuple(ledger.iter_execution_roots())
     legacy_prefixes = (
@@ -42,7 +46,9 @@ def audit_field_image_payloads(ledger: ResourceLedger) -> FieldImagePayloadAudit
         from number_compiler.resources.tile_result_inventory import audit_tile_results
         from number_compiler.resources.tile_runtime_inventory import audit_tile_runtime
 
-        live_approved, live_invalid = audit_tile_runtime(ledger, containers, roots)
+        live_approved, live_invalid = audit_tile_runtime(
+            ledger, containers, roots, contracts
+        )
         for root in roots:
             if type(root) is TileArena:
                 found, rejected = audit_tiles(root, containers)
@@ -181,6 +187,7 @@ def audit_field_image_payloads(ledger: ResourceLedger) -> FieldImagePayloadAudit
         ledger,
         containers,
         roots,
+        contracts,
     )
     approved.update(runtime_approved)
     invalid.update(runtime_invalid)

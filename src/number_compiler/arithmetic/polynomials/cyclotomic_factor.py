@@ -12,6 +12,7 @@ from dataclasses import dataclass
 from functools import cache
 from math import gcd
 
+from number_compiler.arithmetic.number_theory import smallest_factor
 from number_compiler.arithmetic.polynomials.cyclotomic import (
     cyclotomic_coefficients,
     cyclotomic_power_coefficients,
@@ -25,7 +26,6 @@ from number_compiler.arithmetic.polynomials.polynomial import (
     polynomial_remainder_monic,
     trim_polynomial,
 )
-from number_compiler.sequences.prime.set import smallest_factor
 
 
 def multiplicative_order_mod(value: int, modulus: int) -> int:

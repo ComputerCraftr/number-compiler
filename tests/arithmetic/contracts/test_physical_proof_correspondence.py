@@ -14,7 +14,7 @@ from tests.support.tile_kernel import _runtime
 
 def _proof_rows(name: str) -> list[list[int | bool]]:
     theory = isabelle_root(Path(__file__).resolve().parents[3]) / (
-        "etale/Physical_Collatz_Bound_Consumer.thy"
+        "integration/etale/etale/Physical_Collatz_Bound_Consumer.thy"
     )
     declaration = re.search(
         rf'definition {name} :: "[^"]+" where\s*"([^"]+)"', theory.read_text()

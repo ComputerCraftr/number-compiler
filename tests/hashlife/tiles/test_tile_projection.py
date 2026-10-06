@@ -19,6 +19,9 @@ from number_compiler.arithmetic.functions.semantic_functions import (
 )
 from number_compiler.hashlife.actions.diamond_actions import PortSignatureID
 from number_compiler.hashlife.actions.field_actions import FieldCellActionID
+from number_compiler.hashlife.execution.tile_execution_adapter import (
+    FamilyTileHooks,
+)
 from number_compiler.hashlife.execution.tile_scheduler import TileScheduler
 from number_compiler.hashlife.interfaces.diamond_quotient import (
     COMPONENT_ROLES,
@@ -90,6 +93,7 @@ class _IdentityAdapter:
     tiles: TileArena
     interfaces: dict[int, LocalInterfaceID]
     symbols: dict[LocalInterfaceID, int]
+    family_hooks: FamilyTileHooks | None = None
 
     complete_via_midpoint_tiles: bool = False
 

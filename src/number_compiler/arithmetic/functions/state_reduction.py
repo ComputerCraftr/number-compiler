@@ -1,17 +1,8 @@
-"""Exact target/action state reductions shared by sequence families.
+"""Exact reverse/add action reduction shared with sequence consumers.
 
-A *state reduction* in this module is admitted only when the represented
-observation/action is exactly recoverable from the reduced object.  The module
-keeps an explicit distinction between:
-
-* local/action reductions, which may not determine their own next reduced
-  state (reverse-add growth and one accelerated Collatz action); and
-Bounded special-number carrier proofs live under ``devtools.verification``; this module
-contains only the two production local/action reductions that remain useful to
-reverse-add and Collatz.
-
-This prevents a compact projection coordinate from being silently promoted to
-a semantic successor state without a closure theorem.
+The reverse/add growth observer is a local action summary. It does not claim
+that the reduced state determines its own successor. Family-specific states
+and projections live with their sequence owners.
 """
 
 from __future__ import annotations
@@ -20,9 +11,7 @@ from collections.abc import Sequence
 from dataclasses import dataclass
 
 from number_compiler.arithmetic.fields.radix import bit_width
-from number_compiler.arithmetic.fields.two_adic import v2_positive as v2
 from number_compiler.arithmetic.formula.summary import BlockSummary
-from number_compiler.sequences.collatz.pair import CollatzValuationProjectionBlock
 
 
 @dataclass(frozen=True, slots=True)
@@ -140,73 +129,6 @@ class ReverseAddGrowthState:
         )
 
 
-@dataclass(frozen=True, slots=True)
-class CollatzValuationState:
-    """Exact reduced description of one accelerated odd Collatz *action*.
-
-    ``k=v2(3n+1)`` determines ``n -> (3n+1)/2^k``.  This object is used only
-    when the exact accelerated action is required.  Cheaper observers must not
-    acquire it first: strict growth is the modulo-four source character, while
-    an order-m cyclotomic lane needs only ``k mod m`` (see
-    :mod:`number_compiler.sequences.collatz.character`).
-
-    Like :class:`ReverseAddGrowthState`, this is an action state rather than a
-    closed orbit state: ``k_t`` alone does not determine ``k_(t+1)``.
-    """
-
-    valuation: int
-
-    def __post_init__(self) -> None:
-        value = int(self.valuation)
-        if value <= 0:
-            raise ValueError(value)
-        object.__setattr__(self, "valuation", value)
-
-    @classmethod
-    def from_odd_value(cls, value: int) -> CollatzValuationState:
-        value = int(value)
-        if value <= 0 or not (value & 1):
-            raise ValueError(value)
-        return cls(v2(3 * value + 1))
-
-    @property
-    def increases(self) -> bool:
-        # For positive odd n, k=1 gives (3n+1)/2 > n; k>=2 gives <=n.
-        return self.valuation == 1
-
-    @property
-    def phase_symbol(self) -> int:
-        return 1 if self.increases else 0
-
-    def shift_phase(self, order: int) -> int:
-        order = int(order)
-        if order <= 0:
-            raise ValueError(order)
-        return self.valuation % order
-
-    def apply(self, value: int) -> int:
-        value = int(value)
-        if value <= 0 or not (value & 1):
-            raise ValueError(value)
-        numerator = 3 * value + 1
-        if v2(numerator) != self.valuation:
-            raise ValueError("valuation state does not match source")
-        return numerator >> self.valuation
-
-    @property
-    def projection(self) -> CollatzValuationProjectionBlock:
-        return CollatzValuationProjectionBlock.symbol(self.valuation)
-
-    @property
-    def canonical_key(self) -> tuple[object, ...]:
-        return ("collatz-valuation-state", self.valuation)
-
-    @property
-    def description_bits(self) -> int:
-        return bit_width(self.valuation)
-
-
 __all__ = [
-    "CollatzValuationState",
     "ReverseAddGrowthState",
 ]

@@ -15,7 +15,7 @@ from devtools.paths import isabelle_root
 
 THEORY = (
     isabelle_root(Path(__file__).resolve().parents[3])
-    / "mahler_safety/Generated_Mahler_Safety.thy"
+    / "integration/antihydra_mahler/mahler_safety/Generated_Mahler_Safety.thy"
 )
 INTERVALS = {
     int(residue): (Fraction(lower.strip("()")), Fraction(upper.strip("()")))

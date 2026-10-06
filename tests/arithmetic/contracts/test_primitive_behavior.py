@@ -38,6 +38,7 @@ from number_compiler.resources.ledger import ResourceLedger
 from number_compiler.resources.metric_collection import collect_ledger_metrics
 from number_compiler.resources.ownership import audit_execution_ownership
 from number_compiler.sequences.collatz.block_power import CollatzPhysicalBlockEffect
+from number_compiler.sequences.collatz.tile_family_hooks import collatz_tile_hooks
 from tests.support.assertions import assert_rejected_atomically
 
 
@@ -258,6 +259,7 @@ def test_multiround_refinement_reads_frozen_emissions_once(
 
 def test_collatz_primitive_certificate_retains_odd_event_observation() -> None:
     arena = DiamondKernelArena(ResourceLedger())
+    arena.bind_family_hooks(collatz_tile_hooks())
     handle = arena.intern(CollatzPhysicalBlockEffect())
     kernel = arena.kernel(handle)
     quotient = arena.behavioral_quotient(handle)

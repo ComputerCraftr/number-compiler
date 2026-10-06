@@ -29,14 +29,14 @@ enough to merge states whose future support differs.
 
 ## Checked shared algebra
 
-[`S_Arithmetic_Skew.thy`](../../proofs/isabelle/shared/S_Arithmetic_Skew.thy)
+[`S_Arithmetic_Skew.thy`](../../proofs/isabelle/shared/arithmetic/s_arithmetic/S_Arithmetic_Skew.thy)
 proves associativity, identities, and transport for the shared skew record.
-[`Skew_Cylinder_Observers.thy`](../../proofs/isabelle/etale/Skew_Cylinder_Observers.thy)
+[`Skew_Cylinder_Observers.thy`](../../proofs/isabelle/integration/etale/etale/Skew_Cylinder_Observers.thy)
 proves observer/composition, clock-offset, S-arithmetic product, physical tick,
 and demand-pullback laws. These theorems assume the supplied actions and
 observers satisfy their definitions; they do not construct a family source.
 
-[`Dyadic_Source_Lift.thy`](../../proofs/isabelle/shared/Dyadic_Source_Lift.thy)
+[`Dyadic_Source_Lift.thy`](../../proofs/isabelle/shared/arithmetic/s_arithmetic/Dyadic_Source_Lift.thy)
 proves source lifting with extra precision under the positive-precision label
 and step premises. Exact-precision lifting is a corollary for an already
 admitted source word.

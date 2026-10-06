@@ -49,7 +49,6 @@ from number_compiler.hashlife.tiles.tile_result_records import (
 from number_compiler.hashlife.tiles.tiles import (
     TileID,
 )
-from number_compiler.sequences.collatz.block_power import CollatzPhysicalBlockEffect
 
 if TYPE_CHECKING:
     from number_compiler.hashlife.execution.tile_kernel import (
@@ -144,7 +143,12 @@ def _leaf_components(
     kernel: PrimitiveKernel,
     symbol: int,
 ) -> tuple[FactoredFunctionID, ...]:
-    from number_compiler.hashlife.execution.tile_kernel import _LEFT, _RIGHT
+    from number_compiler.hashlife.execution.tile_kernel_contract import (
+        TILE_LEFT as _LEFT,
+    )
+    from number_compiler.hashlife.execution.tile_kernel_contract import (
+        TILE_RIGHT as _RIGHT,
+    )
 
     if certified_binary_division_radix(kernel.effect) is not None:
         raise TypeError("radix leaves require the bounded arithmetic interface")
@@ -173,13 +177,10 @@ def _leaf_components(
             for state in range(kernel.right_count)
         ),
     )
-    if type(kernel.effect) is CollatzPhysicalBlockEffect:
-        from number_compiler.sequences.collatz.physical_output_quotient import (
-            collatz_physical_leaf_output,
-        )
-
-        output = collatz_physical_leaf_output(
-            self.bits,
+    hooks = self.family_hooks
+    if hooks is not None and hooks.owns_effect(kernel.effect):
+        output = hooks.compile_leaf_output(
+            self,
             kernel,
             symbol,
             ports,
@@ -228,7 +229,12 @@ def _parent_components(
     left_interface: LocalInterfaceID,
     right_interface: LocalInterfaceID,
 ) -> tuple[FactoredFunctionID, ...]:
-    from number_compiler.hashlife.execution.tile_kernel import _LEFT, _RIGHT
+    from number_compiler.hashlife.execution.tile_kernel_contract import (
+        TILE_LEFT as _LEFT,
+    )
+    from number_compiler.hashlife.execution.tile_kernel_contract import (
+        TILE_RIGHT as _RIGHT,
+    )
 
     ports = self._ports(kernel)
     left_sort, right_sort = self._output_sorts(kernel)[:2]
@@ -372,13 +378,15 @@ def _signature(
     kernel: PrimitiveKernel,
     effect: BlockEffect,
 ) -> PortSignatureID:
-    from number_compiler.hashlife.execution.tile_kernel import _CONTRACT
+    from number_compiler.hashlife.execution.tile_kernel_contract import (
+        TILE_KERNEL_CONTRACT,
+    )
 
     ports = self._ports(kernel)
     outputs = self._output_sorts(kernel)
     division_radix = certified_binary_division_radix(effect)
     behavior = (
-        _CONTRACT,
+        TILE_KERNEL_CONTRACT,
         SymbolicBinaryDivisionEffect(division_radix).canonical_key()
         if division_radix is not None
         else _effect_key(effect),
@@ -466,7 +474,12 @@ def _finish(
 
 
 def _ports(kernel: PrimitiveKernel) -> tuple[FinitePort, ...]:
-    from number_compiler.hashlife.execution.tile_kernel import _LEFT, _RIGHT
+    from number_compiler.hashlife.execution.tile_kernel_contract import (
+        TILE_LEFT as _LEFT,
+    )
+    from number_compiler.hashlife.execution.tile_kernel_contract import (
+        TILE_RIGHT as _RIGHT,
+    )
 
     return tuple(
         sorted(
@@ -504,6 +517,28 @@ def _symbol_observation(
     interface: LocalInterfaceID,
     ports: tuple[int, ...],
 ) -> TemporalCocycle:
+    kernel = validate_symbol_observation_context(self, action, symbol, interface, ports)
+    hooks = self.family_hooks
+    if hooks is None or not hooks.owns_effect(kernel.effect):
+        return TemporalCocycle()
+    occurrence = hooks.observe_symbol(self, action, symbol, interface, ports)
+    if occurrence is None:
+        return TemporalCocycle()
+    if type(occurrence) is not TemporalCocycle:
+        raise TypeError("family symbol observer returned another cocycle")
+    return occurrence
+
+
+def validate_symbol_observation_context(
+    self: PrimitiveTileKernelAdapter,
+    action: FieldCellActionID,
+    symbol: int,
+    interface: object,
+    ports: tuple[int, ...],
+) -> PrimitiveKernel:
+    """Validate one primitive leaf observation and return its admitted kernel."""
+    if type(interface) is not LocalInterfaceID:
+        raise TypeError("leaf observation requires an exact interface ID")
     record = self._action(action)
     if record.children is not None:
         raise ValueError("leaf observations require one primitive action")
@@ -512,7 +547,6 @@ def _symbol_observation(
     kernel = self.kernels.kernel(record.kernel)
     if len(ports) != 2:
         raise ValueError("leaf observation has another port tuple")
-    if type(kernel.effect) is not CollatzPhysicalBlockEffect:
-        return TemporalCocycle()
-    odd = int(ports[0] == kernel.initial(BoundarySide.LEFT) and symbol == 1)
-    return TemporalCocycle(0, odd, 0)
+    if type(symbol) is not int:
+        raise TypeError("leaf observation requires an exact source symbol")
+    return kernel

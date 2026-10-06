@@ -285,6 +285,11 @@ def _session_build_summary(
         "reused_inference": inferred,
         "not_attempted_or_unclassified_sessions": not_attempted,
         "finished_session_elapsed_seconds": durations or None,
+        "over_budget_finished_sessions": sorted(
+            name
+            for name, seconds in durations.items()
+            if seconds > ISABELLE_SESSION_SECONDS
+        ),
     }
 
 
@@ -538,10 +543,8 @@ def proofs(
     *,
     acceptance: bool = False,
 ) -> bool:
-    from devtools.checks.isabelle_syntax import (
-        parse_sessions,
-        session_dependency_closure,
-    )
+    from devtools.checks.isabelle_registry import discover_sessions
+    from devtools.checks.isabelle_syntax import session_dependency_closure
 
     if not execute(
         run,
@@ -583,7 +586,7 @@ def proofs(
     )
 
     theory_root = isabelle_root(run.root)
-    declared = parse_sessions((theory_root / "ROOT").read_text(encoding="utf-8"))
+    declared = discover_sessions(theory_root)
     requested = tuple(dict.fromkeys(sessions))
     closure = (
         session_dependency_closure(declared, requested)
@@ -663,6 +666,17 @@ def proofs(
                 **summary,
             }
         )
+        if summary["over_budget_finished_sessions"]:
+            run.record(
+                {
+                    "name": "proof-session-duration-gate",
+                    "outcome": "failed",
+                    "sessions": summary["over_budget_finished_sessions"],
+                    "limit_seconds": ISABELLE_SESSION_SECONDS,
+                    "detail": "Native proof success does not waive reported elapsed limits",
+                }
+            )
+            return False
     except OSError as error:
         run.record(
             {

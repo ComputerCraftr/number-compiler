@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import pytest
+
 from number_compiler.arithmetic.contracts.scoped_handles import ArenaToken
 from number_compiler.hashlife.execution.dyadic_return_images import (
     DyadicCycleSummary,
@@ -142,9 +144,10 @@ def test_unknown_subclass_cannot_override_validation_to_gain_approval() -> None:
             return
 
     ledger = ResourceLedger()
-    workspace = ForgedWorkspace(ledger, 27, 65)
-    result = audit_dyadic_return_payloads(ledger)
-    _assert_workspace_rejected(ledger, workspace, result)
+    with pytest.raises(ValueError, match="not owned by the named family"):
+        ForgedWorkspace(ledger, 27, 65)
+    assert not audit_dyadic_return_payloads(ledger).invalid
+    _assert_clean(ledger)
 
 
 def test_audit_preserves_images_and_charges_its_bounded_recomputation() -> None:

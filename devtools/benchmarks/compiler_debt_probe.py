@@ -26,9 +26,6 @@ from number_compiler.api.sequence_types import (
     PrimeBlockSequenceSpec,
     ReverseAddSequenceSpec,
 )
-from number_compiler.arithmetic.fields.congruence_automaton import (
-    FactoredPrimeAutomaton,
-)
 from number_compiler.arithmetic.fields.radix import digits_lsd
 from number_compiler.arithmetic.polynomials.cyclotomic_factor import (
     cyclotomic_factors_mod_prime,
@@ -36,6 +33,7 @@ from number_compiler.arithmetic.polynomials.cyclotomic_factor import (
     cyclotomic_primary_components,
 )
 from number_compiler.arithmetic.polynomials.digit_cyclotomic import CyclotomicDigitBlock
+from number_compiler.sequences.prime.congruence import FactoredPrimeAutomaton
 
 ROOT = repository_root()
 

@@ -20,6 +20,7 @@ from number_compiler.projection.digit_terminal import DigitNormalizeBlockEffect
 from number_compiler.resources.ledger import ResourceLedger
 from number_compiler.resources.metric_collection import collect_ledger_metrics
 from number_compiler.sequences.collatz.block_power import CollatzPhysicalBlockEffect
+from number_compiler.sequences.collatz.tile_family_hooks import collatz_tile_hooks
 from tests.support.assertions import assert_rejected_atomically
 from tests.support.diamond_runtime import oracle
 
@@ -50,14 +51,15 @@ def test_public_primitive_square_fuses_points_and_width_without_midpoint(
         RuntimeValueArena,
     )
 
-    compiler = LazyCompiler(ResourceLedger())
+    hooks = collatz_tile_hooks() if type(effect) is CollatzPhysicalBlockEffect else None
+    compiler = LazyCompiler(ResourceLedger(), family_hooks=hooks)
     primitive = compiler.atom(effect)
     square = compiler.compose(primitive, primitive)
     expected = tuple(oracle(effect, source, 16, 2))
     extent = max(
         (i + 1 for i, value in enumerate(expected) if value != effect.blank), default=0
     )
-    index = HashLifeBlockIndex(square, source, logical_length=16)
+    index = HashLifeBlockIndex(square, source, logical_length=16, family_hooks=hooks)
     assert type(index._lazy_application) is LazyProjection
     source_tiles = index._ledger.counters.get("tile_publications", 0)
     with monkeypatch.context() as poison:
@@ -134,7 +136,8 @@ def test_public_primitive_point_width_and_endpoint_use_tile_executor(
 ) -> None:
     expected = tuple(oracle(effect, source, 8, 1))
     extent = max(i + 1 for i, value in enumerate(expected) if value != effect.blank)
-    index = HashLifeBlockIndex(effect, source, logical_length=8)
+    hooks = collatz_tile_hooks() if type(effect) is CollatzPhysicalBlockEffect else None
+    index = HashLifeBlockIndex(effect, source, logical_length=8, family_hooks=hooks)
     assert type(index._lazy_application) is LazyProjection
     monkeypatch.setattr(DiamondApplication, "point", _forbidden)
     monkeypatch.setattr(DiamondApplication, "active_width", _forbidden)

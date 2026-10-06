@@ -1,0 +1,5 @@
+session Associated_Action_Core in integration = HOL +
+  options [document = false, quick_and_dirty = false]
+  theories
+    Associated_Action_Pullback
+    Collatz_Saturated_Threshold_Composition

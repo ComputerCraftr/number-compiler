@@ -14,6 +14,7 @@ from number_compiler.resources.dyadic_return_balanced_audit import (
     audit_collatz_d8_payloads,
 )
 from number_compiler.resources.ledger import ResourceLedger
+from number_compiler.resources.payload_contracts import PayloadAuditContractAudit
 from number_compiler.resources.physical_support_payload_audit import (
     PhysicalSupportPayloadAudit,
 )
@@ -21,6 +22,7 @@ from number_compiler.resources.physical_support_payload_audit import (
 
 def audit_dyadic_return_payloads(
     ledger: ResourceLedger,
+    contracts: PayloadAuditContractAudit | None = None,
 ) -> PhysicalSupportPayloadAudit:
     """Check exact stores, seals, and composition laws without trusting a family."""
     from number_compiler.hashlife.execution.dyadic_return_images import (
@@ -48,6 +50,8 @@ def audit_dyadic_return_payloads(
     roots = tuple(ledger.iter_execution_roots())
     containers = dict(ledger.iter_containers())
     inventory = {row.owner: row for row in ledger.inventory()}
+    if contracts is None:
+        contracts = ledger.audit_payload_contracts()
     approved: set[int] = set()
     invalid: set[tuple[int, int]] = set()
 
@@ -62,19 +66,11 @@ def audit_dyadic_return_payloads(
         owner = raw_owner if type(raw_owner) is int else -1
         root_approved: set[int] = set()
         try:
-            from number_compiler.sequences.antihydra.arithmetic_images import (
-                AntihydraArithmeticImageWorkspace,
-            )
-            from number_compiler.sequences.collatz.physical_images import (
-                CollatzPhysicalImageWorkspace,
-            )
-
-            if type(root) not in (
-                DyadicReturnImageWorkspace,
-                AntihydraArithmeticImageWorkspace,
-                CollatzPhysicalImageWorkspace,
+            if type(root) is not DyadicReturnImageWorkspace and not (
+                contracts.owns_root("antihydra", root, ledger=ledger)
+                or contracts.owns_root("collatz", root, ledger=ledger)
             ):
-                raise TypeError("unrecognized dyadic return workspace adapter")
+                raise TypeError("unrecognized dyadic return workspace owner")
 
             def action_node(
                 identity: DyadicReturnActionID,
@@ -169,7 +165,7 @@ def audit_dyadic_return_payloads(
                 root.macro_owner,
                 root.macro_stack_owner,
             )
-            antihydra = root.law.family.startswith("antihydra")
+            antihydra = contracts.owns_root("antihydra", root, ledger=ledger)
             stores = (
                 (
                     root.action_owner,

@@ -1,11 +1,14 @@
 from __future__ import annotations
 
-from dataclasses import dataclass
 from typing import TYPE_CHECKING, Self
 
 from number_compiler.arithmetic.contracts.exact_tree_context import source_reads_only
 from number_compiler.hashlife.execution.source_bound_mixin import (
     SourceBoundImageMixin,
+)
+from number_compiler.hashlife.execution.tile_scheduler_frames import (
+    _APPLICATION_SEAL,
+    _DirectFrame,
 )
 from number_compiler.hashlife.tiles.tile_boundaries import (
     EMPTY_BOUNDARY_TILES,
@@ -20,6 +23,9 @@ if TYPE_CHECKING:
     )
     from number_compiler.hashlife.execution.tile_execution_adapter import (
         TileExecutionAdapter,
+    )
+    from number_compiler.hashlife.tiles.ordered_boolean_support import (
+        OrderedBooleanSupportArena,
     )
     from number_compiler.hashlife.tiles.tile_context import (
         ChildContext,
@@ -41,19 +47,6 @@ if TYPE_CHECKING:
     )
     from number_compiler.hashlife.tiles.tiles import TileArena, TileID
     from number_compiler.resources.stores import LedgerDict
-    from number_compiler.sequences.collatz.physical_support import PhysicalSupportArena
-
-
-@dataclass(slots=True)
-class _DirectFrame:
-    key: PoweredResultKey
-    stage: int = 0
-    left_context: ChildContext | None = None
-    right_context: ChildContext | None = None
-    checked_miss: bool = False
-
-
-_APPLICATION_SEAL = object()
 
 
 class TileScheduler(SourceBoundImageMixin):
@@ -105,7 +98,7 @@ class TileScheduler(SourceBoundImageMixin):
         )
         self._causal_workspace = impl.CausalSpatialWorkspace(self.ledger, prefix)
         self._causal_tasks = impl.CausalTaskWorkspace(self.ledger, prefix)
-        self._physical_supports: PhysicalSupportArena | None = None
+        self._physical_supports: OrderedBooleanSupportArena | None = None
         self.results.attach_causal_tasks(self._causal_tasks)
         if not self.ledger.counters.get("tile_causal_accounting_version"):
             self.ledger.bump("tile_causal_accounting_version", 2)
@@ -131,15 +124,21 @@ class TileScheduler(SourceBoundImageMixin):
             )
 
     @property
-    def physical_supports(self) -> PhysicalSupportArena:
+    def physical_supports(self) -> OrderedBooleanSupportArena:
         import number_compiler.hashlife.execution.tile_scheduler_physical_imports as impl
 
         self._require_physical_scheduler()
         found = self._physical_supports
         if found is None:
-            found = impl.PhysicalSupportArena(
-                max_nodes=max(4096, self.ledger.max_nodes or 0),
-                ledger=self.ledger,
+            max_nodes = max(4096, self.ledger.max_nodes or 0)
+            hooks = self.adapter.family_hooks
+            found = (
+                impl.OrderedBooleanSupportArena(
+                    max_nodes=max_nodes,
+                    ledger=self.ledger,
+                )
+                if hooks is None
+                else hooks.support_arena(max_nodes, self.ledger)
             )
             self.results.attach_physical_supports(found)
             self._physical_supports = found

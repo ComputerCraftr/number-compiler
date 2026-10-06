@@ -5,9 +5,6 @@ from itertools import product
 import pytest
 
 from number_compiler.arithmetic.contracts.block_effect import BoundarySide
-from number_compiler.arithmetic.contracts.physical_collatz_kernel import (
-    PhysicalCollatzFourBlockEffect,
-)
 from number_compiler.hashlife.execution.continuations.diamond_tasks import (
     Initial,
     Transfer,
@@ -15,6 +12,9 @@ from number_compiler.hashlife.execution.continuations.diamond_tasks import (
 from number_compiler.hashlife.interfaces.diamond_boundary import ImageBinding
 from number_compiler.hashlife.interfaces.diamond_resets import RightResetCertificates
 from number_compiler.sequences.collatz.block_power import CollatzPhysicalBlockEffect
+from number_compiler.sequences.collatz.physical_kernel import (
+    PhysicalCollatzFourBlockEffect,
+)
 from tests.support.diamond_halos import suffix_parity
 from tests.support.diamond_runtime import build
 

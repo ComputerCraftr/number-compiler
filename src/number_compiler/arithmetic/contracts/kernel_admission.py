@@ -11,7 +11,10 @@ from typing import cast
 from number_compiler.arithmetic.contracts.block_definition import (
     is_compatibility_composition,
 )
-from number_compiler.arithmetic.contracts.block_effect import BlockEffect
+from number_compiler.arithmetic.contracts.block_effect import (
+    BlockEffect,
+    BlockEffectAdmissionAdapter,
+)
 from number_compiler.arithmetic.contracts.block_kernel import (
     BaseBlockEffect,
     FiniteBlockEffect,
@@ -19,7 +22,11 @@ from number_compiler.arithmetic.contracts.block_kernel import (
 from number_compiler.projection.digit_terminal import DigitNormalizeBlockEffect
 
 
-def immutable_atom(effect: BlockEffect) -> BlockEffect:
+def immutable_atom(
+    effect: BlockEffect,
+    *,
+    family_hooks: BlockEffectAdmissionAdapter | None = None,
+) -> BlockEffect:
     from number_compiler.hashlife.actions.lazy_compiler import UnsupportedInterfaceError
     from number_compiler.hashlife.observation.diamond_observers import (
         NonblankBlockEffect,
@@ -35,33 +42,23 @@ def immutable_atom(effect: BlockEffect) -> BlockEffect:
         clone = DigitNormalizeBlockEffect(effect.base)
     elif type(effect) is NonblankBlockEffect:
         clone = NonblankBlockEffect(effect.base, effect.blank)
+    elif family_hooks is not None and family_hooks.owns_effect(effect):
+        clone = family_hooks.clone(effect)
+    elif family_hooks is not None and family_hooks.owns_compatibility(effect):
+        family_hooks.validate_compatibility(effect)
+        clone = effect
     else:
-        from number_compiler.sequences.collatz.block_power import (
-            CollatzPhysicalBlockEffect,
+        raise UnsupportedInterfaceError(
+            "generic lazy atoms require a complete immutable finite interface"
         )
-
-        if type(effect) is CollatzPhysicalBlockEffect:
-            clone = CollatzPhysicalBlockEffect()
-        else:
-            # Import the proof C4 recognizer only for an explicit candidate;
-            # ordinary family compilation must not load proof state domains.
-            if type(effect).__name__ != "PhysicalCollatzFourBlockEffect":
-                raise UnsupportedInterfaceError(
-                    "generic lazy atoms require a complete immutable finite interface"
-                )
-            from number_compiler.arithmetic.contracts.physical_collatz_kernel import (
-                is_verified_physical_four,
-            )
-
-            if not is_verified_physical_four(effect):
-                raise UnsupportedInterfaceError(
-                    "generic lazy atoms require a complete immutable finite interface"
-                )
-            clone = effect
     return clone
 
 
-def admit_effect(effect: BlockEffect) -> int:
+def admit_effect(
+    effect: BlockEffect,
+    *,
+    family_hooks: BlockEffectAdmissionAdapter | None = None,
+) -> int:
     """Validate every syntactic child before semantic-key deduplication.
 
     Equal composition keys do not establish that unseen descendants are
@@ -105,7 +102,7 @@ def admit_effect(effect: BlockEffect) -> int:
                 raise ValueError("operator program contains mixed alphabets")
             active.remove(id(current))
         else:
-            immutable_atom(current)
+            immutable_atom(current, family_hooks=family_hooks)
         admitted.add(id(current))
     return visits
 

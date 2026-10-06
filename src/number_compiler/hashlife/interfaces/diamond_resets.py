@@ -114,10 +114,9 @@ class RightResetCertificates:
 
     def _primitive_radius(self, action: ActionProgramID) -> int | None:
         primitive = self.runtime.kernel(action)
-        if self._is_verified_physical_four(primitive.effect):
-            # Offline proof exhausts all 81 length-four transition words over
-            # all 90 states; no domain search occurs at runtime.
-            return 4
+        hooks = self.runtime.family_hooks
+        if hooks is not None and hooks.owns_compatibility(primitive.effect):
+            return hooks.compatibility_reset_radius(primitive.effect)
         if primitive.right_count == 1:
             return 0
         for symbol in range(primitive.blank + 1):
@@ -129,16 +128,6 @@ class RightResetCertificates:
                 if actual != target:
                     return None
         return 1
-
-    @staticmethod
-    def _is_verified_physical_four(effect: object) -> bool:
-        if type(effect).__name__ != "PhysicalCollatzFourBlockEffect":
-            return False
-        from number_compiler.arithmetic.contracts.physical_collatz_kernel import (
-            is_verified_physical_four,
-        )
-
-        return is_verified_physical_four(effect)
 
     def can_reset(
         self, provider: ImageBinding, action: ActionProgramID, side: int

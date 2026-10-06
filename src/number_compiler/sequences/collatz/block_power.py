@@ -48,6 +48,10 @@ from number_compiler.arithmetic.fields.radix import (
     digits_lsd,
 )
 from number_compiler.hashlife.actions.lazy_compiler import LazyCompiler
+from number_compiler.projection.source_audit import (
+    RadixProjectionAuditSource,
+    RadixProjectionSourceAuditor,
+)
 from number_compiler.resources.ledger import ResourceLedger
 from number_compiler.resources.output_stream_metrics import (
     initialize_output_stream_metrics,
@@ -157,6 +161,10 @@ class CollatzPhysicalBlockEffect:
             return None
         return states
 
+    def diamond_boundary_state_bounds(self) -> tuple[int, int]:
+        """Return the bounded state alphabet used by diamond images."""
+        return 0, 64
+
     def advance(self, side: BoundarySide, state: BoundaryState, symbol: int) -> int:
         if type(side) is not BoundarySide:
             raise TypeError("Collatz boundary side must be an exact enum value")
@@ -264,7 +272,14 @@ def power_collatz_physical_effect(
 ) -> BlockPower:
     """Compile ``physical_collatz**steps`` by source-independent squaring."""
     steps = require_integer(steps, "Collatz physical steps", 0)
-    compiler = LazyCompiler(ResourceLedger(max_context_nodes, max_cache_entries))
+    from number_compiler.sequences.collatz.tile_family_hooks import (
+        collatz_runtime_tile_hooks,
+    )
+
+    compiler = LazyCompiler(
+        ResourceLedger(max_context_nodes, max_cache_entries),
+        family_hooks=collatz_runtime_tile_hooks(),
+    )
     from number_compiler.sequences.collatz.compilation import (
         compile_collatz_physical_power,
     )
@@ -272,7 +287,7 @@ def power_collatz_physical_effect(
     return compile_collatz_physical_power(compiler, steps)
 
 
-class PoweredCollatzTerm:
+class PoweredCollatzTerm(RadixProjectionSourceAuditor):
     """Exact physical Collatz nth state using only the powered block fast path."""
 
     __slots__ = (
@@ -345,7 +360,14 @@ class PoweredCollatzTerm:
             ExactSource(self.seed_digits, 2, blank=2, extent=bound, alphabet_size=2),
         )
         self._ledger.register_execution_root(self)
-        self._compiler = LazyCompiler(self._ledger)
+        from number_compiler.sequences.collatz.tile_family_hooks import (
+            collatz_runtime_tile_hooks,
+        )
+
+        self._compiler = LazyCompiler(
+            self._ledger,
+            family_hooks=collatz_runtime_tile_hooks(),
+        )
         self._max_context_nodes = max_context_nodes
         self._max_cache_entries = max_cache_entries
         self._workspace: CollatzPhysicalImageWorkspace | None = None
@@ -370,6 +392,19 @@ class PoweredCollatzTerm:
         self._effect: BlockEffect | None = None
         self.compose_operations = 0
         self.syntax_depth_bound = 0
+
+    def radix_projection_audit_source(
+        self, ledger: ResourceLedger
+    ) -> RadixProjectionAuditSource | None:
+        if type(self) is not PoweredCollatzTerm or self._ledger is not ledger:
+            return None
+        return RadixProjectionAuditSource(
+            self,
+            self._source_construction.source,
+            self.steps,
+            self.seed_digits,
+            self._radix_projections,
+        )
 
     def _compile_compatibility_descriptor(self) -> None:
         """Demand the public block descriptor without using it as an executor."""
@@ -746,7 +781,7 @@ class PoweredCollatzTerm:
         reports the compact source-independent jump function separately from the
         seed-specific source-image description created by point queries.
         """
-        from number_compiler.resources.dyadic_behavior_metrics import (
+        from number_compiler.sequences.collatz.behavior_metrics import (
             collatz_behavior_metrics,
         )
 

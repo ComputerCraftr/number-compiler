@@ -9,9 +9,6 @@ from typing import TYPE_CHECKING, Literal
 import pytest
 
 from number_compiler.arithmetic.contracts.block_effect import BlockContextBudgetExceeded
-from number_compiler.arithmetic.contracts.physical_collatz_kernel import (
-    PhysicalCollatzFourBlockEffect,
-)
 from number_compiler.arithmetic.contracts.scoped_handles import (
     ActionProgramID,
     ArenaToken,
@@ -26,6 +23,9 @@ from number_compiler.hashlife.interfaces.semantic_state_codec import StateCodecA
 from number_compiler.hashlife.interfaces.semantic_structures import (
     StructureArena,
     StructureID,
+)
+from number_compiler.sequences.collatz.physical_kernel import (
+    PhysicalCollatzFourBlockEffect,
 )
 from tests.support.assertions import assert_rejected_atomically
 from tests.support.diamond_continuation_reduction import machine

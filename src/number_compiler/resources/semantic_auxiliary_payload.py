@@ -57,6 +57,10 @@ from number_compiler.projection.radix_original_source import (
     OriginalThreeCarryAction,
     _OriginalAffineWorkspaceInventory,
 )
+from number_compiler.projection.source_audit import (
+    RadixProjectionSourceAuditor,
+    checked_projection_audit_source,
+)
 from number_compiler.resources.ledger import ResourceLedger
 from number_compiler.resources.semantic_admission_payload import (
     SemanticAdmissionPayloadRegistry,
@@ -307,13 +311,17 @@ class SemanticAuxiliaryPayloadRegistry:
                         )
                     )
         from number_compiler.projection.lazy_radix import RadixProjection
-        from number_compiler.sequences.collatz.block_power import PoweredCollatzTerm
+
+        sources = tuple(
+            source
+            for root in roots
+            if isinstance(root, RadixProjectionSourceAuditor)
+            and (source := checked_projection_audit_source(root, ledger)) is not None
+        )
 
         self.projection_maps: set[int] = set()
-        for term in roots:
-            if type(term) is not PoweredCollatzTerm or term._ledger is not ledger:
-                continue
-            store = term._radix_projections
+        for term in sources:
+            store = term.projections
             if (
                 type(store) is not LedgerDict
                 or actual.get(store.owner) is not store
@@ -332,7 +340,7 @@ class SemanticAuxiliaryPayloadRegistry:
                     and projection.radix == radix
                     and (
                         projection._bound_source is None
-                        or projection._bound_source is term._source_construction.source
+                        or projection._bound_source is term.source
                     )
                     and (
                         projection._bound_steps is None
@@ -357,10 +365,8 @@ class SemanticAuxiliaryPayloadRegistry:
                 continue
             terms = tuple(
                 term
-                for term in roots
-                if type(term) is PoweredCollatzTerm
-                and term._ledger is ledger
-                and term._source_construction.source is projection._bound_source
+                for term in sources
+                if term.source is projection._bound_source
                 and type(term.steps) is int
                 and term.steps == projection._bound_steps
             )

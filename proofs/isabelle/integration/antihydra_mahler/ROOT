@@ -1,0 +1,20 @@
+session Antihydra_Mahler_Integration in integration_mahler = Associated_Action_Core +
+  options [document = false, quick_and_dirty = false]
+  sessions Antihydra Shared_Growth_Arithmetic
+  theories
+    Antihydra_Mahler_Associated_Action
+session Mahler_Safety_Cylinders in mahler_safety = Antihydra +
+  options [document = false, quick_and_dirty = false]
+  theories
+    Mahler_Safety_Cylinders
+    Generated_Mahler_Safety
+    Mahler_Cyclotomic_Boundary
+    Mahler_Safety_Ledger_Separation
+session Mahler_Source_Transport in mahler_transport = Mahler_Safety_Cylinders +
+  options [document = false, quick_and_dirty = false]
+  theories
+    Mahler_Source_Cylinder_Transport
+    Mahler_Source_Event_Safety
+    Mahler_Joint_Quotient_Algebra
+    Mahler_Reachable_Repetition
+    Mahler_Spatial_Carry_Pump

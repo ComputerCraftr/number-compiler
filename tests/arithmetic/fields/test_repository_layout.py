@@ -77,7 +77,7 @@ def test_canonical_arithmetic_primitives_are_not_reimplemented(
 ) -> None:
     defs = _production_definitions(_production_facts, functions_only=True)
     assert defs.get("digits_lsd") == ["arithmetic/fields/radix.py"]
-    assert defs.get("smallest_factor") == ["sequences/prime/set.py"]
+    assert defs.get("smallest_factor") == ["arithmetic/number_theory.py"]
     assert not defs.get("_bits")
     for stale in ("trial_factor", "pair_successor", "digits_lsd_int"):
         assert not defs.get(stale)

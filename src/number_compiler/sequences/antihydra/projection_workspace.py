@@ -21,6 +21,12 @@ class SectionImageWorkspace:
             node_count=lambda: 12 * self.area * len(self.images),
             payloads=self.images.items,
         )
+        ledger.register_execution_root(self)
+        from number_compiler.sequences.antihydra.payload_audit import (
+            register_antihydra_payload_contract,
+        )
+
+        register_antihydra_payload_contract(self)
 
     def start(self, area: int) -> None:
         if type(area) is not int or not 1 <= area <= 4096:

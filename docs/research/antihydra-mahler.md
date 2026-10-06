@@ -20,7 +20,7 @@ required. Hensel is a separate observation; neither requests physical roofs.
 
 **Checked finite root chart:** with `theta=2t=r²`, the source-selected action is
 `theta'=(3/2)^n theta-2C`. The root-shell lemmas in
-[Mahler_Source_Event_Safety](../../proofs/isabelle/mahler_transport/Mahler_Source_Event_Safety.thy)
+[Mahler_Source_Event_Safety](../../proofs/isabelle/integration/antihydra_mahler/mahler_transport/Mahler_Source_Event_Safety.thy)
 preserve chronological guards and the event interval `1 ≤ (3/2)^q theta < 3/2`.
 The CLI Mahler packet exposes exact rational radicand coefficients and guards
 from its admitted image. This is an observer, not a new source constructor or
@@ -98,7 +98,7 @@ the current clause but disagree on next-event safety. Sources 20 and 46,676
 also share a finite key while reaching 230 and 531,671. These witnesses refute
 those observer identities, not the complete parameterized cylinder.
 
-**Checked algebra:** [Mahler_Joint_Quotient_Algebra](../../proofs/isabelle/mahler_transport/Mahler_Joint_Quotient_Algebra.thy)
+**Checked algebra:** [Mahler_Joint_Quotient_Algebra](../../proofs/isabelle/integration/antihydra_mahler/mahler_transport/Mahler_Joint_Quotient_Algebra.thy)
 proves suffix composition, base-three encoding modulo 729 and distinct lane
 laws. Partition completeness and legal-continuation closure remain open;
 no experiment publishes a pump or merges production sources.
@@ -116,7 +116,7 @@ the source-7 barrier.
 
 ## Checked arithmetic and cylinders
 
-[`Antihydra_Family_Iteration.thy`](../../proofs/isabelle/antihydra/Antihydra_Family_Iteration.thy)
+[`Antihydra_Family_Iteration.thy`](../../proofs/isabelle/families/antihydra/antihydra/Antihydra_Family_Iteration.thy)
 proves the total skew equation, centered orbit, block composition, exact minimum
 prefix guard, and guarded agreement before the first failed block. The latter is
 conditional on remaining before failure and does not prove all-time safety.
@@ -124,20 +124,20 @@ conditional on remaining before failure and does not prove all-time safety.
 **Checked named-event contraction:** for `D=2^k(2M+1)`, the centered word
 `0^k1` returns `3^(k+1)M+(3^(k+1)+1)/2`, with ledger delta `2-k` and minimum
 `-k`. The three `antihydra_punctured_event_*` lemmas in
-[`Maximal_Run_Arithmetic`](../../proofs/isabelle/integration_dyadic/Maximal_Run_Arithmetic.thy)
+[`Maximal_Run_Arithmetic`](../../proofs/isabelle/integration/dyadic/integration_dyadic/Maximal_Run_Arithmetic.thy)
 reuse the homogeneous run and source-step owners. They justify one admitted
 event; they do not prove future event discovery or identify anonymous roots
 with ordered successor occurrences.
 
-[`Antihydra_Arithmetic_Cylinder_Lift.thy`](../../proofs/isabelle/antihydra/Antihydra_Arithmetic_Cylinder_Lift.thy)
+[`Antihydra_Arithmetic_Cylinder_Lift.thy`](../../proofs/isabelle/families/antihydra/antihydra/Antihydra_Arithmetic_Cylinder_Lift.thy)
 identifies family bits with a dyadic source word and proves exact demanded
 cylinder composition, split, bit, and ledger projections. These results assume
 the admitted arithmetic source; they do not generate a literal macro word.
 
-[`Antihydra_Mahler_Skew.thy`](../../proofs/isabelle/antihydra/Antihydra_Mahler_Skew.thy)
+[`Antihydra_Mahler_Skew.thy`](../../proofs/isabelle/families/antihydra/antihydra/Antihydra_Mahler_Skew.thy)
 proves centered return, numerator and minimum-prefix composition, and the
 one-return kernel coefficients. The associated-action refinement
-[`Antihydra_Mahler_Associated_Action.thy`](../../proofs/isabelle/integration_mahler/Antihydra_Mahler_Associated_Action.thy)
+[`Antihydra_Mahler_Associated_Action.thy`](../../proofs/isabelle/integration/antihydra_mahler/integration_mahler/Antihydra_Mahler_Associated_Action.thy)
 proves source coefficients determine the defined Mahler action. It also proves
 that the centered word `11` has distinct Mahler and ledger outcomes, so a Mahler
 failure must not be reported as Antihydra halting.
@@ -165,7 +165,7 @@ D'=\lfloor e/2\rfloor+b(3v+c),\qquad a'=D'+1.
 
 `mahler_spatial_low_block_transport` and
 `antihydra_centered_spatial_low_block_transport` in
-[Mahler_Spatial_Carry_Pump](../../proofs/isabelle/mahler_transport/Mahler_Spatial_Carry_Pump.thy)
+[Mahler_Spatial_Carry_Pump](../../proofs/isabelle/integration/antihydra_mahler/mahler_transport/Mahler_Spatial_Carry_Pump.thy)
 prove this complete low-block/high-boundary transport; radix 64 uses `b=32`.
 Supplied repeated spatial blocks admit powering. This does not select future
 source events or prove the Python F5 tables' complete temporal refinement.
@@ -188,14 +188,14 @@ safety, ledger safety and all-time non-halting remain separate obligations.
 
 ## Literal and barrier boundary
 
-[`Antihydra_Literal_TM.thy`](../../proofs/isabelle/antihydra/Antihydra_Literal_TM.thy)
+[`Antihydra_Literal_TM.thy`](../../proofs/isabelle/families/antihydra/antihydra/Antihydra_Literal_TM.thy)
 checks startup and the exact halt boundary.
-[`Antihydra_Macro_Grammar.thy`](../../proofs/isabelle/antihydra/Antihydra_Macro_Grammar.thy)
+[`Antihydra_Macro_Grammar.thy`](../../proofs/isabelle/families/antihydra/antihydra/Antihydra_Macro_Grammar.thy)
 proves length, shift, directional clock, and admitted terminal cases for supplied
 macro words. The missing bridge is a source-generated macro word with reads,
 overwrites, startup invariant, powered image, and first-failure refinement.
 
-[`Antihydra_Source_Barrier.thy`](../../proofs/isabelle/antihydra/Antihydra_Source_Barrier.thy)
+[`Antihydra_Source_Barrier.thy`](../../proofs/isabelle/families/antihydra/antihydra/Antihydra_Source_Barrier.thy)
 proves `source_bound_barrier_soundness` for a supplied valid barrier.
 `source_seven_all_time_barrier_exactly` is an equivalence: it does not construct
 the barrier. No accepted source-7 all-time certificate or source-reachable
@@ -253,7 +253,7 @@ reuses shared binary composition and preserves the original fractional guard.
 It powers a supplied run, without claiming to discover future source runs.
 
 **Checked finite algebra:**
-[Mahler_Cyclotomic_Boundary](../../proofs/isabelle/mahler_safety/Mahler_Cyclotomic_Boundary.thy)
+[Mahler_Cyclotomic_Boundary](../../proofs/isabelle/integration/antihydra_mahler/mahler_safety/Mahler_Cyclotomic_Boundary.thy)
 proves the signed-source bridge, enclosure, absorbing sign regions, cone/run
 laws, the Vieta identity and boundary-exit selectors. Its three-word six-bit
 lemma retains an explicit no-adjacent-ones assumption; a separate finite lemma
@@ -303,9 +303,9 @@ D_n\le x(3/2)^n<D_n+1/2,
   sixth iterates have residues `0` and `25`. Symbolic high-fiber information
   determines which transition is taken.
 
-The adapted [safety theory](../../proofs/isabelle/mahler_safety/Mahler_Safety_Cylinders.thy)
+The adapted [safety theory](../../proofs/isabelle/integration/antihydra_mahler/mahler_safety/Mahler_Safety_Cylinders.thy)
 uses the existing `mahler_orbit` and `mahler_D_step`, without duplicating the
-source recurrence. [The 64 interval certificates](../../proofs/isabelle/mahler_safety/Generated_Mahler_Safety.thy)
+source recurrence. [The 64 interval certificates](../../proofs/isabelle/integration/antihydra_mahler/mahler_safety/Generated_Mahler_Safety.thy)
 are propositions replayed by Isabelle, not trusted numerical table entries.
 Their upstream file hashes are recorded in their headers. The owning session
 is `Mahler_Safety_Cylinders`; the [proof index](../proofs.md) gives its build.
@@ -316,7 +316,7 @@ evidence remains distinct from aggregate release validation.
 
 **Predicate separation:** all `7 ≤ x < 7.5` fail fractional safety within two
 steps, while the source-seven Antihydra ledgers at those steps are `0, 2, 4`.
-[The separation theory](../../proofs/isabelle/mahler_safety/Mahler_Safety_Ledger_Separation.thy)
+[The separation theory](../../proofs/isabelle/integration/antihydra_mahler/mahler_safety/Mahler_Safety_Ledger_Separation.thy)
 states this exact witness. Consequently `source_seven_not_Z` is neither a
 halting witness nor a non-halting certificate for Antihydra. Production
 certificate verification and its all-time source obligation remain unchanged.
@@ -377,10 +377,10 @@ These are scoped source/guard comparisons, not a refutation of a complete
 source cylinder or an identification of the archived difference-field root
 with the Antihydra source.
 
-The [transport theory](../../proofs/isabelle/mahler_transport/Mahler_Source_Cylinder_Transport.thy)
+The [transport theory](../../proofs/isabelle/integration/antihydra_mahler/mahler_transport/Mahler_Source_Cylinder_Transport.thy)
 uses the existing `mahler_orbit` and proves source routing, chronological guard
 composition, endpoint composition and arbitrary natural high-fiber transport.
-The [event-safety theory](../../proofs/isabelle/mahler_transport/Mahler_Source_Event_Safety.thy)
+The [event-safety theory](../../proofs/isabelle/integration/antihydra_mahler/mahler_transport/Mahler_Source_Event_Safety.thy)
 states the exact source-selected event guard. Both belong to
 `Mahler_Source_Transport`, a focused child of `Mahler_Safety_Cylinders`.
 They formalize the mathematical constructor rules; they are not a proof of
@@ -503,7 +503,7 @@ The prime-19 fixed-point lane is unavailable because the denominator is 19,
 not evidence of a vanishing residue. Its multiplier order is 1, but its
 nonzero translation has affine order 19.
 
-[Mahler_Reachable_Repetition.thy](../../proofs/isabelle/mahler_transport/Mahler_Reachable_Repetition.thy)
+[Mahler_Reachable_Repetition.thy](../../proofs/isabelle/integration/antihydra_mahler/mahler_transport/Mahler_Reachable_Repetition.thy)
 formalizes the telescoping obstruction and applies it to the existing
 `mahler_orbit`, under the exact source-clause equation checked by the executable
 constructor. It does not formalize the Python valuation routine, prove a general
@@ -544,7 +544,7 @@ families.
 
 The finite transport model spells out the computed modular lift, high fiber
 and strict affine interval pullback in
-[`Mahler_Source_Cylinder_Transport.thy`](../../proofs/isabelle/mahler_transport/Mahler_Source_Cylinder_Transport.thy).
+[`Mahler_Source_Cylinder_Transport.thy`](../../proofs/isabelle/integration/antihydra_mahler/mahler_transport/Mahler_Source_Cylinder_Transport.thy).
 Its executable route theorem consumes an explicit inverse and the same
 inverse/routing checks as the constructor. It does not prove Python's modular
 inverse algorithm, the entire deterministic worklist, or the cost of discovering
@@ -600,7 +600,7 @@ fixed carry `M*u+c=e+b*c`, then for every repetition count `n`,
 `M*repeat_b(u,n)+c = repeat_b(e,n)+b^n*c`. The emitted numeral lies below
 `b^n`, so this certifies both complete output and outgoing carry. See
 `spatial_fixed_carry_repeat_complete` in
-[`Mahler_Spatial_Carry_Pump.thy`](../../proofs/isabelle/mahler_transport/Mahler_Spatial_Carry_Pump.thy).
+[`Mahler_Spatial_Carry_Pump.thy`](../../proofs/isabelle/integration/antihydra_mahler/mahler_transport/Mahler_Spatial_Carry_Pump.thy).
 It applies to supplied repeated spatial blocks, not repeated temporal events.
 
 **Transient bound, proof sketch:** write `M*u=(b-1)h+s`. After `n` identical

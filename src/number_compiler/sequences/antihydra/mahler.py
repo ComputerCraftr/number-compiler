@@ -3,13 +3,13 @@
 from __future__ import annotations
 
 from number_compiler.arithmetic.contracts.input_validation import require_integer
+from number_compiler.arithmetic.fields.inverse_three_clock import InverseThreeClock
 from number_compiler.arithmetic.fields.two_adic import v2_positive
 from number_compiler.sequences.antihydra.runtime import (
     ArithmeticResult,
     Run,
     authenticated_arithmetic_result,
 )
-from number_compiler.sequences.collatz.inverse_three_clock import InverseThreeClock
 
 
 def tangent(result: Run | ArithmeticResult, precision: int) -> dict[str, object]:

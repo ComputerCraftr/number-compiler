@@ -31,6 +31,9 @@ from number_compiler.hashlife.interfaces.semantic_reachable_profile import (
     SemanticProfileID,
     SemanticReachableProfile,
 )
+from number_compiler.hashlife.interfaces.semantic_reachable_profile import (
+    _ReachableDefinition as ReachableDefinition,
+)
 from number_compiler.hashlife.interfaces.semantic_state_codec import CodecRequest
 from number_compiler.hashlife.interfaces.semantic_structures import (
     StructureArena,
@@ -42,9 +45,6 @@ from number_compiler.resources.payload_containers import audit_mapping_items
 from number_compiler.resources.stores import LedgerDict, LedgerList
 
 if TYPE_CHECKING:
-    from number_compiler.arithmetic.contracts.physical_collatz_pair_certificate import (
-        C4PairLeftCertificate,
-    )
     from number_compiler.resources.semantic_payload import SemanticPayloadRegistry
 
 
@@ -68,6 +68,7 @@ class SemanticProfilePayloadRegistry:
         # record, codec, component, and node shape so a product child or a
         # later query cannot inherit another decoder's audit result.
         self._part_audits: dict[tuple[object, ...], bool] = {}
+        self._expected_profiles: dict[tuple[ArenaToken, ActionProgramID], object] = {}
         actual = dict(ledger.iter_containers())
         self.arenas = tuple(
             root
@@ -77,28 +78,11 @@ class SemanticProfilePayloadRegistry:
             and root.runtime.ledger is ledger
             and root.runtime.semantic_functions in semantic.functions
         )
-        self._physical_type: type[object] | None = None
-        self._certificate_type: type[object] | None = None
-        self._state_type: type[object] | None = None
-        self._raw_digest = ""
-        expected = None
-        if self.arenas:
-            from number_compiler.arithmetic.contracts.physical_collatz_kernel import (
-                PhysicalCollatzFourBlockEffect,
-            )
-            from number_compiler.arithmetic.contracts.physical_collatz_pair_certificate import (
-                RAW_DIGEST,
-                C4PairLeftCertificate,
-                ReachableLeftState,
-                load_verified_c4_pair_left,
-            )
-
-            self._physical_type = PhysicalCollatzFourBlockEffect
-            self._certificate_type = C4PairLeftCertificate
-            self._state_type = ReachableLeftState
-            self._raw_digest = RAW_DIGEST
-            self.record_types = (*self.record_types, C4PairLeftCertificate)
-            expected = load_verified_c4_pair_left()
+        for arena in self.arenas:
+            hooks = arena.runtime.family_hooks
+            profile_type = None if hooks is None else hooks.source_profile_type
+            if isinstance(profile_type, type) and profile_type not in self.record_types:
+                self.record_types = (*self.record_types, profile_type)
         for arena in self.arenas:
             stores = (
                 (arena.node_owner, arena.nodes, LedgerList),
@@ -119,7 +103,7 @@ class SemanticProfilePayloadRegistry:
             checks = []
             for record in arena.nodes:
                 try:
-                    valid = self._profile(arena, record, expected)
+                    valid = self._profile(arena, record)
                 except (ValueError, TypeError, AttributeError, IndexError, KeyError):
                     valid = False
                 checks.append(valid)
@@ -212,21 +196,26 @@ class SemanticProfilePayloadRegistry:
         self,
         arena: SemanticProfileArena,
         record: object,
-        expected: C4PairLeftCertificate | None,
     ) -> bool:
-        certificate_type = self._certificate_type
-        state_type = self._state_type
-        physical_type = self._physical_type
+        hooks = arena.runtime.family_hooks
         if (
             type(record) is not SemanticReachableProfile
             or type(record.side) is not int
             or record.side != 0
             or type(record.action) is not ActionProgramID
-            or certificate_type is None
-            or type(record.definition) is not certificate_type
+            or hooks is None
+            or hooks.source_profile_type is None
+            or type(record.definition) is not hooks.source_profile_type
         ):
             return False
         definition = record.definition
+        expected_key = (arena.token, record.action)
+        expected = self._expected_profiles.get(expected_key)
+        if expected is None:
+            if not hooks.admits_source_profile(arena.runtime, record.action):
+                return False
+            expected = hooks.source_profile(arena.runtime, record.action)
+            self._expected_profiles[expected_key] = expected
         if (
             type(definition.version) is not int
             or type(definition.initial) is not int
@@ -236,14 +225,23 @@ class SemanticProfilePayloadRegistry:
             or type(definition.states) is not tuple
             or type(definition.transitions) is not tuple
             or type(definition.predecessors) is not tuple
-            or len(definition.functions) != 921
-            or len(definition.states) != 1234
-            or len(definition.transitions) != 1234
-            or len(definition.predecessors) != 1234
+            or type(definition.profile_role) is not str
+            or not definition.profile_role
+            or type(definition.anchor_width) is not int
+            or type(definition.primitive_left_count) is not int
+            or type(definition.argument_count) is not int
+            or definition.primitive_left_count < 1
+            or definition.argument_count < 1
+            or definition.anchor_width
+            != (definition.primitive_left_count - 1).bit_length()
+            or not definition.functions
+            or not definition.states
+            or len(definition.transitions) != len(definition.states)
+            or len(definition.predecessors) != len(definition.states)
         ):
             return False
         for rows, width in (
-            (definition.functions, 90),
+            (definition.functions, definition.argument_count),
             (definition.transitions, 3),
             (definition.predecessors, 2),
         ):
@@ -256,29 +254,16 @@ class SemanticProfilePayloadRegistry:
                 return False
         if (
             any(
-                type(state) is not state_type
-                or type(state.anchor) is not int
-                or type(state.continuation) is not int
+                type(state.anchor) is not int or type(state.continuation) is not int
                 for state in definition.states
             )
             or definition != expected
         ):
             return False
-        node = arena.runtime.actions.resolve(record.action)
-        if node.kind != "compose":
+        if not hooks.admits_source_profile(arena.runtime, record.action):
             return False
-        for child in (node.first, node.second):
-            action = arena.runtime.actions.reference(child)
-            if arena.runtime.actions.resolve(action).kind != "atom":
-                return False
-            effect = arena.runtime.actions.primitive(action)
-            if physical_type is None or type(effect) is not physical_type:
-                return False
-            validate = getattr(effect, "validate", None)
-            if not callable(validate):
-                return False
-            validate()
-        return True
+        node = arena.runtime.actions.resolve(record.action)
+        return node.kind == "compose"
 
     def _codec(self, arena: SemanticProfileArena, key: object, codec: object) -> bool:
         if (
@@ -310,11 +295,12 @@ class SemanticProfilePayloadRegistry:
             return False
         PortVariable.__post_init__(request.namespace)
         record = arena.nodes[key.profile.local_id]
-        role = f"z-reachable-c4-left/{self._raw_digest}/{request.namespace.role}"
+        definition = arena.nodes[key.profile.local_id].definition
+        role = f"{definition.profile_role}/{definition.digest}/{request.namespace.role}"
         expected = (
             FinitePort(
                 PortVariable(request.namespace.time, request.namespace.side, role, 0),
-                1234,
+                len(definition.states),
             ),
         )
         return (
@@ -347,8 +333,11 @@ class SemanticProfilePayloadRegistry:
         node = structures.resolve(value)
         if node.signature.inputs != codec.ports:
             return False
-        target = AtomSort("primitive-left-state", 50)
-        argument = FinitePort(PortVariable(0, 0, "semantic-argument", 0), 90)
+        definition = arena.nodes[codec.profile.local_id].definition
+        target = AtomSort("primitive-left-state", definition.primitive_left_count)
+        argument = FinitePort(
+            PortVariable(0, 0, "semantic-argument", 0), definition.argument_count
+        )
         if component == 2:
             return (
                 node.kind == "product"
@@ -396,12 +385,14 @@ class SemanticProfilePayloadRegistry:
         codec: ReachableCodec,
         component: int,
         node: StructuredNode,
-        definition: C4PairLeftCertificate,
+        definition: ReachableDefinition,
     ) -> bool:
         structures = arena.structures
         assert structures is not None
-        target = AtomSort("primitive-left-state", 50)
-        argument = FinitePort(PortVariable(0, 0, "semantic-argument", 0), 90)
+        target = AtomSort("primitive-left-state", definition.primitive_left_count)
+        argument = FinitePort(
+            PortVariable(0, 0, "semantic-argument", 0), definition.argument_count
+        )
         if component == 1:
             if (
                 node.kind != "function"
@@ -431,7 +422,7 @@ def _table_agrees(
     value: FactoredFunctionID | None,
     code: FinitePort,
     argument: FinitePort | None,
-    definition: C4PairLeftCertificate,
+    definition: ReachableDefinition,
     *,
     domain: SemanticFunctionID | None = None,
 ) -> bool:
@@ -441,7 +432,7 @@ def _table_agrees(
     factored = structures.bits.resolve(value)
     functions = structures.functions
     expected_inputs = (code,) if argument is None else (code, argument)
-    target = AtomSort("primitive-left-state", 50)
+    target = AtomSort("primitive-left-state", definition.primitive_left_count)
     if (
         len(factored.signature.inputs) != len(expected_inputs)
         or set(factored.signature.inputs) != set(expected_inputs)
@@ -542,13 +533,15 @@ def _table_agrees(
         assert valid_terminal is not None
         valid = valid_terminal.value
         for ordinal in _cube_values(code.bits, code_mask, code_value):
-            expected_domain = int(ordinal < 1234)
+            expected_domain = int(ordinal < len(definition.states))
             if domain_terminal is not None and domain_terminal.value != expected_domain:
                 return False
             for selector in _cube_values(
                 0 if argument is None else argument.bits, arg_mask, arg_value
             ):
-                admitted = ordinal < 1234 and (argument is None or selector < 90)
+                admitted = ordinal < len(definition.states) and (
+                    argument is None or selector < definition.argument_count
+                )
                 if valid != int(admitted):
                     return False
                 if admitted:
@@ -623,19 +616,17 @@ def profile_storage_metrics(ledger: ResourceLedger) -> ProfileStorageMetrics:
             "reachable_profile_codec_records": 0,
             "reachable_profile_decoder_cache_entries": 0,
         }
-    from number_compiler.arithmetic.contracts.physical_collatz_pair_certificate import (
-        C4PairLeftCertificate,
-        ReachableLeftState,
-    )
-
-    definitions: dict[int, C4PairLeftCertificate] = {}
+    definitions: dict[int, ReachableDefinition] = {}
     codecs = decodes = 0
     for arena in arenas:
         if actual.get(arena.node_owner) is arena.nodes:
             for record in arena.nodes:
+                hooks = arena.runtime.family_hooks
+                expected_type = None if hooks is None else hooks.source_profile_type
                 if (
                     type(record) is SemanticReachableProfile
-                    and type(record.definition) is C4PairLeftCertificate
+                    and isinstance(expected_type, type)
+                    and type(record.definition) is expected_type
                 ):
                     definitions[id(record.definition)] = record.definition
         if actual.get(arena.records.owner) is arena.records._data:
@@ -651,7 +642,7 @@ def profile_storage_metrics(ledger: ResourceLedger) -> ProfileStorageMetrics:
             slots += sum(
                 int(type(state.anchor) is int) + int(type(state.continuation) is int)
                 for state in definition.states
-                if type(state) is ReachableLeftState
+                if type(state.anchor) is int and type(state.continuation) is int
             )
         for rows in (
             definition.functions,

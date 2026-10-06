@@ -2,9 +2,10 @@
 
 from __future__ import annotations
 
-from collections.abc import Iterator, Mapping, Sequence
+from collections.abc import Callable, Iterator, Mapping, Sequence
 from dataclasses import fields, is_dataclass
-from typing import TYPE_CHECKING, TypeGuard, cast
+from functools import partial
+from typing import TYPE_CHECKING, cast
 
 from number_compiler.arithmetic.carry.carry_monoid import CarryFn
 from number_compiler.arithmetic.contracts.block_effect import BlockEffect, _effect_key
@@ -39,10 +40,17 @@ from number_compiler.resources.proof_payload_admission import (
 )
 
 if TYPE_CHECKING:
-    from number_compiler.arithmetic.contracts.physical_collatz_kernel import (
-        PhysicalCollatzFourBlockEffect,
-    )
     from number_compiler.resources.payload_policy import PayloadAudit
+
+
+def _contract_semantic_component(
+    value: object,
+    *,
+    owner: int,
+    approved: frozenset[tuple[int, int]],
+    semantic: Callable[..., bool],
+) -> bool:
+    return (owner, id(value)) in approved or semantic(value, owner=owner)
 
 
 def audit_registered_payloads(
@@ -72,6 +80,7 @@ def audit_registered_payloads(
         cached = ledger.cached_payload_audit()
         if type(cached) is PayloadAudit:
             return cached
+    contract_audit = ledger.audit_payload_contracts()
     audit_version = ledger.mutation_version
     from number_compiler.arithmetic.contracts.block_kernel import (
         BaseBlockEffect,
@@ -149,6 +158,7 @@ def audit_registered_payloads(
     from number_compiler.resources.behavior_payload_audit import (
         BehaviorPayloadValidator,
     )
+    from number_compiler.resources.family_effect_payload import FamilyEffectPayloadAudit
     from number_compiler.resources.field_action_payload_audit import (
         audit_field_action_payloads,
     )
@@ -163,9 +173,6 @@ def audit_registered_payloads(
     from number_compiler.resources.radix_provider_payload_audit import (
         audit_radix_provider_payloads,
     )
-    from number_compiler.resources.reverse_source_payload_audit import (
-        audit_reverse_source_payloads,
-    )
     from number_compiler.resources.semantic_payload import SemanticPayloadRegistry
     from number_compiler.resources.source_bound_payload_audit import (
         audit_source_bound_payloads,
@@ -176,17 +183,8 @@ def audit_registered_payloads(
     from number_compiler.resources.tile_dependency_leases import (
         audit_tile_dependency_leases,
     )
-    from number_compiler.sequences.collatz.block_power import CollatzPhysicalBlockEffect
 
-    def physical_four(value: object) -> TypeGuard[PhysicalCollatzFourBlockEffect]:
-        if type(value).__name__ != "PhysicalCollatzFourBlockEffect":
-            return False
-        from number_compiler.arithmetic.contracts.physical_collatz_kernel import (
-            PhysicalCollatzFourBlockEffect,
-        )
-
-        return type(value) is PhysicalCollatzFourBlockEffect
-
+    family_effects = FamilyEffectPayloadAudit(execution_roots)
     diamond = DiamondPayloadRegistry(ledger)
     from number_compiler.resources.payload_geometry import geometry_field_policy
 
@@ -196,25 +194,32 @@ def audit_registered_payloads(
         BaseBlockEffect,
         FiniteBlockEffect,
         DigitNormalizeBlockEffect,
-        CollatzPhysicalBlockEffect,
         NonblankBlockEffect,
         SymbolicBinaryDivisionEffect,
+        *sorted(
+            family_effects.effect_types,
+            key=lambda effect_type: (effect_type.__module__, effect_type.__qualname__),
+        ),
     )
     roles = {item.owner: _role(item.role) for item in ledger.inventory()}
     seen: set[tuple[int, int]] = set()
     forbidden: set[tuple[int, int]] = set()
+    forbidden.update(contract_audit.invalid)
+    contract_result_ids = {
+        identity for _, identity in contract_audit.approved | contract_audit.invalid
+    }
     cache_event_owners, cache_event_invalid = cache_event_owner_audit(
         execution_roots,
         ledger,
     )
     forbidden.update(cache_event_invalid)
-    field_actions = audit_field_action_payloads(ledger)
-    field_images = audit_field_image_payloads(ledger)
+    field_actions = audit_field_action_payloads(ledger, contract_audit)
+    field_images = audit_field_image_payloads(ledger, contract_audit)
     radix_providers = audit_radix_provider_payloads(ledger)
-    higher_payloads = audit_higher_payloads(ledger)
+    higher_payloads = audit_higher_payloads(ledger, contract_audit)
     from number_compiler.resources.payload_owner_scopes import field_owner_scopes
 
-    support_payloads = audit_support_payloads(ledger)
+    support_payloads = audit_support_payloads(ledger, contract_audit)
     forbidden.update(field_actions.invalid)
     forbidden.update(field_images.invalid)
     forbidden.update(radix_providers.invalid)
@@ -233,7 +238,9 @@ def audit_registered_payloads(
         for root in execution_roots
         if type(root) is DiamondQuotientArena and root.ledger is ledger
     }
-    action_owners, output_owners = field_owner_scopes(execution_roots)
+    action_owners, output_owners = field_owner_scopes(
+        execution_roots, contract_audit, ledger
+    )
     for root in execution_roots:
         if type(root) is RecursiveFieldImageArena:
             image_carrier = root
@@ -265,10 +272,6 @@ def audit_registered_payloads(
         ledger, execution_roots, actual_containers
     )
     forbidden.update(source_bound.invalid)
-    reverse_source = audit_reverse_source_payloads(
-        ledger, execution_roots, actual_containers
-    )
-    forbidden.update(reverse_source.invalid)
     associated = audit_associated_action_payloads(
         ledger, execution_roots, actual_containers
     )
@@ -376,13 +379,9 @@ def audit_registered_payloads(
         if id(definition) in definition_seen:
             continue
         definition_seen.add(id(definition))
-        proof_c4 = False
-        if physical_four(definition):
-            try:
-                definition.validate()
-            except (TypeError, ValueError):
-                continue
-            proof_c4 = True
+        proof_c4 = family_effects.valid_compatibility(definition)
+        if type(definition) in family_effects.compatibility_types and not proof_c4:
+            continue
         if (
             type(definition) in literal_types
             or type(definition) is ProgramComposition
@@ -479,21 +478,30 @@ def audit_registered_payloads(
             "_native_source",
         )
     )
-    checked_components: dict[int, tuple[object, bool]] = {}
+    checked_components: dict[tuple[int, int | None], tuple[object, bool]] = {}
 
-    def semantic_component(value: object) -> bool:
-        checked = checked_components.get(id(value))
+    def semantic_component(value: object, *, owner: int | None = None) -> bool:
+        cache_key = (id(value), owner)
+        checked = checked_components.get(cache_key)
         if checked is not None and checked[0] is value:
             return checked[1]
-        valid = semantic_component_uncached(value)
-        checked_components[id(value)] = value, valid
+        valid = semantic_component_uncached(value, owner=owner)
+        checked_components[cache_key] = value, valid
         return valid
 
-    def semantic_component_uncached(value: object) -> bool:
+    def family_audit_approves(
+        identities: frozenset[int], value: object, owner: int | None
+    ) -> bool:
+        identity = id(value)
+        if identity not in contract_result_ids:
+            return identity in identities
+        return owner is not None and (owner, identity) in contract_audit.approved
+
+    def semantic_component_uncached(value: object, *, owner: int | None = None) -> bool:
+        if type(value) in family_effects.compatibility_types:
+            return family_effects.valid_compatibility(value)
         if source_bound.recognizes(value):
             return source_bound.valid(value)
-        if reverse_source.recognizes(value):
-            return reverse_source.valid(value)
         if associated.recognizes(value):
             return associated.valid(value)
         if type(value) in (BehaviorBindingKey, CompletedBehaviorClassification):
@@ -513,17 +521,15 @@ def audit_registered_payloads(
             )
         if type(value) is tuple and id(value) in finite_support_records:
             return True
-        if id(value) in higher_payloads.approved:
+        if family_audit_approves(higher_payloads.approved, value, owner):
             return True
-        if id(value) in support_payloads.approved:
+        if family_audit_approves(support_payloads.approved, value, owner):
             return True
-        if id(value) in field_actions.approved:
+        if family_audit_approves(field_actions.approved, value, owner):
             return True
-        if id(value) in field_images.approved:
+        if family_audit_approves(field_images.approved, value, owner):
             return True
-        if id(value) in radix_providers.approved:
-            return True
-        if id(value) in reverse_source.approved:
+        if family_audit_approves(radix_providers.approved, value, owner):
             return True
         if id(value) in semantic.auxiliary.projection_maps:
             return True  # Actual radix parameter -> owned execution context, not digit storage.
@@ -564,12 +570,6 @@ def audit_registered_payloads(
                     arena._resolve(component.function)
                     previous = component.variable
             except (TypeError, ValueError, AttributeError):
-                return False
-            return True
-        if physical_four(value):
-            try:
-                value.validate()
-            except (TypeError, ValueError):
                 return False
             return True
         if diamond.recognizes(value):
@@ -680,10 +680,9 @@ def audit_registered_payloads(
                 (owner, identity) for identity in _proof_objects(container)
             )
         if (
-            id(container) not in field_images.approved
-            and id(container) not in radix_providers.approved
-            and id(container) not in support_payloads.approved
-            and id(container) not in reverse_source.approved
+            not family_audit_approves(field_images.approved, container, owner)
+            and not family_audit_approves(radix_providers.approved, container, owner)
+            and not family_audit_approves(support_payloads.approved, container, owner)
             and owner not in finite_index_owners
             and owner not in cache_event_owners
             and roles[owner]
@@ -701,7 +700,15 @@ def audit_registered_payloads(
                 "future_behavior_publication_snapshot",
             )
         ):
-            aggregate = numeric_aggregate_audit(container, semantic=semantic_component)
+            aggregate = numeric_aggregate_audit(
+                container,
+                semantic=partial(
+                    _contract_semantic_component,
+                    owner=owner,
+                    approved=contract_audit.approved,
+                    semantic=semantic_component,
+                ),
+            )
             forbidden.update(
                 (owner, identity) for identity in aggregate.forbidden_objects
             )
@@ -720,26 +727,27 @@ def audit_registered_payloads(
             field_name = ""
         identity = (owner, id(value))
         role = roles[owner]
-        if physical_four(value):
-            if not semantic_component(value):
+        if identity in contract_audit.approved:
+            continue
+        if type(value) in family_effects.compatibility_types:
+            if not family_effects.valid_compatibility(value):
                 forbidden.add(identity)
             continue
         if any(
-            id(value) in audit.approved
+            family_audit_approves(audit.approved, value, owner)
             for audit in (
                 field_actions,
                 field_images,
                 radix_providers,
                 higher_payloads,
                 support_payloads,
-                reverse_source,
             )
         ):
             continue
         recognizing = next(
             (
                 audit
-                for audit in (source_bound, reverse_source, associated, behaviors)
+                for audit in (source_bound, associated, behaviors)
                 if audit.recognizes(value)
             ),
             None,
@@ -749,7 +757,7 @@ def audit_registered_payloads(
                 forbidden.add(identity)
             continue
         if type(value) in (BehaviorBindingKey, CompletedBehaviorClassification):
-            if not semantic_component(value):
+            if not semantic_component(value, owner=owner):
                 forbidden.add(identity)
             continue
         if type(value) is LocalInterfaceID:
@@ -778,7 +786,9 @@ def audit_registered_payloads(
         if role in ("exact_source", "exact_endpoint", "explicit_lowering", "lowering"):
             continue
         if type(value).__module__.startswith("devtools.verification."):
-            if type(value) in geometry_fields and semantic_component(value):
+            if type(value) in geometry_fields and semantic_component(
+                value, owner=owner
+            ):
                 continue
             if type(value) in record_opaque:
                 continue
@@ -816,7 +826,9 @@ def audit_registered_payloads(
         if identity in seen:
             continue
         seen.add(identity)
-        if type(value) in geometry_fields and not semantic_component(value):
+        if type(value) in geometry_fields and not semantic_component(
+            value, owner=owner
+        ):
             forbidden.add(identity)
         if type(value) is MicroblockCache:
             actual = actual_containers.get(value.owner)

@@ -1,0 +1,18 @@
+session Etale_Primary_Carry in etale = "HOL-Number_Theory" +
+  options [document = false, quick_and_dirty = false]
+  sessions Shared_S_Arithmetic
+  theories
+    Primary_Carry_Jet
+    Etale_Primality_Bridge
+    Special_Frobenius_Defect_Bridge
+    Special_Factor_Progressions
+    Transverse_Frobenius_Holonomy
+    Mersenne_Etale_Zero_Section
+    Mersenne_Zero_Key_Counterexample
+    Skew_Cylinder_Observers
+    Physical_Collatz_Bound_Consumer
+    Physical_Collatz_Clock
+    Physical_Collatz_Support
+    Twisted_Support_Observers
+    Runtime_Cylinder_Refinement
+    Cylinder_Vector_Refinement

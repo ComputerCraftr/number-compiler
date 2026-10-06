@@ -454,7 +454,7 @@ The historical 190-class counts below remain historical measurements.
   threshold demand, and the carry interval cache retains only monoid actions.
 - **Checked local theorem:** `output_crt_threshold_exact` and
   `normalized_output_crt_threshold_exact` in
-  [Reverse_Threshold_Cocycle](../../../proofs/isabelle/Reverse_Threshold_Cocycle.thy)
+  [Reverse_Threshold_Cocycle](../../../proofs/isabelle/families/reverse_add/reverse_residuals/Reverse_Threshold_Cocycle.thy)
   establish the residue-to-threshold law. They consume normalized digits;
   they do not derive an arbitrary future digit's residues from the source.
 - **Finite validation:** supplied adjacent blocks compose exactly through D512
@@ -587,7 +587,7 @@ left macro's returned grammar, rather than an oracle trajectory row.
 **Proof scope:** `native_emit_refines`, `native_step_refines`,
 `native_iteration_refines`, `native_terminal_emission_refines` and
 `native_macro_refines` in
-[Reverse_Threshold_Cocycle.thy](../../../proofs/isabelle/Reverse_Threshold_Cocycle.thy)
+[Reverse_Threshold_Cocycle.thy](../../../proofs/isabelle/families/reverse_add/reverse_residuals/Reverse_Threshold_Cocycle.thy)
 specify native carry, growth, output and chronological macro semantics.
 They prove equality with the literal pair recurrence for every finite macro
 level. This executable word model is the specification of the rope operations;
@@ -669,7 +669,7 @@ The September 22 profile did identify removable repeated work in
 `plane_cofactor_entry_refines`, `plane_cofactor_undefined_exact`,
 `plane_projection_elimination`, `plane_constant_elimination`,
 `plane_cofactor_spatial_split` and `plane_cofactor_interval` in
-[Reverse_Factored_Channels.thy](../../../proofs/isabelle/Reverse_Factored_Channels.thy).
+[Reverse_Factored_Channels.thy](../../../proofs/isabelle/families/reverse_add/reverse_residuals/Reverse_Factored_Channels.thy).
 The executable table model checks equality on every supplied assignment, with
 constants and aliased ports substituted simultaneously. Python enumerates the
 complete finite input product. The tests independently exercise all 81 partial

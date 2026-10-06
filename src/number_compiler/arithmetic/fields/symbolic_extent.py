@@ -15,6 +15,7 @@ Materialization is an explicit bounded operation.
 from __future__ import annotations
 
 from dataclasses import dataclass
+from typing import Protocol, runtime_checkable
 
 from number_compiler.arithmetic.fields.radix import bit_width
 
@@ -153,140 +154,36 @@ class DyadicExtent:
         return extent_expression(self)
 
 
-def _normalize_reverse_descriptor(obj: ReverseAddExtent | ReverseAddBitExtent) -> None:
-    seed, base, generation = int(obj.seed), int(obj.base), int(obj.generation)
-    if seed < 0 or base < 2 or generation < 0:
-        raise ValueError((seed, base, generation))
-    object.__setattr__(obj, "seed", seed)
-    object.__setattr__(obj, "base", base)
-    object.__setattr__(obj, "generation", generation)
-
-
-@dataclass(frozen=True, slots=True)
-class ReverseAddExtent:
-    """Exact lazy radix width of one reverse/add term.
-
-    The numeric width depends on the accumulated nonlinear growth observer, so
-    forcing it during nth-term construction would reintroduce temporal
-    projection work.  Keep the exact query as a compact algebraic descriptor;
-    materialization is explicit and uses the binary-powered endpoint index.
-    """
-
-    seed: int
-    base: int
-    generation: int
-
-    def __post_init__(self) -> None:
-        _normalize_reverse_descriptor(self)
-
-    @property
-    def canonical_key(self) -> tuple[object, ...]:
-        return ("reverse-add-extent", self.seed, self.base, self.generation)
-
-    @property
-    def description_bits(self) -> int:
-        return (
-            bit_width(self.seed) + bit_width(self.base) + bit_width(self.generation) + 3
-        )
-
-    @property
-    def maximum(self) -> int:
-        from number_compiler.arithmetic.fields.radix import digits_lsd
-
-        return len(digits_lsd(self.seed, self.base)) + self.generation
-
-    def materialize(self) -> int:
-        from number_compiler.sequences.reverse_add.power import ReverseAddPoweredTerm
-
-        return ReverseAddPoweredTerm(self.seed, self.generation, base=self.base).width()
-
-    def contains_index(self, position: int) -> bool:
-        position = int(position)
-        if position < 0 or position >= self.maximum:
-            return False
-        return position < self.materialize()
-
-    def __repr__(self) -> str:
-        return extent_expression(self)
-
-
-@dataclass(frozen=True, slots=True)
-class ReverseAddBitExtent:
-    """Exact lazy upper bit extent implied by the exact reverse/add radix width."""
-
-    seed: int
-    base: int
-    generation: int
-
-    def __post_init__(self) -> None:
-        _normalize_reverse_descriptor(self)
-
-    @property
-    def description_bits(self) -> int:
-        return (
-            bit_width(self.seed) + bit_width(self.base) + bit_width(self.generation) + 4
-        )
-
-    def materialize(self) -> int:
-        from math import ceil, log2
-
-        width = ReverseAddExtent(self.seed, self.base, self.generation).materialize()
-        if self.base == 2:
-            return width
-        return max(1, ceil(width * log2(self.base)))
-
-    def _compare_int(self, other: int) -> int:
-        value = self.materialize()
-        other = int(other)
-        return (value > other) - (value < other)
-
-    def __eq__(self, other: object) -> bool:
-        if isinstance(other, ReverseAddBitExtent):
-            return (self.seed, self.base, self.generation) == (
-                other.seed,
-                other.base,
-                other.generation,
-            )
-        if isinstance(other, int):
-            return self._compare_int(other) == 0
-        return False
-
-    def __lt__(self, other: object) -> bool:
-        if isinstance(other, int):
-            return self._compare_int(other) < 0
-        return NotImplemented
-
-    def __le__(self, other: object) -> bool:
-        if isinstance(other, int):
-            return self._compare_int(other) <= 0
-        return NotImplemented
-
-    def __gt__(self, other: object) -> bool:
-        if isinstance(other, int):
-            return self._compare_int(other) > 0
-        return NotImplemented
-
-    def __ge__(self, other: object) -> bool:
-        if isinstance(other, int):
-            return self._compare_int(other) >= 0
-        return NotImplemented
-
-    def __repr__(self) -> str:
-        return extent_expression(self)
-
-
-Extent = int | DyadicExtent | ReverseAddExtent | ReverseAddBitExtent
-
-
 CoordinatePresentation = tuple[int, str, dict[str, int | str]]
 
 
+@runtime_checkable
+class SymbolicExtent(Protocol):
+    """Family-owned exact extent exposed through the shared geometry boundary."""
+
+    @property
+    def description_bits(self) -> int: ...
+
+    def to_json_value(
+        self, coordinate: CoordinatePresentation | None = None
+    ) -> dict[str, object]: ...
+
+    def __le__(self, other: int) -> bool: ...
+
+    def __gt__(self, other: int) -> bool: ...
+
+
+Extent = int | DyadicExtent | SymbolicExtent
+
+
 def extent_expression(
-    value: DyadicExtent | ReverseAddExtent | ReverseAddBitExtent,
+    value: DyadicExtent | SymbolicExtent,
     coordinate: CoordinatePresentation | None = None,
 ) -> str:
     """Render exact descriptor coordinates only on explicit presentation demand."""
-    parameter = value.power if isinstance(value, DyadicExtent) else value.generation
+    if not isinstance(value, DyadicExtent):
+        return repr(value)
+    parameter = value.power
     text = (
         coordinate[1]
         if coordinate is not None and parameter == coordinate[0]
@@ -299,12 +196,7 @@ def extent_expression(
             else ""
         )
         return f"2**{text}{suffix}"
-    reverse = f"reverse_add(seed={integer_text(value.seed)},base={integer_text(value.base)})[{text}]"
-    return (
-        f"bit_extent({reverse})"
-        if isinstance(value, ReverseAddBitExtent)
-        else f"width({reverse})"
-    )
+    raise AssertionError("unreachable extent expression")
 
 
 def extent_json_value(
@@ -322,33 +214,15 @@ def extent_json_value(
             "offset": value.offset,
             "expression": extent_expression(value, coordinate),
         }
-    if isinstance(value, ReverseAddExtent):
-        return {
-            "kind": "reverse-add-extent",
-            "seed": value.seed,
-            "base": value.base,
-            "generation": coordinate[2]
-            if coordinate is not None and value.generation == coordinate[0]
-            else value.generation,
-            "expression": extent_expression(value, coordinate),
-        }
-    if isinstance(value, ReverseAddBitExtent):
-        return {
-            "kind": "reverse-add-bit-extent",
-            "seed": value.seed,
-            "base": value.base,
-            "generation": coordinate[2]
-            if coordinate is not None and value.generation == coordinate[0]
-            else value.generation,
-            "expression": extent_expression(value, coordinate),
-        }
+    if not isinstance(value, int):
+        return value.to_json_value(coordinate)
     if coordinate is not None and value == coordinate[0]:
         return dict(coordinate[2])
     return int(value)
 
 
 def extent_description_bits(value: Extent) -> int:
-    if isinstance(value, (DyadicExtent, ReverseAddExtent, ReverseAddBitExtent)):
+    if isinstance(value, (DyadicExtent, SymbolicExtent)):
         return value.description_bits
     return bit_width(int(value))
 
@@ -356,8 +230,7 @@ def extent_description_bits(value: Extent) -> int:
 __all__ = [
     "DyadicExtent",
     "Extent",
-    "ReverseAddBitExtent",
-    "ReverseAddExtent",
+    "SymbolicExtent",
     "extent_description_bits",
     "extent_json_value",
 ]

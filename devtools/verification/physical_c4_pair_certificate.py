@@ -15,14 +15,14 @@ from importlib.resources import files
 from pathlib import Path
 
 from devtools.verification import require_exact_oracle
-from number_compiler.arithmetic.contracts.physical_collatz_kernel import (
+from number_compiler.sequences.collatz.physical_kernel import (
     PhysicalCollatzFourBlockEffect,
 )
-from number_compiler.arithmetic.contracts.physical_collatz_pair_certificate import (
+from number_compiler.sequences.collatz.physical_pair_certificate import (
     C4PairLeftCertificate,
     ReachableLeftState,
 )
-from number_compiler.arithmetic.contracts.physical_collatz_pair_certificate import (
+from number_compiler.sequences.collatz.physical_pair_certificate import (
     kernel_digest as _kernel_digest,
 )
 

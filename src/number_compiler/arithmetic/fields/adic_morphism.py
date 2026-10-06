@@ -25,7 +25,6 @@ from dataclasses import dataclass
 
 from number_compiler.arithmetic.fields.morphism_core import AffineCocycle, binary_power
 from number_compiler.arithmetic.fields.radix import bit_width
-from number_compiler.sequences.collatz.parity import CollatzParitySlab
 
 _MAX_PADIC_LIMB = (1 << 64) - 1
 
@@ -433,27 +432,6 @@ class ValuationSensitivityMorphism:
         return self.apply(0) >= self.precision
 
 
-def collatz_slab_padic3(
-    slab: CollatzParitySlab, precision: int = 8
-) -> PadicAffineMorphism:
-    """Exact normalized Collatz slab modulo ``3**precision``."""
-    if type(precision) is not int:
-        raise TypeError("p-adic precision must be an exact integer")
-    modulus = 3**precision
-    width = int(slab.width)
-    ones = int(slab.ones)
-    offset = int(slab.offset)
-    inv2k = pow(pow(2, width, modulus), -1, modulus)
-    return PadicAffineMorphism(
-        3,
-        precision,
-        (pow(3, ones, modulus) * inv2k) % modulus,
-        (offset * inv2k) % modulus,
-        width,
-        0,
-    )
-
-
 def mersenne_successor_padic2(precision: int = 8) -> PadicAffineMorphism:
     return PadicAffineMorphism(2, precision, 2, 1, 1, 0)
 
@@ -482,7 +460,6 @@ __all__ = [
     "PadicAffineMorphism",
     "PadicRadialQuotient",
     "ValuationSensitivityMorphism",
-    "collatz_slab_padic3",
     "fermat_shifted_square_sensitivity",
     "mersenne_successor_2adic_sensitivity",
     "mersenne_successor_padic2",

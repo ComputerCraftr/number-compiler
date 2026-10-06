@@ -129,6 +129,8 @@ class ReversePoweredLocalCodec:
         state_ids[0].update((state, index) for index, state in enumerate(left))
         state_ids[1].update((state, index) for index, state in enumerate(right))
         self._state_ids = state_ids
+        self._state_owners = state_owners
+        self._left_state_ids, self._right_state_ids = state_ids
         self._node_owner = self.ledger.register(
             prefix + "-nodes", "reverse_local_action"
         )
@@ -166,6 +168,49 @@ class ReversePoweredLocalCodec:
         self.spatial_hits = 0
         self.semantic_alias_hits = 0
         self.mirror_alias_hits = 0
+        from number_compiler.resources.payload_contracts import (
+            PayloadAuditStoreBinding,
+        )
+        from number_compiler.sequences.reverse_add.field_action_payload_audit import (
+            audit_reverse_powered_codec_owner,
+        )
+
+        self.ledger.register_payload_audit_contract(
+            self,
+            "reverse_add",
+            (
+                PayloadAuditStoreBinding(
+                    self._node_owner, "_nodes", "reverse_local_action"
+                ),
+                PayloadAuditStoreBinding(
+                    self._key_owner, "_keys", "reverse_local_action_interner"
+                ),
+                PayloadAuditStoreBinding(
+                    self._compose_owner,
+                    "_compose",
+                    "reverse_local_action_composition",
+                ),
+                PayloadAuditStoreBinding(
+                    self._leaf_owner, "_leaf_actions", "reverse_local_leaf_binding"
+                ),
+                PayloadAuditStoreBinding(
+                    self._source_owner,
+                    "_source_actions",
+                    "reverse_local_source_binding",
+                ),
+                PayloadAuditStoreBinding(
+                    state_owners[0],
+                    "_left_state_ids",
+                    "reverse_local_state_index",
+                ),
+                PayloadAuditStoreBinding(
+                    state_owners[1],
+                    "_right_state_ids",
+                    "reverse_local_state_index",
+                ),
+            ),
+            audit_reverse_powered_codec_owner,
+        )
 
     def _handle(
         self,

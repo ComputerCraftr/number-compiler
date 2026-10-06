@@ -1,0 +1,35 @@
+session Reverse_Residuals in reverse_residuals = Shared_Carry_Dynamics +
+  options [document = false, quick_and_dirty = false]
+  theories
+    Reverse_Residuals
+    Reverse_Invariant
+    Reverse_Seven_Bands
+    Reverse_Two_Cell_Equations
+    Reverse_Observability
+    Reverse_Uniform_Runs
+    Reverse_Factored_Channels
+    Reverse_Threshold_Cocycle
+    Mirror_Pair_Step
+    Reverse_196_Two_Port_Refinement
+    Reverse_196_Universal_Emit
+    Reverse_196_Publisher_Refinement
+    Reverse_Growth_Coboundary
+    Reverse_Mod9_Skew
+    Reverse_Threshold_Geometry
+    Reverse_Carry_Harmonic_Ports
+    Reverse_Contextual_Fixed_Point
+    Reverse_Boundary_Germ_Local
+session Reverse_Cylinder_Length_Refinement in reverse_length = Reverse_Residuals +
+  options [document = false, quick_and_dirty = false]
+  theories
+    Reverse_Cylinder_Length
+    Reverse_Cylinder_Range_Geometry
+session Reverse_Digit_Terminal in reverse_terminal = Reverse_Residuals +
+  options [document = false, quick_and_dirty = false]
+  theories
+    Reverse_Digit_Terminal_Refinement
+session Reverse_Growth_Admission in reverse_growth = Reverse_Residuals +
+  options [document = false, quick_and_dirty = false]
+  theories
+    Reverse_Growth_Run_Admission
+    Weighted_Partial_Growth_Action

@@ -7,9 +7,6 @@ from typing import TYPE_CHECKING
 import pytest
 
 from number_compiler.arithmetic.contracts.block_effect import BoundarySide
-from number_compiler.arithmetic.contracts.physical_collatz_kernel import (
-    PhysicalCollatzFourBlockEffect,
-)
 from number_compiler.arithmetic.functions.finite_function_types import FunctionSort
 from number_compiler.arithmetic.functions.semantic_functions import (
     SemanticFunctionArena,
@@ -26,6 +23,9 @@ from number_compiler.hashlife.execution.continuations.diamond_higher_tasks impor
 from number_compiler.hashlife.execution.continuations.diamond_tasks import Result, Task
 from number_compiler.hashlife.interfaces.semantic_expression_compiler import (
     SemanticExpressionCompiler,
+)
+from number_compiler.sequences.collatz.physical_kernel import (
+    PhysicalCollatzFourBlockEffect,
 )
 from tests.support.assertions import assert_rejected_atomically
 from tests.support.diamond_continuation_reduction import (

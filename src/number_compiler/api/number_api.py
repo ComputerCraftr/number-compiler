@@ -24,14 +24,16 @@ from number_compiler.arithmetic.fields.radix import (
 )
 from number_compiler.arithmetic.fields.symbolic_extent import (
     Extent,
-    ReverseAddBitExtent,
-    ReverseAddExtent,
 )
 from number_compiler.arithmetic.formula.formula import FormulaRoot
 from number_compiler.resources.output_stream_metrics import measured_output_stream
 from number_compiler.sequences.power_numbers.numbers import (
     FermatNumberSpec,
     MersenneNumberSpec,
+)
+from number_compiler.sequences.reverse_add.extent import (
+    ReverseAddBitExtent,
+    ReverseAddExtent,
 )
 
 if TYPE_CHECKING:

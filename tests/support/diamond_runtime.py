@@ -13,6 +13,9 @@ from number_compiler.hashlife.execution.continuations.diamond_runtime import (
     DiamondRuntime,
 )
 from number_compiler.resources.ledger import ResourceLedger
+from number_compiler.sequences.collatz.tile_family_hooks import (
+    collatz_tile_hooks_for_effect,
+)
 from tests.support.semantic_oracles import scan_ports
 
 if TYPE_CHECKING:
@@ -23,7 +26,8 @@ def build(
     effect: BlockEffect, values: Sequence[int], length: int, exponent: int
 ) -> tuple[DiamondRuntime, ActionProgramID]:
     ledger = ResourceLedger()
-    compiler = LazyCompiler(ledger)
+    hooks = collatz_tile_hooks_for_effect(effect)
+    compiler = LazyCompiler(ledger, family_hooks=hooks)
     atom = compiler.atom(effect)
     geometry = SourceGeometry(
         ledger,

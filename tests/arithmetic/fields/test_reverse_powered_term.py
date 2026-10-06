@@ -7,7 +7,7 @@ import pytest
 
 from number_compiler.api.number_api import NumberCompiler
 from number_compiler.arithmetic.fields.radix import digits_lsd, value_from_lsd_digits
-from number_compiler.arithmetic.fields.symbolic_extent import ReverseAddExtent
+from number_compiler.sequences.reverse_add.extent import ReverseAddExtent
 from number_compiler.sequences.reverse_add.power import ReverseAddPoweredTerm
 from tests.support.power_assertions import assert_binary_power_bound
 

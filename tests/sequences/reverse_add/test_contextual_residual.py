@@ -240,11 +240,17 @@ def test_transport_budget_and_foreign_profiles_fail_closed_and_payloads_are_owne
     assert not audit_reverse_residuals(
         arena.ledger, tuple(arena.ledger.iter_execution_roots())
     )
-    assert (arena.ledger.entries, arena.ledger.nodes, arena.ledger.counters) == (
-        snapshot.entries,
-        snapshot.nodes,
-        snapshot.counters,
-    )
+    audited = arena.ledger.snapshot()
+    audit_counter = "payload_audit_contract_member_visits"
+    assert (audited.entries, audited.nodes) == (snapshot.entries, snapshot.nodes)
+    assert audited.counters.get(audit_counter, 0) - snapshot.counters.get(
+        audit_counter, 0
+    ) == 2 * len(arena._successors)
+    assert {
+        key: value for key, value in audited.counters.items() if key != audit_counter
+    } == {
+        key: value for key, value in snapshot.counters.items() if key != audit_counter
+    }
     key = next(iter(arena._successors))
     original = arena._successors[key]
     arena._successors[key] = arena.residual(profile, ports[0], 18)

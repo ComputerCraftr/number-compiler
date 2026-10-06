@@ -73,14 +73,14 @@ c_{j+1}=\lfloor(P_j+c_j)/10\rfloor.
 \]
 
 `source_prefix_step` in
-[`Cylinder_Source_Coboundary.thy`](../../proofs/isabelle/temporal_clocks/Cylinder_Source_Coboundary.thy)
+[`Cylinder_Source_Coboundary.thy`](../../proofs/isabelle/integration/temporal_cylinders/temporal_clocks/Cylinder_Source_Coboundary.thy)
 uses the explicit premise `j < length ss`. `source_pair_valid_of_valid_pair`
 requires the source digits to satisfy the digit predicate; its 196 corollary is
 specialized to that valid source. `source_coboundary_emit` assumes both source
 validity and the index bound before identifying the emitted digit with the
 source coefficient plus the carry coboundary.
 
-[`Cylinder_Source_Publisher.thy`](../../proofs/isabelle/temporal_clocks/Cylinder_Source_Publisher.thy)
+[`Cylinder_Source_Publisher.thy`](../../proofs/isabelle/integration/temporal_cylinders/temporal_clocks/Cylinder_Source_Publisher.thy)
 proves support, symmetry, normalization, and `source_cylinder_next_step` for a
 valid source pair. The theorem is a one-step publisher. It does not recursively
 build the next admitted source object.
@@ -90,7 +90,7 @@ build the next admitted source object.
 The symbolic innovation arena transports exact expressions through reflection,
 translation, doubling, addition, and residue projection. The corresponding
 identities in
-[`Cylinder_Innovation_Transport.thy`](../../proofs/isabelle/temporal_clocks/Cylinder_Innovation_Transport.thy)
+[`Cylinder_Innovation_Transport.thy`](../../proofs/isabelle/integration/temporal_cylinders/temporal_clocks/Cylinder_Innovation_Transport.thy)
 are unconditional algebraic equalities. They do not prove that an arbitrary
 arena node is a source occurrence.
 
@@ -105,7 +105,7 @@ certificate must bind at least:
 - all thirteen typed output channels used by the next publisher.
 
 The complete-interface model in
-[`Reverse_196_Complete_Interface_Substitution.thy`](../../proofs/isabelle/temporal_clocks/Reverse_196_Complete_Interface_Substitution.thy)
+[`Reverse_196_Complete_Interface_Substitution.thy`](../../proofs/isabelle/integration/temporal_cylinders/temporal_clocks/Reverse_196_Complete_Interface_Substitution.thy)
 proves simultaneous substitution reads one frozen environment and preserves
 channel order and count. `reverse_196_two_publisher_steps_refine_two_steps`
 assumes a valid source pair. These are refinement laws for an admitted packet,
@@ -145,7 +145,7 @@ denote its discrete derivative. The seven-symbol forcing alphabet belongs to
 `beta`. It must not be silently assigned to `H`; integration would require a
 modular prefix state in addition to the carry state.
 
-[`Cylinder_Forcing_Alphabet.thy`](../../proofs/isabelle/temporal_forcing/Cylinder_Forcing_Alphabet.thy)
+[`Cylinder_Forcing_Alphabet.thy`](../../proofs/isabelle/integration/temporal_cylinders/temporal_forcing/Cylinder_Forcing_Alphabet.thy)
 proves:
 
 - `forcing_no_growth_beta_in_alphabet` for source values bounded by 18;
@@ -163,14 +163,14 @@ complete cylinder with a valid integration state.
 
 At `bits` bits of precision, radial terms can be discarded only under the
 stated divisibility assumptions. In
-[`Cylinder_Live_Forcing_Reduction.thy`](../../proofs/isabelle/temporal_clocks/Cylinder_Live_Forcing_Reduction.thy),
+[`Cylinder_Live_Forcing_Reduction.thy`](../../proofs/isabelle/integration/temporal_cylinders/temporal_clocks/Cylinder_Live_Forcing_Reduction.thy),
 `live_radial_scale_pruned` assumes `bits <= q`; `live_exponent_bounds` assumes
 `q < bits` and `r <= 3 * (q + 1)`. The resulting
 `live_growth_certificate_bounds` is therefore conditional on those exponent
 bounds.
 
 The actual-source premise now has a separate checked proof in
-[`Reverse_Growth_Run_Admission.thy`](../../proofs/isabelle/reverse_growth/Reverse_Growth_Run_Admission.thy).
+[`Reverse_Growth_Run_Admission.thy`](../../proofs/isabelle/families/reverse_add/reverse_growth/Reverse_Growth_Run_Admission.thy).
 For every valid symmetric pair field, `source_radial_growth_bound` proves
 `r <= 3*(q+1)` for the actual trajectory. During growth its edge coefficient
 `e` changes to `1 + e mod 10`. The rank assigning 3 to 18, 2 to 9, 1 to
@@ -229,7 +229,7 @@ interval quotient, reset/birth recovery, reflected innovation, next residual
 and output. Original source geometry and every published state are bound to
 scoped handles. The former carry-SLP-to-polynomial round trip has been removed
 from this consumer. The polynomial laws are in
-[`Reverse_Centered_Future_Grammar.thy`](../../proofs/isabelle/temporal_forcing/Reverse_Centered_Future_Grammar.thy);
+[`Reverse_Centered_Future_Grammar.thy`](../../proofs/isabelle/integration/temporal_cylinders/temporal_forcing/Reverse_Centered_Future_Grammar.thy);
 they do not refine the entire Python constructor or establish temporal pumping.
 
 **Implemented direct recovery:**
@@ -298,14 +298,14 @@ erase the work needed to construct it; this remains a research reference.
 Decimal addition has one physical carry direction, from least significant to
 most significant position. Reflected contexts are views of that same scan, not
 a second physical carry. The append and projected-join laws in
-[`Bilateral_Carry_Residual.thy`](../../proofs/isabelle/temporal_clocks/Bilateral_Carry_Residual.thy)
+[`Bilateral_Carry_Residual.thy`](../../proofs/isabelle/integration/temporal_cylinders/temporal_clocks/Bilateral_Carry_Residual.thy)
 make this distinction explicit. `no_two_step_carry_on_unchanged_primitive_boundary`
 has the narrow premise that the primitive boundary is unchanged; it is not a
 general temporal-collapse theorem.
 
-[`Bilateral_Cascade_Scan.thy`](../../proofs/isabelle/temporal_clocks/Bilateral_Cascade_Scan.thy)
+[`Bilateral_Cascade_Scan.thy`](../../proofs/isabelle/integration/temporal_cylinders/temporal_clocks/Bilateral_Cascade_Scan.thy)
 proves that the finite-word bilateral summaries equal sequential folds and
-emission. [`Cascade_Output_Elimination.thy`](../../proofs/isabelle/temporal_clocks/Cascade_Output_Elimination.thy)
+emission. [`Cascade_Output_Elimination.thy`](../../proofs/isabelle/integration/temporal_cylinders/temporal_clocks/Cascade_Output_Elimination.thy)
 proves two-stage semantic equality only when the component soundness and
 coverage assumptions hold. Functional overlap is proved separately.
 
@@ -317,7 +317,7 @@ stores the result for both possible incoming carries. Concatenation composes
 those two-state functions; repetition uses binary powering and never walks the
 represented positions.
 
-[`Cylinder_Residue_Carry_SLP.thy`](../../proofs/isabelle/temporal_forcing/Cylinder_Residue_Carry_SLP.thy)
+[`Cylinder_Residue_Carry_SLP.thy`](../../proofs/isabelle/integration/temporal_cylinders/temporal_forcing/Cylinder_Residue_Carry_SLP.thy)
 proves append, associative summary composition, repeat, and power laws under
 the carry-bit premise. `residue_interior_jumps_telescope` covers the interior
 sequence `c_(i+1)-c_i`. `residue_closed_jumps_exact` adds the terminal
@@ -344,7 +344,7 @@ incoming carry is zero.
 
 ### Centered event laws
 
-[`Cylinder_Centered_Clock.thy`](../../proofs/isabelle/temporal_clocks/Cylinder_Centered_Clock.thy)
+[`Cylinder_Centered_Clock.thy`](../../proofs/isabelle/integration/temporal_cylinders/temporal_clocks/Cylinder_Centered_Clock.thy)
 proves the carry bit/range laws and `centered_self_advance` for positive length.
 The first-reset, tail, outgoing, and jump-splitting lemmas assume the displayed
 factorization of the run; they do not discover that factorization. The source
@@ -366,7 +366,7 @@ A radial packet has the form
 \]
 
 with a bounded rational polynomial weight `P`. In
-[`Cylinder_Radial_Sections.thy`](../../proofs/isabelle/temporal_clocks/Cylinder_Radial_Sections.thy),
+[`Cylinder_Radial_Sections.thy`](../../proofs/isabelle/integration/temporal_cylinders/temporal_clocks/Cylinder_Radial_Sections.thy),
 truncation is proved in a ring satisfying `(2::'a)^bits = 0`.
 `signed_section_chart` and `cartier_chart_transport` assume chart slope `+1` or
 `-1`. These identities justify fixed-precision sections; they do not enumerate
@@ -374,7 +374,7 @@ or certify every integer coefficient of an unbounded source.
 
 ### Exact sparse zero certificates
 
-[`Cylinder_Radial_Event_Clock.thy`](../../proofs/isabelle/temporal_radial/Cylinder_Radial_Event_Clock.thy)
+[`Cylinder_Radial_Event_Clock.thy`](../../proofs/isabelle/shared/cylinder_algebra/radial/Cylinder_Radial_Event_Clock.thy)
 proves exact zero certificates for grouped finite radial bases. The gap-worklist
 soundness theorems are conditional: a successful search result is sound, and
 prior blocks must already carry zero certificates. They do not prove that a
@@ -408,7 +408,7 @@ N_i=P_p(k)(k+1-s_p)P_i(k+1)(t_i-k)
 \]
 
 The leading terms cancel, so `deg N_i <= deg P_p + deg P_i + 1`.
-[`Cylinder_Radial_Hypergeometric_Elimination.thy`](../../proofs/isabelle/temporal_radial/Cylinder_Radial_Hypergeometric_Elimination.thy)
+[`Cylinder_Radial_Hypergeometric_Elimination.thy`](../../proofs/isabelle/shared/cylinder_algebra/radial/Cylinder_Radial_Hypergeometric_Elimination.thy)
 checks the shifted-binomial identity, common-growth sum rule, pivot elimination,
 and an absolute-value propagation bound under the pivot-support premise.
 
@@ -452,7 +452,7 @@ reject a blanket sign-variation argument, not the exact elimination identity.
 
 ### Composition law
 
-[`Reverse_196_Complete_Interface_Substitution.thy`](../../proofs/isabelle/temporal_clocks/Reverse_196_Complete_Interface_Substitution.thy)
+[`Reverse_196_Complete_Interface_Substitution.thy`](../../proofs/isabelle/integration/temporal_cylinders/temporal_clocks/Reverse_196_Complete_Interface_Substitution.thy)
 proves that all replacements read one frozen source environment. It also proves
 composition and final restriction for a complete admitted packet, chronological
 extent injectivity, one-step observer refinement, and two publisher steps under
@@ -518,19 +518,19 @@ representation without being promoted to impossibility results.
 
 ### Checked restricted regions
 
-[`Cylinder_D2_Edge_Interior.thy`](../../proofs/isabelle/temporal_clocks/Cylinder_D2_Edge_Interior.thy)
+[`Cylinder_D2_Edge_Interior.thy`](../../proofs/isabelle/integration/temporal_cylinders/temporal_clocks/Cylinder_D2_Edge_Interior.thy)
 fixes the source form and assumes `m >= 3` for the chamber carry admission. It
 proves exact first and second successors, reflection, and directional output in
 that chamber.
 
-[`Cylinder_D4_Carry_Admission.thy`](../../proofs/isabelle/temporal_clocks/Cylinder_D4_Carry_Admission.thy)
+[`Cylinder_D4_Carry_Admission.thy`](../../proofs/isabelle/integration/temporal_cylinders/temporal_clocks/Cylinder_D4_Carry_Admission.thy)
 splits the small lengths and proves `d4_q2_forward_admitted` under `m >= 3` and
 `5 <= a <= 8`. The third carry theorem inherits the source specialization.
-[`Cylinder_D4_Source_Formulas.thy`](../../proofs/isabelle/temporal_clocks/Cylinder_D4_Source_Formulas.thy)
+[`Cylinder_D4_Source_Formulas.thy`](../../proofs/isabelle/integration/temporal_cylinders/temporal_clocks/Cylinder_D4_Source_Formulas.thy)
 gives the corresponding explicit formulas; its terminal and growth statements
 carry the same region assumptions.
 
-[`Uniform_Pair_Field_Grammar.thy`](../../proofs/isabelle/temporal_clocks/Uniform_Pair_Field_Grammar.thy)
+[`Uniform_Pair_Field_Grammar.thy`](../../proofs/isabelle/integration/temporal_cylinders/temporal_clocks/Uniform_Pair_Field_Grammar.thy)
 proves successor formulas for uniform pair values at most nine and for the high
 uniform branch. `uniform_no_growth_horizon` is conditional on
 `uniform_no_growth_admissible`; it is not an unconditional horizon for every
@@ -698,7 +698,7 @@ exist; the remaining constructor must reuse them.
 | Consumer-relative successor substitution | `ReverseContextualResidualArena.pullback`, `certify` | Certification covers the supplied continuation profile, not an unspecified whole-field continuation |
 
 The production connection currently loses information at
-[`ReverseMorphismTransferArena`](../../src/number_compiler/hashlife/execution/reverse_morphism_transfer.py):
+[`ReverseMorphismTransferArena`](../../src/number_compiler/sequences/reverse_add/reverse_morphism_transfer.py):
 its leaf compiler evaluates the primitive output at known producer ports and
 retains `ReverseBoundOutput`, a carry-consumer projection. Its spatial joins
 retain that projection. This is correct for its stated consumer, but cannot
@@ -778,7 +778,7 @@ output channels. Reflection uses extent `m+g`, and the leading digit has
 channels `(1,1)`; physical carry remains LSD to MSD.
 
 `output_crt_threshold_exact` and `normalized_output_crt_threshold_exact` in
-[Reverse_Threshold_Cocycle](../../proofs/isabelle/Reverse_Threshold_Cocycle.thy)
+[Reverse_Threshold_Cocycle](../../proofs/isabelle/families/reverse_add/reverse_residuals/Reverse_Threshold_Cocycle.thy)
 prove this local recovery. They assume normalized output residues; they do not
 construct those residues for an arbitrary future term.
 

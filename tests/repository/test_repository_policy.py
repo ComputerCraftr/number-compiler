@@ -67,6 +67,13 @@ def test_repository_root_has_no_session_level_execution_overrides(
 
 
 @pytest.mark.validation
+def test_shared_and_family_ownership_dependencies_are_respected(
+    policy_report: dict[str, object],
+) -> None:
+    assert policy_report["ownership_violations"] == ()
+
+
+@pytest.mark.validation
 def test_repository_python_call_graph_has_no_direct_or_mutual_recursion(
     policy_report: dict[str, object],
 ) -> None:

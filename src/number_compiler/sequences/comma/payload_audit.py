@@ -1,0 +1,560 @@
+"""Read-only validators for one ledger-owned comma term's retained payloads."""
+
+from __future__ import annotations
+
+from collections.abc import Hashable
+from typing import TYPE_CHECKING
+
+from number_compiler.hashlife.execution.source_bound_images import SourceImageBinding
+
+if TYPE_CHECKING:
+    from number_compiler.sequences.comma.power import CommaTerm, _CommaImageAdapter
+
+from typing import cast
+
+from number_compiler.resources.ledger import ResourceLedger
+from number_compiler.resources.payload_contracts import (
+    PayloadAuditContribution,
+    PayloadAuditEntry,
+)
+
+
+def audit_comma_term(ledger: object, root: object) -> PayloadAuditContribution:
+    """Validate a term's action and occurrence stores without opening image records.
+
+    Scheduler image seals and source/action provenance belong to the shared
+    source-image auditor.  This owner checks the family-specific records and
+    leaves per-image arithmetic binding to ``audit_image_binding``.
+    """
+    from number_compiler.hashlife.execution.source_bound_images import SourceImageID
+    from number_compiler.resources.stores import LedgerDict
+    from number_compiler.sequences.comma.action_arena import (
+        CommaActionID,
+        _Action,
+        _action_snapshot,
+        _template_seal,
+    )
+    from number_compiler.sequences.comma.boundary_quotient import (
+        PERIOD,
+        AffineWeight,
+        BoundaryState,
+        MacroTemplate,
+        SectorFragment,
+    )
+    from number_compiler.sequences.comma.power import (
+        SOURCE,
+        CommaTerm,
+        _Occurrence,
+    )
+
+    if type(ledger) is not ResourceLedger or type(root) is not CommaTerm:
+        raise TypeError("comma payload audit requires its exact term root")
+    term = root
+    arena = term.arena
+    invalid: list[PayloadAuditEntry] = []
+
+    def reject(owner: int, value: object) -> None:
+        invalid.append(PayloadAuditEntry(owner, value))
+
+    aliases = (
+        (arena._owner, "_audit_action_nodes", arena._nodes),
+        (arena._key_owner, "_audit_action_keys", arena._keys),
+        (arena._snapshot_owner, "_audit_action_snapshots", arena._snapshots),
+        (arena._boundary_owner, "_audit_boundary_templates", arena._boundary_templates),
+        (
+            arena._boundary_seal_owner,
+            "_audit_boundary_seals",
+            arena._boundary_seals,
+        ),
+        (
+            arena._boundary_seal_node_owner,
+            "_audit_boundary_seal_nodes",
+            arena._boundary_seal_nodes,
+        ),
+        (
+            arena._boundary_node_owner,
+            "_audit_boundary_nodes",
+            arena._boundary_nodes,
+        ),
+        (term._occurrence_owner, "_audit_occurrences", term._occurrences),
+        (
+            term._occurrence_seal_owner,
+            "_audit_occurrence_seals",
+            term._occurrence_seals,
+        ),
+    )
+    if (
+        term.ledger is not ledger
+        or term.adapter.ledger is not ledger
+        or term.adapter.arena is not arena
+        or term.adapter._term is not term
+        or term.scheduler.ledger is not ledger
+        or term.scheduler._source_only is not True
+        or any(
+            getattr(term, attribute, None) is not store
+            for _, attribute, store in aliases
+        )
+    ):
+        reject(arena._owner, term)
+        return PayloadAuditContribution((), tuple(invalid))
+
+    nodes = arena._nodes._data
+    snapshots = arena._snapshots._data
+    keys = arena._keys._data
+    canonical: dict[int, CommaActionID] = {}
+    action_valid = len(nodes) == len(snapshots)
+    for action_key, identifier in keys.items():
+        try:
+            if type(action_key) is not tuple or type(identifier) is not CommaActionID:
+                raise TypeError("comma action index has another record sort")
+            identifier.validate(arena.token, arena.kind, size=len(nodes))
+            local_id = identifier.local_id
+            node = nodes[local_id]
+            if local_id in canonical:
+                raise ValueError("comma action has multiple canonical keys")
+            if type(node) is not _Action:
+                raise TypeError("comma action has another node sort")
+            if node.kind == "identity":
+                expected_key: tuple[object, ...] = ("identity",)
+                valid_node = node.steps == 0
+            elif node.kind == "step":
+                expected_key = ("step", node.child_digit)
+                valid_node = node.steps == 1 and 1 <= node.child_digit <= 9
+            elif node.kind == "cycle":
+                from math import gcd
+
+                expected_key = (
+                    "cycle",
+                    node.leading,
+                    node.entering_digit % gcd(node.leading, 10),
+                    node.cycles,
+                )
+                valid_node = (
+                    1 <= node.leading <= 9
+                    and 0 <= node.entering_digit <= 9
+                    and node.cycles >= 1
+                    and node.steps >= 1
+                    and type(node.displacement) is int
+                    and type(node.maximum_guard) is int
+                )
+            elif node.kind == "phase-prefix":
+                expected_key = (
+                    "phase-prefix",
+                    node.leading,
+                    node.entering_digit,
+                    node.steps,
+                )
+                valid_node = (
+                    type(node.steps) is int
+                    and 0 < node.steps < 10
+                    and 1 <= node.leading <= 9
+                    and 0 <= node.entering_digit <= 9
+                )
+            elif node.kind == "sequence":
+                expected_key = ("sequence", node.before, node.after)
+                valid_node = node.before is not None and node.after is not None
+            elif node.kind == "boundary-prefix":
+                state = node.boundary_source
+                valid_node = (
+                    type(state) is BoundaryState
+                    and type(node.steps) is int
+                    and node.steps >= 0
+                    and type(node.boundary_exponent) is int
+                    and node.boundary_exponent >= 5
+                    and node.boundary_exponent % PERIOD == state.exponent_residue
+                )
+                expected_key = (
+                    "boundary-prefix",
+                    state,
+                    node.boundary_exponent,
+                    node.steps,
+                )
+            else:
+                raise ValueError("comma action has an unknown semantic kind")
+            if not valid_node or action_key != expected_key:
+                raise ValueError("comma action key and node disagree")
+            canonical[local_id] = identifier
+        except (AttributeError, IndexError, TypeError, ValueError):
+            action_valid = False
+            reject(arena._key_owner, action_key)
+            reject(arena._key_owner, identifier)
+
+    for local_id, node in enumerate(nodes):
+        try:
+            if (
+                type(node) is not _Action
+                or local_id not in canonical
+                or _action_snapshot(node) != snapshots[local_id]
+            ):
+                raise ValueError("comma action differs from its publication seal")
+            if node.kind == "sequence":
+                before, after = node.before, node.after
+                if (
+                    before is None
+                    or after is None
+                    or before.local_id >= local_id
+                    or after.local_id >= local_id
+                    or before is not canonical.get(before.local_id)
+                    or after is not canonical.get(after.local_id)
+                    or node.steps
+                    != nodes[before.local_id].steps + nodes[after.local_id].steps
+                ):
+                    raise ValueError(
+                        "comma composition has invalid chronological children"
+                    )
+            elif node.kind == "boundary-prefix":
+                state = node.boundary_source
+                if (
+                    state is None
+                    or state not in arena._boundary_templates._data
+                    or node.boundary_exponent
+                    != (
+                        state.exponent_residue
+                        if state.exponent_residue >= 5
+                        else state.exponent_residue + PERIOD
+                    )
+                ):
+                    raise ValueError("comma boundary action lost its admitted template")
+        except (AttributeError, IndexError, TypeError, ValueError):
+            action_valid = False
+            reject(arena._owner, node)
+            if local_id < len(snapshots):
+                reject(arena._snapshot_owner, snapshots[local_id])
+    if len(canonical) != len(nodes):
+        action_valid = False
+        reject(arena._owner, arena._nodes)
+
+    boundary_valid = True
+    expected_nodes: list[object] = []
+    expected_seal_nodes: list[object] = []
+    templates = arena._boundary_templates._data
+    seals = arena._boundary_seals._data
+    if len(seals) != len(templates):
+        boundary_valid = False
+        reject(arena._boundary_seal_owner, arena._boundary_seals)
+    for template_state, template in templates.items():
+        try:
+            if (
+                type(template_state) is not BoundaryState
+                or type(template) is not MacroTemplate
+                or template.source is not template_state
+                or template.outcome not in ("fork", "landmine")
+                or type(template.exponent_delta) is not int
+                or template.exponent_delta < 0
+                or type(template.weight) is not AffineWeight
+                or type(template.endpoint) is not AffineWeight
+                or type(template.sector_fragments) is not tuple
+                or type(template.prefix_weights) is not tuple
+                or type(template.prefix_displacements) is not tuple
+                or len(template.prefix_weights) != len(template.sector_fragments) + 1
+                or len(template.prefix_displacements)
+                != len(template.sector_fragments) + 1
+                or template.prefix_weights[0] != AffineWeight(0, 0, 1)
+                or template.prefix_displacements[0] != AffineWeight(0, 0, 1)
+                or template.prefix_weights[-1] != template.weight
+                or any(
+                    type(item) is not SectorFragment
+                    for item in template.sector_fragments
+                )
+                or any(
+                    type(item) is not AffineWeight for item in template.prefix_weights
+                )
+                or any(
+                    type(item) is not AffineWeight
+                    for item in template.prefix_displacements
+                )
+            ):
+                raise ValueError("comma boundary template has another shape")
+            template_seal = seals[template_state]
+            if type(template_seal) is not tuple or template_seal != _template_seal(
+                template
+            ):
+                raise ValueError("comma boundary template differs from its seal")
+            if template.outcome == "fork":
+                if (
+                    template.destination_a is None
+                    or len(template.ordered_children) != 2
+                    or template.ordered_children[0]
+                    != BoundaryState(
+                        "N",
+                        template.destination_a,
+                        (template_state.exponent_residue + template.exponent_delta)
+                        % PERIOD,
+                    )
+                    or template.ordered_children[1]
+                    != BoundaryState(
+                        "Z",
+                        template.destination_a,
+                        (template_state.exponent_residue + template.exponent_delta)
+                        % PERIOD,
+                    )
+                ):
+                    raise ValueError("comma fork template has wrong ordered children")
+            elif template.destination_a is not None or template.ordered_children:
+                raise ValueError("comma landmine template has fabricated children")
+            expected_nodes.extend(
+                (
+                    template,
+                    *template.sector_fragments,
+                    *template.prefix_weights,
+                    *template.prefix_displacements,
+                )
+            )
+            expected_seal_nodes.extend(cast(tuple[object, ...], template_seal[1]))
+            expected_seal_nodes.extend(cast(tuple[object, ...], template_seal[2]))
+            expected_seal_nodes.extend(cast(tuple[object, ...], template_seal[3]))
+        except (AttributeError, IndexError, KeyError, TypeError, ValueError):
+            boundary_valid = False
+            reject(arena._boundary_owner, template)
+            if template_state in seals:
+                reject(arena._boundary_seal_owner, seals[template_state])
+    if (
+        len(expected_nodes) != len(arena._boundary_nodes)
+        or any(
+            actual is not expected
+            for actual, expected in zip(arena._boundary_nodes._data, expected_nodes)
+        )
+        or len(expected_seal_nodes) != len(arena._boundary_seal_nodes)
+        or any(
+            actual is not expected
+            for actual, expected in zip(
+                arena._boundary_seal_nodes._data, expected_seal_nodes
+            )
+        )
+    ):
+        boundary_valid = False
+        reject(arena._boundary_node_owner, arena._boundary_nodes)
+        reject(arena._boundary_seal_node_owner, arena._boundary_seal_nodes)
+
+    occurrence_valid = len(term._occurrences) == len(term._occurrence_seals)
+    for occurrence, occurrence_seal in zip(
+        term._occurrences._data, term._occurrence_seals._data
+    ):
+        if (
+            type(occurrence) is not _Occurrence
+            or occurrence is not occurrence_seal
+            or type(occurrence.image) is not SourceImageID
+            or type(occurrence.value) is not int
+            or occurrence.value < SOURCE
+        ):
+            occurrence_valid = False
+            reject(term._occurrence_owner, occurrence)
+            reject(term._occurrence_seal_owner, occurrence_seal)
+        elif (
+            type(occurrence.absolute_index) is not int
+            or occurrence.absolute_index < 1
+            or occurrence.certificate_version != term.certificate_version
+        ):
+            occurrence_valid = False
+            reject(term._occurrence_owner, occurrence)
+    if not action_valid or not boundary_valid or not occurrence_valid:
+        return PayloadAuditContribution((), tuple(invalid))
+
+    approved: list[PayloadAuditEntry] = []
+    for owner, _attribute, store in aliases:
+        if isinstance(store, LedgerDict):
+            for map_key, value in store._data.items():
+                approved.append(PayloadAuditEntry(owner, map_key))
+                approved.append(PayloadAuditEntry(owner, value))
+        else:
+            approved.extend(PayloadAuditEntry(owner, item) for item in store._data)
+    return PayloadAuditContribution(tuple(approved), tuple(invalid))
+
+
+__all__ = ["audit_comma_term"]
+
+
+def audit_comma_image_binding(
+    adapter: _CommaImageAdapter,
+    binding: SourceImageBinding,
+    payload: object,
+    failure_prefix: Hashable | None,
+) -> None:
+    """Validate one image's family binding without querying or charging it."""
+    from number_compiler.hashlife.execution.source_bound_images import (
+        SourceImageID,
+        _ImageRecord,
+    )
+    from number_compiler.sequences.comma.action_arena import CommaActionID, _Action
+    from number_compiler.sequences.comma.power import (
+        SOURCE,
+        CommaImagePayload,
+        CommaOccurrenceID,
+        CommaSource,
+        _Occurrence,
+    )
+
+    if failure_prefix is not None:
+        raise ValueError("comma images cannot publish a failure prefix")
+
+    term = adapter._term
+    if (
+        type(binding) is not SourceImageBinding
+        or type(payload) is not CommaImagePayload
+        or term is None
+        or adapter.ledger is not term.ledger
+        or adapter.arena is not term.arena
+        or binding.family != adapter.family
+        or binding.semantic_version != adapter.semantic_version
+        or type(binding.action) is not CommaActionID
+        or type(binding.extent) is not int
+        or binding.extent < 0
+        or binding.orientation != 1
+        or binding.radix != 10
+        or binding.precision is not None
+        or type(binding.boundary_ports) is not tuple
+        or len(binding.boundary_ports) != 3
+        or any(type(value) is not int for value in binding.boundary_ports)
+        or type(payload.value) is not int
+        or payload.value < SOURCE
+        or type(payload.absolute_index) is not int
+        or payload.absolute_index < 1
+        or type(payload.certificate_version) is not str
+        or payload.certificate_version != term.certificate_version
+    ):
+        raise ValueError("comma image has invalid family binding fields")
+
+    output_ports = cast(tuple[int, int, int], binding.boundary_ports)
+    if not (
+        1 <= output_ports[0] <= 9 and 0 <= output_ports[1] <= 9 and output_ports[2] >= 1
+    ):
+        raise ValueError("comma image has invalid boundary ports")
+
+    action = binding.action
+    action.validate(
+        adapter.arena.token, adapter.arena.kind, size=len(adapter.arena._nodes)
+    )
+    node = adapter.arena._nodes._data[action.local_id]
+    if type(node) is not _Action:
+        raise ValueError("comma image action has another node sort")
+
+    source_value: int
+    source_index: int
+    source_ports: tuple[int, int, int] | None = None
+    source = binding.source
+    if type(source) is CommaSource:
+        if (
+            source.value != SOURCE
+            or source.certificate_version != term.certificate_version
+        ):
+            raise ValueError("comma image has a foreign literal source")
+        source_value, source_index = SOURCE, 1
+    elif type(source) is CommaOccurrenceID:
+        source.validate(
+            term._occurrence_token,
+            term._occurrence_kind,
+            size=len(term._occurrences),
+        )
+        if source.local_id >= len(term._occurrence_seals):
+            raise ValueError("comma image source occurrence has no seal")
+        occurrence = term._occurrences._data[source.local_id]
+        if (
+            type(occurrence) is not _Occurrence
+            or occurrence is not term._occurrence_seals._data[source.local_id]
+            or occurrence.certificate_version != term.certificate_version
+        ):
+            raise ValueError("comma image source occurrence is unauthenticated")
+        source_value = occurrence.value
+        source_index = occurrence.absolute_index
+    elif type(source) is SourceImageID:
+        core = adapter.scheduler._source_images
+        if core is None:
+            raise ValueError(
+                "comma image audit requires an existing source-image owner"
+            )
+        source.validate(core.owner, core._KIND, size=len(core._nodes))
+        parent = core._nodes._data[source.local_id]
+        if (
+            type(parent) is not _ImageRecord
+            or parent.binding.family != adapter.family
+            or parent.binding.semantic_version != adapter.semantic_version
+            or type(parent.payload) is not CommaImagePayload
+            or parent.payload.certificate_version != term.certificate_version
+        ):
+            raise ValueError("comma image source belongs to another family")
+        source_value = parent.payload.value
+        source_index = parent.payload.absolute_index
+        source_ports = cast(tuple[int, int, int], parent.binding.boundary_ports)
+    else:
+        raise ValueError("comma image has an unsupported source authority")
+
+    # Admission starts a new relative extent even when its source is an image.
+    # The absolute literal index remains transported from that source payload.
+    if (
+        binding.extent != node.steps
+        or payload.absolute_index != source_index + node.steps
+    ):
+        raise ValueError("comma image extent differs from its admitted action")
+    if source_ports is not None and node.kind in ("cycle", "phase-prefix"):
+        leading, digit, headroom = source_ports
+        if (
+            output_ports != (leading, digit, headroom - node.displacement)
+            or payload.value != source_value + node.displacement
+        ):
+            raise ValueError("comma image lost its powered port transport")
+    elif node.kind == "identity" and payload.value != source_value:
+        raise ValueError("comma identity changed the source value")
+    elif node.kind == "step" and payload.value != (
+        source_value + 10 * (source_value % 10) + node.child_digit
+    ):
+        raise ValueError("comma primitive image changed its selected child")
+
+
+def register_comma_term_audit(term: CommaTerm) -> None:
+    from number_compiler.resources.payload_contracts import (
+        PayloadAuditStoreBinding,
+    )
+
+    term.ledger.register_execution_root(term)
+    term.ledger.register_payload_audit_contract(
+        term,
+        "comma",
+        (
+            PayloadAuditStoreBinding(
+                term.arena._owner,
+                "_audit_action_nodes",
+                "temporal_action",
+            ),
+            PayloadAuditStoreBinding(
+                term.arena._key_owner,
+                "_audit_action_keys",
+                "action_interning",
+            ),
+            PayloadAuditStoreBinding(
+                term.arena._snapshot_owner,
+                "_audit_action_snapshots",
+                "action_publication_seal",
+            ),
+            PayloadAuditStoreBinding(
+                term.arena._boundary_owner,
+                "_audit_boundary_templates",
+                "boundary_template",
+            ),
+            PayloadAuditStoreBinding(
+                term.arena._boundary_seal_owner,
+                "_audit_boundary_seals",
+                "boundary_publication_seal",
+            ),
+            PayloadAuditStoreBinding(
+                term.arena._boundary_seal_node_owner,
+                "_audit_boundary_seal_nodes",
+                "boundary_publication_seal_component",
+            ),
+            PayloadAuditStoreBinding(
+                term.arena._boundary_node_owner,
+                "_audit_boundary_nodes",
+                "boundary_template_node",
+            ),
+            PayloadAuditStoreBinding(
+                term._occurrence_owner,
+                "_audit_occurrences",
+                "source_occurrence",
+            ),
+            PayloadAuditStoreBinding(
+                term._occurrence_seal_owner,
+                "_audit_occurrence_seals",
+                "source_occurrence_seal",
+            ),
+        ),
+        audit_comma_term,
+    )

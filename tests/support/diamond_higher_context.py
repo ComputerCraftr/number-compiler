@@ -27,6 +27,7 @@ from number_compiler.hashlife.execution.continuations.diamond_tasks import Task
 from number_compiler.hashlife.interfaces.diamond_boundary_expr import ExprID
 from number_compiler.resources.ledger import ResourceLedger
 from number_compiler.sequences.collatz.block_power import CollatzPhysicalBlockEffect
+from number_compiler.sequences.collatz.tile_family_hooks import collatz_tile_hooks
 
 if TYPE_CHECKING:
     from number_compiler.arithmetic.contracts.scoped_handles import (
@@ -38,7 +39,7 @@ def machine(
     bits: tuple[int, ...] = (1, 1, 0, 1, 1), extent: int = 8
 ) -> tuple[DiamondRuntime, ActionProgramID]:
     ledger = ResourceLedger()
-    compiler = LazyCompiler(ledger)
+    compiler = LazyCompiler(ledger, family_hooks=collatz_tile_hooks())
     primitive = compiler.atom(CollatzPhysicalBlockEffect())
     geometry = SourceGeometry(ledger, ExactSource(bits, 2, "collatz", 2, extent))
     geometry.span(bits, 2, extent)

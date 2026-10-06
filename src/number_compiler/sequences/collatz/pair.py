@@ -291,6 +291,72 @@ def collatz_slab_mod_odd(slab: CollatzParitySlab, modulus: int) -> CollatzAffine
     )
 
 
+@dataclass(frozen=True, slots=True)
+class CollatzValuationState:
+    """Exact reduced description of one accelerated odd Collatz *action*.
+
+    ``k=v2(3n+1)`` determines ``n -> (3n+1)/2^k``.  This object is used only
+    when the exact accelerated action is required.  Cheaper observers must not
+    acquire it first: strict growth is the modulo-four source character, while
+    an order-m cyclotomic lane needs only ``k mod m`` (see
+    :mod:`number_compiler.sequences.collatz.character`).
+
+    Like :class:`ReverseAddGrowthState`, this is an action state rather than a
+    closed orbit state: ``k_t`` alone does not determine ``k_(t+1)``.
+    """
+
+    valuation: int
+
+    def __post_init__(self) -> None:
+        value = int(self.valuation)
+        if value <= 0:
+            raise ValueError(value)
+        object.__setattr__(self, "valuation", value)
+
+    @classmethod
+    def from_odd_value(cls, value: int) -> CollatzValuationState:
+        value = int(value)
+        if value <= 0 or not (value & 1):
+            raise ValueError(value)
+        return cls(v2(3 * value + 1))
+
+    @property
+    def increases(self) -> bool:
+        # For positive odd n, k=1 gives (3n+1)/2 > n; k>=2 gives <=n.
+        return self.valuation == 1
+
+    @property
+    def phase_symbol(self) -> int:
+        return 1 if self.increases else 0
+
+    def shift_phase(self, order: int) -> int:
+        order = int(order)
+        if order <= 0:
+            raise ValueError(order)
+        return self.valuation % order
+
+    def apply(self, value: int) -> int:
+        value = int(value)
+        if value <= 0 or not (value & 1):
+            raise ValueError(value)
+        numerator = 3 * value + 1
+        if v2(numerator) != self.valuation:
+            raise ValueError("valuation state does not match source")
+        return numerator >> self.valuation
+
+    @property
+    def projection(self) -> CollatzValuationProjectionBlock:
+        return CollatzValuationProjectionBlock.symbol(self.valuation)
+
+    @property
+    def canonical_key(self) -> tuple[object, ...]:
+        return ("collatz-valuation-state", self.valuation)
+
+    @property
+    def description_bits(self) -> int:
+        return bit_width(self.valuation)
+
+
 def accelerated_odd_target_mod3_from_valuation(valuation: int) -> int:
     """Residue of ``(3*n+1)/2**valuation`` mod 3 for every odd source ``n``.
 
@@ -307,6 +373,7 @@ def accelerated_odd_target_mod3_from_valuation(valuation: int) -> int:
 __all__ = [
     "CollatzAffineResidue",
     "CollatzValuationProjectionBlock",
+    "CollatzValuationState",
     "CollatzValuationStep",
     "Mul3CarryFn",
     "accelerated_odd_collatz",

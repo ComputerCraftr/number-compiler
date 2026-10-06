@@ -129,6 +129,11 @@ class CollatzRuntimeProgramArena:
             node_count=lambda: self._identity_storage_nodes,
             payloads=self._semantic_identities.items,
         )
+        from number_compiler.sequences.collatz.payload_audit import (
+            register_collatz_runtime_program_contract,
+        )
+
+        register_collatz_runtime_program_contract(self)
 
     @property
     def nodes(self) -> tuple[CollatzRuntimeProgram, ...]:

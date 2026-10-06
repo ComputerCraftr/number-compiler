@@ -1,0 +1,31 @@
+session Cylinder_Forcing_Automata in temporal_forcing = Reverse_Residuals +
+  options [document = false, quick_and_dirty = false]
+  theories
+    Cylinder_Forcing_Alphabet
+    Cylinder_Residue_Carry_SLP
+    Reverse_Centered_Future_Grammar
+session Temporal_Clock_Jumps in temporal_clocks = Reverse_Residuals +
+  options [document = false, quick_and_dirty = false]
+  sessions Shared_S_Arithmetic Cylinder_Radial_Algebra Cylinder_Forcing_Automata Collatz_Cylinder_Refinement
+  theories
+    Temporal_Clock_Jumps
+    Decimal_Clock_Jumps
+    Decimal_Publisher_Constructor
+    Reverse_196_Complete_Interface_Substitution
+    Bilateral_Cascade_Scan
+    Bilateral_Carry_Residual
+    Cascade_Output_Elimination
+    Uniform_Pair_Field_Grammar
+    Cylinder_Innovation_Transport
+    Cylinder_Coboundary_Publisher
+    Cylinder_Source_Coboundary
+    Cylinder_Centered_Clock
+    Cylinder_Live_Forcing_Reduction
+    Cylinder_Source_Publisher
+    Cylinder_D2_Edge_Interior
+    Cylinder_D4_Source_Formulas
+    Cylinder_D4_Carry_Admission
+    Cylinder_Radial_Sections
+    Power_Clock_Jumps
+    Five_Bit_Folded_Square
+    Radix64_Mirror_Correlation

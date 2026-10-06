@@ -13,6 +13,9 @@ from number_compiler.hashlife.execution.tile_execution_adapter import (
     TileExecutionAdapter,
 )
 from number_compiler.hashlife.interfaces.diamond_quotient import LocalInterfaceID
+from number_compiler.hashlife.tiles.ordered_boolean_support import (
+    OrderedBooleanSupportArena,
+)
 from number_compiler.hashlife.tiles.tile_context import (
     ChildContext,
     PrimitiveTileResult,
@@ -42,7 +45,6 @@ from number_compiler.resources.causal_workspace import (
     CausalTaskWorkspace,
 )
 from number_compiler.resources.tile_dependency_leases import TileDependencyLeases
-from number_compiler.sequences.collatz.physical_support import PhysicalSupportArena
 
 __all__ = [
     "BoundPorts",
@@ -52,7 +54,7 @@ __all__ = [
     "CompletedResult",
     "CompletedResultArena",
     "LocalInterfaceID",
-    "PhysicalSupportArena",
+    "OrderedBooleanSupportArena",
     "PoweredResultKey",
     "PrimitiveTileResult",
     "ResultLease",

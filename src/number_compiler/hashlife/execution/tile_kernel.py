@@ -38,9 +38,6 @@ from number_compiler.hashlife.actions.tile_action_algebra import (
 from number_compiler.hashlife.actions.tile_action_algebra import (
     compose_actions as _compose_actions,
 )
-from number_compiler.hashlife.execution.reverse_morphism_transfer import (
-    ReverseMorphismTransferArena,
-)
 from number_compiler.hashlife.execution.tile_boundary_transfer import (
     bind_boundaries as _bind_boundaries,
 )
@@ -49,6 +46,10 @@ from number_compiler.hashlife.execution.tile_boundary_transfer import (
 )
 from number_compiler.hashlife.execution.tile_boundary_transfer import (
     validate_boundaries as _validate_boundaries,
+)
+from number_compiler.hashlife.execution.tile_execution_adapter import (
+    FamilyTileHooks,
+    FinitePairTransfer,
 )
 from number_compiler.hashlife.execution.tile_fused_kernel import (
     LeafProductKey,
@@ -67,6 +68,9 @@ from number_compiler.hashlife.execution.tile_fused_kernel import (
 )
 from number_compiler.hashlife.execution.tile_fused_kernel import (
     fused_primitive_pair as _fused_primitive_pair,
+)
+from number_compiler.hashlife.execution.tile_kernel_validation import (
+    admit_family_effect as _admit_family_effect,
 )
 from number_compiler.hashlife.execution.tile_kernel_validation import (
     validate_action_record as _validate_action_record,
@@ -100,6 +104,7 @@ from number_compiler.hashlife.observation.diamond_observers import NonblankBlock
 from number_compiler.hashlife.tiles.reverse_threshold_summary import (
     observe_current_growth,
 )
+from number_compiler.hashlife.tiles.temporal_cocycle import TemporalCocycle
 from number_compiler.hashlife.tiles.tile_boundaries import (
     BoundaryTileOperands,
     BoundaryTileView,
@@ -108,7 +113,6 @@ from number_compiler.hashlife.tiles.tile_context import (
     ChildContext,
     PrimitiveTileResult,
     ResultSemantics,
-    TemporalCocycle,
 )
 from number_compiler.hashlife.tiles.tile_ports import BoundPorts, ResultWiring
 from number_compiler.hashlife.tiles.tile_result_records import (
@@ -125,17 +129,6 @@ from number_compiler.projection.digit_terminal import DigitNormalizeBlockEffect
 from number_compiler.resources.fused_traversal_workspace import FusedTraversalWorkspace
 from number_compiler.resources.ledger import ResourceLedger
 from number_compiler.resources.stores import LedgerDict
-from number_compiler.sequences.collatz.block_power import CollatzPhysicalBlockEffect
-
-_CONTRACT = (
-    "primitive-canonical-tile-v1",
-    "two-sided-boundary-transfer",
-    "leaf-output-or-left-edge-output",
-    "bounded-child-activity-and-edge-halos",
-    "exact-interval-output-owned-by-completed-tile",
-)
-_LEFT = PortVariable(0, 0, "tile-left", 0)
-_RIGHT = PortVariable(0, 1, "tile-right", 0)
 
 
 class PrimitiveTileKernelAdapter:
@@ -150,10 +143,24 @@ class PrimitiveTileKernelAdapter:
         tiles: TileArena,
         kernels: DiamondKernelArena,
         quotients: DiamondQuotientArena,
+        *,
+        family_hooks: FamilyTileHooks | None = None,
+        pair_transfer: FinitePairTransfer | None = None,
     ) -> None:
         if not (tiles.ledger is kernels.ledger and kernels.ledger is quotients.ledger):
             raise ValueError("primitive tile execution requires one index ledger")
         self.tiles, self.kernels, self.quotients = tiles, kernels, quotients
+        if family_hooks is not None and type(family_hooks) is not FamilyTileHooks:
+            raise TypeError("primitive tile adapter requires canonical family hooks")
+        if pair_transfer is not None and not isinstance(
+            pair_transfer, FinitePairTransfer
+        ):
+            raise TypeError("primitive tile adapter requires a typed pair transfer")
+        if pair_transfer is not None and pair_transfer.ledger is not tiles.ledger:
+            raise ValueError("primitive pair transfer belongs to another ledger")
+        self.family_hooks = family_hooks
+        self.pair_transfer = pair_transfer
+        kernels.bind_family_hooks(family_hooks)
         self.ledger: ResourceLedger = tiles.ledger
         self.bits, self.structures = quotients.structures.bits, quotients.structures
         self.owner = ArenaToken("primitive-tile-actions")
@@ -208,7 +215,6 @@ class PrimitiveTileKernelAdapter:
             )
         self._next_action = 0
         self.results: CompletedResultArena | None = None
-        self._reverse_morphism_transfer: ReverseMorphismTransferArena | None = None
         self.ledger.register_execution_root(self)
 
     def attach_results(self, results: CompletedResultArena) -> None:
@@ -232,12 +238,9 @@ class PrimitiveTileKernelAdapter:
             FiniteBlockEffect,
             DigitNormalizeBlockEffect,
             NonblankBlockEffect,
-            CollatzPhysicalBlockEffect,
             SymbolicBinaryDivisionEffect,
         ):
-            raise ValueError(
-                "unsupported weighted runtime kernel: no certified odd-event output channel"
-            )
+            effect = _admit_family_effect(effect, self.family_hooks)
         division_radix = certified_binary_division_radix(effect)
         if type(effect) is SymbolicBinaryDivisionEffect and division_radix is None:
             raise ValueError("symbolic division has malformed fixed semantics")
@@ -273,8 +276,7 @@ class PrimitiveTileKernelAdapter:
                 or record.cocycle != action_cocycle
                 or record.repetitions != 1
                 or not record.homogeneous
-                or record.spatial_events_add
-                != (type(effect) is CollatzPhysicalBlockEffect)
+                or record.spatial_events_add != self._spatial_events_add(effect)
                 or blank_context_metadata(record)
                 != (
                     effect.blank_left_tail,
@@ -303,7 +305,7 @@ class PrimitiveTileKernelAdapter:
                 None,
                 action_cocycle,
                 1,
-                spatial_events_add=type(effect) is CollatzPhysicalBlockEffect,
+                spatial_events_add=self._spatial_events_add(effect),
                 blank_left_tail=effect.blank_left_tail,
                 blank_right_tail=effect.blank_right_tail,
                 stable_blank_output=effect.stable_blank_output,
@@ -322,6 +324,12 @@ class PrimitiveTileKernelAdapter:
             raise
         self.ledger.bump("tile_temporal_action_publications")
         return self._handle(local_id)
+
+    def _spatial_events_add(self, effect: BlockEffect) -> bool:
+        hooks = self.family_hooks
+        return (
+            hooks is not None and hooks.owns_effect(effect) and hooks.spatial_events_add
+        )
 
     def _handle(self, local_id: int) -> FieldCellActionID:
         return FieldCellActionID(self.owner, "field-cell-action", local_id)
@@ -840,7 +848,7 @@ class PrimitiveTileKernelAdapter:
         kernel = self.kernels.kernel(self._action(action).kernel)
         if left.physical_ticks != right.physical_ticks:
             raise ValueError("spatial children represent different temporal actions")
-        if type(kernel.effect) is CollatzPhysicalBlockEffect:
+        if self._spatial_events_add(kernel.effect):
             event_weight = left.event_weight + right.event_weight
             if event_weight not in (0, 1) or left.frame_shift or right.frame_shift:
                 raise ValueError("physical Collatz children have invalid observations")

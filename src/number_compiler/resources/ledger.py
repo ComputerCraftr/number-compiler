@@ -11,6 +11,18 @@ from weakref import ReferenceType, ref
 from number_compiler.arithmetic.contracts.block_effect import BlockContextBudgetExceeded
 from number_compiler.arithmetic.contracts.input_validation import require_integer
 from number_compiler.arithmetic.contracts.scoped_handles import ArenaHandle
+from number_compiler.resources.payload_contracts import (
+    PayloadAuditContractAudit,
+    PayloadAuditContribution,
+    PayloadAuditStoreBinding,
+    _drop_owner_contracts,
+    _drop_root_contracts,
+    _PayloadAuditBinding,
+    audit_payload_contracts,
+    clear_payload_audit_contracts,
+    register_payload_audit_contract,
+    remove_payload_audit_contract,
+)
 from number_compiler.resources.stores import LedgerDict, LedgerList
 
 _StoreK = TypeVar("_StoreK")
@@ -91,6 +103,8 @@ class ResourceLedger:
         self._names: dict[str, int] = {}
         self._factory_containers: set[int] = set()
         self._execution_roots: dict[int, ReferenceType[object]] = {}
+        self._payload_audit_contracts: dict[tuple[int, str], _PayloadAuditBinding] = {}
+        self._payload_audit_snapshot: PayloadAuditContractAudit | None = None
         self.entries = 0
         self.nodes = 0
         self.peak_entries = 0
@@ -112,6 +126,7 @@ class ResourceLedger:
     def note_store_mutation(self) -> None:
         """Invalidate cached object-graph evidence after an actual store change."""
         self._mutation_version += 1
+        self._payload_audit_snapshot = None
         self._payload_audit_cache = None
         self._ownership_audit_cache = None
 
@@ -206,7 +221,32 @@ class ResourceLedger:
 
     def _expire_execution_root(self, identity: int) -> None:
         self._execution_roots.pop(identity, None)
+        _drop_root_contracts(self, identity)
         self.note_store_mutation()
+
+    def register_payload_audit_contract(
+        self,
+        root: object,
+        family: str,
+        stores: tuple[PayloadAuditStoreBinding, ...],
+        validator: Callable[[object, object], PayloadAuditContribution],
+        *,
+        dependencies: tuple[object, ...] = (),
+    ) -> None:
+        register_payload_audit_contract(
+            self, root, family, stores, validator, dependencies=dependencies
+        )
+
+    def remove_payload_audit_contract(
+        self, root: object, family: str | None = None
+    ) -> None:
+        remove_payload_audit_contract(self, root, family)
+
+    def clear_payload_audit_contracts(self) -> None:
+        clear_payload_audit_contracts(self)
+
+    def audit_payload_contracts(self) -> PayloadAuditContractAudit:
+        return audit_payload_contracts(self)
 
     def tighten_limits(
         self, max_nodes: int | None, max_cache_entries: int | None
@@ -256,12 +296,20 @@ class ResourceLedger:
         require_integer(nodes, "node count", 0)
 
     def iter_execution_roots(self) -> Iterator[object]:
+        expired: list[int] = []
+        roots: list[object] = []
         for identity, reference in tuple(self._execution_roots.items()):
             root = reference()
             if root is None:
-                del self._execution_roots[identity]
+                expired.append(identity)
             else:
-                yield root
+                roots.append(root)
+        if expired:
+            for identity in expired:
+                self._execution_roots.pop(identity, None)
+                _drop_root_contracts(self, identity)
+            self.note_store_mutation()
+        yield from roots
 
     def register(
         self, name: str, role: str, scope: ResourceScope = "ENGINE_OWNED"
@@ -568,7 +616,11 @@ class ResourceLedger:
             or (account.container is not None and len(account.container))
         ):
             raise ValueError("dispose requires releasing the owner's actual resources")
+        if account.disposed:
+            return
         account.disposed = True
+        _drop_owner_contracts(self, owner)
+        self.note_store_mutation()
 
     def iter_containers(self) -> Iterator[tuple[int, object]]:
         """Expose actual storage roots independently of user payload callbacks."""
@@ -620,44 +672,40 @@ class ResourceLedger:
         return value
 
     def inventory(self) -> tuple[ResourceInventory, ...]:
-        inventory = []
-        for owner, account in enumerate(self._accounts):
-            roots: dict[ArenaHandle, None] = {}
-            for root in account.roots:
+        return tuple(
+            self.inventory_owner(owner) for owner in range(len(self._accounts))
+        )
+
+    def inventory_owner(self, owner: int) -> ResourceInventory:
+        """Audit one account without visiting unrelated owners or their resolvers."""
+        account = self._account(owner)
+        roots: dict[ArenaHandle, None] = {}
+        for root in account.roots:
+            ArenaHandle.validate(root, root.owner, root.kind)
+            roots[root] = None
+        if account.root_resolver is not None:
+            for root in account.root_resolver():
+                if not isinstance(root, ArenaHandle):
+                    raise TypeError("container root resolver returned an untyped root")
+                # Revalidate before hashing: Boolean/float IDs must not alias an
+                # existing root in either a full or an owner-local inventory.
                 ArenaHandle.validate(root, root.owner, root.kind)
                 roots[root] = None
-            if account.root_resolver is not None:
-                for root in account.root_resolver():
-                    if not isinstance(root, ArenaHandle):
-                        raise TypeError(
-                            "container root resolver returned an untyped root"
-                        )
-                    # A resolver is an API boundary just like register_root.
-                    # Revalidate fields before hashing the handle so a forged
-                    # Boolean/float local ID cannot alias an existing root in a
-                    # warm inventory snapshot.
-                    ArenaHandle.validate(root, root.owner, root.kind)
-                    roots[root] = None
-            inventory.append(
-                ResourceInventory(
-                    owner,
-                    account.name,
-                    account.role,
-                    account.scope,
-                    account.entries,
-                    account.nodes,
-                    tuple(roots),
-                    None if account.container is None else len(account.container),
-                    None if account.node_count is None else account.node_count(),
-                    account.payloads is not None,
-                    account.evict is not None,
-                    0
-                    if account.composition_count is None
-                    else account.composition_count(),
-                    account.disposed,
-                )
-            )
-        return tuple(inventory)
+        return ResourceInventory(
+            owner,
+            account.name,
+            account.role,
+            account.scope,
+            account.entries,
+            account.nodes,
+            tuple(roots),
+            None if account.container is None else len(account.container),
+            None if account.node_count is None else account.node_count(),
+            account.payloads is not None,
+            account.evict is not None,
+            0 if account.composition_count is None else account.composition_count(),
+            account.disposed,
+        )
 
     def snapshot(self) -> LedgerSnapshot:
         return LedgerSnapshot(

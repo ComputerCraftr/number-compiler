@@ -61,10 +61,9 @@ class CausalHaloArena:
                 radius = 0
             elif node.kind == "atom":
                 primitive = self.runtime.kernel(current)
-                if self._is_physical_four(primitive.effect):
-                    # The verified kernel is exactly four physical steps, each
-                    # with the certified one-cell right dependency.
-                    radius = 4
+                hooks = self.runtime.family_hooks
+                if hooks is not None and hooks.owns_compatibility(primitive.effect):
+                    radius = hooks.compatibility_halo(primitive.effect)
                 elif primitive.right_count == 1:
                     radius = 0
                 else:
@@ -95,14 +94,3 @@ class CausalHaloArena:
             self._radii[current] = RightHalo(current, radius)
             self.ledger.bump("causal_halo_evaluations")
         return self._radii[action].radius
-
-    @staticmethod
-    def _is_physical_four(effect: object) -> bool:
-        """Load the proof-only C4 type only for a candidate proof atom."""
-        if type(effect).__name__ != "PhysicalCollatzFourBlockEffect":
-            return False
-        from number_compiler.arithmetic.contracts.physical_collatz_kernel import (
-            PhysicalCollatzFourBlockEffect,
-        )
-
-        return type(effect) is PhysicalCollatzFourBlockEffect

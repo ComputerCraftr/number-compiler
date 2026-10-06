@@ -11,6 +11,7 @@ Period: 2026-10-04 through 2026-10-10 (Sunday–Saturday).
 | --- | ---: |
 | [Comma semantic occurrence cutover](comma.md) | 0 |
 | [Admitted output tapes and exact width integration](output-tape-integration.md) | 1 |
+| [Shared execution and proof ownership](shared-ownership.md) | 0 |
 | [Validation budgets and Git provenance](validation-policy-git.md) | 0 |
 <!-- sprint-topics:end -->
 

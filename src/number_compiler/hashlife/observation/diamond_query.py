@@ -21,10 +21,6 @@ from number_compiler.hashlife.execution.diamond_certificate import (
     DiamondCompositionCertificate,
     certify,
 )
-from number_compiler.hashlife.execution.diamond_cycles import (
-    PhysicalCycleProjection,
-    physical_cycle,
-)
 from number_compiler.hashlife.interfaces.diamond_boundary import (
     BoundaryStateID,
     ImageBinding,
@@ -88,29 +84,30 @@ class DiamondApplication:
         self.ledger.reserve(owner, entries=1, nodes=1)
         self._certificates.append(certificate)
         self.composition_certificate = certificate
-        cycle = physical_cycle(runtime, root)
+        hooks = runtime.family_hooks
+        cycle = hooks.make_cycle(runtime, root) if hooks is not None else None
+        self._issued_cycle = cycle
         cycle_owner = self.ledger.register(
             f"diamond-cycle-{len(self.ledger.inventory())}", "finite_cycle_certificate"
         )
-        self._cycles: MutableSequence[PhysicalCycleProjection] = self.ledger.make_list(
-            cycle_owner
-        )
+        self._cycles: MutableSequence[object] = self.ledger.make_list(cycle_owner)
         if cycle is not None:
             self.ledger.reserve(cycle_owner, entries=1, nodes=1)
             self._cycles.append(cycle)
 
-    def _cycle(self) -> PhysicalCycleProjection | None:
+    def _cycle(self) -> object | None:
         if not self._cycles:
             return None
         projection = self._cycles[0]
+        hooks = self.runtime.family_hooks
         geometry = self.runtime.cells.source_geometry
         source = geometry._read_root
         if (
-            type(projection) is not PhysicalCycleProjection
-            or projection.root != self.root
-            or projection.source is not geometry.token
+            hooks is None
+            or projection is not self._issued_cycle
+            or not hooks.is_cycle_projection(projection)
+            or not hooks.validate_cycle(self.runtime, self.root, projection)
             or source is None
-            or projection.extent != source.length
         ):
             raise ValueError("cycle projection belongs to another source or action")
         return projection
@@ -162,7 +159,10 @@ class DiamondApplication:
         self.ledger.bump("diamond_point_queries")
         if cycle is not None:
             self.ledger.bump("physical_cycle_point_queries")
-            return cycle.point(position)
+            hooks = self.runtime.family_hooks
+            if hooks is None:
+                raise AssertionError("cycle projection lost its family owner")
+            return hooks.cycle_point(cycle, position)
         finite = self._finite_cell_observation("output", position)
         if finite is not None:
             return finite
@@ -206,7 +206,10 @@ class DiamondApplication:
         self.ledger.bump("width_queries")
         if cycle is not None:
             self.ledger.bump("physical_cycle_width_queries")
-            return cycle.active_width(maxwidth)
+            hooks = self.runtime.family_hooks
+            if hooks is None:
+                raise AssertionError("cycle projection lost its family owner")
+            return hooks.cycle_width(cycle, maxwidth)
         if not maxwidth:
             return 0
         if maxwidth == source.length:
