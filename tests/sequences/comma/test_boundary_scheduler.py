@@ -19,9 +19,13 @@ from number_compiler.sequences.comma.boundary_quotient import (
     BoundaryState,
     construct_macro,
 )
+from number_compiler.sequences.comma.image_adapter import (
+    BoundaryPrefixCursor,
+    CommaImagePayload,
+)
+from number_compiler.sequences.comma.occurrence import BoundaryOccurrence
 from number_compiler.sequences.comma.power import (
     FIRST_FORK_INDEX,
-    CommaImagePayload,
     CommaTerm,
 )
 
@@ -169,6 +173,78 @@ def test_boundary_prefix_uses_exact_source_and_stops_before_fork(
         len(term.arena._boundary_seal_nodes) + len(term.arena._boundary_seals)
     )
     assert term.ledger.counters["comma_boundary_seal_retained_integer_bits"] > 0
+    receiver_source = BoundaryOccurrence(state, 10)
+    receiver_action = term.arena._boundary_prefix_occurrence(receiver_source, 6)
+    translated_source = BoundaryOccurrence(state, 934)
+    assert (
+        term.arena._boundary_prefix_occurrence(translated_source, 6) == receiver_action
+    )
+    receiver_image = term.scheduler.source_image(
+        term.adapter, term._source, receiver_action
+    )
+    receiver_payload = cast(
+        CommaImagePayload,
+        term.scheduler._source_image_core().view(receiver_image).payload,
+    )
+    assert receiver_payload.value == template.point(10, 6)
+    assert receiver_payload.absolute_index == FIRST_FORK_INDEX + 1 + 6
+    assert receiver_payload.boundary_cursor is not None
+    assert receiver_payload.boundary_cursor.transitions == 6
+    foreign_cursor_payload = CommaImagePayload(
+        receiver_payload.value,
+        receiver_payload.absolute_index,
+        receiver_payload.certificate_version,
+        BoundaryPrefixCursor(BoundaryState("Z", 2, 10), 10, 6),
+    )
+    with pytest.raises(ValueError, match="cursor authority"):
+        term.adapter.audit_image_binding(
+            term.scheduler._source_image_core().view(receiver_image).binding,
+            foreign_cursor_payload,
+            None,
+        )
+    identity_image = term.scheduler.source_image(
+        term.adapter, receiver_image, term.arena.identity
+    )
+    identity_view = term.scheduler._source_image_core().view(identity_image)
+    identity_payload = cast(CommaImagePayload, identity_view.payload)
+    assert identity_payload.boundary_cursor is receiver_payload.boundary_cursor
+    assert term.adapter.audit_image_binding(
+        identity_view.binding, identity_payload, None
+    ) == (receiver_payload.boundary_cursor,)
+    aliased_cursor_payload = CommaImagePayload(
+        identity_payload.value,
+        identity_payload.absolute_index,
+        identity_payload.certificate_version,
+        BoundaryPrefixCursor(state, 10, 6),
+    )
+    with pytest.raises(ValueError, match="identity changed its source payload"):
+        term.adapter.audit_image_binding(
+            identity_view.binding, aliased_cursor_payload, None
+        )
+    continued_image = term.scheduler.source_image(
+        term.adapter, receiver_image, receiver_action
+    )
+    continued_payload = cast(
+        CommaImagePayload,
+        term.scheduler._source_image_core().view(continued_image).payload,
+    )
+    continued_binding = (
+        term.scheduler._source_image_core().view(continued_image).binding
+    )
+    continued_action = term.arena.node(
+        cast(action_arena.CommaActionID, continued_binding.action)
+    )
+    assert continued_payload.value == template.point(10, 12)
+    assert continued_payload.absolute_index == FIRST_FORK_INDEX + 1 + 12
+    # Scheduler bindings describe the action relative to this receiving image;
+    # the payload cursor carries the cumulative boundary position.
+    assert continued_binding.extent == 6
+    assert continued_action.kind == "boundary-prefix-occurrence"
+    assert continued_action.steps == 6
+    assert continued_payload.boundary_cursor is not None
+    assert continued_payload.boundary_cursor.state == state
+    assert continued_payload.boundary_cursor.exponent == 10
+    assert continued_payload.boundary_cursor.transitions == 12
     with pytest.raises(ValueError, match="another source occurrence"):
         term.scheduler.source_image(term.adapter, image, action)
     with pytest.raises(ValueError, match="crosses its next branch"):
@@ -178,6 +254,17 @@ def test_boundary_prefix_uses_exact_source_and_stops_before_fork(
     audit = audit_registered_payloads(term.ledger)
     assert audit.unknown_payloads == 0
     assert audit.forbidden_future_payloads == 0
+    cursor = identity_payload.boundary_cursor
+    assert cursor is not None
+    original_transitions = cursor.transitions
+    object.__setattr__(cursor, "transitions", original_transitions + 1)
+    try:
+        assert audit_registered_payloads(term.ledger).forbidden_future_payloads > 0
+    finally:
+        object.__setattr__(cursor, "transitions", original_transitions)
+    assert audit_registered_payloads(term.ledger).forbidden_future_payloads == 0
+    assert term.ledger.counters["comma_boundary_explicit_audit_component_checks"] > 0
+    assert term.ledger.counters["comma_boundary_explicit_audit_operand_bits"] > 0
     assert all(
         item.accounting_delta == 0
         for item in term.ledger.inventory()
@@ -262,6 +349,7 @@ def test_mutated_boundary_template_and_action_fail_closed() -> None:
         "child_order",
         "exponent_gain",
         "endpoint",
+        "seal",
     ],
 )
 def test_mutated_boundary_component_fails_before_private_scheduler_demand(
@@ -297,6 +385,9 @@ def test_mutated_boundary_component_fails_before_private_scheduler_demand(
         )
     elif component == "exponent_gain":
         object.__setattr__(template, "exponent_delta", template.exponent_delta + 1)
+    elif component == "seal":
+        assert template._component_seal is not None
+        object.__setattr__(template, "_component_seal", (*template._component_seal,))
     else:
         object.__setattr__(
             template.endpoint,
@@ -306,6 +397,41 @@ def test_mutated_boundary_component_fails_before_private_scheduler_demand(
     with pytest.raises(ValueError, match="template publication was altered"):
         term.scheduler.source_image(term.adapter, term._source, action)
     assert audit_registered_payloads(term.ledger).forbidden_future_payloads > 0
+
+
+def test_mutated_boundary_state_is_rejected_before_hash_or_equality() -> None:
+    class HashEqualityTrap:
+        def __init__(self) -> None:
+            self.hash_calls = 0
+            self.equality_calls = 0
+
+        def __hash__(self) -> int:
+            self.hash_calls += 1
+            return 7
+
+        def __eq__(self, _other: object) -> bool:
+            self.equality_calls += 1
+            return True
+
+    term = CommaTerm(1)
+    invalid = BoundaryState("N", 2, 10)
+    invalid_kind = HashEqualityTrap()
+    object.__setattr__(invalid, "kind", invalid_kind)
+    with pytest.raises(ValueError, match="noncanonical scalar fields"):
+        term.arena._boundary_template(invalid)
+    with pytest.raises(ValueError, match="noncanonical scalar fields"):
+        term.arena._boundary_prefix(invalid, 10, 1)
+    assert invalid_kind.hash_calls == 0
+    assert invalid_kind.equality_calls == 0
+
+    published = BoundaryState("N", 2, 10)
+    term.arena._boundary_prefix(published, 10, 1)
+    published_kind = HashEqualityTrap()
+    object.__setattr__(published, "kind", published_kind)
+    audit = audit_registered_payloads(term.ledger)
+    assert audit.forbidden_future_payloads > 0
+    assert published_kind.hash_calls == 0
+    assert published_kind.equality_calls == 0
 
 
 def _assert_empty_boundary_publication(term: CommaTerm) -> None:

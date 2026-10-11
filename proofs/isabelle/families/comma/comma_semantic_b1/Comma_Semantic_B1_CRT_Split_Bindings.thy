@@ -1,6 +1,7 @@
 theory Comma_Semantic_B1_CRT_Split_Bindings
   imports Comma_Semantic_B1_CRT_Split_Occurrence
 begin
+ML \<open>Comma_Proof_Profile.report "Split bindings stage=entered"\<close>
 
 text \<open>
 This theory proves the provider-independent binding-fold contract for the
@@ -860,8 +861,7 @@ qed
 
 
 ML \<open>
-val _ =
-  if null (Thm_Deps.all_oracles @{thms
+val checked = @{thms
     comma_crt_mdd_paint_binding_control_eval
     comma_crt_mdd_paint_binding_weight_eval
     comma_crt_occurrence_split_from_bindings_no_hit
@@ -872,7 +872,12 @@ val _ =
     comma_crt_occurrence_split_from_bindings_exact
     comma_crt_occurrence_split_action_lookup
     comma_crt_split_fold_slot_invariant
-  }) then ()
+  }
+val _ = Thm.consolidate checked
+val _ = Comma_Proof_Profile.report
+  "Split bindings stage=final claims consolidated"
+val _ = if null (Thm_Deps.all_oracles checked) then ()
   else error "Comma_Semantic_B1_CRT_Split_Bindings local oracle audit failed"
+val _ = Comma_Proof_Profile.report "Split bindings stage=oracle audit checked"
 \<close>
 end

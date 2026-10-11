@@ -11,26 +11,6 @@ the published values against checked packet-slot arithmetic before any root
 or power consumes them.
 \<close>
 
-lemma comma_indexed_all_zero:
-  "list_all P [0..<0]"
-  by simp
-
-lemma comma_indexed_all_Suc:
-  assumes prefix: "list_all P [0..<n]" and last: "P n"
-  shows "list_all P [0..<Suc n]"
-  using prefix last by (simp add: list_all_append)
-
-lemma comma_selected_length_nil:
-  "length ([] :: 'a list) = 0"
-  by simp
-
-lemma comma_selected_length_cons:
-  "length (head # tail) = Suc (length tail)"
-  by simp
-
-ML \<open>Thm.consolidate @{thms comma_indexed_all_zero comma_indexed_all_Suc
-  comma_selected_length_nil comma_selected_length_cons}\<close>
-
 definition comma_semantic_b1_crt_local_cover_fixture_parent ::
     comma_semantic_b1_crt_occurrence where
   "comma_semantic_b1_crt_local_cover_fixture_parent =

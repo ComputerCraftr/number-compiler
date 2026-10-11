@@ -12,7 +12,7 @@ import pytest
 from number_compiler.sequences.comma import (
     arithmetic,
     boundary_chart,
-    boundary_quotient,
+    boundary_return,
 )
 from number_compiler.sequences.comma.boundary_chart import (
     BoundaryChart,
@@ -168,7 +168,7 @@ def test_grouped_macro_is_the_same_complete_weighted_return(
         assert grouped_near
         return original(kind, a, residue, charge=charge, charge_bits=charge_bits)
 
-    monkeypatch.setattr(boundary_quotient, "chart_moves", scalar)
+    monkeypatch.setattr(boundary_return, "chart_moves", scalar)
     reference = construct_macro(source, grouped_near=True)
     assert grouped == reference
 

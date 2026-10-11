@@ -3,6 +3,7 @@ theory Comma_Semantic_B1_Power
 begin
 
 ML_file "../comma_entry_arithmetic/proof_profile.ML"
+ML \<open>Comma_Proof_Profile.report "Semantic B1 power stage=entered"\<close>
 
 text \<open>
 This theory proves the weighted semantic composition law used by the grouped
@@ -165,6 +166,8 @@ proof -
   qed
 qed
 
+ML \<open>Thm.consolidate [@{thm comma_semantic_b1_compose_raw_rows_sound_for_targets}]; Comma_Proof_Profile.report "Semantic B1 power claim=compose-sound checked"\<close>
+
 lemma comma_semantic_b1_compose_raw_rows_sound:
   assumes left_table:
       "comma_semantic_b1_binding_table_exact (\<lambda>phase. left_action phase root) 0 left_rows"
@@ -284,6 +287,8 @@ proof -
   qed
 qed
 
+ML \<open>Thm.consolidate [@{thm comma_semantic_b1_compose_raw_rows_cover_for_targets}]; Comma_Proof_Profile.report "Semantic B1 power claim=compose-cover checked"\<close>
+
 lemma comma_semantic_b1_compose_raw_rows_cover:
   assumes left_table:
       "comma_semantic_b1_binding_table_exact (\<lambda>phase. left_action phase root) 0 left_rows"
@@ -316,8 +321,12 @@ ML \<open>
     comma_semantic_b1_compose_raw_rows_cover_for_targets
     comma_semantic_b1_compose_raw_rows_sound
     comma_semantic_b1_compose_raw_rows_cover};
+  val _ = Thm.consolidate checked;
+  val _ = Comma_Proof_Profile.report "Semantic B1 power claims consolidated";
+  val _ = Comma_Proof_Profile.report "Semantic B1 power audit=native entered";
   val _ = Comma_Proof_Dependency_Audit.require_native_clean @{context}
     "Semantic B1 weighted composition" checked;
+  val _ = Comma_Proof_Profile.report "Semantic B1 power audit=native checked";
 \<close>
 
 end

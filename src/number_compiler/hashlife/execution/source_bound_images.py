@@ -195,7 +195,10 @@ class SourceBoundImageBindingAuditor(Protocol):
     source/action/payload/geometry relationship without mutating execution
     state or charging query work. It is deliberately separate from the
     scheduler protocol so existing adapters need not invent a redundant
-    checker when their ownership is already audited elsewhere.
+    checker when their ownership is already audited elsewhere. Returned frozen
+    records must be sealed boundary-port members or direct payload members;
+    they mark only those exact owner-bound records as checked metadata in
+    resource audits.
     """
 
     def audit_image_binding(

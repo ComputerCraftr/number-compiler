@@ -6,6 +6,7 @@ struct
   fun make ctxt kernel_context =
     let
       val natT = @{typ nat}
+      val intT = @{typ int}
       fun nat n = HOLogic.mk_number natT n
       val profiling = getenv "COMMA_PROFILE_LOG" <> ""
       fun closed term =
@@ -13,22 +14,101 @@ struct
           not (Term.is_open term)
       fun schematic pattern = Term.map_aterms
         (fn Free (name, typ) => Var ((name, 0), typ) | atom => atom) pattern
-      fun capture_optional operation argument =
-        (case Exn.capture operation argument of
-          Exn.Res result => SOME result
-        | Exn.Exn failure =>
-            if Exn.is_interrupt failure then Exn.reraise failure else NONE)
+      fun constructor_args name term =
+        (case Term.strip_comb term of
+          (Const (actual, _), args) => if actual = name then SOME args else NONE
+        | _ => NONE)
+      fun exact_numeral typ term =
+        (case try HOLogic.dest_number term of
+          SOME (actual, _) => actual = typ
+        | NONE => false)
+      fun exact_integer term =
+        exact_numeral intT term orelse
+          (case Term.strip_comb term of
+            (Const (name, _), [magnitude]) =>
+              name = @{const_name uminus} andalso exact_numeral intT magnitude
+          | _ => false)
+      fun complete_value term = complete_at (fastype_of term) term
+      and complete_at typ term =
+        fastype_of term = typ andalso
+        (if typ = natT then exact_numeral typ term
+         else if typ = intT then exact_integer term
+         else
+           case typ of
+             Type (name, [leftT, rightT]) =>
+               if name = @{type_name prod} then
+                 (case constructor_args @{const_name Pair} term of
+                   SOME [left, right] =>
+                     complete_at leftT left andalso complete_at rightT right
+                 | _ => false)
+               else false
+           | Type (name, [elementT]) =>
+               if name = @{type_name option} then
+                 (case constructor_args @{const_name None} term of
+                   SOME [] => true
+                 | _ =>
+                     (case constructor_args @{const_name Some} term of
+                       SOME [element] => complete_at elementT element
+                     | _ => false))
+               else false
+           | Type (name, []) =>
+               if name = @{type_name comma_finite_position} then
+                 (case constructor_args @{const_name Comma_Entry} term of
+                   SOME [scale, delta, offset] =>
+                     List.all (complete_at natT) [scale, delta, offset]
+                 | _ =>
+                     (case constructor_args @{const_name Comma_Near} term of
+                       SOME [scale, delta, headroom] =>
+                         List.all (complete_at natT) [scale, delta, headroom]
+                     | _ => false))
+               else false
+           | _ => false)
+      val complete_value_regression =
+        let
+          val near_value = @{term "Comma_Near"} $ nat 1 $ nat 2 $ nat 3
+          val partial_near = @{term "Comma_Near"} $
+            @{term "comma_core_primary (1::nat)"} $ nat 2 $ nat 3
+          val triple_value = HOLogic.mk_prod (nat 1, HOLogic.mk_prod (nat 2, nat 3))
+          val triple_type = fastype_of triple_value
+          val option_type = Type (@{type_name option}, [triple_type])
+          val some_triple = Const (@{const_name Some}, triple_type --> option_type) $
+            triple_value
+          val negative_int = HOLogic.mk_number intT (~3)
+        in
+          complete_value (nat 7) andalso complete_value negative_int andalso
+          complete_value near_value andalso complete_value (HOLogic.mk_prod (nat 1, nat 2)) andalso
+          complete_value some_triple andalso
+          not (complete_value (@{term "1 + (2::nat)"})) andalso
+          not (complete_value (@{term "comma_core_primary (1::nat)"})) andalso
+          not (complete_value partial_near)
+        end
+      val _ = if complete_value_regression then ()
+        else error "Endpoint complete-value guard regression failed"
       fun require_closed_equation request theorem =
         let val result = Thm.term_of (Thm.rhs_of theorem) in
           if Thm.term_of (Thm.lhs_of theorem) aconv request andalso closed result andalso
             Thm.nprems_of theorem = 0 andalso null (Thm.hyps_of theorem) andalso
-            null (Thm.tpairs_of theorem) then theorem
+            null (Thm.tpairs_of theorem) then
+            if complete_value result then theorem
+            else error "Endpoint equation has an incomplete closed result"
           else error "Endpoint equation has the wrong owner or open authority"
         end
       (* These are closed local arithmetic requests, not whole B1/round
          evaluations. Closed arithmetic equations supply kernel equalities;
          the exact source term remains the cache authority. *)
       val local_arithmetic = Comma_Entry_Arithmetic.natural_context ctxt
+      (* Separate the selected fast-period table read from the small core
+         projection.  The recursive gcd equations are used only for a selected
+         P, then memoized by P rather than re-run for each source spelling. *)
+      val source_period_context = put_simpset HOL_basic_ss ctxt addsimps
+        @{thms comma_decisive_sector_period_def comma_finite_position.case}
+      val fast_period_context = local_arithmetic addsimps
+        @{thms comma_finite_period_fast_def nth_Cons'}
+      val core_period_context = local_arithmetic addsimps
+        @{thms comma_core_primary_def comma_core_modulus_def
+          comma_core_period_def gcd_nat.simps}
+      val admitted_context = local_arithmetic addsimps
+        @{thms comma_round_admitted.simps}
       fun instantiate_index theorem variable n =
         Simplifier.simplify local_arithmetic
           (Drule.infer_instantiate ctxt
@@ -62,7 +142,12 @@ struct
             @{thms comma_decisive_sector_period_def}),
          (@{term "comma_decisive_sector_target r source"},
             @{thms comma_decisive_sector_target.simps}),
+         (@{term "comma_decisive_entry_clock_key clock f x"},
+            @{thms comma_decisive_entry_clock_key_def}),
          (@{term "comma_core_primary P"}, @{thms comma_core_primary_def}),
+         (@{term "comma_core_modulus P"}, @{thms comma_core_modulus_def}),
+         (@{term "comma_core_seed P"}, @{thms comma_core_seed_def}),
+         (@{term "comma_core_period c"}, @{thms comma_core_period_def}),
          (@{term "comma_recursive_core_residue c t"},
             @{thms comma_recursive_core_residue_def}),
          (@{term "comma_entry_port_refined_locator f d eta"},
@@ -76,71 +161,299 @@ struct
       val active = Unsynchronized.ref (Termtab.empty: unit Termtab.table)
       val endpoint_memo = Unsynchronized.ref (Termtab.empty: thm Termtab.table)
       val period_memo = Unsynchronized.ref
-        (Termtab.empty: (int * thm * thm) Termtab.table)
+        (Termtab.empty: (int * thm * thm * Proof.context) Termtab.table)
+      val fast_period_memo = Unsynchronized.ref (Termtab.empty: thm Termtab.table)
+      val core_period_memo = Unsynchronized.ref
+        (Termtab.empty: (int * thm) Termtab.table)
+      val fast_period_hits = Unsynchronized.ref 0
+      val fast_period_misses = Unsynchronized.ref 0
+      val core_period_hits = Unsynchronized.ref 0
+      val core_period_misses = Unsynchronized.ref 0
       val endpoint_hits = Unsynchronized.ref 0
       val endpoint_misses = Unsynchronized.ref 0
+      val target_calls = Unsynchronized.ref 0
+      val target_hits = Unsynchronized.ref 0
+      val target_misses = Unsynchronized.ref 0
+      val target_inclusive_ms = Unsynchronized.ref (0: LargeInt.int)
+      val clock_key_calls = Unsynchronized.ref 0
+      val clock_key_hits = Unsynchronized.ref 0
+      val clock_key_misses = Unsynchronized.ref 0
+      val clock_key_inclusive_ms = Unsynchronized.ref (0: LargeInt.int)
+      val core_scalar_calls = Unsynchronized.ref 0
+      val core_scalar_hits = Unsynchronized.ref 0
+      val core_scalar_misses = Unsynchronized.ref 0
+      val core_scalar_inclusive_ms = Unsynchronized.ref (0: LargeInt.int)
       val locator_hits = Unsynchronized.ref 0
       val locator_misses = Unsynchronized.ref 0
       val direct_entry_hits = Unsynchronized.ref 0
       val target_period_rebases = Unsynchronized.ref 0
       fun is_locator request = Term.head_of request =
         Term.head_of @{term "comma_entry_port_refined_locator f d eta"}
+      fun is_target request = Term.head_of request =
+        Term.head_of @{term "comma_decisive_sector_target r source"}
+      fun is_clock_key request = Term.head_of request =
+        Term.head_of @{term "comma_decisive_entry_clock_key clock f x"}
+      fun is_core_scalar request =
+        (case Term.head_of request of
+          Const (name, _) => member (op =)
+            [@{const_name comma_core_modulus}, @{const_name comma_core_seed},
+             @{const_name comma_core_period}] name
+        | _ => false)
 
-      (* Normalize only the first sector target, for which a checked period
-         theorem exists.  The endpoint round itself is intentionally left at
-         its original phase: recursive successors can have a different
-         sector period. Cache the admission and checked period equation by
-         exact source. *)
+      (* Keep admission authority exact, but avoid rebuilding a goal/tactic
+         context for every source.  A closed rewrite to True is the theorem
+         used by equal_elim; any other result fails closed. *)
+      fun exact_admission source =
+        let
+          val request = HOLogic.mk_Trueprop (@{term comma_round_admitted} $ source)
+          val equation = Simplifier.rewrite admitted_context (Thm.cterm_of ctxt request)
+        in
+          if Thm.term_of (Thm.lhs_of equation) aconv request andalso
+              Thm.term_of (Thm.rhs_of equation) aconv @{prop True} andalso
+              Thm.nprems_of equation = 0 andalso null (Thm.hyps_of equation) andalso
+              null (Thm.tpairs_of equation) then
+            let val admitted = Thm.equal_elim (Thm.symmetric equation) @{thm TrueI}
+            in if Thm.prop_of admitted aconv request then SOME admitted else NONE end
+          else NONE
+        end
+
+      fun checked_rewrite context request =
+        let val equation = Simplifier.rewrite context (Thm.cterm_of ctxt request) in
+          if Thm.term_of (Thm.lhs_of equation) aconv request andalso
+              Thm.nprems_of equation = 0 andalso null (Thm.hyps_of equation) andalso
+              null (Thm.tpairs_of equation) then SOME equation else NONE
+        end
+
+      fun require_stage stage result =
+        (case result of SOME value => value
+        | NONE => error ("Canonical period conversion failed at " ^ stage))
+
+      fun prove_true context request =
+        let
+          val _ = HOLogic.dest_Trueprop request
+          val equation = Simplifier.rewrite context (Thm.cterm_of ctxt request)
+        in
+          if Thm.term_of (Thm.lhs_of equation) aconv request andalso
+              Thm.term_of (Thm.rhs_of equation) aconv @{prop True} andalso
+              Thm.nprems_of equation = 0 andalso null (Thm.hyps_of equation) andalso
+              null (Thm.tpairs_of equation) then
+            SOME (Thm.equal_elim (Thm.symmetric equation) @{thm TrueI})
+          else NONE
+        end
+
+      val recognized_period_inputs =
+        [60,80,100,120,140,210,220,230,240,260,270,280,290,460,480,520,540]
+
+      fun selected_fast_period f d =
+        let val request = @{term comma_finite_period_fast} $ f $ d in
+          (case Termtab.lookup (!fast_period_memo) request of
+            SOME equation => (fast_period_hits := !fast_period_hits + 1;
+              SOME equation)
+          | NONE =>
+              let
+                val _ = fast_period_misses := !fast_period_misses + 1
+              in
+                (case checked_rewrite fast_period_context request of
+                  SOME equation =>
+                    (case try HOLogic.dest_number (Thm.term_of (Thm.rhs_of equation)) of
+                      SOME (typ, value) =>
+                        if typ = natT andalso member (op =) recognized_period_inputs value then
+                          (if Termtab.size (!fast_period_memo) < 128 then
+                             fast_period_memo := Termtab.update (request, equation)
+                               (!fast_period_memo) else ();
+                           SOME equation)
+                        else NONE
+                    | NONE => NONE)
+                | NONE => NONE)
+              end)
+        end
+
+      fun selected_core_period p =
+        let
+          val request = @{term comma_core_period} $
+            (@{term comma_core_modulus} $ p)
+        in
+          (case Termtab.lookup (!core_period_memo) p of
+            SOME answer => (core_period_hits := !core_period_hits + 1; SOME answer)
+          | NONE =>
+              let
+                val _ = core_period_misses := !core_period_misses + 1
+              in
+                (case checked_rewrite core_period_context request of
+                  SOME equation =>
+                    (case try HOLogic.dest_number (Thm.term_of (Thm.rhs_of equation)) of
+                      SOME (typ, value) =>
+                        if typ = natT andalso value > 0 andalso value <= 924 then
+                          (if Termtab.size (!core_period_memo) < 32 then
+                             core_period_memo := Termtab.update
+                               (p, (value, equation)) (!core_period_memo) else ();
+                           SOME (value, equation))
+                        else NONE
+                    | NONE => NONE)
+                | NONE => NONE)
+              end)
+        end
+
+      fun selected_source_period source =
+        let
+          val request = @{term comma_decisive_sector_period} $ source
+          val source_equation = require_stage "source constructor normalization"
+            (checked_rewrite source_period_context request)
+          val source_rhs = Thm.term_of (Thm.rhs_of source_equation)
+          fun finish equation =
+            let val result = Thm.transitive source_equation equation in
+              SOME (require_closed_equation request result)
+            end
+        in
+          (case constructor_args @{const_name Comma_Near} source of
+            SOME [_, _, _] =>
+              (case try HOLogic.dest_number source_rhs of
+                SOME (typ, value) => if typ = natT andalso value = 1 then
+                  SOME (require_closed_equation request source_equation) else NONE
+              | NONE => error "Canonical period conversion left a nonnumeral Near period")
+          | _ =>
+              (case constructor_args @{const_name Comma_Entry} source of
+                SOME [f, _, x] =>
+                  (case (try HOLogic.dest_number f, try HOLogic.dest_number x) of
+                    (SOME (ft, fv), SOME (xt, xv)) =>
+                      if ft <> natT orelse xt <> natT orelse fv < 1 orelse fv > 9 orelse
+                          xv < 0 orelse xv > 98 then
+                        error "Canonical period conversion received an admitted Entry outside its numeral bounds"
+                      else
+                        let
+                          val mod_request = Term.subst_atomic
+                            [(Free ("x", natT), x)] @{term "(x::nat) mod 10"}
+                          val mod_equation = require_stage "offset modulo selection"
+                            (checked_rewrite local_arithmetic mod_request)
+                          val d = Thm.term_of (Thm.rhs_of mod_equation)
+                          val d_number = try HOLogic.dest_number d
+                          val expected_source_rhs = @{term comma_core_period} $
+                            (@{term comma_core_modulus} $
+                              (@{term comma_finite_period_fast} $ f $ mod_request))
+                        in
+                          if not (source_rhs aconv expected_source_rhs) then
+                            error "Canonical period source normalization changed its selected table request"
+                          else
+                            (case (d_number, selected_fast_period f d) of
+                              (SOME (dt, dv), SOME fast_equation) =>
+                                if dt <> natT orelse dv < 0 orelse dv > 9 then
+                                  error "Canonical period offset selector was not a decimal numeral"
+                                else
+                                  (case try HOLogic.dest_number
+                                      (Thm.term_of (Thm.rhs_of fast_equation)) of
+                                    SOME (pt, pv) =>
+                                      if pt <> natT then
+                                        error "Canonical fast-period selector returned a non-natural"
+                                      else
+                                        let
+                                          val p = HOLogic.mk_number natT pv
+                                          val core_request = @{term comma_core_period} $
+                                            (@{term comma_core_modulus} $ p)
+                                          val selected_fast = Thm.transitive
+                                            (Thm.combination
+                                              (Thm.reflexive (Thm.cterm_of ctxt
+                                                (@{term comma_finite_period_fast} $ f)))
+                                              mod_equation)
+                                            fast_equation
+                                          val selected_core = Thm.combination
+                                            (Thm.reflexive (Thm.cterm_of ctxt
+                                              @{term comma_core_modulus})) selected_fast
+                                          val selected_period = Thm.combination
+                                            (Thm.reflexive (Thm.cterm_of ctxt
+                                              @{term comma_core_period})) selected_core
+                                        in
+                                          if Thm.term_of (Thm.lhs_of selected_period)
+                                              aconv source_rhs then
+                                            (case selected_core_period p of
+                                              SOME (_, core_equation) =>
+                                                if Thm.term_of (Thm.lhs_of core_equation)
+                                                    aconv core_request then
+                                                  finish (Thm.transitive selected_period
+                                                    core_equation)
+                                                else NONE
+                                            | NONE =>
+                                                error "Canonical core-period lookup failed for selected P")
+                                          else error "Canonical period equality did not compose at the selected P"
+                                        end
+                                  | NONE => error "Canonical fast-period lookup returned no numeral")
+                            | _ => error "Canonical fast-period table selection failed")
+                        end
+                    | _ => error "Canonical admitted Entry source has nonnumeral f or offset")
+              | _ => error "Canonical admitted source has an unsupported constructor"))
+        end
+
       fun target_period source =
         (case Termtab.lookup (!period_memo) source of
           SOME answer => SOME answer
         | NONE =>
-            let
-              val admitted_request = @{term comma_round_admitted} $ source
-              val admitted_result = capture_optional (fn () => Goal.prove ctxt [] []
-                (HOLogic.mk_Trueprop admitted_request)
-                (fn {context, ...} => simp_tac
-                  (Comma_Entry_Arithmetic.natural_context context addsimps
-                    @{thms comma_round_admitted.simps}) 1)) ()
-            in
-              (case admitted_result of
-                NONE => NONE
-              | SOME admitted =>
+            (case exact_admission source of
+            NONE => NONE
+            | SOME admitted =>
+                (case selected_source_period source of
+                    SOME equation =>
+                      (case try HOLogic.dest_number (Thm.term_of (Thm.rhs_of equation)) of
+                        SOME (typ, value) =>
+                          if typ = natT andalso value > 0 andalso value <= 924 then
+                            let
+                              val congruence_context = local_arithmetic addsimps [equation]
+                              val answer = (value, equation, admitted, congruence_context)
+                              val _ = if Termtab.size (!period_memo) < 8192 then
+                                  period_memo := Termtab.update (source, answer) (!period_memo)
+                                else ()
+                            in SOME answer end
+                          else NONE
+                      | NONE => NONE)
+                  | NONE => NONE)))
+
+      fun period_conversion ct =
+        let val request = Thm.term_of ct in
+          (case request of
+            Const (name, _) $ source =>
+              if name = @{const_name comma_decisive_sector_period} then
+                (case target_period source of
+                  SOME (_, equation, _, _) =>
+                    SOME (require_closed_equation request equation)
+                | NONE => NONE)
+              else NONE
+          | _ => NONE)
+        end
+
+      val period_cache_regression =
+        let
+          val source0 = @{term "Comma_Entry (1::nat) 0 0"}
+          val source_offset10 = @{term "Comma_Entry (1::nat) 0 10"}
+          val source_delta = @{term "Comma_Entry (1::nat) 7 0"}
+          val before_fast = !fast_period_hits
+          val before_core = !core_period_hits
+          fun answer source =
+            (case exact_admission source of
+              NONE => error "Period-cache regression source admission failed"
+            | SOME expected_admitted =>
+              (case target_period source of
+              SOME (value, equation, admitted, _) =>
                 let
                   val request = @{term comma_decisive_sector_period} $ source
-                  val equation_result = capture_optional (fn () =>
-                    Simplifier.rewrite endpoint_context (Thm.cterm_of ctxt request)) ()
-                in
-                  (case equation_result of
-                    NONE => NONE
-                  | SOME equation =>
-                    let
-                      val valid_equation =
-                        Thm.term_of (Thm.lhs_of equation) aconv request andalso
-                        null (Thm.hyps_of equation) andalso
-                        null (Thm.tpairs_of equation) andalso
-                        Thm.nprems_of equation = 0 andalso
-                        closed (Thm.term_of (Thm.rhs_of equation))
-                    in
-                      if not valid_equation then
-                        error "Sector-period conversion returned open authority"
-                      else
-                        (case try HOLogic.dest_number (Thm.term_of (Thm.rhs_of equation)) of
-                          SOME (typ, value) =>
-                            if typ = natT andalso value > 0 andalso
-                                value <= 924 then
-                              let
-                                val answer = (value, equation, admitted)
-                                val _ = if Termtab.size (!period_memo) < 8192 then
-                                    period_memo := Termtab.update (source, answer)
-                                      (!period_memo)
-                                  else ()
-                              in SOME answer end
-                            else NONE
-                        | NONE => NONE)
-                    end)
-                end)
-            end)
+                  val admission = HOLogic.mk_Trueprop (@{term comma_round_admitted} $ source)
+                  val _ = if Thm.term_of (Thm.lhs_of equation) aconv request andalso
+                      Thm.prop_of admitted aconv admission andalso
+                      Thm.prop_of expected_admitted aconv admission then ()
+                    else error "Period-cache regression changed source authority"
+                in SOME (value, equation) end
+              | NONE => error "Period-cache regression exact target_period cache path failed"
+              ))
+          val first = answer source0
+          val second = answer source_offset10
+          val third = answer source_delta
+        in
+          (case (first, second, third) of
+            (SOME (left, _), SOME (right, _), SOME (delta_value, _)) =>
+              left = right andalso left = delta_value andalso
+                !fast_period_hits >= before_fast + 2 andalso
+                !core_period_hits >= before_core + 2
+          | _ => false)
+        end
+      val _ = if period_cache_regression then ()
+        else error "Canonical source-period cache regression failed"
 
       fun reduced_target_equation request r source =
         (case try HOLogic.dest_number r of
@@ -150,7 +463,7 @@ struct
             else
               (case target_period source of
                 NONE => NONE
-              | SOME (period, period_equation, admitted) =>
+              | SOME (period, period_equation, admitted, congruence_context) =>
                   let
                     val reduced = HOLogic.mk_number natT
                       (value mod period)
@@ -171,11 +484,7 @@ struct
                         val same_premise = Thm.term_of (Thm.cprem_of instance 2)
                         val _ = if Thm.prop_of admitted aconv admitted_premise then ()
                           else error "Cached source admission does not match period theorem"
-                        val same_result = capture_optional (fn () => Goal.prove ctxt [] []
-                          same_premise
-                          (fn {context, ...} => simp_tac
-                            (Comma_Entry_Arithmetic.natural_context context addsimps
-                              [period_equation]) 1)) ()
+                        val same_result = prove_true congruence_context same_premise
                       in
                         (case same_result of
                           NONE => NONE
@@ -205,7 +514,7 @@ struct
         in
           (case request of
             Const (name, _) $ r $
-              (Const (constructor, _) $ f $ delta $ x) =>
+              (Const (constructor, constructorT) $ f $ delta $ x) =>
                 if name = @{const_name comma_decisive_sector_target} andalso
                     constructor = @{const_name Comma_Entry} andalso
                     admitted_numbers f x
@@ -220,9 +529,10 @@ struct
                     val _ = if Thm.nprems_of instance = 1 then ()
                       else error "Direct Entry projection has unexpected premises"
                     val premise = Thm.cprem_of instance 1
-                    val admitted = Goal.prove ctxt [] [] (Thm.term_of premise)
-                      (fn _ => simp_tac (local_arithmetic addsimps
-                        @{thms comma_round_admitted.simps}) 1)
+                    val source = Const (constructor, constructorT) $ f $ delta $ x
+                    val admitted = the (exact_admission source)
+                    val _ = if Thm.prop_of admitted aconv Thm.term_of premise then ()
+                      else error "Direct Entry admission changed its exact source"
                   in SOME (Thm.implies_elim instance admitted) end
                 else NONE
           | _ => NONE)
@@ -232,13 +542,31 @@ struct
           if not (closed request) orelse
             not (member (op =) endpoint_heads (Term.head_of request)) orelse
             Termtab.defined (!active) request then NONE
-          else SOME (case Termtab.lookup (!endpoint_memo) request of
+          else
+            let
+              val target_request = is_target request
+              val _ = if target_request then target_calls := !target_calls + 1 else ()
+              val clock_key_request = is_clock_key request
+              val _ = if clock_key_request then
+                clock_key_calls := !clock_key_calls + 1 else ()
+              val core_scalar_request = is_core_scalar request
+              val _ = if core_scalar_request then
+                core_scalar_calls := !core_scalar_calls + 1 else ()
+            in SOME (case Termtab.lookup (!endpoint_memo) request of
             SOME theorem => (endpoint_hits := !endpoint_hits + 1;
+              if target_request then target_hits := !target_hits + 1 else ();
+              if clock_key_request then clock_key_hits := !clock_key_hits + 1 else ();
+              if core_scalar_request then core_scalar_hits := !core_scalar_hits + 1 else ();
               if is_locator request then locator_hits := !locator_hits + 1 else ();
               theorem)
           | NONE =>
               let
                 val _ = endpoint_misses := !endpoint_misses + 1
+                val _ = if target_request then target_misses := !target_misses + 1 else ()
+                val _ = if clock_key_request then
+                  clock_key_misses := !clock_key_misses + 1 else ()
+                val _ = if core_scalar_request then
+                  core_scalar_misses := !core_scalar_misses + 1 else ()
                 val _ = if is_locator request then
                   locator_misses := !locator_misses + 1 else ()
                 val started = Time.now ()
@@ -267,7 +595,17 @@ struct
                           in finish root end)
                   in
                     (case request of
-                      Const (name, _) $ r $ source =>
+                      Const (name, _) $ source =>
+                        if name = @{const_name comma_decisive_sector_period} then
+                          (case target_period source of
+                            SOME (_, equation, _, _) =>
+                              require_closed_equation request equation
+                          | NONE =>
+                              if is_some (exact_admission source) then
+                                error "Admitted source-period bridge failed"
+                              else direct_or_rewrite ())
+                        else direct_or_rewrite ()
+                    | Const (name, _) $ r $ source =>
                         if name = @{const_name comma_decisive_sector_target} then
                           (case reduced_target_equation request r source of
                             SOME (reduced_request, target_rebase) =>
@@ -284,6 +622,12 @@ struct
                 val _ = active := Termtab.delete request (!active)
                 val theorem = Exn.release attempt
                 val duration = Time.toMilliseconds (Time.- (Time.now (), started))
+                val _ = if target_request then
+                    target_inclusive_ms := !target_inclusive_ms + duration else ()
+                val _ = if clock_key_request then
+                    clock_key_inclusive_ms := !clock_key_inclusive_ms + duration else ()
+                val _ = if core_scalar_request then
+                    core_scalar_inclusive_ms := !core_scalar_inclusive_ms + duration else ()
                 val _ = if profiling andalso duration > 100 then Comma_Fast_Kernel.report
                   ("compact_endpoint_ms=" ^ LargeInt.toString duration ^
                     " request=" ^ XML.content_of
@@ -295,6 +639,7 @@ struct
                     endpoint_memo := Termtab.update (request, theorem) (!endpoint_memo)
                   else ()
               in theorem end)
+            end
         end
 
       val endpoint_proc = Simplifier.make_simproc ctxt
@@ -307,11 +652,28 @@ struct
 
       fun stats () = "endpoint_hits=" ^ Int.toString (!endpoint_hits) ^
           " endpoint_misses=" ^ Int.toString (!endpoint_misses) ^
+          " target_calls=" ^ Int.toString (!target_calls) ^
+          " target_hits=" ^ Int.toString (!target_hits) ^
+          " target_misses=" ^ Int.toString (!target_misses) ^
+          " target_inclusive_ms=" ^ LargeInt.toString (!target_inclusive_ms) ^
+          " clock_key_calls=" ^ Int.toString (!clock_key_calls) ^
+          " clock_key_hits=" ^ Int.toString (!clock_key_hits) ^
+          " clock_key_misses=" ^ Int.toString (!clock_key_misses) ^
+          " clock_key_inclusive_ms=" ^ LargeInt.toString (!clock_key_inclusive_ms) ^
+          " core_scalar_calls=" ^ Int.toString (!core_scalar_calls) ^
+          " core_scalar_hits=" ^ Int.toString (!core_scalar_hits) ^
+          " core_scalar_misses=" ^ Int.toString (!core_scalar_misses) ^
+          " core_scalar_inclusive_ms=" ^ LargeInt.toString (!core_scalar_inclusive_ms) ^
           " locator_hits=" ^ Int.toString (!locator_hits) ^
           " locator_misses=" ^ Int.toString (!locator_misses) ^
           " direct_entry_hits=" ^ Int.toString (!direct_entry_hits) ^
-          " target_period_rebases=" ^ Int.toString (!target_period_rebases)
+          " target_period_rebases=" ^ Int.toString (!target_period_rebases) ^
+          " fast_period_hits=" ^ Int.toString (!fast_period_hits) ^
+          " fast_period_misses=" ^ Int.toString (!fast_period_misses) ^
+          " core_period_hits=" ^ Int.toString (!core_period_hits) ^
+          " core_period_misses=" ^ Int.toString (!core_period_misses)
     in {context = !endpoint_evaluator, simproc = endpoint_proc,
+        period = period_conversion,
         rewrite = endpoint, stats = stats,
         endpoint_hits = fn () => !endpoint_hits,
         target_period_rebases = fn () => !target_period_rebases,

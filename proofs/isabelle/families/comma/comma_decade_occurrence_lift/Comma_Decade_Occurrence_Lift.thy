@@ -1,6 +1,7 @@
 theory Comma_Decade_Occurrence_Lift
   imports Comma_Decade_Residual_Core.Comma_Decade_Residual_Core
     Comma_Decade_Occurrence_Semantic.Comma_Decade_Occurrence_Semantic
+    Comma_Literal_Bridge.Comma_Unique_Path
 begin
 
 ML_file "../comma_entry_arithmetic/proof_profile.ML"
@@ -19,6 +20,88 @@ fun comma_summary_terminal_move :: "comma_decade_terminal \<Rightarrow> comma_fi
 
 ML \<open>comma_occurrence_lift_checkpoint "entered theorem proofs"\<close>
 
+lemma comma_round_weighted_prefix_unique:
+  assumes prefix: "comma_round_weighted_prefix p r n source terminal weight"
+    and phase: "r mod 924 = p mod 924"
+    and exponent: "5 \<le> p"
+    and valid: "comma_round_admitted source"
+  shows "comma_unique_literal_path weight
+    (comma_chart_value p source) (comma_chart_value p terminal)"
+  using prefix valid
+proof (induction n arbitrary: source weight)
+  case 0
+  then show ?case
+    by (auto simp: comma_unique_literal_path.zero)
+next
+  case (Suc n)
+  obtain successor local_weight rest where move:
+      "comma_weighted_step (r mod 924) source = Comma_WNext successor local_weight"
+    and tail: "comma_round_weighted_prefix p r n successor terminal rest"
+    and weight: "weight = comma_chart_weight_value p local_weight + rest"
+    using Suc.prems(1)
+    by (simp only: comma_round_weighted_prefix_simps; blast)
+  have move_p:
+    "comma_weighted_step (p mod 924) source = Comma_WNext successor local_weight"
+    using move phase by simp
+  have finite: "comma_finite_step (r mod 924) source = Comma_Next successor"
+    by (simp only: comma_finite_step_def move comma_erase_weight.simps)
+  have successor_valid: "comma_round_admitted successor"
+    by (rule comma_round_next_admitted[OF Suc.prems(2) finite])
+  have head: "comma_unique_literal_path (comma_chart_weight_value p local_weight)
+      (comma_chart_value p source) (comma_chart_value p successor)"
+    by (rule comma_source_chart_unique_path[OF exponent move_p])
+  have suffix: "comma_unique_literal_path rest
+      (comma_chart_value p successor) (comma_chart_value p terminal)"
+    by (rule Suc.IH[OF tail successor_valid])
+  have joined: "comma_unique_literal_path
+      (comma_chart_weight_value p local_weight + rest)
+      (comma_chart_value p source) (comma_chart_value p terminal)"
+    by (rule comma_unique_literal_path_append[OF head suffix])
+  show ?case using joined weight by simp
+qed
+
+lemma comma_round_close_unique_prefix:
+  assumes close: "comma_round_close r source = (n,terminal,event)"
+    and phase: "r mod 924 = p mod 924"
+    and exponent: "5 \<le> p"
+    and valid: "comma_round_admitted source"
+  obtains weight where
+    "comma_unique_literal_path weight
+      (comma_chart_value p source) (comma_chart_value p terminal)"
+proof -
+  obtain weight where prefix:
+    "comma_round_weighted_prefix p r n source terminal weight"
+    using comma_round_close_has_weighted_prefix[OF close] by blast
+  have unique:
+    "comma_unique_literal_path weight
+      (comma_chart_value p source) (comma_chart_value p terminal)"
+    by (rule comma_round_weighted_prefix_unique[OF prefix phase exponent valid])
+  show thesis using unique by (rule that)
+qed
+
+lemma comma_round_crossing_unique_literal_prefix:
+  assumes close: "comma_round_close r source=(n,terminal,Comma_Round_Cross target)"
+    and phase: "r mod 924=p mod 924"
+    and exponent: "5 \<le> p"
+    and valid: "comma_round_admitted source"
+  obtains weight where
+    "comma_unique_literal_path (Suc weight) (comma_chart_value p source)
+      (comma_chart_value p target)"
+proof -
+  obtain weight where prefix:
+    "comma_round_weighted_prefix p r (Suc n) source target (weight+1)"
+    using comma_round_crossing_adds_one_literal[OF close] by blast
+  have unique:
+    "comma_unique_literal_path (weight+1) (comma_chart_value p source)
+      (comma_chart_value p target)"
+    by (rule comma_round_weighted_prefix_unique[OF prefix phase exponent valid])
+  have unique':
+    "comma_unique_literal_path (Suc weight) (comma_chart_value p source)
+      (comma_chart_value p target)"
+    using unique by simp
+  show thesis by (rule that[OF unique'])
+qed
+
 lemma comma_round_terminal_occurrence:
   assumes close: "comma_round_close r source = (n,t,event)"
     and valid: "comma_round_admitted source"
@@ -27,14 +110,14 @@ lemma comma_round_terminal_occurrence:
     and exponent: "5 \<le> p"
     and terminal: "event = (case tau of Comma_Terminal_Fork a \<Rightarrow>
       Comma_Round_Fork a 0 | Comma_Terminal_Landmine \<Rightarrow> Comma_Round_Landmine 0)"
-  shows "\<exists>w. comma_literal_path w (comma_chart_value p source)
+  shows "\<exists>w. comma_unique_literal_path w (comma_chart_value p source)
       (comma_chart_value p t) \<and> comma_round_admitted t \<and>
       comma_round_delta t = 0 \<and>
       comma_finite_step (p mod 924) t = comma_summary_terminal_move tau"
 proof -
-  obtain w where path: "comma_literal_path w (comma_chart_value p source)
+  obtain w where path: "comma_unique_literal_path w (comma_chart_value p source)
       (comma_chart_value p t)"
-    using comma_round_close_literal_prefix[OF close phase exponent valid] by blast
+    by (rule comma_round_close_unique_prefix[OF close phase exponent valid])
   have admitted: "comma_round_admitted t"
     using comma_round_close_admitted(1)[OF close valid] .
   have delta: "comma_round_delta t = 0"
@@ -53,7 +136,8 @@ lemma comma_decade_direct_occurrence:
     and control: "comma_decade_control (Comma_Decade r x) =
       (case tau of Comma_Terminal_Fork a \<Rightarrow> Comma_Decade_Fork a 0
         | Comma_Terminal_Landmine \<Rightarrow> Comma_Decade_Landmine 0)"
-  shows "\<exists>w t. comma_literal_path w (comma_chart_value p (Comma_Entry 1 0 x))
+  shows "\<exists>w t. comma_unique_literal_path w
+      (comma_chart_value p (Comma_Entry 1 0 x))
       (comma_chart_value p t) \<and> comma_round_admitted t \<and>
       comma_round_delta t = 0 \<and>
       comma_finite_step (p mod 924) t = comma_summary_terminal_move tau"
@@ -86,7 +170,8 @@ lemma comma_decade_continue_occurrence:
     and phase: "p mod 924 = r" and exponent: "5 \<le> p"
     and control: "comma_decade_control (Comma_Decade r x) = Comma_Decade_Continue q"
   obtains y w where "y \<le> 90" "q = Comma_Decade ((r+1) mod 924) y"
-    "comma_literal_path (Suc w) (comma_chart_value p (Comma_Entry 1 0 x))
+    "comma_unique_literal_path (Suc w)
+      (comma_chart_value p (Comma_Entry 1 0 x))
       (comma_chart_value (Suc p) (Comma_Entry 1 0 y))"
 proof -
   obtain n t event where close:
@@ -104,9 +189,10 @@ proof -
   have q: "q = Comma_Decade ((r+1) mod 924) y"
     using decode by (simp add: event y)
   have residue: "r mod 924 = p mod 924" using phase by simp
-  obtain w where path: "comma_literal_path (w+1)
+  obtain w where path: "comma_unique_literal_path (Suc w)
       (comma_chart_value p (Comma_Entry 1 0 x)) (comma_chart_value p target)"
-    using comma_round_crossing_literal_prefix[OF cross residue exponent valid] by blast
+    by (rule comma_round_crossing_unique_literal_prefix
+      [OF cross residue exponent valid])
   have rebase: "comma_chart_value p target = comma_chart_value (Suc p) (Comma_Entry 1 0 y)"
     by (simp add: y comma_chart_value_def)
   show thesis by (rule that[OF y(1) q]) (use path rebase in simp)
@@ -114,12 +200,13 @@ qed
 
 ML \<open>comma_occurrence_lift_checkpoint "crossing decade"\<close>
 
-theorem comma_decade_summary_occurrence_exact:
+theorem comma_decade_summary_unique_occurrence_exists:
   assumes summary: "comma_decade_exact_summary s h tau"
     and admitted: "comma_decade_admitted s"
     and exponent: "5 \<le> p"
     and binding: "s = Comma_Decade (p mod 924) x"
-  shows "\<exists>w t. comma_literal_path w (comma_chart_value p (Comma_Entry 1 0 x))
+  shows "\<exists>w t. comma_unique_literal_path w
+      (comma_chart_value p (Comma_Entry 1 0 x))
       (comma_chart_value (p+h) t) \<and> comma_round_admitted t \<and>
       comma_round_delta t = 0 \<and>
       comma_finite_step ((p+h) mod 924) t = comma_summary_terminal_move tau"
@@ -147,7 +234,8 @@ next
   have move: "comma_decade_control (Comma_Decade (p mod 924) x) = Comma_Decade_Continue q"
     using crossing.hyps(1) crossing.prems by simp
   obtain y w where y: "y \<le> 90" "q = Comma_Decade (((p mod 924)+1) mod 924) y"
-    and path: "comma_literal_path (Suc w) (comma_chart_value p (Comma_Entry 1 0 x))
+    and path: "comma_unique_literal_path (Suc w)
+      (comma_chart_value p (Comma_Entry 1 0 x))
       (comma_chart_value (Suc p) (Comma_Entry 1 0 y))"
     by (rule comma_decade_continue_occurrence[OF valid refl crossing.prems(2) move]) blast
   have next_valid: "comma_decade_admitted q" using y by simp
@@ -156,15 +244,40 @@ next
     by (rule mod_add_left_eq)
   have next_binding: "q = Comma_Decade ((Suc p) mod 924) y"
     using y(2) shift by simp
-  obtain v t where tail: "comma_literal_path v (comma_chart_value (Suc p) (Comma_Entry 1 0 y))
+  obtain v t where tail: "comma_unique_literal_path v
+      (comma_chart_value (Suc p) (Comma_Entry 1 0 y))
       (comma_chart_value (Suc p+h) t)"
     and terminal: "comma_round_admitted t" "comma_round_delta t = 0"
       "comma_finite_step ((Suc p+h) mod 924) t = comma_summary_terminal_move tau"
     using crossing.IH[OF next_valid next_exponent next_binding] by blast
-  have joined: "comma_literal_path (Suc w+v)
+  have joined: "comma_unique_literal_path (Suc w+v)
       (comma_chart_value p (Comma_Entry 1 0 x)) (comma_chart_value (Suc p+h) t)"
-    by (rule comma_literal_path_append[OF path tail])
+    by (rule comma_unique_literal_path_append[OF path tail])
   show ?case using joined terminal by auto
+qed
+
+theorem comma_decade_summary_occurrence_exact:
+  assumes summary: "comma_decade_exact_summary s h tau"
+    and admitted: "comma_decade_admitted s"
+    and exponent: "5 \<le> p"
+    and binding: "s = Comma_Decade (p mod 924) x"
+  shows "\<exists>w t. comma_literal_path w (comma_chart_value p (Comma_Entry 1 0 x))
+      (comma_chart_value (p+h) t) \<and> comma_round_admitted t \<and>
+      comma_round_delta t = 0 \<and>
+      comma_finite_step ((p+h) mod 924) t = comma_summary_terminal_move tau"
+proof -
+  obtain w t where unique:
+      "comma_unique_literal_path w (comma_chart_value p (Comma_Entry 1 0 x))
+        (comma_chart_value (p+h) t)"
+    and admitted_t: "comma_round_admitted t"
+    and zero: "comma_round_delta t = 0"
+    and move: "comma_finite_step ((p+h) mod 924) t = comma_summary_terminal_move tau"
+    using comma_decade_summary_unique_occurrence_exists
+      [OF summary admitted exponent binding] by blast
+  have path: "comma_literal_path w (comma_chart_value p (Comma_Entry 1 0 x))
+      (comma_chart_value (p+h) t)"
+    by (rule comma_unique_literal_path_literal[OF unique])
+  show ?thesis using path admitted_t zero move by blast
 qed
 
 ML \<open>comma_occurrence_lift_checkpoint "recursive exact summary"\<close>
@@ -219,6 +332,62 @@ fun comma_summary_ordered_children :: "comma_decade_terminal \<Rightarrow> nat \
   "comma_summary_ordered_children (Comma_Terminal_Fork a) p =
     [comma_near_boundary a p, comma_zero_boundary a p]"
 | "comma_summary_ordered_children Comma_Terminal_Landmine p = []"
+
+text \<open>These outcome projections are shared physical boundary semantics.
+Their historical names are retained for existing provider clients; no table or
+native transition function is involved in their definitions.\<close>
+
+definition comma_native_outcome_delta :: "comma_finite_outcome \<Rightarrow> nat" where
+  "comma_native_outcome_delta outcome = (case outcome of
+      Comma_Fork_At a d \<Rightarrow> d
+    | Comma_Landmine_At d \<Rightarrow> d)"
+
+definition comma_native_boundary_children ::
+  "comma_boundary_state \<Rightarrow> comma_finite_outcome \<Rightarrow>
+    comma_boundary_state list" where
+  "comma_native_boundary_children q outcome =
+    (case q of (kind,a,r) \<Rightarrow>
+      case outcome of
+        Comma_Landmine_At d \<Rightarrow> []
+      | Comma_Fork_At b d \<Rightarrow>
+          [(Comma_N,b,(r+d) mod 924),(Comma_Z,b,(r+d) mod 924)])"
+
+lemma comma_native_boundary_children_cases:
+  "comma_native_boundary_children q outcome =
+    (case outcome of Comma_Landmine_At d \<Rightarrow> []
+     | Comma_Fork_At a d \<Rightarrow>
+        [(Comma_N,a,(snd (snd q)+d) mod 924),
+         (Comma_Z,a,(snd (snd q)+d) mod 924)])"
+  by (cases q; cases outcome; simp add: comma_native_boundary_children_def)
+
+lemma comma_native_boundary_fork_children_render:
+  assumes q: "q=(kind,source_a,r)"
+  shows "set (map (\<lambda>child. comma_boundary_value child (p+d))
+      (comma_native_boundary_children q (Comma_Fork_At a d))) =
+    {comma_near_boundary a (p+d),comma_zero_boundary a (p+d)}"
+  using q by (auto simp: comma_native_boundary_children_def
+    comma_boundary_value_def comma_near_boundary_def comma_zero_boundary_def)
+
+lemma comma_native_boundary_children_render_summary:
+  assumes q: "q=(kind,source_a,r)"
+  shows "set (map (\<lambda>child. comma_boundary_value child (p+d))
+      (comma_native_boundary_children q (comma_summary_outcome d terminal))) =
+    set (comma_summary_ordered_children terminal (p+d))"
+proof (cases terminal)
+  case (Comma_Terminal_Fork a)
+  have rendered:
+    "set (map (\<lambda>child. comma_boundary_value child (p+d))
+      (comma_native_boundary_children q (Comma_Fork_At a d))) =
+      {comma_near_boundary a (p+d),comma_zero_boundary a (p+d)}"
+    by (rule comma_native_boundary_fork_children_render[OF q])
+  show ?thesis using Comma_Terminal_Fork rendered
+    by (simp add: comma_summary_outcome.simps comma_summary_ordered_children.simps)
+next
+  case Comma_Terminal_Landmine
+  then show ?thesis
+    by (simp add: comma_native_boundary_children_def comma_summary_outcome.simps
+      comma_summary_ordered_children.simps)
+qed
 
 lemma comma_summary_terminal_children_exact:
   assumes valid: "comma_round_admitted t" and zero: "comma_round_delta t = 0"
@@ -294,9 +463,15 @@ ML \<open>comma_occurrence_lift_checkpoint "ordered summary theorem complete"\<c
 
 ML \<open>
   val comma_occurrence_lift_checked = @{thms
-    comma_round_terminal_occurrence comma_decade_direct_occurrence
-    comma_decade_continue_occurrence comma_decade_summary_occurrence_exact
+    comma_round_weighted_prefix_unique comma_round_close_unique_prefix
+    comma_round_crossing_unique_literal_prefix comma_round_terminal_occurrence
+    comma_decade_direct_occurrence comma_decade_continue_occurrence
+    comma_decade_summary_unique_occurrence_exists
+    comma_decade_summary_occurrence_exact
     comma_c1_crossing_chart_rebase comma_summary_terminal_children_exact
+    comma_native_outcome_delta_def comma_native_boundary_children_cases
+    comma_native_boundary_fork_children_render
+    comma_native_boundary_children_render_summary
     comma_decade_summary_ordered_occurrence}
   val _ = comma_occurrence_lift_checkpoint "oracle theorem list collected"
   val _ = if null (Thm_Deps.all_oracles comma_occurrence_lift_checked)

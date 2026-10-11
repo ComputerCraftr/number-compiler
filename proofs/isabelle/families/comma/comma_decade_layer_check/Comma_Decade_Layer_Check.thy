@@ -18,8 +18,8 @@ lemma comma_decade_block_atom_orbit_representative:
   shows "comma_decade_block_atom (Comma_Decade r x)=
     comma_decade_block_atom (Comma_Decade r (comma_offset_representative x))"
 proof -
-  have control: "comma_fast_decade_control (Comma_Decade r x)=
-    comma_fast_decade_control (Comma_Decade r (comma_offset_representative x))"
+  have control: "comma_decade_control (Comma_Decade r x)=
+    comma_decade_control (Comma_Decade r (comma_offset_representative x))"
     by (rule comma_decade_control_orbit_congruent[OF assms
       comma_offset_representative_admitted(1)])
       (simp only: comma_offset_representative_admitted(2))

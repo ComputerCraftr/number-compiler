@@ -124,6 +124,8 @@ def collect_ledger_metrics(
         "antihydra_payload_audit_projection_fragment_steps",
         "payload_audit_contract_member_visits",
         "payload_audit_contract_dependency_visits",
+        "comma_boundary_explicit_audit_component_checks",
+        "comma_boundary_explicit_audit_operand_bits",
     }
     if audit_payloads:
         # Occurrence binding validation reaches the ordinary identity validator.

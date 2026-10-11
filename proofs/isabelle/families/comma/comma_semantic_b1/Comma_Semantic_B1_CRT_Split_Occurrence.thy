@@ -1,7 +1,9 @@
 theory Comma_Semantic_B1_CRT_Split_Occurrence
   imports Comma_Semantic_B1_CRT_Occurrence_Fold
+    Comma_Semantic_B1_CRT_Structural_Partition
     Comma_CRT_Split_Power_Composition
 begin
+ML \<open>Comma_Proof_Profile.report "Split occurrence stage=entered"\<close>
 
 text \<open>
 Build an occurrence's B1 action directly into independent control and weight
@@ -761,8 +763,7 @@ lemma comma_crt_occurrence_split_stop_weight_fibers:
 
 
 ML \<open>
-val _ =
-  if null (Thm_Deps.all_oracles @{thms
+val checked = @{thms
     comma_crt_sum_child_le
     comma_crt_column_tree_child_less
     comma_crt_mdd_tree_child_less
@@ -773,7 +774,12 @@ val _ =
     comma_crt_mdd_paint_binding_admitted
     comma_crt_occurrence_split_mismatched_bindings_fail_closed
     comma_crt_occurrence_split_stop_weight_fibers
-  }) then ()
+  }
+val _ = Thm.consolidate checked
+val _ = Comma_Proof_Profile.report
+  "Split occurrence stage=final claims consolidated"
+val _ = if null (Thm_Deps.all_oracles checked) then ()
   else error "Comma_Semantic_B1_CRT_Split_Occurrence local oracle audit failed"
+val _ = Comma_Proof_Profile.report "Split occurrence stage=oracle audit checked"
 \<close>
 end

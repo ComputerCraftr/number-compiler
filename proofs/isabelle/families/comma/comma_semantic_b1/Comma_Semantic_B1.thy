@@ -2,6 +2,7 @@ theory Comma_Semantic_B1
   imports Comma_Decisive_Endpoint_Quotient.Comma_Source_Continuation_DAG
     Comma_Terminal_Weight.Comma_Terminal_Weight
 begin
+ML \<open>Comma_Proof_Profile.report "Semantic B1 root theory stage=entered"\<close>
 
 text \<open>
 This theory gives the weighted observable algebra for a B1 action.  A live
@@ -47,6 +48,8 @@ lemma comma_semantic_b1_id_apply:
   "comma_semantic_b1_apply (comma_semantic_b1_id_of_root root) clock =
     comma_semantic_b1 (clock mod 924) root"
   by (simp add: comma_semantic_b1_apply_def comma_semantic_b1_id_of_root_def)
+ML \<open>Thm.consolidate [@{thm comma_semantic_b1_id_apply}];
+  Comma_Proof_Profile.report "Semantic B1 root claim=id-apply checked"\<close>
 
 lemma comma_semantic_b1_id_extensional:
   "comma_semantic_b1_id_of_root left = comma_semantic_b1_id_of_root right \<longleftrightarrow>
@@ -77,6 +80,8 @@ next
       by (simp add: comma_semantic_b1_id_of_root_def)
   qed
 qed
+ML \<open>Thm.consolidate [@{thm comma_semantic_b1_id_extensional}];
+  Comma_Proof_Profile.report "Semantic B1 root claim=id-extensional checked"\<close>
 
 definition comma_semantic_b1_source ::
     "nat \<Rightarrow> nat \<Rightarrow> comma_semantic_b1_result" where
@@ -105,6 +110,8 @@ lemma comma_semantic_b1_of_word_then:
     (simp_all add: comma_semantic_word_then_def comma_word_then_def
       comma_terminal_weight_encode_def algebra_simps
       split: comma_word_result.splits comma_semantic_b1_result.splits)
+ML \<open>Thm.consolidate [@{thm comma_semantic_b1_of_word_then}];
+  Comma_Proof_Profile.report "Semantic B1 root claim=word-then checked"\<close>
 
 lemma comma_semantic_b1_exact_orbit:
   assumes phase: "r<924" and root: "i<46"
@@ -112,6 +119,8 @@ lemma comma_semantic_b1_exact_orbit:
     comma_semantic_b1_of_word (comma_orbit_word 0 r i)"
   using comma_decisive_B1_refines_orbit_word[OF phase root]
   by (simp add: comma_semantic_b1_def)
+ML \<open>Thm.consolidate [@{thm comma_semantic_b1_exact_orbit}];
+  Comma_Proof_Profile.report "Semantic B1 root claim=exact-orbit checked"\<close>
 
 lemma comma_semantic_b1_source_exact_atom:
   assumes phase: "r<924" and offset: "x\<le>90"
@@ -121,6 +130,8 @@ lemma comma_semantic_b1_source_exact_atom:
         (comma_decade_block_atom (Comma_Decade r x)))"
   using comma_decisive_B1_source_refines_atom[OF phase offset]
   by (simp add: comma_semantic_b1_source_def)
+ML \<open>Thm.consolidate [@{thm comma_semantic_b1_source_exact_atom}];
+  Comma_Proof_Profile.report "Semantic B1 root claim=source-exact-atom checked"\<close>
 
 theorem comma_semantic_b1_square:
   assumes phase: "r<924" and root: "i<46"
@@ -133,23 +144,40 @@ theorem comma_semantic_b1_square:
       "comma_orbit_word k" r i]
     comma_orbit_word_square[OF phase root, of k]
   by simp
+ML \<open>Thm.consolidate [@{thm comma_semantic_b1_square}];
+  Comma_Proof_Profile.report "Semantic B1 root claim=square checked"\<close>
 
 theorem comma_semantic_b1_stop_decode:
   assumes admitted: "comma_terminal_weight_admitted terminal"
   shows "comma_semantic_b1_of_word (Comma_Word_Stop height terminal) =
       Comma_Semantic_B1_Stop D \<Longrightarrow>
     comma_terminal_weight_decode D=(height,terminal)"
-  using admitted comma_terminal_weight_decode_encode
-  by (auto simp: comma_semantic_b1_of_word.simps
-    comma_terminal_weight_encode_def)
+proof -
+  assume stopped:
+    "comma_semantic_b1_of_word (Comma_Word_Stop height terminal) =
+      Comma_Semantic_B1_Stop D"
+  have encoded: "D = comma_terminal_weight_encode height terminal"
+    using stopped
+    by (metis comma_semantic_b1_of_word.simps comma_semantic_b1_result.inject)
+  have decoded:
+    "comma_terminal_weight_decode (comma_terminal_weight_encode height terminal) =
+      (height, terminal)"
+    by (rule comma_terminal_weight_decode_encode[OF admitted])
+  show ?thesis using encoded decoded by simp
+qed
+ML \<open>Thm.consolidate [@{thm comma_semantic_b1_stop_decode}];
+  Comma_Proof_Profile.report "Semantic B1 root claim=stop-decode checked"\<close>
 
 ML \<open>
   val checked = @{thms comma_semantic_b1_of_word_then
     comma_semantic_b1_id_apply comma_semantic_b1_id_extensional
     comma_semantic_b1_exact_orbit comma_semantic_b1_source_exact_atom
     comma_semantic_b1_square comma_semantic_b1_stop_decode};
+  val _ = Comma_Proof_Profile.report "Semantic B1 root audit=native entered";
   val _ = Comma_Proof_Dependency_Audit.require_native_clean @{context}
     "Weighted semantic B1 action" checked;
+  val _ = Comma_Proof_Profile.report "Semantic B1 root audit=native checked";
+  val _ = Comma_Proof_Profile.report "Semantic B1 root audit=endpoint paths entered";
   val _ = Comma_Proof_Dependency_Audit.require_expected_paths @{context}
     "B1 exact endpoint and weighted composition"
     ["comma_decisive_B1_refines_orbit_word",
@@ -157,9 +185,12 @@ ML \<open>
       "comma_terminal_weight_decode_encode"]
     @{thms comma_semantic_b1_exact_orbit
       comma_semantic_b1_source_exact_atom comma_semantic_b1_stop_decode};
+  val _ = Comma_Proof_Profile.report "Semantic B1 root audit=endpoint paths checked";
+  val _ = Comma_Proof_Profile.report "Semantic B1 root audit=power path entered";
   val _ = Comma_Proof_Dependency_Audit.require_expected_paths @{context}
     "B1 power composition" ["comma_orbit_word_square"]
     @{thms comma_semantic_b1_square};
+  val _ = Comma_Proof_Profile.report "Semantic B1 root audit=power path checked";
 \<close>
 
 end

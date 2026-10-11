@@ -1,9 +1,21 @@
 theory Comma_Decisive_Endpoint_Quotient
-  imports Comma_Sparse_Core.Comma_Orbit_Words
+  imports Comma_Decade_Orbit.Comma_Endpoint_Orbit_Interface
     Comma_Decade_Residual_Core.Comma_Decade_Residual_Core
     Comma_AddSub_Entry_Core_Bridge.Comma_AddSub_Entry_Core_Bridge
     Comma_Cyclotomic_Clock.Comma_Cyclotomic_Clock
 begin
+
+ML \<open>
+structure Comma_Decisive_Endpoint_Profile =
+struct
+  val started = Time.now ()
+  fun report stage =
+    Comma_Proof_Profile.report
+      (stage ^ " elapsed_ms=" ^
+        LargeInt.toString (Time.toMilliseconds (Time.- (Time.now (), started))))
+end
+val _ = Comma_Decisive_Endpoint_Profile.report "Endpoint quotient stage=entered"
+\<close>
 
 text \<open>
 The B1 source action is evaluated by one Entry-to-Near pullback, the closed
@@ -467,6 +479,7 @@ theorem comma_decisive_endpoint_round_refines:
     comma_decisive_endpoint_observation r source"
   using admitted
 proof (induction r source rule: comma_decisive_endpoint_round.induct)
+  ML_prf \<open>Comma_Decisive_Endpoint_Profile.report "Endpoint quotient stage=round-refines entered"\<close>
   case (1 r source)
   note source_admitted = "1.prems"
   note endpoint_induction = "1.IH"
@@ -479,6 +492,7 @@ proof (induction r source rule: comma_decisive_endpoint_round.induct)
   have decisive_target: "comma_decisive_sector_target r source=t"
     using comma_decisive_sector_target_refines_fast[OF source_admitted]
       source_target by simp
+  ML_prf \<open>Comma_Decisive_Endpoint_Profile.report "Endpoint quotient stage=round-refines target bridge reached"\<close>
   have fast_equation:
     "comma_decisive_endpoint_round r source =
       (case comma_finite_step (r mod 924) t of
@@ -491,6 +505,7 @@ proof (induction r source rule: comma_decisive_endpoint_round.induct)
     using source_admitted decisive_target
     by (subst comma_decisive_endpoint_round.simps)
       (simp only: if_True Let_def comma_fast_step_correct)
+  ML_prf \<open>Comma_Decisive_Endpoint_Profile.report "Endpoint quotient stage=round-refines fast equation reached"\<close>
   have slow_equation:
     "comma_round_control_germ r source =
       (case comma_finite_step (r mod 924) t of
@@ -502,6 +517,7 @@ proof (induction r source rule: comma_decisive_endpoint_round.induct)
       | Comma_Landmine delta \<Rightarrow> (n,t,Comma_Round_Landmine delta)
       | Comma_Invalid \<Rightarrow> (n,t,Comma_Round_Invalid))"
     using sector by (subst comma_round_control_germ.simps) (simp only: prod.case)
+  ML_prf \<open>Comma_Decisive_Endpoint_Profile.report "Endpoint quotient stage=round-refines control equation reached"\<close>
   show ?case
   proof (cases "comma_finite_step (r mod 924) t")
     case (Comma_Next successor)
@@ -532,6 +548,10 @@ proof (induction r source rule: comma_decisive_endpoint_round.induct)
     \<open>auto simp: comma_decisive_endpoint_observation_def
       split: comma_finite_move.splits prod.splits\<close>)
 qed
+ML \<open>
+  val _ = Comma_Decisive_Endpoint_Profile.report
+    "Endpoint quotient stage=round-refines submitted"
+\<close>
 
 corollary comma_decisive_endpoint_round_refines_fast:
   assumes admitted: "comma_round_admitted source"
@@ -552,6 +572,27 @@ proof -
     by (cases "comma_round_close r source")
       (auto simp: comma_decisive_endpoint_observation_def)
 qed
+
+theorem comma_decisive_endpoint_round_refines_close:
+  assumes admitted: "comma_round_admitted source"
+  shows "comma_decisive_endpoint_round r source =
+    snd (snd (comma_round_close r source))"
+proof -
+  ML_prf \<open>Comma_Decisive_Endpoint_Profile.report "Endpoint quotient stage=round-refines-close entered"\<close>
+  have observation:
+    "comma_decisive_endpoint_round r source =
+      (case comma_round_control_germ r source of (_,_,event) \<Rightarrow> event)"
+    using comma_decisive_endpoint_round_refines[OF admitted]
+    unfolding comma_decisive_endpoint_observation_def .
+  have germ: "comma_round_control_germ r source=comma_round_close r source"
+    by (rule comma_round_control_germ_refines)
+  show ?thesis using observation germ
+    by (cases "comma_round_close r source") simp
+qed
+ML \<open>
+  val _ = Comma_Decisive_Endpoint_Profile.report
+    "Endpoint quotient stage=round-refines-close submitted"
+\<close>
 
 text \<open>The existing projection owns output semantics; this theory changes
 the constructor path, not the definition of a live result or terminal label.\<close>
@@ -574,12 +615,13 @@ proof -
   let ?source = "Comma_Entry 1 0 x"
   have valid: "comma_round_admitted ?source"
     using offset by simp
-  have budget: "Suc (9-comma_sector_number ?source)\<le>9" by simp
-  have exact: "comma_fast_round_aux 9 r ?source=
-      comma_decisive_endpoint_round r ?source"
-    using comma_decisive_endpoint_round_refines_fast[OF valid budget] by simp
+  obtain steps terminal result where close:
+    "comma_round_close r ?source=(steps,terminal,result)"
+    by (cases "comma_round_close r ?source") auto
+  have endpoint: "comma_decisive_endpoint_round r ?source=result"
+    using comma_decisive_endpoint_round_refines_close[OF valid] close by simp
   show ?thesis
-    by (rule comma_sector_base_output_admitted[OF offset exact])
+    using comma_sector_base_output_admitted_close[OF offset close] endpoint by simp
 qed
 
 lemma comma_decisive_B1_source_refines_atom:
@@ -588,36 +630,37 @@ lemma comma_decisive_B1_source_refines_atom:
     comma_word_project comma_offset_orbit
       (comma_decade_block_atom (Comma_Decade r x))"
 proof -
+  ML_prf \<open>Comma_Decisive_Endpoint_Profile.report "Endpoint quotient stage=source-atom entered"\<close>
+  let ?source = "Comma_Entry 1 0 x"
+  have source_admitted: "comma_round_admitted ?source"
+    using offset by simp
+  obtain steps terminal out where close:
+    "comma_round_close r ?source=(steps,terminal,out)"
+    by (cases "comma_round_close r ?source") auto
+  have endpoint: "comma_decisive_endpoint_round r ?source=out"
+    using comma_decisive_endpoint_round_refines_close[OF source_admitted] close by simp
   have admitted:
     "comma_sector_base_admitted
-      (comma_decisive_endpoint_round r (Comma_Entry 1 0 x))"
-    by (rule comma_decisive_endpoint_result_admitted[OF offset])
-  have exact: "comma_fast_round_aux 9 r (Comma_Entry 1 0 x)=
-      comma_decisive_endpoint_round r (Comma_Entry 1 0 x)"
-  proof -
-    have source_admitted: "comma_round_admitted (Comma_Entry 1 0 x)"
-      using offset by simp
-    have budget: "Suc (9-comma_sector_number (Comma_Entry 1 0 x))\<le>9"
-      by simp
-    have endpoint_eq_fast:
-      "comma_decisive_endpoint_round r (Comma_Entry 1 0 x) =
-        comma_fast_round_aux 9 r (Comma_Entry 1 0 x)"
-      by (rule comma_decisive_endpoint_round_refines_fast
-        [OF source_admitted budget])
-    show ?thesis using endpoint_eq_fast by simp
-  qed
+      (comma_decisive_endpoint_round r ?source)"
+    using comma_sector_base_output_admitted_close[OF offset close] endpoint by simp
   have projected: "comma_sector_base_project
-      (comma_decisive_endpoint_round r (Comma_Entry 1 0 x)) =
+      (comma_decisive_endpoint_round r ?source) =
       comma_word_project comma_offset_orbit
         (comma_decade_block_atom (Comma_Decade r x))"
-    by (rule comma_sector_base_project_refines[OF phase offset exact admitted])
+    using comma_sector_base_project_refines_close[OF phase offset close]
+      endpoint admitted by simp
   show ?thesis by (simp only: comma_decisive_B1_source_def projected)
 qed
+ML \<open>
+  val _ = Comma_Decisive_Endpoint_Profile.report
+    "Endpoint quotient stage=source-atom submitted"
+\<close>
 
 theorem comma_decisive_B1_refines_orbit_word:
   assumes phase: "r<924" and index: "i<46"
   shows "comma_decisive_B1 r i=comma_orbit_word 0 r i"
 proof -
+  ML_prf \<open>Comma_Decisive_Endpoint_Profile.report "Endpoint quotient stage=B1-orbit entered"\<close>
   let ?x = "comma_offset_representatives!i"
   have offset: "?x\<le>90" and fiber: "comma_offset_orbit ?x=i"
     using comma_orbit_representative_index[OF index] by auto
@@ -629,6 +672,10 @@ proof -
     by (simp add: comma_decisive_B1_def comma_orbit_word_def
       comma_decade_block_power.simps)
 qed
+ML \<open>
+  val _ = Comma_Decisive_Endpoint_Profile.report
+    "Endpoint quotient stage=B1-orbit submitted"
+\<close>
 
 lemma comma_decisive_sector_period_admitted_pair:
   assumes admitted: "comma_round_admitted source"
@@ -694,15 +741,24 @@ lemma comma_decisive_endpoint_round_packet:
 
 ML \<open>
   val endpoint = @{thms comma_fast_sector_target_is_control comma_fast_endpoint_successor_decreases
-      comma_decisive_endpoint_round_refines comma_decisive_endpoint_round_refines_fast
+      comma_decisive_endpoint_round_refines comma_decisive_endpoint_round_refines_close
       comma_decisive_endpoint_result_admitted comma_decisive_B1_source_refines_atom
-      comma_decisive_B1_refines_orbit_word}
+      comma_decisive_B1_refines_orbit_word comma_decisive_packet_target_admitted
+      comma_decisive_endpoint_round_packet}
+  val legacy_endpoint_comparison = @{thms comma_decisive_endpoint_round_refines_fast}
+  val _ = Comma_Decisive_Endpoint_Profile.report "Endpoint quotient stage=native-oracle-audit entered"
   val _ = if null (Thm_Deps.all_oracles endpoint) then ()
     else error "Decisive endpoint quotient depends on an oracle"
+  val _ = Comma_Decisive_Endpoint_Profile.report "Endpoint quotient stage=native-oracle-audit checked"
+  val _ = Comma_Decisive_Endpoint_Profile.report "Endpoint quotient stage=legacy-oracle-audit entered"
+  val _ = if null (Thm_Deps.all_oracles legacy_endpoint_comparison) then ()
+    else error "Legacy endpoint compatibility comparison depends on an oracle"
+  val _ = Comma_Decisive_Endpoint_Profile.report "Endpoint quotient stage=legacy-oracle-audit checked"
   val core_endpoint = @{thms comma_decisive_entry_clock_key_refines_core
     comma_decisive_entry_core_clock_refines comma_decisive_entry_target_diagonal}
   val _ = if null (Thm_Deps.all_oracles core_endpoint) then ()
     else error "Decisive Entry core bridge depends on an oracle"
+  val _ = Comma_Decisive_Endpoint_Profile.report "Endpoint quotient stage=core-oracle-audit checked"
   val _ = Comma_Proof_Dependency_Audit.require_expected_paths @{context}
     "Decisive Entry core/clock endpoint authority"
     ["comma_addsub_entry_core_locator_refines",
@@ -715,6 +771,7 @@ ML \<open>
     "Decisive endpoint constructors" endpoint
   val _ = Comma_Proof_Dependency_Audit.require_native_clean @{context}
     "Decisive Entry core/clock bridge" core_endpoint
+  val _ = Comma_Decisive_Endpoint_Profile.report "Endpoint quotient stage=dependency-audits checked"
 \<close>
 
 ML_file "decisive_endpoint_kernel.ML"
@@ -736,36 +793,48 @@ ML \<open>
   fun require_some label value = (case value of
       SOME theorem => theorem
     | NONE => error ("Direct endpoint smoke test did not rewrite " ^ label))
+  fun checkpoint stage = Comma_Decisive_Endpoint_Profile.report
+    ("Endpoint quotient smoke=" ^ stage)
   fun prove_admitted proposition = Goal.prove ctxt [] [] proposition
     (fn _ => simp_tac (ctxt addsimps @{thms comma_round_admitted.simps}) 1)
   fun check_valid (r, f, x) =
     let
+      val label = "r=" ^ Int.toString r ^ ",f=" ^ Int.toString f ^
+        ",x=" ^ Int.toString x
+      val _ = checkpoint (label ^ " stage=entered")
       val source_term = source f x
       val request_term = request r f x
       val hits_before = #direct_entry_hits endpoint_kernel ()
       val direct = require_some (Int.toString f ^ "/" ^ Int.toString x)
         (#rewrite endpoint_kernel (Thm.cterm_of ctxt request_term))
+      val _ = checkpoint (label ^ " stage=direct-rewrite-complete")
       val _ = if Thm.term_of (Thm.lhs_of direct) aconv request_term andalso
           Thm.nprems_of direct = 0 andalso null (Thm.hyps_of direct) then ()
         else error "Direct endpoint smoke theorem is not a closed request equation"
+      val _ = checkpoint (label ^ " stage=direct-shape-checked")
       val refinement = Drule.infer_instantiate ctxt
         [(("r",0), Thm.cterm_of ctxt (nat r)),
          (("source",0), Thm.cterm_of ctxt source_term)]
         @{thm comma_decisive_sector_target_refines_fast}
       val _ = if Thm.nprems_of refinement = 1 then ()
         else error "Fast-target refinement has unexpected premises"
+      val _ = checkpoint (label ^ " stage=refinement-instantiated")
       val admitted = prove_admitted (Thm.term_of (Thm.cprem_of refinement 1))
+      val _ = checkpoint (label ^ " stage=admission-proved")
       val fast_refinement = Thm.implies_elim refinement admitted
       val fast_reflection = fast_refinement RS @{thm eq_reflection}
       val legacy_to_direct = Thm.transitive (Thm.symmetric fast_reflection) direct
+      val _ = checkpoint (label ^ " stage=refinement-composed")
       val expected = fast_target $ nat r $ source_term
       val _ = if Thm.term_of (Thm.lhs_of legacy_to_direct) aconv expected andalso
           Thm.nprems_of legacy_to_direct = 0 andalso
           null (Thm.hyps_of legacy_to_direct) then ()
         else error "Direct Entry endpoint disagrees with the checked fast target"
+      val _ = checkpoint (label ^ " stage=fast-target-checked")
       val hits_after = #direct_entry_hits endpoint_kernel ()
       val _ = if hits_after = hits_before + 1 then ()
         else error "Admitted Entry smoke request did not take exactly one direct projection"
+      val _ = checkpoint (label ^ " stage=complete")
     in () end
   val valid_cases = [(0,1,0), (1,1,98), (923,9,0), (0,9,98)]
   val _ = List.app check_valid valid_cases
@@ -778,13 +847,17 @@ ML \<open>
       nat 1 $ nat 0 $ nat 1
   fun near_request r = target $ nat r $ near
   val canonical_request = near_request 0
+  val _ = checkpoint "near-canonical stage=entered"
   val canonical = require_some "canonical Near target"
     (#rewrite endpoint_kernel (Thm.cterm_of ctxt canonical_request))
+  val _ = checkpoint "near-canonical stage=rewrite-complete"
   val endpoint_hits_before_rebase = #endpoint_hits endpoint_kernel ()
   val period_rebases_before = #target_period_rebases endpoint_kernel ()
   val rebased_request = near_request 1
+  val _ = checkpoint "near-rebase stage=entered"
   val rebased = require_some "period-normalized Near target"
     (#rewrite endpoint_kernel (Thm.cterm_of ctxt rebased_request))
+  val _ = checkpoint "near-rebase stage=rewrite-complete"
   val _ = if Thm.term_of (Thm.lhs_of rebased) aconv rebased_request andalso
       Thm.term_of (Thm.rhs_of rebased) aconv Thm.term_of (Thm.rhs_of canonical) andalso
       Thm.nprems_of rebased = 0 andalso null (Thm.hyps_of rebased) andalso
@@ -799,12 +872,15 @@ ML \<open>
     (fn Const (head, _) => head = name | _ => false) term
   fun check_invalid (f, x) =
     let
+      val label = "invalid f=" ^ Int.toString f ^ ",x=" ^ Int.toString x
+      val _ = checkpoint (label ^ " stage=entered")
       val request_term = request 0 f x
       val request_ct = Thm.cterm_of ctxt request_term
       val hits_before = #direct_entry_hits endpoint_kernel ()
       val probe = #direct_entry_probe endpoint_kernel request_ct
       val _ = if is_none probe then ()
         else error "Unadmitted Entry request matched the direct projection"
+      val _ = checkpoint (label ^ " stage=admission-probe-checked")
       val root = Conv.rewrs_conv
         (map (fn rule => rule RS @{thm eq_reflection})
           @{thms comma_decisive_sector_target.simps}) request_ct
@@ -816,6 +892,7 @@ ML \<open>
       val after = #direct_entry_hits endpoint_kernel ()
       val _ = if hits_before = after andalso after = valid_hits then ()
         else error "Unadmitted Entry request incremented direct-projection hits"
+      val _ = checkpoint (label ^ " stage=complete")
     in () end
   val _ = List.app check_invalid [(0,0), (10,0), (1,99)]
 \<close>

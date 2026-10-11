@@ -1,6 +1,6 @@
 theory Comma_Semantic_B1_Future_Bridge
   imports Comma_Semantic_B1.Comma_Semantic_B1_Power
-    Comma_Native_Summary_Occurrence.Comma_Native_Summary_Occurrence
+    Comma_Decade_Occurrence_Lift.Comma_Decade_Occurrence_Lift
 begin
 
 ML_file "../comma_entry_arithmetic/Proof_Dependency_Audit.ML"
@@ -123,9 +123,6 @@ proof -
           round_zero round_move children])
 qed
 
-ML \<open>Comma_Native_Occurrence_Profile.checkpoint
-  "semantic-b32-entry-projection-start"\<close>
-
 theorem comma_semantic_b32_entry_infinite_path_projects_summary_child:
   fixes provider :: "nat \<Rightarrow> nat \<Rightarrow> comma_semantic_b1_result"
   assumes exact_orbit:
@@ -215,9 +212,6 @@ proof -
             selected_endpoint refl selected_child tail_start tail_edges_all])
   qed
 qed
-
-ML \<open>Comma_Native_Occurrence_Profile.checkpoint
-  "semantic-b32-entry-projection-end"\<close>
 
 ML \<open>
   val checked = @{thms comma_semantic_b32_stop_exact_occurrence_for_offset

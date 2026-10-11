@@ -2,6 +2,10 @@
 
 from __future__ import annotations
 
+import gc
+import weakref
+from collections.abc import Callable
+
 import pytest
 
 from devtools.verification.comma_b1_quotient import (
@@ -10,10 +14,14 @@ from devtools.verification.comma_b1_quotient import (
     offset_orbit,
     offset_representatives,
 )
+from number_compiler.resources.fused_traversal_workspace import (
+    fused_traversal_workspace_owner_names,
+)
 from number_compiler.sequences.comma.boundary_chart import BoundaryChart
 from number_compiler.sequences.comma.cyclotomic_clock import CyclotomicClock
 from number_compiler.sequences.comma.semantic_continuation import (
     ContinuationID,
+    SemanticContinuation,
     SemanticContinuationArena,
     TerminalWeight,
 )
@@ -139,6 +147,280 @@ def test_powered_application_memoizes_parent_blocks_and_stop_offset() -> None:
     assert view.ledger.entries < retained
     with pytest.raises(RuntimeError, match="closed"):
         application.apply(roots[0], 0, 0)
+
+
+def test_powered_application_preflights_workspace_names_before_registration(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    representatives = offset_representatives()
+    roots = tuple(_root(offset) for offset in representatives)
+    arena = SemanticContinuationArena()
+    arena.compile_many(roots)
+    view = arena.publish(roots)
+    prefix = f"comma-semantic-powered-{view.ledger.owner_count + 1}"
+    workspace_names = fused_traversal_workspace_owner_names(prefix)
+    collision_owner = view.ledger.register(
+        workspace_names[2], "fused_interface_workspace"
+    )
+    view.ledger.make_dict(collision_owner)
+    before = view.ledger.owner_count
+
+    def forbidden_inventory(*_args: object, **_kwargs: object) -> None:
+        raise AssertionError("application setup must not inventory ledger stores")
+
+    monkeypatch.setattr(view.ledger, "inventory", forbidden_inventory)
+    with pytest.raises(ValueError, match="already registered"):
+        view.powered_application(source_for_live_root=lambda root: roots[root])
+    assert view.ledger.owner_count == before
+
+
+def _live_request(
+    view: SemanticContinuation, roots: tuple[BoundaryChart, ...]
+) -> tuple[BoundaryChart, int]:
+    for source in roots:
+        for phase in range(924):
+            if view.evaluate(source, phase).action.kind == "live":
+                return source, phase
+    raise AssertionError("compiled comma view has no live request")
+
+
+def test_powered_convenience_reuses_one_owner_and_rebinds_each_callback() -> None:
+    representatives = offset_representatives()
+    roots = tuple(_root(offset) for offset in representatives)
+    arena = SemanticContinuationArena()
+    arena.compile_many(roots)
+    view = arena.publish(roots)
+    source, phase = _live_request(view, roots)
+    owner_count = view.ledger.owner_count
+    first_calls: list[int] = []
+    second_calls: list[int] = []
+
+    def first_resolver(root: int) -> BoundaryChart:
+        first_calls.append(root)
+        return _root(representatives[offset_orbit(root)])
+
+    def second_resolver(root: int) -> BoundaryChart:
+        second_calls.append(root)
+        return _root(representatives[offset_orbit(root)], 137)
+
+    view.apply_decades_powered(source, phase, 1, source_for_live_root=first_resolver)
+    application = view._convenience_application
+    assert application is not None
+    first_binding = application.binding
+    assert first_calls
+    assert view.ledger.owner_count == owner_count + 5
+    assert len(application._memo) == 0
+    assert len(application._root_bindings) == 0
+    assert application._workspace.nodes == 0
+
+    view.apply_decades_powered(source, phase, 1, source_for_live_root=second_resolver)
+    assert second_calls
+    assert application.binding != first_binding
+    assert application._source_for_live_root is None
+    assert view.ledger.owner_count == owner_count + 5
+    assert len(application._memo) == 0
+    assert len(application._root_bindings) == 0
+    assert application._workspace.nodes == 0
+
+
+def test_powered_convenience_rejects_reentry_and_active_close() -> None:
+    representatives = offset_representatives()
+    roots = tuple(_root(offset) for offset in representatives)
+    arena = SemanticContinuationArena()
+    arena.compile_many(roots)
+    view = arena.publish(roots)
+    source, phase = _live_request(view, roots)
+    refused: list[str] = []
+
+    def resolver(root: int) -> BoundaryChart:
+        with pytest.raises(RuntimeError, match="already active"):
+            view.apply_decades_powered(source, phase, 1, source_for_live_root=resolver)
+        refused.append("reentry")
+        with pytest.raises(RuntimeError, match="active"):
+            view.close()
+        refused.append("close")
+        return _root(representatives[offset_orbit(root)])
+
+    view.apply_decades_powered(source, phase, 1, source_for_live_root=resolver)
+    application = view._convenience_application
+    assert application is not None
+    assert refused == ["reentry", "close"]
+    assert not application._active
+    assert not application._closed
+    assert not view._convenience_closed
+
+
+def test_powered_convenience_drops_callback_closure_after_request() -> None:
+    representatives = offset_representatives()
+    roots = tuple(_root(offset) for offset in representatives)
+    arena = SemanticContinuationArena()
+    arena.compile_many(roots)
+    view = arena.publish(roots)
+    source, phase = _live_request(view, roots)
+
+    class CapturedPayload:
+        pass
+
+    def make_resolver(
+        captured: CapturedPayload,
+    ) -> tuple[Callable[[int], BoundaryChart], weakref.ReferenceType[CapturedPayload]]:
+        payload_ref = weakref.ref(captured)
+
+        def resolver(root: int) -> BoundaryChart:
+            assert captured is not None
+            return _root(representatives[offset_orbit(root)])
+
+        return resolver, payload_ref
+
+    resolver, payload_ref = make_resolver(CapturedPayload())
+
+    view.apply_decades_powered(source, phase, 1, source_for_live_root=resolver)
+    application = view._convenience_application
+    assert application is not None
+    assert application._source_for_live_root is None
+    del resolver
+    gc.collect()
+    assert payload_ref() is None
+    view.close()
+
+
+def test_manual_powered_application_releases_resolver_when_closed() -> None:
+    source = _root(offset_representatives()[0])
+    arena = SemanticContinuationArena()
+    arena.compile(source)
+    view = arena.publish((source,))
+
+    class CapturedPayload:
+        pass
+
+    def make_resolver(
+        captured: CapturedPayload,
+    ) -> tuple[Callable[[int], BoundaryChart], weakref.ReferenceType[CapturedPayload]]:
+        payload_ref = weakref.ref(captured)
+
+        def resolver(_root_value: int) -> BoundaryChart:
+            assert captured is not None
+            return source
+
+        return resolver, payload_ref
+
+    resolver, payload_ref = make_resolver(CapturedPayload())
+
+    application = view.powered_application(source_for_live_root=resolver)
+    assert application._source_for_live_root is resolver
+    del resolver
+    gc.collect()
+    assert payload_ref() is not None
+    application.close()
+    gc.collect()
+    assert application._source_for_live_root is None
+    assert payload_ref() is None
+
+
+def test_failed_powered_close_is_fail_closed_and_retryable(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    source = _root(offset_representatives()[0])
+    arena = SemanticContinuationArena()
+    arena.compile(source)
+    view = arena.publish((source,))
+
+    def resolver(_root_value: int) -> BoundaryChart:
+        return source
+
+    application = view.powered_application(source_for_live_root=resolver)
+    owners = (
+        application._memo.owner,
+        application._root_bindings.owner,
+        application._workspace.owner,
+    )
+
+    def fail_memo_dispose() -> None:
+        raise RuntimeError("memo cleanup failed")
+
+    def fail_roots_dispose() -> None:
+        raise ValueError("root cleanup failed")
+
+    def fail_workspace_dispose() -> None:
+        raise OSError("workspace cleanup failed")
+
+    monkeypatch.setattr(application._memo, "dispose", fail_memo_dispose)
+    monkeypatch.setattr(application._root_bindings, "dispose", fail_roots_dispose)
+    monkeypatch.setattr(application._workspace, "dispose", fail_workspace_dispose)
+
+    with pytest.raises(OSError, match="workspace cleanup failed") as failure:
+        application.close()
+
+    context_messages: list[str] = []
+    context = failure.value.__context__
+    while context is not None:
+        context_messages.append(str(context))
+        context = context.__context__
+    assert context_messages == ["root cleanup failed", "memo cleanup failed"]
+    assert application._closing
+    assert not application._closed
+    assert application._source_for_live_root is None
+    assert all(not view.ledger.inventory_owner(owner).disposed for owner in owners)
+    with pytest.raises(RuntimeError, match="closing or closed"):
+        application.apply(source, 0, 0)
+
+    monkeypatch.undo()
+    application.close()
+    assert application._closed
+    assert not application._closing
+    assert all(view.ledger.inventory_owner(owner).disposed for owner in owners)
+
+
+def test_powered_convenience_clears_failed_request_and_closes_only_its_owner() -> None:
+    representatives = offset_representatives()
+    roots = tuple(_root(offset) for offset in representatives)
+    arena = SemanticContinuationArena()
+    arena.compile_many(roots)
+    view = arena.publish(roots)
+    source, phase = _live_request(view, roots)
+
+    def failing_resolver(_root_value: int) -> BoundaryChart:
+        raise RuntimeError("resolver failed")
+
+    with pytest.raises(RuntimeError, match="resolver failed"):
+        view.apply_decades_powered(
+            source, phase, 1, source_for_live_root=failing_resolver
+        )
+
+    application = view._convenience_application
+    assert application is not None
+    workspace = application._workspace
+    assert not application._active
+    assert len(application._memo) == 0
+    assert len(application._root_bindings) == 0
+    assert not workspace.active
+    assert workspace.nodes == 0
+    assert not workspace.frames
+    assert not workspace.values
+
+    def valid_resolver(root_value: int) -> BoundaryChart:
+        return _root(representatives[offset_orbit(root_value)])
+
+    view.apply_decades_powered(source, phase, 1, source_for_live_root=valid_resolver)
+    manual = view.powered_application(source_for_live_root=valid_resolver)
+    helper_owners = (
+        application._memo.owner,
+        application._root_bindings.owner,
+        workspace.owner,
+        workspace.frame_owner,
+        workspace.value_owner,
+    )
+    view.close()
+    assert application._closed
+    assert all(view.ledger.inventory_owner(owner).disposed for owner in helper_owners)
+    with pytest.raises(RuntimeError, match="convenience owner is closed"):
+        view.apply_decades_powered(
+            source, phase, 1, source_for_live_root=valid_resolver
+        )
+
+    # Explicit manual applications retain their separate lifecycle.
+    assert manual.apply(source, phase, 0).complete_decades == 0
+    manual.close()
 
 
 def test_moore_refinement_is_independent_and_has_no_hardcoded_count() -> None:

@@ -1,6 +1,7 @@
 theory Comma_CRT_Columns
   imports Comma_Semantic_B1_Power
 begin
+ML \<open>Comma_Proof_Profile.report "CRT columns stage=entered"\<close>
 
 text \<open>
 Executable Boolean columns for the four external cyclotomic characters.
@@ -198,6 +199,8 @@ next
     by (simp add: nth_rotate nth_map rotated_index)
 qed
 
+ML \<open>Thm.consolidate [@{thm comma_crt_shift_refines}]; Comma_Proof_Profile.report "CRT columns claim=shift-refines checked"\<close>
+
 lemma comma_crt_shift_admitted:
   "comma_crt_admitted lower column \<Longrightarrow>
     comma_crt_admitted lower (comma_crt_shift shift column)"
@@ -293,13 +296,19 @@ next
   qed
 qed
 
+ML \<open>Thm.consolidate [@{thm comma_crt_cofactor_exact}]; Comma_Proof_Profile.report "CRT columns claim=cofactor-exact checked"\<close>
+
 ML \<open>
   val checked = @{thms comma_crt_admitted_mono comma_crt_node_admitted
     comma_crt_node_eval comma_crt_shift_refines
     comma_crt_shift_admitted comma_crt_eval_periodic comma_crt_shift_column_exact
     comma_crt_shift_is_power_advance comma_crt_cofactor_exact};
+  val _ = Thm.consolidate checked;
+  val _ = Comma_Proof_Profile.report "CRT columns claims consolidated";
+  val _ = Comma_Proof_Profile.report "CRT columns audit=native entered";
   val _ = Comma_Proof_Dependency_Audit.require_native_clean @{context}
     "Concrete CRT column interpretation and clock transport" checked;
+  val _ = Comma_Proof_Profile.report "CRT columns audit=native checked";
 \<close>
 
 end

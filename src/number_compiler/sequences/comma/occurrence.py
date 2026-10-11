@@ -15,12 +15,18 @@ of that integer.
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import Literal
 
 from .arithmetic import comma_children, cycle_transfer, decimal_sector
 from .boundary_chart import PERIOD
-from .boundary_quotient import AffineWeight, BoundaryState, MacroTemplate
+from .boundary_quotient import (
+    BoundaryState,
+    MacroTemplate,
+    _affine_weight_signature,
+    _boundary_state_signature,
+    _macro_template_component_seal,
+)
 from .carry_generator import (
     BitsCharge,
     BoundC1Return,
@@ -31,6 +37,8 @@ from .carry_generator import (
 from .weighted_return import WeightedBoundaryAction
 
 _PREFIX_RETURN_SEAL = object()
+_ORDERED_MACRO_CHILDREN_SEAL = object()
+_MACRO_CHILD_OCCURRENCE_SEAL = object()
 
 
 def _charge(
@@ -57,16 +65,61 @@ class BoundaryOccurrence:
 
     state: BoundaryState
     exponent: int
+    _snapshot: tuple[str, int, int, int] = field(
+        init=False,
+        repr=False,
+        compare=False,
+        hash=False,
+    )
 
     def __post_init__(self) -> None:
         if type(self.state) is not BoundaryState:
             raise TypeError("comma occurrence requires an exact boundary state")
         if (
-            type(self.exponent) is not int
+            type(self.state.kind) is not str
+            or self.state.kind not in ("N", "Z")
+            or type(self.state.a) is not int
+            or not 2 <= self.state.a <= 9
+            or type(self.state.exponent_residue) is not int
+            or not 0 <= self.state.exponent_residue < PERIOD
+            or type(self.exponent) is not int
             or self.exponent < 5
             or self.exponent % PERIOD != self.state.exponent_residue
         ):
             raise ValueError("physical exponent does not represent boundary state")
+
+        object.__setattr__(
+            self,
+            "_snapshot",
+            (
+                self.state.kind,
+                self.state.a,
+                self.state.exponent_residue,
+                self.exponent,
+            ),
+        )
+
+    def _validate(self) -> None:
+        # Construction checked congruence before publishing this scalar snapshot.
+        if (
+            type(self.state) is not BoundaryState
+            or type(self.state.kind) is not str
+            or self.state.kind not in ("N", "Z")
+            or type(self.state.a) is not int
+            or not 2 <= self.state.a <= 9
+            or type(self.state.exponent_residue) is not int
+            or not 0 <= self.state.exponent_residue < PERIOD
+            or type(self.exponent) is not int
+            or self.exponent < 5
+            or getattr(self, "_snapshot", None)
+            != (
+                self.state.kind,
+                self.state.a,
+                self.state.exponent_residue,
+                self.exponent,
+            )
+        ):
+            raise ValueError("boundary occurrence differs from its exact snapshot")
 
     def value(
         self,
@@ -75,6 +128,7 @@ class BoundaryOccurrence:
         charge_bits: BitsCharge | None = None,
     ) -> int:
         """Derive the exact literal value from the authenticated occurrence."""
+        self._validate()
         _charge(charge_work, charge_bits, 1, self.exponent)
         return self.state.value(self.exponent, charge_bits=charge_bits)
 
@@ -84,6 +138,7 @@ class BoundaryOccurrence:
         charge_work: WorkCharge | None = None,
         charge_bits: BitsCharge | None = None,
     ) -> C1Phase:
+        self._validate()
         _charge(charge_work, charge_bits, 1, self.state.a, self.exponent)
         sector = self.state.a - int(self.state.kind == "N")
         suffix = 99 if self.state.kind == "N" else 0
@@ -95,6 +150,7 @@ class BoundaryOccurrence:
         charge_work: WorkCharge | None = None,
         charge_bits: BitsCharge | None = None,
     ) -> int:
+        self._validate()
         scale_exponent = self.exponent - 2
         _charge(
             charge_work,
@@ -113,6 +169,7 @@ class BoundaryOccurrence:
         charge_work: WorkCharge | None = None,
         charge_bits: BitsCharge | None = None,
     ) -> int:
+        self._validate()
         _charge(charge_work, charge_bits, 1, self.state.a)
         return 99 if self.state.kind == "N" else 0
 
@@ -173,7 +230,9 @@ def _macro_prefix_arithmetic(
     value, scale, source_high, _source_low, _source_phase = _source_coordinates(
         source, charge_work=charge_work, charge_bits=charge_bits
     )
-    if template.source != source.state:
+    if _boundary_state_signature(template.source) != _boundary_state_signature(
+        source.state
+    ):
         raise ValueError("macro template is bound to another boundary occurrence")
 
     total_steps = 0
@@ -319,6 +378,7 @@ def _prefix_signature(
     width_delta: int,
     terminal_leading: int,
 ) -> tuple[object, ...]:
+    source._validate()
     return (
         _template_signature(template),
         source.state.kind,
@@ -335,28 +395,44 @@ def _prefix_signature(
 
 def _template_signature(template: MacroTemplate) -> tuple[object, ...]:
     """Snapshot only the shallow macro fields consumed after publication."""
-    if type(template.source) is not BoundaryState:
-        raise ValueError("macro template source changed after construction")
-    if type(template.weight) is not AffineWeight:
-        raise ValueError("macro template weight changed after construction")
+    if type(template) is not MacroTemplate:
+        raise ValueError("macro template changed after construction")
+    component_seal = _macro_template_component_seal(template)
+    source = _boundary_state_signature(template.source)
+    if (
+        type(template.outcome) is not str
+        or template.outcome not in ("fork", "landmine")
+        or type(template.exponent_delta) is not int
+        or template.exponent_delta < 0
+        or type(template.ordered_children) is not tuple
+    ):
+        raise ValueError("macro template has noncanonical scalar fields")
+    if template.destination_a is not None and type(template.destination_a) is not int:
+        raise ValueError("macro template destination has a noncanonical type")
     children: list[tuple[str, int, int]] = []
     for child in template.ordered_children:
-        if type(child) is not BoundaryState:
-            raise ValueError("macro template child changed after construction")
-        children.append((child.kind, child.a, child.exponent_residue))
-    weight = template.weight
+        children.append(_boundary_state_signature(child))
+    if template.outcome == "fork":
+        if (
+            type(template.destination_a) is not int
+            or not 2 <= template.destination_a <= 9
+            or len(children) != 2
+            or tuple(child[0] for child in children) != ("N", "Z")
+            or any(child[1] != template.destination_a for child in children)
+        ):
+            raise ValueError("fork macro has noncanonical ordered children")
+    elif template.destination_a is not None or children:
+        raise ValueError("landmine macro unexpectedly carries fork children")
     return (
         id(template),
-        (template.source.kind, template.source.a, template.source.exponent_residue),
+        id(component_seal),
+        source,
         template.outcome,
         template.exponent_delta,
         template.destination_a,
         tuple(children),
-        (
-            weight.numerator_scale,
-            weight.numerator_offset,
-            weight.denominator,
-        ),
+        _affine_weight_signature(template.weight),
+        _affine_weight_signature(template.endpoint),
     )
 
 
@@ -392,6 +468,7 @@ class OccurrencePrefixReturn:
             raise TypeError("macro occurrence return requires a boundary occurrence")
         if type(template) is not MacroTemplate:
             raise TypeError("macro occurrence return requires a chart template")
+        _template_signature(template)
         if type(check_endpoint) is not bool:
             raise TypeError("endpoint check flag must be bool")
         if template.outcome not in ("fork", "landmine"):
@@ -526,6 +603,18 @@ class OccurrencePrefixReturn:
         charge_bits: BitsCharge | None = None,
     ) -> tuple[BoundaryOccurrence, ...]:
         """Return the exact N/Z children after, and separate from, the prefix."""
+        return self.ordered_literal_children(
+            charge_work=charge_work,
+            charge_bits=charge_bits,
+        ).children
+
+    def ordered_literal_children(
+        self,
+        *,
+        charge_work: WorkCharge | None = None,
+        charge_bits: BitsCharge | None = None,
+    ) -> OrderedMacroChildren:
+        """Validate literal N/Z values once and retain their boundary bindings."""
         self._validate()
         _charge(
             charge_work,
@@ -538,7 +627,12 @@ class OccurrencePrefixReturn:
         if self._template.outcome == "landmine":
             if literal_children:
                 raise AssertionError("landmine terminal has a literal comma child")
-            return ()
+            return OrderedMacroChildren(
+                self,
+                (),
+                (),
+                _seal=_ORDERED_MACRO_CHILDREN_SEAL,
+            )
         child_exponent = self._source.exponent + self._width_delta
         children = tuple(
             BoundaryOccurrence(state, child_exponent)
@@ -550,7 +644,12 @@ class OccurrencePrefixReturn:
         )
         if child_values != literal_children:
             raise AssertionError("ordered macro children differ from literal terminal")
-        return children
+        return OrderedMacroChildren(
+            self,
+            children,
+            child_values,
+            _seal=_ORDERED_MACRO_CHILDREN_SEAL,
+        )
 
     def child(
         self,
@@ -560,15 +659,14 @@ class OccurrencePrefixReturn:
         charge_bits: BitsCharge | None = None,
     ) -> MacroChildOccurrence:
         """Bind one literal fork edge to its exact receiving occurrence."""
-        if kind not in ("N", "Z"):
+        if type(kind) is not str or kind not in ("N", "Z"):
             raise ValueError("comma macro child kind must be N or Z")
         if self.outcome != "fork":
             raise ValueError("landmine prefix has no literal child occurrence")
-        children = self.ordered_children(
+        children = self.ordered_literal_children(
             charge_work=charge_work, charge_bits=charge_bits
         )
-        index = 0 if kind == "N" else 1
-        return MacroChildOccurrence(self, children[index])
+        return children.bind_kind(kind)
 
 
 @dataclass(frozen=True, slots=True, init=False)
@@ -581,6 +679,7 @@ class MacroChildOccurrence:
     """
 
     _prefix: OccurrencePrefixReturn
+    _target: BoundaryOccurrence
     _kind: Literal["N", "Z"]
     _witness: tuple[object, ...]
 
@@ -591,20 +690,84 @@ class MacroChildOccurrence:
             raise TypeError("macro child requires a validated occurrence prefix")
         if type(target) is not BoundaryOccurrence:
             raise TypeError("macro child requires an exact target occurrence")
-        children = prefix.ordered_children()
-        if target not in children:
+        children = prefix.ordered_literal_children()
+        if target not in children.children:
             raise ValueError("target occurrence is not an ordered literal macro child")
+        self._bind(prefix, target, _seal=_MACRO_CHILD_OCCURRENCE_SEAL)
+
+    @classmethod
+    def _from_ordered_children(
+        cls,
+        prefix: OccurrencePrefixReturn,
+        target: BoundaryOccurrence,
+        *,
+        _seal: object,
+    ) -> MacroChildOccurrence:
+        if _seal is not _ORDERED_MACRO_CHILDREN_SEAL:
+            raise TypeError("macro child binding needs validated ordered children")
+        result = object.__new__(cls)
+        result._bind(prefix, target, _seal=_MACRO_CHILD_OCCURRENCE_SEAL)
+        return result
+
+    def _bind(
+        self,
+        prefix: OccurrencePrefixReturn,
+        target: BoundaryOccurrence,
+        *,
+        _seal: object,
+    ) -> None:
+        if _seal is not _MACRO_CHILD_OCCURRENCE_SEAL:
+            raise TypeError("use the validated macro-child constructor")
+        if type(prefix) is not OccurrencePrefixReturn:
+            raise TypeError("macro child requires a validated occurrence prefix")
+        if type(target) is not BoundaryOccurrence:
+            raise TypeError("macro child requires an exact target occurrence")
+        prefix._validate()
+        target._validate()
+        kind = target.state.kind
+        index = 0 if kind == "N" else 1
+        if (
+            prefix._template.outcome != "fork"
+            or len(prefix._template.ordered_children) != 2
+            or prefix._template.ordered_children[index] != target.state
+            or target.exponent != prefix._source.exponent + prefix._width_delta
+        ):
+            raise ValueError("macro child differs from its validated prefix")
         object.__setattr__(self, "_prefix", prefix)
-        object.__setattr__(self, "_kind", target.state.kind)
-        object.__setattr__(self, "_witness", (id(prefix), target.state.kind))
+        object.__setattr__(self, "_target", target)
+        object.__setattr__(self, "_kind", kind)
+        object.__setattr__(
+            self,
+            "_witness",
+            (id(prefix), target.state, target.exponent, target.state.kind),
+        )
 
     def _validate(self) -> None:
         self._prefix._validate()
-        if self._kind not in ("N", "Z") or getattr(self, "_witness", None) != (
-            id(self._prefix),
-            self._kind,
+        if (
+            type(self._target) is not BoundaryOccurrence
+            or type(self._kind) is not str
+            or self._kind not in ("N", "Z")
+            or self._target.state.kind != self._kind
+            or getattr(self, "_witness", None)
+            != (
+                id(self._prefix),
+                self._target.state,
+                self._target.exponent,
+                self._kind,
+            )
         ):
             raise ValueError("macro child selection disagrees with its prefix snapshot")
+        self._target._validate()
+        index = 0 if self._kind == "N" else 1
+        if (
+            self._prefix._template.outcome != "fork"
+            or len(self._prefix._template.ordered_children) != 2
+            or self._prefix._template.ordered_children[index] != self._target.state
+            or self._target.exponent
+            != self._prefix._source.exponent + self._prefix._width_delta
+        ):
+            raise ValueError("macro child target differs from its prefix snapshot")
 
     @property
     def prefix(self) -> OccurrencePrefixReturn:
@@ -617,14 +780,8 @@ class MacroChildOccurrence:
 
     @property
     def target(self) -> BoundaryOccurrence:
-        prefix = self.prefix
-        children = prefix._template.ordered_children
-        index = 0 if self._kind == "N" else 1
-        if len(children) != 2 or children[index].kind != self._kind:
-            raise ValueError("macro child selection is stale against its prefix")
-        return BoundaryOccurrence(
-            children[index], prefix._source.exponent + prefix._width_delta
-        )
+        self._validate()
+        return self._target
 
     @property
     def kind(self) -> Literal["N", "Z"]:
@@ -714,8 +871,124 @@ class MacroChildOccurrence:
         return combined
 
 
+@dataclass(frozen=True, slots=True, init=False)
+class OrderedMacroChildren:
+    """One checked view of ordered boundary occurrences and literal values."""
+
+    _prefix: OccurrencePrefixReturn
+    _children: tuple[BoundaryOccurrence, ...]
+    _literal_values: tuple[int, ...]
+    _witness: tuple[object, ...]
+    _seal: object
+
+    def __init__(
+        self,
+        prefix: OccurrencePrefixReturn,
+        children: tuple[BoundaryOccurrence, ...],
+        literal_values: tuple[int, ...],
+        *,
+        _seal: object,
+    ) -> None:
+        if _seal is not _ORDERED_MACRO_CHILDREN_SEAL:
+            raise TypeError("use the occurrence prefix to validate macro children")
+        if type(prefix) is not OccurrencePrefixReturn:
+            raise TypeError("ordered macro children need an occurrence prefix")
+        if type(children) is not tuple or type(literal_values) is not tuple:
+            raise TypeError("ordered macro children and values must be tuples")
+        if len(children) != len(literal_values):
+            raise ValueError("ordered macro child values lost their occurrence binding")
+        if any(type(child) is not BoundaryOccurrence for child in children):
+            raise TypeError("ordered macro children need exact boundary occurrences")
+        if any(type(value) is not int for value in literal_values):
+            raise TypeError("ordered macro child values must be integers")
+        prefix._validate()
+        for child in children:
+            child._validate()
+        if prefix._template.outcome == "fork":
+            if (
+                len(children) != 2
+                or tuple(child.state.kind for child in children) != ("N", "Z")
+                or tuple(child.state for child in children)
+                != prefix._template.ordered_children
+                or any(
+                    child.exponent != prefix._source.exponent + prefix._width_delta
+                    for child in children
+                )
+            ):
+                raise ValueError("ordered macro children differ from their prefix")
+        elif prefix._template.outcome == "landmine":
+            if children or literal_values:
+                raise ValueError("landmine prefix cannot carry literal children")
+        else:
+            raise ValueError("occurrence prefix has an unknown macro outcome")
+        object.__setattr__(self, "_prefix", prefix)
+        object.__setattr__(self, "_children", children)
+        object.__setattr__(self, "_literal_values", literal_values)
+        object.__setattr__(
+            self,
+            "_witness",
+            (
+                id(prefix),
+                tuple((child.state, child.exponent) for child in children),
+                literal_values,
+            ),
+        )
+        object.__setattr__(self, "_seal", _seal)
+
+    def _validate(self) -> None:
+        if getattr(self, "_seal", None) is not _ORDERED_MACRO_CHILDREN_SEAL:
+            raise ValueError("invalid ordered macro children")
+        self._prefix._validate()
+        for child in self._children:
+            child._validate()
+        if getattr(self, "_witness", None) != (
+            id(self._prefix),
+            tuple((child.state, child.exponent) for child in self._children),
+            self._literal_values,
+        ):
+            raise ValueError("ordered macro child view differs from its snapshot")
+
+    @property
+    def prefix(self) -> OccurrencePrefixReturn:
+        self._validate()
+        return self._prefix
+
+    @property
+    def children(self) -> tuple[BoundaryOccurrence, ...]:
+        self._validate()
+        return self._children
+
+    @property
+    def literal_values(self) -> tuple[int, ...]:
+        self._validate()
+        return self._literal_values
+
+    def validated_parts(
+        self,
+    ) -> tuple[tuple[BoundaryOccurrence, ...], tuple[int, ...]]:
+        """Return both checked projections after one integrity validation."""
+        self._validate()
+        return self._children, self._literal_values
+
+    def bind_slot(self, slot: int) -> MacroChildOccurrence:
+        self._validate()
+        if type(slot) is not int or slot not in (0, 1) or len(self._children) != 2:
+            raise ValueError("macro child slot is outside its ordered fork")
+        return MacroChildOccurrence._from_ordered_children(
+            self._prefix,
+            self._children[slot],
+            _seal=_ORDERED_MACRO_CHILDREN_SEAL,
+        )
+
+    def bind_kind(self, kind: Literal["N", "Z"]) -> MacroChildOccurrence:
+        if type(kind) is not str or kind not in ("N", "Z"):
+            raise ValueError("comma macro child kind must be N or Z")
+        return self.bind_slot(0 if kind == "N" else 1)
+
+
 __all__ = [
     "BoundaryOccurrence",
     "MacroChildOccurrence",
     "OccurrencePrefixReturn",
+    "OrderedMacroChildren",
 ]

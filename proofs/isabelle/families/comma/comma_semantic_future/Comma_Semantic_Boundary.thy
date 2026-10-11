@@ -196,12 +196,12 @@ proof -
     and terminal_move:
       "comma_finite_step ((p+d+1+h) mod 924) t=
         comma_summary_terminal_move tau"
-    by (rule comma_decade_summary_unique_occurrence
-      [OF exact summary_source resumed_exponent summary_binding])
+    using comma_decade_summary_unique_occurrence_exists
+      [OF exact summary_source resumed_exponent summary_binding] by blast
   obtain prefix_weight where prefix:
       "comma_unique_literal_path (Suc prefix_weight)
         (comma_chart_value p source) (comma_chart_value p target)"
-    by (rule comma_native_round_crossing_unique_prefix
+    by (rule comma_round_crossing_unique_literal_prefix
       [OF close phase exponent source_valid])
   have rebased_prefix:
     "comma_unique_literal_path (Suc prefix_weight)
@@ -290,7 +290,7 @@ proof -
     "comma_unique_literal_path weight
       (comma_chart_value p (comma_finite_initial q))
       (comma_chart_value p terminal)"
-    by (rule comma_native_round_close_unique_prefix
+    by (rule comma_round_close_unique_prefix
       [OF close_r phase_r exponent source_valid])
   have unique_start:
     "comma_unique_literal_path weight (comma_boundary_value q p)
@@ -315,8 +315,7 @@ proof -
     "\<forall>v. comma_child (comma_chart_value p terminal) v \<longleftrightarrow>
       (\<exists>child\<in>set (comma_native_boundary_children q (Comma_Fork_At a d)).
         v=comma_boundary_value child (p+d))"
-    by (rule comma_relation_from_rendered_list[OF endpoint_children])
-      (use rendered in simp)
+    using endpoint_children rendered by auto
   show thesis by (rule that[OF step unique_start children])
 qed
 
@@ -356,7 +355,7 @@ proof -
     "comma_unique_literal_path weight
       (comma_chart_value p (comma_finite_initial q))
       (comma_chart_value p terminal)"
-    by (rule comma_native_round_close_unique_prefix
+    by (rule comma_round_close_unique_prefix
       [OF close_r phase_r exponent source_valid])
   have unique_start:
     "comma_unique_literal_path weight (comma_boundary_value q p)
@@ -500,7 +499,7 @@ proof -
       (\<exists>child\<in>set (comma_native_boundary_children q
         (comma_summary_outcome (h+1) tau)).
         v=comma_boundary_value child (p+(h+1)))"
-    by (rule comma_relation_from_rendered_list[OF terminal_children rendered])
+    using terminal_children rendered by auto
   show thesis
     by (rule that[where x=x, OF x_bound target_entry exact_q height outcome
       unique_path terminal_valid terminal_zero end_move child_relation])
@@ -543,7 +542,7 @@ proof -
       by (cases "comma_round_close r (comma_finite_initial q)") auto
     have event_valid: "event\<noteq>Comma_Round_Invalid"
       using comma_round_close_admitted(2)[OF close source_valid] .
-    ML_prf \<open>Comma_Native_Occurrence_Profile.checkpoint "semantic-boundary-bridge-close"\<close>
+    ML_prf \<open>Comma_Proof_Profile.report "semantic-boundary-bridge-close"\<close>
     show "\<exists>control endpoint weight.
       comma_semantic_boundary_control_step provider q=Some control \<and>
       comma_unique_literal_path weight (comma_boundary_value q p) endpoint \<and>
@@ -621,7 +620,7 @@ proof -
       have length_children:
         "length (comma_semantic_boundary_children provider q (Comma_Future_Fork a))=2"
         using children q by (simp add: comma_native_boundary_children_def)
-      ML_prf \<open>Comma_Native_Occurrence_Profile.checkpoint "semantic-boundary-bridge-direct-fork-ready"\<close>
+      ML_prf \<open>Comma_Proof_Profile.report "semantic-boundary-bridge-direct-fork-ready"\<close>
       show ?thesis
       proof (rule exI[where x="Comma_Future_Fork a"],
           rule exI[where x="comma_chart_value p terminal"],
@@ -695,7 +694,7 @@ proof -
         "comma_semantic_boundary_exponent_delta provider q Comma_Future_Landmine=d"
         using step by (simp add: comma_semantic_boundary_exponent_delta_def
           comma_native_outcome_delta_def)
-      ML_prf \<open>Comma_Native_Occurrence_Profile.checkpoint "semantic-boundary-bridge-direct-landmine-ready"\<close>
+      ML_prf \<open>Comma_Proof_Profile.report "semantic-boundary-bridge-direct-landmine-ready"\<close>
         have children:
           "comma_semantic_boundary_children provider q Comma_Future_Landmine=[]"
           using step q by (simp add: comma_semantic_boundary_children_def
@@ -778,7 +777,7 @@ proof -
         "\<forall>other. comma_literal_path weight (comma_boundary_value q p) other
           \<longrightarrow> other=comma_chart_value (p+(h+1)) t"
         using comma_semantic_boundary_unique_occurrence(2)[OF unique] .
-      ML_prf \<open>Comma_Native_Occurrence_Profile.checkpoint "semantic-boundary-bridge-cross-summary-ready"\<close>
+      ML_prf \<open>Comma_Proof_Profile.report "semantic-boundary-bridge-cross-summary-ready"\<close>
       show ?thesis
       proof (cases tau)
         case (Comma_Terminal_Fork a)
@@ -818,7 +817,7 @@ proof -
           "length (comma_semantic_boundary_children provider q
               (Comma_Future_Fork a))=2"
           using children q by (simp add: comma_native_boundary_children_def)
-        ML_prf \<open>Comma_Native_Occurrence_Profile.checkpoint "semantic-boundary-bridge-cross-fork-ready"\<close>
+        ML_prf \<open>Comma_Proof_Profile.report "semantic-boundary-bridge-cross-fork-ready"\<close>
         show ?thesis
         proof (rule exI[where x="Comma_Future_Fork a"],
             rule exI[where x="comma_chart_value (p+(h+1)) t"],
@@ -873,7 +872,7 @@ proof -
               Comma_Future_Landmine=h+1"
           using step_landmine by (simp add: comma_semantic_boundary_exponent_delta_def
             comma_native_outcome_delta_def)
-        ML_prf \<open>Comma_Native_Occurrence_Profile.checkpoint "semantic-boundary-bridge-cross-landmine-ready"\<close>
+        ML_prf \<open>Comma_Proof_Profile.report "semantic-boundary-bridge-cross-landmine-ready"\<close>
         show ?thesis
         proof (rule exI[where x=Comma_Future_Landmine],
             rule exI[where x="comma_chart_value (p+(h+1)) t"],

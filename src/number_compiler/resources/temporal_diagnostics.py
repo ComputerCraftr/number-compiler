@@ -206,6 +206,8 @@ class TemporalCommaWork:
     boundary_template_publications: int | None = None
     boundary_template_retained_nodes: int | None = None
     boundary_seal_checks: int | None = None
+    boundary_explicit_audit_component_checks: int | None = None
+    boundary_explicit_audit_operand_bits: int | None = None
     boundary_seal_retained_slots: int | None = None
     boundary_seal_retained_integer_bits: int | None = None
     boundary_prefix_applications: int | None = None
@@ -838,6 +840,12 @@ def collect_temporal_diagnostics(
                 counters, "comma_boundary_template_retained_nodes"
             ),
             boundary_seal_checks=_count(counters, "comma_boundary_seal_checks"),
+            boundary_explicit_audit_component_checks=_count(
+                counters, "comma_boundary_explicit_audit_component_checks"
+            ),
+            boundary_explicit_audit_operand_bits=_count(
+                counters, "comma_boundary_explicit_audit_operand_bits"
+            ),
             boundary_seal_retained_slots=_count(
                 counters, "comma_boundary_seal_retained_slots"
             ),

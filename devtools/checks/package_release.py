@@ -15,12 +15,18 @@ from devtools.paths import report_directory, repository_root
 from devtools.runs import run_reported
 
 
+def _report_stage(stage: str) -> None:
+    """Expose the current packaging phase to the standard command guard."""
+    print(f"package-stage: {stage}", file=sys.stderr, flush=True)
+
+
 def main() -> int:
     argparse.ArgumentParser(description=__doc__).parse_args()
     root = repository_root()
     output = report_directory("devtools.checks.package_release")
     with tempfile.TemporaryDirectory(prefix="number-compiler-package-") as directory:
         staging = Path(directory)
+        _report_stage("staging:start")
         for name in ("pyproject.toml", "README.md", "LICENSE"):
             shutil.copy2(root / name, staging / name)
         shutil.copytree(
@@ -28,6 +34,8 @@ def main() -> int:
             staging / "src",
             ignore=shutil.ignore_patterns("__pycache__", "*.egg-info", ".DS_Store"),
         )
+        _report_stage("staging:complete")
+        _report_stage("wheel-build:start")
         subprocess.run(
             (
                 sys.executable,
@@ -41,12 +49,17 @@ def main() -> int:
             ),
             check=True,
         )
+        _report_stage("wheel-build:complete")
     wheels = tuple(output.glob("*.whl"))
     if len(wheels) != 1:
         raise ValueError("clean staging must produce exactly one wheel")
+    _report_stage("wheel-verification:start")
     result = verify_wheel(wheels[0])
+    _report_stage("wheel-verification:complete")
+    _report_stage("report-write:start")
     (output / "verification.json").write_text(json.dumps(result, indent=2) + "\n")
     print(json.dumps(result))
+    _report_stage("report-write:complete")
     return 0
 
 

@@ -149,24 +149,21 @@ proof -
     using valid q
     by (cases kind)
       (auto simp: comma_boundary_valid_def comma_finite_initial_def)
-  have budget:
-    "Suc (9-comma_sector_number (comma_finite_initial q)) \<le> 9"
-    using initial_admitted
-    by (cases "comma_finite_initial q")
-      (auto simp: comma_round_admitted.simps comma_sector_number.simps)
-  have decisive_fast:
+  have decisive_observation:
     "comma_decisive_endpoint_round r (comma_finite_initial q) =
-      comma_fast_round_aux 9 r (comma_finite_initial q)"
-    by (rule comma_decisive_endpoint_round_refines_fast
-      [OF initial_admitted budget])
-  have fast_close:
-    "comma_fast_round_aux 9 r (comma_finite_initial q) =
-      snd (snd (comma_round_close r (comma_finite_initial q)))"
-    by (rule comma_fast_round_aux_correct[OF initial_admitted budget])
+      (case comma_round_control_germ r (comma_finite_initial q) of
+        (_,_,event) \<Rightarrow> event)"
+    using comma_decisive_endpoint_round_refines[OF initial_admitted]
+    by (simp add: comma_decisive_endpoint_observation_def)
+  have control_germ:
+    "comma_round_control_germ r (comma_finite_initial q) =
+      comma_round_close r (comma_finite_initial q)"
+    by (rule comma_round_control_germ_refines)
   have event:
     "comma_decisive_endpoint_round r (comma_finite_initial q) =
       snd (snd (comma_round_close r (comma_finite_initial q)))"
-    by (rule trans[OF decisive_fast fast_close])
+    using decisive_observation control_germ
+    by (cases "comma_round_close r (comma_finite_initial q)") auto
   show ?thesis
     using valid event
     by (simp add: comma_semantic_boundary_step_def q)
@@ -175,6 +172,7 @@ qed
 ML \<open>
 structure Comma_Semantic_Future_Candidate_Check =
 struct
+local
   fun list_extent equation =
     let
       val rhs = Thm.term_of (Thm.rhs_of equation)
@@ -189,7 +187,7 @@ struct
          table_pattern = pattern, extents = [extent]}
     end
 
-  fun make ctxt =
+  fun build ctxt =
     let
       val ids = selector ctxt "future_candidate_source_ids"
         @{thm comma_semantic_future_candidate_class_ids_def}
@@ -207,6 +205,8 @@ struct
         @{thm comma_semantic_future_candidate_controls_def}
       val _ = if class_count > 0 andalso class_count <= 65536 then ()
         else error "Candidate class count is outside the checker bound"
+      val successor_cache = Comma_Selected_List_Conversion.make_successor_cache ctxt
+        (Int.max (class_count, 924))
       val simps = @{thms comma_semantic_future_candidate_class_valid_def
         comma_semantic_future_candidate_class_step_def
         comma_semantic_future_candidate_class_rank_def
@@ -264,6 +264,7 @@ struct
                bound = class_count,
                zero_fact = @{thm comma_indexed_all_zero},
                step_fact = @{thm comma_indexed_all_Suc},
+               successor_equation = #equation successor_cache,
                prove_item = fn index => prove_true
                  (@{term comma_semantic_future_candidate_class_row_checked} $
                    numeral index)}
@@ -283,7 +284,7 @@ struct
           val rhs_proof = prove_rhs rhs
         in Thm.equal_elim (Thm.symmetric unfolded) rhs_proof end
 
-      fun prove_provider_check () =
+      fun construct_provider_check () =
         let
           val projector = Comma_Semantic_B1_B32_Projection.make_projector ctxt
           val fast_kernel = Comma_Fast_Kernel.make ctxt
@@ -366,6 +367,7 @@ struct
                   {ctxt = ctxt, predicate = cell_predicate, bound = 924,
                    zero_fact = @{thm comma_indexed_all_zero},
                    step_fact = @{thm comma_indexed_all_Suc},
+                   successor_equation = #equation successor_cache,
                    prove_item = fn r => prove_true_in provider_context
                      (cell $ kind $ numeral a_index $ numeral r)}
               val goal = HOLogic.mk_Trueprop
@@ -381,6 +383,7 @@ struct
                   {ctxt = ctxt, predicate = indices, bound = 8,
                    zero_fact = @{thm comma_indexed_all_zero},
                    step_fact = @{thm comma_indexed_all_Suc},
+                   successor_equation = #equation successor_cache,
                    prove_item = prove_index kind}
               val goal = HOLogic.mk_Trueprop (kind_check $ kind)
             in Goal.prove ctxt [] [] goal
@@ -392,25 +395,98 @@ struct
         in Goal.prove ctxt [] [] goal
           (fn _ => Simplifier.asm_full_simp_tac
             (provider_context addsimps [checked_n, checked_z]) 1) end
+      val provider_check_theorem_cache = Unsynchronized.ref (NONE: thm option)
+      fun prove_provider_check () =
+        (case !provider_check_theorem_cache of
+          SOME theorem => theorem
+        | NONE =>
+            let
+              val theorem = construct_provider_check ()
+              val _ = provider_check_theorem_cache := SOME theorem
+            in theorem end)
     in {prove_table = prove_table, prove_true = prove_true,
         proof_context = proof_context,
         prove_provider_check = prove_provider_check} end
 
+  (* This checker owns selectors, the bounded successor cache, and the B32 /
+     endpoint projection machinery for this exact theory. Rebuilding it for
+     every theorem tactic discarded those tables and contexts. Keep the
+     captured context private to this theory-local closure, reject callers
+     from another theory, and serialize access because the selected-list and
+     projection owners contain mutable per-checker memo tables. *)
+  val owner_context = @{context}
+  val owner_theory = Proof_Context.theory_of owner_context
+  val owner_theory_id = Context.theory_id owner_theory
+  val owner_theory_name = Context.theory_long_name owner_theory
+  type checker =
+    {prove_table: unit -> thm,
+     prove_true: term -> thm,
+     proof_context: Proof.context,
+     prove_provider_check: unit -> thm}
+  val checker_cache = Synchronized.var
+    "comma semantic future candidate checker" (NONE: checker option)
+
+  fun access_checker operation =
+    Synchronized.change_result checker_cache (fn cached =>
+      let
+        val checker = (case cached of
+            SOME existing => existing
+          | NONE => build owner_context)
+      in (operation checker, SOME checker) end)
+
+  fun with_checker ctxt operation =
+    let
+      val requested_theory = Proof_Context.theory_of ctxt
+      val requested_theory_id = Context.theory_id requested_theory
+      val same_owner_lineage =
+        Context.subthy_id (owner_theory_id, requested_theory_id) andalso
+        Context.theory_long_name requested_theory = owner_theory_name
+      val _ = if same_owner_lineage then ()
+        else error "Future candidate checker used from a foreign theory"
+    in access_checker operation end
+
+  val entry_open_theory_name =
+    Long_Name.qualify (Resources.theory_qualifier owner_theory_name)
+      "Comma_Semantic_Entry_Open"
+
+in
+  (* The adjacent entry-open proof imports this theory. Its simproc closes over
+     mutable projection memo state, so run its complete tactic under the same
+     checker lock and return only a fully forced sequence, never the context.
+     The exact theory-name check prevents any other descendant from using this
+     callback boundary to operate on the cached checker context. *)
+  fun context_tac ctxt operation i state =
+    let
+      val requested_theory = Proof_Context.theory_of ctxt
+      val requested_theory_id = Context.theory_id requested_theory
+      val same_entry_open_lineage =
+        Context.subthy_id (owner_theory_id, requested_theory_id) andalso
+        Context.theory_long_name requested_theory = entry_open_theory_name
+      val _ = if same_entry_open_lineage then ()
+        else error "Future candidate setup requested from a foreign theory"
+      val results = access_checker (fn checker =>
+        Seq.list_of (operation (#proof_context checker) i state))
+    in Seq.of_list results end
+
   fun class_table_tac ctxt i =
-    let val checker = make ctxt in resolve_tac ctxt [#prove_table checker ()] i end
+    let
+      val theorem = with_checker ctxt (fn checker => #prove_table checker ())
+    in resolve_tac ctxt [theorem] i end
 
   fun source_rank_tac ctxt state expected i =
     let
-      val checker = make ctxt
       val proposition = HOLogic.mk_eq
         (@{term comma_semantic_concrete_future_rank} $ state, expected)
-      val theorem = #prove_true checker proposition
+      val theorem = with_checker ctxt
+        (fn checker => #prove_true checker proposition)
     in resolve_tac ctxt [theorem] i end
 
   fun provider_check_tac ctxt i =
-    let val checker = make ctxt in
-      resolve_tac ctxt [#prove_provider_check checker ()] i
-    end
+    let
+      val theorem = with_checker ctxt
+        (fn checker => #prove_provider_check checker ())
+    in resolve_tac ctxt [theorem] i end
+end
 end
 \<close>
 
@@ -486,12 +562,42 @@ lemma comma_semantic_future_candidate_provider_row_on_valid:
   assumes checked: "comma_semantic_future_candidate_provider_check"
     and valid: "comma_boundary_valid q"
   shows "comma_semantic_future_candidate_provider_row q"
-  using checked valid
-  by (cases q) (auto simp: comma_semantic_future_candidate_provider_check_def
-      comma_semantic_future_candidate_provider_kind_check_def
-      comma_semantic_future_candidate_provider_index_check_def
-      comma_semantic_future_candidate_provider_cell_def
-      comma_boundary_valid_def list_all_iff set_upt)
+proof -
+  obtain kind a r where q_eq: "q=(kind,a,r)" by (cases q) auto
+  have bounds: "2\<le>a \<and> a\<le>9 \<and> r<924"
+    using valid q_eq by (auto simp: comma_boundary_valid_def)
+  have kind_checked:
+      "comma_semantic_future_candidate_provider_kind_check kind"
+    using checked by (cases kind)
+      (simp only: comma_semantic_future_candidate_provider_check_def)
+  have index_checks:
+      "list_all (comma_semantic_future_candidate_provider_index_check kind)
+        [0..<8]"
+    using kind_checked
+    by (simp only: comma_semantic_future_candidate_provider_kind_check_def)
+  have index_bound: "a-2<8" using bounds by arith
+  have index_member: "a-2\<in>set [0..<8]" using index_bound by simp
+  have selected_index:
+      "comma_semantic_future_candidate_provider_index_check kind (a-2)"
+    using index_checks index_member by (simp add: list_all_iff)
+  have cell_checks:
+      "list_all (comma_semantic_future_candidate_provider_cell kind (a-2))
+        [0..<924]"
+    using selected_index
+    by (simp only: comma_semantic_future_candidate_provider_index_check_def)
+  have phase_member: "r\<in>set [0..<924]" using bounds by simp
+  have selected_cell:
+      "comma_semantic_future_candidate_provider_cell kind (a-2) r"
+    using cell_checks phase_member by (simp add: list_all_iff)
+  have selected_row:
+      "comma_semantic_future_candidate_provider_row (kind,(a-2)+2,r)"
+    using selected_cell
+    by (simp only: comma_semantic_future_candidate_provider_cell_def)
+  have exponent: "(a-2)+2=a" using bounds by arith
+  have selected_state: "q=(kind,(a-2)+2,r)"
+    using q_eq exponent by simp
+  show ?thesis using selected_row selected_state by simp
+qed
 
 lemma comma_semantic_future_candidate_provider_check_checked:
   "comma_semantic_future_candidate_provider_check"

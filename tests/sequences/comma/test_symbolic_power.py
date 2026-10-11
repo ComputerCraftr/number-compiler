@@ -110,6 +110,75 @@ def test_symbolic_power_requires_complete_ordered_root_authority() -> None:
     assert view.ledger.owner_count == before
 
 
+def test_symbolic_power_owner_name_collision_preflights_without_inventory(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    view = production_semantic_owner()
+    ledger = view.ledger
+    next_prefix = ledger.owner_count + 1
+    owner = ledger.register(
+        f"comma-symbolic-powers-{next_prefix}-columns", "semantic_return_column"
+    )
+    ledger.make_dict(owner)
+    before = ledger.owner_count
+
+    def forbidden_inventory(*_args: object, **_kwargs: object) -> None:
+        raise AssertionError("owner-name preflight must not inventory ledger stores")
+
+    monkeypatch.setattr(ledger, "inventory", forbidden_inventory)
+    with pytest.raises(ValueError, match="owner name is already registered"):
+        SymbolicDecadePowers(view)
+    assert ledger.owner_count == before
+
+
+def test_failed_symbolic_power_close_is_fail_closed_and_retryable(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    view = production_semantic_owner()
+    baseline_entries = view.ledger.entries
+    baseline_nodes = view.ledger.nodes
+    powers = SymbolicDecadePowers(view)
+    owners = (
+        powers._input_templates.owner,
+        powers._powers.owner,
+        powers._columns.owner,
+        powers._base.owner,
+        powers._composition_workspace_owner,
+    )
+    dispose_powers = powers._powers.dispose
+    attempts = 0
+
+    def fail_once() -> None:
+        nonlocal attempts
+        attempts += 1
+        if attempts == 1:
+            raise RuntimeError("power memo cleanup failed")
+        dispose_powers()
+
+    monkeypatch.setattr(powers._powers, "dispose", fail_once)
+    with pytest.raises(RuntimeError, match="power memo cleanup failed"):
+        powers.close()
+
+    assert attempts == 1
+    assert powers._closing
+    assert not powers._closed
+    assert view.ledger.inventory_owner(owners[0]).disposed
+    assert not view.ledger.inventory_owner(owners[1]).disposed
+    assert all(view.ledger.inventory_owner(owner).disposed for owner in owners[2:])
+    with pytest.raises(RuntimeError, match="closing or closed"):
+        powers.construct(0)
+    with pytest.raises(RuntimeError, match="closing or closed"):
+        powers.__enter__()
+
+    monkeypatch.undo()
+    powers.close()
+    assert powers._closed
+    assert not powers._closing
+    assert all(view.ledger.inventory_owner(owner).disposed for owner in owners)
+    assert view.ledger.entries == baseline_entries
+    assert view.ledger.nodes == baseline_nodes
+
+
 def test_symbolic_power_context_disposes_its_workspace_on_failure() -> None:
     view = production_semantic_owner()
     with (

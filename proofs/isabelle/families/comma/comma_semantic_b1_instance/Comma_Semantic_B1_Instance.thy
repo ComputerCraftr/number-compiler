@@ -615,10 +615,10 @@ lemma comma_semantic_b1_crt_power_result_outside_domain:
   using outside by (auto simp: comma_semantic_b1_crt_power_result_def)
 
 ML \<open>
-  val checked = @{thms comma_semantic_b1_crt_power_split_action_consistent
-    comma_semantic_b1_crt_power_split_action_exact
-    comma_semantic_b1_crt_power_result_exact
-    comma_semantic_b1_crt_b32_result_exact
+  (* b32_result_exact explicitly calls power_result_exact, whose proof calls
+     power_split_action_exact; that induction calls power_split_action_consistent.
+     b32_stop242 also calls consistency, so these are redundant audit roots. *)
+  val checked = @{thms comma_semantic_b1_crt_b32_result_exact
     comma_semantic_b1_crt_b32_stop242
     comma_semantic_b1_crt_power_result_outside_domain};
   val _ = Comma_Proof_Dependency_Audit.require_native_clean @{context}

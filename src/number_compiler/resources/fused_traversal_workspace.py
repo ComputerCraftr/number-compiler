@@ -10,6 +10,19 @@ from number_compiler.resources.ledger import ResourceLedger
 from number_compiler.resources.stores import LedgerList
 
 
+def fused_traversal_workspace_owner_names(
+    prefix: str,
+) -> tuple[str, str, str]:
+    """Return the three distinct ledger names owned by one workspace."""
+    if type(prefix) is not str:
+        raise TypeError("fused traversal owner prefix must be a string")
+    return (
+        prefix + "-fused-workspace",
+        prefix + "-fused-frames",
+        prefix + "-fused-values",
+    )
+
+
 class FusedTraversalWorkspace:
     """Own visible O(depth) frame and result stacks for one fused query."""
 
@@ -17,15 +30,11 @@ class FusedTraversalWorkspace:
         if type(ledger) is not ResourceLedger:
             raise TypeError("fused traversal workspace requires one resource ledger")
         self.ledger = ledger
-        self.owner = ledger.register(
-            prefix + "-fused-workspace", "fused_interface_workspace"
-        )
-        self.frame_owner = ledger.register(
-            prefix + "-fused-frames", "fused_interface_workspace"
-        )
-        self.value_owner = ledger.register(
-            prefix + "-fused-values", "fused_interface_workspace"
-        )
+        owner_names = fused_traversal_workspace_owner_names(prefix)
+        ledger.require_fresh_owner_names(owner_names)
+        self.owner = ledger.register(owner_names[0], "fused_interface_workspace")
+        self.frame_owner = ledger.register(owner_names[1], "fused_interface_workspace")
+        self.value_owner = ledger.register(owner_names[2], "fused_interface_workspace")
         self.frames: LedgerList[object] = ledger.make_list(
             self.frame_owner, nodes_per_entry=0, append_only=False
         )
@@ -34,6 +43,7 @@ class FusedTraversalWorkspace:
         )
         self.nodes = 0
         self.active = False
+        self._disposed = False
         self.max_frames = 0
         self.max_values = 0
         ledger.register_container(
@@ -45,6 +55,10 @@ class FusedTraversalWorkspace:
 
     def __len__(self) -> int:
         return 0
+
+    def _check_open(self) -> None:
+        if self._disposed:
+            raise RuntimeError("fused traversal workspace has been disposed")
 
     def _append(self, owner: int, store: LedgerList[object], value: object) -> None:
         prior_size = len(store)
@@ -70,6 +84,7 @@ class FusedTraversalWorkspace:
             )
 
     def append_frame(self, value: object) -> None:
+        self._check_open()
         if not self.active:
             raise RuntimeError("fused traversal frame requires an active scope")
         if len(self.frames) >= self.max_frames:
@@ -77,6 +92,7 @@ class FusedTraversalWorkspace:
         self._append(self.frame_owner, self.frames, value)
 
     def append_value(self, value: object) -> None:
+        self._check_open()
         if not self.active:
             raise RuntimeError("fused traversal value requires an active scope")
         if len(self.values) >= self.max_values:
@@ -84,6 +100,7 @@ class FusedTraversalWorkspace:
         self._append(self.value_owner, self.values, value)
 
     def _pop(self, owner: int, store: LedgerList[object]) -> object:
+        self._check_open()
         prior_size = len(store)
         value = store[-1]
         try:
@@ -103,6 +120,7 @@ class FusedTraversalWorkspace:
 
     @contextmanager
     def scope(self, level: int, port_count: int) -> Iterator[None]:
+        self._check_open()
         if any(type(value) is not int for value in (level, port_count)):
             raise TypeError("fused traversal bounds require exact integers")
         if level < 0 or port_count < 0:
@@ -131,15 +149,35 @@ class FusedTraversalWorkspace:
                 )
             yield
         finally:
-            frame_count, value_count = len(self.frames), len(self.values)
+            frame_count = len(self.frames)
             self.frames.clear()
-            self.values.clear()
             self.ledger.release(self.frame_owner, entries=frame_count)
+
+            value_count = len(self.values)
+            self.values.clear()
             self.ledger.release(self.value_owner, entries=value_count)
             self.active = False
             self.nodes = 0
             self.max_frames = self.max_values = 0
             self.ledger.release(self.owner, nodes=nodes)
 
+    def dispose(self) -> None:
+        """Close the three auditable owners after all scoped work is cleared."""
+        if self._disposed:
+            return
+        if self.active or self.nodes:
+            raise RuntimeError("cannot dispose an active fused traversal workspace")
+        frame_count = len(self.frames)
+        self.frames.clear()
+        self.ledger.release(self.frame_owner, entries=frame_count)
 
-__all__ = ["FusedTraversalWorkspace"]
+        value_count = len(self.values)
+        self.values.clear()
+        self.ledger.release(self.value_owner, entries=value_count)
+        self.ledger.mark_disposed(self.frame_owner)
+        self.ledger.mark_disposed(self.value_owner)
+        self.ledger.mark_disposed(self.owner)
+        self._disposed = True
+
+
+__all__ = ["FusedTraversalWorkspace", "fused_traversal_workspace_owner_names"]

@@ -5,6 +5,7 @@ from typing import NamedTuple
 
 import pytest
 
+from devtools.checks import isabelle_oracle_audit
 from devtools.checks import isabelle_proof_index as index
 from devtools.checks import isabelle_source_analysis as source_analysis
 from devtools.checks import isabelle_syntax as syntax
@@ -313,7 +314,7 @@ def test_comments_and_documentation_cannot_forge_declarations_or_uses() -> None:
 
 def test_noncall_marker_cannot_forge_audit() -> None:
     assert (
-        index._audited_theorems(
+        isabelle_oracle_audit.audited_theorems(
             "ML \\<open>val audit = Thm_Deps.all_oracles; val named = @{thms bounded}\\<close>"
         )
         == ()
@@ -332,7 +333,7 @@ def test_nested_documentation_and_escaped_strings_cannot_forge_proof_items() -> 
         "lemma live: True by simp\nend\n"
     )
     assert [row["name"] for row in index._declarations(text)] == ["live"]
-    assert index._audited_theorems(text) == ("live",)
+    assert isabelle_oracle_audit.audited_theorems(text) == ("live",)
 
 
 def test_comment_cannot_forge_theory_header_or_session(
@@ -434,7 +435,7 @@ def test_quoted_comment_markers_leave_later_theorems_visible() -> None:
         'then () else error "oracle";\\<close>\nend\n'
     )
     assert [row["name"] for row in index._declarations(text)] == ["live"]
-    assert index._audited_theorems(text) == ("live",)
+    assert isabelle_oracle_audit.audited_theorems(text) == ("live",)
 
 
 def test_multiline_strings_and_ml_bodies_cannot_forge_commands() -> None:
@@ -461,7 +462,7 @@ def test_multiline_strings_and_ml_bodies_cannot_forge_commands() -> None:
         'then () else error "oracle";\\<close>\nend\n'
     )
     assert [row["name"] for row in index._declarations(theory)] == ["live"]
-    assert index._audited_theorems(theory) == ("live",)
+    assert isabelle_oracle_audit.audited_theorems(theory) == ("live",)
 
 
 def test_quoted_proof_words_do_not_truncate_assumptions() -> None:
@@ -493,6 +494,24 @@ def test_documentation_and_string_cannot_forge_theory_header() -> None:
     assert syntax.parse_theory_header(text, Path("Actual.thy")) == (
         "Actual",
         ("Library/Real", "Main"),
+    )
+
+
+def test_header_rejects_unquoted_hyphens_and_keeps_quoted_symbols() -> None:
+    with pytest.raises(ValueError, match="unquoted symbolic token in theory import"):
+        syntax.parse_theory_header(
+            "theory Actual imports HOL-Library.Product_Lexorder begin end\n",
+            Path("Actual.thy"),
+        )
+
+    text = (
+        'theory Actual imports "HOL-Library.Product_Lexorder" Main begin\n'
+        'lemma symbol: "True \\<longrightarrow> True" by simp\n'
+        "end\n"
+    )
+    assert syntax.parse_theory_header(text, Path("Actual.thy")) == (
+        "Actual",
+        ("HOL-Library.Product_Lexorder", "Main"),
     )
 
 
@@ -781,6 +800,9 @@ def test_comma_global_release_endpoints_use_strict_native_dependency_audit() -> 
     for retired_authority in (
         "Comma_Root_Forest",
         "comma_finite_run",
+        "comma_decisive_endpoint_round_refines_fast",
+        "comma_fast_round_aux",
+        "comma_fast_boundary_run",
         "comma_total_macro",
         "comma_rank_candidate",
         "Comma_Future_Structural_Instance",
@@ -804,12 +826,12 @@ def test_comma_global_release_endpoints_use_strict_native_dependency_audit() -> 
         "comma_source20_global_future_safety",
         "comma_source20_global_infinite_paths_agree",
         "comma_source20_global_unique_infinite_literal_path",
-    } <= set(index._audited_theorems(future))
+    } <= set(isabelle_oracle_audit.audited_theorems(future))
     assert (
         "require_native_closed_expected_paths @{context} "
         '"Global comma root-safety release endpoint" '
     ) in " ".join(root.split())
-    assert "comma_global_release_safety" in index._audited_theorems(root)
+    assert "comma_global_release_safety" in isabelle_oracle_audit.audited_theorems(root)
     for source in (future, root):
         release_ml = source.rsplit("ML \\<open>", maxsplit=1)[-1]
         assert release_ml.count("require_native_closed_expected_paths") == 1

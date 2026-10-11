@@ -9,7 +9,6 @@ from dataclasses import dataclass
 from pathlib import Path
 
 from devtools.checks.dependency_graph import (
-    import_references,
     module_package,
     source_syntax,
 )
@@ -91,11 +90,10 @@ def python_ownership_violations(
         parts = path.relative_to(source_root).parts
         if not parts or parts[0] not in _SHARED_PYTHON_PACKAGES:
             continue
+        syntax = source_syntax(path, tree=tree, source_root=source_root)
         references = {
             (line, imported)
-            for line, imported in import_references(
-                path, source_root=source_root, tree=tree
-            )
+            for line, imported in syntax.import_references
             if _is_sequence_module(imported)
         }
         family_references = tuple(
@@ -110,7 +108,6 @@ def python_ownership_violations(
             violations.append(
                 f"{relative}:{line}: shared code imports sequence-family module {imported}"
             )
-        syntax = source_syntax(path, tree=tree)
         dynamic_routes = {
             _resolve_package_module(imported, path, source_root, package)
             for imported, package in syntax.dynamic_import_routes

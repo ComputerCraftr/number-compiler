@@ -13,10 +13,30 @@ from number_compiler.resources.fused_traversal_inventory import (
 )
 from number_compiler.resources.fused_traversal_workspace import (
     FusedTraversalWorkspace,
+    fused_traversal_workspace_owner_names,
 )
 from number_compiler.resources.ledger import ResourceLedger
 from number_compiler.resources.tile_runtime_inventory import audit_tile_runtime
 from tests.support.tile_kernel import _runtime, _tile
+
+
+def test_fused_workspace_name_collision_preflights_without_inventory(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    ledger = ResourceLedger()
+    prefix = "fused-name-collision"
+    owner_names = fused_traversal_workspace_owner_names(prefix)
+    owner = ledger.register(owner_names[1], "fused_interface_workspace")
+    ledger.make_dict(owner)
+    before = ledger.owner_count
+
+    def forbidden_inventory(*_args: object, **_kwargs: object) -> None:
+        raise AssertionError("workspace setup must not inventory ledger stores")
+
+    monkeypatch.setattr(ledger, "inventory", forbidden_inventory)
+    with pytest.raises(ValueError, match="already registered"):
+        FusedTraversalWorkspace(ledger, prefix)
+    assert ledger.owner_count == before
 
 
 def test_fused_workspace_rejects_reentry_and_releases_after_failure() -> None:

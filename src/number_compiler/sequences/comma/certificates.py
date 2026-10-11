@@ -1,8 +1,9 @@
-"""Runtime-checked finite branch certificates for the published comma prefix.
+"""Admission routes for the published comma prefix.
 
 Exact prefix admission uses exhaustive finite-region closure, not OEIS decision
-bits as a branch oracle. Kernel checking of the complete certificate instance
-is a separate release obligation and is reported explicitly.
+bits as a branch oracle while the global theorem registry is empty. Once an
+exact global-release provider is registered, its authenticated theorem can
+admit the infinite source-20 path without the finite forest certificate.
 """
 
 from __future__ import annotations
@@ -262,12 +263,33 @@ def require_certified_index(
     *,
     shared_cache: bool = True,
     memo: CertificateMemo | None = None,
+    global_provider: object | None = None,
 ) -> None:
     index = require_integer(index, "comma index", 1)
     max_work = require_integer(max_work, "comma work budget", 1)
     if type(shared_cache) is not bool:
         raise TypeError("shared_cache must be a bool")
+    if memo is not None and memo.ledger is not ledger:
+        raise ValueError("foreign comma certificate admission owner")
     _charge(ledger, max_work)
+    if global_provider is not None:
+        from number_compiler.sequences.comma.future_provider import (
+            SemanticFutureProviderLease,
+            SemanticFutureProviderStore,
+        )
+
+        if type(global_provider) is not SemanticFutureProviderLease:
+            raise TypeError(
+                "comma global prefix authority needs its exact provider lease"
+            )
+        store = getattr(global_provider, "_store", None)
+        if type(store) is not SemanticFutureProviderStore:
+            raise TypeError("malformed comma global provider store binding")
+        if getattr(store, "ledger", None) is not ledger:
+            raise ValueError("foreign comma global provider admission owner")
+        global_provider.require_global_release_admission()
+        ledger.bump("comma_global_release_prefix_admissions")
+        return
     if index > CERTIFIED_MAX_INDEX:
         raise unresolved_boundary(index)
     _verify(ledger, max_work, shared_cache, memo)

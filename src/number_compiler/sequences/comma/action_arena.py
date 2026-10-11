@@ -22,13 +22,19 @@ from number_compiler.sequences.comma.arithmetic import (
 )
 from number_compiler.sequences.comma.boundary_quotient import (
     PERIOD,
-    AffineWeight,
     BoundaryState,
     MacroTemplate,
-    SectorFragment,
+    _boundary_state_signature,
     construct_macro,
 )
+from number_compiler.sequences.comma.boundary_quotient import (
+    _macro_template_component_seal as _template_seal,
+)
+from number_compiler.sequences.comma.boundary_quotient import (
+    _macro_template_header as _template_header,
+)
 from number_compiler.sequences.comma.cycle_actions import CycleActionReuse
+from number_compiler.sequences.comma.occurrence import BoundaryOccurrence
 
 
 @dataclass(frozen=True, slots=True)
@@ -48,6 +54,8 @@ class _Action:
     child_digit: int = 0
     boundary_source: BoundaryState | None = None
     boundary_exponent: int = 0
+    boundary_target: BoundaryState | None = None
+    future_digest: str = ""
     before: CommaActionID | None = None
     after: CommaActionID | None = None
 
@@ -62,6 +70,10 @@ def _action_snapshot(node: _Action) -> tuple[object, ...]:
 
     state = node.boundary_source
     boundary = None if state is None else (state.kind, state.a, state.exponent_residue)
+    target = node.boundary_target
+    target_signature = (
+        None if target is None else (target.kind, target.a, target.exponent_residue)
+    )
     return (
         node.kind,
         node.steps,
@@ -73,65 +85,10 @@ def _action_snapshot(node: _Action) -> tuple[object, ...]:
         node.child_digit,
         boundary,
         node.boundary_exponent,
+        target_signature,
+        node.future_digest,
         handle(node.before),
         handle(node.after),
-    )
-
-
-def _affine_snapshot(value: AffineWeight) -> tuple[int, int, int, int]:
-    return (
-        id(value),
-        value.numerator_scale,
-        value.numerator_offset,
-        value.denominator,
-    )
-
-
-def _fragment_snapshot(fragment: SectorFragment) -> tuple[object, ...]:
-    return (
-        id(fragment),
-        fragment.leading,
-        fragment.entering_digit,
-        _affine_snapshot(fragment.complete_cycles),
-        fragment.period,
-        fragment.displacement,
-        fragment.maximum_guard,
-        fragment.literal_steps,
-        fragment.literal_increment,
-    )
-
-
-def _template_header(template: MacroTemplate) -> tuple[object, ...]:
-    state = template.source
-    return (
-        id(template),
-        id(state),
-        state.kind,
-        state.a,
-        state.exponent_residue,
-        template.outcome,
-        template.exponent_delta,
-        template.destination_a,
-        _affine_snapshot(template.weight),
-        _affine_snapshot(template.endpoint),
-        id(template.ordered_children),
-        tuple(
-            (id(child), child.kind, child.a, child.exponent_residue)
-            for child in template.ordered_children
-        ),
-        id(template.sector_fragments),
-        id(template.prefix_weights),
-        id(template.prefix_displacements),
-    )
-
-
-def _template_seal(template: MacroTemplate) -> tuple[object, ...]:
-    """Copy primitive descriptor fields once, never a hot-path full hash."""
-    return (
-        _template_header(template),
-        tuple(_fragment_snapshot(item) for item in template.sector_fragments),
-        tuple(_affine_snapshot(item) for item in template.prefix_weights),
-        tuple(_affine_snapshot(item) for item in template.prefix_displacements),
     )
 
 
@@ -339,6 +296,28 @@ class CommaActionArena:
             return after
         if right.kind == "identity":
             return before
+        if (
+            left.kind == right.kind == "boundary-prefix-occurrence"
+            and left.boundary_source == right.boundary_source
+        ):
+            self.charge_bits(
+                left.steps.bit_length()
+                + right.steps.bit_length()
+                + max(left.steps, right.steps).bit_length()
+            )
+            return self._boundary_prefix_occurrence_steps(
+                cast(BoundaryState, left.boundary_source),
+                left.steps + right.steps,
+            )
+        occurrence_actions = {
+            "boundary-prefix-occurrence",
+            "global-boundary-return",
+            "source20-first-child",
+        }
+        if left.kind in occurrence_actions or right.kind in occurrence_actions:
+            raise ValueError(
+                "occurrence-bound comma returns are applied as complete actions"
+            )
         self.charge_bits(left.steps.bit_length() + right.steps.bit_length())
         if (
             left.kind == right.kind == "cycle"
@@ -433,6 +412,7 @@ class CommaActionArena:
         """
         if type(state) is not BoundaryState:
             raise TypeError("comma boundary state must be exact")
+        _boundary_state_signature(state)
         found = self._boundary_templates.get(state)
         if found is not None:
             self.charge()
@@ -443,8 +423,11 @@ class CommaActionArena:
                 _seal_integer_bits(header)
                 + (0 if seal is None else _seal_integer_bits(seal[0]))
             )
-            if seal is None or header != seal[0]:
-                raise ValueError("comma boundary template publication was altered")
+            if seal is None or found._component_seal is not seal or header != seal[0]:
+                raise ValueError(
+                    "comma boundary template publication was altered "
+                    "(snapshot mismatch)"
+                )
             self.ledger.bump("comma_boundary_template_hits")
             return found
         self.ledger.bump("comma_boundary_template_misses")
@@ -541,26 +524,23 @@ class CommaActionArena:
             _seal_integer_bits(header)
             + (0 if seal is None else _seal_integer_bits(seal[0]))
         )
-        if seal is None or header != seal[0]:
-            raise ValueError("comma boundary template publication was altered")
+        if seal is None or template._component_seal is not seal or header != seal[0]:
+            raise ValueError(
+                "comma boundary template publication was altered (snapshot mismatch)"
+            )
 
         def verify(kind: str, index: int) -> None:
             self.charge()
             self.ledger.bump("comma_boundary_seal_checks")
             if kind == "fragment":
-                current = _fragment_snapshot(template.sector_fragments[index])
                 expected = cast(tuple[object, ...], seal[1])[index]
             elif kind == "weight":
-                current = _affine_snapshot(template.prefix_weights[index])
                 expected = cast(tuple[object, ...], seal[2])[index]
             elif kind == "displacement":
-                current = _affine_snapshot(template.prefix_displacements[index])
                 expected = cast(tuple[object, ...], seal[3])[index]
             else:
                 raise ValueError("unknown comma boundary component")
-            self.charge_bits(_seal_integer_bits(current) + _seal_integer_bits(expected))
-            if current != expected:
-                raise ValueError("comma boundary template publication was altered")
+            self.charge_bits(_seal_integer_bits(expected))
 
         return verify
 
@@ -575,6 +555,7 @@ class CommaActionArena:
         """
         if type(state) is not BoundaryState:
             raise TypeError("comma boundary state must be exact")
+        _boundary_state_signature(state)
         representative = state.exponent_residue
         if representative < 5:
             representative += PERIOD
@@ -595,4 +576,105 @@ class CommaActionArena:
                 boundary_source=state,
                 boundary_exponent=exponent,
             ),
+        )
+
+    def _boundary_prefix_occurrence(
+        self, source: BoundaryOccurrence, transitions: int
+    ) -> CommaActionID:
+        """Build a receiver-bound prefix action with no exponent in its ID.
+
+        This is an internal application path. The public comma constructor
+        remains gated on its certified prefix until the all-exponent
+        constructor refinement is accepted. At application time the source
+        image must reconstruct this exact boundary occurrence from its value;
+        the exponent is therefore occurrence context, never action identity.
+        """
+        if type(source) is not BoundaryOccurrence:
+            raise TypeError("comma boundary prefix needs an exact occurrence")
+        source._validate()
+        if type(transitions) is not int or transitions < 0:
+            raise ValueError("comma boundary prefix length must be nonnegative")
+        template = self._boundary_template(source.state)
+        total = template.weight.evaluate(source.exponent, charge_bits=self.charge_bits)
+        if transitions > total:
+            raise ValueError("comma boundary prefix crosses its next branch")
+        return self._boundary_prefix_occurrence_steps(source.state, transitions)
+
+    def _boundary_prefix_occurrence_steps(
+        self, state: BoundaryState, transitions: int
+    ) -> CommaActionID:
+        """Intern the normalized cumulative prefix used by a returned image.
+
+        This constructor deliberately has no receiving exponent. The admitted
+        source image validates the complete cumulative prefix when it is
+        applied, so composition can remain independent of occurrence geometry.
+        """
+        if type(state) is not BoundaryState:
+            raise TypeError("comma boundary prefix state must be exact")
+        _boundary_state_signature(state)
+        if type(transitions) is not int or transitions < 0:
+            raise ValueError("comma boundary prefix length must be nonnegative")
+        return self._intern(
+            ("boundary-prefix-occurrence", state, transitions),
+            _Action(
+                "boundary-prefix-occurrence",
+                transitions,
+                boundary_source=state,
+            ),
+        )
+
+    def _global_boundary_return(
+        self,
+        source: BoundaryState,
+        target: BoundaryState,
+        artifact_sha256: str,
+    ) -> CommaActionID:
+        """Intern one complete selected return under its admitted provider.
+
+        The semantic action contains only the finite source/target chart and
+        proof-artifact binding. Its exact temporal weight is evaluated when
+        applied to the receiving occurrence.
+        """
+        if type(source) is not BoundaryState or type(target) is not BoundaryState:
+            raise TypeError("comma future return needs exact boundary states")
+        _boundary_state_signature(source)
+        _boundary_state_signature(target)
+        from number_compiler.sequences.comma.future_authority import (
+            _valid_artifact_digest,
+        )
+
+        if not _valid_artifact_digest(artifact_sha256):
+            raise ValueError("comma future return needs an admitted artifact digest")
+        template = self._boundary_template(source)
+        if (
+            template.outcome != "fork"
+            or target not in template.ordered_children
+            or target.a != template.destination_a
+            or target.exponent_residue
+            != (source.exponent_residue + template.exponent_delta) % PERIOD
+        ):
+            raise ValueError("comma future return target is not an exact macro child")
+        key = ("global-boundary-return", source, target, artifact_sha256)
+        return self._intern(
+            key,
+            _Action(
+                "global-boundary-return",
+                0,
+                boundary_source=source,
+                boundary_target=target,
+                future_digest=artifact_sha256,
+            ),
+        )
+
+    def _source20_first_child(self, artifact_sha256: str) -> CommaActionID:
+        """Intern the exact root-20 first edge under the global theorem."""
+        from number_compiler.sequences.comma.future_authority import (
+            _valid_artifact_digest,
+        )
+
+        if not _valid_artifact_digest(artifact_sha256):
+            raise ValueError("comma source-20 action needs an admitted artifact digest")
+        return self._intern(
+            ("source20-first-child", artifact_sha256),
+            _Action("source20-first-child", 1, future_digest=artifact_sha256),
         )

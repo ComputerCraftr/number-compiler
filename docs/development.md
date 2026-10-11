@@ -139,6 +139,14 @@ using Isabelle’s native graph including installed session dependencies; it nev
 `--session SESSION`, or omit them for the aggregate build. Reused heaps are reported
 separately from rebuilt sessions and do not demonstrate cold-build performance.
 
+For the pending comma semantic cutover, select `Comma_Semantic_B1_Instance`
+first, then `Comma_Semantic_Future_Instance` through this runner. The latter
+owns the semantic global theorem and its dependency closure. The differently
+named `Comma_Global_Future_Safety` selects the legacy native chain. An aggregate
+build includes registered legacy/audit sessions too; their presence in its log
+does not establish that the semantic release theorem depends on them. Neither
+target selection nor a local theorem pass admits the runtime provider artifact.
+
 Development runs allow dirty work and record Git HEAD, tree object, object format
 and dirty status. They cannot certify a commit or supply reusable release evidence.
 `--acceptance` requires clean committed source and uses one isolated detached Git

@@ -1,6 +1,7 @@
 theory Comma_Semantic_B1_Columns
   imports Comma_Semantic_B1_Rebase
 begin
+ML \<open>Comma_Proof_Profile.report "Semantic B1 columns stage=entered"\<close>
 
 text \<open>
 Graph evaluation is recursive executable semantics.  The return-column
@@ -496,6 +497,8 @@ proof -
   show ?thesis using lookup inverse_sum by simp
 qed
 
+ML \<open>Thm.consolidate [@{thm comma_semantic_b1_occurrence_binding_table_reconstructs}]; Comma_Proof_Profile.report "Semantic B1 columns claim=occurrence-binding-table checked"\<close>
+
 record comma_semantic_b1_occurrence_binding =
   comma_semantic_b1_occurrence_template :: comma_semantic_b1_return_template
   comma_semantic_b1_occurrence_template_function :: "nat \<Rightarrow> comma_semantic_b1_column"
@@ -777,6 +780,8 @@ proof (intro conjI allI)
     by (simp add: comma_semantic_b1_bind_occurrence_def)
 qed
 
+ML \<open>Thm.consolidate [@{thm comma_semantic_b1_occurrence_reconstructs}]; Comma_Proof_Profile.report "Semantic B1 columns claim=occurrence-reconstructs checked"\<close>
+
 theorem comma_semantic_b1_root_template_reconstructs:
   assumes root: "root<46"
   shows "\<forall>clock. comma_semantic_b1_occurrence_output_binding
@@ -833,6 +838,7 @@ proof (intro allI)
       comma_semantic_b1_of_word (comma_orbit_word 0 (clock mod 924) root)"
     using occurrence orbit by simp
 qed
+ML \<open>Thm.consolidate [@{thm comma_semantic_b1_root_template_reconstructs}]; Comma_Proof_Profile.report "Semantic B1 columns claim=root-template checked"\<close>
 
 ML \<open>
   val checked = @{thms comma_semantic_b1_column_at_min_member
@@ -852,18 +858,26 @@ ML \<open>
     comma_semantic_b1_template_label_invariant
     comma_semantic_b1_occurrence_reconstructs
     comma_semantic_b1_root_template_reconstructs};
+  val _ = Thm.consolidate checked;
+  val _ = Comma_Proof_Profile.report "Semantic B1 columns claims consolidated";
+  val _ = Comma_Proof_Profile.report "Semantic B1 columns audit=native entered";
   val _ = Comma_Proof_Dependency_Audit.require_native_clean @{context}
     "Output-column template and occurrence binding" checked;
+  val _ = Comma_Proof_Profile.report "Semantic B1 columns audit=native checked";
+  val _ = Comma_Proof_Profile.report "Semantic B1 columns audit=graph-output entered";
   val _ = Comma_Proof_Dependency_Audit.require_expected_paths @{context}
     "B1 graph-column output binding"
     ["comma_semantic_b1_graph_eval_refines_endpoint"]
     @{thms comma_semantic_b1_graph_binding_root_exact
       comma_semantic_b1_graph_root_scopes_refine_binding_table};
+  val _ = Comma_Proof_Profile.report "Semantic B1 columns audit=graph-output checked";
+  val _ = Comma_Proof_Profile.report "Semantic B1 columns audit=template entered";
   val _ = Comma_Proof_Dependency_Audit.require_expected_paths @{context}
     "Exact B1 output reconstruction through a label-free template"
     ["comma_semantic_b1_occurrence_reconstructs",
       "comma_semantic_b1_exact_orbit"]
     @{thms comma_semantic_b1_root_template_reconstructs};
+  val _ = Comma_Proof_Profile.report "Semantic B1 columns audit=template checked";
 \<close>
 
 end

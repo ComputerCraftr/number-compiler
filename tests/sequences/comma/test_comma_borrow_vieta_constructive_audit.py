@@ -7,6 +7,7 @@ from devtools.verification.comma_semantic_quotients import CommaFutureGraph
 from number_compiler.sequences.comma import occurrence as occurrence_module
 from number_compiler.sequences.comma.boundary_chart import PERIOD
 from number_compiler.sequences.comma.boundary_quotient import (
+    AffineWeight,
     BoundaryState,
     construct_macro,
 )
@@ -117,15 +118,25 @@ def test_child_returns_use_actual_transported_exponent() -> None:
     assert actual_zeta == canonical_zeta * 10**PERIOD
 
 
-def test_fragment_accumulation_can_run_without_endpoint_evaluation() -> None:
+def test_fragment_accumulation_can_run_without_endpoint_evaluation(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
     state = BoundaryState("N", 2, 10)
     macro = construct_macro(state, grouped_near=True)
+    endpoint = macro.endpoint
+    evaluate_at_scale = AffineWeight.evaluate_at_scale
 
-    class PoisonEndpoint:
-        def evaluate_at_scale(self, _scale: int) -> int:
+    def reject_endpoint_evaluation(
+        self: AffineWeight,
+        scale: int,
+        *,
+        charge_bits: BitsCharge | None = None,
+    ) -> int:
+        if self is endpoint:
             pytest.fail("fragment producer read the completed macro endpoint")
+        return evaluate_at_scale(self, scale, charge_bits=charge_bits)
 
-    object.__setattr__(macro, "endpoint", PoisonEndpoint())
+    monkeypatch.setattr(AffineWeight, "evaluate_at_scale", reject_endpoint_evaluation)
     result = audit.macro_c1_return_constructive(macro, 10, check_endpoint=False)
     assert 0 <= result.terminal_low_suffix < 100
     assert result.c1_count >= 0

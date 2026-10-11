@@ -69,20 +69,21 @@ struct
     end
 
   fun filter_tac ctxt i =
-    let
-      val checker = Comma_Semantic_Future_Candidate_Check.make ctxt
-      val context = #proof_context checker
-        |> Simplifier.add_proc (projection_proc ctxt)
-        |> Simplifier.add_simps @{thms
-          comma_semantic_p5_entry_future_open_def
-          comma_semantic_decade_summary_def
-          comma_decade_admitted.simps
-          comma_terminal_weight_decode_def
-          comma_terminal_weight_terminal_def
-          comma_offset_orbit_def
-          comma_digit_orbit_sum_def
-          filter.simps upt_rec}
-    in Simplifier.asm_full_simp_tac context i end
+    Comma_Semantic_Future_Candidate_Check.context_tac ctxt
+      (fn base_context => fn target =>
+        let
+          val context = base_context
+            |> Simplifier.add_proc (projection_proc ctxt)
+            |> Simplifier.add_simps @{thms
+              comma_semantic_p5_entry_future_open_def
+              comma_semantic_decade_summary_def
+              comma_decade_admitted.simps
+              comma_terminal_weight_decode_def
+              comma_terminal_weight_terminal_def
+              comma_offset_orbit_def
+              comma_digit_orbit_sum_def
+              filter.simps upt_rec}
+        in Simplifier.asm_full_simp_tac context target end) i
 end
 \<close>
 

@@ -200,12 +200,27 @@ lemma comma_semantic_b1_noncrossing_successor_shift_zero:
       Comma_Next successor"
     and internal: "\<not> comma_round_crossing target successor"
   shows "comma_source_continuation_shift successor = 0"
-  using target transition internal
-  by (cases target; cases successor)
-    (auto simp: comma_source_continuation_shift.simps comma_round_crossing_def
-      comma_finite_step_def comma_weighted_step_def
-      comma_weighted_step_with_headroom_def comma_finite_headroom_def Let_def
-      split: if_splits)
+proof (cases target)
+  case (Comma_Entry f delta offset)
+  have delta_zero: "delta=0"
+    using target Comma_Entry by (simp add: comma_source_continuation_shift.simps)
+  have destination:
+      "successor=Comma_Near f 0
+        (comma_finite_headroom f (residue mod 924) 0 offset)"
+    using transition Comma_Entry delta_zero
+    by (auto simp: comma_entry_control_formula split: if_splits)
+  show ?thesis using destination by simp
+next
+  case (Comma_Near f delta headroom)
+  have delta_zero: "delta=0"
+    using target Comma_Near by (simp add: comma_source_continuation_shift.simps)
+  show ?thesis
+    using transition internal Comma_Near delta_zero
+    by (auto simp: comma_source_continuation_shift.simps
+        comma_round_crossing_def comma_near_control_formula Let_def
+        split: if_splits)
+qed
+ML \<open>Thm.consolidate [@{thm comma_semantic_b1_noncrossing_successor_shift_zero}]; Comma_Proof_Profile.report "Table transform claim=noncrossing-successor-shift-zero checked"\<close>
 
 lemma comma_semantic_b1_source_slot_action_shape:
   assumes admitted: "comma_round_admitted source"

@@ -1,6 +1,7 @@
 theory Comma_Semantic_B1_Rebase
   imports Comma_Semantic_Graph
 begin
+ML \<open>Comma_Proof_Profile.report "B1 rebase stage=entered"\<close>
 
 text \<open>
 An occurrence may apply a complete labeled return at a translated phase.
@@ -232,12 +233,18 @@ ML \<open>
     comma_semantic_b1_independent_occurrence_offsets
     comma_semantic_b1_rooted_occurrence_offsets
     comma_semantic_b1_rebase_of_word_then};
+  val _ = Thm.consolidate checked;
+  val _ = Comma_Proof_Profile.report "B1 rebase claims consolidated";
+  val _ = Comma_Proof_Profile.report "B1 rebase audit=native entered";
   val _ = Comma_Proof_Dependency_Audit.require_native_clean @{context}
     "Occurrence phase rebase for semantic B1" checked;
+  val _ = Comma_Proof_Profile.report "B1 rebase audit=native checked";
+  val _ = Comma_Proof_Profile.report "B1 rebase audit=expected entered";
   val _ = Comma_Proof_Dependency_Audit.require_expected_paths @{context}
     "B1 word-to-semantic occurrence rebase"
     ["comma_semantic_b1_of_word_then"]
     @{thms comma_semantic_b1_rebase_of_word_then};
+  val _ = Comma_Proof_Profile.report "B1 rebase audit=expected checked";
 \<close>
 
 end

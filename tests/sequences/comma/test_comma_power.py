@@ -18,12 +18,14 @@ from number_compiler.sequences.comma.arithmetic import (
     decimal_sector,
     safe_complete_cycles,
 )
-from number_compiler.sequences.comma.power import (
-    FIRST_FORK_INDEX,
-    FIRST_FORK_VALUE,
+from number_compiler.sequences.comma.image_adapter import (
     CommaImagePayload,
     CommaOccurrenceID,
     CommaSource,
+)
+from number_compiler.sequences.comma.power import (
+    FIRST_FORK_INDEX,
+    FIRST_FORK_VALUE,
     CommaTerm,
     UnresolvedCommaBranch,
 )

@@ -1,14 +1,15 @@
 theory Comma_Semantic_B1_CRT_Occurrence_Fold
-  imports Comma_Semantic_B1_CRT_Source_Binding Comma_CRT_Equivalence
+  imports Comma_Semantic_B1_CRT_Source_Binding
 begin
 
 text \<open>
 An occurrence keeps a label-free list of admitted CRT columns, one external
 clock rebase, and a separate output binding indexed by the same list.  The
 list is the template geometry; result labels are not part of its identity.
-The predicate below rejects malformed trees, empty/overlapping geometry,
-missing clock coverage, a bad rebase, and a binding with the wrong width.
-This theory does not materialize child return rows or enumerate clock phases.
+Its semantic wellformedness contract records admission, support, disjointness,
+and clock coverage. Concrete publication proves that contract from grouped
+source rows; this theory does not materialize child return rows or enumerate
+clock phases.
 \<close>
 
 record comma_semantic_b1_crt_occurrence =
@@ -16,6 +17,65 @@ record comma_semantic_b1_crt_occurrence =
   comma_semantic_b1_crt_occurrence_rebase :: nat
   comma_semantic_b1_crt_occurrence_beta :: "comma_semantic_b1_result list"
 
+definition comma_semantic_b1_crt_cells_partition ::
+    "nat set \<Rightarrow> nat set list \<Rightarrow> bool" where
+  "comma_semantic_b1_crt_cells_partition universe cells \<longleftrightarrow>
+    (\<forall>i<length cells. cells!i \<subseteq> universe) \<and>
+    (\<forall>phase\<in>universe. \<exists>i<length cells. phase\<in>cells!i) \<and>
+    (\<forall>i<length cells. \<forall>j<length cells.
+       i\<noteq>j \<longrightarrow> cells!i \<inter> cells!j = {})"
+
+lemma comma_semantic_b1_crt_partition_subset_cells_eq:
+  assumes source_partition:
+      "comma_semantic_b1_crt_cells_partition universe source_cells"
+    and target_partition:
+      "comma_semantic_b1_crt_cells_partition universe target_cells"
+    and same_width: "length source_cells=length target_cells"
+    and covered: "\<forall>i<length source_cells. source_cells!i\<subseteq>target_cells!i"
+  shows "source_cells=target_cells"
+proof (rule nth_equalityI)
+  show width: "length source_cells=length target_cells"
+    by (rule same_width)
+  fix i
+  assume i: "i<length source_cells"
+  show "source_cells!i=target_cells!i"
+  proof (rule set_eqI)
+    fix phase
+    show "phase\<in>source_cells!i \<longleftrightarrow> phase\<in>target_cells!i"
+    proof
+      assume phase: "phase\<in>source_cells!i"
+      have cell_subset: "source_cells!i\<subseteq>target_cells!i"
+        using covered i by blast
+      show "phase\<in>target_cells!i" using cell_subset phase by blast
+    next
+      assume phase: "phase\<in>target_cells!i"
+      have target_bounded:
+        "target_cells!i\<subseteq>universe"
+        using target_partition i width
+        by (auto simp: comma_semantic_b1_crt_cells_partition_def)
+      have phase_universe: "phase\<in>universe"
+        using target_bounded phase by blast
+      obtain j where j: "j<length source_cells"
+        and phase_source: "phase\<in>source_cells!j"
+        using source_partition phase_universe
+        by (auto simp: comma_semantic_b1_crt_cells_partition_def)
+      have source_subset: "source_cells!j\<subseteq>target_cells!j"
+        using covered j by blast
+      have phase_target_j: "phase\<in>target_cells!j"
+        using source_subset phase_source by blast
+      have same_index: "j=i"
+      proof (rule ccontr)
+        assume different: "j\<noteq>i"
+        have disjoint: "target_cells!i\<inter>target_cells!j={}"
+          using target_partition i j different width
+          by (auto simp: comma_semantic_b1_crt_cells_partition_def)
+        show False using disjoint phase phase_target_j by blast
+      qed
+      show "phase\<in>source_cells!i"
+        using phase_source same_index by simp
+    qed
+  qed
+qed
 
 text \<open>
 The checked representation stores template geometry once.  Occurrence
@@ -108,336 +168,130 @@ definition comma_semantic_b1_crt_occurrence_wellformed ::
     comma_semantic_b1_crt_occurrence_covered
       (comma_semantic_b1_crt_occurrence_columns occurrence)"
 
+lemma comma_semantic_b1_crt_occurrence_wellformed_rejects_empty:
+  "\<not> comma_semantic_b1_crt_occurrence_wellformed
+    \<lparr>comma_semantic_b1_crt_occurrence_columns=[],
+      comma_semantic_b1_crt_occurrence_rebase=0,
+      comma_semantic_b1_crt_occurrence_beta=[]\<rparr>"
+  by (simp add: comma_semantic_b1_crt_occurrence_wellformed_def)
 
-text \<open>
-Check a partition incrementally.  The accumulator is the union of all
-previous columns, so each new column needs one intersection test against the
-accumulated geometry rather than one test against every previous column.
-The returned union is also the coverage witness; construction and checking
-share this single fold.
-\<close>
-
-fun comma_semantic_b1_crt_geometry_fold ::
-    "comma_crt_column \<Rightarrow> (nat \<times> comma_crt_column) list \<Rightarrow>
-      bool \<times> comma_crt_column" where
-  "comma_semantic_b1_crt_geometry_fold accumulated [] = (True, accumulated)"
-| "comma_semantic_b1_crt_geometry_fold accumulated (entry#entries) =
-    (let column = snd entry;
-         next = comma_crt_apply Comma_CRT_Or accumulated column;
-         (separated, joined) = comma_semantic_b1_crt_geometry_fold next entries
-     in (\<not> comma_crt_supported
-           (comma_crt_apply Comma_CRT_And accumulated column) \<and> separated,
-         joined))"
-
-lemma comma_semantic_b1_crt_geometry_fold_admitted:
-  assumes accumulated: "comma_crt_admitted 0 initial"
-    and entries: "list_all (\<lambda>entry. comma_crt_admitted 0 (snd entry)) entries"
-  shows "comma_crt_admitted 0
-    (snd (comma_semantic_b1_crt_geometry_fold initial entries))"
-  using accumulated entries
-proof (induction entries arbitrary: initial)
-  case Nil
-  then show ?case by simp
-next
-  case (Cons entry entries)
-  have head: "comma_crt_admitted 0 (snd entry)"
-    and tail: "list_all (\<lambda>entry. comma_crt_admitted 0 (snd entry)) entries"
-    using Cons.prems(2) by simp_all
-  let ?next = "comma_crt_apply Comma_CRT_Or initial (snd entry)"
-  have next_admitted: "comma_crt_admitted 0 ?next"
-    by (rule comma_crt_apply_admitted[OF Cons.prems(1) head])
-  have result: "comma_crt_admitted 0
-      (snd (comma_semantic_b1_crt_geometry_fold ?next entries))"
-    by (rule Cons.IH[OF next_admitted tail])
-  obtain separated joined where fold_tail:
-      "comma_semantic_b1_crt_geometry_fold ?next entries = (separated, joined)"
-    by (cases "comma_semantic_b1_crt_geometry_fold ?next entries") auto
-  have result_joined: "comma_crt_admitted 0 joined"
-    using result fold_tail by simp
-  show ?case using result_joined fold_tail by (simp add: Let_def)
-qed
-
-lemma comma_semantic_b1_crt_geometry_fold_set:
-  assumes accumulated: "comma_crt_admitted 0 initial"
-    and entries: "list_all (\<lambda>entry. comma_crt_admitted 0 (snd entry)) entries"
-  shows "comma_crt_set
-      (snd (comma_semantic_b1_crt_geometry_fold initial entries)) =
-    comma_crt_set initial \<union>
-      (\<Union>entry\<in>set entries. comma_crt_set (snd entry))"
-  using accumulated entries
-proof (induction entries arbitrary: initial)
-  case Nil
-  then show ?case by simp
-next
-  case (Cons entry entries)
-  have head: "comma_crt_admitted 0 (snd entry)"
-    and tail: "list_all (\<lambda>entry. comma_crt_admitted 0 (snd entry)) entries"
-    using Cons.prems(2) by simp_all
-  let ?next = "comma_crt_apply Comma_CRT_Or initial (snd entry)"
-  have next_admitted: "comma_crt_admitted 0 ?next"
-    by (rule comma_crt_apply_admitted[OF Cons.prems(1) head])
-  have tail_set:
-    "comma_crt_set (snd (comma_semantic_b1_crt_geometry_fold ?next entries)) =
-      comma_crt_set ?next \<union>
-        (\<Union>item\<in>set entries. comma_crt_set (snd item))"
-    by (rule Cons.IH[OF next_admitted tail])
-  obtain separated joined where fold_tail:
-      "comma_semantic_b1_crt_geometry_fold ?next entries = (separated, joined)"
-    by (cases "comma_semantic_b1_crt_geometry_fold ?next entries") auto
-  have tail_set_joined:
-      "comma_crt_set joined = comma_crt_set ?next \<union>
-        (\<Union>item\<in>set entries. comma_crt_set (snd item))"
-    using tail_set fold_tail by simp
-  have next_set: "comma_crt_set ?next =
-      comma_crt_set initial \<union> comma_crt_set (snd entry)"
-    by (rule comma_crt_apply_or_set[OF Cons.prems(1) head])
-  show ?case
-    using tail_set_joined next_set fold_tail
-    by (simp add: Let_def Un_assoc)
-qed
-
-lemma comma_semantic_b1_crt_geometry_fold_disjoint:
-  assumes accumulated: "comma_crt_admitted 0 initial"
-    and entries: "list_all (\<lambda>entry. comma_crt_admitted 0 (snd entry)) entries"
-    and checked:
-      "fst (comma_semantic_b1_crt_geometry_fold initial entries)"
-  shows "(\<forall>entry\<in>set entries.
-       comma_crt_set (snd entry) \<inter> comma_crt_set initial = {}) \<and>
-    (\<forall>left\<in>set entries. \<forall>right\<in>set entries.
-       fst left \<noteq> fst right \<longrightarrow>
-       comma_crt_set (snd left) \<inter> comma_crt_set (snd right) = {})"
-  using accumulated entries checked
-proof (induction entries arbitrary: initial)
-  case Nil
-  then show ?case by simp
-next
-  case (Cons entry entries)
-  have head_admitted: "comma_crt_admitted 0 (snd entry)"
-    and tail_admitted:
-      "list_all (\<lambda>entry. comma_crt_admitted 0 (snd entry)) entries"
-    using Cons.prems(2) by simp_all
-  let ?column = "snd entry"
-  let ?next = "comma_crt_apply Comma_CRT_Or initial ?column"
-  have separated:
-      "\<not> comma_crt_supported (comma_crt_apply Comma_CRT_And initial ?column)"
-    and tail_checked:
-      "fst (comma_semantic_b1_crt_geometry_fold ?next entries)"
-    using Cons.prems(3) by (auto simp: Let_def split: prod.splits)
-  have meet_admitted:
-      "comma_crt_admitted 0 (comma_crt_apply Comma_CRT_And initial ?column)"
-    by (rule comma_crt_apply_admitted[OF Cons.prems(1) head_admitted])
-  have meet_empty:
-      "comma_crt_set (comma_crt_apply Comma_CRT_And initial ?column) = {}"
-    using comma_crt_supported_nonempty[OF meet_admitted] separated by blast
-  have fresh_empty:
-      "comma_crt_set initial \<inter> comma_crt_set ?column = {}"
-    using meet_empty comma_crt_apply_and_set[OF Cons.prems(1) head_admitted]
-    by simp
-  have next_admitted: "comma_crt_admitted 0 ?next"
-    by (rule comma_crt_apply_admitted[OF Cons.prems(1) head_admitted])
-  have next_set:
-      "comma_crt_set ?next = comma_crt_set initial \<union> comma_crt_set ?column"
-    by (rule comma_crt_apply_or_set[OF Cons.prems(1) head_admitted])
-  have tail_facts:
-      "(\<forall>item\<in>set entries. comma_crt_set (snd item) \<inter>
-          comma_crt_set ?next = {}) \<and>
-       (\<forall>left\<in>set entries. \<forall>right\<in>set entries.
-          fst left \<noteq> fst right \<longrightarrow>
-          comma_crt_set (snd left) \<inter> comma_crt_set (snd right) = {})"
-    by (rule Cons.IH[OF next_admitted tail_admitted tail_checked])
-  have head_subset: "comma_crt_set ?column \<subseteq> comma_crt_set ?next"
-    using next_set by blast
-  have accumulator_subset: "comma_crt_set initial \<subseteq> comma_crt_set ?next"
-    using next_set by blast
-  have tail_disjoint_head:
-      "comma_crt_set (snd item) \<inter> comma_crt_set ?column = {}"
-    if item: "item\<in>set entries" for item
+lemma comma_semantic_b1_crt_occurrence_wellformed_rejects_overlap:
+  "\<not> comma_semantic_b1_crt_occurrence_wellformed
+    \<lparr>comma_semantic_b1_crt_occurrence_columns=
+      [Comma_CRT_Node 0
+         [Comma_CRT_Bool True, Comma_CRT_Bool False,
+          Comma_CRT_Bool False, Comma_CRT_Bool False],
+       Comma_CRT_Node 0
+         [Comma_CRT_Bool False, Comma_CRT_Bool True,
+          Comma_CRT_Bool False, Comma_CRT_Bool False],
+       Comma_CRT_Node 0
+         [Comma_CRT_Bool True, Comma_CRT_Bool False,
+          Comma_CRT_Bool False, Comma_CRT_Bool False]],
+      comma_semantic_b1_crt_occurrence_rebase=0,
+      comma_semantic_b1_crt_occurrence_beta=
+        [Comma_Semantic_B1_Invalid, Comma_Semantic_B1_Invalid,
+         Comma_Semantic_B1_Invalid]\<rparr>"
+proof (rule notI)
+  let ?column = "Comma_CRT_Node 0
+    [Comma_CRT_Bool True, Comma_CRT_Bool False,
+     Comma_CRT_Bool False, Comma_CRT_Bool False]"
+  have zero: "0 \<in> comma_crt_set ?column"
+    by (simp add: comma_crt_set_def comma_crt_period_def)
+  assume wellformed:
+    "comma_semantic_b1_crt_occurrence_wellformed
+      \<lparr>comma_semantic_b1_crt_occurrence_columns=[?column,
+        Comma_CRT_Node 0
+          [Comma_CRT_Bool False, Comma_CRT_Bool True,
+           Comma_CRT_Bool False, Comma_CRT_Bool False], ?column],
+        comma_semantic_b1_crt_occurrence_rebase=0,
+        comma_semantic_b1_crt_occurrence_beta=
+          [Comma_Semantic_B1_Invalid, Comma_Semantic_B1_Invalid,
+           Comma_Semantic_B1_Invalid]\<rparr>"
+  have disjoint:
+    "comma_semantic_b1_crt_occurrence_disjoint [?column,
+      Comma_CRT_Node 0
+        [Comma_CRT_Bool False, Comma_CRT_Bool True,
+         Comma_CRT_Bool False, Comma_CRT_Bool False], ?column]"
+    using wellformed
+    by (simp add: comma_semantic_b1_crt_occurrence_wellformed_def)
+  have indexed_zero:
+    "(0, ?column) \<in> set
+        (comma_semantic_b1_crt_occurrence_indexed_columns
+          [?column, Comma_CRT_Node 0
+            [Comma_CRT_Bool False, Comma_CRT_Bool True,
+             Comma_CRT_Bool False, Comma_CRT_Bool False], ?column])"
+    and indexed_two: "(2, ?column) \<in> set
+        (comma_semantic_b1_crt_occurrence_indexed_columns
+          [?column, Comma_CRT_Node 0
+            [Comma_CRT_Bool False, Comma_CRT_Bool True,
+             Comma_CRT_Bool False, Comma_CRT_Bool False], ?column])"
+    by (simp_all add: comma_semantic_b1_crt_occurrence_indexed_columns_def)
+  have empty:
+    "comma_crt_set ?column \<inter> comma_crt_set ?column = {}"
   proof -
-    have disjoint_next:
-        "comma_crt_set (snd item) \<inter> comma_crt_set ?next = {}"
-      by (rule bspec[OF conjunct1[OF tail_facts] item])
-    show ?thesis using disjoint_next head_subset by blast
-  qed
-  have first:
-      "\<forall>item\<in>set (entry#entries).
-        comma_crt_set (snd item) \<inter> comma_crt_set initial = {}"
-  proof (intro ballI)
-    fix item
-    assume item: "item\<in>set (entry#entries)"
-    show "comma_crt_set (snd item) \<inter> comma_crt_set initial = {}"
-    proof (cases "item=entry")
-      case True
-      then show ?thesis using fresh_empty by (simp add: Int_commute)
-    next
-      case False
-      have in_tail: "item\<in>set entries"
-        using item False by simp
-      have empty_next:
-          "comma_crt_set (snd item) \<inter> comma_crt_set ?next = {}"
-        by (rule bspec[OF conjunct1[OF tail_facts] in_tail])
-      show ?thesis using empty_next accumulator_subset by blast
-    qed
-  qed
-  have second:
-      "\<forall>left\<in>set (entry#entries). \<forall>right\<in>set (entry#entries).
+    let ?indexed_columns =
+      "comma_semantic_b1_crt_occurrence_indexed_columns
+        [?column, Comma_CRT_Node 0
+          [Comma_CRT_Bool False, Comma_CRT_Bool True,
+           Comma_CRT_Bool False, Comma_CRT_Bool False], ?column]"
+    have pairwise:
+      "\<forall>left\<in>set ?indexed_columns. \<forall>right\<in>set ?indexed_columns.
         fst left \<noteq> fst right \<longrightarrow>
         comma_crt_set (snd left) \<inter> comma_crt_set (snd right) = {}"
-  proof (intro ballI)+
-    fix left right
-    assume left: "left\<in>set (entry#entries)"
-      and right: "right\<in>set (entry#entries)"
-    show "fst left \<noteq> fst right \<longrightarrow>
-        comma_crt_set (snd left) \<inter> comma_crt_set (snd right) = {}"
-    proof
-      assume different: "fst left \<noteq> fst right"
-      show "comma_crt_set (snd left) \<inter> comma_crt_set (snd right) = {}"
-      proof (cases "left=entry")
-        case True
-        then have right_tail: "right\<in>set entries"
-          using right different by auto
-        have tail_head:
-            "comma_crt_set (snd right) \<inter> comma_crt_set ?column = {}"
-          by (rule tail_disjoint_head[OF right_tail])
-        show ?thesis using True tail_head by (simp add: Int_commute)
-      next
-        case False
-        then have left_tail: "left\<in>set entries"
-          using left by simp
-        show ?thesis
-        proof (cases "right=entry")
-          case True
-          have tail_head:
-              "comma_crt_set (snd left) \<inter> comma_crt_set ?column = {}"
-            by (rule tail_disjoint_head[OF left_tail])
-          show ?thesis using True tail_head by simp
-        next
-          case False_right: False
-          then have right_tail: "right\<in>set entries"
-            using right by simp
-          have pairwise_after_left:
-              "\<forall>item\<in>set entries.
-                fst left \<noteq> fst item \<longrightarrow>
-                comma_crt_set (snd left) \<inter> comma_crt_set (snd item) = {}"
-            by (rule bspec[OF conjunct2[OF tail_facts] left_tail])
-          have tail_pairwise:
-              "fst left \<noteq> fst right \<longrightarrow>
-                comma_crt_set (snd left) \<inter> comma_crt_set (snd right) = {}"
-            by (rule bspec[OF pairwise_after_left right_tail])
-          show ?thesis using tail_pairwise different by blast
-        qed
-      qed
-    qed
+      using disjoint by (simp add: comma_semantic_b1_crt_occurrence_disjoint_def)
+    have left_pair:
+      "\<forall>right\<in>set ?indexed_columns.
+        fst (0, ?column) \<noteq> fst right \<longrightarrow>
+        comma_crt_set ?column \<inter> comma_crt_set (snd right) = {}"
+      using bspec[OF pairwise indexed_zero] by simp
+    have pair:
+      "fst ((0::nat), ?column) \<noteq> fst (2, ?column) \<longrightarrow>
+        comma_crt_set ?column \<inter> comma_crt_set ?column = {}"
+      using bspec[OF left_pair indexed_two] by simp
+    have different: "fst ((0::nat), ?column) \<noteq> fst (2, ?column)" by simp
+    show ?thesis using pair different by blast
   qed
-  show ?case using first second by blast
+  show False using empty zero by auto
 qed
 
-definition comma_semantic_b1_crt_occurrence_geometry_check ::
-    "comma_crt_column list \<Rightarrow> bool" where
-  "comma_semantic_b1_crt_occurrence_geometry_check columns \<longleftrightarrow>
-    (let folded = comma_semantic_b1_crt_geometry_fold (Comma_CRT_Bool False)
-         (comma_semantic_b1_crt_occurrence_indexed_columns columns)
-     in list_all (comma_crt_admitted 0) columns \<and>
-        list_all comma_crt_supported columns \<and>
-        fst folded \<and>
-        comma_crt_equiv_check (snd folded) (Comma_CRT_Bool True))"
-
-lemma comma_semantic_b1_crt_occurrence_geometry_check_rejects_empty:
-  "\<not> comma_semantic_b1_crt_occurrence_geometry_check []"
-  by code_simp
-
-lemma comma_semantic_b1_crt_occurrence_geometry_check_rejects_overlap:
-  "\<not> comma_semantic_b1_crt_occurrence_geometry_check
-    [Comma_CRT_Node 0
-       [Comma_CRT_Bool True, Comma_CRT_Bool False,
-        Comma_CRT_Bool False, Comma_CRT_Bool False],
-     Comma_CRT_Node 0
-       [Comma_CRT_Bool False, Comma_CRT_Bool True,
-        Comma_CRT_Bool False, Comma_CRT_Bool False],
-     Comma_CRT_Node 0
-       [Comma_CRT_Bool True, Comma_CRT_Bool False,
-        Comma_CRT_Bool False, Comma_CRT_Bool False]]"
-  by code_simp
-
-lemma comma_semantic_b1_crt_occurrence_geometry_check_rejects_missing_coverage:
-  "\<not> comma_semantic_b1_crt_occurrence_geometry_check
-    [Comma_CRT_Node 0
-       [Comma_CRT_Bool True, Comma_CRT_Bool False,
-        Comma_CRT_Bool False, Comma_CRT_Bool False]]"
-  by code_simp
-
-lemma comma_semantic_b1_crt_occurrence_geometry_check_rejects_bad_column:
-  "\<not> comma_semantic_b1_crt_occurrence_geometry_check [Comma_CRT_Node 0 []]"
-  by code_simp
-
-lemma comma_semantic_b1_crt_occurrence_geometry_check_sound:
-  assumes checked: "comma_semantic_b1_crt_occurrence_geometry_check columns"
-  shows "list_all (comma_crt_admitted 0) columns"
-    and "list_all comma_crt_supported columns"
-    and "comma_semantic_b1_crt_occurrence_disjoint columns"
-    and "comma_semantic_b1_crt_occurrence_covered columns"
-proof -
-  let ?entries = "comma_semantic_b1_crt_occurrence_indexed_columns columns"
-  let ?fold = "comma_semantic_b1_crt_geometry_fold
-    (Comma_CRT_Bool False) ?entries"
-  have admitted: "list_all (comma_crt_admitted 0) columns"
-    and supported: "list_all comma_crt_supported columns"
-    and fold_ok: "fst ?fold"
-    and coverage_check: "comma_crt_equiv_check (snd ?fold) (Comma_CRT_Bool True)"
-    using checked by (auto simp: comma_semantic_b1_crt_occurrence_geometry_check_def
-      Let_def)
-  have indexed_admitted:
-      "list_all (\<lambda>entry. comma_crt_admitted 0 (snd entry)) ?entries"
-    using admitted by (auto simp: comma_semantic_b1_crt_occurrence_indexed_columns_def
-      list_all_iff in_set_zip)
-  have initial_admitted: "comma_crt_admitted 0 (Comma_CRT_Bool False)"
-    by simp
-  have indexed_disjoint:
-      "(\<forall>entry\<in>set ?entries. comma_crt_set (snd entry) \<inter>
-          comma_crt_set (Comma_CRT_Bool False) = {}) \<and>
-       (\<forall>left\<in>set ?entries. \<forall>right\<in>set ?entries.
-          fst left \<noteq> fst right \<longrightarrow>
-          comma_crt_set (snd left) \<inter> comma_crt_set (snd right) = {})"
-    by (rule comma_semantic_b1_crt_geometry_fold_disjoint
-      [OF initial_admitted indexed_admitted fold_ok])
-  show "list_all (comma_crt_admitted 0) columns" by (rule admitted)
-  show "list_all comma_crt_supported columns" by (rule supported)
-  show "comma_semantic_b1_crt_occurrence_disjoint columns"
-    using conjunct2[OF indexed_disjoint]
-    by (simp add: comma_semantic_b1_crt_occurrence_disjoint_def)
-  have final_set:
-      "comma_crt_set (snd ?fold) =
-        (\<Union>entry\<in>set ?entries. comma_crt_set (snd entry))"
-    using comma_semantic_b1_crt_geometry_fold_set
-      [OF initial_admitted indexed_admitted]
-    by (simp add: comma_crt_set_def)
-  have coverage_set:
-      "comma_crt_set (snd ?fold) = {..<924}"
-    using comma_crt_equiv_check_sound[OF coverage_check]
-    by (simp add: comma_crt_set_def lessThan_def)
-  show "comma_semantic_b1_crt_occurrence_covered columns"
-    unfolding comma_semantic_b1_crt_occurrence_covered_def
-  proof (intro allI impI)
-    fix phase :: nat
-    assume phase: "phase<924"
-    have phase_in_join: "phase\<in>comma_crt_set (snd ?fold)"
-      using coverage_set phase by (auto simp: lessThan_def)
-    have member: "phase\<in>(\<Union>entry\<in>set ?entries. comma_crt_set (snd entry))"
-      using final_set phase_in_join by simp
-    then obtain entry where entry: "entry\<in>set ?entries"
-      and selects: "phase\<in>comma_crt_set (snd entry)" by blast
-    show "\<exists>entry\<in>set ?entries. phase\<in>comma_crt_set (snd entry)"
-      using entry selects by blast
-  qed
+lemma comma_semantic_b1_crt_occurrence_wellformed_rejects_missing_coverage:
+  "\<not> comma_semantic_b1_crt_occurrence_wellformed
+    \<lparr>comma_semantic_b1_crt_occurrence_columns=
+      [Comma_CRT_Node 0
+        [Comma_CRT_Bool True, Comma_CRT_Bool False,
+         Comma_CRT_Bool False, Comma_CRT_Bool False]],
+      comma_semantic_b1_crt_occurrence_rebase=0,
+      comma_semantic_b1_crt_occurrence_beta=[Comma_Semantic_B1_Invalid]\<rparr>"
+proof (rule notI)
+  let ?column = "Comma_CRT_Node 0
+    [Comma_CRT_Bool True, Comma_CRT_Bool False,
+     Comma_CRT_Bool False, Comma_CRT_Bool False]"
+  have absent: "1 \<notin> comma_crt_set ?column"
+    by (simp add: comma_crt_set_def comma_crt_period_def)
+  assume wellformed:
+    "comma_semantic_b1_crt_occurrence_wellformed
+      \<lparr>comma_semantic_b1_crt_occurrence_columns=[?column],
+        comma_semantic_b1_crt_occurrence_rebase=0,
+        comma_semantic_b1_crt_occurrence_beta=[Comma_Semantic_B1_Invalid]\<rparr>"
+  have covered: "comma_semantic_b1_crt_occurrence_covered [?column]"
+    using wellformed
+    by (simp add: comma_semantic_b1_crt_occurrence_wellformed_def)
+  have one: "(1::nat) < 924" by simp
+  have "\<exists>entry\<in>set
+      (comma_semantic_b1_crt_occurrence_indexed_columns [?column]).
+      1 \<in> comma_crt_set (snd entry)"
+    using covered one by (auto simp: comma_semantic_b1_crt_occurrence_covered_def)
+  then show False using absent
+    by (auto simp: comma_semantic_b1_crt_occurrence_indexed_columns_def)
 qed
 
-definition comma_semantic_b1_crt_occurrence_wellformed_check ::
-    "comma_semantic_b1_crt_occurrence \<Rightarrow> bool" where
-  "comma_semantic_b1_crt_occurrence_wellformed_check occurrence \<longleftrightarrow>
-    (let columns = comma_semantic_b1_crt_occurrence_columns occurrence
-     in comma_semantic_b1_crt_occurrence_rebase occurrence < 924 \<and>
-       length columns = length (comma_semantic_b1_crt_occurrence_beta occurrence) \<and>
-       columns \<noteq> [] \<and>
-       comma_semantic_b1_crt_occurrence_geometry_check columns)"
+lemma comma_semantic_b1_crt_occurrence_wellformed_rejects_bad_column:
+  "\<not> comma_semantic_b1_crt_occurrence_wellformed
+    \<lparr>comma_semantic_b1_crt_occurrence_columns=[Comma_CRT_Node 0 []],
+      comma_semantic_b1_crt_occurrence_rebase=0,
+      comma_semantic_b1_crt_occurrence_beta=[Comma_Semantic_B1_Invalid]\<rparr>"
+  by (simp add: comma_semantic_b1_crt_occurrence_wellformed_def)
+
 
 definition comma_semantic_b1_crt_occurrence_binding_check ::
     "comma_semantic_b1_crt_occurrence \<Rightarrow> bool" where
@@ -446,33 +300,6 @@ definition comma_semantic_b1_crt_occurrence_binding_check ::
     length (comma_semantic_b1_crt_occurrence_columns occurrence) =
       length (comma_semantic_b1_crt_occurrence_beta occurrence) \<and>
     comma_semantic_b1_crt_occurrence_columns occurrence \<noteq> []"
-
-lemma comma_semantic_b1_crt_occurrence_binding_check_geometry:
-  assumes binding: "comma_semantic_b1_crt_occurrence_binding_check occurrence"
-    and geometry: "comma_semantic_b1_crt_occurrence_geometry_check
-      (comma_semantic_b1_crt_occurrence_columns occurrence)"
-  shows "comma_semantic_b1_crt_occurrence_wellformed_check occurrence"
-  using binding geometry
-  by (simp add: comma_semantic_b1_crt_occurrence_binding_check_def
-    comma_semantic_b1_crt_occurrence_wellformed_check_def)
-
-lemma comma_semantic_b1_crt_occurrence_wellformed_check_sound:
-  assumes checked: "comma_semantic_b1_crt_occurrence_wellformed_check occurrence"
-  shows "comma_semantic_b1_crt_occurrence_wellformed occurrence"
-proof -
-  let ?columns = "comma_semantic_b1_crt_occurrence_columns occurrence"
-  have geometry: "comma_semantic_b1_crt_occurrence_geometry_check ?columns"
-    using checked by (simp add: comma_semantic_b1_crt_occurrence_wellformed_check_def
-      Let_def)
-  have admitted: "list_all (comma_crt_admitted 0) ?columns"
-    and supported: "list_all comma_crt_supported ?columns"
-    and disjoint: "comma_semantic_b1_crt_occurrence_disjoint ?columns"
-    and covered: "comma_semantic_b1_crt_occurrence_covered ?columns"
-    using comma_semantic_b1_crt_occurrence_geometry_check_sound[OF geometry] .
-  show ?thesis using checked admitted supported disjoint covered
-    by (simp add: comma_semantic_b1_crt_occurrence_wellformed_def
-      comma_semantic_b1_crt_occurrence_wellformed_check_def Let_def)
-qed
 
 lemma comma_semantic_b1_crt_occurrence_find_index_total:
   assumes phase: "phase < 924"
@@ -870,16 +697,10 @@ val _ =
   if null (Thm_Deps.all_oracles @{thms
     comma_semantic_b1_crt_resolve_descriptor_exact
     comma_semantic_b1_crt_resolve_descriptor_rejects_foreign
-    comma_semantic_b1_crt_geometry_fold_admitted
-    comma_semantic_b1_crt_geometry_fold_set
-    comma_semantic_b1_crt_geometry_fold_disjoint
-    comma_semantic_b1_crt_occurrence_geometry_check_rejects_empty
-    comma_semantic_b1_crt_occurrence_geometry_check_rejects_overlap
-    comma_semantic_b1_crt_occurrence_geometry_check_rejects_missing_coverage
-    comma_semantic_b1_crt_occurrence_geometry_check_rejects_bad_column
-    comma_semantic_b1_crt_occurrence_geometry_check_sound
-    comma_semantic_b1_crt_occurrence_binding_check_geometry
-    comma_semantic_b1_crt_occurrence_wellformed_check_sound
+    comma_semantic_b1_crt_occurrence_wellformed_rejects_empty
+    comma_semantic_b1_crt_occurrence_wellformed_rejects_overlap
+    comma_semantic_b1_crt_occurrence_wellformed_rejects_missing_coverage
+    comma_semantic_b1_crt_occurrence_wellformed_rejects_bad_column
     comma_semantic_b1_crt_occurrence_find_index_total
     comma_semantic_b1_crt_occurrence_lookup_total
     comma_semantic_b1_crt_occurrence_local_step_exact

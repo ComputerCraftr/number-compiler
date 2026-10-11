@@ -3,10 +3,12 @@
 from __future__ import annotations
 
 import ast
+from collections.abc import Iterator
 from pathlib import Path
 
 import pytest
 
+from devtools.checks.dependency_graph import source_syntax
 from devtools.checks.isabelle_syntax import Session
 from devtools.checks.ownership_policy import (
     check_isabelle_resource_owner,
@@ -173,6 +175,64 @@ def test_python_policy_rejects_unresolvable_dynamic_router(tmp_path: Path) -> No
 
     assert len(violations) == 1
     assert "unresolvable dynamic import router" in violations[0]
+
+
+def test_shared_owner_reuses_source_syntax_import_walk(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    source = tmp_path / "src/number_compiler/resources/router.py"
+    source.parent.mkdir(parents=True)
+    source.write_text(
+        "from number_compiler.sequences.alpha import action\n"
+        "from importlib import import_module as load\n"
+        "def delayed():\n"
+        "    from number_compiler.sequences.beta import helper\n"
+        "    return load('.gamma', package='number_compiler.sequences')\n",
+        encoding="utf-8",
+    )
+
+    original_walk = ast.walk
+    walk_count = 0
+
+    def count_walk(tree: ast.AST) -> Iterator[ast.AST]:
+        nonlocal walk_count
+        walk_count += 1
+        yield from original_walk(tree)
+
+    monkeypatch.setattr(ast, "walk", count_walk)
+
+    violations = python_ownership_violations(tmp_path)
+
+    assert walk_count == 1
+    assert violations == (
+        "src/number_compiler/resources/router.py: shared code routes to sequence-family module number_compiler.sequences.gamma",
+        "src/number_compiler/resources/router.py:1: shared code imports sequence-family module number_compiler.sequences.alpha",
+        "src/number_compiler/resources/router.py:4: shared code imports sequence-family module number_compiler.sequences.beta",
+    )
+
+
+def test_source_syntax_handles_external_paths_and_dynamic_source_root(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    external = tmp_path / "devtools/verification/router.py"
+    external.parent.mkdir(parents=True)
+    external.write_text("from .local import helper\n", encoding="utf-8")
+    external_syntax = source_syntax(external)
+    assert external_syntax.imports == frozenset({".local", ".local.helper"})
+    assert external_syntax.import_references == ()
+
+    source_root = tmp_path / "src/number_compiler"
+    package_file = source_root / "resources" / "router.py"
+    package_file.parent.mkdir(parents=True)
+    package_file.write_text("from .local import helper\n", encoding="utf-8")
+    monkeypatch.setattr("devtools.checks.dependency_graph.SRC", source_root)
+
+    package_syntax = source_syntax(package_file)
+
+    assert package_syntax.import_references == (
+        (1, "number_compiler.resources.local"),
+        (1, "number_compiler.resources.local.helper"),
+    )
 
 
 @pytest.mark.parametrize(

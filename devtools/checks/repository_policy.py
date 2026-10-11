@@ -8,9 +8,12 @@ from __future__ import annotations
 
 import ast
 import os
-from collections.abc import Mapping
+import sys
+from collections.abc import Iterator, Mapping
+from contextlib import contextmanager
 from dataclasses import dataclass
 from pathlib import Path
+from time import perf_counter
 
 MAX_SOURCE_LINES = 1000
 # Isabelle theories are authored source and share the physical line cap.  The
@@ -26,6 +29,45 @@ IGNORED_PARTS = {
     ".ruff_cache",
 }
 IGNORED_ROOTS = {"results", "build", "dist", "venv"}
+_PROFILE_ENV = "NUMBER_COMPILER_POLICY_PROFILE"
+
+
+def _profile_enabled() -> bool:
+    return os.environ.get(_PROFILE_ENV, "").lower() in {"1", "true", "yes"}
+
+
+@contextmanager
+def _profile_stage(name: str, *, detail: str = "") -> Iterator[None]:
+    """Report optional flushed timings without changing the policy JSON."""
+    if not _profile_enabled():
+        yield
+        return
+    suffix = f" {detail}" if detail else ""
+    started = perf_counter()
+    print(f"policy-profile: {name}:start{suffix}", file=sys.stderr, flush=True)
+    try:
+        yield
+    except BaseException:
+        elapsed = perf_counter() - started
+        print(
+            f"policy-profile: {name}:failed seconds={elapsed:.3f}",
+            file=sys.stderr,
+            flush=True,
+        )
+        raise
+    elapsed = perf_counter() - started
+    print(
+        f"policy-profile: {name}:complete seconds={elapsed:.3f}",
+        file=sys.stderr,
+        flush=True,
+    )
+
+
+def _profile_counts(name: str, counts: Mapping[str, int]) -> None:
+    if not _profile_enabled():
+        return
+    rendered = " ".join(f"{key}={value}" for key, value in counts.items())
+    print(f"policy-profile: {name} {rendered}", file=sys.stderr, flush=True)
 
 
 @dataclass(frozen=True, slots=True)
@@ -210,18 +252,6 @@ def _function_catalog(
         imports.setdefault(module, {})
         module_aliases.setdefault(module, {})
         lambda_names: dict[ast.Lambda, tuple[str, ...]] = {}
-        for statement in ast.walk(tree):
-            if isinstance(statement, (ast.Assign, ast.AnnAssign)) and isinstance(
-                statement.value, ast.Lambda
-            ):
-                targets = (
-                    statement.targets
-                    if isinstance(statement, ast.Assign)
-                    else [statement.target]
-                )
-                lambda_names[statement.value] = tuple(
-                    target.id for target in targets if isinstance(target, ast.Name)
-                )
         # Stack items carry lexical parent and enclosing class names.  Function
         # bodies are traversed, so nested functions are catalogued too.
         stack: list[tuple[ast.AST, str, str | None, str | None]] = [
@@ -229,6 +259,15 @@ def _function_catalog(
         ]
         while stack:
             node, parent_qn, class_qn, active_function = stack.pop()
+            if isinstance(node, (ast.Assign, ast.AnnAssign)) and isinstance(
+                node.value, ast.Lambda
+            ):
+                targets = (
+                    node.targets if isinstance(node, ast.Assign) else [node.target]
+                )
+                lambda_names[node.value] = tuple(
+                    target.id for target in targets if isinstance(target, ast.Name)
+                )
             if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef, ast.Lambda)):
                 if active_function is not None and not isinstance(node, ast.Lambda):
                     expressions: list[ast.AST] = [
@@ -782,35 +821,61 @@ def repository_policy_report(root: Path) -> dict[str, object]:
     )
 
     root = Path(root).resolve()
-    snapshot = _policy_snapshot(root)
+    with _profile_stage("snapshot"):
+        snapshot = _policy_snapshot(root)
     parsed_sources = snapshot.parsed_python
+    _profile_counts(
+        "snapshot-counts",
+        {
+            "authored_files": len(snapshot.authored_files),
+            "source_files": len(snapshot.source_line_counts),
+            "python_modules": len(parsed_sources),
+        },
+    )
+    with _profile_stage("source-and-session"):
+        line_violations = source_line_violations(
+            root,
+            authored_files=snapshot.authored_files,
+            line_counts=snapshot.source_line_counts,
+        )
+        session_violations = isabelle_session_option_violations(root)
+    with _profile_stage("ownership"):
+        ownership_violations = ownership_policy_violations(
+            root, parsed_sources=parsed_sources
+        )
+    with _profile_stage("entrypoints"):
+        entrypoint_violations = validation_entrypoint_violations(root, parsed_sources)
+    with _profile_stage("recursion", detail=f"modules={len(parsed_sources)}"):
+        cycles = recursion_cycles(root, parsed_sources=parsed_sources)
+    with _profile_stage("clones", detail=f"modules={len(parsed_sources)}"):
+        duplicate_groups = duplicate_bodies(
+            root,
+            parsed_sources,
+            profile_callback=(lambda counts: _profile_counts("clone-progress", counts))
+            if _profile_enabled()
+            else None,
+        )
+    duplicate_sites = tuple(
+        tuple(asdict(site) for site in group) for group in duplicate_groups
+    )
+    with _profile_stage("package", detail=f"modules={len(parsed_sources)}"):
+        package_issues = package_violations(
+            root,
+            parsed_sources=parsed_sources,
+            module_paths=tuple(parsed_sources),
+        )
     return {
         "max_source_lines": MAX_SOURCE_LINES,
         "clone_minimum_expression_statement_nodes": MIN_CLONE_NODES,
         "clone_minimum_statements": MIN_CLONE_STATEMENTS,
         "clone_minimum_single_statement_operations": MIN_SINGLE_STATEMENT_OPERATIONS,
-        "source_line_violations": source_line_violations(
-            root,
-            authored_files=snapshot.authored_files,
-            line_counts=snapshot.source_line_counts,
-        ),
-        "isabelle_session_option_violations": isabelle_session_option_violations(root),
-        "ownership_violations": ownership_policy_violations(
-            root, parsed_sources=parsed_sources
-        ),
-        "validation_entrypoint_violations": validation_entrypoint_violations(
-            root, parsed_sources
-        ),
-        "recursion_cycles": recursion_cycles(root, parsed_sources=parsed_sources),
-        "duplicate_bodies": tuple(
-            tuple(asdict(site) for site in group)
-            for group in duplicate_bodies(root, parsed_sources)
-        ),
-        "package_violations": package_violations(
-            root,
-            parsed_sources=parsed_sources,
-            module_paths=tuple(parsed_sources),
-        ),
+        "source_line_violations": line_violations,
+        "isabelle_session_option_violations": session_violations,
+        "ownership_violations": ownership_violations,
+        "validation_entrypoint_violations": entrypoint_violations,
+        "recursion_cycles": cycles,
+        "duplicate_bodies": duplicate_sites,
+        "package_violations": package_issues,
     }
 
 

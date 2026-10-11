@@ -15,6 +15,11 @@ from time import perf_counter
 from devtools.checks.package_contracts import DEVELOPER_ROOTS
 
 
+def _report_stage(stage: str) -> None:
+    """Keep the active wheel-verification phase visible to the run guard."""
+    print(f"package-stage: {stage}", file=sys.stderr, flush=True)
+
+
 def validate_wheel_contents(wheel: Path, source: Path) -> list[str]:
     """Reject stale build products and missing or changed package resources."""
     expected = {
@@ -51,7 +56,9 @@ def verify_wheel(wheel: Path) -> dict[str, object]:
     wheel = wheel.resolve(strict=True)
     from devtools.paths import repository_root
 
+    _report_stage("wheel-content-validation:start")
     members = validate_wheel_contents(wheel, repository_root() / "src")
+    _report_stage("wheel-content-validation:complete")
     if "number_compiler/py.typed" not in members:
         raise ValueError("installed distribution has no typing marker")
     resources = [
@@ -71,6 +78,7 @@ def verify_wheel(wheel: Path) -> dict[str, object]:
     ) as directory:
         work = Path(directory)
         venv = work / "environment"
+        _report_stage("venv-create:start")
         subprocess.run(
             [sys.executable, "-m", "venv", str(venv)],
             check=True,
@@ -78,7 +86,9 @@ def verify_wheel(wheel: Path) -> dict[str, object]:
             capture_output=True,
             text=True,
         )
+        _report_stage("venv-create:complete")
         python = venv / ("Scripts/python.exe" if os.name == "nt" else "bin/python")
+        _report_stage("wheel-install:start")
         subprocess.run(
             [
                 str(python),
@@ -95,6 +105,8 @@ def verify_wheel(wheel: Path) -> dict[str, object]:
             capture_output=True,
             text=True,
         )
+        _report_stage("wheel-install:complete")
+        _report_stage("installed-smoke:start")
         smoke = subprocess.run(
             [
                 str(python),
@@ -335,6 +347,8 @@ print(json.dumps({'public_exports': len(api.__all__), 'kernel_left_states': kern
             print(smoke.stdout, end="")
             print(smoke.stderr, end="", file=sys.stderr)
             smoke.check_returncode()
+        _report_stage("installed-smoke:complete")
+        _report_stage("installed-cli-contracts:start prime")
         cli = subprocess.run(
             [
                 str(python),
@@ -356,6 +370,7 @@ print(json.dumps({'public_exports': len(api.__all__), 'kernel_left_states': kern
         result: object = json.loads(cli.stdout)
         if not isinstance(result, dict) or result.get("value") != "2":
             raise ValueError("installed CLI returned another prime result")
+        _report_stage("installed-cli-contracts:mersenne-factor")
         factor_cli = subprocess.run(
             [
                 str(python),
@@ -390,6 +405,7 @@ print(json.dumps({'public_exports': len(api.__all__), 'kernel_left_states': kern
             or witness.get("factor_witness") != 23
         ):
             raise ValueError("installed CLI did not print the checked M11 factor")
+        _report_stage("installed-cli-contracts:complete")
         commands = [
             (["prime", "--nth-power10", "0"], 0, "3"),
             (["196", "--nth-power10", "0"], 0, "887"),
@@ -478,7 +494,11 @@ print(json.dumps({'public_exports': len(api.__all__), 'kernel_left_states': kern
             (["nth", "prime", "0"], 2, ""),
         ]
         cold_processes: list[dict[str, object]] = []
-        for arguments, status, value in commands:
+        _report_stage(f"cold-cli:start cases={len(commands)}")
+        for index, (arguments, status, value) in enumerate(commands, start=1):
+            _report_stage(
+                f"cold-cli:case={index}/{len(commands)} command={arguments!r}"
+            )
             started = perf_counter()
             observed = subprocess.run(
                 [str(python), "-I", "-m", "number_compiler", *arguments],
@@ -550,6 +570,7 @@ print(json.dumps({'public_exports': len(api.__all__), 'kernel_left_states': kern
                 and "old command form removed" not in observed.stderr
             ):
                 raise ValueError("removed command did not supply a migration hint")
+        _report_stage("cold-cli:complete")
         return {
             "wheel": wheel.name,
             "kernel_resources": resources,

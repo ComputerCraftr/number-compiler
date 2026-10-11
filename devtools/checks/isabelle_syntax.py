@@ -472,11 +472,14 @@ def parse_theory_header(text: str, path: Path) -> tuple[str, tuple[str, ...]]:
     cursor = match.end()
     for token in tokens:
         value = token.group(0)
+        quoted = value.startswith('"')
         if clean[cursor : token.start()].strip():
             raise ValueError(f"{path}: unsupported theory/imports header")
         if value == "begin":
             break
-        imports.append(value.strip('"'))
+        if not quoted and "-" in value:
+            raise ValueError(f"{path}: unquoted symbolic token in theory import")
+        imports.append(value[1:-1] if quoted else value)
         cursor = token.end()
     else:
         raise ValueError(f"{path}: missing theory begin")

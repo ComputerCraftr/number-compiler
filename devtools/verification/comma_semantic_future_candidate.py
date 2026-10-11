@@ -18,11 +18,18 @@ from __future__ import annotations
 import argparse
 import base64
 import json
-from collections.abc import Callable
+from collections.abc import Callable, Mapping
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Literal, TypeVar
 
+import devtools.verification.comma_semantic_future_artifact as future_artifact
+from devtools.verification.comma_c1_audit import (
+    C1OccurrencePayload,
+    C1SeamObservation,
+    _c1_payloads,
+    _CompletedMacroReturn,
+)
 from number_compiler.arithmetic.functions.finite_observer import (
     canonical_partition,
     class_members,
@@ -33,12 +40,11 @@ from number_compiler.arithmetic.functions.finite_observer import (
 from number_compiler.sequences.comma.boundary_chart import PERIOD
 from number_compiler.sequences.comma.boundary_quotient import (
     BoundaryState,
-    MacroTemplate,
-    construct_macro,
+    CompletedMacroReturn,
+    construct_completed_return,
 )
-from number_compiler.sequences.comma.occurrence import (
-    BoundaryOccurrence,
-    OccurrencePrefixReturn,
+from number_compiler.sequences.comma.boundary_return import (
+    _completed_macro_return_component_seal,
 )
 
 Control = tuple[Literal["fork", "landmine"], int | None]
@@ -57,30 +63,6 @@ class FutureRefinementCollision:
     right_state: BoundaryState
     left_mapped_children: ClassRow
     right_mapped_children: ClassRow
-
-
-@dataclass(frozen=True, slots=True)
-class C1SeamObservation:
-    """Finite low-phase observation at a represented occurrence."""
-
-    n_terminal_suffix: int
-    z_terminal_suffix: int
-    source_borrow: int
-    target_borrow: int
-
-
-@dataclass(frozen=True, slots=True)
-class C1OccurrencePayload:
-    """Occurrence facts kept outside the FutureCID key."""
-
-    represented_exponent: int
-    exponent_delta: int
-    macro_weight: tuple[int, int, int]
-    terminal_endpoint: tuple[int, int, int]
-    n_count: int | None
-    z_count: int | None
-    borrow_innovation: int | None
-    seam: C1SeamObservation | None
 
 
 @dataclass(frozen=True, slots=True)
@@ -157,6 +139,27 @@ class SemanticFutureCandidate:
                 }
             ),
         }
+
+    def runtime_candidate_record(self) -> dict[str, object]:
+        """Return v2 provider data from the same values rendered into HOL."""
+        return future_artifact.runtime_candidate_record(self.certificate_record())
+
+    def runtime_candidate_bytes(self) -> bytes:
+        """Return the provider's canonical bytes; this grants no authority."""
+        return future_artifact.runtime_candidate_bytes(self.certificate_record())
+
+    def runtime_candidate_sha256(self) -> str:
+        """Content address the exact canonical provider candidate bytes."""
+        return future_artifact.runtime_candidate_sha256(self.certificate_record())
+
+    def isabelle_candidate_data(self) -> str:
+        """Render the HOL tables from this candidate's exact class values."""
+        return _render_candidate_data_theory(
+            self.class_ids,
+            self.class_controls,
+            self.class_children,
+            self.class_ranks,
+        )
 
     def occurrence_payload_record(self) -> dict[str, object]:
         """Return the exact occurrence evidence, separate from CID/rank data."""
@@ -329,11 +332,6 @@ def _seam_record(seam: C1SeamObservation | None) -> list[int] | None:
     ]
 
 
-def _canonical_exponent(state: BoundaryState) -> int:
-    residue = state.exponent_residue
-    return residue if residue >= 5 else residue + PERIOD
-
-
 def _state_index(states: tuple[BoundaryState, ...]) -> dict[BoundaryState, int]:
     result = {state: index for index, state in enumerate(states)}
     if len(result) != len(states):
@@ -341,7 +339,7 @@ def _state_index(states: tuple[BoundaryState, ...]) -> dict[BoundaryState, int]:
     return result
 
 
-def _control(macro: MacroTemplate) -> Control:
+def _control(macro: CompletedMacroReturn) -> Control:
     if macro.outcome == "landmine":
         if macro.destination_a is not None or macro.ordered_children:
             raise AssertionError("landmine source row carries fork payload")
@@ -355,8 +353,22 @@ def _control(macro: MacroTemplate) -> Control:
     return ("fork", macro.destination_a)
 
 
+def _completed_macro_return(macro: CompletedMacroReturn) -> _CompletedMacroReturn:
+    """Validate one sealed producer return and project its exact C1 header."""
+    _completed_macro_return_component_seal(macro)
+    control = _control(macro)
+    return _CompletedMacroReturn(
+        macro.source,
+        macro.exponent_delta,
+        macro.weight,
+        macro.endpoint,
+        macro.ordered_children,
+        control,
+    )
+
+
 def _rows(
-    macros: tuple[MacroTemplate, ...],
+    macros: tuple[_CompletedMacroReturn, ...],
     indices: dict[BoundaryState, int],
 ) -> tuple[RawRow, ...]:
     result: list[RawRow] = []
@@ -378,85 +390,6 @@ def _rows(
                 "source child left the declared boundary universe"
             ) from exc
     return tuple(result)
-
-
-def _c1_payloads(
-    states: tuple[BoundaryState, ...],
-    macros: tuple[MacroTemplate, ...],
-    indices: dict[BoundaryState, int],
-) -> tuple[C1OccurrencePayload, ...]:
-    """Build C1 child returns at each exact canonical receiving exponent."""
-    cache: dict[tuple[int, int], OccurrencePrefixReturn] = {}
-    payloads: list[C1OccurrencePayload] = []
-    for state, macro in zip(states, macros, strict=True):
-        represented = _canonical_exponent(state)
-        receiving = represented + macro.exponent_delta
-        weight = (
-            macro.weight.numerator_scale,
-            macro.weight.numerator_offset,
-            macro.weight.denominator,
-        )
-        endpoint = (
-            macro.endpoint.numerator_scale,
-            macro.endpoint.numerator_offset,
-            macro.endpoint.denominator,
-        )
-        if not macro.ordered_children:
-            payloads.append(
-                C1OccurrencePayload(
-                    represented,
-                    macro.exponent_delta,
-                    weight,
-                    endpoint,
-                    None,
-                    None,
-                    None,
-                    None,
-                )
-            )
-            continue
-        returned: list[OccurrencePrefixReturn] = []
-        for child in macro.ordered_children:
-            if receiving % PERIOD != child.exponent_residue:
-                raise AssertionError("source exponent transport changed child phase")
-            child_index = indices[child]
-            key = (child_index, receiving)
-            action = cache.get(key)
-            if action is None:
-                action = OccurrencePrefixReturn(
-                    BoundaryOccurrence(child, receiving), macros[child_index]
-                )
-                cache[key] = action
-            returned.append(action)
-        n_action, z_action = returned
-        n_start = n_action.source.c1_phase()
-        z_start = z_action.source.c1_phase()
-        n_end = n_action.terminal_c1_phase
-        z_end = z_action.terminal_c1_phase
-        source_borrow = int(z_start.suffix < n_start.suffix)
-        target_borrow = int(z_end.suffix < n_end.suffix)
-        seam = C1SeamObservation(
-            n_end.suffix,
-            z_end.suffix,
-            source_borrow,
-            target_borrow,
-        )
-        innovation = (
-            z_action.c1_count - n_action.c1_count + source_borrow - target_borrow
-        )
-        payloads.append(
-            C1OccurrencePayload(
-                represented,
-                macro.exponent_delta,
-                weight,
-                endpoint,
-                n_action.c1_count,
-                z_action.c1_count,
-                innovation,
-                seam,
-            )
-        )
-    return tuple(payloads)
 
 
 def _refine_with_witnesses(
@@ -581,6 +514,7 @@ def _reencode_candidate(
     candidate_path: Path,
     occurrence_path: Path,
     isabelle_data_path: Path | None = None,
+    checked_isabelle_data_path: Path | None = None,
 ) -> dict[str, object]:
     """Validate dimensions and compact a prior raw candidate without rebuilding it."""
     raw_source: object = json.loads(input_path.read_text(encoding="utf-8"))
@@ -643,6 +577,11 @@ def _reencode_candidate(
         paths.append(isabelle_data_path.resolve())
     if len(set(paths)) != len(paths) or input_path.resolve() in paths:
         raise ValueError("candidate inputs and outputs must have distinct paths")
+    if (
+        checked_isabelle_data_path is not None
+        and checked_isabelle_data_path.resolve() in paths
+    ):
+        raise ValueError("checked Isabelle data must be distinct from outputs")
     if any(path.exists() for path in paths):
         raise FileExistsError("candidate outputs must be new files")
     compact = {
@@ -658,6 +597,13 @@ def _reencode_candidate(
         "seam_is_projected_from_cid": source.get("seam_is_projected_from_cid"),
         "seam_projection_collision": source.get("seam_projection_collision"),
     }
+    checked_runtime_sha256 = (
+        None
+        if checked_isabelle_data_path is None
+        else verify_runtime_candidate_hol_data_binding(
+            compact, checked_isabelle_data_path
+        )
+    )
     occurrence = {
         "format": "comma-semantic-future-occurrence-payload-v1",
         "authority": "untrusted-source-derived-occurrence-audit",
@@ -666,7 +612,7 @@ def _reencode_candidate(
     }
     _write_new(
         candidate_path,
-        json.dumps(compact, sort_keys=True, separators=(",", ":")) + "\n",
+        future_artifact.canonical_candidate_bytes(compact).decode("ascii"),
     )
     _write_new(
         occurrence_path,
@@ -703,6 +649,13 @@ def _reencode_candidate(
         "collision_witnesses": len(refinement_witnesses),
         "seam_projected_from_cid": compact["seam_is_projected_from_cid"],
         "candidate_bytes": candidate_bytes,
+        "candidate_sha256": future_artifact.canonical_candidate_sha256(compact),
+        "checked_isabelle_data": (
+            None
+            if checked_isabelle_data_path is None
+            else str(checked_isabelle_data_path)
+        ),
+        "checked_runtime_sha256": checked_runtime_sha256,
         "occurrence_bytes": occurrence_bytes,
         "isabelle_data_lines": isabelle_lines,
     }
@@ -796,6 +749,38 @@ def _render_candidate_data_theory(
     )
 
 
+def verify_runtime_candidate_hol_data_binding(
+    record: Mapping[str, object], checked_data_path: Path
+) -> str:
+    """Validate and render a v2 candidate, then hash it only after HOL match.
+
+    This is a development consistency check. It does not create kernel or
+    runtime admission for the candidate.
+    """
+    from number_compiler.sequences.comma import future_provider
+
+    def discard_validation_charge(_amount: int) -> None:
+        return None
+
+    bounded_record = future_provider._preflight_future_candidate(
+        record, charge_work=discard_validation_charge
+    )
+    source_classes, parsed_classes = future_provider._validate_record(
+        bounded_record, charge_work=discard_validation_charge
+    )
+    controls = tuple(
+        (row.control.kind, row.control.fork_coefficient) for row in parsed_classes
+    )
+    children = tuple(row.ordered_children for row in parsed_classes)
+    ranks = tuple(row.rank for row in parsed_classes)
+    generated_text = _render_candidate_data_theory(
+        source_classes, controls, children, ranks
+    )
+    return future_artifact._runtime_candidate_sha256_after_hol_match(
+        bounded_record, generated_text, checked_data_path
+    )
+
+
 def _seam_collision(
     class_ids: tuple[int, ...],
     states: tuple[BoundaryState, ...],
@@ -829,8 +814,13 @@ def build_semantic_future_candidate() -> SemanticFutureCandidate:
         for residue in range(PERIOD)
     )
     indices = _state_index(states)
-    macros = tuple(construct_macro(state, grouped_near=True) for state in states)
-    controls = tuple(_control(macro) for macro in macros)
+    # The same canonical chart walk publishes only a sealed terminal header;
+    # it does not build fragment arrays or indexed prefixes for this audit.
+    macros = tuple(
+        _completed_macro_return(construct_completed_return(state, grouped_near=True))
+        for state in states
+    )
+    controls = tuple(macro.control for macro in macros)
     rows = _rows(macros, indices)
     payloads = _c1_payloads(states, macros, indices)
     class_ids, witnesses, rounds = _refine_with_witnesses(rows, controls, states)
@@ -876,6 +866,11 @@ def main() -> None:
         help="separate fresh run-directory path for occurrence-only C1/weight data",
     )
     parser.add_argument(
+        "--runtime-output",
+        type=Path,
+        help="optional fresh path for canonical untrusted v2 provider bytes",
+    )
+    parser.add_argument(
         "--reencode-input",
         type=Path,
         help="compact an existing v1 candidate without rebuilding source arithmetic",
@@ -885,8 +880,15 @@ def main() -> None:
         type=Path,
         help="emit the compact class-map/class-row theory data at this source path",
     )
+    parser.add_argument(
+        "--checked-isabelle-data",
+        type=Path,
+        help="check candidate CID tables against this authored theory before output",
+    )
     args = parser.parse_args()
     if args.reencode_input is not None:
+        if args.runtime_output is not None:
+            raise ValueError("re-encoding already writes the v2 runtime candidate")
         occurrence_output = args.occurrence_output or args.output.with_name(
             args.output.stem + ".occurrence.json"
         )
@@ -897,6 +899,7 @@ def main() -> None:
                     args.output,
                     occurrence_output,
                     args.isabelle_data_output,
+                    args.checked_isabelle_data,
                 ),
                 sort_keys=True,
             )
@@ -906,16 +909,36 @@ def main() -> None:
     occurrence_output = args.occurrence_output or args.output.with_name(
         args.output.stem + ".occurrence.json"
     )
-    if args.output.resolve() == occurrence_output.resolve():
-        raise ValueError("candidate and occurrence outputs must be separate files")
-    if args.output.exists() or occurrence_output.exists():
-        raise FileExistsError("candidate outputs must be new files")
+    future_artifact.validate_output_paths(
+        args.output, occurrence_output, args.runtime_output, args.isabelle_data_output
+    )
+    output_paths = {
+        path.resolve()
+        for path in (
+            args.output,
+            occurrence_output,
+            args.runtime_output,
+            args.isabelle_data_output,
+        )
+        if path is not None
+    }
+    if (
+        args.checked_isabelle_data is not None
+        and args.checked_isabelle_data.resolve() in output_paths
+    ):
+        raise ValueError("checked Isabelle data must be distinct from outputs")
+    checked_runtime_sha256 = (
+        None
+        if args.checked_isabelle_data is None
+        else verify_runtime_candidate_hol_data_binding(
+            candidate.runtime_candidate_record(), args.checked_isabelle_data
+        )
+    )
     _write_new(
         args.output,
-        json.dumps(
-            candidate.certificate_record(), sort_keys=True, separators=(",", ":")
-        )
-        + "\n",
+        future_artifact.canonical_candidate_bytes(
+            candidate.certificate_record()
+        ).decode("ascii"),
     )
     _write_new(
         occurrence_output,
@@ -926,6 +949,13 @@ def main() -> None:
         )
         + "\n",
     )
+    if args.runtime_output is not None:
+        _write_new(
+            args.runtime_output,
+            candidate.runtime_candidate_bytes().decode("ascii"),
+        )
+    if args.isabelle_data_output is not None:
+        _write_new(args.isabelle_data_output, candidate.isabelle_candidate_data())
     print(
         json.dumps(
             {
@@ -939,6 +969,25 @@ def main() -> None:
                 "collision_witnesses": len(candidate.refinement_collisions),
                 "seam_projected_from_cid": candidate.seam_is_projected_from_cid,
                 "occurrence_output": str(occurrence_output),
+                "runtime_output": (
+                    None if args.runtime_output is None else str(args.runtime_output)
+                ),
+                "runtime_sha256": (
+                    None
+                    if args.runtime_output is None
+                    else candidate.runtime_candidate_sha256()
+                ),
+                "isabelle_data_output": (
+                    None
+                    if args.isabelle_data_output is None
+                    else str(args.isabelle_data_output)
+                ),
+                "checked_isabelle_data": (
+                    None
+                    if args.checked_isabelle_data is None
+                    else str(args.checked_isabelle_data)
+                ),
+                "checked_runtime_sha256": checked_runtime_sha256,
             },
             sort_keys=True,
         )

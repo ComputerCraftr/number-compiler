@@ -8,30 +8,20 @@ lifting theorem are separate admission obligations.
 from __future__ import annotations
 
 from collections.abc import Callable
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from math import gcd
-from typing import Literal
+from typing import Literal, cast
 
-from number_compiler.arithmetic.fields.consumer_pullback import (
-    ONE as _Q_ONE,
+from number_compiler.resources.immutable_signature import (
+    ScalarSignature,
+    matches_scalar_signature,
 )
-from number_compiler.arithmetic.fields.consumer_pullback import (
-    ZERO as _Q_ZERO,
-)
-from number_compiler.arithmetic.fields.consumer_pullback import (
-    ExactRational,
-)
-from number_compiler.sequences.comma.arithmetic import (
-    _sector_child_increments,
-    phase_prefix_displacement,
-)
-from number_compiler.sequences.comma.boundary_chart import (
-    PERIOD,
-    ZERO_WEIGHT,
-    chart_moves,
-)
+from number_compiler.sequences.comma.arithmetic import phase_prefix_displacement
+from number_compiler.sequences.comma.boundary_chart import PERIOD
 
-Q = ExactRational
+_TEMPLATE_PUBLICATION_ERROR = (
+    "comma boundary template publication was altered (snapshot mismatch)"
+)
 
 
 @dataclass(frozen=True, slots=True)
@@ -42,7 +32,8 @@ class BoundaryState:
 
     def __post_init__(self) -> None:
         if (
-            self.kind not in ("N", "Z")
+            type(self.kind) is not str
+            or self.kind not in ("N", "Z")
             or type(self.a) is not int
             or not 2 <= self.a <= 9
         ):
@@ -136,6 +127,42 @@ class AffineWeight:
         return value
 
 
+def _boundary_state_signature(state: BoundaryState) -> tuple[str, int, int]:
+    """Return exact canonical state scalars without invoking custom equality."""
+    if type(state) is not BoundaryState:
+        raise ValueError("comma boundary state changed after construction")
+    kind = state.kind
+    a = state.a
+    residue = state.exponent_residue
+    if (
+        type(kind) is not str
+        or kind not in ("N", "Z")
+        or type(a) is not int
+        or not 2 <= a <= 9
+        or type(residue) is not int
+        or not 0 <= residue < PERIOD
+    ):
+        raise ValueError("comma boundary state has noncanonical scalar fields")
+    return kind, a, residue
+
+
+def _affine_weight_signature(weight: AffineWeight) -> tuple[int, int, int]:
+    """Return exact affine scalars from the value type's owning module."""
+    if type(weight) is not AffineWeight:
+        raise ValueError("macro affine descriptor changed after construction")
+    scale = weight.numerator_scale
+    offset = weight.numerator_offset
+    denominator = weight.denominator
+    if (
+        type(scale) is not int
+        or type(offset) is not int
+        or type(denominator) is not int
+        or denominator <= 0
+    ):
+        raise ValueError("macro affine descriptor has noncanonical scalars")
+    return scale, offset, denominator
+
+
 _ZERO_WEIGHT = AffineWeight(0, 0, 1)
 
 
@@ -163,6 +190,13 @@ class MacroTemplate:
     sector_fragments: tuple[SectorFragment, ...]
     prefix_weights: tuple[AffineWeight, ...]
     prefix_displacements: tuple[AffineWeight, ...]
+    _component_seal: tuple[object, ...] | None = field(
+        init=False,
+        default=None,
+        repr=False,
+        compare=False,
+        hash=False,
+    )
 
     def point(
         self,
@@ -179,6 +213,26 @@ class MacroTemplate:
         small residue arithmetic, bounded by its period of at most ten.
         The fork-choice transition is excluded from this macro.
         """
+        seal = self._component_seal
+        if seal is not None:
+            if charge is not None:
+                charge(1)
+            _validate_macro_component_header(self, seal, charge_bits=charge_bits)
+
+        def read_component(kind: str, index: int, *, precharged: bool = False) -> None:
+            if validate_read is not None:
+                validate_read(kind, index)
+            elif charge is not None and not precharged:
+                charge(1)
+            if seal is not None:
+                _validate_macro_component_read(
+                    self,
+                    seal,
+                    kind,
+                    index,
+                    charge_bits=charge_bits,
+                )
+
         if (
             type(exponent) is not int
             or exponent < 5
@@ -207,8 +261,8 @@ class MacroTemplate:
             if charge is not None:
                 charge(1)
             middle = (low + high) // 2
-            if validate_read is not None:
-                validate_read("weight", middle)
+            if validate_read is not None or seal is not None:
+                read_component("weight", middle, precharged=True)
             if (
                 self.prefix_weights[middle].evaluate_at_scale(
                     scale, charge_bits=charge_bits
@@ -219,10 +273,13 @@ class MacroTemplate:
             else:
                 low = middle + 1
         fragment_index = low - 1
-        if validate_read is not None:
-            validate_read("fragment", fragment_index)
-            validate_read("weight", fragment_index)
-            validate_read("displacement", fragment_index)
+        if validate_read is not None or seal is not None:
+            if validate_read is None and charge is not None:
+                charge(1)
+            precharged = validate_read is None
+            read_component("fragment", fragment_index, precharged=precharged)
+            read_component("weight", fragment_index, precharged=precharged)
+            read_component("displacement", fragment_index, precharged=precharged)
         fragment = self.sector_fragments[fragment_index]
         before = self.prefix_weights[fragment_index].evaluate_at_scale(
             scale, charge_bits=charge_bits
@@ -271,194 +328,220 @@ class MacroTemplate:
         )
 
 
-@dataclass(frozen=True, slots=True)
-class _Affine:
-    slope: Q
-    offset: Q
+def _affine_component_signature(weight: AffineWeight) -> tuple[int, int, int, int]:
+    return (id(weight), *_affine_weight_signature(weight))
 
-    def plus(self, other: _Affine) -> _Affine:
-        if other.is_zero:
-            return self
-        if self.is_zero:
-            return other
-        if self.slope.numerator == 0 and other.slope.numerator == 0:
-            return _Affine(_Q_ZERO, self.offset + other.offset)
-        return _Affine(self.slope + other.slope, self.offset + other.offset)
 
-    def times(self, value: int) -> _Affine:
-        if type(value) is not int:
-            raise TypeError("exact rational components must be integers")
-        if value == 0 or self.is_zero:
-            return _ZERO_AFFINE
-        if value == 1:
-            return self
-        return _Affine(
-            _scale_rational(self.slope, value),
-            _scale_rational(self.offset, value),
+def _sector_fragment_signature(fragment: SectorFragment) -> tuple[int, ...]:
+    if type(fragment) is not SectorFragment:
+        raise ValueError("macro sector fragment changed after construction")
+    scalars = (
+        fragment.leading,
+        fragment.entering_digit,
+        fragment.period,
+        fragment.displacement,
+        fragment.maximum_guard,
+        fragment.literal_steps,
+        fragment.literal_increment,
+    )
+    if any(type(value) is not int for value in scalars):
+        raise ValueError("macro sector fragment has noncanonical scalar fields")
+    return (
+        id(fragment),
+        fragment.leading,
+        fragment.entering_digit,
+        *_affine_component_signature(fragment.complete_cycles),
+        fragment.period,
+        fragment.displacement,
+        fragment.maximum_guard,
+        fragment.literal_steps,
+        fragment.literal_increment,
+    )
+
+
+def _macro_template_header(template: MacroTemplate) -> tuple[object, ...]:
+    if type(template) is not MacroTemplate:
+        raise ValueError(_TEMPLATE_PUBLICATION_ERROR)
+    source = _boundary_state_signature(template.source)
+    children = template.ordered_children
+    fragments = template.sector_fragments
+    weights = template.prefix_weights
+    displacements = template.prefix_displacements
+    if (
+        type(template.outcome) is not str
+        or template.outcome not in ("fork", "landmine")
+        or type(template.exponent_delta) is not int
+        or template.exponent_delta < 0
+        or (
+            template.destination_a is not None
+            and type(template.destination_a) is not int
         )
-
-    @property
-    def is_zero(self) -> bool:
-        return self.slope.numerator == 0 and self.offset.numerator == 0
-
-    def weight(self) -> AffineWeight:
-        if self.is_zero:
-            return _ZERO_WEIGHT
-        if self.slope.numerator == 0:
-            return AffineWeight(0, self.offset.numerator, self.offset.denominator)
-        if self.offset.numerator == 0:
-            return AffineWeight(self.slope.numerator, 0, self.slope.denominator)
-        denominator = self.slope.denominator * self.offset.denominator
-        return AffineWeight(
-            self.slope.numerator * self.offset.denominator,
-            self.offset.numerator * self.slope.denominator,
-            denominator,
-        )
-
-
-_ZERO_AFFINE = _Affine(_Q_ZERO, _Q_ZERO)
-
-
-def _integer_rational(value: int) -> Q:
-    if type(value) is not int:
-        raise TypeError("exact rational components must be integers")
-    if value == 0:
-        return _Q_ZERO
-    if value == 1:
-        return _Q_ONE
-    return Q(value)
-
-
-def _scale_rational(value: Q, factor: int) -> Q:
-    if type(factor) is not int:
-        raise TypeError("exact rational components must be integers")
-    if factor == 0 or value.numerator == 0:
-        return _Q_ZERO
-    if factor == 1:
-        return value
-    if value.denominator == 1:
-        return _integer_rational(value.numerator * factor)
-    return Q(value.numerator * factor, value.denominator)
-
-
-def _constant(value: int) -> _Affine:
-    if type(value) is not int:
-        raise TypeError("exact rational components must be integers")
-    if value == 0:
-        return _ZERO_AFFINE
-    return _Affine(_Q_ZERO, _integer_rational(value))
-
-
-def _from_weight(weight: AffineWeight) -> _Affine:
-    if any(
-        type(part) is not int
-        for part in (
-            weight.numerator_scale,
-            weight.numerator_offset,
-            weight.denominator,
-        )
+        or type(children) is not tuple
+        or type(fragments) is not tuple
+        or type(weights) is not tuple
+        or type(displacements) is not tuple
+        or len(weights) != len(fragments) + 1
+        or len(displacements) != len(fragments) + 1
     ):
-        raise TypeError("exact rational components must be integers")
-    if weight.denominator == 0:
-        raise ValueError("exact rational denominator cannot be zero")
-    if weight.numerator_scale == 0 and weight.numerator_offset == 0:
-        return _ZERO_AFFINE
-    if weight.denominator == 1:
-        return _Affine(
-            _integer_rational(weight.numerator_scale),
-            _integer_rational(weight.numerator_offset),
-        )
-    return _Affine(
-        _Q_ZERO
-        if weight.numerator_scale == 0
-        else Q(weight.numerator_scale, weight.denominator),
-        _Q_ZERO
-        if weight.numerator_offset == 0
-        else Q(weight.numerator_offset, weight.denominator),
+        raise ValueError(_TEMPLATE_PUBLICATION_ERROR)
+    if (template.outcome == "fork" and len(children) != 2) or (
+        template.outcome == "landmine" and children
+    ):
+        raise ValueError(_TEMPLATE_PUBLICATION_ERROR)
+    child_signatures: list[object] = []
+    for child in children:
+        child_signatures.extend((id(child), *_boundary_state_signature(child)))
+    return (
+        id(template),
+        id(template.source),
+        *source,
+        template.outcome,
+        template.exponent_delta,
+        template.destination_a,
+        *_affine_component_signature(template.weight),
+        *_affine_component_signature(template.endpoint),
+        id(children),
+        len(children),
+        *child_signatures,
+        id(fragments),
+        id(weights),
+        id(displacements),
     )
 
 
-def _indexed_macro(
-    source: BoundaryState,
-    outcome: Literal["fork", "landmine"],
-    delta: int,
-    destination_a: int | None,
-    weight: _Affine,
-    endpoint: _Affine,
-    children: tuple[BoundaryState, ...],
-    fragments: list[SectorFragment],
-    charge: Callable[[int], None] | None,
-    charge_bits: Callable[[int], None] | None,
-) -> MacroTemplate:
-    prefix_weights = [_ZERO_WEIGHT]
-    prefix_displacements = [_ZERO_WEIGHT]
-    total_weight = _ZERO_AFFINE
-    total_displacement = _ZERO_AFFINE
-    for fragment in fragments:
-        if charge is not None:
-            charge(1)
-        if charge_bits is not None:
-            charge_bits(
-                sum(
-                    part.bit_length()
-                    for part in (
-                        total_weight.slope.numerator,
-                        total_weight.slope.denominator,
-                        total_weight.offset.numerator,
-                        total_weight.offset.denominator,
-                        total_displacement.slope.numerator,
-                        total_displacement.slope.denominator,
-                        total_displacement.offset.numerator,
-                        total_displacement.offset.denominator,
-                        fragment.complete_cycles.numerator_scale,
-                        fragment.complete_cycles.numerator_offset,
-                        fragment.complete_cycles.denominator,
-                        fragment.period,
-                        fragment.displacement,
-                        fragment.literal_increment,
-                    )
-                )
-            )
-        complete_cycles = fragment.complete_cycles
-        if (
-            complete_cycles.numerator_scale == 0
-            and complete_cycles.numerator_offset == 0
-        ):
-            # Literal fragments have a true zero cycle weight, so skip both
-            # zero affine actions without assuming anything from period alone.
-            cycle_weight = _ZERO_AFFINE
-            cycle_displacement = _ZERO_AFFINE
+def _validate_macro_component_header(
+    template: MacroTemplate,
+    seal: tuple[object, ...],
+    *,
+    charge_bits: Callable[[int], None] | None = None,
+) -> None:
+    if type(seal) is not tuple or len(seal) != 4:
+        raise ValueError(_TEMPLATE_PUBLICATION_ERROR)
+    current_header = _macro_template_header(template)
+    expected_header = seal[0]
+    if (
+        type(expected_header) is not tuple
+        or len(expected_header) != len(current_header)
+        or any(type(value) not in (str, int, type(None)) for value in expected_header)
+    ):
+        raise ValueError(_TEMPLATE_PUBLICATION_ERROR)
+    if charge_bits is not None:
+        charge_bits(
+            _component_signature_bits(current_header)
+            + _component_signature_bits(expected_header)
+        )
+    if any(
+        type(rows) is not tuple for rows in seal[1:]
+    ) or not matches_scalar_signature(
+        current_header, cast(ScalarSignature, expected_header)
+    ):
+        raise ValueError(_TEMPLATE_PUBLICATION_ERROR)
+    fragment_rows = cast(tuple[object, ...], seal[1])
+    weight_rows = cast(tuple[object, ...], seal[2])
+    displacement_rows = cast(tuple[object, ...], seal[3])
+    if (
+        len(fragment_rows) != len(template.sector_fragments)
+        or len(weight_rows) != len(template.prefix_weights)
+        or len(displacement_rows) != len(template.prefix_displacements)
+    ):
+        raise ValueError(_TEMPLATE_PUBLICATION_ERROR)
+
+
+def _validate_macro_component_read(
+    template: MacroTemplate,
+    seal: tuple[object, ...],
+    kind: str,
+    index: int,
+    *,
+    charge_bits: Callable[[int], None] | None = None,
+) -> None:
+    if type(index) is not int or index < 0:
+        raise ValueError("comma boundary component index is invalid")
+    if kind == "fragment":
+        rows = seal[1]
+    elif kind == "weight":
+        rows = seal[2]
+    elif kind == "displacement":
+        rows = seal[3]
+    else:
+        raise ValueError("unknown comma boundary component")
+    if type(rows) is not tuple:
+        raise ValueError("comma boundary component seal is malformed")
+    sealed_rows = cast(tuple[object, ...], rows)
+    if index >= len(sealed_rows):
+        raise ValueError("comma boundary component index is outside its seal")
+    current: ScalarSignature
+    if kind == "fragment":
+        fragments = template.sector_fragments
+        if index >= len(fragments):
+            raise ValueError("comma boundary component index is outside its seal")
+        current = _sector_fragment_signature(fragments[index])
+    elif kind == "weight":
+        weights = template.prefix_weights
+        if index >= len(weights):
+            raise ValueError("comma boundary component index is outside its seal")
+        current = _affine_component_signature(weights[index])
+    else:
+        displacements = template.prefix_displacements
+        if index >= len(displacements):
+            raise ValueError("comma boundary component index is outside its seal")
+        current = _affine_component_signature(displacements[index])
+    expected = sealed_rows[index]
+    if (
+        type(expected) is not tuple
+        or len(expected) != len(current)
+        or any(type(value) not in (str, int, type(None)) for value in expected)
+    ):
+        raise ValueError(_TEMPLATE_PUBLICATION_ERROR)
+    if charge_bits is not None:
+        charge_bits(
+            _component_signature_bits(current) + _component_signature_bits(expected)
+        )
+    if not matches_scalar_signature(current, cast(ScalarSignature, expected)):
+        raise ValueError(_TEMPLATE_PUBLICATION_ERROR)
+
+
+def _component_signature_bits(value: object) -> int:
+    stack: list[object] = [value]
+    bits = 0
+    while stack:
+        item = stack.pop()
+        if type(item) is int:
+            bits += max(1, item.bit_length())
+        elif type(item) is tuple:
+            stack.extend(item)
+        elif type(item) is str or item is None:
+            continue
         else:
-            cycles = _from_weight(complete_cycles)
-            cycle_weight = cycles.times(fragment.period)
-            cycle_displacement = cycles.times(fragment.displacement)
-        total_weight = total_weight.plus(cycle_weight).plus(
-            _constant(fragment.literal_steps)
-        )
-        total_displacement = total_displacement.plus(cycle_displacement).plus(
-            _constant(fragment.literal_increment)
-        )
-        prefix_weights.append(total_weight.weight())
-        prefix_displacements.append(total_displacement.weight())
-    if total_weight != weight:
-        raise AssertionError("comma indexed macro weight differs from construction")
-    source_value = _Affine(
-        _integer_rational(source.a),
-        _integer_rational(-1 if source.kind == "N" else 0),
-    )
-    if source_value.plus(total_displacement) != endpoint:
-        raise AssertionError("comma indexed macro endpoint differs from construction")
-    return MacroTemplate(
-        source,
-        outcome,
-        delta,
-        destination_a,
-        weight.weight(),
-        endpoint.weight(),
-        children,
-        tuple(fragments),
-        tuple(prefix_weights),
-        tuple(prefix_displacements),
+            raise ValueError("comma boundary component signature is malformed")
+    return bits
+
+
+def _macro_template_component_seal(template: MacroTemplate) -> tuple[object, ...]:
+    seal = template._component_seal
+    if seal is None:
+        raise ValueError("comma boundary template has no component seal")
+    _validate_macro_component_header(template, seal)
+    return seal
+
+
+@dataclass(frozen=True, slots=True)
+class CompletedMacroReturn:
+    """Sealed terminal header without fragment or prefix-index storage."""
+
+    source: BoundaryState
+    outcome: Literal["fork", "landmine"]
+    exponent_delta: int
+    destination_a: int | None
+    weight: AffineWeight
+    endpoint: AffineWeight
+    ordered_children: tuple[BoundaryState, ...]
+    _component_seal: tuple[object, ...] | None = field(
+        init=False,
+        default=None,
+        repr=False,
+        compare=False,
+        hash=False,
     )
 
 
@@ -469,183 +552,38 @@ def construct_macro(
     charge_bits: Callable[[int], None] | None = None,
     grouped_near: bool = False,
 ) -> MacroTemplate:
-    """Accumulate exact weights over the bounded Entry/Near chart machine.
+    """Build the indexed public macro through the canonical chart producer."""
+    from number_compiler.sequences.comma.boundary_return import construct_macro as build
 
-    Entry consumes complete interior cycles; Near consumes bounded seam
-    edges and reports all terminal alternatives. The optional grouped Near
-    classifier is an exact validation view, not the default executor: its
-    present catalog construction costs more than the bounded edge scan.
-    No representative endpoint or sampled branch is constructed. The global
-    winning-cycle and literal lifting proofs remain admission obligations.
-    """
-    weight = _constant(0)
-    fragments: list[SectorFragment] = []
-    relative_scale = 1
-    previous_delta = 0
-    near_run: tuple[int, int, int, int] | None = None
+    return build(
+        source, charge=charge, charge_bits=charge_bits, grouped_near=grouped_near
+    )
 
-    def flush_near() -> None:
-        nonlocal near_run, weight
-        if near_run is not None:
-            leading, digit, steps, increment = near_run
-            weight = weight.plus(_constant(steps))
-            fragments.append(
-                SectorFragment(
-                    leading, digit, AffineWeight(0, 0, 1), 0, 0, 0, steps, increment
-                )
-            )
-            near_run = None
 
-    for chart, move in chart_moves(
-        source.kind,
-        source.a,
-        source.exponent_residue,
-        charge=charge,
-        charge_bits=charge_bits,
-        grouped_near=grouped_near,
-    ):
-        if charge_bits is not None:
-            charge_bits(
-                relative_scale.bit_length()
-                + weight.slope.numerator.bit_length()
-                + weight.slope.denominator.bit_length()
-                + weight.offset.numerator.bit_length()
-                + weight.offset.denominator.bit_length()
-                + 32
-            )
-        # Delta changes only by one at a power-of-ten crossing. This is the
-        # symbolic affine coefficient 10**delta, never the actual 10**p.
-        if chart.delta != previous_delta:
-            if chart.delta != previous_delta + 1:
-                raise AssertionError("comma chart skipped an exponent seam")
-            relative_scale *= 10
-            previous_delta = chart.delta
-        f, x = chart.leading, chart.coordinate
-        if move.next_chart is None:
-            flush_near()
-            if chart.kind != "near" or move.terminal_chart != chart:
-                raise AssertionError("comma terminal move lost its chart")
-            if move.weight != ZERO_WEIGHT:
-                raise AssertionError("comma terminal move has nonzero weight")
-            if charge is not None:
-                charge(1)
-            digit = (-x) % 10
-            if charge_bits is not None:
-                charge_bits(f.bit_length() + x.bit_length() + digit.bit_length())
-            terminal_increments = _sector_child_increments(f, digit, x)
-            if len(terminal_increments) == 2:
-                if move.fork_a != f + 1:
-                    raise AssertionError(
-                        "comma terminal alternatives disagree with chart"
-                    )
-            elif terminal_increments or move.fork_a is not None:
-                raise AssertionError("comma terminal alternatives disagree with chart")
-            endpoint = _Affine(Q((f + 1) * relative_scale), Q(-x))
-            a = move.fork_a
-            children = (
-                ()
-                if a is None
-                else (
-                    BoundaryState(
-                        "N", a, (source.exponent_residue + chart.delta) % PERIOD
-                    ),
-                    BoundaryState(
-                        "Z", a, (source.exponent_residue + chart.delta) % PERIOD
-                    ),
-                )
-            )
-            return _indexed_macro(
-                source,
-                "landmine" if a is None else "fork",
-                chart.delta,
-                a,
-                weight,
-                endpoint,
-                children,
-                fragments,
-                charge,
-                charge_bits,
-            )
-        emitted = move.weight
-        if emitted.scale and emitted.exponent_delta != chart.delta:
-            raise AssertionError("comma weight has a foreign exponent chart")
-        if move.cycle is None and move.next_chart.kind == "near":
-            if (
-                emitted.scale != 0
-                or emitted.exponent_delta != 0
-                or emitted.denominator != 1
-                or emitted.offset <= 0
-                or move.next_chart.leading != f
-                or move.next_chart.delta != chart.delta
-                or move.literal_increment != x - move.next_chart.coordinate
-            ):
-                raise AssertionError("comma Near run lost its constant physical weight")
-            digit = (-x) % 10
-            steps_added = emitted.offset
-            if charge is not None:
-                charge(steps_added % (10 // gcd(f, 10)) + 1)
-            if charge_bits is not None:
-                charge_bits(
-                    steps_added.bit_length() + move.literal_increment.bit_length() + 32
-                )
-            if phase_prefix_displacement(
-                f, digit, steps_added
-            ) != move.literal_increment or x <= move.literal_increment + int(f < 9):
-                raise AssertionError(
-                    "comma Near run weight differs from phase semantics"
-                )
-            if near_run is None:
-                near_run = (f, digit, steps_added, move.literal_increment)
-            else:
-                leading, entering_digit, steps, increment = near_run
-                if leading != f or (entering_digit + steps * f) % 10 != digit:
-                    raise AssertionError("comma Near run lost its phase binding")
-                near_run = (
-                    leading,
-                    entering_digit,
-                    steps + steps_added,
-                    increment + move.literal_increment,
-                )
-            continue
-        flush_near()
-        step_weight = _Affine(
-            Q(emitted.scale * relative_scale, emitted.denominator),
-            Q(emitted.offset, emitted.denominator),
-        )
-        weight = weight.plus(step_weight)
-        if move.cycle is not None:
-            transfer = move.cycle
-            count = _Affine(
-                step_weight.slope / Q(transfer.period),
-                step_weight.offset / Q(transfer.period),
-            )
-            fragments.append(
-                SectorFragment(
-                    f,
-                    x % 10,
-                    count.weight(),
-                    transfer.period,
-                    transfer.displacement,
-                    transfer.maximum_guard,
-                    0,
-                    0,
-                )
-            )
-        else:
-            digit = (-x) % 10
-            fragments.append(
-                SectorFragment(
-                    f, digit, AffineWeight(0, 0, 1), 0, 0, 0, 1, move.literal_increment
-                )
-            )
-    raise AssertionError("comma chart returned without a terminal outcome")
+def construct_completed_return(
+    source: BoundaryState,
+    *,
+    charge: Callable[[int], None] | None = None,
+    charge_bits: Callable[[int], None] | None = None,
+    grouped_near: bool = False,
+) -> CompletedMacroReturn:
+    """Build a compact sealed return without constructing indexed prefixes."""
+    from number_compiler.sequences.comma.boundary_return import (
+        construct_completed_return as build,
+    )
+
+    return build(
+        source, charge=charge, charge_bits=charge_bits, grouped_near=grouped_near
+    )
 
 
 __all__ = [
     "PERIOD",
     "AffineWeight",
     "BoundaryState",
+    "CompletedMacroReturn",
     "MacroTemplate",
     "SectorFragment",
+    "construct_completed_return",
     "construct_macro",
 ]

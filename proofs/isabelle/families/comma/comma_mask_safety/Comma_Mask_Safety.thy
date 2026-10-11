@@ -1,5 +1,5 @@
 theory Comma_Mask_Safety
-  imports Comma_Sparse_Core.Comma_Decade_Masks
+  imports Comma_Decade_Orbit.Comma_Decade_Masks
     Comma_Cylinder.Comma_Future_Safety
     Comma_Total_Macro.Comma_Total_Macro
 begin

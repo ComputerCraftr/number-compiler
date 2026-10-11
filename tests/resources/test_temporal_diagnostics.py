@@ -148,6 +148,8 @@ def test_comma_macro_reuse_is_distinct_from_represented_steps() -> None:
     ledger.bump("comma_relative_guard_checks", 4)
     ledger.bump("comma_relative_cycle_rebindings", 1)
     ledger.bump("comma_boundary_seal_checks", 9)
+    ledger.bump("comma_boundary_explicit_audit_component_checks", 12)
+    ledger.bump("comma_boundary_explicit_audit_operand_bits", 320)
     ledger.bump("comma_boundary_seal_retained_slots", 30)
     ledger.bump("comma_boundary_seal_retained_integer_bits", 1500)
     before = dict(ledger.counters)
@@ -159,6 +161,8 @@ def test_comma_macro_reuse_is_distinct_from_represented_steps() -> None:
     assert report.comma.relative_guard_checks == 4
     assert report.comma.relative_cycle_rebindings == 1
     assert report.comma.boundary_seal_checks == 9
+    assert report.comma.boundary_explicit_audit_component_checks == 12
+    assert report.comma.boundary_explicit_audit_operand_bits == 320
     assert report.comma.boundary_seal_retained_slots == 30
     assert report.comma.boundary_seal_retained_integer_bits == 1500
     assert report.comma.boundary_template_retained_nodes is None

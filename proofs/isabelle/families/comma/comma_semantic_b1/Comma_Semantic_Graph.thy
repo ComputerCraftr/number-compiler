@@ -1,6 +1,7 @@
 theory Comma_Semantic_Graph
   imports Comma_Semantic_B1
 begin
+ML \<open>Comma_Proof_Profile.report "B1 graph stage=entered"\<close>
 
 text \<open>
 The checked continuation graph stores reusable edges separately from exact
@@ -479,6 +480,7 @@ proof -
     by (simp add: comma_semantic_b1_graph_apply_def
       comma_semantic_b1_node_of_def comma_semantic_b1_nodes_by_cid_def)
 qed
+ML \<open>Thm.consolidate [@{thm comma_semantic_b1_graph_apply_exact_local}]; Comma_Proof_Profile.report "B1 graph claim=apply-exact-local checked"\<close>
 
 lemma comma_semantic_b1_graph_eval_apply_goto:
   assumes applied: "comma_semantic_b1_graph_apply nodes cid clock=
@@ -907,6 +909,7 @@ proof (rule allI)
     qed
   qed
 qed
+ML \<open>Thm.consolidate [@{thm comma_semantic_b1_graph_eval_refines_endpoint}]; Comma_Proof_Profile.report "B1 graph claim=eval-refines-endpoint checked"\<close>
 
 theorem comma_semantic_b1_graph_root_exact:
   assumes graph: "comma_semantic_b1_graph_valid bindings nodes"
@@ -949,6 +952,7 @@ proof -
       comma_decisive_B1_def comma_decisive_B1_source_def)
   show thesis using that[OF binding source] exact output_exact by simp
 qed
+ML \<open>Thm.consolidate [@{thm comma_semantic_b1_graph_root_exact}]; Comma_Proof_Profile.report "B1 graph claim=root-exact checked"\<close>
 
 
 ML \<open>
@@ -962,8 +966,13 @@ ML \<open>
     comma_semantic_b1_edge_transport_invariant
     comma_semantic_b1_edge_apply_exact_packet
     comma_semantic_b1_graph_apply_exact_packet};
+  val _ = Thm.consolidate checked;
+  val _ = Comma_Proof_Profile.report "B1 graph claims consolidated";
+  val _ = Comma_Proof_Profile.report "B1 graph audit=native entered";
   val _ = Comma_Proof_Dependency_Audit.require_native_clean @{context}
     "Semantic B1 continuation graph" checked;
+  val _ = Comma_Proof_Profile.report "B1 graph audit=native checked";
+  val _ = Comma_Proof_Profile.report "B1 graph audit=endpoint entered";
   val _ = Comma_Proof_Dependency_Audit.require_expected_paths @{context}
     "Semantic graph endpoint application"
     ["comma_source_continuation_apply_exact",
@@ -972,11 +981,14 @@ ML \<open>
       "comma_semantic_b1_graph_apply_goto_decreases"]
     @{thms comma_semantic_b1_graph_eval_refines_endpoint
       comma_semantic_b1_graph_root_exact};
+  val _ = Comma_Proof_Profile.report "B1 graph audit=endpoint checked";
+  val _ = Comma_Proof_Profile.report "B1 graph audit=packets entered";
   val _ = Comma_Proof_Dependency_Audit.require_expected_paths @{context}
     "Semantic graph exact source packets"
     ["comma_source_continuation_apply_exact"]
     @{thms comma_semantic_b1_edge_apply_exact_packet
       comma_semantic_b1_graph_apply_exact_packet};
+  val _ = Comma_Proof_Profile.report "B1 graph audit=packets checked";
 \<close>
 
 end

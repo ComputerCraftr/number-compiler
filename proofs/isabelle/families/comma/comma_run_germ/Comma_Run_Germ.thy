@@ -4,6 +4,16 @@ theory Comma_Run_Germ
     Comma_Fast_Arithmetic.Comma_Fast_Arithmetic
 begin
 
+ML_file "../comma_entry_arithmetic/proof_profile.ML"
+
+ML \<open>
+structure Comma_Run_Germ_Profile =
+struct
+  val report = Comma_Proof_Profile.timer "Comma run germ"
+end
+val _ = Comma_Run_Germ_Profile.report "entered"
+\<close>
+
 text \<open>A Near germ is keyed by sector and headroom only. It retains the
 number of internal unit edges and the first decisive chart, not their history.
 Absolute delta and evaluated Entry weight remain occurrence annotations.\<close>
@@ -41,6 +51,10 @@ definition comma_near_decisive :: "nat \<Rightarrow> nat \<Rightarrow> bool" whe
     (\<forall>g d j. comma_finite_step 0 (Comma_Near f 0 h) \<noteq>
       Comma_Next (Comma_Near g d j))"
 
+ML \<open>
+  val _ = Comma_Run_Germ_Profile.report "near-germ-refinement entered"
+\<close>
+
 lemma comma_near_germ_refines:
   assumes result: "comma_near_germ f h = (n,t)"
   shows "comma_near_prefix n f h t \<and> comma_near_decisive f t"
@@ -75,7 +89,13 @@ lemma comma_near_germ_control_bound:
   assumes "comma_near_germ f h = (n,t)"
   shows "n \<le> h"
   using comma_near_germ_refines[OF assms] comma_near_prefix_bound by blast
+ML \<open>
+  val _ = Comma_Run_Germ_Profile.report "near-germ-refinement submitted"
+\<close>
 
+ML \<open>
+  val _ = Comma_Run_Germ_Profile.report "near-prefix-weighted entered"
+\<close>
 lemma comma_near_prefix_weighted:
   assumes path: "comma_near_prefix n f h t"
   shows "comma_round_weighted_prefix p r n
@@ -101,6 +121,9 @@ next
     using weighted Suc.IH[OF tail]
     by (simp only: comma_chart_weight_unit; simp del: comma_weighted_step_def)
 qed
+ML \<open>
+  val _ = Comma_Run_Germ_Profile.report "near-prefix-weighted submitted"
+\<close>
 
 lemma comma_near_prefix_round_close:
   assumes path: "comma_near_prefix n f h t"
@@ -124,6 +147,9 @@ next
     by (simp only: transported comma_finite_move.case comma_round_crossing_def
       comma_finite_position.case if_False Suc.IH[OF tail] Let_def prod.case add_Suc)
 qed
+ML \<open>
+  val _ = Comma_Run_Germ_Profile.report "near-prefix-round-close submitted"
+\<close>
 
 theorem comma_near_germ_round_close:
   assumes germ: "comma_near_germ f h = (n,t)"
@@ -151,6 +177,9 @@ corollary comma_near_germ_literal:
     comma_round_weighted_prefix_literal[of p p n
       "Comma_Near f delta h" "Comma_Near f delta t" n]
     exponent valid by blast
+ML \<open>
+  val _ = Comma_Run_Germ_Profile.report "near-weight-and-close-bridges submitted"
+\<close>
 
 text \<open>This relation is an independent specification of the actual signed
 headroom changes on canonical Near edges. It is used only in refinement;
@@ -331,6 +360,9 @@ lemma comma_sector_control_projection:
     (case comma_sector_germ r source of (n,t,entry,units) \<Rightarrow> (n,t))"
   by (rule comma_sector_control_def)
 
+ML \<open>
+  val _ = Comma_Run_Germ_Profile.report "sector-control-evaluation entered"
+\<close>
 lemma comma_sector_control_evaluation:
   "comma_sector_control r source =
     (case source of
@@ -341,10 +373,57 @@ lemma comma_sector_control_evaluation:
           Comma_Next (Comma_Near g d h) \<Rightarrow>
             (let (n,t) = comma_near_germ g h in (Suc n,Comma_Near g d t))
         | _ \<Rightarrow> (0,source)))"
-  by (cases source; cases "comma_weighted_step (r mod 924) source")
-    (auto simp: comma_sector_control_def comma_sector_germ_def comma_finite_step_def
-      simp del: comma_weighted_step_def
-      split: comma_finite_position.splits prod.splits)
+proof (cases source)
+  case (Comma_Near f delta h)
+  obtain n t where germ: "comma_near_germ f h=(n,t)"
+    by (cases "comma_near_germ f h") auto
+  show ?thesis using Comma_Near germ
+    by (simp add: comma_sector_control_def comma_sector_germ_def)
+next
+  case (Comma_Entry f delta x)
+  have source_eq: "source=Comma_Entry f delta x" by fact
+  show ?thesis
+  proof (cases "comma_weighted_step (r mod 924) (Comma_Entry f delta x)")
+    case (Comma_WNext target weight)
+    show ?thesis
+    proof (cases target)
+      case (Comma_Near g d h)
+      obtain n t where germ: "comma_near_germ g h=(n,t)"
+        by (cases "comma_near_germ g h") auto
+      show ?thesis using source_eq Comma_WNext Comma_Near germ
+        by (simp add: comma_sector_control_def comma_sector_germ_def
+          comma_finite_step_is_erasure
+          del: comma_weighted_step_def comma_weighted_step_with_headroom_def)
+    next
+      case (Comma_Entry g d y)
+      show ?thesis using source_eq Comma_WNext Comma_Entry
+        by (simp add: comma_sector_control_def comma_sector_germ_def
+          comma_finite_step_is_erasure
+          del: comma_weighted_step_def comma_weighted_step_with_headroom_def)
+    qed
+  next
+    case (Comma_WFork terminal a delta)
+    then show ?thesis
+      by (simp add: source_eq comma_sector_control_def comma_sector_germ_def
+        comma_finite_step_is_erasure
+        del: comma_weighted_step_def comma_weighted_step_with_headroom_def)
+  next
+    case (Comma_WLandmine terminal delta)
+    then show ?thesis
+      by (simp add: source_eq comma_sector_control_def comma_sector_germ_def
+        comma_finite_step_is_erasure
+        del: comma_weighted_step_def comma_weighted_step_with_headroom_def)
+  next
+    case Comma_WInvalid
+    then show ?thesis
+      by (simp add: source_eq comma_sector_control_def comma_sector_germ_def
+        comma_finite_step_is_erasure
+        del: comma_weighted_step_def comma_weighted_step_with_headroom_def)
+  qed
+qed
+ML \<open>
+  val _ = Comma_Run_Germ_Profile.report "sector-control-evaluation submitted"
+\<close>
 
 lemma comma_sector_control_near:
   assumes "comma_near_germ f h=(n,t)"
@@ -358,6 +437,9 @@ lemma comma_sector_control_entry:
   shows "comma_sector_control r (Comma_Entry f delta x)=(Suc n,Comma_Near g d t)"
   by (simp add: comma_sector_control_evaluation move germ)
 
+ML \<open>
+  val _ = Comma_Run_Germ_Profile.report "sector-control-expand entered"
+\<close>
 lemma comma_sector_control_expand:
   assumes sector: "comma_sector_control r source=(n,t)"
   shows "comma_round_close r source =
@@ -402,6 +484,9 @@ next
   qed (use sector Comma_Entry in
     \<open>auto simp: comma_sector_control_evaluation split: prod.splits\<close>)
 qed
+ML \<open>
+  val _ = Comma_Run_Germ_Profile.report "sector-control-expand submitted"
+\<close>
 
 
 fun comma_sector_number :: "comma_finite_position \<Rightarrow> nat" where
@@ -416,6 +501,9 @@ lemma comma_sector_control_same_sector:
     (auto simp: comma_sector_control_evaluation comma_finite_step_def
       comma_weighted_step_def Let_def split: if_splits prod.splits)
 
+ML \<open>
+  val _ = Comma_Run_Germ_Profile.report "sector-termination-bound entered"
+\<close>
 lemma comma_near_germ_terminal_no_near:
   assumes germ: "comma_near_germ f h=(n,t)"
   shows "comma_finite_step r (Comma_Near f delta t) \<noteq> Comma_Next (Comma_Near g d j)"
@@ -516,6 +604,9 @@ lemma comma_sector_recursion_decreases:
     and within: "\<not>comma_round_crossing t target"
   shows "9-comma_sector_number target<9-comma_sector_number source"
   using comma_sector_call_budget[OF sector[symmetric] move within] by arith
+ML \<open>
+  val _ = Comma_Run_Germ_Profile.report "sector-termination-bound submitted"
+\<close>
 
 text \<open>The whole round executes sector germs, never their internal Near
 rows. Every recursive call strictly increases the decimal sector, giving a
@@ -541,6 +632,9 @@ termination
 
 declare comma_round_control_germ.simps [simp del]
 
+ML \<open>
+  val _ = Comma_Run_Germ_Profile.report "round-control-refinement entered"
+\<close>
 theorem comma_round_control_germ_refines:
   "comma_round_control_germ r source=comma_round_close r source"
 proof (induction r source rule: comma_round_control_germ.induct)
@@ -572,6 +666,9 @@ proof (induction r source rule: comma_round_control_germ.induct)
   qed (use germ expand terminal sector in
     \<open>auto simp only: prod.case comma_finite_move.case add_0_left add_0_right\<close>)
 qed
+ML \<open>
+  val _ = Comma_Run_Germ_Profile.report "round-control-refinement submitted"
+\<close>
 
 inductive comma_round_control_germ_calls :: "nat \<Rightarrow> comma_finite_position \<Rightarrow> nat \<Rightarrow> bool" where
   stop: "comma_sector_control r source=(n,t) \<Longrightarrow>

@@ -1,163 +1,52 @@
 theory Comma_Semantic_B1_Occurrence_Publication
-  imports Comma_Semantic_B1_Occurrence_Arithmetic
+  imports "HOL-Library.Multiset" Comma_Semantic_B1_Occurrence_Arithmetic
+    Comma_Semantic_B1.Comma_Semantic_B1_CRT_Construction_Binding
+    Comma_Semantic_B1.Comma_Semantic_B1_CRT_Column_DAG
+    Comma_Semantic_B1.Comma_Semantic_B1_CRT_Constructed_Occurrence
+    Comma_Semantic_B1.Comma_Semantic_B1_CRT_Constructed_Refinement
 begin
 ML_file "../comma_entry_arithmetic/selected_list_conversion.ML"
 ML_file "semantic_b1_crt_operation_conversion.ML"
+ML_file "semantic_b1_template_projection.ML"
+ML_file "semantic_b1_column_catalog.ML"
+ML_file "semantic_b1_column_conversion.ML"
+ML_file "semantic_b1_publication_fixtures.ML"
+ML \<open>Comma_Semantic_B1_Publication_Fixtures.check_selected_list @{context}\<close>
 
-ML \<open>
-  local
-    val ctxt = @{context}
-    fun make_selector name table pattern extents =
-      let
-        val selector = Comma_Selected_List_Conversion.make
-          {ctxt = ctxt, name = name,
-           root_definition = Thm.reflexive (Thm.cterm_of ctxt table),
-           table_pattern = pattern, extents = extents}
-        val context = put_simpset HOL_basic_ss ctxt
-          |> Simplifier.add_proc (#procedure selector)
-      in fn term => Simplifier.rewrite context (Thm.cterm_of ctxt term) end
-    val nested_table = @{term "[[0,1,2,3]::nat list, [1], [2]]"}
-    val nested_select = make_selector "nested_extent_regression" nested_table
-      @{term "([[0,1,2,3]::nat list, [1], [2]]) ! row ! slot"} [2, 3]
-    val valid_nested = nested_select
-      @{term "([[0,1,2,3]::nat list, [1], [2]]) ! 1 ! 0"}
-    val _ = if Thm.term_of (Thm.rhs_of valid_nested) aconv @{term "1::nat"}
-      then () else error "Selected-list nested selector failed on an admitted row"
-    val rejected_parent = Exn.capture nested_select
-      @{term "([[0,1,2,3]::nat list, [1], [2]]) ! 2 ! 0"}
-    val rejected_slot = Exn.capture nested_select
-      @{term "([[0,1,2,3]::nat list, [1], [2]]) ! 0 ! 3"}
-    val three_table = @{term "[0::nat, 1, 2]"}
-    val select_three = make_selector "selected_suffix_index_two" three_table
-      @{term "[0::nat, 1, 2] ! index"} [3]
-    val selected_two = select_three @{term "[0::nat, 1, 2] ! 2"}
-    val _ = if Thm.term_of (Thm.rhs_of selected_two) aconv @{term "2::nat"}
-      then () else error "Selected-list suffix regression failed at index 2"
-    val unoverloaded_zero = Thm.term_of (Thm.rhs_of
-      (Axclass.unoverload_conv ctxt
-        (Thm.cterm_of ctxt @{term "0::nat"})))
-    val unoverloaded_nth = Const (@{const_name nth},
-      fastype_of three_table --> @{typ nat} --> @{typ nat}) $
-        three_table $ unoverloaded_zero
-    val selected_unoverloaded = select_three unoverloaded_nth
-    val _ = if Thm.term_of (Thm.rhs_of selected_unoverloaded) aconv @{term "0::nat"}
-      then () else error "Selected-list failed to normalize an unoverloaded index"
-    val four_table = @{term "[0::nat, 1, 2, 3]"}
-    val select_four = make_selector "selected_suffix_index_three" four_table
-      @{term "[0::nat, 1, 2, 3] ! index"} [4]
-    val selected_three = select_four @{term "[0::nat, 1, 2, 3] ! 3"}
-    val _ = if Thm.term_of (Thm.rhs_of selected_three) aconv @{term "3::nat"}
-      then () else error "Selected-list suffix regression failed at index 3"
-    val length_table = @{term "[[0::nat,1,2], [3,4,5]]"}
-    val length_select = make_selector "opaque_head_length" length_table
-      @{term "[[0::nat,1,2], [3,4,5]] ! index"} [2]
-    val selected_length = length_select @{term "length [[0::nat,1,2], [3,4,5]]"}
-    val _ = if Thm.term_of (Thm.rhs_of selected_length) aconv @{term "2::nat"}
-      then () else error "Selected-list outer-spine length regression failed"
-  in
-    fun check_rejected label result =
-      (case result of
-        Exn.Exn (ERROR message) =>
-          if message = "Selected-list nested index exceeds its depth-specific extent"
-          then () else error message
-      | Exn.Exn exn => Exn.reraise exn
-      | Exn.Res _ => error ("Nested selected-list admitted an out-of-extent " ^ label))
-    val _ = check_rejected "parent" rejected_parent
-    val _ = check_rejected "slot" rejected_slot
-  end
-\<close>
 
 text \<open>The candidate constructor and its bounded rebase/binding examples
 belong to this concrete publisher. Generic refinement theories do not load
 or depend on candidate-generation code. Admission still requires the checked
 occurrence certificate below.\<close>
 
+ML_file "semantic_b1_mdd.ML"
 ML_file "semantic_b1_template_constructor.ML"
 
 ML_file "semantic_b1_occurrence_publication.ML"
+ML_file "semantic_b1_lift_column_projection.ML"
+ML_file "semantic_b1_column_regression.ML"
+ML \<open>Comma_Semantic_B1_Column_Regression.check_generic_fixtures @{context}\<close>
 
 ML \<open>
   local
     structure Candidate = Comma_Semantic_B1_Template_Constructor
     structure Publication = Comma_Semantic_B1_Occurrence_Publication
     val _ = Publication.check_candidate_examples ()
-    val ctxt = @{context}
     val refs = [[Candidate.Terminal_Ref (2, 7), Candidate.Goto_Ref (3, 17, 4)]]
     val encoded = Publication.serialize_lift_refs refs
-    val expected = @{term
-      "[[Comma_B1_Lift_Terminal_Ref 2 7, Comma_B1_Lift_Goto_Ref 3 17 4]]"}
-    val wrong_lift = @{term
-      "[[Comma_B1_Lift_Terminal_Ref 2 7, Comma_B1_Lift_Goto_Ref 3 17 5]]"}
     val descriptors = [{period = 4, slot = 3, template_cid = 9, net_shift = 17}:
       Candidate.lift_descriptor]
     val encoded_descriptors = Publication.serialize_lift_descriptors descriptors
-    val expected_descriptors = @{term
-      "([\<lparr>comma_semantic_b1_crt_lift_descriptor_period = 4,
-         comma_semantic_b1_crt_lift_descriptor_slot = 3,
-         comma_semantic_b1_crt_lift_descriptor_template_cid = 9,
-         comma_semantic_b1_crt_lift_descriptor_net_shift = 17\<rparr>]
-        :: comma_semantic_b1_crt_lift_descriptor list)"}
-    fun prove proposition = Goal.prove ctxt [] [] proposition
-      (fn {context, ...} => Simplifier.simp_tac
-        (context addsimps [@{thm comma_semantic_b1_crt_lift_descriptor.make_def}]) 1)
-    val serialized_refs = prove (HOLogic.mk_Trueprop
-      (HOLogic.mk_eq (encoded, expected)))
-    val wrong_lift_rejected = prove (HOLogic.mk_Trueprop
-      (HOLogic.mk_not (HOLogic.mk_eq (encoded, wrong_lift))))
-    val serialized_descriptors = prove (HOLogic.mk_Trueprop
-      (HOLogic.mk_eq (encoded_descriptors, expected_descriptors)))
-    val _ = Thm.consolidate
-      [serialized_refs, wrong_lift_rejected, serialized_descriptors]
-  in
-    val _ = ()
-  end
-\<close>
-
-(* Check the compact serializer on a small shared two-level DAG.  The same
-   leaf appears at multiple child positions, and the middle node is reused by
-   three root positions.  The positive kernel proof pins constructor order;
-   the negative one ensures that swapping one leaf is observably different. *)
-ML \<open>
-  local
-    structure Candidate = Comma_Semantic_B1_Template_Constructor
-    val ctxt = @{context}
-    val leaf = Candidate.MDD_Node (2,
-      [Candidate.MDD_False, Candidate.MDD_True, Candidate.MDD_False,
-       Candidate.MDD_True, Candidate.MDD_True, Candidate.MDD_False,
-       Candidate.MDD_True])
-    val alternate_leaf = Candidate.MDD_Node (2,
-      [Candidate.MDD_False, Candidate.MDD_True, Candidate.MDD_False,
-       Candidate.MDD_True, Candidate.MDD_False, Candidate.MDD_False,
-       Candidate.MDD_True])
-    val middle = Candidate.MDD_Node (1, [leaf, alternate_leaf, leaf])
-    val root = Candidate.MDD_Node (0, [middle, middle, Candidate.MDD_False, middle])
-    val swapped_middle = Candidate.MDD_Node (1, [alternate_leaf, leaf, leaf])
-    val swapped_root = Candidate.MDD_Node
-      (0, [middle, middle, Candidate.MDD_False, swapped_middle])
-    fun expand Candidate.MDD_False = @{term "Comma_CRT_Bool False"}
-      | expand Candidate.MDD_True = @{term "Comma_CRT_Bool True"}
-      | expand (Candidate.MDD_Node (level, children)) =
-          @{term Comma_CRT_Node} $ Candidate.nat level $
-            HOLogic.mk_list Candidate.columnT (map expand children)
-    val compact = #columns_term
-      (Comma_Semantic_B1_Occurrence_Publication.compress_template_row [root, root])
-    val expected = HOLogic.mk_list Candidate.columnT (map expand [root, root])
-    val swapped = HOLogic.mk_list Candidate.columnT
-      (map expand [swapped_root, swapped_root])
-    fun prove proposition = Goal.prove ctxt [] [] proposition
-      (fn {context, ...} =>
-        Simplifier.simp_tac (context addsimps [@{thm Let_def}]) 1)
-    val compact_correct = prove (HOLogic.mk_Trueprop
-      (HOLogic.mk_eq (compact, expected)))
-    val swapped_rejected = prove (HOLogic.mk_Trueprop
-      (HOLogic.mk_not (HOLogic.mk_eq (compact, swapped))))
-    val _ = Thm.consolidate [compact_correct, swapped_rejected]
+    val _ = Comma_Semantic_B1_Publication_Fixtures.check_lift_serialization
+      @{context} encoded encoded_descriptors
   in
     val _ = ()
   end
 \<close>
 
 local_setup \<open>Comma_Semantic_B1_Occurrence_Publication.publish\<close>
+
+ML \<open>Comma_Semantic_B1_Column_Regression.check @{context}\<close>
 
 definition comma_semantic_b1_crt_occurrence_at_index ::
     "nat \<Rightarrow> comma_semantic_b1_crt_occurrence option" where
@@ -167,29 +56,28 @@ definition comma_semantic_b1_crt_occurrence_at_index ::
          (comma_semantic_b1_crt_descriptors ! index)
      else None)"
 
-definition comma_semantic_b1_crt_template_geometry_at :: "nat \<Rightarrow> bool" where
-  "comma_semantic_b1_crt_template_geometry_at cid \<longleftrightarrow>
-    cid < length comma_semantic_b1_crt_templates \<and>
-    comma_semantic_b1_crt_occurrence_geometry_check
-      (comma_semantic_b1_crt_templates ! cid)"
+definition comma_semantic_b1_crt_construction_check :: "nat \<Rightarrow> bool" where
+  "comma_semantic_b1_crt_construction_check index \<longleftrightarrow>
+    comma_semantic_b1_crt_constructed_occurrence_bound
+      comma_semantic_b1_crt_columns comma_semantic_b1_crt_templates
+      comma_semantic_b1_crt_template_column_ids
+      comma_semantic_b1_crt_lift_column_ids comma_semantic_b1_crt_sources
+      comma_semantic_b1_crt_occurrence_at_index
+      comma_semantic_b1_crt_descriptors comma_semantic_b1_crt_lift_refs
+      (comma_semantic_b1_crt_slot_actions_table comma_semantic_b1_crt_sources ! index)
+      comma_semantic_b1_crt_lift_descriptors
+      comma_semantic_b1_crt_construction_piece_refs index"
 
-definition comma_semantic_b1_crt_occurrence_entry_checked :: "nat \<Rightarrow> bool" where
-  "comma_semantic_b1_crt_occurrence_entry_checked index \<longleftrightarrow>
-    (if index < length comma_semantic_b1_crt_sources \<and>
-        index < length comma_semantic_b1_crt_descriptors \<and>
-        index < length comma_semantic_b1_crt_lift_refs then
-       (case (comma_semantic_b1_crt_sources ! index,
-              comma_semantic_b1_crt_occurrence_at_index index,
-              comma_semantic_b1_crt_lift_refs ! index) of
-          (source, Some occurrence, refs) \<Rightarrow>
-            comma_semantic_b1_crt_lift_local_cover_witness
-              comma_semantic_b1_crt_sources
-              comma_semantic_b1_crt_occurrence_at_index
-              comma_semantic_b1_crt_descriptors
-              comma_semantic_b1_crt_templates source occurrence refs
-              comma_semantic_b1_crt_lift_descriptors
-        | _ \<Rightarrow> False)
-     else False)"
+lemma comma_semantic_b1_crt_constructed_bound_rejects_out_of_range_index:
+  "\<not> comma_semantic_b1_crt_constructed_occurrence_bound
+    [] [] [] [] [] (\<lambda>_. None) [] [] [] [] [] 0"
+  by (simp add: comma_semantic_b1_crt_constructed_occurrence_bound_def)
+
+lemma comma_semantic_b1_crt_constructed_bound_rejects_missing_occurrence:
+  "\<not> comma_semantic_b1_crt_constructed_occurrence_bound
+    [] [] [] [] [Comma_Entry 1 0 0] (\<lambda>_. None) [(0,(0,[]))]
+    [[]] [] [] [[]] 0"
+  by (simp add: comma_semantic_b1_crt_constructed_occurrence_bound_def)
 
 definition comma_semantic_b1_crt_source_index ::
     "(comma_finite_position \<times> nat) list" where
@@ -254,13 +142,26 @@ definition comma_semantic_b1_crt_occurrence_data_checked :: bool where
        length comma_semantic_b1_crt_descriptors \<and>
      length comma_semantic_b1_crt_lift_refs =
        length comma_semantic_b1_crt_sources \<and>
+     length comma_semantic_b1_crt_sources \<le> 1024 \<and>
+     length comma_semantic_b1_crt_templates \<le> 1024 \<and>
      length comma_semantic_b1_crt_lift_descriptors \<le>
        28 * length comma_semantic_b1_crt_sources \<and>
      list_all comma_semantic_b1_crt_source_order_step
        [0..<length comma_semantic_b1_crt_sources - 1] \<and>
-     list_all comma_semantic_b1_crt_template_geometry_at
+     list_all (comma_crt_admitted 0) comma_semantic_b1_crt_columns \<and>
+     list_all (\<lambda>template_cid.
+       comma_semantic_b1_crt_template_geometry_certified
+         comma_semantic_b1_crt_columns comma_semantic_b1_crt_templates
+         comma_semantic_b1_crt_template_column_ids template_cid)
        [0..<length comma_semantic_b1_crt_templates] \<and>
-     list_all comma_semantic_b1_crt_occurrence_entry_checked
+     list_all (\<lambda>lift_cid.
+       comma_semantic_b1_crt_lift_geometry_certified
+         comma_semantic_b1_crt_columns comma_semantic_b1_crt_templates
+         comma_semantic_b1_crt_template_column_ids
+         comma_semantic_b1_crt_lift_column_ids
+         comma_semantic_b1_crt_lift_descriptors lift_cid)
+       [0..<length comma_semantic_b1_crt_lift_descriptors] \<and>
+     list_all comma_semantic_b1_crt_construction_check
        [0..<length comma_semantic_b1_crt_sources] \<and>
      length comma_semantic_b1_crt_root_occurrence_indices = 46 \<and>
      list_all comma_semantic_b1_crt_root_entry_checked [0..<46]"
@@ -334,6 +235,12 @@ lemma comma_semantic_b1_crt_source_order_rejects_equal_adjacent_keys:
   by (simp add: comma_semantic_b1_crt_source_order_step_def)
 
 
+ML_file "semantic_b1_partition_conversion.ML"
+ML_file "semantic_b1_construction_check.ML"
+ML_file "semantic_b1_certificate_store.ML"
+ML \<open>Comma_Semantic_B1_Construction_Check.check_helper_fixtures @{context}\<close>
+ML_file "semantic_b1_certificate_store_action_fixtures.ML"
+ML_file "semantic_b1_certificate_store_fixtures.ML"
 ML_file "semantic_b1_occurrence_check_cache.ML"
 
 (* Exercise the bounded list_all proof assembler before the concrete
@@ -347,6 +254,7 @@ ML \<open>
     val boolT = @{typ bool}
     val nat_listT = @{typ "nat list"}
     fun numeral n = HOLogic.mk_number natT n
+    val successor_cache = Comma_Selected_List_Conversion.make_successor_cache ctxt 3
     val predicate = Const (@{const_name less_eq}, natT --> natT --> boolT) $
       numeral 0
     fun item_at index =
@@ -358,7 +266,8 @@ ML \<open>
         {ctxt = ctxt, predicate = predicate, bound = 3,
          prove_item = item_at,
          zero_fact = @{thm comma_indexed_all_zero},
-         step_fact = @{thm comma_indexed_all_Suc}}
+         step_fact = @{thm comma_indexed_all_Suc},
+         successor_equation = #equation successor_cache}
     val list_all = Const (@{const_name list_all},
       (natT --> boolT) --> nat_listT --> boolT)
     val upt = Const (@{const_name upt}, natT --> natT --> nat_listT)
@@ -374,7 +283,8 @@ ML \<open>
         {ctxt = ctxt, predicate = predicate, bound = 3,
          prove_item = fn index => item_at (index + 1),
          zero_fact = @{thm comma_indexed_all_zero},
-         step_fact = @{thm comma_indexed_all_Suc}}) ()
+         step_fact = @{thm comma_indexed_all_Suc},
+         successor_equation = #equation successor_cache}) ()
     val _ = (case wrong_index of
         Exn.Exn (ERROR message) =>
           if message = "Indexed list_all item proof has the wrong proposition"
@@ -412,31 +322,114 @@ lemma comma_semantic_b1_crt_find_source_member:
   using found
   by (auto simp: find_Some_iff dest: nth_mem)
 
-lemma comma_semantic_b1_crt_occurrence_entry_checked_at:
+lemma comma_semantic_b1_crt_construction_check_at:
   assumes checked: "comma_semantic_b1_crt_occurrence_data_checked"
     and index: "index < length comma_semantic_b1_crt_sources"
-  shows "comma_semantic_b1_crt_occurrence_entry_checked index"
+  shows "comma_semantic_b1_crt_construction_check index"
 proof -
-  have entries:
-    "list_all comma_semantic_b1_crt_occurrence_entry_checked
+  have constructions:
+    "list_all comma_semantic_b1_crt_construction_check
       [0..<length comma_semantic_b1_crt_sources]"
     using checked
-    by (simp add: comma_semantic_b1_crt_occurrence_data_checked_def)
-  show ?thesis using entries index
-    by (auto simp: list_all_iff)
+    unfolding comma_semantic_b1_crt_occurrence_data_checked_def
+    by blast
+  show ?thesis using constructions index by (auto simp: list_all_iff)
 qed
 
-lemma comma_semantic_b1_crt_template_geometry_at_checked:
+lemma comma_semantic_b1_crt_checked_bounds_and_geometry:
   assumes checked: "comma_semantic_b1_crt_occurrence_data_checked"
-    and index: "cid < length comma_semantic_b1_crt_templates"
-  shows "comma_semantic_b1_crt_template_geometry_at cid"
+  shows bounds:
+      "list_all (\<lambda>index.
+        comma_semantic_b1_crt_constructed_occurrence_bound
+          comma_semantic_b1_crt_columns comma_semantic_b1_crt_templates
+          comma_semantic_b1_crt_template_column_ids
+          comma_semantic_b1_crt_lift_column_ids comma_semantic_b1_crt_sources
+          comma_semantic_b1_crt_occurrence_at_index
+          comma_semantic_b1_crt_descriptors comma_semantic_b1_crt_lift_refs
+          (comma_semantic_b1_crt_slot_actions_table
+            comma_semantic_b1_crt_sources!index)
+          comma_semantic_b1_crt_lift_descriptors
+          comma_semantic_b1_crt_construction_piece_refs index)
+        [0..<length comma_semantic_b1_crt_sources]"
+    and parent_template_geometries:
+      "\<And>index. index<length comma_semantic_b1_crt_sources \<Longrightarrow>
+        comma_semantic_b1_crt_template_geometry_certified
+          comma_semantic_b1_crt_columns comma_semantic_b1_crt_templates
+          comma_semantic_b1_crt_template_column_ids
+          (fst (comma_semantic_b1_crt_descriptors!index))"
+    and used_lift_geometries:
+      "\<And>index slot child_index lift_cid.
+        index<length comma_semantic_b1_crt_sources \<Longrightarrow>
+        slot<length (comma_semantic_b1_crt_lift_refs!index) \<Longrightarrow>
+        (comma_semantic_b1_crt_lift_refs!index)!slot=
+          Comma_B1_Lift_Goto_Ref slot child_index lift_cid \<Longrightarrow>
+        comma_semantic_b1_crt_lift_geometry_certified
+          comma_semantic_b1_crt_columns comma_semantic_b1_crt_templates
+          comma_semantic_b1_crt_template_column_ids
+          comma_semantic_b1_crt_lift_column_ids
+          comma_semantic_b1_crt_lift_descriptors lift_cid"
 proof -
-  have geometries:
-    "list_all comma_semantic_b1_crt_template_geometry_at
-      [0..<length comma_semantic_b1_crt_templates]"
-    using checked
-    by (simp add: comma_semantic_b1_crt_occurrence_data_checked_def)
-  show ?thesis using geometries index by (auto simp: list_all_iff)
+  have checks: "list_all comma_semantic_b1_crt_construction_check
+      [0..<length comma_semantic_b1_crt_sources]"
+    using checked unfolding comma_semantic_b1_crt_occurrence_data_checked_def
+    by blast
+  have checked_implies_bound:
+      "\<And>index. comma_semantic_b1_crt_construction_check index \<Longrightarrow>
+        comma_semantic_b1_crt_constructed_occurrence_bound
+          comma_semantic_b1_crt_columns comma_semantic_b1_crt_templates
+          comma_semantic_b1_crt_template_column_ids
+          comma_semantic_b1_crt_lift_column_ids comma_semantic_b1_crt_sources
+          comma_semantic_b1_crt_occurrence_at_index
+          comma_semantic_b1_crt_descriptors comma_semantic_b1_crt_lift_refs
+          (comma_semantic_b1_crt_slot_actions_table
+            comma_semantic_b1_crt_sources!index)
+          comma_semantic_b1_crt_lift_descriptors
+          comma_semantic_b1_crt_construction_piece_refs index"
+    by (simp only: comma_semantic_b1_crt_construction_check_def)
+  have bounds_fact: "list_all (\<lambda>index.
+      comma_semantic_b1_crt_constructed_occurrence_bound
+        comma_semantic_b1_crt_columns comma_semantic_b1_crt_templates
+        comma_semantic_b1_crt_template_column_ids
+        comma_semantic_b1_crt_lift_column_ids comma_semantic_b1_crt_sources
+        comma_semantic_b1_crt_occurrence_at_index
+        comma_semantic_b1_crt_descriptors comma_semantic_b1_crt_lift_refs
+        (comma_semantic_b1_crt_slot_actions_table
+          comma_semantic_b1_crt_sources!index)
+        comma_semantic_b1_crt_lift_descriptors
+        comma_semantic_b1_crt_construction_piece_refs index)
+      [0..<length comma_semantic_b1_crt_sources]"
+    using checks checked_implies_bound by (simp only: list_all_iff; blast)
+  have template_catalog:
+      "list_all (\<lambda>cid. comma_semantic_b1_crt_template_geometry_certified
+        comma_semantic_b1_crt_columns comma_semantic_b1_crt_templates
+        comma_semantic_b1_crt_template_column_ids cid)
+        [0..<length comma_semantic_b1_crt_templates]"
+    using checked unfolding comma_semantic_b1_crt_occurrence_data_checked_def
+    by blast
+  have lift_catalog:
+      "list_all (\<lambda>cid. comma_semantic_b1_crt_lift_geometry_certified
+        comma_semantic_b1_crt_columns comma_semantic_b1_crt_templates
+        comma_semantic_b1_crt_template_column_ids
+        comma_semantic_b1_crt_lift_column_ids
+        comma_semantic_b1_crt_lift_descriptors cid)
+        [0..<length comma_semantic_b1_crt_lift_descriptors]"
+    using checked unfolding comma_semantic_b1_crt_occurrence_data_checked_def
+    by blast
+  show bounds by (rule bounds_fact)
+  show parent_template_geometries and used_lift_geometries
+    by (rule comma_semantic_b1_crt_constructed_occurrences_catalog_geometry_facts
+      [OF bounds_fact template_catalog lift_catalog])
+qed
+
+lemma comma_semantic_b1_crt_root_entry_checked_at:
+  assumes checked: "comma_semantic_b1_crt_occurrence_data_checked"
+    and root: "root<46"
+  shows "comma_semantic_b1_crt_root_entry_checked root"
+proof -
+  have roots: "list_all comma_semantic_b1_crt_root_entry_checked [0..<46]"
+    using checked unfolding comma_semantic_b1_crt_occurrence_data_checked_def
+    by blast
+  show ?thesis using roots root by (simp add: list_all_iff)
 qed
 
 lemma comma_semantic_b1_crt_published_resolves_index:
@@ -481,56 +474,66 @@ proof -
       comma_semantic_b1_crt_published_def)
 qed
 
-lemma comma_semantic_b1_crt_occurrence_at_index_wellformed_check:
+lemma comma_semantic_b1_crt_published_occurrences_wellformed:
+  assumes checked: "comma_semantic_b1_crt_occurrence_data_checked"
+  shows "\<forall>index<length comma_semantic_b1_crt_sources.
+    \<forall>parent. comma_semantic_b1_crt_occurrence_at_index index=Some parent
+      \<longrightarrow> comma_semantic_b1_crt_occurrence_wellformed parent"
+proof -
+  have table_admitted:
+      "list_all (comma_crt_admitted 0) comma_semantic_b1_crt_columns"
+    using checked
+    unfolding comma_semantic_b1_crt_occurrence_data_checked_def
+    by blast
+  have bounds:
+      "list_all (\<lambda>index.
+        comma_semantic_b1_crt_constructed_occurrence_bound
+          comma_semantic_b1_crt_columns comma_semantic_b1_crt_templates
+          comma_semantic_b1_crt_template_column_ids
+          comma_semantic_b1_crt_lift_column_ids comma_semantic_b1_crt_sources
+          comma_semantic_b1_crt_occurrence_at_index
+          comma_semantic_b1_crt_descriptors comma_semantic_b1_crt_lift_refs
+          (comma_semantic_b1_crt_slot_actions_table
+            comma_semantic_b1_crt_sources!index)
+          comma_semantic_b1_crt_lift_descriptors
+          comma_semantic_b1_crt_construction_piece_refs index)
+        [0..<length comma_semantic_b1_crt_sources]"
+    and parent_template_geometries:
+      "\<And>index. index<length comma_semantic_b1_crt_sources \<Longrightarrow>
+        comma_semantic_b1_crt_template_geometry_certified
+          comma_semantic_b1_crt_columns comma_semantic_b1_crt_templates
+          comma_semantic_b1_crt_template_column_ids
+          (fst (comma_semantic_b1_crt_descriptors!index))"
+    and used_lift_geometries:
+      "\<And>index slot child_index lift_cid.
+        index<length comma_semantic_b1_crt_sources \<Longrightarrow>
+        slot<length (comma_semantic_b1_crt_lift_refs!index) \<Longrightarrow>
+        (comma_semantic_b1_crt_lift_refs!index)!slot=
+          Comma_B1_Lift_Goto_Ref slot child_index lift_cid \<Longrightarrow>
+        comma_semantic_b1_crt_lift_geometry_certified
+          comma_semantic_b1_crt_columns comma_semantic_b1_crt_templates
+          comma_semantic_b1_crt_template_column_ids
+          comma_semantic_b1_crt_lift_column_ids
+          comma_semantic_b1_crt_lift_descriptors lift_cid"
+    by (rule comma_semantic_b1_crt_checked_bounds_and_geometry[OF checked])
+  show ?thesis
+    by (rule comma_semantic_b1_crt_constructed_occurrences_wellformed
+      [OF table_admitted bounds parent_template_geometries used_lift_geometries])
+qed
+
+lemma comma_semantic_b1_crt_occurrence_at_index_wellformed:
   assumes checked: "comma_semantic_b1_crt_occurrence_data_checked"
     and index: "index < length comma_semantic_b1_crt_sources"
     and occurrence:
       "comma_semantic_b1_crt_occurrence_at_index index = Some value"
-  shows "comma_semantic_b1_crt_occurrence_wellformed_check value"
+  shows "comma_semantic_b1_crt_occurrence_wellformed value"
 proof -
-  have entry:
-      "comma_semantic_b1_crt_occurrence_entry_checked index"
-    by (rule comma_semantic_b1_crt_occurrence_entry_checked_at[OF checked index])
-  have refs_bound: "index<length comma_semantic_b1_crt_lift_refs"
-    using checked index
-    by (auto simp: comma_semantic_b1_crt_occurrence_data_checked_def)
-  let ?source = "comma_semantic_b1_crt_sources ! index"
-  let ?refs = "comma_semantic_b1_crt_lift_refs ! index"
-  have witness:
-      "comma_semantic_b1_crt_lift_local_cover_witness
-        comma_semantic_b1_crt_sources comma_semantic_b1_crt_occurrence_at_index
-        comma_semantic_b1_crt_descriptors comma_semantic_b1_crt_templates
-        ?source value ?refs comma_semantic_b1_crt_lift_descriptors"
-    using entry occurrence index refs_bound
-    by (auto simp: comma_semantic_b1_crt_occurrence_entry_checked_def
-      split: option.splits prod.splits)
-  have descriptor_bound: "index<length comma_semantic_b1_crt_descriptors"
-    using checked index
-    by (auto simp: comma_semantic_b1_crt_occurrence_data_checked_def)
-  obtain cid rebase beta where descriptor:
-      "comma_semantic_b1_crt_descriptors ! index=(cid,(rebase,beta))"
-    by (cases "comma_semantic_b1_crt_descriptors ! index")
-      (auto split: prod.splits)
-  have cid_bound: "cid<length comma_semantic_b1_crt_templates"
-    and value_fields:
-      "value=\<lparr>comma_semantic_b1_crt_occurrence_columns=
-          comma_semantic_b1_crt_templates ! cid,
-        comma_semantic_b1_crt_occurrence_rebase=rebase,
-        comma_semantic_b1_crt_occurrence_beta=beta\<rparr>"
-    using occurrence descriptor descriptor_bound
-    by (auto simp: comma_semantic_b1_crt_occurrence_at_index_def
-      comma_semantic_b1_crt_resolve_descriptor_def split: if_splits)
-  have geometry:
-      "comma_semantic_b1_crt_occurrence_geometry_check
-        (comma_semantic_b1_crt_templates ! cid)"
-    using comma_semantic_b1_crt_template_geometry_at_checked[OF checked cid_bound]
-    by (simp add: comma_semantic_b1_crt_template_geometry_at_def)
-  have binding:
-      "comma_semantic_b1_crt_occurrence_binding_check value"
-    using witness
-    by (simp add: comma_semantic_b1_crt_lift_local_cover_witness_def)
-  show ?thesis using binding geometry value_fields
-    by (rule comma_semantic_b1_crt_occurrence_binding_check_geometry)
+  have all:
+      "\<forall>index<length comma_semantic_b1_crt_sources.
+        \<forall>parent. comma_semantic_b1_crt_occurrence_at_index index=Some parent
+          \<longrightarrow> comma_semantic_b1_crt_occurrence_wellformed parent"
+    by (rule comma_semantic_b1_crt_published_occurrences_wellformed[OF checked])
+  show ?thesis using all index occurrence by blast
 qed
 
 lemma comma_semantic_b1_crt_occurrence_at_index_total:
@@ -539,33 +542,38 @@ lemma comma_semantic_b1_crt_occurrence_at_index_total:
   obtains occ where
     "comma_semantic_b1_crt_occurrence_at_index index = Some occ"
 proof -
-  have entry:
-      "comma_semantic_b1_crt_occurrence_entry_checked index"
-    by (rule comma_semantic_b1_crt_occurrence_entry_checked_at[OF checked index])
+  have construction: "comma_semantic_b1_crt_construction_check index"
+    by (rule comma_semantic_b1_crt_construction_check_at[OF checked index])
+  have constructed:
+      "comma_semantic_b1_crt_constructed_occurrence_bound
+        comma_semantic_b1_crt_columns comma_semantic_b1_crt_templates
+        comma_semantic_b1_crt_template_column_ids
+        comma_semantic_b1_crt_lift_column_ids comma_semantic_b1_crt_sources
+        comma_semantic_b1_crt_occurrence_at_index
+        comma_semantic_b1_crt_descriptors comma_semantic_b1_crt_lift_refs
+        (comma_semantic_b1_crt_slot_actions_table comma_semantic_b1_crt_sources!index)
+        comma_semantic_b1_crt_lift_descriptors
+        comma_semantic_b1_crt_construction_piece_refs index"
+    using construction by (simp add: comma_semantic_b1_crt_construction_check_def)
+  have present: "comma_semantic_b1_crt_occurrence_at_index index\<noteq>None"
+    by (rule comma_semantic_b1_crt_constructed_occurrence_bound_parent_present
+      [OF constructed])
   show thesis
   proof (cases "comma_semantic_b1_crt_occurrence_at_index index")
     case None
-    with entry show thesis
-      by (auto simp: comma_semantic_b1_crt_occurrence_entry_checked_def
-        split: prod.splits)
+    with present show thesis by simp
   next
     case (Some occ)
     then show thesis by (rule that)
   qed
 qed
 
-lemma comma_semantic_b1_crt_published_local_cover_witness:
-  assumes checked: "comma_semantic_b1_crt_occurrence_data_checked"
-    and published: "comma_semantic_b1_crt_published source = Some occurrence"
+lemma comma_semantic_b1_crt_published_occurrence_index:
+  assumes published: "comma_semantic_b1_crt_published source = Some occurrence"
   obtains index where
     "index < length comma_semantic_b1_crt_sources"
     "comma_semantic_b1_crt_sources ! index = source"
     "comma_semantic_b1_crt_occurrence_at_index index = Some occurrence"
-    "comma_semantic_b1_crt_lift_local_cover_witness
-      comma_semantic_b1_crt_sources comma_semantic_b1_crt_occurrence_at_index
-      comma_semantic_b1_crt_descriptors comma_semantic_b1_crt_templates
-      source occurrence (comma_semantic_b1_crt_lift_refs ! index)
-      comma_semantic_b1_crt_lift_descriptors"
 proof -
   obtain index where source_index:
       "comma_semantic_b1_crt_source_index_for source = Some index"
@@ -602,25 +610,8 @@ proof -
     using source_at_j j_index by simp
   have index_bound: "index<length comma_semantic_b1_crt_sources"
     using j_bound j_index by simp
-  have refs_bound: "index<length comma_semantic_b1_crt_lift_refs"
-    using checked index_bound
-    by (auto simp: comma_semantic_b1_crt_occurrence_data_checked_def)
-  have entry_checked:
-      "comma_semantic_b1_crt_occurrence_entry_checked index"
-    by (rule comma_semantic_b1_crt_occurrence_entry_checked_at
-      [OF checked index_bound])
-  have witness:
-      "comma_semantic_b1_crt_lift_local_cover_witness
-        comma_semantic_b1_crt_sources comma_semantic_b1_crt_occurrence_at_index
-        comma_semantic_b1_crt_descriptors comma_semantic_b1_crt_templates
-        source occurrence (comma_semantic_b1_crt_lift_refs ! index)
-        comma_semantic_b1_crt_lift_descriptors"
-    using entry_checked occurrence_at_index source_at_index refs_bound
-    by (auto simp: comma_semantic_b1_crt_occurrence_entry_checked_def
-      split: option.splits prod.splits)
   show thesis
-    by (rule that[OF index_bound source_at_index
-      occurrence_at_index witness])
+    by (rule that[OF index_bound source_at_index occurrence_at_index])
 qed
 
 lemma comma_semantic_b1_crt_published_children_resolve_index:
@@ -644,12 +635,68 @@ next
       [OF checked index refl Some])
 qed
 
+lemma comma_semantic_b1_crt_published_constructed_candidate_matches:
+  assumes checked: "comma_semantic_b1_crt_occurrence_data_checked"
+  shows "\<forall>index<length comma_semantic_b1_crt_sources. \<forall>parent.
+    comma_semantic_b1_crt_occurrence_at_index index=Some parent \<longrightarrow>
+    comma_semantic_b1_crt_occurrence_candidate_matches
+      comma_semantic_b1_crt_published
+      (comma_semantic_b1_crt_sources!index) parent"
+proof -
+  have table_admitted:
+      "list_all (comma_crt_admitted 0) comma_semantic_b1_crt_columns"
+    using checked
+    unfolding comma_semantic_b1_crt_occurrence_data_checked_def
+    by blast
+  have bounds:
+      "list_all (\<lambda>index.
+        comma_semantic_b1_crt_constructed_occurrence_bound
+          comma_semantic_b1_crt_columns comma_semantic_b1_crt_templates
+          comma_semantic_b1_crt_template_column_ids
+          comma_semantic_b1_crt_lift_column_ids comma_semantic_b1_crt_sources
+          comma_semantic_b1_crt_occurrence_at_index
+          comma_semantic_b1_crt_descriptors comma_semantic_b1_crt_lift_refs
+          (comma_semantic_b1_crt_slot_actions_table
+            comma_semantic_b1_crt_sources!index)
+          comma_semantic_b1_crt_lift_descriptors
+          comma_semantic_b1_crt_construction_piece_refs index)
+        [0..<length comma_semantic_b1_crt_sources]"
+    and parent_template_geometries:
+      "\<And>index. index<length comma_semantic_b1_crt_sources \<Longrightarrow>
+        comma_semantic_b1_crt_template_geometry_certified
+          comma_semantic_b1_crt_columns comma_semantic_b1_crt_templates
+          comma_semantic_b1_crt_template_column_ids
+          (fst (comma_semantic_b1_crt_descriptors!index))"
+    and used_lift_geometries:
+      "\<And>index slot child_index lift_cid.
+        index<length comma_semantic_b1_crt_sources \<Longrightarrow>
+        slot<length (comma_semantic_b1_crt_lift_refs!index) \<Longrightarrow>
+        (comma_semantic_b1_crt_lift_refs!index)!slot=
+          Comma_B1_Lift_Goto_Ref slot child_index lift_cid \<Longrightarrow>
+        comma_semantic_b1_crt_lift_geometry_certified
+          comma_semantic_b1_crt_columns comma_semantic_b1_crt_templates
+          comma_semantic_b1_crt_template_column_ids
+          comma_semantic_b1_crt_lift_column_ids
+          comma_semantic_b1_crt_lift_descriptors lift_cid"
+    by (rule comma_semantic_b1_crt_checked_bounds_and_geometry[OF checked])
+  have children_resolve:
+      "\<And>index. index<length comma_semantic_b1_crt_sources \<Longrightarrow>
+        comma_semantic_b1_crt_published
+          (comma_semantic_b1_crt_sources!index) =
+        comma_semantic_b1_crt_occurrence_at_index index"
+    by (rule comma_semantic_b1_crt_published_children_resolve_index[OF checked])
+  show ?thesis
+    by (rule comma_semantic_b1_crt_constructed_occurrences_candidate_matches
+      [OF table_admitted bounds parent_template_geometries used_lift_geometries
+        children_resolve])
+qed
+
 lemma comma_semantic_b1_crt_published_lift_candidate:
   assumes checked: "comma_semantic_b1_crt_occurrence_data_checked"
     and normalized: "source=comma_source_continuation_base source"
     and admitted: "comma_round_admitted source"
     and published: "comma_semantic_b1_crt_published source=Some occurrence"
-  shows "comma_semantic_b1_crt_occurrence_wellformed_check occurrence \<and>
+  shows "comma_semantic_b1_crt_occurrence_wellformed occurrence \<and>
     comma_semantic_b1_crt_occurrence_candidate_matches
       comma_semantic_b1_crt_published source occurrence"
 proof -
@@ -657,47 +704,22 @@ proof -
     and source_at_index: "comma_semantic_b1_crt_sources!index=source"
     and occurrence_at_index:
       "comma_semantic_b1_crt_occurrence_at_index index=Some occurrence"
-    and witness:
-      "comma_semantic_b1_crt_lift_local_cover_witness
-        comma_semantic_b1_crt_sources comma_semantic_b1_crt_occurrence_at_index
-        comma_semantic_b1_crt_descriptors comma_semantic_b1_crt_templates
-        source occurrence (comma_semantic_b1_crt_lift_refs!index)
-        comma_semantic_b1_crt_lift_descriptors"
-    by (rule comma_semantic_b1_crt_published_local_cover_witness[OF checked published])
+    by (rule comma_semantic_b1_crt_published_occurrence_index[OF published])
   have parent_wellformed:
-      "comma_semantic_b1_crt_occurrence_wellformed_check occurrence"
-    by (rule comma_semantic_b1_crt_occurrence_at_index_wellformed_check
-      [OF checked index occurrence_at_index])
-  have parent_semantic:
       "comma_semantic_b1_crt_occurrence_wellformed occurrence"
-    by (rule comma_semantic_b1_crt_occurrence_wellformed_check_sound
-      [OF parent_wellformed])
-  have child_wellformed:
-      "\<And>i child. i<length comma_semantic_b1_crt_sources \<Longrightarrow>
-        comma_semantic_b1_crt_occurrence_at_index i=Some child \<Longrightarrow>
-        comma_semantic_b1_crt_occurrence_wellformed child"
-  proof -
-    fix i child
-    assume i: "i<length comma_semantic_b1_crt_sources"
-      and child: "comma_semantic_b1_crt_occurrence_at_index i=Some child"
-    have checked_child:
-        "comma_semantic_b1_crt_occurrence_wellformed_check child"
-      by (rule comma_semantic_b1_crt_occurrence_at_index_wellformed_check
-        [OF checked i child])
-    show "comma_semantic_b1_crt_occurrence_wellformed child"
-      by (rule comma_semantic_b1_crt_occurrence_wellformed_check_sound
-        [OF checked_child])
-  qed
-  have child_resolver:
-      "\<And>i. i<length comma_semantic_b1_crt_sources \<Longrightarrow>
-        comma_semantic_b1_crt_published (comma_semantic_b1_crt_sources!i) =
-          comma_semantic_b1_crt_occurrence_at_index i"
-    by (rule comma_semantic_b1_crt_published_children_resolve_index[OF checked])
+    by (rule comma_semantic_b1_crt_occurrence_at_index_wellformed
+      [OF checked index occurrence_at_index])
+  have all_candidates:
+      "\<forall>index<length comma_semantic_b1_crt_sources. \<forall>parent.
+        comma_semantic_b1_crt_occurrence_at_index index=Some parent \<longrightarrow>
+        comma_semantic_b1_crt_occurrence_candidate_matches
+          comma_semantic_b1_crt_published
+          (comma_semantic_b1_crt_sources!index) parent"
+    by (rule comma_semantic_b1_crt_published_constructed_candidate_matches[OF checked])
   have candidate:
-    "comma_semantic_b1_crt_occurrence_candidate_matches
+      "comma_semantic_b1_crt_occurrence_candidate_matches
         comma_semantic_b1_crt_published source occurrence"
-    by (rule comma_semantic_b1_crt_lift_local_cover_candidate_matches
-      [OF witness parent_semantic child_wellformed child_resolver])
+    using all_candidates index source_at_index occurrence_at_index by blast
   show ?thesis using parent_wellformed candidate by blast
 qed
 
@@ -766,22 +788,15 @@ proof (rule comma_semantic_b1_crt_occurrence_map_exact
       and admitted_source: "comma_round_admitted source"
       and present: "comma_semantic_b1_crt_published source=Some occurrence"
     have candidate:
-        "comma_semantic_b1_crt_occurrence_wellformed_check occurrence \<and>
+        "comma_semantic_b1_crt_occurrence_wellformed occurrence \<and>
          comma_semantic_b1_crt_occurrence_candidate_matches
            comma_semantic_b1_crt_published source occurrence"
       by (rule comma_semantic_b1_crt_published_lift_candidate
         [OF checked normalized_source admitted_source present])
-    have checked_wellformed:
-        "comma_semantic_b1_crt_occurrence_wellformed_check occurrence"
-      using candidate by blast
-    have wellformed:
-        "comma_semantic_b1_crt_occurrence_wellformed occurrence"
-      by (rule comma_semantic_b1_crt_occurrence_wellformed_check_sound
-        [OF checked_wellformed])
     show "comma_semantic_b1_crt_occurrence_wellformed occurrence \<and>
       comma_semantic_b1_crt_occurrence_candidate_matches
         comma_semantic_b1_crt_published source occurrence"
-      using wellformed candidate by blast
+      using candidate by blast
   qed
 next
   fix source occurrence slot child shift
@@ -792,15 +807,14 @@ next
     and action: "comma_semantic_b1_source_slot_action source slot=
       Comma_Continuation_Goto child shift"
   have candidate:
-      "comma_semantic_b1_crt_occurrence_wellformed_check occurrence \<and>
+      "comma_semantic_b1_crt_occurrence_wellformed occurrence \<and>
        comma_semantic_b1_crt_occurrence_candidate_matches
          comma_semantic_b1_crt_published source occurrence"
     by (rule comma_semantic_b1_crt_published_lift_candidate
       [OF checked normalized_source admitted_source present])
   have wellformed:
       "comma_semantic_b1_crt_occurrence_wellformed occurrence"
-    by (rule comma_semantic_b1_crt_occurrence_wellformed_check_sound
-      [OF candidate[THEN conjunct1]])
+    using candidate by blast
   show "\<exists>child_occurrence.
       comma_semantic_b1_crt_published child=Some child_occurrence"
     by (rule comma_semantic_b1_crt_published_candidate_child_present
@@ -818,8 +832,7 @@ proof -
   have checked: "comma_semantic_b1_crt_occurrence_data_checked"
     by (rule comma_semantic_b1_crt_occurrence_data_checked)
   have root_row: "comma_semantic_b1_crt_root_entry_checked root"
-    using checked root
-    by (auto simp: comma_semantic_b1_crt_occurrence_data_checked_def list_all_iff)
+    by (rule comma_semantic_b1_crt_root_entry_checked_at[OF checked root])
   obtain index occurrence where root_index:
       "comma_semantic_b1_crt_root_occurrence_indices ! root=index"
     and root_bound: "root<length comma_semantic_b1_crt_root_occurrence_indices"
@@ -869,8 +882,7 @@ proof -
   have checked: "comma_semantic_b1_crt_occurrence_data_checked"
     by (rule comma_semantic_b1_crt_occurrence_data_checked)
   have root_row: "comma_semantic_b1_crt_root_entry_checked root"
-    using checked root
-    by (auto simp: comma_semantic_b1_crt_occurrence_data_checked_def list_all_iff)
+    by (rule comma_semantic_b1_crt_root_entry_checked_at[OF checked root])
   obtain index value where root_index:
       "comma_semantic_b1_crt_root_occurrence_indices ! root=index"
     and root_bound: "root<length comma_semantic_b1_crt_root_occurrence_indices"
@@ -883,25 +895,24 @@ proof -
     using root_row root
     by (auto simp: comma_semantic_b1_crt_root_entry_checked_def Let_def
       split: option.splits)
-  have entry_checked:
-      "comma_semantic_b1_crt_occurrence_entry_checked index"
-    by (rule comma_semantic_b1_crt_occurrence_entry_checked_at[OF checked index_bound])
-  have refs_bound: "index < length comma_semantic_b1_crt_lift_refs"
-    using checked index_bound
-    by (auto simp: comma_semantic_b1_crt_occurrence_data_checked_def)
-  have witness:
-      "comma_semantic_b1_crt_lift_local_cover_witness
-        comma_semantic_b1_crt_sources comma_semantic_b1_crt_occurrence_at_index
-        comma_semantic_b1_crt_descriptors comma_semantic_b1_crt_templates
-        (comma_semantic_b1_crt_sources ! index) value
-        (comma_semantic_b1_crt_lift_refs ! index)
-        comma_semantic_b1_crt_lift_descriptors"
-    using entry_checked index_bound source_at_index indexed_occurrence refs_bound
-    by (auto simp: comma_semantic_b1_crt_occurrence_entry_checked_def
-      split: option.splits prod.splits)
-  have binding: "distinct (comma_semantic_b1_crt_occurrence_beta value)"
-    using witness
-    by (simp add: comma_semantic_b1_crt_lift_local_cover_witness_def)
+  have construction:
+      "comma_semantic_b1_crt_construction_check index"
+    by (rule comma_semantic_b1_crt_construction_check_at[OF checked index_bound])
+  have constructed:
+      "comma_semantic_b1_crt_constructed_occurrence_bound
+        comma_semantic_b1_crt_columns comma_semantic_b1_crt_templates
+        comma_semantic_b1_crt_template_column_ids
+        comma_semantic_b1_crt_lift_column_ids comma_semantic_b1_crt_sources
+        comma_semantic_b1_crt_occurrence_at_index
+        comma_semantic_b1_crt_descriptors comma_semantic_b1_crt_lift_refs
+        (comma_semantic_b1_crt_slot_actions_table comma_semantic_b1_crt_sources!index)
+        comma_semantic_b1_crt_lift_descriptors
+        comma_semantic_b1_crt_construction_piece_refs index"
+    using construction by (simp add: comma_semantic_b1_crt_construction_check_def)
+  have binding:
+      "distinct (comma_semantic_b1_crt_occurrence_beta value)"
+    by (rule comma_semantic_b1_crt_constructed_occurrence_bound_beta_distinct
+      [OF constructed indexed_occurrence])
   have selected:
       "comma_semantic_b1_crt_occurrence_at_index index=Some occurrence"
     using lookup root_index root_bound
@@ -910,8 +921,33 @@ proof -
   with binding show ?thesis by simp
 qed
 
+lemma comma_semantic_b1_crt_piece_matches_rejects_mismatched_lift_shape:
+  fixes columns :: "comma_crt_column list"
+    and lift_column_ids :: "nat list list"
+    and sources :: "comma_finite_position list"
+    and occurrence_at :: "nat \<Rightarrow> comma_semantic_b1_crt_occurrence option"
+    and refs :: "comma_semantic_b1_crt_lift_ref list"
+    and source :: comma_finite_position
+    and parent :: comma_semantic_b1_crt_occurrence
+    and child_occurrence :: comma_semantic_b1_crt_occurrence
+  assumes lift_bound: "lift_cid < length lift_column_ids"
+    and child_present: "occurrence_at child_index = Some child_occurrence"
+    and mismatched_shape:
+      "length (lift_column_ids!lift_cid) \<noteq>
+        length (comma_semantic_b1_crt_occurrence_beta child_occurrence)"
+  shows "\<not> comma_semantic_b1_crt_constructed_piece_matches columns
+      lift_column_ids sources occurrence_at refs source parent destination
+      (Comma_B1_Piece_Goto period slot child_index child_column lift_cid cid
+        parent_column)"
+  using lift_bound child_present mismatched_shape
+  by (auto simp: comma_semantic_b1_crt_constructed_piece_matches_def)
+
 
 ML \<open>
+(* The named proof calls in root_occurrence_exact reach checked data, source
+   ordering, index lookup, and exact child/lift bridges; root_occurrence_distinct_binding
+   calls construction_check_at. all_oracles follows those proof bodies, so keep
+   the independent local-cover fixture and negative root as separate roots. *)
 val _ =
   if null (Thm_Deps.all_oracles @{thms
     comma_indexed_all_zero
@@ -919,21 +955,7 @@ val _ =
     comma_selected_length_nil
     comma_selected_length_cons
     comma_semantic_b1_crt_local_cover_fixtures
-    comma_semantic_b1_crt_source_order_steps_sorted
-    comma_semantic_b1_crt_source_order_distinct
     comma_semantic_b1_crt_source_order_rejects_equal_adjacent_keys
-    comma_semantic_b1_crt_occurrence_data_checked
-    comma_semantic_b1_crt_find_source_member
-    comma_semantic_b1_crt_occurrence_entry_checked_at
-    comma_semantic_b1_crt_template_geometry_at_checked
-    comma_semantic_b1_crt_published_resolves_index
-    comma_semantic_b1_crt_occurrence_at_index_wellformed_check
-    comma_semantic_b1_crt_occurrence_at_index_total
-    comma_semantic_b1_crt_published_local_cover_witness
-    comma_semantic_b1_crt_published_children_resolve_index
-    comma_semantic_b1_crt_published_lift_candidate
-    comma_semantic_b1_crt_published_candidate_child_present
-    comma_semantic_b1_crt_published_exact
     comma_semantic_b1_crt_root_occurrence_exact
     comma_semantic_b1_crt_root_occurrence_distinct_binding
   }) then ()

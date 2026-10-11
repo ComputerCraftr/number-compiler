@@ -3,12 +3,12 @@
 from __future__ import annotations
 
 import math
-from typing import Literal
+from typing import Literal, cast
 
 import pytest
 
 from number_compiler.arithmetic.fields.consumer_pullback import ZERO as ZERO_Q
-from number_compiler.sequences.comma import boundary_quotient
+from number_compiler.sequences.comma import boundary_quotient, boundary_return
 from number_compiler.sequences.comma.arithmetic import (
     comma_children,
     cycle_transfer,
@@ -142,23 +142,23 @@ def test_affine_weight_refuses_nonintegral_or_forged_components() -> None:
 
 
 def test_affine_zero_and_identity_fastpaths_preserve_shared_ownership() -> None:
-    zero = boundary_quotient._ZERO_AFFINE
-    assert boundary_quotient._constant(0) is zero
-    assert boundary_quotient._from_weight(AffineWeight(0, 0, 1)) is zero
+    zero = boundary_return._ZERO_AFFINE
+    assert boundary_return._constant(0) is zero
+    assert boundary_return._from_weight(AffineWeight(0, 0, 1)) is zero
     assert zero.weight() is boundary_quotient._ZERO_WEIGHT
 
-    affine = boundary_quotient._from_weight(AffineWeight(1, 2, 3))
+    affine = boundary_return._from_weight(AffineWeight(1, 2, 3))
     assert zero.plus(affine) is affine
     assert affine.plus(zero) is affine
     assert affine.times(1) is affine
     assert affine.times(0) is zero
     assert affine.times(3).weight() == AffineWeight(1, 2, 1)
-    assert affine.plus(boundary_quotient._constant(1)).weight() == AffineWeight(1, 5, 3)
+    assert affine.plus(boundary_return._constant(1)).weight() == AffineWeight(1, 5, 3)
 
     # The former ExactRational construction rejected bool despite bool being
     # an int subclass; fastpaths must keep that strict input behavior.
     with pytest.raises(TypeError, match="components must be integers"):
-        boundary_quotient._constant(False)
+        boundary_return._constant(False)
     with pytest.raises(TypeError, match="components must be integers"):
         affine.times(False)
 
@@ -175,17 +175,17 @@ def test_indexed_macro_zero_period_preserves_nonzero_cycle_displacement() -> Non
         literal_steps=0,
         literal_increment=0,
     )
-    source_value = boundary_quotient._Affine(
-        boundary_quotient._integer_rational(source.a),
+    source_value = boundary_return._Affine(
+        boundary_return._integer_rational(source.a),
         ZERO_Q,
     )
-    template = boundary_quotient._indexed_macro(
+    template = boundary_return._indexed_macro(
         source,
         "landmine",
         0,
         None,
-        boundary_quotient._ZERO_AFFINE,
-        source_value.plus(boundary_quotient._constant(5)),
+        boundary_return._ZERO_AFFINE,
+        source_value.plus(boundary_return._constant(5)),
         (),
         [fragment],
         None,
@@ -235,7 +235,7 @@ def test_constant_weight_never_allocates_receiving_exponent(
     def forbidden_pow(*_args: int) -> int:
         raise AssertionError("constant weight allocated an endpoint scale")
 
-    monkeypatch.setattr(boundary_quotient, "pow", forbidden_pow, raising=False)
+    monkeypatch.setattr(boundary_return, "pow", forbidden_pow, raising=False)
     work: list[int] = []
     assert AffineWeight(0, 7, 1).evaluate(10**100, charge_bits=work.append) == 7
     assert work and sum(work) < 16
@@ -432,10 +432,10 @@ def test_macro_constructor_never_materializes_a_representative_scale(
     def forbidden_value(*_args: object, **_kwargs: object) -> int:
         raise AssertionError("constructor evaluated an absolute endpoint")
 
-    monkeypatch.setattr(boundary_quotient, "pow", modular_only, raising=False)
+    monkeypatch.setattr(boundary_return, "pow", modular_only, raising=False)
     monkeypatch.setattr(arithmetic, "pow", modular_only, raising=False)
     monkeypatch.setattr(
-        boundary_quotient._Affine, "at_scale", forbidden_value, raising=False
+        boundary_return._Affine, "at_scale", forbidden_value, raising=False
     )
     monkeypatch.setattr(BoundaryState, "value", forbidden_value)
     for state in (BoundaryState("N", 3, 5), BoundaryState("N", 2, 0)):
@@ -457,7 +457,7 @@ def test_bit_budget_rejects_before_boundary_power_allocations(
     def refuse(_bits: int) -> None:
         raise ValueError("bit budget")
 
-    monkeypatch.setattr(boundary_quotient, "pow", forbidden_pow, raising=False)
+    monkeypatch.setattr(boundary_return, "pow", forbidden_pow, raising=False)
     with pytest.raises(ValueError, match="bit budget"):
         macro.source.value(934, charge_bits=refuse)
     with pytest.raises(ValueError, match="bit budget"):
@@ -466,6 +466,45 @@ def test_bit_budget_rejects_before_boundary_power_allocations(
         macro.point(934, 1, charge_bits=refuse)
     with pytest.raises(ValueError, match="bit budget"):
         construct_macro(BoundaryState("N", 3, 5), charge_bits=refuse)
+
+
+def test_point_rejects_forged_seal_scalars_without_calling_custom_equality() -> None:
+    class EqualityTrap:
+        def __init__(self) -> None:
+            self.calls = 0
+
+        def __eq__(self, _other: object) -> bool:
+            self.calls += 1
+            return True
+
+    exponent = 934
+    macro = construct_macro(BoundaryState("N", 2, exponent % 924))
+    seal = macro._component_seal
+    assert seal is not None
+    selected = next(
+        (
+            index
+            for index, fragment in enumerate(macro.sector_fragments)
+            if fragment.period and fragment.complete_cycles.evaluate(exponent) > 0
+        ),
+        None,
+    )
+    assert selected is not None
+    transition_offset = macro.prefix_weights[selected].evaluate(exponent) + 1
+    trap = EqualityTrap()
+    fragment_rows = list(cast(tuple[object, ...], seal[1]))
+    selected_row = fragment_rows[selected]
+    assert type(selected_row) is tuple
+    fragment_rows[selected] = (trap, *selected_row[1:])
+    object.__setattr__(
+        macro,
+        "_component_seal",
+        (seal[0], tuple(fragment_rows), seal[2], seal[3]),
+    )
+
+    with pytest.raises(ValueError, match="publication was altered"):
+        macro.point(exponent, transition_offset)
+    assert trap.calls == 0
 
 
 @pytest.mark.parametrize(

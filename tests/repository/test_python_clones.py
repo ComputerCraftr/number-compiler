@@ -38,16 +38,218 @@ def test_duplicate_body_sizes_are_computed_in_one_module_walk(
     path = tmp_path / "nested.py"
     path.write_text(SOURCE)
     tree = ast.parse(SOURCE)
-    original_walk = ast.walk
-    walked: list[ast.AST] = []
+    original_inventory = python_clones._module_ast_inventory
+    inventoried: list[ast.AST] = []
 
-    def count_walk(node: ast.AST) -> list[ast.AST]:
-        walked.append(node)
-        return list(original_walk(node))
+    def count_inventory(
+        node: ast.Module,
+    ) -> tuple[
+        list[ast.AST],
+        dict[ast.AST, tuple[ast.AST, ...]],
+        dict[ast.AST, tuple[ast.AST, ...]],
+        dict[ast.AST, tuple[list[ast.stmt], ...]],
+        dict[ast.stmt, tuple[ast.stmt, ...]],
+    ]:
+        inventoried.append(node)
+        return original_inventory(node)
 
-    monkeypatch.setattr(ast, "walk", count_walk)
+    monkeypatch.setattr(python_clones, "_module_ast_inventory", count_inventory)
     duplicate_bodies(tmp_path, {path: tree})
-    assert walked == [tree]
+    assert inventoried == [tree]
+
+
+def test_small_complete_suite_does_not_generate_substantial_windows(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    path = tmp_path / "small.py"
+    source = "def small():\n a=1\n b=2\n c=3\n d=4\n"
+    path.write_text(source)
+
+    def unexpected_windows(_body: object) -> object:
+        raise AssertionError("small suite should be rejected before windows")
+
+    monkeypatch.setattr(python_clones, "_window_bodies", unexpected_windows)
+    assert duplicate_bodies(tmp_path, {path: ast.parse(source)}) == ()
+
+
+def test_plain_token_events_skip_identifier_rendering(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    def unexpected_render(
+        _event: python_clones._IdentifierToken,
+        _names: dict[python_clones._TokenBinding, int],
+    ) -> str:
+        raise AssertionError("plain string tokens need no identifier rendering")
+
+    monkeypatch.setattr(python_clones, "_render_token_event", unexpected_render)
+    tokens: list[str] = []
+    names: dict[python_clones._TokenBinding, int] = {}
+    binding = (None, "sample")
+
+    python_clones._consume_token_events(
+        (
+            "Constant:int:3:None",
+            python_clones._IdentifierReservation(binding),
+            "BinOp",
+        ),
+        names,
+        tokens,
+    )
+
+    assert tokens == ["Constant:int:3:None", "BinOp"]
+    assert names == {binding: 0}
+
+
+def test_statement_projection_preserves_binding_tokens() -> None:
+    sources = (
+        """
+def outer(values, scale):
+    global shared_value
+    state = 0
+    class Local:
+        label = "local"
+        def transform(self, item):
+            if item > 0:
+                return item * scale + 3
+            return 0
+    def inner(value=scale):
+        nonlocal state
+        import math as arithmetic
+        try:
+            output = []
+            for index, item in enumerate(values):
+                shifted = item * value + scale + index + 1
+                if shifted > 0:
+                    output.append(arithmetic.floor(shifted))
+            pieces = [
+                (lambda element: element * scale + 3)(item)
+                for item in values if (last := item) > 0
+            ]
+            payload = {"first": pieces[0], "rest": tuple(pieces[1:])}
+            match payload:
+                case {"first": first, **remaining}:
+                    state += first + len(remaining)
+                case [first, *rest]:
+                    state += first + len(rest)
+                case _:
+                    state += 1
+        except Exception as error:
+            state += len(str(error))
+        mapper = lambda item: (item * 3 + scale * 4) + (item - scale) * (item + scale) + (item * scale) - (scale * 5) + (item + 6) * (scale - 7)
+        return tuple(output), tuple(pieces), mapper, state
+    return inner, Local
+""",
+        """def windows(x,y):
+    print('left'); a=(x*3+y*4)+(x-y)*(x+y); b=(a+x)*(a-y)+(x*y); return b+x+y
+""",
+    )
+
+    reference_digest = hashlib.sha256()
+    for source in sources:
+        tree = ast.parse(source)
+        (
+            nodes,
+            _all_children,
+            lexical_children,
+            statement_suites,
+            statement_children,
+        ) = python_clones._module_ast_inventory(tree)
+        assert nodes == list(ast.walk(tree))
+        subtree_sizes: dict[ast.AST, tuple[int, int, int]] = {}
+        for node in reversed(nodes):
+            children = [subtree_sizes[child] for child in ast.iter_child_nodes(node)]
+            subtree_sizes[node] = (
+                int(isinstance(node, (ast.stmt, ast.expr)))
+                + sum(size for size, _, _ in children),
+                int(isinstance(node, ast.stmt))
+                + sum(count for _, count, _ in children),
+                int(isinstance(node, python_clones._OPERATIONS))
+                + sum(count for _, _, count in children),
+            )
+        bindings = python_clones._Bindings(tree, lexical_children=lexical_children)
+        for function in nodes:
+            if not isinstance(function, python_clones._FUNCTIONS):
+                continue
+            projection = python_clones._FunctionTokenProjection(
+                bindings, function, statement_children
+            )
+            for body in python_clones._substantial_bodies(
+                function,
+                subtree_sizes,
+                lexical_children=lexical_children,
+                statement_suites=statement_suites,
+            ):
+                expected = python_clones._tokens(body, bindings, function)
+                assert projection.tokenize(body) == expected
+                canonical = python_clones._canonical_tokens(expected[0])
+                reference_digest.update(len(canonical).to_bytes(8, "big"))
+                reference_digest.update(canonical)
+                reference_digest.update(
+                    f"{expected[1]},{expected[2]},{expected[3]};".encode("ascii")
+                )
+    # The production projection has cached nested statements rather than
+    # rebuilding each nested suite for every containing candidate.
+    nested_tree = ast.parse("def nested():\n if flag:\n  first = 1\n  second = 2\n")
+    nested_nodes, _, _, _, statement_children = python_clones._module_ast_inventory(
+        nested_tree
+    )
+    function = next(node for node in nested_nodes if isinstance(node, ast.FunctionDef))
+    branch = next(node for node in nested_nodes if isinstance(node, ast.If))
+    assert statement_children[function] == (branch,)
+    assert tuple(statement_children[branch]) == tuple(branch.body)
+    assert (
+        reference_digest.hexdigest()
+        == "af11a9c55aa525d4417cf6738190db19afc4859e1f6b582ce0cdcf45e01a18a0"
+    )
+
+
+def test_reviewer_binding_forms_keep_frozen_tokens() -> None:
+    source = """
+def sample(factor):
+    total = factor
+    class Local:
+        async def convert(self, values):
+            nonlocal total
+            transform = lambda item: item * factor + 3
+            try:
+                match values[0]:
+                    case {"value": matched, **remainder}:
+                        total = matched + len(remainder)
+                    case _:
+                        total = 0
+            except Exception as problem:
+                total = len(str(problem))
+            return transform(values[0]), total
+    return Local
+"""
+
+    def token_digest(text: str) -> str:
+        tree = ast.parse(text)
+        function = tree.body[0]
+        assert isinstance(function, ast.FunctionDef)
+        tokens = python_clones._tokens(
+            function.body, python_clones._Bindings(tree), function
+        )[0]
+        return hashlib.sha256(python_clones._canonical_tokens(tokens)).hexdigest()
+
+    alpha_renamed = (
+        source.replace("sample", "process")
+        .replace("factor", "scale")
+        .replace("total", "result")
+        .replace("Local", "Container")
+        .replace("values", "entries")
+        .replace("transform", "mapper")
+        .replace("item", "element")
+        .replace("matched", "captured")
+        .replace("remainder", "extras")
+        .replace("problem", "error")
+    )
+    changed_capture = source.replace("item * factor", "item * matched")
+
+    expected = "ead3e18a56aa65f56e04c839cb4dd3daa908d4aff165b1c61fe66a50c065f7cf"
+    assert token_digest(source) == expected
+    assert token_digest(alpha_renamed) == expected
+    assert token_digest(changed_capture) != expected
 
 
 def test_binding_resolution_is_cached_per_ast_node_and_analysis() -> None:

@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from collections.abc import Callable, Iterator, Mapping, Sequence
+from collections.abc import Iterator, Mapping, Sequence
 from dataclasses import fields, is_dataclass
 from functools import partial
 from typing import TYPE_CHECKING, cast
@@ -22,6 +22,10 @@ from number_compiler.arithmetic.contracts.scoped_handles import (
 )
 from number_compiler.arithmetic.contracts.semantic_identity import SemanticIdentity
 from number_compiler.arithmetic.fields.dyadic_tile import DyadicSpan, DyadicTile
+from number_compiler.resources.approved_effect_keys import (
+    effect_key_fingerprint,
+    effect_key_snapshot,
+)
 from number_compiler.resources.cache_gc_metrics import cache_event_owner_audit
 from number_compiler.resources.callback_payload_audit import (
     audit_callback_future_payloads,
@@ -29,6 +33,7 @@ from number_compiler.resources.callback_payload_audit import (
 from number_compiler.resources.ledger import LedgerSnapshot, OwnedMemo, ResourceLedger
 from number_compiler.resources.numeric_payload import numeric_aggregate_audit
 from number_compiler.resources.payload_containers import audit_mapping_items
+from number_compiler.resources.payload_contracts import _contract_semantic_component
 from number_compiler.resources.payload_schema import valid_semantic_record
 from number_compiler.resources.proof_payload_admission import (
     audit_registered_proof_payloads,
@@ -41,16 +46,6 @@ from number_compiler.resources.proof_payload_admission import (
 
 if TYPE_CHECKING:
     from number_compiler.resources.payload_policy import PayloadAudit
-
-
-def _contract_semantic_component(
-    value: object,
-    *,
-    owner: int,
-    approved: frozenset[tuple[int, int]],
-    semantic: Callable[..., bool],
-) -> bool:
-    return (owner, id(value)) in approved or semantic(value, owner=owner)
 
 
 def audit_registered_payloads(
@@ -258,7 +253,9 @@ def audit_registered_payloads(
             forbidden.add((node_owner, id(root)))
     huge: set[tuple[int, int]] = set()
     unknown: set[tuple[int, int]] = set()
-    approved_keys: set[object] = set()
+    approved_key_fingerprints: set[tuple[tuple[object, ...], ...]] = set()
+    approved_key_identity_ids: set[int] = set()
+    approved_key_roots: list[object] = []
     approved_metadata: set[int] = set()
     definition_source: Iterator[tuple[int, object]] | None = iter(
         ledger.iter_payloads()
@@ -400,6 +397,7 @@ def audit_registered_payloads(
             else:
                 state_bound = max(state_bound, effect.blank)
             key = _effect_key(effect)
+            approved_key_roots.append(key)
             metadata_nodes: list[object] = [key]
             candidate_metadata: set[int] = set()
             try:
@@ -420,7 +418,11 @@ def audit_registered_payloads(
             except (TypeError, ValueError, AttributeError):
                 forbidden.add((definition_owner, id(definition)))
                 continue
-            approved_keys.add(key)
+            key_snapshot = effect_key_snapshot(key)
+            if key_snapshot is not None:
+                fingerprint, identity_ids = key_snapshot
+                approved_key_identity_ids.update(identity_ids)
+                approved_key_fingerprints.add(fingerprint)
             approved_metadata.update(candidate_metadata)
             if type(definition) is ProgramComposition:
                 definitions.extend(
@@ -442,10 +444,10 @@ def audit_registered_payloads(
         if id(value) in approved_metadata:
             return True
         if type(value) is tuple:
-            try:
-                return value in approved_keys
-            except TypeError:
-                return False
+            fingerprint = effect_key_fingerprint(
+                value, authorized_identity_ids=approved_key_identity_ids
+            )
+            return fingerprint is not None and fingerprint in approved_key_fingerprints
         return False
 
     semantic = SemanticPayloadRegistry(
@@ -706,6 +708,7 @@ def audit_registered_payloads(
                     _contract_semantic_component,
                     owner=owner,
                     approved=contract_audit.approved,
+                    owned_semantic_members=source_bound.payload_members_by_owner,
                     semantic=semantic_component,
                 ),
             )
@@ -743,6 +746,11 @@ def audit_registered_payloads(
                 support_payloads,
             )
         ):
+            continue
+        if source_bound.owns_payload_member(owner, value):
+            # This exact frozen value was approved as a direct member of a
+            # sealed source-image payload. Stop traversal here so its occurrence
+            # coordinates are not reclassified as an untyped numeric aggregate.
             continue
         recognizing = next(
             (

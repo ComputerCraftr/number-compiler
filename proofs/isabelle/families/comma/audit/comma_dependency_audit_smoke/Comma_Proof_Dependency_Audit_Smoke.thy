@@ -34,6 +34,46 @@ lemma comma_dependency_smoke_open:
   by (rule comma_dependency_smoke_atom)
 
 ML \<open>
+  (* Independent pre-optimization reference walker for the differential
+     fixture below.  Keep it here rather than in the production audit API. *)
+  fun legacy_names thy thms =
+    let
+      fun visit [] seen found = (seen, found)
+        | visit ((serial, node) :: pending) seen found =
+            if Inttab.defined seen serial then
+              visit pending seen found
+            else
+              let
+                val seen' = Inttab.update (serial, ()) seen
+                val node_name = Proofterm.thm_node_name node
+                val name = Thm_Name.print node_name
+                val found' =
+                  if Thm_Name.is_empty node_name then found
+                  else Symtab.update (name, ()) found
+                val children = Proofterm.thm_node_thms node
+              in
+                visit (children @ pending) seen' found'
+              end
+      val roots = maps (Thm.thm_deps o Thm.transfer thy) thms
+      val (_, found) = visit roots Inttab.empty Symtab.empty
+    in
+      Symtab.keys found
+    end
+
+  val differential_endpoints = @{thms
+    comma_dependency_smoke_grandchild
+    comma_dependency_smoke_retired_grandchild
+    comma_dependency_smoke_atom_suffix};
+  val legacy_named = legacy_names
+    (Proof_Context.theory_of @{context}) differential_endpoints;
+  val combined_named = Comma_Proof_Dependency_Audit.checked_names
+    (Proof_Context.theory_of @{context}) "dependency walker differential"
+    differential_endpoints;
+  val _ = if legacy_named = combined_named then ()
+    else error "combined dependency walker changed transitive names";
+  val _ = if null (Thm_Deps.all_oracles differential_endpoints) then ()
+    else error "oracle-free differential fixture unexpectedly contains an oracle";
+
   val _ = Comma_Proof_Dependency_Audit.require_expected_paths @{context}
     "positive exact dependency" ["comma_dependency_smoke_atom"]
     @{thms comma_dependency_smoke_grandchild}

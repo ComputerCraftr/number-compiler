@@ -54,6 +54,47 @@ def test_occurrence_value_preflights_large_physical_exponents() -> None:
     assert charged[-1] > 10_000
 
 
+def test_boundary_occurrence_rejects_mutated_state_fields() -> None:
+    source = BoundaryOccurrence(BoundaryState("N", 2, 5), 5)
+    object.__setattr__(source.state, "a", 8)
+
+    with pytest.raises(ValueError, match="exact snapshot"):
+        source.value()
+
+
+def test_boundary_occurrence_rejects_mutated_same_residue_exponent() -> None:
+    source = BoundaryOccurrence(BoundaryState("N", 2, 5), 5)
+    object.__setattr__(source, "exponent", 929)
+
+    with pytest.raises(ValueError, match="exact snapshot"):
+        source.c1_phase()
+
+
+def test_macro_child_kind_requires_exact_string_before_materializing_children(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    source = BoundaryOccurrence(BoundaryState("N", 9, 5), 5)
+    prefix = OccurrencePrefixReturn(
+        source,
+        construct_macro(source.state, grouped_near=True),
+    )
+
+    class NKindAlias:
+        def __eq__(self, other: object) -> bool:
+            return other == "N"
+
+    def reject_materialization(*_args: object, **_kwargs: object) -> object:
+        pytest.fail("invalid child kind reached literal-child materialization")
+
+    monkeypatch.setattr(
+        OccurrencePrefixReturn,
+        "ordered_literal_children",
+        reject_materialization,
+    )
+    with pytest.raises(ValueError, match="child kind must be N or Z"):
+        prefix.child(NKindAlias())  # type: ignore[arg-type]
+
+
 @pytest.mark.parametrize(
     ("leading", "outcome"),
     ((2, "landmine"), (9, "fork")),
@@ -122,6 +163,64 @@ def test_published_prefix_rejects_changed_macro_weight() -> None:
 
     with pytest.raises(ValueError, match="snapshot"):
         _ = prefix.terminal_value
+
+
+@pytest.mark.parametrize("mutate_before_publication", (False, True))
+def test_prefix_rejects_equality_alias_in_macro_source(
+    mutate_before_publication: bool,
+) -> None:
+    class EqualityTrap:
+        calls = 0
+
+        def __eq__(self, _other: object) -> bool:
+            self.calls += 1
+            raise AssertionError("untrusted boundary equality was evaluated")
+
+    source = BoundaryOccurrence(BoundaryState("N", 9, 5), 5)
+    template = construct_macro(source.state, grouped_near=True)
+    prefix = None
+    if not mutate_before_publication:
+        prefix = OccurrencePrefixReturn(source, template)
+
+    forged_source = BoundaryState("N", 9, 5)
+    alias = EqualityTrap()
+    object.__setattr__(forged_source, "kind", alias)
+    object.__setattr__(template, "source", forged_source)
+
+    with pytest.raises(ValueError, match="noncanonical scalar fields"):
+        if prefix is None:
+            OccurrencePrefixReturn(source, template)
+        else:
+            _ = prefix.terminal_value
+    assert alias.calls == 0
+
+
+def test_prefix_template_point_checks_only_the_selected_sealed_fragment() -> None:
+    exponent = 934
+    state = BoundaryState("N", 2, exponent % 924)
+    source = BoundaryOccurrence(state, exponent)
+    template = construct_macro(state)
+    prefix = OccurrencePrefixReturn(source, template)
+    selected = next(
+        (
+            (index, fragment)
+            for index, fragment in enumerate(template.sector_fragments)
+            if fragment.period and fragment.complete_cycles.evaluate(exponent) > 0
+        ),
+        None,
+    )
+    assert selected is not None
+    index, fragment = selected
+    transition_offset = (
+        template.prefix_weights[index].evaluate(exponent) + fragment.period
+    )
+    object.__setattr__(fragment, "displacement", fragment.displacement + 1)
+
+    # The cached terminal is independent of chart-component reads; point
+    # selection validates its logarithmically selected component rows.
+    assert prefix.terminal_value > 0
+    with pytest.raises(ValueError, match="publication was altered"):
+        prefix.template.point(exponent, transition_offset)
 
 
 def test_child_occurrence_composition_uses_shared_exact_width_action() -> None:

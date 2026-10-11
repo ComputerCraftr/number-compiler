@@ -1,6 +1,7 @@
 theory Comma_Semantic_B1_CRT_Lift_Bindings
   imports Comma_Semantic_B1_CRT_Split_Bindings
 begin
+ML \<open>Comma_Proof_Profile.report "Lift bindings stage=entered"\<close>
 
 text \<open>
 Compact source entries keep one reference for each source slot.  A Goto
@@ -403,8 +404,7 @@ ML \<open>
 
 
 ML \<open>
-val _ =
-  if null (Thm_Deps.all_oracles @{thms
+val checked = @{thms
     comma_semantic_b1_crt_lift_rejects_malformed_descriptor
     comma_semantic_b1_crt_lift_slot_rejects_foreign_child
     comma_semantic_b1_crt_lift_slot_rejects_out_of_range_child
@@ -414,7 +414,12 @@ val _ =
     comma_semantic_b1_crt_lift_scope_eval
     comma_semantic_b1_crt_lift_positive_shift_asymmetric
     comma_semantic_b1_crt_lift_rejects_foreign_template_cid
-  }) then ()
+  }
+val _ = Thm.consolidate checked
+val _ = Comma_Proof_Profile.report
+  "Lift bindings stage=final claims consolidated"
+val _ = if null (Thm_Deps.all_oracles checked) then ()
   else error "Comma_Semantic_B1_CRT_Lift_Bindings local oracle audit failed"
+val _ = Comma_Proof_Profile.report "Lift bindings stage=oracle audit checked"
 \<close>
 end

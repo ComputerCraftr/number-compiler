@@ -21,7 +21,7 @@ struct
         let
           val rule = Drule.infer_instantiate ctxt
             [(("x",0), Thm.cterm_of ctxt (HOLogic.mk_number @{typ nat} x))]
-            @{thm comma_decade_control_orbit_representative}
+            @{thm comma_fast_decade_control_orbit_representative}
           val bound = Goal.prove ctxt [] []
             (HOLogic.mk_Trueprop (@{term "(\<le>) :: nat \<Rightarrow> nat \<Rightarrow> bool"} $
               HOLogic.mk_number @{typ nat} x $ @{term "90::nat"}))

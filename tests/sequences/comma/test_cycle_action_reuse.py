@@ -13,7 +13,8 @@ from number_compiler.resources.temporal_diagnostics import (
 )
 from number_compiler.sequences.comma import cycle_actions
 from number_compiler.sequences.comma.action_arena import CommaActionArena, _Action
-from number_compiler.sequences.comma.power import CommaImagePayload, CommaTerm
+from number_compiler.sequences.comma.image_adapter import CommaImagePayload
+from number_compiler.sequences.comma.power import CommaTerm
 from tests.support.comma_oracles import literal_children
 
 pytestmark = pytest.mark.usefixtures("isolated_process_cache")

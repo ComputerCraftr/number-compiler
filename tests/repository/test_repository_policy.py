@@ -1,3 +1,4 @@
+import ast
 import os
 from collections.abc import Callable, Iterator
 from pathlib import Path
@@ -57,6 +58,43 @@ def test_aggregate_policy_report_uses_one_authored_source_walk(
     assert walk_calls == 1
     assert report["source_line_violations"] == ()
     assert report["package_violations"] == ()
+
+
+def test_optional_policy_profile_reports_existing_snapshot_without_changing_report(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    package = tmp_path / "src" / "number_compiler"
+    package.mkdir(parents=True)
+    (package / "__init__.py").write_text('"""test package"""\n')
+    sample = package / "sample.py"
+    sample.write_text("def sample(value):\n    return value + 1\n")
+
+    monkeypatch.delenv("NUMBER_COMPILER_POLICY_PROFILE", raising=False)
+    ordinary_report = repository_policy_report(tmp_path)
+    assert capsys.readouterr().err == ""
+
+    monkeypatch.setenv("NUMBER_COMPILER_POLICY_PROFILE", "1")
+    profiled_report = repository_policy_report(tmp_path)
+    profile_output = capsys.readouterr()
+
+    assert profiled_report == ordinary_report
+    assert profile_output.out == ""
+    assert "policy-profile: snapshot:complete seconds=" in profile_output.err
+    assert "policy-profile: ownership:complete seconds=" in profile_output.err
+    assert "policy-profile: entrypoints:complete seconds=" in profile_output.err
+    assert "policy-profile: recursion:complete seconds=" in profile_output.err
+    assert "policy-profile: clones:complete seconds=" in profile_output.err
+    assert "policy-profile: package:complete seconds=" in profile_output.err
+    expected_ast_nodes = sum(
+        sum(1 for _node in ast.walk(ast.parse(path.read_text(encoding="utf-8"))))
+        for path in package.glob("*.py")
+    )
+    assert (
+        f"policy-profile: clone-progress modules=2 ast_nodes={expected_ast_nodes} "
+        in profile_output.err
+    )
 
 
 @pytest.mark.validation
@@ -330,7 +368,7 @@ def test_local_import_shadows_same_named_method_without_false_recursion(
 
 
 def test_call_catalog_keeps_nested_functions_and_lambdas_separate(
-    tmp_path: Path,
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     (tmp_path / "a.py").write_text(
         "def outer():\n"
@@ -339,6 +377,11 @@ def test_call_catalog_keeps_nested_functions_and_lambdas_separate(
         "    deferred = lambda: outer()\n"
         "    return inner, deferred\n"
     )
+
+    def unexpected_ast_walk(_node: ast.AST) -> Iterator[ast.AST]:
+        raise AssertionError("catalog should use its existing explicit traversal")
+
+    monkeypatch.setattr(ast, "walk", unexpected_ast_walk)
     assert recursion_cycles(tmp_path) == (("a:outer.inner",),)
 
 

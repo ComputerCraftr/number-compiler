@@ -1,5 +1,7 @@
 """Resource limits fail before allocation and retain an auditable owner inventory."""
 
+from typing import cast
+
 import pytest
 
 from number_compiler.arithmetic.contracts.block_effect import BlockContextBudgetExceeded
@@ -8,6 +10,25 @@ from number_compiler.resources.ledger import OwnedMemo, ResourceLedger
 from number_compiler.resources.ownership import audit_execution_ownership
 from number_compiler.resources.stores import LedgerDict
 from tests.support.assertions import assert_rejected_atomically
+
+
+def test_owner_name_batch_preflight_is_exact_distinct_and_nonmutating() -> None:
+    ledger = ResourceLedger()
+    ledger.require_fresh_owner_names(("first", "second"))
+    with pytest.raises(TypeError, match="tuple"):
+        ledger.require_fresh_owner_names(cast(tuple[str, ...], ["first"]))
+    with pytest.raises(TypeError, match="strings"):
+        ledger.require_fresh_owner_names(cast(tuple[str, ...], ("first", 1)))
+    with pytest.raises(ValueError, match="distinct"):
+        ledger.require_fresh_owner_names(("same", "same"))
+    with pytest.raises(ValueError, match="nonempty"):
+        ledger.require_fresh_owner_names(("",))
+
+    ledger.register("taken", "TEST_OWNER")
+    before = ledger.owner_count
+    with pytest.raises(ValueError, match="already registered"):
+        ledger.require_fresh_owner_names(("fresh", "taken"))
+    assert ledger.owner_count == before
 
 
 @pytest.mark.parametrize("dimension", ["entries", "nodes"])

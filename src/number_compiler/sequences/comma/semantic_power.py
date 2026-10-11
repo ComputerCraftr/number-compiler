@@ -2,15 +2,18 @@
 
 from __future__ import annotations
 
+from _thread import LockType
 from collections.abc import Callable, Iterator
-from contextlib import contextmanager
+from contextlib import ExitStack, contextmanager
 from dataclasses import dataclass
 from math import lcm
+from threading import Lock
 from typing import Self, cast
 
 from number_compiler.arithmetic.contracts.scoped_handles import ArenaToken
 from number_compiler.resources.fused_traversal_workspace import (
     FusedTraversalWorkspace,
+    fused_traversal_workspace_owner_names,
 )
 from number_compiler.resources.ledger import OwnedMemo, ResourceLedger
 from number_compiler.sequences.comma.boundary_chart import PERIOD, BoundaryChart
@@ -97,14 +100,25 @@ def _workspace_reservation(
             ledger.release(owner, nodes=held)
 
 
+@contextmanager
+def _dispose_on_exit(dispose: Callable[[], None]) -> Iterator[None]:
+    """Keep attempting later cleanup actions when one disposer raises."""
+    try:
+        yield
+    finally:
+        dispose()
+
+
 class SymbolicDecadePowers:
     """Square completed B1 returns on CRT columns, without phase-row sampling.
 
     This is the symbolic action consumer of the existing continuation owner.
     B1 alone is common-shift normalized. Higher powers preserve their exact
     completed columns and output bindings; Stop weights and clock transport
-    remain occurrence payload. This does not infer infinite branch safety or
-    authorize the public CLI's forest cutover.
+    remain occurrence payload. This owner does not infer infinite branch
+    safety; public prefix admission uses a separately registered global
+    FutureCID provider when available and retains finite forest admission
+    otherwise.
     """
 
     def __init__(self, view: SemanticContinuation) -> None:
@@ -117,24 +131,34 @@ class SymbolicDecadePowers:
             for index, source in enumerate(roots)
         ):
             raise ValueError("symbolic powers require the 46 ordered canonical roots")
+        ledger = view.ledger
+        prefix = f"comma-symbolic-powers-{ledger.owner_count}"
+        owner_names = (
+            prefix + "-base",
+            prefix + "-columns",
+            prefix + "-bindings",
+            prefix + "-input-templates",
+            prefix + "-composition-workspace",
+        )
+        ledger.require_fresh_owner_names(owner_names)
         self.view = view
         self._closed = False
-        prefix = f"comma-symbolic-powers-{view.ledger.owner_count}"
-        base_owner = view.ledger.register(prefix + "-base", "semantic_return_partition")
+        self._closing = False
+        base_owner = ledger.register(prefix + "-base", "semantic_return_partition")
         self._base: OwnedMemo[ContinuationID, B1ReturnPartitionRecord] = OwnedMemo(
-            view.ledger, base_owner, node_cost=return_partition_node_cost
+            ledger, base_owner, node_cost=return_partition_node_cost
         )
         column_owner = view.ledger.register(
             prefix + "-columns", "semantic_return_column"
         )
         self._columns: OwnedMemo[ReturnColumnKey, ReturnColumnKey] = OwnedMemo(
-            view.ledger, column_owner, node_cost=_column_node_cost
+            ledger, column_owner, node_cost=_column_node_cost
         )
         power_owner = view.ledger.register(
             prefix + "-bindings", "semantic_return_power"
         )
         self._powers: OwnedMemo[tuple[int, int], _ReturnPowerBinding] = OwnedMemo(
-            view.ledger,
+            ledger,
             power_owner,
             node_cost=_power_binding_cost,
             composition_entries=True,
@@ -144,15 +168,14 @@ class SymbolicDecadePowers:
         )
         self._input_templates: OwnedMemo[
             tuple[tuple[ReturnColumnKey, ...], int], tuple[ReturnColumnKey, ...]
-        ] = OwnedMemo(view.ledger, input_owner, node_cost=_translated_template_cost)
-        self._composition_workspace_owner = view.ledger.register(
+        ] = OwnedMemo(ledger, input_owner, node_cost=_translated_template_cost)
+        self._composition_workspace_owner = ledger.register(
             prefix + "-composition-workspace", "semantic_return_composition_workspace"
         )
         self._completed_level = -1
 
     def __enter__(self) -> Self:
-        if self._closed:
-            raise RuntimeError("symbolic decade powers are closed")
+        self._check_open()
         return self
 
     def __exit__(self, _exc_type: object, _exc: object, _tb: object) -> None:
@@ -161,12 +184,25 @@ class SymbolicDecadePowers:
     def close(self) -> None:
         """Drop occurrence references before their shared template graphs."""
         if not self._closed:
-            self._input_templates.dispose()
-            self._powers.dispose()
-            self._columns.dispose()
-            self._base.dispose()
-            self.view.ledger.mark_disposed(self._composition_workspace_owner)
+            self._closing = True
+            with ExitStack() as cleanup:
+                cleanup.enter_context(
+                    _dispose_on_exit(
+                        lambda: self.view.ledger.mark_disposed(
+                            self._composition_workspace_owner
+                        )
+                    )
+                )
+                cleanup.enter_context(_dispose_on_exit(self._base.dispose))
+                cleanup.enter_context(_dispose_on_exit(self._columns.dispose))
+                cleanup.enter_context(_dispose_on_exit(self._powers.dispose))
+                cleanup.enter_context(_dispose_on_exit(self._input_templates.dispose))
             self._closed = True
+            self._closing = False
+
+    def _check_open(self) -> None:
+        if self._closed or self._closing:
+            raise RuntimeError("symbolic decade powers are closing or closed")
 
     def _publish(self, level: int, root: int, partition: ReturnMDDPartition) -> None:
         with _workspace_reservation(
@@ -308,8 +344,7 @@ class SymbolicDecadePowers:
 
     def construct(self, level: int) -> None:
         """Publish B(2**level) from the previous completed symbolic action."""
-        if self._closed:
-            raise RuntimeError("symbolic decade powers are closed")
+        self._check_open()
         if type(level) is not int or level < 0:
             raise ValueError("symbolic decade level must be nonnegative")
         if level <= self._completed_level:
@@ -399,9 +434,17 @@ class PoweredDecadeApplication:
         if not callable(source_for_live_root):
             raise TypeError("comma live root resolver must be callable")
         self.view = view
-        self._source_for_live_root = source_for_live_root
+        self._source_for_live_root: Callable[[int], SourceState] | None = (
+            source_for_live_root
+        )
         self.binding = ArenaToken("comma-powered-decade-binding")
         prefix = f"comma-semantic-powered-{view.ledger.owner_count}"
+        owner_names = (
+            prefix,
+            prefix + "-roots",
+            *fused_traversal_workspace_owner_names(prefix),
+        )
+        view.ledger.require_fresh_owner_names(owner_names)
         owner = view.ledger.register(prefix, "semantic_dyadic_application")
         binding_owner = view.ledger.register(
             prefix + "-roots", "semantic_live_root_binding"
@@ -418,14 +461,29 @@ class PoweredDecadeApplication:
             view.ledger, binding_owner, nodes_per_entry=1
         )
         self._workspace = FusedTraversalWorkspace(view.ledger, prefix)
+        self._operation_lock: LockType = Lock()
+        self._active = False
         self.requests = 0
         self.hits = 0
         self.misses = 0
         self._closed = False
+        self._closing = False
 
     def _check_open(self) -> None:
-        if self._closed:
-            raise RuntimeError("comma powered application is closed")
+        if self._closed or self._closing:
+            raise RuntimeError("comma powered application is closing or closed")
+
+    def _begin_operation(self, *, active: bool = True) -> None:
+        if not self._operation_lock.acquire(blocking=False):
+            raise RuntimeError("comma powered application is already active")
+        if self._closed or self._closing:
+            self._operation_lock.release()
+            raise RuntimeError("comma powered application is closing or closed")
+        self._active = active
+
+    def _end_operation(self) -> None:
+        self._active = False
+        self._operation_lock.release()
 
     def __enter__(self) -> Self:
         self._check_open()
@@ -436,10 +494,21 @@ class PoweredDecadeApplication:
 
     def close(self) -> None:
         """Release the dyadic memo while retaining the immutable CID view."""
-        if not self._closed:
-            self._memo.dispose()
-            self._root_bindings.dispose()
-            self._closed = True
+        if not self._operation_lock.acquire(blocking=False):
+            raise RuntimeError("cannot close an active comma powered application")
+        try:
+            if not self._closed:
+                self._closing = True
+                self._source_for_live_root = None
+
+                with ExitStack() as cleanup:
+                    cleanup.enter_context(_dispose_on_exit(self._workspace.dispose))
+                    cleanup.enter_context(_dispose_on_exit(self._root_bindings.dispose))
+                    cleanup.enter_context(_dispose_on_exit(self._memo.dispose))
+                self._closed = True
+                self._closing = False
+        finally:
+            self._operation_lock.release()
 
     def _memo_lookup(
         self, key: tuple[ArenaToken, SourceState, int, int]
@@ -469,9 +538,12 @@ class PoweredDecadeApplication:
         root = action.live_root
         if root is None:
             raise AssertionError("Live action lost its root binding")
+        resolver = self._source_for_live_root
+        if resolver is None:
+            raise RuntimeError("comma live root resolver is not bound")
         next_source = self._root_bindings.get(root)
         if next_source is None:
-            next_source = self._source_for_live_root(root)
+            next_source = resolver(root)
             if type(next_source) is not BoundaryChart:
                 raise TypeError("comma live root resolver returned a non-chart value")
             # Publish one immutable, ledger-owned binding per root.  Future
@@ -684,6 +756,56 @@ class PoweredDecadeApplication:
             return result
 
     def apply(
+        self,
+        source: SourceState,
+        phase: int,
+        count: int,
+        *,
+        delta: int = 0,
+    ) -> DecadeSummary:
+        """Apply through this manual owner's warm memo, rejecting reentry."""
+        self._begin_operation()
+        try:
+            return self._apply_active(source, phase, count, delta=delta)
+        finally:
+            self._end_operation()
+
+    def _apply_rebound(
+        self,
+        source: SourceState,
+        phase: int,
+        count: int,
+        *,
+        source_for_live_root: Callable[[int], SourceState],
+        delta: int = 0,
+    ) -> DecadeSummary:
+        """Run one callback-scoped request, discarding all request-local work."""
+        if not callable(source_for_live_root):
+            raise TypeError("comma live root resolver must be callable")
+        self._begin_operation(active=False)
+        try:
+            self._clear_request_state()
+            self.binding = ArenaToken("comma-powered-decade-binding")
+            self._source_for_live_root = source_for_live_root
+            self.requests = self.hits = self.misses = 0
+            self._active = True
+            return self._apply_active(source, phase, count, delta=delta)
+        finally:
+            try:
+                self._active = False
+                self._clear_request_state()
+            finally:
+                self.binding = ArenaToken("comma-powered-decade-binding")
+                self._source_for_live_root = None
+                self._end_operation()
+
+    def _clear_request_state(self) -> None:
+        try:
+            self._memo.clear()
+        finally:
+            self._root_bindings.clear()
+
+    def _apply_active(
         self,
         source: SourceState,
         phase: int,

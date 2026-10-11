@@ -2,6 +2,8 @@ theory Comma_Source_Continuation_DAG
   imports Comma_Decisive_Endpoint_Quotient
 begin
 
+ML \<open>Comma_Decisive_Endpoint_Profile.report "Source continuation DAG stage=entered"\<close>
+
 text \<open>
 An occurrence's decimal shift is carried by application, not by the
 continuation identifier.  The identifier is the complete finite local-phase
@@ -32,6 +34,12 @@ lemma comma_source_continuation_base_idempotent [simp]:
 lemma comma_source_continuation_base_sector [simp]:
   "comma_sector_number (comma_source_continuation_base source)=comma_sector_number source"
   by (cases source) simp_all
+
+ML \<open>
+  Thm.consolidate @{thms comma_source_continuation_reconstruct
+    comma_source_continuation_base_idempotent comma_source_continuation_base_sector};
+  Comma_Decisive_Endpoint_Profile.report "Source continuation DAG stage=base facts consolidated"
+\<close>
 
 datatype comma_source_continuation_action =
     Comma_Continuation_Goto comma_finite_position nat
@@ -90,15 +98,40 @@ lemma comma_source_continuation_action_shift:
       comma_source_continuation_shift_position comma_round_crossing_shift
       split: if_splits)
 
+ML \<open>
+  Thm.consolidate @{thms comma_source_continuation_base_shift_position
+    comma_source_continuation_shift_position comma_source_continuation_action_shift};
+  Comma_Decisive_Endpoint_Profile.report "Source continuation DAG stage=action shift consolidated"
+\<close>
+
 lemma comma_source_continuation_target_transport:
   "comma_decisive_sector_target r source =
     comma_shift_position (comma_source_continuation_shift source)
       (comma_decisive_sector_target
         ((r+comma_source_continuation_shift source) mod 924)
         (comma_source_continuation_base source))"
-  by (cases source)
-    (simp_all add: comma_decisive_sector_target.simps Let_def
-      comma_shift_position.simps split: option.splits prod.splits)
+proof (cases source)
+  case (Comma_Entry f delta x)
+  let ?phase = "(r+delta) mod 924"
+  have base_phase: "(?phase+0) mod 924=?phase"
+    by (simp only: add_0_right mod_mod_trivial)
+  then show ?thesis using Comma_Entry base_phase
+    by (simp add: comma_source_continuation_shift.simps
+      comma_source_continuation_base.simps comma_decisive_sector_target.simps
+      comma_shift_position.simps Let_def add_0_left base_phase
+      split: option.splits prod.splits)
+next
+  case (Comma_Near f delta h)
+  then show ?thesis
+    by (simp only: comma_source_continuation_shift.simps
+      comma_source_continuation_base.simps comma_decisive_sector_target.simps
+      comma_shift_position.simps add_0_left)
+qed
+
+ML \<open>
+  Thm.consolidate @{thms comma_source_continuation_target_transport};
+  Comma_Decisive_Endpoint_Profile.report "Source continuation DAG stage=target transport consolidated"
+\<close>
 
 lemma comma_source_continuation_packet_transport:
   "comma_decisive_endpoint_packet r source =
@@ -120,14 +153,28 @@ proof -
     by (rule comma_source_continuation_target_transport)
   have phase: "(r mod 924+?delta) mod 924=?phase"
     by (simp add: mod_add_left_eq)
+  have phase_bound: "?phase<924" by simp
   have step:
     "comma_fast_step (r mod 924) (comma_shift_position ?delta ?target)=
       comma_shift_move ?delta (comma_fast_step ?phase ?target)"
-    using comma_finite_step_phase_shift[of "r mod 924" ?delta ?target]
-    by (simp only: comma_fast_step_correct; simp add: phase)
+  proof -
+    have finite_step:
+      "comma_finite_step (r mod 924) (comma_shift_position ?delta ?target)=
+        comma_shift_move ?delta
+          (comma_finite_step (((r mod 924)+?delta) mod 924) ?target)"
+      by (rule comma_finite_step_phase_shift)
+    show ?thesis using finite_step phase
+      by (simp only: comma_fast_step_correct)
+  qed
   show ?thesis using target step
-    by (simp add: comma_decisive_endpoint_packet_def Let_def)
+    by (simp only: comma_decisive_endpoint_packet_def Let_def target step
+      phase_bound mod_less fst_conv snd_conv)
 qed
+
+ML \<open>
+  Thm.consolidate @{thms comma_source_continuation_packet_transport};
+  Comma_Decisive_Endpoint_Profile.report "Source continuation DAG stage=packet transport consolidated"
+\<close>
 
 definition comma_source_continuation_id ::
     "comma_finite_position \<Rightarrow> nat \<times> comma_source_continuation_action list" where
@@ -154,6 +201,12 @@ lemma comma_source_continuation_id_shift:
     comma_source_continuation_id source"
   by (simp add: comma_source_continuation_id_def
     comma_source_continuation_base_shift_position)
+
+ML \<open>
+  Thm.consolidate @{thms comma_source_continuation_id_base
+    comma_source_continuation_id_shift};
+  Comma_Decisive_Endpoint_Profile.report "Source continuation DAG stage=identifier facts consolidated"
+\<close>
 
 lemma comma_source_continuation_equal_id_action:
   assumes "comma_source_continuation_id left=comma_source_continuation_id right"
@@ -220,9 +273,45 @@ proof -
        comma_shift_move ?shift
          (snd (comma_decisive_endpoint_packet ((r+?shift) mod 924) ?base)))"
     by (rule comma_source_continuation_packet_transport)
-  show ?thesis using slot packet
-    by (simp add: comma_source_continuation_action_shift)
+  have packet_action:
+    "comma_source_continuation_action_of_packet
+        (comma_decisive_endpoint_packet r source) =
+      comma_source_continuation_transport ?shift
+        (comma_source_continuation_action_of_packet
+          (fst (comma_decisive_endpoint_packet ((r+?shift) mod 924) ?base),
+           snd (comma_decisive_endpoint_packet ((r+?shift) mod 924) ?base)))"
+  proof -
+    have packet_cong:
+      "comma_source_continuation_action_of_packet
+          (comma_decisive_endpoint_packet r source) =
+        comma_source_continuation_action_of_packet
+          (comma_shift_position ?shift
+             (fst (comma_decisive_endpoint_packet ((r+?shift) mod 924) ?base)),
+           comma_shift_move ?shift
+             (snd (comma_decisive_endpoint_packet ((r+?shift) mod 924) ?base)))"
+      by (rule arg_cong[where f=comma_source_continuation_action_of_packet,
+        OF packet])
+    have action_shift:
+      "comma_source_continuation_action_of_packet
+          (comma_shift_position ?shift
+             (fst (comma_decisive_endpoint_packet ((r+?shift) mod 924) ?base)),
+           comma_shift_move ?shift
+             (snd (comma_decisive_endpoint_packet ((r+?shift) mod 924) ?base))) =
+        comma_source_continuation_transport ?shift
+          (comma_source_continuation_action_of_packet
+            (fst (comma_decisive_endpoint_packet ((r+?shift) mod 924) ?base),
+             snd (comma_decisive_endpoint_packet ((r+?shift) mod 924) ?base)))"
+      by (rule comma_source_continuation_action_shift)
+    show ?thesis using packet_cong action_shift by simp
+  qed
+  show ?thesis using slot packet_action by simp
 qed
+
+ML \<open>
+  Thm.consolidate @{thms comma_source_continuation_base_admitted
+    comma_source_continuation_signature_slot comma_source_continuation_apply_exact};
+  Comma_Decisive_Endpoint_Profile.report "Source continuation DAG stage=application facts consolidated"
+\<close>
 
 lemma comma_source_continuation_goto_decreases:
   assumes source: "comma_round_admitted source"
@@ -236,34 +325,46 @@ proof -
   obtain target move where raw_packet:
     "comma_decisive_endpoint_packet r source=(target,move)"
     by (cases "comma_decisive_endpoint_packet r source") simp
+  have packet_components:
+    "fst (comma_decisive_endpoint_packet r source)=target"
+    "snd (comma_decisive_endpoint_packet r source)=move"
+    using raw_packet by simp_all
   obtain successor where move_eq: "move=Comma_Next successor"
     and internal: "\<not> comma_round_crossing target successor"
     and base_next: "next=comma_source_continuation_base successor"
     using action by (cases move)
       (auto simp: raw_packet split: if_splits)
-  have packet:
-    "comma_decisive_endpoint_packet r source=(target,Comma_Next successor)"
-    using raw_packet move_eq by simp
   have target_admitted: "comma_round_admitted target"
-    using comma_decisive_packet_target_admitted[OF source, of r] packet by simp
+    using comma_decisive_packet_target_admitted[OF source, of r]
+      packet_components(1) by simp
+  have target_eq: "target=comma_decisive_sector_target r source"
+    using packet_components(1)
+    by (simp only: comma_decisive_endpoint_packet_def Let_def fst_conv)
+  have fast_step_eq:
+    "comma_fast_step (r mod 924) target=move"
+    using packet_components(2)
+    by (simp only: comma_decisive_endpoint_packet_def Let_def snd_conv target_eq)
   have move:
     "comma_fast_step (r mod 924) target=Comma_Next successor"
-    using packet by (auto simp: comma_decisive_endpoint_packet_def Let_def)
-  have fast_target:
-    "target=comma_decisive_sector_target r source"
-    using packet by (auto simp: comma_decisive_endpoint_packet_def Let_def)
+    using fast_step_eq move_eq by simp
   have decrease:
     "9-comma_sector_number successor<9-comma_sector_number source"
-    by (rule comma_decisive_endpoint_successor_decreases[OF source])
-      (use move internal fast_target in simp_all)
+    by (rule comma_decisive_endpoint_successor_decreases[OF source, where r=r])
+      (use move internal in \<open>simp_all add: target_eq\<close>)
   have successor_admitted: "comma_round_admitted successor"
     using comma_round_next_admitted[OF target_admitted, of r successor] move
     by (simp only: comma_fast_step_correct)
-  show ?thesis using decrease successor_admitted base_next
+  show ?thesis using decrease successor_admitted base_next target_eq
     by (cases successor) simp_all
 qed
 
 ML \<open>
+  Thm.consolidate @{thms comma_source_continuation_goto_decreases};
+  Comma_Decisive_Endpoint_Profile.report "Source continuation DAG stage=goto decrease consolidated"
+\<close>
+
+ML \<open>
+  Comma_Decisive_Endpoint_Profile.report "Source continuation DAG stage=oracle audit entered";
   val checked = @{thms comma_source_continuation_reconstruct
     comma_source_continuation_base_idempotent comma_source_continuation_base_sector
     comma_source_continuation_base_shift_position comma_source_continuation_shift_position
@@ -273,8 +374,10 @@ ML \<open>
     comma_source_continuation_equal_id_action
     comma_source_continuation_base_admitted comma_source_continuation_signature_slot
     comma_source_continuation_apply_exact comma_source_continuation_goto_decreases}
+  val _ = Thm.consolidate checked
   val _ = if null (Thm_Deps.all_oracles checked) then ()
     else error "Source continuation transport depends on an oracle"
+  val _ = Comma_Decisive_Endpoint_Profile.report "Source continuation DAG stage=oracle audit checked"
 \<close>
 
 end

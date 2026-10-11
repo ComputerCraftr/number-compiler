@@ -7,6 +7,11 @@ import json
 import re
 from pathlib import Path
 
+from devtools.checks.isabelle_oracle_audit import (
+    audited_theorems,
+    declared_oracle_audit_bundles,
+    validate_bundle_members,
+)
 from devtools.checks.isabelle_ownership_history import ownership_history
 from devtools.checks.isabelle_registry import discover_sessions, root_files
 from devtools.checks.isabelle_source_analysis import (
@@ -20,7 +25,6 @@ from devtools.checks.isabelle_syntax import (
     executable_text,
     first_documentation_scope,
     global_simp_registrations,
-    ml_cartouches,
     navigation_text,
     parse_theory_header,
     unquoted_matches,
@@ -476,227 +480,6 @@ def _scope(text: str) -> str:
     return first_documentation_scope(text)
 
 
-def _audited_theorems(text: str) -> tuple[str, ...]:
-    names: list[str] = []
-    clean = executable_text(text)
-    for block in ml_cartouches(clean):
-        block = re.sub(r'"(?:\\.|[^"\\])*"', '""', block)
-
-        def names_from_body(body: str) -> tuple[str, ...]:
-            body = body.strip()
-            if (
-                not body
-                or re.fullmatch(
-                    r"[A-Za-z][A-Za-z0-9_'.]*(?:\s+[A-Za-z][A-Za-z0-9_'.]*)*",
-                    body,
-                )
-                is None
-            ):
-                raise ValueError(
-                    "require_native_clean antiquotation is not a closed "
-                    "theorem-name list"
-                )
-            return tuple(body.split())
-
-        def names_from_antiquotation(expression: str) -> tuple[str, ...] | None:
-            match = re.fullmatch(r"@\{thms?\s+(.*?)\}", expression, re.DOTALL)
-            if match is None:
-                return None
-            return names_from_body(match.group(1))
-
-        def resolve_native_argument(
-            expression: str, bound_theorems: dict[str, str]
-        ) -> tuple[str, ...]:
-            expression = expression.strip()
-            direct = names_from_antiquotation(expression)
-            if direct is not None:
-                if not direct:
-                    raise ValueError("require_native_clean theorem list is empty")
-                return direct
-            if re.fullmatch(r"[A-Za-z][A-Za-z0-9_']*", expression):
-                bound = bound_theorems.get(expression)
-                resolved = None if bound is None else names_from_body(bound)
-                if resolved:
-                    return resolved
-                raise ValueError(
-                    "require_native_clean theorem variable is not a closed "
-                    "thm/thms antiquotation"
-                )
-            if expression.startswith("[") and expression.endswith("]"):
-                contents = expression[1:-1]
-                token_pattern = re.compile(
-                    r"@\{thms?\s+.*?\}|[A-Za-z][A-Za-z0-9_']*", re.DOTALL
-                )
-                tokens = tuple(token_pattern.finditer(contents))
-                remainder = token_pattern.sub("", contents)
-                if not re.fullmatch(r"[\s,]*", remainder):
-                    raise ValueError("require_native_clean list has unsupported syntax")
-                if any(
-                    not token.group(0).startswith("@{")
-                    and token.group(0) not in bound_theorems
-                    for token in tokens
-                ):
-                    raise ValueError(
-                        "require_native_clean list contains an unresolved "
-                        "theorem variable"
-                    )
-                resolved_names: list[str] = []
-                for token in tokens:
-                    item = token.group(0)
-                    if item.startswith("@{"):
-                        item_names = names_from_antiquotation(item)
-                        if item_names is None:
-                            raise ValueError(
-                                "require_native_clean list has invalid "
-                                "theorem antiquotation"
-                            )
-                    else:
-                        item_names = names_from_body(bound_theorems[item])
-                    resolved_names.extend(item_names)
-                if resolved_names:
-                    return tuple(resolved_names)
-            raise ValueError("unsupported require_native_clean theorem argument")
-
-        binding_assignment = re.compile(r"\bval\s+([A-Za-z_][A-Za-z0-9_']*|_)\s*=")
-        binding_assignments = tuple(binding_assignment.finditer(block))
-
-        def theorem_bindings_before(
-            offset: int,
-            assignments: tuple[re.Match[str], ...] = binding_assignments,
-            source: str = block,
-        ) -> dict[str, str]:
-            bound_theorems: dict[str, str] = {}
-            for assignment in assignments:
-                if assignment.start() >= offset:
-                    break
-                binding = assignment.group(1)
-                if binding == "_":
-                    continue
-                # A later value shadows an earlier theorem list even when its
-                # right-hand side is not a closed antiquotation.
-                bound_theorems.pop(binding, None)
-                antiquotation = re.match(
-                    r"\s*@\{thms?\s+(.*?)\}",
-                    source[assignment.end() :],
-                    re.DOTALL,
-                )
-                if antiquotation is None:
-                    continue
-                trailing = source[assignment.end() + antiquotation.end() :]
-                if re.match(r"\s*(?:;\s*)?(?:val\b|$)", trailing):
-                    bound_theorems[binding] = antiquotation.group(1)
-            return bound_theorems
-
-        pattern = (
-            r"\bval\s+_\s*=\s*if\s+null\s*\(\s*Thm_Deps\.all_oracles\s+"
-            r"(@\{thms?\s+.*?\}|[A-Za-z]\w*)\s*\)\s*then\s*\(\s*\)\s*else\s+error\b"
-        )
-        for audit in re.finditer(pattern, block, re.DOTALL):
-            argument = audit.group(1)
-            direct = re.fullmatch(r"@\{thms?\s+(.*?)\}", argument, re.DOTALL)
-            if direct is not None:
-                names.extend(names_from_body(direct.group(1)))
-            else:
-                names.extend(
-                    resolve_native_argument(
-                        argument, theorem_bindings_before(audit.start())
-                    )
-                )
-
-        authority_methods = {
-            "require_expected_paths",
-            "require_closed_expected_paths",
-            "require_native_closed_expected_paths",
-            "require_paths",
-        }
-        audit_methods = {
-            "names",
-            "require_native_clean",
-            "audit_fuel_free_global",
-            *authority_methods,
-        }
-        audit_references = tuple(
-            re.finditer(
-                r"\bComma_Proof_Dependency_Audit\s*\.\s*"
-                r"([A-Za-z][A-Za-z0-9_']*)\b",
-                block,
-            )
-        )
-        unknown_methods = sorted(
-            {reference.group(1) for reference in audit_references} - audit_methods
-        )
-        if unknown_methods:
-            raise ValueError(
-                "unsupported Comma_Proof_Dependency_Audit methods: "
-                + ", ".join(unknown_methods)
-            )
-
-        direct_call = re.compile(
-            r"\bval\s+([A-Za-z_][A-Za-z0-9_']*|_)\s*=\s*"
-            r"Comma_Proof_Dependency_Audit\s*\.\s*"
-            r"([A-Za-z][A-Za-z0-9_']*)\b"
-        )
-        direct_calls = tuple(direct_call.finditer(block))
-        captured_call = re.compile(
-            r"Exn\.capture\s*\(\s*fn\s*\(\s*\)\s*=>\s*"
-            r"Comma_Proof_Dependency_Audit\.(?:require_native_clean|"
-            r"audit_fuel_free_global|require_expected_paths|"
-            r"require_closed_expected_paths|require_native_closed_expected_paths|"
-            r"require_paths)\b",
-            re.DOTALL,
-        )
-        captured_spans = tuple(match.span() for match in captured_call.finditer(block))
-        direct_reference_offsets = {
-            match.start(0) + match.group(0).find("Comma_Proof_Dependency_Audit")
-            for match in direct_calls
-        }
-        for reference in audit_references:
-            if reference.start() in direct_reference_offsets:
-                continue
-            if any(start <= reference.start() < end for start, end in captured_spans):
-                continue
-            raise ValueError("unsupported Comma_Proof_Dependency_Audit invocation form")
-
-        for call in direct_calls:
-            binding, method = call.groups()
-            if method == "names":
-                continue
-            rest = block[call.end() :]
-            context_and_label = re.match(r'\s+@\{context\}\s+""\s+', rest)
-            if context_and_label is None:
-                # A bare function reference is not an executed dependency audit.
-                if re.match(r"\s*(?:;\s*)?(?=val\b|$)", rest):
-                    continue
-                raise ValueError(f"unsupported {method} invocation syntax or arguments")
-            if binding != "_":
-                raise ValueError(
-                    f"executed {method} call is not a release audit binding"
-                )
-            argument_text = rest[context_and_label.end() :]
-            if method in authority_methods:
-                authorities = re.match(r'\[\s*""(?:\s*,\s*"")*\s*\]\s+', argument_text)
-                if authorities is None:
-                    raise ValueError(f"unsupported {method} authority list")
-                argument_text = argument_text[authorities.end() :]
-            argument = re.match(
-                r"(?:@\{thms?\s+.*?\}|\[[^\]]*\]|"
-                r"[A-Za-z][A-Za-z0-9_']*)",
-                argument_text,
-                re.DOTALL,
-            )
-            if argument is None:
-                raise ValueError(f"unsupported {method} theorem argument")
-            trailing = argument_text[argument.end() :]
-            if re.match(r"\s*(?:;\s*)?(?=val\b|$)", trailing) is None:
-                raise ValueError(f"unsupported trailing arguments to {method}")
-            resolved = resolve_native_argument(
-                argument.group(0), theorem_bindings_before(call.start())
-            )
-            if method in audit_methods - {"names"}:
-                names.extend(resolved)
-    return tuple(dict.fromkeys(names))
-
-
 def _declaration_records(
     declarations: tuple[IsabelleDeclaration, ...],
 ) -> tuple[dict[str, object], ...]:
@@ -744,6 +527,21 @@ def _ml_file_references(text: str, path: Path) -> tuple[str, ...]:
     return tuple(references)
 
 
+def _theory_import_closure(
+    theory: str, imports_by_theory: dict[str, tuple[str, ...]]
+) -> set[str]:
+    reached = {theory}
+    pending = [theory]
+    while pending:
+        source = pending.pop()
+        for imported in imports_by_theory[source]:
+            target = Path(imported.split(".")[-1]).name
+            if target in imports_by_theory and target not in reached:
+                reached.add(target)
+                pending.append(target)
+    return reached
+
+
 def build_index() -> dict[str, object]:
     sessions = discover_sessions(ISABELLE)
     source_texts: dict[str, str] = {}
@@ -779,9 +577,37 @@ def build_index() -> dict[str, object]:
             path,
             imports,
             _scope(text),
-            _audited_theorems(text),
+            (),
             _ml_file_references(text, path),
         )
+
+    bundle_definitions: dict[str, tuple[str, tuple[str, ...]]] = {}
+    theorem_owners: dict[str, list[str]] = {}
+    for theory, (path, _, _, _, _) in declared.items():
+        for declaration in source_analyses[path].declarations:
+            if declaration.command in {"lemma", "theorem", "corollary", "proposition"}:
+                theorem_owners.setdefault(declaration.name, []).append(theory)
+        for bundle_name, members in declared_oracle_audit_bundles(source_texts[theory]):
+            if bundle_name in bundle_definitions:
+                raise ValueError(
+                    f"duplicate oracle audit bundle declaration: {bundle_name}"
+                )
+            bundle_definitions[bundle_name] = (theory, members)
+    bundle_members = validate_bundle_members(
+        bundle_definitions,
+        {name: tuple(owners) for name, owners in theorem_owners.items()},
+    )
+    executed_bundle_refs: dict[str, set[str]] = {}
+    for theory, (path, imports, scope, _, references) in tuple(declared.items()):
+        bundle_refs: set[str] = set()
+        audit = audited_theorems(
+            source_texts[theory],
+            bundle_members=bundle_members,
+            executed_bundles=bundle_refs,
+        )
+        declared[theory] = (path, imports, scope, audit, references)
+        if bundle_refs:
+            executed_bundle_refs[theory] = bundle_refs
 
     ownership_errors = isabelle_ownership_violations(
         ROOT,
@@ -866,20 +692,97 @@ def build_index() -> dict[str, object]:
             if target in reverse:
                 reverse[target].append(source)
 
-    reachable = set(registered)
-    pending = list(registered)
-    while pending:
-        source = pending.pop()
-        for imported in declared[source][1]:
-            target = Path(imported.split(".")[-1]).name
-            if target in declared and target not in reachable:
-                reachable.add(target)
-                pending.append(target)
+    imports_by_theory = {name: row[1] for name, row in declared.items()}
+    closure_roots = set(registered) | set(executed_bundle_refs)
+    import_closures = {
+        theory: _theory_import_closure(theory, imports_by_theory)
+        for theory in closure_roots
+    }
+    reachable: set[str] = set()
+    for root_theory in registered:
+        reachable.update(import_closures[root_theory])
 
     unreachable = sorted(set(declared) - reachable)
     if unreachable:
         raise ValueError(f"unregistered and unreachable theories: {unreachable}")
-    missing_audits = sorted(name for name in reachable if not declared[name][3])
+
+    consumers_by_bundle: dict[str, set[str]] = {
+        name: set() for name in bundle_definitions
+    }
+    for consumer, bundle_refs in executed_bundle_refs.items():
+        for bundle_name in bundle_refs:
+            owner = bundle_definitions[bundle_name][0]
+            if owner not in import_closures[consumer]:
+                raise ValueError(
+                    f"oracle audit bundle {bundle_name} executed by {consumer}, "
+                    f"which does not import its owner {owner}"
+                )
+            if consumer in registered:
+                consumers_by_bundle[bundle_name].add(consumer)
+    required_sessions_by_bundle: dict[str, set[str]] = {}
+    for bundle_name, (owner, _) in bundle_definitions.items():
+        owner_session = registered.get(owner)
+        if owner_session is not None:
+            required_sessions = {owner_session}
+        else:
+            owner_path = declared[owner][0].resolve()
+            containing_sessions = tuple(
+                (len(directory.parts), session_name)
+                for directory, session_name in canonical_session_dirs.items()
+                if owner_path.is_relative_to(directory)
+            )
+            if containing_sessions:
+                deepest = max(depth for depth, _ in containing_sessions)
+                required_sessions = {
+                    session_name
+                    for depth, session_name in containing_sessions
+                    if depth == deepest
+                }
+            else:
+                required_sessions = {
+                    registered[root]
+                    for root in registered
+                    if owner in import_closures[root]
+                }
+        if not required_sessions:
+            raise ValueError(
+                f"oracle audit bundle {bundle_name} has no registered owning session"
+            )
+        required_sessions_by_bundle[bundle_name] = required_sessions
+        missing_sessions = sorted(
+            session
+            for session in required_sessions
+            if not any(
+                registered.get(consumer) == session
+                and owner in import_closures[consumer]
+                for consumer in consumers_by_bundle[bundle_name]
+            )
+        )
+        if missing_sessions:
+            raise ValueError(
+                f"oracle audit bundle {bundle_name} is not executed in its owning "
+                f"registered session(s): {missing_sessions}"
+            )
+
+    valid_consumers_by_bundle = {
+        bundle_name: {
+            consumer
+            for consumer in consumers
+            if registered.get(consumer) in required_sessions_by_bundle[bundle_name]
+        }
+        for bundle_name, consumers in consumers_by_bundle.items()
+    }
+
+    delegated_theories = {
+        bundle_definitions[bundle_name][0]
+        for bundle_name, consumers in valid_consumers_by_bundle.items()
+        if any(consumer != bundle_definitions[bundle_name][0] for consumer in consumers)
+    }
+    missing_audits = sorted(
+        name
+        for name in reachable
+        if not declared[name][3] and name not in delegated_theories
+    )
     if missing_audits:
         raise ValueError(
             f"reachable theories without an oracle audit: {missing_audits}"
@@ -902,8 +805,8 @@ def build_index() -> dict[str, object]:
         text = source_texts[name]
         declarations = _declaration_records(source_analyses[path].declarations)
         uses = {}
-        for declaration in declarations:
-            theorem = str(declaration["name"])
+        for row in declarations:
+            theorem = str(row["name"])
             uses[theorem] = tuple(sorted(token_uses.get(theorem, set()) - {name}))
         entries.append(
             {
@@ -913,6 +816,13 @@ def build_index() -> dict[str, object]:
                 "imports": imports,
                 "imported_by": sorted(reverse[name]),
                 "oracle_audit_theorems": audit,
+                "delegated_oracle_audit_bundles": tuple(
+                    sorted(
+                        bundle_name
+                        for bundle_name, (owner, _) in bundle_definitions.items()
+                        if owner == name
+                    )
+                ),
                 "scope": scope,
                 "declarations": declarations,
                 "lexical_uses_including_ML_and_attributes": uses,

@@ -1,6 +1,7 @@
 theory Comma_CRT_Apply
   imports Comma_CRT_Columns
 begin
+ML \<open>Comma_Proof_Profile.report "CRT apply stage=entered"\<close>
 
 text \<open>
 Matched-cofactor Boolean apply for the four CRT clock dimensions.  Recursion
@@ -154,10 +155,23 @@ lemma comma_crt_shifted_apply_shortcut_admitted:
     and shortcut:
       "comma_crt_shifted_apply_shortcut operation shift left right=Some result"
   shows "comma_crt_admitted lower result"
-  using left right shortcut
-  by (cases operation; cases left; cases right)
-     (auto simp: comma_crt_shifted_apply_shortcut_def comma_crt_apply_shortcut_def
-       split: if_splits)
+proof (cases "shift mod 924=0")
+  case True
+  have ordinary: "comma_crt_apply_shortcut operation left right=Some result"
+    using shortcut True by (simp add: comma_crt_shifted_apply_shortcut_def)
+  show ?thesis
+    using left right ordinary
+    by (cases operation)
+       (auto simp: comma_crt_apply_shortcut_def split: if_splits)
+  next
+    case False
+  show ?thesis
+    using left right shortcut False
+    by (cases operation)
+       (auto simp: comma_crt_shifted_apply_shortcut_def
+         split: if_splits comma_crt_column.splits)
+qed
+ML \<open>Thm.consolidate [@{thm comma_crt_shifted_apply_shortcut_admitted}]; Comma_Proof_Profile.report "CRT apply claim=shifted-shortcut-admitted checked"\<close>
 
 lemma comma_crt_apply_shifted_from_admitted:
   assumes bound: "depth \<le> 4"
@@ -251,6 +265,7 @@ next
       by (simp add: Let_def comma_crt_apply_shifted_from.simps)
   qed
 qed
+ML \<open>Thm.consolidate [@{thm comma_crt_apply_shifted_from_admitted}]; Comma_Proof_Profile.report "CRT apply claim=shifted-from-admitted checked"\<close>
 
 lemma comma_crt_apply_shortcut_admitted:
   assumes left: "comma_crt_admitted lower left"
@@ -440,6 +455,7 @@ next
       by (simp add: comma_crt_boolean_value_def)
   qed
 qed
+ML \<open>Thm.consolidate [@{thm comma_crt_apply_shifted_from_eval}]; Comma_Proof_Profile.report "CRT apply claim=shifted-from-eval checked"\<close>
 
 lemma comma_crt_apply_from_admitted:
   assumes bound: "depth \<le> 4"
@@ -565,8 +581,12 @@ ML \<open>
     comma_crt_power_intersection_refines comma_crt_apply_shifted_admitted
     comma_crt_apply_shifted_refines_boolean
     comma_crt_fused_power_intersection_refines};
+  val _ = Thm.consolidate checked;
+  val _ = Comma_Proof_Profile.report "CRT apply claims consolidated";
+  val _ = Comma_Proof_Profile.report "CRT apply audit=native entered";
   val _ = Comma_Proof_Dependency_Audit.require_native_clean @{context}
     "Structural matched-cofactor CRT Boolean apply" checked;
+  val _ = Comma_Proof_Profile.report "CRT apply audit=native checked";
 \<close>
 
 end

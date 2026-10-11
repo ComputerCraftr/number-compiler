@@ -10,9 +10,11 @@ deliberately empty today.
 The table contains classifier observations only.  It does not contain an
 occurrence weight, width, phase advance, endpoint, or C1 seam.  A selected
 slot can be applied to the caller's exact ordered literal children, preserving
-those occurrence values unchanged. The preparatory ledger-backed store is not
-connected to the public query path; activation still requires an accepted
-kernel registry entry and caller integration.
+those occurrence values unchanged. Finite synthetic fixtures have a separate
+test-only scope and cannot satisfy the global release contract. Public
+queries can consume an explicitly supplied, revalidated global lease;
+default activation still requires an accepted kernel registry entry and
+loading its exact artifact.
 """
 
 from __future__ import annotations
@@ -22,19 +24,33 @@ import binascii
 import json
 from collections.abc import Callable, Mapping
 from contextlib import ExitStack
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from hashlib import sha256
 from pathlib import Path
 from types import MappingProxyType
 from typing import Literal, Self, TypeVar
 
 from number_compiler.arithmetic.contracts.scoped_handles import ArenaToken
+from number_compiler.resources.bounded_json import (
+    NodeReserver,
+    snapshot_canonical_json,
+)
+from number_compiler.resources.immutable_signature import (
+    ScalarSignature,
+    matches_scalar_signature,
+)
 from number_compiler.resources.ledger import OwnedMemo, ResourceLedger
 from number_compiler.sequences.comma.boundary_chart import PERIOD
 from number_compiler.sequences.comma.boundary_quotient import BoundaryState
-
-FutureControlKind = Literal["fork", "landmine"]
-FutureClassRow = tuple[int | None, int | None]
+from number_compiler.sequences.comma.future_authority import (
+    FutureClass,
+    FutureControl,
+    _class_row_signature,
+    _global_release_admission_matches,
+    _KernelInstanceAdmission,
+    _registered_admission_matches,
+    _valid_artifact_digest,
+)
 
 SOURCE_COUNT = 2 * 8 * PERIOD
 FUTURE_CANDIDATE_FORMAT = "comma-semantic-future-candidate-v2"
@@ -42,6 +58,8 @@ FUTURE_CANDIDATE_AUTHORITY = "untrusted-source-derived-candidate"
 FUTURE_SOURCE_UNIVERSE = "kind=N,Z; a=2..9; residue=0..923; nested-order"
 FUTURE_PROVIDER_CONTRACT = "comma-semantic-future-provider-exact-v1"
 MAX_CANDIDATE_BYTES = 2 * 1024 * 1024
+MAX_CANDIDATE_JSON_DEPTH = 16
+MAX_CANDIDATE_JSON_NODES = 1_048_576
 MAX_CID_VARINT_BYTES = 2
 _RECORD_FIELDS = frozenset(
     {
@@ -58,25 +76,6 @@ _RECORD_FIELDS = frozenset(
         "seam_projection_collision",
     }
 )
-_REGISTRY_CONTRACT = frozenset(
-    {
-        "complete-source-map",
-        "semantic-control-equality",
-        "ordered-child-equality",
-        "rank-rows-checked",
-    }
-)
-
-
-@dataclass(frozen=True, slots=True)
-class _KernelInstanceAdmission:
-    artifact_sha256: str
-    instance_id: str
-    theorem_id: str
-    contract_id: str
-    claims: frozenset[str]
-
-
 # Deliberately empty until the FutureCID instance has passed the Isabelle
 # kernel gate and its exact artifact/theorem binding is reviewed for release.
 _ADMITTED_KERNEL_INSTANCES: Mapping[str, _KernelInstanceAdmission] = MappingProxyType(
@@ -86,36 +85,6 @@ _ADMITTED_KERNEL_INSTANCES: Mapping[str, _KernelInstanceAdmission] = MappingProx
 
 _PROVIDER_SEAL = object()
 WorkCharger = Callable[[int], None]
-
-
-@dataclass(frozen=True, slots=True)
-class FutureControl:
-    """Exact terminal class control carried by one checked quotient row."""
-
-    kind: FutureControlKind
-    fork_coefficient: int | None
-
-    def __post_init__(self) -> None:
-        if self.kind == "fork":
-            if (
-                type(self.fork_coefficient) is not int
-                or not 2 <= self.fork_coefficient <= 9
-            ):
-                raise ValueError("future Fork control needs its exact coefficient")
-        elif self.kind == "landmine":
-            if self.fork_coefficient is not None:
-                raise ValueError("future Landmine control cannot carry a coefficient")
-        else:
-            raise ValueError("unknown future class control")
-
-
-@dataclass(frozen=True, slots=True)
-class FutureClass:
-    """One admitted classifier row; edge slots retain their N/Z order."""
-
-    control: FutureControl
-    ordered_children: FutureClassRow
-    rank: int | None
 
 
 @dataclass(frozen=True, slots=True)
@@ -129,22 +98,15 @@ class ParsedFutureCandidate:
 
 _Literal = TypeVar("_Literal")
 _BeforeFutureParse = Callable[[Mapping[str, object]], None]
+_ReserveDecodedShape = Callable[[Mapping[str, object]], None]
 
 
 def _future_provider_node_cost(digest: str, provider: SemanticFutureProvider) -> int:
     if digest != provider.artifact_sha256:
         raise ValueError("future provider ledger key differs from its artifact digest")
-    # Charge each source-class slot and the retained control, ordered-edge pair,
-    # and rank slot for each class, plus the two enclosing immutable tables.
-    return len(provider._source_classes) + 4 * len(provider._classes) + 2
-
-
-def _valid_artifact_digest(digest: str) -> bool:
-    return (
-        type(digest) is str
-        and len(digest) == 64
-        and all(character in "0123456789abcdef" for character in digest)
-    )
+    # Include one five-scalar signature tuple per class, its slots, the outer
+    # signature table, and the private tuple-binding references.
+    return len(provider._source_classes) + 10 * len(provider._classes) + 7
 
 
 def _future_candidate_workspace_cost(record: Mapping[str, object]) -> int:
@@ -155,14 +117,15 @@ def _future_candidate_workspace_cost(record: Mapping[str, object]) -> int:
     It overlaps retained-node reservation until publication, conservatively
     bounding transient semantic tuples without claiming measured RSS coverage.
     """
-    if not isinstance(record, Mapping):
+    if type(record) not in (dict, MappingProxyType):
         return 0
     controls = record.get("controls")
-    if not isinstance(controls, list) or not 0 < len(controls) <= SOURCE_COUNT:
+    if type(controls) is not list or not 0 < len(controls) <= SOURCE_COUNT:
         return 0
     # At tuple conversion the source-ID list and tuple coexist; row objects also
     # coexist with their builder list. The row factor includes that extra slot.
-    return 2 * SOURCE_COUNT + 5 * len(controls) + 2
+    signature_nodes = 6 * len(controls) + 5
+    return 2 * SOURCE_COUNT + 5 * len(controls) + 2 + signature_nodes
 
 
 @dataclass(frozen=True, slots=True)
@@ -174,6 +137,26 @@ class UnrankedChildSelection:
     fork_coefficient: int
     ordered_child_classes: tuple[int, int]
     selected_slot: Literal[0, 1]
+
+    def __post_init__(self) -> None:
+        _source_index(self.source)
+        if type(self.source_class) is not int or self.source_class < 0:
+            raise ValueError("future selection needs an exact source CID")
+        if (
+            type(self.fork_coefficient) is not int
+            or not 2 <= self.fork_coefficient <= 9
+        ):
+            raise ValueError("future selection needs an exact Fork coefficient")
+        if (
+            type(self.ordered_child_classes) is not tuple
+            or len(self.ordered_child_classes) != 2
+            or any(
+                type(cid) is not int or cid < 0 for cid in self.ordered_child_classes
+            )
+        ):
+            raise ValueError("future selection needs two exact ordered child CIDs")
+        if type(self.selected_slot) is not int or self.selected_slot not in (0, 1):
+            raise ValueError("future selection needs an exact ordered child slot")
 
     @property
     def selected_class(self) -> int:
@@ -194,6 +177,18 @@ class SemanticFutureProvider:
     _classes: tuple[FutureClass, ...]
     _digest: str
     _admission: _KernelInstanceAdmission
+    _source_classes_binding: tuple[int, ...] = field(
+        repr=False, compare=False, hash=False
+    )
+    _classes_binding: tuple[FutureClass, ...] = field(
+        repr=False, compare=False, hash=False
+    )
+    _class_signatures: tuple[ScalarSignature, ...] = field(
+        repr=False, compare=False, hash=False
+    )
+    _class_signatures_binding: tuple[ScalarSignature, ...] = field(
+        repr=False, compare=False, hash=False
+    )
 
     def __init__(
         self,
@@ -210,6 +205,11 @@ class SemanticFutureProvider:
         object.__setattr__(self, "_classes", classes)
         object.__setattr__(self, "_digest", digest)
         object.__setattr__(self, "_admission", admission)
+        signatures = tuple(_class_row_signature(row) for row in classes)
+        object.__setattr__(self, "_source_classes_binding", source_classes)
+        object.__setattr__(self, "_classes_binding", classes)
+        object.__setattr__(self, "_class_signatures", signatures)
+        object.__setattr__(self, "_class_signatures_binding", signatures)
 
     @classmethod
     def from_record(
@@ -218,11 +218,23 @@ class SemanticFutureProvider:
         *,
         charge_work: WorkCharger,
         _before_parse: _BeforeFutureParse | None = None,
+        _reserve_nodes: NodeReserver | None = None,
+        _reserve_decoded_shape: _ReserveDecodedShape | None = None,
     ) -> SemanticFutureProvider:
         """Load only an artifact already registered to an accepted kernel theorem."""
+        snapshot = _preflight_future_candidate(
+            record,
+            charge_work=charge_work,
+            reserve_nodes=_reserve_nodes,
+        )
         if _before_parse is not None:
             _before_parse(record)
-        parsed = parse_future_candidate(record, charge_work=charge_work)
+        if _reserve_decoded_shape is not None:
+            _reserve_decoded_shape(snapshot)
+        parsed = _parse_preflighted_future_candidate(
+            snapshot,
+            charge_work=charge_work,
+        )
         return cls._from_parsed(parsed)
 
     @classmethod
@@ -247,6 +259,8 @@ class SemanticFutureProvider:
         *,
         charge_work: WorkCharger,
         _before_parse: _BeforeFutureParse | None = None,
+        _reserve_nodes: NodeReserver | None = None,
+        _reserve_decoded_shape: _ReserveDecodedShape | None = None,
     ) -> SemanticFutureProvider:
         """Load a bounded canonical artifact and require registry admission."""
         if not isinstance(path, Path):
@@ -268,13 +282,28 @@ class SemanticFutureProvider:
             raw = json.loads(text, object_pairs_hook=_reject_duplicate_keys)
         except (UnicodeDecodeError, json.JSONDecodeError) as exc:
             raise ValueError("future candidate is not valid UTF-8 JSON") from exc
+        except RecursionError as exc:
+            raise ValueError(
+                "future candidate JSON exceeds the parser nesting bound"
+            ) from exc
         if type(raw) is not dict:
             raise ValueError("future candidate JSON root must be an object")
-        if payload != _canonical_json_bytes(raw):
+        snapshot = _preflight_future_candidate(
+            raw,
+            charge_work=charge_work,
+            reserve_nodes=_reserve_nodes,
+        )
+        if payload != _canonical_json_bytes(snapshot):
             raise ValueError("future candidate JSON is not in canonical form")
         if _before_parse is not None:
             _before_parse(raw)
-        parsed = parse_future_candidate(raw, charge_work=charge_work)
+        if _reserve_decoded_shape is not None:
+            _reserve_decoded_shape(snapshot)
+        parsed = _parse_preflighted_future_candidate(
+            snapshot,
+            charge_work=charge_work,
+            artifact_sha256=sha256(payload).hexdigest(),
+        )
         return cls._from_parsed(parsed)
 
     @property
@@ -283,33 +312,80 @@ class SemanticFutureProvider:
 
     @property
     def runtime_admitted(self) -> bool:
+        if (
+            not _valid_artifact_digest(self._digest)
+            or type(self._admission) is not _KernelInstanceAdmission
+        ):
+            return False
         admission = _ADMITTED_KERNEL_INSTANCES.get(self._digest)
         return (
-            admission is not None
-            and admission == self._admission
+            self._tables_bound()
+            and admission is self._admission
             and _registered_admission_matches(admission, self._digest)
         )
 
     @property
+    def global_release_admitted(self) -> bool:
+        """Whether this exact artifact has the full global kernel contract."""
+        return self.runtime_admitted and _global_release_admission_matches(
+            self._admission, self._digest
+        )
+
+    @property
     def class_count(self) -> int:
+        self._require_table_bindings()
         return len(self._classes)
+
+    def _tables_bound(self) -> bool:
+        return (
+            type(self._source_classes) is tuple
+            and self._source_classes is self._source_classes_binding
+            and type(self._classes) is tuple
+            and self._classes is self._classes_binding
+            and type(self._class_signatures) is tuple
+            and self._class_signatures is self._class_signatures_binding
+            and len(self._classes) == len(self._class_signatures)
+        )
+
+    def _require_table_bindings(self) -> None:
+        if not self._tables_bound():
+            raise PermissionError("semantic future provider table binding changed")
+
+    def _checked_class_row(self, cid: int) -> FutureClass:
+        self._require_table_bindings()
+        if type(cid) is not int or not 0 <= cid < len(self._classes):
+            raise ValueError("future class identifier is out of range")
+        row = self._classes[cid]
+        try:
+            fields = _class_row_signature(row)
+        except TypeError as exc:
+            raise PermissionError("semantic future class row was altered") from exc
+        if not matches_scalar_signature(fields, self._class_signatures[cid]):
+            raise PermissionError("semantic future class row was altered")
+        return row
 
     def require_runtime_admission(self) -> None:
         """Reject fixtures and candidates absent from the kernel admission registry."""
         if not self.runtime_admitted:
             raise PermissionError("semantic future provider lacks kernel admission")
 
+    def require_global_release_admission(self) -> None:
+        """Require the exact global theorem contract, not finite fixture evidence."""
+        if not self.global_release_admitted:
+            raise PermissionError(
+                "semantic future provider lacks global release authority"
+            )
+
     def source_class(self, source: BoundaryState, *, charge_work: WorkCharger) -> int:
         if type(source) is not BoundaryState:
             raise TypeError("future lookup requires a validated BoundaryState")
+        self._require_table_bindings()
         _charge_work(charge_work, 1)
         return self._source_classes[_source_index(source)]
 
     def class_row(self, cid: int, *, charge_work: WorkCharger) -> FutureClass:
-        if type(cid) is not int or not 0 <= cid < len(self._classes):
-            raise ValueError("future class identifier is out of range")
         _charge_work(charge_work, 1)
-        return self._classes[cid]
+        return self._checked_class_row(cid)
 
     def select_unique_unranked_child(
         self, source: BoundaryState, *, charge_work: WorkCharger
@@ -324,15 +400,16 @@ class SemanticFutureProvider:
         _charge_work(charge_work, 1)
         if type(source) is not BoundaryState:
             raise TypeError("future lookup requires a validated BoundaryState")
+        self._require_table_bindings()
         source_cid = self._source_classes[_source_index(source)]
-        row = self._classes[source_cid]
+        row = self._checked_class_row(source_cid)
         if row.control.kind != "fork" or row.control.fork_coefficient is None:
             raise ValueError("future source is not a Fork class")
         left, right = row.ordered_children
         if left is None or right is None:
             raise ValueError("admitted Fork row lost an ordered child")
-        left_unranked = self._classes[left].rank is None
-        right_unranked = self._classes[right].rank is None
+        left_unranked = self._checked_class_row(left).rank is None
+        right_unranked = self._checked_class_row(right).rank is None
         if left_unranked == right_unranked:
             raise ValueError("future Fork has no unique unranked child")
         slot: Literal[0, 1] = 0 if left_unranked else 1
@@ -348,7 +425,7 @@ class SemanticFutureProvider:
 
 
 _FutureProviderLoader = Callable[
-    [WorkCharger, _BeforeFutureParse], SemanticFutureProvider
+    [WorkCharger, NodeReserver, _ReserveDecodedShape], SemanticFutureProvider
 ]
 
 
@@ -365,12 +442,13 @@ class SemanticFutureProviderStore:
         if type(ledger) is not ResourceLedger:
             raise TypeError("future provider store needs a ResourceLedger")
         self.ledger = ledger
-        self.owner = ledger.register(
-            f"comma-semantic-future-provider-{ledger.owner_count}",
-            "semantic_future_provider",
-        )
+        next_owner = ledger.owner_count
+        owner_name = f"comma-semantic-future-provider-{next_owner}"
+        workspace_name = f"comma-semantic-future-provider-workspace-{next_owner + 1}"
+        ledger.require_fresh_owner_names((owner_name, workspace_name))
+        self.owner = ledger.register(owner_name, "semantic_future_provider")
         self._workspace_owner = ledger.register(
-            f"comma-semantic-future-provider-workspace-{ledger.owner_count}",
+            workspace_name,
             "semantic_future_provider_workspace",
         )
         self._providers: OwnedMemo[str, SemanticFutureProvider] = OwnedMemo(
@@ -407,6 +485,22 @@ class SemanticFutureProviderStore:
         self.ledger.bump("comma_future_provider_validation_requests")
         try:
             with ExitStack() as reservations:
+                reserved_snapshot_nodes = 0
+
+                def release_snapshot_nodes() -> None:
+                    if reserved_snapshot_nodes:
+                        self.ledger.release(
+                            self._workspace_owner,
+                            nodes=reserved_snapshot_nodes,
+                        )
+
+                # One ExitStack release owns all incremental snapshot chunks.
+                reservations.callback(release_snapshot_nodes)
+
+                def reserve_snapshot_nodes(amount: int) -> None:
+                    nonlocal reserved_snapshot_nodes
+                    self.ledger.reserve(self._workspace_owner, nodes=amount)
+                    reserved_snapshot_nodes += amount
 
                 def reserve_decoded_shape(record: Mapping[str, object]) -> None:
                     nodes = _future_candidate_workspace_cost(record)
@@ -419,7 +513,11 @@ class SemanticFutureProviderStore:
                     _charge_work(charge_work, amount)
                     self.ledger.bump("comma_future_provider_load_work", amount)
 
-                provider = loader(charge_once, reserve_decoded_shape)
+                provider = loader(
+                    charge_once,
+                    reserve_snapshot_nodes,
+                    reserve_decoded_shape,
+                )
                 return self._retain(provider)
         except Exception:
             self.ledger.bump("comma_future_provider_load_failures")
@@ -454,8 +552,13 @@ class SemanticFutureProviderStore:
     ) -> SemanticFutureProviderLease:
         """Validate, admit, and retain a supplied in-memory candidate."""
         return self._load_provider(
-            lambda charged, before: SemanticFutureProvider.from_record(
-                record, charge_work=charged, _before_parse=before
+            lambda charged, reserve_nodes, reserve_shape: (
+                SemanticFutureProvider.from_record(
+                    record,
+                    charge_work=charged,
+                    _reserve_nodes=reserve_nodes,
+                    _reserve_decoded_shape=reserve_shape,
+                )
             ),
             charge_work,
         )
@@ -468,22 +571,54 @@ class SemanticFutureProviderStore:
     ) -> SemanticFutureProviderLease:
         """Verify supplied bytes before admitting and retaining their provider."""
         return self._load_provider(
-            lambda charged, before: SemanticFutureProvider.load_file(
-                path, charge_work=charged, _before_parse=before
+            lambda charged, reserve_nodes, reserve_shape: (
+                SemanticFutureProvider.load_file(
+                    path,
+                    charge_work=charged,
+                    _reserve_nodes=reserve_nodes,
+                    _reserve_decoded_shape=reserve_shape,
+                )
             ),
             charge_work,
         )
 
     def _resolve(self, digest: str, token: ArenaToken) -> SemanticFutureProvider:
-        if self._closed or type(token) is not ArenaToken or token is not self._token:
-            self.ledger.bump("comma_future_provider_stale_lease_refusals")
+        if type(self) is not SemanticFutureProviderStore:
+            raise TypeError("future provider lease needs its exact provider store")
+        ledger = getattr(self, "ledger", None)
+        closed = getattr(self, "_closed", None)
+        current_token = getattr(self, "_token", None)
+        if (
+            type(ledger) is not ResourceLedger
+            or type(closed) is not bool
+            or type(current_token) is not ArenaToken
+        ):
+            raise RuntimeError("malformed future provider store")
+        if (
+            closed
+            or type(digest) is not str
+            or not _valid_artifact_digest(digest)
+            or type(token) is not ArenaToken
+            or token is not current_token
+        ):
+            ledger.bump("comma_future_provider_stale_lease_refusals")
             raise RuntimeError("future provider lease is stale")
-        provider = self._providers.get(digest)
+        memo = getattr(self, "_providers", None)
+        owner = getattr(self, "owner", None)
+        if (
+            type(memo) is not OwnedMemo
+            or memo.ledger is not ledger
+            or memo.owner != owner
+        ):
+            raise RuntimeError("future provider store has a foreign retained table")
+        provider = memo.get(digest)
         if provider is None:
-            self.ledger.bump("comma_future_provider_lease_misses")
+            ledger.bump("comma_future_provider_lease_misses")
             raise RuntimeError("future provider is no longer retained")
+        if type(provider) is not SemanticFutureProvider:
+            raise RuntimeError("future provider store retained a foreign provider")
         provider.require_runtime_admission()
-        self.ledger.bump("comma_future_provider_lease_resolutions")
+        ledger.bump("comma_future_provider_lease_resolutions")
         return provider
 
     def reset(self) -> None:
@@ -518,21 +653,51 @@ class SemanticFutureProviderLease:
     _digest: str
     _token: ArenaToken
 
+    def __post_init__(self) -> None:
+        if type(self._store) is not SemanticFutureProviderStore:
+            raise TypeError("future provider lease needs its exact provider store")
+        if not _valid_artifact_digest(self._digest):
+            raise ValueError("future provider lease needs a lowercase SHA-256")
+        if type(self._token) is not ArenaToken:
+            raise TypeError("future provider lease needs an exact store token")
+
     def _provider(self) -> SemanticFutureProvider:
-        return self._store._resolve(self._digest, self._token)
+        store = getattr(self, "_store", None)
+        digest = getattr(self, "_digest", None)
+        token = getattr(self, "_token", None)
+        if (
+            type(store) is not SemanticFutureProviderStore
+            or type(digest) is not str
+            or not _valid_artifact_digest(digest)
+            or type(token) is not ArenaToken
+        ):
+            raise TypeError("malformed future provider lease binding")
+        return SemanticFutureProviderStore._resolve(
+            store,
+            digest,
+            token,
+        )
 
     @property
     def artifact_sha256(self) -> str:
         return self._provider().artifact_sha256
 
+    def _status_provider(self) -> SemanticFutureProvider | None:
+        """Resolve status through the same ownership checks as real access."""
+        try:
+            return self._provider()
+        except (PermissionError, RuntimeError, TypeError):
+            return None
+
     @property
     def runtime_admitted(self) -> bool:
-        if self._store._closed or self._token is not self._store._token:
-            return False
-        try:
-            return self._provider().runtime_admitted
-        except (PermissionError, RuntimeError):
-            return False
+        provider = self._status_provider()
+        return provider is not None and provider.runtime_admitted
+
+    @property
+    def global_release_admitted(self) -> bool:
+        provider = self._status_provider()
+        return provider is not None and provider.global_release_admitted
 
     @property
     def class_count(self) -> int:
@@ -540,6 +705,9 @@ class SemanticFutureProviderLease:
 
     def require_runtime_admission(self) -> None:
         self._provider().require_runtime_admission()
+
+    def require_global_release_admission(self) -> None:
+        self._provider().require_global_release_admission()
 
     def source_class(self, source: BoundaryState, *, charge_work: WorkCharger) -> int:
         return self._provider().source_class(source, charge_work=charge_work)
@@ -559,19 +727,53 @@ def parse_future_candidate(
     record: Mapping[str, object], *, charge_work: WorkCharger
 ) -> ParsedFutureCandidate:
     """Check bounded JSON structure without granting provider authority."""
+    snapshot = _preflight_future_candidate(record, charge_work=charge_work)
+    return _parse_preflighted_future_candidate(snapshot, charge_work=charge_work)
+
+
+def _parse_preflighted_future_candidate(
+    record: Mapping[str, object],
+    *,
+    charge_work: WorkCharger,
+    artifact_sha256: str | None = None,
+) -> ParsedFutureCandidate:
+    """Decode a record after its JSON shape and serialized size were bounded."""
     source_classes, classes = _validate_record(record, charge_work=charge_work)
+    digest = (
+        _future_candidate_sha256(record) if artifact_sha256 is None else artifact_sha256
+    )
     return ParsedFutureCandidate(
         source_classes,
         classes,
-        _future_candidate_sha256(record),
+        digest,
+    )
+
+
+def _preflight_future_candidate(
+    record: Mapping[str, object],
+    *,
+    charge_work: WorkCharger,
+    reserve_nodes: NodeReserver | None = None,
+) -> dict[str, object]:
+    """Snapshot the input under the FutureCID JSON and resource limits."""
+    return snapshot_canonical_json(
+        record,
+        max_bytes=MAX_CANDIDATE_BYTES,
+        max_depth=MAX_CANDIDATE_JSON_DEPTH,
+        max_nodes=MAX_CANDIDATE_JSON_NODES,
+        charge_work=charge_work,
+        reserve_nodes=reserve_nodes,
     )
 
 
 def _future_candidate_sha256(record: Mapping[str, object]) -> str:
     """Hash a record after its caller has charged bounded structural parsing."""
-    if not isinstance(record, Mapping) or any(type(key) is not str for key in record):
+    if type(record) not in (dict, MappingProxyType) or any(
+        type(key) is not str for key in record
+    ):
         raise TypeError("future candidate must be a string-keyed mapping")
-    return sha256(_canonical_json_bytes(dict(record))).hexdigest()
+    canonical_record = dict(record) if type(record) is MappingProxyType else record
+    return sha256(_canonical_json_bytes(canonical_record)).hexdigest()
 
 
 def _canonical_json_bytes(record: Mapping[str, object]) -> bytes:
@@ -608,25 +810,20 @@ def _reject_duplicate_keys(pairs: list[tuple[str, object]]) -> dict[str, object]
 def _admission_matches(
     admission: _KernelInstanceAdmission, parsed: ParsedFutureCandidate
 ) -> bool:
-    return (
-        admission.artifact_sha256 == parsed.artifact_sha256
-        and _registered_admission_matches(admission, parsed.artifact_sha256)
-    )
-
-
-def _registered_admission_matches(
-    admission: _KernelInstanceAdmission, digest: str
-) -> bool:
-    return (
-        admission.artifact_sha256 == digest
-        and bool(admission.instance_id)
-        and bool(admission.theorem_id)
-        and admission.contract_id == FUTURE_PROVIDER_CONTRACT
-        and admission.claims == _REGISTRY_CONTRACT
-    )
+    return _registered_admission_matches(admission, parsed.artifact_sha256)
 
 
 def _source_index(source: BoundaryState) -> int:
+    if (
+        type(source) is not BoundaryState
+        or type(source.kind) is not str
+        or source.kind not in ("N", "Z")
+        or type(source.a) is not int
+        or not 2 <= source.a <= 9
+        or type(source.exponent_residue) is not int
+        or not 0 <= source.exponent_residue < PERIOD
+    ):
+        raise ValueError("malformed comma boundary source state")
     kind_offset = 0 if source.kind == "N" else 8 * PERIOD
     return kind_offset + (source.a - 2) * PERIOD + source.exponent_residue
 

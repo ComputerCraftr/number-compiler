@@ -246,7 +246,7 @@ lemma comma_decade_block_then_associative:
 definition comma_decade_block_atom :: "comma_decade_state \<Rightarrow> comma_decade_block_result" where
   "comma_decade_block_atom s =
     (if comma_decade_admitted s then
-      case comma_fast_decade_control s of
+      case comma_decade_control s of
         Comma_Decade_Continue t \<Rightarrow>
           if comma_decade_admitted t then Comma_Block_Live t else Comma_Block_Invalid
       | Comma_Decade_Fork a d \<Rightarrow>
@@ -313,13 +313,13 @@ lemma comma_decade_block_atom_live:
   assumes "comma_decade_block_atom s=Comma_Block_Live t"
   shows "comma_decade_admitted s" "comma_decade_admitted t"
     "comma_decade_control s=Comma_Decade_Continue t"
-  using assms comma_fast_decade_control_correct
+  using assms
   by (auto simp: comma_decade_block_atom_def split: if_splits comma_decade_outcome.splits)
 
 lemma comma_decade_block_atom_stop:
   assumes "comma_decade_block_atom s=Comma_Block_Stop h terminal"
   shows "h=0" "comma_decade_admitted s" "comma_decade_exact_summary s 0 terminal"
-  using assms comma_fast_decade_control_correct
+  using assms
   by (auto simp: comma_decade_block_atom_def
     split: if_splits comma_decade_outcome.splits intro: comma_decade_exact_summary.intros)
 
@@ -476,7 +476,7 @@ proof (induction arbitrary: D rule: comma_decade_exact_summary.induct)
   case (fork s a)
   obtain n where D: "D=Suc n" using fork.prems(2) by (cases D) auto
   have atom: "comma_decade_block_atom s=Comma_Block_Stop 0 (Comma_Terminal_Fork a)"
-    using fork.hyps fork.prems(1) comma_fast_decade_control_correct[OF fork.prems(1)]
+    using fork.hyps fork.prems(1)
     by (simp add: comma_decade_block_atom_def)
   show ?case by (simp add: D atom)
 next
@@ -484,7 +484,6 @@ next
   obtain n where D: "D=Suc n" using landmine.prems(2) by (cases D) auto
   have atom: "comma_decade_block_atom s=Comma_Block_Stop 0 Comma_Terminal_Landmine"
     using landmine.hyps landmine.prems(1)
-      comma_fast_decade_control_correct[OF landmine.prems(1)]
     by (simp add: comma_decade_block_atom_def)
   show ?case by (simp add: D atom)
 next
@@ -494,7 +493,6 @@ next
     by (rule comma_decade_control_closed(2)[OF crossing.prems(1) crossing.hyps(1) refl])
   have atom: "comma_decade_block_atom s=Comma_Block_Live t"
     using crossing.hyps(1) crossing.prems(1) admitted
-      comma_fast_decade_control_correct[OF crossing.prems(1)]
     by (simp add: comma_decade_block_atom_def)
   have tail: "comma_decade_block_run n t=Comma_Block_Stop h tau"
     by (rule crossing.IH[OF admitted]) (use crossing.prems(2) D in simp)
@@ -531,7 +529,6 @@ next
       by (rule comma_decade_control_closed(2)[OF crossing.prems(1) crossing.hyps(1) refl])
     have atom: "comma_decade_block_atom s=Comma_Block_Live t"
       using crossing.hyps(1) crossing.prems(1) admitted
-        comma_fast_decade_control_correct[OF crossing.prems(1)]
       by (simp add: comma_decade_block_atom_def)
     obtain q where live: "comma_decade_block_run n t=Comma_Block_Live q"
       and q: "comma_decade_admitted q" "comma_decade_exact_summary q (h-n) tau"

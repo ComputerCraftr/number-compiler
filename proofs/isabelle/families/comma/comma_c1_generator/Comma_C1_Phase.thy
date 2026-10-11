@@ -323,12 +323,22 @@ lemma comma_nat_div10_lt20:
   fixes t :: nat
   assumes "t < 20"
   shows "t div 10 = (if 10 \<le> t then 1 else 0)"
-proof (cases "10 \<le> t")
-  case True
-  then show ?thesis using assms by presburger
-next
-  case False
-  then show ?thesis using False by presburger
+proof -
+  have decomposition: "t = 10 * (t div 10) + t mod 10"
+    by (simp add: mult.commute)
+  have remainder: "t mod 10 < 10" by simp
+  show ?thesis
+  proof (cases "10 \<le> t")
+    case True
+    have quotient: "t div 10 = 1"
+      using True assms decomposition remainder by arith
+    then show ?thesis by simp
+  next
+    case False
+    have quotient: "t div 10 = 0"
+      using False decomposition remainder by arith
+    then show ?thesis by simp
+  qed
 qed
 
 lemma comma_c1_spatiotemporal_step:

@@ -3,7 +3,7 @@ structure Comma_Future_Rank_Lookup =
 struct
   fun selected_table_with_extents ctxt name codes_def table_pattern extents =
     let
-      val {procedure, stats} = Comma_Selected_List_Conversion.make
+      val {procedure, stats, ...} = Comma_Selected_List_Conversion.make
         {ctxt = ctxt, name = "future_" ^ name,
          root_definition = codes_def, table_pattern = table_pattern,
          extents = extents}

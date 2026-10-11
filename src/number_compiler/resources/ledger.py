@@ -123,6 +123,22 @@ class ResourceLedger:
         """Return the registered-owner count without constructing an inventory."""
         return len(self._accounts)
 
+    def require_fresh_owner_names(self, names: tuple[str, ...]) -> None:
+        """Validate a small owner-name batch before any owner is registered."""
+        if type(names) is not tuple:
+            raise TypeError("resource owner names must be a tuple")
+        seen: set[str] = set()
+        for name in names:
+            if type(name) is not str:
+                raise TypeError("resource names must be strings")
+            if not name:
+                raise ValueError("resource names must be nonempty")
+            if name in seen:
+                raise ValueError("resource owner names must be distinct")
+            if name in self._names:
+                raise ValueError("resource owner name is already registered")
+            seen.add(name)
+
     def note_store_mutation(self) -> None:
         """Invalidate cached object-graph evidence after an actual store change."""
         self._mutation_version += 1

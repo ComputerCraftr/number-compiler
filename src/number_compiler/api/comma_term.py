@@ -30,7 +30,8 @@ class CommaTermPayload:
             require_certified_index,
         )
 
-        if self.term.certificate_version != CERTIFICATE_ID:
+        global_provider = self.term._global_future_provider_for_prefix_admission()
+        if self.term.certificate_version != CERTIFICATE_ID and global_provider is None:
             raise UnresolvedCommaTerm(
                 self.term.index, 0, CERTIFICATE_ID, "stale comma certificate binding"
             )
@@ -40,6 +41,7 @@ class CommaTermPayload:
             self.term.max_work,
             shared_cache=self.term.shared_cache,
             memo=self.term.certificate_memo,
+            global_provider=global_provider,
         )
 
     @property

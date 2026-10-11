@@ -15,6 +15,23 @@ if TYPE_CHECKING:
     from number_compiler.resources.ledger import ResourceLedger
 
 
+def _contract_semantic_component(
+    value: object,
+    *,
+    owner: int,
+    approved: frozenset[tuple[int, int]],
+    owned_semantic_members: frozenset[tuple[int, int]],
+    semantic: Callable[..., bool],
+) -> bool:
+    """Consume an owner-qualified approval within the current audit snapshot."""
+    identity = owner, id(value)
+    return (
+        identity in approved
+        or identity in owned_semantic_members
+        or semantic(value, owner=owner)
+    )
+
+
 @dataclass(frozen=True, slots=True)
 class PayloadAuditStoreBinding:
     """One exact family-owned root attribute and its ledger account."""

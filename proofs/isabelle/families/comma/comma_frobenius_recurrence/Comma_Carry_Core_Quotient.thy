@@ -2,6 +2,8 @@ theory Comma_Carry_Core_Quotient
   imports Comma_Frobenius_Recurrence Comma_Arithmetic.Comma_Finite_Period
 begin
 
+ML_file "../comma_entry_arithmetic/proof_profile.ML"
+
 text \<open>The orbit residue is occurrence data for the decimal phase, not
 an argument of its normalized carry action. These equations refine the existing
 phase and period definitions. They do not identify weighted sector locators or
@@ -162,6 +164,56 @@ source trajectories, branch choices, rank certificates or full clock table.
 The primary lift and full physical displacement remain occurrence data.\<close>
 
 
+lemma comma_core_lift_parameters:
+  "comma_core_primary 60=20" "comma_core_modulus 60=3"
+  "comma_core_period (comma_core_modulus 60)=1"
+  "comma_core_primary 80=80" "comma_core_modulus 80=1"
+  "comma_core_period (comma_core_modulus 80)=1"
+  "comma_core_primary 100=100" "comma_core_modulus 100=1"
+  "comma_core_period (comma_core_modulus 100)=1"
+  "comma_core_primary 120=40" "comma_core_modulus 120=3"
+  "comma_core_period (comma_core_modulus 120)=1"
+  "comma_core_primary 140=20" "comma_core_modulus 140=7"
+  "comma_core_period (comma_core_modulus 140)=6"
+  "comma_core_primary 210=10" "comma_core_modulus 210=21"
+  "comma_core_period (comma_core_modulus 210)=6"
+  "comma_core_primary 220=20" "comma_core_modulus 220=11"
+  "comma_core_period (comma_core_modulus 220)=2"
+  "comma_core_primary 230=10" "comma_core_modulus 230=23"
+  "comma_core_period (comma_core_modulus 230)=22"
+  "comma_core_primary 240=80" "comma_core_modulus 240=3"
+  "comma_core_period (comma_core_modulus 240)=1"
+  "comma_core_primary 260=20" "comma_core_modulus 260=13"
+  "comma_core_period (comma_core_modulus 260)=6"
+  "comma_core_primary 270=10" "comma_core_modulus 270=27"
+  "comma_core_period (comma_core_modulus 270)=3"
+  "comma_core_primary 280=40" "comma_core_modulus 280=7"
+  "comma_core_period (comma_core_modulus 280)=6"
+  "comma_core_primary 290=10" "comma_core_modulus 290=29"
+  "comma_core_period (comma_core_modulus 290)=28"
+  "comma_core_primary 460=20" "comma_core_modulus 460=23"
+  "comma_core_period (comma_core_modulus 460)=22"
+  "comma_core_primary 480=160" "comma_core_modulus 480=3"
+  "comma_core_period (comma_core_modulus 480)=1"
+  "comma_core_primary 520=40" "comma_core_modulus 520=13"
+  "comma_core_period (comma_core_modulus 520)=6"
+  "comma_core_primary 540=20" "comma_core_modulus 540=27"
+  "comma_core_period (comma_core_modulus 540)=3"
+  by (simp_all add: comma_core_primary_def comma_core_modulus_def
+    comma_core_period_def gcd_nat.simps)
+
+lemma comma_core_lift_period_powers:
+  "mod_exp (10::nat) 1 1=1 mod 1"
+  "mod_exp (10::nat) 1 3=1 mod 3"
+  "mod_exp (10::nat) 6 7=1 mod 7"
+  "mod_exp (10::nat) 6 21=1 mod 21"
+  "mod_exp (10::nat) 2 11=1 mod 11"
+  "mod_exp (10::nat) 22 23=1 mod 23"
+  "mod_exp (10::nat) 6 13=1 mod 13"
+  "mod_exp (10::nat) 3 27=1 mod 27"
+  "mod_exp (10::nat) 28 29=1 mod 29"
+  by (simp_all add: mod_exp_def)
+
 lemma comma_core_lift_metadata:
   "comma_core_lift_admitted 60"
   "comma_core_lift_admitted 80"
@@ -180,9 +232,9 @@ lemma comma_core_lift_metadata:
   "comma_core_lift_admitted 480"
   "comma_core_lift_admitted 520"
   "comma_core_lift_admitted 540"
-  by (simp_all add: comma_core_lift_admitted_def comma_core_primary_def
-    comma_core_modulus_def comma_core_period_def comma_short_period_def
-    gcd_nat.simps coprime_iff_gcd_eq_1 mod_exp_def)
+  using comma_core_lift_parameters comma_core_lift_period_powers
+  by (simp_all add: comma_core_lift_admitted_def comma_short_period_def
+    coprime_iff_gcd_eq_1 gcd_nat.simps)
 
 lemma comma_core_lift_catalog_checked:
   "list_all comma_core_lift_admitted
@@ -300,8 +352,80 @@ lemma comma_recursive_core_check_twenty_three: "comma_recursive_core_checked 23"
 lemma comma_recursive_core_check_twenty_seven: "comma_recursive_core_checked 27"
   by code_simp
 
-lemma comma_recursive_core_check_twenty_nine: "comma_recursive_core_checked 29"
+lemma comma_recursive_core_check_twenty_nine_period:
+  "mod_exp (10::nat) 28 29=1 mod 29"
   by code_simp
+
+lemma comma_mod_exp_nat_successor:
+  "mod_exp a (Suc r) (m::nat)=(a*mod_exp a r m) mod m"
+  unfolding mod_exp_def
+  by (simp only: power_Suc; rule mod_mult_right_eq[symmetric])
+
+lemma comma_recursive_core_residue_twenty_nine:
+  "comma_recursive_core_residue 29 r =
+    ([1,10,13,14,24,8,22] ! ((r mod 28) mod 7) *
+      [1,17,28,12] ! ((r mod 28) div 7)) mod 29"
+  by (simp add: comma_recursive_core_residue_def comma_core_period_def Let_def)
+
+lemma comma_recursive_core_twenty_nine_steps:
+  "list_all (\<lambda>r. comma_recursive_core_residue 29 (Suc r) =
+      (10*comma_recursive_core_residue 29 r) mod 29) [0..<27]"
+  by (simp only: comma_recursive_core_residue_twenty_nine; code_simp)
+
+lemma comma_recursive_core_twenty_nine_step:
+  assumes "r<27"
+  shows "comma_recursive_core_residue 29 (Suc r) =
+    (10*comma_recursive_core_residue 29 r) mod 29"
+proof -
+  have all_steps:
+    "\<forall>r\<in>set [0..<27]. comma_recursive_core_residue 29 (Suc r) =
+      (10*comma_recursive_core_residue 29 r) mod 29"
+    using comma_recursive_core_twenty_nine_steps
+    by (simp only: list_all_iff)
+  have "r\<in>set [0..<27]" using assms by simp
+  then show ?thesis using all_steps by blast
+qed
+
+lemma comma_recursive_core_twenty_nine_row:
+  "r<28 \<Longrightarrow>
+    comma_recursive_core_residue 29 r=mod_exp (10::nat) r 29"
+proof (induction r)
+  case 0
+  then show ?case by (simp add: comma_recursive_core_residue_twenty_nine mod_exp_def)
+next
+  case (Suc r)
+  have previous_bound: "r<28" using Suc.prems by simp
+  have step_bound: "r<27" using Suc.prems by arith
+  have residue_step:
+    "comma_recursive_core_residue 29 (Suc r) =
+      (10*comma_recursive_core_residue 29 r) mod 29"
+    by (rule comma_recursive_core_twenty_nine_step[OF step_bound])
+  have power_step:
+    "mod_exp (10::nat) (Suc r) 29=(10*mod_exp 10 r 29) mod 29"
+    by (rule comma_mod_exp_nat_successor)
+  show ?case using Suc.IH[OF previous_bound] residue_step power_step by simp
+qed
+
+lemma comma_recursive_core_check_twenty_nine_rows:
+  "list_all (\<lambda>r. comma_recursive_core_residue 29 r=mod_exp (10::nat) r 29)
+    [0..<28]"
+  unfolding list_all_iff
+proof (intro ballI)
+  fix r
+  assume "r \<in> set [0..<28]"
+  then have bound: "r<28" by simp
+  show "comma_recursive_core_residue 29 r=mod_exp (10::nat) r 29"
+    by (rule comma_recursive_core_twenty_nine_row[OF bound])
+qed
+
+lemma comma_recursive_core_check_twenty_nine: "comma_recursive_core_checked 29"
+proof -
+  show ?thesis
+    unfolding comma_recursive_core_checked_def comma_core_period_def
+    using comma_recursive_core_check_twenty_nine_period
+      comma_recursive_core_check_twenty_nine_rows
+    by simp
+qed
 
 lemmas comma_recursive_core_checks = comma_recursive_core_check_one
   comma_recursive_core_check_three comma_recursive_core_check_seven
@@ -313,6 +437,18 @@ lemma comma_recursive_core_catalog_checked:
   assumes "c\<in>{1,3,7,11,13,21,23,27,29}"
   shows "comma_recursive_core_checked c"
   using assms comma_recursive_core_checks by auto
+
+ML \<open>
+  val started = Time.now ();
+  val _ = Comma_Proof_Profile.report
+    "Carry Core stage=catalog-and-29-rows-consolidation-start";
+  val _ = Thm.consolidate @{thms comma_core_lift_catalog_checked
+    comma_recursive_core_checks comma_recursive_core_check_twenty_nine_rows
+    comma_recursive_core_catalog_checked};
+  val _ = Comma_Proof_Profile.report
+    ("Carry Core stage=catalog-and-29-rows-consolidated elapsed_ms=" ^
+      Comma_Proof_Profile.elapsed_ms started);
+\<close>
 
 lemma comma_core_modular_period_repeated:
   fixes c T u q :: nat
@@ -362,6 +498,17 @@ proof -
     using repeated by (simp only: split[symmetric])
   show ?thesis by (simp only: evaluated reduced)
 qed
+
+ML \<open>
+  val started = Time.now ();
+  val _ = Comma_Proof_Profile.report
+    "Carry Core stage=modular-period-and-residue-refinement-consolidation-start";
+  val _ = Thm.consolidate @{thms comma_core_modular_period_repeated
+    comma_recursive_core_residue_refines};
+  val _ = Comma_Proof_Profile.report
+    ("Carry Core stage=modular-period-and-residue-refinement-consolidated elapsed_ms=" ^
+      Comma_Proof_Profile.elapsed_ms started);
+\<close>
 
 definition comma_recursive_core_power_residue :: "nat \<Rightarrow> nat \<Rightarrow> nat" where
   "comma_recursive_core_power_residue P r=(let h=comma_core_primary P;
@@ -427,6 +574,17 @@ proof -
     unfolding comma_finite_headroom_def
     by (simp only: Let_def P_def[symmetric] e_def[symmetric] core)
 qed
+
+ML \<open>
+  val started = Time.now ();
+  val _ = Comma_Proof_Profile.report
+    "Carry Core stage=physical-exponent-and-headroom-consolidation-start";
+  val _ = Thm.consolidate @{thms comma_recursive_core_physical_exponent
+    comma_finite_headroom_recursive_core};
+  val _ = Comma_Proof_Profile.report
+    ("Carry Core stage=physical-exponent-and-headroom-consolidated elapsed_ms=" ^
+      Comma_Proof_Profile.elapsed_ms started);
+\<close>
 
 ML \<open>
   val _ = if null (Thm_Deps.all_oracles

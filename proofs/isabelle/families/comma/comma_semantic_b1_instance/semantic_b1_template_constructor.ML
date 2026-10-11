@@ -1,28 +1,32 @@
 (* Candidate-only B1 quotienting over source-level CRT tables.  One generated
    packet-slot evaluator discovers normalized sources by sector layers and its
-   retained slot actions feed a bottom-up symbolic CRT/MDD fold.  The result is
-   candidate data only and has no theorem authority.  Physical graph CIDs and
-   per-source row theorems are outside this production path. *)
+   retained slot actions feed the shared CRT/MDD algebra.  It emits candidate
+   ColumnCIDs and source-piece bindings; all remain
+   untrusted until the importing theory proves the corresponding certificates. *)
 structure Comma_Semantic_B1_Template_Constructor =
 struct
+  open Comma_Semantic_B1_MDD
   datatype output = Live of int | Stop of int | Invalid
-  datatype mdd = MDD_False | MDD_True | MDD_Node of int * mdd list
   datatype lift_ref = Terminal_Ref of int * int
     | Goto_Ref of int * int * int
   datatype pending_lift_ref = Pending_Terminal of int * output * mdd
     | Pending_Goto of int * int * int
+  datatype construction_piece =
+      Terminal_Piece of int * int * int * mdd
+    | Goto_Piece of int * int * int * int * int * int * mdd
+  datatype pending_construction_piece =
+      Pending_Terminal_Piece of int * int * mdd
+    | Pending_Goto_Piece of int * int * int * int * int * mdd
   type lift_descriptor =
     {period: int, slot: int, template_cid: int, net_shift: int}
   type lift_entry = {lift_cid: int, geometry: mdd list}
-  type scope = int * int
-  type cube = int list list
   type representative =
     {template_cid: int, keys: mdd list}
   type occurrence =
     {root: int option, source: term, template_cid: int, return_shift: int,
-     binding: output list, lift_refs: lift_ref list}
+     binding: output list, lift_refs: lift_ref list,
+     construction_piece_refs: construction_piece list list}
 
-  val clock_size = 924
   val natT = @{typ nat}
   val resultT = @{typ comma_semantic_b1_result}
   val columnT = @{typ comma_crt_column}
@@ -49,45 +53,6 @@ struct
     in if typ = natT andalso number >= 0 then number
       else error "B1 candidate contains a non-natural scope coordinate" end
 
-  fun gcd a b =
-    if b = 0 then a else gcd b (a mod b)
-
-  fun extended_gcd a b =
-    if b = 0 then (a, 1, 0)
-    else
-      let val (g, x, y) = extended_gcd b (a mod b)
-      in (g, y, x - (a div b) * y) end
-
-  fun scope_admitted (period, residue) =
-    period > 0 andalso clock_size mod period = 0 andalso
-      0 <= residue andalso residue < period
-
-  (* The intersection of two cyclotomic cylinders is one cylinder or empty. *)
-  fun scope_meet (p, a) (q, b) =
-    if not (scope_admitted (p, a) andalso scope_admitted (q, b)) then
-      error "B1 template received a non-admitted phase scope"
-    else
-      let
-        val g = gcd p q
-      in
-        if (b - a) mod g <> 0 then NONE
-        else
-          let
-            val q' = q div g
-            val (_, inverse, _) = extended_gcd (p div g) q'
-            val step = if q' = 1 then 0
-              else (((b - a) div g * inverse) mod q' + q') mod q'
-            val period = p * q'
-            val residue = (a + p * step) mod period
-            val result = (period, residue)
-            val _ = if scope_admitted result then ()
-              else error "B1 CRT intersection escaped the 924 clock"
-          in SOME result end
-      end
-
-  fun compare_scope ((p, a): scope, (q, b): scope) =
-    (case int_ord (p, q) of EQUAL => int_ord (a, b) | order => order)
-
   fun compare_output (left, right) =
     (case (left, right) of
       (Invalid, Invalid) => EQUAL
@@ -97,307 +62,6 @@ struct
     | (Live _, Stop _) => LESS
     | (Stop _, Live _) => GREATER
     | (Stop a, Stop b) => int_ord (a, b))
-
-  (* A congruence scope is represented over the valid CRT characters
-     C4 x C3 x C7 x C11; no padded coordinates or invalid branches occur. *)
-  val character_periods = [4, 3, 7, 11]
-  val clock_domains = character_periods
-  val clock_valid = map (fn period => 0 upto (period - 1)) character_periods
-
-  fun member_int value values = exists (fn other => value = other) values
-
-  fun cube_subset (left: cube, right: cube) =
-    ListPair.allEq (fn (a, b) => forall (fn value => member_int value b) a)
-      (left, right)
-
-  fun minimal_cubes (cubes: cube list) =
-    let val unique = distinct (op =) cubes
-    in filter (fn cube => not (exists (fn other =>
-      cube <> other andalso cube_subset (cube, other)) unique)) unique end
-
-  fun scope_cube ((period, residue): scope): cube =
-    let
-      val factor4 = if period mod 4 = 0 then 4
-        else if period mod 2 = 0 then 2 else 1
-      val factors = [factor4,
-        if period mod 3 = 0 then 3 else 1,
-        if period mod 7 = 0 then 7 else 1,
-        if period mod 11 = 0 then 11 else 1]
-      fun coordinate (factor, valid) =
-        if factor = 1 then valid
-        else filter (fn value => value mod factor = residue mod factor) valid
-      fun build_masks ([], []) = []
-        | build_masks (factor :: factors, valid :: valids) =
-            coordinate (factor, valid) :: build_masks (factors, valids)
-        | build_masks _ = error "B1 MDD clock dimensions are inconsistent"
-    in build_masks (factors, clock_valid) end
-
-  fun compare_mdd (MDD_False, MDD_False) = EQUAL
-    | compare_mdd (MDD_False, _) = LESS
-    | compare_mdd (_, MDD_False) = GREATER
-    | compare_mdd (MDD_True, MDD_True) = EQUAL
-    | compare_mdd (MDD_True, _) = LESS
-    | compare_mdd (_, MDD_True) = GREATER
-    | compare_mdd (MDD_Node (left_level, left_children),
-        MDD_Node (right_level, right_children)) =
-        (case int_ord (left_level, right_level) of
-          EQUAL => compare_mdd_lists (left_children, right_children)
-        | order => order)
-  and compare_mdd_lists ([], []) = EQUAL
-    | compare_mdd_lists ([], _ :: _) = LESS
-    | compare_mdd_lists (_ :: _, []) = GREATER
-    | compare_mdd_lists (left :: lefts, right :: rights) =
-        (case compare_mdd (left, right) of
-          EQUAL => compare_mdd_lists (lefts, rights)
-        | order => order)
-
-  fun equal_children [] = true
-    | equal_children (first :: rest) = forall (fn item => item = first) rest
-
-  fun scope_column_key (scopes: scope list) =
-    let
-      val cubes = minimal_cubes (map scope_cube scopes)
-      fun build level active =
-        if null active then MDD_False
-        else if level = 4 then MDD_True
-        else
-          let
-            val domain = nth clock_domains level
-            fun cofactor value =
-              active
-              |> filter (fn (mask :: _) => member_int value mask
-                | _ => error "B1 CRT MDD encountered a malformed cube")
-              |> map (fn (_ :: tail) => tail
-                | [] => error "B1 CRT MDD encountered an empty cube")
-              |> minimal_cubes
-            val children = map (fn value => build (level + 1) (cofactor value))
-              (0 upto (domain - 1))
-          in
-            if equal_children children then hd children
-            else MDD_Node (level, children)
-          end
-    in build 0 cubes end
-
-  fun compare_mdd_lists_key (left, right) = compare_mdd_lists (left, right)
-
-  structure MDDtab = Table(type key = mdd val ord = compare_mdd)
-  structure MDDListTab = Table(type key = mdd list val ord = compare_mdd_lists_key)
-  structure MDDShiftTab = Table(type key = mdd * int val ord =
-    prod_ord compare_mdd int_ord)
-
-  fun compare_slot_lift_key ((p, slot, cid, shift), (q, other_slot, other_cid, other_shift)) =
-    (case int_ord (p, q) of EQUAL =>
-      (case int_ord (slot, other_slot) of EQUAL =>
-        (case int_ord (cid, other_cid) of EQUAL => int_ord (shift, other_shift)
-        | order => order)
-      | order => order)
-    | order => order)
-
-  structure SlotLiftTab = Table(type key = int * int * int * int
-    val ord = compare_slot_lift_key)
-
-  fun lcm left right = left div gcd left right * right
-
-  fun mdd_cofactor key level value =
-    (case key of
-      MDD_Node (node_level, children) =>
-        if node_level = level then nth children value
-        else if node_level > level then key
-        else error "B1 MDD cofactor moved behind its current level"
-    | _ => key)
-
-  fun mdd_node level children =
-    if equal_children children then hd children else MDD_Node (level, children)
-
-  fun mdd_and (MDD_False, _) = MDD_False
-    | mdd_and (_, MDD_False) = MDD_False
-    | mdd_and (MDD_True, right) = right
-    | mdd_and (left, MDD_True) = left
-    | mdd_and (left as MDD_Node (left_level, _),
-        right as MDD_Node (right_level, _)) =
-        let
-          val level = Int.min (left_level, right_level)
-          val domain = nth clock_domains level
-          val children = map (fn value => mdd_and
-            (mdd_cofactor left level value, mdd_cofactor right level value))
-            (0 upto (domain - 1))
-        in mdd_node level children end
-
-  fun mdd_or (MDD_True, _) = MDD_True
-    | mdd_or (_, MDD_True) = MDD_True
-    | mdd_or (MDD_False, right) = right
-    | mdd_or (left, MDD_False) = left
-    | mdd_or (left as MDD_Node (left_level, _),
-        right as MDD_Node (right_level, _)) =
-        let
-          val level = Int.min (left_level, right_level)
-          val domain = nth clock_domains level
-          val children = map (fn value => mdd_or
-            (mdd_cofactor left level value, mdd_cofactor right level value))
-            (0 upto (domain - 1))
-        in mdd_node level children end
-
-  fun translate_mdd shift key =
-    let
-      fun translate MDD_False = MDD_False
-        | translate MDD_True = MDD_True
-        | translate (MDD_Node (level, children)) =
-            let
-              val period = nth character_periods level
-              val domain = nth clock_domains level
-              val delta = shift mod period
-              val translated_children = map translate children
-              fun child value =
-                if value >= period then MDD_False
-                else nth translated_children ((value - delta + period) mod period)
-            in mdd_node level (map child (0 upto (domain - 1))) end
-    in translate key end
-
-  fun valid_character_product first last =
-    if first >= last then 1
-    else nth character_periods first * valid_character_product (first + 1) last
-
-  fun mdd_cardinality key =
-    let
-      fun count _ MDD_False = 0
-        | count level MDD_True = valid_character_product level 4
-        | count level (MDD_Node (node_level, children)) =
-            if node_level < level then
-              error "B1 MDD cardinality moved behind its current level"
-            else
-              let
-                val skipped = valid_character_product level node_level
-                val child_count = fold (fn (value, child) => fn total =>
-                  if value < nth character_periods node_level
-                  then total + count (node_level + 1) child else total)
-                  (map_index I children) 0
-              in skipped * child_count end
-    in count 0 key end
-
-  fun cofactor_intersection key level values =
-    fold (fn value => fn prior =>
-      mdd_and (prior, mdd_cofactor key level value)) values MDD_True
-
-  type component_choice = {factor: int, residue: int, values: int list}
-
-  val component_choices =
-    let
-      val r4 =
-        [{factor = 1, residue = 0, values = [0, 1, 2, 3]},
-         {factor = 2, residue = 0, values = [0, 2]},
-         {factor = 2, residue = 1, values = [1, 3]}] @
-        map (fn value => {factor = 4, residue = value, values = [value]})
-          (0 upto 3)
-      fun prime modulus =
-        {factor = 1, residue = 0, values = 0 upto (modulus - 1)} ::
-        map (fn value => {factor = modulus, residue = value, values = [value]})
-          (0 upto (modulus - 1))
-    in [r4, prime 3, prime 7, prime 11] end
-
-  fun choices_scope choices =
-    let
-      fun combine ({factor, residue, ...}: component_choice) prior =
-        (case scope_meet prior (factor, residue) of
-          SOME scope => scope
-        | NONE => error "B1 component choices are not CRT-compatible")
-    in fold combine choices (1, 0) end
-
-  (* Enumerate maximal congruence cylinders from the reduced MDD itself.
-     This canonicalizes split and overlapping scope descriptions alike.  The
-     finite factor-mask lattice has 7 x 4 x 8 x 12 admissible coordinate
-     choices at its widest; recursive cofactor intersections prune prefixes
-     that cannot be contained in the column.  It never enumerates clock rows. *)
-  fun maximal_scope_cover key =
-    let
-      fun implicants level suffix chosen =
-        if suffix = MDD_False then []
-        else if level = 4 then
-          if suffix = MDD_True then [choices_scope (rev chosen)] else []
-        else
-          maps (fn (choice: component_choice) =>
-            let val next = cofactor_intersection suffix level (#values choice)
-            in implicants (level + 1) next (choice :: chosen) end)
-            (nth component_choices level)
-      val candidates = distinct (op =) (implicants 0 key [])
-      val candidate_index = Inttab.make
-        (map (fn (period, residue) =>
-          (period * clock_size + residue, true)) candidates)
-      fun proper_divisors value =
-        let
-          fun search divisor acc =
-            if divisor * divisor > value then acc
-            else if value mod divisor <> 0 then search (divisor + 1) acc
-            else
-              let
-                val quotient = value div divisor
-                val first = if divisor < value then divisor :: acc else acc
-                val second = if quotient < value andalso quotient <> divisor
-                  then quotient :: first else first
-              in search (divisor + 1) second end
-        in sort_distinct int_ord (search 1 []) end
-      fun broader_exists (period, residue) =
-        exists (fn divisor =>
-          Inttab.defined candidate_index
-            (divisor * clock_size + residue mod divisor))
-          (proper_divisors period)
-    in filter (not o broader_exists) candidates end
-
-  (* A common rebase is occurrence data.  Its candidate anchors come from the
-     representation-independent maximal cylinders above, not from whichever
-     raw scope split happened to construct a column. *)
-  fun partition_alignment_shifts scope_cover (keys: mdd list) global_period =
-    let
-      val cardinalities = map (fn key => (mdd_cardinality key, key)) keys
-      val rarest = fold (fn (count, _) => fn best => if count < best then count else best)
-        cardinalities clock_size
-      val rare_keys = map #2 (filter (fn (count, _) => count = rarest) cardinalities)
-        |> sort_distinct compare_mdd
-      val scopes = maps scope_cover rare_keys
-        |> sort_distinct compare_scope
-      fun larger_period (period, _) best = if period > best then period else best
-      val anchor_period = fold larger_period scopes 1
-      val anchors = map #2 (filter (fn (period, _) => period = anchor_period) scopes)
-        |> sort_distinct int_ord
-      fun candidates residue =
-        map (fn multiple => (anchor_period - residue) mod anchor_period +
-          multiple * anchor_period)
-          (0 upto (global_period div anchor_period - 1))
-      val shifts = maps candidates anchors
-        |> map (fn shift => shift mod global_period)
-        |> sort_distinct int_ord
-    in if null shifts then [0] else shifts end
-
-  fun mdd_support_period keys =
-    let
-      fun levels MDD_False = []
-        | levels MDD_True = []
-        | levels (MDD_Node (level, children)) =
-            level :: maps levels children
-      val used = maps levels keys |> sort_distinct int_ord
-    in fold (fn level => fn period =>
-      lcm period (nth character_periods level)) used 1 end
-
-  fun canonical_partition_rebase scope_cover translate_key (source_keys: mdd list) =
-    if source_keys = [MDD_True] then (0, 1, source_keys, source_keys)
-    else
-      let
-        val global_period = mdd_support_period source_keys
-        val candidates = partition_alignment_shifts scope_cover source_keys global_period
-        fun choose [] NONE = error "B1 canonical rebase has no anchor candidate"
-          | choose [] (SOME (shift, key, column_keys)) = (shift, key, column_keys)
-          | choose (shift :: rest) prior =
-              let
-                val column_keys = map (translate_key shift) source_keys
-                val key = sort compare_mdd column_keys
-                val better =
-                  (case prior of
-                    NONE => true
-                  | SOME (_, best_key, _) =>
-                      compare_mdd_lists_key (key, best_key) = LESS)
-                val next = if better then SOME (shift, key, column_keys) else prior
-              in choose rest next end
-        val (shift, keys, column_keys) = choose candidates NONE
-      in (shift, length candidates, keys, column_keys) end
 
   fun output_term (Live root) = @{term Comma_Semantic_B1_Live} $ nat root
     | output_term (Stop position) = @{term Comma_Semantic_B1_Stop} $ nat position
@@ -419,15 +83,18 @@ struct
       | NONE => error "B1 canonical template column has no occurrence binding")
       template_keys end
 
-  fun lift_template_slot_with translate_key period slot net_shift template_keys =
+  fun lift_template_slot_with slot_key_for translate_key period slot net_shift
+      template_keys =
     let
-      val slot_key = scope_column_key [(period, slot)]
+      val slot_key = slot_key_for period slot
       val negative_shift = (clock_size - (net_shift mod clock_size)) mod clock_size
     in map (fn key => mdd_and (slot_key, translate_key negative_shift key))
       template_keys end
 
   fun lift_template_slot period slot net_shift template_keys =
-    lift_template_slot_with translate_mdd period slot net_shift template_keys
+    lift_template_slot_with
+      (fn period => fn slot => scope_column_key [(period, slot)])
+      translate_mdd period slot net_shift template_keys
 
   fun mdd_eval_phase MDD_False _ = false
     | mdd_eval_phase MDD_True _ = true
@@ -605,16 +272,21 @@ struct
           | insert ((prior_output, prior_key) :: rest) =
               (case compare_output (output, prior_output) of
                 LESS => (output, key) :: ((prior_output, prior_key) :: rest)
-              | EQUAL => (prior_output, mdd_or (prior_key, key)) :: rest
-              | GREATER => (prior_output, prior_key) :: insert rest)
+              | EQUAL =>
+                  let val result = mdd_or (prior_key, key)
+                  in (prior_output, result) :: rest end
+              | GREATER =>
+                  (prior_output, prior_key) :: insert rest)
       in insert columns end
 
-  fun check_mdd_partition mdd_columns =
+  fun check_mdd_partition cardinality_of mdd_columns =
     let
       val _ = if null mdd_columns then
           error "B1 symbolic source has no terminal columns" else ()
       val keys = map #2 mdd_columns
-      val cardinality = fold (fn key => fn total => total + mdd_cardinality key) keys 0
+      val key_cardinalities = map (fn key => (key, cardinality_of key)) keys
+      val cardinality = fold (fn (_, count) => fn total => total + count)
+        key_cardinalities 0
       val _ = if cardinality = clock_size then ()
         else error "B1 symbolic source table does not cover the clock"
       (* Check each new column against the accumulated union.  Canonical MDD
@@ -626,7 +298,7 @@ struct
               disjoint_union rest (mdd_or (union, key))
             else error "B1 symbolic source columns overlap"
       val _ = disjoint_union keys MDD_False
-    in keys end
+    in (keys, key_cardinalities) end
 
   type artifact =
     {template_keys: mdd list list, occurrence_descriptors_term: term,
@@ -634,6 +306,8 @@ struct
      root_occurrence_indices_term: term,
      lift_descriptors: lift_descriptor list,
      lift_refs: lift_ref list list,
+     lift_column_keys: mdd list list,
+     construction_piece_refs: construction_piece list list list,
      stats: unit -> string}
 
   fun discover_template_sources lthy =
@@ -673,16 +347,51 @@ struct
         Termtab.update (source_base_term source, root) prior) sources Termtab.empty
       val _ = if Termtab.size root_numbers = length sources then ()
         else error "B1 root address table contains duplicates"
+      (* Immutable canonical MDDs and slot scopes are memoized only for this
+         fold, so repeated source/candidate work shares exact data results. *)
       val scope_cover_cache = Unsynchronized.ref MDDtab.empty
       val scope_cover_hits = Unsynchronized.ref 0
+      val cardinality_cache = Unsynchronized.ref MDDtab.empty
+      val cardinality_cache_hits = Unsynchronized.ref 0
+      val cardinality_cache_misses = Unsynchronized.ref 0
+      val slot_scope_cache = Unsynchronized.ref ScopeTab.empty
+      val slot_scope_cache_hits = Unsynchronized.ref 0
+      val slot_scope_cache_misses = Unsynchronized.ref 0
       val shift_cache = Unsynchronized.ref MDDShiftTab.empty
       val shift_cache_hits = Unsynchronized.ref 0
       val slot_lift_cache = Unsynchronized.ref SlotLiftTab.empty
       val slot_lift_cache_hits = Unsynchronized.ref 0
       val slot_lift_descriptors_rev = Unsynchronized.ref ([]: lift_descriptor list)
+      val lift_geometry_by_id = Unsynchronized.ref
+        (Inttab.empty: mdd list Inttab.table)
       val slot_lift_count = Unsynchronized.ref 0
       val retained_lift_columns = Unsynchronized.ref 0
       val expanded_child_ref_equivalent = Unsynchronized.ref 0
+      fun cached_cardinality key =
+        (case MDDtab.lookup (!cardinality_cache) key of
+          SOME count =>
+            (cardinality_cache_hits := !cardinality_cache_hits + 1; count)
+        | NONE =>
+            let
+              val count = mdd_cardinality key
+              val _ = cardinality_cache_misses := !cardinality_cache_misses + 1
+              val _ = cardinality_cache := MDDtab.update
+                (key, count) (!cardinality_cache)
+            in count end)
+      fun cached_slot_scope period slot =
+        let val key = (period, slot)
+        in
+          (case ScopeTab.lookup (!slot_scope_cache) key of
+            SOME column =>
+              (slot_scope_cache_hits := !slot_scope_cache_hits + 1; column)
+          | NONE =>
+              let
+                val column = scope_column_key [key]
+                val _ = slot_scope_cache_misses := !slot_scope_cache_misses + 1
+                val _ = slot_scope_cache :=
+                  ScopeTab.update (key, column) (!slot_scope_cache)
+              in column end)
+        end
       fun cached_scope_cover key =
         (case MDDtab.lookup (!scope_cover_cache) key of
           SOME scopes =>
@@ -736,8 +445,9 @@ struct
           | NONE =>
               let
                 val representative = representative_for template_cid
-                val geometry = lift_template_slot_with cached_translate_key
-                  period slot normalized_shift (#keys representative)
+                val geometry = lift_template_slot_with cached_slot_scope
+                  cached_translate_key period slot normalized_shift
+                  (#keys representative)
                 val lift_cid = !slot_lift_count
                 val entry = {lift_cid = lift_cid, geometry = geometry}: lift_entry
                 val descriptor = {period = period, slot = slot,
@@ -747,6 +457,8 @@ struct
                   SlotLiftTab.update (key, entry) (!slot_lift_cache)
                 val _ = slot_lift_descriptors_rev :=
                   descriptor :: !slot_lift_descriptors_rev
+                val _ = lift_geometry_by_id :=
+                  Inttab.update (lift_cid, geometry) (!lift_geometry_by_id)
                 val _ = slot_lift_count := lift_cid + 1
                 val _ = retained_lift_columns :=
                   !retained_lift_columns + length geometry
@@ -758,13 +470,14 @@ struct
         | NONE => error "B1 Goto child occurrence was not published before its parent")
       val occurrence_index_by_source = fold_index (fn (index, source) => fn prior =>
         Termtab.update (source, index) prior) source_order Termtab.empty
-      fun publish_source source mdd_columns pending_refs_rev =
+      fun publish_source period source mdd_columns source_cardinalities pending_refs_rev
+          pending_construction_pieces_rev =
         let
           val source_outputs = map #1 mdd_columns
           val source_keys = map #2 mdd_columns
           val (shift, checked, canonical_keys, column_keys) =
-            canonical_partition_rebase cached_scope_cover cached_translate_key
-              source_keys
+            canonical_partition_rebase_with_cardinalities cached_scope_cover
+              cached_translate_key source_keys source_cardinalities
           val _ = translation_checks := !translation_checks + checked
           val matched = MDDListTab.lookup (!representative_index) canonical_keys
           val template =
@@ -801,9 +514,40 @@ struct
             | finish_ref (Pending_Goto (slot, child_index, lift_cid)) =
                 Goto_Ref (slot, child_index, lift_cid)
           val lift_refs = map finish_ref (rev pending_refs_rev)
+          fun finish_piece (output, pending_piece) =
+            let val parent_index = parent_column output
+            in
+              (case pending_piece of
+                Pending_Terminal_Piece (slot_period, slot, key) =>
+                  if slot_period = period then
+                    Terminal_Piece (period, slot, parent_index, key)
+                  else error "B1 terminal construction piece has the wrong parent period"
+              | Pending_Goto_Piece
+                  (slot_period, slot, child_index, child_column_index, lift_cid, key) =>
+                  if slot_period = period then
+                    Goto_Piece
+                      (period, slot, child_index, child_column_index,
+                       lift_cid, parent_index, key)
+                  else error "B1 Goto construction piece has the wrong parent period")
+            end
+          val piece_rows = Array.array
+            (length binding, ([]: construction_piece list))
+          val _ = List.app (fn (output, pending_piece) =>
+            let
+              val index = parent_column output
+              val piece = finish_piece (output, pending_piece)
+            in Array.update (piece_rows, index,
+              piece :: Array.sub (piece_rows, index)) end)
+            (rev pending_construction_pieces_rev)
+          val construction_piece_refs = map (fn index =>
+            rev (Array.sub (piece_rows, index))) (0 upto (length binding - 1))
+          val _ = if length construction_piece_refs = length binding andalso
+              forall (not o null) construction_piece_refs then ()
+            else error "B1 output binding lost its grouped source pieces"
           val occurrence = {root = root, source = source,
             template_cid = #template_cid template, return_shift = shift,
-            binding = binding, lift_refs = lift_refs}: occurrence
+            binding = binding, lift_refs = lift_refs,
+            construction_piece_refs = construction_piece_refs}: occurrence
           val _ = occurrences := occurrence :: !occurrences
           val _ = occurrence_by_source :=
             Termtab.update (source, occurrence) (!occurrence_by_source)
@@ -822,7 +566,8 @@ struct
           val period = length actions
           val _ = if period > 0 andalso clock_size mod period = 0 then ()
             else error "B1 source slot period is not an admitted CRT divisor"
-          fun compose_slot (slot, action) (prior_columns, prior_refs) =
+          fun compose_slot (slot, action)
+              (prior_columns, prior_refs, prior_construction_pieces) =
             (case goto_child action of
               SOME (raw_child, shift) =>
                 let
@@ -841,28 +586,46 @@ struct
                     (#template_cid occurrence) net_shift
                   val _ = if length geometry = length (#binding occurrence) then ()
                     else error "B1 child geometry and occurrence binding lost alignment"
-                  fun add_child_outputs [] [] columns = columns
-                    | add_child_outputs (key :: keys) (output :: outputs) columns =
-                        add_child_outputs keys outputs
-                          (add_mdd_output output key columns)
+                  fun add_child_outputs [] [] accumulated = accumulated
+                    | add_child_outputs (key :: keys) (output :: outputs) accumulated =
+                        add_child_outputs keys outputs (add_mdd_output output key accumulated)
                     | add_child_outputs _ _ _ =
                         error "B1 child geometry and binding lengths differ"
-                  val columns = add_child_outputs geometry (#binding occurrence)
-                    prior_columns
+                  val columns = add_child_outputs geometry
+                    (#binding occurrence) prior_columns
+                  val child_piece_refs = map_index (fn (child_column_index, (key, output)) =>
+                    (output,
+                     Pending_Goto_Piece
+                       (period, slot, child_index, child_column_index, lift_cid, key)))
+                    (geometry ~~ #binding occurrence)
+                    |> filter (fn (_, Pending_Goto_Piece (_, _, _, _, _, key)) =>
+                      key <> MDD_False
+                    | _ => false)
+                  val next_pieces = rev child_piece_refs @ prior_construction_pieces
                   val _ = expanded_child_ref_equivalent :=
                     !expanded_child_ref_equivalent + length geometry
-                in (columns, Pending_Goto (slot, child_index, lift_cid) :: prior_refs) end
+                in
+                  (columns, Pending_Goto (slot, child_index, lift_cid) :: prior_refs,
+                   next_pieces)
+                end
             | NONE =>
                 let
-                  val slot_key = scope_column_key [(period, slot)]
+                  val slot_key = cached_slot_scope period slot
                   val output = terminal_output action
-                in (add_mdd_output output slot_key prior_columns,
-                    Pending_Terminal (slot, output, slot_key) :: prior_refs) end)
-          val (raw_columns, pending_refs_rev) = fold_index
+                  val columns = add_mdd_output output slot_key prior_columns
+                in
+                  (columns,
+                   Pending_Terminal (slot, output, slot_key) :: prior_refs,
+                   (output, Pending_Terminal_Piece (period, slot, slot_key)) ::
+                     prior_construction_pieces)
+                end)
+          val (raw_columns, pending_refs_rev, pending_construction_pieces_rev) = fold_index
             (fn (slot, action) => fn prior => compose_slot (slot, action) prior)
-            actions ([], [])
-          val _ = check_mdd_partition raw_columns
-          val _ = publish_source source raw_columns pending_refs_rev
+            actions ([], [], [])
+          val (_, source_cardinalities) =
+            check_mdd_partition cached_cardinality raw_columns
+          val _ = publish_source period source raw_columns source_cardinalities pending_refs_rev
+            pending_construction_pieces_rev
           val _ = completed := !completed + 1
           val count = !completed
           val _ = if count mod 32 = 0 orelse count = source_order_count then
@@ -921,11 +684,20 @@ struct
       val translation_checks_stat = !translation_checks
       val scope_cover_hits_stat = !scope_cover_hits
       val scope_cover_entries_stat = MDDtab.size (!scope_cover_cache)
+      val cardinality_cache_hits_stat = !cardinality_cache_hits
+      val cardinality_cache_misses_stat = !cardinality_cache_misses
+      val slot_scope_cache_hits_stat = !slot_scope_cache_hits
+      val slot_scope_cache_misses_stat = !slot_scope_cache_misses
       val shift_cache_hits_stat = !shift_cache_hits
       val shift_cache_entries_stat = MDDShiftTab.size (!shift_cache)
       val slot_lift_cache_hits_stat = !slot_lift_cache_hits
       val slot_lift_cache_entries_stat = SlotLiftTab.size (!slot_lift_cache)
       val lift_descriptors = rev (!slot_lift_descriptors_rev)
+      val lift_column_keys = map (fn lift_cid =>
+        (case Inttab.lookup (!lift_geometry_by_id) lift_cid of
+          SOME keys => keys
+        | NONE => error "B1 lift output table lost a descriptor CID"))
+        (0 upto (!slot_lift_count - 1))
       val retained_lift_columns_stat = !retained_lift_columns
       val expanded_child_ref_equivalent_stat = !expanded_child_ref_equivalent
       val template_reuse_hits_stat = !template_reuse_hits
@@ -942,6 +714,8 @@ struct
       val root_occurrence_indices_term = HOLogic.mk_list natT
         (map (nat o #2) root_occurrence_pairs)
       val lift_refs = map #lift_refs occurrence_data
+      val construction_piece_refs =
+        map #construction_piece_refs occurrence_data
       val compact_lift_ref_count =
         fold (fn refs => fn count => count + length refs) lift_refs 0
       fun stats () =
@@ -959,6 +733,14 @@ struct
         " b1_template_scope_cover_cache_hits=" ^ Int.toString scope_cover_hits_stat ^
         " b1_template_scope_cover_cache_entries=" ^
           Int.toString scope_cover_entries_stat ^
+        " b1_template_cardinality_cache_hits=" ^
+          Int.toString cardinality_cache_hits_stat ^
+        " b1_template_cardinality_cache_misses=" ^
+          Int.toString cardinality_cache_misses_stat ^
+        " b1_template_slot_scope_cache_hits=" ^
+          Int.toString slot_scope_cache_hits_stat ^
+        " b1_template_slot_scope_cache_misses=" ^
+          Int.toString slot_scope_cache_misses_stat ^
         " b1_template_shift_cache_hits=" ^ Int.toString shift_cache_hits_stat ^
         " b1_template_shift_cache_entries=" ^
           Int.toString shift_cache_entries_stat ^
@@ -980,6 +762,8 @@ struct
         root_occurrence_indices_term = root_occurrence_indices_term,
         lift_descriptors = lift_descriptors,
         lift_refs = lift_refs,
+        lift_column_keys = lift_column_keys,
+        construction_piece_refs = construction_piece_refs,
         stats = stats}: artifact, lthy)
     end
 

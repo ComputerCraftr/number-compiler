@@ -1,22 +1,84 @@
 """Bounded checks for the untrusted semantic FutureCID certificate tooling."""
 
+import base64
+import json
+import sys
+from copy import deepcopy
+from dataclasses import replace
+from hashlib import sha256
 from pathlib import Path
+from typing import Literal
 
 import pytest
 
 from devtools.checks.isabelle_source_analysis import extract_isabelle_declarations
 from devtools.checks.isabelle_syntax import executable_text
 from devtools.paths import isabelle_root, repository_root
+from devtools.verification.comma_c1_audit import candidate_c1_return
+from devtools.verification.comma_semantic_future_artifact import (
+    CANDIDATE_TABLE_NAMES,
+    assert_candidate_data_theory_matches,
+    candidate_table_definitions,
+    runtime_candidate_bytes,
+    runtime_candidate_sha256,
+)
 from devtools.verification.comma_semantic_future_candidate import (
     Control,
     _class_rank_candidate,
     _decode_unsigned_varints,
     _encode_unsigned_varints,
+    _reencode_candidate,
     _refine_with_witnesses,
+    _render_candidate_data_theory,
     _validate_class_rows,
     _write_new,
+    build_semantic_future_candidate,
+    verify_runtime_candidate_hol_data_binding,
 )
-from number_compiler.sequences.comma.boundary_quotient import BoundaryState
+from devtools.verification.comma_semantic_future_candidate import (
+    main as candidate_main,
+)
+from number_compiler.sequences.comma import future_provider
+from number_compiler.sequences.comma.boundary_quotient import (
+    BoundaryState,
+    construct_macro,
+)
+from number_compiler.sequences.comma.occurrence import (
+    BoundaryOccurrence,
+    OccurrencePrefixReturn,
+)
+
+
+def _assert_candidate_theory_data_matches(
+    checked_text: str,
+    checked_path: Path,
+    generated_text: str,
+    generated_path: Path,
+) -> None:
+    assert_candidate_data_theory_matches(
+        checked_text, checked_path, generated_text, generated_path
+    )
+
+
+def test_candidate_table_comparison_ignores_masked_ml_audit_suffix() -> None:
+    definitions = "\n".join(
+        f'definition {name} :: "nat list" where "{name} = [{index}]"'
+        for index, name in enumerate(CANDIDATE_TABLE_NAMES)
+    )
+
+    def theory(suffix: str) -> str:
+        return (
+            "theory Candidate_Table_Fixture imports Main begin\n\n"
+            f"{definitions}\n\n{suffix}end\n"
+        )
+
+    checked_path = Path("Candidate_Table_Fixture.thy")
+    generated_path = Path("Generated_Candidate_Table_Fixture.thy")
+    checked = theory('ML ‹val _ = if true then () else error "audit"›\n')
+    generated = theory("")
+    _assert_candidate_theory_data_matches(
+        checked, checked_path, generated, generated_path
+    )
 
 
 def test_candidate_varint_map_round_trips_and_rejects_forged_values() -> None:
@@ -90,32 +152,278 @@ def test_candidate_artifact_write_preserves_existing_evidence(tmp_path: Path) ->
     assert artifact.read_text(encoding="utf-8") == "original"
 
 
-def test_compact_template_publication_preserves_shared_nodes_until_demand() -> None:
+def test_runtime_candidate_bytes_use_the_consumer_digest_contract() -> None:
+    record = {
+        "format": "comma-semantic-future-candidate-v1",
+        "authority": "untrusted-source-derived-candidate",
+        "state_universe": "small test fixture",
+        "class_of_state_varint_base64": "AA==",
+        "controls": [["landmine", None]],
+        "ordered_children": [[None, None]],
+        "class_rank_candidate": [0],
+        "refinement_rounds": 0,
+        "refinement_collision_witnesses": [],
+        "seam_is_projected_from_cid": True,
+        "seam_projection_collision": None,
+    }
+    payload = runtime_candidate_bytes(record)
+    decoded = json.loads(payload)
+    assert decoded["format"] == future_provider.FUTURE_CANDIDATE_FORMAT
+    assert decoded["authority"] == "untrusted-source-derived-candidate"
+    assert runtime_candidate_sha256(record) == sha256(payload).hexdigest()
+    assert (
+        future_provider._future_candidate_sha256(decoded) == sha256(payload).hexdigest()
+    )
+    with pytest.raises(ValueError, match="requires a v1"):
+        runtime_candidate_bytes(
+            {**record, "format": future_provider.FUTURE_CANDIDATE_FORMAT}
+        )
+
+
+@pytest.mark.validation
+@pytest.mark.parametrize("kind", ["N", "Z"])
+@pytest.mark.parametrize("a", [2, 5, 9])
+@pytest.mark.parametrize("residue", [1, 5, 13, 923])
+def test_candidate_c1_projection_matches_independent_fragment_accumulation(
+    kind: Literal["N", "Z"], a: int, residue: int
+) -> None:
+    state = BoundaryState(kind, a, residue)
+    exponent = residue if residue >= 5 else residue + 924
+    macro = construct_macro(state, grouped_near=True)
+    reference = OccurrencePrefixReturn(BoundaryOccurrence(state, exponent), macro)
+    assert candidate_c1_return(state, macro, 10**exponent) == (
+        reference.c1_count,
+        reference.terminal_low_suffix,
+    )
+    foreign = BoundaryState(state.kind, 3 if a != 3 else 4, residue)
+    with pytest.raises(ValueError, match="another source"):
+        candidate_c1_return(foreign, macro, 10**exponent)
+    unsealed = replace(macro)
+    with pytest.raises(ValueError, match="component seal"):
+        candidate_c1_return(state, unsealed, 10**exponent)
+    with pytest.raises(ValueError, match="decimal domain"):
+        candidate_c1_return(state, macro, 1)
+
+
+def test_reencoded_runtime_bytes_bind_to_the_checked_hol_candidate(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    candidate = build_semantic_future_candidate()
+    v1 = candidate.certificate_record()
+    occurrence = candidate.occurrence_payload_record()
+    assert v1["format"] == "comma-semantic-future-candidate-v1"
+    assert v1["authority"] == "untrusted-source-derived-candidate"
+
+    raw = {
+        "format": v1["format"],
+        "states": [
+            [state.kind, state.a, state.exponent_residue] for state in candidate.states
+        ],
+        "class_of_state": list(candidate.class_ids),
+        "controls": v1["controls"],
+        "ordered_children": v1["ordered_children"],
+        "occurrence_payloads": occurrence["occurrence_payloads"],
+        "refinement_rounds": v1["refinement_rounds"],
+        "refinement_collision_witnesses": v1["refinement_collision_witnesses"],
+        "seam_is_projected_from_cid": v1["seam_is_projected_from_cid"],
+        "seam_projection_collision": v1["seam_projection_collision"],
+    }
+    raw_path = tmp_path / "raw-v1.json"
+    _write_new(raw_path, json.dumps(raw, sort_keys=True, separators=(",", ":")))
+    runtime_path = tmp_path / "runtime-v2.json"
+    occurrence_path = tmp_path / "occurrence.json"
+    hol_path = tmp_path / "Comma_Semantic_Future_Candidate_Data.thy"
+    result = _reencode_candidate(raw_path, runtime_path, occurrence_path, hol_path)
+
+    runtime_bytes = candidate.runtime_candidate_bytes()
+    runtime_record = json.loads(runtime_bytes)
+    assert runtime_path.read_bytes() == runtime_bytes
+    assert runtime_bytes == candidate.runtime_candidate_bytes()
+    assert candidate.runtime_candidate_sha256() == sha256(runtime_bytes).hexdigest()
+    assert result["candidate_sha256"] == future_provider._future_candidate_sha256(
+        runtime_record
+    )
+    assert runtime_record["format"] == future_provider.FUTURE_CANDIDATE_FORMAT
+    assert (
+        runtime_record["class_of_state_varint_base64"]
+        == v1["class_of_state_varint_base64"]
+    )
+    assert base64.b64decode(runtime_record["class_of_state_varint_base64"]) == (
+        _encode_unsigned_varints(
+            candidate.class_ids, max_value=len(candidate.states) - 1
+        )
+    )
+    assert runtime_record["controls"] == v1["controls"]
+    assert runtime_record["ordered_children"] == v1["ordered_children"]
+    assert runtime_record["class_rank_candidate"] == v1["class_rank_candidate"]
+    assert "theorem_id" not in runtime_record and "instance_id" not in runtime_record
+
+    checked_hol = (
+        isabelle_root(repository_root())
+        / "families/comma/comma_semantic_future_instance"
+        / "Comma_Semantic_Future_Candidate_Data.thy"
+    ).read_text(encoding="utf-8")
+    generated_hol = hol_path.read_text(encoding="utf-8")
+    checked_path = (
+        isabelle_root(repository_root())
+        / "families/comma/comma_semantic_future_instance"
+        / "Comma_Semantic_Future_Candidate_Data.thy"
+    )
+    assert generated_hol == candidate.isabelle_candidate_data()
+    _assert_candidate_theory_data_matches(
+        checked_hol, checked_path, generated_hol, hol_path
+    )
+    assert (
+        verify_runtime_candidate_hol_data_binding(runtime_record, checked_path)
+        == candidate.runtime_candidate_sha256()
+    )
+
+    changed_record = deepcopy(runtime_record)
+    changed_controls = changed_record["controls"]
+    fork_index = next(
+        index for index, control in enumerate(changed_controls) if control[0] == "fork"
+    )
+    old_coefficient = changed_controls[fork_index][1]
+    changed_controls[fork_index][1] = 3 if old_coefficient != 3 else 4
+    with pytest.raises(ValueError, match="candidate table definitions differ"):
+        verify_runtime_candidate_hol_data_binding(changed_record, checked_path)
+
+    changed_raw = deepcopy(raw)
+    changed_raw["controls"] = deepcopy(changed_record["controls"])
+    changed_raw_path = tmp_path / "changed-raw-v1.json"
+    _write_new(
+        changed_raw_path,
+        json.dumps(changed_raw, sort_keys=True, separators=(",", ":")),
+    )
+    rejected_outputs = (
+        tmp_path / "rejected-runtime-v2.json",
+        tmp_path / "rejected-occurrence.json",
+        tmp_path / "rejected-candidate-data.thy",
+    )
+    monkeypatch.setattr(
+        sys,
+        "argv",
+        [
+            "comma-semantic-future-candidate",
+            "--output",
+            str(rejected_outputs[0]),
+            "--occurrence-output",
+            str(rejected_outputs[1]),
+            "--isabelle-data-output",
+            str(rejected_outputs[2]),
+            "--reencode-input",
+            str(changed_raw_path),
+            "--checked-isabelle-data",
+            str(checked_path),
+        ],
+    )
+    with pytest.raises(ValueError, match="candidate table definitions differ"):
+        candidate_main()
+    assert all(not path.exists() for path in rejected_outputs)
+
+    extra_record = deepcopy(runtime_record)
+    extra_record["controls"].append(list(extra_record["controls"][0]))
+    extra_record["ordered_children"].append(list(extra_record["ordered_children"][0]))
+    extra_record["class_rank_candidate"].append(extra_record["class_rank_candidate"][0])
+    with pytest.raises(ValueError):
+        verify_runtime_candidate_hol_data_binding(extra_record, checked_path)
+
+    truncated_record = deepcopy(runtime_record)
+    for field in ("controls", "ordered_children", "class_rank_candidate"):
+        truncated_record[field] = truncated_record[field][:-1]
+    with pytest.raises(ValueError):
+        verify_runtime_candidate_hol_data_binding(truncated_record, checked_path)
+
+    changed_format = deepcopy(runtime_record)
+    changed_format["format"] = "comma-semantic-future-candidate-v1"
+    with pytest.raises(ValueError, match="unsupported semantic future candidate"):
+        verify_runtime_candidate_hol_data_binding(changed_format, checked_path)
+
+    changed_controls = list(candidate.class_controls)
+    first_control = changed_controls[0]
+    changed_controls[0] = (
+        ("fork", 2) if first_control[0] == "landmine" else ("landmine", None)
+    )
+    altered_hol = _render_candidate_data_theory(
+        candidate.class_ids,
+        tuple(changed_controls),
+        candidate.class_children,
+        candidate.class_ranks,
+    )
+    altered_path = tmp_path / "Altered_Comma_Semantic_Future_Candidate_Data.thy"
+    checked_tables = candidate_table_definitions(checked_hol, checked_path)
+    altered_tables = candidate_table_definitions(altered_hol, altered_path)
+    assert altered_tables.keys() == checked_tables.keys()
+    assert (
+        altered_tables["comma_semantic_future_candidate_controls"]
+        != (checked_tables["comma_semantic_future_candidate_controls"])
+    )
+    assert {
+        name: body
+        for name, body in altered_tables.items()
+        if name != "comma_semantic_future_candidate_controls"
+    } == {
+        name: body
+        for name, body in checked_tables.items()
+        if name != "comma_semantic_future_candidate_controls"
+    }
+    with pytest.raises(ValueError, match="candidate table definitions differ"):
+        _assert_candidate_theory_data_matches(
+            checked_hol, checked_path, altered_hol, altered_path
+        )
+
+
+def test_template_publication_uses_global_named_column_ids() -> None:
     root = (
         isabelle_root(repository_root()) / "families/comma/comma_semantic_b1_instance"
     )
     publication = executable_text(
         (root / "semantic_b1_occurrence_publication.ML").read_text(encoding="utf-8")
     )
-    assert "Bound (depth - index - 1)" in publication
-    assert "Term.is_open columns_term" in publication
-    assert "Term.lambda" not in publication
-    assert "expanded_weights" in publication
-    # These are source-policy checks; kernel builds exercise the serializer.
-    # Diagnostics must not traverse the compressed graph unless requested.
-    metrics_start = publication.index("val row_metrics =")
-    metrics_guard = publication.index(
-        'if getenv "COMMA_PROFILE_LOG" = "" then NONE', metrics_start
+    assert "fun make_column_dag" in publication
+    assert "fun artifact_column_dag" in publication
+    assert "val column_dag = artifact_column_dag artifact" in publication
+    assert "fun serialize_column_block" in publication
+    assert "fun define_column_blocks" in publication
+    assert "fun define_global_definitions" in publication
+    assert "Global_Theory.add_def" in publication
+    assert 'define_global_definitions "artifact-data-batch"' in publication
+    assert "val column_block_size = 512" in publication
+    assert "fun define_column_data" in publication
+    assert "comma_semantic_b1_crt_column_node_dag" in publication
+    assert "comma_semantic_b1_crt_column_at" in publication
+    assert "Array.sub (constants, child_cid)" not in publication
+    assert "template_projection dag_constant" in publication
+    assert "val map_column_rows" in publication
+    assert '"comma_semantic_b1_crt_template_column_ids"' in publication
+    conversion = executable_text(
+        (root / "semantic_b1_column_conversion.ML").read_text(encoding="utf-8")
     )
-    assert metrics_guard < publication.index("val expanded_weights", metrics_start)
-    assert metrics_guard < publication.index("Term.size_of_term columns_term")
-    assert "val metrics = if not profile then NONE else" in publication
+    cache = executable_text(
+        (root / "semantic_b1_occurrence_check_cache.ML").read_text(encoding="utf-8")
+    )
+    projection = executable_text(
+        (root / "semantic_b1_template_projection.ML").read_text(encoding="utf-8")
+    )
+    assert "Comma_Semantic_B1_Template_Projection.make" in conversion
+    assert '"semantic_b1_selected_template_projection"' in projection
+    assert "comma_semantic_b1_crt_column_templates_nth" in projection
+    assert "make_template_projection ctxt" in cache
+    assert 'select "templates"' not in cache
+    assert '"comma_semantic_b1_crt_lift_column_ids"' in publication
+    assert '"comma_semantic_b1_crt_construction_piece_refs"' in publication
+    assert '"comma_semantic_b1_crt_grouped_union_steps"' not in publication
+    assert '"comma_semantic_b1_crt_grouped_union_start_ids"' not in publication
+    assert "union_trace" not in publication
+    assert "compress_template_row" not in publication
+    assert "column_term_mdd" not in publication
     assert "Candidate.Terminal_Ref (slot, parent)" in publication
     assert "Candidate.Goto_Ref (slot, child, lift_cid)" in publication
     assert "optional_nat parent" not in publication
-    assert 'define_data "comma_semantic_b1_crt_lift_refs"' in publication
-    assert 'define_data "comma_semantic_b1_crt_lift_descriptors"' in publication
+    assert '"comma_semantic_b1_crt_lift_refs"' in publication
+    assert '"comma_semantic_b1_crt_lift_descriptors"' in publication
     assert "slot_child_indices" not in publication
+
     constructor = executable_text(
         (root / "semantic_b1_template_constructor.ML").read_text(encoding="utf-8")
     )
@@ -123,11 +431,6 @@ def test_compact_template_publication_preserves_shared_nodes_until_demand() -> N
     assert "Pending_Child" not in constructor
     assert "Pending_Goto" in constructor
     assert "lift_descriptors" in constructor
-    fixture = (root / "Comma_Semantic_B1_Occurrence_Publication.thy").read_text(
-        encoding="utf-8"
-    )
-    assert "Thm.consolidate [compact_correct, swapped_rejected]" in fixture
-    assert fixture.index("swapped_rejected") < fixture.index("local_setup")
 
 
 def test_compact_lift_contract_keeps_rebase_and_binding_authority() -> None:
@@ -275,14 +578,30 @@ def test_local_cover_checker_reuses_exact_requests_without_repainting_parents() 
     publication = (root / "Comma_Semantic_B1_Occurrence_Publication.thy").read_text()
     assert "28 * length comma_semantic_b1_crt_sources" in publication
     assert "lift_descriptor_table_valid" not in publication
-    for request in (
-        "comma_semantic_b1_crt_local_piece_covered parent candidate result",
-        "comma_semantic_b1_crt_local_parent_column parent result",
-        "comma_semantic_b1_crt_find_result_index beta result",
-    ):
-        assert request in checker
-    assert "comma_semantic_b1_crt_lift_local_cover_witness" in checker
-    assert "comma_semantic_b1_crt_lift_local_slot_valid" in checker
+    # The duplicate concrete local-cover sweep moved into construction
+    # induction. Retain its source/result obligation through the theorem used
+    # by publication, rather than requiring the retired evaluator requests.
+    refinement = retired_refinement.with_name(
+        "Comma_Semantic_B1_CRT_Constructed_Refinement.thy"
+    ).read_text(encoding="utf-8")
+    assert "comma_semantic_b1_crt_group_piece_local_covered" in refinement
+    assert "comma_semantic_b1_crt_constructed_bound_lift_local_cover" in refinement
+    assert (
+        "comma_semantic_b1_crt_constructed_occurrences_candidate_matches" in refinement
+    )
+    assert (
+        "comma_semantic_b1_crt_constructed_occurrences_candidate_matches" in publication
+    )
+    assert "comma_semantic_b1_crt_group_construction_bound" in checker
+    assert (
+        "comma_semantic_b1_crt_constructed_piece_binding_matches_from_actions"
+        in checker
+    )
+    assert "comma_semantic_b1_crt_constructed_piece_matches" in refinement
+    assert "comma_semantic_b1_crt_local_cover_fixtures" in publication
     # B32 still consumes checked split actions; eliminating B1 reconstruction
     # must not remove this separate demanded conversion.
-    assert "comma_crt_occurrence_split_action occurrence" in checker
+    assert "comma_crt_occurrence_split_action occurrence" in executable_text(
+        (root / "semantic_b1_construction_check.ML").read_text()
+    )
+    assert "Construction_Check.occurrence_cache_patterns" in checker

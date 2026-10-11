@@ -25,6 +25,9 @@ struct
      "comma_finite_children",
      "comma_finite_weighted_run",
      "comma_finite_weighted_macro",
+     "comma_decisive_endpoint_round_refines_fast",
+     "comma_fast_round_aux",
+     "comma_fast_boundary_run",
      "comma_total_macro",
      "comma_total_weighted_macro"]
 
@@ -54,31 +57,45 @@ struct
   fun retired paths name =
     exists (fn path => String.isSubstring path name) paths
 
-  (* [Thm_Deps.thm_deps] deliberately stops when it reaches a registered
-     theorem node.  Release authorities need the named nodes below that
-     boundary as well, so walk the proof-term nodes explicitly and memoize by
-     proof serial. *)
-  fun names thy thms =
+  (* Check oracle use while collecting the same transitive named-dependency
+     graph.  The per-call serial table is deliberately local: each endpoint
+     group keeps an independent reachability result. *)
+  fun checked_names thy label thms =
     let
-      fun visit [] seen found = (seen, found)
-        | visit ((serial, node) :: pending) seen found =
+      fun add_oracles [] oracle_sets = oracle_sets
+        | add_oracles oracles oracle_sets = oracles :: oracle_sets
+
+      fun visit [] seen found oracle_sets = (seen, found, oracle_sets)
+        | visit ((serial, node) :: pending) seen found oracle_sets =
             if Inttab.defined seen serial then
-              visit pending seen found
+              visit pending seen found oracle_sets
             else
               let
                 val seen' = Inttab.update (serial, ()) seen
                 val name = Thm_Name.print (Proofterm.thm_node_name node)
+                val node_name = Proofterm.thm_node_name node
                 val found' =
-                  if Thm_Name.is_empty (Proofterm.thm_node_name node) then found
+                  if Thm_Name.is_empty node_name then found
                   else Symtab.update (name, ()) found
-                val children = Proofterm.thm_node_thms node
+                val PBody {oracles, thms = children, ...} =
+                  Future.join (Proofterm.thm_node_body node)
+                val oracle_sets' = add_oracles oracles oracle_sets
+                val _ = Proofterm.join_thms children
               in
-                visit (children @ pending) seen' found'
+                visit (children @ pending) seen' found' oracle_sets'
               end
-      val roots = maps (Thm.thm_deps o Thm.transfer thy) thms
-      val (_, found) = visit roots Inttab.empty Symtab.empty
+
+      val transferred = map (Thm.transfer thy) thms
+      val root_bodies = map Thm.proof_body_of transferred
+      val roots = maps Thm.thm_deps transferred
+      val root_oracles = maps (fn PBody {oracles, ...} => [oracles]) root_bodies
+      val _ = Proofterm.join_thms roots
+      val (_, found, oracle_sets) =
+        visit roots Inttab.empty Symtab.empty root_oracles
+      val oracles = Proofterm.unions_oracles oracle_sets
     in
-      Symtab.keys found
+      if null oracles then Symtab.keys found
+      else error (label ^ " depends on an Isabelle oracle")
     end
 
   (* Resolve the caller's xstrings through the active context before comparing
@@ -95,10 +112,6 @@ struct
         else names
       end) expected
     |> distinct (op =)
-
-  fun check_oracles label thms =
-    if null (Thm_Deps.all_oracles thms) then ()
-    else error (label ^ " depends on an Isabelle oracle")
 
   fun check_hypotheses label thms =
     if forall (null o Thm.hyps_of) thms then ()
@@ -131,8 +144,7 @@ struct
   fun require_paths ctxt label paths thms =
     let
       val thy = Proof_Context.theory_of ctxt
-      val _ = check_oracles label thms
-      val actual = names thy thms
+      val actual = checked_names thy label thms
     in
       check_paths label paths actual
     end
@@ -149,9 +161,8 @@ struct
       val _ = if null thms then
           error (label ^ " has no endpoint theorems")
         else ()
-      val _ = check_oracles label thms
       val _ = check_hypotheses label thms
-      val actual = names thy thms
+      val actual = checked_names thy label thms
     in
       check_expected_names ctxt label expected actual
     end
@@ -174,10 +185,9 @@ struct
       val _ = if null thms then
           error (label ^ " has no endpoint theorems")
         else ()
-      val _ = check_oracles label thms
       val _ = check_hypotheses label thms
       val _ = check_premises label thms
-      val actual = names thy thms
+      val actual = checked_names thy label thms
       val _ = check_paths label native_paths actual
     in
       check_expected_names ctxt label expected actual

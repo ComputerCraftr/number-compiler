@@ -14,8 +14,10 @@ infinite branch or replace the certificate owner.
 
 from __future__ import annotations
 
+from _thread import LockType
 from collections.abc import Callable, Iterator, Mapping, MutableMapping
-from dataclasses import dataclass
+from dataclasses import dataclass, field
+from threading import Lock
 from types import MappingProxyType
 from typing import TYPE_CHECKING, Any, Literal, Self
 
@@ -265,6 +267,27 @@ class SemanticContinuation:
     transitions: Mapping[SourceState, tuple[WeightedAction, ...]]
     source_ids: Mapping[SourceState, ContinuationID]
     actions_by_id: Mapping[ContinuationID, tuple[SemanticAction, ...]]
+    _convenience_application: PoweredDecadeApplication | None = field(
+        default=None,
+        init=False,
+        repr=False,
+        compare=False,
+        hash=False,
+    )
+    _convenience_closed: bool = field(
+        default=False,
+        init=False,
+        repr=False,
+        compare=False,
+        hash=False,
+    )
+    _convenience_lock: LockType = field(
+        default_factory=Lock,
+        init=False,
+        repr=False,
+        compare=False,
+        hash=False,
+    )
 
     def _validate_id(self, identifier: ContinuationID) -> ContinuationID:
         identifier.validate(
@@ -348,6 +371,34 @@ class SemanticContinuation:
 
         return PoweredDecadeApplication(self, source_for_live_root)
 
+    def _reusable_powered_application(
+        self,
+        source_for_live_root: Callable[[int], SourceState],
+    ) -> PoweredDecadeApplication:
+        with self._convenience_lock:
+            if self._convenience_closed:
+                raise RuntimeError("comma continuation convenience owner is closed")
+            application = self._convenience_application
+            if application is None:
+                from number_compiler.sequences.comma.semantic_power import (
+                    PoweredDecadeApplication,
+                )
+
+                application = PoweredDecadeApplication(self, source_for_live_root)
+                object.__setattr__(self, "_convenience_application", application)
+            return application
+
+    def close(self) -> None:
+        """Dispose the reusable convenience owner, retaining manual apps."""
+        with self._convenience_lock:
+            if self._convenience_closed:
+                return
+            application = self._convenience_application
+            if application is not None:
+                application.close()
+            object.__setattr__(self, "_convenience_application", None)
+            object.__setattr__(self, "_convenience_closed", True)
+
     def apply_decades(
         self,
         source: SourceState,
@@ -376,10 +427,14 @@ class SemanticContinuation:
         delta: int = 0,
     ) -> DecadeSummary:
         """Apply exactly ``count`` B1 blocks by memoized dyadic composition."""
-        with self.powered_application(
-            source_for_live_root=source_for_live_root
-        ) as application:
-            return application.apply(source, phase, count, delta=delta)
+        application = self._reusable_powered_application(source_for_live_root)
+        return application._apply_rebound(
+            source,
+            phase,
+            count,
+            source_for_live_root=source_for_live_root,
+            delta=delta,
+        )
 
     def refine_moore(self) -> MooreRefinement:
         """Return a structural diagnostic over stored controls and children.

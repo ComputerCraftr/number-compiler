@@ -1,5 +1,92 @@
 {
+  "retired_implementations": [
+    {
+      "path": "proofs/isabelle/families/comma/comma_semantic_b1_instance/semantic_b1_ephemeral_or_fold.ML",
+      "disposition": "Removed the dormant grouped-piece OR converter, its loader and fold-only fixtures after migrating parent validation to result-directed local coverage and independent symbolic template partitions.",
+      "preserved_contract_owners": [
+        "Comma_Semantic_B1_CRT_Partition_Coverage.comma_semantic_b1_crt_columns_partition_certified_sound",
+        "Comma_Semantic_B1_CRT_Construction_Binding.comma_semantic_b1_crt_group_construction_bound_sound",
+        "Comma_Semantic_B1_CRT_Construction_Regression.comma_semantic_b1_crt_constructed_occurrence_bound_rejects_piece_omission",
+        "Comma_Semantic_B1_CRT_Construction_Regression.comma_semantic_b1_crt_constructed_occurrence_bound_rejects_piece_multiplicity"
+      ],
+      "coverage_mapping": "Retired OR-fold evaluator-shape, temporary-union and fold-depth assertions. Retained selected-row authority, foreign/out-of-range lookup, changed binding and exact theorem checks. Parent correctness is checked by symbolic partition plus per-piece containment; wrong label, wrong rebase, unsupported/missing and duplicated origins remain negative obligations. Generic and concrete kernel acceptance remain separate gates.",
+      "source_commit": "a6ac9e1d41ef1d694a6cfd598b640020416193ac"
+    },
+    {
+      "path": "proofs/isabelle/families/comma/comma_decade_orbit/endpoint_check.ML",
+      "disposition": "Deleted unused per-cell endpoint checker and its loader; the public endpoint-check theorem is derived by uniform orbit induction instead.",
+      "preserved_contract_owners": [
+        "Comma_Decade_Orbit_Quotient.comma_offset_endpoint_representative",
+        "Comma_Decade_Orbit_Quotient.comma_offset_endpoint_checked"
+      ],
+      "coverage_mapping": "Replaced evaluator-specific cell counters and indexed-list assembly assertions with the unchanged all-91-offset/all-22-phase proposition, representative transport theorem and explicit oracle-closure audit. Kernel acceptance remains required independently of these source checks.",
+      "source_commit": "a6ac9e1d41ef1d694a6cfd598b640020416193ac"
+    },
+    {
+      "path": "proofs/isabelle/families/comma/comma_semantic_b1/Comma_CRT_Composition_Fold.thy",
+      "disposition": "Deleted unused fused fold implementation and its 27 self-only proof checks; no imports, executable consumers or external theorem references were found.",
+      "preserved_contract_owners": [
+        "Comma_CRT_Power.comma_crt_power_table_refines_for_targets",
+        "Comma_CRT_Power.comma_crt_square_table_refines",
+        "Comma_CRT_Apply.comma_crt_fused_power_intersection_refines"
+      ],
+      "coverage_mapping": "Retired implementation-specific fold equations, support/admission/label bookkeeping and outcome-set proofs together with the unused functions. Production chronological composition, admission and exact outcome assertions remain with the raw and split power constructors; no test assertion was removed.",
+      "source_commit": "a6ac9e1d41ef1d694a6cfd598b640020416193ac"
+    }
+  ],
   "declaration_extraction_claims": [
+    {
+      "claim": "catalogue geometry projection is owned by occurrence bounds and consumed by constructed refinement",
+      "old_source": "proofs/isabelle/families/comma/comma_semantic_b1/Comma_Semantic_B1_CRT_Constructed_Refinement.thy",
+      "destinations": [
+        {
+          "path": "proofs/isabelle/families/comma/comma_semantic_b1/Comma_Semantic_B1_CRT_Occurrence_Bounds.thy",
+          "declarations": [
+            "comma_semantic_b1_crt_constructed_occurrences_catalog_geometry_facts"
+          ]
+        }
+      ]
+    },
+    {
+      "claim": "occurrence-bound definition and guard projections extracted without changing the B1 session or theorem assumptions",
+      "old_source": "proofs/isabelle/families/comma/comma_semantic_b1/Comma_Semantic_B1_CRT_Constructed_Occurrence.thy",
+      "destinations": [
+        {
+          "path": "proofs/isabelle/families/comma/comma_semantic_b1/Comma_Semantic_B1_CRT_Occurrence_Bounds.thy",
+          "declarations": [
+            "comma_semantic_b1_crt_constructed_occurrence_bound",
+            "comma_semantic_b1_crt_constructed_occurrence_bound_index_guards",
+            "comma_semantic_b1_crt_constructed_occurrence_bound_parent_present",
+            "comma_semantic_b1_crt_constructed_occurrence_bound_beta_distinct",
+            "comma_semantic_b1_crt_constructed_occurrence_bound_template_cid",
+            "comma_semantic_b1_crt_constructed_occurrence_bound_goto_lift_cid"
+          ]
+        }
+      ]
+    },
+    {
+      "claim": "semantic orbit-word source projection moved out of sparse recurrence ownership without copying declarations",
+      "old_source": "proofs/isabelle/families/comma/comma_decade_masks/Comma_Orbit_Words.thy",
+      "destinations": [
+        {
+          "path": "proofs/isabelle/families/comma/comma_decade_orbit/Comma_Endpoint_Orbit_Interface.thy",
+          "declarations": [
+            "comma_orbit_word",
+            "comma_orbit_representative_index",
+            "comma_decade_atom_orbit_congruent",
+            "comma_decade_power_orbit_congruent",
+            "comma_orbit_word_refines",
+            "comma_orbit_word_square",
+            "comma_orbit_word_live_bound",
+            "comma_orbit_word_square_all",
+            "comma_sector_base_admitted",
+            "comma_sector_base_project",
+            "comma_sector_base_project_refines",
+            "comma_sector_base_output_admitted"
+          ]
+        }
+      ]
+    },
     {
       "claim": "generic carry-domain type/actions and decimal domain classifier moved to shared owner",
       "destinations": [
@@ -237,16 +324,21 @@
       "old_source": "proofs/isabelle/comma_native19_carry/Comma_Native19_Carry.thy"
     },
     {
-      "claim": "small indexed-list normalization lemmas and CRT local-cover fixtures moved to a same-session arithmetic helper without changing theorem statements or dependencies",
+      "claim": "indexed-list structural equations moved to the arithmetic evaluator prerequisite; CRT local-cover fixtures retain their concrete occurrence owner; theorem statements are unchanged",
       "old_source": "proofs/isabelle/families/comma/comma_semantic_b1_instance/Comma_Semantic_B1_Occurrence_Publication.thy",
       "destinations": [
         {
-          "path": "proofs/isabelle/families/comma/comma_semantic_b1_instance/Comma_Semantic_B1_Occurrence_Arithmetic.thy",
+          "path": "proofs/isabelle/families/comma/comma_entry_arithmetic/Comma_Entry_Arithmetic.thy",
           "declarations": [
             "comma_indexed_all_zero",
             "comma_indexed_all_Suc",
             "comma_selected_length_nil",
-            "comma_selected_length_cons",
+            "comma_selected_length_cons"
+          ]
+        },
+        {
+          "path": "proofs/isabelle/families/comma/comma_semantic_b1_instance/Comma_Semantic_B1_Occurrence_Arithmetic.thy",
+          "declarations": [
             "comma_semantic_b1_crt_local_cover_fixture_parent",
             "comma_semantic_b1_crt_local_cover_fixture_rebased_parent",
             "comma_semantic_b1_crt_local_cover_fixtures"

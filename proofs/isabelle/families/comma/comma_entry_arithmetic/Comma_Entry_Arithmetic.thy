@@ -2,6 +2,27 @@ theory Comma_Entry_Arithmetic
   imports Comma_Short_Phase.Comma_Short_Phase
 begin
 
+text \<open>The selected-list evaluator consumes these structural equations
+before any endpoint or occurrence publisher is loaded. They have one owner
+and contain no family occurrence data.\<close>
+
+lemma comma_indexed_all_zero:
+  "list_all P [0..<0]"
+  by simp
+
+lemma comma_indexed_all_Suc:
+  assumes prefix: "list_all P [0..<n]" and last: "P n"
+  shows "list_all P [0..<Suc n]"
+  using prefix last by (simp add: list_all_append)
+
+lemma comma_selected_length_nil:
+  "length ([] :: 'a list) = 0"
+  by simp
+
+lemma comma_selected_length_cons:
+  "length (head # tail) = Suc (length tail)"
+  by simp
+
 text \<open>This is a compiled lemma table for the canonical arithmetic. All
 periods are obtained from proved finite-period equations; the nine cycle
 lengths reuse the same closed gcd certificates, and every modular power is a

@@ -2,6 +2,8 @@ theory Comma_Semantic_B1_CRT_Local_Cover
 imports Comma_Semantic_B1_CRT_Lift_Bindings
 begin
 
+ML \<open>Comma_Proof_Profile.report "Local cover stage=entered"\<close>
+
 ML \<open>
 structure Comma_Local_Cover_Checkpoints =
 struct
@@ -656,6 +658,8 @@ ML \<open>
   val _ = Comma_Local_Cover_Checkpoints.report "Local cover stage=goto-lookup"
 \<close>
 
+ML \<open>Comma_Proof_Profile.report "Local cover stage=candidate-matches proof entered"\<close>
+
 theorem comma_semantic_b1_crt_lift_local_cover_candidate_matches:
   fixes sources :: "comma_finite_position list"
     and occurrence_at :: "nat \<Rightarrow> comma_semantic_b1_crt_occurrence option"
@@ -825,6 +829,8 @@ proof -
     qed
   qed
 qed
+
+ML \<open>Comma_Proof_Profile.report "Local cover stage=candidate-matches proof passed"\<close>
 
 ML \<open>
   val _ = Thm.consolidate @{thms

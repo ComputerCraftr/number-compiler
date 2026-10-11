@@ -71,10 +71,10 @@ def _provenance(
     return provenance
 
 
-def _sealed_port_members(ports: tuple[object, ...]) -> dict[int, object]:
-    """Index only immutable tuple/frozen-record members of published ports."""
+def _sealed_members(root: object) -> dict[int, object]:
+    """Index immutable descendants of a sealed boundary value."""
     members: dict[int, object] = {}
-    pending = list(ports)
+    pending = [root]
     while pending:
         value = pending.pop()
         identity = id(value)
@@ -86,8 +86,20 @@ def _sealed_port_members(ports: tuple[object, ...]) -> dict[int, object]:
         elif is_dataclass(value):
             params: object | None = getattr(type(value), "__dataclass_params__", None)
             if params is None or not getattr(params, "frozen", False):
-                raise TypeError("published boundary port contains a mutable record")
+                raise TypeError("sealed source image contains a mutable record")
             pending.extend(getattr(value, item.name) for item in fields(value))
+    return members
+
+
+def _direct_frozen_payload_members(payload: object) -> dict[int, object]:
+    """Index only direct frozen-record fields approved by a family adapter."""
+    if not is_dataclass(payload) or isinstance(payload, type):
+        return {}
+    members: dict[int, object] = {}
+    for item in fields(payload):
+        value = getattr(payload, item.name)
+        if _is_frozen_record(value):
+            members[id(value)] = value
     return members
 
 
@@ -97,6 +109,7 @@ class SourceBoundPayloadAudit:
     approved: frozenset[int]
     recognized: frozenset[int]
     invalid: frozenset[tuple[int, int]]
+    payload_members_by_owner: frozenset[tuple[int, int]] = frozenset()
     _invalid_ids: frozenset[int] = field(init=False, repr=False, compare=False)
 
     def __post_init__(self) -> None:
@@ -122,6 +135,16 @@ class SourceBoundPayloadAudit:
             return False
         return id(value) in self.approved and id(value) not in self._invalid_ids
 
+    def owns_payload_member(self, owner: int, value: object) -> bool:
+        """Whether a validated adapter sealed this exact direct payload member.
+
+        This is intentionally owner-qualified and identity-based. The approved
+        value is a direct frozen field of a source-image payload whose enclosing
+        publication seal was checked while constructing this audit snapshot.
+        It is not a type-wide exemption for records of the same class.
+        """
+        return (owner, id(value)) in self.payload_members_by_owner
+
 
 def audit_source_bound_payloads(
     ledger: ResourceLedger,
@@ -140,6 +163,7 @@ def audit_source_bound_payloads(
     recognized: set[int] = set()
     invalid: set[tuple[int, int]] = set()
     valid_adapter_ids: set[int] = set()
+    payload_members_by_owner: set[tuple[int, int]] = set()
     for core in cores:
         stores = (
             (core._adapter_owner, core._adapters),
@@ -180,6 +204,7 @@ def audit_source_bound_payloads(
         for local_id, record in enumerate(core._nodes):
             recognized.add(id(record))
             family_approved_objects: tuple[object, ...] = ()
+            family_approved_payload_objects: tuple[object, ...] = ()
             try:
                 image = SourceImageID(core.owner, core._KIND, local_id)
                 resolved = _resolve_readonly(core, image)
@@ -206,26 +231,38 @@ def audit_source_bound_payloads(
                     if family_approved is not None:
                         if type(family_approved) is not tuple:
                             raise TypeError(
-                                "image binding audit returned an untyped port approval"
+                                "image binding audit returned untyped member approvals"
                             )
-                        boundary_members = _sealed_port_members(
+                        boundary_members = _sealed_members(
                             record.binding.boundary_ports
                         )
+                        payload_members = _direct_frozen_payload_members(record.payload)
                         if len({id(value) for value in family_approved}) != len(
                             family_approved
                         ):
                             raise ValueError(
                                 "image binding audit repeated a boundary object"
                             )
+                        port_approved: list[object] = []
+                        payload_approved: list[object] = []
                         for value in family_approved:
                             if (
-                                id(value) not in boundary_members
-                                or boundary_members[id(value)] is not value
+                                id(value) in boundary_members
+                                and boundary_members[id(value)] is value
                             ):
+                                port_approved.append(value)
+                            elif (
+                                id(value) in payload_members
+                                and payload_members[id(value)] is value
+                                and _is_frozen_record(value)
+                            ):
+                                payload_approved.append(value)
+                            else:
                                 raise ValueError(
-                                    "image binding audit approved a foreign boundary object"
+                                    "image binding audit approved an unowned object"
                                 )
-                        family_approved_objects = family_approved
+                        family_approved_objects = tuple(port_approved)
+                        family_approved_payload_objects = tuple(payload_approved)
             except (
                 TypeError,
                 ValueError,
@@ -249,6 +286,10 @@ def audit_source_bound_payloads(
                 recognized.update(map(id, values))
                 approved.update(map(id, family_approved_objects))
                 recognized.update(map(id, family_approved_objects))
+                payload_members_by_owner.update(
+                    (core._node_owner, id(value))
+                    for value in family_approved_payload_objects
+                )
         for origin_key, image in core._origins.items():
             recognized.update((id(origin_key), id(image)))
             try:
@@ -395,7 +436,13 @@ def audit_source_bound_payloads(
         frozenset(approved),
         frozenset(recognized),
         frozenset(invalid),
+        frozenset(payload_members_by_owner),
     )
+
+
+def _is_frozen_record(value: object) -> bool:
+    params: object | None = getattr(type(value), "__dataclass_params__", None)
+    return params is not None and getattr(params, "frozen", False)
 
 
 __all__ = ["SourceBoundPayloadAudit", "audit_source_bound_payloads"]
