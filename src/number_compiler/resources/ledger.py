@@ -229,13 +229,37 @@ class ResourceLedger:
         ):
             return
 
-        def expire(_reference: ReferenceType[object]) -> None:
-            self._expire_execution_root(identity)
+        def expire(reference: ReferenceType[object]) -> None:
+            self._expire_execution_root(identity, reference)
 
-        self._execution_roots[identity] = ref(root, expire)
+        reference = ref(root, expire)
+        from number_compiler.resources.construction_scope import (
+            forget_construction_root,
+            record_construction_root,
+        )
+
+        previous = self._execution_roots.get(identity)
+        record_construction_root(self, identity, reference)
+        try:
+            self._execution_roots[identity] = reference
+        except BaseException:
+            if self._execution_roots.get(identity) is reference:
+                if previous is None:
+                    self._execution_roots.pop(identity, None)
+                else:
+                    self._execution_roots[identity] = previous
+            forget_construction_root(self, identity, reference)
+            raise
         self.note_store_mutation()
 
-    def _expire_execution_root(self, identity: int) -> None:
+    def _expire_execution_root(
+        self,
+        identity: int,
+        expected: ReferenceType[object] | None = None,
+    ) -> None:
+        current = self._execution_roots.get(identity)
+        if expected is not None and current is not expected:
+            return
         self._execution_roots.pop(identity, None)
         _drop_root_contracts(self, identity)
         self.note_store_mutation()
@@ -312,19 +336,23 @@ class ResourceLedger:
         require_integer(nodes, "node count", 0)
 
     def iter_execution_roots(self) -> Iterator[object]:
-        expired: list[int] = []
+        expired: list[tuple[int, ReferenceType[object]]] = []
         roots: list[object] = []
         for identity, reference in tuple(self._execution_roots.items()):
             root = reference()
             if root is None:
-                expired.append(identity)
+                expired.append((identity, reference))
             else:
                 roots.append(root)
         if expired:
-            for identity in expired:
-                self._execution_roots.pop(identity, None)
-                _drop_root_contracts(self, identity)
-            self.note_store_mutation()
+            removed = False
+            for identity, reference in expired:
+                if self._execution_roots.get(identity) is reference:
+                    self._execution_roots.pop(identity, None)
+                    _drop_root_contracts(self, identity)
+                    removed = True
+            if removed:
+                self.note_store_mutation()
         yield from roots
 
     def register(
@@ -345,8 +373,22 @@ class ResourceLedger:
                 )
             return found
         owner = len(self._accounts)
-        self._accounts.append(_Account(name, role, scope))
-        self._names[name] = owner
+        from number_compiler.resources.construction_scope import (
+            forget_construction_owner,
+            record_construction_owner,
+        )
+
+        record_construction_owner(self, owner)
+        try:
+            self._accounts.append(_Account(name, role, scope))
+            try:
+                self._names[name] = owner
+            except BaseException:
+                self._accounts.pop()
+                raise
+        except BaseException:
+            forget_construction_owner(self, owner)
+            raise
         return owner
 
     def _account(self, owner: int) -> _Account:

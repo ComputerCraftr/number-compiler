@@ -6,6 +6,7 @@ import sys
 from collections.abc import Hashable
 from dataclasses import replace
 from random import Random
+from typing import cast
 from weakref import ref
 
 import pytest
@@ -212,6 +213,17 @@ def test_shared_audit_rejects_forged_cylinder_fields(field: str, value: int) -> 
     assert audit_registered_payloads(result.ledger).forbidden_future_payloads > 0
 
 
+@pytest.mark.parametrize("residue", (True, 1.0))
+def test_cylinder_cache_rejects_integer_aliases_before_warm_lookup(
+    residue: object,
+) -> None:
+    engine = CylinderEngine(shared_cache=False)
+    expected = engine.cylinder(1, 8)
+    assert engine.cylinder(257, 8) == expected
+    with pytest.raises(TypeError, match="cylinder residue must be an integer"):
+        engine.cylinder(cast(int, residue), 8)
+
+
 def test_shared_audit_rejects_wrong_key_and_live_unaccounted_stack() -> None:
     engine = CylinderEngine()
     result = engine.execute(64)
@@ -296,6 +308,35 @@ def test_retained_projection_fragment_seal_is_an_independent_snapshot() -> None:
         assert audit_registered_payloads(result.ledger).forbidden_future_payloads > 0
     finally:
         object.__setattr__(fragment, "typed_ports", original)
+
+
+def test_rejected_fragment_drop_preserves_cache_and_ledger_state() -> None:
+    result = run(64)
+    request = SpaceTimeProjection(result, 2, 2, -1, 1, 3, 1_000_000)
+    request.evaluate()
+    cache = result._engine.projection_fragments
+    key = next(iter(cache.fragments))
+    fragment = cache.fragments[key]
+    seal = cache.seals[key]
+    entries, nodes = result.ledger.entries, result.ledger.nodes
+    original = fragment.typed_ports
+    changed = list(original)
+    changed[0] = tuple((value + 1) % key.modulus for value in changed[0])
+    object.__setattr__(fragment, "typed_ports", tuple(changed))
+    try:
+        with pytest.raises(ValueError, match="fragment binding was changed"):
+            cache._drop(key)
+        assert cache.fragments[key] is fragment
+        assert cache.seals[key] is seal
+        assert (result.ledger.entries, result.ledger.nodes) == (entries, nodes)
+    finally:
+        object.__setattr__(fragment, "typed_ports", original)
+
+    cache._drop(key)
+    assert key not in cache.fragments
+    assert key not in cache.seals
+    assert result.ledger.entries == entries - 2
+    assert result.ledger.nodes == nodes - cache._nodes(key) - 2
 
 
 def test_detached_fragment_requires_live_source_image_issuance() -> None:
@@ -403,6 +444,22 @@ def test_fragment_authority_includes_both_twists_and_lane_sizes() -> None:
         )
         == 4
     )
+
+
+def test_fragment_cache_rejects_boolean_key_alias_before_lookup() -> None:
+    result = run(64)
+    request = SpaceTimeProjection(result, 2, 2, -1, 1, 3, 1_000_000)
+    request.evaluate()
+    cache = result._engine.projection_fragments
+    key = next(key for key in cache.fragments if key.start == 0)
+    expected = cache.get(key)
+    assert expected is cache.fragments[key]
+    admitted_hits = result.ledger.counters["spacetime_projection_fragment_hits"]
+    aliased_key = replace(key)
+    object.__setattr__(aliased_key, "start", False)
+    with pytest.raises(TypeError, match="exact integers"):
+        cache.get(aliased_key)
+    assert result.ledger.counters["spacetime_projection_fragment_hits"] == admitted_hits
 
 
 def test_shared_fragment_driver_reuses_owners_and_releases_request_context() -> None:

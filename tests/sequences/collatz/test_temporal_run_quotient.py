@@ -15,6 +15,7 @@ from number_compiler.sequences.collatz.temporal_run_quotient import (
     compile_collatz_temporal_run_quotient,
     root_fiber_certificate,
 )
+from tests.support.collatz_affine_fixtures import alternating_collatz_source_action
 
 
 def test_runs_match_physical_clock_at_every_half_step() -> None:
@@ -90,6 +91,44 @@ def test_large_source_d8_batch_materializes_its_high_fiber_once(
     assert ledger.counters["collatz_physical_temporal_dyadic_d8_pumps"] >= 3
     assert ledger.counters["collatz_physical_temporal_d8_frame_materializations"] == 1
     assert ledger.counters["collatz_physical_temporal_d8_source_window_bits"] > 0
+
+
+def test_joint_d8_batch_materialization_is_single_and_fully_counted(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from number_compiler.sequences.collatz.temporal_dyadic import D8CylinderFrame
+
+    _, source = alternating_collatz_source_action(64, 131_072)
+    original_materialize = D8CylinderFrame.materialize
+    calls: list[int] = []
+
+    def counted(frame: D8CylinderFrame) -> int:
+        calls.append(frame.consumed)
+        return original_materialize(frame)
+
+    monkeypatch.setattr(D8CylinderFrame, "materialize", counted)
+    ordinary_ledger = ResourceLedger()
+    ordinary = compile_collatz_temporal_run_quotient(source, 96, ledger=ordinary_ledger)
+    ordinary_calls = tuple(calls)
+    assert ordinary_calls == (64,)
+    assert ordinary_ledger.counters[
+        "collatz_physical_temporal_d8_frame_materializations"
+    ] == len(ordinary_calls)
+
+    calls.clear()
+    joint_ledger = ResourceLedger()
+    joint = compile_collatz_temporal_run_quotient(
+        source, 96, ledger=joint_ledger, include_joint_cocycle=True
+    )
+    joint_calls = tuple(calls)
+    assert joint.endpoint == ordinary.endpoint
+    assert joint_calls == ordinary_calls == (64,)
+    assert joint_ledger.counters[
+        "collatz_physical_temporal_d8_frame_materializations"
+    ] == len(joint_calls)
+    assert joint_ledger.counters["collatz_hashlife_joint_d8_batches"] == 1
+    assert joint.joint_action is not None
+    assert joint.joint_action.fields.steps == joint.normalized_symbols
 
 
 def test_small_source_keeps_direct_d8_path(

@@ -2,9 +2,9 @@
 
 from __future__ import annotations
 
-import sys
 from collections.abc import Iterable
 from dataclasses import asdict, fields
+from decimal import Decimal
 
 from number_compiler.api.number_api import (
     AntihydraTermPayload,
@@ -139,12 +139,9 @@ def _radix_string(value: int, base: int) -> str:
     if base in (2, 8, 16):
         return format(value, {2: "b", 8: "o", 16: "x"}[base])
     if base == 10:
-        previous_limit = sys.get_int_max_str_digits()
-        try:
-            sys.set_int_max_str_digits(0)
-            return str(value)
-        finally:
-            sys.set_int_max_str_digits(previous_limit)
+        # Integer construction and fixed-point formatting are exact, independent
+        # of Decimal precision, and do not alter the process-wide int limit.
+        return format(Decimal(value), "f")
     encoded = bytearray(_DIGIT_BYTES[digit] for digit in iter_digits_lsd(value, base))
     encoded.reverse()
     return encoded.decode("ascii")

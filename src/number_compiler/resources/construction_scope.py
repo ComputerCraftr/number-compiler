@@ -2,11 +2,67 @@
 
 from __future__ import annotations
 
+from contextvars import ContextVar, Token
 from types import TracebackType
 from typing import Self
+from weakref import ReferenceType
 
 from number_compiler.resources.ledger import ResourceLedger
 from number_compiler.resources.stores import LedgerDict, LedgerList
+
+_ACTIVE_CONSTRUCTIONS: ContextVar[tuple[RuntimeConstruction, ...]] = ContextVar(
+    "active_runtime_constructions", default=()
+)
+
+
+def record_construction_owner(ledger: ResourceLedger, owner: int) -> None:
+    """Attach a newly registered owner to each active scope for its ledger."""
+    scopes = tuple(
+        scope for scope in _ACTIVE_CONSTRUCTIONS.get() if scope.ledger is ledger
+    )
+    try:
+        for scope in scopes:
+            scope._record_owner(owner)
+    except BaseException:
+        for scope in scopes:
+            scope._discard_owner(owner)
+        raise
+
+
+def forget_construction_owner(ledger: ResourceLedger, owner: int) -> None:
+    """Undo scope bookkeeping when the ledger registration itself fails."""
+    for scope in _ACTIVE_CONSTRUCTIONS.get():
+        if scope.ledger is ledger:
+            scope._discard_owner(owner)
+
+
+def record_construction_root(
+    ledger: ResourceLedger,
+    identity: int,
+    reference: ReferenceType[object],
+) -> None:
+    """Attach a newly registered execution root to its active ledger scopes."""
+    scopes = tuple(
+        scope for scope in _ACTIVE_CONSTRUCTIONS.get() if scope.ledger is ledger
+    )
+    try:
+        for scope in scopes:
+            scope._record_root(identity, reference)
+    except BaseException:
+        for scope in scopes:
+            scope._discard_root(identity, reference)
+        raise
+
+
+def forget_construction_root(
+    ledger: ResourceLedger,
+    identity: int,
+    reference: ReferenceType[object],
+) -> None:
+    """Undo root bookkeeping when weak-root registration itself fails."""
+    for scope in _ACTIVE_CONSTRUCTIONS.get():
+        if scope.ledger is ledger:
+            scope._discard_root(identity, reference)
 
 
 class RuntimeConstruction:
@@ -21,15 +77,33 @@ class RuntimeConstruction:
         if type(ledger) is not ResourceLedger:
             raise TypeError("runtime construction requires an index ledger")
         self.ledger = ledger
-        self._first_owner = len(ledger._accounts)
-        self._roots = frozenset(ledger._execution_roots)
+        self._owners: list[int] = []
+        self._roots: dict[int, ReferenceType[object]] = {}
         self._entered = False
+        self._token: Token[tuple[RuntimeConstruction, ...]] | None = None
 
     def __enter__(self) -> Self:
         if self._entered:
             raise RuntimeError("runtime construction cannot be entered twice")
         self._entered = True
+        self._token = _ACTIVE_CONSTRUCTIONS.set((*_ACTIVE_CONSTRUCTIONS.get(), self))
         return self
+
+    def _record_owner(self, owner: int) -> None:
+        self._owners.append(owner)
+
+    def _discard_owner(self, owner: int) -> None:
+        try:
+            self._owners.remove(owner)
+        except ValueError:
+            pass
+
+    def _record_root(self, identity: int, reference: ReferenceType[object]) -> None:
+        self._roots[identity] = reference
+
+    def _discard_root(self, identity: int, reference: ReferenceType[object]) -> None:
+        if self._roots.get(identity) is reference:
+            del self._roots[identity]
 
     def __exit__(
         self,
@@ -37,12 +111,25 @@ class RuntimeConstruction:
         exception: BaseException | None,
         traceback: TracebackType | None,
     ) -> None:
-        if kind is None:
-            return
+        token = self._token
+        if token is None:
+            raise RuntimeError("runtime construction exited before entry")
+        active = _ACTIVE_CONSTRUCTIONS.get()
+        if not active or active[-1] is not self:
+            raise RuntimeError("runtime construction scopes must exit in LIFO order")
+        # Reset first: a copied Context inherits the active-scope value, but
+        # cannot consume this context's Token. Validate that ownership before
+        # disposing any resources.
+        _ACTIVE_CONSTRUCTIONS.reset(token)
+        self._token = None
+        if kind is not None:
+            self._abort()
+
+    def _abort(self) -> None:
         ledger = self.ledger
         retired_entries = retired_nodes = 0
-        for owner in range(len(ledger._accounts) - 1, self._first_owner - 1, -1):
-            account = ledger._accounts[owner]
+        for owner in reversed(self._owners):
+            account = ledger._account(owner)
             if account.disposed:
                 continue
             retired_entries += account.entries
@@ -63,9 +150,8 @@ class RuntimeConstruction:
             account.evict = account.composition_count = None
             account.roots.clear()
             ledger.mark_disposed(owner)
-        for identity in tuple(ledger._execution_roots):
-            if identity not in self._roots:
-                del ledger._execution_roots[identity]
+        for identity, reference in self._roots.items():
+            ledger._expire_execution_root(identity, reference)
         ledger.bump("runtime_construction_aborts")
         ledger.bump("runtime_construction_released_entries", retired_entries)
         ledger.bump("runtime_construction_released_nodes", retired_nodes)

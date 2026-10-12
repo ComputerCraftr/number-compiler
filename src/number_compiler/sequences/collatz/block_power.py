@@ -65,6 +65,9 @@ if TYPE_CHECKING:
     )
     from number_compiler.resources.metric_records import HashLifeBehaviorMetrics
     from number_compiler.sequences.collatz.clock_observers import SArithmeticClock
+    from number_compiler.sequences.collatz.joint_temporal_action import (
+        CollatzAccumulatorObservation,
+    )
     from number_compiler.sequences.collatz.physical_images import (
         CollatzPhysicalImageWorkspace,
     )
@@ -295,6 +298,7 @@ class PoweredCollatzTerm(RadixProjectionSourceAuditor):
         "_active_width",
         "_compiler",
         "_effect",
+        "_joint_cocycle_demanded",
         "_ledger",
         "_max_cache_entries",
         "_max_context_nodes",
@@ -371,8 +375,9 @@ class PoweredCollatzTerm(RadixProjectionSourceAuditor):
         self._max_context_nodes = max_context_nodes
         self._max_cache_entries = max_cache_entries
         self._workspace: CollatzPhysicalImageWorkspace | None = None
-        self._workspace_binding: tuple[object, object, object, bool] | None = None
+        self._workspace_binding: tuple[object, object, object, bool, bool] | None = None
         self._width_spine_demanded = False
+        self._joint_cocycle_demanded = False
         radix_owner = self._ledger.register(
             "radix-applications", "application_index", "INDEX_OWNED"
         )
@@ -477,12 +482,14 @@ class PoweredCollatzTerm(RadixProjectionSourceAuditor):
                 retain_chronology=False,
                 shared_cache=self._shared_cache,
                 include_width_spine=self._width_spine_demanded,
+                include_joint_cocycle=self._joint_cocycle_demanded,
             )
             self._workspace_binding = (
                 workspace.root_source,
                 workspace.root_action,
                 workspace.root_payload,
                 workspace._include_width_spine,
+                workspace._include_joint_cocycle,
             )
             self._workspace = workspace
         if (
@@ -493,6 +500,7 @@ class PoweredCollatzTerm(RadixProjectionSourceAuditor):
             or workspace.law != COLLATZ_PHYSICAL_LAW
             or workspace.retain_chronological_support()
             or workspace._include_width_spine != self._width_spine_demanded
+            or workspace._include_joint_cocycle != self._joint_cocycle_demanded
         ):
             raise ValueError("Collatz source image belongs to another term")
         workspace.validate_source(workspace.root_source)
@@ -505,6 +513,7 @@ class PoweredCollatzTerm(RadixProjectionSourceAuditor):
                 workspace.root_action,
                 workspace.root_payload,
                 workspace._include_width_spine,
+                workspace._include_joint_cocycle,
             )
             or image.source != workspace.root_source
             or image.action != workspace.root_action
@@ -727,6 +736,34 @@ class PoweredCollatzTerm(RadixProjectionSourceAuditor):
         """Request exact intermediate widths before the source image is built."""
         if self._workspace is None:
             self._width_spine_demanded = True
+
+    def prepare_joint_cocycle(self) -> None:
+        """Request the source-plus-normalized-successor action before imaging."""
+        if self._workspace is not None:
+            if not self._joint_cocycle_demanded:
+                raise ValueError(
+                    "joint Collatz demand must precede source-image construction"
+                )
+            return
+        self._joint_cocycle_demanded = True
+
+    def accumulator(self, modulus: int) -> CollatzAccumulatorObservation:
+        """Return source plus normalized successors modulo ``modulus``."""
+        modulus = require_integer(modulus, "accumulator modulus", 2)
+        if not self._joint_cocycle_demanded:
+            raise ValueError("prepare the joint cocycle before requesting it")
+        from number_compiler.sequences.collatz.joint_temporal_action import (
+            CollatzAccumulatorObservation,
+        )
+
+        if self.steps == 0:
+            return CollatzAccumulatorObservation(
+                modulus, self.seed % modulus, True, 0, 0, 0
+            )
+        action = self._source_image().joint_action
+        if action is None:
+            raise ValueError("joint cocycle was not published with this source image")
+        return action.accumulator_observation(modulus)
 
     @source_reads_only
     def s_arithmetic_clock(self) -> SArithmeticClock:

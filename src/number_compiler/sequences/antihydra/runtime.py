@@ -774,6 +774,7 @@ class CylinderEngine:
         build_leaf: Callable[[int, int], _CylinderT],
         prefix: str,
     ) -> _CylinderT:
+        residue = require_integer(residue, "cylinder residue")
         require_integer(width, "block width", 1, 64)
         residue %= 1 << width
         key = width, residue

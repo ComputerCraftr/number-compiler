@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import sys
+from decimal import localcontext
 from typing import Never
 
 import pytest
@@ -132,9 +133,17 @@ def test_tight_output_cap_still_rejects_before_endpoint_emission(
     assert "output exceeds --max-output-bits" in output.err
 
 
-def test_decimal_scalar_format_restores_process_digit_limit() -> None:
+def test_decimal_scalar_format_never_changes_process_digit_limit(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
     previous = sys.get_int_max_str_digits()
-    assert cli._radix_string(10**5000, 10) == "1" + "0" * 5000
+    monkeypatch.setattr(sys, "set_int_max_str_digits", _forbidden)
+    with localcontext() as context:
+        context.prec = 2
+        context.Emax = 2
+        context.Emin = -2
+        assert cli._radix_string(10**5000 + 987, 10) == "1" + "0" * 4997 + "987"
+        assert cli._radix_string(12345, 10) == "12345"
     assert sys.get_int_max_str_digits() == previous
 
 

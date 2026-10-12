@@ -23,13 +23,15 @@ CAPABILITIES = {
         "oeis_index", (), ("metrics", "clock", "tropical", "certificate")
     ),
     "reverse-add": FamilyCapability(
-        "iterations", ("seed", "base"), ("metrics", "mirror")
+        "iterations", ("seed", "base"), ("metrics", "mirror", "boundary-macro")
     ),
-    "196": FamilyCapability("iterations", ("seed", "base"), ("metrics", "mirror")),
+    "196": FamilyCapability(
+        "iterations", ("seed", "base"), ("metrics", "mirror", "boundary-macro")
+    ),
     "collatz": FamilyCapability(
         "physical_iterations",
         ("seed", "radix"),
-        ("metrics", "clock"),
+        ("metrics", "clock", "accumulator"),
         (
             "clock",
             "modular",
@@ -223,7 +225,10 @@ class UniqueValue(argparse.Action):
 # Options are exposed only by families with the matching observation capability.
 OBSERVER_OPTIONS: dict[str, tuple[int | None, tuple[str, ...]]] = {
     "defect": (None, ("root",)),
-    "modulus": (257, ("modular", "twisted", "tape", "spacetime", "hasse", "factor")),
+    "modulus": (
+        257,
+        ("modular", "twisted", "tape", "spacetime", "hasse", "factor", "accumulator"),
+    ),
     "width": (2, ("mirror", "twisted", "tape", "spacetime", "hasse", "factor")),
     "sign": (-1, ("twisted", "tape", "spacetime", "factor")),
     "precision": (8, ("hensel", "mahler")),
@@ -496,6 +501,8 @@ def validate(q: QueryRequest, specified: frozenset[str]) -> None:
     if q.seed is not None:
         require_integer(q.seed, "--seed", 1 if q.family == "collatz" else 0)
     require_integer(q.base, "--base", 2)
+    if "boundary-macro" in q.info and q.base != 10:
+        raise ValueError("--info boundary-macro requires decimal --base 10")
     require_integer(q.radix, "--radix", 2)
     if q.family == "collatz" and not (q.radix in (2, 3) or q.radix % 6 == 0):
         raise ValueError("--radix must be 2, 3, or a multiple of 6 for Collatz")

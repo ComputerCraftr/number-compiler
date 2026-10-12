@@ -1,44 +1,25 @@
-"""Production source-bound Collatz temporal quotient by maximal 0/1 runs.
+"""Source-bound Collatz temporal quotient by maximal parity runs.
 
-The normalized Collatz map is
-
-    H0(x) = x/2
-    H1(x) = (3*x+1)/2.
-
-At a normalized boundary the next maximal run length is available without a
-parity itinerary::
-
-    zero run length = v2(x)       when x is even
-    one run length  = v2(x + 1)   when x is odd.
-
-Both runs have closed affine powers. Mixed residuals use a ledger-owned finite
-D8 source-section transducer; long homogeneous runs keep their closed powers.
-Cold D8 discovery is bounded and explicitly accounted. This contractor never
-constructs a global parity word or physical branch tree. The
-scheduler retains balanced source-cylinder construction for wide mixed sources;
-this run helper is not a complete all-source root quotient. The pinned
-``1 -> 4 -> 2 -> 1`` cycle is a powered motif.
-
-The optional anonymous F5 audit counts actions in the 20-element affine group
-without materializing a branch tree. This finite projection does not prove
-equivalence of exact integer source trajectories.  Exact source selection remains deterministic; the root
-algebra is a coefficient/fiber normalization, not a replacement for source
-authentication.
+The normalized map uses ``H0(x)=x/2`` and ``H1(x)=(3*x+1)/2``. Exact
+2-adic valuations select maximal zero and one runs, which are applied with
+closed affine powers. Mixed wide sources use an accounted finite D8
+source-section transducer; they do not construct a global parity itinerary or
+physical branch tree. The pinned ``1 -> 4 -> 2 -> 1`` cycle is source-bound
+and powered. Optional F5 views remain observations, never branch authority;
+their root-fiber algebra does not replace exact source authentication.
 """
 
 from __future__ import annotations
 
-from collections.abc import Sequence
 from contextlib import nullcontext
-from dataclasses import dataclass
-from typing import overload
 
 from number_compiler.arithmetic.fields.blank_ledger import BlankLedger
-from number_compiler.arithmetic.fields.morphism_core import AffineCocycle, binary_power
-from number_compiler.arithmetic.fields.root_semifield import RootSemifieldElement
 from number_compiler.arithmetic.fields.two_adic import v2_positive
 from number_compiler.hashlife.execution.dyadic_return_runs import RunArithmeticWorkspace
 from number_compiler.resources.ledger import ResourceLedger
+from number_compiler.sequences.collatz.joint_temporal_action import (
+    CollatzJointTemporalBuilder,
+)
 from number_compiler.sequences.collatz.tape_width import (
     CollatzWidthSpineAccumulator,
     charge_width_repeat,
@@ -47,12 +28,25 @@ from number_compiler.sequences.collatz.temporal_dyadic import (
     D8CylinderFrame,
     D8TemporalTable,
 )
+from number_compiler.sequences.collatz.temporal_f5_observer import (
+    _CYCLE_F5,
+    F5_AFFINE_ALPHABET,
+    HENSEL_ONE_F5,
+    HENSEL_ZERO_F5,
+    ODD_HALF_F5,
+    CollatzAnonymousF5Fiber,
+    CollatzF5AffineAction,
+    CollatzPoweredRootVietaProgram,
+    CollatzRootFiberCertificate,
+    _append_dyadic_f5,
+    _run_one_f5,
+    _run_zero_f5,
+    root_fiber_certificate,
+)
 from number_compiler.sequences.collatz.temporal_run_result import (
     CollatzTemporalRunQuotient,
 )
 
-_F5 = 5
-_ROOT_CERTIFICATE_DEPTH = 8
 _MAX_CYLINDER_BATCH_SYMBOLS = 64
 _MIN_CYLINDER_SOURCE_BITS = 131_072
 
@@ -64,348 +58,6 @@ def _bounded_run_length(residue: int) -> int:
     return 8 if residue == 0 else v2_positive(residue)
 
 
-@dataclass(frozen=True, slots=True, order=True)
-class CollatzF5AffineAction:
-    """Affine map ``x -> scale*x + offset`` on F5."""
-
-    scale: int
-    offset: int
-
-    def __post_init__(self) -> None:
-        if type(self.scale) is not int or type(self.offset) is not int:
-            raise TypeError("F5 affine action needs exact integers")
-        if not 1 <= self.scale < _F5 or not 0 <= self.offset < _F5:
-            raise ValueError("F5 affine action lies outside AGL(1,5)")
-
-    @classmethod
-    def identity(cls) -> CollatzF5AffineAction:
-        return cls(1, 0)
-
-    def apply(self, value: int) -> int:
-        if type(value) is not int:
-            raise TypeError("F5 action input must be an exact integer")
-        return AffineCocycle(self.scale, self.offset).apply(
-            value,
-            multiply=lambda a, b: a * b % _F5,
-            add=lambda a, b: (a + b) % _F5,
-        )
-
-    def then(self, after: CollatzF5AffineAction) -> CollatzF5AffineAction:
-        if type(after) is not CollatzF5AffineAction:
-            raise TypeError("F5 affine actions compose with their own type")
-        composed = AffineCocycle(self.scale, self.offset).then(
-            AffineCocycle(after.scale, after.offset),
-            multiply=lambda a, b: a * b % _F5,
-            add=lambda a, b: (a + b) % _F5,
-        )
-        return CollatzF5AffineAction(composed.multiplier, composed.addend)
-
-    def power(self, exponent: int) -> CollatzF5AffineAction:
-        return binary_power(
-            self,
-            exponent,
-            identity=CollatzF5AffineAction.identity(),
-            compose=CollatzF5AffineAction.then,
-        ).value
-
-
-HENSEL_ZERO_F5 = CollatzF5AffineAction(3, 0)
-HENSEL_ONE_F5 = CollatzF5AffineAction(4, 3)
-ODD_HALF_F5 = CollatzF5AffineAction(3, 1)
-
-
-class _F5AffineAlphabet(Sequence[CollatzF5AffineAction]):
-    """Fixed AGL(1,5) coordinates, constructed only when explicitly read."""
-
-    def __len__(self) -> int:
-        return 20
-
-    @overload
-    def __getitem__(self, index: int) -> CollatzF5AffineAction: ...
-
-    @overload
-    def __getitem__(self, index: slice) -> tuple[CollatzF5AffineAction, ...]: ...
-
-    def __getitem__(
-        self,
-        index: int | slice,
-    ) -> CollatzF5AffineAction | tuple[CollatzF5AffineAction, ...]:
-        if isinstance(index, slice):
-            return tuple(
-                CollatzF5AffineAction(i // _F5 + 1, i % _F5)
-                for i in range(*index.indices(len(self)))
-            )
-        if index < 0:
-            index += len(self)
-        if not 0 <= index < len(self):
-            raise IndexError(index)
-        scale, offset = divmod(index, _F5)
-        return CollatzF5AffineAction(scale + 1, offset)
-
-
-F5_AFFINE_ALPHABET = _F5AffineAlphabet()
-
-
-def _f5_index(action: CollatzF5AffineAction) -> int:
-    if type(action) is not CollatzF5AffineAction:
-        raise TypeError("temporal fiber requires an F5 affine action")
-    action.__post_init__()
-    return (action.scale - 1) * _F5 + action.offset
-
-
-@dataclass(frozen=True, slots=True)
-class CollatzAnonymousF5Fiber:
-    """Anonymous multiplicities over the finite temporal F5 action group."""
-
-    counts: tuple[int, ...]
-
-    def __post_init__(self) -> None:
-        if len(self.counts) != len(F5_AFFINE_ALPHABET):
-            raise ValueError("temporal F5 fiber has the wrong basis size")
-        if any(type(count) is not int or count < 0 for count in self.counts):
-            raise ValueError("temporal F5 multiplicities must be natural numbers")
-
-    @classmethod
-    def identity(cls) -> CollatzAnonymousF5Fiber:
-        counts = [0] * len(F5_AFFINE_ALPHABET)
-        counts[_f5_index(CollatzF5AffineAction.identity())] = 1
-        return cls(tuple(counts))
-
-    @classmethod
-    def source_symbol_fiber(cls) -> CollatzAnonymousF5Fiber:
-        counts = [0] * len(F5_AFFINE_ALPHABET)
-        counts[_f5_index(HENSEL_ZERO_F5)] += 1
-        counts[_f5_index(HENSEL_ONE_F5)] += 1
-        return cls(tuple(counts))
-
-    @classmethod
-    def singleton(cls, action: CollatzF5AffineAction) -> CollatzAnonymousF5Fiber:
-        if type(action) is not CollatzF5AffineAction:
-            raise ValueError("temporal singleton fiber needs an admitted F5 action")
-        counts = [0] * len(F5_AFFINE_ALPHABET)
-        counts[_f5_index(action)] = 1
-        return cls(tuple(counts))
-
-    @property
-    def unique_action(self) -> CollatzF5AffineAction:
-        support = tuple(self.support)
-        if self.cardinality != 1 or len(support) != 1:
-            raise ValueError("temporal fiber is not a singleton source action")
-        return support[0]
-
-    @property
-    def cardinality(self) -> int:
-        return sum(self.counts)
-
-    @property
-    def root_amplitude(self) -> RootSemifieldElement:
-        return RootSemifieldElement(self.cardinality)
-
-    @property
-    def support(self) -> frozenset[CollatzF5AffineAction]:
-        return frozenset(
-            F5_AFFINE_ALPHABET[index]
-            for index, count in enumerate(self.counts)
-            if count
-        )
-
-    def root_sum(self, other: CollatzAnonymousF5Fiber) -> CollatzAnonymousF5Fiber:
-        if type(other) is not CollatzAnonymousF5Fiber:
-            raise TypeError("temporal root sum requires another F5 fiber")
-        out = CollatzAnonymousF5Fiber(
-            tuple(a + b for a, b in zip(self.counts, other.counts, strict=True))
-        )
-        expected = self.root_amplitude.root_sum(other.root_amplitude)
-        if out.root_amplitude != expected:
-            raise AssertionError("root-sum fiber cardinality lost exactness")
-        return out
-
-    def root_difference(
-        self, other: CollatzAnonymousF5Fiber
-    ) -> CollatzAnonymousF5Fiber:
-        if type(other) is not CollatzAnonymousF5Fiber:
-            raise TypeError("temporal root difference requires another F5 fiber")
-        if any(b > a for a, b in zip(self.counts, other.counts, strict=True)):
-            raise ValueError("root difference requires a proved subfiber")
-        out = CollatzAnonymousF5Fiber(
-            tuple(a - b for a, b in zip(self.counts, other.counts, strict=True))
-        )
-        expected = self.root_amplitude.root_difference(other.root_amplitude)
-        if out.root_amplitude != expected:
-            raise AssertionError("root-difference fiber cardinality lost exactness")
-        return out
-
-    def multiply(self, other: CollatzAnonymousF5Fiber) -> CollatzAnonymousF5Fiber:
-        if type(other) is not CollatzAnonymousF5Fiber:
-            raise TypeError("temporal Cayley product requires another F5 fiber")
-        counts = [0] * len(F5_AFFINE_ALPHABET)
-        left_entries = tuple(
-            (index, count) for index, count in enumerate(self.counts) if count
-        )
-        right_entries = tuple(
-            (index, count) for index, count in enumerate(other.counts) if count
-        )
-        for left_index, left_count in left_entries:
-            left = F5_AFFINE_ALPHABET[left_index]
-            for right_index, right_count in right_entries:
-                target = left.then(F5_AFFINE_ALPHABET[right_index])
-                counts[_f5_index(target)] += left_count * right_count
-        out = CollatzAnonymousF5Fiber(tuple(counts))
-        expected = self.root_amplitude.multiply(other.root_amplitude)
-        if out.root_amplitude != expected:
-            raise AssertionError("root-product fiber cardinality lost exactness")
-        return out
-
-    def power(self, exponent: int) -> CollatzAnonymousF5Fiber:
-        return binary_power(
-            self,
-            exponent,
-            identity=CollatzAnonymousF5Fiber.identity(),
-            compose=CollatzAnonymousF5Fiber.multiply,
-        ).value
-
-
-def _root_fiber(
-    depth: int, *, ledger: ResourceLedger | None = None
-) -> CollatzAnonymousF5Fiber:
-    """Build the bounded anonymous temporal fiber through the root algebra."""
-    if type(depth) is not int or not 0 <= depth <= _ROOT_CERTIFICATE_DEPTH:
-        raise ValueError(depth)
-    fiber = CollatzAnonymousF5Fiber.identity()
-    symbol = CollatzAnonymousF5Fiber.source_symbol_fiber()
-    for _ in range(depth):
-        fiber = fiber.multiply(symbol)
-        if ledger is not None:
-            ledger.bump("collatz_physical_temporal_root_cayley_products")
-    return fiber
-
-
-@dataclass(frozen=True, slots=True)
-class CollatzPoweredRootVietaProgram:
-    """Lazy anonymous F5 coefficient program, with no source-port authority.
-
-    Construction and composition retain only a symbol count. Explicit evaluation
-    uses binary powering of twenty Cayley multiplicities; those integers can have
-    a number of bits linear in ``symbols``. Integer coordinate power sums are
-    descriptive Vieta data, not a proof about exact Collatz successors.
-    """
-
-    symbols: int
-
-    def __post_init__(self) -> None:
-        if type(self.symbols) is not int or self.symbols < 0:
-            raise ValueError("powered root/Vieta program needs a natural width")
-
-    @property
-    def semantic_key(self) -> tuple[str, int]:
-        return ("collatz-f5-vieta-power-v1", self.symbols)
-
-    def then(
-        self, after: CollatzPoweredRootVietaProgram
-    ) -> CollatzPoweredRootVietaProgram:
-        if type(after) is not CollatzPoweredRootVietaProgram:
-            raise TypeError("root/Vieta composition requires another powered program")
-        return CollatzPoweredRootVietaProgram(self.symbols + after.symbols)
-
-    def square(self) -> CollatzPoweredRootVietaProgram:
-        return CollatzPoweredRootVietaProgram(2 * self.symbols)
-
-    def evaluate(self) -> CollatzAnonymousF5Fiber:
-        """Materialize exact finite multiplicities only on explicit demand."""
-        return CollatzAnonymousF5Fiber.source_symbol_fiber().power(self.symbols)
-
-    def vieta_moments(self, order: int = 19) -> tuple[int, ...]:
-        """Return coordinate power sums from degree zero through ``order``."""
-        if type(order) is not int or order < 0:
-            raise ValueError("Vieta moment order must be nonnegative")
-        counts = self.evaluate().counts
-        roots = tuple(5 * action.scale + action.offset for action in F5_AFFINE_ALPHABET)
-        return tuple(
-            sum(count * root**degree for root, count in zip(roots, counts, strict=True))
-            for degree in range(order + 1)
-        )
-
-
-@dataclass(frozen=True, slots=True)
-class CollatzRootFiberCertificate:
-    """Explicit bounded support audit plus a lazy all-scale coefficient program."""
-
-    depth: int
-    support_size: int
-    amplitude_square: int
-    powered_program: CollatzPoweredRootVietaProgram
-
-    @property
-    def powered_symbols(self) -> int:
-        return self.powered_program.symbols
-
-    def powered_multiplicity(self, action: CollatzF5AffineAction) -> int:
-        return self.powered_program.evaluate().counts[_f5_index(action)]
-
-
-def root_fiber_certificate(
-    normalized_symbols: int, *, ledger: ResourceLedger | None = None
-) -> CollatzRootFiberCertificate:
-    if type(normalized_symbols) is not int or normalized_symbols < 0:
-        raise ValueError(normalized_symbols)
-    if ledger is not None and type(ledger) is not ResourceLedger:
-        raise TypeError("root fiber certificate requires its resource ledger")
-    depth = min(normalized_symbols, _ROOT_CERTIFICATE_DEPTH)
-    fiber = _root_fiber(depth, ledger=ledger)
-    if normalized_symbols >= _ROOT_CERTIFICATE_DEPTH and len(fiber.support) != 20:
-        raise AssertionError("temporal F5 root fiber did not saturate at depth eight")
-    if ledger is not None:
-        ledger.bump(
-            "collatz_physical_temporal_root_semifield_amplitude_square",
-            fiber.cardinality,
-        )
-        ledger.bump("collatz_physical_temporal_root_vieta_programs")
-        ledger.bump(
-            "collatz_physical_temporal_root_vieta_powered_symbols", normalized_symbols
-        )
-        ledger.bump(
-            "collatz_physical_temporal_root_vieta_program_description_bits",
-            max(1, normalized_symbols.bit_length()),
-        )
-    return CollatzRootFiberCertificate(
-        depth,
-        len(fiber.support),
-        fiber.cardinality,
-        CollatzPoweredRootVietaProgram(normalized_symbols),
-    )
-
-
-def _append_dyadic_f5(
-    normalized: CollatzF5AffineAction,
-    physical: CollatzF5AffineAction,
-    multiplier: int,
-    target_origin: int,
-    residue: int,
-) -> tuple[CollatzF5AffineAction, CollatzF5AffineAction]:
-    # Admitted dyadic widths are multiples of four, so 2**width = 1 mod 5.
-    action = CollatzF5AffineAction(
-        multiplier % 5, (target_origin - multiplier * residue) % 5
-    )
-    return normalized.then(action), physical.then(action)
-
-
-def _run_zero_f5(length: int) -> CollatzF5AffineAction:
-    if type(length) is not int or length <= 0:
-        raise ValueError("zero run length must be positive")
-    # x -> 3*x on F5 has order four.
-    return HENSEL_ZERO_F5.power(length & 3)
-
-
-def _run_one_f5(length: int) -> CollatzF5AffineAction:
-    if type(length) is not int or length <= 0:
-        raise ValueError("one run length must be positive")
-    # x -> 4*x+3 on F5 is an involution.
-    return HENSEL_ONE_F5 if length & 1 else CollatzF5AffineAction.identity()
-
-
-_CYCLE_F5 = HENSEL_ONE_F5.then(HENSEL_ZERO_F5)
-
-
 def compile_collatz_temporal_run_quotient(
     seed: int,
     physical_ticks: int,
@@ -414,14 +66,13 @@ def compile_collatz_temporal_run_quotient(
     include_f5: bool = False,
     shared_cache: bool = False,
     include_width_spine: bool = False,
+    include_joint_cocycle: bool = False,
 ) -> CollatzTemporalRunQuotient:
     """Compile the exact source-bound action without a parity itinerary.
 
-    Work uses maximal runs, finite D8 sections and the powered known-cycle
-    motif. Cold D8 table discovery costs eight bounded local symbols per row.
-    No physical successor leaf, Hensel itinerary, or global parity word is
-    retained or replayed. Run count can grow linearly in the requested ticks;
-    integer arithmetic cost also depends on intermediate operand widths.
+    Work uses maximal runs, finite D8 sections and the powered known cycle.
+    It retains no physical successor leaf or global parity word. Run count can
+    grow with requested ticks; arithmetic cost depends on operand widths.
     """
     if type(seed) is not int or seed <= 0:
         raise ValueError("Collatz temporal quotient requires a positive seed")
@@ -436,6 +87,8 @@ def compile_collatz_temporal_run_quotient(
         raise TypeError("shared cache flag must be Boolean")
     if type(include_width_spine) is not bool:
         raise TypeError("width-spine demand must be Boolean")
+    if type(include_joint_cocycle) is not bool:
+        raise TypeError("joint-cocycle demand must be Boolean")
     from number_compiler.sequences.collatz.source_cylinder_cache import (
         CollatzDyadicMacros,
     )
@@ -446,14 +99,29 @@ def compile_collatz_temporal_run_quotient(
         else None
     )
     scratch = RunArithmeticWorkspace.for_ledger(ledger, "collatz_physical")
-    with scratch.scope(), macros if macros is not None else nullcontext():
+    try:
+        joint_builder = CollatzJointTemporalBuilder(
+            ledger,
+            scratch,
+            seed,
+            requested=include_joint_cocycle,
+            shared_cache=shared_cache,
+        )
+    except BaseException as error:
+        if macros is not None:
+            macros.__exit__(type(error), error, error.__traceback__)
+        raise
+    with (
+        scratch.scope(),
+        macros if macros is not None else nullcontext(),
+        joint_builder,
+    ):
         control_bits = max(1, physical_ticks.bit_length())
         scratch.require_bits(8 * (seed.bit_length() + 4 * control_bits + 16))
         ledger.bump("collatz_physical_temporal_run_quotient_compilations")
         current = seed
         remaining = physical_ticks
-        # Deterministic source selection composes only the selected finite action.
-        # Anonymous root fibers are an optional audit API, never source authority.
+        # Source selection composes only the selected finite action.
         normalized_f5 = CollatzF5AffineAction.identity() if include_f5 else None
         physical_f5 = CollatzF5AffineAction.identity() if include_f5 else None
         odd_ticks = division_ticks = normalized = phase = 0
@@ -461,7 +129,6 @@ def compile_collatz_temporal_run_quotient(
         width_spine = CollatzWidthSpineAccumulator(
             ledger, requested=include_width_spine
         )
-
         d8_table: D8TemporalTable | None = None
         lookup_enabled = macros is not None
         previous_source, previous_width, previous_ones = seed, 0, 0
@@ -497,6 +164,9 @@ def compile_collatz_temporal_run_quotient(
             if current == 1 and remaining >= 3:
                 repetitions, tail = divmod(remaining, 3)
                 if repetitions:
+                    cycle_source = current
+                    if include_joint_cocycle:
+                        joint_builder.append_cycle(cycle_source, repetitions)
                     cycle_repetitions += repetitions
                     odd_ticks += repetitions
                     division_ticks += 2 * repetitions
@@ -533,7 +203,24 @@ def compile_collatz_temporal_run_quotient(
                 limit = min(remaining, max(8, current.bit_length()))
                 width = 1 << (limit.bit_length() - 1)
                 scratch.require_bits(16 * (current.bit_length() + 2 * width + 32))
-                if include_width_spine and width_spine.complete:
+                joint_record = None
+                endpoint = 0
+                if include_joint_cocycle:
+                    paired = joint_builder.lookup_largest_macro(
+                        macros,
+                        current,
+                        width,
+                        remaining,
+                        include_width=include_width_spine and width_spine.complete,
+                    )
+                    if paired is None:
+                        cell = None
+                        macro_width = None
+                        endpoint = 0
+                        lookup_enabled = False
+                    else:
+                        cell, joint_record, macro_width, endpoint = paired
+                elif include_width_spine and width_spine.complete:
                     selected_with_width = macros.lookup_largest_with_width(
                         current, width, remaining
                     )
@@ -548,9 +235,15 @@ def compile_collatz_temporal_run_quotient(
                     macro_width = None
                     if cell is None:
                         lookup_enabled = False
-                endpoint = cell.apply(current) if cell is not None else 0
+                if cell is not None and endpoint == 0:
+                    endpoint = cell.apply(current)
                 if cell is not None and endpoint > 2:
                     width = cell.width
+                    if joint_record is not None:
+                        joint_builder.append(
+                            joint_record[0], current, joint_record[1], endpoint
+                        )
+                        joint_builder.applied_cached_macro()
                     # Consume at most one retained occurrence per query route;
                     # subsequent discovery may publish bounded interior joins.
                     lookup_enabled = False
@@ -607,29 +300,91 @@ def compile_collatz_temporal_run_quotient(
                 scratch.require_bits(8 * (current.bit_length() + 4 * control_bits + 32))
                 if d8_table is None:
                     d8_table = D8TemporalTable.for_ledger(ledger)
-                if current.bit_length() <= _MIN_CYLINDER_SOURCE_BITS or remaining < 32:
-                    # Small exact states retain the cheaper direct finite row.
-                    # There is no wide high fiber for a cursor to save here.
-                    ones, target_origin = d8_table.select(current)
+                if not include_joint_cocycle and (
+                    current.bit_length() <= _MIN_CYLINDER_SOURCE_BITS or remaining < 32
+                ):
+                    # Ordinary small exact states retain the cheaper direct
+                    # finite row. A joint demand uses the framed batch path so
+                    # completed D8 rows can be composed and admitted together.
+                    d8_frame = (
+                        D8CylinderFrame(current)
+                        if include_joint_cocycle
+                        or (include_width_spine and width_spine.complete)
+                        else None
+                    )
+                    d8_action = None
+                    d8_width_summary = None
+                    if include_joint_cocycle:
+                        if d8_frame is None:
+                            raise AssertionError("joint D8 request has no frame")
+                        (
+                            advanced,
+                            ones,
+                            residue,
+                            target_origin,
+                            d8_width_summary,
+                            d8_action,
+                        ) = d8_table.transition_with_joint_action(
+                            d8_frame,
+                            with_width=include_width_spine and width_spine.complete,
+                        )
+                    elif include_width_spine and width_spine.complete:
+                        if d8_frame is None:
+                            raise AssertionError("width D8 request has no frame")
+                        advanced, ones, _residue, target_origin, d8_width_summary = (
+                            d8_table.transition_with_width(d8_frame)
+                        )
+                    else:
+                        ones, target_origin = d8_table.select(current)
                     if remaining >= 8 + ones:
-                        multiplier = 3**ones
-                        endpoint = target_origin + multiplier * (current >> 8)
+                        d8_endpoint: int | None = None
+                        if include_joint_cocycle:
+                            survives = advanced.above_cycle()
+                        else:
+                            if include_width_spine and width_spine.complete:
+                                d8_endpoint = advanced.materialize()
+                                ledger.bump(
+                                    "collatz_physical_temporal_d8_frame_materializations"
+                                )
+                            else:
+                                d8_endpoint = target_origin + 3**ones * (current >> 8)
+                            ledger.bump(
+                                "collatz_physical_temporal_d8_endpoint_evaluations"
+                            )
+                            survives = d8_endpoint > 2
                         ledger.bump(
                             "collatz_physical_temporal_run_operand_bits",
-                            current.bit_length() + endpoint.bit_length() + 26,
+                            current.bit_length()
+                            + (
+                                d8_endpoint.bit_length()
+                                if d8_endpoint is not None
+                                else 0
+                            )
+                            + 26,
                         )
-                        ledger.bump("collatz_physical_temporal_d8_endpoint_evaluations")
-                        if endpoint > 2:
-                            if include_width_spine and width_spine.complete:
-                                d8_frame = D8CylinderFrame(current)
-                                advanced = D8CylinderFrame(
-                                    current, 8, target_origin, multiplier
+                        if survives:
+                            if d8_width_summary is not None:
+                                width_spine.record(d8_width_summary.blank)
+                            if include_joint_cocycle:
+                                if d8_action is None:
+                                    raise AssertionError(
+                                        "joint D8 action was not selected"
+                                    )
+                                joint_builder.begin_d8_batch(current)
+                                joint_builder.append_d8_transition(
+                                    d8_action, ones, current & 255
                                 )
-                                d8_width = d8_table._width_summary_for_transition(
-                                    d8_frame, advanced, ones, current.bit_length()
+                                current = joint_builder.finish_d8_batch(
+                                    macros, advanced
                                 )
-                                width_spine.record(d8_width.blank)
+                            else:
+                                if d8_endpoint is None:
+                                    raise AssertionError(
+                                        "D8 endpoint was not evaluated"
+                                    )
+                                current = d8_endpoint
                             if normalized_f5 is not None and physical_f5 is not None:
+                                multiplier = 3**ones
                                 normalized_f5, physical_f5 = _append_dyadic_f5(
                                     normalized_f5,
                                     physical_f5,
@@ -637,7 +392,6 @@ def compile_collatz_temporal_run_quotient(
                                     target_origin,
                                     low,
                                 )
-                            current = endpoint
                             odd_ticks += ones
                             division_ticks += 8
                             normalized += 8
@@ -647,6 +401,13 @@ def compile_collatz_temporal_run_quotient(
                             run_actions += 1
                             ledger.bump("collatz_physical_temporal_dyadic_d8_pumps")
                             ledger.bump("collatz_physical_temporal_dyadic_symbols", 8)
+                            if include_joint_cocycle and macros is not None:
+                                previous_source, previous_width, previous_ones = (
+                                    current,
+                                    normalized,
+                                    one_symbols,
+                                )
+                                width_spine.reset_segment()
                             continue
                 else:
                     frame = D8CylinderFrame(current)
@@ -685,9 +446,24 @@ def compile_collatz_temporal_run_quotient(
                         )
                         if homogeneous >= 8:
                             break
-                        advanced, ones, residue, target_origin = d8_table.transition(
-                            frame
-                        )
+                        d8_width_summary = None
+                        d8_action = None
+                        if include_joint_cocycle:
+                            (
+                                advanced,
+                                ones,
+                                residue,
+                                target_origin,
+                                d8_width_summary,
+                                d8_action,
+                            ) = d8_table.transition_with_joint_action(
+                                frame,
+                                with_width=include_width_spine and width_spine.complete,
+                            )
+                        else:
+                            advanced, ones, residue, target_origin = (
+                                d8_table.transition(frame)
+                            )
                         if remaining < 8 + ones:
                             break
                         # Normalized dynamics remain in {1, 2} after first hitting
@@ -700,12 +476,23 @@ def compile_collatz_temporal_run_quotient(
                             )
                         if not advanced.above_cycle():
                             break
-                        if include_width_spine and width_spine.complete:
+                        if include_joint_cocycle:
+                            if d8_width_summary is not None:
+                                width_spine.record(d8_width_summary.blank)
+                                frame_width = d8_width_summary.target_width
+                        elif include_width_spine and width_spine.complete:
                             d8_width = d8_table._width_summary_for_transition(
                                 frame, advanced, ones, frame_width
                             )
+                            d8_width_summary = d8_width
                             width_spine.record(d8_width.blank)
                             frame_width = d8_width.target_width
+                        if include_joint_cocycle:
+                            if d8_action is None:
+                                raise AssertionError("joint D8 action was not selected")
+                            if accepted == 0:
+                                joint_builder.begin_d8_batch(current)
+                            joint_builder.append_d8_transition(d8_action, ones, residue)
                         if normalized_f5 is not None and physical_f5 is not None:
                             multiplier = 3**ones
                             normalized_f5, physical_f5 = _append_dyadic_f5(
@@ -736,17 +523,32 @@ def compile_collatz_temporal_run_quotient(
                                 + 48
                             )
                         )
-                        current = frame.materialize()
-                        ledger.bump(
-                            "collatz_physical_temporal_d8_frame_materializations"
+                        current = (
+                            joint_builder.finish_d8_batch(macros, frame)
+                            if include_joint_cocycle
+                            else frame.materialize()
                         )
-                        ledger.bump("collatz_physical_temporal_d8_endpoint_evaluations")
-                        ledger.bump(
-                            "collatz_physical_temporal_run_operand_bits",
-                            frame.source.bit_length()
-                            + frame.gain.bit_length()
-                            + current.bit_length(),
-                        )
+                        if not include_joint_cocycle:
+                            ledger.bump(
+                                "collatz_physical_temporal_d8_frame_materializations"
+                            )
+                            ledger.bump(
+                                "collatz_physical_temporal_d8_endpoint_evaluations"
+                            )
+                        if not include_joint_cocycle:
+                            ledger.bump(
+                                "collatz_physical_temporal_run_operand_bits",
+                                frame.source.bit_length()
+                                + frame.gain.bit_length()
+                                + current.bit_length(),
+                            )
+                        if include_joint_cocycle and macros is not None:
+                            previous_source, previous_width, previous_ones = (
+                                current,
+                                normalized,
+                                one_symbols,
+                            )
+                            width_spine.reset_segment()
                         continue
 
             if low in (0, 255):
@@ -755,6 +557,9 @@ def compile_collatz_temporal_run_quotient(
             if current & 1 == 0:
                 length = min(available, remaining)
                 before_bits = current.bit_length()
+                joint_source = current
+                if include_joint_cocycle:
+                    joint_builder.append_run(joint_source, length, odd=False)
                 current >>= length
                 if width_spine.complete:
                     after_bits = current.bit_length()
@@ -787,6 +592,9 @@ def compile_collatz_temporal_run_quotient(
                     8 * (current.bit_length() + 2 * complete + 4 * control_bits + 16)
                 )
                 before_bits = current.bit_length()
+                joint_source = current
+                if include_joint_cocycle:
+                    joint_builder.append_run(joint_source, complete, odd=True)
                 power3 = 3**complete
                 current = power3 * ((current + 1) >> complete) - 1
                 if width_spine.complete:
@@ -877,6 +685,18 @@ def compile_collatz_temporal_run_quotient(
             division_ticks,
             odd_ticks,
         )
+        joint_action = None
+        if include_joint_cocycle:
+            normalized_endpoint = current if phase == 0 else (current - 1) // 3
+            joint_action = joint_builder.finish(
+                seed,
+                current,
+                normalized_endpoint,
+                physical_ticks,
+                division_ticks,
+                one_symbols,
+                phase,
+            )
 
         return CollatzTemporalRunQuotient(
             seed,
@@ -894,6 +714,7 @@ def compile_collatz_temporal_run_quotient(
             physical_f5,
             certificate,
             tape_width_summary,
+            joint_action,
         )
 
 

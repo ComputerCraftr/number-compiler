@@ -314,6 +314,42 @@ def test_closed_occurrence_consumer_invalidates_its_local_store() -> None:
     assert row.disposed and row.entries == row.nodes == 0
 
 
+@pytest.mark.parametrize("corruption", ("wrong_key", "wrong_publisher"))
+def test_mahler_local_occurrence_cache_rejects_miskeyed_records(
+    corruption: str,
+) -> None:
+    term = _prepared(1024, shared_cache=False)
+    term.result()
+    workspace = term.arithmetic_workspace
+    assert workspace is not None
+    summary = workspace.image_node(workspace.root_payload).summary
+    wire = workspace.mahler_root_wire()
+    assert wire is not None and all(type(value) is int for value in wire)
+    action = mahler_source_actions.MahlerSourceBoundSafetyAction(*wire)
+    consumer = mahler_source_actions.MahlerOccurrenceConsumer(
+        term.ledger, ANTIHYDRA_ARITHMETIC_LAW, shared_cache=False
+    )
+    key = summary.width, summary.residue
+    consumer.publish_action(summary, action, publisher=summary.residue)
+    record = consumer.records[key]
+
+    if corruption == "wrong_key":
+        wrong_residue = summary.residue ^ 1
+        del consumer.records[key]
+        consumer.records[(summary.width, wrong_residue)] = record
+        with pytest.raises(ValueError, match="another cylinder"):
+            consumer.lookup(summary.width, wrong_residue, source=wrong_residue)
+        with pytest.raises(ValueError, match="another cylinder"):
+            consumer.normal_action(summary.width, wrong_residue)
+    else:
+        consumer.records[key] = (record[0], record[1], record[2] ^ 1)
+        with pytest.raises(ValueError, match="another cylinder"):
+            consumer.lookup(summary.width, summary.residue)
+        with pytest.raises(ValueError, match="another cylinder"):
+            consumer.normal_action(*key)
+    consumer.close()
+
+
 @pytest.mark.parametrize("extent", (1024, 1025, 2048))
 @pytest.mark.parametrize("consumer", ("digit", "value"))
 def test_public_arithmetic_warm_root_reuses_complete_source_action_before_cold_discovery(

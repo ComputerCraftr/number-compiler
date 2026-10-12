@@ -124,6 +124,10 @@ class QueryContext:
                     collatz_payload = self._term.payload
                     assert isinstance(collatz_payload, PoweredCollatzTermPayload)
                     collatz_payload.term.prepare_width_spine()
+                if q.family == "collatz" and "accumulator" in q.info:
+                    joint_payload = self._term.payload
+                    assert isinstance(joint_payload, PoweredCollatzTermPayload)
+                    joint_payload.term.prepare_joint_cocycle()
         return self._term
 
     def information(self) -> dict[str, Any]:
@@ -238,6 +242,14 @@ class QueryContext:
                 _term=payload.term,
                 _include_metrics=False,
             )
+        if name == "accumulator":
+            joint = self.term.payload
+            assert isinstance(joint, PoweredCollatzTermPayload)
+            return asdict(joint.term.accumulator(q.modulus))
+        if name == "boundary-macro":
+            reverse = self.term.payload
+            assert isinstance(reverse, PoweredReverseAddTermPayload)
+            return asdict(reverse.term.observe_boundary_macro())
         if name == "mirror":
             from number_compiler.api.cylinder_observation import observe_mirror
 

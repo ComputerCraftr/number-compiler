@@ -8,6 +8,10 @@ from typing import TYPE_CHECKING
 from number_compiler.sequences.collatz.tape_width import CollatzTapeWidthSummary
 
 if TYPE_CHECKING:
+    from number_compiler.sequences.collatz.joint_temporal_action import (
+        CollatzAccumulatorObservation,
+        CollatzJointRunAction,
+    )
     from number_compiler.sequences.collatz.temporal_run_quotient import (
         CollatzF5AffineAction,
         CollatzRootFiberCertificate,
@@ -33,6 +37,7 @@ class CollatzTemporalRunQuotient:
     physical_f5: CollatzF5AffineAction | None
     root_certificate: CollatzRootFiberCertificate | None
     tape_width_summary: CollatzTapeWidthSummary | None = None
+    joint_action: CollatzJointRunAction | None = None
 
     def __post_init__(self) -> None:
         if any(
@@ -89,6 +94,21 @@ class CollatzTemporalRunQuotient:
                 or summary.odd_steps != self.odd_ticks
             ):
                 raise ValueError("Collatz width summary is detached from its run")
+        if self.joint_action is not None:
+            from number_compiler.sequences.collatz.joint_temporal_action import (
+                CollatzJointRunAction,
+            )
+
+            action = self.joint_action
+            if type(action) is not CollatzJointRunAction or (
+                action.source != self.source
+                or action.endpoint != self.endpoint
+                or action.physical_ticks != self.physical_ticks
+                or action.normalized_steps != self.division_ticks
+                or action.odd_symbols != self.one_run_symbols
+                or action.phase != self.phase
+            ):
+                raise ValueError("Collatz joint action is detached from its run")
 
     @property
     def semantic_key(self) -> tuple[object, ...]:
@@ -138,7 +158,28 @@ class CollatzTemporalRunQuotient:
                     self.root_certificate.powered_symbols,
                 )
             )
+        if self.joint_action is not None:
+            fields = self.joint_action.fields
+            bits += sum(
+                max(1, value.bit_length())
+                for value in (
+                    fields.gain,
+                    fields.offset,
+                    fields.sum_gain,
+                    fields.sum_offset,
+                    fields.previous_gain,
+                    fields.previous_offset,
+                )
+            )
         return bits
+
+    def accumulator(self, modulus: int) -> CollatzAccumulatorObservation:
+        """Demand the authenticated source-plus-normalized-successor residue."""
+        if self.joint_action is None:
+            raise ValueError(
+                "joint Collatz cocycle was not requested before construction"
+            )
+        return self.joint_action.accumulator_observation(modulus)
 
     def radix_digit(self, radix: int, position: int) -> int:
         if type(radix) is not int or radix < 2:

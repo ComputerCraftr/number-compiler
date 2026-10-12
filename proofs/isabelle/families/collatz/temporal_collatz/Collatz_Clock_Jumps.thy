@@ -153,6 +153,187 @@ proof
   show "b mod A0 < A0" using assms(1) by simp
 qed
 
+text \<open>An authenticated normalized 0/1 word has a joint affine action for
+its endpoint and the sum of its successor values.  This is the exact algebra
+used by the finite `DyadicTerminalFieldAction` carrier: the word is supplied
+and authenticated by its caller; these definitions do not discover parity or
+establish a future Moore quotient.\<close>
+
+record collatz_joint_dyadic_action =
+  joint_dyadic_steps :: nat
+  joint_dyadic_gain :: nat
+  joint_dyadic_offset :: nat
+  joint_dyadic_sum_gain :: nat
+  joint_dyadic_sum_offset :: nat
+
+definition collatz_joint_dyadic_identity :: collatz_joint_dyadic_action where
+  "collatz_joint_dyadic_identity = \<lparr>
+    joint_dyadic_steps = 0, joint_dyadic_gain = 1, joint_dyadic_offset = 0,
+    joint_dyadic_sum_gain = 0, joint_dyadic_sum_offset = 0 \<rparr>"
+
+definition collatz_joint_dyadic_atom :: "bool \<Rightarrow> collatz_joint_dyadic_action" where
+  "collatz_joint_dyadic_atom odd_step =
+    (if odd_step then
+      \<lparr>joint_dyadic_steps = 1, joint_dyadic_gain = 3,
+        joint_dyadic_offset = 1, joint_dyadic_sum_gain = 3,
+        joint_dyadic_sum_offset = 1\<rparr>
+     else
+      \<lparr>joint_dyadic_steps = 1, joint_dyadic_gain = 1,
+        joint_dyadic_offset = 0, joint_dyadic_sum_gain = 1,
+        joint_dyadic_sum_offset = 0\<rparr>)"
+
+definition collatz_joint_dyadic_then ::
+    "collatz_joint_dyadic_action \<Rightarrow> collatz_joint_dyadic_action \<Rightarrow>
+      collatz_joint_dyadic_action" where
+  "collatz_joint_dyadic_then first second = \<lparr>
+    joint_dyadic_steps = joint_dyadic_steps first + joint_dyadic_steps second,
+    joint_dyadic_gain = joint_dyadic_gain second * joint_dyadic_gain first,
+    joint_dyadic_offset = joint_dyadic_gain second * joint_dyadic_offset first +
+      2^(joint_dyadic_steps first) * joint_dyadic_offset second,
+    joint_dyadic_sum_gain =
+      2^(joint_dyadic_steps second) * joint_dyadic_sum_gain first +
+      joint_dyadic_sum_gain second * joint_dyadic_gain first,
+    joint_dyadic_sum_offset =
+      2^(joint_dyadic_steps second) * joint_dyadic_sum_offset first +
+      joint_dyadic_sum_gain second * joint_dyadic_offset first +
+      2^(joint_dyadic_steps first) * joint_dyadic_sum_offset second \<rparr>"
+
+definition collatz_joint_dyadic_endpoint ::
+    "collatz_joint_dyadic_action \<Rightarrow> rat \<Rightarrow> rat" where
+  "collatz_joint_dyadic_endpoint A x =
+    (of_nat (joint_dyadic_gain A) * x + of_nat (joint_dyadic_offset A)) /
+      (2::rat)^joint_dyadic_steps A"
+
+definition collatz_joint_dyadic_sum ::
+    "collatz_joint_dyadic_action \<Rightarrow> rat \<Rightarrow> rat" where
+  "collatz_joint_dyadic_sum A x =
+    (of_nat (joint_dyadic_sum_gain A) * x +
+      of_nat (joint_dyadic_sum_offset A)) /
+      (2::rat)^joint_dyadic_steps A"
+
+lemma collatz_joint_dyadic_left_identity [simp]:
+  "collatz_joint_dyadic_then collatz_joint_dyadic_identity A = A"
+  by (cases A)
+    (simp add: collatz_joint_dyadic_then_def collatz_joint_dyadic_identity_def)
+
+lemma collatz_joint_dyadic_right_identity [simp]:
+  "collatz_joint_dyadic_then A collatz_joint_dyadic_identity = A"
+  by (cases A)
+    (simp add: collatz_joint_dyadic_then_def collatz_joint_dyadic_identity_def)
+
+lemma collatz_joint_dyadic_then_associative:
+  "collatz_joint_dyadic_then (collatz_joint_dyadic_then A B) C =
+    collatz_joint_dyadic_then A (collatz_joint_dyadic_then B C)"
+  by (cases A; cases B; cases C)
+    (simp add: collatz_joint_dyadic_then_def power_add algebra_simps)
+
+lemma collatz_joint_dyadic_endpoint_then:
+  "collatz_joint_dyadic_endpoint (collatz_joint_dyadic_then A B) x =
+    collatz_joint_dyadic_endpoint B (collatz_joint_dyadic_endpoint A x)"
+  by (cases A; cases B)
+    (simp add: collatz_joint_dyadic_endpoint_def collatz_joint_dyadic_then_def
+      power_add field_simps algebra_simps)
+
+lemma collatz_joint_dyadic_sum_then:
+  "collatz_joint_dyadic_sum (collatz_joint_dyadic_then A B) x =
+    collatz_joint_dyadic_sum A x +
+      collatz_joint_dyadic_sum B (collatz_joint_dyadic_endpoint A x)"
+  by (cases A; cases B)
+    (simp add: collatz_joint_dyadic_endpoint_def collatz_joint_dyadic_sum_def
+      collatz_joint_dyadic_then_def power_add field_simps algebra_simps)
+
+definition collatz_normalized_bit_step :: "bool \<Rightarrow> rat \<Rightarrow> rat" where
+  "collatz_normalized_bit_step odd_step x =
+    (if odd_step then (3*x+1)/2 else x/2)"
+
+fun collatz_joint_dyadic_word :: "bool list \<Rightarrow> collatz_joint_dyadic_action" where
+  "collatz_joint_dyadic_word [] = collatz_joint_dyadic_identity"
+| "collatz_joint_dyadic_word (odd_step # bits) =
+    collatz_joint_dyadic_then (collatz_joint_dyadic_atom odd_step)
+      (collatz_joint_dyadic_word bits)"
+
+fun collatz_normalized_word_endpoint :: "bool list \<Rightarrow> rat \<Rightarrow> rat" where
+  "collatz_normalized_word_endpoint [] x = x"
+| "collatz_normalized_word_endpoint (odd_step # bits) x =
+    collatz_normalized_word_endpoint bits
+      (collatz_normalized_bit_step odd_step x)"
+
+fun collatz_normalized_word_successor_sum :: "bool list \<Rightarrow> rat \<Rightarrow> rat" where
+  "collatz_normalized_word_successor_sum [] x = 0"
+| "collatz_normalized_word_successor_sum (odd_step # bits) x =
+    collatz_normalized_bit_step odd_step x +
+      collatz_normalized_word_successor_sum bits
+        (collatz_normalized_bit_step odd_step x)"
+
+lemma collatz_joint_dyadic_word_append:
+  "collatz_joint_dyadic_word (first @ second) =
+    collatz_joint_dyadic_then (collatz_joint_dyadic_word first)
+      (collatz_joint_dyadic_word second)"
+  by (induction first)
+    (simp_all add: collatz_joint_dyadic_then_associative)
+
+theorem collatz_joint_dyadic_word_endpoint_exact:
+  "collatz_joint_dyadic_endpoint (collatz_joint_dyadic_word bits) x =
+    collatz_normalized_word_endpoint bits x"
+proof (induction bits arbitrary: x)
+  case Nil
+  then show ?case
+    by (simp add: collatz_joint_dyadic_endpoint_def
+        collatz_joint_dyadic_identity_def)
+next
+  case (Cons odd_step bits)
+  have atom_endpoint:
+    "collatz_joint_dyadic_endpoint (collatz_joint_dyadic_atom odd_step) x =
+      collatz_normalized_bit_step odd_step x"
+    by (cases odd_step)
+      (simp_all add: collatz_joint_dyadic_endpoint_def
+        collatz_joint_dyadic_atom_def collatz_normalized_bit_step_def)
+  have tail:
+    "collatz_joint_dyadic_endpoint (collatz_joint_dyadic_word bits)
+        (collatz_normalized_bit_step odd_step x) =
+      collatz_normalized_word_endpoint bits
+        (collatz_normalized_bit_step odd_step x)"
+    by (rule Cons.IH)
+  show ?case
+    using atom_endpoint tail
+    by (simp only: collatz_joint_dyadic_word.simps
+        collatz_joint_dyadic_endpoint_then collatz_normalized_word_endpoint.simps)
+qed
+
+theorem collatz_joint_dyadic_word_sum_exact:
+  "collatz_joint_dyadic_sum (collatz_joint_dyadic_word bits) x =
+    collatz_normalized_word_successor_sum bits x"
+proof (induction bits arbitrary: x)
+  case Nil
+  then show ?case
+    by (simp add: collatz_joint_dyadic_sum_def
+        collatz_joint_dyadic_identity_def)
+next
+  case (Cons odd_step bits)
+  have atom_endpoint:
+    "collatz_joint_dyadic_endpoint (collatz_joint_dyadic_atom odd_step) x =
+      collatz_normalized_bit_step odd_step x"
+    by (cases odd_step)
+      (simp_all add: collatz_joint_dyadic_endpoint_def
+        collatz_joint_dyadic_atom_def collatz_normalized_bit_step_def)
+  have atom_sum:
+    "collatz_joint_dyadic_sum (collatz_joint_dyadic_atom odd_step) x =
+      collatz_normalized_bit_step odd_step x"
+    by (cases odd_step)
+      (simp_all add: collatz_joint_dyadic_sum_def
+        collatz_joint_dyadic_atom_def collatz_normalized_bit_step_def)
+  have tail:
+    "collatz_joint_dyadic_sum (collatz_joint_dyadic_word bits)
+        (collatz_normalized_bit_step odd_step x) =
+      collatz_normalized_word_successor_sum bits
+        (collatz_normalized_bit_step odd_step x)"
+    by (rule Cons.IH)
+  show ?case
+    using atom_endpoint atom_sum tail
+    by (simp only: collatz_joint_dyadic_word.simps
+        collatz_joint_dyadic_sum_then collatz_normalized_word_successor_sum.simps)
+qed
+
 text \<open>A radix-64 root digit is a dying forcing query.  A matching digit
 removes six live precision bits; a mismatching digit has empty intersection
 with the live cylinder.  The digit is supplied by the spatial occurrence.\<close>
@@ -349,7 +530,12 @@ ML \<open>
       hensel_canonical_mismatch_kills_forcing
       radix64_mismatch_tangent radix64_occupancy_downward
       radix64_curvature_is_one_hot radix64_match_has_zero_curvature
-      normalized_cylinder_jet_compose normalized_target_rebase_linear}) then ()
+      normalized_cylinder_jet_compose normalized_target_rebase_linear
+      collatz_joint_dyadic_left_identity collatz_joint_dyadic_right_identity
+      collatz_joint_dyadic_then_associative
+      collatz_joint_dyadic_word_append
+      collatz_joint_dyadic_endpoint_then collatz_joint_dyadic_sum_then
+      collatz_joint_dyadic_word_endpoint_exact collatz_joint_dyadic_word_sum_exact}) then ()
     else error "Collatz clock-jump proof depends on an oracle";
 \<close>
 

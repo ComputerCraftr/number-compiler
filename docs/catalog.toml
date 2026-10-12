@@ -414,3 +414,11 @@ kind = "sprint-topic"
 topic = "comma"
 status = "current"
 week_start = "2026-10-11"
+
+[[document]]
+id = "sprint-2026-10-11-hashlife"
+path = "docs/sprints/week-of-2026-10-11/hashlife.md"
+kind = "sprint-topic"
+topic = "hashlife"
+status = "current"
+week_start = "2026-10-11"

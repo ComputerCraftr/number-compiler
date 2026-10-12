@@ -27,6 +27,10 @@ from number_compiler.hashlife.tiles.tile_result_records import (
     NormalizedRegionResult,
 )
 from number_compiler.hashlife.tiles.tiles import TileID, TileLease
+from tests.support.tile_dependency_assertions import (
+    assert_tile_dependency_state,
+    capture_tile_dependency_state,
+)
 from tests.support.tile_kernel import _runtime, _tile
 
 
@@ -415,6 +419,68 @@ def test_region_publication_failure_rolls_back_index_and_application_pins(
             assert tuple(scheduler._causal_dependencies.records.items()) == (
                 dependencies_before
             )
+
+
+def test_warm_region_detach_failure_rolls_back_new_dependency_pins(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    import number_compiler.hashlife.tiles.tile_region_memo as region_memo
+
+    ledger, tiles, adapter, primitive, scheduler = _runtime(BaseBlockEffect(3))
+    action = adapter.power(primitive, 4)
+    with _tile(tiles, adapter, primitive, (4, 0, 1, 2, 3, 4, 4, 4)) as source:
+        raw = BoundaryTileView(source.tile, -11, 3, 0, 1)
+        _cached, memo_lease = normalize_cached_region(scheduler.results, raw)
+        try:
+            with scheduler.application(
+                action,
+                source.tile,
+                adapter.initial_ports(action),
+                adapter.wiring(action),
+            ) as application:
+                dependencies = scheduler._causal_dependencies
+                snapshot = capture_tile_dependency_state(
+                    ledger,
+                    tiles,
+                    dependencies,
+                )
+
+                def fail_detach(_view: object) -> Never:
+                    raise MemoryError("injected warm view allocation failure")
+
+                monkeypatch.setattr(region_memo, "_detached_view", fail_detach)
+                with pytest.raises(MemoryError, match="warm view allocation"):
+                    normalize_cached_region(
+                        scheduler.results,
+                        raw,
+                        dependencies=dependencies,
+                        application=application.identity,
+                    )
+
+                assert_tile_dependency_state(snapshot, ledger, tiles, dependencies)
+        finally:
+            memo_lease.close()
+
+
+def test_cold_region_seal_failure_closes_normalized_lease(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    import number_compiler.hashlife.tiles.tile_region_memo as region_memo
+
+    ledger, tiles, adapter, primitive, scheduler = _runtime(BaseBlockEffect(3))
+    with _tile(tiles, adapter, primitive, (4, 0, 1, 2, 3, 4, 4, 4)) as source:
+        raw = BoundaryTileView(source.tile, -11, 3, 0, 1)
+        lease_entries_before = ledger.inventory()[tiles._lease_owner].entries
+
+        def fail_seal(*_args: object) -> Never:
+            raise MemoryError("injected normalized region seal failure")
+
+        monkeypatch.setattr(region_memo, "_sealed", fail_seal)
+        with pytest.raises(MemoryError, match="region seal"):
+            normalize_cached_region(scheduler.results, raw)
+
+        assert not scheduler.results._memo
+        assert ledger.inventory()[tiles._lease_owner].entries == lease_entries_before
 
 
 def test_stale_application_rejects_before_region_lookup() -> None:

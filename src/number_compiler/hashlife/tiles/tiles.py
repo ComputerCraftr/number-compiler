@@ -261,18 +261,37 @@ class TileArena:
         """
         self.resolve(tile)
         lease_id = self._next_lease
+        lease = TileLease(self, lease_id, _LEASE_SEAL)
         self._next_lease += 1
         old = self._refs[tile.local_id]
+        acquisition_before = self.ledger.counters.get("tile_lease_acquisitions")
+        peak_before = self.ledger.counters.get("tile_root_lease_peak")
+        peak_after = max(peak_before or 0, len(self._leases) + 1)
         try:
             self._leases[lease_id] = tile
             self._observe_peak("tile_root_lease_peak", len(self._leases))
             self._refs[tile.local_id] = old + 1
+            self.ledger.bump("tile_lease_acquisitions")
         except BaseException:
             self._leases.pop(lease_id, None)
             self._refs[tile.local_id] = old
+            if (
+                peak_after != peak_before
+                and self.ledger.counters.get("tile_root_lease_peak") == peak_after
+            ):
+                if peak_before is None:
+                    self.ledger.counters.pop("tile_root_lease_peak", None)
+                else:
+                    self.ledger.counters["tile_root_lease_peak"] = peak_before
+            acquisition_after = self.ledger.counters.get("tile_lease_acquisitions")
+            expected_acquisition = (acquisition_before or 0) + 1
+            if acquisition_after == expected_acquisition:
+                if acquisition_before is None:
+                    self.ledger.counters.pop("tile_lease_acquisitions", None)
+                else:
+                    self.ledger.counters["tile_lease_acquisitions"] = acquisition_before
             raise
-        self.ledger.bump("tile_lease_acquisitions")
-        return TileLease(self, lease_id, _LEASE_SEAL)
+        return lease
 
     def _observe_peak(self, name: str, value: int) -> None:
         self.ledger.counters[name] = max(self.ledger.counters.get(name, 0), value)

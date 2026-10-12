@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from collections.abc import Iterator
 from contextlib import ExitStack
-from typing import cast
+from typing import TYPE_CHECKING, cast
 
 from number_compiler.arithmetic.contracts.exact_tree_context import (
     OriginalSourceConstruction,
@@ -22,6 +22,9 @@ from number_compiler.sequences.reverse_add.source_actions import (
 from number_compiler.sequences.reverse_add.successor_width import (
     ReverseSuccessorWidthSummary,
 )
+
+if TYPE_CHECKING:
+    from number_compiler.sequences.reverse_add.source_ports import SourceCarryPorts
 
 
 class ReverseSourceImageWorkspace:
@@ -77,6 +80,7 @@ class ReverseSourceImageWorkspace:
         self.adapter = adapter
         self.steps = steps
         self.base = base
+        self._request_binding = (seed, steps, base)
         self._image: SourceImageID | None = None
         self._width_image: SourceImageID | None = None
         self._image_cache_epoch = ledger.counters.get("source_image_cache_clears", 0)
@@ -91,6 +95,7 @@ class ReverseSourceImageWorkspace:
             steps,
             base,
             source_construction,
+            self._request_binding,
         )
         ledger.register_execution_root(self)
         self._audit_action_nodes = actions._nodes._data
@@ -175,6 +180,7 @@ class ReverseSourceImageWorkspace:
             steps,
             base,
             source_construction,
+            request_binding,
         ) = self._authority
         if (
             self.ledger is not ledger
@@ -185,6 +191,8 @@ class ReverseSourceImageWorkspace:
             or self.adapter is not adapter
             or self.steps != steps
             or self.base != base
+            or self._request_binding is not request_binding
+            or request_binding[1:] != (steps, base)
             or (
                 source_construction is not None
                 and adapter._recursive_construction is not source_construction
@@ -213,6 +221,25 @@ class ReverseSourceImageWorkspace:
             view = scheduler._source_image_core().view(width_image)
             if view.binding.source != source or view.binding.action != actions.identity:
                 raise ValueError("reverse source width image binding was altered")
+
+    def check_request(self, seed: int, steps: int, base: int) -> None:
+        """Authenticate a consumer against this workspace's original request."""
+        require_integer(seed, "seed", 0)
+        require_integer(steps, "reverse/add steps", 0)
+        require_integer(base, "base", 2)
+        self._check_open()
+        if (seed, steps, base) != self._request_binding:
+            raise ValueError("reverse source workspace belongs to another request")
+
+    def boundary_source_ports(self) -> SourceCarryPorts:
+        """Share admitted source carries without constructing a target image."""
+        self._check_open()
+        if self.base != 10:
+            raise ValueError("boundary source ports require a decimal source")
+        source = self.actions.source(self.source)
+        ports = self.adapter.ports(source)
+        self._register_source_payload_audit_contract()
+        return ports
 
     def completed_width_if_cached(self) -> int | None:
         """Return only a still-owned width projection; never demand one here."""

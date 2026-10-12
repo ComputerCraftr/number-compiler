@@ -142,6 +142,266 @@ lemma collatz_physical_branch_word_is_dyadic_source_word:
     dyadic_source_word physical_collatz odd source n"
   by (induction n arbitrary: source) simp_all
 
+text \<open>A normalized field-action symbol represents one physical tick on an
+even source and the odd tick followed by its forced even tick on an odd
+source.  The guard below validates each supplied symbol against the exact
+current natural source before advancing that normalized occurrence.  It is a
+finite-word refinement only; it does not discover future parity words or
+refine a Python cache/parser.\<close>
+
+definition collatz_guarded_normalized_source_step :: "bool \<Rightarrow> nat \<Rightarrow> nat" where
+  "collatz_guarded_normalized_source_step branch x =
+    (if branch then (physical_collatz ^^ 2) x else physical_collatz x)"
+
+fun collatz_guarded_normalized_word_admitted :: "bool list \<Rightarrow> nat \<Rightarrow> bool" where
+  "collatz_guarded_normalized_word_admitted [] x = True"
+| "collatz_guarded_normalized_word_admitted (branch # tail) x =
+    (branch = odd x \<and>
+      collatz_guarded_normalized_word_admitted tail
+        (collatz_guarded_normalized_source_step branch x))"
+
+fun collatz_guarded_normalized_word_endpoint :: "bool list \<Rightarrow> nat \<Rightarrow> nat" where
+  "collatz_guarded_normalized_word_endpoint [] x = x"
+| "collatz_guarded_normalized_word_endpoint (branch # tail) x =
+    collatz_guarded_normalized_word_endpoint tail
+      (collatz_guarded_normalized_source_step branch x)"
+
+lemma collatz_guarded_normalized_atom_exact:
+  assumes branch: "branch = odd x"
+  shows "collatz_joint_dyadic_endpoint (collatz_joint_dyadic_atom branch)
+      (of_nat x) = of_nat (collatz_guarded_normalized_source_step branch x)"
+proof -
+  have normalized:
+    "collatz_joint_dyadic_endpoint (collatz_joint_dyadic_atom branch)
+        (of_nat x) = collatz_normalized_bit_step branch (of_nat x)"
+    using collatz_joint_dyadic_word_endpoint_exact[of "[branch]" "of_nat x"]
+    by simp
+  show ?thesis
+  proof (cases branch)
+    case True
+    have odd_x: "odd x" using branch True by simp
+    have even_next: "even (3*x+1)" using odd_x by simp
+    obtain q where q: "3*x+1 = 2*q"
+      using even_next by (rule evenE)
+    have cast_q: "(3::rat) * of_nat x + 1 = (2::rat) * of_nat q"
+    proof -
+      have cast_equality:
+        "(of_nat (3*x+1) :: rat) = (of_nat (2*q) :: rat)"
+        using q by simp
+      show ?thesis using cast_equality by simp
+    qed
+    have source_step:
+      "collatz_guarded_normalized_source_step True x = q"
+    proof -
+      have q': "3*x+1 = 2*q" using q by simp
+      have first_tick: "physical_collatz x = 3*x+1"
+        using odd_x by (simp add: physical_collatz_def)
+      have second_tick: "physical_collatz (3*x+1) = q"
+        using even_next q' by (simp add: physical_collatz_def)
+      have two: "(2::nat) = Suc (Suc 0)" by simp
+      have iterate_two:
+        "(physical_collatz ^^ 2) x =
+          physical_collatz (physical_collatz x)"
+        by (simp only: two funpow.simps comp_apply id_apply)
+      show ?thesis
+        unfolding collatz_guarded_normalized_source_step_def
+        using first_tick second_tick iterate_two
+        by (simp only: if_True iterate_two first_tick second_tick)
+    qed
+    show ?thesis
+      using normalized cast_q source_step True
+      by (simp add: collatz_normalized_bit_step_def)
+  next
+    case False
+    have even_x: "even x" using branch False by simp
+    obtain q where q: "x = 2*q" using even_x by (auto elim: evenE)
+    have cast_q: "of_nat x = (2::rat) * of_nat q" using q by simp
+    have source_step:
+      "collatz_guarded_normalized_source_step False x = q"
+      using q by (simp add: collatz_guarded_normalized_source_step_def
+          physical_collatz_def)
+    show ?thesis
+      using normalized cast_q source_step False
+      by (simp add: collatz_normalized_bit_step_def)
+  qed
+qed
+
+theorem collatz_guarded_normalized_word_refines_physical:
+  assumes admitted: "collatz_guarded_normalized_word_admitted bits source"
+  shows "collatz_joint_dyadic_endpoint (collatz_joint_dyadic_word bits)
+      (of_nat source) =
+        of_nat (collatz_guarded_normalized_word_endpoint bits source) \<and>
+    collatz_guarded_normalized_word_endpoint bits source =
+      (physical_collatz ^^ (length bits + count_list bits True)) source"
+using admitted
+proof (induction bits arbitrary: source)
+  case Nil
+  then show ?case
+    by (simp add: collatz_joint_dyadic_endpoint_def
+        collatz_joint_dyadic_identity_def)
+next
+  case (Cons branch tail)
+  have split_guard:
+    "branch = odd source \<and>
+      collatz_guarded_normalized_word_admitted tail
+        (collatz_guarded_normalized_source_step branch source)"
+    using Cons.prems[unfolded
+      collatz_guarded_normalized_word_admitted.simps] .
+  have branch: "branch = odd source" using split_guard by blast
+  have tail_admitted:
+    "collatz_guarded_normalized_word_admitted tail
+      (collatz_guarded_normalized_source_step branch source)"
+    using split_guard by blast
+  have tail_exact:
+    "collatz_joint_dyadic_endpoint (collatz_joint_dyadic_word tail)
+        (of_nat (collatz_guarded_normalized_source_step branch source)) =
+          of_nat (collatz_guarded_normalized_word_endpoint tail
+            (collatz_guarded_normalized_source_step branch source)) \<and>
+     collatz_guarded_normalized_word_endpoint tail
+        (collatz_guarded_normalized_source_step branch source) =
+       (physical_collatz ^^ (length tail + count_list tail True))
+        (collatz_guarded_normalized_source_step branch source)"
+    by (rule Cons.IH[OF tail_admitted])
+  have head_action:
+    "collatz_joint_dyadic_endpoint (collatz_joint_dyadic_atom branch)
+        (of_nat source) =
+      of_nat (collatz_guarded_normalized_source_step branch source)"
+    by (rule collatz_guarded_normalized_atom_exact[OF branch])
+  have duration:
+    "length (branch # tail) + count_list (branch # tail) True =
+      (if branch then 2 else 1) + (length tail + count_list tail True)"
+    by (cases branch) simp_all
+  have head_ticks:
+    "(physical_collatz ^^ (if branch then 2 else 1)) source =
+      collatz_guarded_normalized_source_step branch source"
+    by (simp add: collatz_guarded_normalized_source_step_def)
+  have tail_ticks:
+    "collatz_guarded_normalized_word_endpoint tail
+        (collatz_guarded_normalized_source_step branch source) =
+      (physical_collatz ^^ (length tail + count_list tail True))
+        (collatz_guarded_normalized_source_step branch source)"
+    using tail_exact by blast
+  show ?case
+  proof
+    show "collatz_joint_dyadic_endpoint
+        (collatz_joint_dyadic_word (branch # tail)) (of_nat source) =
+        of_nat (collatz_guarded_normalized_word_endpoint (branch # tail) source)"
+      using head_action tail_exact
+      by (simp only: collatz_joint_dyadic_word.simps
+          collatz_joint_dyadic_endpoint_then
+          collatz_guarded_normalized_word_endpoint.simps)
+    show "collatz_guarded_normalized_word_endpoint (branch # tail) source =
+        (physical_collatz ^^
+          (length (branch # tail) + count_list (branch # tail) True)) source"
+    proof -
+      have combine:
+        "(physical_collatz ^^ (length tail + count_list tail True))
+            (collatz_guarded_normalized_source_step branch source) =
+          (physical_collatz ^^
+            ((length tail + count_list tail True) +
+              (if branch then 2 else 1))) source"
+        using head_ticks by (simp add: funpow_add)
+      show ?thesis
+      proof -
+        have "collatz_guarded_normalized_word_endpoint (branch # tail) source =
+          collatz_guarded_normalized_word_endpoint tail
+            (collatz_guarded_normalized_source_step branch source)"
+          by (simp only: collatz_guarded_normalized_word_endpoint.simps)
+        also have "... =
+          (physical_collatz ^^ (length tail + count_list tail True))
+            (collatz_guarded_normalized_source_step branch source)"
+          by (rule tail_ticks)
+        also have "... =
+          (physical_collatz ^^
+            ((length tail + count_list tail True) +
+              (if branch then 2 else 1))) source"
+          by (rule combine)
+        also have "... =
+          (physical_collatz ^^
+            ((if branch then 2 else 1) +
+              (length tail + count_list tail True))) source"
+          by (simp add: add.commute)
+        also have "... =
+          (physical_collatz ^^
+            (length (branch # tail) + count_list (branch # tail) True)) source"
+          using duration by simp
+        finally show ?thesis .
+      qed
+    qed
+  qed
+qed
+
+theorem collatz_guarded_normalized_word_physical_endpoint_with_pending_tick:
+  assumes admitted: "collatz_guarded_normalized_word_admitted bits source"
+    and pending: "pending = odd (collatz_guarded_normalized_word_endpoint bits source)"
+  shows "of_nat ((physical_collatz ^^
+      (length bits + count_list bits True + (if pending then 1 else 0))) source) =
+    (if pending then
+      3 * collatz_joint_dyadic_endpoint (collatz_joint_dyadic_word bits)
+        (of_nat source) + 1
+     else collatz_joint_dyadic_endpoint (collatz_joint_dyadic_word bits)
+        (of_nat source))"
+proof (cases pending)
+  case False
+  have exact:
+    "collatz_joint_dyadic_endpoint (collatz_joint_dyadic_word bits)
+        (of_nat source) =
+      of_nat (collatz_guarded_normalized_word_endpoint bits source)"
+    using collatz_guarded_normalized_word_refines_physical[OF admitted]
+    by blast
+  have endpoint_value:
+    "collatz_guarded_normalized_word_endpoint bits source =
+      (physical_collatz ^^
+        (length bits + count_list bits True)) source"
+    using collatz_guarded_normalized_word_refines_physical[OF admitted]
+    by blast
+  show ?thesis using exact endpoint_value False by simp
+next
+  case True
+  let ?duration = "length bits + count_list bits True"
+  have exact:
+    "collatz_joint_dyadic_endpoint (collatz_joint_dyadic_word bits)
+        (of_nat source) =
+      of_nat (collatz_guarded_normalized_word_endpoint bits source)"
+    using collatz_guarded_normalized_word_refines_physical[OF admitted]
+    by blast
+  have endpoint_odd:
+    "odd ((physical_collatz ^^ ?duration) source)"
+  proof -
+    have endpoint_value:
+      "collatz_guarded_normalized_word_endpoint bits source =
+        (physical_collatz ^^ ?duration) source"
+      using collatz_guarded_normalized_word_refines_physical[OF admitted]
+      by blast
+    show ?thesis using True pending endpoint_value by simp
+  qed
+  have final_tick:
+    "(physical_collatz ^^ (?duration + 1)) source =
+      3 * (physical_collatz ^^ ?duration) source + 1"
+    using endpoint_odd
+  proof -
+    have iteration:
+      "(physical_collatz ^^ (?duration + 1)) source =
+        physical_collatz ((physical_collatz ^^ ?duration) source)"
+      by (simp add: funpow_add)
+    show ?thesis using iteration endpoint_odd
+      by (simp add: physical_collatz_def)
+  qed
+  have endpoint_value:
+    "(physical_collatz ^^ ?duration) source =
+      collatz_guarded_normalized_word_endpoint bits source"
+  proof -
+    have forward:
+      "collatz_guarded_normalized_word_endpoint bits source =
+        (physical_collatz ^^ ?duration) source"
+      using collatz_guarded_normalized_word_refines_physical[OF admitted]
+      by blast
+    show ?thesis by (rule sym[OF forward])
+  qed
+  show ?thesis using final_tick endpoint_value exact True
+    by (simp add: of_nat_mult of_nat_add)
+qed
+
 lemma collatz_physical_gain_product:
   "dyadic_gain_product collatz_physical_gain
       (collatz_physical_branch_word n source) =
@@ -578,6 +838,9 @@ account for discovery, composition, publication, and retained storage.\<close>
 ML \<open>
   val _ = if null (Thm_Deps.all_oracles
     @{thms collatz_physical_branch_word_length
+      collatz_guarded_normalized_atom_exact
+      collatz_guarded_normalized_word_refines_physical
+      collatz_guarded_normalized_word_physical_endpoint_with_pending_tick
       collatz_physical_counts_partition collatz_physical_even_count_le
       collatz_physical_odd_count_le physical_collatz_even_cylinder_step
       physical_collatz_odd_cylinder_step

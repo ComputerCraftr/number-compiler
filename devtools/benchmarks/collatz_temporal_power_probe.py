@@ -374,8 +374,11 @@ def _source_audit() -> dict[str, bool]:
         ),
         "generic_recursive_carrier_available_for_other_effects": "_RecursiveBoundaryState"
         in compatibility_names,
-        "bounded_temporal_application_boundary_present": "build_certified_field_application"
-        in bounded.identifiers,
+        "bounded_temporal_application_boundary_present": (
+            "build_bounded_application" in bounded.functions
+            and "validate_certified_application_inputs" in bounded.functions
+            and "build_tile_projection" in bounded.identifiers
+        ),
         "raw_boundary_carrier_class_deleted": "SpacetimeBoundary"
         not in boundary.classes,
     }

@@ -225,6 +225,36 @@ class MahlerOccurrenceConsumer:
         ):
             raise ValueError("Mahler occurrence lost its centered-11 safety cap")
 
+    def _checked_local_record(
+        self,
+        width: int,
+        residue: int,
+        record: object,
+    ) -> tuple[_SupportNode, MahlerSourceBoundSafetyAction, int]:
+        """Validate the local memo key as well as its internally consistent payload."""
+        if (
+            type(record) is not tuple
+            or len(record) != 3
+            or type(record[0]) is not _SupportNode
+            or type(record[1]) is not MahlerSourceBoundSafetyAction
+            or type(record[2]) is not int
+            or record[2] < 0
+        ):
+            raise ValueError("local Mahler source action has another record sort")
+        node, action, publisher = record
+        self.count(
+            "record_validation_operand_bits",
+            width + residue.bit_length() + publisher.bit_length(),
+        )
+        if (
+            node.width != width
+            or node.residue != residue
+            or publisher & ((1 << width) - 1) != residue
+        ):
+            raise ValueError("local Mahler source action belongs to another cylinder")
+        self._check(node, action)
+        return node, action, publisher
+
     def _store(
         self,
         node: _SupportNode,
@@ -289,8 +319,14 @@ class MahlerOccurrenceConsumer:
         key = width, residue
         local = self.records.get(key)
         if local is not None:
-            node, action, publisher = local
-            self._check(node, action)
+            try:
+                node, _action, publisher = self._checked_local_record(
+                    width, residue, local
+                )
+            except (TypeError, ValueError):
+                self.count("source_action_admission_rejections")
+                self.count("failed_work")
+                raise
             self._retrieved(source, publisher, "local")
             return node
         found: object = MISSING
@@ -409,11 +445,18 @@ class MahlerOccurrenceConsumer:
 
     def normal_action(self, width: int, residue: int) -> MahlerSourceBoundSafetyAction:
         """Return the exact action from a successful lookup, without replay."""
+        if (
+            type(width) is not int
+            or width <= 0
+            or type(residue) is not int
+            or residue < 0
+            or residue.bit_length() > width
+        ):
+            raise ValueError("Mahler action lookup requires an exact source cylinder")
         record = self.records.get((width, residue))
         if record is None:
             raise KeyError("Mahler action was not admitted in this occurrence")
-        node, action, _publisher = record
-        self._check(node, action)
+        _node, action, _publisher = self._checked_local_record(width, residue, record)
         return action
 
     def publish_action(

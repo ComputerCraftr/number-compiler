@@ -29,6 +29,10 @@ from number_compiler.resources.stores import LedgerDict
 from number_compiler.resources.tile_dependency_leases import (
     audit_tile_dependency_leases,
 )
+from tests.support.tile_dependency_assertions import (
+    assert_tile_dependency_state,
+    capture_tile_dependency_state,
+)
 from tests.support.tile_kernel import _runtime, _runtime_source, _tile
 
 if TYPE_CHECKING:
@@ -241,6 +245,208 @@ def test_causal_pin_reservation_failure_closes_unpublished_result(
         scheduler._pin_causal(application.identity, key, result)
     assert result._closed is True
     assert not scheduler._pins and not scheduler._causal_dependencies.records
+    application.close()
+    boundary.close()
+    dependency.close()
+    source.close()
+
+
+def test_dependency_rollback_preflights_all_bindings_before_mutation() -> None:
+    (
+        ledger,
+        tiles,
+        scheduler,
+        source,
+        dependency,
+        boundary,
+        application,
+        _key,
+        result,
+    ) = _request()
+    dependencies = scheduler._causal_dependencies
+    batch = dependencies.acquire(
+        application.identity,
+        (dependency.tile, boundary.tile),
+    )
+    first, second = batch.bindings
+    missing = dependencies.records.pop(second)
+    snapshot = capture_tile_dependency_state(ledger, tiles, dependencies)
+
+    with pytest.raises(ValueError, match="lost a binding"):
+        dependencies.rollback(batch)
+
+    assert_tile_dependency_state(snapshot, ledger, tiles, dependencies)
+    assert dependencies.records[first].tile == first[1]
+
+    dependencies.records[second] = missing
+    dependencies.rollback(batch)
+    assert not dependencies.records
+    result.close()
+    application.close()
+    boundary.close()
+    dependency.close()
+    source.close()
+
+
+def test_dependency_rollback_rejects_batch_from_another_owner() -> None:
+    from number_compiler.resources.tile_dependency_leases import TileDependencyLeases
+
+    (
+        _ledger,
+        tiles,
+        scheduler,
+        source,
+        dependency,
+        boundary,
+        application,
+        _key,
+        result,
+    ) = _request()
+    local = scheduler._causal_dependencies
+    foreign = TileDependencyLeases(
+        scheduler.ledger,
+        tiles,
+        "foreign-causal-inputs",
+        scheduler._applications,
+    )
+    local_batch = local.acquire(application.identity, (dependency.tile,))
+    foreign_batch = foreign.acquire(application.identity, (dependency.tile,))
+
+    with pytest.raises(TypeError, match="issued batch"):
+        local.rollback(foreign_batch)
+
+    assert len(local.records) == len(foreign.records) == 1
+    local.rollback(local_batch)
+    foreign.rollback(foreign_batch)
+    result.close()
+    application.close()
+    boundary.close()
+    dependency.close()
+    source.close()
+
+
+def test_stale_dependency_batch_cannot_close_reacquired_binding() -> None:
+    (
+        _ledger,
+        _tiles,
+        scheduler,
+        source,
+        dependency,
+        boundary,
+        application,
+        _key,
+        result,
+    ) = _request()
+    dependencies = scheduler._causal_dependencies
+    first = dependencies.acquire(application.identity, (dependency.tile,))
+    dependencies.rollback(first)
+    replacement = dependencies.acquire(application.identity, (dependency.tile,))
+
+    with pytest.raises(ValueError, match="lost a binding"):
+        dependencies.rollback(first)
+
+    current = dependencies.records[replacement.bindings[0]]
+    assert current is replacement.leases[0]
+    assert not current._closed
+    dependencies.rollback(replacement)
+    result.close()
+    application.close()
+    boundary.close()
+    dependency.close()
+    source.close()
+
+
+def test_batch_allocation_failure_rolls_back_acquired_leases(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    import number_compiler.resources.tile_dependency_leases as dependency_module
+
+    (
+        ledger,
+        tiles,
+        scheduler,
+        source,
+        dependency,
+        boundary,
+        application,
+        _key,
+        result,
+    ) = _request()
+    dependencies = scheduler._causal_dependencies
+    snapshot = capture_tile_dependency_state(ledger, tiles, dependencies)
+
+    def fail_batch(*_args: object) -> Never:
+        raise MemoryError("injected dependency batch allocation failure")
+
+    monkeypatch.setattr(dependency_module, "DependencyLeaseBatch", fail_batch)
+    with pytest.raises(MemoryError, match="batch allocation"):
+        dependencies.acquire(application.identity, (dependency.tile, boundary.tile))
+
+    assert_tile_dependency_state(snapshot, ledger, tiles, dependencies)
+    result.close()
+    application.close()
+    boundary.close()
+    dependency.close()
+    source.close()
+
+
+def test_tile_lease_allocation_failure_publishes_no_lease(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    import number_compiler.hashlife.tiles.tiles as tile_module
+
+    (
+        ledger,
+        tiles,
+        scheduler,
+        source,
+        dependency,
+        boundary,
+        application,
+        _key,
+        result,
+    ) = _request()
+    dependencies = scheduler._causal_dependencies
+    snapshot = capture_tile_dependency_state(
+        ledger,
+        tiles,
+        dependencies,
+        include_tile_state=True,
+        include_counters=True,
+    )
+
+    def fail_lease(*_args: object) -> Never:
+        raise MemoryError("injected tile lease allocation failure")
+
+    with monkeypatch.context() as allocation_failure:
+        allocation_failure.setattr(tile_module, "TileLease", fail_lease)
+        with pytest.raises(MemoryError, match="tile lease allocation"):
+            dependencies.acquire(
+                application.identity,
+                (dependency.tile, boundary.tile),
+            )
+
+    assert_tile_dependency_state(snapshot, ledger, tiles, dependencies)
+    assert not dependencies.records
+
+    original_bump = ledger.bump
+
+    def fail_after_acquisition_bump(counter: str, amount: int = 1) -> None:
+        original_bump(counter, amount)
+        if counter == "tile_lease_acquisitions":
+            raise MemoryError("injected tile acquisition metric failure")
+
+    with monkeypatch.context() as metric_failure:
+        metric_failure.setattr(ledger, "bump", fail_after_acquisition_bump)
+        with pytest.raises(MemoryError, match="metric failure"):
+            dependencies.acquire(
+                application.identity,
+                (dependency.tile, boundary.tile),
+            )
+
+    assert_tile_dependency_state(snapshot, ledger, tiles, dependencies)
+    assert not dependencies.records
+    result.close()
     application.close()
     boundary.close()
     dependency.close()

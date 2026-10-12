@@ -259,26 +259,36 @@ def concat_cached_boundary_views(
         )
         if merged is None or adjacent_lease is None:
             raise AssertionError("adjacent boundary concatenation lost its view")
+        batch: DependencyLeaseBatch | None = None
         try:
             if dependencies is not None and application is not None:
-                dependencies.acquire(application, (merged.tile,))
+                batch = dependencies.acquire(application, (merged.tile,))
+            return merged, adjacent_lease
         except BaseException:
-            adjacent_lease.close()
+            try:
+                if batch is not None and dependencies is not None:
+                    dependencies.rollback(batch)
+            finally:
+                adjacent_lease.close()
             raise
-        return merged, adjacent_lease
     found = _lookup_canonical(arena, key)
     if found is not None:
         hit_lease = arena.tiles.retain(found.view.tile)
+        batch = None
         try:
             if dependencies is not None and application is not None:
-                dependencies.acquire(
+                batch = dependencies.acquire(
                     application,
                     (key.first.tile, key.second.tile, found.view.tile),
                 )
+            return _view(found.view), hit_lease
         except BaseException:
-            hit_lease.close()
+            try:
+                if batch is not None and dependencies is not None:
+                    dependencies.rollback(batch)
+            finally:
+                hit_lease.close()
             raise
-        return _view(found.view), hit_lease
     arena.ledger.bump("tile_boundary_concat_cache_evaluations")
     try:
         merged, miss_lease = concat_boundary_views(
@@ -294,7 +304,7 @@ def concat_cached_boundary_views(
         raise AssertionError("boundary concatenation produced no exact content")
     raw_lease: TileLease | None = miss_lease
     result_lease: TileLease | None = None
-    batch: DependencyLeaseBatch | None = None
+    cold_batch: DependencyLeaseBatch | None = None
     try:
         if not merged.orientation and not merged.source_offset:
             normalized, result_lease = _view(merged), miss_lease
@@ -303,7 +313,7 @@ def concat_cached_boundary_views(
             normalized, result_lease = normalize_boundary_view(arena.tiles, merged)
         value = _sealed(arena, key, normalized)
         if dependencies is not None and application is not None:
-            batch = dependencies.acquire(
+            cold_batch = dependencies.acquire(
                 application,
                 (key.first.tile, key.second.tile, value.view.tile),
             )
@@ -313,10 +323,12 @@ def concat_cached_boundary_views(
             result_lease = arena.tiles.retain(published.view.tile)
         return _view(published.view), result_lease
     except BaseException:
-        if batch is not None and dependencies is not None:
-            dependencies.rollback(batch)
-        if result_lease is not None:
-            result_lease.close()
+        try:
+            if cold_batch is not None and dependencies is not None:
+                dependencies.rollback(cold_batch)
+        finally:
+            if result_lease is not None:
+                result_lease.close()
         arena.ledger.bump("tile_boundary_concat_cache_failures")
         raise
     finally:

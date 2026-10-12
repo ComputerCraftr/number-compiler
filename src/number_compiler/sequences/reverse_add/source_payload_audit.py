@@ -215,7 +215,7 @@ def audit_reverse_source_payloads(
         authority = getattr(root, "_authority", None)
         valid &= (
             type(authority) is tuple
-            and len(authority) == 9
+            and len(authority) == 10
             and authority[0] is ledger
             and authority[1] is actions
             and authority[2] is root.source
@@ -224,6 +224,12 @@ def audit_reverse_source_payloads(
             and authority[5] is root.adapter
             and authority[6] == root.steps
             and authority[7] == root.base
+            and authority[9] is root._request_binding
+            and type(root._request_binding) is tuple
+            and len(root._request_binding) == 3
+            and all(type(value) is int for value in root._request_binding)
+            and root._request_binding[0] >= 0
+            and root._request_binding[1:] == (root.steps, root.base)
             and (
                 authority[8] is None
                 or authority[8] is root.adapter._recursive_construction
@@ -287,6 +293,14 @@ def audit_reverse_source_payloads(
                     source = source_record.exact
             except (TypeError, ValueError, AttributeError, IndexError, KeyError):
                 source = None
+        if valid and type(source) is ExactSource and source.base >= 2:
+            # Explicit resource audits check request metadata against the
+            # admitted original source; runtime hits only check its authority.
+            remaining_seed = root._request_binding[0]
+            for digit in source.digits:
+                remaining_seed, remainder = divmod(remaining_seed, source.base)
+                valid &= type(digit) is int and remainder == digit
+            valid &= remaining_seed == 0 and source.base == root.base
         if action_handle_valid(root.root_action):
             root_action = actions._nodes[root.root_action.local_id]
         if (

@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from dataclasses import replace
 from typing import cast
 
 import pytest
@@ -67,7 +68,11 @@ def test_failed_source_reservation_does_not_publish_source_authority() -> None:
     with pytest.raises(RuntimeError, match="cache budget exceeded"):
         arena.admit_source(196, 10)
 
-    assert ledger.snapshot() == before
+    # Decoding happened before the reservation failed. Retention is unchanged,
+    # but this real failed work remains visible rather than being rolled back.
+    assert ledger.snapshot() == replace(
+        before, counters={"reverse_source_original_digit_decodes": 3}
+    )
     assert len(arena._sources) == 0
     assert arena._source_authority is None
     arena.dispose()

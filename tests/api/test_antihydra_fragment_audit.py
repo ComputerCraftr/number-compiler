@@ -73,19 +73,22 @@ def _install_forged_binding(
 def _forge_key(
     key: ProjectionFragmentKey,
     field: str,
-    value: int,
+    value: object,
 ) -> ProjectionFragmentKey:
-    if field == "start":
-        return replace(key, start=value)
-    if field == "head_phase":
-        return replace(key, head_phase=value)
-    if field == "time_phase":
-        return replace(key, time_phase=value)
-    if field == "source_owner":
-        return replace(key, source_owner=value)
-    if field == "spatial_width":
-        return replace(key, spatial_width=value)
-    raise AssertionError("unknown forged fragment-key field")
+    if field not in {
+        "start",
+        "head_phase",
+        "time_phase",
+        "source_owner",
+        "spatial_width",
+    }:
+        raise AssertionError("unknown forged fragment-key field")
+    forged = replace(key)
+    # Build a valid independent key, then inject corruption after publication
+    # construction. In particular, bool must reach the audit instead of being
+    # rejected by the public dataclass constructor.
+    object.__setattr__(forged, field, value)
+    return forged
 
 
 def test_fragment_audit_scans_one_source_prefix_for_mixed_demands() -> None:
@@ -170,7 +173,7 @@ def test_fragment_audit_scans_one_source_prefix_for_mixed_demands() -> None:
 )
 def test_fragment_audit_rejects_resealed_forged_source_binding(
     field: str,
-    value: int,
+    value: object,
 ) -> None:
     result = run(64)
     projection = _projection(

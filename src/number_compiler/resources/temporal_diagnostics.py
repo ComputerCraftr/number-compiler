@@ -270,6 +270,7 @@ class TemporalMacrocellWork:
     semantic: TemporalReuseLane
     occurrence: TemporalReuseLane
     source_action: TemporalReuseLane = TemporalReuseLane()
+    joint_action: TemporalReuseLane = TemporalReuseLane()
     outer_observer: TemporalReuseLane = TemporalReuseLane()
     width_projection: TemporalReuseLane = TemporalReuseLane()
     outer_observer_scope: str | None = None
@@ -374,7 +375,7 @@ def _macrocell_reuse(
         bypasses=sum(observed_bypasses) if observed_bypasses else None,
         capacity_bypasses=(
             bypass_counts["capacity"]
-            if kind in ("action", "occurrence", "source_action")
+            if kind in ("action", "occurrence", "source_action", "joint")
             else None
         ),
         disabled_bypasses=bypass_counts["disabled"],
@@ -508,6 +509,7 @@ def _macrocell_work(counters: Mapping[str, int]) -> tuple[TemporalMacrocellWork,
                     if family in ("mahler", "antihydra")
                     else TemporalReuseLane()
                 ),
+                joint_action=_macrocell_reuse(counters, prefix, "joint"),
                 outer_observer=(
                     _macrocell_reuse(counters, prefix, "action")
                     if family == "mahler"

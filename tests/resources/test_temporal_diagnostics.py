@@ -769,3 +769,37 @@ def test_reverse_pair_work_remains_visible_without_higher_evaluator_work() -> No
     assert result.construction.reverse_pair_sections == 360
     assert result.observations.higher_concrete_operation_evaluations is None
     assert _collect({}).construction.reverse_pair_steps is None
+
+
+def test_joint_macro_hits_are_separate_read_only_measurements() -> None:
+    ledger = ResourceLedger()
+    for name, count in {
+        "collatz_hashlife_joint_lookups": 5,
+        "collatz_hashlife_joint_process_hits": 2,
+        "collatz_hashlife_joint_transported_hits": 1,
+        "collatz_hashlife_joint_applied_hits": 1,
+    }.items():
+        ledger.bump(name, count)
+    before = dict(ledger.counters)
+    record = collect_temporal_diagnostics_snapshot(ledger).macrocells[0]
+    assert record.joint_action.requests == 5
+    assert record.joint_action.process_hits == 2
+    assert record.joint_action.transported_hits == 1
+    assert record.joint_action.applied_hits == 1
+    assert record.joint_action.exact_hits is None
+    assert record.occurrence.applied_hits is None
+    assert ledger.counters == before
+
+
+def test_joint_macro_bypass_reasons_remain_disjoint() -> None:
+    counters = {
+        "collatz_hashlife_joint_bypasses": 2,
+        "collatz_hashlife_joint_disabled_bypasses": 3,
+        "collatz_hashlife_joint_policy_bypasses": 4,
+    }
+    lane = _collect(counters).macrocells[0].joint_action
+    assert lane.capacity_bypasses == 2
+    assert lane.disabled_bypasses == 3
+    assert lane.policy_bypasses == 4
+    assert lane.bypasses == 9
+    assert _collect({}).macrocells == ()

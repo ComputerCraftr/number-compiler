@@ -94,9 +94,9 @@ The following capability table is generated from the CLI registry. `root` requir
 | Family | Index unit | Parameters | Term information | Event information |
 | --- | --- | --- | --- | --- |
 | `a367620` | `oeis_index` | — | `metrics`, `clock`, `tropical`, `certificate` | — |
-| `reverse-add` | `iterations` | `--seed`, `--base` | `metrics`, `mirror` | — |
-| `196` | `iterations` | `--seed`, `--base` | `metrics`, `mirror` | — |
-| `collatz` | `physical_iterations` | `--seed`, `--radix` | `metrics`, `clock` | `clock`, `modular`, `twisted`, `hasse`, `hensel`, `tropical`, `factor`, `safety` |
+| `reverse-add` | `iterations` | `--seed`, `--base` | `metrics`, `mirror`, `boundary-macro` | — |
+| `196` | `iterations` | `--seed`, `--base` | `metrics`, `mirror`, `boundary-macro` | — |
+| `collatz` | `physical_iterations` | `--seed`, `--radix` | `metrics`, `clock`, `accumulator` | `clock`, `modular`, `twisted`, `hasse`, `hensel`, `tropical`, `factor`, `safety` |
 | `prime` | `prime_index` | `--start` | `metrics` | — |
 | `fermat` | `fermat_index` | — | `metrics`, `primality`, `factor`, `root` | — |
 | `mersenne` | `mersenne_exponent` | — | `metrics`, `primality`, `factor`, `root` | — |
@@ -273,3 +273,45 @@ binary (`radix=2`) source/target widths and the relative displacement and
 prefix extrema in `blank`. It is `null` when an applied macro has no retained
 width-walk certificate. Reading it never starts another trajectory or tape
 compiler. It is not a complete carry tape or a decimal-width projection.
+
+
+### Reverse boundary certificates
+
+`196` and decimal `reverse-add` accept `--info boundary-macro`. With
+`--no-value`, this requests only a source-bound boundary certificate: unanimous
+width and edge digits across all admitted unknown-interior carry branches.
+It never certifies the complete future integer. Window precision is tried at
+2, 4 and 8 digits under bounded construction resources; an unsupported narrow
+source or ambiguous continuation reports `unavailable` with exit 3.
+
+Value output and `boundary-macro` may be requested together. Both use the same
+admitted source workspace and carry-prefix summaries; the observer does not
+decode the source or scan its interior again. Its future relation still retains
+both possible unknown carries, so it does not authorize full-integer jumps.
+
+```bash
+number-compiler 196 --seed 10001 --nth 1 --no-value --info boundary-macro --format json
+```
+
+Nondecimal `--base` is rejected for this observer. A double-reverse operation
+is available to the finite-window arithmetic tests; it is not registered as a
+new public sequence family.
+
+
+### Collatz accumulator action
+
+`collatz --info accumulator --modulus M` requests the residue of the original
+source plus its completed **normalized** successors. An odd normalized step
+includes its forced division; it consumes two physical ticks. An unmatched
+final odd physical tick is reported by the pending phase and is not added as
+a normalized successor. The selected `--nth` index remains physical time.
+The modulus defaults to 257. This observer uses the same admitted root image
+as a requested value and is not constructed for ordinary value/clock queries.
+
+```bash
+number-compiler collatz --seed 27 --nth 16 --no-value --info accumulator --modulus 49 --format json
+```
+
+Joint affine coefficients are budgeted even when only a modular output is
+requested. This does not promise cheap arbitrary-horizon accumulator queries
+or use a bounded Moore observation class as an endpoint cache key.

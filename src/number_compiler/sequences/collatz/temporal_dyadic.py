@@ -16,6 +16,9 @@ from number_compiler.arithmetic.fields.affine_width import nonnegative_affine_wi
 from number_compiler.arithmetic.fields.blank_ledger import BlankLedger
 from number_compiler.resources.ledger import ResourceLedger
 from number_compiler.resources.stores import LedgerDict
+from number_compiler.sequences.collatz.dyadic_terminal_cocycle import (
+    DyadicTerminalFieldAction,
+)
 from number_compiler.sequences.collatz.tape_width import (
     CollatzTapeWidthSummary,
     compose_width_ledger,
@@ -254,12 +257,30 @@ class D8TemporalTable:
         row = self._select_row(source)
         return row[0], row[1]
 
+    def select_with_joint_action(
+        self, source: int
+    ) -> tuple[D8Row, DyadicTerminalFieldAction]:
+        """Select the endpoint and joint action from one authenticated row."""
+        selected = self._select_row(source)
+        return selected, self._joint_action_for_row(source, selected)
+
+    def _joint_action_for_row(
+        self, source: int, selected: D8Row
+    ) -> DyadicTerminalFieldAction:
+        residue = source & 255
+        prefixes, odd_mask = self._select_width_row(source, selected)
+        return self._action_from_width_row(
+            residue,
+            selected,
+            (prefixes, odd_mask),
+        )
+
     def transition(
         self, frame: D8CylinderFrame
     ) -> tuple[D8CylinderFrame, int, int, int]:
         """Apply the exact byte transition without forming its full endpoint."""
-        advanced, ones, residue, target_origin, _width = self._transition(
-            frame, with_width=False
+        advanced, ones, residue, target_origin, _width, _action = self._transition(
+            frame, with_width=False, with_joint=False
         )
         return advanced, ones, residue, target_origin
 
@@ -267,12 +288,30 @@ class D8TemporalTable:
         self, frame: D8CylinderFrame
     ) -> tuple[D8CylinderFrame, int, int, int, CollatzTapeWidthSummary]:
         """Apply one D8 child and project its exact receiving-fiber width spine."""
-        advanced, ones, residue, target_origin, width = self._transition(
-            frame, with_width=True
+        advanced, ones, residue, target_origin, width, _action = self._transition(
+            frame, with_width=True, with_joint=False
         )
         if width is None:
             raise AssertionError("D8 width transition did not produce its spine")
         return advanced, ones, residue, target_origin, width
+
+    def transition_with_joint_action(
+        self, frame: D8CylinderFrame, *, with_width: bool = False
+    ) -> tuple[
+        D8CylinderFrame,
+        int,
+        int,
+        int,
+        CollatzTapeWidthSummary | None,
+        DyadicTerminalFieldAction,
+    ]:
+        """Select one checked D8 row for endpoint, width and joint action."""
+        advanced, ones, residue, target_origin, width, action = self._transition(
+            frame, with_width=with_width, with_joint=True
+        )
+        if action is None:
+            raise AssertionError("joint D8 transition did not produce its action")
+        return advanced, ones, residue, target_origin, width, action
 
     def _width_summary_for_transition(
         self,
@@ -317,8 +356,15 @@ class D8TemporalTable:
         )
 
     def _transition(
-        self, frame: D8CylinderFrame, *, with_width: bool
-    ) -> tuple[D8CylinderFrame, int, int, int, CollatzTapeWidthSummary | None]:
+        self, frame: D8CylinderFrame, *, with_width: bool, with_joint: bool
+    ) -> tuple[
+        D8CylinderFrame,
+        int,
+        int,
+        int,
+        CollatzTapeWidthSummary | None,
+        DyadicTerminalFieldAction | None,
+    ]:
         if type(frame) is not D8CylinderFrame:
             raise TypeError("D8 transition requires its exact cylinder frame")
         local = frame.local_word()
@@ -351,9 +397,40 @@ class D8TemporalTable:
             + result.gain.bit_length()
             + 26,
         )
-        width_row = self._select_width_row(local, row) if with_width else None
-        width_summary = self._width_spine(frame, ones, width_row) if width_row else None
-        return result, ones, residue, target_origin, width_summary
+        width_row = (
+            self._select_width_row(local, row) if with_width or with_joint else None
+        )
+        width_summary = (
+            self._width_spine(frame, ones, width_row)
+            if with_width and width_row is not None
+            else None
+        )
+        action = (
+            self._action_from_width_row(residue, row, width_row)
+            if with_joint and width_row is not None
+            else None
+        )
+        return result, ones, residue, target_origin, width_summary, action
+
+    def _action_from_width_row(
+        self, residue: int, endpoint_row: D8Row, width_row: D8WidthRow
+    ) -> DyadicTerminalFieldAction:
+        prefixes, odd_mask = width_row
+        action = DyadicTerminalFieldAction.from_prefixes(prefixes)
+        ones, target_origin = endpoint_row
+        if (
+            action.steps != 8
+            or action.source_residue != residue
+            or action.endpoint(residue + 256) != target_origin + 3**ones
+            or odd_mask.bit_count() != ones
+        ):
+            raise ValueError("D8 joint action differs from its endpoint publisher")
+        self.ledger.bump("collatz_physical_temporal_d8_joint_action_builds")
+        self.ledger.bump(
+            "collatz_physical_temporal_d8_joint_action_operand_bits",
+            sum(max(1, value.bit_length()) for prefix in prefixes for value in prefix),
+        )
+        return action
 
     def _width_spine(
         self,

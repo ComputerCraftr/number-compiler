@@ -158,6 +158,7 @@ class ReverseActionArena:
             value //= base
             if not value:
                 break
+        self.ledger.bump("reverse_source_original_digit_decodes", len(digits))
         exact = ExactSource(tuple(digits), base, orbit="reverse-add")
         record = _ReverseSourceRecord(exact)
         handle = ReverseSource(self.owner, self._SOURCE_KIND, 0)

@@ -10,6 +10,7 @@ Period: 2026-10-11 through 2026-10-17 (Sunday–Saturday).
 | Topic | Records |
 | --- | ---: |
 | [Comma labelled-selector proof cutover](comma.md) | 0 |
+| [NC8 boundary and joint cocycle integration](hashlife.md) | 0 |
 <!-- sprint-topics:end -->
 
 ## Provenance

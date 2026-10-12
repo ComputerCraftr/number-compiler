@@ -98,11 +98,13 @@ def test_temporal_probe_source_audits_use_executable_syntax(
         "devtools/verification/spacetime_boundary.py",
         "# class SpacetimeBoundary: pass\n",
     )
-    _write(
-        tmp_path,
-        "src/number_compiler/hashlife/execution/bounded_application.py",
-        "from .field_application import build_certified_field_application\n",
+    bounded_path = "src/number_compiler/hashlife/execution/bounded_application.py"
+    bounded_source = (
+        "from ..observation.tile_projection import build_tile_projection\n"
+        "def validate_certified_application_inputs(): pass\n"
+        "def build_bounded_application(): return build_tile_projection()\n"
     )
+    _write(tmp_path, bounded_path, bounded_source)
     _write(
         tmp_path,
         "src/number_compiler/sequences/runtime_router.py",
@@ -120,6 +122,17 @@ def test_temporal_probe_source_audits_use_executable_syntax(
     )
     assert all(collatz_temporal_power_probe._source_audit().values())
     assert all(reverse_temporal_power_probe._source_audit().values())
+
+    _write(
+        tmp_path,
+        bounded_path,
+        "from .field_application import build_certified_field_application\n",
+    )
+    with pytest.raises(
+        AssertionError, match="bounded_temporal_application_boundary_present"
+    ):
+        collatz_temporal_power_probe._source_audit()
+    _write(tmp_path, bounded_path, bounded_source)
 
     block = "src/number_compiler/sequences/collatz/block_power.py"
     _write(

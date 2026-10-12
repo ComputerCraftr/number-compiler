@@ -5,6 +5,7 @@ from __future__ import annotations
 from collections.abc import Hashable, Iterator
 from dataclasses import replace
 
+from number_compiler.arithmetic.contracts.block_effect import BlockContextBudgetExceeded
 from number_compiler.hashlife.execution.dyadic_return_images import (
     DyadicCycleSummary,
     DyadicImageSummary,
@@ -30,6 +31,9 @@ from number_compiler.resources.payload_contracts import (
     PayloadAuditStoreBinding,
     register_payload_audit_contract,
 )
+from number_compiler.sequences.collatz.joint_temporal_action import (
+    CollatzJointRunAction,
+)
 from number_compiler.sequences.collatz.tape_width import (
     CollatzTapeWidthSummary,
     cycle_width_summary,
@@ -44,6 +48,7 @@ COLLATZ_PHYSICAL_LAW = DyadicReturnLaw(
     cycle=DyadicReturnCycle((1, 4, 2)),
 )
 _TAPE_WIDTH_PORT = "collatz-tape-width-summary-v1"
+_JOINT_COCYCLE_PORT = "collatz-joint-temporal-action-v1"
 
 
 def _register_physical_image_audit(root: CollatzPhysicalImageWorkspace) -> None:
@@ -104,6 +109,7 @@ class CollatzPhysicalImageWorkspace(DyadicReturnImageWorkspace):
         retain_chronology: bool = True,
         shared_cache: bool = False,
         include_width_spine: bool = False,
+        include_joint_cocycle: bool = False,
     ) -> None:
         if type(retain_chronology) is not bool:
             raise TypeError("Collatz chronology choice must be Boolean")
@@ -111,9 +117,13 @@ class CollatzPhysicalImageWorkspace(DyadicReturnImageWorkspace):
             raise TypeError("shared cache flag must be Boolean")
         if type(include_width_spine) is not bool:
             raise TypeError("width-spine demand must be Boolean")
+        if type(include_joint_cocycle) is not bool:
+            raise TypeError("joint-cocycle demand must be Boolean")
         self._shared_cache = shared_cache
         self._retain_chronology = retain_chronology
         self._include_width_spine = include_width_spine
+        self._include_joint_cocycle = include_joint_cocycle
+        self._joint_action_snapshot: tuple[int, ...] | None = None
         super().__init__(ledger, seed, steps, COLLATZ_PHYSICAL_LAW)
         try:
             _register_physical_image_audit(self)
@@ -169,6 +179,7 @@ class CollatzPhysicalImageWorkspace(DyadicReturnImageWorkspace):
         self.validate_payload(payload)
 
         width_ports: list[tuple[object, ...]] = []
+        joint_ports: list[tuple[object, ...]] = []
         for port in binding.boundary_ports:
             if (
                 type(port) is tuple
@@ -179,13 +190,24 @@ class CollatzPhysicalImageWorkspace(DyadicReturnImageWorkspace):
                 if len(port) != 2:
                     raise ValueError("Collatz width port has an invalid shape")
                 width_ports.append(port)
+            if (
+                type(port) is tuple
+                and port
+                and type(port[0]) is str
+                and port[0] == _JOINT_COCYCLE_PORT
+            ):
+                if len(port) != 2:
+                    raise ValueError("Collatz joint port has an invalid shape")
+                joint_ports.append(port)
         if len(width_ports) > 1:
             raise ValueError("Collatz root has duplicate width ports")
+        if len(joint_ports) > 1:
+            raise ValueError("Collatz root has duplicate joint ports")
 
         ordinary = tuple(
             port
             for port in binding.boundary_ports
-            if all(port is not width_port for width_port in width_ports)
+            if all(port is not removed for removed in (*width_ports, *joint_ports))
         )
         cycle = summary.cycle
         expected_transfer_port = (
@@ -210,33 +232,78 @@ class CollatzPhysicalImageWorkspace(DyadicReturnImageWorkspace):
         if not valid_port:
             raise ValueError("Collatz image transfer/cycle port is inconsistent")
 
-        if not width_ports:
+        if not width_ports and not joint_ports:
             return ()
-        if (
-            not self._include_width_spine
-            or source_id != self.root_source
-            or action_id != self.root_action
-            or not source.exact
-        ):
-            raise ValueError("unrequested Collatz width summary was published")
+        if source_id != self.root_source or action_id != self.root_action:
+            raise ValueError("Collatz optional summary belongs only to its root image")
+
         numerator = summary.transfer.upper * self.seed + summary.transfer.offset
         endpoint, remainder = divmod(numerator, summary.transfer.lower)
         if remainder or endpoint < 0:
             raise ValueError("Collatz root transfer is not an exact endpoint")
-        port = width_ports[0]
-        width = port[1]
-        if type(width) is not CollatzTapeWidthSummary:
-            raise TypeError("Collatz width port has another summary sort")
-        width.__post_init__()
-        if (
-            width.source_width != self.seed.bit_length()
-            or width.target_width != endpoint.bit_length()
-            or width.physical_ticks != self.steps
-            or width.odd_steps != summary.odd_steps
-            or width.normalized_symbols + width.odd_steps != self.steps
-        ):
-            raise ValueError("Collatz width port disagrees with its exact image")
-        return (port, width, width.blank)
+        width_record: tuple[object, ...] | None = None
+        if width_ports:
+            if (
+                not self._include_width_spine
+                or source_id != self.root_source
+                or action_id != self.root_action
+                or not source.exact
+            ):
+                raise ValueError("unrequested Collatz width summary was published")
+            port = width_ports[0]
+            width = port[1]
+            if type(width) is not CollatzTapeWidthSummary:
+                raise TypeError("Collatz width port has another summary sort")
+            width.__post_init__()
+            if (
+                width.source_width != self.seed.bit_length()
+                or width.target_width != endpoint.bit_length()
+                or width.physical_ticks != self.steps
+                or width.odd_steps != summary.odd_steps
+                or width.normalized_symbols + width.odd_steps != self.steps
+            ):
+                raise ValueError("Collatz width port disagrees with its exact image")
+            width_record = (port, width, width.blank)
+        joint_record: tuple[object, ...] | None = None
+        if joint_ports:
+            if (
+                not self._include_joint_cocycle
+                or source_id != self.root_source
+                or action_id != self.root_action
+                or not source.exact
+            ):
+                raise ValueError("unrequested Collatz joint action was published")
+            payload = joint_ports[0][1]
+            if type(payload) is not tuple or payload != self._joint_action_snapshot:
+                raise ValueError(
+                    "Collatz joint port is not producer-issued by this root"
+                )
+            joint = CollatzJointRunAction._from_admitted_root_payload(payload)
+            normalized_endpoint = (
+                endpoint
+                if joint.phase == 0
+                else (endpoint - 1) // 3
+                if endpoint % 3 == 1
+                else -1
+            )
+            if (
+                joint.source != self.seed
+                or joint.endpoint != endpoint
+                or joint.normalized_endpoint != normalized_endpoint
+                or joint.physical_ticks != self.steps
+                or joint.normalized_steps + summary.odd_steps != self.steps
+                or joint.odd_symbols + joint.phase != summary.odd_steps
+                or joint.fields.endpoint(self.seed) != normalized_endpoint
+                or not joint.fields.certifies(self.seed)
+            ):
+                raise ValueError("Collatz joint port differs from root source action")
+            joint_record = (joint_ports[0],)
+        approved: list[Hashable] = []
+        if width_record is not None:
+            approved.extend(width_record)
+        if joint_record is not None:
+            approved.extend(joint_record)
+        return tuple(approved)
 
     def retain_chronological_support(self) -> bool:
         return self._retain_chronology
@@ -270,6 +337,34 @@ class CollatzPhysicalImageWorkspace(DyadicReturnImageWorkspace):
             raise ValueError("Collatz width summary geometry differs from root action")
         return summary
 
+    @property
+    def joint_action(self) -> CollatzJointRunAction | None:
+        """Return only the pre-demanded joint action sealed in the root image."""
+        if not self._include_joint_cocycle:
+            return None
+        view = self.scheduler._source_image_core().view(self.root_image)
+        if (
+            view.binding.source != self.root_source
+            or view.binding.action != self.root_action
+            or view.binding.extent != self.steps
+        ):
+            raise ValueError("Collatz joint action belongs to another root request")
+        payloads = tuple(
+            port[1]
+            for port in view.binding.boundary_ports
+            if type(port) is tuple and len(port) == 2 and port[0] == _JOINT_COCYCLE_PORT
+        )
+        if len(payloads) != 1 or payloads[0] != self._joint_action_snapshot:
+            raise BlockContextBudgetExceeded(
+                "the admitted Collatz image has no completed joint action"
+            )
+        try:
+            return CollatzJointRunAction._from_admitted_root_payload(payloads[0])
+        except (TypeError, ValueError) as error:
+            raise BlockContextBudgetExceeded(
+                "the admitted Collatz image has an invalid joint action"
+            ) from error
+
     @staticmethod
     def _attach_tape_width_summary(
         candidate: SourceImageCandidate,
@@ -282,6 +377,33 @@ class CollatzPhysicalImageWorkspace(DyadicReturnImageWorkspace):
         return replace(
             candidate,
             boundary_ports=(*candidate.boundary_ports, (_TAPE_WIDTH_PORT, summary)),
+        )
+
+    def _attach_joint_action(
+        self,
+        candidate: SourceImageCandidate,
+        action: CollatzJointRunAction,
+    ) -> SourceImageCandidate:
+        if type(candidate) is not SourceImageCandidate:
+            raise TypeError("Collatz joint action needs a source-image candidate")
+        if type(action) is not CollatzJointRunAction:
+            raise TypeError("Collatz joint action has another occurrence sort")
+        action.__post_init__()
+        if (
+            not self._include_joint_cocycle
+            or action.source != self.seed
+            or action.physical_ticks != self.steps
+        ):
+            raise ValueError(
+                "Collatz joint action does not belong to this root request"
+            )
+        payload = action.root_port_payload()
+        if self._joint_action_snapshot not in (None, payload):
+            raise ValueError("conflicting Collatz root joint actions")
+        self._joint_action_snapshot = payload
+        return replace(
+            candidate,
+            boundary_ports=(*candidate.boundary_ports, (_JOINT_COCYCLE_PORT, payload)),
         )
 
     def admitted_input_key(
@@ -356,7 +478,14 @@ class CollatzPhysicalImageWorkspace(DyadicReturnImageWorkspace):
             demand.name != "physical-summary" or demand.parameters
         ):
             return None
-        compressed = self._compressed_cycle_candidate(action, source)
+        joint_root = (
+            self._include_joint_cocycle
+            and source.binding.source == self.root_source
+            and action == self.root_action
+        )
+        compressed = (
+            None if joint_root else self._compressed_cycle_candidate(action, source)
+        )
         if compressed is not None:
             return compressed
         contracted = self._run_candidate(action, source)
@@ -394,6 +523,10 @@ class CollatzPhysicalImageWorkspace(DyadicReturnImageWorkspace):
                 self.ledger, ports[3], self.action_node(action).width
             )
             return self._attach_tape_width_summary(candidate, summary)
+        if self._include_joint_cocycle:
+            raise BlockContextBudgetExceeded(
+                "joint accumulator for a compressed cycle exceeds its exact run path"
+            )
         return candidate
 
     def primitive_run_candidate(
@@ -473,12 +606,18 @@ class CollatzPhysicalImageWorkspace(DyadicReturnImageWorkspace):
             and source.binding.source == self.root_source
             and action == self.root_action
         )
+        demand_joint = (
+            self._include_joint_cocycle
+            and source.binding.source == self.root_source
+            and action == self.root_action
+        )
         quotient = compile_collatz_temporal_run_quotient(
             source_value,
             width,
             ledger=self.ledger,
             shared_cache=self._shared_cache,
             include_width_spine=demand_width,
+            include_joint_cocycle=demand_joint,
         )
         cycle = None
         if quotient.cycle_repetitions:
@@ -528,6 +667,12 @@ class CollatzPhysicalImageWorkspace(DyadicReturnImageWorkspace):
             candidate = self._attach_tape_width_summary(
                 candidate, quotient.tape_width_summary
             )
+        if demand_joint:
+            if quotient.joint_action is None:
+                raise BlockContextBudgetExceeded(
+                    "Collatz constructor did not publish its requested joint action"
+                )
+            candidate = self._attach_joint_action(candidate, quotient.joint_action)
         return candidate
 
     def segments(self) -> Iterator[tuple[int, int, int]]:

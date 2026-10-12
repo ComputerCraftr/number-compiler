@@ -244,3 +244,10 @@ addition and a modular reduction; schedule, binomial and modular-power work is
 not included in this counter. A spatial-row count alone does not measure that
 reconstruction. Like the other optional constructor fields, it remains null
 when that owner has not run.
+
+`macrocells[].joint_action` separately reports requested joint endpoint and
+accumulator-action reuse. It reads the existing `*_hashlife_joint_*` counters;
+retrieval, transported admission and consumed application remain distinct.
+It never adds these hits to endpoint-only occurrence or semantic interning
+hits. Uninstrumented fields remain null, and reporting performs no joint
+construction or accumulator observation.

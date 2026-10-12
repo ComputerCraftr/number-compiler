@@ -48,6 +48,32 @@ class ProjectionFragmentKey:
     head_phase: int
     time_phase: int
 
+    def __post_init__(self) -> None:
+        coordinates = (
+            self.source_owner,
+            self.requested,
+            self.start,
+            self.spatial_width,
+            self.temporal_width,
+            self.spatial_sign,
+            self.temporal_sign,
+            self.modulus,
+            self.head_phase,
+            self.time_phase,
+        )
+        if any(type(value) is not int for value in coordinates):
+            raise TypeError(
+                "projection fragment key coordinates must be exact integers"
+            )
+        if (
+            type(self.cylinder) is not tuple
+            or len(self.cylinder) != 6
+            or any(type(value) is not int for value in self.cylinder)
+        ):
+            raise TypeError(
+                "projection fragment cylinder key must contain exact integers"
+            )
+
     @property
     def area(self) -> int:
         return self.spatial_width * self.temporal_width
@@ -63,9 +89,11 @@ class ProjectionFragment:
 
     def validate(self) -> None:
         key = self.key
+        if type(key) is not ProjectionFragmentKey:
+            raise ValueError("invalid Antihydra projection fragment key")
+        key.__post_init__()
         if (
-            type(key) is not ProjectionFragmentKey
-            or type(self.typed_ports) is not tuple
+            type(self.typed_ports) is not tuple
             or len(self.typed_ports) != 12
             or any(
                 type(row) is not tuple or len(row) != key.area
@@ -125,6 +153,9 @@ class ProjectionFragmentCache:
         return 12 * key.area + 1
 
     def get(self, key: ProjectionFragmentKey) -> ProjectionFragment | None:
+        if type(key) is not ProjectionFragmentKey:
+            raise TypeError("projection fragment lookup requires its exact key sort")
+        key.__post_init__()
         found = self.fragments.get(key)
         if found is None:
             return None
@@ -192,9 +223,16 @@ class ProjectionFragmentCache:
         return fragment
 
     def _drop(self, key: ProjectionFragmentKey) -> None:
-        fragment = self.fragments.pop(key)
+        fragment = self.fragments.get(key)
+        if fragment is None:
+            raise KeyError(key)
         if not self.matches_seal(key, fragment):
             raise ValueError("Antihydra projection fragment binding was changed")
+        fragment.validate()
+        seal = self.seals.get(key)
+        if seal is None:
+            raise ValueError("Antihydra projection fragment seal is missing")
+        self.fragments.pop(key)
         self.seals.pop(key)
         self.ledger.release(self.owner, entries=1, nodes=self._nodes(key))
         self.ledger.release(self.seal_owner, entries=1, nodes=2)
@@ -203,6 +241,16 @@ class ProjectionFragmentCache:
         self, key: ProjectionFragmentKey, fragment: ProjectionFragment
     ) -> bool:
         """Check an independent field snapshot, never the publication identity."""
+        if (
+            type(key) is not ProjectionFragmentKey
+            or type(fragment) is not ProjectionFragment
+        ):
+            return False
+        try:
+            key.__post_init__()
+            fragment.key.__post_init__()
+        except (TypeError, ValueError):
+            return False
         return self.seals.get(key) == (
             projection_key_snapshot(fragment.key),
             fragment.typed_ports,

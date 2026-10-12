@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from collections.abc import Mapping
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import TYPE_CHECKING
 
 from number_compiler.hashlife.tiles.tiles import TileArena, TileID, TileLease
@@ -21,6 +21,8 @@ class DependencyLeaseBatch:
     """New dependency bindings published by one atomic pin attempt."""
 
     bindings: tuple[tuple[int, TileID], ...]
+    leases: tuple[TileLease, ...]
+    _issuer: object = field(repr=False, compare=False)
 
 
 class TileDependencyLeases:
@@ -47,6 +49,7 @@ class TileDependencyLeases:
         ):
             raise ValueError("causal dependencies require scheduler applications")
         self.ledger, self.tiles, self.applications = ledger, tiles, applications
+        self._batch_issuer = object()
         self.owner = ledger.register(
             prefix + "-causal-inputs",
             "tile_application_causal_input_pin",
@@ -69,6 +72,9 @@ class TileDependencyLeases:
         """Publish missing distinct roots, rolling back every partial write."""
         if type(application) is not int or application < 0:
             raise ValueError("causal dependency requires an exact application identity")
+        admitted_application = self.applications.application(application)
+        if admitted_application.scheduler.tiles is not self.tiles:
+            raise ValueError("causal dependency application has another tile arena")
         if type(tile_ids) is not tuple or any(
             type(tile) is not TileID for tile in tile_ids
         ):
@@ -85,43 +91,103 @@ class TileDependencyLeases:
             elif type(found) is not TileLease or found.tile != tile:
                 raise ValueError("causal dependency binding is corrupt")
         bindings = tuple(missing)
+        lease_slots: list[TileLease | None] = [None] * len(bindings)
         reservations = (
             (self.owner, len(bindings), 0),
             (self.tiles._lease_owner, len(bindings), 0),
         )
         self.ledger.reserve_many(reservations)
-        leases: list[TileLease] = []
+        acquired = 0
         try:
-            for _, tile in bindings:
-                leases.append(self.tiles._acquire_reserved(tile))
+            for position, (_, tile) in enumerate(bindings):
+                lease_slots[position] = self.tiles._acquire_reserved(tile)
+                acquired += 1
+            leases = tuple(lease for lease in lease_slots if lease is not None)
+            if len(leases) != len(bindings):
+                raise AssertionError("causal dependency acquisition lost a lease")
+            batch = DependencyLeaseBatch(
+                bindings,
+                leases,
+                self._batch_issuer,
+            )
             for binding, lease in zip(bindings, leases, strict=True):
                 self.records[binding] = lease
         except BaseException:
-            for binding in bindings:
-                self.records.pop(binding, None)
-            for lease in reversed(leases):
-                lease.close()
+            for binding, slot_lease in zip(bindings, lease_slots, strict=True):
+                if slot_lease is not None and self.records.get(binding) is slot_lease:
+                    self.records.pop(binding, None)
+            for cleanup_lease in reversed(lease_slots):
+                if cleanup_lease is not None:
+                    cleanup_lease.close()
             self.ledger.release(
                 self.tiles._lease_owner,
-                entries=len(bindings) - len(leases),
+                entries=len(bindings) - acquired,
             )
             self.ledger.release(self.owner, entries=len(bindings))
             raise
-        return DependencyLeaseBatch(bindings)
+        return batch
 
     def rollback(self, batch: DependencyLeaseBatch) -> None:
         """Remove precisely the roots introduced by a failed result pin."""
-        if type(batch) is not DependencyLeaseBatch:
+        if (
+            type(batch) is not DependencyLeaseBatch
+            or batch._issuer is not self._batch_issuer
+            or type(batch.bindings) is not tuple
+            or type(batch.leases) is not tuple
+            or len(batch.leases) != len(batch.bindings)
+        ):
             raise TypeError("causal dependency rollback requires its issued batch")
         leases: list[TileLease] = []
-        for binding in batch.bindings:
-            lease = self.records.pop(binding, None)
-            if type(lease) is not TileLease or lease.tile != binding[1]:
+        seen: set[tuple[int, TileID]] = set()
+        for binding, issued_lease in zip(batch.bindings, batch.leases, strict=True):
+            if (
+                type(binding) is not tuple
+                or len(binding) != 2
+                or type(binding[0]) is not int
+                or binding[0] < 0
+                or type(binding[1]) is not TileID
+            ):
+                raise ValueError("causal dependency rollback binding is malformed")
+            if binding in seen:
+                raise ValueError(
+                    "causal dependency rollback contains duplicate bindings"
+                )
+            seen.add(binding)
+            lease = self.records.get(binding)
+            if (
+                type(issued_lease) is not TileLease
+                or type(lease) is not TileLease
+                or lease is not issued_lease
+                or lease.tile != binding[1]
+            ):
                 raise ValueError("causal dependency rollback lost a binding")
             leases.append(lease)
-        for lease in reversed(leases):
-            lease.close()
-        self.ledger.release(self.owner, entries=len(batch.bindings))
+        count = len(leases)
+        if (
+            self.ledger._account(self.owner).entries < count
+            or self.ledger._account(self.tiles._lease_owner).entries < count
+        ):
+            raise ValueError("causal dependency rollback accounting is inconsistent")
+        for binding, lease in reversed(tuple(zip(batch.bindings, leases, strict=True))):
+            try:
+                removed = self.records.pop(binding)
+            except BaseException:
+                if binding not in self.records:
+                    self.records[binding] = lease
+                raise
+            if removed is not lease:
+                if binding not in self.records:
+                    self.records[binding] = removed
+                raise ValueError("causal dependency changed during rollback")
+            try:
+                lease.close()
+            except BaseException:
+                if lease._closed:
+                    self.ledger.release(self.owner, entries=1)
+                else:
+                    self.records[binding] = lease
+                raise
+            self.ledger.release(self.owner, entries=1)
 
     def release_application(self, application: int) -> None:
         """Release all exact causal inputs owned by one application."""

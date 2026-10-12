@@ -204,29 +204,40 @@ def normalize_cached_region(
     found = lookup_normalized_region(arena, key)
     if found is not None:
         lease = arena.tiles.retain(found.view.tile)
+        batch: DependencyLeaseBatch | None = None
         try:
             if dependencies is not None and application is not None:
-                dependencies.acquire(application, (view.tile, found.view.tile))
+                batch = dependencies.acquire(application, (view.tile, found.view.tile))
+            result_view = _detached_view(found.view)
+            return result_view, lease
         except BaseException:
-            lease.close()
+            try:
+                if batch is not None and dependencies is not None:
+                    dependencies.rollback(batch)
+            finally:
+                lease.close()
             raise
-        return _detached_view(found.view), lease
 
     normalized, lease = normalize_boundary_view(arena.tiles, view)
-    value = _sealed(arena, key, normalized)
-    batch: DependencyLeaseBatch | None = None
+    cold_batch: DependencyLeaseBatch | None = None
     try:
+        value = _sealed(arena, key, normalized)
         if dependencies is not None and application is not None:
-            batch = dependencies.acquire(application, (view.tile, normalized.tile))
+            cold_batch = dependencies.acquire(
+                application,
+                (view.tile, normalized.tile),
+            )
         published, _ = _publish(arena, key, value)
         if published.view != normalized:
             lease.close()
             lease = arena.tiles.retain(published.view.tile)
         return _detached_view(published.view), lease
     except BaseException:
-        if batch is not None and dependencies is not None:
-            dependencies.rollback(batch)
-        lease.close()
+        try:
+            if cold_batch is not None and dependencies is not None:
+                dependencies.rollback(cold_batch)
+        finally:
+            lease.close()
         raise
 
 

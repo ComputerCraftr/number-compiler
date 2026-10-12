@@ -41,6 +41,9 @@ from number_compiler.sequences.reverse_add.palindrome import (
 if TYPE_CHECKING:
     from number_compiler.resources.metric_records import HashLifeBehaviorMetrics
     from number_compiler.resources.reverse_power_metrics import ReverseAddPowerMetrics
+    from number_compiler.sequences.reverse_add.boundary_window import (
+        ReverseBoundaryWindowObservation,
+    )
     from number_compiler.sequences.reverse_add.source_images import (
         ReverseSourceImageWorkspace,
     )
@@ -65,6 +68,8 @@ class ReverseAddPoweredTerm:
     __slots__ = (
         "__weakref__",
         "_binding",
+        "_boundary_observer",
+        "_boundary_observer_identity",
         "_ledger",
         "_mirror_output_scratch",
         "_source_construction",
@@ -89,6 +94,8 @@ class ReverseAddPoweredTerm:
         self.base = require_integer(base, "base", 2)
         self._binding = (self.seed, self.generation, self.base)
         self._ledger = ResourceLedger(max_context_nodes, max_cache_entries)
+        self._boundary_observer: object | None = None
+        self._boundary_observer_identity: object | None = None
         initialize_output_stream_metrics(self._ledger, "reverse_output_stream")
         self._mirror_output_scratch: LedgerList[int] | None = None
         self._workspace: ReverseSourceImageWorkspace | None = None
@@ -277,6 +284,57 @@ class ReverseAddPoweredTerm:
         )
 
         return reverse_behavior_metrics(self)
+
+    def observe_boundary_macro(
+        self,
+        *,
+        max_states: int = 4096,
+        max_compositions: int = 50_000,
+        max_relation_entries: int = 8192,
+        max_relation_states: int = 32_768,
+    ) -> ReverseBoundaryWindowObservation:
+        """Return a conservative decimal edge observation for this term.
+
+        The result contains no complete endpoint. Its finite relation cache is
+        owned by this term's resource ledger and shared across K=2,4,8 demands.
+        """
+        if (self.seed, self.generation, self.base) != self._binding:
+            raise ValueError("reverse/add term source/action binding changed")
+        if self.base != 10:
+            raise ValueError("boundary macro observation is decimal-only")
+        from number_compiler.sequences.reverse_add.boundary_window import (
+            ReverseBoundaryWindowObserver,
+        )
+
+        observer = self._boundary_observer
+        if observer is None:
+            observer = ReverseBoundaryWindowObserver(
+                self.seed,
+                self.generation,
+                self._ledger,
+                source_workspace=self._source_workspace(),
+                max_states=max_states,
+                max_compositions=max_compositions,
+                max_relation_entries=max_relation_entries,
+                max_relation_states=max_relation_states,
+            )
+            self._boundary_observer = observer
+            self._boundary_observer_identity = observer
+        elif (
+            type(observer) is not ReverseBoundaryWindowObserver
+            or observer is not self._boundary_observer_identity
+            or observer.ledger is not self._ledger
+            or observer.relations.ledger is not self._ledger
+            or observer.binding != self._binding
+            or observer.max_states != max_states
+            or observer.max_compositions != max_compositions
+            or observer.max_relation_entries != max_relation_entries
+            or observer.max_relation_states != max_relation_states
+        ):
+            raise ValueError("boundary observer binding or budget changed")
+        return observer.observe(
+            seed=self.seed, generation=self.generation, base=self.base
+        )
 
     def metrics(self) -> ReverseAddPowerMetrics:
         from number_compiler.resources.metric_collection import (
