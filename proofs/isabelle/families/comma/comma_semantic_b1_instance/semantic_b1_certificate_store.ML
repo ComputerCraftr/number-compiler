@@ -103,11 +103,17 @@ struct
       fun require_theorem_theory theorem =
         if Context.subthy (Thm.theory_of_thm theorem, store_theory) then ()
         else error "B1 certificate theorem comes from a non-ancestor theory"
-      fun timed_all_oracles selected_equation_check theorems =
+      (* Store ownership fixes the context and thread. Each captured root is
+         checked, while immutable dependency nodes are certified once. The
+         final published bundle retains Isabelle's full oracle audit. *)
+      val (certify_equation, _) =
+        Comma_Entry_Arithmetic.make_certifier ctxt
+      fun certify_equations selected_equation_check theorems =
         let
           val _ = require_store_thread ()
           val started = Time.now ()
-          val result = Exn.capture (fn () => Thm_Deps.all_oracles theorems) ()
+          val result = Exn.capture (fn () =>
+            List.app (ignore o certify_equation) theorems) ()
           val elapsed = Time.- (Time.now (), started)
           val _ = if selected_equation_check then
               (selected_oracle_checks := !selected_oracle_checks + 1;
@@ -115,7 +121,7 @@ struct
             else
               (captured_oracle_checks := !captured_oracle_checks + 1;
                captured_oracle_elapsed := Time.+ (!captured_oracle_elapsed, elapsed))
-        in Exn.release result end
+        in (Exn.release result; true) end
       fun exact_prefix actual expected =
         length actual >= length expected andalso
           ListPair.allEq (op aconv) (take (length expected) actual, expected)
@@ -146,7 +152,7 @@ struct
             let
               val equation = Simplifier.rewrite context (Thm.cterm_of ctxt term)
               val checked = Comma_Selected_List_Conversion.validate_equation term equation
-              val _ = if null (timed_all_oracles true [checked]) then ()
+              val _ = if certify_equations true [checked] then ()
                 else error "B1 selected occurrence equation depends on an Isabelle oracle"
               val _ = if Comma_Selected_List_Conversion.closed term andalso
                   Termtab.size (!selected_equations) < selected_equation_capacity then
@@ -471,7 +477,7 @@ struct
           fun exact_closed () = Comma_Selected_List_Conversion.closed request andalso
             Thm.term_of (Thm.lhs_of theorem) aconv request andalso
             Comma_Semantic_B1_Construction_Check.standalone theorem andalso
-              null (timed_all_oracles false [theorem])
+              certify_equations false [theorem]
           fun remember_action args =
             (case args of
               [source, slot_term] =>

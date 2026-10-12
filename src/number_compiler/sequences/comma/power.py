@@ -4,7 +4,9 @@ from __future__ import annotations
 
 from collections.abc import Generator
 from dataclasses import dataclass
+from importlib.resources import as_file, files
 from pathlib import Path
+from threading import RLock
 from typing import TYPE_CHECKING, Self, cast
 
 from number_compiler.arithmetic.contracts.scoped_handles import ArenaToken
@@ -119,6 +121,7 @@ class CommaTerm:
         self.arena = CommaActionArena(self.ledger, max_work, shared_cache=shared_cache)
         self._future_provider_store: SemanticFutureProviderStore | None = None
         self._future_provider_lease: SemanticFutureProviderLease | None = None
+        self._future_provider_lock = RLock()
         self.scheduler = TileScheduler.source_only(self.ledger)
         self.adapter = _CommaImageAdapter(self.arena, self.scheduler)
         self.adapter._term = self
@@ -168,6 +171,10 @@ class CommaTerm:
         exact global-release contract. With no registered release artifact, the
         public path keeps using its finite forest/prefix certificate.
         """
+        with self._future_provider_lock:
+            self._stage_global_future_provider_artifact_locked(artifact)
+
+    def _stage_global_future_provider_artifact_locked(self, artifact: Path) -> None:
         if not isinstance(artifact, Path):
             raise TypeError("comma future artifact must be a pathlib Path")
         if (
@@ -192,6 +199,40 @@ class CommaTerm:
         self._future_provider_store = store
         self._future_provider_lease = lease
 
+    def _stage_registered_global_future_provider_locked(self) -> bool:
+        """Stage only the package artifact named by an admitted exact digest.
+
+        The empty production registry returns before resolving package
+        resources, leaving the finite-prefix forest path untouched. A
+        registered digest with missing or mismatched bytes fails closed.
+        """
+        from number_compiler.sequences.comma.future_provider import (
+            FUTURE_PROVIDER_ASSET,
+            registered_global_release_artifact_sha256,
+        )
+
+        expected_digest = registered_global_release_artifact_sha256()
+        if expected_digest is None:
+            if self._future_provider_store is not None:
+                raise PermissionError("comma provider store has no registered lease")
+            return False
+        if self._future_provider_lease is not None:
+            lease = self._require_global_future_provider()
+            if lease.artifact_sha256 != expected_digest:
+                raise PermissionError("comma provider lease differs from registry")
+            return True
+        if self._future_provider_store is not None:
+            raise PermissionError("comma provider store has no registered lease")
+
+        asset = files("number_compiler").joinpath("kernels", FUTURE_PROVIDER_ASSET)
+        with as_file(asset) as artifact:
+            self._stage_global_future_provider_artifact_locked(artifact)
+        lease = self._require_global_future_provider()
+        if lease.artifact_sha256 != expected_digest:
+            self.close()
+            raise PermissionError("comma provider artifact differs from registry")
+        return True
+
     @property
     def has_global_future_provider(self) -> bool:
         lease = self._future_provider_lease
@@ -207,9 +248,13 @@ class CommaTerm:
         self,
     ) -> SemanticFutureProviderLease | None:
         """Return only this term's lease after rechecking global authority."""
-        if self._future_provider_lease is None:
-            return None
-        return self._require_global_future_provider()
+        with self._future_provider_lock:
+            if (
+                self._future_provider_lease is None
+                and not self._stage_registered_global_future_provider_locked()
+            ):
+                return None
+            return self._require_global_future_provider()
 
     def _require_global_future_provider(
         self, artifact_sha256: str | None = None
@@ -238,14 +283,15 @@ class CommaTerm:
 
     def close(self) -> None:
         """Release only the privately staged future-provider resources."""
-        store = self._future_provider_store
-        if store is None:
-            return
-        store.close()
-        self._future_provider_store = None
-        self._future_provider_lease = None
-        self._boundary_occurrence = None
-        self._boundary_occurrence_owner = None
+        with self._future_provider_lock:
+            store = self._future_provider_store
+            if store is None:
+                return
+            store.close()
+            self._future_provider_store = None
+            self._future_provider_lease = None
+            self._boundary_occurrence = None
+            self._boundary_occurrence_owner = None
 
     def __enter__(self) -> Self:
         return self

@@ -142,7 +142,7 @@ Build the concrete bridge (which builds its registered dependencies) with:
 
 The new theories audit exported theorem dependencies for oracles. Session
 registration disables quick-and-dirty proofs. The project guard remains
-60 seconds per Isabelle session, 6 GiB across the process tree and four prover
+300 seconds per Isabelle session, 6 GiB across the process tree and four prover
 threads, with one session building at a time.
 
 The bounded differential checks in

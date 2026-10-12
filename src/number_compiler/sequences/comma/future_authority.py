@@ -2,7 +2,9 @@
 
 from __future__ import annotations
 
+from collections.abc import Mapping
 from dataclasses import dataclass
+from types import MappingProxyType
 from typing import Literal
 
 from number_compiler.resources.immutable_signature import (
@@ -116,6 +118,28 @@ def _global_release_admission_matches(
         and all(type(claim) is str for claim in admission.claims)
         and admission.claims == GLOBAL_RELEASE_CLAIMS
     )
+
+
+def registered_global_release_artifact_sha256(
+    registry: Mapping[str, _KernelInstanceAdmission],
+) -> str | None:
+    """Read the unique exact global digest from an immutable admission map."""
+    if type(registry) is not MappingProxyType:
+        raise PermissionError("semantic future admission registry is not immutable")
+    global_digests: list[str] = []
+    for digest, admission in registry.items():
+        if type(admission) is not _KernelInstanceAdmission:
+            raise PermissionError("semantic future registry contains a foreign entry")
+        if admission.scope != KERNEL_RELEASE_SCOPE:
+            continue
+        if not _global_release_admission_matches(admission, digest):
+            raise PermissionError("semantic future global registry entry is invalid")
+        global_digests.append(digest)
+    if len(global_digests) > 1:
+        raise PermissionError(
+            "multiple global semantic future artifacts are registered"
+        )
+    return None if not global_digests else global_digests[0]
 
 
 @dataclass(frozen=True, slots=True)

@@ -85,7 +85,7 @@ def test_occurrence_certificate_waits_for_proof_and_preserves_memo_authority() -
     )
     assert "make_equation_checker_with_columns" in checker
     assert "ctxt (#known_column columns)" in checker
-    assert "incomplete := Termtab.update" in publication_gate
+    assert "Term_LRU.remember_partial memo request" in publication_gate
     # The executable negative fixture moved to its canonical fixture owner;
     # require it to exercise the live publication and dispatch callbacks.
     assert "Certificate_Store_Fixtures.check_partial_equation_gate" in checker
@@ -100,7 +100,7 @@ def test_occurrence_certificate_waits_for_proof_and_preserves_memo_authority() -
     assert "val returned = dispatch cterm" in partial_fixture
     assert "not (memo_has request)" in partial_fixture
     assert "val _ = clear_incomplete request" in partial_fixture
-    assert "Termtab.delete request (!incomplete)" in checker
+    assert "Term_LRU.clear_partial memo request" in checker
     assert "crt_operation_base_patterns" in checker
     assert "crt_operation_base_heads" in checker
     assert "Comma_Entry_Arithmetic.natural_context ctxt" in checker
@@ -272,7 +272,15 @@ def test_constructed_occurrence_gate_binds_induction_and_piece_authority() -> No
     publication_wf = publication[
         "comma_semantic_b1_crt_published_occurrences_wellformed"
     ].body
-    assert "comma_semantic_b1_crt_constructed_occurrences_wellformed" in publication_wf
+    assert "comma_semantic_b1_crt_checked_bounds_and_geometry" in publication_wf
+    geometry_bridge = publication[
+        "comma_semantic_b1_crt_checked_bounds_and_geometry"
+    ].body
+    assert "all_occurrences_wellformed" in geometry_bridge
+    assert (
+        "comma_semantic_b1_crt_constructed_occurrences_catalog_geometry_from_mass"
+        in geometry_bridge
+    )
 
     # Constructed occurrence bounds and the child resolver now provide the
     # concrete all-index candidate bridge; lower-level local-cover lemmas stay
@@ -302,10 +310,13 @@ def test_constructed_occurrence_gate_binds_induction_and_piece_authority() -> No
         "comma_semantic_b1_crt_checked_bounds_and_geometry"
     ].body
     assert (
-        "comma_semantic_b1_crt_constructed_occurrences_catalog_geometry_facts"
+        "comma_semantic_b1_crt_constructed_occurrences_catalog_geometry_from_mass"
         in checked_geometry
     )
-    assert "[OF bounds_fact template_catalog lift_catalog]" in checked_geometry
+    assert (
+        "[OF table_admitted bounds_fact parent_masses used_lift_bindings]"
+        in checked_geometry
+    )
     assert (
         "simp add: comma_semantic_b1_crt_occurrence_data_checked_def\n"
         "      comma_semantic_b1_crt_construction_check_def" not in candidate_bridge
@@ -406,9 +417,21 @@ def test_constructed_occurrence_gate_binds_induction_and_piece_authority() -> No
     assert "comma_semantic_b1_crt_distinct_concat_tagged_rows" in (
         source_origins_distinct
     )
-    occurrence_wellformed = constructed[
+    legacy_wellformed = constructed[
         "comma_semantic_b1_crt_constructed_occurrence_wellformed"
     ].body
+    assert "comma_semantic_b1_crt_constructed_occurrence_from_partition_or_mass" in (
+        legacy_wellformed
+    )
+    # Both callers use one source-partition and result-coverage proof. The mass
+    # alternative must still establish a parent partition; it is not refs-only.
+    occurrence_wellformed = constructed[
+        "comma_semantic_b1_crt_constructed_occurrence_from_partition_or_mass"
+    ].body
+    assert "parent_partition_or_mass" in occurrence_wellformed
+    assert "comma_semantic_b1_crt_parent_columns_partition_from_grouped_cover" in (
+        occurrence_wellformed
+    )
     assert "comma_semantic_b1_crt_constructed_source_origins_distinct" in (
         occurrence_wellformed
     )
@@ -587,8 +610,11 @@ def test_b1_certificate_store_scopes_cid_proofs_and_consumes_action_rows() -> No
     assert "if not (exact_prefix args authority) then NONE" in store
     assert "Thm.term_of (Thm.lhs_of theorem) aconv request" in store
     assert "standalone theorem andalso" in store
-    assert "null (timed_all_oracles false [theorem])" in store
-    assert "Exn.capture (fn () => Thm_Deps.all_oracles theorems) ()" in store
+    assert "certify_equations false [theorem]" in store
+    assert "Comma_Entry_Arithmetic.make_certifier ctxt" in store
+    assert "List.app (ignore o certify_equation) theorems" in store
+    assert "Thm_Deps.all_oracles theorems" not in store
+    assert "val result = Exn.capture" in store
     assert "Exn.release result" in store
     assert "selected_equation_oracle_elapsed_ms=" in store
     assert "captured_equation_oracle_elapsed_ms=" in store

@@ -119,6 +119,44 @@ struct
            else Symtab.update (key, cid) table end) nodes Symtab.empty
     in (index, structure_index) end
 
+  (* Reusable shallow row view for global consumers.  The caller supplies the
+     already validated node lookup; this helper adds only the extent guard and
+     preserves the exact parsed CID/level/child occurrence list. *)
+  fun mass_node_row count (lookup: int -> node) cid =
+    if cid < 2 orelse cid >= count then NONE
+    else
+      let
+        val {cid = row_cid, level, children, ...} = lookup cid
+        val _ = if row_cid = cid then () else
+          error "B1 mass catalogue row changed its CID authority"
+      in SOME {cid = row_cid, level = level, children = children} end
+
+  type source_binding = {
+      base: int, extent: int, constant: term, definition: thm, interval: thm}
+
+  (* Select only the checked source blocks touched by a demanded CID closure.
+     The interval callback is the directory cache's universal DAG-to-block
+     theorem; this helper only performs bounded block selection and does not
+     turn parsed node rows into proof facts. *)
+  fun source_bindings_for interval blocks count cids =
+    let
+      val selected = fold (fn cid => fn table =>
+        if cid < 0 orelse cid >= count then
+          error "B1 source binding received a foreign demanded CID"
+        else if cid < 2 then table
+        else Inttab.update ((cid - 2) div block_size, ()) table)
+        cids Inttab.empty
+      val block_index = fold (fn (block: block) => fn table =>
+        Inttab.update (#index block, block) table) blocks Inttab.empty
+      fun one index =
+        (case Inttab.lookup block_index index of
+          NONE => error "B1 source binding selected a missing block"
+        | SOME ({base, extent, constant, theorem, ...}: block) =>
+            {base = base, extent = extent, constant = constant,
+             definition = theorem,
+             interval = interval constant theorem base extent}: source_binding)
+    in map one (map fst (Inttab.dest selected)) end
+
   fun parse_directory (blocks: block Inttab.table) term =
     let
       fun get_block index =

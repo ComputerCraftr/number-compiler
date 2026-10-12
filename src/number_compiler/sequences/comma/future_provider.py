@@ -25,8 +25,10 @@ import json
 from collections.abc import Callable, Mapping
 from contextlib import ExitStack
 from dataclasses import dataclass, field
+from functools import partial
 from hashlib import sha256
 from pathlib import Path
+from threading import RLock
 from types import MappingProxyType
 from typing import Literal, Self, TypeVar
 
@@ -51,10 +53,18 @@ from number_compiler.sequences.comma.future_authority import (
     _registered_admission_matches,
     _valid_artifact_digest,
 )
+from number_compiler.sequences.comma.future_authority import (
+    registered_global_release_artifact_sha256 as _registered_global_release_artifact_sha256,
+)
+from number_compiler.sequences.comma.future_provider_memory import (
+    candidate_workspace_cost,
+    provider_node_cost,
+)
 
 SOURCE_COUNT = 2 * 8 * PERIOD
 FUTURE_CANDIDATE_FORMAT = "comma-semantic-future-candidate-v2"
 FUTURE_CANDIDATE_AUTHORITY = "untrusted-source-derived-candidate"
+FUTURE_PROVIDER_ASSET = "comma_semantic_future_v2.json"
 FUTURE_SOURCE_UNIVERSE = "kind=N,Z; a=2..9; residue=0..923; nested-order"
 FUTURE_PROVIDER_CONTRACT = "comma-semantic-future-provider-exact-v1"
 MAX_CANDIDATE_BYTES = 2 * 1024 * 1024
@@ -83,8 +93,14 @@ _ADMITTED_KERNEL_INSTANCES: Mapping[str, _KernelInstanceAdmission] = MappingProx
 )
 
 
+registered_global_release_artifact_sha256 = partial(
+    _registered_global_release_artifact_sha256, _ADMITTED_KERNEL_INSTANCES
+)
+
+
 _PROVIDER_SEAL = object()
 WorkCharger = Callable[[int], None]
+_STORE_LOCK_TYPE = type(RLock())
 
 
 @dataclass(frozen=True, slots=True)
@@ -99,33 +115,6 @@ class ParsedFutureCandidate:
 _Literal = TypeVar("_Literal")
 _BeforeFutureParse = Callable[[Mapping[str, object]], None]
 _ReserveDecodedShape = Callable[[Mapping[str, object]], None]
-
-
-def _future_provider_node_cost(digest: str, provider: SemanticFutureProvider) -> int:
-    if digest != provider.artifact_sha256:
-        raise ValueError("future provider ledger key differs from its artifact digest")
-    # Include one five-scalar signature tuple per class, its slots, the outer
-    # signature table, and the private tuple-binding references.
-    return len(provider._source_classes) + 10 * len(provider._classes) + 7
-
-
-def _future_candidate_workspace_cost(record: Mapping[str, object]) -> int:
-    """Reserve for decoded output tuples before the parser allocates them.
-
-    The input byte limit bounds serialized data. This node estimate does not
-    measure the raw Python JSON object graph or parser's physical memory peak.
-    It overlaps retained-node reservation until publication, conservatively
-    bounding transient semantic tuples without claiming measured RSS coverage.
-    """
-    if type(record) not in (dict, MappingProxyType):
-        return 0
-    controls = record.get("controls")
-    if type(controls) is not list or not 0 < len(controls) <= SOURCE_COUNT:
-        return 0
-    # At tuple conversion the source-ID list and tuple coexist; row objects also
-    # coexist with their builder list. The row factor includes that extra slot.
-    signature_nodes = 6 * len(controls) + 5
-    return 2 * SOURCE_COUNT + 5 * len(controls) + 2 + signature_nodes
 
 
 @dataclass(frozen=True, slots=True)
@@ -452,10 +441,11 @@ class SemanticFutureProviderStore:
             "semantic_future_provider_workspace",
         )
         self._providers: OwnedMemo[str, SemanticFutureProvider] = OwnedMemo(
-            ledger, self.owner, node_cost=_future_provider_node_cost
+            ledger, self.owner, node_cost=provider_node_cost
         )
         self._token = ArenaToken("comma-semantic-future-provider")
         self._closed = False
+        self._lock = RLock()
         ledger.register_execution_root(self)
 
     def _check_open(self) -> None:
@@ -480,69 +470,73 @@ class SemanticFutureProviderStore:
         loader: _FutureProviderLoader,
         charge_work: WorkCharger,
     ) -> SemanticFutureProviderLease:
-        self._check_open()
-        self.ledger.bump("comma_future_provider_load_requests")
-        self.ledger.bump("comma_future_provider_validation_requests")
-        try:
-            with ExitStack() as reservations:
-                reserved_snapshot_nodes = 0
+        with self._lock:
+            self._check_open()
+            self.ledger.bump("comma_future_provider_load_requests")
+            self.ledger.bump("comma_future_provider_validation_requests")
+            try:
+                with ExitStack() as reservations:
+                    reserved_snapshot_nodes = 0
 
-                def release_snapshot_nodes() -> None:
-                    if reserved_snapshot_nodes:
-                        self.ledger.release(
-                            self._workspace_owner,
-                            nodes=reserved_snapshot_nodes,
-                        )
+                    def release_snapshot_nodes() -> None:
+                        if reserved_snapshot_nodes:
+                            self.ledger.release(
+                                self._workspace_owner,
+                                nodes=reserved_snapshot_nodes,
+                            )
 
-                # One ExitStack release owns all incremental snapshot chunks.
-                reservations.callback(release_snapshot_nodes)
+                    # One ExitStack release owns all incremental snapshot chunks.
+                    reservations.callback(release_snapshot_nodes)
 
-                def reserve_snapshot_nodes(amount: int) -> None:
-                    nonlocal reserved_snapshot_nodes
-                    self.ledger.reserve(self._workspace_owner, nodes=amount)
-                    reserved_snapshot_nodes += amount
+                    def reserve_snapshot_nodes(amount: int) -> None:
+                        nonlocal reserved_snapshot_nodes
+                        self.ledger.reserve(self._workspace_owner, nodes=amount)
+                        reserved_snapshot_nodes += amount
 
-                def reserve_decoded_shape(record: Mapping[str, object]) -> None:
-                    nodes = _future_candidate_workspace_cost(record)
-                    if nodes:
-                        reservations.enter_context(
-                            self.ledger.reservation(self._workspace_owner, nodes=nodes)
-                        )
+                    def reserve_decoded_shape(record: Mapping[str, object]) -> None:
+                        nodes = candidate_workspace_cost(record, SOURCE_COUNT)
+                        if nodes:
+                            reservations.enter_context(
+                                self.ledger.reservation(
+                                    self._workspace_owner, nodes=nodes
+                                )
+                            )
 
-                def charge_once(amount: int) -> None:
-                    _charge_work(charge_work, amount)
-                    self.ledger.bump("comma_future_provider_load_work", amount)
+                    def charge_once(amount: int) -> None:
+                        _charge_work(charge_work, amount)
+                        self.ledger.bump("comma_future_provider_load_work", amount)
 
-                provider = loader(
-                    charge_once,
-                    reserve_snapshot_nodes,
-                    reserve_decoded_shape,
-                )
-                return self._retain(provider)
-        except Exception:
-            self.ledger.bump("comma_future_provider_load_failures")
-            raise
-        except BaseException:
-            # Cancellation/system-exit paths are not validation failures, but
-            # still have explicit accounting. ExitStack releases any workspace
-            # reservation before this handler runs.
-            self.ledger.bump("comma_future_provider_load_cancellations")
-            raise
+                    provider = loader(
+                        charge_once,
+                        reserve_snapshot_nodes,
+                        reserve_decoded_shape,
+                    )
+                    return self._retain(provider)
+            except Exception:
+                self.ledger.bump("comma_future_provider_load_failures")
+                raise
+            except BaseException:
+                # Cancellation/system-exit paths are not validation failures,
+                # but still have explicit accounting. ExitStack releases any
+                # workspace reservation before this handler runs.
+                self.ledger.bump("comma_future_provider_load_cancellations")
+                raise
 
     def get(self, artifact_sha256: str) -> SemanticFutureProviderLease:
         """Retrieve an already verified registry admission without reading input."""
-        self._check_open()
-        self.ledger.bump("comma_future_provider_lookups")
-        if not _valid_artifact_digest(artifact_sha256):
-            self.ledger.bump("comma_future_provider_lookup_refusals")
-            raise ValueError("future artifact lookup needs a lowercase SHA-256")
-        provider = self._providers.get(artifact_sha256)
-        if provider is None:
-            self.ledger.bump("comma_future_provider_lookup_misses")
-            raise KeyError("future artifact has not been loaded into this ledger")
-        provider.require_runtime_admission()
-        self.ledger.bump("comma_future_provider_lookup_hits")
-        return SemanticFutureProviderLease(self, artifact_sha256, self._token)
+        with self._lock:
+            self._check_open()
+            self.ledger.bump("comma_future_provider_lookups")
+            if not _valid_artifact_digest(artifact_sha256):
+                self.ledger.bump("comma_future_provider_lookup_refusals")
+                raise ValueError("future artifact lookup needs a lowercase SHA-256")
+            provider = self._providers.get(artifact_sha256)
+            if provider is None:
+                self.ledger.bump("comma_future_provider_lookup_misses")
+                raise KeyError("future artifact has not been loaded into this ledger")
+            provider.require_runtime_admission()
+            self.ledger.bump("comma_future_provider_lookup_hits")
+            return SemanticFutureProviderLease(self, artifact_sha256, self._token)
 
     def load_record(
         self,
@@ -585,61 +579,68 @@ class SemanticFutureProviderStore:
     def _resolve(self, digest: str, token: ArenaToken) -> SemanticFutureProvider:
         if type(self) is not SemanticFutureProviderStore:
             raise TypeError("future provider lease needs its exact provider store")
-        ledger = getattr(self, "ledger", None)
-        closed = getattr(self, "_closed", None)
-        current_token = getattr(self, "_token", None)
-        if (
-            type(ledger) is not ResourceLedger
-            or type(closed) is not bool
-            or type(current_token) is not ArenaToken
-        ):
+        lock = getattr(self, "_lock", None)
+        if type(lock) is not _STORE_LOCK_TYPE:
             raise RuntimeError("malformed future provider store")
-        if (
-            closed
-            or type(digest) is not str
-            or not _valid_artifact_digest(digest)
-            or type(token) is not ArenaToken
-            or token is not current_token
-        ):
-            ledger.bump("comma_future_provider_stale_lease_refusals")
-            raise RuntimeError("future provider lease is stale")
-        memo = getattr(self, "_providers", None)
-        owner = getattr(self, "owner", None)
-        if (
-            type(memo) is not OwnedMemo
-            or memo.ledger is not ledger
-            or memo.owner != owner
-        ):
-            raise RuntimeError("future provider store has a foreign retained table")
-        provider = memo.get(digest)
-        if provider is None:
-            ledger.bump("comma_future_provider_lease_misses")
-            raise RuntimeError("future provider is no longer retained")
-        if type(provider) is not SemanticFutureProvider:
-            raise RuntimeError("future provider store retained a foreign provider")
-        provider.require_runtime_admission()
-        ledger.bump("comma_future_provider_lease_resolutions")
-        return provider
+        with lock:
+            ledger = getattr(self, "ledger", None)
+            closed = getattr(self, "_closed", None)
+            current_token = getattr(self, "_token", None)
+            if (
+                type(ledger) is not ResourceLedger
+                or type(closed) is not bool
+                or type(current_token) is not ArenaToken
+            ):
+                raise RuntimeError("malformed future provider store")
+            if (
+                closed
+                or type(digest) is not str
+                or not _valid_artifact_digest(digest)
+                or type(token) is not ArenaToken
+                or token is not current_token
+            ):
+                ledger.bump("comma_future_provider_stale_lease_refusals")
+                raise RuntimeError("future provider lease is stale")
+            memo = getattr(self, "_providers", None)
+            owner = getattr(self, "owner", None)
+            if (
+                type(memo) is not OwnedMemo
+                or memo.ledger is not ledger
+                or memo.owner != owner
+            ):
+                raise RuntimeError("future provider store has a foreign retained table")
+            provider = memo.get(digest)
+            if provider is None:
+                ledger.bump("comma_future_provider_lease_misses")
+                raise RuntimeError("future provider is no longer retained")
+            if type(provider) is not SemanticFutureProvider:
+                raise RuntimeError("future provider store retained a foreign provider")
+            provider.require_runtime_admission()
+            ledger.bump("comma_future_provider_lease_resolutions")
+            return provider
 
     def reset(self) -> None:
         """Release retained candidates and revoke leases without closing owner."""
-        self._check_open()
-        self._providers.clear()
-        self._token = ArenaToken("comma-semantic-future-provider")
-        self.ledger.bump("comma_future_provider_resets")
+        with self._lock:
+            self._check_open()
+            self._providers.clear()
+            self._token = ArenaToken("comma-semantic-future-provider")
+            self.ledger.bump("comma_future_provider_resets")
 
     def close(self) -> None:
         """Drop retained tables and invalidate every lease; safe to call twice."""
-        if self._closed:
-            return
-        self._providers.dispose()
-        self._token = ArenaToken("comma-semantic-future-provider")
-        self._closed = True
-        self.ledger.bump("comma_future_provider_closes")
+        with self._lock:
+            if self._closed:
+                return
+            self._providers.dispose()
+            self._token = ArenaToken("comma-semantic-future-provider")
+            self._closed = True
+            self.ledger.bump("comma_future_provider_closes")
 
     def __enter__(self) -> Self:
-        self._check_open()
-        return self
+        with self._lock:
+            self._check_open()
+            return self
 
     def __exit__(self, exc_type: object, exc: object, traceback: object) -> None:
         self.close()

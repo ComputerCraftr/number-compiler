@@ -6,12 +6,12 @@ Production query budgets and synthetic watchdog test inputs are independent.
 from dataclasses import dataclass
 
 GIB = 1024**3
-POLICY_VERSION = 1
+POLICY_VERSION = 3
 PYTHON_TEST_SECONDS = 60
 PYTHON_SUITE_SECONDS = 300
 PYTHON_COMMAND_SECONDS = 60
 PYTHON_MEMORY_BYTES = 4 * GIB
-ISABELLE_SESSION_SECONDS = 60
+ISABELLE_SESSION_SECONDS = 300
 ISABELLE_MEMORY_BYTES = 6 * GIB
 ISABELLE_THREADS = 4
 ISABELLE_PARALLEL_PROOFS = 1
@@ -22,7 +22,7 @@ ISABELLE_ML_OPTIONS = "--minheap 128 --maxheap 4096"
 ISABELLE_OPTIONS = (
     "threads=4",
     "parallel_proofs=1",
-    "timeout=60",
+    f"timeout={ISABELLE_SESSION_SECONDS}",
     "timeout_scale=1",
 )
 

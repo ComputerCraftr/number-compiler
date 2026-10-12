@@ -254,32 +254,99 @@ proof -
   have index_guard: "index<length sources \<and> index<length occurrence_descriptors \<and>
       index<length lift_refs \<and> index<length piece_refs"
     by (rule comma_semantic_b1_crt_constructed_occurrence_bound_index_guards[OF bound])
-  have normalized: "?source=comma_source_continuation_base ?source" using bound index_guard parent_at
-    by (auto simp: comma_semantic_b1_crt_constructed_occurrence_bound_def
-        Let_def)
   have index_bound: "index<length sources" using index_guard by blast
+  let ?bound_body = "?source=comma_source_continuation_base ?source \<and>
+       comma_round_admitted ?source \<and>
+       length ?refs=?period \<and>
+       map comma_semantic_b1_crt_lift_ref_slot ?refs=[0..<?period] \<and>
+       length occurrence_descriptors=length sources \<and>
+       length ?rows=length ?beta \<and>
+       (template_cid<length templates \<and>
+        descriptor_rebase=comma_semantic_b1_crt_occurrence_rebase parent \<and>
+        descriptor_beta=?beta \<and>
+        comma_semantic_b1_crt_occurrence_columns parent=templates!template_cid) \<and>
+       comma_semantic_b1_crt_occurrence_binding_check parent \<and>
+       ?beta\<noteq>[] \<and> distinct ?beta \<and>
+       comma_semantic_b1_crt_source_slot_action_row_certified ?source ?period ?actions \<and>
+       list_all (comma_semantic_b1_crt_lift_slot_valid_from_actions
+         sources occurrence_at occurrence_descriptors templates ?source parent
+         ?refs lift_descriptors ?actions) [0..<?period] \<and>
+       list_all (\<lambda>slot.
+         comma_semantic_b1_crt_constructed_goto_slot_certificate columns
+           templates template_column_ids lift_column_ids occurrence_descriptors
+           lift_descriptors index ?refs slot) [0..<?period] \<and>
+       sort (map comma_semantic_b1_crt_constructed_piece_origin (concat ?rows))=?origins \<and>
+       list_all (\<lambda>row.
+         comma_semantic_b1_crt_group_construction_bound columns
+           (comma_semantic_b1_crt_occurrence_rebase parent) row
+           (template_column_ids!template_cid!row) (?rows!row) \<and>
+         list_all (comma_semantic_b1_crt_constructed_piece_binding_matches_from_actions
+           columns lift_column_ids sources occurrence_at ?refs ?source ?actions
+           parent row) (?rows!row)) [0..<length ?beta]"
+  note expanded_bound = bound[unfolded
+    comma_semantic_b1_crt_constructed_occurrence_bound_def
+    if_P[OF index_guard] parent_at option.simps Let_def]
+  have bound_body: "?bound_body"
+    by (rule expanded_bound[unfolded descriptor_at prod.case fst_conv])
+  note bound_tail1 = conjunct2[OF bound_body]
+  note bound_tail2 = conjunct2[OF bound_tail1]
+  note bound_tail3 = conjunct2[OF bound_tail2]
+  note bound_tail4 = conjunct2[OF bound_tail3]
+  note bound_tail5 = conjunct2[OF bound_tail4]
+  note bound_tail6 = conjunct2[OF bound_tail5]
+  note bound_tail7 = conjunct2[OF bound_tail6]
+  note bound_tail8 = conjunct2[OF bound_tail7]
+  note bound_tail9 = conjunct2[OF bound_tail8]
+  note bound_tail10 = conjunct2[OF bound_tail9]
+  note bound_tail11 = conjunct2[OF bound_tail10]
+  note bound_tail12 = conjunct2[OF bound_tail11]
+  note bound_tail13 = conjunct2[OF bound_tail12]
+  note bound_tail14 = conjunct2[OF bound_tail13]
+  have normalized: "?source=comma_source_continuation_base ?source" by (rule conjunct1[OF bound_body])
   have source_admitted: "comma_round_admitted ?source"
-    and refs_length: "length ?refs=?period"
-    and refs_slots:
+    by (rule conjunct1[OF bound_tail1])
+  have refs_length: "length ?refs=?period"
+    by (rule conjunct1[OF bound_tail2])
+  have refs_slots:
       "map comma_semantic_b1_crt_lift_ref_slot ?refs=[0..<?period]"
-    and action_row_certified:
+    by (rule conjunct1[OF bound_tail3])
+  have descriptors_width: "length occurrence_descriptors=length sources"
+    by (rule conjunct1[OF bound_tail4])
+  have rows_width: "length ?rows=length ?beta"
+    by (rule conjunct1[OF bound_tail5])
+  have descriptor_facts:
+      "template_cid<length templates \<and>
+       descriptor_rebase=comma_semantic_b1_crt_occurrence_rebase parent \<and>
+       descriptor_beta=?beta \<and>
+       comma_semantic_b1_crt_occurrence_columns parent=templates!template_cid"
+    by (rule conjunct1[OF bound_tail6])
+  have parent_columns:
+      "comma_semantic_b1_crt_occurrence_columns parent=templates!template_cid"
+    by (rule conjunct2[OF conjunct2[OF conjunct2[OF descriptor_facts]]])
+  have parent_binding:
+      "comma_semantic_b1_crt_occurrence_binding_check parent"
+    by (rule conjunct1[OF bound_tail7])
+  have beta_facts: "?beta\<noteq>[] \<and> distinct ?beta"
+    using conjunct1[OF bound_tail8] conjunct1[OF bound_tail9] by blast
+  have action_row_certified:
       "comma_semantic_b1_crt_source_slot_action_row_certified ?source ?period ?actions"
-    and slots_valid_from_actions:
+    by (rule conjunct1[OF bound_tail10])
+  have slots_valid_from_actions:
       "list_all (comma_semantic_b1_crt_lift_slot_valid_from_actions sources occurrence_at
         occurrence_descriptors templates ?source parent ?refs lift_descriptors ?actions)
         [0..<?period]"
-    and slot_certificates:
+    by (rule conjunct1[OF bound_tail11])
+  have slot_certificates:
       "list_all (\<lambda>slot.
         comma_semantic_b1_crt_constructed_goto_slot_certificate columns
           templates template_column_ids lift_column_ids occurrence_descriptors
           lift_descriptors index ?refs slot) [0..<?period]"
-    and parent_columns:
-      "comma_semantic_b1_crt_occurrence_columns parent=templates!template_cid"
-    and parent_binding:
-      "comma_semantic_b1_crt_occurrence_binding_check parent"
-    and beta_facts: "?beta\<noteq>[] \<and> distinct ?beta"
-    and rows_width: "length ?rows=length ?beta"
-    and rows_bindings:
+    by (rule conjunct1[OF bound_tail12])
+  have piece_origin_sort:
+      "sort (map comma_semantic_b1_crt_constructed_piece_origin
+        (concat ?rows))=?origins"
+    by (rule conjunct1[OF bound_tail13])
+  have rows_bindings:
       "list_all (\<lambda>row.
         comma_semantic_b1_crt_group_construction_bound columns
           (comma_semantic_b1_crt_occurrence_rebase parent) row
@@ -287,13 +354,7 @@ proof -
         list_all (comma_semantic_b1_crt_constructed_piece_binding_matches_from_actions columns
           lift_column_ids sources occurrence_at ?refs ?source ?actions parent row)
           (?rows!row)) [0..<length ?beta]"
-    and piece_origin_sort:
-      "sort (map comma_semantic_b1_crt_constructed_piece_origin
-        (concat ?rows))=?origins"
-    and descriptors_width: "length occurrence_descriptors=length sources"
-    using bound index_guard parent_at descriptor_at normalized[symmetric]
-    by (auto simp: comma_semantic_b1_crt_constructed_occurrence_bound_def
-        Let_def split: if_splits option.splits prod.splits)
+    by (rule bound_tail14)
   have parent_geometry_certified:
       "comma_semantic_b1_crt_template_geometry_certified columns templates
         template_column_ids template_cid"

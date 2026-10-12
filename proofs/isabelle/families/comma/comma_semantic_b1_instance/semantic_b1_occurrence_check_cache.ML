@@ -26,10 +26,8 @@ struct
             ("B1 occurrence cache stage=selector-complete name=" ^ name ^
              " elapsed_ms=" ^ Comma_Proof_Profile.elapsed_ms selected_started)
         in selector end
-      fun select_named_children make_selector name pattern child_name_prefix get_definitions =
-        make_selector {ctxt = ctxt, name = "semantic_b1_" ^ name,
-          table_pattern = pattern, child_name_prefix = child_name_prefix,
-          get_definitions = get_definitions}
+      val construction_piece_selector =
+        Comma_Semantic_B1_Construction_Piece_Projection.make ctxt
       val selectors =
         [select "sources" @{thm comma_semantic_b1_crt_sources_def}
            @{term "comma_semantic_b1_crt_sources ! index"} [1024],
@@ -47,12 +45,9 @@ struct
          select "template_column_ids"
            @{thm comma_semantic_b1_crt_template_column_ids_def}
            @{term "comma_semantic_b1_crt_template_column_ids ! index"} [1024],
-         select_named_children
-           Comma_Selected_List_Conversion.make_named_children_from_source
-           "construction_piece_refs"
-           @{term "comma_semantic_b1_crt_construction_piece_refs ! source ! row"}
-           "comma_semantic_b1_crt_construction_piece_source_"
-           Comma_Semantic_B1_Occurrence_Publication.get_construction_piece_source_definitions,
+         {procedure = #procedure construction_piece_selector,
+          post_procedure = #post_procedure construction_piece_selector,
+          stats = #stats construction_piece_selector},
          select "offsets" @{thm comma_offset_representatives_def}
            @{term "comma_offset_representatives ! index"} [46]]
       val lift_column_projection =
@@ -61,6 +56,7 @@ struct
         [#procedure lift_column_projection, #post_procedure lift_column_projection]
       val procedures = maps
         (fn selector => [#procedure selector, #post_procedure selector]) selectors @
+        #support_procedures construction_piece_selector @
         lift_column_procedures
       val base_context = fold Simplifier.add_proc procedures
         (ctxt addsimps Comma_Semantic_B1_Construction_Check.occurrence_cache_catalogue_simp_rules)
@@ -88,22 +84,41 @@ struct
       val started = Time.now ()
       val _ = Comma_Proof_Profile.report
         "B1 occurrence cache stage=make-entry"
+      val column_definitions =
+        Comma_Semantic_B1_Occurrence_Publication.get_definitions ctxt
       val columns = Comma_Semantic_B1_Column_Conversion.make ctxt
-        (Comma_Semantic_B1_Occurrence_Publication.get_definitions ctxt)
+        column_definitions
+      val column_mass = Comma_Semantic_B1_Column_Mass.make ctxt
+        {column_value = #column_value columns, step = #step columns,
+         known_column = #known_column columns, node_count = #node_count columns,
+         prove_admitted = #prove_admitted columns, cache_limit = 8192}
+      (* Build one sparse, proof-producing mass owner from the used template
+         roots.  The invariant helper obtains exact shared block bindings
+         for this dependency closure; it never installs the full
+         block directory or invokes the targeted column-step prover. *)
+      val mass_annotation =
+        Comma_Semantic_B1_Occurrence_Publication.get_mass_annotation ctxt
+      val mass_roots =
+        Comma_Semantic_B1_Occurrence_Publication.get_demanded_root_cids ctxt
+      val invariant_mass = Comma_Semantic_B1_Column_Mass.make_from_nodes ctxt
+        {node_count = #node_count columns,
+         period = (fn level => Vector.sub
+           (Comma_Semantic_B1_Column_Catalog.periods, level)),
+         roots = mass_roots,
+         get_node = #mass_node_row columns,
+         source_bindings = #source_bindings columns,
+         column_value = #column_value columns,
+         known_column = #known_column columns,
+         cache_limit = 8192,
+         annotation_alias = SOME mass_annotation}
+      val _ = #check_fixtures column_mass ()
+      val _ = Comma_Proof_Profile.report "B1 initialization stage=column-owner-ready"
       val _ = Comma_Semantic_B1_Certificate_Store_Fixtures.check_cid_transition_cache
         {transition = #cofactor_transition columns,
          counts = #cofactor_transition_counts columns,
          node_level = #cofactor_node_level columns,
          column_value = #column_value columns,
          node_count = #node_count columns,
-         head_opens = #head_opens columns}
-      val _ = Comma_Semantic_B1_Certificate_Store_Fixtures.check_partition_transition_dag
-        {ctxt = ctxt, column_value = #column_value columns,
-         step = #step columns,
-         cofactor_transition = #cofactor_transition columns,
-         node_count = #node_count columns,
-         node_level = #cofactor_node_level columns,
-         column_counts = #cofactor_transition_counts columns,
          head_opens = #head_opens columns}
       val prove_table_admission = #prove_all_columns_admitted columns
       (* Reuse the proof-producing endpoint arithmetic at selected source
@@ -114,10 +129,10 @@ struct
         (#context fast_kernel)
       val indexed_successors = Comma_Semantic_B1_Construction_Check.make_successor_cache
         ctxt maximum_lift_catalog_extent
-      val memo = Unsynchronized.ref (Termtab.empty: thm Termtab.table)
+      (* Completed theorem entries use exact-term LRU admission. Partial
+         markers share its capacity but remain a separate negative result. *)
+      val memo = Comma_Semantic_B1_Term_LRU.make "occurrence" memo_capacity
       val active = Unsynchronized.ref (Termtab.empty: unit Termtab.table)
-      (* Cache partial requests separately; never publish them as hits. *)
-      val incomplete = Unsynchronized.ref (Termtab.empty: unit Termtab.table)
       val lookups = Unsynchronized.ref 0
       val hits = Unsynchronized.ref 0
       val misses = Unsynchronized.ref 0
@@ -142,12 +157,53 @@ struct
       val binding_evaluation_depth = Unsynchronized.ref 0
       val lift_option_evaluations = Unsynchronized.ref 0
       val lift_option_memo_hits = Unsynchronized.ref 0
-      val {profile = template_partition_profile,
-        prove_checker = prove_partition_checker} =
-        Comma_Semantic_B1_Partition_Conversion.make_template_partition_session ctxt
-          {column_value = #column_value columns, step = #step columns,
-           cofactor_transition = #cofactor_transition columns,
-           node_count = #node_count columns}
+      val template_mass_handler = Unsynchronized.ref
+        (NONE: (term -> thm) option)
+      val template_mass_stats_owner = Unsynchronized.ref (NONE: (unit -> string) option)
+      val template_partition_profile =
+        Comma_Semantic_B1_Partition_Conversion.make_template_partition_profile ()
+      val labelled_zipper_ref = Unsynchronized.ref (NONE:
+        ({context: Proof.context, checker_ct: cterm, ids_row: term,
+          row: term, resolved_fact: thm} -> thm) option)
+      val labelled_zipper_owner = Unsynchronized.ref (NONE: (unit -> string) option)
+      val labelled_zipper_fixtures = Unsynchronized.ref (NONE: (unit -> unit) option)
+      fun get_labelled_zipper () =
+        (case !labelled_zipper_ref of
+          SOME prove_checker => prove_checker
+        | NONE =>
+            let
+              val _ = Comma_Proof_Profile.report
+                "B1 legacy partition fixture stage=transition-start"
+              val _ = Comma_Semantic_B1_Certificate_Store_Fixtures.check_partition_transition_dag
+                {ctxt = ctxt, column_value = #column_value columns,
+                 step = #step columns,
+                 cofactor_transition = #cofactor_transition columns,
+                 node_count = #node_count columns,
+                 node_level = #cofactor_node_level columns,
+                 column_counts = #cofactor_transition_counts columns,
+                 head_opens = #head_opens columns}
+              val _ = Comma_Proof_Profile.report
+                "B1 legacy partition fixture stage=transition-done"
+              val zipper = Comma_Semantic_B1_Labelled_Zip.make ctxt
+                {column_value = #column_value columns,
+                 step = #step columns,
+                 cofactor_transition = #cofactor_transition columns,
+                 cofactor_node_level = #cofactor_node_level columns,
+                 try_evaluate = #try_evaluate columns,
+                 node_count = #node_count columns,
+                 note_cid_state = #note_cid_state template_partition_profile,
+                 note_cid_vector_transition =
+                   #note_cid_vector_transition template_partition_profile}
+              val prove_checker = #prove_checker zipper
+              val _ = labelled_zipper_owner := SOME (#stats zipper)
+              val _ = labelled_zipper_fixtures := SOME (#check_complete_fixtures zipper)
+              val _ = #check_terminal_fixtures zipper ()
+              val _ = labelled_zipper_ref := SOME prove_checker
+            in prove_checker end)
+      fun prove_partition_checker args = (get_labelled_zipper ()) args
+      fun labelled_zipper_stats () =
+        (case !labelled_zipper_owner of SOME stats => stats ()
+        | NONE => "labelled_zipper=lazy-uninitialized")
       val certificate_store =
         Comma_Semantic_B1_Certificate_Store.make_instance_store ctxt
       val _ = Comma_Semantic_B1_Certificate_Store_Fixtures.check ctxt
@@ -161,16 +217,26 @@ struct
         " recursive=" ^ Int.toString (!recursive) ^
         " value_checks=" ^ Int.toString (!value_checks) ^
         " value_nodes=" ^ Int.toString (!value_nodes) ^ " rhs_reuse_hits=" ^ Int.toString (!rhs_reuse_hits) ^ " closed_reuse_hits=" ^ Int.toString (!closed_reuse_hits) ^
-        " retained=" ^ Int.toString (Termtab.size (!memo)) ^
+        " retained=" ^ Int.toString (Comma_Semantic_B1_Term_LRU.completed_size memo) ^
+        " incomplete_retained=" ^ Int.toString (Comma_Semantic_B1_Term_LRU.partial_size memo) ^
+        " memo_lookup_hits=" ^ Int.toString (Comma_Semantic_B1_Term_LRU.hits memo) ^
+        " memo_lookup_misses=" ^ Int.toString (Comma_Semantic_B1_Term_LRU.misses memo) ^
+        " memo_evictions=" ^ Int.toString (Comma_Semantic_B1_Term_LRU.evictions memo) ^
+        " cache_capacity_refusals=" ^ Int.toString (Comma_Semantic_B1_Term_LRU.refusals memo) ^
         " source_action_evaluations_during_binding=" ^
           Int.toString (!binding_source_action_evaluations) ^
         " source_action_reuses_during_binding=" ^
           Int.toString (!binding_source_action_reuses) ^
         " lift_columns_option_evaluations=" ^ Int.toString (!lift_option_evaluations) ^
         " lift_columns_option_memo_hits=" ^ Int.toString (!lift_option_memo_hits) ^
+        " " ^ (case !template_mass_stats_owner of
+          SOME stats => stats () | NONE => "template_mass=uninitialized") ^
         " " ^ (#stats template_partition_profile) () ^
+        " " ^ labelled_zipper_stats () ^
         " " ^ (#stats certificate_store) () ^
         #counters columns () ^
+        " legacy_column_mass " ^ (#stats column_mass) () ^
+        " " ^ (#stats invariant_mass) () ^
         (case Comma_Semantic_B1_Construction_Check.operation_timing_report
             (!operation_times) of
           "" => ""
@@ -307,17 +373,16 @@ struct
                     (Comma_Semantic_B1_Construction_Check.capped_nodes 1024 rhs))
              else ())
             else ()
-          val retained = Termtab.size (!memo) + Termtab.size (!incomplete)
         in
           if complete then
-            (if retained < memo_capacity then
-               (memo := Termtab.update (request, theorem) (!memo);
-                publications := !publications + 1)
-             else uncached := !uncached + 1;
-             SOME theorem)
+            (case Comma_Semantic_B1_Term_LRU.insert_completed memo request theorem of
+              Comma_Semantic_B1_Term_LRU.Added =>
+                (publications := !publications + 1; SOME theorem)
+            | Comma_Semantic_B1_Term_LRU.Existing => SOME theorem
+            | Comma_Semantic_B1_Term_LRU.Refused =>
+                (uncached := !uncached + 1; SOME theorem))
           else
-            (if retained < memo_capacity then
-               incomplete := Termtab.update (request, ()) (!incomplete)
+            (if Comma_Semantic_B1_Term_LRU.remember_partial memo request then ()
              else uncached := !uncached + 1;
              partials := !partials + 1;
              NONE)
@@ -492,8 +557,6 @@ struct
           if not (cacheable original_request) then NONE
           else if already_active then
             (recursive := !recursive + 1; NONE)
-          else if Termtab.defined (!incomplete) request then
-            (projection_miss (); NONE)
           else
             let
               val _ = lookups := !lookups + 1
@@ -501,13 +564,13 @@ struct
               val stored_equation = #lookup_equation certificate_store request
               val remembered_equation = (case stored_equation of
                 SOME _ => NONE
-              | NONE => Termtab.lookup (!memo) request)
+              | NONE => Comma_Semantic_B1_Term_LRU.lookup memo request)
               val _ = #note_cofactor_state_cache_probe template_partition_profile
                 (Time.toMilliseconds (Time.- (Time.now (), probe_started)))
             in
              case stored_equation of
-                 SOME theorem => (record_completed_hit request;
-                   SOME (restore_original theorem))
+                 SOME theorem => (Comma_Semantic_B1_Term_LRU.clear_partial memo request;
+                   record_completed_hit request; SOME (restore_original theorem))
              | NONE =>
                  (case remembered_equation of
                      SOME theorem =>
@@ -516,7 +579,9 @@ struct
                          if projection then #note_hit occurrence_projector () else ();
                        SOME (restore_original theorem))
                  | NONE =>
-                     if not (closed request) then (projection_miss (); NONE)
+                     if Comma_Semantic_B1_Term_LRU.contains_partial memo request then
+                       (projection_miss (); NONE)
+                     else if not (closed request) then (projection_miss (); NONE)
                      else if Termtab.defined (!active) request then
                        (recursive := !recursive + 1; NONE)
                      else (projection_miss ();
@@ -538,6 +603,17 @@ struct
         |> fold Simplifier.add_proc (#procedures selectors)
         |> Simplifier.add_proc proc
         |> fold Simplifier.add_proc [#procedure columns, #post_procedure columns]
+      (* Reuse the selected catalogue projections while keeping DAG columns
+         opaque; the owner caches one checked mass certificate per template. *)
+      val template_mass_context =
+        (code_context addsimps
+          Comma_Semantic_B1_Construction_Check.occurrence_cache_catalogue_simp_rules)
+        |> fold Simplifier.add_proc (#procedures selectors)
+      val template_mass_check = Comma_Semantic_B1_Template_Mass_Check.make ctxt
+        {context = template_mass_context, mass_row = #mass_row invariant_mass,
+         node_count = #node_count columns}
+      val _ = template_mass_handler := SOME (#prove template_mass_check)
+      val _ = template_mass_stats_owner := SOME (#stats template_mass_check)
       val construction_context = ((evaluation_context addsimps
         Comma_Semantic_B1_Construction_Check.occurrence_cache_arithmetic_rules) delsimps @{thms sort_key_simps insort_key.simps})
         |> Simplifier.add_proc
@@ -590,7 +666,7 @@ struct
          canonicalize = (case !partition_canonicalizer_ref of SOME canonicalize => canonicalize
            | NONE => error "B1 partition cofactor canonicalizer was not initialized"),
          memo_proc = memo_proc, isolate = (fn work => work ())}
-      val _ = (memo := Termtab.empty; incomplete := Termtab.empty;
+      val _ = (Comma_Semantic_B1_Term_LRU.clear memo;
         active := Termtab.empty; lookups := 0; hits := 0; misses := 0;
         publications := 0; failures := 0; recursive := 0;
         value_checks := 0; value_nodes := 0;
@@ -600,12 +676,11 @@ struct
         {ctxt = ctxt, context = evaluation_context,
          publish = (fn request => fn theorem => publish_completed ctxt request theorem),
          dispatch = (fn cterm => memo_proc evaluation_context cterm),
-         memo_has = (fn request => Termtab.defined (!memo) request),
-         incomplete_has = (fn request => Termtab.defined (!incomplete) request),
-         memo_size = (fn () => Termtab.size (!memo)),
+         memo_has = (fn request => Comma_Semantic_B1_Term_LRU.contains_completed memo request),
+         incomplete_has = (fn request => Comma_Semantic_B1_Term_LRU.contains_partial memo request),
+         memo_size = (fn () => Comma_Semantic_B1_Term_LRU.completed_size memo),
          publication_count = (fn () => !publications),
-         clear_incomplete = (fn request => incomplete :=
-           Termtab.delete request (!incomplete))}
+         clear_incomplete = (fn request => Comma_Semantic_B1_Term_LRU.clear_partial memo request)}
       val _ = milestone "after-incomplete-equation-regression"
       val _ = Comma_Semantic_B1_Column_Regression.check_cache_column_dispatch
         ctxt evaluation_context operation_context (#post_procedure columns) (#column_value columns)
@@ -681,11 +756,17 @@ struct
                   (Const (name, _), [_]) =>
                     name = @{const_name comma_semantic_b1_crt_construction_check}
                 | _ => false)
+              val template_mass = head_name proposition = SOME
+                @{const_name comma_semantic_b1_crt_template_mass_certified}
               val theorem =
                 if construction then
                   (case !construction_handler of
                     SOME check => check proposition
                   | NONE => error "B1 construction checker is not initialized")
+                else if template_mass then
+                  (case !template_mass_handler of
+                    SOME prove => prove proposition
+                  | NONE => error "B1 template mass handler is not initialized")
                 else
                   let
                     val goal = Thm.cterm_of ctxt (HOLogic.mk_Trueprop proposition)
@@ -819,6 +900,10 @@ struct
                       if predicate aconv @{term "comma_crt_admitted (0::nat)"}
                           andalso range aconv @{term comma_semantic_b1_crt_columns}
                       then prove_table_admission ()
+                      else if head_name predicate = SOME
+                          @{const_name comma_semantic_b1_crt_template_mass_certified}
+                      then Comma_Semantic_B1_Used_Templates.prove ctxt context
+                        (prove_true_using small_upt context) predicate range
                       else if head_name range = SOME @{const_name upt} then
                         prove_list_all (prove_expression small_upt context)
                           context predicate range
@@ -840,7 +925,10 @@ struct
             RS @{thm eq_reflection}
           val unfolded = Conv.arg_conv (Conv.rewr_conv definition) cterm
           val rhs = HOLogic.dest_Trueprop (Thm.term_of (Thm.rhs_of unfolded))
-                  val rhs_proof = prove_expression false evaluation_context rhs
+          val rhs_proof = prove_expression false evaluation_context rhs
+          val _ = (case !labelled_zipper_fixtures of
+            SOME check => check ()
+          | NONE => ())
           val theorem = Thm.equal_elim (Thm.symmetric unfolded) rhs_proof
           val _ = milestone "after-piecewise-proof"
           val _ = if Thm.prop_of theorem aconv request andalso

@@ -131,7 +131,7 @@ definition comma_python_fragment_record_matches ::
         fragment = comma_python_entry_sector_fragment f delta offset
           (comma_finite_headroom f (p mod 924) delta offset)
     | Comma_Near f delta headroom \<Rightarrow>
-        (\\<exists>increment. comma_chart_value p successor =
+        (\<exists>increment. comma_chart_value p successor =
             comma_chart_value p source + increment \<and>
           fragment = comma_python_literal_fragment f
             (comma_chart_value p source mod 10) 1 increment)) \<and>

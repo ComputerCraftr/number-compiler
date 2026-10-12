@@ -171,98 +171,6 @@ struct
         "B1 production cache accepted an out-of-range named column"
     in () end
 
-  fun check_controlled_lookup ctxt =
-    let
-      val natT = @{typ nat}
-      val blockT = @{typ comma_semantic_b1_crt_column_block}
-      val dagT = @{typ comma_semantic_b1_crt_column_dag}
-      val payloadT = @{typ "nat \<times> nat list"}
-      val resultT = @{typ "(nat \<times> nat list) option"}
-      val empty_block = @{term Comma_B1_CRT_Column_Block_Empty}
-      val block_node = Const (@{const_name Comma_B1_CRT_Column_Block_Node},
-        natT --> natT --> HOLogic.listT natT --> blockT --> blockT --> blockT)
-      fun nat n = HOLogic.mk_number natT n
-      fun ids values = HOLogic.mk_list natT (map nat values)
-      fun node cid level children left right = block_node $ nat cid $ nat level $
-        ids children $ left $ right
-      val left_rows = node 3 0 [1, 0, 1, 0]
-        (node 2 0 [0, 1, 0, 1] empty_block empty_block) empty_block
-      val right_rows = node 5 1 [1, 0, 1]
-        (node 4 1 [0, 1, 0] empty_block empty_block) empty_block
-      val block_constructor = Const (@{const_name Comma_B1_CRT_Column_DAG_Block},
-        natT --> natT --> blockT --> dagT)
-      val branch_constructor = Const (@{const_name Comma_B1_CRT_Column_DAG_Branch},
-        natT --> dagT --> dagT --> dagT)
-      fun block base extent rows = block_constructor $ nat base $ nat extent $ rows
-      val left = block 2 2 left_rows
-      val right = block 4 2 right_rows
-      val directory = branch_constructor $ nat 4 $ left $ right
-      val malformed_directory = branch_constructor $ nat 4 $ right $ left
-      val lookup = Const (@{const_name comma_semantic_b1_crt_column_dag_lookup},
-        dagT --> natT --> resultT)
-      val lookup_rules = Conversion.normalize_lookup_rules ctxt
-        @{thms comma_semantic_b1_crt_column_dag_lookup.simps
-          comma_semantic_b1_crt_column_block_lookup.simps}
-      val arithmetic = Comma_Entry_Arithmetic.natural_context ctxt
-      fun value level children =
-        Const (@{const_name Some}, payloadT --> resultT) $
-          HOLogic.mk_prod (nat level, ids children)
-      fun run tree cid visits = Conversion.controlled_lookup ctxt arithmetic
-          lookup_rules visits NONE
-          (Thm.cterm_of ctxt (lookup $ tree $ nat cid))
-      val visits = Unsynchronized.ref 0
-      val below = run directory 2 visits
-      val below_rhs = Thm.term_of (Thm.rhs_of below)
-      val _ = require (below_rhs aconv value 0 [0, 1, 0, 1] andalso
-          !visits = 4 andalso clean_theorem below)
-        "B1 controlled lookup failed the selected-path/count fixture"
-      val at_split_visits = Unsynchronized.ref 0
-      val at_split = run directory 4 at_split_visits
-      val _ = require (Thm.term_of (Thm.rhs_of at_split) aconv value 1 [0, 1, 0] andalso
-          !at_split_visits = 4 andalso clean_theorem at_split)
-        "B1 controlled lookup failed the right-branch fixture"
-      val malformed_visits = Unsynchronized.ref 0
-      val malformed = run malformed_directory 2 malformed_visits
-      val _ = require (not (Thm.term_of (Thm.rhs_of malformed) aconv
-          value 0 [0, 1, 0, 1]) andalso !malformed_visits <= 4 andalso
-          clean_theorem malformed)
-        "B1 controlled lookup accepted a reordered directory branch"
-    in () end
-
-  fun check_mixed_directory_shape ctxt =
-    let
-      val natT = @{typ nat}
-      val blockT = @{typ comma_semantic_b1_crt_column_block}
-      val dagT = @{typ comma_semantic_b1_crt_column_dag}
-      fun nat n = HOLogic.mk_number natT n
-      val empty = @{term Comma_B1_CRT_Column_Block_Empty}
-      val node = Const (@{const_name Comma_B1_CRT_Column_Block_Node},
-        natT --> natT --> HOLogic.listT natT --> blockT --> blockT --> blockT)
-      val rows = node $ nat 3 $ nat 0 $ HOLogic.mk_list natT [nat 0, nat 1] $
-        empty $ empty
-      val block_constructor = Const (@{const_name Comma_B1_CRT_Column_DAG_Block},
-        natT --> natT --> blockT --> dagT)
-      val branch_constructor = Const (@{const_name Comma_B1_CRT_Column_DAG_Branch},
-        natT --> dagT --> dagT --> dagT)
-      fun leaf base = block_constructor $ nat base $ nat 1 $ rows
-      val directory = branch_constructor $ nat 2 $ leaf 2 $ leaf 3
-      val checked_directory = Thm.term_of (Thm.cterm_of ctxt directory)
-      fun natural term = #2 (HOLogic.dest_number term)
-      fun block_range term =
-        (case Comma_Semantic_B1_Column_Catalog.directory_shape term of
-          SOME (Comma_Semantic_B1_Column_Catalog.Directory_Block (base, extent, _)) =>
-            SOME (natural base, natural extent)
-        | _ => NONE)
-      val decoded =
-        (case Comma_Semantic_B1_Column_Catalog.directory_shape checked_directory of
-          SOME (Comma_Semantic_B1_Column_Catalog.Directory_Branch (split, left, right)) =>
-            SOME (natural split, block_range left, block_range right)
-        | _ => NONE)
-    in
-      require (decoded = SOME (2, SOME (2, 1), SOME (3, 1)))
-        "B1 directory decoder confused a branch with its same-arity block leaves"
-    end
-
   fun first_column_node theorem =
     let
       val body = Thm.term_of (Thm.rhs_of theorem)
@@ -460,6 +368,8 @@ struct
         "duplicate DAG authority" (fn () => Conversion.make ctxt
           (definitions @ [table_definition]))
       val equation = Local_Defs.meta_rewrite_rule ctxt table_definition
+      val _ = Comma_Semantic_B1_Column_Lookup_Regression.check_directory_interval_cache
+        ctxt definitions table_definition
       val table_constant = Thm.term_of (Thm.lhs_of equation)
       val stale_definition = Thm.reflexive (Thm.cterm_of ctxt table_constant)
       val _ = expect_error "B1 column DAG has a malformed directory node"
@@ -749,18 +659,18 @@ struct
       val piece_refsT = HOLogic.listT sourceT
       val piece_refs = Const (Sign.intern_const thy
         "comma_semantic_b1_crt_construction_piece_refs", piece_refsT)
+      val piece_catalogue =
+        Comma_Semantic_B1_Construction_Piece_Projection.get_catalogue ctxt
       val {root_definition = piece_refs_definition, child_definitions,
-           child_row_extents} =
-        Publication.get_construction_piece_source_definitions ctxt
-      val piece_refs_selector = Comma_Selected_List_Conversion.make_named_children
-        {ctxt = ctxt, name = "regression_construction_piece_refs",
-         root_definition = piece_refs_definition,
-         table_pattern = @{term "comma_semantic_b1_crt_construction_piece_refs ! source ! row"},
-         child_name_prefix = "comma_semantic_b1_crt_construction_piece_source_",
-         child_definitions = child_definitions,
-         child_row_extents = child_row_extents}
-      val production_context = Simplifier.add_proc (#procedure piece_refs_selector)
-        (Simplifier.add_proc (#post_procedure piece_refs_selector) evaluation_context)
+           child_row_extents, block_source_extents, source_count, ...} = piece_catalogue
+      val piece_refs_selector =
+        Comma_Semantic_B1_Construction_Piece_Projection.make_with_catalogue ctxt
+          "regression_construction_piece_refs" piece_catalogue
+      val production_context = fold Simplifier.add_proc
+        (#support_procedures piece_refs_selector)
+        (Simplifier.add_simps (#support_simp_rules piece_refs_selector)
+          (Simplifier.add_proc (#procedure piece_refs_selector)
+            (Simplifier.add_proc (#post_procedure piece_refs_selector) evaluation_context)))
       val nth_source = Const (@{const_name nth}, piece_refsT --> natT --> sourceT)
       val nth_row = Const (@{const_name nth}, sourceT --> natT --> rowT)
       val selected_source = nth_source $ piece_refs $ nat 0
@@ -806,44 +716,66 @@ struct
         | NONE => error "B1 named child fixture requires distinct row extents")
       val out_of_short_row = nth_row $
         (nth_source $ piece_refs $ nat short_source_index) $ nat short_source_extent
-      val _ = expect_error "Named selected-list row index exceeds its source extent"
+      val _ = expect_error "B1 construction-piece row index exceeds its source extent"
         "authenticated child-specific row bound" (fn () =>
           Simplifier.rewrite production_context (Thm.cterm_of ctxt out_of_short_row))
       val _ = if length child_definitions >= 2 then ()
         else error "B1 named child fixtures require at least two source definitions"
       val swapped_children = tl child_definitions @ [hd child_definitions]
-      val swapped_extents = tl child_row_extents @ [hd child_row_extents]
-      val named_selector_args =
-        {ctxt = ctxt, name = "regression_reordered_construction_piece_refs",
-         root_definition = piece_refs_definition,
-         table_pattern = @{term "comma_semantic_b1_crt_construction_piece_refs ! source ! row"},
-         child_name_prefix = "comma_semantic_b1_crt_construction_piece_source_",
-         child_definitions = swapped_children, child_row_extents = swapped_extents}
+      val swapped_blocks = tl block_source_extents @ [hd block_source_extents]
+      val reordered_catalogue :
+        Comma_Semantic_B1_Construction_Piece_Projection.catalogue =
+        {root_definition = #root_definition piece_catalogue,
+         directory_definition = #directory_definition piece_catalogue,
+         child_definitions = swapped_children,
+         child_row_extents = child_row_extents,
+         block_source_extents = swapped_blocks,
+         source_count = source_count}
       val _ = expect_error "Named selected-list child has a foreign canonical name"
         "reordered named child directory" (fn () =>
-          Comma_Selected_List_Conversion.make_named_children named_selector_args)
+          Comma_Semantic_B1_Construction_Piece_Projection.make_with_catalogue ctxt
+            "regression_reordered_construction_piece_refs" reordered_catalogue)
       val foreign_child = Proof_Context.get_thm ctxt
         "comma_semantic_b1_crt_lift_refs_def"
       val foreign_children = foreign_child :: tl child_definitions
+      val foreign_catalogue :
+        Comma_Semantic_B1_Construction_Piece_Projection.catalogue =
+        {root_definition = #root_definition piece_catalogue,
+         directory_definition = #directory_definition piece_catalogue,
+         child_definitions = foreign_children,
+         child_row_extents = child_row_extents,
+         block_source_extents = block_source_extents,
+         source_count = source_count}
       val _ = expect_error "Named selected-list child has a foreign canonical name"
         "foreign named child definition" (fn () =>
-          Comma_Selected_List_Conversion.make_named_children
-            {ctxt = ctxt, name = "regression_foreign_construction_piece_child",
-             root_definition = piece_refs_definition,
-             table_pattern = @{term "comma_semantic_b1_crt_construction_piece_refs ! source ! row"},
-             child_name_prefix = "comma_semantic_b1_crt_construction_piece_source_",
-             child_definitions = foreign_children,
-             child_row_extents = child_row_extents})
-      val wrong_first_extent = (hd child_row_extents + 1) :: tl child_row_extents
+          Comma_Semantic_B1_Construction_Piece_Projection.make_with_catalogue ctxt
+            "regression_foreign_construction_piece_child" foreign_catalogue)
+      val wrong_first_extent = (hd block_source_extents + 1) :: tl block_source_extents
+      val wrong_extent_catalogue :
+        Comma_Semantic_B1_Construction_Piece_Projection.catalogue =
+        {root_definition = #root_definition piece_catalogue,
+         directory_definition = #directory_definition piece_catalogue,
+         child_definitions = child_definitions,
+         child_row_extents = child_row_extents,
+         block_source_extents = wrong_first_extent,
+         source_count = source_count}
       val _ = expect_error "Named selected-list child has an inconsistent row extent"
         "named child row extent binding" (fn () =>
-          Comma_Selected_List_Conversion.make_named_children
-            {ctxt = ctxt, name = "regression_wrong_construction_piece_extents",
-             root_definition = piece_refs_definition,
-             table_pattern = @{term "comma_semantic_b1_crt_construction_piece_refs ! source ! row"},
-             child_name_prefix = "comma_semantic_b1_crt_construction_piece_source_",
-             child_definitions = child_definitions,
-             child_row_extents = wrong_first_extent})
+          Comma_Semantic_B1_Construction_Piece_Projection.make_with_catalogue ctxt
+            "regression_wrong_construction_piece_extents" wrong_extent_catalogue)
+      val wrong_source_extents = (hd child_row_extents + 1) :: tl child_row_extents
+      val wrong_source_catalogue :
+        Comma_Semantic_B1_Construction_Piece_Projection.catalogue =
+        {root_definition = #root_definition piece_catalogue,
+         directory_definition = #directory_definition piece_catalogue,
+         child_definitions = child_definitions,
+         child_row_extents = wrong_source_extents,
+         block_source_extents = block_source_extents,
+         source_count = source_count}
+      val _ = expect_error "Named selected-list child has an inconsistent row extent"
+        "named source-specific row extent binding" (fn () =>
+          Comma_Semantic_B1_Construction_Piece_Projection.make_with_catalogue ctxt
+            "regression_wrong_source_extents" wrong_source_catalogue)
       val production_request = selected_row
       val production_theorem = Simplifier.rewrite production_context
         (Thm.cterm_of ctxt production_request)
@@ -890,7 +822,7 @@ struct
       val outside_row = nth_row $ selected_source $ nat 131072
       val outside_row_request = outside_row
       val _ = expect_error
-        "Selected-list nested index exceeds its depth-specific extent"
+        "B1 construction-piece row index exceeds its source extent"
         "production-shaped construction row bounds" (fn () =>
           Simplifier.rewrite production_context (Thm.cterm_of ctxt outside_row_request))
       val shift = Const (@{const_name comma_crt_shift}, natT -->
@@ -938,15 +870,16 @@ struct
             then () else error ("B1 exact request fixture failed for the wrong reason: " ^ message)
         | Exn.Exn exn => Exn.reraise exn
         | Exn.Res _ => error "B1 equation checker accepted a theorem for another request")
-    in () end
+    in converter end
 
   fun check_generic_fixtures ctxt =
     let
       val _ = Comma_Proof_Profile.report
         "B1 column regression stage=controlled-lookup-fixtures-start"
       val _ = check_bounded_shifts ctxt
-      val _ = check_controlled_lookup ctxt
-      val _ = check_mixed_directory_shape ctxt
+      val _ = Comma_Semantic_B1_Column_Lookup_Regression.check_controlled_lookup ctxt
+      val _ = Comma_Semantic_B1_Column_Lookup_Regression.check_mixed_directory_shape ctxt
+      val _ = Comma_Semantic_B1_Mass_Rows.check_fixture ctxt
       val _ = Comma_Proof_Profile.report
         "B1 column regression stage=controlled-lookup-fixtures-complete"
     in () end

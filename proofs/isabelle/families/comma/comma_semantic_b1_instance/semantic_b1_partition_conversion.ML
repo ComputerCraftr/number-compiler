@@ -2,29 +2,8 @@
    partition certificates and their shared cofactor states. *)
 structure Comma_Semantic_B1_Partition_Conversion =
 struct
-  fun shape depth term =
-    let
-      fun label current =
-        (case Term.head_of current of
-          Const (name, _) => Long_Name.base_name name
-        | Free (_, _) => "Free"
-        | Var (_, _) => "Var"
-        | Bound _ => "Bound"
-        | Abs _ => "Abs")
-      val head = label term
-      val (_, arguments) = strip_comb term
-    in
-      if depth = 0 orelse null arguments then head
-      else head ^ "(" ^ String.concatWith ","
-        (map (shape (depth - 1)) (take 4 arguments)) ^
-        (if length arguments > 4 then ",..." else "") ^ ")"
-    end
-  fun profile_message make_message =
-    if Comma_Proof_Profile.enabled () then
-      Comma_Proof_Profile.report (make_message ()) else ()
-  fun profile_stage name phase elapsed = profile_message (fn () =>
-    "B1 partition stage=" ^ name ^ " phase=" ^ phase ^
-    (case elapsed of NONE => "" | SOME ms => " elapsed_ms=" ^ LargeInt.toString ms))
+  val shape = Comma_Semantic_B1_Partition_Support.shape
+  val profile_message = Comma_Semantic_B1_Partition_Support.profile_message
   fun make_template_partition_profile () =
     let
       val active = Unsynchronized.ref 0
@@ -307,6 +286,11 @@ struct
           comma_crt_period_def upt_rec_numeral
           nth_Cons'})
       val zero_step = step 0
+      val node_presence_prover =
+        Comma_Semantic_B1_Partition_Support.make_node_presence_prover ctxt
+          {column_value = column_value, step = step, base_context = base_context}
+      val node_presence_equation = #prove node_presence_prover
+      val node_presence_stats = #stats node_presence_prover
       val nonfalse_facts = Unsynchronized.ref (Inttab.empty: thm Inttab.table)
       val residual_head_facts = Unsynchronized.ref (Inttab.empty: thm Inttab.table)
       val residual_head_builds = Unsynchronized.ref 0
@@ -337,6 +321,7 @@ struct
             (3, "vector_reduce_ms"), (4, "residual_fallback_ms"), (5, "terminal_ms"),
             (6, "node_ms"), (7, "root_ms"), (8, "residual_transition_ms")]) ^
           metric (9, "column_step_lookup_ms") ^
+          node_presence_stats () ^
           " residual_fallbacks=" ^ Int.toString (!residual_fallback_scans) ^
           " residual_from_transitions=" ^ Int.toString (!residual_transition_derivations) ^
           " residual_head_rule_builds=" ^ Int.toString (!residual_head_builds) ^
@@ -471,35 +456,9 @@ struct
             SOME theorem => theorem
           | NONE =>
               let
-            val lhs = has_node $ number level $ literal_columns ids
-                val (root_rule, head_rules, tail) =
-                  (case ids of
-                    [] => (@{thm comma_semantic_b1_crt_partition_has_node_at.simps(1)}, [], NONE)
-                  | cid :: tail =>
-                      (@{thm comma_semantic_b1_crt_partition_has_node_at.simps(2)},
-                       [step cid] @ @{thms comma_crt_column.case}, SOME tail))
-                val unfolded = Conv.rewr_conv (root_rule RS @{thm eq_reflection})
-                  (Thm.cterm_of ctxt lhs)
-                val head_reduced = time_work_stage 6 (fn () => Simplifier.rewrite
-                  (base_context addsimps head_rules)
-                  (Thm.rhs_of unfolded))
-                val head_rhs = Thm.term_of (Thm.rhs_of head_reduced)
-                val theorem =
-                  (case (tail, head_rhs) of
-                    (SOME tail_ids, rhs) =>
-                      if rhs aconv @{term True} then Thm.transitive unfolded head_reduced
-                      else
-                        let
-                          val tail_lhs = has_node $ number level $ literal_columns tail_ids
-                          val _ = if rhs aconv tail_lhs then () else error
-                            ("B1 CID partition node head did not reduce to True or its tail; rhs=" ^
-                             shape 6 rhs)
-                          val tail_theorem = has_node_equation level tail_ids
-                        in Thm.transitive (Thm.transitive unfolded head_reduced) tail_theorem end
-                  | (NONE, rhs) =>
-                      if rhs aconv @{term True} orelse rhs aconv @{term False} then
-                        Thm.transitive unfolded head_reduced
-                      else error "B1 empty node-level test did not reduce")
+                val lhs = has_node $ number level $ literal_columns ids
+                val theorem = time_work_stage 6 (fn () =>
+                  node_presence_equation level ids)
                 val rhs = Thm.term_of (Thm.rhs_of theorem)
                 val _ = if (rhs aconv @{term True} orelse rhs aconv @{term False}) andalso
                     Thm.term_of (Thm.lhs_of theorem) aconv lhs andalso clean theorem
@@ -723,171 +682,8 @@ struct
          !vector_transition_fact_count, Symtab.size (!residual_facts),
          Inttab.size (!nonfalse_facts))}
     end
-  fun make_template_partition_checker ctxt
-      {column_value, step, cofactor_transition, node_count}
-      {note_cid_state, note_cid_vector_transition} =
-    let
-      val natT = @{typ nat}
-      val columnT = @{typ comma_crt_column}
-      val rowT = HOLogic.listT columnT
-      val boolT = @{typ bool}
-      val thy = Proof_Context.theory_of ctxt
-      val column_values = make_template_state_prover ctxt
-        {column_value = column_value, step = step,
-         cofactor_transition = cofactor_transition, node_count = node_count}
-        {note_cid_state = note_cid_state,
-         note_cid_vector_transition = note_cid_vector_transition}
-      val prove_state = #prove_state column_values
-      val number = #number column_values
-      val check_equation = #check_equation column_values
-      val table_name = Sign.intern_const thy "comma_semantic_b1_crt_columns"
-      val count_name = Sign.intern_const thy "comma_semantic_b1_crt_column_count"
-      val table = Const (table_name, rowT)
-      val count = Const (count_name, natT)
-      val table_definition = Local_Defs.meta_rewrite_rule ctxt
-        (Proof_Context.get_thm ctxt "comma_semantic_b1_crt_columns_def")
-      val count_definition = Local_Defs.meta_rewrite_rule ctxt
-        (Proof_Context.get_thm ctxt "comma_semantic_b1_crt_column_count_def")
-      val table_body = Thm.term_of (Thm.rhs_of table_definition)
-      val count_value = Thm.term_of (Thm.rhs_of count_definition)
-      val (dag, count_arg) = (case strip_comb table_body of
-          (Const (name, _), [dag, count_arg]) =>
-            if name = @{const_name comma_semantic_b1_crt_columns_for}
-            then (dag, count_arg)
-            else error "B1 template table is not a checked DAG projection"
-        | _ => error "B1 template table definition is malformed")
-      val declared_count_matches =
-        (case try HOLogic.dest_number count_value of
-          SOME (typ, value) => typ = natT andalso value = node_count
-        | NONE => false)
-      val _ = if Thm.term_of (Thm.lhs_of table_definition) aconv table andalso
-          Thm.term_of (Thm.lhs_of count_definition) aconv count andalso
-          count_arg aconv count andalso
-          fastype_of dag = @{typ comma_semantic_b1_crt_column_dag} andalso
-          declared_count_matches andalso
-          fastype_of (column_value 0) = columnT
-        then () else error "B1 template table extent or DAG does not match the checked catalogue"
-      val (column_at_head, column_at_args) = strip_comb (column_value 0)
-      val _ = (case (column_at_head, column_at_args) of
-          (Const (name, _), [column_dag, zero]) =>
-            if name = @{const_name comma_semantic_b1_crt_column_at} andalso
-                column_dag aconv dag andalso
-                (case try HOLogic.dest_number zero of
-                  SOME (typ, value) => typ = natT andalso value = 0
-                | NONE => false)
-            then () else error "B1 column-value callback changed the fixed DAG"
-        | _ => error "B1 column-value callback returned another term")
-      fun dest_nat_list label term =
-        (case try HOLogic.dest_list term of
-          SOME values => map (fn value =>
-            (case try HOLogic.dest_number value of
-              SOME (typ, number) => if typ = natT andalso number >= 0 then number
-                else error ("B1 partition " ^ label ^ " has an invalid natural")
-            | NONE => error ("B1 partition " ^ label ^ " is not a numeral"))) values
-        | NONE => error ("B1 partition " ^ label ^
-            " is not a literal list; rhs=" ^ shape 8 term))
-      fun prove_checker {context, checker_ct, ids_row, row, resolved_fact} =
-        let
-          val _ = profile_stage "row_projection" "start" NONE
-          val row_started = Time.now ()
-          val checker_request = Thm.term_of checker_ct
-          val (checker_head, checker_arguments) = strip_comb checker_request
-          val (levels_term, row_term) =
-            (case (checker_head, checker_arguments) of
-              (Const (name, _), [levels, columns]) =>
-                if name = @{const_name comma_semantic_b1_crt_partition_cofactor_checked} andalso
-                    columns aconv row
-                then (levels, columns)
-                else error "B1 template partition checker request changed its exact row"
-            | _ => error "B1 template partition checker request is malformed")
-          val ids_equation = Simplifier.rewrite context (Thm.cterm_of ctxt ids_row)
-          val _ = check_equation "selected IDs" ids_row
-            (Thm.term_of (Thm.rhs_of ids_equation)) ids_equation
-          val ids = dest_nat_list "selected column IDs"
-            (Thm.term_of (Thm.rhs_of ids_equation))
-          val _ = if Thm.term_of (Thm.rhs_of ids_equation) aconv
-                  HOLogic.mk_list natT (map (HOLogic.mk_number natT) ids) andalso
-              Thm.term_of (Thm.lhs_of ids_equation) aconv ids_row andalso
-              Thm.nprems_of ids_equation = 0 andalso
-              null (Thm.hyps_of ids_equation) andalso null (Thm.tpairs_of ids_equation) andalso
-              forall (fn cid => cid < node_count) ids then ()
-            else error "B1 selected template row has a foreign column ID"
-          val selected_ids = HOLogic.mk_list natT (map (HOLogic.mk_number natT) ids)
-          val column_at = Const (@{const_name comma_semantic_b1_crt_column_at},
-            @{typ "comma_semantic_b1_crt_column_dag"} --> natT --> columnT) $ dag
-          val map_column_at = Const (@{const_name map},
-            (natT --> columnT) --> HOLogic.listT natT --> rowT) $ column_at
-          val selected_map = map_column_at $ selected_ids
-          val selected_columns = HOLogic.mk_list columnT (map column_value ids)
-          val selected_equation = Simplifier.rewrite
-            (put_simpset HOL_basic_ss ctxt addsimps @{thms list.map})
-            (Thm.cterm_of ctxt selected_map)
-          val _ = check_equation "catalogue row projection" selected_map
-            selected_columns selected_equation
-          val table_object = table_definition RS @{thm meta_eq_to_obj_eq}
-          val resolved_columns =
-            @{thm comma_semantic_b1_crt_column_ids_resolve_columns_for}
-              OF [table_object, resolved_fact]
-          val resolved_columns_meta = resolved_columns RS @{thm eq_reflection}
-          val ids_under_map = Thm.combination
-            (Thm.reflexive (Thm.cterm_of ctxt map_column_at)) ids_equation
-          val row_equation = Thm.transitive
-            (Thm.transitive resolved_columns_meta ids_under_map)
-            selected_equation
-          val _ = check_equation "resolved row" row_term selected_columns row_equation
-          val row_elapsed = Time.toMilliseconds (Time.- (Time.now (), row_started))
-          val _ = profile_stage "row_projection" "done" (SOME row_elapsed)
-          val _ = profile_stage "levels" "start" NONE
-          val levels_started = Time.now ()
-          val levels_base_context = Comma_Entry_Arithmetic.natural_context ctxt addsimps
-            @{thms upt_rec_numeral}
-          val levels_context = the_default levels_base_context
-            (Comma_Semantic_B1_CRT_Operation_Conversion.small_closed_upt_context
-              levels_base_context levels_term)
-              addsimps @{thms upt_0 upt_Suc upt_rec upt_rec_numeral}
-          val levels_equation = Simplifier.rewrite levels_context
-            (Thm.cterm_of ctxt levels_term)
-          val levels = dest_nat_list "checker levels"
-            (Thm.term_of (Thm.rhs_of levels_equation))
-          val literal_levels = HOLogic.mk_list natT (map number levels)
-          val _ = check_equation "checker levels" levels_term literal_levels levels_equation
-          val _ = if levels = [0, 1, 2, 3] then ()
-            else error "B1 template partition checker has another CRT level schedule"
-          val levels_elapsed = Time.toMilliseconds (Time.- (Time.now (), levels_started))
-          val _ = profile_stage "levels" "done" (SOME levels_elapsed)
-          val checker_const = Const
-            (@{const_name comma_semantic_b1_crt_partition_cofactor_checked},
-              HOLogic.listT natT --> rowT --> boolT)
-          val head_ct = Thm.cterm_of ctxt checker_const
-          val prefix_equation = Thm.combination
-            (Thm.reflexive head_ct) levels_equation
-          val request_equation = Thm.combination prefix_equation row_equation
-          val _ = profile_message (fn () => "B1 partition stage=state phase=start levels=" ^
-            Int.toString (length levels) ^ " ids=" ^ Int.toString (length ids))
-          val state_started = Time.now ()
-          val state_equation = prove_state levels ids
-          val state_elapsed = Time.toMilliseconds (Time.- (Time.now (), state_started))
-          val _ = profile_message (fn () =>
-            let val (states, vectors, _, _) = #state_counts column_values ()
-            in "B1 partition stage=state phase=done elapsed_ms=" ^
-              LargeInt.toString state_elapsed ^ " states=" ^ Int.toString states ^
-              " vectors=" ^ Int.toString vectors ^
-              (#vector_work_summary column_values) () end)
-          val equation = Thm.transitive request_equation state_equation
-          val _ = check_equation "template checker" checker_request @{term True} equation
-        in equation end
-    in {prove_checker = prove_checker, prove_transition = #prove_transition column_values,
-        state_counts = #state_counts column_values} end
-  fun make_template_partition_session ctxt
-      {column_value, step, cofactor_transition, node_count} =
-    let
-      val profile = make_template_partition_profile ()
-      val checker = make_template_partition_checker ctxt
-        {column_value = column_value, step = step,
-         cofactor_transition = cofactor_transition, node_count = node_count}
-        {note_cid_state = #note_cid_state profile,
-         note_cid_vector_transition = #note_cid_vector_transition profile}
-    in {profile = profile, prove_checker = #prove_checker checker} end
+  fun make_template_partition_checker_with_state ctxt args state =
+    Comma_Semantic_B1_Template_Row_Projection.make ctxt args state
   fun make_partition_cofactor_canonicalizer context
       {note_shape_check, note_shape_cache_hit} =
     let

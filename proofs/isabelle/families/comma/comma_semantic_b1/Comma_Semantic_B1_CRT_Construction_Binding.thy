@@ -1,5 +1,5 @@
 theory Comma_Semantic_B1_CRT_Construction_Binding
-  imports Comma_Semantic_B1_CRT_Partition_Coverage
+  imports Comma_Semantic_B1_CRT_Multiset
     Comma_Semantic_B1_CRT_Column_DAG
 begin
 
@@ -176,6 +176,38 @@ proof (rule nth_equalityI)
     by (auto simp: comma_semantic_b1_crt_column_ids_resolve_def)
   show "map (\<lambda>cid. columns!cid) ids ! i = values!i"
     using i_ids id_bound column_eq by (simp add: nth_map)
+qed
+
+lemma comma_semantic_b1_crt_column_ids_resolve_from_map:
+  assumes bounded: "list_all (\<lambda>cid. cid<length columns) ids"
+    and mapped: "map (\<lambda>cid. columns!cid) ids=values"
+  shows "comma_semantic_b1_crt_column_ids_resolve columns ids values"
+  using bounded unfolding mapped[symmetric]
+  by (simp add: comma_semantic_b1_crt_column_ids_resolve_def
+      list_all_length)
+
+lemma comma_semantic_b1_crt_column_ids_resolve_columns_for_from_map:
+  assumes table: "columns=comma_semantic_b1_crt_columns_for dag extent"
+    and bounded: "list_all (\<lambda>cid. cid<extent) ids"
+    and mapped: "map (comma_semantic_b1_crt_column_at dag) ids=values"
+  shows "comma_semantic_b1_crt_column_ids_resolve columns ids values"
+proof -
+  have bounds: "list_all (\<lambda>cid. cid<length columns) ids"
+    using bounded table
+    by (simp only: comma_semantic_b1_crt_columns_for_length)
+  have columns_map:
+      "map (\<lambda>cid. columns!cid) ids=
+        map (comma_semantic_b1_crt_column_at dag) ids"
+  proof (rule map_cong[OF refl])
+    fix cid
+    assume "cid\<in>set ids"
+    then have "cid<extent" using bounded by (simp add: list_all_iff)
+    then show "columns!cid=comma_semantic_b1_crt_column_at dag cid"
+      using table by (simp add: comma_semantic_b1_crt_columns_for_nth)
+  qed
+  show ?thesis
+    by (rule comma_semantic_b1_crt_column_ids_resolve_from_map
+      [OF bounds trans[OF columns_map mapped]])
 qed
 
 lemma comma_semantic_b1_crt_column_ids_resolve_columns_for:
@@ -830,6 +862,8 @@ lemmas comma_semantic_b1_crt_construction_binding_oracle_audit_bundle =
   comma_semantic_b1_crt_find_result_index_nth
   comma_semantic_b1_crt_group_piece_local_covered
   comma_semantic_b1_crt_column_ids_resolve_map
+  comma_semantic_b1_crt_column_ids_resolve_from_map
+  comma_semantic_b1_crt_column_ids_resolve_columns_for_from_map
   comma_semantic_b1_crt_column_ids_resolve_columns_for
   comma_semantic_b1_crt_column_ids_resolve_list_all2
   comma_semantic_b1_crt_column_ids_resolve_preserves_list_all

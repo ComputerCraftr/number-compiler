@@ -11,27 +11,45 @@ struct
     else let val started = Time.now () val result = work ()
       val _ = timer := Time.+ (!timer, Time.- (Time.now (), started))
     in result end
-
   fun argument_at index conversion ct =
     if index = 0 then Conv.arg_conv conversion ct
     else Conv.fun_conv (argument_at (index - 1) conversion) ct
 
+  (* Shared certified selection of one closed Boolean conditional branch. *)
+  fun choose_closed_if ctxt numeral_context
+      (expected_if, guard_not_boolean, malformed_if) ct =
+    (case strip_comb (Thm.term_of ct) of
+      (Const (name, _), [condition, _, _]) =>
+        if name <> @{const_name If} then error expected_if
+        else
+          let
+            val condition_fact = Simplifier.rewrite numeral_context
+              (Thm.cterm_of ctxt condition)
+            val condition_value = Thm.term_of (Thm.rhs_of condition_fact)
+            val exposed = argument_at 2 (Conv.rewr_conv condition_fact) ct
+            val rule =
+              if condition_value aconv @{term True} then
+                @{thm if_True} RS @{thm eq_reflection}
+              else if condition_value aconv @{term False} then
+                @{thm if_False} RS @{thm eq_reflection}
+              else error guard_not_boolean
+          in Thm.transitive exposed (Conv.rewr_conv rule (Thm.rhs_of exposed)) end
+    | _ => error malformed_if)
+
   fun normalize_lookup_rules ctxt rules =
     map (Local_Defs.meta_rewrite_rule ctxt) rules
 
-  (* Reduce the certified lookup program one selected constructor at a time.
-     General simplification of a lookup call traverses the entire directory
-     and the selected block before taking its logarithmic path.  This
-     conversion instead rewrites only the current lookup root, evaluates only
-     its closed numeric guard, and recurses into the selected child. *)
+  (* Reduce one selected lookup branch at a time; broad simp traverses the directory. *)
   fun controlled_lookup ctxt numeral_context lookup_rules visits block_authority request_ct =
     let
       val dag_lookup_name =
         @{const_name comma_semantic_b1_crt_column_dag_lookup}
       val block_lookup_name =
         @{const_name comma_semantic_b1_crt_column_block_lookup}
-      val if_true = @{thm if_True} RS @{thm eq_reflection}
-      val if_false = @{thm if_False} RS @{thm eq_reflection}
+      val choose_selected_if = choose_closed_if ctxt numeral_context
+        ("B1 controlled lookup expected an if node",
+         "B1 controlled lookup guard did not normalize to a Boolean",
+         "B1 controlled lookup encountered a malformed if node")
 
       fun is_lookup term =
         (case strip_comb term of
@@ -44,27 +62,7 @@ struct
           (Const (name, _), _) => name = @{const_name If}
         | _ => false)
 
-      fun choose_if ct =
-        (case strip_comb (Thm.term_of ct) of
-          (Const (name, _), [condition, _, _]) =>
-            if name <> @{const_name If} then
-              error "B1 controlled lookup expected an if node"
-            else
-              let
-                val condition_fact = Simplifier.rewrite numeral_context
-                  (Thm.cterm_of ctxt condition)
-                val condition_value = Thm.term_of (Thm.rhs_of condition_fact)
-                val expose_condition = argument_at 2
-                  (Conv.rewr_conv condition_fact) ct
-                val exposed = Thm.rhs_of expose_condition
-                val selected =
-                  if condition_value aconv @{term True} then
-                    Conv.rewr_conv if_true exposed
-                  else if condition_value aconv @{term False} then
-                    Conv.rewr_conv if_false exposed
-                  else error "B1 controlled lookup guard did not normalize to a Boolean"
-              in Thm.transitive expose_condition selected end
-        | _ => error "B1 controlled lookup encountered a malformed if node")
+      fun choose_if ct = choose_selected_if ct
 
       fun open_selected_block ct =
         (case block_authority of
@@ -259,24 +257,33 @@ struct
           end
       val step_facts = Unsynchronized.ref (Termtab.empty: thm Termtab.table)
       val lookup_facts = Unsynchronized.ref (Termtab.empty: thm Termtab.table)
-      val step_procedure = Unsynchronized.ref NONE
       val lookup_hits = Unsynchronized.ref 0
       val lookup_misses = Unsynchronized.ref 0
       val step_hits = Unsynchronized.ref 0
       val step_misses = Unsynchronized.ref 0
+      val child_admission_facts = Unsynchronized.ref
+        (Termtab.empty: thm Termtab.table)
+      val child_admission_hits = Unsynchronized.ref 0
+      val child_admission_misses = Unsynchronized.ref 0
+      val child_admission_refusals = Unsynchronized.ref 0
       val lookup_value_ms = Unsynchronized.ref Time.zeroTime
       val step_rewrite_ms = Unsynchronized.ref Time.zeroTime
+      val step_admission_ms = Unsynchronized.ref Time.zeroTime
       val column_at_unfold_ms = Unsynchronized.ref Time.zeroTime
       val column_at_rule = Local_Defs.meta_rewrite_rule ctxt
         @{thm comma_semantic_b1_crt_column_at.simps}
       val lookupT = @{typ "(nat \<times> nat list) option"}
       val lookup_const = Const (@{const_name comma_semantic_b1_crt_column_dag_lookup},
         dagT --> natT --> lookupT)
-      val lookup_rules = normalize_lookup_rules ctxt
-        @{thms comma_semantic_b1_crt_column_dag_lookup.simps
-          comma_semantic_b1_crt_column_block_lookup.simps}
       val numeral_context = Comma_Entry_Arithmetic.natural_context ctxt
+      val prove_admitted_header =
+        Comma_Semantic_B1_CRT_Operation_Conversion.make_column_at_admitted_header ctxt
       val lookup_visits = Unsynchronized.ref 0
+      val directory_lookup_cache =
+        Comma_Semantic_B1_Column_Lookup_Cache.make_directory
+          ctxt numeral_context 8192 expected_dag_constant equation
+      val interval_lookup_cache = Comma_Semantic_B1_Column_Lookup_Cache.make
+        ctxt numeral_context 8192
 
       fun lookup_value_uncounted cid =
         let
@@ -289,19 +296,23 @@ struct
               let
                 val _ = lookup_misses := !lookup_misses + 1
                 val request_ct = Thm.cterm_of ctxt request
-                val table_step = argument_at 1 (Conv.rewr_conv equation) request_ct
                 val selected_block = block_for_cid cid
-                val lookup_step = controlled_lookup ctxt numeral_context
-                  lookup_rules lookup_visits
-                  (SOME (#constant selected_block, #theorem selected_block))
-                  (Thm.rhs_of table_step)
-                val theorem = Thm.transitive table_step lookup_step
+                val directory_step =
+                  #lookup directory_lookup_cache
+                    (#constant selected_block) (#theorem selected_block)
+                    (#base selected_block) (#extent selected_block) cid request_ct
+                val lookup_step = #lookup interval_lookup_cache lookup_visits
+                  (#constant selected_block) (#theorem selected_block)
+                  (#base selected_block) (#extent selected_block) cid
+                  (Thm.rhs_of directory_step)
+                val theorem = Thm.transitive directory_step lookup_step
                 val {level, children, ...} = node cid
                 val expected_value = Const (@{const_name Some},
                     @{typ "nat \<times> nat list"} --> lookupT) $
                   HOLogic.mk_prod (HOLogic.mk_number natT level,
                     HOLogic.mk_list natT (map (HOLogic.mk_number natT) children))
-                val _ = if Thm.term_of (Thm.rhs_of theorem) aconv expected_value
+                val _ = if Thm.term_of (Thm.lhs_of theorem) aconv request andalso
+                    Thm.term_of (Thm.rhs_of theorem) aconv expected_value
                   then () else error
                     "B1 selected column block returned another node payload"
                 val _ = if Thm.nprems_of theorem = 0 andalso
@@ -311,21 +322,92 @@ struct
                   (!lookup_facts)
               in theorem end)
         end
-      fun lookup_value cid = time_profile lookup_value_ms (fn () =>
-        lookup_value_uncounted cid)
+      fun lookup_value cid = time_profile lookup_value_ms (fn () => lookup_value_uncounted cid)
 
-      fun step_context cid =
+      val admitted_const = Const (@{const_name comma_crt_admitted}, natT --> columnT --> HOLogic.boolT)
+      fun check_child_admission_fact request theorem =
         let
-          val rules = @{thms list_all_Nil_iff list_all_Cons_iff list.map list.size nth_Cons'
-            option.case comma_crt_admitted.simps comma_crt_period_def comma_semantic_b1_crt_guarded_node_def}
-          val lookup_rule = if cid < 2 then [] else [lookup_value cid]
-          val context = numeral_context addsimps (rules @ lookup_rule)
+          val expected = HOLogic.mk_Trueprop request
         in
-          (case !step_procedure of
-            NONE => context
-          | SOME procedure => Simplifier.add_proc procedure context)
+          if Thm.prop_of theorem aconv expected andalso
+              Thm.nprems_of theorem = 0 andalso null (Thm.hyps_of theorem) andalso
+              null (Thm.tpairs_of theorem) andalso closed expected
+          then theorem
+          else error "B1 child-admission theorem changed its exact request"
         end
 
+      (* Prove the exact child fact needed by a raw row, with lookup/header
+         authority for internal CIDs and closed equations for terminal CIDs. *)
+      fun child_admission_fact lower child =
+        let
+          val request = admitted_const $ HOLogic.mk_number natT lower $ column_value child
+        in
+          (case Termtab.lookup (!child_admission_facts) request of
+            SOME theorem =>
+              (child_admission_hits := !child_admission_hits + 1;
+               check_child_admission_fact request theorem)
+          | NONE =>
+              let
+                val _ = child_admission_misses := !child_admission_misses + 1
+                val theorem =
+                  if child < 2 then
+                    Goal.prove ctxt [] [] (HOLogic.mk_Trueprop request)
+                      (fn {context, ...} =>
+                        simp_tac (put_simpset HOL_basic_ss context addsimps
+                          (@{thms comma_crt_admitted.simps
+                            comma_semantic_b1_crt_column_at_false
+                            comma_semantic_b1_crt_column_at_true})) 1)
+                  else
+                    let
+                      val {level, children, ...} = node child
+                      val lookup = lookup_value child
+                      val children_term = HOLogic.mk_list natT
+                        (map (HOLogic.mk_number natT) children)
+                      val admitted_equation = prove_admitted_header
+                            {request = request,
+                             dag = expected_dag_constant,
+                             cid = HOLogic.mk_number natT child,
+                             lower = HOLogic.mk_number natT lower,
+                             level = HOLogic.mk_number natT level,
+                             children = children_term, lookup = lookup}
+                      val proposition_equation = Thm.combination
+                        (Thm.reflexive (Thm.cterm_of ctxt @{term Trueprop}))
+                        admitted_equation
+                    in
+                      Thm.equal_elim (Thm.symmetric proposition_equation)
+                        @{thm TrueI}
+                    end
+                val theorem = check_child_admission_fact request theorem
+                val _ = if Termtab.size (!child_admission_facts) < 8192 then
+                    child_admission_facts := Termtab.update
+                      (request, theorem) (!child_admission_facts)
+                  else child_admission_refusals :=
+                    !child_admission_refusals + 1
+              in theorem end)
+        end
+
+      val raw_node_admission_context = numeral_context addsimps
+        @{thms comma_crt_admitted.simps list_all_Nil_iff list_all_Cons_iff
+          list.size nth_Cons' comma_crt_period_def}
+      val targeted_step_base_context = numeral_context addsimps
+        @{thms list_all_Nil_iff list_all_Cons_iff list.map list.size nth_Cons'
+          option.case comma_crt_period_def comma_semantic_b1_crt_guarded_node_def}
+
+      fun raw_node_admission_fact cid =
+        let
+          val {level, children, ...} = node cid
+          val child_facts = map (child_admission_fact (level + 1)) children
+          val request = admitted_const $ HOLogic.mk_number natT 0 $ shallow_body cid
+          val context = raw_node_admission_context addsimps child_facts
+          val equation = Simplifier.rewrite context (Thm.cterm_of ctxt request)
+          val _ = if Thm.term_of (Thm.lhs_of equation) aconv request andalso
+              Thm.term_of (Thm.rhs_of equation) aconv @{term True} then ()
+            else error "B1 raw-node admission did not reduce to True"
+          val theorem = Thm.equal_elim (Thm.symmetric (Thm.combination
+            (Thm.reflexive (Thm.cterm_of ctxt @{term Trueprop})) equation)) @{thm TrueI}
+        in check_child_admission_fact request theorem end
+      fun targeted_step_context root_lookup raw_admission =
+        targeted_step_base_context addsimps [root_lookup, raw_admission]
       fun column_step cid =
         let val request = column_value cid in
           (case Termtab.lookup (!step_facts) request of
@@ -335,10 +417,26 @@ struct
                 val _ = step_misses := !step_misses + 1
                 val request_ct = Thm.cterm_of ctxt request
                 val unfolded = time_profile column_at_unfold_ms
-                  (fn () => Conv.rewr_conv column_at_rule request_ct)
-                val context = step_context cid
+                  (fn () =>
+                    if cid = 0 then Conv.rewr_conv
+                      (@{thm comma_semantic_b1_crt_column_at_false} RS @{thm eq_reflection}) request_ct
+                    else if cid = 1 then Conv.rewr_conv
+                      (@{thm comma_semantic_b1_crt_column_at_true} RS @{thm eq_reflection}) request_ct
+                    else Conv.rewr_conv column_at_rule request_ct)
+                val root_lookup = if cid < 2 then NONE else
+                  SOME (time_profile lookup_value_ms (fn () =>
+                    lookup_value_uncounted cid))
+                val raw_admission = if cid < 2 then NONE else
+                  SOME (time_profile step_admission_ms (fn () =>
+                    raw_node_admission_fact cid))
                 val reduced = time_profile step_rewrite_ms (fn () =>
-                  Simplifier.rewrite context (Thm.rhs_of unfolded))
+                  (case (root_lookup, raw_admission) of
+                    (SOME lookup, SOME admission) =>
+                      Simplifier.rewrite
+                        (targeted_step_context lookup admission)
+                        (Thm.rhs_of unfolded)
+                  | (NONE, NONE) => Thm.reflexive (Thm.rhs_of unfolded)
+                  | _ => error "B1 targeted column-step context is incomplete"))
                 val theorem = Thm.transitive unfolded reduced
                 val lhs = Thm.term_of (Thm.lhs_of theorem)
                 val rhs = Thm.term_of (Thm.rhs_of theorem)
@@ -395,29 +493,33 @@ struct
         in
           certify_derived_theorem "B1 fresh cofactor transition" checked
         end
-      fun build_cofactor_transition level digit cid target_cid request =
+      fun build_cofactor_transition level cid target_cid request =
         let
-          val source = column_value cid
           val request_ct = Thm.cterm_of ctxt request
-          val unfolded = Conv.arg_conv
-            (Conv.rewr_conv (column_step cid)) request_ct
-          val reduced = Simplifier.rewrite cofactor_transition_context
-            (Thm.rhs_of unfolded)
-          val rhs = Thm.term_of (Thm.rhs_of reduced)
           val target = column_value target_cid
-          val target_wrap =
-            if rhs aconv target then Thm.reflexive (Thm.rhs_of reduced)
-            else Conv.rewr_conv (Thm.symmetric (column_step target_cid))
-              (Thm.rhs_of reduced)
-          val theorem = Thm.transitive unfolded
-            (Thm.transitive reduced target_wrap)
-          val _ = if Thm.term_of (Thm.lhs_of theorem) aconv request andalso
-              Thm.term_of (Thm.rhs_of theorem) aconv target then () else
-            error ("B1 cofactor transition did not reach its checked CID: " ^
-              "level=" ^ Int.toString level ^ " digit=" ^ Int.toString digit ^
-              " cid=" ^ Int.toString cid ^ " source=" ^
-              Syntax.string_of_term ctxt source ^ " rhs=" ^
-              Syntax.string_of_term ctxt rhs)
+          val theorem = if cid >= 2 andalso level < #level (node cid) then
+              let
+                val admission = child_admission_fact (level + 1) cid
+                val rule = Drule.infer_instantiate ctxt
+                  [(("level", 0), Thm.cterm_of ctxt (HOLogic.mk_number natT level))]
+                  @{thm comma_crt_cofactor_skip_from_admission}
+                val skip = Simplifier.full_simplify numeral_context rule OF [admission]
+              in Simplifier.rewrite
+                (put_simpset HOL_basic_ss ctxt addsimps
+                  (@{thms comma_crt_cofactor_or_false_def option.case} @ [skip]))
+                request_ct end
+            else
+              let
+                val unfolded = Conv.arg_conv
+                  (Conv.rewr_conv (column_step cid)) request_ct
+                val reduced = Simplifier.rewrite cofactor_transition_context
+                  (Thm.rhs_of unfolded)
+                val rhs = Thm.term_of (Thm.rhs_of reduced)
+                val target_wrap = if rhs aconv target
+                  then Thm.reflexive (Thm.rhs_of reduced)
+                  else Conv.rewr_conv (Thm.symmetric (column_step target_cid))
+                    (Thm.rhs_of reduced)
+              in Thm.transitive unfolded (Thm.transitive reduced target_wrap) end
           val checked = check_fresh_cofactor_transition theorem request target_cid
           val _ = cofactor_transition_proofs :=
             !cofactor_transition_proofs + 1
@@ -456,7 +558,7 @@ struct
               let
                 val _ = cofactor_transition_misses :=
                   !cofactor_transition_misses + 1
-                val theorem = build_cofactor_transition level digit cid
+                val theorem = build_cofactor_transition level cid
                   target_cid request
                 val _ = cofactor_transition_facts :=
                   Termtab.update (request, (target_cid, theorem))
@@ -579,8 +681,7 @@ struct
                             HOLogic.mk_prod (HOLogic.mk_number natT level, children_term)
                           val _ = if Thm.term_of (Thm.rhs_of lookup) aconv expected then ()
                             else error "B1 admission header disagrees with the validated column row"
-                          val header =
-                            Comma_Semantic_B1_CRT_Operation_Conversion.prove_column_at_admitted_header ctxt
+                          val header = prove_admitted_header
                             {request = normalized_request, dag = expected_dag_constant,
                              cid = HOLogic.mk_number natT cid,
                              lower = HOLogic.mk_number natT lower,
@@ -695,7 +796,6 @@ struct
          kind = Simplifier.Simproc,
          lhss = map Comma_Selected_List_Conversion.schematize patterns,
          proc = fn _ => evaluate, identifier = []}
-      val _ = step_procedure := SOME procedure
       fun prove_columns_admitted_conversion target_ct =
         let
           val target = Thm.term_of target_ct
@@ -842,10 +942,20 @@ struct
         " column_lookup_value_misses=" ^ Int.toString (!lookup_misses) ^
         " column_step_hits=" ^ Int.toString (!step_hits) ^
         " column_step_misses=" ^ Int.toString (!step_misses) ^
+        " column_child_admission_hits=" ^
+          Int.toString (!child_admission_hits) ^
+        " column_child_admission_misses=" ^
+          Int.toString (!child_admission_misses) ^
+        " column_child_admission_refusals=" ^
+          Int.toString (!child_admission_refusals) ^
         " column_lookup_value_ms=" ^ LargeInt.toString
           (Time.toMilliseconds (!lookup_value_ms)) ^
+        (#counters directory_lookup_cache) () ^
+        (#counters interval_lookup_cache) () ^
         " column_step_rewrite_ms=" ^ LargeInt.toString
           (Time.toMilliseconds (!step_rewrite_ms)) ^
+        " column_step_admission_ms=" ^ LargeInt.toString
+          (Time.toMilliseconds (!step_admission_ms)) ^
         " column_at_unfold_ms=" ^ LargeInt.toString
           (Time.toMilliseconds (!column_at_unfold_ms)) ^
         " column_head_opens=" ^ Int.toString (!opened) ^
@@ -877,10 +987,13 @@ struct
        cofactor_transition = cofactor_transition,
        cofactor_transition_counts = cofactor_transition_counts,
        cofactor_node_level = cofactor_node_level,
+       lookup_value = lookup_value,
+       source_bindings = fn cids => Comma_Semantic_B1_Column_Catalog.source_bindings_for (#interval directory_lookup_cache) ordered_blocks count cids,
+       mass_node_row = Comma_Semantic_B1_Column_Catalog.mass_node_row count node,
        step_misses = fn () => !step_misses,
+       prove_admitted = fn (lower, cid) => child_admission_fact lower cid,
        prove_columns_admitted = prove_columns_admitted,
        prove_all_columns_admitted = prove_all_columns_admitted,
        try_evaluate = evaluate}
     end
-
 end

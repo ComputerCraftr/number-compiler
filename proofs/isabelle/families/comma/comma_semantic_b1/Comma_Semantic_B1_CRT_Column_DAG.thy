@@ -176,6 +176,20 @@ next
   qed
 qed
 
+lemma comma_crt_cofactor_skip_from_admission:
+  assumes admitted: "comma_crt_admitted (Suc level) column"
+  shows "comma_crt_cofactor level digit column = Some column"
+proof (cases column)
+  case (Comma_CRT_Bool payload)
+  then show ?thesis by simp
+next
+  case (Comma_CRT_Node node_level children)
+  have node_bound: "Suc level \<le> node_level"
+    using admitted Comma_CRT_Node by simp
+  then have skipped: "level < node_level" by simp
+  show ?thesis using Comma_CRT_Node skipped by simp
+qed
+
 ML \<open>comma_semantic_b1_column_at_admitted_timer "proof-submitted"\<close>
 
 lemma comma_semantic_b1_crt_column_at_false:

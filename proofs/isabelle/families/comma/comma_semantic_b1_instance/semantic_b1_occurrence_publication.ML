@@ -6,6 +6,32 @@ struct
 
   structure Candidate = Comma_Semantic_B1_Template_Constructor
 
+  type mass_annotation =
+    {constant: term, body: term, definition: thm, cids: int list, roots: int list}
+
+  structure Mass_Annotation_Data = Theory_Data
+  (
+    type T = mass_annotation option
+    val empty = NONE
+    fun same (left: mass_annotation) (right: mass_annotation) =
+      #constant left aconv #constant right andalso
+      #body left aconv #body right andalso
+      #cids left = #cids right andalso #roots left = #roots right andalso
+      Thm.prop_of (#definition left) aconv Thm.prop_of (#definition right)
+    fun merge (NONE, right) = right
+      | merge (left, NONE) = left
+      | merge (SOME left, SOME right) =
+          if same left right then SOME left
+          else error "B1 mass annotation theory data diverged"
+  )
+
+  fun get_mass_annotation ctxt =
+    (case Mass_Annotation_Data.get (Proof_Context.theory_of ctxt) of
+      SOME annotation => annotation
+    | NONE => error "B1 mass annotation was not published in this theory")
+
+  fun get_demanded_root_cids ctxt = #roots (get_mass_annotation ctxt)
+
   (* Keep executable constructor fixtures with the publication boundary; the
      candidate fold itself contains only production construction logic. *)
   fun check_candidate_examples () =
@@ -210,11 +236,14 @@ struct
       SOME constant => constant
     | NONE => error ("B1 " ^ owner ^ " omitted declared constant " ^ name))
 
-  val construction_piece_source_prefix =
-    "comma_semantic_b1_crt_construction_piece_source_"
+  val construction_piece_source_block_size = 32
+  val construction_piece_source_block_prefix =
+    "comma_semantic_b1_crt_construction_piece_source_block_"
+  val construction_piece_source_blocks_name =
+    "comma_semantic_b1_crt_construction_piece_source_blocks"
 
-  fun construction_piece_source_name index =
-    construction_piece_source_prefix ^ Int.toString index
+  fun construction_piece_source_block_name index =
+    construction_piece_source_block_prefix ^ Int.toString index
 
   fun serialize_construction_piece_source (dag: column_dag) rows =
     let
@@ -226,16 +255,35 @@ struct
           (map (serialize_construction_piece dag) pieces)) rows)
     end
 
-  fun serialize_construction_piece_source_definitions
+  fun split_source_blocks values = chop_groups construction_piece_source_block_size values
+
+  fun serialize_construction_piece_source_blocks
       (dag: column_dag) occurrences : global_definition list =
     let
       val pieceT = @{typ comma_semantic_b1_crt_piece_ref}
       val sourceT = HOLogic.listT (HOLogic.listT pieceT)
+      val blockT = HOLogic.listT sourceT
     in
-      map_index (fn (index, rows) =>
-        {name = construction_piece_source_name index, T = sourceT,
-         rhs = (fn _ => serialize_construction_piece_source dag rows)}:
-           global_definition) occurrences
+      map_index (fn (index, sources) =>
+          {name = construction_piece_source_block_name index, T = blockT,
+           rhs = (fn _ => HOLogic.mk_list sourceT
+             (map (serialize_construction_piece_source dag) sources))}:
+             global_definition) (split_source_blocks occurrences)
+    end
+
+  fun construction_piece_source_blocks_definition occurrences : global_definition =
+    let
+      val pieceT = @{typ comma_semantic_b1_crt_piece_ref}
+      val sourceT = HOLogic.listT (HOLogic.listT pieceT)
+      val blockT = HOLogic.listT sourceT
+      val directoryT = HOLogic.listT blockT
+      val names = map_index (fn (index, _) =>
+        construction_piece_source_block_name index) (split_source_blocks occurrences)
+    in
+      {name = construction_piece_source_blocks_name, T = directoryT,
+       rhs = (fn constants => HOLogic.mk_list blockT
+         (map (lookup_global_constant "piece-source block batch" constants) names))}:
+           global_definition
     end
 
   fun construction_piece_refs_definition occurrences : global_definition =
@@ -243,12 +291,14 @@ struct
       val pieceT = @{typ comma_semantic_b1_crt_piece_ref}
       val sourceT = HOLogic.listT (HOLogic.listT pieceT)
       val rootT = HOLogic.listT sourceT
-      val names = map_index (fn (index, _) =>
-        construction_piece_source_name index) occurrences
+      val blockT = HOLogic.listT sourceT
+      val directoryT = HOLogic.listT blockT
+      val concatenate = Const (@{const_name concat}, directoryT --> rootT)
     in
       {name = "comma_semantic_b1_crt_construction_piece_refs", T = rootT,
-       rhs = (fn constants => HOLogic.mk_list sourceT
-         (map (lookup_global_constant "piece-source batch" constants) names))}:
+       rhs = (fn constants => concatenate $
+         lookup_global_constant "piece-source directory" constants
+           construction_piece_source_blocks_name)}:
            global_definition
     end
 
@@ -266,6 +316,8 @@ struct
             (index + 2, level, map (#cid dag) children)
         | _ => error "B1 global column node table contains a Boolean leaf")
     in map_index row (#node_keys dag) end
+
+  val mass_annotation_name = "comma_semantic_b1_crt_mass_annotation_tree"
 
   fun chunks size values =
     if null values then []
@@ -387,10 +439,9 @@ struct
             arguments constructor end
     in build 0 row_count end
 
-  fun define_column_blocks (dag: column_dag) lthy =
+  fun define_column_blocks (dag: column_dag) node_rows lthy =
     let
       val started = Time.now ()
-      val node_rows = column_rows dag
       val row_blocks = chunks column_block_size node_rows
       val preparation_started = Time.now ()
       val _ = Comma_Proof_Profile.report
@@ -459,7 +510,7 @@ struct
       val make = Const (@{const_name comma_semantic_b1_crt_column_at}, makeT)
     in make $ dag_constant $ Candidate.nat cid end
 
-  fun define_column_data (dag: column_dag) lthy =
+  fun define_column_data (dag: column_dag) node_rows lthy =
     let
       val started = Time.now ()
       val dagT = @{typ comma_semantic_b1_crt_column_dag}
@@ -469,7 +520,7 @@ struct
         ("B1 publication stage=column-block-definition-preparation-start nodes=" ^
           Int.toString node_count)
       val {blocks, directory, lthy = blocks_lthy} =
-        define_column_blocks dag lthy
+        define_column_blocks dag node_rows lthy
       val dag_started = Time.now ()
       val _ = Comma_Proof_Profile.report
         ("B1 publication stage=column-directory-definition-start blocks=" ^
@@ -598,77 +649,6 @@ struct
         indices
     in dag_definition :: block_definitions end
 
-  type construction_piece_source_catalogue =
-    {root_definition: thm, child_definitions: thm list,
-     child_row_extents: int list}
-
-  fun get_construction_piece_source_definitions ctxt =
-    let
-      val thy = Proof_Context.theory_of ctxt
-      val pieceT = @{typ comma_semantic_b1_crt_piece_ref}
-      val rowT = HOLogic.listT pieceT
-      val sourceT = HOLogic.listT rowT
-      val rootT = HOLogic.listT sourceT
-      fun exact_equation name expectedT theorem =
-        let
-          val equation = Local_Defs.meta_rewrite_rule ctxt theorem
-          val lhs = Thm.term_of (Thm.lhs_of equation)
-          val rhs = Thm.term_of (Thm.rhs_of equation)
-          val expected_name = Sign.intern_const thy name
-          val actual_name =
-            (case lhs of Const (constant, _) => constant | _ => "")
-          val _ = if actual_name = expected_name andalso
-              fastype_of lhs = expectedT andalso fastype_of rhs = expectedT andalso
-              Comma_Semantic_B1_Column_Conversion.closed lhs andalso
-              Comma_Semantic_B1_Column_Conversion.closed rhs andalso
-              Thm.nprems_of equation = 0 andalso null (Thm.hyps_of equation) andalso
-              null (Thm.tpairs_of equation)
-            then () else error ("B1 piece-source definition has invalid shape: " ^ name)
-        in equation end
-      val root_name = "comma_semantic_b1_crt_construction_piece_refs"
-      val source_name = "comma_semantic_b1_crt_sources"
-      val root_definition = Proof_Context.get_thm ctxt (root_name ^ "_def")
-      val root_equation = exact_equation root_name rootT root_definition
-      val source_definition = Proof_Context.get_thm ctxt (source_name ^ "_def")
-      val source_equation = exact_equation source_name
-        (HOLogic.listT @{typ comma_finite_position}) source_definition
-      val source_count = length
-        (HOLogic.dest_list (Thm.term_of (Thm.rhs_of source_equation)))
-      val root_children = HOLogic.dest_list (Thm.term_of (Thm.rhs_of root_equation))
-      val _ = if length root_children = source_count then ()
-        else error "B1 piece-source directory has the wrong source extent"
-      fun child_name index = construction_piece_source_name index
-      fun child_constant_matches (index, term) =
-        (case term of
-          Const (constant, T) => T = sourceT andalso
-            constant = Sign.intern_const thy (child_name index)
-        | _ => false)
-      val _ = if forall child_constant_matches (map_index (fn item => item) root_children)
-        then () else error "B1 piece-source directory is foreign, missing, or reordered"
-      val child_definitions = map_index (fn (index, _) =>
-        Proof_Context.get_thm ctxt (child_name index ^ "_def")) root_children
-      val child_equations = map_index (fn (index, theorem) =>
-        exact_equation (child_name index) sourceT theorem) child_definitions
-      fun child_extent equation =
-        let
-          val rows = HOLogic.dest_list (Thm.term_of (Thm.rhs_of equation))
-          val _ = if forall (fn row => fastype_of row = rowT) rows then ()
-            else error "B1 piece-source row has the wrong list type"
-        in length rows end
-      val child_row_extents = map child_extent child_equations
-      val all_definitions = root_equation :: source_equation :: child_equations
-      val _ = if null (Thm_Deps.all_oracles all_definitions) then ()
-        else error "B1 piece-source definitions depend on an oracle"
-      val _ = Comma_Proof_Profile.report
-        ("B1 publication stage=construction-piece-source-catalogue sources=" ^
-          Int.toString source_count)
-    in
-      {root_definition = root_definition,
-       child_definitions = child_definitions,
-       child_row_extents = child_row_extents}:
-        construction_piece_source_catalogue
-    end
-
   type lift_column_id_block_catalogue =
     {root_definition: thm, directory_definition: thm,
      child_definitions: thm list, child_row_extents: int list,
@@ -769,9 +749,11 @@ struct
           Int.toString row_count ^ " blocks=" ^
           Int.toString (length child_definitions))
     in
-      {root_definition = root_definition,
-       directory_definition = directory_definition,
-       child_definitions = child_definitions,
+      (* Keep the public field names for existing consumers, but publish the
+         validated meta equations rather than the raw local definitions. *)
+      {root_definition = root_equation,
+       directory_definition = directory_equation,
+       child_definitions = child_equations,
        child_row_extents = child_row_extents,
        row_count = row_count}: lift_column_id_block_catalogue
     end
@@ -843,6 +825,45 @@ struct
         serialize_lift_descriptors (#lift_descriptors artifact)
       val lift_refs_term = serialize_lift_refs (#lift_refs artifact)
       val column_dag = artifact_column_dag artifact
+      val descriptor_terms = HOLogic.dest_list (#occurrence_descriptors_term artifact)
+      fun descriptor_template_cid descriptor =
+        let
+          val (cid_term, _) = HOLogic.dest_prod descriptor
+        in
+          (case HOLogic.dest_number cid_term of
+            (typ, cid) => if typ = Candidate.natT andalso cid >= 0 then cid
+              else error "B1 descriptor mass root has a non-natural CID")
+        end
+      fun remember_template cid (seen, reversed) =
+        if Inttab.defined seen cid then (seen, reversed)
+        else (Inttab.update (cid, ()) seen, cid :: reversed)
+      val (_, reversed_template_cids) = fold remember_template
+        (map descriptor_template_cid descriptor_terms) (Inttab.empty, [])
+      val template_cids = rev reversed_template_cids
+      val root_keys = maps (fn cid =>
+        (case try List.nth (#template_keys artifact, cid) of
+          SOME keys => keys
+        | NONE => error "B1 descriptor references a foreign template CID"))
+        template_cids
+      fun remember_root cid (seen, reversed) =
+        if Inttab.defined seen cid then (seen, reversed)
+        else (Inttab.update (cid, ()) seen, cid :: reversed)
+      val (_, reversed_root_cids) = fold remember_root
+        (map (fn key => #cid column_dag key) root_keys) (Inttab.empty, [])
+      val root_cids = rev reversed_root_cids
+      val column_node_rows = column_rows column_dag
+      val mass_rows = map (fn (cid, level, children) =>
+        {cid = cid, level = level, children = children}:
+          Comma_Semantic_B1_Mass_Candidate.node_row) column_node_rows
+      val (mass_annotation_body, mass_annotation_cids) =
+        Comma_Semantic_B1_Mass_Candidate.make_annotation_from_rows
+          (length (#node_keys column_dag) + 2)
+          (fn level => Vector.sub (Comma_Semantic_B1_Column_Catalog.periods, level))
+          root_cids mass_rows
+      val mass_annotation_definition : global_definition =
+        {name = mass_annotation_name,
+         T = fastype_of mass_annotation_body,
+         rhs = (fn _ => mass_annotation_body)}
       val template_column_ids_term =
         serialize_column_ids column_dag (#template_keys artifact)
       val lift_column_id_block_definitions = serialize_lift_column_id_block_definitions
@@ -859,8 +880,10 @@ struct
       val source_count = length (HOLogic.dest_list (#normalized_sources_term artifact))
       val _ = if piece_source_count = source_count then ()
         else error "B1 construction pieces lost source-index alignment"
-      val piece_source_definitions = serialize_construction_piece_source_definitions
+      val piece_source_definitions = serialize_construction_piece_source_blocks
         column_dag piece_sources
+      val piece_source_directory_definition =
+        construction_piece_source_blocks_definition piece_sources
       val _ = Comma_Proof_Profile.report
         ("B1 publication stage=construction-piece-source-batch sources=" ^
          Int.toString piece_source_count)
@@ -871,7 +894,7 @@ struct
       val _ = Comma_Proof_Profile.report
         "B1 publication stage=global-column-dag-data-start"
       val {dag_constant, lthy = columns_lthy, ...} =
-        define_column_data column_dag generated_lthy
+        define_column_data column_dag column_node_rows generated_lthy
       val _ = Comma_Proof_Profile.report
         ("B1 publication stage=global-column-dag-data-complete cids=" ^
           Int.toString (length (#node_keys column_dag) + 2) ^ " templates=" ^
@@ -890,7 +913,8 @@ struct
            template_column_ids_term] @ lift_column_id_block_definitions @
         [lift_column_id_blocks_root_definition, lift_column_ids_root_definition] @
         piece_source_definitions @
-        [construction_piece_refs_definition piece_sources,
+        [piece_source_directory_definition,
+         construction_piece_refs_definition piece_sources,
          {name = "comma_semantic_b1_crt_templates", T = template_columns_type,
           rhs = (fn constants => template_projection dag_constant
             (lookup_global_constant "artifact batch" constants template_ids_name))},
@@ -906,9 +930,23 @@ struct
          data "comma_semantic_b1_crt_lift_descriptors"
            (fastype_of lift_descriptors_term) lift_descriptors_term,
          data "comma_semantic_b1_crt_lift_refs"
-           (fastype_of lift_refs_term) lift_refs_term]
-      val (_, next) = define_global_definitions "artifact-data-batch"
+           (fastype_of lift_refs_term) lift_refs_term,
+         mass_annotation_definition]
+      val (defined_artifacts, next) = define_global_definitions "artifact-data-batch"
         artifact_definitions columns_lthy
-    in next end
+      val defined_mass_annotation =
+        (case get_first (fn (defined: defined_global) =>
+            if #name defined = mass_annotation_name then SOME defined else NONE)
+            defined_artifacts of
+          SOME defined => defined
+        | NONE => error "B1 publication omitted the mass annotation definition")
+      val mass_annotation : mass_annotation =
+        {constant = #constant defined_mass_annotation,
+         body = mass_annotation_body,
+         definition = #theorem defined_mass_annotation,
+         cids = mass_annotation_cids, roots = root_cids}
+      val next_with_mass_annotation = Local_Theory.background_theory
+        (fn thy => Mass_Annotation_Data.put (SOME mass_annotation) thy) next
+    in next_with_mass_annotation end
 
 end

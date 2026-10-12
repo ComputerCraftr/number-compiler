@@ -16,20 +16,24 @@ column selected by its result; valid references alone cannot establish parent
 exactness. The generic candidate theorem passes the kernel, including the
 wrong-phase, absent-label and changed-rebase fixtures.
 
-The latest standard run rebuilt the foundation in 33 seconds and the semantic
-future bridge in 35 seconds. The concrete B1 instance still exceeded its
-60-second limit while checking template partition geometry, before checking
-local-coverage witnesses: early template checks took approximately 4–5 seconds
-each. This measured geometry-evaluator cost remains a blocker. The concrete
-certificate, B32 and global instances have not passed; production forest
-admission remains unchanged. Scoped Python regression, lint, formatting and
-strict typing checks pass. These dirty-tree results are development evidence.
+The latest generic B1 session passed in 47 seconds. The concrete session now
+certifies all 31,073 dependency-closed mass rows, all 278 template geometry
+proofs and their exact catalogue fold. Reusing the checked named-root lookup
+facts reduced measured template proof time to 5.277 seconds. The bounded occurrence memo now replaces old completed facts and no longer
+stops publication at capacity; the catalogue fold reuses all 430 item proofs.
+The subsequent occurrence-checking stage still exceeds the 300-second
+session limit, most recently inside `comma_crt_apply_shifted`. B1, B32
+and the global concrete instances remain unaccepted; production forest
+admission remains unchanged. The
+[October 12 record](sprints/week-of-2026-10-11/comma.md) separates each kernel
+result from source-level audits and earlier timeouts. These dirty-tree results
+are development evidence.
 
 The validation infrastructure is being migrated to Git-native evidence and the
 [shared execution policy](development.md#reproducible-release-commands): Python
-60 seconds per test and 300 per suite under 4 GiB; Isabelle 60 seconds per session
-under 6 GiB with four prover threads. The earlier evidence below retains its
-recorded budgets and fingerprints and does not certify this migration. Dirty
+60 seconds per test and 300 per suite under 4 GiB; Isabelle 300 seconds per
+session under 6 GiB with four prover threads. The earlier evidence below retains
+its recorded budgets and fingerprints and does not certify this policy update. Dirty
 workspace validation is development evidence; release acceptance requires a clean
 committed source in an isolated Git worktree.
 

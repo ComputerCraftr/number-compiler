@@ -834,6 +834,8 @@ struct
       comma_short_period_def comma_compiled_short_period_facts upt_rec_numeral}
   val occurrence_cache_generic_constants =
     [@{const_name comma_semantic_b1_crt_construction_check},
+     @{const_name comma_semantic_b1_crt_template_mass_certified},
+     @{const_name comma_semantic_b1_crt_used_lift_binding_check},
      @{const_name comma_semantic_b1_crt_template_geometry_certified},
      @{const_name comma_semantic_b1_crt_lift_geometry_certified},
      @{const_name comma_semantic_b1_crt_constructed_goto_slot_certificate},
@@ -923,6 +925,8 @@ struct
       comma_semantic_b1_crt_constructed_piece_origin_def
       comma_semantic_b1_crt_template_geometry_certified_def
       comma_semantic_b1_crt_lift_geometry_certified_def
+      comma_semantic_b1_crt_used_lift_binding_check_def
+      comma_semantic_b1_crt_lift_binding_certified_def
       comma_semantic_b1_crt_constructed_goto_slot_certificate_def
       comma_semantic_b1_crt_constructed_piece_binding_matches_def
       comma_semantic_b1_crt_constructed_piece_binding_matches_from_actions_def

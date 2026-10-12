@@ -257,7 +257,7 @@ session Comma_Semantic_Future in comma_semantic_future = Comma_Semantic_B1 +
     Comma_Semantic_Boundary
 session Comma_Semantic_B1 in comma_semantic_b1 = Comma_Terminal_Weight +
   options [document = false, quick_and_dirty = false]
-  sessions Shared_S_Arithmetic "HOL-Library"
+  sessions Shared_S_Arithmetic "HOL-Library" "HOL-Combinatorics"
   theories
     Comma_Semantic_B1
     Comma_Semantic_Graph
@@ -266,6 +266,7 @@ session Comma_Semantic_B1 in comma_semantic_b1 = Comma_Terminal_Weight +
     Comma_Semantic_B1_Power
     Comma_CRT_Columns
     Comma_Semantic_B1_CRT_Column_DAG
+    Comma_Semantic_B1_CRT_Column_Lookup
     Comma_CRT_Apply
     Comma_CRT_Support
     Comma_CRT_Power
@@ -283,11 +284,24 @@ session Comma_Semantic_B1 in comma_semantic_b1 = Comma_Terminal_Weight +
     Comma_Semantic_B1_CRT_Lift_Bindings
     Comma_Semantic_B1_CRT_Local_Cover
     Comma_Semantic_B1_CRT_Partition_Coverage
+    Comma_Semantic_B1_CRT_Parent_Partition
+    Comma_Semantic_B1_CRT_Labelled_Selector
+    Comma_Semantic_B1_CRT_Indexed_Labels
+    Comma_Semantic_B1_CRT_Partition_Completeness
+    Comma_Semantic_B1_CRT_Cardinality
+    Comma_Semantic_B1_CRT_Mass_Transport
+    Comma_Semantic_B1_CRT_Mass_Annotations
+    Comma_Semantic_B1_CRT_Mass_Layout
+    Comma_Semantic_B1_CRT_Mass_Annotation_Regression
+    Comma_Semantic_B1_CRT_Embedding_Construction
+    Comma_Semantic_B1_CRT_Permutation
+    Comma_Semantic_B1_CRT_Multiset
     Comma_Semantic_B1_CRT_Construction_Binding
     Comma_Semantic_B1_CRT_Partition_Composition
     Comma_Semantic_B1_CRT_Slot_Certificates
     Comma_Semantic_B1_CRT_Occurrence_Bounds
     Comma_Semantic_B1_CRT_Constructed_Occurrence
+    Comma_Semantic_B1_CRT_Constructor_Mass
     Comma_Semantic_B1_CRT_Constructed_Refinement
     Comma_Semantic_B1_CRT_Construction_Regression
 session Comma_Semantic_B1_Instance in comma_semantic_b1_instance = Comma_Semantic_Future +
@@ -311,12 +325,16 @@ session Comma_Semantic_Future_Instance in comma_semantic_future_instance = Comma
     Comma_Semantic_Fragment_Refinement
     Comma_Semantic_Producer_Refinement
     Comma_Semantic_Producer_Coefficients
+    Comma_Python_Chart_Refinement
     Comma_Semantic_Producer_Affine_Algebra
     Comma_Semantic_Producer_Trace_Bridge
     Comma_Semantic_Producer_Prefix_Refinement
     Comma_Semantic_Producer_Cut_Refinement
+    Comma_Python_Grouped_Near_Refinement
+    Comma_Python_Grouped_Chart_Refinement
     Comma_Semantic_Producer_Weight_Cuts
     Comma_Semantic_Producer_Partial_Selection
+    Comma_Semantic_Release
 session Comma_Semantic_Graph_Instance in comma_semantic_graph_instance = Comma_Decisive_Endpoint_Quotient +
   options [document = false, quick_and_dirty = false]
   theories

@@ -18,11 +18,11 @@ struct
       val blockT = HOLogic.listT rowT
       val blocksT = HOLogic.listT blockT
       val rowsT = HOLogic.listT rowT
-      fun meta_equation theorem =
-        if can Logic.dest_equals (Thm.prop_of theorem) then theorem
-        else theorem RS @{thm eq_reflection}
-      val root_equation = meta_equation root_definition
-      val directory_equation = meta_equation directory_definition
+      (* The publication catalogue has already authenticated and normalized
+         these equations.  Keep the constructor's shape/type checks below,
+         but do not repeat Local_Defs.meta_rewrite_rule here. *)
+      val root_equation = root_definition
+      val directory_equation = directory_definition
       val lift_root = Thm.term_of (Thm.lhs_of root_equation)
       val block_directory = Thm.term_of (Thm.lhs_of directory_equation)
       val root_body = Thm.term_of (Thm.rhs_of root_equation)
@@ -94,7 +94,7 @@ struct
         in seek 0 index child_row_extents end
       fun expected_row block row =
         let
-          val theorem = meta_equation (List.nth (child_definitions, block))
+          val theorem = List.nth (child_definitions, block)
           val values = HOLogic.dest_list (Thm.term_of (Thm.rhs_of theorem))
         in List.nth (values, row) end
       fun validate request theorem expected =
@@ -196,8 +196,7 @@ struct
         Publication.get_lift_column_id_block_definitions ctxt
       val natT = @{typ nat}
       val rowT = HOLogic.listT natT
-      val root = Thm.term_of (Thm.lhs_of
-        (Local_Defs.meta_rewrite_rule ctxt root_definition))
+      val root = Thm.term_of (Thm.lhs_of root_definition)
       val nth_root = Const (@{const_name nth}, fastype_of root --> natT --> rowT)
       val _ = if row_count = 2444 andalso length child_definitions = 39 andalso
           child_row_extents = replicate 38 64 @ [12] then ()
@@ -212,8 +211,7 @@ struct
       fun expected_row index =
         let
           val (block, offset) = block_offset index
-          val equation = Local_Defs.meta_rewrite_rule ctxt
-            (List.nth (child_definitions, block))
+          val equation = List.nth (child_definitions, block)
           val values = HOLogic.dest_list (Thm.term_of (Thm.rhs_of equation))
         in List.nth (values, offset) end
       fun check_index index =
@@ -240,7 +238,7 @@ struct
         else error "B1 lift-column bounded root length is not exact"
       val _ = expect_bad_index ctxt evaluation_context
         (nth_root $ root $ HOLogic.mk_number natT row_count)
-      val directory_equation = Local_Defs.meta_rewrite_rule ctxt directory_definition
+      val directory_equation = directory_definition
       val directory = Thm.term_of (Thm.lhs_of directory_equation)
       val blockT = HOLogic.listT rowT
       val directoryT = HOLogic.listT blockT

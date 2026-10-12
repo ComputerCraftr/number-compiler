@@ -1,6 +1,7 @@
 theory Comma_Semantic_B1_CRT_Constructed_Occurrence
   imports "HOL-Library.Product_Lexorder"
     Comma_Semantic_B1_CRT_Occurrence_Bounds
+    Comma_Semantic_B1_CRT_Parent_Partition
 begin
 ML \<open>Comma_Proof_Profile.report "Constructed occurrence stage=entered"\<close>
 text \<open>The certificate binds every sorted source origin once to its exact slot action, child output, and parent destination; it neither enumerates phases nor assumes parent geometry.\<close>
@@ -225,7 +226,7 @@ proof -
   then show ?thesis
     by (simp add: comma_semantic_b1_crt_constructed_source_origins_def)
 qed
-lemma comma_semantic_b1_crt_constructed_occurrence_wellformed:
+lemma comma_semantic_b1_crt_constructed_occurrence_from_partition_or_mass:
   fixes columns :: "comma_crt_column list"
     and templates :: "comma_crt_column list list"
     and template_column_ids lift_column_ids :: "nat list list"
@@ -242,9 +243,17 @@ lemma comma_semantic_b1_crt_constructed_occurrence_wellformed:
     and bound: "comma_semantic_b1_crt_constructed_occurrence_bound columns templates template_column_ids lift_column_ids sources occurrence_at occurrence_descriptors lift_refs (slot_actions_table!index) lift_descriptors piece_refs index"
     and earlier: "\<And>child_index child. child_index<index \<Longrightarrow> occurrence_at child_index=Some child \<Longrightarrow> comma_semantic_b1_crt_occurrence_wellformed child"
     and parent_at: "occurrence_at index=Some parent"
-    and parent_template_geometry:
-      "comma_semantic_b1_crt_template_geometry_certified columns templates
-        template_column_ids (fst (occurrence_descriptors!index))"
+    and parent_template_resolution:
+      "fst (occurrence_descriptors!index)<length templates \<and>
+       fst (occurrence_descriptors!index)<length template_column_ids \<and>
+       comma_semantic_b1_crt_column_ids_resolve columns
+         (template_column_ids!fst (occurrence_descriptors!index))
+         (templates!fst (occurrence_descriptors!index))"
+    and parent_partition_or_mass:
+      "comma_semantic_b1_crt_cells_partition {..<924}
+          (map comma_crt_set (templates!fst (occurrence_descriptors!index))) \<or>
+       sum_list (map card (map comma_crt_set
+          (templates!fst (occurrence_descriptors!index))))=924"
     and used_lift_geometries:
       "\<And>slot child_index lift_cid. slot<length (lift_refs!index) \<Longrightarrow>
         (lift_refs!index)!slot=Comma_B1_Lift_Goto_Ref slot child_index lift_cid \<Longrightarrow>
@@ -275,10 +284,12 @@ proof -
     by (rule comma_semantic_b1_crt_constructed_occurrence_bound_index_guards
       [OF bound])
   ML_prf \<open>Comma_Proof_Profile.report "Constructed occurrence: index guard submitted"\<close>
+  note expanded_bound = bound[unfolded
+    comma_semantic_b1_crt_constructed_occurrence_bound_def
+    if_P[OF index_guard] parent_at option.simps Let_def]
   have normalized: "?source=comma_source_continuation_base ?source"
-    using bound index_guard parent_at
-    by (auto simp: comma_semantic_b1_crt_constructed_occurrence_bound_def
-        Let_def)
+    by (rule expanded_bound[THEN conjunct1])
+  ML_prf \<open>Comma_Proof_Profile.report "Constructed occurrence: normalized source extracted"\<close>
   have source_is_base: "comma_source_continuation_base ?source=?source"
     by (rule sym[OF normalized])
   have bound_body:
@@ -310,9 +321,7 @@ proof -
        list_all (comma_semantic_b1_crt_constructed_piece_binding_matches_from_actions columns
          lift_column_ids sources occurrence_at ?refs ?source ?actions parent row)
          (?rows!row)) [0..<length ?beta]"
-    using bound index_guard parent_at descriptor_at source_is_base
-    by (simp add: comma_semantic_b1_crt_constructed_occurrence_bound_def
-        Let_def)
+    by (rule expanded_bound[unfolded descriptor_at prod.case fst_conv conj_assoc])
   ML_prf \<open>Comma_Proof_Profile.report "Constructed occurrence: bound body submitted"\<close>
   have index_bound: "index<length sources"
     using index_guard by blast
@@ -345,10 +354,6 @@ proof -
         (?rows!row)) [0..<length ?beta]"
     using bound_body
     by (auto simp: source_is_base)
-  have parent_geometry_certified:
-      "comma_semantic_b1_crt_template_geometry_certified columns templates
-        template_column_ids template_cid"
-    using parent_template_geometry descriptor_at by simp
   have slots_valid:
       "list_all (comma_semantic_b1_crt_lift_slot_valid sources occurrence_at
         occurrence_descriptors templates ?source parent ?refs lift_descriptors)
@@ -412,8 +417,7 @@ proof -
      template_cid<length template_column_ids \<and>
      comma_semantic_b1_crt_column_ids_resolve columns
        (template_column_ids!template_cid) (templates!template_cid)"
-    by (rule comma_semantic_b1_crt_template_geometry_certified_resolves
-      [OF parent_geometry_certified])
+    using parent_template_resolution descriptor_at by simp
   have parent_resolution:
     "comma_semantic_b1_crt_column_ids_resolve columns
       (template_column_ids!template_cid)
@@ -688,16 +692,6 @@ proof -
   have parent_admitted: "list_all (comma_crt_admitted 0) (comma_semantic_b1_crt_occurrence_columns parent)"
     using comma_semantic_b1_crt_column_ids_resolve_preserves_list_all
       [OF table_admitted parent_resolution] parent_resolved_template by simp
-  have parent_template_partition:
-      "comma_semantic_b1_crt_cells_partition {..<924}
-        (map comma_crt_set (templates!template_cid))"
-    by (rule comma_semantic_b1_crt_template_geometry_certified_partition
-      [OF parent_geometry_certified])
-  have parent_cells_partition:
-      "comma_semantic_b1_crt_cells_partition {..<924}
-        (map comma_crt_set (comma_semantic_b1_crt_occurrence_columns parent))"
-    using parent_template_partition parent_columns by simp
-  ML_prf \<open>Comma_Proof_Profile.report "Constructed occurrence: parent partition checked"\<close>
   have source_width: "length ?labels=length ?cells" by simp
   have parent_width:
       "length ?beta=length (map comma_crt_set
@@ -764,6 +758,29 @@ proof -
       using union_covered by (simp only: source_union mapped_selected_column)
   qed
   ML_prf \<open>Comma_Proof_Profile.report "Constructed occurrence: local coverage checked"\<close>
+  have parent_cells_partition:
+      "comma_semantic_b1_crt_cells_partition {..<924}
+        (map comma_crt_set (comma_semantic_b1_crt_occurrence_columns parent))"
+    using parent_partition_or_mass
+  proof (elim disjE)
+    assume partition:
+      "comma_semantic_b1_crt_cells_partition {..<924}
+        (map comma_crt_set (templates!fst (occurrence_descriptors!index)))"
+    then show ?thesis using parent_columns descriptor_at by simp
+  next
+    assume cardinality:
+      "sum_list (map card (map comma_crt_set
+        (templates!fst (occurrence_descriptors!index))))=924"
+    have mass:
+        "sum_list (map card (map comma_crt_set
+          (comma_semantic_b1_crt_occurrence_columns parent)))=924"
+      using cardinality parent_columns descriptor_at by simp
+    show ?thesis
+      by (rule comma_semantic_b1_crt_parent_columns_partition_from_grouped_cover
+        [OF source_width cells_partition labels_set beta_distinct _
+          parent_rebase_bound parent_admitted _ mass])
+        (use parent_width local_coverage in auto)
+  qed
   have grouped_rebased:
     "map comma_crt_set (comma_semantic_b1_crt_occurrence_columns parent) = map (comma_semantic_b1_crt_rebase_set ((924-comma_semantic_b1_crt_occurrence_rebase parent) mod 924)) (comma_semantic_b1_crt_group_supports ?labels ?cells ?beta)"
     by (rule sym[OF comma_semantic_b1_crt_group_partition_rebase_local_eq
@@ -801,6 +818,54 @@ proof -
     by (rule comma_semantic_b1_crt_grouped_rebase_wellformed
       [OF parent_binding parent_admitted source_width cells_partition labels_set
         beta_distinct grouped_rebased shift_bound support_nonempty])
+qed
+lemma comma_semantic_b1_crt_constructed_occurrence_wellformed:
+  fixes columns :: "comma_crt_column list"
+    and templates :: "comma_crt_column list list"
+    and template_column_ids lift_column_ids :: "nat list list"
+    and sources :: "comma_finite_position list"
+    and occurrence_at :: "nat \<Rightarrow> comma_semantic_b1_crt_occurrence option"
+    and occurrence_descriptors :: "comma_semantic_b1_crt_descriptor list"
+    and lift_refs :: "comma_semantic_b1_crt_lift_ref list list"
+    and slot_actions_table :: "comma_source_continuation_action list list"
+    and lift_descriptors :: "comma_semantic_b1_crt_lift_descriptor list"
+    and piece_refs :: "comma_semantic_b1_crt_piece_ref list list list"
+    and index :: nat
+    and parent :: comma_semantic_b1_crt_occurrence
+  assumes table_admitted: "list_all (comma_crt_admitted 0) columns"
+    and bound: "comma_semantic_b1_crt_constructed_occurrence_bound columns templates template_column_ids lift_column_ids sources occurrence_at occurrence_descriptors lift_refs (slot_actions_table!index) lift_descriptors piece_refs index"
+    and earlier: "\<And>child_index child. child_index<index \<Longrightarrow> occurrence_at child_index=Some child \<Longrightarrow> comma_semantic_b1_crt_occurrence_wellformed child"
+    and parent_at: "occurrence_at index=Some parent"
+    and parent_template_geometry:
+      "comma_semantic_b1_crt_template_geometry_certified columns templates
+        template_column_ids (fst (occurrence_descriptors!index))"
+    and used_lift_geometries:
+      "\<And>slot child_index lift_cid. slot<length (lift_refs!index) \<Longrightarrow>
+        (lift_refs!index)!slot=Comma_B1_Lift_Goto_Ref slot child_index lift_cid \<Longrightarrow>
+        comma_semantic_b1_crt_lift_geometry_certified columns templates
+          template_column_ids lift_column_ids lift_descriptors lift_cid"
+  shows "comma_semantic_b1_crt_occurrence_wellformed parent"
+proof -
+  have resolution:
+      "fst (occurrence_descriptors!index)<length templates \<and>
+       fst (occurrence_descriptors!index)<length template_column_ids \<and>
+       comma_semantic_b1_crt_column_ids_resolve columns
+         (template_column_ids!fst (occurrence_descriptors!index))
+         (templates!fst (occurrence_descriptors!index))"
+    by (rule comma_semantic_b1_crt_template_geometry_certified_resolves
+      [OF parent_template_geometry])
+  have partition:
+      "comma_semantic_b1_crt_cells_partition {..<924}
+        (map comma_crt_set (templates!fst (occurrence_descriptors!index)))"
+    by (rule comma_semantic_b1_crt_template_geometry_certified_partition
+      [OF parent_template_geometry])
+  show ?thesis
+    apply (rule comma_semantic_b1_crt_constructed_occurrence_from_partition_or_mass
+      [OF table_admitted bound _ parent_at resolution])
+      apply (rule earlier; assumption)
+     apply (rule disjI1[OF partition])
+    apply (rule used_lift_geometries; assumption)
+    done
 qed
 ML \<open>Thm.consolidate [@{thm comma_semantic_b1_crt_constructed_occurrence_wellformed}]; Comma_Proof_Profile.report "Constructed occurrence: parent theorem checked"\<close>
 lemma comma_semantic_b1_crt_constructed_occurrences_wellformed:

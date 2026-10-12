@@ -36,6 +36,13 @@ struct
          uncached = uncached, rejected = rejected, rows = rows}: projection_state
       val projection_memo = Synchronized.var "semantic_b1_template_projection"
         (projection_state Termtab.empty 0 0 0 0 0 0 0)
+      (* Keep the root check on every authority theorem, while sharing the
+         immutable proof-dependency walk across the table, count, and selected
+         rows.  This is scoped to this exact projection closure/context. *)
+      val (certify_projection, projection_certifier_stats) =
+        Comma_Entry_Arithmetic.make_certifier ctxt
+      fun oracle_free theorem =
+        ((certify_projection theorem; true) handle ERROR _ => false)
 
       fun reject_authority () =
         error "B1 lazy template projection has a foreign or malformed table definition"
@@ -47,7 +54,7 @@ struct
           val body = Thm.term_of (Thm.rhs_of equation)
           val clean = Thm.nprems_of equation = 0 andalso
             null (Thm.hyps_of equation) andalso null (Thm.tpairs_of equation) andalso
-            null (Thm_Deps.all_oracles [equation]) andalso closed table andalso
+            oracle_free equation andalso closed table andalso
             closed body
           fun inspect ids dag =
             if (case table of Const (name, _) => name = template_table_name
@@ -90,7 +97,7 @@ struct
           Thm.nprems_of count_definition = 0 andalso
           null (Thm.hyps_of count_definition) andalso
           null (Thm.tpairs_of count_definition) andalso
-          null (Thm_Deps.all_oracles [count_definition]) andalso
+          oracle_free count_definition andalso
           closed count_left andalso closed count_right
         then () else reject_authority ()
       val projection_column_count = dest_nat count_right
@@ -138,7 +145,7 @@ struct
           val theorem_clean = Thm.term_of (Thm.lhs_of theorem) aconv request andalso
             Thm.nprems_of theorem = 0 andalso null (Thm.hyps_of theorem) andalso
             null (Thm.tpairs_of theorem) andalso
-            (not audit_oracles orelse null (Thm_Deps.all_oracles [theorem]))
+            (not audit_oracles orelse oracle_free theorem)
           val _ = if theorem_clean andalso forall canonical_column entries then ()
             else error "B1 lazy template projection changed selected row authority"
         in length entries end
@@ -440,7 +447,9 @@ struct
             else error "B1 lazy template projection accepted an out-of-range row"
         in () end
       fun stats () =
-        let val state = Synchronized.value projection_memo
+        let
+          val state = Synchronized.value projection_memo
+          val certifier = projection_certifier_stats ()
         in " template_projection_lookups=" ^ Int.toString (#lookups state) ^
           " template_projection_hits=" ^ Int.toString (#hits state) ^
           " template_projection_race_reuses=" ^
@@ -450,7 +459,15 @@ struct
           " template_projection_rejected=" ^ Int.toString (#rejected state) ^
           " template_projection_retained=" ^
             Int.toString (Termtab.size (#facts state)) ^
-          " template_projection_row_cells=" ^ Int.toString (#rows state)
+          " template_projection_row_cells=" ^ Int.toString (#rows state) ^
+          " template_projection_certifier_calls=" ^
+            Int.toString (#calls certifier) ^
+          " template_projection_certifier_failed=" ^
+            Int.toString (#failed_calls certifier) ^
+          " template_projection_certifier_nodes=" ^
+            Int.toString (#nodes certifier) ^
+          " template_projection_certifier_ms=" ^
+            Int.toString (#milliseconds certifier)
         end
     in {procedure = procedure, post_procedure = post_procedure,
       stats = stats, check_fixtures = check_fixtures} end

@@ -7,11 +7,18 @@ import shutil
 import subprocess
 import sys
 from collections.abc import Mapping
+from itertools import pairwise
 from pathlib import Path
 
 import pytest
 
-from devtools.checks.validation_policy import PYTHON_COMMAND, ExecutionPolicy
+from devtools.checks.validation_policy import (
+    ISABELLE_MEMORY_BYTES,
+    ISABELLE_SESSION_SECONDS,
+    PYTHON_COMMAND,
+    ExecutionPolicy,
+    isabelle_policy,
+)
 from devtools.git_source import (
     AcceptanceCheckoutError,
     acceptance_checkout,
@@ -283,7 +290,7 @@ def test_source_change_preserves_process_failure(
         assert step["child_returncode"] == -15
 
 
-@pytest.mark.parametrize("elapsed", ["0:00:01", "0:01:01"])
+@pytest.mark.parametrize("elapsed", ["0:00:01", "0:05:01"])
 def test_release_proof_selection_preserves_aggregate_and_limits(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch, elapsed: str
 ) -> None:
@@ -337,13 +344,39 @@ def test_release_proof_selection_preserves_aggregate_and_limits(
     assert "-d" in calls[4][1] and "-D" not in calls[4][1]
     assert "-d" in calls[5][1] and "-D" not in calls[5][1]
     assert calls[5][1][-1] == "Prefix_Effect_Core"
+    selected_policy = isabelle_policy(2)
+    assert selected_policy.timeout_seconds == ISABELLE_SESSION_SECONDS * 3
     assert [(name, seconds, memory) for name, _, seconds, memory in calls] == [
-        ("isabelle-version", 60, 6144),
-        ("proof-session-inventory", 60, 6144),
-        ("proofs", 180, 6144),
-        ("isabelle-version", 60, 6144),
-        ("proof-session-inventory", 60, 6144),
-        ("proofs", 180, 6144),
+        (
+            "isabelle-version",
+            ISABELLE_SESSION_SECONDS,
+            ISABELLE_MEMORY_BYTES // (1024**2),
+        ),
+        (
+            "proof-session-inventory",
+            ISABELLE_SESSION_SECONDS,
+            ISABELLE_MEMORY_BYTES // (1024**2),
+        ),
+        (
+            "proofs",
+            int(selected_policy.timeout_seconds),
+            selected_policy.memory_bytes // (1024**2),
+        ),
+        (
+            "isabelle-version",
+            ISABELLE_SESSION_SECONDS,
+            ISABELLE_MEMORY_BYTES // (1024**2),
+        ),
+        (
+            "proof-session-inventory",
+            ISABELLE_SESSION_SECONDS,
+            ISABELLE_MEMORY_BYTES // (1024**2),
+        ),
+        (
+            "proofs",
+            int(selected_policy.timeout_seconds),
+            selected_policy.memory_bytes // (1024**2),
+        ),
     ]
     steps = run.manifest.get("steps")
     assert isinstance(steps, list)
@@ -368,6 +401,7 @@ def test_release_proof_selection_preserves_aggregate_and_limits(
         )
         assert command[3] == "ML_OPTIONS=--minheap 128 --maxheap 4096"
         assert command[4:6] == ("isabelle", "build")
+        assert ("-o", f"timeout={ISABELLE_SESSION_SECONDS}") in tuple(pairwise(command))
 
 
 def test_release_quality_retains_failures_and_attempts_later_checks(

@@ -31,19 +31,25 @@ struct
   val resultT = @{typ comma_semantic_b1_result}
   val columnT = @{typ comma_crt_column}
   val action_listT = @{typ "comma_source_continuation_action list"}
+  val action_rowsT = HOLogic.listT action_listT
+  val source_action_batch_size = 128
 
   (* Compile the direct packet-slot evaluator once and reuse its results for
-     discovery and the symbolic table fold. *)
+     discovery and the symbolic table fold.  The batch form amortizes code
+     evaluation setup while retaining one result row for every source. *)
   val slot_actions_computation =
     @{computation "Code_Evaluation.term"
       terms:
-        "Code_Evaluation.term_of :: comma_source_continuation_action list \<Rightarrow> Code_Evaluation.term"
+        "Code_Evaluation.term_of :: (comma_source_continuation_action list) list \<Rightarrow> Code_Evaluation.term"
         "numeral :: num \<Rightarrow> nat"
         "nat_of_num :: num \<Rightarrow> nat"
         "one_nat_inst.one_nat :: nat"
+        "map :: (comma_finite_position \<Rightarrow> comma_source_continuation_action list) \<Rightarrow> comma_finite_position list \<Rightarrow> comma_source_continuation_action list list"
         "comma_semantic_b1_source_slot_actions :: comma_finite_position \<Rightarrow> comma_source_continuation_action list"
       datatypes: nat num comma_finite_position comma_source_continuation_action
-        "comma_source_continuation_action list"}
+        "comma_finite_position list"
+        "comma_source_continuation_action list"
+        "comma_source_continuation_action list list"}
       (fn post => post o the)
 
   fun nat n = HOLogic.mk_number natT n
@@ -150,13 +156,21 @@ struct
         in (9 - f) * 1024 + kind_offset + value end
     | _ => error "B1 source-order key received a non-literal source")
 
-  fun source_action_terms ctxt source =
+  fun source_action_batch_terms ctxt sources =
     let
-      val action_list = @{term comma_semantic_b1_source_slot_actions} $ source
+      val sourceT = @{typ comma_finite_position}
+      val sourcesT = HOLogic.listT sourceT
+      val map_actions = Const (@{const_name map},
+        (sourceT --> action_listT) --> sourcesT --> action_rowsT) $
+          @{term comma_semantic_b1_source_slot_actions} $
+          HOLogic.mk_list sourceT sources
       val term_of_actions = Const (@{const_name Code_Evaluation.term_of},
-        action_listT --> @{typ Code_Evaluation.term}) $ action_list
+        action_rowsT --> @{typ Code_Evaluation.term}) $ map_actions
       val value = slot_actions_computation ctxt term_of_actions
-    in HOLogic.dest_list value end
+      val rows = map HOLogic.dest_list (HOLogic.dest_list value)
+      val _ = if length rows = length sources then ()
+        else error "B1 batched source-action evaluation changed source extent"
+    in rows end
 
   fun goto_child action =
     (case strip_comb action of
@@ -168,65 +182,96 @@ struct
   fun action_goto_child action = Option.map #1 (goto_child action)
 
   (* Template discovery and its data fold share this nine-layer scheduler. *)
-  fun discover_source_order roots children_of =
+  fun discover_source_order_by_layers roots discover_layer =
     let
       val visited = Unsynchronized.ref (Termtab.empty: unit Termtab.table)
-      val layers = Array.array (10, []: term list)
-      fun schedule raw_source =
+      val layers = Array.array (10, []: (int * term) list)
+      fun schedule_normalized sector source =
         let
-          val source = source_base_term raw_source
-          val sector = source_sector source
           val _ = if 1 <= sector andalso sector <= 9 then ()
             else error "B1 source discovery escaped sectors 1 through 9"
         in
           if Termtab.defined (!visited) source then ()
           else
-            (visited := Termtab.update (source, ()) (!visited);
-             Array.update (layers, sector, source :: Array.sub (layers, sector)))
+            let
+              val order_key = source_order_key source
+              val _ = visited := Termtab.update (source, ()) (!visited)
+            in Array.update (layers, sector,
+                 (order_key, source) :: Array.sub (layers, sector)) end
         end
+      fun schedule raw_source =
+        let
+          val source = source_base_term raw_source
+          val sector = source_sector source
+        in schedule_normalized sector source end
       val _ = List.app schedule roots
       fun visit (sector, order) =
         if sector = 10 then order
         else
           let
-            val current = sort (fn (left, right) =>
-              int_ord (source_order_key left, source_order_key right))
+            val current = sort (fn ((left_key, _), (right_key, _)) =>
+              int_ord (left_key, right_key))
               (Array.sub (layers, sector))
-            fun discover_from source =
-              let
-                fun add child =
-                  let
-                    val normalized = source_base_term child
-                    val next_sector = source_sector normalized
-                    val _ = if sector < next_sector andalso next_sector <= 9 then ()
-                      else error "B1 Goto source violates strict sector progress"
-                  in schedule normalized end
-              in List.app add (children_of source) end
-            val _ = List.app discover_from current
-          in visit (sector + 1, current @ order) end
+            val current_sources = map #2 current
+            val _ = discover_layer sector current_sources schedule_normalized
+          in visit (sector + 1, current_sources @ order) end
       val ordered = visit (1, [])
       val _ = if length ordered = Termtab.size (!visited) then ()
         else error "B1 source-order traversal lost a visited source"
     in ordered end
 
+  fun take_source_batch maximum sources =
+    let
+      fun take 0 remaining reversed = (rev reversed, remaining)
+        | take _ [] reversed = (rev reversed, [])
+        | take count (source :: remaining) reversed =
+            take (count - 1) remaining (source :: reversed)
+    in take maximum sources [] end
+
   fun discover_template_source_order ctxt roots =
     let
       val actions_by_source =
         Unsynchronized.ref (Termtab.empty: term list Termtab.table)
-      fun actions_of source =
-        (case Termtab.lookup (!actions_by_source) source of
-          SOME actions => actions
-        | NONE =>
-            let
-              val actions = source_action_terms ctxt source
-              val _ = actions_by_source :=
-                Termtab.update (source, actions) (!actions_by_source)
-            in actions end)
-      val ordered = discover_source_order roots
-        (fn source => map_filter action_goto_child (actions_of source))
+      val source_action_batch_calls = Unsynchronized.ref 0
+      val source_action_batch_sources = Unsynchronized.ref 0
+      fun discover_layer sector sources schedule_normalized =
+        let
+          fun visit_batches [] = ()
+            | visit_batches remaining =
+                let
+                  val (batch, rest) =
+                    take_source_batch source_action_batch_size remaining
+                  val rows = source_action_batch_terms ctxt batch
+                  val _ = source_action_batch_calls :=
+                    !source_action_batch_calls + 1
+                  val _ = source_action_batch_sources :=
+                    !source_action_batch_sources + length batch
+                  val _ = if length batch = length rows then ()
+                    else error "B1 source-action batch lost source alignment"
+                  fun discover_from (source, actions) =
+                    let
+                      val _ = if Termtab.defined (!actions_by_source) source
+                        then error "B1 source-action batch duplicated a discovered source"
+                        else ()
+                      val _ = actions_by_source :=
+                        Termtab.update (source, actions) (!actions_by_source)
+                      fun add child =
+                        let
+                          val normalized = source_base_term child
+                          val next_sector = source_sector normalized
+                          val _ = if sector < next_sector andalso next_sector <= 9 then ()
+                            else error "B1 Goto source violates strict sector progress"
+                        in schedule_normalized next_sector normalized end
+                    in List.app add (map_filter action_goto_child actions) end
+                  val _ = List.app discover_from (batch ~~ rows)
+                in visit_batches rest end
+          val _ = visit_batches sources
+        in () end
+      val ordered = discover_source_order_by_layers roots discover_layer
       val _ = if Termtab.size (!actions_by_source) = length ordered then ()
         else error "B1 template traversal did not retain each packet-action list"
-    in (ordered, !actions_by_source) end
+    in (ordered, !actions_by_source,
+        !source_action_batch_calls, !source_action_batch_sources) end
 
   fun offset_orbit offset =
     let
@@ -320,13 +365,18 @@ struct
       val sources = map (fn representative =>
         @{term Comma_Entry} $ nat 1 $ nat 0 $ nat representative)
         root_representatives
-      val (source_order, actions_by_source) =
+      val (source_order, actions_by_source,
+        source_action_batch_calls, source_action_batch_sources) =
         discover_template_source_order ctxt sources
       val _ = if length sources = 46 then ()
         else error "B1 candidate must retain all forty-six roots"
       val _ = Comma_Proof_Profile.report
         ("B1 candidate stage=template source discovery status=complete elapsed_ms=" ^
           Comma_Proof_Profile.elapsed_ms started)
+      val _ = Comma_Proof_Profile.report
+        ("B1 candidate stage=template source discovery action_batches=" ^
+          Int.toString source_action_batch_calls ^
+          " action_sources=" ^ Int.toString source_action_batch_sources)
     in
       (sources, source_order, actions_by_source)
     end

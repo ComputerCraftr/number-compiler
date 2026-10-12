@@ -119,8 +119,9 @@ The authoritative limits live in
 | --- | --- | --- |
 | Individual Python test, including fixtures and teardown | 60 seconds | 4 GiB |
 | Python selection or full suite | 300 seconds; each test still 60 seconds | 4 GiB |
-| Standalone validation or probe command | 60 seconds | 4 GiB |
-| Each Isabelle session | 60 seconds | 6 GiB across the build tree |
+| Standalone Python validation or probe command | 60 seconds | 4 GiB |
+| Each Isabelle session | 300 seconds | 6 GiB across the build tree |
+| Isabelle version or session-inventory probe | 300 seconds | 6 GiB across the build tree |
 
 A single explicit test-node invocation also has a 60-second outer deadline.
 Collection and initialization count toward invocation limits. Python runs serially.
@@ -133,8 +134,8 @@ separate signal alarms or reset the test deadline.
 
 Isabelle uses four prover threads, `parallel_proofs=1`, `timeout_scale=1`, and one
 building session (`-j 1`). Java has a 1-GiB maximum; Poly/ML has a 4-GiB maximum.
-One dependency-aware build applies the native 60-second timeout to each session.
-The outer orchestration fail-safe is `60 × (dependency-session count + 1)`,
+One dependency-aware build applies the native 300-second timeout to each session.
+The outer orchestration fail-safe is `300 × (dependency-session count + 1)`,
 using Isabelle’s native graph including installed session dependencies; it never extends a session deadline. Select sessions with repeated
 `--session SESSION`, or omit them for the aggregate build. Reused heaps are reported
 separately from rebuilt sessions and do not demonstrate cold-build performance.

@@ -23,39 +23,7 @@ from number_compiler.sequences.comma.boundary_quotient import (
     construct_macro,
 )
 from tests.support.comma_oracles import literal_children as _literal_children
-
-
-def _literal_phase_jump(value: int) -> tuple[int, int]:
-    """Derive an admitted whole phase using only literal child enumeration."""
-    sector = decimal_sector(value)
-    period = 10 // math.gcd(sector.leading, 10)
-    cursor = value
-    maximum = 0
-    for _ in range(period):
-        children = _literal_children(cursor)
-        if len(children) != 1 or decimal_sector(children[0]).leading != sector.leading:
-            return value, 0
-        cursor = children[0]
-        maximum = max(maximum, cursor - value)
-    displacement = cursor - value
-    # A second full phase has exactly the same literal offset because the
-    # last digit returned to its entering value.  Strict admission is tested
-    # at the last visited term of each repeated phase.
-    headroom = sector.boundary - value
-    count = (headroom - 1 - maximum) // displacement + 1
-    if count <= 0:
-        return value, 0
-    # Being inside the sector does not imply uniqueness: the last edge of
-    # the last candidate cycle can be a fork. Check that bounded phase by
-    # independent child enumeration, without the production guard formula.
-    last_cursor = value + (count - 1) * displacement
-    for _ in range(period):
-        children = _literal_children(last_cursor)
-        if len(children) != 1 or decimal_sector(children[0]).leading != sector.leading:
-            count -= 1
-            break
-        last_cursor = children[0]
-    return value + count * displacement, count * period
+from tests.support.comma_oracles import literal_phase_jump as _literal_phase_jump
 
 
 def test_independent_phase_oracle_does_not_jump_over_a_fork() -> None:

@@ -2,12 +2,19 @@
 
 from __future__ import annotations
 
+from concurrent.futures import ThreadPoolExecutor
+from pathlib import Path
+from threading import Event
 from types import MappingProxyType, SimpleNamespace
+from typing import Self
 
 import pytest
 
 from number_compiler.api.comma_term import CommaTermPayload
-from number_compiler.sequences.comma import certificates, future_provider
+from number_compiler.sequences.comma import certificates, future_provider, power
+from number_compiler.sequences.comma.future_authority import (
+    registered_global_release_artifact_sha256,
+)
 from number_compiler.sequences.comma.power import CommaTerm
 from tests.support.comma_future_provider_fixture import (
     candidate_record,
@@ -95,6 +102,23 @@ def test_fixture_and_forged_leases_cannot_bypass_the_forest_gate(
                 global_provider=incomplete_store_lease,
             )
 
+        lock_entries: list[bool] = []
+
+        class ForgedLock:
+            def __enter__(self) -> Self:
+                lock_entries.append(True)
+                return self
+
+            def __exit__(self, *_args: object) -> None:
+                return None
+
+        forged_store = object.__new__(future_provider.SemanticFutureProviderStore)
+        object.__setattr__(forged_store, "ledger", term.ledger)
+        object.__setattr__(forged_store, "_lock", ForgedLock())
+        with pytest.raises(RuntimeError, match="malformed future provider store"):
+            forged_store._resolve(lease.artifact_sha256, lease._token)
+        assert lock_entries == []
+
         partial_lease = object.__new__(lease_type)
         object.__setattr__(partial_lease, "_store", store)
         object.__setattr__(partial_lease, "_digest", lease.artifact_sha256)
@@ -138,6 +162,168 @@ def test_absent_global_lease_keeps_finite_prefix_checker(
         assert requests == [
             (term.ledger, term.max_work, term.shared_cache, term.certificate_memo)
         ]
+
+
+def test_empty_kernel_registry_does_not_resolve_future_package_resource(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    requests: list[object] = []
+
+    def verify(ledger: object, max_work: int, shared_cache: bool, memo: object) -> None:
+        requests.append((ledger, max_work, shared_cache, memo))
+
+    def forbidden_resource_lookup(*_args: object, **_kwargs: object) -> object:
+        pytest.fail("empty FutureCID registry attempted package resource I/O")
+
+    monkeypatch.setattr(
+        future_provider, "_ADMITTED_KERNEL_INSTANCES", MappingProxyType({})
+    )
+    monkeypatch.setattr(power, "files", forbidden_resource_lookup)
+    monkeypatch.setattr(certificates, "_verify", verify)
+
+    with CommaTerm(1, certificate_version=certificates.CERTIFICATE_ID) as term:
+        assert term._global_future_provider_for_prefix_admission() is None
+        CommaTermPayload(term).require_certified()
+
+        assert requests == [
+            (term.ledger, term.max_work, term.shared_cache, term.certificate_memo)
+        ]
+        assert term._future_provider_store is None
+        assert term._future_provider_lease is None
+
+
+def test_fixture_registry_does_not_resolve_global_package_resource(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    record = candidate_record()
+
+    def no_work_limit(_amount: int) -> None:
+        pass
+
+    digest, fixture = fixture_admission(record, no_work_limit)
+    monkeypatch.setattr(
+        future_provider,
+        "_ADMITTED_KERNEL_INSTANCES",
+        MappingProxyType({digest: fixture}),
+    )
+    fixture_registry_digest = registered_global_release_artifact_sha256(
+        future_provider._ADMITTED_KERNEL_INSTANCES
+    )
+    assert fixture_registry_digest is None
+    monkeypatch.setattr(
+        future_provider,
+        "registered_global_release_artifact_sha256",
+        lambda: fixture_registry_digest,
+    )
+
+    def forbidden_resource_lookup(*_args: object, **_kwargs: object) -> object:
+        pytest.fail("fixture-only authority attempted global package resource I/O")
+
+    monkeypatch.setattr(power, "files", forbidden_resource_lookup)
+    with CommaTerm(1) as term:
+        assert term._global_future_provider_for_prefix_admission() is None
+        assert term._future_provider_store is None
+        assert term._future_provider_lease is None
+
+
+@pytest.mark.parametrize(
+    ("artifact_contents", "expected_error"),
+    ((None, FileNotFoundError), (b"not-json", ValueError)),
+)
+def test_registered_missing_or_corrupt_artifact_fails_closed(
+    artifact_contents: bytes | None,
+    expected_error: type[Exception],
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    artifact_directory = tmp_path / "kernels"
+    artifact_directory.mkdir()
+    artifact = artifact_directory / future_provider.FUTURE_PROVIDER_ASSET
+    if artifact_contents is not None:
+        artifact.write_bytes(artifact_contents)
+    monkeypatch.setattr(
+        future_provider,
+        "registered_global_release_artifact_sha256",
+        lambda: "a" * 64,
+    )
+    monkeypatch.setattr(
+        power,
+        "files",
+        lambda _package: tmp_path,
+    )
+
+    def forbidden_forest_fallback(*_args: object, **_kwargs: object) -> None:
+        pytest.fail("registered artifact failure fell back to forest admission")
+
+    monkeypatch.setattr(certificates, "_verify", forbidden_forest_fallback)
+    with CommaTerm(1, certificate_version=certificates.CERTIFICATE_ID) as term:
+        with pytest.raises(expected_error):
+            term._global_future_provider_for_prefix_admission()
+        assert term._future_provider_store is None
+        assert term._future_provider_lease is None
+        assert term.ledger.counters.get("comma_future_provider_closes", 0) == 1
+        assert term.ledger.counters.get("comma_future_provider_publications", 0) == 0
+
+
+@pytest.mark.parametrize("lifecycle", ("reset", "close"))
+def test_store_lifecycle_waits_for_an_inflight_load_and_revokes_its_lease(
+    lifecycle: str,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    record = candidate_record()
+
+    def no_work_limit(_amount: int) -> None:
+        pass
+
+    digest, fixture = fixture_admission(record, no_work_limit)
+    monkeypatch.setattr(
+        future_provider,
+        "_ADMITTED_KERNEL_INSTANCES",
+        MappingProxyType({digest: fixture}),
+    )
+
+    with CommaTerm(1) as term:
+        store = future_provider.SemanticFutureProviderStore(term.ledger)
+        entered_retain = Event()
+        release_retain = Event()
+        lifecycle_started = Event()
+        lifecycle_done = Event()
+        retain = store._retain
+
+        def hold_publication(
+            provider: future_provider.SemanticFutureProvider,
+        ) -> future_provider.SemanticFutureProviderLease:
+            entered_retain.set()
+            if not release_retain.wait(timeout=5):
+                raise TimeoutError("test did not release the provider publication")
+            return retain(provider)
+
+        def invalidate() -> None:
+            lifecycle_started.set()
+            try:
+                getattr(store, lifecycle)()
+            finally:
+                lifecycle_done.set()
+
+        monkeypatch.setattr(store, "_retain", hold_publication)
+        with ThreadPoolExecutor(max_workers=2) as workers:
+            loader = workers.submit(
+                store.load_record, record, charge_work=no_work_limit
+            )
+            try:
+                assert entered_retain.wait(timeout=5)
+                invalidator = workers.submit(invalidate)
+                assert lifecycle_started.wait(timeout=5)
+                lifecycle_blocked_on_load = not lifecycle_done.wait(timeout=0.05)
+            finally:
+                release_retain.set()
+            lease = loader.result(timeout=5)
+            invalidator.result(timeout=5)
+
+        assert lifecycle_blocked_on_load
+        with pytest.raises(RuntimeError, match="future provider lease is stale"):
+            lease.require_runtime_admission()
+        store.close()
 
 
 def test_term_lookup_rejects_lease_store_owned_by_another_ledger(

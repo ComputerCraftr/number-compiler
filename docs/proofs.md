@@ -6,7 +6,7 @@ is the acceptance boundary: a theory file is not considered checked merely
 because it exists in the tree or is imported by an editor session.
 
 Run all builds through `python -m devtools.checks.release --suite proofs`,
-optionally selecting registered sessions with `--session SESSION`. Each session has a native 60-second timeout, with four prover threads and one
+optionally selecting registered sessions with `--session SESSION`. Each session has a native 300-second timeout, with four prover threads and one
 session building at a time under an aggregate 6-GiB process-tree guard; see [the validation policy](development.md#reproducible-release-commands).
 Historical timings and limits below describe their recorded source and run;
 they do not change the current validation configuration.

@@ -360,14 +360,14 @@ def test_candidate_publication_does_not_require_physical_row_certificates() -> N
     assert "Local_Theory.define" in publisher
     assert 'Binding.name "comma_semantic_b1_crt_column_definitions"' not in publisher
     assert "Local_Theory.background_theory_result" in publisher
-    converter = (
+    catalog = (
         root
         / "families/comma/comma_semantic_b1_instance"
-        / "semantic_b1_column_conversion.ML"
+        / "semantic_b1_column_catalog.ML"
     ).read_text(encoding="utf-8")
     assert "fun get_definitions ctxt" in publisher
     assert "define_global_definitions" in publisher
-    assert "child < #cid parent" in converter
+    assert "child < #cid parent" in catalog
     assert "#template_keys artifact" in publisher
     assert "HOLogic.mk_Collect" not in candidate
     assert not (

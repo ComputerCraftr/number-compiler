@@ -48,8 +48,9 @@ def test_column_authority_is_closed_bounded_blocks_with_balanced_directory() -> 
     assert "B1 column DAG node has an invalid level" in parser
     assert "B1 column DAG node has an invalid radix shape" in parser
 
+    assert catalog.count("fun parse_directory ") == 1
     validation = catalog.split("fun validate_nodes nodes", 1)[1].split(
-        "fun parse_directory blocks term", 1
+        "fun parse_directory ", 1
     )[0]
     assert "cids = expected" in validation
     assert "child < #cid parent" in validation
@@ -72,6 +73,7 @@ def test_column_authority_is_closed_bounded_blocks_with_balanced_directory() -> 
 def test_column_interpreter_unfolds_one_kernel_node_and_keeps_children_named() -> None:
     source = _column_source("semantic_b1_column_conversion.ML")
     catalog = _column_source("semantic_b1_column_catalog.ML")
+    lookup_cache = _column_source("semantic_b1_column_lookup_cache.ML")
     directory_dispatch = catalog.split("fun directory_shape term", 1)[1].split(
         "fun dest_nat term", 1
     )[0]
@@ -88,10 +90,26 @@ def test_column_interpreter_unfolds_one_kernel_node_and_keeps_children_named() -
     assert "Termtab.update (column_value cid, cid)" not in source
     assert "Conv.rewr_conv" in source
     assert "@{thm comma_semantic_b1_crt_column_at.simps}" in source
-    evaluator = source.split("fun step_context cid", 1)[1].split(
-        "fun prove_columns_admitted_conversion target_ct", 1
+    evaluator = source.split("fun targeted_step_context", 1)[1].split(
+        "val cofactor_or_false_const", 1
     )[0]
     assert "put_simpset HOL_basic_ss ctxt" not in evaluator
+    assert "Simplifier.add_proc" not in evaluator
+    assert "[root_lookup, raw_admission]" in evaluator
+    assert "rhs aconv expected" in evaluator
+    assert "make_column_at_admitted_header ctxt" in source
+    assert source.index("val prove_admitted_header =") < source.index(
+        "fun child_admission_fact"
+    )
+    assert "val admitted_equation = prove_admitted_header" in source
+    assert "val header = prove_admitted_header" in source
+    assert "Termtab.size (!child_admission_facts) < 8192" in source
+    skipped = source.split("val theorem = if cid >= 2 andalso", 1)[1].split(
+        "            else", 1
+    )[0]
+    assert "child_admission_fact (level + 1) cid" in skipped
+    assert "comma_crt_cofactor_skip_from_admission" in skipped
+    assert "column_step" not in skipped
     admission_helper = source.split(
         "fun prove_columns_admitted_conversion target_ct", 1
     )[1].split("fun counters ()", 1)[0]
@@ -114,20 +132,73 @@ def test_column_interpreter_unfolds_one_kernel_node_and_keeps_children_named() -
     )
     assert "fold add_index" not in admission_helper
     assert "0 upto (count - 1)" not in admission_helper
-    assert "comma_semantic_b1_crt_column_dag_lookup.simps" in source
-    assert "comma_semantic_b1_crt_column_block_lookup.simps" in source
+    assert "comma_semantic_b1_crt_column_block_lookup_node_key" in lookup_cache
     assert "fun lookup_tree cid ct" not in source
     assert "fun lookup_value cid" in source
     assert "Comma_Entry_Arithmetic.natural_context ctxt" in source
     assert "fun controlled_lookup ctxt numeral_context lookup_rules visits" in source
+    controlled_lookup = source.split("fun controlled_lookup", 1)[1].split(
+        "fun make_template_projection", 1
+    )[0]
+    assert "Conv.rewrs_conv lookup_rules" in controlled_lookup
     assert "fun choose_if ct" in source
     assert "fun open_selected_block ct" in source
     assert "Conv.rewrs_conv lookup_rules (Thm.rhs_of opened)" in source
-    assert "val lookup_step = controlled_lookup ctxt numeral_context" in source
+    assert "fun make_directory ctxt numeral_context capacity" in lookup_cache
+    assert "#lookup directory_lookup_cache" in source
+    assert "val lookup_step = #lookup interval_lookup_cache lookup_visits" in source
+    assert "selected_block" in source
+    assert "#base selected_block" in source and "#extent selected_block" in source
     assert "val expected = shallow_body cid" in source
+    assert "val expected_value = Const" in source
+    assert "selected column block returned another node payload" in source
     assert "lhs aconv request andalso rhs aconv expected" in source
     assert 'certify_derived_theorem "B1 one-node column unfolding" theorem' in source
     assert "null (Thm.tpairs_of theorem)" in source
+
+    directory = lookup_cache.split("fun make_directory", 1)[1]
+    assert "actual_block aconv block_constant" in directory
+    assert (
+        "actual_dag aconv dag_constant andalso actual_cid aconv cid_term" in directory
+    )
+    assert "pointer_eq (block_definition, #definition state)" in directory
+    assert "column_dag_lookup_interval_left" in directory
+    assert "column_dag_lookup_interval_right" in directory
+    assert "column_dag_lookup_interval_block" in directory
+    assert "selected block interval straddles a directory split" in directory
+    assert directory.index("base <= cid andalso cid < upper") < directory.index(
+        "val universal = interval_fact"
+    )
+    key = directory.split("fun interval_key", 1)[1].split("type directory_state", 1)[0]
+    assert "dag_body" not in key and "block_body" not in key
+    interval_lookup = lookup_cache.split("fun lookup visits block_constant", 1)[
+        1
+    ].split("fun counters ()", 1)[0]
+    assert "extent > 0 andalso extent <= 512" in interval_lookup
+    assert "base <= cid andalso cid < upper" in interval_lookup
+    assert "actual_block aconv block_constant" in interval_lookup
+    assert interval_lookup.index("base <= cid andalso cid < upper") < (
+        interval_lookup.index("val block_state = state_for")
+    )
+    child_derivation = lookup_cache.split("fun derive_child state", 1)[1].split(
+        "fun point_from_interval", 1
+    )[0]
+    assert 'if side = "left" then lower else key + 1' in child_derivation
+    assert 'if side = "left" then key else upper' in child_derivation
+    assert "interval_key child_lower child_upper" in child_derivation
+    assert child_derivation.index("Termtab.lookup") < child_derivation.index(
+        "val theorem = rule OF"
+    )
+    assert "clean theorem" in child_derivation
+    walk = interval_lookup.split("fun walk lower upper", 1)[1].split(
+        "val result = walk base upper", 1
+    )[0]
+    assert "else if cid < key" in walk
+    assert 'left right "left"\n                      in walk lower key' in walk
+    assert 'left right "right"\n                      in walk (key + 1)' in walk
+    assert walk.index("else if cid < key") < walk.index(
+        'left right "left"\n                      in walk lower key'
+    )
     assert "certify_derived_fact theorem" in source
     assert "val child_terms = map column_value children" in source
     assert "case body_cid (Thm.term_of result) of" in source
@@ -148,18 +219,29 @@ def test_column_interpreter_unfolds_one_kernel_node_and_keeps_children_named() -
     assert "column_step_hits=" in source and "column_step_misses=" in source
 
     regression = _column_source("semantic_b1_column_regression.ML")
-    assert "fun check_controlled_lookup ctxt" in regression
-    assert "fun check_mixed_directory_shape ctxt" in regression
-    assert "Comma_Semantic_B1_Column_Catalog.directory_shape" in regression
-    assert "Comma_Semantic_B1_Column_Catalog.Directory_Branch" in regression
-    assert "Comma_Semantic_B1_Column_Catalog.Directory_Block" in regression
+    lookup_regression = _column_source("semantic_b1_column_lookup_regression.ML")
+    for fixture in (
+        "check_controlled_lookup",
+        "check_mixed_directory_shape",
+        "check_directory_interval_cache",
+    ):
+        assert f"fun {fixture} ctxt" in lookup_regression
+        assert f"Comma_Semantic_B1_Column_Lookup_Regression.{fixture}" in regression
+    assert "second_nodes = first_nodes" in lookup_regression
+    assert "final_retained = 1" in lookup_regression
+    assert '"foreign DAG directory cache authority"' in lookup_regression
+    assert '"changed directory block authority"' in lookup_regression
+    assert '"changed directory block interval"' in lookup_regression
+    assert "Comma_Semantic_B1_Column_Catalog.directory_shape" in lookup_regression
+    assert "Comma_Semantic_B1_Column_Catalog.Directory_Branch" in lookup_regression
+    assert "Comma_Semantic_B1_Column_Catalog.Directory_Block" in lookup_regression
     assert "fun check_generic_fixtures ctxt" in regression
-    assert "Conversion.normalize_lookup_rules ctxt" in regression
+    assert "Conversion.normalize_lookup_rules ctxt" in lookup_regression
     assert (
         '@{term "comma_semantic_b1_crt_template_column_ids ! index"}' not in regression
     )
-    assert "!visits = 4" in regression
-    assert "malformed_directory" in regression
+    assert "!visits = 4" in lookup_regression
+    assert "malformed_directory" in lookup_regression
     assert "forward_nodes" in regression
     assert "foreign_nodes" in regression
     assert "all_columns_target" in regression
@@ -175,6 +257,11 @@ def test_column_interpreter_unfolds_one_kernel_node_and_keeps_children_named() -
     )
 
     publication_theory = _column_source("Comma_Semantic_B1_Occurrence_Publication.thy")
+    assert (
+        publication_theory.index('ML_file "semantic_b1_column_conversion.ML"')
+        < publication_theory.index('ML_file "semantic_b1_column_lookup_regression.ML"')
+        < publication_theory.index('ML_file "semantic_b1_column_regression.ML"')
+    )
     assert publication_theory.index(
         'ML_file "semantic_b1_column_regression.ML"'
     ) < publication_theory.index("check_generic_fixtures")
@@ -219,7 +306,8 @@ def test_column_interpreter_unfolds_one_kernel_node_and_keeps_children_named() -
     assert (
         "comma_semantic_b1_crt_columns_partition_certified_def" in partition_conversion
     )
-    assert "! source ! row" in regression
+    assert "nth_row $ selected_source $ nat 0" in regression
+    assert "Construction_Piece_Projection.make_with_catalogue" in regression
     assert "production_request" in regression
     assert "outside_row_request" in regression
     assert "B1 Suc-level admission did not use the checked header" in regression
@@ -373,8 +461,14 @@ def test_publication_defines_bounded_blocks_and_canonical_cid_applications() -> 
         "val column_block_size", 1
     )[0]
     assert '"comma_semantic_b1_crt_construction_piece_refs"' in piece_root
-    assert "HOLogic.mk_list sourceT" in piece_root
-    assert "map (lookup_global_constant" in piece_root
+    assert "concatenate $" in piece_root
+    assert 'lookup_global_constant "piece-source directory" constants' in piece_root
+    assert "construction_piece_source_blocks_name" in piece_root
+    assert "construction_piece_source_block_size = 32" in source
+    piece_projection = _column_source("semantic_b1_construction_piece_projection.ML")
+    assert "blocks are foreign, missing, or reordered" in piece_projection
+    assert "actual_source_extents = child_row_extents" in piece_projection
+    assert "catalogue contains a noncanonical definition" in piece_projection
     assert "construction_piece_refs_term" not in source
     assert '"comma_semantic_b1_crt_grouped_union_steps"' not in artifact_batch
     assert '"comma_semantic_b1_crt_grouped_union_start_ids"' not in artifact_batch
@@ -593,6 +687,10 @@ def test_construction_counter_deltas_are_source_scoped() -> None:
     partition = (root / "semantic_b1_partition_conversion.ML").read_text(
         encoding="utf-8"
     )
+    zipper = (root / "semantic_b1_labelled_zip.ML").read_text(encoding="utf-8")
+    projection = (root / "semantic_b1_template_row_projection.ML").read_text(
+        encoding="utf-8"
+    )
     conversion = checker.split("fun convert context cterm =", 1)[1].split(
         "fun memo_proc context ct =", 1
     )[0]
@@ -632,8 +730,15 @@ def test_construction_counter_deltas_are_source_scoped() -> None:
     assert "template_context_lookups=" in store
     assert "template_context_requests_completed=" in store
     assert "template_context_consumed=" not in store
-    assert "Partition_Conversion.make_template_partition_session" in checker
-    assert "val profile = make_template_partition_profile ()" in partition
+    assert "Comma_Semantic_B1_Labelled_Zip.make ctxt" in checker
+    assert "make_template_partition_profile ()" in checker
+    assert "make_template_partition_checker_with_state" in partition
+    assert "resolved_fact" in projection
+    assert "comma_semantic_b1_crt_column_ids_resolve_columns_for" in projection
+    assert "Thm_Deps.all_oracles" not in zipper
+    assert "state_work_summary" in projection
+    assert "val template_partition_profile =" in checker
+    assert "make_template_partition_profile ()" in checker
     assert "val result = Exn.capture work ()" in partition
     assert "val _ = active := prior_depth" in partition
     assert "fun check_partition_profile_scope ()" in fixtures
@@ -657,6 +762,8 @@ def test_live_partition_proof_uses_certified_cid_transitions_before_recursion() 
     construction = _column_source("semantic_b1_construction_check.ML")
     cache = _column_source("semantic_b1_occurrence_check_cache.ML")
     converter = _column_source("semantic_b1_partition_conversion.ML")
+    zipper = _column_source("semantic_b1_labelled_zip.ML")
+    projection = _column_source("semantic_b1_template_row_projection.ML")
     fixtures = _column_source("semantic_b1_certificate_store_fixtures.ML")
     geometry = construction.split("fun prove_template_geometry_certificate", 1)[
         1
@@ -664,20 +771,155 @@ def test_live_partition_proof_uses_certified_cid_transitions_before_recursion() 
     assert "prove_partition_checker" in geometry
     assert "Simplifier.rewrite context checker_ct" not in geometry
     assert "prove_partition_checker = prove_partition_checker" in cache
-    assert "make_template_partition_session ctxt" in cache
-    assert "val profile = make_template_partition_profile ()" in converter
-    vector = converter.split("fun vector_transition", 1)[1].split("fun prove_state", 1)[
+    assert "Comma_Semantic_B1_Labelled_Zip.make ctxt" in cache
+    assert "make_template_partition_checker_with_state" in converter
+    assert "fun make ctxt" in projection
+    assert "val template_partition_profile =" in cache
+    assert "make_template_partition_profile ()" in cache
+    vector = zipper.split("val (targets, vector_fact) =", 1)[1].split(
+        "val child_fact = build (level + 1) targets", 1
+    )[0]
+    # Parent-state lookup stays first. Exact common suffixes now have a separate
+    # proof owner; the retired whole-vector cache could never hit here.
+    assert "Vector_Key" not in zipper
+    assert "Comma_Semantic_B1_Vector_Suffix_Cache.make ctxt" in zipper
+    assert "val vector_request" in vector
+    assert "distinct (op =) inputs" in vector
+    assert "prove_vector_map" in vector
+    assert 'check_equation "vector cofactor"' in vector
+    suffix = _column_source("semantic_b1_vector_suffix_cache.ML")
+    assert "Simplifier.rewrite" not in suffix
+    assert "scan (rev source_ids) n root" in suffix
+    assert "Inttab.lookup (!children) cid" in suffix
+    assert 'check_equation "column transition"' in suffix
+    assert 'check_equation "cached vector suffix"' in suffix
+    assert "owner aconv dag" in suffix
+    assert "column aconv column_value cid" in suffix
+    assert "!nodes < cache_limit" in suffix
+    assert "Thm.dest_comb source" in suffix
+    assert "Thm.transitive map_fact" in suffix
+    assert "Thm.combination head_fact tail_fact" in suffix
+    assert "target_cid :: tail_ids" in suffix
+    insertion = suffix.split("fun put node theorem =", 1)[1].split("fun root_for", 1)[0]
+    assert "check_equation" not in insertion
+    assert "labelled_zip_vector_suffix_trie_nodes" in suffix
+    assert "prefix_steps = swap_at + 2" in suffix
+    assert "!cons_steps = warm_steps" in suffix
+    assert "B1 permuted vector alias missed its exact shared suffix" in suffix
+    assert "B1 warm vector alias rebuilt structural map work" in suffix
+    assert "val result = Exn.capture run ()" in suffix
+    assert "cache := saved_cache" in suffix
+    assert "Exn.release result" in suffix
+    state = zipper.split("and build_compact level ids =", 1)[1].split(
+        "fun prove_root_checker ids =", 1
+    )[0]
+    assert "State_Key.lookup (!state_cache) state_key" in state
+    assert state.index("State_Key.lookup (!state_cache)") < state.index(
+        "val columns = literal_columns ids"
+    )
+    assert 'check_theorem "cached witness"' not in state
+    assert "val state_key = (level, key_ids)" in state
+    assert "(state_key, (ids, theorem))" in state
+    assert state.index("requested_cache ()") < state.index("owner_cache ()")
+    cold = state.split("val columns = literal_columns ids", 1)[1].split(
+        "fun warm_child_permutation_fixture", 1
+    )[0]
+    assert "transport_state_witness" not in cold
+    assert "(int list * thm) State_Key.table" in zipper
+    assert "transport_state_witness level source_ids ids source_theorem" in state
+    permutation = _column_source("semantic_b1_permutation_cache.ML")
+    assert "comma_semantic_b1_crt_partition_witness_mset" in permutation
+    assert "val key = (source_ids, target_ids)" in permutation
+    assert "sort int_ord source_ids = sort int_ord target_ids" in permutation
+    assert "B1 requested state changed occurrence multiplicity" in permutation
+    assert "Comma_Entry_Arithmetic.make_certifier ctxt" in permutation
+    assert "Thm_Deps.all_oracles" not in permutation
+    assert (
+        'check_theorem "numeric occurrence multiset" numeric_proposition' in permutation
+    )
+    assert 'check_theorem "exact mapped occurrence multiset"' in permutation
+    assert 'check_theorem "multiset-rebased compact state witness"' in permutation
+    assert "mset.simps add_mset_commute" in permutation
+    assert "mset_map" in permutation
+    assert "State_Key.lookup (!certificate_cache) key" in permutation
+    assert "numeric_projection_rules" not in permutation
+    assert "upt_rec" not in permutation
+    assert "fun check_fixtures ctxt" in permutation
+    assert "[2, 1, 2, 0]" in permutation
+    assert "[0, 2, 2, 1]" in permutation
+    assert "[0, 2, 1, 1]" in permutation
+    assert "[1, 2, 0, 2]" in permutation
+    assert "B1 multiset fixture conflated source-order cache keys" in permutation
+    assert (
+        "B1 identity fixture accepted a theorem with an open assumption" in permutation
+    )
+    assert "B1 identity fixture accepted a wrong-level or TrueI theorem" in permutation
+    assert (
+        "B1 multiset fixture accepted a malformed literal-column callback"
+        in permutation
+    )
+    assert "permutation_certificate_builds ()" in zipper
+    assert "permutation_transport_count ()" in zipper
+    assert "fun canonical_key_ids level ids" in zipper
+    assert "if level = 0 then ids" in zipper
+    assert "B1 root warm-owner fixture unexpectedly used an order transport" in zipper
+    assert "B1 warm child replay rebuilt its permutation certificate" in zipper
+    assert "warm_owner_fixture ids witness" in zipper
+    assert "!child_permutation_fixture_runs > 0" in zipper
+    # The legacy checker is now a lazy fallback; if constructed, its complete
+    # fixtures still run before publication of the checked occurrence data.
+    assert "labelled_zipper_fixtures := SOME (#check_complete_fixtures zipper)" in cache
+    assert "case !labelled_zipper_fixtures of" in cache
+    assert "SOME check => check ()" in cache
+    assert "B1 warm raw-owner fixture performed cold owner/compression work" in zipper
+    assert "B1 warm raw-owner fixture did not hit compact owner state" in zipper
+    assert "B1 warm raw-owner fixture missed its embedding cache" in zipper
+    assert "B1 warm raw-owner fixture did not count its selector lift" in zipper
+    raw = zipper.split("fun build level raw_ids =", 1)[1].split(
+        "and build_compact level ids =", 1
+    )[0]
+    assert raw.index("compress_indexed_labels raw_ids") < raw.index(
+        "build_compact level compact_ids"
+    )
+    assert "comma_semantic_b1_crt_partition_witness_lift" in raw
+    assert 'check_theorem "lifted raw state witness"' in raw
+    embedding_cache = _column_source("semantic_b1_indexed_labels.ML")
+    assert "type key = int list" in embedding_cache
+    assert "comma_semantic_b1_crt_indexed_mask_embedding" in embedding_cache
+    assert "step 0" in embedding_cache
+    assert "step cid" not in embedding_cache
+    assert "indexed_nonfalse_from" not in embedding_cache
+    assert "prove_nonfalse_from_step" not in embedding_cache
+    lookup = embedding_cache.split("fun compress raw_ids =", 1)[1]
+    assert lookup.index("Embedding_Key.lookup") < lookup.index(
+        "compression_embedding_uncached raw_ids"
+    )
+    assert "Embedding_Key.size (!embedding_cache) < cache_limit" in lookup
+    assert "comma_semantic_b1_crt_column_ids_resolve_columns_for" in projection
+    assert "resolved_fact" in projection
+    assert "comma_semantic_b1_crt_partition_witness_node" in zipper
+    child_proof = zipper.split("fun child_branch_fact", 1)[1].split(
+        "val child_list_fact", 1
+    )[0]
+    assert "Thm.beta_conversion false" in child_proof
+    assert "child_predicate $ number digit" in child_proof
+    assert "selector_context" not in child_proof
+    assert "finite child existence witnesses" in zipper
+    assert "thm State_Key.table" in zipper
+    assert "selector_and_theorem" not in zipper
+    assert "children $ Bound 0" not in zipper
+    # The common publication check remains authoritative after removal of
+    # duplicate branch-local full-selector comparisons.
+    assert 'check_theorem "new witness" proposition' in zipper
+    checker_bridge = zipper.split("val checker_true =", 1)[1].split("val levels =", 1)[
         0
     ]
-    assert vector.index("Symtab.lookup (!vector_transition_facts)") < vector.index(
-        "cofactor_transition (level, digit, cid)"
-    )
-    assert "filter (fn (cid, _) => cid <> 0) edges" in vector
-    assert "comma_semantic_b1_crt_partition_drop_false_idempotent" in vector
-    assert "Thm.symmetric theorem" in vector
-    assert "residual_transition_derivations" in vector
-    assert "column_index_equation" not in converter
-    assert "comma_semantic_b1_crt_column_ids_resolve_columns_for" in converter
+    assert "comma_semantic_b1_crt_partition_witness_checker_true" in checker_bridge
+    assert "RS @{thm eq_reflection}" in checker_bridge
+    assert "fun reject_unless_interrupted failure" in zipper
+    assert "Exn.is_interrupt failure" in zipper
+    assert zipper.count("reject_unless_interrupted failure") == 3
+    assert "column_index_equation" not in zipper
     for regression in (
         "B1 warm CID edge repeated proof construction or DAG opening",
         "B1 warm vector transition rebuilt column proofs or reopened the DAG",
@@ -700,4 +942,26 @@ def test_live_partition_proof_uses_certified_cid_transitions_before_recursion() 
     # Authority definitions and exported geometry keep independent builtin audits.
     assert "null (Thm_Deps.all_oracles [equation])" in column
     store = _column_source("semantic_b1_certificate_store.ML")
-    assert "Thm_Deps.all_oracles" in store
+    assert "Comma_Entry_Arithmetic.make_certifier ctxt" in store
+
+
+def test_projection_and_lookup_checks_preserve_exact_authority_without_goal_replay() -> (
+    None
+):
+    projection = _column_source("semantic_b1_template_projection.ML")
+    assert "Comma_Entry_Arithmetic.make_certifier ctxt" in projection
+    validation = projection.split("fun validate_projection", 1)[1].split(
+        "fun compose_cached_projection", 1
+    )[0]
+    assert "Thm.term_of (Thm.lhs_of theorem) aconv request" in validation
+    assert "oracle_free theorem" in validation
+    assert "forall canonical_column entries" in validation
+    assert "Thm_Deps.all_oracles" not in validation
+    lookup = _column_source("semantic_b1_column_lookup_cache.ML")
+    bound = lookup.split("fun natural_bound ctxt", 1)[1].split("fun make ctxt", 1)[0]
+    assert "Goal.prove" not in bound
+    assert "closed proposition" in bound
+    assert "Thm.term_of (Thm.lhs_of equation) aconv proposition" in bound
+    assert "Thm.term_of (Thm.rhs_of equation) aconv @{term True}" in bound
+    fixtures = _column_source("semantic_b1_column_lookup_regression.ML")
+    assert '"false scalar interval bound"' in fixtures

@@ -35,10 +35,7 @@ sig
   val make_equation_checker_with_columns:
     Proof.context -> (term -> bool) -> equation_checker
   val bool_true_equation: Proof.context -> term -> thm -> thm
-  val prove_column_at_admitted_header:
-    Proof.context ->
-      {request: term, dag: term, cid: term, lower: term, level: term,
-       children: term, lookup: thm} -> thm
+  val make_column_at_admitted_header: Proof.context -> {request: term, dag: term, cid: term, lower: term, level: term, children: term, lookup: thm} -> thm
   val prove_nonfalse_from_step:
     Proof.context -> term -> term -> term -> thm -> thm
   val selected_paint_memo_spec:
@@ -938,29 +935,36 @@ struct
             error "Boolean true equation changed its exact proposition"
     in equation end
 
-  fun prove_column_at_admitted_header ctxt
-      {request, dag, cid, lower, level, children, lookup} =
+  fun make_column_at_admitted_header ctxt =
     let
-      val theorem = Drule.infer_instantiate ctxt
-        [(("dag", 0), Thm.cterm_of ctxt dag), (("cid", 0), Thm.cterm_of ctxt cid),
-         (("level", 0), Thm.cterm_of ctxt level),
-         (("children", 0), Thm.cterm_of ctxt children),
-         (("lower", 0), Thm.cterm_of ctxt lower)]
-        @{thm comma_semantic_b1_crt_column_at_admitted_at}
-      val lookup_proof = lookup RS @{thm meta_eq_to_obj_eq}
-      val with_lookup = Thm.implies_elim theorem lookup_proof
-      val lower_bound = HOLogic.mk_binrel @{const_name less_eq} (lower, level)
-      val bound_equation = Simplifier.rewrite
-        (Comma_Entry_Arithmetic.natural_context ctxt)
-        (Thm.cterm_of ctxt lower_bound)
-      val _ = if Thm.term_of (Thm.rhs_of bound_equation) aconv @{term True}
-        then () else error "B1 admission header bound did not reduce"
-      val bound_prop_eq = Thm.combination
-        (Thm.reflexive (Thm.cterm_of ctxt @{term Trueprop})) bound_equation
-      val bound_fact = Thm.equal_elim (Thm.symmetric bound_prop_eq) @{thm TrueI}
-      val admitted = Thm.implies_elim with_lookup bound_fact
-      val proposition = bool_true_equation ctxt request admitted
-    in proposition end
+      val arithmetic_context = Comma_Entry_Arithmetic.natural_context ctxt
+      val bound_facts = Unsynchronized.ref (Termtab.empty: thm Termtab.table)
+      fun bound_fact lower_bound =
+        (case Termtab.lookup (!bound_facts) lower_bound of
+          SOME theorem => theorem
+        | NONE =>
+            let
+              val expected = HOLogic.mk_Trueprop lower_bound
+              val theorem = Goal.prove ctxt [] [] expected (fn _ => simp_tac arithmetic_context 1)
+              val _ = if Thm.prop_of theorem aconv expected andalso Thm.nprems_of theorem = 0
+                andalso null (Thm.hyps_of theorem) andalso null (Thm.tpairs_of theorem)
+                andalso not (Term.is_open expected) then ()
+                else error "B1 admission header bound changed its exact request"
+              val _ = if Termtab.size (!bound_facts) < 16 then
+                  bound_facts := Termtab.update (lower_bound, theorem) (!bound_facts)
+                else ()
+            in theorem end)
+      fun prove {request, dag, cid, lower, level, children, lookup} =
+        let
+          val theorem = Drule.infer_instantiate ctxt
+            [(("dag", 0), Thm.cterm_of ctxt dag), (("cid", 0), Thm.cterm_of ctxt cid),
+             (("level", 0), Thm.cterm_of ctxt level), (("children", 0), Thm.cterm_of ctxt children),
+             (("lower", 0), Thm.cterm_of ctxt lower)] @{thm comma_semantic_b1_crt_column_at_admitted_at}
+          val with_lookup = Thm.implies_elim theorem (lookup RS @{thm meta_eq_to_obj_eq})
+          val admitted = Thm.implies_elim with_lookup
+            (bound_fact (HOLogic.mk_binrel @{const_name less_eq} (lower, level)))
+        in bool_true_equation ctxt request admitted end
+    in prove end
 
   fun prove_nonfalse_from_step ctxt value false_column true_column value_step =
     let

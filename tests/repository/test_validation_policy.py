@@ -18,7 +18,12 @@ from devtools import runs
 from devtools.checks import process_guard, pytest_policy, release
 from devtools.checks.test_run_evidence import PROVENANCE_MODE_ENV
 from devtools.checks.validation_policy import (
+    ISABELLE_JOBS,
     ISABELLE_MEMORY_BYTES,
+    ISABELLE_OPTIONS,
+    ISABELLE_PARALLEL_PROOFS,
+    ISABELLE_SESSION_SECONDS,
+    ISABELLE_THREADS,
     PYTHON_COMMAND_SECONDS,
     PYTHON_MEMORY_BYTES,
     PYTHON_SUITE_SECONDS,
@@ -87,8 +92,13 @@ def test_shared_execution_budgets_have_one_canonical_owner() -> None:
         60,
     )
     assert PYTHON_MEMORY_BYTES == 4 * 1024**3
+    assert ISABELLE_SESSION_SECONDS == 300
     assert ISABELLE_MEMORY_BYTES == 6 * 1024**3
-    assert isabelle_policy(1).timeout_seconds == 120
+    assert ISABELLE_THREADS == 4
+    assert ISABELLE_PARALLEL_PROOFS == ISABELLE_JOBS == 1
+    assert f"timeout={ISABELLE_SESSION_SECONDS}" in ISABELLE_OPTIONS
+    assert isabelle_policy(0).timeout_seconds == ISABELLE_SESSION_SECONDS
+    assert isabelle_policy(2).timeout_seconds == ISABELLE_SESSION_SECONDS * 3
     assert isabelle_policy(1).memory_bytes == ISABELLE_MEMORY_BYTES
 
 
@@ -206,16 +216,16 @@ def test_native_build_summary_separates_rebuilds_reuse_and_failure() -> None:
 
 def test_native_success_keeps_reported_elapsed_budget_failures_visible() -> None:
     summary = release._session_build_summary(
-        "Finished At_Limit (0:01:00 elapsed time, 0:00:58 cpu time)\n"
-        "Finished Too_Slow (0:01:00.01 elapsed time, 0:00:58 cpu time)\n",
+        "Finished At_Limit (0:05:00 elapsed time, 0:04:58 cpu time)\n"
+        "Finished Too_Slow (0:05:00.01 elapsed time, 0:04:58 cpu time)\n",
         ("At_Limit", "Too_Slow", "Cached"),
         succeeded=True,
     )
     assert summary["over_budget_finished_sessions"] == ["Too_Slow"]
     assert summary["reused_sessions"] == ["Cached"]
     assert summary["finished_session_elapsed_seconds"] == {
-        "At_Limit": 60.0,
-        "Too_Slow": 60.01,
+        "At_Limit": 300.0,
+        "Too_Slow": 300.01,
     }
 
 
