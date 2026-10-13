@@ -6,6 +6,12 @@ import pytest
 
 from number_compiler.api import cli_render
 from number_compiler.api.number_api import NumberCompiler
+from number_compiler.api.query_types import (
+    AntihydraTermQuery,
+    CollatzTermQuery,
+    ReverseAddTermQuery,
+    TermQuery,
+)
 
 
 @pytest.mark.parametrize("family", ("collatz", "antihydra", "reverse-add"))
@@ -14,8 +20,13 @@ def test_render_accounting_matches_actual_output_without_reporting_work(
     family: str,
     base: int,
 ) -> None:
-    seed = {"collatz": 27, "reverse-add": 196}.get(family)
-    term = NumberCompiler().project_nth(family, 4, seed=seed)
+    queries: dict[str, TermQuery] = {
+        "collatz": CollatzTermQuery(4, seed=27),
+        "reverse-add": ReverseAddTermQuery(4, seed=196),
+        "antihydra": AntihydraTermQuery(4),
+    }
+    query = queries[family]
+    term = NumberCompiler().project(query)
     before = cli_render._metrics_json(term)["execution_metrics"]
     assert isinstance(before, dict)
     assert before["rendering"]["requests"] is None
@@ -38,7 +49,7 @@ def test_render_accounting_matches_actual_output_without_reporting_work(
 def test_failed_conversion_is_visible_without_claimed_emission(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    term = NumberCompiler().project_nth("collatz", 10, seed=27)
+    term = NumberCompiler().project(CollatzTermQuery(10, seed=27))
 
     def fail_conversion(value: int, base: int) -> Never:
         assert value == 214 and base == 10

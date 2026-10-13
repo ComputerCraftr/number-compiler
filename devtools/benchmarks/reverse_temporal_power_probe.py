@@ -189,7 +189,6 @@ def _source_audit() -> dict[str, bool]:
     )
     (
         compatibility_names,
-        compatibility_imports,
         runtime,
         spacetime,
         boundary,
@@ -205,8 +204,6 @@ def _source_audit() -> dict[str, bool]:
         "whole_output_projection_deleted": "output_word" not in hashlife.functions,
         "ordinary_point_fallback_deleted": "point" not in hashlife.functions,
         "prefix_pop_residual_deleted": "program_pop_last" not in runtime.identifiers,
-        "history_word_carrier_deleted": "..program_word" not in compatibility_imports
-        and "CanonicalWord" not in compatibility_names,
         "exact_future_tile_output_deleted": "_output_tile_macro"
         not in spacetime.functions,
         "bounded_temporal_application_installed": (

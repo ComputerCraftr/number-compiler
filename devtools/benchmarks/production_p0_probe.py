@@ -16,6 +16,11 @@ from number_compiler.api.number_api import (
     PoweredReverseAddTermPayload,
     ProjectedNumberTerm,
 )
+from number_compiler.api.query_types import (
+    CollatzTermQuery,
+    CommaTermQuery,
+    ReverseAddTermQuery,
+)
 
 
 def _require_powered_payload(
@@ -29,8 +34,8 @@ def _require_powered_payload(
 
 
 def _family_seed_position(family: str, maximum_width: int) -> tuple[int, int]:
-    seed = 196 if family == "196" else 27
-    position = maximum_width // 3 if family == "196" else 0
+    seed = 196 if family == "reverse-add" else 27
+    position = maximum_width // 3 if family == "reverse-add" else 0
     return seed, position
 
 
@@ -43,7 +48,11 @@ def _project_powered_request(
     int,
 ]:
     seed, _ = _family_seed_position(family, 0)
-    result = compiler.project_nth(family, steps, seed=seed)
+    result = compiler.project(
+        ReverseAddTermQuery(steps, seed=seed)
+        if family == "reverse-add"
+        else CollatzTermQuery(steps, seed=seed)
+    )
     payload = _require_powered_payload(result.payload)
     core = payload.term
     _, position = _family_seed_position(family, core.maximum_width)
@@ -57,7 +66,11 @@ def repeated_request(family: str, steps: int) -> dict[str, object]:
     digit = term.digit(position)
     before_metrics = core.metrics()
     before = projection_accounting(before_metrics)
-    repeat = compiler.project_nth(family, steps, seed=seed)
+    repeat = compiler.project(
+        ReverseAddTermQuery(steps, seed=seed)
+        if family == "reverse-add"
+        else CollatzTermQuery(steps, seed=seed)
+    )
     repeat_payload = _require_powered_payload(repeat.payload)
     if repeat_payload.term is not core or repeat.digit(position) != digit:
         raise AssertionError("public request lost its exact execution owner")
@@ -114,7 +127,7 @@ def comma_arithmetic_requests(
     for index in indices:
         retained = NumberCompiler()
         if mode == "repeat":
-            warm = retained.project_nth("a367620", index)
+            warm = retained.project(CommaTermQuery(index))
             assert isinstance(warm.payload, CommaTermPayload)
             if certified:
                 warm.materialize(max_bits=1_000_000)
@@ -132,7 +145,7 @@ def comma_arithmetic_requests(
                 )
             )
             start = perf_counter()
-            projected = compiler.project_nth("a367620", index)
+            projected = compiler.project(CommaTermQuery(index))
             assert isinstance(projected.payload, CommaTermPayload)
             term = projected.payload.term
             descriptor_end = perf_counter()
@@ -179,7 +192,7 @@ def comma_arithmetic_requests(
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument(
-        "--family", choices=("196", "collatz", "a367620"), required=True
+        "--family", choices=("reverse-add", "collatz", "a367620"), required=True
     )
     parser.add_argument("--mode", choices=("cold", "repeat", "bypass"), default="cold")
     parser.add_argument("--arithmetic-only", action="store_true")

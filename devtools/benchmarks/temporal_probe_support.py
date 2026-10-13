@@ -13,7 +13,6 @@ def shared_cutover_sources(
     root: Path,
 ) -> tuple[
     AbstractSet[str],
-    AbstractSet[str],
     SourceSyntax,
     SourceSyntax,
     SourceSyntax,
@@ -32,7 +31,6 @@ def shared_cutover_sources(
     imports = router.imports | router.dynamic_imports
     return (
         runtime.identifiers | spacetime.identifiers,
-        runtime.imports | spacetime.imports,
         runtime,
         spacetime,
         boundary,

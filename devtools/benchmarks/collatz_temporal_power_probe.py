@@ -32,6 +32,7 @@ from number_compiler.api.number_api import (
     NumberCompiler,
     PoweredCollatzTermPayload,
 )
+from number_compiler.api.query_types import CollatzTermQuery
 from number_compiler.resources.collatz_power_metrics import CollatzPhysicalBlockMetrics
 from number_compiler.resources.metric_collection import collect_ledger_metrics
 from number_compiler.sequences.collatz.block_power import PoweredCollatzTerm
@@ -322,7 +323,6 @@ def _source_audit() -> dict[str, bool]:
     )
     (
         compatibility_names,
-        compatibility_imports,
         _unused_runtime_binding,
         spacetime,
         boundary,
@@ -361,8 +361,6 @@ def _source_audit() -> dict[str, bool]:
         and "collatz_affine_suffix_event_power_word" not in init.exports
         and "collatz_affine_suffix_event_power_value" not in init.identifiers
         and "collatz_affine_suffix_event_power_value" not in init.exports,
-        "history_word_carrier_deleted": "..program_word" not in compatibility_imports
-        and "CanonicalWord" not in compatibility_names,
         "exact_future_tile_output_deleted": "_output_tile_macro"
         not in spacetime.functions,
         "certified_family_has_no_generic_executor_import": not generic_executor_imported,
@@ -400,7 +398,7 @@ def run_probe() -> dict[str, object]:
     if rejection is None:
         compiler = NumberCompiler()
         exact = {
-            str(radix): compiler.nth("collatz", 10, seed=27, radix=radix)
+            str(radix): compiler.nth(CollatzTermQuery(10, seed=27, radix=radix))
             for radix in (2, 3, 6)
         }
         if set(exact.values()) != {214}:

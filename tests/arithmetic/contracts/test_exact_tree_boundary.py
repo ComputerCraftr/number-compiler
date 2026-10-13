@@ -10,6 +10,7 @@ import pytest
 from devtools.paths import repository_root
 from devtools.verification.spacetime_boundary import tile_uniform_symbol
 from number_compiler.api.number_api import NumberCompiler, PoweredCollatzTermPayload
+from number_compiler.api.query_types import CollatzTermQuery
 from number_compiler.arithmetic.contracts.exact_tree_context import (
     ExactTreeConstructionForbidden,
     OriginalSourceConstruction,
@@ -113,7 +114,7 @@ def test_public_radix_queries_reject_transient_construction_in_callback(
     monkeypatch: pytest.MonkeyPatch,
     radix: int,
 ) -> None:
-    result = NumberCompiler().project_nth("collatz", 4, seed=27, radix=radix)
+    result = NumberCompiler().project(CollatzTermQuery(4, seed=27, radix=radix))
     assert isinstance(result.payload, PoweredCollatzTermPayload)
     term = result.payload.term
     workspace = term._source_image()

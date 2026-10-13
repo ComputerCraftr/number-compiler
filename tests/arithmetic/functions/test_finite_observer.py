@@ -1,4 +1,5 @@
 from itertools import product
+from typing import cast
 
 import pytest
 
@@ -9,8 +10,14 @@ from number_compiler.arithmetic.functions.finite_observer import (
     minimize_finite_observer,
     partition_equivalent,
     partition_quotient_rows,
+    partition_representatives,
+    refine_observer_partition,
 )
-from number_compiler.arithmetic.functions.finite_unary import minimize_unary_moore
+from number_compiler.arithmetic.functions.finite_unary import (
+    UnaryTransitionEffect,
+    minimize_unary_moore,
+    unary_image_filtration,
+)
 
 
 def test_refines_delayed_distinctions_and_preserves_stable_merges() -> None:
@@ -118,3 +125,37 @@ def test_unary_uses_the_same_owner_and_keeps_its_public_result() -> None:
         generic.class_ids,
         generic.rounds,
     )
+
+
+def test_shared_refinement_and_representatives_keep_ids_observer_local() -> None:
+    rows = ((1,), (2,), (2,), (3,))
+    labels = ("same", "same", "different", "different")
+    previous = (7, 7, 7, 7)
+    refined = refine_observer_partition(rows, labels, previous)
+    assert partition_equivalent(refined, (0, 0, 1, 1))
+    assert partition_representatives(refined, 2) == (0, 2)
+
+    with pytest.raises(ValueError, match="align"):
+        refine_observer_partition(rows, labels[:-1], previous)
+    with pytest.raises(ValueError, match="exact nonnegative"):
+        refine_observer_partition(rows, labels, (0, True, 0, 0))
+    with pytest.raises(ValueError, match="declared universe"):
+        refine_observer_partition(((4,),), ("x",), (0,))
+
+
+def test_minimizer_work_callback_reports_each_actual_refinement_pass() -> None:
+    visits: list[int] = []
+    result = minimize_finite_observer(
+        ((1,), (2,), (2,)), (0, 0, 1), on_refinement=visits.append
+    )
+    assert visits == [3] * result.rounds
+
+
+@pytest.mark.parametrize("bad", (True, 1.0, "1"))
+def test_unary_successors_reject_lossy_integer_aliases(bad: object) -> None:
+    with pytest.raises(TypeError, match="unary successor"):
+        unary_image_filtration((0, cast(int, bad)))
+    with pytest.raises(TypeError, match="unary successor"):
+        minimize_unary_moore((0, cast(int, bad)), ("a", "b"))
+    with pytest.raises(TypeError, match="unary transition target"):
+        UnaryTransitionEffect((0, cast(int, bad)))

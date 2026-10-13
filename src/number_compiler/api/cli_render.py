@@ -9,6 +9,7 @@ from decimal import Decimal
 from number_compiler.api.number_api import (
     AntihydraTermPayload,
     CommaTermPayload,
+    DoubleReverseTermPayload,
     FermatTermPayload,
     FormulaTermPayload,
     MersenneTermPayload,
@@ -36,7 +37,14 @@ _DIGIT_BYTES = _DIGITS.encode("ascii")
 def _term_ledger(term: ProjectedNumberTerm) -> ResourceLedger | None:
     """Return an existing runtime ledger without constructing an execution owner."""
     owner = term.payload
-    if isinstance(owner, (PoweredReverseAddTermPayload, PoweredCollatzTermPayload)):
+    if isinstance(
+        owner,
+        (
+            PoweredReverseAddTermPayload,
+            PoweredCollatzTermPayload,
+            DoubleReverseTermPayload,
+        ),
+    ):
         return owner.term._ledger
     if isinstance(owner, (AntihydraTermPayload, CommaTermPayload)):
         return owner.term.ledger
@@ -183,7 +191,7 @@ def _render_value_body(
         bit_extent = (
             upper_bound if upper_bound <= max_bits else term.payload.term.width()
         )
-    elif isinstance(term.payload, CommaTermPayload):
+    elif isinstance(term.payload, (CommaTermPayload, DoubleReverseTermPayload)):
         upper_bound = term.payload.estimated_bit_length
         bit_extent = (
             upper_bound
@@ -198,12 +206,21 @@ def _render_value_body(
         raise ValueError(f"output exceeds --max-output-bits ({max_bits})")
 
     if (
-        isinstance(term.payload, (FormulaTermPayload, PoweredReverseAddTermPayload))
+        isinstance(
+            term.payload,
+            (
+                FormulaTermPayload,
+                PoweredReverseAddTermPayload,
+                DoubleReverseTermPayload,
+            ),
+        )
         and term.source_radix == output_base
     ):
         if not 2 <= output_base <= len(_DIGITS):
             raise ValueError("text output base must be between 2 and 36")
-        if isinstance(term.payload, PoweredReverseAddTermPayload):
+        if isinstance(
+            term.payload, (PoweredReverseAddTermPayload, DoubleReverseTermPayload)
+        ):
             return _radix_string_from_lsd(term.payload.iter_digits(), output_base)
         return (
             "".join(_DIGITS[d] for d in term.payload.iter_digits(reverse=True)) or "0"
@@ -231,7 +248,14 @@ def _render_value_body(
             )
         source_base = term.source_radix
         if (
-            isinstance(term.payload, (FormulaTermPayload, PoweredReverseAddTermPayload))
+            isinstance(
+                term.payload,
+                (
+                    FormulaTermPayload,
+                    PoweredReverseAddTermPayload,
+                    DoubleReverseTermPayload,
+                ),
+            )
             and source_base is not None
             and not source_base & (source_base - 1)
         ):

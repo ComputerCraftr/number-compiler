@@ -5,7 +5,8 @@ Use `number-compiler FAMILY --nth N` for exact terms and demand information with
 ```sh
 number-compiler --list-families
 number-compiler antihydra --help
-number-compiler 196 --nth 8
+number-compiler reverse-add --seed 196 --nth 8
+number-compiler 2rev10 --seed 10 --nth 1
 number-compiler collatz --nth 64 --seed 27
 number-compiler antihydra --nth 64 --info ledger --info clock
 number-compiler fermat --nth 5 --info primality --info factor --format json
@@ -39,16 +40,14 @@ binary integer. For example, `--nth-power10 6 --max-index-bits 19` refuses
 before sequence construction: one million requires 20 bits.
 
 
-| Family | `--nth N` | Parameters |
-|---|---|---|
-| `196` | N reverse/add iterations; zero is 196 by default | optional `--seed`, `--base` |
-| `reverse-add` | N reverse/add iterations; zero is the seed | required `--seed`, optional `--base` |
-| `collatz` | N ordinary physical iterations; zero is the seed | required `--seed`, optional `--radix` |
-| `antihydra` | N macro-return coordinates after startup; zero is 8 | none |
-| `prime` | zero-based prime position starting at `--start` | optional `--start` |
-| `fermat` | Fermat index N, starting at zero | none |
-| `mersenne` | exponent N, starting at one | none |
-| `a367620` | OEIS index N, starting at one; checked-prefix admission required | none |
+Reverse/add, double-reversal and Collatz count iterations from the supplied
+source at index zero. Antihydra counts macro returns after startup, starting at 8.
+Prime queries use zero-based positions at or above `--start`; Fermat uses its
+zero-based sequence index, Mersenne uses a positive exponent, and A367620 uses
+positive OEIS indices with checked-prefix admission. The generated capability
+table below owns the supported source parameters and observations.
+
+`2rev10` uses `U(n) = 2 * reverse10(n)`, including decimal normalization: `10 → 2`. Its decimal grammar is applied through the shared scheduler. The current exact route charges each primitive transition; it does not claim an arbitrary-depth temporal quotient. `--max-steps` and `--max-state-bits` both default to 4096. It accepts `--info metrics`, output formats and output bases, but no input base, radix or event selector.
 
 Collatz `--events E` selects accelerated odd events from an odd seed, requires
 `--info`, and has no ordinary term value. It is exclusive with both term selectors.
@@ -93,14 +92,14 @@ The following capability table is generated from the CLI registry. `root` requir
 <!-- cli-capabilities:start -->
 | Family | Index unit | Parameters | Term information | Event information |
 | --- | --- | --- | --- | --- |
-| `a367620` | `oeis_index` | — | `metrics`, `clock`, `tropical`, `certificate` | — |
 | `reverse-add` | `iterations` | `--seed`, `--base` | `metrics`, `mirror`, `boundary-macro` | — |
-| `196` | `iterations` | `--seed`, `--base` | `metrics`, `mirror`, `boundary-macro` | — |
-| `collatz` | `physical_iterations` | `--seed`, `--radix` | `metrics`, `clock`, `accumulator` | `clock`, `modular`, `twisted`, `hasse`, `hensel`, `tropical`, `factor`, `safety` |
+| `2rev10` | `iterations` | `--seed` | `metrics` | — |
+| `collatz` | `physical_iterations` | `--seed`, `--radix` | `metrics`, `clock`, `accumulator`, `boundary-macro`, `innovation-borrow` | `clock`, `modular`, `twisted`, `hasse`, `hensel`, `tropical`, `factor`, `safety` |
+| `antihydra` | `macro_returns_after_startup` | — | `metrics`, `ledger`, `clock`, `modular`, `tape`, `twisted`, `spacetime`, `hasse`, `hensel`, `mahler`, `tropical`, `factor` | — |
+| `a367620` | `oeis_index` | — | `metrics`, `clock`, `tropical`, `certificate` | — |
 | `prime` | `prime_index` | `--start` | `metrics` | — |
 | `fermat` | `fermat_index` | — | `metrics`, `primality`, `factor`, `root` | — |
 | `mersenne` | `mersenne_exponent` | — | `metrics`, `primality`, `factor`, `root` | — |
-| `antihydra` | `macro_returns_after_startup` | — | `metrics`, `ledger`, `clock`, `modular`, `tape`, `twisted`, `spacetime`, `hasse`, `hensel`, `mahler`, `tropical`, `factor` | — |
 <!-- cli-capabilities:end -->
 
 Family help lists the applicable projection parameters. Primality and factor
@@ -126,7 +125,7 @@ checked certificate; a finite trace cannot supply it.
 ## Decimal reverse/add availability
 
 Decimal reverse/add uses an authenticated decimal pair-output owner when the
-same-carry clause does not apply. For example, `number-compiler 196 --nth 20`
+same-carry clause does not apply. For example, `number-compiler reverse-add --seed 196 --nth 20`
 emits `70446464506`. The old decimal 128-iteration cap is removed; requests still
 obey their resource budgets. Length-only queries can retain a scalar successor
 summary without constructing the output grammar. This remains a sequential cold
@@ -277,7 +276,7 @@ compiler. It is not a complete carry tape or a decimal-width projection.
 
 ### Reverse boundary certificates
 
-`196` and decimal `reverse-add` accept `--info boundary-macro`. With
+Decimal `reverse-add` accepts `--info boundary-macro`. With
 `--no-value`, this requests only a source-bound boundary certificate: unanimous
 width and edge digits across all admitted unknown-interior carry branches.
 It never certifies the complete future integer. Window precision is tried at
@@ -290,7 +289,7 @@ decode the source or scan its interior again. Its future relation still retains
 both possible unknown carries, so it does not authorize full-integer jumps.
 
 ```bash
-number-compiler 196 --seed 10001 --nth 1 --no-value --info boundary-macro --format json
+number-compiler reverse-add --seed 10001 --nth 1 --no-value --info boundary-macro --format json
 ```
 
 Nondecimal `--base` is rejected for this observer. A double-reverse operation
@@ -315,3 +314,52 @@ number-compiler collatz --seed 27 --nth 16 --no-value --info accumulator --modul
 Joint affine coefficients are budgeted even when only a modular output is
 requested. This does not promise cheap arbitrary-horizon accumulator queries
 or use a bounded Moore observation class as an endpoint cache key.
+
+### Collatz guarded innovation observations
+
+`collatz --info boundary-macro` reports the first guarded boundary macro
+actually executed by the source-image constructor. `--info innovation-borrow`
+additionally requests its signed normalized second-innovation tape at an odd
+modulus between 3 and 4096 (default 257). Both may accompany a value request.
+
+```bash
+number-compiler collatz --seed 2174 --nth 13 --no-value --info innovation-borrow --modulus 49 --format json
+```
+
+The tape describes the first authenticated macro, not the complete future
+trajectory. A source with no witnessed macro still has an exact initial-source
+innovation observation, with the missing macro observation labeled partial.
+Physical-return clocks and normalized-step borrow/carry counts remain separate.
+These information requests do not demand the whole chronological accumulator;
+add `--info accumulator` when that output is needed. Ordinary value requests
+do not construct the modular Moore observer.
+
+Finite-horizon Moore IDs authorize reuse of the declared output word only at
+that horizon. They do not identify endpoint or width actions. Guarded arithmetic
+macros separately authenticate their source cylinder and physical duration.
+
+
+## Typed Python queries
+
+Use `NumberCompiler.project(query)` for lazy projection, `nth(query, max_bits=...)`
+for bounded integer output, and `project_digit(query, coordinate)` for a single
+radix digit. Coordinates follow the selected family's existing radix convention.
+The exported frozen query records carry only execution parameters; event and
+certificate-verification requests are separate variants. Optional observations
+and compact-index presentation do not become mathematical query coordinates.
+
+```python
+from number_compiler import CollatzTermQuery, NumberCompiler
+
+compiler = NumberCompiler()
+query = CollatzTermQuery(8, seed=27, radix=2)
+assert compiler.nth(query) == 71
+assert compiler.project_digit(query, 0) == 1
+```
+
+The family registry supplies parser options, capability documentation and lazy
+execution/observation adapters. Help does not import family engines. Query
+constructors reject invalid external integers, including Booleans; cache admission
+still checks source, generation, budget and consumer authority. JSON serialization
+copies demanded packets, preserves null measurements and encodes oversized integers
+exactly. Compact indices replace only explicitly declared index fields.

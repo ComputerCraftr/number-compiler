@@ -99,7 +99,6 @@ class CollatzJointRunAction:
         ) % modulus
 
     def accumulator_observation(self, modulus: int) -> CollatzAccumulatorObservation:
-        modulus = require_integer(modulus, "accumulator modulus", 2)
         return CollatzAccumulatorObservation(
             modulus,
             self.normalized_accumulator_residue(modulus),

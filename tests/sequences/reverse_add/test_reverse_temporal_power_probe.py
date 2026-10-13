@@ -131,7 +131,6 @@ def test_reverse_release_probe_requires_measured_source_image_execution(
     assert result["execution_status"] == "available"
     assert result["measurements_complete"] is True
     assert result["execution_rejection_type"] is None
-    assert object_record(result["source_audit"])["history_word_carrier_deleted"]
     assert object_record(result["source_audit"])["exact_future_tile_output_deleted"]
     assert result["projection"]
     assert result["measured_scaling_gate"] == (

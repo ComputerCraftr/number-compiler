@@ -9,7 +9,7 @@ from __future__ import annotations
 
 import sys
 from collections.abc import Mapping
-from dataclasses import dataclass, replace
+from dataclasses import dataclass, field, replace
 
 from number_compiler.resources.ledger import ResourceLedger
 
@@ -180,6 +180,20 @@ class TemporalFamilyWork:
     balanced_routes: int | None = None
     punctured_event_actions: int | None = None
     punctured_event_symbols: int | None = None
+    guarded_template_lookups: int | None = None
+    guarded_template_hits: int | None = None
+    guarded_template_misses: int | None = None
+    guarded_template_publications: int | None = None
+    guarded_template_bypasses: int | None = None
+    guarded_prefix_macro_requests: int | None = None
+    guarded_prefix_root_candidates: int | None = None
+    guarded_prefix_global_root_candidates: int | None = None
+    guarded_prefix_slice_candidates: int | None = None
+    guarded_prefix_action_operand_bits: int | None = None
+    guarded_prefix_source_operand_bits: int | None = None
+    guarded_prefix_publications: int | None = None
+    guarded_prefix_budget_bypasses: int | None = None
+    root_checkpoint_work: tuple[tuple[str, int], ...] = field(default=(), kw_only=True)
 
 
 @dataclass(frozen=True, slots=True)
@@ -426,6 +440,7 @@ def _stream_demand(counters: Mapping[str, int]) -> TemporalStreamDemand:
         prefix
         for prefix in (
             "reverse_output_stream_",
+            "double_reverse_output_stream_",
             "collatz_output_stream_",
             "antihydra_output_stream_",
             "comma_stream_",
@@ -651,6 +666,41 @@ def collect_temporal_diagnostics(
                 _count(counters, f"{prefix}_temporal_balanced_routes"),
                 _count(counters, f"{prefix}_temporal_punctured_event_actions"),
                 _count(counters, f"{prefix}_temporal_punctured_event_symbols"),
+                *(
+                    _count(counters, f"collatz_boundary_template_{field}")
+                    if prefix == "collatz_physical"
+                    else None
+                    for field in (
+                        "lookups",
+                        "hits",
+                        "misses",
+                        "publications",
+                        "bypasses",
+                    )
+                ),
+                *(
+                    _count(counters, f"collatz_boundary_prefix_{field}")
+                    if prefix == "collatz_physical"
+                    else None
+                    for field in (
+                        "macro_requests",
+                        "root_candidates",
+                        "global_root_candidates",
+                        "slice_candidates",
+                        "action_operand_bits",
+                        "source_operand_bits",
+                        "publications",
+                        "budget_bypasses",
+                    )
+                ),
+                root_checkpoint_work=tuple(
+                    sorted(
+                        (name.removeprefix("collatz_temporal_root_checkpoint_"), value)
+                        for name, value in counters.items()
+                        if prefix == "collatz_physical"
+                        and name.startswith("collatz_temporal_root_checkpoint_")
+                    )
+                ),
             )
         )
 

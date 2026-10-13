@@ -408,7 +408,9 @@ print(json.dumps({'public_exports': len(api.__all__), 'kernel_left_states': kern
         _report_stage("installed-cli-contracts:complete")
         commands = [
             (["prime", "--nth-power10", "0"], 0, "3"),
-            (["196", "--nth-power10", "0"], 0, "887"),
+            (["reverse-add", "--seed", "196", "--nth-power10", "0"], 0, "887"),
+            (["2rev10", "--seed", "10", "--nth", "0"], 0, "10"),
+            (["2rev10", "--seed", "10", "--nth-power10", "0"], 0, "2"),
             (["reverse-add", "--nth-power10", "0", "--seed", "1"], 0, "2"),
             (["collatz", "--nth-power10", "6", "--seed", "27"], 0, "4"),
             (["antihydra", "--nth-power10", "0"], 0, "12"),
@@ -422,17 +424,17 @@ print(json.dumps({'public_exports': len(api.__all__), 'kernel_left_states': kern
             ),
             (["prime", "--nth", "10", "--info", "metrics"], 0, "31"),
             (["prime", "--nth", "10", "--max-prime-states", "1"], 2, ""),
-            (["196", "--nth", "0"], 0, "196"),
-            (["196", "--nth", "2"], 0, "1675"),
-            (["196", "--nth", "20"], 0, "70446464506"),
+            (["reverse-add", "--seed", "196", "--nth", "0"], 0, "196"),
+            (["reverse-add", "--seed", "196", "--nth", "2"], 0, "1675"),
+            (["reverse-add", "--seed", "196", "--nth", "20"], 0, "70446464506"),
             (
-                ["196", "--nth", "128"],
+                ["reverse-add", "--seed", "196", "--nth", "128"],
                 0,
                 "4431637520621652749397876519890256677940462572161148460244",
             ),
-            (["196", "--seed", "1", "--nth", "4"], 0, "16"),
+            (["reverse-add", "--seed", "1", "--nth", "4"], 0, "16"),
             (
-                ["196", "--nth", "129"],
+                ["reverse-add", "--seed", "196", "--nth", "129"],
                 0,
                 "8852285932234405389895643040879413465879935133421405821588",
             ),
@@ -491,7 +493,7 @@ print(json.dumps({'public_exports': len(api.__all__), 'kernel_left_states': kern
                 "454",
             ),
             (["fermat", "--nth", "4", "--no-value", "--info", "primality"], 3, ""),
-            (["nth", "prime", "0"], 2, ""),
+            (["not-a-family", "--nth", "0"], 2, ""),
         ]
         cold_processes: list[dict[str, object]] = []
         _report_stage(f"cold-cli:start cases={len(commands)}")
@@ -566,10 +568,12 @@ print(json.dumps({'public_exports': len(api.__all__), 'kernel_left_states': kern
                         "installed safety consumer lost its admitted prefix"
                     )
             if (
-                arguments[0] == "nth"
-                and "old command form removed" not in observed.stderr
+                arguments[0] == "not-a-family"
+                and "invalid choice" not in observed.stderr
             ):
-                raise ValueError("removed command did not supply a migration hint")
+                raise ValueError(
+                    "unknown family did not produce an ordinary parser error"
+                )
         _report_stage("cold-cli:complete")
         return {
             "wheel": wheel.name,

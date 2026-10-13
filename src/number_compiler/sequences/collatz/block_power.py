@@ -298,6 +298,7 @@ class PoweredCollatzTerm(RadixProjectionSourceAuditor):
         "_active_width",
         "_compiler",
         "_effect",
+        "_innovation_tape_demanded",
         "_joint_cocycle_demanded",
         "_ledger",
         "_max_cache_entries",
@@ -375,9 +376,12 @@ class PoweredCollatzTerm(RadixProjectionSourceAuditor):
         self._max_context_nodes = max_context_nodes
         self._max_cache_entries = max_cache_entries
         self._workspace: CollatzPhysicalImageWorkspace | None = None
-        self._workspace_binding: tuple[object, object, object, bool, bool] | None = None
+        self._workspace_binding: (
+            tuple[object, object, object, bool, bool, bool] | None
+        ) = None
         self._width_spine_demanded = False
         self._joint_cocycle_demanded = False
+        self._innovation_tape_demanded = False
         radix_owner = self._ledger.register(
             "radix-applications", "application_index", "INDEX_OWNED"
         )
@@ -483,6 +487,7 @@ class PoweredCollatzTerm(RadixProjectionSourceAuditor):
                 shared_cache=self._shared_cache,
                 include_width_spine=self._width_spine_demanded,
                 include_joint_cocycle=self._joint_cocycle_demanded,
+                include_innovation_tape=self._innovation_tape_demanded,
             )
             self._workspace_binding = (
                 workspace.root_source,
@@ -490,6 +495,7 @@ class PoweredCollatzTerm(RadixProjectionSourceAuditor):
                 workspace.root_payload,
                 workspace._include_width_spine,
                 workspace._include_joint_cocycle,
+                workspace._include_innovation_tape,
             )
             self._workspace = workspace
         if (
@@ -501,6 +507,7 @@ class PoweredCollatzTerm(RadixProjectionSourceAuditor):
             or workspace.retain_chronological_support()
             or workspace._include_width_spine != self._width_spine_demanded
             or workspace._include_joint_cocycle != self._joint_cocycle_demanded
+            or workspace._include_innovation_tape != self._innovation_tape_demanded
         ):
             raise ValueError("Collatz source image belongs to another term")
         workspace.validate_source(workspace.root_source)
@@ -514,6 +521,7 @@ class PoweredCollatzTerm(RadixProjectionSourceAuditor):
                 workspace.root_payload,
                 workspace._include_width_spine,
                 workspace._include_joint_cocycle,
+                workspace._include_innovation_tape,
             )
             or image.source != workspace.root_source
             or image.action != workspace.root_action
@@ -764,6 +772,29 @@ class PoweredCollatzTerm(RadixProjectionSourceAuditor):
         if action is None:
             raise ValueError("joint cocycle was not published with this source image")
         return action.accumulator_observation(modulus)
+
+    def prepare_innovation_tape(self) -> None:
+        """Request guarded macro provenance without a chronological sum."""
+        if self._workspace is not None and not self._innovation_tape_demanded:
+            raise ValueError("innovation demand must precede source-image construction")
+        self._innovation_tape_demanded = True
+
+    def observe_boundary_macro(
+        self, *, modulus: int | None = None
+    ) -> dict[str, object]:
+        """Observe the first macro actually admitted by this physical image."""
+        from number_compiler.sequences.collatz.boundary_observation import (
+            observe_guarded_boundary,
+        )
+
+        if not self._innovation_tape_demanded:
+            raise ValueError("prepare the innovation demand before requesting it")
+        if modulus is not None:
+            modulus = require_integer(modulus, "innovation modulus", 3, 4096)
+            if modulus % 2 == 0:
+                raise ValueError("innovation modulus must be odd")
+        witness = None if self.steps == 0 else self._source_image().first_boundary_macro
+        return observe_guarded_boundary(self.seed, witness, modulus, self._ledger)
 
     @source_reads_only
     def s_arithmetic_clock(self) -> SArithmeticClock:

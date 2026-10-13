@@ -1,5 +1,6 @@
 import ast
 import os
+import subprocess
 from collections.abc import Callable, Iterator
 from pathlib import Path
 
@@ -15,6 +16,7 @@ from devtools.checks.repository_policy import (
     source_line_violations,
     validation_entrypoint_violations,
 )
+from devtools.checks.source_discovery import authored_files
 from devtools.paths import repository_root
 
 ROOT = repository_root()
@@ -60,6 +62,35 @@ def test_aggregate_policy_report_uses_one_authored_source_walk(
     assert report["package_violations"] == ()
 
 
+def test_authored_source_discovery_uses_tracked_and_untracked_nonignored_files(
+    tmp_path: Path,
+) -> None:
+    subprocess.run(["git", "init", "-q", str(tmp_path)], check=True)
+    (tmp_path / ".gitignore").write_text("/results/\n/ignored.py\n")
+    tracked = tmp_path / "src/package/tracked.py"
+    tracked.parent.mkdir(parents=True)
+    tracked.write_text("TRACKED = True\n")
+    subprocess.run(
+        ["git", "-C", str(tmp_path), "add", ".gitignore", "src/package/tracked.py"],
+        check=True,
+    )
+    untracked = tmp_path / "tests/test_untracked.py"
+    untracked.parent.mkdir()
+    untracked.write_text("UNTRACKED = True\n")
+    ignored = tmp_path / "ignored.py"
+    ignored.write_text("IGNORED = True\n")
+    generated = tmp_path / "results/generated.py"
+    generated.parent.mkdir()
+    generated.write_text("GENERATED = True\n")
+
+    discovered = set(authored_files(tmp_path))
+    assert tracked in discovered
+    assert untracked in discovered
+    assert ignored not in discovered
+    assert generated not in discovered
+    assert set(authored_files(tracked.parent)) == {tracked}
+
+
 def test_optional_policy_profile_reports_existing_snapshot_without_changing_report(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
@@ -87,13 +118,14 @@ def test_optional_policy_profile_reports_existing_snapshot_without_changing_repo
     assert "policy-profile: recursion:complete seconds=" in profile_output.err
     assert "policy-profile: clones:complete seconds=" in profile_output.err
     assert "policy-profile: package:complete seconds=" in profile_output.err
+    package_sources = tuple(package.glob("*.py"))
     expected_ast_nodes = sum(
         sum(1 for _node in ast.walk(ast.parse(path.read_text(encoding="utf-8"))))
-        for path in package.glob("*.py")
+        for path in package_sources
     )
     assert (
-        f"policy-profile: clone-progress modules=2 ast_nodes={expected_ast_nodes} "
-        in profile_output.err
+        f"policy-profile: clone-progress modules={len(package_sources)} "
+        f"ast_nodes={expected_ast_nodes} " in profile_output.err
     )
 
 

@@ -8,6 +8,9 @@ from typing import TYPE_CHECKING
 from number_compiler.sequences.collatz.tape_width import CollatzTapeWidthSummary
 
 if TYPE_CHECKING:
+    from number_compiler.sequences.collatz.boundary_macros import (
+        CollatzBoundaryMacro,
+    )
     from number_compiler.sequences.collatz.joint_temporal_action import (
         CollatzAccumulatorObservation,
         CollatzJointRunAction,
@@ -38,6 +41,8 @@ class CollatzTemporalRunQuotient:
     root_certificate: CollatzRootFiberCertificate | None
     tape_width_summary: CollatzTapeWidthSummary | None = None
     joint_action: CollatzJointRunAction | None = None
+    first_boundary: tuple[int, int, int, str] | None = None
+    first_boundary_macro: CollatzBoundaryMacro | None = None
 
     def __post_init__(self) -> None:
         if any(
@@ -109,6 +114,34 @@ class CollatzTemporalRunQuotient:
                 or action.phase != self.phase
             ):
                 raise ValueError("Collatz joint action is detached from its run")
+        if (self.first_boundary is None) != (self.first_boundary_macro is None):
+            raise ValueError("Collatz boundary witness and action must be paired")
+        if self.first_boundary is not None:
+            witness = self.first_boundary
+            if (
+                type(witness) is not tuple
+                or len(witness) != 4
+                or any(type(value) is not int for value in witness[:3])
+                or type(witness[3]) is not str
+                or witness[0] < 0
+                or witness[1] <= 0
+                or witness[2] <= 0
+                or witness[0] + witness[2] > self.physical_ticks
+            ):
+                raise ValueError("Collatz first boundary witness is malformed")
+        if self.first_boundary_macro is not None:
+            from number_compiler.sequences.collatz.boundary_macros import (
+                validate_boundary_macro,
+            )
+
+            macro = self.first_boundary_macro
+            validate_boundary_macro(macro)
+            if self.first_boundary is None or (
+                self.first_boundary[1] != macro.source
+                or self.first_boundary[2] != macro.physical_ticks
+                or self.first_boundary[3] != macro.family
+            ):
+                raise ValueError("Collatz first boundary action is detached")
 
     @property
     def semantic_key(self) -> tuple[object, ...]:
@@ -169,6 +202,23 @@ class CollatzTemporalRunQuotient:
                     fields.sum_offset,
                     fields.previous_gain,
                     fields.previous_offset,
+                )
+            )
+        if self.first_boundary_macro is not None:
+            macro = self.first_boundary_macro
+            bits += sum(
+                max(1, value.bit_length())
+                for value in (
+                    macro.source,
+                    macro.repetitions,
+                    macro.maximum_repetitions,
+                    macro.physical_ticks,
+                    macro.odd_symbols,
+                    macro.endpoint,
+                    macro.fields.gain,
+                    macro.fields.offset,
+                    macro.fields.sum_gain,
+                    macro.fields.sum_offset,
                 )
             )
         return bits

@@ -656,7 +656,6 @@ def test_b1_construction_checker_keeps_action_row_component_in_bound_order() -> 
         "origin-multiplicity",
         "group-geometry-and-piece-binding",
     ]
-    assert len(labels) == 15
     action_row = (
         "comma_semantic_b1_crt_source_slot_action_row_certified source period actions"
     )

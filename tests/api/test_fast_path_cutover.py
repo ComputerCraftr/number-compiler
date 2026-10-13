@@ -5,6 +5,7 @@ from __future__ import annotations
 import number_compiler
 from devtools.paths import repository_root
 from number_compiler.api.number_api import NumberCompiler, PoweredCollatzTermPayload
+from number_compiler.api.query_types import CollatzTermQuery
 from number_compiler.sequences.collatz.block_power import PoweredCollatzTerm
 from number_compiler.sequences.reverse_add.power import ReverseAddPoweredTerm
 from tests.support.power_assertions import (
@@ -47,7 +48,7 @@ def test_collatz_huge_nth_construction_is_logarithmic_and_does_not_execute_endpo
 
 
 def test_number_api_collatz_projection_is_lazy_binary_powered() -> None:
-    term = NumberCompiler().project_nth("collatz", 10**12, seed=27, radix=2)
+    term = NumberCompiler().project(CollatzTermQuery(10**12, seed=27, radix=2))
     assert term.metrics.projection_work == 0
     assert term.metrics.construction_steps < 2 * (10**12).bit_length()
     assert isinstance(term.payload, PoweredCollatzTermPayload)

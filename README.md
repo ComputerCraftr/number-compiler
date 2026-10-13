@@ -1,18 +1,30 @@
 # Number Compiler
 
-Number Compiler provides exact terms and radix projections for reverse-add,
+Number Compiler provides exact terms and radix projections for reverse-add, decimal double-reversal (`2rev10`),
 Collatz, Antihydra, prime blocks, Fermat numbers, Mersenne numbers and the admitted A367620 comma prefix.
 
 ```bash
 python -m pip install -e '.[dev]'
 number-compiler --list-families
-number-compiler 196 --nth 8
+number-compiler reverse-add --seed 196 --nth 8
 number-compiler collatz --nth 8 --seed 27
 number-compiler collatz --nth-power10 6 --seed 27
 number-compiler antihydra --nth 64 --info ledger --info clock
 number-compiler a367620 --nth 1
 number-compiler fermat --nth 3 --no-value --info primality --format json
 number-compiler mersenne --nth 131 --no-value --info primality --info factor --format json
+```
+
+Execution uses immutable family-specific queries; presentation stays in the CLI:
+
+```python
+from number_compiler import CollatzTermQuery, NumberCompiler, ReverseAddTermQuery
+
+compiler = NumberCompiler()
+assert compiler.nth(CollatzTermQuery(8, seed=27)) == 71
+term = compiler.project(ReverseAddTermQuery(2, seed=196))
+assert term.materialize() == 1675
+assert compiler.project_digit(ReverseAddTermQuery(2, seed=196), 0) == 5
 ```
 
 The public Python entry points are exported from `number_compiler`. See the

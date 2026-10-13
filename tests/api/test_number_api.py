@@ -8,22 +8,29 @@ import pytest
 import number_compiler.sequences.reverse_add.digits as reverse_digits
 from number_compiler.api.cli import main as cli_main
 from number_compiler.api.number_api import NumberCompiler, PoweredReverseAddTermPayload
+from number_compiler.api.query_types import (
+    CollatzTermQuery,
+    FermatTermQuery,
+    MersenneTermQuery,
+    PrimeTermQuery,
+    ReverseAddTermQuery,
+)
 from tests.support.power_assertions import assert_collatz_radices
 from tests.support.reverse_cutover import assert_q19_output_authority
 
 
 def test_nth_terms_are_exact_across_all_canonical_families() -> None:
     c = NumberCompiler()
-    assert c.nth("196", 0) == 196
-    assert c.nth("196", 5) == 52514
-    assert c.nth("reverse-add", 5, seed=196, base=10) == 52514
+    assert c.nth(ReverseAddTermQuery(0, seed=196)) == 196
+    assert c.nth(ReverseAddTermQuery(5, seed=196)) == 52514
+    assert c.nth(ReverseAddTermQuery(5, seed=196, base=10)) == 52514
     assert_collatz_radices(c)
-    assert c.nth("prime", 10, start=2) == 31
-    assert c.nth("prime", 0, start=100) == 101
-    assert c.nth("prime", 3, start=100) == 109
-    assert c.nth("fermat", 0) == 3
-    assert c.nth("fermat", 4) == 65537
-    assert c.nth("mersenne", 13) == 8191
+    assert c.nth(PrimeTermQuery(10, start=2)) == 31
+    assert c.nth(PrimeTermQuery(0, start=100)) == 101
+    assert c.nth(PrimeTermQuery(3, start=100)) == 109
+    assert c.nth(FermatTermQuery(0)) == 3
+    assert c.nth(FermatTermQuery(4)) == 65537
+    assert c.nth(MersenneTermQuery(13)) == 8191
 
 
 def test_projection_phase_does_not_materialize_formula_terms(
@@ -36,8 +43,8 @@ def test_projection_phase_does_not_materialize_formula_terms(
         "number_compiler.hashlife.execution.evaluator.materialize_values", forbidden
     )
     c = NumberCompiler()
-    r = c.project_nth("reverse-add", 16, seed=196, base=10)
-    z = c.project_nth("collatz", 32, seed=27, radix=2)
+    r = c.project(ReverseAddTermQuery(16, seed=196, base=10))
+    z = c.project(CollatzTermQuery(32, seed=27, radix=2))
     # Both iterative families now construct source-independent binary-powered
     # operators.  Endpoint execution is deferred until a digit/value is asked
     # for; no orbit is replayed during projection construction.
@@ -50,8 +57,8 @@ def test_projection_phase_does_not_materialize_formula_terms(
 
 def test_special_term_projection_is_direct_and_has_no_raw_squaring() -> None:
     c = NumberCompiler()
-    f = c.project_nth("fermat", 20)
-    m = c.project_nth("mersenne", 100_000)
+    f = c.project(FermatTermQuery(20))
+    m = c.project(MersenneTermQuery(100_000))
     assert f.metrics.projection_work == 0
     assert m.metrics.projection_work == 0
     assert f.metrics.raw_squarings == m.metrics.raw_squarings == 0
@@ -62,7 +69,7 @@ def test_special_term_projection_is_direct_and_has_no_raw_squaring() -> None:
 
 
 def test_output_cap_applies_only_when_materializing() -> None:
-    term = NumberCompiler().project_nth("fermat", 20)
+    term = NumberCompiler().project(FermatTermQuery(20))
     assert term.estimated_bit_length == (1 << 20) + 1
     with pytest.raises(ValueError):
         term.materialize(max_bits=1024)
@@ -71,7 +78,7 @@ def test_output_cap_applies_only_when_materializing() -> None:
 def test_cli_value_symbolic_json_and_family_alias(
     capsys: pytest.CaptureFixture[str],
 ) -> None:
-    assert cli_main(["196", "--nth", "5"]) == 0
+    assert cli_main(["reverse-add", "--seed", "196", "--nth", "5"]) == 0
     assert capsys.readouterr().out.strip() == "52514"
 
     assert cli_main(["fermat", "--nth", "20", "--format", "symbolic"]) == 0
@@ -121,23 +128,23 @@ def test_single_digit_projection_never_materializes_the_full_word(
 
     # Sparse special sources answer arbitrary positions directly from their
     # source descriptors, including enormous Fermat endpoints.
-    assert c.project_digit("fermat", 20, 0) == 1
-    assert c.project_digit("fermat", 20, 123456) == 0
-    assert c.project_digit("fermat", 20, 1 << 20) == 1
-    assert c.project_digit("mersenne", 100_000, 99_999) == 1
+    assert c.project_digit(FermatTermQuery(20), 0) == 1
+    assert c.project_digit(FermatTermQuery(20), 123456) == 0
+    assert c.project_digit(FermatTermQuery(20), 1 << 20) == 1
+    assert c.project_digit(MersenneTermQuery(100_000), 99_999) == 1
 
     # Formula families evaluate only the requested position rather than calling
     # materialize_values on the complete term.
-    term = c.project_nth("reverse-add", 5, seed=196, base=10)
+    term = c.project(ReverseAddTermQuery(5, seed=196, base=10))
     assert isinstance(term.payload, PoweredReverseAddTermPayload)
     assert term.payload.term._workspace is None
     assert term.digit(0) == 4
     assert_q19_output_authority(term.payload.term)
-    assert c.project_digit("reverse-add", 5, 0, seed=196, base=10) == 4
+    assert c.project_digit(ReverseAddTermQuery(5, seed=196, base=10), 0) == 4
 
 
 def test_reverse_payload_digit_publishes_q19_owner() -> None:
-    projected = NumberCompiler().project_nth("reverse-add", 5, seed=196, base=10)
+    projected = NumberCompiler().project(ReverseAddTermQuery(5, seed=196, base=10))
     assert isinstance(projected.payload, PoweredReverseAddTermPayload)
     payload = projected.payload
     assert payload.term._workspace is None
@@ -152,7 +159,7 @@ def test_reverse_payload_digit_publishes_q19_owner() -> None:
 def test_negative_reverse_digit_rejects_before_authority_or_workspace_allocation(
     through_payload: bool,
 ) -> None:
-    projected = NumberCompiler().project_nth("reverse-add", 5, seed=196, base=10)
+    projected = NumberCompiler().project(ReverseAddTermQuery(5, seed=196, base=10))
     assert isinstance(projected.payload, PoweredReverseAddTermPayload)
     term = projected.payload.term
     ledger_version = term._ledger.mutation_version
@@ -176,7 +183,7 @@ def test_large_fermat_projection_keeps_public_width_symbolic(
         raise AssertionError("dyadic extent materialized during projection")
 
     monkeypatch.setattr(DyadicExtent, "materialize", forbidden)
-    term = NumberCompiler().project_nth("fermat", 1_000_000)
+    term = NumberCompiler().project(FermatTermQuery(1_000_000))
     assert term.estimated_bit_length == DyadicExtent(1_000_000, 1)
     assert term.metrics.width == DyadicExtent(1_000_000, 1)
     assert term.digit(0) == 1
@@ -186,7 +193,7 @@ def test_large_fermat_projection_keeps_public_width_symbolic(
 def test_native_binary_special_output_skips_integer_materialization(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    from number_compiler.api.cli import _render_value
+    from number_compiler.api.cli_render import _render_value
     from number_compiler.sequences.power_numbers.numbers import (
         FermatNumberSpec,
         MersenneNumberSpec,
@@ -199,10 +206,12 @@ def test_native_binary_special_output_skips_integer_materialization(
     monkeypatch.setattr(MersenneNumberSpec, "materialize", forbidden)
     compiler = NumberCompiler()
     assert (
-        _render_value(compiler.project_nth("fermat", 4), output_base=2, max_bits=32)
+        _render_value(compiler.project(FermatTermQuery(4)), output_base=2, max_bits=32)
         == bin(65537)[2:]
     )
     assert (
-        _render_value(compiler.project_nth("mersenne", 13), output_base=2, max_bits=32)
+        _render_value(
+            compiler.project(MersenneTermQuery(13)), output_base=2, max_bits=32
+        )
         == "1" * 13
     )

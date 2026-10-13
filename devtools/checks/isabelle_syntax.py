@@ -261,19 +261,6 @@ def unquoted_numeric_case_facts(text: str) -> tuple[int, ...]:
     )
 
 
-def named_type_and_locale_declarations(text: str) -> frozenset[str]:
-    """Read simple authored carrier declarations for relocation inventories."""
-    pattern = re.compile(
-        r"(?m)^[ \t]*(?:datatype|type_synonym|record|locale)\s+"
-        r"(?:(?:'[A-Za-z_][\w']*|\([^)]*\))\s+)?"
-        r"(?P<name>[A-Za-z_][\w']*)\s*="
-    )
-    return frozenset(
-        match.group("name")
-        for match in unquoted_matches(pattern, navigation_text(text))
-    )
-
-
 def _theory_entries(block: str, session: str) -> tuple[str, ...]:
     """Keep every ROOT theory entry, or reject syntax we cannot interpret."""
     entries: list[str] = []

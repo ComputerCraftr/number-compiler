@@ -9,6 +9,7 @@ from __future__ import annotations
 from collections.abc import Hashable, Sequence
 from dataclasses import dataclass
 
+from number_compiler.arithmetic.contracts.input_validation import require_integer
 from number_compiler.arithmetic.fields.morphism_core import (
     InternedEffectNode,
     binary_power,
@@ -99,7 +100,7 @@ class UnaryImageFiltration:
 
 def unary_image_filtration(successors: Sequence[int]) -> UnaryImageFiltration:
     """Compute ``S, T(S), T^2(S), ...`` until the image stabilizes exactly."""
-    succ = tuple(map(int, successors))
+    succ = tuple(require_integer(value, "unary successor", 0) for value in successors)
     n = len(succ)
     if n <= 0 or any(not 0 <= nxt < n for nxt in succ):
         raise ValueError(succ)
@@ -142,7 +143,7 @@ def minimize_unary_moore(
     This is the canonical replacement for research-local refinement loops used
     by special-number observer probes.
     """
-    succ = tuple(map(int, successors))
+    succ = tuple(require_integer(value, "unary successor", 0) for value in successors)
     labels = tuple(outputs)
     n = len(succ)
     if len(labels) != n or any(not 0 <= nxt < n for nxt in succ):
@@ -158,7 +159,10 @@ class UnaryTransitionEffect:
     transition: tuple[int, ...]
 
     def __post_init__(self) -> None:
-        transition = tuple(map(int, self.transition))
+        transition = tuple(
+            require_integer(value, "unary transition target", 0)
+            for value in self.transition
+        )
         n = len(transition)
         if n <= 0 or any(not 0 <= nxt < n for nxt in transition):
             raise ValueError(transition)
@@ -178,9 +182,7 @@ class UnaryTransitionEffect:
 
     @classmethod
     def identity(cls, classes: int) -> UnaryTransitionEffect:
-        classes = int(classes)
-        if classes <= 0:
-            raise ValueError(classes)
+        classes = require_integer(classes, "unary class count", 1)
         return cls(tuple(range(classes)))
 
     def then(self, other: UnaryTransitionEffect) -> UnaryTransitionEffect:
@@ -192,7 +194,7 @@ class UnaryTransitionEffect:
         )
 
     def apply(self, state: int) -> int:
-        state = int(state)
+        state = require_integer(state, "unary state", 0)
         if not 0 <= state < self.classes:
             raise ValueError((state, self.classes))
         return self.transition[state]
@@ -252,9 +254,7 @@ class UnaryPowerArena:
         return self._intern(first.effect.then(second.effect))
 
     def power(self, exponent: int) -> UnaryPowerNode:
-        exponent = int(exponent)
-        if exponent < 0:
-            raise ValueError(exponent)
+        exponent = require_integer(exponent, "unary power exponent", 0)
         return binary_power(
             self.atom, exponent, identity=self.identity, compose=self.compose
         ).value
@@ -268,7 +268,10 @@ class UnaryQuotientMachine:
     outputs: tuple[Hashable, ...]
 
     def __post_init__(self) -> None:
-        transition = tuple(map(int, self.transition))
+        transition = tuple(
+            require_integer(value, "unary quotient target", 0)
+            for value in self.transition
+        )
         outputs = tuple(self.outputs)
         n = len(transition)
         if n <= 0 or len(outputs) != n or any(not 0 <= nxt < n for nxt in transition):
@@ -285,17 +288,21 @@ class UnaryQuotientMachine:
         return max(1, bit_width(self.classes - 1))
 
     def output(self, state: int) -> Hashable:
-        state = int(state)
+        state = require_integer(state, "unary state", 0)
         if not 0 <= state < self.classes:
             raise ValueError((state, self.classes))
         return self.outputs[state]
 
     def power_state(self, state: int, steps: int) -> tuple[int, int, int]:
         """Return powered state, composition count and arena node count."""
+        state = require_integer(state, "unary state", 0)
+        steps = require_integer(steps, "unary power extent", 0)
+        if state >= self.classes:
+            raise ValueError((state, self.classes))
         arena = UnaryPowerArena(self.transition)
-        node = arena.power(int(steps))
+        node = arena.power(steps)
         return (
-            node.effect.apply(int(state)),
+            node.effect.apply(state),
             arena.composition_operations,
             arena.node_count,
         )
@@ -343,10 +350,10 @@ def unary_behavioral_block_machine(
     infrastructure for bounded proofs, not a scalable constructor for a large
     source carrier.
     """
-    succ = tuple(map(int, successors))
+    succ = tuple(require_integer(value, "unary successor", 0) for value in successors)
     labels = tuple(outputs)
     n = len(succ)
-    block_size = int(block_size)
+    block_size = require_integer(block_size, "unary block size", 1)
     if block_size <= 0 or len(labels) != n or n <= 0:
         raise ValueError((n, len(labels), block_size))
     if any(not 0 <= nxt < n for nxt in succ):
@@ -396,9 +403,7 @@ def unary_target_distance_machine(max_distance: int) -> UnaryQuotientMachine:
     counters used by the special-number stack; callers should derive the
     distance theorem separately rather than materializing a source carrier.
     """
-    max_distance = int(max_distance)
-    if max_distance < 0:
-        raise ValueError(max_distance)
+    max_distance = require_integer(max_distance, "maximum unary distance", 0)
     classes = max_distance + 2
     transition = (0,) + tuple(range(classes - 1))
     outputs = (False, True) + (False,) * max_distance
@@ -411,9 +416,13 @@ def quotient_machine_from_moore(
     class_ids: Sequence[int],
 ) -> UnaryQuotientMachine:
     """Quotient a complete finite unary machine by an exact Moore partition."""
-    transition = tuple(map(int, transition))
+    transition = tuple(
+        require_integer(value, "unary transition target", 0) for value in transition
+    )
     outputs = tuple(outputs)
-    class_ids = tuple(map(int, class_ids))
+    class_ids = tuple(
+        require_integer(value, "unary class ID", 0) for value in class_ids
+    )
     n = len(transition)
     if len(outputs) != n or len(class_ids) != n:
         raise ValueError((n, len(outputs), len(class_ids)))

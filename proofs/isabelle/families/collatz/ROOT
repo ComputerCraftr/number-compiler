@@ -5,6 +5,7 @@ session Collatz_Cylinder_Refinement in temporal_collatz = Shared_S_Arithmetic +
     Collatz_Clock_Jumps
     Collatz_Cylinder_Constructor
     Collatz_Physical_Cylinder_Lift
+    Collatz_Boundary_Macros
     Collatz_Physical_One_Cycle
     Collatz_Source_Hensel_Anchor_Refinement
     Inverse_Three_Lift

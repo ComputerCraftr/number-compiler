@@ -13,12 +13,28 @@ from __future__ import annotations
 
 from contextlib import nullcontext
 
+from number_compiler.arithmetic.contracts.block_effect import (
+    BlockContextBudgetExceeded,
+)
 from number_compiler.arithmetic.fields.blank_ledger import BlankLedger
 from number_compiler.arithmetic.fields.two_adic import v2_positive
 from number_compiler.hashlife.execution.dyadic_return_runs import RunArithmeticWorkspace
 from number_compiler.resources.ledger import ResourceLedger
+from number_compiler.sequences.collatz.boundary_macro_prefixes import (
+    _publish_boundary_macro_prefixes,
+)
+from number_compiler.sequences.collatz.boundary_macros import (
+    BoundaryActionTemplateMemo,
+    admit_boundary_macro_plan,
+    select_admitted_boundary_macro,
+)
 from number_compiler.sequences.collatz.joint_temporal_action import (
     CollatzJointTemporalBuilder,
+)
+from number_compiler.sequences.collatz.run_prefix_checkpoints import (
+    _crosses_root_checkpoint,
+    _publish_d8_root_checkpoints,
+    _publish_run_root_checkpoints,
 )
 from number_compiler.sequences.collatz.tape_width import (
     CollatzWidthSpineAccumulator,
@@ -67,6 +83,7 @@ def compile_collatz_temporal_run_quotient(
     shared_cache: bool = False,
     include_width_spine: bool = False,
     include_joint_cocycle: bool = False,
+    include_innovation_tape: bool = False,
 ) -> CollatzTemporalRunQuotient:
     """Compile the exact source-bound action without a parity itinerary.
 
@@ -89,6 +106,8 @@ def compile_collatz_temporal_run_quotient(
         raise TypeError("width-spine demand must be Boolean")
     if type(include_joint_cocycle) is not bool:
         raise TypeError("joint-cocycle demand must be Boolean")
+    if type(include_innovation_tape) is not bool:
+        raise TypeError("innovation-tape demand must be Boolean")
     from number_compiler.sequences.collatz.source_cylinder_cache import (
         CollatzDyadicMacros,
     )
@@ -115,6 +134,7 @@ def compile_collatz_temporal_run_quotient(
         scratch.scope(),
         macros if macros is not None else nullcontext(),
         joint_builder,
+        BoundaryActionTemplateMemo(ledger) as boundary_templates,
     ):
         control_bits = max(1, physical_ticks.bit_length())
         scratch.require_bits(8 * (seed.bit_length() + 4 * control_bits + 16))
@@ -129,6 +149,8 @@ def compile_collatz_temporal_run_quotient(
         width_spine = CollatzWidthSpineAccumulator(
             ledger, requested=include_width_spine
         )
+        first_boundary: tuple[int, int, int, str] | None = None
+        first_boundary_macro = None
         d8_table: D8TemporalTable | None = None
         lookup_enabled = macros is not None
         previous_source, previous_width, previous_ones = seed, 0, 0
@@ -196,6 +218,7 @@ def compile_collatz_temporal_run_quotient(
                 and remaining >= 16
                 and current.bit_length() >= 64
                 and _bounded_run_length(current & 255) < 8
+                and not include_innovation_tape
             ):
                 # A normalized symbol costs at least one physical tick. Admit
                 # the exact retained odd count before applying a cached block.
@@ -237,7 +260,11 @@ def compile_collatz_temporal_run_quotient(
                         lookup_enabled = False
                 if cell is not None and endpoint == 0:
                     endpoint = cell.apply(current)
-                if cell is not None and endpoint > 2:
+                if (
+                    cell is not None
+                    and endpoint > 2
+                    and not (include_width_spine and macro_width is None)
+                ):
                     width = cell.width
                     if joint_record is not None:
                         joint_builder.append(
@@ -290,6 +317,126 @@ def compile_collatz_temporal_run_quotient(
                         + cell.residue.bit_length(),
                     )
                     continue
+
+            # Build a guarded boundary action only after an admitted cached
+            # occurrence has had the chance to satisfy this exact source. The
+            # macro includes its completing physical half-step, so partial
+            # requests retain the exact run executor when the guard does not fit.
+            boundary_plan = admit_boundary_macro_plan(current, remaining)
+            ledger.bump("collatz_physical_boundary_plan_checks")
+            ledger.bump(
+                "collatz_physical_boundary_plan_operand_bits",
+                current.bit_length() + remaining.bit_length(),
+            )
+            if (
+                boundary_plan is not None
+                and boundary_plan.family == "989"
+                and not include_innovation_tape
+                and not include_joint_cocycle
+            ):
+                # This is already an ordinary maximal odd run. Keep the
+                # observer-specific certificate out of unrequested work.
+                boundary_plan = None
+            if boundary_plan is not None:
+                family = boundary_plan.family
+                repetitions = boundary_plan.repetitions
+                normalized_steps = (
+                    2 * repetitions + 1
+                    if family in ("421", "4721")
+                    else repetitions + 2
+                    if family == "630"
+                    else repetitions
+                )
+                scratch.require_bits(
+                    8
+                    * (
+                        current.bit_length()
+                        + 4 * normalized_steps
+                        + 4 * control_bits
+                        + 32
+                    )
+                )
+                boundary = select_admitted_boundary_macro(
+                    boundary_plan, templates=boundary_templates
+                )
+                if (
+                    boundary is None
+                    or boundary.family != family
+                    or boundary.repetitions != repetitions
+                    or boundary.normalized_symbols != normalized_steps
+                ):
+                    raise AssertionError("Collatz boundary changed after admission")
+                before = current
+                if first_boundary is None and include_innovation_tape:
+                    first_boundary = (
+                        physical_ticks - remaining,
+                        before,
+                        boundary.physical_ticks,
+                        boundary.family,
+                    )
+                    first_boundary_macro = boundary
+                if include_joint_cocycle:
+                    joint_builder.require_steps(before, boundary.normalized_symbols)
+                    joint_builder.append(
+                        boundary.fields,
+                        before,
+                        boundary.odd_symbols,
+                        boundary.endpoint,
+                    )
+                if width_spine.complete:
+                    width_spine.record(boundary.width_blank)
+                if normalized_f5 is not None and physical_f5 is not None:
+                    f5 = boundary.f5_action()
+                    normalized_f5 = normalized_f5.then(f5)
+                    physical_f5 = physical_f5.then(f5)
+                current = boundary.endpoint
+                remaining -= boundary.physical_ticks
+                normalized += boundary.normalized_symbols
+                division_ticks += boundary.normalized_symbols
+                odd_ticks += boundary.odd_symbols
+                one_symbols += boundary.odd_symbols
+                zero_symbols += boundary.normalized_symbols - boundary.odd_symbols
+                run_actions += 1
+                ledger.bump(f"collatz_physical_boundary_{family}_macro_actions")
+                ledger.bump(
+                    f"collatz_physical_boundary_{family}_macro_repetitions",
+                    boundary.repetitions,
+                )
+                ledger.bump(
+                    f"collatz_physical_boundary_{family}_macro_physical_ticks",
+                    boundary.physical_ticks,
+                )
+                ledger.bump(
+                    "collatz_physical_temporal_run_operand_bits",
+                    before.bit_length()
+                    + boundary.endpoint.bit_length()
+                    + boundary.fields.gain.bit_length()
+                    + boundary.fields.sum_gain.bit_length(),
+                )
+                if macros is not None:
+                    try:
+                        _publish_boundary_macro_prefixes(
+                            boundary,
+                            macros,
+                            scratch,
+                            anchor=seed,
+                            normalized_offset=normalized - boundary.normalized_symbols,
+                            odd_offset=one_symbols - boundary.odd_symbols,
+                        )
+                        lookup_enabled = True
+                    except BlockContextBudgetExceeded:
+                        # The exact macro has already advanced the source.
+                        # Prefix publication is an optional future-cache aid.
+                        macros.frontier.clear()
+                        lookup_enabled = False
+                        ledger.bump("collatz_boundary_prefix_budget_bypasses")
+                    previous_source, previous_width, previous_ones = (
+                        current,
+                        normalized,
+                        one_symbols,
+                    )
+                width_spine.reset_segment()
+                continue
 
             low = current & 255
             available = _bounded_run_length(low)
@@ -363,6 +510,9 @@ def compile_collatz_temporal_run_quotient(
                             + 26,
                         )
                         if survives:
+                            d8_source = current
+                            d8_offset = normalized
+                            d8_odd_offset = one_symbols
                             if d8_width_summary is not None:
                                 width_spine.record(d8_width_summary.blank)
                             if include_joint_cocycle:
@@ -401,6 +551,17 @@ def compile_collatz_temporal_run_quotient(
                             run_actions += 1
                             ledger.bump("collatz_physical_temporal_dyadic_d8_pumps")
                             ledger.bump("collatz_physical_temporal_dyadic_symbols", 8)
+                            if macros is not None:
+                                _publish_d8_root_checkpoints(
+                                    macros,
+                                    scratch,
+                                    anchor=seed,
+                                    source=d8_source,
+                                    normalized_offset=d8_offset,
+                                    odd_offset=d8_odd_offset,
+                                    endpoint=current,
+                                    odd_symbols=ones,
+                                )
                             if include_joint_cocycle and macros is not None:
                                 previous_source, previous_width, previous_ones = (
                                     current,
@@ -422,6 +583,9 @@ def compile_collatz_temporal_run_quotient(
                         and frame.consumed < _MAX_CYLINDER_BATCH_SYMBOLS
                         and frame.consumed < frame.source.bit_length()
                     ):
+                        block_frame = frame
+                        block_normalized_offset = normalized
+                        block_odd_offset = one_symbols
                         frame_bits = max(
                             frame.origin.bit_length(), frame.gain.bit_length()
                         )
@@ -513,6 +677,32 @@ def compile_collatz_temporal_run_quotient(
                         run_actions += 1
                         ledger.bump("collatz_physical_temporal_dyadic_d8_pumps")
                         ledger.bump("collatz_physical_temporal_dyadic_symbols", 8)
+                        if macros is not None and _crosses_root_checkpoint(
+                            block_normalized_offset, 8, seed.bit_length()
+                        ):
+                            # These materializations occur only at O(log horizon)
+                            # root checkpoints, not at every D8 source section.
+                            block_source_value = block_frame.materialize()
+                            block_endpoint = frame.materialize()
+                            ledger.bump(
+                                "collatz_temporal_root_checkpoint_frame_materializations",
+                                2,
+                            )
+                            ledger.bump(
+                                "collatz_temporal_root_checkpoint_frame_operand_bits",
+                                block_source_value.bit_length()
+                                + block_endpoint.bit_length(),
+                            )
+                            _publish_d8_root_checkpoints(
+                                macros,
+                                scratch,
+                                anchor=seed,
+                                source=block_source_value,
+                                normalized_offset=block_normalized_offset,
+                                odd_offset=block_odd_offset,
+                                endpoint=block_endpoint,
+                                odd_symbols=ones,
+                            )
                     if accepted:
                         scratch.require_bits(
                             8
@@ -556,6 +746,9 @@ def compile_collatz_temporal_run_quotient(
 
             if current & 1 == 0:
                 length = min(available, remaining)
+                run_source = current
+                run_offset = normalized
+                run_odd_offset = one_symbols
                 before_bits = current.bit_length()
                 joint_source = current
                 if include_joint_cocycle:
@@ -584,10 +777,24 @@ def compile_collatz_temporal_run_quotient(
                     "collatz_physical_temporal_run_operand_bits",
                     before_bits + current.bit_length() + length.bit_length(),
                 )
+                if macros is not None and current > 2:
+                    _publish_run_root_checkpoints(
+                        macros,
+                        scratch,
+                        anchor=seed,
+                        source=run_source,
+                        normalized_offset=run_offset,
+                        odd_offset=run_odd_offset,
+                        run_length=length,
+                        odd_run=False,
+                    )
                 continue
 
             complete = min(available, remaining // 2)
             if complete:
+                run_source = current
+                run_offset = normalized
+                run_odd_offset = one_symbols
                 scratch.require_bits(
                     8 * (current.bit_length() + 2 * complete + 4 * control_bits + 16)
                 )
@@ -623,6 +830,17 @@ def compile_collatz_temporal_run_quotient(
                     + current.bit_length()
                     + complete.bit_length(),
                 )
+                if macros is not None and current > 2:
+                    _publish_run_root_checkpoints(
+                        macros,
+                        scratch,
+                        anchor=seed,
+                        source=run_source,
+                        normalized_offset=run_offset,
+                        odd_offset=run_odd_offset,
+                        run_length=complete,
+                        odd_run=True,
+                    )
             if remaining:
                 if complete >= available or remaining != 1 or not current & 1:
                     continue
@@ -715,6 +933,8 @@ def compile_collatz_temporal_run_quotient(
             certificate,
             tape_width_summary,
             joint_action,
+            first_boundary,
+            first_boundary_macro,
         )
 
 

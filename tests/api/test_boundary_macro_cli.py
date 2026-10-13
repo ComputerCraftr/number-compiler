@@ -14,16 +14,15 @@ from number_compiler.sequences.reverse_add.source_workspace import (
 from tests.support.assertions import forbid_explicit_lowering
 
 
-@pytest.mark.parametrize("family", ("196", "reverse-add"))
 def test_boundary_cli_uses_only_requested_edges(
-    family: str, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+    monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
 ) -> None:
     for name in ("width", "digit", "digits", "iter_digits"):
         monkeypatch.setattr(ReverseAddPoweredTerm, name, forbid_explicit_lowering)
     assert (
         cli.main(
             [
-                family,
+                "reverse-add",
                 "--seed",
                 "10001",
                 "--nth",
@@ -55,6 +54,8 @@ def test_boundary_cli_refuses_narrow_source_without_false_value(
     assert (
         cli.main(
             [
+                "reverse-add",
+                "--seed",
                 "196",
                 "--nth",
                 "16",
@@ -77,6 +78,8 @@ def test_boundary_cli_rejects_nondecimal_base() -> None:
     with pytest.raises(ValueError, match="decimal"):
         parse_request(
             [
+                "reverse-add",
+                "--seed",
                 "196",
                 "--nth",
                 "1",
@@ -100,7 +103,7 @@ def test_value_and_boundary_share_admitted_source_carries(
     assert (
         cli.main(
             [
-                "196",
+                "reverse-add",
                 "--seed",
                 "12345",
                 "--nth",

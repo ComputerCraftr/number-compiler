@@ -7,9 +7,10 @@ from typing import Any, Never
 
 import pytest
 
-from number_compiler.api import cli, cli_context
+from number_compiler.api import cli, cli_context, cli_render
 from number_compiler.api.cylinder_observation import CollatzObservationContext
 from number_compiler.api.number_api import NumberCompiler, ProjectedNumberTerm
+from number_compiler.api.query_types import TermQuery
 
 
 def forbidden(*args: object, **kwargs: object) -> Never:
@@ -65,7 +66,7 @@ def test_arithmetic_observers_do_not_request_physical_execution(
 
     monkeypatch.setattr(AntihydraArithmeticTerm, "physical_run", forbidden)
     monkeypatch.setattr(runtime, "physical_roof", forbidden)
-    monkeypatch.setattr(cli, "_render_value", forbidden)
+    monkeypatch.setattr(cli_render, "_render_value", forbidden)
     if names == ("hensel",):
         from number_compiler.sequences.antihydra import mahler_action
 
@@ -89,14 +90,14 @@ def test_arithmetic_observers_do_not_request_physical_execution(
 @pytest.mark.parametrize(
     "family,index,extra,expected",
     [
-        ("196", 0, [], "196"),
+        ("reverse-add", 0, ["--seed", "196"], "196"),
         ("reverse-add", 0, ["--seed", "0"], "0"),
         ("collatz", 0, ["--seed", "27"], "27"),
         ("prime", 0, [], "2"),
         ("fermat", 0, [], "3"),
         ("mersenne", 1, [], "1"),
         ("antihydra", 0, [], "8"),
-        ("196", 16, [], "897100798"),
+        ("reverse-add", 16, ["--seed", "196"], "897100798"),
         ("reverse-add", 1, ["--seed", "89"], "187"),
         ("collatz", 10, ["--seed", "27"], "214"),
         ("prime", 100, [], "547"),
@@ -138,8 +139,8 @@ def test_primality_only_does_not_construct_a_value(
     monkeypatch: pytest.MonkeyPatch,
     capsys: pytest.CaptureFixture[str],
 ) -> None:
-    monkeypatch.setattr(NumberCompiler, "project_nth", forbidden)
-    monkeypatch.setattr(cli, "_render_value", forbidden)
+    monkeypatch.setattr(NumberCompiler, "project", forbidden)
+    monkeypatch.setattr(cli_render, "_render_value", forbidden)
     assert (
         cli.main(
             [
@@ -169,10 +170,12 @@ def test_reverse_metrics_only_does_not_construct_reachable_image(
     monkeypatch.setattr(TileApplication, "complete", forbidden)
     monkeypatch.setattr(TileApplication, "point", forbidden)
     monkeypatch.setattr(TileApplication, "width", forbidden)
-    monkeypatch.setattr(cli, "_render_value", forbidden)
+    monkeypatch.setattr(cli_render, "_render_value", forbidden)
     assert (
         cli.main(
             [
+                "reverse-add",
+                "--seed",
                 "196",
                 "--nth",
                 "32",
@@ -203,7 +206,7 @@ def test_antihydra_metrics_only_do_not_audit_or_construct_endpoint(
 
     monkeypatch.setattr(metric_collection, "collect_ledger_metrics", forbidden)
     monkeypatch.setattr(AntihydraArithmeticTerm, "result", forbidden)
-    monkeypatch.setattr(cli, "_render_value", forbidden)
+    monkeypatch.setattr(cli_render, "_render_value", forbidden)
     assert (
         cli.main(
             [
@@ -279,8 +282,10 @@ def test_multiple_collatz_event_views_discover_one_prefix(
         constructions += 1
         return constructor(seed, events, max_events=max_events, max_digits=max_digits)
 
-    monkeypatch.setattr(cli_context, "_events_context", counted)
-    monkeypatch.setattr(NumberCompiler, "project_nth", forbidden)
+    monkeypatch.setattr(
+        "number_compiler.api.cylinder_observation.CollatzObservationContext", counted
+    )
+    monkeypatch.setattr(NumberCompiler, "project", forbidden)
     assert (
         cli.main(
             [
@@ -377,7 +382,7 @@ def test_collatz_finite_safety_cli_shares_discovery(
     monkeypatch.setattr(
         saturated_future.SourceFreeSaturatedCollatzProgram, "bind", forbidden
     )
-    monkeypatch.setattr(cli, "_render_value", forbidden)
+    monkeypatch.setattr(cli_render, "_render_value", forbidden)
     assert (
         cli.main(
             [
@@ -439,36 +444,15 @@ def test_multiple_physical_views_use_one_term(
     monkeypatch: pytest.MonkeyPatch,
     capsys: pytest.CaptureFixture[str],
 ) -> None:
-    original = NumberCompiler.project_nth
+    original = NumberCompiler.project
     projected: list[ProjectedNumberTerm] = []
 
-    def capture(
-        self: NumberCompiler,
-        family: str,
-        index: int,
-        *,
-        seed: int | None = None,
-        base: int = 10,
-        radix: int = 2,
-        start: int = 2,
-        max_steps: int = 4096,
-        max_state_bits: int = 4096,
-    ) -> ProjectedNumberTerm:
-        term = original(
-            self,
-            family,
-            index,
-            seed=seed,
-            base=base,
-            radix=radix,
-            start=start,
-            max_steps=max_steps,
-            max_state_bits=max_state_bits,
-        )
+    def capture(self: NumberCompiler, query: TermQuery) -> ProjectedNumberTerm:
+        term = original(self, query)
         projected.append(term)
         return term
 
-    monkeypatch.setattr(NumberCompiler, "project_nth", capture)
+    monkeypatch.setattr(NumberCompiler, "project", capture)
     assert (
         cli.main(
             [
@@ -608,7 +592,7 @@ def test_antihydra_equivalent_information_reuses_the_demand(
         )
 
     monkeypatch.setattr(antihydra_observation, "observe_run", counted)
-    monkeypatch.setattr(cli, "_render_value", forbidden)
+    monkeypatch.setattr(cli_render, "_render_value", forbidden)
     row = _antihydra_info_pair(names, capsys)
     first, second = (row["info"][name] for name in names)
     assert calls == [names[0]]
@@ -646,7 +630,7 @@ def test_antihydra_mahler_extends_shared_tangent_without_aliasing(
     monkeypatch.setattr(antihydra_observation, "tangent", counted_tangent)
     monkeypatch.setattr(AntihydraArithmeticTerm, "physical_run", forbidden)
     monkeypatch.setattr(runtime, "physical_roof", forbidden)
-    monkeypatch.setattr(cli, "_render_value", forbidden)
+    monkeypatch.setattr(cli_render, "_render_value", forbidden)
     row = _antihydra_info_pair(names, capsys)
     assert calls == 1
     mahler = row["info"]["mahler"]["value"]
@@ -665,7 +649,7 @@ def test_antihydra_mahler_extends_shared_tangent_without_aliasing(
 @pytest.mark.parametrize(
     "family,index,extra,expected",
     [
-        ("196", 0, [], 196),
+        ("reverse-add", 0, ["--seed", "196"], 196),
         ("reverse-add", 0, ["--seed", "31"], 31),
         ("collatz", 0, ["--seed", "27"], 27),
         ("prime", 0, [], 2),
@@ -729,3 +713,88 @@ def _antihydra_info_pair(
     )
     row = json.loads(capsys.readouterr().out)
     return row
+
+
+def test_collatz_clock_budget_rejection_precedes_observer_preparation(
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    from number_compiler.sequences.collatz.block_power import PoweredCollatzTerm
+
+    for method in (
+        "prepare_width_spine",
+        "prepare_joint_cocycle",
+        "prepare_innovation_tape",
+    ):
+        monkeypatch.setattr(PoweredCollatzTerm, method, forbidden)
+
+    status = cli.main(
+        [
+            "collatz",
+            "--seed",
+            "27",
+            "--nth",
+            "64",
+            "--info",
+            "clock",
+            "--info",
+            "accumulator",
+            "--info",
+            "boundary-macro",
+            "--max-digits",
+            "5",
+            "--format",
+            "json",
+        ]
+    )
+    assert status == 2
+    assert "physical clock target exceeds digit budget" in capsys.readouterr().err
+
+
+def test_failed_collatz_prepare_retries_without_reprojecting(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from number_compiler.api.cli_context import QueryContext
+    from number_compiler.api.cli_types import (
+        CollatzTermObservationOptions,
+        QueryRequest,
+    )
+    from number_compiler.api.query_types import CollatzTermQuery
+    from number_compiler.sequences.collatz.block_power import PoweredCollatzTerm
+
+    project = NumberCompiler.project
+    projected: list[TermQuery] = []
+
+    def counted_project(
+        compiler: NumberCompiler, query: TermQuery
+    ) -> ProjectedNumberTerm:
+        projected.append(query)
+        return project(compiler, query)
+
+    prepare = PoweredCollatzTerm.prepare_joint_cocycle
+    preparations = 0
+
+    def fail_once(term: PoweredCollatzTerm) -> None:
+        nonlocal preparations
+        preparations += 1
+        if preparations == 1:
+            raise RuntimeError("transient observer preparation failure")
+        prepare(term)
+
+    monkeypatch.setattr(NumberCompiler, "project", counted_project)
+    monkeypatch.setattr(PoweredCollatzTerm, "prepare_joint_cocycle", fail_once)
+    request = QueryRequest(
+        CollatzTermQuery(8, seed=27),
+        observations=CollatzTermObservationOptions(info=("accumulator",)),
+    )
+    context = QueryContext(request, NumberCompiler())
+
+    with pytest.raises(RuntimeError, match="transient observer preparation failure"):
+        _ = context.term
+    assert context._term_prepared is False
+    assert len(projected) == 1
+
+    first_success = context.term
+    assert context.term is first_success
+    assert preparations == 2
+    assert len(projected) == 1

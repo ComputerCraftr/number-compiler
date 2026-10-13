@@ -8,8 +8,10 @@ import pytest
 
 from number_compiler.api import cli
 from number_compiler.api.cli_context import QueryContext
-from number_compiler.api.cli_requests import QueryRequest, parse_request
+from number_compiler.api.cli_requests import parse_request
+from number_compiler.api.cli_types import NoObservations, QueryRequest
 from number_compiler.api.number_api import NumberCompiler, ProjectedNumberTerm
+from number_compiler.api.query_types import PrimeTermQuery, TermQuery
 
 pytestmark = pytest.mark.usefixtures("isolated_process_cache")
 
@@ -39,10 +41,11 @@ def test_prime_budget_options_are_typed_and_prime_only() -> None:
         ]
     )
     assert request is not None
+    assert isinstance(request.execution, PrimeTermQuery)
     assert (
-        request.max_prime_states,
-        request.max_prime_work,
-        request.max_prime_stages,
+        request.execution.max_prime_states,
+        request.execution.max_prime_work,
+        request.execution.max_prime_stages,
     ) == (321, 654, 7)
 
     with pytest.raises(SystemExit) as unsupported:
@@ -65,35 +68,32 @@ def test_nonpositive_prime_budget_is_rejected_before_construction(
 def test_prime_query_context_forwards_only_prime_budgets(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    calls: list[dict[str, object]] = []
+    calls: list[TermQuery] = []
 
-    def capture(
-        self: NumberCompiler, family: str, index: int, **kwargs: object
-    ) -> ProjectedNumberTerm:
-        calls.append({"family": family, "index": index, **kwargs})
+    def capture(self: NumberCompiler, query: TermQuery) -> ProjectedNumberTerm:
+        calls.append(query)
         return cast(ProjectedNumberTerm, object())
 
-    monkeypatch.setattr(NumberCompiler, "project_nth", capture)
+    monkeypatch.setattr(NumberCompiler, "project", capture)
     request = QueryRequest(
-        "prime",
-        "nth",
+        PrimeTermQuery(
+            3,
+            start=101,
+            max_prime_states=11,
+            max_prime_work=22,
+            max_prime_stages=33,
+        ),
+        observations=NoObservations(),
+    )
+    _ = QueryContext(request, NumberCompiler()).term
+    expected = PrimeTermQuery(
         3,
         start=101,
         max_prime_states=11,
         max_prime_work=22,
         max_prime_stages=33,
     )
-    _ = QueryContext(request, NumberCompiler()).term
-    assert calls == [
-        {
-            "family": "prime",
-            "index": 3,
-            "start": 101,
-            "max_prime_states": 11,
-            "max_prime_work": 22,
-            "max_prime_stages": 33,
-        }
-    ]
+    assert calls == [expected]
 
 
 @pytest.mark.parametrize(
@@ -184,13 +184,14 @@ def test_prime_api_surfaces_rank_workspace_metrics(
     )
     metrics = (
         NumberCompiler()
-        .project_nth(
-            "prime",
-            3,
-            start=100,
-            max_prime_states=987,
-            max_prime_work=876,
-            max_prime_stages=765,
+        .project(
+            PrimeTermQuery(
+                3,
+                start=100,
+                max_prime_states=987,
+                max_prime_work=876,
+                max_prime_stages=765,
+            )
         )
         .metrics
     )

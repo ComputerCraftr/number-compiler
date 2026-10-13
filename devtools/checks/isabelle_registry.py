@@ -1,12 +1,16 @@
 """Discover Isabelle registrations through ROOTS without inventing dependencies."""
 
+from collections.abc import Sequence
 from dataclasses import replace
 from pathlib import Path
 
 from devtools.checks.isabelle_syntax import Session, parse_sessions, validate_sessions
+from devtools.checks.source_discovery import authored_files
 
 
-def root_files(root: Path) -> tuple[Path, ...]:
+def root_files(
+    root: Path, *, authored_sources: Sequence[Path] | None = None
+) -> tuple[Path, ...]:
     """Read the registered directory graph; reject escapes and hidden ROOT files."""
     root = root.resolve()
     pending = [root]
@@ -44,17 +48,26 @@ def root_files(root: Path) -> tuple[Path, ...]:
                     raise ValueError(f"ROOTS directory escapes theory root: {entry}")
                 children.append((directory / path).resolve())
             pending.extend(reversed(children))
-    hidden = set(root.rglob("ROOT")) - set(files)
+    source_paths = (
+        authored_files(root) if authored_sources is None else authored_sources
+    )
+    hidden = {
+        path.resolve()
+        for path in source_paths
+        if path.name == "ROOT" and path.resolve().is_relative_to(root)
+    } - {path.resolve() for path in files}
     if hidden:
         raise ValueError(f"unregistered ROOT files: {sorted(hidden)}")
     return tuple(files)
 
 
-def discover_sessions(root: Path) -> tuple[Session, ...]:
+def discover_sessions(
+    root: Path, *, authored_sources: Sequence[Path] | None = None
+) -> tuple[Session, ...]:
     """Return every session with its directory relative to the common proof root."""
     root = root.resolve()
     sessions: list[Session] = []
-    for registration in root_files(root):
+    for registration in root_files(root, authored_sources=authored_sources):
         for session in parse_sessions(registration.read_text(encoding="utf-8")):
             directory = (registration.parent / session.directory).resolve()
             if not directory.is_relative_to(root):

@@ -533,6 +533,10 @@ class CollatzDyadicMacros:
         residue, key_bits = _admit_source_key(source, width)
         if type(ones) is not int or not 0 <= ones <= width:
             raise ValueError("Collatz macro odd count is invalid")
+        if type(endpoint) is not int or endpoint < 0:
+            raise ValueError(
+                "Collatz macro endpoint must be a nonnegative exact integer"
+            )
         if tape_width_summary is not None:
             self._validate_width_summary(tape_width_summary, source, width)
             if (
@@ -541,7 +545,63 @@ class CollatzDyadicMacros:
             ):
                 raise ValueError("Collatz width spine differs from occurrence action")
         self._bump("key_operand_bits", key_bits)
-        if (width, residue) in self.occurrences:
+        occurrence_key = (width, residue)
+        if occurrence_key in self.occurrences:
+            try:
+                existing_record = self.occurrences[occurrence_key]
+                if (
+                    type(existing_record) is not tuple
+                    or len(existing_record) != 2
+                    or type(existing_record[0]) is not CollatzDyadicOccurrence
+                    or type(existing_record[1]) is not int
+                    or existing_record[1] < 0
+                ):
+                    raise ValueError("Collatz duplicate occurrence record is malformed")
+                existing = existing_record[0]
+                existing._validate(None)
+                canonical_gain = self._gain(ones)
+                self._bump(
+                    "gain_validation_operand_bits",
+                    existing.multiplier.bit_length()
+                    + canonical_gain.multiplier.bit_length()
+                    + ones.bit_length(),
+                )
+                if (
+                    existing.width != width
+                    or existing.residue != residue
+                    or existing.odd_symbols != ones
+                ):
+                    raise ValueError(
+                        "Collatz duplicate occurrence has a conflicting source germ"
+                    )
+                existing._validate(canonical_gain.multiplier)
+                high_fiber = source >> width
+                self._bump(
+                    "operand_bits",
+                    source.bit_length()
+                    + high_fiber.bit_length()
+                    + existing.target_origin.bit_length()
+                    + existing.multiplier.bit_length()
+                    + max(
+                        existing.target_origin.bit_length(),
+                        existing.multiplier.bit_length() + high_fiber.bit_length(),
+                    )
+                    + endpoint.bit_length(),
+                )
+                predicted_endpoint = existing.apply(source)
+                if predicted_endpoint != endpoint:
+                    raise ValueError(
+                        "Collatz duplicate occurrence disagrees with the new endpoint"
+                    )
+            except (
+                CacheRecordIssuerMismatch,
+                TypeError,
+                ValueError,
+                BlockContextBudgetExceeded,
+            ):
+                self._bump("occurrence_admission_rejections")
+                self._bump("failed_work")
+                raise
             if tape_width_summary is not None:
                 self._remember_exact_width(source, width, tape_width_summary)
             return False

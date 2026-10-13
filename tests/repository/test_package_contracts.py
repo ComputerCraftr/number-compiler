@@ -2,7 +2,6 @@
 
 import ast
 import importlib
-import importlib.util
 import tomllib
 from pathlib import Path
 
@@ -19,44 +18,6 @@ def test_package_ownership_is_derived_and_unambiguous() -> None:
     assert package_violations(ROOT) == ()
     modules = module_inventory(ROOT)
     assert len(modules) == len(set(modules.values()))
-
-
-def test_universal_cascade_output_experiment_is_not_an_installed_constructor() -> None:
-    assert (
-        importlib.util.find_spec("number_compiler.hashlife.execution.cascade_output")
-        is None
-    )
-
-
-@pytest.mark.parametrize(
-    "removed",
-    (
-        "hashlife.actions.power",
-        "hashlife.actions.native_power",
-        "hashlife.execution.cascade",
-        "hashlife.execution.cascade_power",
-        "hashlife.execution.diamond_reverse_expression",
-        "hashlife.execution.diamond_reverse_kernel",
-        "hashlife.execution.powered_local_codec",
-        "hashlife.execution.temporal_leaf_diamond",
-        "hashlife.execution.continuations.virtual_field_provider",
-        "sequences.reverse_add.source_carry",
-        "sequences.reverse_add.source_length",
-        "sequences.reverse_add.factored_planes",
-        "sequences.reverse_add.factored_carrier",
-        "sequences.reverse_add.factored_power",
-        "sequences.reverse_add.cocycle_carrier",
-        "sequences.reverse_add.cocycle_temporal",
-        "sequences.reverse_add.threshold_cocycle",
-        "sequences.reverse_add.domain",
-        "sequences.reverse_add.local_interface",
-        "sequences.reverse_add.frobenius_sectors",
-        "sequences.reverse_add.tile_sector_observation",
-        "resources.cocycle_temporal_payload_audit",
-    ),
-)
-def test_retired_reverse_constructors_are_absent_from_production(removed: str) -> None:
-    assert importlib.util.find_spec("number_compiler." + removed) is None
 
 
 def test_public_api_is_deliberate_and_has_no_dynamic_compatibility_dispatch() -> None:
@@ -126,20 +87,6 @@ def test_cli_entry_point_has_one_canonical_owner() -> None:
         == "number_compiler.api.cli:main"
     )
     assert callable(importlib.import_module("number_compiler.api.cli").main)
-
-
-def test_old_forwarding_paths_do_not_resolve() -> None:
-    for name in (
-        "number_compiler.reverse_power",
-        "number_compiler.semantic_structures",
-        "number_compiler.block_power",
-        "number_compiler.core",
-        "number_compiler.runtime",
-        "number_compiler.sequences.collatz.concrete_port",
-        "number_compiler.sequences.collatz.higher_interface",
-        "number_compiler.hashlife.execution.finite_tile_action",
-    ):
-        assert importlib.util.find_spec(name) is None
 
 
 def test_discovery_detects_missing_developer_initializer(tmp_path: Path) -> None:

@@ -6,6 +6,11 @@ from collections.abc import Hashable, Iterator
 from dataclasses import dataclass
 from typing import cast
 
+from number_compiler.arithmetic.carry.carry_monoid import (
+    CarryFn,
+    apply_carry_fn,
+    value_carry_fn,
+)
 from number_compiler.arithmetic.contracts.block_effect import (
     BlockContextBudgetExceeded,
 )
@@ -59,6 +64,9 @@ from number_compiler.sequences.reverse_add.successor_width import (
 
 class ReverseCylinderConstructionUnavailable(ValueError):
     """The requested temporal image needs the unbuilt successor cylinder."""
+
+
+_CARRY_ACTIONS = tuple(CarryFn)
 
 
 # The legacy nondecimal completed-child fallback is deliberately bounded.
@@ -685,13 +693,14 @@ class _ReverseSourceImageAdapter(SourceBoundImageAdapter):
         return ports.width + ports.terminal
 
     def _normalized(self, pair: int, incoming: int, base: int) -> tuple[int, int]:
-        outgoing = int(pair + incoming >= base)
+        transfer = value_carry_fn(pair, base)
+        outgoing = apply_carry_fn(transfer, incoming)
         if base == 10:
-            domain = int(pair >= 9) + int(pair > 9)
+            domain = _CARRY_ACTIONS.index(transfer)
             digit = skew_normalized_digit(domain, pair % 9, incoming)
             self.ledger.bump("reverse_source_mod9_digit_reconstructions")
         else:
-            digit = (pair + incoming) % base
+            digit = pair + incoming - base * outgoing
             self.ledger.bump("reverse_source_radix_digit_reconstructions")
         return outgoing, digit
 

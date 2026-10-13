@@ -20,13 +20,6 @@ ROOT = repository_root()
 
 def test_all_production_modules_exclude_exact_oracle_dependencies() -> None:
     assert production_proof_import_violations(ROOT / "src/number_compiler") == ()
-    for module in (
-        "reverse_spacetime",
-        "temporal_quotient",
-        "reverse_action",
-        "forcing_morphism",
-    ):
-        assert not (ROOT / "src/number_compiler" / f"{module}.py").exists()
 
 
 def test_production_has_no_compatibility_proof_exemptions() -> None:

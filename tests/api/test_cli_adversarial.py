@@ -12,7 +12,7 @@ from typing import TYPE_CHECKING, Never, TypedDict, cast
 import pytest
 
 from devtools.paths import repository_root
-from number_compiler.api import cli
+from number_compiler.api import cli, cli_render
 from number_compiler.api.number_api import (
     FormulaTermPayload,
     NumberCompiler,
@@ -20,6 +20,7 @@ from number_compiler.api.number_api import (
     PoweredReverseAddTermPayload,
     ScalarTermPayload,
 )
+from number_compiler.api.query_types import TermQuery
 from number_compiler.arithmetic.contracts.block_effect import BlockContextBudgetExceeded
 from number_compiler.arithmetic.formula.formula import FormulaArena, root_from_values
 from number_compiler.arithmetic.formula.types import RadixSpec
@@ -49,8 +50,8 @@ def forbid_compiler(monkeypatch: pytest.MonkeyPatch) -> None:
         (["reverse-add", "--nth", "3", "--seed", "-1"], "--seed"),
         (["collatz", "--nth", "3", "--seed", "0"], "--seed"),
         (["collatz", "--nth", "3", "--seed", "-1"], "--seed"),
-        (["196", "--nth", "3", "--base", "1"], "--base"),
-        (["196", "--nth", "3", "--base", "0"], "--base"),
+        (["reverse-add", "--seed", "196", "--nth", "3", "--base", "1"], "--base"),
+        (["reverse-add", "--seed", "196", "--nth", "3", "--base", "0"], "--base"),
         (["collatz", "--nth", "3", "--seed", "27", "--radix", "4"], "--radix"),
         (["collatz", "--nth", "3", "--seed", "27", "--radix", "-6"], "--radix"),
         (
@@ -96,7 +97,7 @@ def test_invalid_domains_reject_before_compilation(
     [
         (["prime", "--nth", "1000000000000000", "--seed", "1"], "--seed"),
         (["collatz", "--nth", "1", "--seed", "1", "--base", "10"], "--base"),
-        (["196", "--nth", "1", "--radix", "2"], "--radix"),
+        (["reverse-add", "--seed", "196", "--nth", "1", "--radix", "2"], "--radix"),
         (["mersenne", "--nth", "1", "--start", "2"], "--start"),
     ],
 )
@@ -124,7 +125,15 @@ def test_foreign_family_options_are_parser_errors_before_compilation(
         ["mersenne", "--nth", "100000000000000000000000000", "--max-output-bits", "16"],
         ["prime", "--nth", "100000000000000000000000000", "--max-output-bits", "16"],
         ["prime", "--nth", "0", "--start", "65536", "--max-output-bits", "16"],
-        ["196", "--nth", "100000000000000000000000000", "--max-output-bits", "7"],
+        [
+            "reverse-add",
+            "--seed",
+            "196",
+            "--nth",
+            "100000000000000000000000000",
+            "--max-output-bits",
+            "7",
+        ],
         [
             "collatz",
             "--nth",
@@ -156,12 +165,22 @@ def test_provably_over_limit_output_rejects_before_compilation(
         ["prime", "--nth", "1_0"],
         ["prime", "--nth", "１"],
         ["prime", "--nth", " 1"],
-        ["196", "--nth", "0", "--seed", "1_96"],
+        ["reverse-add", "--nth", "0", "--seed", "1_96"],
         ["prime", "--nth", "0", "--max-cache-entries", "-1"],
         ["prime", "--nth", "0", "--max-output-bits", "2.5"],
-        ["196", "--nth", "0", "--seed", "5", "--seed=6"],
-        ["196", "--nth", "0", "--format", "json", "--format", "value"],
-        ["196", "--nth", "0", "--base", "10", "--base", "2"],
+        ["reverse-add", "--nth", "0", "--seed", "5", "--seed=6"],
+        [
+            "reverse-add",
+            "--seed",
+            "196",
+            "--nth",
+            "0",
+            "--format",
+            "json",
+            "--format",
+            "value",
+        ],
+        ["reverse-add", "--seed", "196", "--nth", "0", "--base", "10", "--base", "2"],
     ],
 )
 def test_malformed_unknown_or_conflicting_arguments_are_parser_errors(
@@ -258,7 +277,7 @@ def test_renderer_rejects_invalid_limits_before_touching_term(
             raise AssertionError("renderer observed a term before validating arguments")
 
     with pytest.raises((TypeError, ValueError)):
-        cli._render_value(
+        cli_render._render_value(
             cast("ProjectedNumberTerm", PoisonTerm()), **cast("RenderOptions", kwargs)
         )
 
@@ -270,7 +289,7 @@ def test_scalar_renderer_rejects_negative_or_coerced_values(
     value: bool | float, base: bool | float
 ) -> None:
     with pytest.raises((TypeError, ValueError)):
-        cli._radix_string(cast("int", value), cast("int", base))
+        cli_render._radix_string(cast("int", value), cast("int", base))
 
 
 @pytest.mark.parametrize(
@@ -280,7 +299,9 @@ def test_digit_renderer_checks_the_actual_digit_alphabet(
     digits: tuple[bool] | tuple[float] | tuple[int], base: float
 ) -> None:
     with pytest.raises((TypeError, ValueError)):
-        cli._radix_string_from_lsd(cast("tuple[int, ...]", digits), cast("int", base))
+        cli_render._radix_string_from_lsd(
+            cast("tuple[int, ...]", digits), cast("int", base)
+        )
 
 
 @pytest.mark.parametrize(
@@ -296,7 +317,7 @@ def test_expected_resource_failures_have_usable_cli_errors(
     error: Exception,
 ) -> None:
     class LimitedCompiler:
-        def project_nth(self, *args: object, **kwargs: object) -> Never:
+        def project(self, *args: object, **kwargs: object) -> Never:
             raise error
 
     monkeypatch.setattr(cli, "NumberCompiler", LimitedCompiler)
@@ -312,11 +333,11 @@ def test_valid_zero_indices_alias_overrides_and_small_caps_are_preserved(
 ) -> None:
     for arguments, expected in [
         (["reverse-add", "--nth", "0", "--seed", "0", "--max-output-bits", "4"], "0"),
-        (["196", "--nth", "0", "--seed", "5", "--base", "2"], "5"),
+        (["reverse-add", "--nth", "0", "--seed", "5", "--base", "2"], "5"),
         (["prime", "--nth", "0", "--start", "0", "--max-output-bits", "2"], "2"),
         (["fermat", "--nth", "0", "--max-output-bits", "2"], "3"),
         (["mersenne", "--nth", "1", "--max-output-bits", "1"], "1"),
-        (["196", "--nth", "0", "--seed", "5", "--seed", "5"], "5"),
+        (["reverse-add", "--nth", "0", "--seed", "5", "--seed", "5"], "5"),
     ]:
         assert cli.main([*arguments]) == 0
         assert capsys.readouterr().out.strip() == expected
@@ -364,7 +385,9 @@ def test_real_cli_invalid_option_exits_without_traceback() -> None:
     assert "Traceback" not in result.stderr
 
 
-@pytest.mark.parametrize("family, extra", [("196", []), ("collatz", ["--seed", "27"])])
+@pytest.mark.parametrize(
+    "family, extra", [("reverse-add", ["--seed", "196"]), ("collatz", ["--seed", "27"])]
+)
 @pytest.mark.parametrize("output_format", ["value", "json"])
 def test_emitted_execution_metrics_match_actual_rendered_term_ledger(
     monkeypatch: pytest.MonkeyPatch,
@@ -375,45 +398,17 @@ def test_emitted_execution_metrics_match_actual_rendered_term_ledger(
 ) -> None:
     terms: list[ProjectedNumberTerm] = []
     payload_type = (
-        PoweredReverseAddTermPayload if family == "196" else PoweredCollatzTermPayload
+        PoweredReverseAddTermPayload
+        if family == "reverse-add"
+        else PoweredCollatzTermPayload
     )
 
     def forbidden_audit(*_args: object, **_kwargs: object) -> Never:
         raise AssertionError("CLI metrics entered the explicit full-audit API")
 
     class CapturingCompiler(NumberCompiler):
-        def project_nth(
-            self,
-            family: str,
-            index: int,
-            *,
-            seed: int | None = None,
-            base: int = 10,
-            radix: int = 2,
-            start: int = 2,
-            max_steps: int = 4096,
-            max_state_bits: int = 4096,
-            max_comma_states: int = 131072,
-            max_comma_work: int = 1000000,
-            max_prime_states: int = 131072,
-            max_prime_work: int = 1000000,
-            max_prime_stages: int = 4096,
-        ) -> ProjectedNumberTerm:
-            term = super().project_nth(
-                family,
-                index,
-                seed=seed,
-                base=base,
-                radix=radix,
-                start=start,
-                max_steps=max_steps,
-                max_state_bits=max_state_bits,
-                max_comma_states=max_comma_states,
-                max_comma_work=max_comma_work,
-                max_prime_states=max_prime_states,
-                max_prime_work=max_prime_work,
-                max_prime_stages=max_prime_stages,
-            )
+        def project(self, query: TermQuery) -> ProjectedNumberTerm:
+            term = super().project(query)
             terms.append(term)
             return term
 
@@ -477,7 +472,9 @@ def test_emitted_execution_metrics_match_actual_rendered_term_ledger(
     assert full_audit.resource_work_counters
 
 
-@pytest.mark.parametrize("family, extra", [("196", []), ("collatz", ["--seed", "27"])])
+@pytest.mark.parametrize(
+    "family, extra", [("reverse-add", ["--seed", "196"]), ("collatz", ["--seed", "27"])]
+)
 def test_symbolic_metrics_do_not_execute_points_or_width(
     monkeypatch: pytest.MonkeyPatch,
     capsys: pytest.CaptureFixture[str],
@@ -490,38 +487,8 @@ def test_symbolic_metrics_do_not_execute_points_or_width(
     terms: list[ProjectedNumberTerm] = []
 
     class CapturingCompiler(NumberCompiler):
-        def project_nth(
-            self,
-            family: str,
-            index: int,
-            *,
-            seed: int | None = None,
-            base: int = 10,
-            radix: int = 2,
-            start: int = 2,
-            max_steps: int = 4096,
-            max_state_bits: int = 4096,
-            max_comma_states: int = 131072,
-            max_comma_work: int = 1000000,
-            max_prime_states: int = 131072,
-            max_prime_work: int = 1000000,
-            max_prime_stages: int = 4096,
-        ) -> ProjectedNumberTerm:
-            term = super().project_nth(
-                family,
-                index,
-                seed=seed,
-                base=base,
-                radix=radix,
-                start=start,
-                max_steps=max_steps,
-                max_state_bits=max_state_bits,
-                max_comma_states=max_comma_states,
-                max_comma_work=max_comma_work,
-                max_prime_states=max_prime_states,
-                max_prime_work=max_prime_work,
-                max_prime_stages=max_prime_stages,
-            )
+        def project(self, query: TermQuery) -> ProjectedNumberTerm:
+            term = super().project(query)
             terms.append(term)
             return term
 

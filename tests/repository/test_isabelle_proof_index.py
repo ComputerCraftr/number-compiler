@@ -47,7 +47,6 @@ def _fixture(root: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
     )
     monkeypatch.setattr(index, "ROOT", root)
     monkeypatch.setattr(index, "ISABELLE", proof_root)
-    monkeypatch.setattr(index, "COUNTERPARTS", {})
     return directory
 
 
@@ -70,7 +69,6 @@ def test_index_retains_statement_assumptions_attributes_and_location(
     assert declaration["name"] == "bounded" and declaration["line"] == 2
     assert '[simp]: assumes "n = (0::nat)"' in declaration["statement_and_assumptions"]
     assert theories[0]["session"] == "Example"
-    assert theories[0]["counterparts"] == ()
 
 
 def test_theory_inventory_uses_one_source_snapshot_per_pass(
@@ -142,9 +140,7 @@ def test_index_reuses_theory_analysis_for_tree_and_inventory_views(
     assert source_report["declaration_count"] == 1
 
 
-@pytest.mark.parametrize(
-    "fault", ["missing", "duplicate", "orphan", "unaudited", "counterpart"]
-)
+@pytest.mark.parametrize("fault", ["missing", "duplicate", "orphan", "unaudited"])
 def test_index_rejects_structural_misrepresentation(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch, fault: str
 ) -> None:
@@ -164,8 +160,6 @@ def test_index_rejects_structural_misrepresentation(
         path.write_text(
             path.read_text().replace("Thm_Deps.all_oracles", "not_an_audit")
         )
-    else:
-        monkeypatch.setattr(index, "COUNTERPARTS", {"Sample": ("missing.py",)})
     with pytest.raises(ValueError):
         index.build_index()
 
@@ -174,7 +168,7 @@ def test_index_rejects_structural_misrepresentation(
 # mirror in the explicit validation selection and retain fixture adversaries as unit tests.
 @pytest.mark.validation
 def test_registered_proof_inventory_is_consistent() -> None:
-    assert index.build_index()["schema_version"] == 1
+    assert index.build_index()["schema_version"] == 2
 
 
 @pytest.mark.parametrize(

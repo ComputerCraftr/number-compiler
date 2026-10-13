@@ -9,6 +9,7 @@ import pytest
 
 from devtools.paths import repository_root
 from number_compiler.api.number_api import NumberCompiler, PoweredCollatzTermPayload
+from number_compiler.api.query_types import CollatzTermQuery
 
 PACKAGE = repository_root() / "src" / "number_compiler"
 
@@ -66,14 +67,14 @@ def test_powered_collatz_queries_cannot_select_orbit_helpers(
         monkeypatch.setattr(module, name, forbidden)
 
     compiler = NumberCompiler()
-    binary_term = compiler.project_nth("collatz", 12, seed=27, radix=2)
+    binary_term = compiler.project(CollatzTermQuery(12, seed=27, radix=2))
     assert isinstance(binary_term.payload, PoweredCollatzTermPayload)
     binary_width = binary_term.payload.term.width()
     assert isinstance(binary_width, int) and binary_width > 0
     binary_bits = binary_term.estimated_bit_length
     assert isinstance(binary_bits, int) and binary_bits > 0
     assert binary_term.digit(0) in (0, 1)
-    ternary_term = compiler.project_nth("collatz", 12, seed=27, radix=3)
+    ternary_term = compiler.project(CollatzTermQuery(12, seed=27, radix=3))
     assert isinstance(ternary_term.payload, PoweredCollatzTermPayload)
     ternary_width = ternary_term.payload.term.width()
     assert isinstance(ternary_width, int) and ternary_width > 0

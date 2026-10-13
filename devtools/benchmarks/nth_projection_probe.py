@@ -8,11 +8,20 @@ ratio.  The release guard requires substantial headroom below that boundary.
 from __future__ import annotations
 
 import json
-from typing import TypedDict, Unpack
+from collections.abc import Callable
+from typing import TypedDict
 
 from devtools.paths import report_directory, repository_root
 from devtools.runs import run_reported
 from number_compiler.api.number_api import NumberCompiler
+from number_compiler.api.query_types import (
+    CollatzTermQuery,
+    FermatTermQuery,
+    MersenneTermQuery,
+    PrimeTermQuery,
+    ReverseAddTermQuery,
+    TermQuery,
+)
 from number_compiler.arithmetic.fields.symbolic_extent import extent_json_value
 
 
@@ -39,13 +48,6 @@ class ProjectionReport(TypedDict):
     special: dict[str, SpecialRow]
 
 
-class ProjectionOptions(TypedDict, total=False):
-    seed: int
-    base: int
-    radix: int
-    start: int
-
-
 ROOT = repository_root()
 
 INDICES = (8, 16, 32, 64)
@@ -53,12 +55,12 @@ MAX_DOUBLING_RATIO = 3.25
 
 
 def _series(
-    compiler: NumberCompiler, family: str, **kwargs: Unpack[ProjectionOptions]
+    compiler: NumberCompiler, query: Callable[[int], TermQuery]
 ) -> list[ProjectionRow]:
     rows: list[ProjectionRow] = []
     previous = None
     for index in INDICES:
-        term = compiler.project_nth(family, index, **kwargs)
+        term = compiler.project(query(index))
         work = int(term.metrics.projection_work)
         ratio = 0.0 if previous is None else work / previous
         rows.append(
@@ -81,13 +83,17 @@ def _series(
 def run_probe() -> ProjectionReport:
     compiler = NumberCompiler()
     data = {
-        "reverse_add": _series(compiler, "reverse-add", seed=196, base=10),
-        "collatz": _series(compiler, "collatz", seed=27, radix=2),
-        "prime": _series(compiler, "prime", start=1_000_000),
+        "reverse_add": _series(
+            compiler, lambda index: ReverseAddTermQuery(index, seed=196)
+        ),
+        "collatz": _series(compiler, lambda index: CollatzTermQuery(index, seed=27)),
+        "prime": _series(
+            compiler, lambda index: PrimeTermQuery(index, start=1_000_000)
+        ),
     }
     special = {
-        "fermat": compiler.project_nth("fermat", 30).metrics,
-        "mersenne": compiler.project_nth("mersenne", 1_000_000).metrics,
+        "fermat": compiler.project(FermatTermQuery(30)).metrics,
+        "mersenne": compiler.project(MersenneTermQuery(1_000_000)).metrics,
     }
     ratios = [
         float(row["doubling_ratio"]) for rows in data.values() for row in rows[1:]

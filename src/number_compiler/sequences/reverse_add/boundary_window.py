@@ -16,7 +16,6 @@ from typing import TYPE_CHECKING, Literal
 from number_compiler.arithmetic.carry.carry_monoid import (
     CarryFn,
     apply_carry_fn,
-    carry_fn_from_outputs,
     compose_carry_fn,
     value_carry_fn,
 )
@@ -207,7 +206,11 @@ class FiniteBoundaryWindow:
             len(source_digits_lsd) - self.digits,
         )
         for digit in reversed(source_digits_lsd[self.digits :]):
-            transfer = carry_fn_from_outputs(((2 * digit) // 10, (2 * digit + 1) // 10))
+            # Doubling one source digit maps the incoming Boolean carry by
+            # c ↦ [2*digit+c >= 10].  Use the shared value-carry law directly;
+            # reconstructing the same map from its two output ports duplicated
+            # the carry classification on every scanned digit.
+            transfer = value_carry_fn(2 * digit, 10)
             carry = apply_carry_fn(transfer, carry)
         return carry
 

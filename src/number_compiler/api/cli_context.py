@@ -1,80 +1,54 @@
-"""One query owner for a term and its explicitly requested observations."""
+"""One query owner for a typed term and its explicitly requested observations."""
 
 from __future__ import annotations
 
-from dataclasses import asdict
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, cast
 
 from number_compiler.api.cli_render import _metrics_json
-from number_compiler.api.cli_requests import QueryRequest
-from number_compiler.api.number_api import (
-    AntihydraTermPayload,
-    CommaTermPayload,
-    NumberCompiler,
-    PoweredCollatzTermPayload,
-    PoweredReverseAddTermPayload,
-    ProjectedNumberTerm,
-)
+from number_compiler.api.cli_types import QueryRequest
+from number_compiler.api.family_registry import resolve_observation_adapter
+from number_compiler.api.number_api import NumberCompiler, ProjectedNumberTerm
+from number_compiler.api.output_schema import JsonValue
+from number_compiler.api.query_types import TermQuery
 from number_compiler.arithmetic.contracts.unresolved_term import UnresolvedSequenceTerm
 
 if TYPE_CHECKING:
     from number_compiler.api.cylinder_observation import CollatzObservationContext
 
 
-def _events_context(
-    seed: int, events: int, *, max_events: int, max_digits: int
-) -> CollatzObservationContext:
-    from number_compiler.api.cylinder_observation import CollatzObservationContext
-
-    return CollatzObservationContext(
-        seed, events, max_events=max_events, max_digits=max_digits
-    )
-
-
 class QueryContext:
+    """Memoize only work owned by one already-validated public query."""
+
     def __init__(self, request: QueryRequest, compiler: NumberCompiler) -> None:
         self.request = request
         self.compiler = compiler
-        self._term: ProjectedNumberTerm | None = None
+        self._observer = resolve_observation_adapter(request.family)
+        self._raw_term: ProjectedNumberTerm | None = None
+        self._term_prepared = False
+        self._observation_extents_admitted = False
         self._events: CollatzObservationContext | None = None
-        self._special: dict[str, Any] | None = None
-        self._info: dict[str, Any] = {}
+        self._special: dict[str, object] | None = None
+        self._info: dict[str, dict[str, JsonValue]] = {}
         self.unresolved_boundary: UnresolvedSequenceTerm | None = None
 
     def admit_observation_extents(self) -> None:
-        """Reject descriptor bounds before any endpoint rendering or observation."""
-        q = self.request
-        if q.family == "a367620":
-            comma = self.term.payload
-            assert isinstance(comma, CommaTermPayload)
-            from number_compiler.sequences.comma.certificates import (
-                CERTIFIED_MAX_INDEX,
-                unresolved_boundary,
-            )
+        """Admit observer-specific extents before rendering or observation."""
+        if self._observation_extents_admitted:
+            return
+        self._observer.admit(self)
+        self._observation_extents_admitted = True
 
-            if q.no_value and not set(q.info) - {"metrics", "certificate"}:
-                # Metadata never initiates a certificate forest or trajectory.
-                # Certificate information also reports only existing evidence.
-                if q.index > CERTIFIED_MAX_INDEX:
-                    self.unresolved_boundary = unresolved_boundary(q.index)
-                return
-            try:
-                comma.require_certified()
-            except UnresolvedSequenceTerm as error:
-                if not q.no_value or set(q.info) - {"metrics", "certificate"}:
-                    raise
-                # Metadata remains observable at an unresolved sequence boundary.
-                self.unresolved_boundary = error
-        if "mirror" in q.info:
-            payload = self.term.payload
-            assert isinstance(payload, PoweredReverseAddTermPayload)
-            if payload.term.maximum_width > q.max_digits:
-                raise ValueError("mirror target exceeds digit budget")
-        if q.family == "collatz" and q.selector == "nth" and "clock" in q.info:
-            collatz = self.term.payload
-            assert isinstance(collatz, PoweredCollatzTermPayload)
-            if q.index and collatz.term.maximum_width > q.max_digits:
-                raise ValueError("physical clock target exceeds digit budget")
+    def _raw_projected_term(self) -> ProjectedNumberTerm:
+        """Return the projected occurrence without preparing demanded observers."""
+        if self.request.selector != "nth":
+            raise ValueError(
+                "event/certificate requests do not select an ordinary term"
+            )
+        if self._raw_term is None:
+            self._raw_term = self.compiler.project(
+                cast(TermQuery, self.request.execution)
+            )
+        return self._raw_term
 
     @property
     def term(self) -> ProjectedNumberTerm:
@@ -82,322 +56,60 @@ class QueryContext:
             raise ValueError(
                 "event/certificate requests do not select an ordinary term"
             )
-        if self._term is None:
-            q = self.request
-            if q.family == "a367620":
-                self._term = self.compiler.project_nth(
-                    q.family,
-                    q.index,
-                    max_comma_states=q.max_comma_states,
-                    max_comma_work=q.max_comma_work,
-                )
-            elif q.family == "antihydra":
-                self._term = self.compiler.project_nth(
-                    q.family,
-                    q.index,
-                    max_steps=q.max_steps,
-                    max_state_bits=q.max_state_bits,
-                )
-                if "mahler" in q.info:
-                    payload = self._term.payload
-                    assert isinstance(payload, AntihydraTermPayload)
-                    payload.term.prepare_mahler()
-            elif q.family == "prime":
-                self._term = self.compiler.project_nth(
-                    q.family,
-                    q.index,
-                    start=q.start,
-                    max_prime_states=q.max_prime_states,
-                    max_prime_work=q.max_prime_work,
-                    max_prime_stages=q.max_prime_stages,
-                )
-            else:
-                self._term = self.compiler.project_nth(
-                    q.family,
-                    q.index,
-                    seed=q.seed,
-                    base=q.base,
-                    radix=q.radix,
-                    start=q.start,
-                )
-                if q.family == "collatz" and "clock" in q.info:
-                    collatz_payload = self._term.payload
-                    assert isinstance(collatz_payload, PoweredCollatzTermPayload)
-                    collatz_payload.term.prepare_width_spine()
-                if q.family == "collatz" and "accumulator" in q.info:
-                    joint_payload = self._term.payload
-                    assert isinstance(joint_payload, PoweredCollatzTermPayload)
-                    joint_payload.term.prepare_joint_cocycle()
-        return self._term
+        self.admit_observation_extents()
+        term = self._raw_projected_term()
+        if not self._term_prepared:
+            self._observer.prepare(self, term)
+            self._term_prepared = True
+        return term
 
-    def information(self) -> dict[str, Any]:
-        # Metrics observe the finished query, regardless of --info ordering.
-        for name in self.request.info:
-            if name != "metrics" and name not in self._info:
-                alias = (
-                    {
-                        "tape": "twisted",
-                        "twisted": "tape",
-                    }.get(name)
-                    if self.request.family == "antihydra"
-                    else None
+    def information(self) -> dict[str, dict[str, JsonValue]]:
+        """Evaluate demanded observers once and report metrics last."""
+        requested_info = self.request.observations.info
+        for name in requested_info:
+            if name == "metrics" or name in self._info:
+                continue
+            self._info[name] = self._observe(name)
+
+        index_exponent = self.request.presentation.index.exponent
+        if "metrics" in requested_info and "metrics" not in self._info:
+            if index_exponent is None:
+                metrics = _metrics_json(self.term)
+            else:
+                presentation_index = cast(
+                    dict[str, int | str], self.request.presentation_index
                 )
-                if alias is not None and alias in self._info:
-                    # These names select exactly the same demanded observation
-                    # with the same parameters in this query. Reuse only the
-                    # finished packet; it never authorizes a successor action.
-                    packet = dict(self._info[alias])
-                    packet["kind"] = name
-                    payload = self.term.payload
-                    assert isinstance(payload, AntihydraTermPayload)
-                    payload.term.engine.count("query_observer_reuses")
-                    self._info[name] = packet
-                else:
-                    self._info[name] = self._observe(name)
-        if "metrics" in self.request.info and "metrics" not in self._info:
-            presentation = self.request.presentation_index
-            self._info["metrics"] = (
-                _metrics_json(self.term)
-                if isinstance(presentation, int)
-                else _metrics_json(
+                metrics = _metrics_json(
                     self.term,
                     coordinate=(
                         self.request.index,
-                        f"(10**{self.request.nth_power10})",
-                        presentation,
+                        f"(10**{index_exponent})",
+                        presentation_index,
                     ),
                 )
-            )
-        # Common CLI metadata is selector-based. Family-specific payload fields
-        # remain intact, while the public Python observers keep their own APIs.
+            packet = cast(dict[str, JsonValue], metrics)
+            self._info["metrics"] = packet
+
         for name, packet in self._info.items():
             packet.update(
                 family=self.request.family,
                 kind=name,
-                index=self.request.presentation_index,
+                index=cast(JsonValue, self.request.presentation_index),
                 index_unit=self.request.index_unit,
             )
             packet.setdefault("status", "available")
-        return self.request.present_indices(
-            {name: self._info[name] for name in self.request.info}
-        )
+        return {name: self._info[name] for name in requested_info}
 
-    def _observe(self, name: str) -> dict[str, Any]:
-        q = self.request
-        if q.family == "a367620":
-            payload = self.term.payload
-            assert isinstance(payload, CommaTermPayload)
-            if name == "certificate":
-                from number_compiler.sequences.comma.certificates import (
-                    certificate_status,
-                )
-
-                return certificate_status(
-                    q.index,
-                    payload.term.ledger,
-                    q.max_comma_work,
-                    shared_cache=payload.term.shared_cache,
-                    memo=payload.term.certificate_memo,
-                )
-            payload.require_certified()
-            value = payload.term.clock() if name == "clock" else payload.term.tropical()
-            return {"value": value, "scope": "checked comma-child prefix"}
-        if q.family == "antihydra":
-            return self._antihydra(name)
-        if q.selector == "events":
-            from number_compiler.api.cylinder_observation import observe_collatz
-
-            assert q.seed is not None
-            if self._events is None:
-                self._events = _events_context(
-                    q.seed, q.index, max_events=q.max_events, max_digits=q.max_digits
-                )
-            return observe_collatz(
-                q.seed,
-                q.index,
-                kind=name,
-                modulus=q.modulus,
-                width=q.width,
-                sign=q.sign,
-                precision=q.precision,
-                target=q.target,
-                s_weight=q.s_weight,
-                z_weight=q.z_weight,
-                max_events=q.max_events,
-                max_digits=q.max_digits,
-                _context=self._events,
-                _include_metrics=False,
-            )
-        if name == "clock" and q.family == "collatz":
-            from number_compiler.api.cylinder_observation import observe_physical_clock
-
-            payload = self.term.payload
-            assert isinstance(payload, PoweredCollatzTermPayload)
-            assert q.seed is not None
-            return observe_physical_clock(
-                q.seed,
-                q.index,
-                max_ticks=q.max_events,
-                max_digits=q.max_digits,
-                _term=payload.term,
-                _include_metrics=False,
-            )
-        if name == "accumulator":
-            joint = self.term.payload
-            assert isinstance(joint, PoweredCollatzTermPayload)
-            return asdict(joint.term.accumulator(q.modulus))
-        if name == "boundary-macro":
-            reverse = self.term.payload
-            assert isinstance(reverse, PoweredReverseAddTermPayload)
-            return asdict(reverse.term.observe_boundary_macro())
-        if name == "mirror":
-            from number_compiler.api.cylinder_observation import observe_mirror
-
-            reverse = self.term.payload
-            assert isinstance(reverse, PoweredReverseAddTermPayload)
-            result = observe_mirror(
-                reverse.term.seed,
-                q.index,
-                base=q.base,
-                first_width=q.width,
-                max_digits=q.max_digits,
-                _term=reverse.term,
-                _include_metrics=False,
-            )
-            result["family"] = q.family
-            return result
-        if name == "root":
-            from number_compiler.api.cylinder_observation import observe_etale_root
-
-            assert q.defect is not None
-            return observe_etale_root(
-                q.family, q.index, q.defect, max_digits=q.max_digits
-            )
-        if name in {"primality", "factor"}:
-            return self._special_observation(name)
-        raise ValueError("observation has no admitted family handler")
-
-    def _special_observation(self, name: str) -> dict[str, Any]:
-        q = self.request
-        if self._special is None:
-            from number_compiler.api.sequence_compiler import CanonicalSequenceCompiler
-
-            resolution = CanonicalSequenceCompiler().resolve_special_theorem(
-                q.family,
-                q.index,
-                collect_etale_factor="factor" in q.info,
-                max_factor_products=q.max_factor_products,
-                max_candidate_bits=q.max_candidate_bits,
-            )
-            failure = resolution.source_guard.failure_bit
-            status = (
-                "unknown" if failure is None else "composite" if failure else "prime"
-            )
-            self._special = {
-                "family": q.family,
-                "index": q.index,
-                "status": status,
-                "decided": resolution.decided,
-                "method": resolution.projection_method,
-                "factor_query_status": resolution.factor_query_status,
-                "certificate": None
-                if resolution.primality is None
-                else asdict(resolution.primality),
-                "factor_witness": resolution.factor_witness,
-                "factor_target": {"family": q.family, "parameter": q.index},
-                "factor_proof": "proper-coefficient-gcd"
-                if resolution.factor_witness is not None
-                else None,
-                "factor_expression": None
-                if resolution.composite_exponent_factor is None
-                else f"2^{resolution.composite_exponent_factor.exponent}-1",
-                "etale_ring_multiplications": resolution.etale_ring_multiplications,
-            }
-        if name == "primality":
-            return dict(self._special)
-        packet = dict(self._special)
-        packet["status"] = (
-            "available"
-            if packet["factor_witness"] is not None
-            or packet["factor_expression"] is not None
-            else "not_applicable"
-            if packet["status"] == "prime"
-            else "unknown"
-            if packet["status"] == "unknown"
-            else "not_found"
-        )
-        packet["scope"] = (
-            "conditional checked factor output; no factor found does not establish primality"
-        )
-        return packet
-
-    def _antihydra(self, name: str) -> dict[str, Any]:
-        q = self.request
-        payload = self.term.payload
-        assert isinstance(payload, AntihydraTermPayload)
-        if name in {"ledger", "modular"}:
-            result = payload.term.result()
-            centered_odd = (result.returns + result.balance) // 3
-            value = (
-                {
-                    "h": result.h,
-                    "ledger": result.balance,
-                    "minimum_ledger": result.minimum,
-                    "first_failure_index": result.first_failure_index,
-                    "centered_odd_events": centered_odd,
-                    "odd_a_steps": result.returns - centered_odd,
-                }
-                if name == "ledger"
-                else {"h": result.h % q.modulus, "modulus": q.modulus}
-            )
-            return {
-                "family": "antihydra",
-                "kind": name,
-                "value": value,
-                "scope": "total arithmetic iteration",
-                "requested_returns": q.index,
-                "completed_returns": result.returns,
-                "nonhalting_certified": False,
-            }
-        from number_compiler.api.antihydra_observation import (
-            observe_arithmetic,
-            observe_arithmetic_many,
-            observe_run,
-        )
-
-        if name in {"mahler", "hensel"}:
-            if {"mahler", "hensel"}.issubset(q.info):
-                packets = observe_arithmetic_many(
-                    payload.term.result(),
-                    kinds=("mahler", "hensel"),
-                    precision=q.precision,
-                    _include_metrics=False,
-                )
-                self._info.update(packets)
-                return packets[name]
-            return observe_arithmetic(
-                payload.term.result(),
-                kind=name,
-                precision=q.precision,
-                _include_metrics=False,
-            )
-
-        return observe_run(
-            payload.term.physical_run(),
-            kind=name,
-            modulus=q.modulus,
-            width=q.width,
-            sign=q.sign,
-            precision=q.precision,
-            time_width=q.time_width,
-            time_sign=q.time_sign,
-            max_observer_terms=q.max_observer_terms,
-            _include_metrics=False,
-        )
+    def _observe(self, name: str) -> dict[str, JsonValue]:
+        return self._observer.observe(self, name)
 
 
-def information_unresolved(info: dict[str, Any]) -> bool:
+def information_unresolved(info: dict[str, dict[str, JsonValue]]) -> bool:
     return any(
-        isinstance(packet, dict) and packet.get("status") in {"unknown", "unavailable"}
+        isinstance(packet.get("status"), str)
+        and packet["status"] in {"unknown", "unavailable"}
         for packet in info.values()
     )
+
+
+__all__ = ["QueryContext", "information_unresolved"]

@@ -173,6 +173,8 @@ def test_mirror_and_supplied_root_cli(capsys: pytest.CaptureFixture[str]) -> Non
     assert (
         main(
             [
+                "reverse-add",
+                "--seed",
                 "196",
                 "--nth",
                 "3",
@@ -337,6 +339,8 @@ def test_mirror_sheet_budget_precedes_allocation(
     assert (
         main(
             [
+                "reverse-add",
+                "--seed",
                 "196",
                 "--nth",
                 "3",

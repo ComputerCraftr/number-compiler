@@ -18,7 +18,7 @@ import pytest
         ["mersenne", "--nth", "1"],
         ["prime", "--nth", "0"],
         ["antihydra", "--nth", "64"],
-        ["196", "--nth", "4"],
+        ["reverse-add", "--seed", "196", "--nth", "4"],
         ["collatz", "--nth", "4", "--seed", "27"],
         ["fermat", "--nth", "0", "--no-value", "--info", "primality"],
         ["mersenne", "--nth", "11", "--no-value", "--info", "factor"],
@@ -48,7 +48,7 @@ if arguments[0] in ('fermat', 'mersenne') and '--info' in arguments:
         'number_compiler.sequences.reverse_add.digits',
         'number_compiler.sequences.prime.lane_quotient',
     })
-if arguments[0] == '196':
+if arguments[0] == 'reverse-add':
     forbidden.remove('number_compiler.sequences.reverse_add.power')
     # Shared primitive admission checks recognize the exact Collatz atom type.
     # Its module may load; neither family's large metric schema is demanded.

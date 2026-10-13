@@ -6,6 +6,7 @@ from weakref import ref
 
 import pytest
 
+from number_compiler.api.query_types import FermatTermQuery
 from number_compiler.arithmetic.contracts.block_effect import (
     BlockContextBudgetExceeded,
 )
@@ -381,7 +382,7 @@ def test_cli_cache_snapshot_neither_constructs_nor_changes_cache(
     from number_compiler.api.number_api import NumberCompiler
     from number_compiler.resources import process_cache
 
-    term = NumberCompiler(shared_cache=False).project_nth("fermat", 2)
+    term = NumberCompiler(shared_cache=False).project(FermatTermQuery(2))
     monkeypatch.setattr(process_cache, "_PROCESS_CACHE", None)
 
     def forbidden() -> ProcessCache:

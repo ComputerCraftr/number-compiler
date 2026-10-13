@@ -1,44 +1,62 @@
-"""Family-first parsing does not construct unrelated observation options."""
+"""Family-first parsing builds only the requested family's option actions."""
+
+from __future__ import annotations
 
 import argparse
 import re
+from dataclasses import dataclass
+from typing import ClassVar, cast
 
 import pytest
 
 from number_compiler.api import cli_requests
+from number_compiler.api.cli_types import (
+    PrimeObservationOptions,
+)
+from number_compiler.api.family_registry import (
+    CAPABILITIES,
+    AdapterBinding,
+    FamilyCapability,
+    FamilySpec,
+    ObservationAdapterBinding,
+    ObservationValueBinding,
+    OptionSpec,
+)
+from number_compiler.api.query_types import (
+    CollatzTermQuery,
+    TermQuery,
+)
 
 
-@pytest.mark.parametrize("family", cli_requests.CAPABILITIES)
-def test_family_parser_does_not_build_other_observers(
+@pytest.mark.parametrize("family", CAPABILITIES)
+def test_family_parser_builds_only_demanded_observation_options(
     monkeypatch: pytest.MonkeyPatch, family: str
 ) -> None:
-    original = cli_requests.observation_options
+    original = FamilySpec.parser_options
     visited: list[str] = []
 
-    def demanded(name: str) -> dict[str, tuple[int | None, tuple[str, ...]]]:
-        assert name == family, "query built another family's observation actions"
-        visited.append(name)
-        return original(name)
+    def demanded(spec: FamilySpec) -> dict[str, OptionSpec]:
+        assert spec is CAPABILITIES[family], (
+            "parser constructed another family's options"
+        )
+        visited.append(family)
+        return original(spec)
 
-    monkeypatch.setattr(cli_requests, "observation_options", demanded)
-    argv = [family, "--nth", "1"]
-    if family in {"reverse-add", "collatz"}:
-        argv += ["--seed", "196"]
-    request = cli_requests.parse_request(argv)
-    assert request is not None and request.family == family
-    assert visited
-    assert set(visited) == {family}
+    monkeypatch.setattr(FamilySpec, "parser_options", demanded)
+    cli_requests.parser(demanded_family=family)
+    assert visited == [family]
 
 
-def test_parser_rejects_unknown_family_demand() -> None:
+def test_parser_rejects_unknown_demanded_family() -> None:
     with pytest.raises(ValueError, match="unknown demanded CLI family"):
         cli_requests.parser(demanded_family="unknown")
 
 
-@pytest.mark.parametrize("family", cli_requests.CAPABILITIES)
+@pytest.mark.parametrize("family", CAPABILITIES)
 def test_demanded_help_matches_full_parser(
     family: str, capsys: pytest.CaptureFixture[str]
 ) -> None:
+    expected = ""
     for full in (True, False):
         command = cli_requests.parser(demanded_family=None if full else family)
         with pytest.raises(SystemExit) as stopped:
@@ -59,20 +77,26 @@ def test_demanded_help_matches_full_parser(
         ["collatz", "--events", "4", "--seed", "27", "--info", "hensel"],
         ["antihydra", "--nth", "3", "--info", "mahler"],
         ["fermat", "--nth", "4", "--no-value", "--info", "primality"],
-        ["--list-families"],
     ),
 )
 def test_demanded_request_matches_full_parser(
     argv: list[str], monkeypatch: pytest.MonkeyPatch
 ) -> None:
     actual = cli_requests.parse_request(argv)
+    assert actual is not None
     original = cli_requests.parser
 
-    def complete(*, demanded_family: str | None = None) -> argparse.ArgumentParser:
+    def complete(
+        *, demanded_family: str | None = None, registry: object = None
+    ) -> argparse.ArgumentParser:
         return original()
 
     monkeypatch.setattr(cli_requests, "parser", complete)
     assert cli_requests.parse_request(argv) == actual
+
+
+def test_list_request_has_no_term_execution() -> None:
+    assert cli_requests.parse_request(["--list-families"]) is None
 
 
 def test_collatz_help_distinguishes_term_and_event_information(
@@ -83,7 +107,7 @@ def test_collatz_help_distinguishes_term_and_event_information(
         command.parse_args(["collatz", "--help"])
     assert stopped.value.code == 0
     help_text = re.sub(r"\s+", " ", capsys.readouterr().out)
-    assert "--nth: metrics, clock" in help_text
+    assert "--nth: metrics, clock, accumulator" in help_text
     assert (
         "--events: clock, modular, twisted, hasse, hensel, tropical, factor, safety"
         in help_text
@@ -98,18 +122,21 @@ def test_events_reject_term_only_output_controls(option: str) -> None:
         )
 
 
-def test_events_reject_term_only_metrics_and_preserve_term_metrics() -> None:
+def test_events_reject_metrics_and_preserve_typed_term_observations() -> None:
     with pytest.raises(ValueError, match="unavailable for this selector"):
         cli_requests.parse_request(
             ["collatz", "--events", "1", "--seed", "27", "--info", "metrics"]
         )
-    term = cli_requests.parse_request(
+    request = cli_requests.parse_request(
         ["collatz", "--nth", "1", "--seed", "27", "--info", "metrics"]
     )
-    assert term is not None and term.info == ("metrics",)
+    assert request is not None
+    assert request.observations.info == ("metrics",)
+    assert isinstance(request.execution, CollatzTermQuery)
+    assert request.execution.seed == 27
 
 
-def test_events_reject_unused_radix_but_nth_retains_it() -> None:
+def test_events_reject_unused_radix_and_term_retains_it() -> None:
     with pytest.raises(ValueError, match="--radix applies to Collatz --nth"):
         cli_requests.parse_request(
             [
@@ -124,21 +151,63 @@ def test_events_reject_unused_radix_but_nth_retains_it() -> None:
                 "6",
             ]
         )
-    term = cli_requests.parse_request(
+    request = cli_requests.parse_request(
         ["collatz", "--nth", "1", "--seed", "27", "--radix", "6"]
     )
-    assert term is not None and term.radix == 6
+    assert request is not None
+    assert isinstance(request.execution, CollatzTermQuery)
+    assert request.execution.radix == 6
 
 
-def test_selector_index_units_are_explicit() -> None:
-    cases = (
-        (["collatz", "--nth", "0", "--seed", "27"], "physical_iterations"),
-        (
-            ["collatz", "--events", "0", "--seed", "27", "--info", "clock"],
-            "accelerated_odd_events",
-        ),
-        (["antihydra", "--nth", "0"], "macro_returns_after_startup"),
+def test_selector_coordinates_and_power10_presentation_are_separate() -> None:
+    term = cli_requests.parse_request(["prime", "--nth-power10", "1"])
+    assert term is not None
+    assert term.index == 10
+    assert term.presentation_index == {"encoding": "power10", "exponent": 1}
+    assert term.index_unit == "prime_index"
+    events = cli_requests.parse_request(
+        ["collatz", "--events", "3", "--seed", "27", "--info", "clock"]
     )
-    for argv, expected_unit in cases:
-        request = cli_requests.parse_request(argv)
-        assert request is not None and request.index_unit == expected_unit
+    assert events is not None
+    assert events.selector == "events"
+    assert events.index == 3
+    assert events.index_unit == "accelerated_odd_events"
+
+
+def test_unknown_command_is_rejected() -> None:
+    with pytest.raises(SystemExit) as stopped:
+        cli_requests.parse_request(["unknown-family", "--nth", "1"])
+    assert stopped.value.code == 2
+
+
+def test_synthetic_registry_entry_builds_a_typed_request(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    @dataclass(frozen=True, slots=True)
+    class SyntheticTermQuery:
+        index: int
+
+        family: ClassVar[str] = "synthetic"
+        selector: ClassVar[str] = "nth"
+
+    spec = FamilySpec(
+        FamilyCapability("synthetic_index", (), ("metrics",)),
+        cast(type[TermQuery], SyntheticTermQuery),
+        AdapterBinding("unused.module", "project"),
+        ObservationAdapterBinding("unused.module", "prepare", "admit", "observe"),
+        term_observation=ObservationValueBinding(PrimeObservationOptions),
+    )
+    registry = {"synthetic": spec}
+    monkeypatch.setitem(CAPABILITIES, "synthetic", spec)
+    command = cli_requests.parser(registry=registry)
+    with pytest.raises(SystemExit) as stopped:
+        command.parse_args(["synthetic", "--help"])
+    assert stopped.value.code == 0
+    request = cli_requests.parse_request(
+        ["synthetic", "--nth", "3", "--no-value", "--info", "metrics"],
+        registry=registry,
+    )
+    assert request is not None
+    assert type(cast(object, request.execution)) is SyntheticTermQuery
+    assert request.index == 3
+    assert request.index_unit == "synthetic_index"

@@ -8,7 +8,7 @@ from typing import Never
 
 import pytest
 
-from number_compiler.api import cli
+from number_compiler.api import cli, cli_render
 from number_compiler.api.number_api import FermatTermPayload, MersenneTermPayload
 from number_compiler.sequences.collatz.block_power import PoweredCollatzTerm
 from number_compiler.sequences.reverse_add.power import ReverseAddPoweredTerm
@@ -118,7 +118,7 @@ def test_196_symbolic_upper_bound_avoids_width_preflight(
 ) -> None:
     monkeypatch.setattr(ReverseAddPoweredTerm, "width", _forbidden)
     monkeypatch.setattr(ReverseAddPoweredTerm, "materialize", _forbidden)
-    assert cli.main(["196", "--nth", "4"]) == 0
+    assert cli.main(["reverse-add", "--seed", "196", "--nth", "4"]) == 0
     assert capsys.readouterr().out.strip() == "13783"
 
 
@@ -127,7 +127,12 @@ def test_tight_output_cap_still_rejects_before_endpoint_emission(
     capsys: pytest.CaptureFixture[str],
 ) -> None:
     monkeypatch.setattr(ReverseAddPoweredTerm, "iter_digits", _forbidden)
-    assert cli.main(["196", "--nth", "1", "--max-output-bits", "8"]) == 2
+    assert (
+        cli.main(
+            ["reverse-add", "--seed", "196", "--nth", "1", "--max-output-bits", "8"]
+        )
+        == 2
+    )
     output = capsys.readouterr()
     assert not output.out
     assert "output exceeds --max-output-bits" in output.err
@@ -142,12 +147,12 @@ def test_decimal_scalar_format_never_changes_process_digit_limit(
         context.prec = 2
         context.Emax = 2
         context.Emin = -2
-        assert cli._radix_string(10**5000 + 987, 10) == "1" + "0" * 4997 + "987"
-        assert cli._radix_string(12345, 10) == "12345"
+        assert cli_render._radix_string(10**5000 + 987, 10) == "1" + "0" * 4997 + "987"
+        assert cli_render._radix_string(12345, 10) == "12345"
     assert sys.get_int_max_str_digits() == previous
 
 
 def test_regrouping_consumes_one_pass_and_drops_only_leading_zeroes() -> None:
-    assert cli._power_of_two_radix_string(iter((3, 2, 1, 0)), 4, 8) == "33"
-    assert cli._power_of_two_radix_string(iter((0, 0)), 2, 32) == "0"
-    assert cli._radix_string_from_lsd(iter((3, 2, 1)), 10) == "123"
+    assert cli_render._power_of_two_radix_string(iter((3, 2, 1, 0)), 4, 8) == "33"
+    assert cli_render._power_of_two_radix_string(iter((0, 0)), 2, 32) == "0"
+    assert cli_render._radix_string_from_lsd(iter((3, 2, 1)), 10) == "123"

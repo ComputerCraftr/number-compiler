@@ -3,6 +3,7 @@
 from typing import Protocol
 
 from number_compiler.api.number_api import NumberCompiler
+from number_compiler.api.query_types import CollatzTermQuery
 
 
 class PowerComplexity(Protocol):
@@ -21,6 +22,6 @@ def assert_binary_power_bound(metrics: PowerComplexity, steps: int) -> None:
 
 
 def assert_collatz_radices(compiler: NumberCompiler) -> None:
-    assert compiler.nth("collatz", 10, seed=27, radix=2) == 214
-    assert compiler.nth("collatz", 10, seed=27, radix=3) == 214
-    assert compiler.nth("collatz", 10, seed=27, radix=6) == 214
+    assert compiler.nth(CollatzTermQuery(10, seed=27, radix=2)) == 214
+    assert compiler.nth(CollatzTermQuery(10, seed=27, radix=3)) == 214
+    assert compiler.nth(CollatzTermQuery(10, seed=27, radix=6)) == 214

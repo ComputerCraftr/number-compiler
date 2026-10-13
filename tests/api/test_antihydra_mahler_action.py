@@ -9,6 +9,7 @@ import pytest
 
 from number_compiler.api.antihydra_observation import observe_run
 from number_compiler.api.number_api import NumberCompiler
+from number_compiler.api.query_types import AntihydraTermQuery
 from number_compiler.arithmetic.contracts.block_effect import BlockContextBudgetExceeded
 from number_compiler.hashlife.execution.dyadic_return_records import (
     DyadicAggregateSummary,
@@ -242,7 +243,7 @@ def test_plain_digits_and_mahler_do_not_materialize_segments(
     term = AntihydraArithmeticTerm(64)
     result = term.result()
     assert result.h > 8
-    assert NumberCompiler().nth("antihydra", 64) == result.h
+    assert NumberCompiler().nth(AntihydraTermQuery(64)) == result.h
     assert associated_action(result)["extent"] == 64
     assert not term._segments and not term._segments_ready
     assert term.metrics()["retained_source_blocks"] == 0

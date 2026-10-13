@@ -13,7 +13,7 @@ import hashlib
 import re
 from bisect import bisect_right
 from collections import Counter, defaultdict
-from collections.abc import Iterable, Mapping
+from collections.abc import Iterable, Mapping, Sequence
 from dataclasses import asdict, dataclass
 from pathlib import Path
 from typing import Any
@@ -25,6 +25,7 @@ from devtools.checks.isabelle_syntax import (
     navigation_text,
     unquoted_matches,
 )
+from devtools.checks.source_discovery import authored_files
 
 _COMMANDS = (
     "definition",
@@ -708,6 +709,7 @@ def analyze_isabelle_tree(
     root: Path,
     source_texts: Mapping[Path, str] | None = None,
     source_analyses: Mapping[Path, IsabelleAnalysis] | None = None,
+    source_paths: Sequence[Path] | None = None,
 ) -> IsabelleAnalysis:
     """Analyze one tree, reusing caller-owned parses from the same snapshot.
 
@@ -717,9 +719,15 @@ def analyze_isabelle_tree(
     """
     declarations: list[IsabelleDeclaration] = []
     source_records: list[tuple[Path, str, IsabelleAnalysis]] = []
+    root = root.resolve()
+    paths = authored_files(root) if source_paths is None else source_paths
     for path in sorted(
-        (*root.rglob("*.thy"), *root.rglob("*.ML"), *root.rglob("*.sml"))
+        path
+        for path in paths
+        if path.suffix.lower() in {".thy", ".ml", ".sml"}
+        and path.resolve().is_relative_to(root)
     ):
+        path = path.resolve()
         if any(part in {"results", ".git", "__pycache__"} for part in path.parts):
             continue
         cached = (
@@ -799,9 +807,10 @@ def analysis_report(
     root: Path,
     source_texts: Mapping[Path, str] | None = None,
     source_analyses: Mapping[Path, IsabelleAnalysis] | None = None,
+    source_paths: Sequence[Path] | None = None,
 ) -> dict[str, Any]:
     """Return a compact JSON-ready report for policy and proof inventories."""
-    analysis = analyze_isabelle_tree(root, source_texts, source_analyses)
+    analysis = analyze_isabelle_tree(root, source_texts, source_analyses, source_paths)
     return {
         "scope": {
             "flat_hol_equations": True,

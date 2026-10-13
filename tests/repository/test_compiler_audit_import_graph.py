@@ -184,18 +184,6 @@ def test_temporal_probe_source_audits_use_executable_syntax(
         collatz_temporal_power_probe._source_audit()
     _write(tmp_path, "src/number_compiler/__init__.py", "")
 
-    _write(tmp_path, router, "")
-    _write(
-        tmp_path,
-        "devtools/verification/block_runtime.py",
-        "from .block_recursive import _RecursiveBoundaryState\n"
-        "from ..program_word import CanonicalWord\n",
-    )
-    with pytest.raises(AssertionError, match="history_word_carrier_deleted"):
-        collatz_temporal_power_probe._source_audit()
-    with pytest.raises(AssertionError, match="history_word_carrier_deleted"):
-        reverse_temporal_power_probe._source_audit()
-
     _write(
         tmp_path,
         "devtools/verification/block_runtime.py",

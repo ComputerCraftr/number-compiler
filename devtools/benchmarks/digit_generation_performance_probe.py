@@ -11,15 +11,20 @@ from devtools.experiments.algebra.baby_giant_behavioral_bend import (
 from devtools.experiments.algebra.residue_refined_bend import fast_multipoint_bend_audit
 from devtools.paths import report_directory, repository_root
 from number_compiler.api.number_api import NumberCompiler
+from number_compiler.api.query_types import (
+    FermatTermQuery,
+    MersenneTermQuery,
+    ReverseAddTermQuery,
+)
 
 ROOT = repository_root()
 
 
 def _digit_rows() -> dict[str, object]:
     compiler = NumberCompiler()
-    f20 = compiler.project_nth("fermat", 20)
-    m100k = compiler.project_nth("mersenne", 100_000)
-    reverse = compiler.project_nth("reverse-add", 5, seed=196, base=10)
+    f20 = compiler.project(FermatTermQuery(20))
+    m100k = compiler.project(MersenneTermQuery(100_000))
+    reverse = compiler.project(ReverseAddTermQuery(5, seed=196, base=10))
     forcing = compiler.project_reverse_add_growth_state(196, base=10)
     return {
         "fermat_f20": {

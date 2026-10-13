@@ -12,7 +12,6 @@ from devtools.checks.isabelle_oracle_audit import (
     declared_oracle_audit_bundles,
     validate_bundle_members,
 )
-from devtools.checks.isabelle_ownership_history import ownership_history
 from devtools.checks.isabelle_registry import discover_sessions, root_files
 from devtools.checks.isabelle_source_analysis import (
     IsabelleAnalysis,
@@ -34,6 +33,7 @@ from devtools.checks.ownership_policy import (
     check_isabelle_resource_owner,
     isabelle_ownership_violations,
 )
+from devtools.checks.source_discovery import authored_files
 from devtools.paths import isabelle_root, repository_root
 
 ROOT = repository_root()
@@ -43,437 +43,6 @@ _ML_FILE_COMMAND = re.compile(r"(?m)^[ \t]*ML_file\b")
 _ML_FILE_ARGUMENT = re.compile(
     r"""^[ \t]*(?:"((?:\\.|[^"\\])*)"|([^ \t\r\n]+))[ \t]*$"""
 )
-
-# These links describe implementation or executable-reference counterparts.  An
-# empty mapping is deliberate: a standalone mathematical theory must not be
-# presented as a production refinement merely because it is registered.
-COUNTERPARTS: dict[str, tuple[str, ...]] = {
-    "Homogeneous_Growth_Scale": (
-        "src/number_compiler/arithmetic/fields/homogeneous_growth.py",
-        "src/number_compiler/arithmetic/fields/mechanical_readout.py",
-        "tests/arithmetic/fields/test_homogeneous_growth.py",
-    ),
-    "Weighted_Partial_Growth_Action": (
-        "devtools/verification/reverse_growth_moore.py",
-        "tests/sequences/reverse_add/test_growth_moore_verification.py",
-    ),
-    "Comma_Normalized_Cycle": (
-        "src/number_compiler/sequences/comma/cycle_actions.py",
-        "src/number_compiler/sequences/comma/action_arena.py",
-        "src/number_compiler/sequences/comma/power.py",
-        "tests/sequences/comma/test_cycle_action_reuse.py",
-    ),
-    "Source_Cache_Consumption": (
-        "src/number_compiler/sequences/collatz/source_cylinder_cache.py",
-        "src/number_compiler/sequences/collatz/temporal_run_quotient.py",
-        "src/number_compiler/hashlife/execution/dyadic_return_transport.py",
-        "tests/sequences/collatz/test_source_cylinder_cache.py",
-    ),
-    "Reverse_Uniform_Runs": (
-        "devtools/experiments/reverse_add/factored_planes.py",
-        "devtools/verification/reverse_run_successor.py",
-        "tests/sequences/reverse_add/test_factored_carrier.py",
-    ),
-    "Maximal_Run_Arithmetic": (
-        "src/number_compiler/sequences/collatz/temporal_run_quotient.py",
-        "src/number_compiler/sequences/antihydra/arithmetic_images.py",
-        "tests/sequences/collatz/test_temporal_run_quotient.py",
-    ),
-    "Comma_Macro_Constructor": (),
-    "Comma_Canonical_Domain": (
-        "src/number_compiler/sequences/comma/domain.py",
-        "src/number_compiler/sequences/comma/boundary_chart.py",
-        "tests/sequences/comma/test_boundary_chart.py",
-    ),
-    "Comma_Vieta_Root_Frame": (),
-    "Comma_Root_Pair_Port": (),
-    "Comma_Pair_Field": (),
-    "Comma_Native19_Carry": (
-        "src/number_compiler/arithmetic/formula/decimal_pair_coordinates.py",
-        "tests/arithmetic/formula/test_decimal_cocycle_coordinates.py",
-    ),
-    "Comma_Reset_Germ": (),
-    "Comma_Factored_Port_Carrier": ("tests/sequences/comma/test_punctured_port.py",),
-    "Comma_Compact_Decade_Classifier": (),
-    "Comma_Decade_Occurrence_Semantic": (),
-    "Comma_Decade_Occurrence_Lift": (),
-    "Comma_C1_Occurrence": (
-        "src/number_compiler/sequences/comma/carry_generator.py",
-        "tests/sequences/comma/test_carry_generator.py",
-    ),
-    "Comma_Recursive_Pair_Language": (
-        "devtools/verification/comma_pair_language.py",
-        "tests/sequences/comma/test_pair_language.py",
-    ),
-    "Comma_Radix9_Pair_Word": (
-        "devtools/verification/comma_temporal_observers.py",
-        "tests/sequences/comma/test_temporal_observers.py",
-    ),
-    "Comma_Even_Port_Action": ("tests/sequences/comma/test_pair_language.py",),
-    "Comma_Temporal_Port_Cover": (
-        "src/number_compiler/sequences/comma/temporal_cover.py",
-        "tests/sequences/comma/test_temporal_cover.py",
-    ),
-    "Comma_Temporal_Action": (
-        "src/number_compiler/sequences/comma/temporal_cover.py",
-        "tests/sequences/comma/test_temporal_cover.py",
-    ),
-    "Comma_Entry_Port_Anchor": (),
-    "Comma_Entry_Port_Refinement": (),
-    "Comma_Prefix_Selection": (
-        "src/number_compiler/sequences/comma/arithmetic.py",
-        "tests/sequences/comma/test_punctured_port.py",
-    ),
-    "Comma_C1_Phase": (
-        "src/number_compiler/sequences/comma/carry_generator.py",
-        "tests/sequences/comma/test_carry_generator.py",
-    ),
-    "Comma_C1_Phase_Power": (
-        "src/number_compiler/sequences/comma/carry_generator.py",
-        "tests/sequences/comma/test_carry_generator.py",
-    ),
-    "Comma_C1_Return": (
-        "src/number_compiler/sequences/comma/carry_generator.py",
-        "tests/sequences/comma/test_carry_generator.py",
-    ),
-    "Comma_C1_Borrow_Cocycle": (
-        "src/number_compiler/sequences/comma/borrow_cocycle.py",
-        "tests/sequences/comma/test_borrow_cocycle.py",
-    ),
-    "Comma_C1_Boundary_Carry": (
-        "src/number_compiler/sequences/comma/carry_generator.py",
-        "tests/sequences/comma/test_carry_generator.py",
-    ),
-    "Comma_C1_Carry_Cylinder": (
-        "src/number_compiler/sequences/comma/carry_generator.py",
-        "tests/sequences/comma/test_carry_generator.py",
-    ),
-    "Comma_Finite_Transition": (
-        "src/number_compiler/sequences/comma/boundary_chart.py",
-        "src/number_compiler/sequences/comma/boundary_quotient.py",
-        "tests/sequences/comma/test_boundary_chart.py",
-    ),
-    "Comma_Power_Residue": (
-        "src/number_compiler/sequences/comma/arithmetic.py",
-        "tests/sequences/comma/test_boundary_chart.py",
-    ),
-    "Comma_Frobenius_Recurrence": (
-        "src/number_compiler/sequences/comma/arithmetic.py",
-        "tests/sequences/comma/test_frobenius_recurrence.py",
-    ),
-    "Comma_Carry_Core_Quotient": (
-        "src/number_compiler/sequences/comma/arithmetic.py",
-        "tests/sequences/comma/test_frobenius_recurrence.py",
-    ),
-    "Comma_Cyclotomic_Clock": (
-        "src/number_compiler/sequences/comma/cyclotomic_clock.py",
-        "src/number_compiler/sequences/comma/arithmetic.py",
-        "tests/sequences/comma/test_cyclotomic_clock.py",
-    ),
-    "Comma_Decisive_Endpoint_Quotient": (
-        "src/number_compiler/sequences/comma/decisive_endpoint.py",
-        "tests/sequences/comma/test_b1_quotient.py",
-    ),
-    "Comma_Compact_B1": (),
-    "Comma_Terminal_Weight": (),
-    "Comma_Chart_Refinement": (
-        "src/number_compiler/sequences/comma/boundary_chart.py",
-        "tests/sequences/comma/test_boundary_chart.py",
-    ),
-    "Comma_Weighted_Selection": (
-        "src/number_compiler/sequences/comma/boundary_quotient.py",
-        "tests/sequences/comma/test_boundary_scheduler.py",
-    ),
-    "Comma_Macro_Selection": (
-        "src/number_compiler/sequences/comma/boundary_quotient.py",
-        "tests/sequences/comma/test_boundary_scheduler.py",
-    ),
-    "Comma_Trace_Regression": (
-        "tests/sequences/comma/test_boundary_chart.py",
-        "tests/sequences/comma/test_boundary_quotient.py",
-    ),
-    "Comma_Quotient_Totality": (),
-    "Comma_Source_Entry_Witness": (),
-    "Comma_Source_Unique": (),
-    "Comma_Unique_Path": (),
-    "Comma_Round_Closure": (),
-    "Comma_Decade_Control": (),
-    "Comma_Round_Witness": (),
-    "Comma_Decade_Observation": (),
-    "Comma_Decade_Rank_Data": (),
-    "Comma_Total_Macro": (),
-    "Comma_Decade_Residual_Core": (),
-    "Comma_Short_Phase": (),
-    "Comma_Entry_Arithmetic": (),
-    "Comma_Fast_Arithmetic": (),
-    "Comma_Fast_Control": (),
-    "Comma_Fast_Kernel": (),
-    "Comma_Fast_Kernel_Smoke": (),
-    "Comma_Sector_Alphabet": (),
-    "Comma_Decade_Helix": (),
-    "Comma_Decade_Orbit_Quotient": ("devtools/experiments/comma/temporal_masks.py",),
-    "Comma_Sparse_Power_Algebra": (),
-    "Comma_Sparse_Power_Smoke": (),
-    "Comma_Sparse_Power_Instance": (),
-    "Comma_Response_Rows": (),
-    "Comma_Sector_Rows_Core": (),
-    "Comma_Native_Summary": (),
-    "Comma_Native_Summary_Instance": (),
-    "Comma_Native_Summary_Occurrence": (),
-    "Comma_Native_Boundary": (),
-    "Comma_Decade_Masks": ("devtools/experiments/comma/temporal_masks.py",),
-    "Comma_Orbit_Words": ("devtools/experiments/comma/temporal_masks.py",),
-    "Comma_Sector_Response": ("devtools/experiments/comma/temporal_masks.py",),
-    "Comma_Sector_Response_Check": ("devtools/experiments/comma/temporal_masks.py",),
-    "Comma_Sector_Response_Smoke": ("devtools/experiments/comma/temporal_masks.py",),
-    "Comma_Sector_Mask_Constructor": ("devtools/experiments/comma/temporal_masks.py",),
-    "Comma_Sector_Base_Masks": ("devtools/experiments/comma/temporal_masks.py",),
-    "Comma_Sparse_Temporal_Composition": (
-        "devtools/experiments/comma/temporal_masks.py",
-    ),
-    "Comma_Sector_Mask_Smoke": ("devtools/experiments/comma/temporal_masks.py",),
-    "Comma_Sector_Mask_Instance": ("devtools/experiments/comma/temporal_masks.py",),
-    "Comma_Mask_Safety": ("devtools/experiments/comma/temporal_masks.py",),
-    "Comma_Decade_Blocks": (),
-    "Comma_Powered_Boundary": (),
-    "Comma_Decade_Layer_Check": (),
-    "Comma_Decade_Layer_Smoke": (),
-    "Comma_Decade_Layer_Instance": (),
-    "Comma_Fast_Decade_Rank": (),
-    "Comma_Decade_Summary_Transport": (),
-    "Comma_Fast_Rank_Check": (),
-    "Comma_Fast_Rank_Smoke": (),
-    "Comma_Closed_Near": (),
-    "Comma_Near_Period": (),
-    "Comma_Fast_Totality_Check": (),
-    "Comma_Fast_Totality_Smoke": (),
-    "Comma_Fast_Totality": (),
-    "Comma_Fast_Future_Check": (),
-    "Comma_Future_Cycle_Check": (),
-    "Comma_Rank_Data": (),
-    "Comma_Rank_Data_N": (),
-    "Comma_Rank_Data_Z": (),
-    "Comma_Future_Instance": (),
-    "Comma_Future_Literal_Bridge": (),
-    "Comma_Future_Losing_Lift": (),
-    "Comma_Future_Infinite_Lift": (),
-    "Comma_Branch_Induction": (),
-    "Comma_Branch_Instance": (),
-    "Comma_Branch_Period": (),
-    "Comma_Selected_Return_Blocks": (),
-    "Comma_Selected_Block_Smoke": (),
-    "Comma_Branch_Period_Instance": (),
-    "Comma_Return_Induction": (),
-    "Comma_Return_Engine": (),
-    "Comma_Return_Instance": (),
-    "Comma_Return_Source": (),
-    "Comma_Future_Checked_Instance": (),
-    "Comma_Future_Source": (),
-    "Comma_Global_Future_Safety": (),
-    "Comma_Global_Root_Safety": (
-        "devtools/verification/comma_root_entries.py",
-        "tests/sequences/comma/test_root_entries.py",
-    ),
-    "Comma_Round_Phase_Slice": (),
-    "Comma_Round_Weights": (),
-    "Comma_Weighted_Run_Germ": (),
-    "Comma_Weighted_Round": (),
-    "Comma_Run_Germ": (
-        "src/number_compiler/sequences/comma/boundary_quotient.py",
-        "tests/sequences/comma/test_boundary_chart.py",
-    ),
-    "Comma_Chart_Action": (
-        "src/number_compiler/sequences/comma/boundary_chart.py",
-        "tests/sequences/comma/test_boundary_chart.py",
-    ),
-    "Comma_Terminal_Event": (
-        "src/number_compiler/sequences/comma/boundary_chart.py",
-        "tests/sequences/comma/test_boundary_chart.py",
-    ),
-    "Comma_Source_Entry": (
-        "src/number_compiler/sequences/comma/power.py",
-        "tests/sequences/comma/test_comma_power.py",
-    ),
-    "Comma_Finite_Period": (
-        "src/number_compiler/sequences/comma/boundary_quotient.py",
-    ),
-    "Comma_Boundary_Primitives": (),
-    "Comma_Literal_Path": (),
-    "Comma_Weighted_Macro": (),
-    "Comma_Future_Selector": (),
-    "Comma_Future_Safety": (),
-    "Comma_Checked_Ranks": (),
-    "Comma_Period_Guard": (
-        "src/number_compiler/sequences/comma/arithmetic.py",
-        "devtools/experiments/comma/macro_lifting.py",
-    ),
-    "Comma_Exact_Phase_Guard": (
-        "src/number_compiler/sequences/comma/arithmetic.py",
-        "devtools/experiments/comma/macro_lifting.py",
-        "tests/sequences/comma/test_macro_lifting.py",
-    ),
-    "Comma_Child_Classification": (
-        "src/number_compiler/sequences/comma/arithmetic.py",
-        "src/number_compiler/sequences/comma/boundary_quotient.py",
-        "tests/sequences/comma/test_boundary_quotient.py",
-    ),
-    "Comma_Affine_Ray": (
-        "devtools/experiments/comma/macro_lifting.py",
-        "tests/sequences/comma/test_macro_lifting.py",
-    ),
-    "Comma_Boundary_Quotient": (
-        "src/number_compiler/sequences/comma/boundary_quotient.py",
-        "devtools/experiments/comma/macro_lifting.py",
-        "tests/sequences/comma/test_macro_lifting.py",
-    ),
-    "Comma_Child_Cylinder": (
-        "src/number_compiler/sequences/comma/arithmetic.py",
-        "tests/sequences/comma/test_comma_power.py",
-    ),
-    "Comma_Decimal_Parent": ("devtools/experiments/comma/forest_certificate.py",),
-    "Comma_Root_Forest": (
-        "devtools/experiments/comma/forest_certificate.py",
-        "src/number_compiler/sequences/comma/certificates.py",
-    ),
-    "S_Arithmetic_Skew": (
-        "src/number_compiler/arithmetic/fields/skew_transfer.py",
-        "tests/arithmetic/fields/test_integer_cylinder_chart.py",
-    ),
-    "Dyadic_Source_Lift": (
-        "src/number_compiler/hashlife/execution/dyadic_return_reuse.py",
-        "src/number_compiler/hashlife/execution/dyadic_return_transport.py",
-        "src/number_compiler/hashlife/execution/dyadic_return_observers.py",
-        "tests/hashlife/execution/test_dyadic_effect_reuse.py",
-        "tests/arithmetic/fields/test_integer_cylinder_chart.py",
-    ),
-    "Dyadic_Balanced_Worklist": (
-        "src/number_compiler/hashlife/execution/dyadic_return_transport.py",
-        "tests/hashlife/execution/test_balanced_proof_refinement.py",
-    ),
-    "Dyadic_Balanced_Arithmetic": (
-        "src/number_compiler/hashlife/execution/dyadic_return_transport.py",
-        "src/number_compiler/hashlife/execution/dyadic_return_reuse.py",
-        "tests/hashlife/execution/test_balanced_proof_refinement.py",
-    ),
-    "Prefix_Effect": (),
-    "Dyadic_Prefix_Summary": (
-        "src/number_compiler/hashlife/execution/dyadic_return_transport.py",
-        "tests/hashlife/execution/test_balanced_proof_refinement.py",
-    ),
-    "Dyadic_Support_Descent": (
-        "src/number_compiler/hashlife/execution/dyadic_return_observers.py",
-        "tests/hashlife/execution/test_balanced_proof_refinement.py",
-    ),
-    "Balanced_Dyadic_Families": (
-        "src/number_compiler/sequences/collatz/physical_images.py",
-        "src/number_compiler/sequences/antihydra/arithmetic_images.py",
-        "src/number_compiler/sequences/antihydra/mahler_action.py",
-        "tests/hashlife/execution/test_balanced_proof_refinement.py",
-    ),
-    "Collatz_Reduced_Precision": (
-        "devtools/experiments/collatz/powered_boundary_germs.py",
-        "tests/hashlife/execution/test_powered_boundary_germs.py",
-    ),
-    "Collatz_Parity_Shift_Germ": (
-        "src/number_compiler/arithmetic/fields/two_adic.py",
-        "src/number_compiler/sequences/collatz/parity.py",
-        "tests/sequences/collatz/test_collatz_parity.py",
-    ),
-    "Dyadic_Parity_Inverse_Arithmetic": (
-        "src/number_compiler/arithmetic/fields/two_adic.py",
-        "tests/sequences/collatz/test_collatz_parity.py",
-    ),
-    "Reverse_Threshold_Cocycle": (
-        "devtools/experiments/reverse_add/cocycle_carrier.py",
-        "devtools/experiments/reverse_add/factored_power.py",
-        "tests/sequences/reverse_add/test_cocycle_carrier.py",
-    ),
-    "Reverse_Boundary_Germ_Local": (
-        "src/number_compiler/arithmetic/formula/decimal_pair_coordinates.py",
-        "devtools/experiments/reverse_add/temporal_boundary_germ.py",
-        "tests/validation/proofs/reverse_add/test_temporal_boundary_germ.py",
-    ),
-    "Mahler_Spatial_Carry_Pump": (
-        "src/number_compiler/sequences/collatz/root_germs.py",
-        "tests/sequences/collatz/test_hensel_prefix_occurrences.py",
-        "devtools/experiments/antihydra/spatial_carry.py",
-        "devtools/experiments/antihydra/future_grammar.py",
-        "tests/validation/proofs/test_mahler_spatial_carry.py",
-        "tests/validation/proofs/test_mahler_f5_production_bridge.py",
-    ),
-    "Reverse_Centered_Future_Grammar": (
-        "devtools/experiments/reverse_add/centered_future.py",
-        "tests/validation/proofs/reverse_add/test_centered_future_grammar.py",
-    ),
-    "Reverse_Growth_Run_Admission": (
-        "src/number_compiler/arithmetic/polynomials/frobenius_sector.py",
-        "tests/validation/proofs/reverse_add/test_source_growth_admission.py",
-    ),
-    "Mahler_Reachable_Repetition": (
-        "devtools/experiments/antihydra/future_grammar.py",
-        "tests/validation/proofs/test_mahler_future_grammar.py",
-    ),
-    "Mahler_Source_Cylinder_Transport": (
-        "devtools/experiments/antihydra/source_safety.py",
-        "tests/validation/proofs/test_mahler_source_transport.py",
-    ),
-    "Mahler_Source_Event_Safety": (
-        "src/number_compiler/sequences/antihydra/mahler_action.py",
-        "tests/api/test_antihydra_mahler_action.py",
-        "devtools/experiments/antihydra/source_safety.py",
-        "devtools/experiments/antihydra/source_observers.py",
-        "tests/validation/proofs/test_mahler_source_observers.py",
-    ),
-    "Mahler_Joint_Quotient_Algebra": (
-        "src/number_compiler/arithmetic/fields/branch_quotients.py",
-        "tests/arithmetic/fields/test_branch_quotients.py",
-        "tests/validation/proofs/test_mahler_source_observers.py",
-    ),
-    "Antihydra_Mahler_Associated_Action": (
-        "src/number_compiler/sequences/antihydra/arithmetic_images.py",
-        "src/number_compiler/sequences/antihydra/mahler_action.py",
-        "tests/api/test_antihydra_mahler_action.py",
-        "devtools/experiments/antihydra/mahler_predicate.py",
-        "tests/validation/proofs/test_mahler_predicate_action.py",
-    ),
-    "Collatz_Saturated_Threshold_Composition": (
-        "src/number_compiler/arithmetic/fields/threshold_envelope.py",
-        "src/number_compiler/sequences/collatz/saturated_future.py",
-        "tests/arithmetic/fields/test_threshold_envelope.py",
-    ),
-    "Mahler_Cyclotomic_Boundary": (
-        "devtools/experiments/antihydra/source_safety.py",
-        "tests/validation/proofs/test_mahler_cyclotomic_boundary.py",
-    ),
-    "Generated_Mahler_Safety": (
-        "tests/validation/proofs/test_mahler_safety_cylinders.py",
-    ),
-    "Mahler_Safety_Ledger_Separation": (
-        "tests/validation/proofs/test_mahler_safety_cylinders.py",
-    ),
-    "Cylinder_Radial_Event_Clock": (
-        "devtools/experiments/reverse_add/radial_event_clock.py",
-        "tests/validation/proofs/reverse_add/test_radial_event_clock.py",
-    ),
-    "Cylinder_Radial_Hypergeometric_Elimination": (),
-    "Cylinder_Innovation_Transport": (
-        "src/number_compiler/arithmetic/fields/symbolic_innovation.py",
-        "src/number_compiler/arithmetic/fields/innovation_substitution.py",
-        "tests/arithmetic/fields/test_innovation_pullback.py",
-    ),
-    "Cylinder_Live_Forcing_Reduction": (
-        "src/number_compiler/arithmetic/fields/live_forcing.py",
-        "tests/arithmetic/fields/test_live_forcing.py",
-    ),
-    "Cylinder_Forcing_Alphabet": (
-        "src/number_compiler/arithmetic/carry/carry_monoid.py",
-        "tests/arithmetic/fields/test_live_carry_projection.py",
-    ),
-    "Cylinder_Residue_Carry_SLP": (
-        "src/number_compiler/arithmetic/automata/residue_carry_slp.py",
-        "tests/arithmetic/automata/test_residue_carry_slp.py",
-    ),
-}
 
 
 def _scope(text: str) -> str:
@@ -543,14 +112,16 @@ def _theory_import_closure(
 
 
 def build_index() -> dict[str, object]:
-    sessions = discover_sessions(ISABELLE)
+    authored_sources = authored_files(ISABELLE)
+    sessions = discover_sessions(ISABELLE, authored_sources=authored_sources)
     source_texts: dict[str, str] = {}
     source_texts_by_path: dict[Path, str] = {}
     source_analyses: dict[Path, IsabelleAnalysis] = {}
     declared: dict[
         str, tuple[Path, tuple[str, ...], str, tuple[str, ...], tuple[str, ...]]
     ] = {}
-    for path in sorted(ISABELLE.rglob("*.thy")):
+    theory_paths = sorted(path for path in authored_sources if path.suffix == ".thy")
+    for path in theory_paths:
         text = path.read_text()
         invalid_case_facts = unquoted_numeric_case_facts(text)
         if invalid_case_facts:
@@ -612,6 +183,7 @@ def build_index() -> dict[str, object]:
     ownership_errors = isabelle_ownership_violations(
         ROOT,
         sessions=sessions,
+        authored_sources=authored_sources,
         theory_headers={
             path: (name, imports) for name, (path, imports, _, _, _) in declared.items()
         },
@@ -633,7 +205,9 @@ def build_index() -> dict[str, object]:
             ml_references.setdefault(ml_target, []).append(theory)
 
     authored_ml: set[Path] = set()
-    for path in ISABELLE.rglob("*.ML"):
+    for path in authored_sources:
+        if path.suffix.lower() not in {".ml", ".sml"}:
+            continue
         ml_target = path.resolve()
         if not ml_target.is_relative_to(isabelle_path):
             raise ValueError(f"authored ML path escapes theory root: {path}")
@@ -787,13 +361,6 @@ def build_index() -> dict[str, object]:
         raise ValueError(
             f"reachable theories without an oracle audit: {missing_audits}"
         )
-    for theory, paths in COUNTERPARTS.items():
-        if theory not in declared:
-            raise ValueError(f"counterpart mapping names unknown theory {theory}")
-        missing = [path for path in paths if not (ROOT / path).is_file()]
-        if missing:
-            raise ValueError(f"{theory}: missing mapped counterparts {missing}")
-
     entries = []
     token_uses: dict[str, set[str]] = {}
     for theory, contents in source_texts.items():
@@ -832,21 +399,21 @@ def build_index() -> dict[str, object]:
                     if name in registered
                     else "build an importing session"
                 ),
-                "counterparts": COUNTERPARTS.get(name, ()),
             }
         )
     return {
-        "schema_version": 1,
-        "ownership_history": ownership_history(
-            ROOT, sessions, source_analyses, source_texts_by_path
-        ),
+        "schema_version": 2,
         "root": "proofs/isabelle",
         "registrations": [
-            path.relative_to(ROOT).as_posix() for path in root_files(ISABELLE)
+            path.relative_to(ROOT).as_posix()
+            for path in root_files(ISABELLE, authored_sources=authored_sources)
         ],
         "ml_files": ml_entries,
         "source_analysis": analysis_report(
-            ISABELLE, source_texts_by_path, source_analyses
+            ISABELLE,
+            source_texts_by_path,
+            source_analyses,
+            authored_sources,
         ),
         "sessions": [
             {

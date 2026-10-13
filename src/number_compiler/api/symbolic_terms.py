@@ -32,6 +32,8 @@ class SymbolicExpression:
             return f"A367620[{coordinate}]"
         if self.family == "reverse-add":
             return f"reverse_add(seed={self.parameter},base={self.radix})[{coordinate}]"
+        if self.family == "2rev10":
+            return f"double_reverse10(seed={self.parameter})[{coordinate}]"
         if self.family == "collatz":
             return f"collatz(seed={self.parameter})[{coordinate}]"
         if self.family == "antihydra":

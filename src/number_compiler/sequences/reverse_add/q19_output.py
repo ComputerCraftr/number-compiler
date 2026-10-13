@@ -8,29 +8,27 @@ Q19/width metadata.
 
 from __future__ import annotations
 
-from collections.abc import Callable, Generator, Iterator, MutableMapping
-from contextlib import closing
+from collections.abc import Callable, Generator, Iterator
+from contextlib import ExitStack, closing
 from dataclasses import dataclass
 from functools import cache
-from typing import TypeVar
 
-from number_compiler.arithmetic.automata.guard import record_slp_metrics
+from number_compiler.arithmetic.automata.ledgered_slp import LedgerSLPArena
 from number_compiler.arithmetic.automata.slp import (
     BimachineSLPProjector,
-    SLPArena,
-    SLPNode,
 )
 from number_compiler.arithmetic.automata.transducer import (
     build_pair_step_bimachine,
 )
 from number_compiler.arithmetic.contracts.scoped_handles import ArenaToken
 from number_compiler.resources.ledger import OwnedMemo, ResourceLedger
+from number_compiler.resources.lifecycle import cleanup_all, cleanup_on_error
 from number_compiler.resources.stores import LedgerList
 
 _NEUTRAL = 0
 _LOWER = -1
 _UPPER = 1
-_K = TypeVar("_K")
+_LedgerSLPArena = LedgerSLPArena
 
 
 @dataclass(frozen=True, slots=True)
@@ -195,64 +193,6 @@ class ReversePairOutputOccurrence:
             raise ValueError("invalid pair output occurrence metadata")
 
 
-class _LedgerSLPArena(SLPArena):
-    """The existing SLP implementation backed by one request ledger."""
-
-    __slots__ = ("ledger", "owners")
-
-    def __init__(self, ledger: ResourceLedger, prefix: str) -> None:
-        self.ledger = ledger
-        self.owners = (
-            ledger.register(prefix + "-slp-nodes", "reverse_pair_output_grammar"),
-            ledger.register(prefix + "-slp-terminals", "reverse_pair_output_interner"),
-            ledger.register(prefix + "-slp-concats", "reverse_pair_output_interner"),
-            ledger.register(prefix + "-slp-repeats", "reverse_pair_output_interner"),
-        )
-        self.nodes: LedgerList[SLPNode] = ledger.make_list(
-            self.owners[0], nodes_per_entry=1
-        )
-        self._term: OwnedMemo[int, int] = OwnedMemo(ledger, self.owners[1])
-        self._cat: OwnedMemo[tuple[int, int], int] = OwnedMemo(ledger, self.owners[2])
-        self._rep: OwnedMemo[tuple[int, int], int] = OwnedMemo(ledger, self.owners[3])
-        self.empty_id = self._add("EMPTY", 0)
-
-    def _add(self, kind: str, length: int, **kw: int) -> int:
-        node_id = len(self.nodes)
-        owner = self.owners[0]
-        self.ledger.reserve(owner, entries=1, nodes=1)
-        try:
-            self.nodes.append(SLPNode(node_id, kind, int(length), **kw))
-        except BaseException:
-            if len(self.nodes) > node_id:
-                self.nodes._rollback_unpublished(node_id)
-            self.ledger.release(owner, entries=1, nodes=1)
-            raise
-        record_slp_metrics(nodes=1)
-        return node_id
-
-    def _add_interned(
-        self,
-        kind: str,
-        length: int,
-        table: MutableMapping[_K, int],
-        key: _K,
-        **kw: int,
-    ) -> int:
-        node_owner = self.owners[0]
-        self.ledger.reserve(node_owner, entries=1, nodes=1)
-        node_id = len(self.nodes)
-        try:
-            self.nodes.append(SLPNode(node_id, kind, int(length), **kw))
-            table[key] = node_id
-        except BaseException:
-            if len(self.nodes) > node_id:
-                self.nodes._rollback_unpublished(node_id)
-            self.ledger.release(node_owner, entries=1, nodes=1)
-            raise
-        record_slp_metrics(nodes=1)
-        return node_id
-
-
 class ReversePairQ19OutputOwner:
     """One exact decimal pair transducer owned by a source-image adapter."""
 
@@ -276,7 +216,7 @@ class ReversePairQ19OutputOwner:
         self._digits = digits_lsd
         self._authority = ArenaToken("reverse-pair-q19-output")
         prefix = f"reverse-pair-q19-{ledger.owner_count}"
-        self.arena = _LedgerSLPArena(ledger, prefix)
+        self.arena = LedgerSLPArena(ledger, prefix, owner_kind="reverse_pair_output")
         self.machine = _pair_step_law()
         self.projector = BimachineSLPProjector(self.machine, self.arena)
         self._projector_owners = tuple(
@@ -336,6 +276,7 @@ class ReversePairQ19OutputOwner:
             prefix + "-workspace", "reverse_pair_output_workspace"
         )
         self._disposed = False
+        self._cleanup_complete = False
         self._binding = (
             ledger,
             digits_lsd,
@@ -345,12 +286,13 @@ class ReversePairQ19OutputOwner:
             self.projector,
             self.machine,
         )
-        ledger.register_execution_root(self)
-        try:
+        with ExitStack() as rollback:
+            rollback.enter_context(cleanup_on_error(self.dispose))
+            ledger.register_execution_root(self)
             self.initial = self._make_initial()
-        except BaseException:
-            self.dispose()
-            raise
+            self._register_payload_audit_contract()
+
+    def _register_payload_audit_contract(self) -> None:
         self._audit_nodes = self.arena.nodes
         self._audit_terms = self.arena._term._data
         self._audit_concats = self.arena._cat._data
@@ -371,7 +313,7 @@ class ReversePairQ19OutputOwner:
             audit_reverse_pair_output_owner,
         )
 
-        ledger.register_payload_audit_contract(
+        self.ledger.register_payload_audit_contract(
             self,
             "reverse_add",
             (
@@ -615,7 +557,7 @@ class ReversePairQ19OutputOwner:
         result.validate_symmetric()
         return result
 
-    def _issue(self, root: int, temporal_steps: int) -> ReversePairOutputOccurrence:
+    def _candidate(self, root: int, temporal_steps: int) -> ReversePairOutputOccurrence:
         self._check_open()
         summary = self._full_summary(root)
         pair_width = summary.length
@@ -623,7 +565,7 @@ class ReversePairQ19OutputOwner:
         growth = output_width - len(self._digits)
         if growth < 0 or growth > temporal_steps:
             raise AssertionError("Q19 width growth escaped the one-cell-per-step bound")
-        occurrence = ReversePairOutputOccurrence(
+        return ReversePairOutputOccurrence(
             self._authority,
             root,
             temporal_steps,
@@ -633,8 +575,16 @@ class ReversePairQ19OutputOwner:
             summary.domain,
             summary.f9,
         )
-        self._issued[(root, temporal_steps)] = occurrence
+
+    def _publish(
+        self, occurrence: ReversePairOutputOccurrence
+    ) -> ReversePairOutputOccurrence:
+        self._check_open()
+        self._issued[(occurrence.root, occurrence.temporal_steps)] = occurrence
         return occurrence
+
+    def _issue(self, root: int, temporal_steps: int) -> ReversePairOutputOccurrence:
+        return self._publish(self._candidate(root, temporal_steps))
 
     def validate(self, occurrence: ReversePairOutputOccurrence) -> None:
         self._check_open()
@@ -667,10 +617,11 @@ class ReversePairQ19OutputOwner:
             nodes=64 * (self.arena.nodes[occurrence.root].length + 1),
         ):
             target = self.projector.apply(occurrence.root)
-        result = self._issue(target, occurrence.temporal_steps + 1)
-        step_growth = result.output_width - occurrence.output_width
+        candidate = self._candidate(target, occurrence.temporal_steps + 1)
+        step_growth = candidate.output_width - occurrence.output_width
         if step_growth not in (0, 1):
             raise AssertionError("one reverse/add step changed width by more than one")
+        result = self._publish(candidate)
         self.ledger.bump("reverse_q19_primitive_pair_applications")
         self.ledger.bump(
             "reverse_q19_pair_output_nodes_visited",
@@ -845,24 +796,28 @@ class ReversePairQ19OutputOwner:
             raise AssertionError("Q19 output stream disagrees with exact width")
 
     def dispose(self) -> None:
-        if self._disposed:
+        if self._cleanup_complete:
             return
         self._disposed = True
-        self._issued.dispose()
-        self._summaries.dispose()
-        for memo in self._projector_memos:
-            memo.dispose()
-        for interner in (self.arena._rep, self.arena._cat, self.arena._term):
-            if type(interner) is not OwnedMemo:
-                raise TypeError("pair grammar interner lost its ledger owner")
-            interner.dispose()
-        nodes = self.arena.nodes
-        if type(nodes) is not LedgerList:
-            raise TypeError("pair grammar lost its ledger node store")
-        count = len(nodes)
-        nodes._rollback_unpublished(0)
-        self.ledger.release(self.arena.owners[0], entries=count, nodes=count)
-        self.ledger.mark_disposed(self.arena.owners[0])
+        cleanup: list[Callable[[], object]] = [
+            self._unregister_payload_audit_contract,
+            self._issued.dispose,
+            self._summaries.dispose,
+            *(memo.dispose for memo in self._projector_memos),
+        ]
+
+        def dispose_arena() -> None:
+            nodes = self.arena.nodes
+            if type(nodes) is not LedgerList:
+                raise TypeError("pair grammar lost its ledger node store")
+            self.arena.dispose()
+
+        cleanup.append(dispose_arena)
+        cleanup_all(cleanup)
+        self._cleanup_complete = True
+
+    def _unregister_payload_audit_contract(self) -> None:
+        self.ledger.remove_payload_audit_contract(self, "reverse_add")
 
 
 __all__ = ["ReversePairOutputOccurrence", "ReversePairQ19OutputOwner"]

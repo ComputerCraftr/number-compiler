@@ -7,7 +7,8 @@ from contextlib import redirect_stderr, redirect_stdout
 from io import StringIO
 from pathlib import Path
 
-from number_compiler.api.cli_requests import CAPABILITIES, parse_request
+from number_compiler.api.cli_requests import parse_request
+from number_compiler.api.family_registry import CAPABILITIES
 
 START = "<!-- cli-capabilities:start -->"
 END = "<!-- cli-capabilities:end -->"

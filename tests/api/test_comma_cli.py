@@ -9,7 +9,9 @@ import pytest
 
 from number_compiler.api.cli import main
 from number_compiler.api.cli_requests import parse_request
+from number_compiler.api.cli_types import CommaObservationOptions
 from number_compiler.api.number_api import NumberCompiler
+from number_compiler.api.query_types import CommaTermQuery
 from number_compiler.arithmetic.contracts.unresolved_term import UnresolvedSequenceTerm
 from number_compiler.sequences.comma.power import CommaTerm
 
@@ -41,10 +43,11 @@ def test_comma_preserves_oeis_index_and_deduplicates_information() -> None:
         ["a367620", "--nth", "20000", "--info", "clock", "--info", "clock"]
     )
     assert request is not None
+    assert isinstance(request.execution, CommaTermQuery)
     assert request.index_unit == "oeis_index"
-    assert request.info == ("clock",)
-    assert request.max_comma_states == 131072
-    assert request.max_comma_work == 1000000
+    assert request.observations == CommaObservationOptions(info=("clock",))
+    assert request.execution.max_comma_states == 131072
+    assert request.execution.max_comma_work == 1000000
     assert main(["a367620", "--nth", "0"]) == 2
 
 
@@ -109,8 +112,9 @@ def test_certificate_and_metrics_do_not_compute_finite_orbit(
 
 def test_public_api_requires_prefix_evidence_on_every_value_demand() -> None:
     compiler = NumberCompiler()
-    assert compiler.project_nth("a367620", 1).materialize(max_bits=64) == 20
-    term = compiler.project_nth("a367620", 412987861)
+    assert compiler.project(CommaTermQuery(1)).materialize(max_bits=64) == 20
+    assert compiler.nth(CommaTermQuery(1)) == 20
+    term = compiler.project(CommaTermQuery(412987861))
     with pytest.raises(UnresolvedSequenceTerm):
         term.materialize(max_bits=64)
     with pytest.raises(UnresolvedSequenceTerm):
@@ -200,9 +204,9 @@ def test_certificate_versions_cannot_reuse_an_api_term(
     from number_compiler.sequences.comma import certificates
 
     compiler = NumberCompiler()
-    before = compiler.project_nth("a367620", 20)
+    before = compiler.project(CommaTermQuery(20))
     monkeypatch.setattr(certificates, "CERTIFICATE_ID", "adversarial-new-version")
-    after = compiler.project_nth("a367620", 20)
+    after = compiler.project(CommaTermQuery(20))
     assert before.payload is not after.payload
     with pytest.raises(UnresolvedSequenceTerm, match="stale"):
         before.materialize(max_bits=100)
@@ -223,13 +227,13 @@ def test_forged_shared_certificate_marker_cannot_authorize_digits() -> None:
         )
     try:
         with pytest.raises(ValueError, match="foreign comma certificate cache"):
-            NumberCompiler().project_nth("a367620", 1).materialize(max_bits=64)
+            NumberCompiler().project(CommaTermQuery(1)).materialize(max_bits=64)
     finally:
         cache.reset()
 
 
 def test_bypassed_public_query_verifies_once_and_reuses_its_own_admission() -> None:
-    term = NumberCompiler(shared_cache=False).project_nth("a367620", 1)
+    term = NumberCompiler(shared_cache=False).project(CommaTermQuery(1))
     assert term.materialize(max_bits=64) == 20
     assert term.materialize(max_bits=64) == 20
     from number_compiler.api.comma_term import CommaTermPayload

@@ -8,7 +8,6 @@ Special-number roots are supplied and checked, never advertised as terminal root
 
 from __future__ import annotations
 
-import argparse
 from dataclasses import asdict
 from typing import Any
 
@@ -304,11 +303,11 @@ def observe_mirror(
     )
     if (term.seed, term.generation, term.base) != (seed, generation, base):
         raise ValueError("mirror term belongs to another source request")
-    if term.maximum_width > require_integer(max_digits, "digit budget", 1):
+    if term.maximum_width > max_digits:
         raise ValueError("mirror target exceeds digit budget")
     projection = term.mirror_obstruction(first_width=first_width)
     return {
-        "family": "196",
+        "family": "reverse-add",
         "kind": "mirror",
         "generation": generation,
         "scope": "current target only",
@@ -357,48 +356,3 @@ def observe_etale_root(
         "factor": factor,
         "factor_proof": "nontrivial-etale-root" if factor is not None else None,
     }
-
-
-def execute_observation(args: argparse.Namespace) -> dict[str, Any]:
-    if args.family == "antihydra":
-        from number_compiler.api.antihydra_observation import observe
-
-        return observe(args)
-    if args.family == "collatz":
-        if args.seed is None:
-            raise ValueError("Collatz observation requires --seed")
-        if args.kind == "physical-clock":
-            return observe_physical_clock(
-                args.seed,
-                args.index,
-                max_ticks=args.max_events,
-                max_digits=args.max_digits,
-            )
-        return observe_collatz(
-            args.seed,
-            args.index,
-            kind=args.kind or "clock",
-            modulus=args.modulus,
-            width=args.width,
-            sign=args.sign,
-            precision=args.precision,
-            target=args.target,
-            s_weight=args.s_weight,
-            z_weight=args.z_weight,
-            max_events=args.max_events,
-            max_digits=args.max_digits,
-        )
-    if args.family == "196":
-        if args.kind not in (None, "mirror"):
-            raise ValueError("196 supports the mirror observation")
-        return observe_mirror(
-            196 if args.seed is None else args.seed,
-            args.index,
-            first_width=args.width,
-            max_digits=args.max_digits,
-        )
-    if args.kind not in (None, "root") or args.defect is None:
-        raise ValueError("special root observation requires --defect")
-    return observe_etale_root(
-        args.family, args.index, args.defect, max_digits=args.max_digits
-    )

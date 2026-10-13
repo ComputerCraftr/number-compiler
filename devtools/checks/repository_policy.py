@@ -15,20 +15,13 @@ from dataclasses import dataclass
 from pathlib import Path
 from time import perf_counter
 
+from devtools.checks.source_discovery import authored_files
+
 MAX_SOURCE_LINES = 1000
 # Isabelle theories are authored source and share the physical line cap.  The
 # Python call-graph checker remains intentionally limited to Python modules.
 SOURCE_SUFFIXES = frozenset({".py", ".pyi", ".thy", ".ML", ".sml"})
 SOURCE_FILENAMES = frozenset({"ROOT", "ROOTS"})
-IGNORED_PARTS = {
-    ".git",
-    ".venv",
-    ".pytest_cache",
-    "__pycache__",
-    ".mypy_cache",
-    ".ruff_cache",
-}
-IGNORED_ROOTS = {"results", "build", "dist", "venv"}
 _PROFILE_ENV = "NUMBER_COMPILER_POLICY_PROFILE"
 
 
@@ -82,6 +75,8 @@ class FunctionInfo:
 
 
 def _module_name(root: Path, path: Path) -> str:
+    root = Path(root).resolve()
+    path = Path(path).resolve()
     rel = path.relative_to(root).with_suffix("")
     parts = list(rel.parts)
     if parts and parts[0] == "src" and len(parts) >= 2:
@@ -95,31 +90,9 @@ def _iter_python_files(root: Path) -> tuple[Path, ...]:
     return tuple(path for path in _iter_authored_files(root) if path.suffix == ".py")
 
 
-def _ignored_source_path(relative: Path) -> bool:
-    """Generated roots cannot hide authored modules with the same basename."""
-    return relative.parts[0] in IGNORED_ROOTS or any(
-        part in IGNORED_PARTS for part in relative.parts
-    )
-
-
 def _iter_authored_files(root: Path) -> tuple[Path, ...]:
-    """List repository files without descending into generated directories."""
-    files: list[Path] = []
-    for directory, dirnames, filenames in os.walk(
-        root, topdown=True, followlinks=False
-    ):
-        parent = Path(directory)
-        relative_parent = parent.relative_to(root)
-        dirnames[:] = sorted(
-            name
-            for name in dirnames
-            if not _ignored_source_path(relative_parent / name)
-        )
-        for name in filenames:
-            path = parent / name
-            if path.is_file():
-                files.append(path)
-    return tuple(sorted(files))
+    """Use the shared Git-authored source inventory."""
+    return authored_files(root)
 
 
 def _parsed_python_sources(root: Path) -> dict[Path, ast.Module]:
@@ -170,6 +143,7 @@ def source_line_violations(
     line_counts: Mapping[Path, int] | None = None,
 ) -> tuple[tuple[str, int], ...]:
     """Check every authored Python source, including tests and developer tools."""
+    root = Path(root).resolve()
     violations: list[tuple[str, int]] = []
     for path in (
         _iter_authored_files(root) if authored_files is None else authored_files
@@ -187,7 +161,9 @@ def source_line_violations(
     return tuple(violations)
 
 
-def isabelle_session_option_violations(root: Path) -> tuple[str, ...]:
+def isabelle_session_option_violations(
+    root: Path, *, authored_sources: tuple[Path, ...] | None = None
+) -> tuple[str, ...]:
     """Reject per-session execution settings that bypass the shared policy."""
     from devtools.checks.isabelle_registry import root_files
     from devtools.checks.isabelle_syntax import root_option_assignments
@@ -197,7 +173,7 @@ def isabelle_session_option_violations(root: Path) -> tuple[str, ...]:
         return ()
     policy_settings = {"threads", "parallel_proofs", "timeout", "timeout_scale"}
     violations: list[str] = []
-    for registration in root_files(theory_root):
+    for registration in root_files(theory_root, authored_sources=authored_sources):
         options = root_option_assignments(registration.read_text(encoding="utf-8"))
         for option in options:
             if option.name in policy_settings:
@@ -838,10 +814,14 @@ def repository_policy_report(root: Path) -> dict[str, object]:
             authored_files=snapshot.authored_files,
             line_counts=snapshot.source_line_counts,
         )
-        session_violations = isabelle_session_option_violations(root)
+        session_violations = isabelle_session_option_violations(
+            root, authored_sources=snapshot.authored_files
+        )
     with _profile_stage("ownership"):
         ownership_violations = ownership_policy_violations(
-            root, parsed_sources=parsed_sources
+            root,
+            parsed_sources=parsed_sources,
+            authored_sources=snapshot.authored_files,
         )
     with _profile_stage("entrypoints"):
         entrypoint_violations = validation_entrypoint_violations(root, parsed_sources)

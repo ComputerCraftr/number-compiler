@@ -43,7 +43,7 @@ def _checked_cli_term(
 ) -> ReverseAddPoweredTerm:
     monkeypatch.setattr(CausalTileEngine, "__init__", _forbidden)
     monkeypatch.setattr(HashLifeBlockIndex, "__init__", _forbidden)
-    assert main(["196", "--nth", str(steps)]) == 0
+    assert main(["reverse-add", "--seed", "196", "--nth", str(steps)]) == 0
     captured = capsys.readouterr()
     assert captured.out == expected + "\n"
     assert captured.err == ""
@@ -89,7 +89,7 @@ def test_large_exact_output_replaces_the_retired_architectural_refusal(
     from tests.support.reference_arithmetic import literal_reverse_add_digits
 
     expected = literal_reverse_add_digits(196, 1024)
-    assert main(["196", "--nth", "1024"]) == 0
+    assert main(["reverse-add", "--seed", "196", "--nth", "1024"]) == 0
     captured = capsys.readouterr()
     assert captured.out == "".join(map(str, reversed(expected))) + "\n"
     assert captured.err == ""
@@ -105,7 +105,7 @@ def test_large_power_respects_explicit_cache_budget_before_primitive_descent(
     monkeypatch.setattr(HashLifeBlockIndex, "__init__", _forbidden)
     compiler = NumberCompiler(max_context_nodes=512, max_cache_entries=512)
     monkeypatch.setattr(cli, "NumberCompiler", lambda: compiler)
-    assert main(["196", "--nth", str(steps)]) == 2
+    assert main(["reverse-add", "--seed", "196", "--nth", str(steps)]) == 2
     captured = capsys.readouterr()
     assert captured.out == ""
     assert "budget" in captured.err.lower()
@@ -175,7 +175,7 @@ def test_admitted_no_growth_cli_powers_do_not_replay_steps(
         monkeypatch.setattr(
             _ReverseSourceImageAdapter, method, _forbidden, raising=False
         )
-    assert main(["196", "--seed", str(seed), "--nth", str(steps)]) == 0
+    assert main(["reverse-add", "--seed", str(seed), "--nth", str(steps)]) == 0
     captured = capsys.readouterr()
     assert captured.out == expected + "\n"
     assert captured.err == ""
@@ -184,7 +184,7 @@ def test_admitted_no_growth_cli_powers_do_not_replay_steps(
 def test_first_unadmitted_growth_uses_completed_child_constructor(
     capsys: pytest.CaptureFixture[str],
 ) -> None:
-    assert main(["196", "--seed", "1", "--nth", "4"]) == 0
+    assert main(["reverse-add", "--seed", "1", "--nth", "4"]) == 0
     captured = capsys.readouterr()
     assert captured.out == "16\n"
     assert captured.err == ""

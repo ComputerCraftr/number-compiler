@@ -197,10 +197,214 @@ invocations do not establish repository acceptance.
 
 ## Remaining work
 
-Accumulator-demand D8 intermediate reconstruction and repeated endpoint checks
-are repaired and covered by the final focused regression. Whole-tree quality
-passes after consolidating the shared action-validation owner.
+### NC10 integration review (2026-10-12)
+
+The starting checkout was clean at Git commit
+`2e81a8a`. The NC10 Collatz archives add guarded physical macros and signed
+innovation observers; their Moore classes explicitly do not authorize endpoint
+or width substitution. The reverse archive certifies the padded two-tape
+relation only through fixed span D4, plus a source-conditioned D9 endpoint.
+It explicitly leaves arbitrary-depth nonlinear successor closure unresolved.
+The standalone double-reverse audit is not a scheduler adapter. None of these
+inputs supplies a new Antihydra recurrence or a completed temporal-constructor
+Isabelle refinement.
+
+Artifact-integrity pins:
+
+| Input | SHA-256 |
+| --- | --- |
+| `number-compiler-10-collatz-guarded-future-moore.zip` | `9319a6b40710b46b2eb8c5b14d55aa0364d8a60059d723719c511c32bc125ace` |
+| `number-compiler10-global-eq9-moore4.zip` | `3e68c050bf72cb5cfea4e06560e3fc62d26a74de45b54efa83481478e14c4715` |
+| `number-compiler10-original-to-global-eq9-moore4.patch` | `8f779ab6e339f07bfc457f38dd89fe7ca9b9c2694152783735334178c980f6d9` |
+| `number-compiler-10-collatz-boundary-innovation-hashlife.patch` | `657c2ebf2782a73c04f446ec2990973a79c2cccd48060a9eccce258162074b00` |
+| `number-compiler-10-collatz-guarded-future-moore.incremental.patch` | `b6660b57194e5f3e7c95e309b4e492601981f4df8999469cde9486aa6d047230` |
+
+The archive's independent tuple-root Q19 engine and roughly 1.25-GiB D4
+cache were not installed into the production scheduler. Its fixed-span
+language minimization cannot replace the current missing interior successor
+constructor. The live double-reverse boundary scan now calls the shared carry
+classifier directly instead of reconstructing its two output ports per digit.
+Regression cases compare its result to exact reversed-prefix multiplication.
+The shared decimal threshold and double-digit floor-carry lemmas connect this
+classification to arithmetic; they do not establish temporal closure.
+
+Slow-test disposition: the complete comma candidate rebuild/HOL binding audit
+and the two complete chart phase/walk simulations retain all assertions under
+the existing explicit `validation` selection. Their recorded default-suite
+cost was about 32 seconds. Unit coverage retains canonical encoding/digest
+checks, actual provider authority checks and representative arithmetic cases,
+and adds complete synthetic source-map/HOL binding with changed-column
+rejection. No production constructor failure was reclassified or weakened.
+
+| NC10 gate | Result | Run |
+| --- | --- | --- |
+| Reverse boundary regressions and compact HOL-binding check | 44 passed, 0.85 seconds | `20261013T051353Z-d3c45a11adee4592a8c56a7748356ea0` |
+| Shared carry and existing Collatz cylinder refinement | Both rebuilt; 5 and 8 seconds respectively | `20261013T051848Z-3a513b568d11435cbf4c30dad30228d5` |
+
+The initial shared-carry build failed because `omega` was not available in its
+imports. Replacing that proof method with checked arithmetic closed the build;
+no theorem assumption, oracle policy or deadline changed. NC10 source changes
+are development evidence on the dirty checkout, not acceptance for the starting
+commit.
+
+NC10 guarded Collatz macros now execute in the existing source-image route.
+Exact action templates are query-owned and ledger-accounted. The new optional
+`boundary-macro` and `innovation-borrow` observations share that admitted image;
+ordinary output does not build the Moore observer or accumulator. Finite Moore
+classes are observer identities, never substitutes for exact source cylinders.
+
+The first full-suite run completed within the timing budget but exposed nine
+cache-integration failures: macro boundaries had interrupted publication of
+root dyadic cylinders. The repair derives global power-of-two checkpoints from
+the admitted grammar and cumulative odd count. Ordinary runs use closed affine
+prefixes; a D8 crossing uses at most seven separately charged auxiliary steps.
+Checkpoint construction occurs at logarithmically many root widths bounded by
+the source bit length. Warm occurrence application and cycle compression skip
+it. Short omitted intervals break the frontier rather than joining nonadjacent
+blocks. Duplicate source-cylinder publications validate the existing record.
+
+The new `Collatz_Boundary_Macros` theory proves finite admitted words and physical
+durations for the four guard families, with an oracle audit. This does not prove
+maximal valuation-selected repetition counts, the Python cache implementation,
+Moore minimality or arbitrary temporal pumping.
+
+| Additional NC10 gate | Result | Run |
+| --- | --- | --- |
+| Focused runtime/cache/observer/CLI regressions | 127 passed, 1.14 seconds | `20261013T060145Z-9024ea9359be4c818f644bc31482ea0b` |
+| Guarded-word refinement with oracle audit | Rebuilt successfully | `20261013T060403Z-3202fe50e428469792b7f303f1687445` |
+| Explicit exhaustive audits moved to validation | 3 passed, 30.59 seconds; assertions unchanged | `20261013T054305Z-bbff443945a545958aafafe40f4baf61` |
+| Final checkpoint bounds, same receiving seed, metrics | 84 passed, 1.03 seconds | `20261013T060753Z-7d4d27b81933476696b16d227843beef` |
+| Full default unit selection | 9,403 passed; 14 failed; 2,106 validation cases deselected; 263.08 seconds | `20261013T060938Z-fc2ffe4080a84846905b582ce064c284` |
+| Whole-tree quality | Strict mypy, pinned Ruff/format, policy, docs, proof inventory and installed-wheel checks all pass | `20261013T061410Z-ebd1c27fab2d4cddb460c386d9783eb5` |
+
+The full unit guard measured 264.92 seconds including process startup and
+collection, 492,832,232 peak sampled bytes, and confirmed descendant cleanup.
+All Collatz tests pass. The 14 remaining failures are thirteen reverse
+constructor/routing assertions and one special-number output-admission test;
+their positive assertions remain unchanged. The unit timing gate is green;
+the runtime release gate remains red.
+
+Five-trial Collatz measurements retained the unchanged 16–1024 horizons in
+cold, process-warm and bypass modes. Random-source runs are
+`20261013T061547Z-ea3bd18e88a84d47bbb3bc06c93aeb2d`,
+`20261013T061602Z-e2cf458e0e7b4f5091dac39c9c2e3ec6` and
+`20261013T061617Z-37b4991978f7457d92dbef019ecdd39a`.
+At index 64, process reuse cuts D8 discovery from 40 to 8 symbols; median
+construction is 1.094 ms warm versus 0.919 ms bypass. This small query does
+not demonstrate a wall-clock speedup. The 60-bit long-source workload does
+not enter the existing 64-bit source-cache admission path; its cold/warm/bypass
+runs are `20261013T061721Z-57e476363e8742b69cdd0b3e58cb5db0`,
+`20261013T061735Z-0e54160b6c254c3abad178bb0e1126e0` and
+`20261013T061743Z-594f3e57a85e40b29517661a5808bb8d`.
+
+The public comparison on the 201-bit source `(1 << 200) + 931386509544713451`
+is `20261013T061830Z-66194495476141099dd59d946ffa4f88`: 224 exact route
+comparisons including priming, seven horizons, five trials, fresh CLI processes,
+same-process CLI reuse and point queries. At index 1024, median same-process
+CLI latency is 3.187 ms warm versus 4.286 ms with caches cleared (about 26%
+lower). Fresh-process latency includes interpreter startup and is not used
+to attribute this speedup. Warm point queries also reuse the whole term and
+are not evidence of occurrence-level construction savings.
+
+The same unchanged five-trial 16–1024 probe also passes for Antihydra's
+existing production route: cold
+`20261013T061858Z-1b1317acb09c403ca8cef02d8558f23f`, process-warm
+`20261013T061926Z-d2551cd1741d45dabbf79134066739ed`, and bypass
+`20261013T061939Z-0fd6c0029e344e71871c2ba224ddcd87`.
+At index 1024 the median construction times are 3.084, 1.006 and 2.868 ms
+respectively, with exact endpoints and resource audits checked for every sample.
+This confirms retained Antihydra reuse, not a new NC10 recurrence integration.
+
 The unrestricted reverse interior constructor, future congruence and complete
-CLI cutover are not supplied by these downloads. Comma and other existing
-release obligations remain separate. The bridge's full-suite timing gate is
-also red despite passing focused coverage and an installed-wheel rerun.
+CLI cutover remain missing. The reverse failures include actual primitive
+fallback on composite source images, not just obsolete metric expectations.
+The NC10 fixed-span results do not supply this bridge. The downloads also do
+not supply a new Antihydra recurrence; Collatz guards cannot be transplanted
+into it. Comma and special-number obligations remain separate release holds.
+
+### Divergent-path audit, October 12
+
+The source-guarded Collatz compiler now attempts admitted occurrence reuse
+before boundary-macro construction. Requests that retain an innovation witness
+keep their explicit witness path; a width demand without a matching cached
+summary falls through to exact construction. A warm D256 poison test prevents
+both macro reconstruction and D8 discovery. A shared eight-bit cylinder for
+sources 1 and 257 does not authorize their different later futures.
+
+The boundary F5 consumer now projects the authenticated integer affine action
+instead of reconstructing its family word. Innovation clock and future observers
+use the shared finite-observer refinement rather than private Moore loops.
+Unissued or dataclass-replaced graphs are rejected before their modulus/horizon
+memo lookup; unary successor IDs reject Boolean and lossy numeric coercions.
+These observer quotients do not authorize endpoint or safety substitution.
+
+Reverse source normalization now consumes the common three-state carry monoid.
+The shared carry-tape theorem maps Above to Boolean carry one, independently of
+the wider two-bit tape alphabet, and proves chronological word composition.
+The ledger-backed SLP arena now belongs to the shared arithmetic owner so decimal
+recurrences can share allocation, interning and failed-publication cleanup.
+
+| Audit gate | Result | Run |
+| --- | --- | --- |
+| Collatz parent-first reuse and source precision | 71 passed | `20261013T063235Z-d18789b932f44c498fd6b1253e032514` |
+| Shared Moore, forged graph and innovation consumers | 61 passed | `20261013T063652Z-3e6f1a99e2074c2781ea0a68b5236668` |
+| Reverse carry and CLI parser/migration | 92 passed | `20261013T063916Z-e09a77b1177d41a3ad22e4ac43bff80c` |
+| Shared carry tape kernel build | Rebuilt in 5 seconds | `20261013T063738Z-67c0c74098ed4e33917027dce584d4ee` |
+| Reverse and Collatz proof consumers | Both rebuilt, 13 seconds each | `20261013T063814Z-82aae8badad34080b23602c374c1f75a` |
+
+The unchanged five-trial public 16–1024 comparison on the same 201-bit source
+passed all 224 route comparisons in
+`20261013T063938Z-146e61c03d1b487b8e034bfc85045683`.
+At 1024, warm CLI median latency was 3.966 ms versus 5.228 ms with process
+caches cleared (about 24% lower). Fresh-process median was 184.507 ms including
+interpreter startup. This is development evidence from the dirty checkout,
+not commit acceptance or a universal cold-construction bound.
+
+The `2rev10` CLI/API now selects the fixed decimal recurrence
+`U(n) = 2 * reverse10(n)` with index zero equal to the seed. It uses the
+existing scheduler, admitted source images and ledger-owned SLP transduction.
+Trailing-zero contraction is exact (`10 → 2`). Output, point access, compact
+indices, formats and read-only metrics share the resulting image. The present
+route applies charged primitive temporal actions; it is not an unrestricted
+powered macro constructor or a claimed cross-source HashLife speedup.
+
+The adversarial lifecycle follow-up found and repaired three separate defects:
+closed SLP fast paths returned stale local IDs, Q19 published before checking
+its growth postcondition, and cleanup failures could strand later stores.
+Shared `cleanup_on_exit`/`cleanup_all` context managers now preserve cleanup
+exception chains and attempt every store; failed teardown can be retried.
+Collatz boundary-template teardown rejects use during an incomplete cleanup.
+
+The first combined engine/API/lifecycle run passed 149 tests and exposed a
+cleanup-exception-chain failure (`20261013T065251Z-ee60c41a66d74350a156726491cf2023`).
+Using entered cleanup contexts rather than bare ExitStack callbacks fixed it;
+the two focused lifecycle tests pass in
+`20261013T065350Z-fba82005e64c42b5ad269e3fe4c2508d`.
+
+Subsequent constructor tests exposed a different lifetime bug: transferring
+generator-based rollback contexts with `pop_all()` finalized those generators
+and disposed successful owners. Constructors now enter failure-only rollback
+contexts and exit them normally. Cleanup failure explicitly chains the original
+constructor exception as its cause. The final focused lifecycle/2rev10 selection
+passed 22 tests in `20261013T070302Z-ccfd63a9ccaf4c4c9dd81aa869337b39`.
+
+Whole-tree quality passed in
+`20261013T070749Z-dff46ce3268e4c0d86fd2e092413932e`, including strict typing,
+pinned lint/formatting, source policy, documentation, proof registration and clean
+installed-wheel CLI checks. The unit run
+`20261013T070934Z-b1872b3603d44bdbb2b004e4091593ad` completed with 9,473 passes,
+the same 14 baseline failures and 2,106 validation cases deselected. Pytest took
+279.72 seconds; the outer guard took 281.85 seconds, sampled 424,919,928 bytes
+and confirmed cleanup. No Collatz tests failed. The 13 reverse constructor/routing
+failures and one special-number admission failure remain release blockers.
+
+The final read-only audit found two additional Q19 teardown defects after that
+full run: rollback ended before audit-contract publication, and disposal left
+the contract registered. Rollback now covers registration and disposal removes
+the contract before releasing its stores. A post-registration exception is tested
+after the contract has actually been published. The affected Q19, payload-audit,
+source-image, shared-lifecycle and 2rev10 selection passes all 85 tests in 4.72
+seconds (`20261013T071606Z-da61d5137dc04bb6908b4c53d2c2f916`). The full-suite
+counts above precede these two final lifecycle fixes.
+Whole-tree quality, including clean installed-wheel CLI checks, passes again
+after those fixes in `20261013T071626Z-4b721d2b748f4e07923958d458ce84d6`.

@@ -8,6 +8,7 @@ import pytest
 
 from devtools.verification.lazy_collatz import LazyCollatzApplication
 from number_compiler.api.number_api import NumberCompiler, PoweredCollatzTermPayload
+from number_compiler.api.query_types import CollatzTermQuery
 from number_compiler.sequences.collatz.block_power import PoweredCollatzTerm
 from tests.support.performance_assertions import performance_bound
 
@@ -30,7 +31,7 @@ def _check_public_nonbinary_points(
     expected = seed
     for _ in range(steps):
         expected = 3 * expected + 1 if expected & 1 else expected // 2
-    number = NumberCompiler().project_nth("collatz", steps, seed=seed, radix=radix)
+    number = NumberCompiler().project(CollatzTermQuery(steps, seed=seed, radix=radix))
 
     def forbidden(*args: object, **kwargs: object) -> Never:
         raise AssertionError("nonbinary point attempted endpoint lowering")

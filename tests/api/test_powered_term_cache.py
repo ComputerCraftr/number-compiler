@@ -11,6 +11,7 @@ from number_compiler.api.number_api import (
     PoweredCollatzTermPayload,
     PoweredReverseAddTermPayload,
 )
+from number_compiler.api.query_types import CollatzTermQuery, ReverseAddTermQuery
 from number_compiler.sequences.reverse_add.power import ReverseAddPoweredTerm
 
 
@@ -18,7 +19,7 @@ def test_alias_reuses_warm_hashlife_owner_without_recompiling(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     compiler = NumberCompiler()
-    first = compiler.project_nth("196", 5)
+    first = compiler.project(ReverseAddTermQuery(5, seed=196))
     assert isinstance(first.payload, PoweredReverseAddTermPayload)
     assert first.digit(0) == 4
     before = first.payload.power_metrics()
@@ -27,7 +28,7 @@ def test_alias_reuses_warm_hashlife_owner_without_recompiling(
         raise AssertionError("repeated public request rebuilt the powered owner")
 
     monkeypatch.setattr(ReverseAddPoweredTerm, "__init__", forbidden)
-    repeat = compiler.project_nth("reverse_add", 5, seed=196, base=10)
+    repeat = compiler.project(ReverseAddTermQuery(5, seed=196, base=10))
     assert isinstance(repeat.payload, PoweredReverseAddTermPayload)
     assert repeat.payload.term is first.payload.term
     assert repeat.digit(0) == 4
@@ -46,8 +47,8 @@ def test_alias_reuses_warm_hashlife_owner_without_recompiling(
 
 def test_collatz_radix_views_share_the_binary_owner_not_the_payload() -> None:
     compiler = NumberCompiler()
-    binary = compiler.project_nth("collatz", 4, seed=27, radix=2)
-    ternary = compiler.project_nth("collatz", 4, seed=27, radix=3)
+    binary = compiler.project(CollatzTermQuery(4, seed=27, radix=2))
+    ternary = compiler.project(CollatzTermQuery(4, seed=27, radix=3))
     assert isinstance(binary.payload, PoweredCollatzTermPayload)
     assert isinstance(ternary.payload, PoweredCollatzTermPayload)
     assert binary.payload.term is ternary.payload.term
@@ -66,8 +67,8 @@ def test_seeds_powers_and_radices_keep_distinct_reverse_add_owners() -> None:
         ("reverse-add", 1, 6, 2),
     )
     terms = [
-        compiler.project_nth(family, step, seed=seed, base=base)
-        for family, step, seed, base in requests
+        compiler.project(ReverseAddTermQuery(step, seed=seed, base=base))
+        for _, step, seed, base in requests
     ]
     owners = []
     for term in terms:
@@ -79,16 +80,18 @@ def test_seeds_powers_and_radices_keep_distinct_reverse_add_owners() -> None:
 
 def test_lru_eviction_and_clear_leave_returned_owners_alive() -> None:
     compiler = NumberCompiler(max_cached_terms=2)
-    old = compiler.project_nth("196", 2)
-    compiler.project_nth("196", 0)
-    assert compiler.project_nth("196", 2).payload == old.payload
-    compiler.project_nth("196", 1)  # evicts generation zero, not generation two
-    assert compiler.project_nth("196", 2).payload == old.payload
+    old = compiler.project(ReverseAddTermQuery(2, seed=196))
+    compiler.project(ReverseAddTermQuery(0, seed=196))
+    assert compiler.project(ReverseAddTermQuery(2, seed=196)).payload == old.payload
+    compiler.project(
+        ReverseAddTermQuery(1, seed=196)
+    )  # evicts generation zero, not generation two
+    assert compiler.project(ReverseAddTermQuery(2, seed=196)).payload == old.payload
     assert compiler.powered_cache_info()["evictions"] == 1
     compiler.clear_powered_cache()
     assert compiler.powered_cache_info()["retained_terms"] == 0
     assert old.materialize() == 1675
-    fresh = compiler.project_nth("196", 2)
+    fresh = compiler.project(ReverseAddTermQuery(2, seed=196))
     assert fresh.payload != old.payload
     assert fresh.materialize() == 1675
 
@@ -96,24 +99,25 @@ def test_lru_eviction_and_clear_leave_returned_owners_alive() -> None:
 def test_disabled_cache_and_invalid_requests_do_not_reuse_an_owner() -> None:
     compiler = NumberCompiler(max_cached_terms=0)
     assert (
-        compiler.project_nth("196", 0).payload != compiler.project_nth("196", 0).payload
+        compiler.project(ReverseAddTermQuery(0, seed=196)).payload
+        != compiler.project(ReverseAddTermQuery(0, seed=196)).payload
     )
     before = compiler.powered_cache_info()
     for bad in (True, 1.0, "1"):
         with pytest.raises((TypeError, ValueError)):
-            compiler.project_nth("196", cast(int, bad))
+            compiler.project(ReverseAddTermQuery(cast(int, bad), seed=196))
     with pytest.raises(ValueError):
-        compiler.project_nth("collatz", 0, seed=27, radix=5)
+        compiler.project(CollatzTermQuery(0, seed=27, radix=5))
     assert compiler.powered_cache_info() == before
     assert before["retained_terms"] == 0 and before["misses"] == 2
 
 
 def test_changed_source_parameters_cannot_poison_a_cached_request() -> None:
     compiler = NumberCompiler()
-    old = compiler.project_nth("196", 0)
+    old = compiler.project(ReverseAddTermQuery(0, seed=196))
     assert isinstance(old.payload, PoweredReverseAddTermPayload)
     old.payload.term.seed = 197
-    replacement = compiler.project_nth("196", 0)
+    replacement = compiler.project(ReverseAddTermQuery(0, seed=196))
     assert isinstance(replacement.payload, PoweredReverseAddTermPayload)
     assert replacement.payload.term is not old.payload.term
     assert replacement.materialize() == 196

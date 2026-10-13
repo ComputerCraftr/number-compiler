@@ -36,7 +36,6 @@ from devtools.paths import repository_root
 def _run_pytest_policy_probe(
     tmp_path: Path,
     source_text: str,
-    active_timeout: float,
     extra_args: tuple[str, ...] = (),
 ) -> tuple[process_guard.GuardResult, Path, str]:
     source = tmp_path / "policy_probe.py"
@@ -80,7 +79,7 @@ def _run_pytest_policy_probe(
         timeout=10,
         environment=environment,
         active_test_path=marker,
-        active_test_timeout=active_timeout,
+        active_test_timeout=PYTHON_TEST_SECONDS,
     )
     return result, marker, log.read_text(encoding="utf-8")
 
@@ -352,9 +351,8 @@ def test_actual_pytest_hook_covers_fixture_setup_call_and_teardown(
         def test_marker_is_present_during_call():
             assert marker.is_file()
         """,
-        active_timeout=2,
     )
-    assert result.outcome == "completed"
+    assert result.outcome == "completed", (result, output)
     assert result.child_returncode == 0
     assert "1 passed" in output
     assert not marker.exists()
@@ -451,7 +449,6 @@ def test_actual_pytest_rejects_timeout_ini_override(tmp_path: Path) -> None:
     result, _, output = _run_pytest_policy_probe(
         tmp_path,
         "def test_never_collected():\n    raise AssertionError()\n",
-        active_timeout=2,
         extra_args=("-o", "timeout=15"),
     )
     assert result.outcome == "child_failed"
@@ -463,7 +460,6 @@ def test_actual_pytest_rejects_per_test_timeout_marker(tmp_path: Path) -> None:
     result, _, output = _run_pytest_policy_probe(
         tmp_path,
         "import pytest\n\n@pytest.mark.timeout(15)\ndef test_never_runs():\n    pass\n",
-        active_timeout=2,
     )
     assert result.outcome == "child_failed"
     assert "per-test timeout markers are forbidden" in output

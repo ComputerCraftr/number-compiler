@@ -6,6 +6,7 @@ from typing import Never, TypedDict, cast
 import pytest
 
 from number_compiler.api.number_api import NumberCompiler
+from number_compiler.api.query_types import CollatzTermQuery, ReverseAddTermQuery
 from number_compiler.arithmetic.contracts.block_effect import BoundarySide
 from number_compiler.arithmetic.contracts.block_kernel import BaseBlockEffect
 from number_compiler.arithmetic.contracts.exact_tree_context import (
@@ -289,15 +290,17 @@ def test_number_compiler_rejects_aliases_before_powered_construction(
     monkeypatch.setattr(
         "number_compiler.sequences.collatz.block_power.PoweredCollatzTerm", forbidden
     )
-    kwargs = {"seed": 1, "base": 2, "radix": 2}
-    if field != "index":
-        kwargs[field] = value
     with pytest.raises((TypeError, ValueError)):
-        NumberCompiler().project_nth(
-            "collatz" if field == "radix" else "reverse-add",
-            value if field == "index" else 0,
-            **kwargs,
+        query = (
+            CollatzTermQuery(0, seed=1, radix=value)
+            if field == "radix"
+            else ReverseAddTermQuery(
+                value if field == "index" else 0,
+                seed=value if field == "seed" else 1,
+                base=value if field == "base" else 2,
+            )
         )
+        NumberCompiler().project(query)
 
 
 def test_valid_zero_positive_sources_and_integer_coordinate_errors_remain_supported() -> (

@@ -7,6 +7,7 @@ import pytest
 
 from devtools.experiments.reverse_add.domain import ReverseAddSpatialIndex
 from number_compiler.api.number_api import NumberCompiler
+from number_compiler.api.query_types import ReverseAddTermQuery
 from number_compiler.arithmetic.carry.event_memory import pair_step
 from number_compiler.arithmetic.fields.digit_formula import (
     DigitSpec,
@@ -56,7 +57,7 @@ def test_reverse_add_random_digit_api_does_not_build_final_digit_formula(
     compiler = NumberCompiler()
     expected = digits_lsd(52514, 10)
     for i, digit in enumerate(expected):
-        assert compiler.project_digit("196", 5, i) == digit
+        assert compiler.project_digit(ReverseAddTermQuery(5, seed=196), i) == digit
 
 
 def test_collatz_digit_transducer_uses_shared_prefix_random_access() -> None:

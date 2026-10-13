@@ -14,6 +14,7 @@ from devtools.checks.dependency_graph import (
 )
 from devtools.checks.isabelle_registry import discover_sessions
 from devtools.checks.isabelle_syntax import Session, parse_theory_header
+from devtools.checks.source_discovery import authored_files
 
 _SHARED_PYTHON_PACKAGES = frozenset({"arithmetic", "hashlife", "resources"})
 _ISABELLE_ROOTS = frozenset({"shared", "families", "integration"})
@@ -70,7 +71,8 @@ def python_ownership_violations(
                 path.resolve(): ast.parse(
                     path.read_text(encoding="utf-8"), filename=str(path)
                 )
-                for path in source_root.rglob("*.py")
+                for path in authored_files(source_root)
+                if path.suffix == ".py"
             }
             if source_root.is_dir()
             else {}
@@ -222,7 +224,9 @@ def _mask_ml_comments_and_strings(text: str) -> str:
     return "".join(output)
 
 
-def _shared_ml_family_reference_violations(proof_root: Path) -> tuple[str, ...]:
+def _shared_ml_family_reference_violations(
+    proof_root: Path, authored_sources: tuple[Path, ...]
+) -> tuple[str, ...]:
     """Catch references to the currently known Comma-owned ML structures.
 
     This is deliberately a narrow lexical audit for registered structure names,
@@ -233,7 +237,12 @@ def _shared_ml_family_reference_violations(proof_root: Path) -> tuple[str, ...]:
     if not shared_root.is_dir():
         return ()
     violations: list[str] = []
-    for path in sorted(shared_root.rglob("*.ML")):
+    for path in sorted(
+        source
+        for source in authored_sources
+        if source.suffix.lower() == ".ml"
+        and source.resolve().is_relative_to(shared_root.resolve())
+    ):
         code = _mask_ml_comments_and_strings(path.read_text(encoding="utf-8"))
         relative = path.relative_to(proof_root.parent.parent).as_posix()
         for structure in sorted(_KNOWN_FAMILY_ML_STRUCTURES):
@@ -266,6 +275,7 @@ def isabelle_ownership_violations(
     *,
     sessions: tuple[Session, ...] | None = None,
     theory_headers: Mapping[Path, tuple[str, tuple[str, ...]]] | None = None,
+    authored_sources: tuple[Path, ...] | None = None,
 ) -> tuple[str, ...]:
     """Audit session and theory edges under canonical Isabelle ownership roots.
 
@@ -277,7 +287,14 @@ def isabelle_ownership_violations(
     proof_root = root / "proofs" / "isabelle"
     if not proof_root.is_dir():
         return ()
-    sessions = sessions if sessions is not None else discover_sessions(proof_root)
+    source_inventory = (
+        authored_files(proof_root) if authored_sources is None else authored_sources
+    )
+    sessions = (
+        sessions
+        if sessions is not None
+        else discover_sessions(proof_root, authored_sources=source_inventory)
+    )
     violations: list[str] = []
     owners: dict[str, _IsabelleOwner] = {}
     for session in sessions:
@@ -319,9 +336,9 @@ def isabelle_ownership_violations(
 
     if theory_headers is None:
         headers = {}
-        for path in sorted(proof_root.rglob("*.thy")):
+        for path in sorted(source_inventory):
             resolved = path.resolve()
-            if resolved.is_relative_to(proof_root):
+            if path.suffix == ".thy" and resolved.is_relative_to(proof_root):
                 headers[resolved] = parse_theory_header(
                     path.read_text(encoding="utf-8"), path
                 )
@@ -382,7 +399,9 @@ def isabelle_ownership_violations(
                 f"{relative_path}: {source_owner.layer} theory {name} imports "
                 f"{target_owner.layer} theory {target_name}"
             )
-    violations.extend(_shared_ml_family_reference_violations(proof_root))
+    violations.extend(
+        _shared_ml_family_reference_violations(proof_root, source_inventory)
+    )
     return tuple(sorted(set(violations)))
 
 
@@ -392,6 +411,7 @@ def ownership_policy_violations(
     parsed_sources: Mapping[Path, ast.Module] | None = None,
     sessions: tuple[Session, ...] | None = None,
     theory_headers: Mapping[Path, tuple[str, tuple[str, ...]]] | None = None,
+    authored_sources: tuple[Path, ...] | None = None,
 ) -> tuple[str, ...]:
     """Return all Python and Isabelle ownership dependency violations."""
     return tuple(
@@ -399,7 +419,10 @@ def ownership_policy_violations(
             (
                 *python_ownership_violations(root, parsed_sources=parsed_sources),
                 *isabelle_ownership_violations(
-                    root, sessions=sessions, theory_headers=theory_headers
+                    root,
+                    sessions=sessions,
+                    theory_headers=theory_headers,
+                    authored_sources=authored_sources,
                 ),
             )
         )

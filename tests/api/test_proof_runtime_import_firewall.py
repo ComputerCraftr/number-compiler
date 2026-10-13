@@ -11,7 +11,7 @@ def test_public_family_queries_leave_proof_and_legacy_executors_unloaded() -> No
     program = r"""
 import json
 import sys
-from number_compiler import NumberCompiler, PoweredCollatzTerm, ReverseAddPoweredTerm
+from number_compiler import NumberCompiler, PoweredCollatzTerm, ReverseAddPoweredTerm, CollatzTermQuery
 from number_compiler.hashlife.actions.lazy_compiler import UnsupportedInterfaceError
 
 rejected = []
@@ -20,7 +20,7 @@ queries = (
     lambda: ReverseAddPoweredTerm(196, 2).width(),
     lambda: PoweredCollatzTerm(27, 2).digit(0),
     lambda: PoweredCollatzTerm(27, 2).width(),
-    lambda: NumberCompiler().project_nth("collatz", 2, seed=27, radix=3).digit(0),
+    lambda: NumberCompiler().project(CollatzTermQuery(2, seed=27, radix=3)).digit(0),
 )
 for query in queries:
     try:

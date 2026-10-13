@@ -202,6 +202,40 @@ corollary emitting_projection_application:
 definition identity_carry_wires :: carry_wires where
   "identity_carry_wires = (id, id)"
 
+definition carry_domain_wires :: "carry_domain \<Rightarrow> carry_wires" where
+  "carry_domain_wires d =
+    (case d of
+       Below \<Rightarrow> (\<lambda>_. False, \<lambda>_. False)
+     | Equal \<Rightarrow> identity_carry_wires
+     | Above \<Rightarrow> (\<lambda>_. True, \<lambda>_. False))"
+
+lemma carry_domain_wires_valid:
+  "valid_wires (carry_domain_wires d)"
+  by (cases d; auto simp: carry_domain_wires_def identity_carry_wires_def
+      valid_wires_def staircase_port_def)
+
+lemma carry_domain_wires_apply:
+  assumes "c < 3"
+  shows "apply_wires (carry_domain_wires d) c =
+    (case d of Below \<Rightarrow> 0 | Equal \<Rightarrow> c | Above \<Rightarrow> 1)"
+  using assms three_reachable_carry_ports(2)[OF assms]
+  by (cases d; cases c; simp add: carry_domain_wires_def
+      identity_carry_wires_def apply_wires_def carry_bits_def
+      carry_from_bits_def)
+
+lemma carry_domain_wires_bool_exact:
+  "apply_wires (carry_domain_wires d) (if c then 1 else 0) =
+    (if carry_apply d c then 1 else 0)"
+  by (cases d; cases c; simp add: carry_domain_wires_def
+      identity_carry_wires_def apply_wires_def carry_bits_def
+      carry_from_bits_def)
+
+theorem carry_domain_wires_compose:
+  "carry_domain_wires (carry_then after before) =
+    compose_wires (carry_domain_wires before) (carry_domain_wires after)"
+  by (cases after; cases before; simp add: carry_domain_wires_def
+      carry_then_def compose_wires_def identity_carry_wires_def fun_eq_iff)
+
 fun wire_word_action :: "carry_wires list \<Rightarrow> carry_wires" where
   "wire_word_action [] = identity_carry_wires"
 | "wire_word_action (wire # wires) =
@@ -256,6 +290,54 @@ next
   finally show ?case by simp
 qed
 
+theorem carry_domain_wire_word_exact:
+  "apply_wires (wire_word_action (map carry_domain_wires ds))
+      (if incoming then 1 else 0) =
+    (if carry_finish incoming ds then 1 else 0)"
+proof (induction ds arbitrary: incoming)
+  case Nil
+  then show ?case by simp
+next
+  case (Cons d ds)
+  have valid: "\<forall>wire \<in> set (map carry_domain_wires (d # ds)).
+      valid_wires wire"
+    by (auto intro: carry_domain_wires_valid)
+  have bound: "(if incoming then (1::nat) else 0) < 3"
+    by (cases incoming) simp_all
+  have mapped: "map carry_domain_wires (d # ds) =
+      carry_domain_wires d # map carry_domain_wires ds"
+    by simp
+  have action:
+    "apply_wires (wire_word_action (map carry_domain_wires (d # ds)))
+        (if incoming then 1 else 0) =
+      wire_word_scan (if incoming then 1 else 0)
+        (map carry_domain_wires (d # ds))"
+    by (rule wire_word_action_exact[OF valid bound])
+  also have "... = wire_word_scan
+      (if carry_apply d incoming then 1 else 0)
+      (map carry_domain_wires ds)"
+  proof -
+    show ?thesis
+      unfolding mapped wire_word_scan.simps
+      by (simp only: carry_domain_wires_bool_exact)
+  qed
+  also have "... = apply_wires (wire_word_action (map carry_domain_wires ds))
+      (if carry_apply d incoming then 1 else 0)"
+  proof -
+    have tail_valid: "\<forall>wire \<in> set (map carry_domain_wires ds).
+        valid_wires wire"
+      by (auto intro: carry_domain_wires_valid)
+    have tail_bound: "(if carry_apply d incoming then (1::nat) else 0) < 3"
+      by (cases "carry_apply d incoming") simp_all
+    show ?thesis
+      using wire_word_action_exact[OF tail_valid tail_bound] by simp
+  qed
+  also have "... =
+      (if carry_finish incoming (d # ds) then 1 else 0)"
+    using Cons.IH[of "carry_apply d incoming"] by simp
+  finally show ?case .
+qed
+
 lemma wire_word_scan_append [simp]:
   "wire_word_scan c (left @ right) =
     wire_word_scan (wire_word_scan c left) right"
@@ -272,6 +354,9 @@ ML \<open>
     three_reachable_carry_ports valid_wires_stay_reachable valid_wires_compose
     carry_projection_spatial_composition
     emitting_action_projects_to_carry_composition emitting_projection_application
+    carry_domain_wires_valid carry_domain_wires_apply
+    carry_domain_wires_bool_exact carry_domain_wires_compose
+    carry_domain_wire_word_exact
     identity_wires_valid identity_wires_apply wire_word_action_valid
     wire_word_action_exact wire_word_scan_append};
   val _ = if null (Thm_Deps.all_oracles checked) then ()

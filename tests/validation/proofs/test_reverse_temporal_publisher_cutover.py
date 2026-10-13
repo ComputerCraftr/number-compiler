@@ -49,7 +49,7 @@ def test_cli_digits_use_composed_publisher_without_causal_reconstruction(
     monkeypatch.setattr(HigherBimachineRuntime, "point", _forbidden)
     monkeypatch.setattr(RecursiveCoordinateMorphismArena, "temporal", _forbidden)
 
-    status = main(["196", "--nth", str(steps), "--seed", str(seed)])
+    status = main(["reverse-add", "--nth", str(steps), "--seed", str(seed)])
 
     captured = capsys.readouterr()
     assert status == 0

@@ -180,6 +180,46 @@ def test_runtime_candidate_bytes_use_the_consumer_digest_contract() -> None:
         )
 
 
+def test_runtime_candidate_hol_binding_checks_complete_source_map(
+    tmp_path: Path,
+) -> None:
+    """Keep source-map and table binding covered without rebuilding the audit."""
+    source_classes = (0,) * future_provider.SOURCE_COUNT
+    controls: tuple[Control, ...] = (("landmine", None),)
+    children = ((None, None),)
+    ranks = (0,)
+    record: dict[str, object] = {
+        "format": future_provider.FUTURE_CANDIDATE_FORMAT,
+        "authority": future_provider.FUTURE_CANDIDATE_AUTHORITY,
+        "state_universe": future_provider.FUTURE_SOURCE_UNIVERSE,
+        "class_of_state_varint_base64": base64.b64encode(bytes(source_classes)).decode(
+            "ascii"
+        ),
+        "controls": [["landmine", None]],
+        "ordered_children": [[None, None]],
+        "class_rank_candidate": [0],
+        "refinement_rounds": 1,
+        "refinement_collision_witnesses": [],
+        "seam_is_projected_from_cid": True,
+        "seam_projection_collision": None,
+    }
+    checked_path = tmp_path / "Comma_Semantic_Future_Candidate_Data.thy"
+    checked_path.write_text(
+        _render_candidate_data_theory(source_classes, controls, children, ranks),
+        encoding="utf-8",
+    )
+
+    digest = verify_runtime_candidate_hol_data_binding(record, checked_path)
+    assert digest == future_provider._future_candidate_sha256(record)
+
+    changed = deepcopy(record)
+    changed["controls"] = [["fork", 2]]
+    changed["ordered_children"] = [[0, 0]]
+    changed["class_rank_candidate"] = [None]
+    with pytest.raises(ValueError, match="candidate table definitions differ"):
+        verify_runtime_candidate_hol_data_binding(changed, checked_path)
+
+
 @pytest.mark.validation
 @pytest.mark.parametrize("kind", ["N", "Z"])
 @pytest.mark.parametrize("a", [2, 5, 9])
@@ -205,9 +245,18 @@ def test_candidate_c1_projection_matches_independent_fragment_accumulation(
         candidate_c1_return(state, macro, 1)
 
 
+@pytest.mark.validation
 def test_reencoded_runtime_bytes_bind_to_the_checked_hol_candidate(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
+    """Rebuild the complete 14,784-source audit candidate and bind its tables.
+
+    This is an exhaustive development-artifact integration audit, not a
+    production runtime contract. The unit selection retains small tests for
+    canonical bytes, malformed records, class-row validation, and exact HOL
+    table comparison; this full source-derived rebuild remains available in
+    the explicit validation selection.
+    """
     candidate = build_semantic_future_candidate()
     v1 = candidate.certificate_record()
     occurrence = candidate.occurrence_payload_record()
@@ -551,15 +600,11 @@ def test_indexed_child_checks_preserve_source_authority_and_slot_shape() -> None
 def test_local_cover_checker_reuses_exact_requests_without_repainting_parents() -> None:
     proof_root = isabelle_root(repository_root())
     root = proof_root / "families/comma/comma_semantic_b1_instance"
-    retired_refinement = (
+    bindings = (
         proof_root
         / "families/comma/comma_semantic_b1"
-        / "Comma_Semantic_B1_CRT_Lift_Refinement.thy"
-    )
-    assert not retired_refinement.exists()
-    bindings = (
-        retired_refinement.with_name("Comma_Semantic_B1_CRT_Lift_Bindings.thy")
-    ).read_text()
+        / "Comma_Semantic_B1_CRT_Lift_Bindings.thy"
+    ).read_text(encoding="utf-8")
     checker = executable_text(
         (root / "semantic_b1_occurrence_check_cache.ML").read_text(encoding="utf-8")
     )
@@ -581,8 +626,10 @@ def test_local_cover_checker_reuses_exact_requests_without_repainting_parents() 
     # The duplicate concrete local-cover sweep moved into construction
     # induction. Retain its source/result obligation through the theorem used
     # by publication, rather than requiring the retired evaluator requests.
-    refinement = retired_refinement.with_name(
-        "Comma_Semantic_B1_CRT_Constructed_Refinement.thy"
+    refinement = (
+        proof_root
+        / "families/comma/comma_semantic_b1"
+        / "Comma_Semantic_B1_CRT_Constructed_Refinement.thy"
     ).read_text(encoding="utf-8")
     assert "comma_semantic_b1_crt_group_piece_local_covered" in refinement
     assert "comma_semantic_b1_crt_constructed_bound_lift_local_cover" in refinement

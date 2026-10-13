@@ -7,6 +7,7 @@ import json
 from devtools.experiments.reverse_add.domain import ReverseAddSpatialIndex
 from devtools.paths import report_directory, repository_root
 from number_compiler.api.number_api import NumberCompiler
+from number_compiler.api.query_types import ReverseAddTermQuery
 from number_compiler.arithmetic.formula.types import RadixSpec
 from number_compiler.hashlife.execution.evaluator import materialize_values
 from number_compiler.sequences.collatz.parity import (
@@ -39,7 +40,7 @@ def reverse_add_metrics() -> dict[str, object]:
         )
 
     compiler = NumberCompiler()
-    digit = compiler.project_digit("196", 5, 4)
+    digit = compiler.project_digit(ReverseAddTermQuery(5, seed=196), 4)
     assert digit == 5  # 52514, LSD-first coordinate 4
     return {
         "controls": rows,

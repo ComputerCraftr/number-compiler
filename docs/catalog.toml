@@ -422,3 +422,11 @@ kind = "sprint-topic"
 topic = "hashlife"
 status = "current"
 week_start = "2026-10-11"
+
+[[document]]
+id = "sprint-2026-10-11-cli-contracts"
+path = "docs/sprints/week-of-2026-10-11/cli-contracts.md"
+kind = "sprint-topic"
+topic = "cli-contracts"
+status = "current"
+week_start = "2026-10-11"

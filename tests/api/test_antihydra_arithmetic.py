@@ -2,13 +2,14 @@
 
 from __future__ import annotations
 
-from collections.abc import Iterator
+from collections.abc import Callable, Iterator
 from typing import cast
 
 import pytest
 
 from number_compiler.api.antihydra_observation import observe_run
 from number_compiler.api.number_api import AntihydraTermPayload, NumberCompiler
+from number_compiler.api.query_types import AntihydraTermQuery
 from number_compiler.hashlife.execution.dyadic_return_records import (
     DyadicReturnSourceID,
 )
@@ -202,11 +203,11 @@ def test_number_api_is_lazy_and_reuses_arithmetic_owner_for_info_and_physical(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     compiler = NumberCompiler()
-    projected = compiler.project_nth("antihydra", 129)
+    projected = compiler.project(AntihydraTermQuery(129))
     assert type(projected.payload) is AntihydraTermPayload
     owner = projected.payload.term
     assert owner._result is None and not owner._segments
-    reused = compiler.project_nth("antihydra", 129).payload
+    reused = compiler.project(AntihydraTermQuery(129)).payload
     assert type(reused) is AntihydraTermPayload
     assert reused.term is owner
 
@@ -257,26 +258,30 @@ def test_number_api_is_lazy_and_reuses_arithmetic_owner_for_info_and_physical(
 def test_arithmetic_budgets_and_blank_source_are_fail_closed() -> None:
     compiler = NumberCompiler()
     with pytest.raises(ValueError, match="budget"):
-        compiler.project_nth("antihydra", 17, max_steps=16)
+        compiler.project(AntihydraTermQuery(17, max_steps=16))
     with pytest.raises(ValueError, match="budget"):
-        compiler.project_nth("antihydra", 17, max_state_bits=16)
-    with pytest.raises(ValueError, match="blank-tape"):
-        compiler.project_nth("antihydra", 1, seed=8)
+        compiler.project(AntihydraTermQuery(17, max_state_bits=16))
     limited = NumberCompiler(max_context_nodes=128, max_cache_entries=64)
-    payload = limited.project_nth("antihydra", 1).payload
+    payload = limited.project(AntihydraTermQuery(1)).payload
     assert type(payload) is AntihydraTermPayload
     assert payload.term.engine.capacity == 64
+
+
+def test_antihydra_query_has_no_seed_parameter() -> None:
+    constructor = cast(Callable[..., AntihydraTermQuery], AntihydraTermQuery)
+    with pytest.raises(TypeError, match="unexpected keyword"):
+        constructor(1, seed=8)
 
 
 def test_output_budget_refuses_before_arithmetic_execution() -> None:
     compiler = NumberCompiler()
     with pytest.raises(ValueError):
-        compiler.nth("antihydra", 1000, max_bits=32)
-    payload = compiler.project_nth("antihydra", 1000).payload
+        compiler.nth(AntihydraTermQuery(1000), max_bits=32)
+    payload = compiler.project(AntihydraTermQuery(1000)).payload
     assert type(payload) is AntihydraTermPayload
     assert payload.term._result is None
     assert not payload.term._segments
-    assert compiler.nth("antihydra", 0, max_bits=4) == 8
+    assert compiler.nth(AntihydraTermQuery(0), max_bits=4) == 8
 
 
 def test_failed_result_publication_rolls_back_retained_support() -> None:

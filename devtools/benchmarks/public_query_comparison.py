@@ -15,8 +15,10 @@ from typing import Literal, TypedDict
 from devtools.paths import report_output
 from number_compiler.api.cli import main as cli_main
 from number_compiler.api.cli_render import _radix_string
-from number_compiler.api.cli_requests import CAPABILITIES
+from number_compiler.api.cli_requests import parse_request
+from number_compiler.api.family_registry import CAPABILITIES, family_spec, option_argv
 from number_compiler.api.number_api import NumberCompiler
+from number_compiler.api.query_types import AntihydraVerifyQuery, CollatzEventQuery
 
 Mode = Literal["cold", "warm", "bypass"]
 FAMILIES = tuple(CAPABILITIES)
@@ -87,7 +89,9 @@ def compare(
         raise ValueError("output bases must be between 2 and 36")
     if not modes or any(mode not in ("cold", "warm", "bypass") for mode in modes):
         raise ValueError("invalid comparison mode")
-    kwargs = {"seed": seed} if family in ("collatz", "reverse-add", "196") else {}
+    source_arguments = (
+        option_argv("seed", seed) if "seed" in family_spec(family).parameters else []
+    )
     rows: list[Sample] = []
 
     def record(sample: Sample) -> None:
@@ -96,10 +100,15 @@ def compare(
             on_sample(sample)
 
     for horizon in horizons:
-        reference = NumberCompiler(max_cached_terms=0).nth(
-            family, horizon, max_bits=max_output_bits, **kwargs
+        source_request = parse_request(
+            [family, *option_argv("nth", horizon), *source_arguments]
         )
-        source_radix = 10 if family in ("196", "reverse-add", "a367620") else 2
+        assert source_request is not None
+        query = source_request.execution
+        assert not isinstance(query, (AntihydraVerifyQuery, CollatzEventQuery))
+        projected = NumberCompiler(max_cached_terms=0).project(query)
+        reference = projected.materialize(max_bits=max_output_bits)
+        source_radix = projected.source_radix or 2
         expected_digit = (reference // source_radix**position) % source_radix
         expected_outputs = {base: _radix_string(reference, base) for base in bases}
         for mode in modes:
@@ -117,19 +126,13 @@ def compare(
                         NumberCompiler.clear_shared_cache()
                     arguments = [
                         family,
-                        "--nth",
-                        str(horizon),
-                        "--output-base",
-                        str(base),
-                        "--max-output-bits",
-                        str(max_output_bits),
-                        "--format",
-                        "json",
-                        "--info",
-                        "metrics",
+                        *option_argv("nth", horizon),
+                        *option_argv("output_base", base),
+                        *option_argv("max_output_bits", max_output_bits),
+                        *option_argv("format", "json"),
+                        *option_argv("info", "metrics"),
+                        *source_arguments,
                     ]
-                    if kwargs:
-                        arguments.extend(("--seed", str(seed)))
                     elapsed, packet = cli_sample(arguments, fresh=mode == "cold")
                     value = str(packet["value"])
                     record(
@@ -158,7 +161,7 @@ def compare(
                         max_cached_terms=0, shared_cache=mode != "bypass"
                     )
                 started = perf_counter()
-                term = compiler.project_nth(family, horizon, **kwargs)
+                term = compiler.project(query)
                 digit = term.digit(position)
                 elapsed = perf_counter() - started
                 record(
@@ -205,7 +208,7 @@ def main() -> int:
     payload: dict[str, object] = {
         "scope": "current public route/output agreement; API reference is not an independent oracle; no latency threshold or temporal complexity claim",
         "cold_cli_includes_interpreter_startup": True,
-        "point_timings_include_project_nth": True,
+        "point_timings_include_project": True,
         "warm_priming_samples_retained": True,
         "configuration": vars(options),
         "bypass_cli_policy": "clear process caches before each query; within-query memoization remains enabled",

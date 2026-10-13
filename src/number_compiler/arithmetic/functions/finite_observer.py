@@ -8,7 +8,7 @@ that a supplied graph models an arithmetic execution.
 
 from __future__ import annotations
 
-from collections.abc import Hashable, Sequence
+from collections.abc import Callable, Hashable, Sequence
 from dataclasses import dataclass
 
 
@@ -16,6 +16,56 @@ def canonical_partition(signatures: tuple[object, ...]) -> tuple[int, ...]:
     ordered = sorted(set(signatures), key=repr)
     identities = {signature: index for index, signature in enumerate(ordered)}
     return tuple(identities[signature] for signature in signatures)
+
+
+def partition_by_signature(signatures: Sequence[Hashable]) -> tuple[int, ...]:
+    """Assign dense observer-local IDs in first-occurrence order."""
+    identities: dict[Hashable, int] = {}
+    return tuple(
+        identities.setdefault(signature, len(identities)) for signature in signatures
+    )
+
+
+def _refine_observer_partition_validated(
+    rows: tuple[tuple[int | None, ...], ...],
+    observations: tuple[Hashable, ...],
+    target_classes: tuple[int, ...],
+) -> tuple[int, ...]:
+    signatures = tuple(
+        (
+            observations[state],
+            tuple(None if target is None else target_classes[target] for target in row),
+        )
+        for state, row in enumerate(rows)
+    )
+    return partition_by_signature(signatures)
+
+
+def refine_observer_partition(
+    successors: Sequence[Sequence[int | None]],
+    observations: Sequence[Hashable],
+    target_classes: Sequence[int],
+) -> tuple[int, ...]:
+    """Refine observations by one ordered successor step.
+
+    This is shared by complete Moore minimization and bounded-horizon
+    refinement. Returned integers are dense, observer-local labels only.
+    """
+    rows = tuple(tuple(row) for row in successors)
+    labels = tuple(observations)
+    classes = tuple(target_classes)
+    size = len(rows)
+    if len(labels) != size or len(classes) != size:
+        raise ValueError("finite observer rows, labels, and classes must align")
+    if any(type(class_id) is not int or class_id < 0 for class_id in classes):
+        raise ValueError("finite observer target classes must be exact nonnegative IDs")
+    if any(
+        target is not None and (type(target) is not int or not 0 <= target < size)
+        for row in rows
+        for target in row
+    ):
+        raise ValueError("every admitted successor must be in the declared universe")
+    return _refine_observer_partition_validated(rows, labels, classes)
 
 
 def class_members(
@@ -32,6 +82,23 @@ def class_members(
     if any(not group for group in groups):
         raise ValueError("finite observer partition contains an empty class")
     return tuple(tuple(group) for group in groups)
+
+
+def partition_representatives(
+    class_ids: Sequence[int], classes: int
+) -> tuple[int, ...]:
+    """Return the first source index for each dense observer-local class."""
+    if type(classes) is not int or classes < 0:
+        raise ValueError("finite observer class count must be nonnegative")
+    representatives = [-1] * classes
+    for state, class_id in enumerate(class_ids):
+        if type(class_id) is not int or not 0 <= class_id < classes:
+            raise ValueError("finite observer class id leaves its partition")
+        if representatives[class_id] < 0:
+            representatives[class_id] = state
+    if any(state < 0 for state in representatives):
+        raise ValueError("finite observer partition contains an empty class")
+    return tuple(representatives)
 
 
 def map_partition_row(
@@ -110,6 +177,8 @@ class FiniteObserverMinimization:
 def minimize_finite_observer(
     successors: Sequence[Sequence[int | None]],
     outputs: Sequence[Hashable],
+    *,
+    on_refinement: Callable[[int], None] | None = None,
 ) -> FiniteObserverMinimization:
     """Greatest stable refinement of complete observations and admissibility.
 
@@ -129,22 +198,22 @@ def minimize_finite_observer(
         for target in row
     ):
         raise ValueError("every admitted successor must be in the declared universe")
-    initial: dict[Hashable, int] = {}
-    classes = tuple(
-        initial.setdefault((label, tuple(t is not None for t in row)), len(initial))
-        for label, row in zip(labels, rows, strict=True)
+    if on_refinement is not None and not callable(on_refinement):
+        raise TypeError("finite observer work callback must be callable")
+    classes = partition_by_signature(
+        tuple(
+            (label, tuple(target is not None for target in row))
+            for label, row in zip(labels, rows, strict=True)
+        )
     )
     rounds = 0
     while True:
-        mapping: dict[Hashable, int] = {}
-        refined = tuple(
-            mapping.setdefault(
-                (classes[state], tuple(None if t is None else classes[t] for t in row)),
-                len(mapping),
-            )
-            for state, row in enumerate(rows)
-        )
+        refined = _refine_observer_partition_validated(rows, classes, classes)
+        if on_refinement is not None:
+            on_refinement(size)
         rounds += 1
         if partition_equivalent(classes, refined):
-            return FiniteObserverMinimization(len(mapping), refined, rounds)
+            return FiniteObserverMinimization(
+                max(refined, default=-1) + 1, refined, rounds
+            )
         classes = refined

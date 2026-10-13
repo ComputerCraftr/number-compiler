@@ -20,8 +20,10 @@ Shared Python algebra is extracted from family owners while recurrence-specific
 adapters move in the opposite direction. Proof sessions are grouped beneath shared,
 family and integration roots; theorem assumptions and session boundaries remain.
 
-The proof inventory includes a Git-referenced ownership history, checks its live
-destinations and declaration names, and labels audit-only sessions. Native Isabelle
+At this stage the proof inventory included a Git-referenced ownership history.
+That maintained history was subsequently removed: current ownership now comes
+from ROOT/ROOTS and parsed declarations, with Git retaining historical changes.
+The inventory continues to label audit-only sessions. Native Isabelle
 validation exposed the need to quote nested session paths; the parser now rejects
 the unquoted form. Multiline `sessions` dependencies and inline theory declarations
 are retained rather than silently omitted.

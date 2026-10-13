@@ -1,163 +1,42 @@
-"""Family capabilities and typed, fully admitted command-line requests."""
+"""Family-first CLI parsing into typed execution and observation requests."""
 
 from __future__ import annotations
 
 import argparse
-from dataclasses import dataclass
-from typing import Any, Literal
+from collections.abc import Mapping
+from typing import Any, Literal, cast
 
+from number_compiler.api.cli_types import (
+    IndexPresentation,
+    ObservationOptions,
+    OutputFormat,
+    PresentationOptions,
+    QueryRequest,
+)
+from number_compiler.api.family_registry import (
+    CAPABILITIES as _CAPABILITIES,
+)
+from number_compiler.api.family_registry import (
+    FamilySpec,
+    presentation_options,
+)
+from number_compiler.api.query_types import (
+    ExecutionQuery,
+    QueryOptionError,
+)
 from number_compiler.arithmetic.contracts.input_validation import require_integer
-from number_compiler.arithmetic.fields.symbolic_extent import DyadicExtent
-
-
-@dataclass(frozen=True)
-class FamilyCapability:
-    unit: str
-    parameters: tuple[str, ...]
-    nth_info: tuple[str, ...]
-    event_info: tuple[str, ...] = ()
-
-
-CAPABILITIES = {
-    "a367620": FamilyCapability(
-        "oeis_index", (), ("metrics", "clock", "tropical", "certificate")
-    ),
-    "reverse-add": FamilyCapability(
-        "iterations", ("seed", "base"), ("metrics", "mirror", "boundary-macro")
-    ),
-    "196": FamilyCapability(
-        "iterations", ("seed", "base"), ("metrics", "mirror", "boundary-macro")
-    ),
-    "collatz": FamilyCapability(
-        "physical_iterations",
-        ("seed", "radix"),
-        ("metrics", "clock", "accumulator"),
-        (
-            "clock",
-            "modular",
-            "twisted",
-            "hasse",
-            "hensel",
-            "tropical",
-            "factor",
-            "safety",
-        ),
-    ),
-    "prime": FamilyCapability("prime_index", ("start",), ("metrics",)),
-    "fermat": FamilyCapability(
-        "fermat_index", (), ("metrics", "primality", "factor", "root")
-    ),
-    "mersenne": FamilyCapability(
-        "mersenne_exponent", (), ("metrics", "primality", "factor", "root")
-    ),
-    "antihydra": FamilyCapability(
-        "macro_returns_after_startup",
-        (),
-        (
-            "metrics",
-            "ledger",
-            "clock",
-            "modular",
-            "tape",
-            "twisted",
-            "spacetime",
-            "hasse",
-            "hensel",
-            "mahler",
-            "tropical",
-            "factor",
-        ),
-    ),
-}
-
-
-@dataclass(frozen=True)
-class QueryRequest:
-    family: str
-    selector: Literal["nth", "events", "verify"]
-    index: int
-    nth_power10: int | None = None
-    max_index_bits: int = 1_000_000
-    info: tuple[str, ...] = ()
-    no_value: bool = False
-    format: str = "value"
-    output_base: int = 10
-    seed: int | None = None
-    base: int = 10
-    radix: int = 2
-    start: int = 2
-    certificate: str | None = None
-    max_output_bits: int = 1_000_000
-    max_steps: int = 4096
-    max_state_bits: int = 4096
-    max_events: int = 4096
-    max_digits: int = 4096
-    max_observer_terms: int = 1_000_000
-    max_candidate_bits: int = 1_000_000
-    max_factor_products: int = 4096
-    max_comma_states: int = 131_072
-    max_comma_work: int = 1_000_000
-    max_prime_states: int = 131_072
-    max_prime_work: int = 1_000_000
-    max_prime_stages: int = 4096
-    defect: int | None = None
-    modulus: int = 257
-    width: int = 2
-    sign: int = -1
-    precision: int = 8
-    target: int = 0
-    s_weight: int = 1
-    z_weight: int = 1
-    time_width: int = 2
-    time_sign: int = 1
-
-    @property
-    def index_unit(self) -> str:
-        return (
-            "accelerated_odd_events"
-            if self.selector == "events"
-            else CAPABILITIES[self.family].unit
-        )
-
-    @property
-    def presentation_index(self) -> int | dict[str, int | str]:
-        if self.nth_power10 is None:
-            return self.index
-        return {"encoding": "power10", "exponent": self.nth_power10}
-
-    def present_indices(self, packet: dict[str, Any]) -> dict[str, Any]:
-        """Keep selector coordinates compact throughout CLI observation packets."""
-        if self.nth_power10 is None:
-            return packet
-        pending: list[Any] = [packet]
-        index_fields = {"index", "requested_index", "requested_returns", "parameter"}
-        while pending:
-            container = pending.pop()
-            items = (
-                container.items()
-                if isinstance(container, dict)
-                else enumerate(container)
-            )
-            for key, value in items:
-                if key in index_fields and type(value) is int and value == self.index:
-                    container[key] = self.presentation_index
-                elif isinstance(value, (dict, list)):
-                    pending.append(value)
-        return packet
 
 
 def cli_index_token(text: str) -> str:
     """Validate decimal syntax while deferring integer construction to admission."""
     digits = text[1:] if text and text[0] in "+-" else text
-    if not digits or any(c < "0" or c > "9" for c in digits):
+    if not digits or any(char < "0" or char > "9" for char in digits):
         raise argparse.ArgumentTypeError("expected an ASCII integer")
     digits = digits.lstrip("0") or "0"
     return "-" + digits if text.startswith("-") and digits != "0" else digits
 
 
 def _index_product(left: int, right: int, max_bits: int) -> int:
-    # Reject before multiplication when even its lower bit bound is over budget.
-    # The remaining product has at most max_bits + 1 bits, including refusals.
     if left and right and left.bit_length() + right.bit_length() - 1 > max_bits:
         raise ValueError("index exceeds --max-index-bits")
     value = left * right
@@ -167,7 +46,7 @@ def _index_product(left: int, right: int, max_bits: int) -> int:
 
 
 def bounded_index(token: str, max_bits: int) -> int:
-    """Parse an explicit decimal index without a global integer-string override."""
+    """Parse an explicit decimal index with bounded integer intermediates."""
     negative = token.startswith("-")
     digits = token[1:] if negative else token
     if 3 * (len(digits) - 1) >= max_bits:
@@ -182,7 +61,7 @@ def bounded_index(token: str, max_bits: int) -> int:
 
 
 def power10_index(exponent: int, max_bits: int) -> int:
-    """Construct an admitted power iteratively, with every product bounded."""
+    """Construct 10**K by capped exponentiation, without decimal expansion."""
     require_integer(exponent, "--nth-power10", 0)
     if 3 * exponent >= max_bits:
         raise ValueError("index exceeds --max-index-bits")
@@ -198,7 +77,7 @@ def power10_index(exponent: int, max_bits: int) -> int:
 
 def cli_integer(text: str) -> int:
     digits = text[1:] if text and text[0] in "+-" else text
-    if not digits or any(c < "0" or c > "9" for c in digits):
+    if not digits or any(char < "0" or char > "9" for char in digits):
         raise argparse.ArgumentTypeError("expected an ASCII integer")
     try:
         return int(text, 10)
@@ -214,200 +93,146 @@ class UniqueValue(argparse.Action):
         values: Any,
         option_string: str | None = None,
     ) -> None:
-        seen: dict[str, object] = getattr(namespace, "_specified", {})
-        if self.dest in seen and seen[self.dest] != values:
+        specified: dict[str, object] = getattr(namespace, "_specified", {})
+        if self.dest in specified and specified[self.dest] != values:
             parser.error(f"conflicting values for {option_string}")
-        seen[self.dest] = values
-        namespace._specified = seen
+        specified[self.dest] = values
+        namespace._specified = specified
         setattr(namespace, self.dest, values)
 
 
-# Options are exposed only by families with the matching observation capability.
-OBSERVER_OPTIONS: dict[str, tuple[int | None, tuple[str, ...]]] = {
-    "defect": (None, ("root",)),
-    "modulus": (
-        257,
-        ("modular", "twisted", "tape", "spacetime", "hasse", "factor", "accumulator"),
-    ),
-    "width": (2, ("mirror", "twisted", "tape", "spacetime", "hasse", "factor")),
-    "sign": (-1, ("twisted", "tape", "spacetime", "factor")),
-    "precision": (8, ("hensel", "mahler")),
-    "target": (0, ("hensel",)),
-    "s_weight": (1, ("tropical",)),
-    "z_weight": (1, ("tropical",)),
-    "time_width": (2, ("spacetime",)),
-    "time_sign": (1, ("spacetime",)),
-}
-
-
-def observation_options(family: str) -> dict[str, tuple[int | None, tuple[str, ...]]]:
-    """Narrow shared names to parameters actually consumed by a family."""
-    capability = CAPABILITIES[family]
-    infos = set(capability.nth_info + capability.event_info)
-    selected = {
-        name: (default, tuple(info for info in supported if info in infos))
-        for name, (default, supported) in OBSERVER_OPTIONS.items()
-        if infos.intersection(supported)
-    }
-    if family == "a367620":
-        return {}
-    if family in {"fermat", "mersenne"}:
-        return {name: value for name, value in selected.items() if name == "defect"}
-    if family == "antihydra":
-        return {
-            name: value
-            for name, value in selected.items()
-            if name not in {"target", "s_weight", "z_weight"}
-        }
-    if family == "collatz":
-        for name in ("width", "sign"):
-            default, supported = selected[name]
-            selected[name] = (
-                default,
-                tuple(info for info in supported if info != "factor"),
-            )
-    return selected
-
-
-def parser(*, demanded_family: str | None = None) -> argparse.ArgumentParser:
-    """Build all family names, configuring only the requested family's options.
-
-    Keeping every name preserves top-level usage and error text. Ordinary
-    family-first queries need no argument actions for the other families.
-    The default remains the complete parser for callers and top-level help.
-    """
-    if demanded_family is not None and demanded_family not in CAPABILITIES:
+def parser(
+    *,
+    demanded_family: str | None = None,
+    registry: Mapping[str, FamilySpec] | None = None,
+) -> argparse.ArgumentParser:
+    """Register all names while constructing only the demanded family's actions."""
+    capabilities = _CAPABILITIES if registry is None else registry
+    if demanded_family is not None and demanded_family not in capabilities:
         raise ValueError("unknown demanded CLI family")
-    result = argparse.ArgumentParser(
+    command = argparse.ArgumentParser(
         prog="number-compiler",
         description="Exact family terms: number-compiler FAMILY --nth N [--info NAME].",
     )
-    result.add_argument("--list-families", action="store_true")
-    families = result.add_subparsers(dest="family")
-    for name, capability in CAPABILITIES.items():
-        command = families.add_parser(
-            name,
-            help=f"index unit: {capability.unit}",
-            description=(
-                "a367620: one-based OEIS index; fixed decimal source 20. "
-                "Exact values require a checked infinite-path prefix. "
-                "Use --no-value --info certificate to inspect availability."
-                if name == "a367620"
-                else f"{name}: --nth uses {capability.unit}; term zero is the seed where applicable."
-            ),
+    command.add_argument("--list-families", action="store_true")
+    families = command.add_subparsers(dest="family")
+    for family, spec in capabilities.items():
+        family_parser = families.add_parser(
+            family,
+            help=f"index unit: {spec.unit}",
+            description=spec.description
+            or f"{family}: --nth uses {spec.unit}; term zero is the seed where applicable.",
         )
-        if demanded_family is not None and name != demanded_family:
+        if demanded_family is not None and family != demanded_family:
             continue
-        selectors = command.add_mutually_exclusive_group(required=True)
-        selectors.add_argument("--nth", type=cli_index_token, action=UniqueValue)
+        _add_family_options(family_parser, spec)
+    return command
+
+
+def _add_family_options(command: argparse.ArgumentParser, spec: FamilySpec) -> None:
+    selectors = command.add_mutually_exclusive_group(required=True)
+    selectors.add_argument("--nth", type=cli_index_token, action=UniqueValue)
+    selectors.add_argument(
+        "--nth-power10",
+        type=cli_index_token,
+        action=UniqueValue,
+        metavar="K",
+        help="exact term index 10^K, with K >= 0",
+    )
+    if spec.event_query_type is not None:
         selectors.add_argument(
-            "--nth-power10",
+            "--events",
             type=cli_index_token,
             action=UniqueValue,
-            metavar="K",
-            help="exact term index 10^K, with K >= 0",
+            help="accelerated odd events; information-only query",
         )
-        if capability.event_info:
-            selectors.add_argument(
-                "--events",
-                type=cli_index_token,
-                action=UniqueValue,
-                help="accelerated odd events; information-only query",
-            )
-        if name == "antihydra":
-            selectors.add_argument(
-                "--verify-nonhalting", action=UniqueValue, metavar="PATH"
-            )
-        info_help = "requested information; repeat for multiple observations"
-        if capability.event_info:
-            info_help += (
-                f"; --nth: {', '.join(capability.nth_info)}"
-                f"; --events: {', '.join(capability.event_info)}"
-            )
-        command.add_argument(
-            "--info",
-            action="append",
-            choices=tuple(dict.fromkeys(capability.nth_info + capability.event_info)),
-            default=[],
-            help=info_help,
-        )
-        command.add_argument("--no-value", action="store_true")
-        command.add_argument(
-            "--format",
-            choices=("value", "symbolic", "json"),
-            default="value",
+    if spec.verify_flag is not None:
+        selectors.add_argument(
+            "--" + spec.verify_flag.replace("_", "-"),
             action=UniqueValue,
+            metavar="PATH",
         )
+    _add_information_option(command, spec)
+    _add_presentation_options(command)
+    for name, option in spec.parser_options().items():
+        if not option.name:
+            raise ValueError(f"registry option {name!r} has no canonical name")
+        if option.value_kind != "integer":
+            if option.value_kind == "boolean":
+                command.add_argument(
+                    option.flag,
+                    action="store_true",
+                    default=option.default,
+                    help=option.help,
+                )
+                continue
+            if option.value_kind == "choice":
+                command.add_argument(
+                    option.flag,
+                    choices=option.choices,
+                    default=option.default,
+                    action=UniqueValue,
+                    help=option.help,
+                )
+                continue
+            raise ValueError(f"unsupported parser value kind {option.value_kind!r}")
         command.add_argument(
-            "--output-base", type=cli_integer, default=10, action=UniqueValue
+            option.flag,
+            type=cli_integer,
+            default=option.default,
+            action=UniqueValue,
+            help=option.help,
         )
-        command.add_argument(
-            "--max-output-bits", type=cli_integer, default=1_000_000, action=UniqueValue
+
+
+def _add_information_option(command: argparse.ArgumentParser, spec: FamilySpec) -> None:
+    supported = tuple(dict.fromkeys(spec.nth_info + spec.event_info))
+    help_text = "requested information; repeat for multiple observations"
+    if spec.event_info:
+        help_text += (
+            f"; --nth: {', '.join(spec.nth_info)}"
+            f"; --events: {', '.join(spec.event_info)}"
         )
-        command.add_argument(
-            "--max-index-bits", type=cli_integer, default=1_000_000, action=UniqueValue
-        )
-        defaults = {"seed": None, "base": 10, "radix": 2, "start": 2}
-        for parameter in capability.parameters:
+    command.add_argument(
+        "--info", action="append", choices=supported, default=[], help=help_text
+    )
+
+
+def _add_presentation_options(command: argparse.ArgumentParser) -> None:
+    for option in presentation_options().values():
+        if option.value_kind == "boolean":
             command.add_argument(
-                "--" + parameter,
-                type=cli_integer,
-                default=defaults[parameter],
-                action=UniqueValue,
-                help="ordinary --nth terms only"
-                if name == "collatz" and parameter == "radix"
-                else None,
+                option.flag,
+                action="store_true",
+                default=option.default,
+                help=option.help,
             )
-        for option, (default, _) in observation_options(name).items():
+        elif option.value_kind == "choice":
             command.add_argument(
-                "--" + option.replace("_", "-"),
-                type=cli_integer,
-                default=default,
+                option.flag,
+                choices=option.choices,
+                default=option.default,
                 action=UniqueValue,
+                help=option.help,
             )
-        budgets: dict[str, int] = {}
-        if name == "antihydra":
-            budgets.update(
-                max_steps=4096, max_state_bits=4096, max_observer_terms=1_000_000
-            )
-        elif name == "a367620":
-            budgets.update(max_comma_states=131_072, max_comma_work=1_000_000)
-        elif name == "prime":
-            budgets.update(
-                max_prime_states=131_072,
-                max_prime_work=1_000_000,
-                max_prime_stages=4096,
+        elif option.value_kind == "integer":
+            command.add_argument(
+                option.flag,
+                type=cli_integer,
+                default=option.default,
+                action=UniqueValue,
+                help=option.help,
             )
         else:
-            budgets["max_digits"] = 4096
-        if name == "collatz":
-            budgets["max_events"] = 4096
-        if name in {"fermat", "mersenne"}:
-            budgets.update(max_candidate_bits=1_000_000, max_factor_products=4096)
-        for option, default in budgets.items():
-            command.add_argument(
-                "--" + option.replace("_", "-"),
-                type=cli_integer,
-                default=default,
-                action=UniqueValue,
-            )
-    return result
+            raise ValueError(f"unsupported presentation option {option.value_kind!r}")
 
 
-def parse_request(argv: list[str]) -> QueryRequest | None:
-    demanded_family = argv[0] if argv and argv[0] in CAPABILITIES else None
-    command = parser(demanded_family=demanded_family)
-    if argv and argv[0] in {
-        "nth",
-        "observe",
-        "classify",
-        "verify-nonhalting",
-        "families",
-    }:
-        command.error(
-            "old command form removed; use FAMILY --nth N [--info NAME], "
-            "antihydra --verify-nonhalting PATH, or --list-families"
-        )
+def parse_request(
+    argv: list[str], *, registry: Mapping[str, FamilySpec] | None = None
+) -> QueryRequest | None:
+    capabilities = _CAPABILITIES if registry is None else registry
+    demanded_family = argv[0] if argv and argv[0] in capabilities else None
+    command = parser(demanded_family=demanded_family, registry=capabilities)
     args = command.parse_args(argv)
     if args.list_families:
         if args.family is not None:
@@ -417,179 +242,123 @@ def parse_request(argv: list[str]) -> QueryRequest | None:
         command.error(
             "choose a family and --nth N; use --list-families for available families"
         )
-    certificate = getattr(args, "verify_nonhalting", None)
-    event_token = getattr(args, "events", None)
-    require_integer(args.max_index_bits, "--max-index-bits", 1)
-    events = (
-        None if event_token is None else bounded_index(event_token, args.max_index_bits)
-    )
-    # An admitted exponent is below the index bit budget. Bound its own
-    # construction too, even when Python's decimal conversion limit is disabled.
-    compact_exponent = (
+    return _request_from_args(args, capabilities)
+
+
+def _request_from_args(
+    args: argparse.Namespace, capabilities: Mapping[str, FamilySpec]
+) -> QueryRequest:
+    spec = capabilities[args.family]
+    certificate = (
         None
-        if args.nth_power10 is None
-        else bounded_index(args.nth_power10, args.max_index_bits.bit_length())
+        if spec.verify_flag is None
+        else getattr(args, spec.verify_flag.replace("-", "_"), None)
+    )
+    max_index_bits = require_integer(args.max_index_bits, "--max-index-bits", 1)
+    event_token = getattr(args, "events", None)
+    event_count = (
+        None if event_token is None else bounded_index(event_token, max_index_bits)
+    )
+    power10_token = getattr(args, "nth_power10", None)
+    exponent = (
+        None
+        if power10_token is None
+        else bounded_index(power10_token, max_index_bits.bit_length())
     )
     selector: Literal["nth", "events", "verify"] = (
         "verify"
         if certificate is not None
         else "events"
-        if events is not None
+        if event_count is not None
         else "nth"
     )
-    fields = {
-        key: value
-        for key, value in vars(args).items()
-        if key in QueryRequest.__dataclass_fields__ and key not in {"info", "index"}
-    }
-    fields.update(
-        selector=selector,
-        nth_power10=compact_exponent,
-        index=0
-        if selector == "verify"
-        else events
-        if selector == "events"
-        else power10_index(compact_exponent, args.max_index_bits)
-        if compact_exponent is not None
-        else bounded_index(args.nth, args.max_index_bits),
-        certificate=certificate,
-        info=tuple(dict.fromkeys(args.info)),
+    if selector == "verify":
+        index = 0
+    elif selector == "events":
+        if event_count is None:
+            raise AssertionError("events selector lost its event count")
+        index = event_count
+    elif exponent is not None:
+        index = power10_index(exponent, max_index_bits)
+    else:
+        index = bounded_index(args.nth, max_index_bits)
+    execution = _execution_query(args, selector, index, certificate, spec)
+    observations = _observation_query(args, selector, spec)
+    presentation = PresentationOptions(
+        index=IndexPresentation("power10", exponent)
+        if exponent is not None
+        else IndexPresentation(),
+        format=cast(OutputFormat, args.format),
+        output_base=args.output_base,
+        max_output_bits=args.max_output_bits,
+        no_value=args.no_value,
     )
-    request = QueryRequest(**fields)
-    validate(request, frozenset(getattr(args, "_specified", {})))
+    try:
+        request = QueryRequest(execution, presentation, observations, max_index_bits)
+    except QueryOptionError as exc:
+        flag = spec.option_flag(
+            exc.field, selector, frozenset(getattr(args, "_specified", {}))
+        )
+        if flag is None or str(exc).startswith(flag):
+            raise
+        raise ValueError(f"{flag}: {exc}") from exc
+    _validate_request(request, frozenset(getattr(args, "_specified", {})), spec)
     return request
 
 
-def validate(q: QueryRequest, specified: frozenset[str]) -> None:
-    capability = CAPABILITIES[q.family]
-    if q.selector == "verify":
-        if q.info or q.no_value or specified - {"verify_nonhalting", "format"}:
-            raise ValueError(
-                "certificate verification cannot be combined with term options"
-            )
-        if q.format == "symbolic":
-            raise ValueError("certificate verification has no symbolic value")
-        return
-    require_integer(
-        q.index,
-        "--nth" if q.selector == "nth" else "--events",
-        1 if q.family in {"mersenne", "a367620"} else 0,
-    )
-    require_integer(q.max_index_bits, "--max-index-bits", 1)
-    if q.index.bit_length() > q.max_index_bits:
-        raise ValueError("index exceeds --max-index-bits")
-    allowed = capability.event_info if q.selector == "events" else capability.nth_info
-    if set(q.info) - set(allowed):
-        raise ValueError("requested information is unavailable for this selector")
-    if q.selector == "events" and {"output_base", "max_output_bits"} & specified:
-        raise ValueError("event observations have no term output to format or limit")
-    if q.selector == "events" and "radix" in specified:
-        raise ValueError("--radix applies to Collatz --nth terms, not --events")
-    if (q.no_value or q.selector == "events") and not q.info:
-        raise ValueError("information-only queries require --info")
-    if q.format == "symbolic" and (q.no_value or q.selector == "events"):
-        raise ValueError("symbolic output requires a term value")
-    for option, (_, supported) in observation_options(q.family).items():
-        if option in specified and not set(q.info).intersection(supported):
-            raise ValueError(
-                f"--{option.replace('_', '-')} requires its matching --info"
-            )
-    if "root" in q.info and q.defect is None:
-        raise ValueError("--info root requires --defect")
-    if q.family in {"reverse-add", "collatz"} and q.seed is None:
-        raise ValueError(f"{q.family} requires --seed")
-    if q.seed is not None:
-        require_integer(q.seed, "--seed", 1 if q.family == "collatz" else 0)
-    require_integer(q.base, "--base", 2)
-    if "boundary-macro" in q.info and q.base != 10:
-        raise ValueError("--info boundary-macro requires decimal --base 10")
-    require_integer(q.radix, "--radix", 2)
-    if q.family == "collatz" and not (q.radix in (2, 3) or q.radix % 6 == 0):
-        raise ValueError("--radix must be 2, 3, or a multiple of 6 for Collatz")
-    if q.selector == "events" and q.seed is not None and not q.seed & 1:
-        raise ValueError("accelerated event observations require an odd seed")
-    require_integer(q.start, "--start", 0)
-    require_integer(q.output_base, "--output-base", 2, 36)
-    for name in (
-        "max_output_bits",
-        "max_state_bits",
-        "max_digits",
-        "max_candidate_bits",
-    ):
-        require_integer(getattr(q, name), "--" + name.replace("_", "-"), 1)
-    for name in (
-        "max_steps",
-        "max_events",
-        "max_factor_products",
-        "max_observer_terms",
-    ):
-        require_integer(getattr(q, name), "--" + name.replace("_", "-"), 0)
-    for name in (
-        "max_prime_states",
-        "max_prime_work",
-        "max_prime_stages",
-        "max_comma_states",
-        "max_comma_work",
-    ):
-        require_integer(getattr(q, name), "--" + name.replace("_", "-"), 1)
-    if q.selector == "events" and q.index > q.max_events:
-        raise ValueError("source observation budget exceeded")
-    if q.family == "collatz" and q.selector == "nth" and "clock" in q.info:
-        assert q.seed is not None
-        if q.index > q.max_events or q.seed.bit_length() > q.max_digits:
-            raise ValueError("physical clock observation budget exceeded")
-    require_integer(q.modulus, "--modulus", 2)
-    if q.modulus.bit_length() > 4096:
-        raise ValueError("coefficient modulus exceeds bit budget")
-    if "mirror" in q.info:
-        require_integer(q.width, "--width", 1)
-        if q.width > q.max_digits:
-            raise ValueError("mirror sheet exceeds digit budget")
-    else:
-        require_integer(q.width, "--width", 1, 256)
-    require_integer(q.time_width, "--time-width", 1, 256)
-    require_integer(q.precision, "--precision", 0, 4096)
-    if q.sign not in (-1, 1) or q.time_sign not in (-1, 1):
-        raise ValueError("cylinder signs must be -1 or +1")
-    if q.family == "antihydra":
-        require_integer(q.max_state_bits, "--max-state-bits", 4)
-        if "hasse" in q.info:
-            require_integer(q.width, "Hasse order", 1, 8)
-        if {"hensel", "mahler"}.intersection(q.info):
-            require_integer(q.precision, "--precision", 1, 4096)
-        if "factor" in q.info and pow(2, q.width, q.modulus) != q.sign % q.modulus:
-            raise ValueError("factor target is incompatible with the tape cylinder")
-        if "spacetime" in q.info:
-            require_integer(q.width, "spatial width", 1, 64)
-            require_integer(q.time_width, "temporal width", 1, 64)
-            require_integer(q.max_observer_terms, "projection work budget", 1)
-    if q.family in {"fermat", "mersenne"} and {"primality", "factor"}.intersection(
-        q.info
-    ):
-        require_integer(
-            q.index, "special theorem parameter", 2 if q.family == "mersenne" else 0
+def _execution_query(
+    args: argparse.Namespace,
+    selector: Literal["nth", "events", "verify"],
+    index: int,
+    certificate: str | None,
+    spec: FamilySpec,
+) -> ExecutionQuery:
+    try:
+        if selector == "verify":
+            if certificate is None:
+                raise AssertionError("verify selector lost its certificate path")
+            return spec.build_verify_query(certificate)
+        if selector == "events":
+            return spec.build_event_query(index, vars(args))
+        return spec.build_term_query(index, vars(args))
+    except QueryOptionError as exc:
+        flag = spec.option_flag(
+            exc.field, selector, frozenset(getattr(args, "_specified", {}))
         )
-        from number_compiler.sequences.power_numbers.admission import (
-            require_special_candidate_budget,
-        )
+        if flag is None:
+            raise
+        if str(exc).startswith(flag):
+            raise
+        raise ValueError(f"{flag}: {exc}") from exc
 
-        require_special_candidate_budget(q.family, q.index, q.max_candidate_bits)
-    if q.no_value or q.selector != "nth" or q.format == "symbolic":
-        return
-    cap = q.max_output_bits
-    over_cap = False
-    if q.family == "fermat":
-        over_cap = DyadicExtent(q.index, 1) > cap
-    elif q.family == "mersenne":
-        over_cap = q.index > cap
-    elif q.family in {"reverse-add", "196"}:
-        over_cap = (196 if q.seed is None else q.seed).bit_length() > cap
-    elif q.family == "collatz":
-        assert q.seed is not None
-        # A growth upper bound cannot prove the terminal output is too large.
-        # Positive iterates may shrink into an admitted finite cycle.
-        over_cap = q.index == 0 and q.seed.bit_length() > cap
-    elif q.family == "prime":
-        over_cap = (max(2, q.start) + q.index).bit_length() > cap
-    if over_cap:
-        raise ValueError(f"output exceeds --max-output-bits ({cap})")
+
+def _observation_query(
+    args: argparse.Namespace,
+    selector: Literal["nth", "events", "verify"],
+    spec: FamilySpec,
+) -> ObservationOptions:
+    return spec.build_observations(
+        selector, tuple(dict.fromkeys(args.info)), vars(args)
+    )
+
+
+def _validate_request(
+    request: QueryRequest, specified: frozenset[str], spec: FamilySpec
+) -> None:
+    try:
+        spec.validate_request(request, specified)
+    except QueryOptionError as exc:
+        flag = spec.option_flag(exc.field, request.selector, specified)
+        if flag is None or str(exc).startswith(flag):
+            raise
+        raise ValueError(f"{flag}: {exc}") from exc
+
+
+__all__ = [
+    "bounded_index",
+    "cli_index_token",
+    "cli_integer",
+    "parse_request",
+    "parser",
+    "power10_index",
+]

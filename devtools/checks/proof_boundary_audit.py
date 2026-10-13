@@ -6,6 +6,7 @@ import ast
 from pathlib import Path
 
 from devtools.checks.package_contracts import DEVELOPER_ROOTS
+from devtools.checks.source_discovery import authored_files
 
 LEGACY_MODULES = frozenset(
     {
@@ -69,8 +70,11 @@ def proof_import_violations(source: str, module: str) -> tuple[str, ...]:
 
 
 def production_proof_import_violations(package: Path) -> tuple[str, ...]:
+    package = package.resolve()
     violations: list[str] = []
-    for path in sorted(package.rglob("*.py")):
+    for path in authored_files(package):
+        if path.suffix != ".py":
+            continue
         relative = path.relative_to(package)
         if relative.parts[0] == "proof":
             continue

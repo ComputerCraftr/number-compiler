@@ -3,11 +3,13 @@
 from __future__ import annotations
 
 import json
+from pathlib import Path
 
 import pytest
 
 from number_compiler.api.cli import main
-from number_compiler.api.cli_requests import CAPABILITIES, parse_request
+from number_compiler.api.cli_requests import parse_request
+from number_compiler.api.family_registry import CAPABILITIES
 
 
 def test_family_nth_json_has_the_canonical_envelope(
@@ -24,6 +26,21 @@ def test_family_nth_json_has_the_canonical_envelope(
         "value": "3",
         "info": {},
     }
+
+
+def test_registered_certificate_adapter_preserves_rejection_envelope(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    certificate = tmp_path / "invalid.json"
+    certificate.write_text("{}", encoding="utf-8")
+    assert (
+        main(["antihydra", "--verify-nonhalting", str(certificate), "--format", "json"])
+        == 1
+    )
+    packet = json.loads(capsys.readouterr().out)
+    assert packet["nonhalting_certified"] is False
+    assert packet["status"] == "rejected"
+    assert packet["reason"]
 
 
 def test_list_families_has_registry_units_and_no_term_execution(
@@ -81,16 +98,6 @@ def test_text_keeps_digits_on_stdout_and_info_dict_on_stderr(
     assert info["metrics"]["family"] == "fermat"
 
 
-def test_old_commands_and_metrics_flag_are_rejected_with_migration_hint() -> None:
-    with pytest.raises(SystemExit) as old_command:
-        main(["nth", "fermat", "0"])
-    assert old_command.value.code == 2
-
-    with pytest.raises(SystemExit) as old_metrics:
-        main(["fermat", "--nth", "0", "--metrics"])
-    assert old_metrics.value.code == 2
-
-
 def test_unsupported_family_selector_is_rejected_before_execution() -> None:
     with pytest.raises(SystemExit) as unsupported:
         main(["fermat", "--nth", "0", "--info", "clock"])
@@ -100,7 +107,7 @@ def test_unsupported_family_selector_is_rejected_before_execution() -> None:
 @pytest.mark.parametrize(
     ("family", "selector", "index", "extra", "name"),
     [
-        ("196", "--nth", "0", [], "metrics"),
+        ("reverse-add", "--nth", "0", ["--seed", "196"], "metrics"),
         ("reverse-add", "--nth", "0", ["--seed", "1"], "metrics"),
         ("collatz", "--nth", "0", ["--seed", "27"], "clock"),
         ("collatz", "--events", "0", ["--seed", "27"], "clock"),

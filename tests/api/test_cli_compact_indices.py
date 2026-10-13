@@ -8,8 +8,10 @@ from typing import Never
 
 import pytest
 
-from number_compiler.api import cli, cli_context, cli_requests
+from number_compiler.api import cli, cli_context, cli_render, cli_requests
+from number_compiler.api.family_registry import CAPABILITIES
 from number_compiler.api.number_api import NumberCompiler
+from number_compiler.api.query_types import FermatTermQuery, TermQuery
 from number_compiler.arithmetic.contracts.unresolved_term import UnresolvedSequenceTerm
 
 
@@ -18,10 +20,10 @@ def forbidden(*args: object, **kwargs: object) -> Never:
 
 
 def family_options(family: str) -> list[str]:
-    return ["--seed", "27"] if family in {"reverse-add", "collatz"} else []
+    return ["--seed", "27"] if family in {"reverse-add", "2rev10", "collatz"} else []
 
 
-@pytest.mark.parametrize("family", cli_requests.CAPABILITIES)
+@pytest.mark.parametrize("family", CAPABILITIES)
 @pytest.mark.parametrize("exponent", (0, 1, 4))
 def test_compact_selector_is_an_exact_family_integer(
     family: str, exponent: int
@@ -39,12 +41,12 @@ def test_compact_selector_is_an_exact_family_integer(
     assert request is not None
     assert request.selector == "nth" and type(request.index) is int
     assert request.index == 10**exponent
-    assert request.index_unit == cli_requests.CAPABILITIES[family].unit
+    assert request.index_unit == CAPABILITIES[family].unit
     assert request.presentation_index == {"encoding": "power10", "exponent": exponent}
     assert request.max_index_bits == 1_000_000
 
 
-@pytest.mark.parametrize("family", cli_requests.CAPABILITIES)
+@pytest.mark.parametrize("family", CAPABILITIES)
 def test_compact_value_and_info_match_explicit_index(
     family: str, capsys: pytest.CaptureFixture[str]
 ) -> None:
@@ -208,7 +210,7 @@ def test_real_large_compact_metadata_never_formats_index_text(
     from number_compiler.api import symbolic_terms
 
     monkeypatch.setattr(symbolic_terms, "integer_text", forbidden)
-    monkeypatch.setattr(cli, "_render_value", forbidden)
+    monkeypatch.setattr(cli_render, "_render_value", forbidden)
     expected = 3 if family == "a367620" else 2 if family == "antihydra" else 0
     assert (
         cli.main(
@@ -263,7 +265,7 @@ def test_compact_symbolic_value_keeps_power10_selector(
 def test_projected_symbolic_constructor_keyword_remains_supported() -> None:
     from number_compiler.api.number_api import ProjectedNumberTerm
 
-    term = NumberCompiler().project_nth("fermat", 1)
+    term = NumberCompiler().project(FermatTermQuery(1))
     copied = ProjectedNumberTerm(
         family=term.family,
         index=term.index,
@@ -281,7 +283,6 @@ def test_projected_symbolic_constructor_keyword_remains_supported() -> None:
     "family,expected",
     (
         ("a367620", "A367620[1]"),
-        ("196", "reverse_add(seed=196,base=10)[1]"),
         ("reverse-add", "reverse_add(seed=27,base=10)[1]"),
         ("collatz", "collatz(seed=27)[1]"),
         ("prime", "prime_at_or_after(start=2)[1]"),
@@ -334,11 +335,11 @@ def test_verification_rejects_index_budget_as_a_term_option() -> None:
         )
 
 
-@pytest.mark.parametrize("family", cli_requests.CAPABILITIES)
+@pytest.mark.parametrize("family", CAPABILITIES)
 def test_compact_information_only_never_renders(
     family: str, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
 ) -> None:
-    monkeypatch.setattr(cli, "_render_value", forbidden)
+    monkeypatch.setattr(cli_render, "_render_value", forbidden)
     assert (
         cli.main(
             [
@@ -363,14 +364,14 @@ def test_compact_information_only_never_renders(
 def test_large_compact_unresolved_diagnostics_keep_index_encoded(
     monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
 ) -> None:
-    def unresolved(
-        self: NumberCompiler, family: str, index: int, **kwargs: int
-    ) -> Never:
-        assert type(index) is int and index == 10**5000
-        raise UnresolvedSequenceTerm(index, 1, "test-certificate", "outside prefix")
+    def unresolved(self: NumberCompiler, query: TermQuery) -> Never:
+        assert type(query.index) is int and query.index == 10**5000
+        raise UnresolvedSequenceTerm(
+            query.index, 1, "test-certificate", "outside prefix"
+        )
 
-    monkeypatch.setattr(NumberCompiler, "project_nth", unresolved)
-    monkeypatch.setattr(cli, "_render_value", forbidden)
+    monkeypatch.setattr(NumberCompiler, "project", unresolved)
+    monkeypatch.setattr(cli_render, "_render_value", forbidden)
     assert cli.main(["a367620", "--nth-power10", "5000", "--format", "json"]) == 3
     captured = capsys.readouterr()
     packet = json.loads(captured.out)
@@ -382,7 +383,7 @@ def test_large_compact_unresolved_diagnostics_keep_index_encoded(
 def test_compact_metadata_only_preserves_unresolved_comma_boundary(
     monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
 ) -> None:
-    monkeypatch.setattr(cli, "_render_value", forbidden)
+    monkeypatch.setattr(cli_render, "_render_value", forbidden)
     assert (
         cli.main(
             [
@@ -404,21 +405,20 @@ def test_compact_metadata_only_preserves_unresolved_comma_boundary(
     assert packet["info"]["certificate"]["requested_index"] == encoded
 
 
-def test_compact_presentation_handles_nested_selector_coordinates() -> None:
+def test_compact_presentation_does_not_rewrite_equal_arithmetic_values() -> None:
+    from number_compiler.api.json_output import json_integers
+
     request = cli_requests.parse_request(
         ["antihydra", "--nth-power10", "2", "--format", "symbolic"]
     )
     assert request is not None
-    packet = request.present_indices(
-        {
-            "value": {"requested_returns": 100, "h": 100},
-            "factor_target": {"parameter": 100},
-        }
+    packet = json_integers(
+        {"index": request.presentation_index, "value": {"h": 100, "parameter": 100}}
     )
-    encoded = {"encoding": "power10", "exponent": 2}
-    assert packet["value"]["requested_returns"] == encoded
-    assert packet["factor_target"]["parameter"] == encoded
-    assert packet["value"]["h"] == 100
+    assert packet == {
+        "index": {"encoding": "power10", "exponent": 2},
+        "value": {"h": 100, "parameter": 100},
+    }
 
 
 @pytest.mark.parametrize(
@@ -484,5 +484,6 @@ def test_compact_info_metadata_is_centralized_in_query_context(
     monkeypatch.setattr(cli_context.QueryContext, "_observe", observation)
     packet = cli_context.QueryContext(request, NumberCompiler()).information()["ledger"]
     encoded = {"encoding": "power10", "exponent": 1}
-    assert packet["index"] == packet["requested_returns"] == encoded
+    assert packet["index"] == encoded
+    assert packet["requested_returns"] == 10
     assert packet["value"] == 10

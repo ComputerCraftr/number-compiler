@@ -35,12 +35,24 @@ class SourceGeometry:
     ) -> None:
         if type(source) is not ExactSource:
             raise TypeError("source geometry requires an immutable exact source")
-        source.__post_init__()
-        if construction is not None:
+        if construction is None:
+            # Creating the construction authority validates this same source.
+            self._construction = OriginalSourceConstruction(source)
+        elif (
+            type(construction) is OriginalSourceConstruction
+            and construction.source is source
+        ):
+            # The authority validator checks both the authority shape and its
+            # ExactSource payload. When both arguments are the same object,
+            # that single validation covers the public source argument too.
+            OriginalSourceConstruction.validate_source(construction)
+            self._construction = construction
+        else:
+            # Equal-but-distinct source records must each be validated before
+            # equality can be used to admit the authority.
+            source.__post_init__()
             OriginalSourceConstruction.validate_source(construction, source)
-        self._construction = (
-            OriginalSourceConstruction(source) if construction is None else construction
-        )
+            self._construction = construction
         self.ledger = ledger
         ledger.register_execution_root(self)
         self.token = ArenaToken("source-geometry")

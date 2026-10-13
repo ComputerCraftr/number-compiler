@@ -2,72 +2,23 @@
 
 from __future__ import annotations
 
-import argparse
 from copy import deepcopy
 from dataclasses import asdict
 from typing import Any
 
 from number_compiler.api.json_output import json_integers
-from number_compiler.arithmetic.contracts.input_validation import require_integer
 from number_compiler.sequences.antihydra.machine import MACHINE, MACHINE_SHA256
 from number_compiler.sequences.antihydra.mahler import tangent
 from number_compiler.sequences.antihydra.observers import (
     SpaceTimeProjection,
     tape_projection,
 )
-from number_compiler.sequences.antihydra.runtime import ArithmeticResult, Run, run
+from number_compiler.sequences.antihydra.runtime import ArithmeticResult, Run
 from number_compiler.sequences.antihydra.support import (
     directional_hasse,
     tape_hasse,
     tape_intervals,
 )
-
-
-def observe(args: argparse.Namespace) -> dict[str, Any]:
-    """Compatibility Python adapter; the family-first CLI uses a shared query owner."""
-    if args.seed is not None or args.defect is not None:
-        raise ValueError(
-            "Antihydra uses the pinned blank-tape source; no --seed or --defect"
-        )
-    kind = args.kind or "clock"
-    if kind not in {
-        "clock",
-        "physical-clock",
-        "tape",
-        "twisted",
-        "hasse",
-        "tropical",
-        "factor",
-        "spacetime",
-        "mahler",
-        "hensel",
-        "modular",
-    }:
-        raise ValueError("unsupported Antihydra observation")
-    require_integer(args.modulus, "coefficient modulus", 2)
-    if args.modulus.bit_length() > 4096:
-        raise ValueError("coefficient modulus exceeds bit budget")
-    require_integer(args.width, "spatial width", 1, 256)
-    require_integer(args.precision, "precision", 1, 4096)
-    if kind == "hasse":
-        require_integer(args.width, "Hasse order", 1, 8)
-    if (
-        kind == "factor"
-        and pow(2, args.width, args.modulus) != args.sign % args.modulus
-    ):
-        raise ValueError("factor target is incompatible with the tape cylinder")
-    result = run(args.index, max_returns=args.max_events, max_bits=args.max_digits)
-    return observe_run(
-        result,
-        kind=kind,
-        modulus=args.modulus,
-        width=args.width,
-        sign=args.sign,
-        precision=args.precision,
-        time_width=args.time_width,
-        time_sign=args.time_sign,
-        max_observer_terms=args.max_observer_terms,
-    )
 
 
 def observe_arithmetic(
@@ -281,4 +232,4 @@ def observe_run(
     )
 
 
-__all__ = ["json_integers", "observe", "observe_arithmetic", "observe_run"]
+__all__ = ["observe_arithmetic", "observe_run"]

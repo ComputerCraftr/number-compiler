@@ -243,6 +243,24 @@ def test_double_reverse_parameter_engine_contains_literal_successor(seed: int) -
     _assert_literal_projection(outcomes, expected=expected, source=seed)
 
 
+@pytest.mark.parametrize("seed", (9_876_543_210_987_654_321, 1_234_567_890_123_456_789))
+@pytest.mark.parametrize("digits", (2, 4, 8))
+def test_double_reverse_inner_carry_matches_exact_reversed_prefix_product(
+    seed: int, digits: int
+) -> None:
+    source_digits = digits_lsd(seed, 10)
+    engine = _engine(ResourceLedger(), digits=digits, operation="double-reverse")
+    actual = engine.source_inner_carry(source_digits)
+
+    # The source transfer consumes the low-order prefix of the reversed input.
+    # Its outgoing carry is the quotient from exact multiplication by two.
+    reversed_digits = tuple(reversed(source_digits))
+    reversed_prefix = reversed_digits[: len(source_digits) - digits]
+    prefix_value = sum(value * 10**index for index, value in enumerate(reversed_prefix))
+    expected = (2 * prefix_value) // (10 ** len(reversed_prefix))
+    assert actual == expected
+
+
 def test_double_reverse_refuses_zero_tail_and_symmetric_carry_views() -> None:
     ledger = ResourceLedger()
     engine = _engine(ledger, operation="double-reverse")

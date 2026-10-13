@@ -141,6 +141,23 @@ def test_production_cross_seed_reuse_reduces_observed_source_work() -> None:
     clear_process_cache()
 
 
+def test_transported_checkpoint_reduces_work_on_same_receiving_seed() -> None:
+    source = (1 << 200) + 931386509544713451
+    receiving = source + (2 << 200)
+    cold = PoweredCollatzTerm(receiving, 1000, shared_cache=False)
+    expected = cold.materialize(max_bits=1000)
+    producer = PoweredCollatzTerm(source, 1000, shared_cache=True)
+    producer.materialize(max_bits=1000)
+    warm = PoweredCollatzTerm(receiving, 1000, shared_cache=True)
+    assert warm.materialize(max_bits=1000) == expected
+    assert warm._ledger.counters["collatz_hashlife_occurrence_transported_hits"] > 0
+    assert (
+        warm._ledger.counters["collatz_physical_temporal_d8_discovery_symbols"]
+        + warm._ledger.counters.get("collatz_temporal_root_checkpoint_d8_steps", 0)
+        < cold._ledger.counters["collatz_physical_temporal_d8_discovery_symbols"]
+    )
+
+
 def test_disabled_shared_cache_retains_original_production_route() -> None:
     term = PoweredCollatzTerm(27, 100, shared_cache=False)
     assert (

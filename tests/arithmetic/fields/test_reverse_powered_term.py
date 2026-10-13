@@ -6,6 +6,7 @@ from typing import Never
 import pytest
 
 from number_compiler.api.number_api import NumberCompiler
+from number_compiler.api.query_types import ReverseAddTermQuery
 from number_compiler.arithmetic.fields.radix import digits_lsd, value_from_lsd_digits
 from number_compiler.sequences.reverse_add.extent import ReverseAddExtent
 from number_compiler.sequences.reverse_add.power import ReverseAddPoweredTerm
@@ -56,7 +57,7 @@ def test_huge_nth_term_construction_is_logarithmic_and_does_not_project() -> Non
 
 
 def test_number_api_keeps_reverse_add_width_exact_and_lazy() -> None:
-    term = NumberCompiler().project_nth("196", 10**12)
+    term = NumberCompiler().project(ReverseAddTermQuery(10**12, seed=196))
     assert isinstance(term.metrics.width, ReverseAddExtent)
     assert term.metrics.projection_work == 0
     assert term.metrics.construction_steps < 2 * (10**12).bit_length()
@@ -78,4 +79,4 @@ def test_direct_digit_projection_has_no_ordinary_temporal_successor_loop(
     monkeypatch.setattr(reverse_digits, "successor", forbidden)
     compiler = NumberCompiler()
     # 196[16] = 897100798, LSD first => position 4 is 0.
-    assert compiler.project_digit("196", 16, 4) == 0
+    assert compiler.project_digit(ReverseAddTermQuery(16, seed=196), 4) == 0

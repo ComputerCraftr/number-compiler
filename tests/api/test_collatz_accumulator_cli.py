@@ -1,3 +1,5 @@
+from number_compiler.api import cli_render
+
 """Explicit normalized accumulator demands share physical query admission."""
 
 import json
@@ -69,7 +71,7 @@ def test_ordinary_collatz_query_does_not_request_accumulator(
 def test_accumulator_information_does_not_render_digits(
     monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
 ) -> None:
-    monkeypatch.setattr(cli, "_render_value", forbid_explicit_lowering)
+    monkeypatch.setattr(cli_render, "_render_value", forbid_explicit_lowering)
     assert (
         cli.main(
             [

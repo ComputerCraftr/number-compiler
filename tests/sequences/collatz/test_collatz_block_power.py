@@ -6,6 +6,7 @@ from typing import Never
 import pytest
 
 from number_compiler.api.number_api import NumberCompiler
+from number_compiler.api.query_types import CollatzTermQuery
 from number_compiler.sequences.collatz.block_power import PoweredCollatzTerm
 from tests.support.report_values import object_record, text_values
 
@@ -251,7 +252,7 @@ def test_public_collatz_radices_share_the_same_physical_powered_backend() -> Non
     """Run the end-to-end public radix 2/3/6/12 projection matrix."""
     compiler = NumberCompiler()
     for radix in (2, 3, 6, 12):
-        term = compiler.project_nth("collatz", 10, seed=27, radix=radix)
+        term = compiler.project(CollatzTermQuery(10, seed=27, radix=radix))
         assert term.metrics.projection_work == 0
         assert term.materialize(max_bits=10_000) == 214
 
@@ -297,7 +298,6 @@ def test_collatz_temporal_release_probe_reports_measured_source_image_execution(
         ):
             measured = record[name]
             assert type(measured) is int and measured > 0
-    assert object_record(result["source_audit"])["history_word_carrier_deleted"]
     assert object_record(result["source_audit"])["exact_future_tile_output_deleted"]
 
 

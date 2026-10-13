@@ -6,29 +6,10 @@ import pytest
 
 from devtools.checks.isabelle_registry import discover_sessions, root_files
 from devtools.checks.isabelle_syntax import (
-    named_type_and_locale_declarations,
     parse_sessions,
     session_dependency_closure,
 )
 from devtools.checks.repository_policy import isabelle_session_option_violations
-
-
-def test_relocation_inventory_ignores_quoted_and_commented_carrier_names() -> None:
-    text = """
-datatype 'a Actual = Item 'a
-type_synonym ('a, 'b) Pair = "'a × 'b"
-record Payload = value :: nat
-locale Contract = fixes value :: nat
-(* datatype Commented = Wrong *)
-text ‹datatype Documented = Wrong›
-definition sample where "sample = ''datatype Quoted = Wrong''"
-"""
-    assert named_type_and_locale_declarations(text) == {
-        "Actual",
-        "Pair",
-        "Payload",
-        "Contract",
-    }
 
 
 def _registered_tree(root: Path) -> Path:

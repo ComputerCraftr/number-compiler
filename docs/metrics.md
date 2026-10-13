@@ -17,6 +17,20 @@ probes; its `metrics_schema_version` is also 8.
   action interning and the outer balanced-effect memo. These are read-only
   counters shared by Collatz and Antihydra; Mahler consumes the latter's support.
   Repeated finite-cylinder hits do not certify a temporal pumping theorem.
+- `family_work.guarded_template_*` counts query-local exact guarded-action
+  lookups, hits, misses, publications and capacity bypasses. These are separate
+  from source-occurrence and innovation-observer reuse. A template hit still
+  requires the receiving source's cylinder and physical-duration admission;
+  it does not transfer another source's endpoint. Unused owners report `null`.
+- `family_work.guarded_prefix_*` separates consumed macro requests, root and
+  interval candidates, arithmetic operand bits, new root-checkpoint publications
+  and budget bypasses. Interior interval joins retain the occurrence owner's
+  counters; deriving a checkpoint is construction work, not an applied hit.
+- `family_work.root_checkpoint_work` lists measured checkpoint construction
+  counters from ordinary runs and D8 blocks: candidate/publication counts,
+  bounded D8 transitions, frame materializations, operand-bit work and budget
+  bypasses. Missing counters are omitted. These are auxiliary construction
+  costs, not occurrence hits or represented transitions.
 - `demand` and `stream` distinguish query counts, spatial visits and emitted
   symbols. A stream visit is not a temporal jump.
 - `observations` exposes measured observer work; `resources` reports entries,

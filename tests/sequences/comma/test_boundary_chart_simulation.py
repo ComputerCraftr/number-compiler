@@ -9,6 +9,8 @@ from __future__ import annotations
 
 from math import gcd
 
+import pytest
+
 from number_compiler.sequences.comma.boundary_chart import (
     PERIOD,
     BoundaryChart,
@@ -80,6 +82,7 @@ def _assert_move_matches_literal_children(
     assert increment == move.literal_increment
 
 
+@pytest.mark.validation
 def test_scalar_initial_chart_step_matches_literal_model_for_every_phase() -> None:
     """Exercise every admitted N/Z start and all 924 first-step phases."""
     for kind in ("N", "Z"):
@@ -90,6 +93,7 @@ def test_scalar_initial_chart_step_matches_literal_model_for_every_phase() -> No
                 _assert_move_matches_literal_children(chart, move, exponent)
 
 
+@pytest.mark.validation
 def test_complete_scalar_and_grouped_walks_match_literal_model() -> None:
     """Both runtime modes terminate with the literal-oracle return fields."""
     residues = (0, 1, 4, 5, 10, 11, 461, 923)

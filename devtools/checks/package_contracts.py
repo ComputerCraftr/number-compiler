@@ -6,6 +6,8 @@ import ast
 from collections.abc import Mapping
 from pathlib import Path
 
+from devtools.checks.source_discovery import authored_files
+
 PUBLIC_PACKAGES = frozenset(
     {"api", "arithmetic", "hashlife", "sequences", "projection", "resources", "kernels"}
 )
@@ -16,13 +18,17 @@ def module_inventory(
     root: Path, *, module_paths: tuple[Path, ...] | None = None
 ) -> dict[str, Path]:
     """Give each retained authored module exactly one qualified name."""
+    root = Path(root).resolve()
     modules: dict[str, Path] = {}
     if module_paths is None:
         paths = tuple(
             path
-            for directory in (root / "src", root / "devtools", root / "tests")
-            for path in directory.rglob("*.py")
-            if "__pycache__" not in path.parts
+            for path in authored_files(root)
+            if path.suffix == ".py"
+            and any(
+                path.is_relative_to(root / directory)
+                for directory in ("src", "devtools", "tests")
+            )
         )
     else:
         paths = module_paths
@@ -52,6 +58,7 @@ def package_violations(
     module_paths: tuple[Path, ...] | None = None,
 ) -> tuple[str, ...]:
     """Check ownership without importing or executing the modules being audited."""
+    root = Path(root).resolve()
     violations: list[str] = []
     modules = module_inventory(root, module_paths=module_paths)
     for module, path in modules.items():

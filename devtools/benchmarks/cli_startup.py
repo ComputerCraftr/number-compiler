@@ -18,7 +18,7 @@ CASES = {
     "families": ["--list-families"],
     "prime": ["prime", "--nth", "1000", "--format", "json"],
     "prime-start": ["prime", "--nth", "0", "--start", "10000", "--format", "json"],
-    "196": ["196", "--nth", "8", "--format", "json"],
+    "reverse-add": ["reverse-add", "--seed", "196", "--nth", "8", "--format", "json"],
     "collatz": ["collatz", "--nth", "64", "--seed", "27", "--format", "json"],
     "antihydra": [
         "antihydra",

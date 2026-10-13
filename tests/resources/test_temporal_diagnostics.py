@@ -81,6 +81,44 @@ def test_uninstrumented_lanes_are_unavailable_not_zero() -> None:
     assert (record.resources.entries, record.resources.nodes) == (3, 4)
 
 
+def test_guarded_templates_do_not_count_as_applied_occurrences() -> None:
+    record = _collect(
+        {
+            "collatz_physical_action_publications": 1,
+            "collatz_boundary_template_lookups": 3,
+            "collatz_boundary_template_hits": 2,
+            "collatz_boundary_template_misses": 1,
+            "collatz_boundary_template_publications": 1,
+            "collatz_boundary_template_bypasses": 0,
+            "collatz_boundary_prefix_macro_requests": 2,
+            "collatz_boundary_prefix_root_candidates": 4,
+            "collatz_boundary_prefix_global_root_candidates": 2,
+            "collatz_boundary_prefix_publications": 3,
+            "collatz_temporal_root_checkpoint_d8_steps": 2,
+            "collatz_temporal_root_checkpoint_publications": 1,
+        }
+    )
+    work = record.family_work[0]
+    assert work.guarded_template_lookups == 3
+    assert work.guarded_template_hits == 2
+    assert work.guarded_template_misses == 1
+    assert work.guarded_template_publications == 1
+    assert work.guarded_template_bypasses == 0
+    assert work.guarded_prefix_macro_requests == 2
+    assert work.guarded_prefix_root_candidates == 4
+    assert work.guarded_prefix_global_root_candidates == 2
+    assert work.guarded_prefix_publications == 3
+    assert work.guarded_prefix_action_operand_bits is None
+    assert work.root_checkpoint_work == (("d8_steps", 2), ("publications", 1))
+    assert record.application.applied_hits is None
+    assert (
+        _collect({"collatz_physical_action_publications": 1})
+        .family_work[0]
+        .guarded_template_hits
+        is None
+    )
+
+
 def test_successor_work_remains_separate_from_growth_and_cache_hits() -> None:
     ledger = ResourceLedger()
     ledger.bump("reverse_successor_tape_rows", 32)

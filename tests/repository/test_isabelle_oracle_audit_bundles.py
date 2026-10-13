@@ -55,7 +55,6 @@ def _fixture(
         (session_directory / f"{name}.thy").write_text(text)
     monkeypatch.setattr(proof_index, "ROOT", root)
     monkeypatch.setattr(proof_index, "ISABELLE", proof_root)
-    monkeypatch.setattr(proof_index, "COUNTERPARTS", {})
     return directory
 
 
@@ -155,8 +154,6 @@ def test_consumer_in_dependent_session_cannot_cover_owner_session(
     )
     monkeypatch.setattr(proof_index, "ROOT", tmp_path)
     monkeypatch.setattr(proof_index, "ISABELLE", proof_root)
-    monkeypatch.setattr(proof_index, "COUNTERPARTS", {})
-
     with pytest.raises(ValueError, match="not executed in its owning.*Owner"):
         proof_index.build_index()
 

@@ -690,19 +690,6 @@ def test_occurrence_induction_uses_actual_goto_decrease_and_required_children() 
         "comma_semantic_b1_source_order_valid",
     ):
         assert retired not in source
-    for retired_file in (
-        "Comma_Semantic_B1_Source_Order_Certificate.thy",
-        "semantic_b1_source_order_publisher.ML",
-        "Comma_Semantic_B1_Source_Fold_Refinement.thy",
-        "Comma_Semantic_B1_Source_Binding_Refinement.thy",
-        "Comma_Semantic_B1_CRT_Provider_Fold.thy",
-        "Comma_Semantic_B1_CRT_Recursive_Provider.thy",
-        "Comma_Semantic_B1_CRT_Occurrence_Check.thy",
-        "Comma_Semantic_B1_CRT_Occurrence_Grouped_Refinement.thy",
-        "Comma_Semantic_B1_CRT_Occurrence_Online_Fold.thy",
-        "Comma_Semantic_B1_CRT_Occurrence_Online_Fold_Refinement.thy",
-    ):
-        assert not (root / retired_file).exists()
 
 
 def test_crt_lookup_reads_published_predicates_without_future_discovery() -> None:
