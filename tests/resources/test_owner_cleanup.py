@@ -57,7 +57,9 @@ def test_prime_teardown_releases_lease_after_child_failure(
     assert owner.dag.ledger.entries == owner.dag.ledger.nodes == 0
 
 
+@pytest.mark.parametrize("lease_failure", (False, True))
 def test_mahler_teardown_releases_lease_after_record_disposal_failure(
+    lease_failure: bool,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     cache = ProcessCache()
@@ -70,12 +72,23 @@ def test_mahler_teardown_releases_lease_after_record_disposal_failure(
     def failed_disposal() -> Never:
         raise RuntimeError("record disposal failed")
 
+    def failed_lease() -> Never:
+        raise RuntimeError("lease close failed")
+
     with monkeypatch.context() as patch:
         patch.setattr(consumer.records, "dispose", failed_disposal)
-        with pytest.raises(RuntimeError, match="record disposal failed"), consumer:
+        if lease_failure:
+            assert consumer.lease is not None
+            patch.setattr(consumer.lease, "close", failed_lease)
+        expected = "lease close failed" if lease_failure else "record disposal failed"
+        with pytest.raises(RuntimeError, match=expected) as caught, consumer:
             pass
-    assert cache.stats().active_leases == 0
+        if lease_failure:
+            assert isinstance(caught.value.__context__, RuntimeError)
+            assert str(caught.value.__context__) == "record disposal failed"
+    assert cache.stats().active_leases == int(lease_failure)
     consumer.close()
+    assert cache.stats().active_leases == 0
     assert consumer.ledger.entries == consumer.ledger.nodes == 0
 
 

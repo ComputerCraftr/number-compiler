@@ -75,6 +75,11 @@ def test_warm_reverse_point_bypasses_projection_and_retains_one_response(
     workspace = term._source_workspace()
     core = workspace.scheduler._source_image_core()
     assert len(core._projections) == 1
+    image = workspace._image
+    assert image is not None
+    image_seal = core._publication_seals.images[image.local_id]
+    projection_seal = next(iter(core._publication_seals.projections.values()))
+    seal_visits = 3 * (1 + len(image_seal.guards)) + 1 + len(projection_seal.guards)
     before = dict(term._ledger.counters)
 
     def forbidden(*args: object, **kwargs: object) -> Never:
@@ -87,9 +92,10 @@ def test_warm_reverse_point_bypasses_projection_and_retains_one_response(
         for key, value in term._ledger.counters.items()
         if value != before.get(key, 0)
     }
-    # The complete Q19 payload has 25 audited seal visits on this warm request.
+    # Three image validations and one projection validation inspect only the
+    # issued guards, independently of the encoded output grammar's size.
     assert changes == {
-        "source_image_seal_validation_visits": 25,
+        "source_image_seal_validation_visits": seal_visits,
         "source_image_projection_requests": 1,
         "source_image_projection_hits": 1,
         "temporal_point_requests": 1,

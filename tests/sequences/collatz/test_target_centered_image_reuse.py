@@ -52,6 +52,8 @@ def test_balanced_complete_effect_still_reuses_a_low_cylinder() -> None:
         ResourceLedger(), 27, 0, retain_chronology=False
     )
     width = 129
+    # A nonroot broad cylinder may use the balanced complete effect even when
+    # one exact high fiber has a root-only decimal border route.
     first = 27 + (8 << width)
     second = 27 + (9 << width)
     assert _apply(workspace, 27, width, 8) == _literal(first, width)

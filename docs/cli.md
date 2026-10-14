@@ -47,7 +47,7 @@ zero-based sequence index, Mersenne uses a positive exponent, and A367620 uses
 positive OEIS indices with checked-prefix admission. The generated capability
 table below owns the supported source parameters and observations.
 
-`2rev10` uses `U(n) = 2 * reverse10(n)`, including decimal normalization: `10 → 2`. Its decimal grammar is applied through the shared scheduler. The current exact route charges each primitive transition; it does not claim an arbitrary-depth temporal quotient. `--max-steps` and `--max-state-bits` both default to 4096. It accepts `--info metrics`, output formats and output bases, but no input base, radix or event selector.
+`2rev10` uses `U(n) = 2 * reverse10(n)`, including decimal normalization: `10 → 2`. Its decimal grammar is applied through the shared scheduler. Admitted four-phase boundary cylinders use temporal HashLife composition of the exact two-step cellular rule; other source regions retain charged exact transitions. `--max-steps` and `--max-state-bits` both default to 4096. It accepts `--info metrics` and `--info closed-form`, output formats and output bases, but no input base, radix or event selector. The demanded closed-form packet reports source-bound carry and moment ports from the completed endpoint; `--modulus M` projects them modulo a positive integer. Modular output does not authorize an approximate branch or phase decision. Metrics alone never constructs these ports.
 
 Collatz `--events E` selects accelerated odd events from an odd seed, requires
 `--info`, and has no ordinary term value. It is exclusive with both term selectors.
@@ -93,7 +93,7 @@ The following capability table is generated from the CLI registry. `root` requir
 | Family | Index unit | Parameters | Term information | Event information |
 | --- | --- | --- | --- | --- |
 | `reverse-add` | `iterations` | `--seed`, `--base` | `metrics`, `mirror`, `boundary-macro` | — |
-| `2rev10` | `iterations` | `--seed` | `metrics` | — |
+| `2rev10` | `iterations` | `--seed` | `metrics`, `closed-form` | — |
 | `collatz` | `physical_iterations` | `--seed`, `--radix` | `metrics`, `clock`, `accumulator`, `boundary-macro`, `innovation-borrow` | `clock`, `modular`, `twisted`, `hasse`, `hensel`, `tropical`, `factor`, `safety` |
 | `antihydra` | `macro_returns_after_startup` | — | `metrics`, `ledger`, `clock`, `modular`, `tape`, `twisted`, `spacetime`, `hasse`, `hensel`, `mahler`, `tropical`, `factor` | — |
 | `a367620` | `oeis_index` | — | `metrics`, `clock`, `tropical`, `certificate` | — |
@@ -124,13 +124,18 @@ checked certificate; a finite trace cannot supply it.
 
 ## Decimal reverse/add availability
 
-Decimal reverse/add uses an authenticated decimal pair-output owner when the
-same-carry clause does not apply. For example, `number-compiler reverse-add --seed 196 --nth 20`
-emits `70446464506`. The old decimal 128-iteration cap is removed; requests still
-obey their resource budgets. Length-only queries can retain a scalar successor
-summary without constructing the output grammar. This remains a sequential cold
-constructor, and its availability does not close the powered-construction or
-performance gates. Nondecimal fallback limits are unchanged.
+Decimal reverse/add uses the scheduler's authenticated Q19 pair-output owner.
+For example, `number-compiler reverse-add --seed 196 --nth 20` emits
+`70446464506`. Length, point and streamed output share its completed occurrence;
+length reads the admitted extent without rendering digits or replaying a
+separate carry history. Metrics-only requests leave that construction lazy.
+
+The scheduler applies bounded T2/T4 pair blocks and composes larger requests
+from completed children. The old decimal 128-iteration cap is removed; resource
+budgets still apply. This does not establish an unrestricted temporal quotient,
+a subquadratic cold-construction bound or cross-request reverse cache savings.
+Nondecimal fallback limits are unchanged. Guarded homogeneous/alternating
+interior formulas alone do not authorize a whole-integer endpoint.
 
 ## Antihydra arithmetic and physical observations
 
@@ -319,17 +324,20 @@ or use a bounded Moore observation class as an endpoint cache key.
 
 `collatz --info boundary-macro` reports the first guarded boundary macro
 actually executed by the source-image constructor. `--info innovation-borrow`
-additionally requests its signed normalized second-innovation tape at an odd
+requests the signed normalized second-innovation tape for the requested prefix at an odd
 modulus between 3 and 4096 (default 257). Both may accompany a value request.
 
 ```bash
 number-compiler collatz --seed 2174 --nth 13 --no-value --info innovation-borrow --modulus 49 --format json
 ```
 
-The tape describes the first authenticated macro, not the complete future
-trajectory. A source with no witnessed macro still has an exact initial-source
-innovation observation, with the missing macro observation labeled partial.
-Physical-return clocks and normalized-step borrow/carry counts remain separate.
+The tape is selected from the authenticated run grammar, including admitted
+mixed-word repetitions and exact cycles. Its finite input-driven Moore machine
+keeps both possible next parity inputs; the arithmetic producer supplies the
+actual input. Signed, borrow-punctured and carry-punctured machines are separate
+observation quotients. They do not establish an autonomous finite quotient of
+all future Collatz branches. Physical ticks, completed normalized steps and a
+pending odd half-step remain separate.
 These information requests do not demand the whole chronological accumulator;
 add `--info accumulator` when that output is needed. Ordinary value requests
 do not construct the modular Moore observer.
@@ -337,6 +345,14 @@ do not construct the modular Moore observer.
 Finite-horizon Moore IDs authorize reuse of the declared output word only at
 that horizon. They do not identify endpoint or width actions. Guarded arithmetic
 macros separately authenticate their source cylinder and physical duration.
+
+The `6305R` packet distinguishes macro-wide `physical_ticks` and
+`normalized_symbols` from `return_physical_ticks` and
+`return_normalized_steps`. The latter arrays exclude entry and exit transfers:
+a return with zero tail `j` consumes `j+4` physical ticks and `j+2` normalized
+steps. Guarded `0563` and `26847` actions likewise include the final division
+needed to complete their normalized boundary. Shorter requests retain their
+exact physical endpoint instead of rounding up to a macro boundary.
 
 
 ## Typed Python queries

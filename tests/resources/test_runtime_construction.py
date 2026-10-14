@@ -48,6 +48,38 @@ def test_abort_preserves_unrelated_owners_created_before_scope_entry() -> None:
     assert ledger.entries == ledger.nodes == 1
 
 
+def test_abort_attempts_other_owners_and_roots_after_release_failure(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    ledger = ResourceLedger()
+    scope = RuntimeConstruction(ledger)
+    original = ledger.release
+    broken_owner = -1
+
+    def release(owner: int, entries: int = 0, nodes: int = 0) -> None:
+        if owner == broken_owner:
+            raise RuntimeError("release failed")
+        original(owner, entries, nodes)
+
+    with monkeypatch.context() as patch:
+        patch.setattr(ledger, "release", release)
+        with pytest.raises(RuntimeError, match="release failed") as caught, scope:
+            first_owner, first_store = _owned_value(ledger, "first")
+            broken_owner, broken_store = _owned_value(ledger, "broken")
+            root = _ExecutionRoot()
+            ledger.register_execution_root(root)
+            raise ValueError("construction failed")
+    assert isinstance(caught.value.__cause__, ValueError)
+    assert ledger.inventory()[first_owner].disposed
+    assert not ledger.inventory()[broken_owner].disposed
+    assert not first_store and not broken_store
+    assert tuple(ledger.iter_execution_roots()) == ()
+    assert ledger.entries == ledger.nodes == 1
+    scope._abort()
+    assert ledger.entries == ledger.nodes == 0
+    assert ledger.counters["runtime_construction_released_entries"] == 2
+
+
 def test_abort_preserves_owner_registered_in_independent_context() -> None:
     ledger = ResourceLedger()
     unrelated: dict[str, object] = {}

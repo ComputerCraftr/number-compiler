@@ -169,6 +169,7 @@ def audit_registered_payloads(
         audit_radix_provider_payloads,
     )
     from number_compiler.resources.semantic_payload import SemanticPayloadRegistry
+    from number_compiler.resources.slp_payload_audit import audit_ledger_slp_payloads
     from number_compiler.resources.source_bound_payload_audit import (
         audit_source_bound_payloads,
     )
@@ -265,6 +266,8 @@ def audit_registered_payloads(
     state_bound, pair_bound, radix_bound = 6, 1, 2
     response_records: dict[int, int] = {}
     actual_containers = dict(ledger.iter_containers())
+    slp_payloads = audit_ledger_slp_payloads(ledger, execution_roots, actual_containers)
+    forbidden.update(slp_payloads.invalid)
     source_bound = audit_source_bound_payloads(
         ledger, execution_roots, actual_containers
     )
@@ -500,6 +503,8 @@ def audit_registered_payloads(
         return owner is not None and (owner, identity) in contract_audit.approved
 
     def semantic_component_uncached(value: object, *, owner: int | None = None) -> bool:
+        if owner is not None and slp_payloads.approves(owner, value):
+            return True
         if type(value) in family_effects.compatibility_types:
             return family_effects.valid_compatibility(value)
         if source_bound.recognizes(value):
@@ -685,6 +690,7 @@ def audit_registered_payloads(
             not family_audit_approves(field_images.approved, container, owner)
             and not family_audit_approves(radix_providers.approved, container, owner)
             and not family_audit_approves(support_payloads.approved, container, owner)
+            and not slp_payloads.approves(owner, container)
             and owner not in finite_index_owners
             and owner not in cache_event_owners
             and roles[owner]
@@ -746,6 +752,8 @@ def audit_registered_payloads(
                 support_payloads,
             )
         ):
+            continue
+        if slp_payloads.approves(owner, value):
             continue
         if source_bound.owns_payload_member(owner, value):
             # This exact frozen value was approved as a direct member of a

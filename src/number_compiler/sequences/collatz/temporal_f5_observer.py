@@ -13,9 +13,25 @@ from typing import overload
 from number_compiler.arithmetic.fields.morphism_core import AffineCocycle, binary_power
 from number_compiler.arithmetic.fields.root_semifield import RootSemifieldElement
 from number_compiler.resources.ledger import ResourceLedger
+from number_compiler.sequences.collatz.dyadic_terminal_cocycle import (
+    DyadicTerminalFieldAction,
+)
 
 _F5 = 5
 _ROOT_CERTIFICATE_DEPTH = 8
+
+
+def _project_dyadic_fields_f5(
+    action: DyadicTerminalFieldAction,
+) -> CollatzF5AffineAction:
+    """Project one exact normalized affine action into the shared F5 owner."""
+    if type(action) is not DyadicTerminalFieldAction or not action.producer_issued:
+        raise ValueError("F5 projection requires an issued dyadic field action")
+    inverse_denominator = pow(2, -action.steps, _F5)
+    return CollatzF5AffineAction(
+        action.gain * inverse_denominator % _F5,
+        action.offset * inverse_denominator % _F5,
+    )
 
 
 @dataclass(frozen=True, slots=True, order=True)

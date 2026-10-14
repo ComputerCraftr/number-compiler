@@ -11,6 +11,7 @@ from number_compiler.api.cli_types import (
     CollatzEventObservationOptions,
     CollatzTermObservationOptions,
     CommaObservationOptions,
+    DoubleReverseObservationOptions,
     ReverseAddObservationOptions,
     SpecialObservationOptions,
 )
@@ -144,6 +145,53 @@ def observe_noop(context: QueryContext, name: str) -> Packet:
     raise ValueError("family has no information observer")
 
 
+def observe_double_reverse(context: QueryContext, name: str) -> Packet:
+    """Project carry and moment ports from the already admitted endpoint."""
+    from number_compiler.api.number_api import DoubleReverseTermPayload
+
+    options = _options(context, DoubleReverseObservationOptions)
+    payload = context.term.payload
+    if not isinstance(payload, DoubleReverseTermPayload):
+        raise TypeError("2rev10 observer received a foreign term payload")
+    if name != "closed-form":
+        raise ValueError("unsupported 2rev10 information observer")
+    result = payload.term.temporal_closed_form(
+        modulus=options.modulus,
+        max_bits=min(
+            payload.term.max_state_bits,
+            context.request.presentation.max_output_bits,
+        ),
+    )
+    return _publish(
+        context,
+        name,
+        {
+            "modulus": options.modulus,
+            "steps": result.steps,
+            "source": result.source,
+            "target": result.target,
+            "carry_word": result.carry_word,
+            "carry_word_modulus": (
+                None if options.modulus is None else 10 * options.modulus
+            ),
+            "carry_transfer": result.carry_transfer.value,
+            "carry_correction": result.carry_correction,
+            "final_carry": result.final_carry,
+            "U": result.U,
+            "H": result.H,
+            "matrix": result.matrix,
+            "phase_in": result.phase_in,
+            "phase_out": result.phase_out,
+            "left_births": result.left_births,
+            "right_births": result.right_births,
+            "affine_gain": result.affine_gain,
+            "affine_shift": result.affine_shift,
+            "scope": "source-bound powered SLP endpoint",
+        },
+        coordinates=(("steps",),),
+    )
+
+
 def prepare_reverse(context: QueryContext, term: ProjectedNumberTerm) -> None:
     del context, term
 
@@ -204,7 +252,10 @@ def prepare_collatz(context: QueryContext, term: ProjectedNumberTerm) -> None:
     if "accumulator" in options.info:
         term.payload.term.prepare_joint_cocycle()
     if {"boundary-macro", "innovation-borrow"}.intersection(options.info):
-        term.payload.term.prepare_innovation_tape()
+        term.payload.term.prepare_innovation_tape(
+            complete_word="innovation-borrow" in options.info,
+            modulus=options.modulus if "innovation-borrow" in options.info else None,
+        )
 
 
 def admit_collatz(context: QueryContext) -> None:
@@ -585,6 +636,7 @@ __all__ = [
     "observe_antihydra",
     "observe_collatz",
     "observe_comma",
+    "observe_double_reverse",
     "observe_noop",
     "observe_reverse",
     "observe_special",

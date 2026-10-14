@@ -134,7 +134,7 @@ def test_joint_d8_batch_materialization_is_single_and_fully_counted(
 def test_small_source_keeps_direct_d8_path(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    from number_compiler.sequences.collatz import temporal_run_quotient as runs
+    from number_compiler.sequences.collatz import temporal_run_executor as runs
 
     def forbidden(*args: object, **kwargs: object) -> None:
         raise AssertionError("small source allocated a cylinder cursor")
@@ -142,7 +142,12 @@ def test_small_source_keeps_direct_d8_path(
     monkeypatch.setattr(runs, "D8CylinderFrame", forbidden)
     ledger = ResourceLedger()
     result = compile_collatz_temporal_run_quotient(27, 64, ledger=ledger)
-    assert result.endpoint == 1619 and result.run_actions == 6
+    assert result.endpoint == 1619
+    # Route selection can fuse several former scalar/D8 actions into one
+    # source-authenticated 6305 return. Assert the resulting action, not the
+    # obsolete count of intermediate run records.
+    assert ledger.counters["collatz_physical_boundary_6305R_macro_actions"] > 0
+    assert result.division_ticks + result.odd_ticks == 64
     assert (
         ledger.counters.get("collatz_physical_temporal_d8_frame_materializations", 0)
         == 0
@@ -300,7 +305,7 @@ def test_run_scratch_reuses_owner_and_rejects_nested_authority() -> None:
 def test_scratch_budget_rejects_before_valuation(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    from number_compiler.sequences.collatz import temporal_run_quotient as runs
+    from number_compiler.sequences.collatz import temporal_dyadic as runs
 
     def forbidden(value: int) -> int:
         raise AssertionError("valuation ran before scratch budget reservation")
@@ -316,7 +321,7 @@ def test_scratch_budget_rejects_before_valuation(
 def test_scratch_is_released_on_success_and_arithmetic_failure(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    from number_compiler.sequences.collatz import temporal_run_quotient as runs
+    from number_compiler.sequences.collatz import temporal_dyadic as runs
 
     ledger = ResourceLedger()
     result = compile_collatz_temporal_run_quotient(27, 64, ledger=ledger)
@@ -363,21 +368,23 @@ def test_homogeneous_horizon_selects_run_constructor(seed: int, ticks: int) -> N
     assert counters.get("collatz_physical_temporal_balanced_routes", 0) == 0
 
 
-def test_wide_mixed_source_routes_before_run_compilation(
+def test_wide_mixed_source_requires_bounded_admission_before_run_compilation(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
+    from unittest.mock import Mock
+
     from number_compiler.sequences.collatz import temporal_run_quotient as runs
 
-    def forbidden(*args: object, **kwargs: object) -> None:
-        raise AssertionError("wide mixed source entered direct run construction")
-
-    monkeypatch.setattr(runs, "compile_collatz_temporal_run_quotient", forbidden)
+    compile_probe = Mock(wraps=runs.compile_collatz_temporal_run_quotient)
+    monkeypatch.setattr(runs, "compile_collatz_temporal_run_quotient", compile_probe)
     seed, ticks = (1 << 255) | 0x15, 128
     expected = seed
     for _ in range(ticks):
         expected = 3 * expected + 1 if expected & 1 else expected // 2
     term = PoweredCollatzTerm(seed, ticks)
     assert term.materialize(max_bits=300) == expected
+    assert compile_probe.call_count == 1
+    assert compile_probe.call_args.kwargs["require_mixed_prefix"] is True
     assert term._ledger.counters["collatz_physical_temporal_balanced_routes"] == 1
     assert term._ledger.counters.get("collatz_physical_temporal_run_actions", 0) == 0
 

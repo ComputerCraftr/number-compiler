@@ -11,21 +11,42 @@ from number_compiler.resources.ledger import ResourceLedger
 _T = TypeVar("_T")
 
 
+def _record_failure_without_masking(
+    error: BaseException, record: Callable[[], None]
+) -> None:
+    try:
+        record()
+    except BaseException as recording_error:
+        error.add_note(
+            f"Output instrumentation failed: {type(recording_error).__name__}: "
+            f"{recording_error}"
+        )
+        raise error from recording_error
+
+
 def _close_output_iterator(
     stream: Iterator[_T] | None,
     on_failure: Callable[[], None] | None = None,
     *,
-    preserve_exception: bool = False,
+    preserve_exception: BaseException | None = None,
 ) -> None:
     close = None if stream is None else getattr(stream, "close", None)
     if close is None:
         return
     try:
         close()
-    except BaseException:
+    except BaseException as cleanup_error:
+        if preserve_exception is not None:
+            preserve_exception.add_note(
+                f"Output iterator cleanup failed: {type(cleanup_error).__name__}: "
+                f"{cleanup_error}"
+            )
         if on_failure is not None:
-            on_failure()
-        if not preserve_exception:
+            _record_failure_without_masking(
+                cleanup_error if preserve_exception is None else preserve_exception,
+                on_failure,
+            )
+        if preserve_exception is None:
             raise
 
 
@@ -35,8 +56,8 @@ def closing_output_stream(source: Iterable[_T]) -> Iterator[Iterator[_T]]:
     stream = iter(source)
     try:
         yield stream
-    except BaseException:
-        _close_output_iterator(stream, preserve_exception=True)
+    except BaseException as error:
+        _close_output_iterator(stream, preserve_exception=error)
         raise
     else:
         _close_output_iterator(stream)
@@ -65,7 +86,7 @@ def measured_output_stream(
         ledger.bump(f"{prefix}_requests")
         stream: Iterator[_T] | None = None
         failed = False
-        cancelled = False
+        primary_error: BaseException | None = None
         try:
             stream = iter(source())
             while True:
@@ -75,19 +96,24 @@ def measured_output_stream(
                     return
                 ledger.bump(f"{prefix}_emitted_digits")
                 yield value
-        except GeneratorExit:
-            cancelled = True
-            ledger.bump(f"{prefix}_cancellations")
+        except GeneratorExit as error:
+            primary_error = error
+            _record_failure_without_masking(
+                error, lambda: ledger.bump(f"{prefix}_cancellations")
+            )
             raise
-        except BaseException:
+        except BaseException as error:
+            primary_error = error
             failed = True
-            ledger.bump(f"{prefix}_failures")
+            _record_failure_without_masking(
+                error, lambda: ledger.bump(f"{prefix}_failures")
+            )
             raise
         finally:
             _close_output_iterator(
                 stream,
                 None if failed else lambda: ledger.bump(f"{prefix}_failures"),
-                preserve_exception=failed or cancelled,
+                preserve_exception=primary_error,
             )
 
     return observed()

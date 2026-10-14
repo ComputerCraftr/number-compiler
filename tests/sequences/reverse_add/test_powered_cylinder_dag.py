@@ -46,8 +46,19 @@ def test_powered_mirror_consumes_tiles_without_point_queries(
     # feeds the measured output consumer without point or tile-sheet visits.
     assert counters["reverse_output_stream_emitted_digits"] == len(digits)
     # The third digit word normalizes the pair field after two transitions.
-    assert counters["reverse_q19_primitive_pair_applications"] == 2
-    assert counters["reverse_q19_pair_output_nodes_visited"] > 0
+    assert counters.get("reverse_q19_punctured_t2_applications", 0) == 1
+    assert counters.get("reverse_q19_punctured_t4_applications", 0) == 0
+    assert (
+        2 * counters.get("reverse_q19_punctured_t2_applications", 0)
+        + 4 * counters.get("reverse_q19_punctured_t4_applications", 0)
+        == 2
+    )
+    assert counters.get("source_image_primitive_applications", 0) == 0
+    assert counters.get("reverse_q19_primitive_pair_applications", 0) == 0
+    # The demanded observer consumes the completed output grammar directly;
+    # this is the stream traversal counter (pair-output section visits belong
+    # to the separately instrumented primitive evaluator).
+    assert counters["recursive_output_stream_node_visits"] > 0
     assert_q19_output_authority(term)
     assert counters.get("temporal_point_requests", 0) == 0
     assert counters.get("point_response_requests", 0) == 0

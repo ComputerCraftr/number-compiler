@@ -300,7 +300,9 @@ class DyadicTerminalFieldAction:
         return (
             type(source) is int
             and source > 0
-            and source % self.source_modulus == self.source_residue
+            and (self.gain * (source % self.source_modulus) + self.offset)
+            % self.source_modulus
+            == 0
         )
 
     def endpoint(self, source: int) -> int:

@@ -25,19 +25,36 @@ from number_compiler.hashlife.execution.source_bound_images import (
     SourceImageView,
 )
 from number_compiler.hashlife.execution.source_image_seals import _typed_equal
+from number_compiler.resources.construction_scope import RuntimeConstruction
 from number_compiler.resources.ledger import OwnedMemo, ResourceLedger
+from number_compiler.resources.lifecycle import cleanup_all
 from number_compiler.resources.payload_contracts import (
     PayloadAuditContribution,
     PayloadAuditEntry,
     PayloadAuditStoreBinding,
     register_payload_audit_contract,
 )
+from number_compiler.sequences.collatz.border_return_grammar import (
+    BorderReturnMacro,
+    validate_border_return_macro,
+)
 from number_compiler.sequences.collatz.boundary_macros import (
     CollatzBoundaryMacro,
     validate_boundary_macro,
 )
+from number_compiler.sequences.collatz.innovation_port_moore import (
+    InnovationTapeObservation,
+)
+from number_compiler.sequences.collatz.innovation_temporal_tape import (
+    _retained_node_count,
+)
 from number_compiler.sequences.collatz.joint_temporal_action import (
     CollatzJointRunAction,
+)
+from number_compiler.sequences.collatz.physical_boundary_route import (
+    exact_source_bit_length,
+    has_admitted_boundary_macro,
+    release_d8_rows_if_unleased,
 )
 from number_compiler.sequences.collatz.tape_width import (
     CollatzTapeWidthSummary,
@@ -55,16 +72,29 @@ COLLATZ_PHYSICAL_LAW = DyadicReturnLaw(
 _TAPE_WIDTH_PORT = "collatz-tape-width-summary-v1"
 _JOINT_COCYCLE_PORT = "collatz-joint-temporal-action-v1"
 _BOUNDARY_MACRO_PORT = "collatz-first-boundary-macro-v1"
+_INNOVATION_TAPE_PORT = "collatz-global-signed-tape-v1"
+_BoundaryMacroSnapshot = tuple[int, tuple[object, ...]]
 
 
-def _boundary_macro_node_cost(_key: str, macro: CollatzBoundaryMacro) -> int:
-    """Charge the retained immutable macro and its integer limbs."""
-    if type(macro) is not CollatzBoundaryMacro:
+def _boundary_macro_node_cost(
+    _key: str, macro: CollatzBoundaryMacro | BorderReturnMacro
+) -> int:
+    """Charge the full nested structural payload and all retained integer limbs."""
+    if type(macro) not in (CollatzBoundaryMacro, BorderReturnMacro):
         raise TypeError("Collatz boundary memo contains another value sort")
-    payload = macro.structural_payload()
-    return len(payload) + sum(
-        (value.bit_length() + 63) // 64 for value in payload if type(value) is int
-    )
+    return _retained_node_count(macro.structural_payload())
+
+
+def _innovation_observation_node_cost(
+    _key: str, observation: InnovationTapeObservation
+) -> int:
+    """Charge a retained immutable finite-prefix observer summary."""
+    if (
+        type(observation) is not InnovationTapeObservation
+        or not observation.producer_issued
+    ):
+        raise TypeError("Collatz innovation memo contains another value sort")
+    return _retained_node_count((_key, observation))
 
 
 def _register_physical_image_audit(root: CollatzPhysicalImageWorkspace) -> None:
@@ -104,6 +134,15 @@ def audit_collatz_physical_image_workspace(
             or root.steps < 0
             or root._law_snapshot != root.law.descriptor
             or type(root._closed) is not bool
+            or (
+                root._innovation_modulus is not None
+                and (
+                    type(root._innovation_modulus) is not int
+                    or not 3 <= root._innovation_modulus <= 4096
+                    or root._innovation_modulus % 2 == 0
+                    or not root._include_innovation_tape
+                )
+            )
         ):
             raise ValueError("physical image root authority differs from Collatz")
     except (ArithmeticError, AttributeError, IndexError, TypeError, ValueError):
@@ -127,6 +166,7 @@ class CollatzPhysicalImageWorkspace(DyadicReturnImageWorkspace):
         include_width_spine: bool = False,
         include_joint_cocycle: bool = False,
         include_innovation_tape: bool = False,
+        innovation_modulus: int | None = None,
     ) -> None:
         if type(retain_chronology) is not bool:
             raise TypeError("Collatz chronology choice must be Boolean")
@@ -138,16 +178,28 @@ class CollatzPhysicalImageWorkspace(DyadicReturnImageWorkspace):
             raise TypeError("joint-cocycle demand must be Boolean")
         if type(include_innovation_tape) is not bool:
             raise TypeError("innovation-tape demand must be Boolean")
+        if innovation_modulus is not None and (
+            type(innovation_modulus) is not int
+            or not 3 <= innovation_modulus <= 4096
+            or innovation_modulus % 2 == 0
+            or not include_innovation_tape
+        ):
+            raise ValueError("complete innovation tape needs an admitted odd modulus")
         self._shared_cache = shared_cache
         self._retain_chronology = retain_chronology
         self._include_width_spine = include_width_spine
         self._include_joint_cocycle = include_joint_cocycle
         self._joint_action_snapshot: tuple[int, ...] | None = None
         self._include_innovation_tape = include_innovation_tape
-        self._first_boundary_macro_snapshot: tuple[int, tuple[object, ...]] | None = (
-            None
-        )
-        self._boundary_macro_memo: OwnedMemo[str, CollatzBoundaryMacro] | None = None
+        self._innovation_modulus = innovation_modulus
+        self._first_boundary_macro_snapshot: _BoundaryMacroSnapshot | None = None
+        self._boundary_macro_memo: (
+            OwnedMemo[str, CollatzBoundaryMacro | BorderReturnMacro] | None
+        ) = None
+        self._innovation_observation_snapshot: tuple[object, ...] | None = None
+        self._innovation_observation_memo: (
+            OwnedMemo[str, InnovationTapeObservation] | None
+        ) = None
         self._boundary_route_snapshot: (
             tuple[
                 DyadicReturnSourceID,
@@ -157,12 +209,9 @@ class CollatzPhysicalImageWorkspace(DyadicReturnImageWorkspace):
             ]
             | None
         ) = None
-        super().__init__(ledger, seed, steps, COLLATZ_PHYSICAL_LAW)
-        try:
+        with RuntimeConstruction(ledger):
+            super().__init__(ledger, seed, steps, COLLATZ_PHYSICAL_LAW)
             _register_physical_image_audit(self)
-        except BaseException:
-            self.dispose()
-            raise
 
     def audit_image_binding(
         self,
@@ -180,6 +229,7 @@ class CollatzPhysicalImageWorkspace(DyadicReturnImageWorkspace):
             _TAPE_WIDTH_PORT,
             _JOINT_COCYCLE_PORT,
             _BOUNDARY_MACRO_PORT,
+            _INNOVATION_TAPE_PORT,
         )
 
     def retain_chronological_support(self) -> bool:
@@ -243,7 +293,9 @@ class CollatzPhysicalImageWorkspace(DyadicReturnImageWorkspace):
             ) from error
 
     @property
-    def first_boundary_macro(self) -> tuple[int, CollatzBoundaryMacro] | None:
+    def first_boundary_macro(
+        self,
+    ) -> tuple[int, CollatzBoundaryMacro | BorderReturnMacro] | None:
         """Return only the demanded macro sealed in this exact root image."""
         if not self._include_innovation_tape:
             return None
@@ -286,6 +338,60 @@ class CollatzPhysicalImageWorkspace(DyadicReturnImageWorkspace):
         if payload[0] + macro.physical_ticks > self.steps:
             raise ValueError("Collatz boundary macro exceeds its root request")
         return payload[0], macro
+
+    @property
+    def innovation_observation(self) -> InnovationTapeObservation | None:
+        """Return only the full observer attached to this exact root image."""
+        if self._innovation_modulus is None:
+            return None
+        if not self._include_innovation_tape:
+            raise ValueError("complete innovation observation was not demanded")
+        view = self.scheduler._source_image_core().view(self.root_image)
+        if (
+            view.binding.source != self.root_source
+            or view.binding.action != self.root_action
+            or view.binding.extent != self.steps
+        ):
+            raise ValueError("Collatz innovation observation belongs to another root")
+        payloads = tuple(
+            port
+            for port in view.binding.boundary_ports
+            if type(port) is tuple
+            and len(port) == 3
+            and port[0] == _INNOVATION_TAPE_PORT
+        )
+        if not payloads:
+            if (
+                self._innovation_observation_snapshot is not None
+                or self._retained_innovation_observation() is not None
+            ):
+                raise ValueError("Collatz innovation observation was not published")
+            return None
+        if len(payloads) != 1:
+            raise ValueError("Collatz innovation publication is detached")
+        port = payloads[0]
+        handle, modulus = port[1], port[2]
+        if (
+            type(handle) is not DyadicReturnImageID
+            or not _typed_equal(handle, self.root_payload)
+            or type(modulus) is not int
+            or modulus != self._innovation_modulus
+        ):
+            raise ValueError("Collatz innovation publication has another root handle")
+        observation = self._retained_innovation_observation()
+        if (
+            type(observation) is not InnovationTapeObservation
+            or not observation.producer_issued
+            or not _typed_equal(
+                observation.structural_payload(),
+                self._innovation_observation_snapshot,
+            )
+            or observation.source != self.seed
+            or observation.modulus != modulus
+            or observation.physical_ticks != self.steps
+        ):
+            raise ValueError("Collatz innovation observation occurrence was altered")
+        return observation
 
     @staticmethod
     def _attach_tape_width_summary(
@@ -332,7 +438,7 @@ class CollatzPhysicalImageWorkspace(DyadicReturnImageWorkspace):
         self,
         candidate: SourceImageCandidate,
         occurrence: tuple[int, int, int, str],
-        macro: CollatzBoundaryMacro,
+        macro: CollatzBoundaryMacro | BorderReturnMacro,
     ) -> SourceImageCandidate:
         if type(candidate) is not SourceImageCandidate:
             raise TypeError("Collatz boundary macro needs a source-image candidate")
@@ -347,7 +453,12 @@ class CollatzPhysicalImageWorkspace(DyadicReturnImageWorkspace):
         ):
             raise ValueError("Collatz boundary macro occurrence is malformed")
         start_tick, boundary_source, physical_ticks, family = occurrence
-        validate_boundary_macro(macro)
+        if type(macro) is BorderReturnMacro:
+            validate_border_return_macro(macro)
+        elif type(macro) is CollatzBoundaryMacro:
+            validate_boundary_macro(macro)
+        else:
+            raise TypeError("Collatz boundary macro has another authority")
         if (
             macro.source != boundary_source
             or macro.physical_ticks != physical_ticks
@@ -376,21 +487,78 @@ class CollatzPhysicalImageWorkspace(DyadicReturnImageWorkspace):
             raise ValueError("conflicting Collatz boundary macro witnesses")
         memo = self._boundary_macro_memo
         if memo is None:
-            owner = self.ledger.register(
-                f"collatz-boundary-macro-occurrences-{self.ledger.owner_count}",
-                "query_memo",
-            )
-            memo = OwnedMemo(
-                self.ledger,
-                owner,
-                node_cost=_boundary_macro_node_cost,
-            )
+            with RuntimeConstruction(self.ledger):
+                owner = self.ledger.register(
+                    f"collatz-boundary-macro-occurrences-{self.ledger.owner_count}",
+                    "query_memo",
+                )
+                memo = OwnedMemo(
+                    self.ledger,
+                    owner,
+                    node_cost=_boundary_macro_node_cost,
+                )
+                memo["root"] = macro
             self._boundary_macro_memo = memo
-        memo["root"] = macro
+        else:
+            memo["root"] = macro
         self._first_boundary_macro_snapshot = payload
         return replace(
             candidate,
             boundary_ports=(*candidate.boundary_ports, (_BOUNDARY_MACRO_PORT, payload)),
+        )
+
+    def _attach_innovation_observation(
+        self,
+        candidate: SourceImageCandidate,
+        observation: InnovationTapeObservation,
+    ) -> SourceImageCandidate:
+        if type(candidate) is not SourceImageCandidate:
+            raise TypeError("Collatz innovation summary needs a source-image candidate")
+        if (
+            type(observation) is not InnovationTapeObservation
+            or not observation.producer_issued
+        ):
+            raise TypeError("Collatz innovation summary has another authority")
+        if (
+            not self._include_innovation_tape
+            or self._innovation_modulus != observation.modulus
+            or observation.source != self.seed
+            or observation.physical_ticks != self.steps
+            or candidate.extent != self.steps
+            or type(candidate.payload) is not DyadicReturnImageID
+        ):
+            raise ValueError("Collatz innovation summary differs from its root request")
+        image = self.image_node(candidate.payload)
+        if image.source != self.root_source or image.action != self.root_action:
+            raise ValueError(
+                "Collatz innovation summary is not attached to the exact root"
+            )
+        payload = observation.structural_payload()
+        if self._innovation_observation_snapshot not in (None, payload):
+            raise ValueError("conflicting Collatz innovation summaries")
+        memo = self._innovation_observation_memo
+        if memo is None:
+            with RuntimeConstruction(self.ledger):
+                owner = self.ledger.register(
+                    f"collatz-innovation-observations-{self.ledger.owner_count}",
+                    "query_memo",
+                )
+                memo = OwnedMemo(
+                    self.ledger,
+                    owner,
+                    node_cost=_innovation_observation_node_cost,
+                )
+                memo["root"] = observation
+            self._innovation_observation_memo = memo
+        else:
+            memo["root"] = observation
+        self._innovation_observation_snapshot = payload
+        return replace(
+            candidate,
+            boundary_ports=(
+                *candidate.boundary_ports,
+                (_INNOVATION_TAPE_PORT, candidate.payload, observation.modulus),
+            ),
         )
 
     def admitted_input_key(
@@ -420,18 +588,18 @@ class CollatzPhysicalImageWorkspace(DyadicReturnImageWorkspace):
         if not admitted.exact:
             return key
         width = self.action_node(action).width
-        observer_consumer = (
-            "collatz-boundary-observer-v1"
-            if self._include_innovation_tape
+        observer_consumer: Hashable | None = None
+        if (
+            self._include_innovation_tape
             and source_id == self.root_source
             and action == self.root_action
-            else None
-        )
-        source_bits = max(
-            1,
-            admitted.residue.bit_length(),
-            admitted.lift.bit_length() + admitted.precision if admitted.lift else 0,
-        )
+        ):
+            observer_consumer = (
+                ("collatz-global-innovation-observer-v2", self._innovation_modulus)
+                if self._innovation_modulus is not None
+                else ("collatz-boundary-observer-v1",)
+            )
+        source_bits = exact_source_bit_length(admitted)
         self._bump("temporal_reuse_routing_requests")
         self._bump("temporal_reuse_routing_operand_bits", width.bit_length())
         if width <= self.MAX_LEAF_STEPS or width > 2 * source_bits:
@@ -441,8 +609,7 @@ class CollatzPhysicalImageWorkspace(DyadicReturnImageWorkspace):
             RunArithmeticWorkspace,
         )
 
-        # The complete homogeneous-run test depends only on the admitted low
-        # cylinder, including its all-zero and all-one boundary cases.
+        # Homogeneity depends on the admitted low cylinder, including 0/1 cases.
         scratch = RunArithmeticWorkspace.for_ledger(self.ledger, "collatz_physical")
         with scratch.scope():
             scratch.require_bits(
@@ -451,14 +618,15 @@ class CollatzPhysicalImageWorkspace(DyadicReturnImageWorkspace):
             self._bump(
                 "temporal_reuse_routing_operand_bits", admitted.residue.bit_length() + 1
             )
-            self._bump("boundary_macro_plan_checks")
-            self._bump(
-                "boundary_macro_plan_operand_bits",
-                admitted.residue.bit_length()
-                + admitted.lift.bit_length()
-                + width.bit_length(),
+            boundary_plan = has_admitted_boundary_macro(
+                admitted,
+                width,
+                include_innovation_tape=self._include_innovation_tape,
+                include_joint_cocycle=self._include_joint_cocycle,
+                allow_border_return=source_id == self.root_source,
+                ledger=self.ledger,
+                scratch=scratch,
             )
-            boundary_plan = self._has_admitted_boundary_macro(admitted, width)
             self._boundary_route_snapshot = (
                 source_id,
                 action,
@@ -479,7 +647,7 @@ class CollatzPhysicalImageWorkspace(DyadicReturnImageWorkspace):
         return key
 
     def _exact_run_key(
-        self, source: _SourceNode, width: int, consumer: str | None = None
+        self, source: _SourceNode, width: int, consumer: Hashable | None = None
     ) -> tuple[object, ...]:
         if type(source) is not _SourceNode or not source.exact:
             raise TypeError("exact Collatz run key requires an exact source node")
@@ -491,41 +659,6 @@ class CollatzPhysicalImageWorkspace(DyadicReturnImageWorkspace):
             width,
             source.lift,
             consumer,
-        )
-
-    @staticmethod
-    def _source_modulo(source: _SourceNode, modulus: int) -> int:
-        """Read a small exact-source residue without assembling its full value."""
-        return (
-            source.residue + source.lift * pow(2, source.precision, modulus)
-        ) % modulus
-
-    def _has_admitted_boundary_macro(self, source: _SourceNode, width: int) -> bool:
-        """Classify two-repeat source guards from bounded residues only."""
-        if type(source) is not _SourceNode or not source.exact:
-            return False
-        if (
-            width >= 7
-            and self._source_modulo(source, 160) == 4
-            and (
-                source.residue > 4
-                or source.lift > 0
-                and (
-                    source.precision >= 3
-                    or (source.lift << source.precision) + source.residue > 4
-                )
-            )
-        ):
-            return True
-        if width >= 9 and self._source_modulo(source, 160) == 94:
-            return True
-        if self._source_modulo(source, 20) == 6:
-            return width >= 5 and self._source_modulo(source, 80) == 26
-        return (
-            (self._include_innovation_tape or self._include_joint_cocycle)
-            and width >= 4
-            and self._source_modulo(source, 20) == 19
-            and self._source_modulo(source, 4) == 3
         )
 
     def _take_boundary_route_snapshot(
@@ -555,7 +688,7 @@ class CollatzPhysicalImageWorkspace(DyadicReturnImageWorkspace):
         ):
             return None
         joint_root = (
-            self._include_joint_cocycle
+            (self._include_joint_cocycle or self._include_innovation_tape)
             and source.binding.source == self.root_source
             and action == self.root_action
         )
@@ -634,38 +767,46 @@ class CollatzPhysicalImageWorkspace(DyadicReturnImageWorkspace):
             or width <= 0
         ):
             return None
+        is_root_action = source_id == self.root_source and action == self.root_action
         from number_compiler.arithmetic.fields.skew_transfer import SkewTransfer
         from number_compiler.arithmetic.fields.two_adic import v2_positive
         from number_compiler.hashlife.execution.dyadic_return_runs import (
             RunArithmeticWorkspace,
             publish_exact_run_candidate,
         )
+        from number_compiler.sequences.collatz.temporal_mixed_execution import (
+            MixedRouteNotAdmitted,
+        )
         from number_compiler.sequences.collatz.temporal_run_quotient import (
             compile_collatz_temporal_run_quotient,
         )
 
-        # Pick the constructor before any orbit discovery. High-entropy wide
-        # sources retain balanced source-cylinder substitution; direct run
-        # arithmetic has no all-source logarithmic construction bound.
-        source_bits = max(
-            1,
-            admitted.residue.bit_length(),
-            admitted.lift.bit_length() + admitted.precision if admitted.lift else 0,
-        )
+        # Choose before discovery; wide high-entropy sources retain balanced
+        # source-cylinder substitution rather than unbounded direct runs.
+        source_bits = exact_source_bit_length(admitted)
         boundary_route: bool | None = None
+        require_mixed_prefix = False
+        scratch = RunArithmeticWorkspace.for_ledger(self.ledger, "collatz_physical")
         if self.MAX_LEAF_STEPS < width <= 2 * source_bits:
             boundary_route = self._take_boundary_route_snapshot(
                 source_id, action, width
             )
             if boundary_route is None:
-                boundary_route = self._has_admitted_boundary_macro(admitted, width)
-        scratch = RunArithmeticWorkspace.for_ledger(self.ledger, "collatz_physical")
+                with scratch.scope():
+                    boundary_route = has_admitted_boundary_macro(
+                        admitted,
+                        width,
+                        include_innovation_tape=self._include_innovation_tape,
+                        include_joint_cocycle=self._include_joint_cocycle,
+                        allow_border_return=source_id == self.root_source,
+                        ledger=self.ledger,
+                        scratch=scratch,
+                    )
         with scratch.scope():
             self._bump("temporal_routing_operand_bits", width.bit_length())
             if self.MAX_LEAF_STEPS < width <= 2 * source_bits:
-                # Homogeneity through this width depends on the admitted low
-                # cylinder alone. Decide the route before assembling its high
-                # lift; a mixed cylinder will never use that exact integer.
+                # Decide homogeneity from the low cylinder before assembling
+                # its high lift; mixed cylinders never use that integer.
                 scratch.require_bits(8 * (admitted.residue.bit_length() + 16))
                 run_ticks = (
                     2 * v2_positive(admitted.residue + 1)
@@ -678,41 +819,45 @@ class CollatzPhysicalImageWorkspace(DyadicReturnImageWorkspace):
                     "temporal_routing_operand_bits", admitted.residue.bit_length() + 1
                 )
                 if width > run_ticks and (not boundary_route):
-                    self._bump("temporal_balanced_routes")
-                    return None
+                    require_mixed_prefix = (
+                        width >= 16 and source_bits >= 64 and is_root_action
+                    )
+                    if not require_mixed_prefix:
+                        self._bump("temporal_balanced_routes")
+                        return None
             scratch.require_bits(8 * (source_bits + width.bit_length() + 16))
             self._bump("temporal_routing_operand_bits", source_bits)
-            source_value = self._source_value(admitted)
-            self._bump("temporal_run_routes")
-        demand_width = (
-            self._include_width_spine
-            and source.binding.source == self.root_source
-            and action == self.root_action
-        )
-        demand_joint = (
-            self._include_joint_cocycle
-            and source.binding.source == self.root_source
-            and action == self.root_action
-        )
-        demand_innovation = (
-            self._include_innovation_tape
-            and source.binding.source == self.root_source
-            and action == self.root_action
-        )
-        quotient = compile_collatz_temporal_run_quotient(
-            source_value,
-            width,
-            ledger=self.ledger,
-            shared_cache=self._shared_cache,
-            include_width_spine=demand_width,
-            include_joint_cocycle=demand_joint,
-            include_innovation_tape=demand_innovation,
-        )
+            if is_root_action:
+                # The pinned root is exact; rebuilding its lift only to route
+                # would materialize an equivalent wide integer.
+                source_value = self.seed
+            else:
+                source_value = self._source_value(admitted)
+        demand_width = self._include_width_spine and is_root_action
+        demand_joint = self._include_joint_cocycle and is_root_action
+        demand_innovation = self._include_innovation_tape and is_root_action
+        try:
+            quotient = compile_collatz_temporal_run_quotient(
+                source_value,
+                width,
+                ledger=self.ledger,
+                shared_cache=self._shared_cache,
+                include_width_spine=demand_width,
+                include_joint_cocycle=demand_joint,
+                include_innovation_tape=demand_innovation,
+                require_mixed_prefix=require_mixed_prefix,
+                innovation_modulus=(
+                    self._innovation_modulus if demand_innovation else None
+                ),
+            )
+        except MixedRouteNotAdmitted:
+            self._bump("temporal_balanced_routes")
+            return None
+        self._bump("temporal_run_routes")
         cycle = None
         if quotient.cycle_repetitions:
-            # The run kernel only pumps at state 1. Recover its already-known
-            # tail boundary from physical clock and final cycle phase; no
-            # additional trajectory discovery is needed for optional audits.
+            # Recover the known state-1 tail from clock and cycle phase; no
+            # trajectory discovery is needed for optional audits.
             tail_phase = (1, 4, 2).index(quotient.endpoint)
             repetitions = quotient.cycle_repetitions
             from number_compiler.hashlife.execution.dyadic_return_transport import (
@@ -736,8 +881,7 @@ class CollatzPhysicalImageWorkspace(DyadicReturnImageWorkspace):
                 tail_safety.delta,
                 tail_safety.minimum,
             )
-        # Constant transfer is valid only for this authenticated exact source.
-        # It avoids retaining a growing affine prefix or chronological run list.
+        # This exact source admits constant transfer without a retained prefix.
         candidate = publish_exact_run_candidate(
             self,
             action,
@@ -772,38 +916,63 @@ class CollatzPhysicalImageWorkspace(DyadicReturnImageWorkspace):
                 quotient.first_boundary,
                 quotient.first_boundary_macro,
             )
+        if quotient.innovation_observation is not None:
+            candidate = self._attach_innovation_observation(
+                candidate, quotient.innovation_observation
+            )
         return candidate
 
     def segments(self) -> Iterator[tuple[int, int, int]]:
         return self.branch_segments()
 
-    def _retained_boundary_macro(self) -> CollatzBoundaryMacro | None:
+    def _retained_boundary_macro(
+        self,
+    ) -> CollatzBoundaryMacro | BorderReturnMacro | None:
         memo = self._boundary_macro_memo
+        if memo is None:
+            return None
+        return memo.get("root")
+
+    def _retained_innovation_observation(self) -> InnovationTapeObservation | None:
+        memo = self._innovation_observation_memo
         if memo is None:
             return None
         return memo.get("root")
 
     def _release_boundary_macro_state(self) -> None:
         memo = self._boundary_macro_memo
-        try:
-            if memo is not None:
-                memo.dispose()
-        finally:
-            self._boundary_macro_memo = None
-            self._first_boundary_macro_snapshot = None
-            self._boundary_route_snapshot = None
+        if memo is not None:
+            memo.dispose()
+        self._boundary_macro_memo = None
+        self._first_boundary_macro_snapshot = None
+        self._boundary_route_snapshot = None
+
+    def _release_innovation_observation_state(self) -> None:
+        memo = self._innovation_observation_memo
+        if memo is not None:
+            memo.dispose()
+        self._innovation_observation_memo = None
+        self._innovation_observation_snapshot = None
+
+    def _release_d8_temporal_rows(self) -> None:
+        release_d8_rows_if_unleased(self.ledger, CollatzPhysicalImageWorkspace)
+
+    def _cleanup_all_states(self, *, include_base: bool) -> None:
+        base_cleanup = (super()._rollback_construction,) if include_base else ()
+        cleanup_all(
+            (
+                *base_cleanup,
+                self._release_boundary_macro_state,
+                self._release_innovation_observation_state,
+                self._release_d8_temporal_rows,
+            )
+        )
 
     def _rollback_construction(self) -> None:
-        try:
-            super()._rollback_construction()
-        finally:
-            self._release_boundary_macro_state()
+        self._cleanup_all_states(include_base=True)
 
     def dispose(self) -> None:
-        try:
-            super().dispose()
-        finally:
-            self._release_boundary_macro_state()
+        self._cleanup_all_states(include_base=not self._closed)
 
 
 CollatzPhysicalActionID = DyadicReturnActionID

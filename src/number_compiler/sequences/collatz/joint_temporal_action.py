@@ -544,6 +544,11 @@ class CollatzJointTemporalBuilder:
             raise RuntimeError("joint D8 batch was not requested")
         if self._d8_batch_source is not None or source != self.spine._cursor_source:
             raise ValueError("joint D8 batch does not begin at the current source")
+        # D8 frame publication bypasses the observed dyadic frontier.  A
+        # prior composite return or cached macro may leave a shorter pending
+        # block there; it must not be joined across this unobserved frame.
+        if self.cache is not None:
+            self.cache.frontier.clear()
         self._d8_batch_source = source
         self._d8_batch_steps = 0
         self._d8_batch_odd = 0

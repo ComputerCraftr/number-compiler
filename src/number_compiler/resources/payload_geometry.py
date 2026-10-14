@@ -53,7 +53,7 @@ from number_compiler.projection.point_response import PointResponse
 
 
 def geometry_field_policy() -> dict[type[object], frozenset[str]]:
-    return {
+    result = {
         ArenaHandle: frozenset(("local_id",)),
         ActionProgramID: frozenset(("local_id",)),
         TransferSummaryID: frozenset(("local_id",)),
@@ -89,3 +89,4 @@ def geometry_field_policy() -> dict[type[object], frozenset[str]]:
         AssociatedScalarSource: frozenset(),
         AssociatedScalarPayload: frozenset(),
     }
+    return result

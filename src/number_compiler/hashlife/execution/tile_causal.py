@@ -2,7 +2,9 @@
 
 from __future__ import annotations
 
+from collections.abc import Callable
 from dataclasses import replace
+from functools import partial
 from typing import TYPE_CHECKING, Any
 
 from number_compiler.arithmetic.contracts.block_effect import BoundarySide
@@ -63,9 +65,11 @@ from number_compiler.hashlife.tiles.tile_boundaries import (
     BoundaryTileView,
 )
 from number_compiler.hashlife.tiles.tile_region_memo import normalize_cached_region
+from number_compiler.hashlife.tiles.tile_result_leases import tile_lease_was_released
 from number_compiler.hashlife.tiles.tile_result_records import PoweredResultKey
 from number_compiler.hashlife.tiles.tile_results import ResultLease
 from number_compiler.hashlife.tiles.tiles import TileID, TileLease
+from number_compiler.resources.lifecycle import cleanup_all
 
 if TYPE_CHECKING:
     from number_compiler.hashlife.execution.tile_scheduler import TileScheduler
@@ -200,17 +204,49 @@ class CausalTileEngine(CausalTileAPI):
 
     def _release_workspace(self) -> None:
         pair_transfer = self.adapter.pair_transfer
+        failed_results: list[ResultLease] = []
+        failed_tiles: list[TileLease] = []
+        cleanups: list[Callable[[], object]] = []
+
         if pair_transfer is not None:
-            pair_transfer.clear_bindings()
-        for result in reversed(self._result_leases):
-            result.close()
-        self._result_leases.clear()
-        for lease in reversed(self._leases):
-            lease.close()
-        self._leases.clear()
-        self.scheduler._causal_workspace.clear()
-        self.scheduler._causal_tasks.clear()
-        self._application = None
+            cleanups.append(pair_transfer.clear_bindings)
+
+        def close_result(result: ResultLease) -> None:
+            try:
+                result.close()
+            except BaseException:
+                failed_results.append(result)
+                raise
+
+        def close_tile(lease: TileLease) -> None:
+            try:
+                lease.close()
+            except BaseException:
+                if not tile_lease_was_released(lease):
+                    failed_tiles.append(lease)
+                else:
+                    lease._closed = True
+                raise
+
+        cleanups.extend(
+            partial(close_result, result) for result in reversed(self._result_leases)
+        )
+        cleanups.extend(partial(close_tile, lease) for lease in reversed(self._leases))
+        cleanups.extend(
+            (self.scheduler._causal_workspace.clear, self.scheduler._causal_tasks.clear)
+        )
+        cleanups.append(self.scheduler.results._retry_pending_acquisition_leases)
+        try:
+            cleanup_all(cleanups)
+        finally:
+            self._result_leases = failed_results
+            self._leases = failed_tiles
+            self._application = None
+            if (
+                self.scheduler._causal_tasks._action_admission_token is None
+                and self.scheduler._causal_tasks._issued_action_admission_token is None
+            ):
+                self._action_admission_token = None
 
     def _run(
         self,

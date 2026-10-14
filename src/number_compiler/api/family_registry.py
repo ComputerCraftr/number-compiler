@@ -519,11 +519,14 @@ CAPABILITIES: dict[str, FamilySpec] = {
         ),
     ),
     "2rev10": FamilySpec(
-        FamilyCapability("iterations", ("seed",), ("metrics",)),
+        FamilyCapability("iterations", ("seed",), ("metrics", "closed-form")),
         DoubleReverseTermQuery,
         AdapterBinding("number_compiler.api.projections.double_reverse", "project"),
-        _observation(),
-        term_observation=ObservationValueBinding(DoubleReverseObservationOptions),
+        _observation(observe="observe_double_reverse"),
+        term_observation=ObservationValueBinding(
+            DoubleReverseObservationOptions, ("modulus",)
+        ),
+        observer_options=(("modulus", OptionSpec(None, ("closed-form",))),),
         output_bound="seed",
     ),
     "collatz": FamilySpec(

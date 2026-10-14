@@ -1,6 +1,8 @@
 from __future__ import annotations
 
 import gc
+from concurrent.futures import ThreadPoolExecutor
+from threading import Barrier
 from typing import cast
 from weakref import ref
 
@@ -49,6 +51,166 @@ def test_record_issuer_is_identity_checked_and_included_in_retained_bytes() -> N
             issued.get_issued(("effect",), "family")
     assert issued_cache.stats().bytes > 0
     assert ordinary_cache.stats().bytes > 0
+
+
+def test_issued_record_updates_are_atomic_and_preserve_all_concurrent_writes() -> None:
+    cache = ProcessCache(max_entries=128, max_bytes=100_000)
+    issuer = object()
+    partition = ("family", "atomic-v1", ("source",))
+    workers = 24
+    start = Barrier(workers)
+
+    def publish(value: int) -> bool:
+        with cache.acquire(*partition) as lease:
+            start.wait()
+
+            def append(existing: object) -> tuple[ImmutableValue, int]:
+                if existing is MISSING:
+                    records: tuple[ImmutableValue, ...] = ()
+                else:
+                    assert type(existing) is tuple
+                    records = cast(tuple[ImmutableValue, ...], existing)
+                return (*records, (value,)), value
+
+            return lease.update_issued(("records",), issuer, append)[0] is True
+
+    with ThreadPoolExecutor(max_workers=workers) as pool:
+        assert all(pool.map(publish, range(workers)))
+
+    with cache.acquire(*partition) as reader:
+        retained = reader.get_issued(("records",), issuer)
+        assert type(retained) is tuple
+        rows = cast(tuple[tuple[int, ...], ...], retained)
+        assert set(rows) == {(value,) for value in range(workers)}
+        updater_called = False
+
+        def forbidden_update(value: object) -> tuple[object, None]:
+            nonlocal updater_called
+            updater_called = True
+            return value, None
+
+        foreign = cache.acquire(*partition)
+        with foreign, pytest.raises(CacheRecordIssuerMismatch):
+            foreign.update_issued(("records",), object(), forbidden_update)
+        assert not updater_called
+    assert cache.stats().entries == 1
+    assert cache.stats().bytes > 0
+
+
+def test_issued_update_respects_capacity_and_stale_generation() -> None:
+    cache = ProcessCache(max_entries=8, max_bytes=8_000)
+    issuer = object()
+    lease = cache.acquire("family", "atomic-v1", ("source",))
+    assert lease.put_issued(("records",), ((1,),), issuer)
+    before = cache.stats()
+    assert lease.update_issued(
+        ("records",), issuer, lambda _value: ((b"x" * 16_000,), None)
+    ) == (False, None)
+    assert lease.get_issued(("records",), issuer) == ((1,),)
+    assert cache.stats().bytes == before.bytes
+
+    def fail_update(_value: object) -> tuple[object, None]:
+        raise RuntimeError("injected update failure")
+
+    with pytest.raises(RuntimeError, match="injected update failure"):
+        lease.update_issued(("records",), issuer, fail_update)
+    assert lease.get_issued(("records",), issuer) == ((1,),)
+
+    cache.reset()
+    updater_called = False
+
+    def stale_update(value: object) -> tuple[object, None]:
+        nonlocal updater_called
+        updater_called = True
+        return value, None
+
+    with pytest.raises(RuntimeError, match="stale"):
+        lease.update_issued(("records",), issuer, stale_update)
+    assert not updater_called
+    lease.close()
+
+
+def test_issued_update_revalidates_authority_when_reset_returns_missing() -> None:
+    cache = ProcessCache(max_entries=8, max_bytes=100_000)
+    issuer = object()
+    lease = cache.acquire("family", "atomic-v1", ("source",))
+    assert lease.put_issued(("records",), ((1,),), issuer)
+
+    def reset_without_replacement(_value: object) -> tuple[object, str]:
+        cache.reset()
+        return MISSING, "reset"
+
+    with pytest.raises(RuntimeError, match="stale after reset"):
+        lease.update_issued(("records",), issuer, reset_without_replacement)
+    assert cache.stats().entries == cache.stats().active_leases == 0
+    lease.close()
+
+
+def test_issued_update_revalidates_authority_when_callback_closes_lease() -> None:
+    cache = ProcessCache(max_entries=8, max_bytes=100_000)
+    issuer = object()
+    lease = cache.acquire("family", "atomic-v1", ("source",))
+    assert lease.put_issued(("records",), ((1,),), issuer)
+
+    def close_without_replacement(_value: object) -> tuple[object, str]:
+        lease.close()
+        return MISSING, "closed"
+
+    with pytest.raises(RuntimeError, match="foreign authority"):
+        lease.update_issued(("records",), issuer, close_without_replacement)
+    assert cache.stats().entries == 1
+    assert cache.stats().active_leases == 0
+
+
+def test_nested_same_key_update_wins_over_outer_update() -> None:
+    cache = ProcessCache(max_entries=8, max_bytes=100_000)
+    issuer = object()
+    with cache.acquire("family", "atomic-v1", ("source",)) as lease:
+        nested = False
+
+        def update(value: object) -> tuple[ImmutableValue, str]:
+            nonlocal nested
+            if not nested:
+                nested = True
+                assert lease.update_issued(("records",), issuer, update) == (
+                    True,
+                    "nested",
+                )
+                return (("outer",),), "outer"
+            assert value is MISSING
+            return (("nested",),), "nested"
+
+        assert lease.update_issued(("records",), issuer, update) == (
+            False,
+            "outer",
+        )
+        assert lease.get_issued(("records",), issuer) == (("nested",),)
+
+
+def test_issued_record_authority_cannot_be_replaced_by_another_writer() -> None:
+    cache = ProcessCache(max_entries=8, max_bytes=100_000)
+    issuer = object()
+    foreign_issuer = object()
+    with cache.acquire("family", "1", ("source",)) as lease:
+        assert lease.put_issued(("record",), (("original",),), issuer)
+
+        with pytest.raises(CacheRecordIssuerMismatch):
+            lease.put(("record",), (("plain replacement",),))
+        with pytest.raises(CacheRecordIssuerMismatch):
+            lease.put_issued(("record",), (("foreign replacement",),), foreign_issuer)
+
+        # The owning publisher may still intentionally replace its own record.
+        assert lease.put_issued(("record",), (("owner replacement",),), issuer)
+        assert lease.get_issued(("record",), issuer) == (("owner replacement",),)
+
+
+def test_issued_record_cannot_be_claimed_over_an_unissued_record() -> None:
+    cache = ProcessCache(max_entries=8, max_bytes=100_000)
+    with cache.acquire("family", "1", ("source",)) as lease:
+        assert lease.put(("record",), (("plain",),))
+        with pytest.raises(CacheRecordIssuerMismatch):
+            lease.put_issued(("record",), (("claimed",),), object())
+        assert lease.get(("record",)) == (("plain",),)
 
 
 def test_issued_record_capacity_refusal_is_bounded_and_nonmutating() -> None:

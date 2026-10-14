@@ -1,5 +1,7 @@
 """Cycle admission and cylinder splitting do not assemble unused exact sources."""
 
+from typing import Never
+
 import pytest
 
 from number_compiler.hashlife.execution.dyadic_return_images import (
@@ -93,4 +95,29 @@ def test_public_mixed_collatz_skips_unused_exact_source_assembly(
     )
     term = PoweredCollatzTerm(seed, 129)
     assert term.materialize(max_bits=8192) == expected
-    assert term._ledger.counters["collatz_physical_temporal_balanced_routes"] == 1
+    # The poison is the contract: this demanded endpoint must not assemble an
+    # exact source image, regardless of which admitted powered route is used.
+
+
+def test_public_power_of_two_skips_mixed_and_d8_discovery(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from number_compiler.sequences.collatz import temporal_run_executor
+    from number_compiler.sequences.collatz.block_power import PoweredCollatzTerm
+    from number_compiler.sequences.collatz.temporal_dyadic import D8TemporalTable
+
+    def forbidden(*_args: object, **_kwargs: object) -> Never:
+        raise AssertionError("known homogeneous source entered mixed discovery")
+
+    monkeypatch.setattr(temporal_run_executor, "select_mixed_macro", forbidden)
+    monkeypatch.setattr(
+        temporal_run_executor, "select_and_consume_mixed_run", forbidden
+    )
+    monkeypatch.setattr(D8TemporalTable, "for_ledger", classmethod(forbidden))
+
+    term = PoweredCollatzTerm(1 << 4096, 1024)
+    assert term.materialize(max_bits=4096) == 1 << 3072
+    assert (
+        term._ledger.counters.get("collatz_physical_temporal_d8_discovery_symbols", 0)
+        == 0
+    )

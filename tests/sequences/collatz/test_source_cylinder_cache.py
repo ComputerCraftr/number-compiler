@@ -24,6 +24,22 @@ from tests.support.reference_arithmetic import literal_dyadic_orbit
 pytestmark = pytest.mark.usefixtures("isolated_process_cache")
 
 
+@pytest.mark.parametrize("endpoint", [1, 2])
+def test_observed_terminal_action_remains_an_exact_finite_cylinder(
+    endpoint: int,
+) -> None:
+    source = endpoint << 16
+    with CollatzDyadicMacros(ResourceLedger(), shared_cache=True) as macros:
+        macros.observe(source, 16, 0, endpoint, anchor=source)
+        assert not macros.frontier
+        assert macros.ledger.counters["collatz_hashlife_occurrence_publications"] == 1
+    with CollatzDyadicMacros(ResourceLedger(), shared_cache=True) as macros:
+        for fiber in (1, 2, 3):
+            action = macros.lookup(fiber << 16, 16)
+            assert action is not None
+            assert action.apply(fiber << 16) == fiber
+
+
 def test_width_spine_is_source_qualified_when_endpoint_cylinder_transports() -> None:
     clear_process_cache()
     source = (1 << 200) + 931386509544713451
@@ -210,7 +226,10 @@ def test_cache_reset_and_different_width_require_new_admission() -> None:
         changed_result.endpoint
         == literal_dyadic_orbit(source, 128, COLLATZ_PHYSICAL_LAW)[0]
     )
-    assert changed_ledger.counters["collatz_hashlife_primitive_steps"] > 0
+    # The NC11 source-bound 6305 producer may now account for the complete
+    # cold path without scalar primitive steps. The changed-width occurrence
+    # must still be independently re-admitted after the miss above.
+    assert changed_ledger.counters["collatz_physical_boundary_6305R_macro_actions"] > 0
     clear_process_cache()
     with CollatzDyadicMacros(ResourceLedger(), shared_cache=True) as reset:
         assert reset.lookup(source, 128) is None
@@ -222,7 +241,7 @@ def test_cache_reset_and_different_width_require_new_admission() -> None:
     compile_collatz_temporal_run_quotient(
         source, 1000, ledger=reset_ledger, shared_cache=True
     )
-    assert reset_ledger.counters["collatz_hashlife_primitive_steps"] > 0
+    assert reset_ledger.counters["collatz_physical_boundary_6305R_macro_actions"] > 0
     assert all(item.entries == 0 for item in reset.ledger.inventory() if item.disposed)
     clear_process_cache()
 
@@ -733,6 +752,35 @@ def test_closed_macro_owner_rejects_reuse_without_mutating_counters() -> None:
         macros.__enter__()
     assert macros.ledger.counters == before
     assert macros.ledger.entries == 0
+
+
+def test_dyadic_macro_close_attempts_every_store_and_retries_failed_owner(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    ledger = ResourceLedger()
+    macros = CollatzDyadicMacros(ledger)
+    original = macros.occurrences.dispose
+    calls = 0
+
+    def fail_once() -> None:
+        nonlocal calls
+        calls += 1
+        if calls == 1:
+            raise RuntimeError("injected occurrence disposal failure")
+        original()
+
+    monkeypatch.setattr(macros.occurrences, "dispose", fail_once)
+    with pytest.raises(RuntimeError, match="occurrence disposal failure"):
+        macros.close()
+    assert macros._closed
+    assert not macros.occurrences._disposed
+    assert macros.width_spines._disposed
+    assert macros.gains._disposed
+    assert macros.frontier._disposed
+
+    macros.close()
+    assert macros.occurrences._disposed
+    assert ledger.entries == ledger.nodes == 0
 
 
 def test_large_width_residue_checks_do_not_build_width_sized_masks() -> None:

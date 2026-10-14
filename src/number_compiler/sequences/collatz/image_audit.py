@@ -31,6 +31,7 @@ def audit_image_binding(
     tape_width_port: str,
     joint_cocycle_port: str,
     boundary_macro_port: str,
+    innovation_tape_port: str,
 ) -> tuple[Hashable, ...]:
     """Validate the exact Collatz image and its optional family observations."""
     if type(binding) is not SourceImageBinding:
@@ -47,6 +48,7 @@ def audit_image_binding(
         raise TypeError("Collatz binding needs local source and action IDs")
     source = root.source_node(source_id)
     action = root.action_node(action_id)
+    is_root_binding = source_id == root.root_source and action_id == root.root_action
     # Exact-source images retain the resolution of that authenticated
     # source even when a compressed cycle/composite spans more steps.
     # A non-exact cylinder image instead carries the temporal width that
@@ -76,6 +78,7 @@ def audit_image_binding(
     width_ports: list[tuple[object, ...]] = []
     joint_ports: list[tuple[object, ...]] = []
     boundary_macro_ports: list[tuple[object, ...]] = []
+    innovation_ports: list[tuple[object, ...]] = []
     for port in binding.boundary_ports:
         if (
             type(port) is tuple
@@ -104,25 +107,50 @@ def audit_image_binding(
             if len(port) != 2:
                 raise ValueError("Collatz boundary macro port has an invalid shape")
             boundary_macro_ports.append(port)
+        if (
+            type(port) is tuple
+            and port
+            and type(port[0]) is str
+            and port[0] == innovation_tape_port
+        ):
+            if len(port) != 3:
+                raise ValueError("Collatz innovation tape port has an invalid shape")
+            innovation_ports.append(port)
     if len(width_ports) > 1:
         raise ValueError("Collatz root has duplicate width ports")
     if len(joint_ports) > 1:
         raise ValueError("Collatz root has duplicate joint ports")
     if len(boundary_macro_ports) > 1:
         raise ValueError("Collatz root has duplicate boundary macro ports")
-    if not boundary_macro_ports and (
-        root._first_boundary_macro_snapshot is not None
-        or root._boundary_macro_memo is not None
-        and "root" in root._boundary_macro_memo
-    ):
-        raise ValueError("Collatz boundary macro snapshot was not published")
+    if len(innovation_ports) > 1:
+        raise ValueError("Collatz root has duplicate innovation tape ports")
+    if is_root_binding:
+        if not boundary_macro_ports and (
+            root._first_boundary_macro_snapshot is not None
+            or root._boundary_macro_memo is not None
+            and "root" in root._boundary_macro_memo
+        ):
+            raise ValueError("Collatz boundary macro snapshot was not published")
+        if not innovation_ports and (
+            root._innovation_observation_snapshot is not None
+            or root._innovation_observation_memo is not None
+            and "root" in root._innovation_observation_memo
+        ):
+            raise ValueError(
+                "Collatz innovation observation snapshot was not published"
+            )
 
     ordinary = tuple(
         port
         for port in binding.boundary_ports
         if all(
             port is not removed
-            for removed in (*width_ports, *joint_ports, *boundary_macro_ports)
+            for removed in (
+                *width_ports,
+                *joint_ports,
+                *boundary_macro_ports,
+                *innovation_ports,
+            )
         )
     )
     cycle = summary.cycle
@@ -148,7 +176,12 @@ def audit_image_binding(
     if not valid_port:
         raise ValueError("Collatz image transfer/cycle port is inconsistent")
 
-    if not width_ports and not joint_ports and not boundary_macro_ports:
+    if (
+        not width_ports
+        and not joint_ports
+        and not boundary_macro_ports
+        and not innovation_ports
+    ):
         return ()
     if source_id != root.root_source or action_id != root.root_action:
         raise ValueError("Collatz optional summary belongs only to its root image")
@@ -233,11 +266,77 @@ def audit_image_binding(
         if start_tick + macro.physical_ticks > root.steps:
             raise ValueError("Collatz boundary macro exceeds its source action")
         boundary_macro_record = (boundary_macro_ports[0],)
+    innovation_record: tuple[object, ...] | None = None
+    if innovation_ports:
+        if (
+            not root._include_innovation_tape
+            or root._innovation_modulus is None
+            or not source.exact
+            or source_id != root.root_source
+            or action_id != root.root_action
+        ):
+            raise ValueError("unrequested Collatz innovation tape was published")
+        port = innovation_ports[0]
+        image_handle, modulus = port[1], port[2]
+        if (
+            type(image_handle) is not DyadicReturnImageID
+            or type(modulus) is not int
+            or modulus != root._innovation_modulus
+            or not _typed_equal(image_handle, payload)
+            or not _typed_equal(image_handle, root.root_payload)
+        ):
+            raise ValueError("Collatz innovation port has another root image handle")
+        root.validate_payload(image_handle)
+        handle_image = root.image_node(image_handle)
+        if (
+            handle_image.source != source_id
+            or handle_image.action != action_id
+            or root._innovation_observation_snapshot is None
+        ):
+            raise ValueError("Collatz innovation port is detached from its image")
+        from number_compiler.sequences.collatz.innovation_port_moore import (
+            InnovationTapeObservation,
+        )
+
+        observation = root._retained_innovation_observation()
+        if (
+            type(observation) is not InnovationTapeObservation
+            or not observation.producer_issued
+            or not _typed_equal(
+                observation.structural_payload(),
+                root._innovation_observation_snapshot,
+            )
+            or observation.source != root.seed
+            or observation.modulus != modulus
+            or observation.physical_endpoint != endpoint
+            or observation.physical_ticks != root.steps
+        ):
+            raise ValueError("Collatz innovation tape differs from its root source")
+        normalized_endpoint = (
+            endpoint
+            if observation.phase == 0
+            else (endpoint - 1) // 3
+            if endpoint % 3 == 1
+            else -1
+        )
+        if (
+            observation.endpoint != normalized_endpoint
+            or observation.normalized_steps
+            + observation.one_symbols
+            + observation.phase
+            != root.steps
+            or observation.one_symbols + observation.phase != summary.odd_steps
+            or observation.normalized_steps != root.steps - summary.odd_steps
+        ):
+            raise ValueError("Collatz innovation clocks differ from its exact image")
+        innovation_record = (innovation_ports[0],)
     approved: list[Hashable] = []
-    if width_record is not None:
-        approved.extend(width_record)
-    if joint_record is not None:
-        approved.extend(joint_record)
-    if boundary_macro_record is not None:
-        approved.extend(boundary_macro_record)
+    for record in (
+        width_record,
+        joint_record,
+        boundary_macro_record,
+        innovation_record,
+    ):
+        if record is not None:
+            approved.extend(record)
     return tuple(approved)

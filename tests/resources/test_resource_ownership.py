@@ -205,9 +205,11 @@ def _name(expression: ast.expr) -> str:
     return ""
 
 
-def _persistent_store_violations(source: str, classes: set[str]) -> list[int]:
+def _persistent_store_violations(tree: ast.Module, classes: set[str]) -> list[int]:
+    if not classes:
+        return []
     violations = []
-    for cls in ast.walk(ast.parse(source)):
+    for cls in ast.walk(tree):
         if not isinstance(cls, ast.ClassDef) or cls.name not in classes:
             continue
         for method in cls.body:
@@ -256,19 +258,19 @@ def _persistent_store_violations(source: str, classes: set[str]) -> list[int]:
 
 
 def test_structural_gate_distinguishes_retained_stores_from_transient_locals() -> None:
-    assert (
-        _persistent_store_violations(
-            "class Owner:\n def f(self):\n  transient = {}\n  self.memo = ledger.make_dict(owner)\n",
-            {"Owner"},
-        )
-        == []
+    valid_tree = ast.parse(
+        "class Owner:\n"
+        " def f(self):\n"
+        "  transient = {}\n"
+        "  self.memo = ledger.make_dict(owner)\n"
     )
-    assert _persistent_store_violations(
-        "class Owner:\n def f(self):\n  self.memo = {}\n", {"Owner"}
+    assert _persistent_store_violations(valid_tree, {"Owner"}) == []
+    direct_store_tree = ast.parse("class Owner:\n def f(self):\n  self.memo = {}\n")
+    assert _persistent_store_violations(direct_store_tree, {"Owner"})
+    cached_method_tree = ast.parse(
+        "class Owner:\n @lru_cache(None)\n def f(self): pass\n"
     )
-    assert _persistent_store_violations(
-        "class Owner:\n @lru_cache(None)\n def f(self): pass\n", {"Owner"}
-    )
+    assert _persistent_store_violations(cached_method_tree, {"Owner"})
 
 
 def test_execution_owners_allocate_persistent_stores_only_through_factories() -> None:
@@ -278,8 +280,9 @@ def test_execution_owners_allocate_persistent_stores_only_through_factories() ->
     for source_root in (root, repository_root() / "devtools" / "verification"):
         for path in source_root.rglob("*.py"):
             text = path.read_text()
+            tree = ast.parse(text, filename=str(path))
             classes = set()
-            for node in ast.walk(ast.parse(text)):
+            for node in ast.walk(tree):
                 if not isinstance(node, ast.ClassDef):
                     continue
                 constructors = [
@@ -303,7 +306,7 @@ def test_execution_owners_allocate_persistent_stores_only_through_factories() ->
                 ):
                     classes.add(node.name)
             examined += len(classes)
-            rows = _persistent_store_violations(text, classes)
+            rows = _persistent_store_violations(tree, classes)
             if rows:
                 violations[str(path.relative_to(repository_root()))] = rows
     assert examined > 0
@@ -337,9 +340,10 @@ def test_read_only_proxy_cannot_disguise_an_externally_mutable_cache() -> None:
     external["warmed"] = 2
     assert root.proxy["warmed"] == 2
     assert audit_execution_ownership(ledger).unregistered_containers == 1
-    assert _persistent_store_violations(
-        "class Owner:\n def f(self):\n  self.memo = MappingProxyType({})\n", {"Owner"}
+    proxy_tree = ast.parse(
+        "class Owner:\n def f(self):\n  self.memo = MappingProxyType({})\n"
     )
+    assert _persistent_store_violations(proxy_tree, {"Owner"})
 
 
 def test_builtin_callback_and_partial_cannot_hide_mutable_stores() -> None:

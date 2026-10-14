@@ -73,7 +73,7 @@ def test_reverse_power_source_has_no_slow_temporal_backend() -> None:
 
 
 @pytest.mark.validation
-def test_hashlife_projection_respects_explicit_context_budget() -> None:
+def test_reverse_projection_respects_explicit_context_budget() -> None:
     """Run the N=128 exhausted-budget and successful production applications."""
     import pytest
 
@@ -81,8 +81,17 @@ def test_hashlife_projection_respects_explicit_context_budget() -> None:
         BlockContextBudgetExceeded,
     )
 
+    zero_budget = ReverseAddPoweredTerm(
+        196, 128, max_context_nodes=0, max_cache_entries=0
+    )
+    # Construction is intentionally lazy: the zero budget must reject the
+    # first source-image demand, before any workspace or retained storage is
+    # published, rather than forcing allocation in the term constructor.
+    assert zero_budget._workspace is None
     with pytest.raises(BlockContextBudgetExceeded):
-        ReverseAddPoweredTerm(196, 128, max_context_nodes=0, max_cache_entries=0)
+        zero_budget.digit(zero_budget.maximum_width // 3)
+    assert zero_budget._workspace is None
+    assert zero_budget._ledger.entries == zero_budget._ledger.nodes == 0
     # Every retained action, source and publication is charged. The bounded
     # application must refuse atomically; an unbounded application still has
     # to construct and return the exact powered output.

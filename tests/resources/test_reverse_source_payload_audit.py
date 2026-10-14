@@ -85,20 +85,21 @@ def test_repeated_d64_metrics_keep_the_complete_payload_audit() -> None:
     assert term.metrics().resource_audit_complete == 1
 
 
-def test_width_projection_origin_cannot_be_rebound_to_completed_action() -> None:
+def test_completed_width_image_cannot_be_rebound_to_foreign_owner() -> None:
     workspace = ReverseSourceImageWorkspace(ResourceLedger(), 196, 16)
     assert workspace.width() == 9
-    origin = workspace._width_image
-    assert origin is not None
-    assert workspace._image is None
+    image = workspace._image
+    assert image is not None
     assert id(workspace) in _audit(workspace).approved
-    tuple(workspace.iter_digits())
-    assert workspace._image is not None
-    assert workspace._image != origin
-    workspace._width_image = workspace._image
+    foreign = ReverseSourceImageWorkspace(ResourceLedger(), 196, 16)
+    assert foreign.width() == 9
+    foreign_image = foreign._image
+    assert foreign_image is not None
+    workspace._image = foreign_image
     assert id(workspace) not in _audit(workspace).approved
-    workspace._width_image = origin
+    workspace._image = image
     assert id(workspace) in _audit(workspace).approved
+    foreign.dispose()
     workspace.dispose()
 
 

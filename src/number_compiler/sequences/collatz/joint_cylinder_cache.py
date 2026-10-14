@@ -8,13 +8,14 @@ macro before consuming either result.
 
 from __future__ import annotations
 
-from typing import Self
+from typing import Self, cast
 
 from number_compiler.arithmetic.contracts.block_effect import (
     BlockContextBudgetExceeded,
 )
 from number_compiler.arithmetic.contracts.input_validation import require_integer
 from number_compiler.resources.ledger import OwnedMemo, ResourceLedger
+from number_compiler.resources.lifecycle import cleanup_all
 from number_compiler.resources.process_cache import (
     MISSING,
     CacheRecordIssuerMismatch,
@@ -41,33 +42,54 @@ class JointCertifiedMacroCache:
         self.ledger = ledger
         self.shared_cache = shared_cache
         self._closed = False
+        self._cleanup_complete = False
         self._interior_records = 0
-        frontier: OwnedMemo[int, tuple[int, DyadicTerminalFieldAction, int, int]] = (
-            OwnedMemo(
-                ledger,
-                ledger.register(
-                    f"collatz-joint-macro-frontier-{ledger.owner_count}",
-                    "execution_stack",
-                ),
-                nodes_per_entry=20,
-            )
+
+        def make_store(
+            name: str,
+            role: str,
+            *,
+            nodes_per_entry: int,
+            evictable: bool = False,
+        ) -> OwnedMemo[object, object]:
+            owner = ledger.register(name, role)
+            try:
+                return OwnedMemo(
+                    ledger,
+                    owner,
+                    nodes_per_entry=nodes_per_entry,
+                    evictable=evictable,
+                )
+            except BaseException:
+                ledger.mark_disposed(owner)
+                raise
+
+        frontier = make_store(
+            f"collatz-joint-macro-frontier-{ledger.owner_count}",
+            "execution_stack",
+            nodes_per_entry=20,
         )
         try:
-            actions: OwnedMemo[
-                tuple[int, int], tuple[DyadicTerminalFieldAction, int, int]
-            ] = OwnedMemo(
-                ledger,
-                ledger.register(
-                    f"collatz-joint-macros-{ledger.owner_count}", "query_memo"
-                ),
+            actions = make_store(
+                f"collatz-joint-macros-{ledger.owner_count}",
+                "query_memo",
                 nodes_per_entry=20,
                 evictable=True,
             )
         except BaseException:
-            frontier.dispose()
+            cleanup_all((frontier.dispose,))
             raise
-        self.frontier = frontier
-        self.actions = actions
+        self.frontier: OwnedMemo[
+            int, tuple[int, DyadicTerminalFieldAction, int, int]
+        ] = cast(
+            OwnedMemo[int, tuple[int, DyadicTerminalFieldAction, int, int]], frontier
+        )
+        self.actions: OwnedMemo[
+            tuple[int, int], tuple[DyadicTerminalFieldAction, int, int]
+        ] = cast(
+            OwnedMemo[tuple[int, int], tuple[DyadicTerminalFieldAction, int, int]],
+            actions,
+        )
         try:
             for name in (
                 "lookups",
@@ -96,8 +118,7 @@ class JointCertifiedMacroCache:
                 self._bump(name, 0)
             ledger.register_execution_root(self)
         except BaseException:
-            self.actions.dispose()
-            self.frontier.dispose()
+            cleanup_all((self.actions.dispose, self.frontier.dispose))
             raise
 
     def __enter__(self) -> Self:
@@ -105,12 +126,14 @@ class JointCertifiedMacroCache:
         return self
 
     def __exit__(self, *_args: object) -> None:
-        if not self._closed:
-            self._closed = True
-            try:
-                self.actions.dispose()
-            finally:
-                self.frontier.dispose()
+        self.close()
+
+    def close(self) -> None:
+        if self._cleanup_complete:
+            return
+        self._closed = True
+        cleanup_all((self.actions.dispose, self.frontier.dispose))
+        self._cleanup_complete = True
 
     def _check_open(self) -> None:
         if self._closed:
@@ -344,7 +367,7 @@ class JointCertifiedMacroCache:
         """Store useful root/interior dyadic blocks emitted by the live run."""
         self._check_open()
         width = action.steps
-        if width < 8 or width & (width - 1) or width > self.MAX_WIDTH or endpoint <= 2:
+        if width < 8 or width & (width - 1) or width > self.MAX_WIDTH:
             self.frontier.clear()
             return
         if width < 16 and width != 8:
@@ -384,11 +407,14 @@ class JointCertifiedMacroCache:
                 self._interior_records += int(useful_join)
             left = self.frontier.pop(width, None)
             if left is None:
-                try:
-                    self.frontier[width] = (source, action, odd_symbols, endpoint)
-                except BlockContextBudgetExceeded:
+                if endpoint > 2:
+                    try:
+                        self.frontier[width] = (source, action, odd_symbols, endpoint)
+                    except BlockContextBudgetExceeded:
+                        self.frontier.clear()
+                        self._bump("bypasses")
+                else:
                     self.frontier.clear()
-                    self._bump("bypasses")
                 return
             left_source, left_action, left_odd, left_endpoint = left
             if left_endpoint != source:

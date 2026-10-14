@@ -1,5 +1,6 @@
 theory Collatz_Boundary_Macros
   imports Collatz_Physical_Cylinder_Lift
+    Shared_Carry_Dynamics.Port_Valued_Mealy
 begin
 
 text \<open>Exact guard lemmas for the four finite boundary templates used by the
@@ -45,6 +46,450 @@ proof -
   show ?thesis
     using x odd_source
     by (simp add: collatz_guarded_true_step_exact algebra_simps)
+qed
+
+lemma collatz_guarded_step_double_exact:
+  assumes branch: "branch = odd source"
+  shows "2 * collatz_guarded_normalized_source_step branch source =
+    (if branch then 3 * source + 1 else source)"
+proof (cases branch)
+  case False
+  have even_source: "even source"
+    using branch False by simp
+  obtain k where source: "source = 2*k"
+    using even_source by (rule evenE)
+  show ?thesis
+    using False even_source source
+      collatz_guarded_false_step_exact[OF even_source]
+    by simp
+next
+  case True
+  have odd_source: "odd source"
+    using branch True by simp
+  obtain k where source: "source = 2*k+1"
+    using odd_source by (rule oddE)
+  show ?thesis
+    using True odd_source source
+      collatz_guarded_true_step_exact[OF odd_source]
+    by (simp add: algebra_simps)
+qed
+
+definition collatz_modular_half_inverse :: "nat \<Rightarrow> nat" where
+  "collatz_modular_half_inverse m = (m+1) div 2"
+
+lemma collatz_modular_half_inverse_exact:
+  assumes odd_modulus: "odd m"
+  shows "2 * collatz_modular_half_inverse m = m+1"
+proof -
+  obtain k where modulus: "m=2*k+1"
+    using odd_modulus by (rule oddE)
+  show ?thesis
+    using modulus by (simp add: collatz_modular_half_inverse_def)
+qed
+
+lemma collatz_modular_half_transport:
+  assumes odd_modulus: "odd m"
+  shows "((2*q mod m) * collatz_modular_half_inverse m) mod m = q mod m"
+proof -
+  have inverse: "2 * collatz_modular_half_inverse m = m+1"
+    by (rule collatz_modular_half_inverse_exact[OF odd_modulus])
+  have "((2*q mod m) * collatz_modular_half_inverse m) mod m =
+        (2*q*collatz_modular_half_inverse m) mod m"
+      by (simp only: mod_mult_left_eq)
+  also have "... = (q * (2 * collatz_modular_half_inverse m)) mod m"
+    by (simp add: algebra_simps)
+  also have "... = (q * (m+1)) mod m"
+    using inverse by simp
+  also have "... = (q*m + q) mod m"
+    by (simp add: algebra_simps)
+  also have "... = q mod m"
+    by (simp add: mult.commute)
+  finally show ?thesis .
+qed
+
+lemma collatz_modular_numerator_residue:
+  fixes source m s :: nat and branch :: bool
+  assumes residue: "source mod m = s"
+    and positive_modulus: "0 < m"
+  shows "(if branch then 3*source+1 else source) mod m =
+    (if branch then 3*s+1 else s) mod m"
+proof (cases branch)
+  case False
+  have source_remainder: "source mod m < m"
+    by (rule mod_less_divisor[OF positive_modulus])
+  have s_lt_m: "s < m" using source_remainder residue by simp
+  show ?thesis using False residue s_lt_m by simp
+next
+  case True
+  have product: "(3*source) mod m = (3*s) mod m"
+  proof -
+    have "(3*source) mod m = (3*(source mod m)) mod m"
+      by (simp only: mod_mult_right_eq)
+    also have "... = (3*s) mod m"
+      using residue by simp
+    finally show ?thesis .
+  qed
+  have numerator: "(3*source+1) mod m = (3*s+1) mod m"
+    by (rule mod_add_cong[OF product refl])
+  show ?thesis using True numerator by simp
+qed
+
+definition collatz_modular_port_transition ::
+    "nat \<Rightarrow> nat \<Rightarrow> bool \<Rightarrow> bool \<Rightarrow> nat \<times> bool" where
+  "collatz_modular_port_transition m s branch next_bit =
+    (((if branch then 3*s+1 else s) * collatz_modular_half_inverse m) mod m,
+      next_bit)"
+
+text \<open>This is the input-driven residue transition used by the global port
+observer.  The parity input is authenticated by the exact normalized source
+step; the theorem does not make either parity choice autonomous or use an
+observer class as an endpoint identity.\<close>
+
+theorem collatz_modular_port_transition_exact:
+  fixes m source s :: nat and branch next_bit :: bool
+  assumes odd_modulus: "odd m"
+    and source_residue: "source mod m = s"
+    and source_branch: "branch = odd source"
+    and next_parity:
+      "next_bit = odd (collatz_guarded_normalized_source_step branch source)"
+  shows "collatz_modular_port_transition m s branch next_bit =
+    (collatz_guarded_normalized_source_step branch source mod m,
+      odd (collatz_guarded_normalized_source_step branch source))"
+proof -
+  let ?endpoint = "collatz_guarded_normalized_source_step branch source"
+  have doubled:
+    "2*?endpoint = (if branch then 3*source+1 else source)"
+    by (rule collatz_guarded_step_double_exact[OF source_branch])
+  have numerator_residue:
+    "(if branch then 3*source+1 else source) mod m =
+      (if branch then 3*s+1 else s) mod m"
+  proof (rule collatz_modular_numerator_residue[OF source_residue])
+    show "0 < m" using odd_modulus by (cases m) simp_all
+  qed
+  have doubled_residue:
+    "(2*?endpoint) mod m =
+      (if branch then 3*s+1 else s) mod m"
+    using doubled numerator_residue by simp
+  have transport:
+    "(((if branch then 3*s+1 else s) mod m) *
+        collatz_modular_half_inverse m) mod m = ?endpoint mod m"
+  proof -
+    have half: "((2*?endpoint mod m) * collatz_modular_half_inverse m) mod m =
+        ?endpoint mod m"
+      by (rule collatz_modular_half_transport[OF odd_modulus])
+    show ?thesis using half doubled_residue by simp
+  qed
+  have transition_residue:
+    "((if branch then 3*s+1 else s) *
+        collatz_modular_half_inverse m) mod m = ?endpoint mod m"
+  proof -
+    have normalize:
+      "((if branch then 3*s+1 else s) *
+          collatz_modular_half_inverse m) mod m =
+        (((if branch then 3*s+1 else s) mod m) *
+          collatz_modular_half_inverse m) mod m"
+      by (rule mod_mult_left_eq[symmetric])
+    show ?thesis by (rule trans[OF normalize transport])
+  qed
+  show ?thesis
+    unfolding collatz_modular_port_transition_def
+    using transition_residue next_parity by simp
+qed
+
+text \<open>The physical decimal boundary observation is a small total classifier.
+Its twenty input guards are the two possible quotient parities and ten
+present digits.  The emitted digit is the low decimal digit of one physical
+Collatz step.  This is a one-step observation contract; it does not claim that
+the twenty guards form a closed future-state machine (the next quotient
+parity needs more source information).\<close>
+
+definition collatz_decimal_boundary_output :: "nat \<Rightarrow> nat \<Rightarrow> nat" where
+  "collatz_decimal_boundary_output quotient_parity digit =
+    (if even digit then digit div 2 + 5 * quotient_parity
+     else (3 * digit + 1) mod 10)"
+
+definition collatz_decimal_boundary_mealy :: "(nat \<times> nat, nat) port_mealy" where
+  "collatz_decimal_boundary_mealy = \<lparr>
+    mealy_span = 1,
+    mealy_endpoint = id,
+    mealy_emission = (\<lambda>(quotient_parity, digit).
+      collatz_decimal_boundary_output quotient_parity digit)\<rparr>"
+
+definition collatz_decimal_boundary_guard :: "nat \<Rightarrow> nat \<times> nat" where
+  "collatz_decimal_boundary_guard index = (index div 10, index mod 10)"
+
+lemma collatz_decimal_boundary_guard_bounds:
+  assumes index: "index < 20"
+  shows "fst (collatz_decimal_boundary_guard index) < 2 \<and>
+    snd (collatz_decimal_boundary_guard index) < 10"
+proof -
+  have remainder: "index mod 10 < 10" by simp
+  have decomposition: "(index div 10) * 10 + index mod 10 = index"
+    by (rule div_mult_mod_eq)
+  show ?thesis
+    using index remainder decomposition
+    by (simp add: collatz_decimal_boundary_guard_def; arith)
+qed
+
+lemma collatz_decimal_boundary_guard_reconstruct:
+  assumes index: "index < 20"
+  shows "10 * fst (collatz_decimal_boundary_guard index) +
+      snd (collatz_decimal_boundary_guard index) = index"
+  using index by (simp add: collatz_decimal_boundary_guard_def div_mult_mod_eq)
+
+lemma collatz_decimal_boundary_guard_injective:
+  assumes left: "left < 20" and right: "right < 20"
+    and same: "collatz_decimal_boundary_guard left =
+      collatz_decimal_boundary_guard right"
+  shows "left = right"
+proof -
+  have left_reconstruct:
+    "10 * fst (collatz_decimal_boundary_guard left) +
+       snd (collatz_decimal_boundary_guard left) = left"
+    by (rule collatz_decimal_boundary_guard_reconstruct[OF left])
+  have right_reconstruct:
+    "10 * fst (collatz_decimal_boundary_guard right) +
+       snd (collatz_decimal_boundary_guard right) = right"
+    by (rule collatz_decimal_boundary_guard_reconstruct[OF right])
+  have equal_fst:
+    "fst (collatz_decimal_boundary_guard left) =
+       fst (collatz_decimal_boundary_guard right)"
+    using same by (rule arg_cong[where f=fst])
+  have equal_snd:
+    "snd (collatz_decimal_boundary_guard left) =
+       snd (collatz_decimal_boundary_guard right)"
+    using same by (rule arg_cong[where f=snd])
+  have left_value:
+    "left = 10 * fst (collatz_decimal_boundary_guard left) +
+      snd (collatz_decimal_boundary_guard left)"
+    by (rule sym[OF left_reconstruct])
+  also have
+    "10 * fst (collatz_decimal_boundary_guard left) +
+        snd (collatz_decimal_boundary_guard left) =
+      10 * fst (collatz_decimal_boundary_guard right) +
+        snd (collatz_decimal_boundary_guard right)"
+    by (simp only: equal_fst equal_snd)
+  also have
+    "10 * fst (collatz_decimal_boundary_guard right) +
+        snd (collatz_decimal_boundary_guard right) = right"
+    by (rule right_reconstruct)
+  finally show ?thesis .
+qed
+
+lemma collatz_decimal_boundary_guard_covers:
+  assumes quotient_parity: "quotient_parity < 2" and digit: "digit < 10"
+  shows "collatz_decimal_boundary_guard (10 * quotient_parity + digit) =
+    (quotient_parity, digit)"
+proof -
+  have index: "10 * quotient_parity + digit < 20"
+    using quotient_parity digit by arith
+  have remainder: "(10 * quotient_parity + digit) mod 10 < 10"
+    by simp
+  have decomposition:
+    "((10 * quotient_parity + digit) div 10) * 10 +
+       (10 * quotient_parity + digit) mod 10 =
+       10 * quotient_parity + digit"
+    by (rule div_mult_mod_eq)
+  show ?thesis
+    using quotient_parity digit decomposition index remainder
+    by (simp add: collatz_decimal_boundary_guard_def; arith)
+qed
+
+lemma collatz_decimal_boundary_output_range:
+  assumes quotient_parity: "quotient_parity < 2" and digit: "digit < 10"
+  shows "collatz_decimal_boundary_output quotient_parity digit < 10"
+proof (cases "even digit")
+  case True
+  obtain half where digit_even: "digit = 2 * half"
+    using True by (elim evenE)
+  have half_bound: "half < 5"
+    using digit digit_even by arith
+  have digit_half: "digit div 2 = half"
+    using digit_even by simp
+  show ?thesis
+    using quotient_parity half_bound digit_half True
+    by (simp add: collatz_decimal_boundary_output_def; arith)
+next
+  case False
+  show ?thesis
+    using False by (simp add: collatz_decimal_boundary_output_def)
+qed
+
+lemma collatz_decimal_boundary_output_covers_digit:
+  assumes target: "target < 10"
+  shows "\<exists>quotient_parity<2. \<exists>digit<10.
+    collatz_decimal_boundary_output quotient_parity digit = target"
+proof -
+  let ?quotient_parity = "target div 5"
+  let ?digit = "2 * (target mod 5)"
+  have parity: "?quotient_parity < 2"
+    using target by simp
+  have digit_bound: "?digit < 10"
+    using target by simp
+  have even_digit: "even ?digit" by simp
+  have division: "?digit div 2 = target mod 5" by simp
+  have reconstruction: "5 * ?quotient_parity + target mod 5 = target"
+    using target by (simp add: div_mult_mod_eq)
+  have emitted_digit:
+    "collatz_decimal_boundary_output ?quotient_parity ?digit = target"
+    using even_digit division reconstruction
+    by (simp add: collatz_decimal_boundary_output_def)
+  show ?thesis using parity digit_bound emitted_digit by blast
+qed
+
+lemma collatz_decimal_boundary_output_exact:
+  assumes digit: "digit < 10"
+  shows "collatz_decimal_boundary_output (source_quotient mod 2) digit =
+      physical_collatz (10 * source_quotient + digit) mod 10"
+proof (cases "even digit")
+  case True
+  obtain half where digit_even: "digit = 2 * half"
+    using True by (elim evenE) (auto simp: mult.commute)
+  have half_bound: "half < 5"
+    using digit digit_even by arith
+  have quotient_decomposition:
+    "source_quotient =
+      (source_quotient div 2) * 2 + source_quotient mod 2"
+    by (simp add: div_mult_mod_eq)
+  have source_even:
+    "10 * source_quotient + digit =
+      2 * (5 * source_quotient + half)"
+    using digit_even by (simp add: algebra_simps)
+  have quotient_value:
+    "(10 * source_quotient + digit) div 2 =
+      5 * source_quotient + half"
+    using source_even by simp
+  have low_digit:
+    "5 * (source_quotient mod 2) + half < 10"
+  proof -
+    have residue_bound: "source_quotient mod 2 < 2" by simp
+    show ?thesis using residue_bound half_bound by arith
+  qed
+  have expanded:
+    "5 * source_quotient + half =
+      10 * (source_quotient div 2) +
+        (5 * (source_quotient mod 2) + half)"
+    using quotient_decomposition by arith
+  have modulo:
+    "(5 * source_quotient + half) mod 10 =
+      5 * (source_quotient mod 2) + half"
+  proof -
+    have expanded_mod:
+      "(5 * source_quotient + half) mod 10 =
+        (10 * (source_quotient div 2) +
+          (5 * (source_quotient mod 2) + half)) mod 10"
+      by (simp only: expanded)
+    also have
+      "(10 * (source_quotient div 2) +
+          (5 * (source_quotient mod 2) + half)) mod 10 =
+        ((10 * (source_quotient div 2)) mod 10 +
+          (5 * (source_quotient mod 2) + half) mod 10) mod 10"
+      by (rule mod_add_eq[symmetric])
+    also have
+      "((10 * (source_quotient div 2)) mod 10 +
+          (5 * (source_quotient mod 2) + half) mod 10) mod 10 =
+        5 * (source_quotient mod 2) + half"
+      using low_digit by simp
+    finally show ?thesis .
+  qed
+  show ?thesis
+    using True digit_even quotient_value modulo
+    by (simp add: collatz_decimal_boundary_output_def physical_collatz_def
+        algebra_simps)
+next
+  case False
+  have source_odd: "odd (10 * source_quotient + digit)"
+    using False by simp
+  have numerator:
+    "(3 * (10 * source_quotient + digit) + 1) mod 10 =
+      (3 * digit + 1) mod 10"
+  proof -
+    have regroup:
+      "3 * (10 * source_quotient + digit) + 1 =
+        (3 * digit + 1) + 10 * (3 * source_quotient)"
+      by (simp add: algebra_simps)
+    have split:
+      "((3 * digit + 1) + 10 * (3 * source_quotient)) mod 10 =
+        (((3 * digit + 1) mod 10) +
+          (10 * (3 * source_quotient)) mod 10) mod 10"
+      by (rule mod_add_eq[symmetric])
+    show ?thesis using regroup split by (simp add: add.commute)
+  qed
+  show ?thesis
+    using False source_odd numerator
+    by (simp add: collatz_decimal_boundary_output_def physical_collatz_def)
+qed
+
+theorem collatz_decimal_boundary_mealy_exact:
+  assumes digit: "digit < 10"
+  shows "mealy_response collatz_decimal_boundary_mealy
+      (q mod 2, digit) =
+    ((q mod 2, digit), physical_collatz (10 * q + digit) mod 10)"
+  using collatz_decimal_boundary_output_exact[OF digit, of q]
+  by (simp add: mealy_response_def collatz_decimal_boundary_mealy_def
+      collatz_decimal_boundary_output_def)
+
+theorem collatz_decimal_boundary_twenty_guards_ten_outputs:
+  "(\<forall>index<20. let guard = collatz_decimal_boundary_guard index
+      in fst guard < 2 \<and> snd guard < 10 \<and>
+        collatz_decimal_boundary_output (fst guard) (snd guard) < 10) \<and>
+   (\<forall>left<20. \<forall>right<20.
+      collatz_decimal_boundary_guard left =
+        collatz_decimal_boundary_guard right \<longrightarrow> left = right) \<and>
+   (\<forall>quotient_parity<2. \<forall>digit<10.
+      collatz_decimal_boundary_guard (10 * quotient_parity + digit) =
+        (quotient_parity, digit)) \<and>
+   (\<forall>target<10. \<exists>quotient_parity<2. \<exists>digit<10.
+      collatz_decimal_boundary_output quotient_parity digit = target)"
+proof (intro conjI)
+  show "\<forall>index<20. let guard = collatz_decimal_boundary_guard index
+      in fst guard < 2 \<and> snd guard < 10 \<and>
+        collatz_decimal_boundary_output (fst guard) (snd guard) < 10"
+  proof (intro allI impI)
+    fix index :: nat
+    assume index: "index < 20"
+    have bounds: "fst (collatz_decimal_boundary_guard index) < 2 \<and>
+        snd (collatz_decimal_boundary_guard index) < 10"
+      by (rule collatz_decimal_boundary_guard_bounds[OF index])
+    have quotient_parity:
+      "fst (collatz_decimal_boundary_guard index) < 2"
+      by (rule conjunct1[OF bounds])
+    have digit: "snd (collatz_decimal_boundary_guard index) < 10"
+      by (rule conjunct2[OF bounds])
+    have emitted_bound:
+      "collatz_decimal_boundary_output
+        (fst (collatz_decimal_boundary_guard index))
+        (snd (collatz_decimal_boundary_guard index)) < 10"
+      by (rule collatz_decimal_boundary_output_range[OF quotient_parity digit])
+    show "let guard = collatz_decimal_boundary_guard index
+        in fst guard < 2 \<and> snd guard < 10 \<and>
+          collatz_decimal_boundary_output (fst guard) (snd guard) < 10"
+      using bounds emitted_bound by simp
+  qed
+  show "\<forall>left<20. \<forall>right<20.
+      collatz_decimal_boundary_guard left =
+        collatz_decimal_boundary_guard right \<longrightarrow> left = right"
+    by (blast intro: collatz_decimal_boundary_guard_injective)
+  show "\<forall>quotient_parity<2. \<forall>digit<10.
+      collatz_decimal_boundary_guard (10 * quotient_parity + digit) =
+        (quotient_parity, digit)"
+  proof (intro allI impI)
+    fix quotient_parity digit :: nat
+    assume quotient_parity: "quotient_parity < 2"
+      and digit: "digit < 10"
+    show "collatz_decimal_boundary_guard (10 * quotient_parity + digit) =
+        (quotient_parity, digit)"
+      by (rule collatz_decimal_boundary_guard_covers[OF quotient_parity digit])
+  qed
+  show "\<forall>target<10. \<exists>quotient_parity<2. \<exists>digit<10.
+      collatz_decimal_boundary_output quotient_parity digit = target"
+  proof (intro allI impI)
+    fix target :: nat
+    assume target: "target < 10"
+    show "\<exists>quotient_parity<2. \<exists>digit<10.
+        collatz_decimal_boundary_output quotient_parity digit = target"
+      by (rule collatz_decimal_boundary_output_covers_digit[OF target])
+  qed
 qed
 
 lemma collatz_guarded_normalized_word_admitted_append:
@@ -448,6 +893,9 @@ ML \<open>
   val _ = if null (Thm_Deps.all_oracles
     @{thms collatz_guarded_false_step_exact collatz_guarded_true_step_exact
       collatz_guarded_true_step_plus_one
+      collatz_guarded_step_double_exact
+      collatz_modular_half_inverse_exact collatz_modular_half_transport
+      collatz_modular_numerator_residue collatz_modular_port_transition_exact
       collatz_guarded_normalized_word_admitted_append
       collatz_guarded_normalized_word_endpoint_append
       collatz_guarded_false_run_exact collatz_guarded_true_run_admitted

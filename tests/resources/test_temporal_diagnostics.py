@@ -841,3 +841,44 @@ def test_joint_macro_bypass_reasons_remain_disjoint() -> None:
     assert lane.policy_bypasses == 4
     assert lane.bypasses == 9
     assert _collect({}).macrocells == ()
+
+
+def test_complete_macro_retrieval_is_not_an_applied_hit() -> None:
+    counters = {
+        "collatz_hashlife_mixed_lookups": 7,
+        "collatz_hashlife_mixed_retrieved": 4,
+        "collatz_hashlife_mixed_admitted": 2,
+        "collatz_hashlife_mixed_applied_hits": 1,
+        "collatz_hashlife_mixed_inapplicable": 1,
+        "collatz_hashlife_mixed_rejected_fit": 1,
+        "collatz_hashlife_mixed_root_tail_rejections": 2,
+    }
+    before = dict(counters)
+    row = _collect(counters).macrocells[0]
+    assert row.mixed_action.retrieved == 4
+    assert row.mixed_action.applied_hits == 1
+    assert row.mixed_action.root_tail_rejections == 2
+    assert row.mixed_action.publications is None
+    assert row.joint_action.applied_hits is None
+    assert counters == before
+    counters["collatz_hashlife_mixed_applied_hits"] = 3
+    with pytest.raises(ValueError, match="counts disagree"):
+        _collect(counters)
+
+
+def test_cellular_work_keeps_represented_time_and_actual_work_separate() -> None:
+    counters = {
+        "double_reverse_spatial_transducer_applications": 0,
+        "double_reverse_hashlife_powered_t2_steps": 128,
+        "double_reverse_hashlife_cone_hits": 19,
+        "double_reverse_hashlife_cones": 7,
+    }
+    before = dict(counters)
+    row = _collect(counters).cellular[0]
+    assert row.family == "2rev10"
+    assert row.primitive_transformations == 0
+    assert row.represented_two_step_steps == 128
+    assert row.cone_hits == 19 and row.cone_misses == 7
+    assert row.moment_ports is None
+    assert counters == before
+    assert not _collect({}).cellular

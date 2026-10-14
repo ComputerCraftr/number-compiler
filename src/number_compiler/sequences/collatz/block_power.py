@@ -299,6 +299,7 @@ class PoweredCollatzTerm(RadixProjectionSourceAuditor):
         "_compiler",
         "_effect",
         "_innovation_tape_demanded",
+        "_innovation_tape_modulus",
         "_joint_cocycle_demanded",
         "_ledger",
         "_max_cache_entries",
@@ -377,11 +378,12 @@ class PoweredCollatzTerm(RadixProjectionSourceAuditor):
         self._max_cache_entries = max_cache_entries
         self._workspace: CollatzPhysicalImageWorkspace | None = None
         self._workspace_binding: (
-            tuple[object, object, object, bool, bool, bool] | None
+            tuple[object, object, object, bool, bool, bool, int | None] | None
         ) = None
         self._width_spine_demanded = False
         self._joint_cocycle_demanded = False
         self._innovation_tape_demanded = False
+        self._innovation_tape_modulus: int | None = None
         radix_owner = self._ledger.register(
             "radix-applications", "application_index", "INDEX_OWNED"
         )
@@ -488,6 +490,7 @@ class PoweredCollatzTerm(RadixProjectionSourceAuditor):
                 include_width_spine=self._width_spine_demanded,
                 include_joint_cocycle=self._joint_cocycle_demanded,
                 include_innovation_tape=self._innovation_tape_demanded,
+                innovation_modulus=self._innovation_tape_modulus,
             )
             self._workspace_binding = (
                 workspace.root_source,
@@ -496,6 +499,7 @@ class PoweredCollatzTerm(RadixProjectionSourceAuditor):
                 workspace._include_width_spine,
                 workspace._include_joint_cocycle,
                 workspace._include_innovation_tape,
+                workspace._innovation_modulus,
             )
             self._workspace = workspace
         if (
@@ -508,6 +512,7 @@ class PoweredCollatzTerm(RadixProjectionSourceAuditor):
             or workspace._include_width_spine != self._width_spine_demanded
             or workspace._include_joint_cocycle != self._joint_cocycle_demanded
             or workspace._include_innovation_tape != self._innovation_tape_demanded
+            or workspace._innovation_modulus != self._innovation_tape_modulus
         ):
             raise ValueError("Collatz source image belongs to another term")
         workspace.validate_source(workspace.root_source)
@@ -522,6 +527,7 @@ class PoweredCollatzTerm(RadixProjectionSourceAuditor):
                 workspace._include_width_spine,
                 workspace._include_joint_cocycle,
                 workspace._include_innovation_tape,
+                workspace._innovation_modulus,
             )
             or image.source != workspace.root_source
             or image.action != workspace.root_action
@@ -773,11 +779,43 @@ class PoweredCollatzTerm(RadixProjectionSourceAuditor):
             raise ValueError("joint cocycle was not published with this source image")
         return action.accumulator_observation(modulus)
 
-    def prepare_innovation_tape(self) -> None:
-        """Request guarded macro provenance without a chronological sum."""
-        if self._workspace is not None and not self._innovation_tape_demanded:
-            raise ValueError("innovation demand must precede source-image construction")
+    def prepare_innovation_tape(
+        self, *, complete_word: bool = False, modulus: int | None = None
+    ) -> None:
+        """Demand a boundary witness or the complete signed finite-prefix tape."""
+        if type(complete_word) is not bool:
+            raise TypeError("complete innovation demand must be Boolean")
+        if complete_word:
+            modulus = require_integer(modulus, "innovation modulus", 3, 4096)
+            if modulus % 2 == 0:
+                raise ValueError("innovation modulus must be odd")
+        elif modulus is not None:
+            raise ValueError("an innovation modulus requires complete-word demand")
+        if self._workspace is not None:
+            if not self._innovation_tape_demanded:
+                raise ValueError(
+                    "innovation demand must precede source-image construction"
+                )
+            if complete_word and self._innovation_tape_modulus is None:
+                raise ValueError(
+                    "complete innovation tape cannot be added after image construction"
+                )
+            if modulus is not None and modulus != self._innovation_tape_modulus:
+                raise ValueError(
+                    "innovation tape modulus differs from its source image"
+                )
+            return
+        if (
+            self._innovation_tape_modulus is not None
+            and (not complete_word or modulus != self._innovation_tape_modulus)
+            and (complete_word or modulus is not None)
+        ):
+            # A later boundary-only request cannot downgrade the admitted
+            # full tape, and a full tape cannot silently change its modulus.
+            raise ValueError("innovation tape demand conflicts with prior authority")
         self._innovation_tape_demanded = True
+        if complete_word:
+            self._innovation_tape_modulus = modulus
 
     def observe_boundary_macro(
         self, *, modulus: int | None = None
@@ -793,8 +831,37 @@ class PoweredCollatzTerm(RadixProjectionSourceAuditor):
             modulus = require_integer(modulus, "innovation modulus", 3, 4096)
             if modulus % 2 == 0:
                 raise ValueError("innovation modulus must be odd")
-        witness = None if self.steps == 0 else self._source_image().first_boundary_macro
-        return observe_guarded_boundary(self.seed, witness, modulus, self._ledger)
+        prepared_modulus = self._innovation_tape_modulus
+        if prepared_modulus is not None and modulus not in (None, prepared_modulus):
+            raise ValueError("requested innovation modulus differs from prepared tape")
+        selected_modulus = prepared_modulus if prepared_modulus is not None else modulus
+        workspace = None if self.steps == 0 else self._source_image()
+        witness = None if workspace is None else workspace.first_boundary_macro
+        global_tape = None
+        if prepared_modulus is not None:
+            if workspace is not None:
+                global_tape = workspace.innovation_observation
+            else:
+                from number_compiler.sequences.collatz.innovation_input_tape import (
+                    ParityProgramBuilder,
+                )
+                from number_compiler.sequences.collatz.innovation_port_moore import (
+                    observe_parity_program,
+                )
+
+                with ParityProgramBuilder(self.seed, self._ledger) as builder:
+                    program = builder.finish(self.seed, steps=0, one_symbols=0)
+                    global_tape = observe_parity_program(
+                        program,
+                        prepared_modulus,
+                        ledger=self._ledger,
+                        physical_endpoint=self.seed,
+                        physical_ticks=0,
+                        phase=0,
+                    )
+        return observe_guarded_boundary(
+            self.seed, witness, selected_modulus, self._ledger, global_tape
+        )
 
     @source_reads_only
     def s_arithmetic_clock(self) -> SArithmeticClock:

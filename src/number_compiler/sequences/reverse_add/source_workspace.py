@@ -10,17 +10,16 @@ from number_compiler.arithmetic.contracts.exact_tree_context import (
     OriginalSourceConstruction,
 )
 from number_compiler.arithmetic.contracts.input_validation import require_integer
+from number_compiler.arithmetic.contracts.scoped_handles import ArenaToken
 from number_compiler.hashlife.execution.source_bound_images import (
     SourceImageDemand,
     SourceImageID,
 )
 from number_compiler.hashlife.execution.tile_scheduler import TileScheduler
 from number_compiler.resources.ledger import ResourceLedger
+from number_compiler.resources.lifecycle import cleanup_all, cleanup_on_error
 from number_compiler.sequences.reverse_add.source_actions import (
     ReverseActionArena,
-)
-from number_compiler.sequences.reverse_add.successor_width import (
-    ReverseSuccessorWidthSummary,
 )
 
 if TYPE_CHECKING:
@@ -51,7 +50,8 @@ class ReverseSourceImageWorkspace:
         self.ledger = ledger
         ledger.bump("temporal_point_requests", 0)
         ledger.bump("temporal_length_requests", 0)
-        with ExitStack() as rollback:
+        rollback = ExitStack()
+        with cleanup_on_error(rollback.close):
             from number_compiler.sequences.reverse_add.source_images import (
                 MAX_COMPLETED_CHILD_FALLBACK_STEPS,
                 _ReverseSourceImageAdapter,
@@ -63,50 +63,56 @@ class ReverseSourceImageWorkspace:
             root_action = actions.action(steps)
             scheduler = TileScheduler.source_only(ledger)
             rollback.callback(scheduler.dispose_source_images)
-            adapter = _ReverseSourceImageAdapter(
-                actions, successor_width_root=root_action
-            )
+            adapter = _ReverseSourceImageAdapter(actions)
             rollback.callback(adapter.dispose)
             if base != 10 and 3 <= steps <= MAX_COMPLETED_CHILD_FALLBACK_STEPS:
                 adapter.prepare_recursive_authority(
                     actions.source(source), steps, source_construction
                 )
             scheduler.register_source_image_adapter(adapter)
+            self.actions = actions
+            self.source = source
+            self.root_action = root_action
+            self.scheduler = scheduler
+            self.adapter = adapter
+            self.steps = steps
+            self.base = base
+            self._request_binding = (seed, steps, base)
+            self._image: SourceImageID | None = None
+            self._image_cache_owner: ArenaToken = scheduler._source_image_core().owner
+            self._disposed = False
+            self._cleanup_complete = False
+            self._authority = (
+                ledger,
+                actions,
+                source,
+                root_action,
+                scheduler,
+                adapter,
+                steps,
+                base,
+                source_construction,
+                self._request_binding,
+            )
+            ledger.register_execution_root(self)
+            self._audit_action_nodes = actions._nodes._data
+            self._audit_action_normal = actions._normal._data
+            self._audit_sources = actions._sources._data
+            self._audit_action_workspace = actions._workspace
+            self._audit_recursive_occurrences = adapter._recursive_occurrences._data
+            self._audit_source_contract_key: (
+                tuple[tuple[tuple[int, str, str], ...], tuple[int, ...]] | None
+            ) = None
+            rollback.callback(self._remove_source_payload_audit_contract)
+            self._register_source_payload_audit_contract()
             rollback.pop_all()
-        self.actions = actions
-        self.source = source
-        self.root_action = root_action
-        self.scheduler = scheduler
-        self.adapter = adapter
-        self.steps = steps
-        self.base = base
-        self._request_binding = (seed, steps, base)
-        self._image: SourceImageID | None = None
-        self._width_image: SourceImageID | None = None
-        self._image_cache_epoch = ledger.counters.get("source_image_cache_clears", 0)
-        self._disposed = False
-        self._authority = (
-            ledger,
-            actions,
-            source,
-            root_action,
-            scheduler,
-            adapter,
-            steps,
-            base,
-            source_construction,
-            self._request_binding,
-        )
-        ledger.register_execution_root(self)
-        self._audit_action_nodes = actions._nodes._data
-        self._audit_action_normal = actions._normal._data
-        self._audit_sources = actions._sources._data
-        self._audit_action_workspace = actions._workspace
-        self._audit_recursive_occurrences = adapter._recursive_occurrences._data
-        self._audit_source_contract_key: (
-            tuple[tuple[tuple[int, str, str], ...], tuple[int, ...]] | None
-        ) = None
-        self._register_source_payload_audit_contract()
+
+    def _remove_source_payload_audit_contract(self) -> None:
+        # The ledger may publish the contract before registration raises, so
+        # the local cache key is not authoritative for cleanup. Ledger removal
+        # is idempotent for an absent family contract.
+        self.ledger.remove_payload_audit_contract(self, "reverse_add")
+        self._audit_source_contract_key = None
 
     def _register_source_payload_audit_contract(self) -> None:
         from number_compiler.resources.payload_contracts import (
@@ -206,21 +212,17 @@ class ReverseSourceImageWorkspace:
         actions.node(root_action)
         if actions.node(root_action).steps != steps:
             raise ValueError("reverse source workspace action was altered")
-        cache_epoch = self.ledger.counters.get("source_image_cache_clears", 0)
-        if cache_epoch != self._image_cache_epoch:
+        cache_owner = scheduler._source_image_core().owner
+        if cache_owner is not self._image_cache_owner:
             self._image = None
-            self._width_image = None
-            self._image_cache_epoch = cache_epoch
+            adapter.clear_query_output()
+            self._image_cache_owner = cache_owner
+            self._register_source_payload_audit_contract()
         image = self._image
         if image is not None and check_image:
             view = scheduler._source_image_core().view(image)
             if view.binding.source != source or view.binding.action != root_action:
                 raise ValueError("reverse source workspace image binding was altered")
-        width_image = self._width_image
-        if width_image is not None and check_image:
-            view = scheduler._source_image_core().view(width_image)
-            if view.binding.source != source or view.binding.action != actions.identity:
-                raise ValueError("reverse source width image binding was altered")
 
     def check_request(self, seed: int, steps: int, base: int) -> None:
         """Authenticate a consumer against this workspace's original request."""
@@ -254,35 +256,8 @@ class ReverseSourceImageWorkspace:
                     raise TypeError(
                         "reverse source width projection must be an integer"
                     )
-                self._check_width_against_successor(retained.value)
                 return retained.value
-        successor = self._cached_successor_width_summary()
-        return None if successor is None else successor.target_width
-
-    def _cached_successor_width_summary(self) -> ReverseSuccessorWidthSummary | None:
-        """Read a published scalar projection without creating an image or miss."""
-        image = self._width_image
-        if image is None:
-            return None
-        demand = SourceImageDemand("successor-width", (self.root_action, self.steps))
-        retained = self.scheduler.cached_source_projection(self.adapter, image, demand)
-        if retained is None:
-            return None
-        width_summary = retained.value
-        if type(width_summary) is not ReverseSuccessorWidthSummary:
-            raise TypeError("successor width projection lost its typed summary")
-        if width_summary.steps != self.steps or width_summary.source_width != len(
-            self.actions.source(self.source).digits
-        ):
-            raise ValueError("successor width projection belongs to another action")
-        return width_summary
-
-    def _check_width_against_successor(self, output_width: int) -> None:
-        successor = self._cached_successor_width_summary()
-        if successor is not None and output_width != successor.target_width:
-            raise AssertionError(
-                "completed output width disagrees with its cached successor projection"
-            )
+        return None
 
     def _demanded_image(self, demand: SourceImageDemand) -> SourceImageID:
         self._check_open()
@@ -293,27 +268,6 @@ class ReverseSourceImageWorkspace:
             )
             self._image = found
         self._register_source_payload_audit_contract()
-        if self.base == 10 and self.steps >= 3:
-            from number_compiler.sequences.reverse_add.source_images import (
-                ReverseImagePayload,
-            )
-
-            view = self.scheduler._source_image_core().view(found)
-            payload = cast(ReverseImagePayload, view.payload)
-            pair_output = payload.pair_output
-            if pair_output is not None:
-                self._check_width_against_successor(pair_output.output_width)
-            elif payload.occurrence is None and view.binding.precision is not None:
-                self._check_width_against_successor(view.binding.precision)
-        return found
-
-    def _source_origin_image(self) -> SourceImageID:
-        """Return the source image used by scheduler-owned scalar projections."""
-        self._check_open()
-        found = self._width_image
-        if found is None:
-            found = self.scheduler.source_origin_image(self.adapter, self.source)
-            self._width_image = found
         return found
 
     @property
@@ -350,28 +304,8 @@ class ReverseSourceImageWorkspace:
         self.ledger.bump("temporal_length_requests")
         if self.base == 10 and self.steps >= 3:
             self._check_open()
-            if self._image is not None:
-                demand = SourceImageDemand("width")
-                projection = self.scheduler.source_projection(
-                    self.adapter, self._image, demand
-                )
-                if type(projection.value) is not int:
-                    raise TypeError(
-                        "reverse source width projection must be an integer"
-                    )
-                self._check_width_against_successor(projection.value)
-                return projection.value
-            demand = SourceImageDemand(
-                "successor-width", (self.root_action, self.steps)
-            )
-            image = self._source_origin_image()
-            projection = self.scheduler.source_projection(self.adapter, image, demand)
-            width_summary = projection.value
-            if type(width_summary) is not ReverseSuccessorWidthSummary:
-                raise TypeError("successor width projection lost its typed summary")
-            if width_summary is not self._cached_successor_width_summary():
-                raise ValueError("successor width projection publication changed")
-            return width_summary.target_width
+            if self.actions.source(self.source).digits == (0,):
+                return 1
         demand = SourceImageDemand("width")
         image = self._demanded_image(demand)
         projection = self.scheduler.source_projection(self.adapter, image, demand)
@@ -420,22 +354,24 @@ class ReverseSourceImageWorkspace:
         yield from self.adapter.iter_primitive_digits(self.actions.source(self.source))
 
     def dispose(self) -> None:
-        if self._disposed:
+        if self._cleanup_complete:
             return
+        # Invalidate every public query immediately, but retain the cleanup
+        # state so failed owners can be retried by a later dispose call.
+        self._disposed = True
+        self._image = None
         scheduler = self._authority[4]
         actions = self._authority[1]
-        try:
-            try:
-                scheduler.dispose_source_images()
-            finally:
-                try:
-                    self._authority[5].dispose()
-                finally:
-                    actions.dispose()
-        finally:
-            self._image = None
-            self._width_image = None
-            self._disposed = True
+        adapter = self._authority[5]
+        cleanup_all(
+            (
+                scheduler.dispose_source_images,
+                adapter.dispose,
+                actions.dispose,
+            )
+        )
+        self._remove_source_payload_audit_contract()
+        self._cleanup_complete = True
 
 
 __all__ = ["ReverseSourceImageWorkspace"]

@@ -7,7 +7,16 @@ from typing import cast
 
 import pytest
 
+from number_compiler.resources.ledger import ResourceLedger
 from number_compiler.resources.stores import LedgerDict
+
+
+def assert_constructor_rollback(ledger: ResourceLedger, initial_inventory: int) -> None:
+    """Check newly registered owners, roots and storage after a failed factory."""
+    created = ledger.inventory()[initial_inventory:]
+    assert all(item.disposed and item.entries == item.nodes == 0 for item in created)
+    assert tuple(ledger.iter_execution_roots()) == ()
+    assert ledger.entries == ledger.nodes == 0
 
 
 def inject_write_once_failure(
@@ -32,3 +41,28 @@ def inject_write_once_failure(
         original(store, key, value)
 
     monkeypatch.setattr(LedgerDict, "__setitem__", fail_selected_store)
+
+
+def inject_release_failure(
+    monkeypatch: pytest.MonkeyPatch,
+    ledger: ResourceLedger,
+    owner: int,
+    *,
+    entries: int,
+    after_apply: bool,
+) -> None:
+    """Fail one matching release, either before or after its accounting update."""
+    release = ledger.release
+    fail_once = True
+
+    def fail_selected_release(target: int, entries: int = 0, nodes: int = 0) -> None:
+        nonlocal fail_once
+        if target == owner and entries == expected_entries and fail_once:
+            fail_once = False
+            if after_apply:
+                release(target, entries, nodes)
+            raise RuntimeError("injected ledger release failure")
+        release(target, entries, nodes)
+
+    expected_entries = entries
+    monkeypatch.setattr(ledger, "release", fail_selected_release)

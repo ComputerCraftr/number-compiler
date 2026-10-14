@@ -18,6 +18,7 @@ from number_compiler.sequences.collatz.innovation_temporal_tape import (
     innovation_moore_clock,
     observed_innovation_macro_tape,
 )
+from tests.support.ledger_failures import assert_constructor_rollback
 
 
 def _macro() -> CollatzBoundaryMacro:
@@ -128,3 +129,66 @@ def test_unissued_dataclass_copies_cannot_alias_or_poison_memo_keys() -> None:
         assert clock.class_id(0) >= 0
     finally:
         memo.dispose()
+
+
+def test_issued_observer_tables_reject_mutated_cached_roots() -> None:
+    ledger = ResourceLedger()
+    memo = InnovationObserverMemo(ledger)
+    try:
+        clock = innovation_moore_clock("630", 7, memo=memo)
+        original_outputs = clock.outputs
+        object.__setattr__(clock, "outputs", tuple(() for _ in original_outputs))
+        with pytest.raises(ValueError, match="not issued"):
+            clock.class_id(0)
+        object.__setattr__(clock, "outputs", original_outputs)
+        assert innovation_moore_clock("630", 7, memo=memo) is clock
+        assert clock.class_id(0) >= 0
+
+        copied_outputs = tuple(value for value in original_outputs)
+        assert copied_outputs == original_outputs
+        assert copied_outputs is not original_outputs
+        object.__setattr__(clock, "outputs", copied_outputs)
+        with pytest.raises(ValueError, match="not issued"):
+            clock.class_id(0)
+        object.__setattr__(clock, "outputs", original_outputs)
+
+        future = innovation_future_moore(7, memo=memo)
+        original_successors = future.global_successors
+        object.__setattr__(future, "global_successors", (*original_successors, 0))
+        with pytest.raises(ValueError, match="not issued"):
+            future.global_id("630", 0, memo=memo)
+        object.__setattr__(future, "global_successors", original_successors)
+        assert innovation_future_moore(7, memo=memo) is future
+        assert future.global_id("630", 0, memo=memo) >= 0
+
+        original_outputs = future.global_outputs
+        copied_outputs = tuple(value for value in original_outputs)
+        assert copied_outputs == original_outputs
+        assert copied_outputs is not original_outputs
+        object.__setattr__(future, "global_outputs", copied_outputs)
+        with pytest.raises(ValueError, match="not issued"):
+            future.global_id("630", 0, memo=memo)
+        object.__setattr__(future, "global_outputs", original_outputs)
+    finally:
+        memo.dispose()
+
+
+def test_observer_memo_constructor_rolls_back_registered_owners(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    ledger = ResourceLedger()
+    initial_inventory = len(ledger.inventory())
+    original_register_root = ledger.register_execution_root
+
+    def fail_observer_root(root: object) -> None:
+        if type(root) is InnovationObserverMemo:
+            raise RuntimeError("injected observer root registration failure")
+        original_register_root(root)
+
+    monkeypatch.setattr(ledger, "register_execution_root", fail_observer_root)
+    with pytest.raises(RuntimeError, match="injected observer root"):
+        InnovationObserverMemo(ledger)
+
+    created = ledger.inventory()[initial_inventory:]
+    assert len(created) == 2
+    assert_constructor_rollback(ledger, initial_inventory)

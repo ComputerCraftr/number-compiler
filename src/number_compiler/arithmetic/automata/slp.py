@@ -56,6 +56,24 @@ class SLPNode:
     count: int = 0
 
 
+def canonical_repeat_key(
+    nodes: Sequence[SLPNode], empty_id: int, child: int, count: int
+) -> int | tuple[int, int]:
+    """Normalize identity cases and nested repeats without allocating nodes."""
+    if count < 0:
+        raise ValueError(count)
+    if count == 0 or child == empty_id:
+        return empty_id
+    if count == 1:
+        return child
+    node = nodes[child]
+    while node.kind == "REPEAT":
+        count *= node.count
+        child = node.child
+        node = nodes[child]
+    return child, count
+
+
 @dataclass(frozen=True, slots=True)
 class SLPMetrics:
     word_length: int
@@ -129,19 +147,11 @@ class SLPArena:
 
     def repeat(self, child: int, count: int) -> int:
         child, count = int(child), int(count)
-        if count < 0:
-            raise ValueError(count)
-        if count == 0 or child == self.empty_id:
-            return self.empty_id
-        if count == 1:
-            return child
+        key = canonical_repeat_key(self.nodes, self.empty_id, child, count)
+        if isinstance(key, int):
+            return key
+        child, count = key
         n = self.nodes[child]
-        while n.kind == "REPEAT":
-            # Canonical nested-repeat flattening without Python recursion.
-            count *= n.count
-            child = n.child
-            n = self.nodes[child]
-        key = (child, count)
         old = self._rep.get(key)
         if old is not None:
             return old
@@ -524,4 +534,10 @@ class BimachineSLPProjector:
         return self.block(int(root), self.machine.left.start, self.machine.right.start)
 
 
-__all__ = ["BimachineSLPProjector", "SLPArena", "SLPMetrics", "SLPNode"]
+__all__ = [
+    "BimachineSLPProjector",
+    "SLPArena",
+    "SLPMetrics",
+    "SLPNode",
+    "canonical_repeat_key",
+]

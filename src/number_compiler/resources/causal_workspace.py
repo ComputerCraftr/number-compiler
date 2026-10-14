@@ -6,7 +6,7 @@ stage. One scheduler owns the inventory; completed tasks release their buffers.
 
 from __future__ import annotations
 
-from collections.abc import Iterable, Iterator
+from collections.abc import Callable, Iterable, Iterator
 from sys import getsizeof
 from typing import TYPE_CHECKING, Any, Protocol
 
@@ -23,6 +23,7 @@ from number_compiler.hashlife.actions.field_actions import FieldCellActionID
 from number_compiler.hashlife.actions.tile_action_algebra import PrimitiveTileAction
 from number_compiler.hashlife.tiles.tile_context import TemporalCocycle
 from number_compiler.resources.ledger import ResourceLedger
+from number_compiler.resources.lifecycle import cleanup_all, clear_accounted_store
 from number_compiler.resources.stores import LedgerDict, LedgerList
 
 if TYPE_CHECKING:
@@ -34,6 +35,48 @@ if TYPE_CHECKING:
 _ACTION_ADMISSION_SEAL = object()
 _ACTION_ADMISSION_SNAPSHOT_SIZE = 51
 _ACTION_ADMISSION_NODES = 1 + _ACTION_ADMISSION_SNAPSHOT_SIZE
+
+
+def _clear_owned_store(
+    ledger: ResourceLedger,
+    owner: int,
+    store: LedgerDict[Any, Any] | LedgerList[Any],
+    retry: _StoreClearRetry,
+    after_clear: Callable[[], object] | None = None,
+) -> None:
+    """Clear an exact store delta, retaining failed release work for retry."""
+
+    def clear_store() -> None:
+        try:
+            store.clear()
+        finally:
+            if after_clear is not None:
+                after_clear()
+
+    def measure() -> tuple[int, int]:
+        entries = len(store)
+        return entries, entries * store.nodes_per_entry
+
+    clear_accounted_store(
+        ledger,
+        owner,
+        clear_store,
+        measure,
+        retry.pending,
+        retry.record,
+    )
+
+
+class _StoreClearRetry:
+    """Per-store retry deltas; never inferred from unrelated owner charges."""
+
+    __slots__ = ("pending",)
+
+    def __init__(self) -> None:
+        self.pending = (0, 0)
+
+    def record(self, entries: int, nodes: int) -> None:
+        self.pending = entries, nodes
 
 
 def _handle_snapshot(handle: ArenaHandle) -> tuple[object, object, object]:
@@ -358,11 +401,38 @@ class CausalTaskWorkspace:
         )
         self._action_admission_token: object | None = None
         self._issued_action_admission_token: object | None = None
+        self._action_admission_closing = False
         self._run_token: object | None = None
         self.frames = CausalFrameStack(ledger, prefix)
         self.values = CausalResultStack(ledger, prefix)
         self.directed_frames = CausalFrameStack(ledger, prefix + "-directed")
         self.directed_values = CausalValueStack(ledger, prefix + "-directed")
+        self._memo_clear_retry = _StoreClearRetry()
+        self._active_clear_retry = _StoreClearRetry()
+        self._action_pending_clear_retry = _StoreClearRetry()
+        self._action_admitted_clear_retry = _StoreClearRetry()
+
+    def _clear_store(
+        self,
+        owner: int,
+        store: LedgerDict[Any, Any] | LedgerList[Any],
+    ) -> None:
+        if owner == self.memo_owner and store is self.memo:
+            retry = self._memo_clear_retry
+        elif owner == self.active_owner and store is self.active:
+            retry = self._active_clear_retry
+        elif owner == self.action_pending_owner and store is self.action_pending:
+            retry = self._action_pending_clear_retry
+        elif owner == self.action_admitted_owner and store is self.action_admitted:
+            retry = self._action_admitted_clear_retry
+        else:
+            raise ValueError("causal store cleanup received a foreign store")
+        _clear_owned_store(
+            self.ledger,
+            owner,
+            store,
+            retry,
+        )
 
     def begin(self, key: tuple[str, tuple[Any, ...]]) -> None:
         if key in self.active:
@@ -402,6 +472,7 @@ class CausalTaskWorkspace:
         if (
             self._action_admission_token is not None
             or self._issued_action_admission_token is not None
+            or self._action_admission_closing
             or self.action_pending
             or self.action_admitted
         ):
@@ -446,6 +517,7 @@ class CausalTaskWorkspace:
             and admission._run is self._run_token
             and admission is self._action_admission_token
             and admission is self._issued_action_admission_token
+            and not self._action_admission_closing
             and type(self._run_token) is _CausalRunLease
         )
 
@@ -572,37 +644,41 @@ class CausalTaskWorkspace:
             self.admitted_action_metadata(token, authority, action)
 
     def _clear_action_admission(self) -> None:
+        self._action_admission_closing = True
+        cleanup_all(
+            (
+                lambda: self._clear_store(
+                    self.action_pending_owner, self.action_pending
+                ),
+                lambda: self._clear_store(
+                    self.action_admitted_owner, self.action_admitted
+                ),
+            )
+        )
         self._action_admission_token = None
         self._issued_action_admission_token = None
-        for owner, store, nodes_per_entry in (
-            (self.action_pending_owner, self.action_pending, 1),
-            (
-                self.action_admitted_owner,
-                self.action_admitted,
-                _ACTION_ADMISSION_NODES,
-            ),
-        ):
-            count = len(store)
-            store.clear()
-            self.ledger.release(owner, entries=count, nodes=count * nodes_per_entry)
+        self._action_admission_closing = False
 
     def clear_action_admission(self, token: object) -> None:
-        self._require_action_admission(token)
+        if self._action_admission_closing:
+            if token is not self._issued_action_admission_token:
+                raise RuntimeError("causal action admission lease is not active")
+        else:
+            self._require_action_admission(token)
         self._clear_action_admission()
 
     def clear(self) -> None:
-        self._clear_action_admission()
-        for owner, store in (
-            (self.memo_owner, self.memo),
-            (self.active_owner, self.active),
-        ):
-            count = len(store)
-            store.clear()
-            self.ledger.release(owner, entries=count)
-        self.frames.clear()
-        self.values.clear()
-        self.directed_frames.clear()
-        self.directed_values.clear()
+        cleanup_all(
+            (
+                self._clear_action_admission,
+                lambda: self._clear_store(self.memo_owner, self.memo),
+                lambda: self._clear_store(self.active_owner, self.active),
+                self.frames.clear,
+                self.values.clear,
+                self.directed_frames.clear,
+                self.directed_values.clear,
+            )
+        )
 
 
 class CausalFrameStack:
@@ -620,6 +696,7 @@ class CausalFrameStack:
             self.owner, nodes_per_entry=0, append_only=False
         )
         self.payload_references = 0
+        self._clear_retry = _StoreClearRetry()
 
     def __len__(self) -> int:
         return len(self._frames)
@@ -658,10 +735,18 @@ class CausalFrameStack:
         return frame
 
     def clear(self) -> None:
-        count = len(self._frames)
-        self._frames.clear()
-        self.payload_references = 0
-        self.ledger.release(self.owner, entries=count)
+        def update_payload_references() -> None:
+            self.payload_references = sum(
+                len(frame.args) + len(frame.saved) for frame in self._frames
+            )
+
+        _clear_owned_store(
+            self.ledger,
+            self.owner,
+            self._frames,
+            self._clear_retry,
+            update_payload_references,
+        )
 
 
 class CausalResults(Protocol):
@@ -681,6 +766,7 @@ class CausalResultStack:
         self._values: LedgerList[Any] = ledger.make_list(
             self.owner, nodes_per_entry=0, append_only=False
         )
+        self._clear_retry = _StoreClearRetry()
 
     def __len__(self) -> int:
         return len(self._values)
@@ -708,9 +794,7 @@ class CausalResultStack:
         return value
 
     def clear(self) -> None:
-        count = len(self._values)
-        self._values.clear()
-        self.ledger.release(self.owner, entries=count)
+        _clear_owned_store(self.ledger, self.owner, self._values, self._clear_retry)
 
 
 class CausalValueStack:
@@ -724,6 +808,7 @@ class CausalValueStack:
             nodes_per_entry=0,
             append_only=False,
         )
+        self._clear_retry = _StoreClearRetry()
 
     def __len__(self) -> int:
         return len(self._values)
@@ -750,6 +835,4 @@ class CausalValueStack:
         return value
 
     def clear(self) -> None:
-        count = len(self._values)
-        self._values.clear()
-        self.ledger.release(self.owner, entries=count)
+        _clear_owned_store(self.ledger, self.owner, self._values, self._clear_retry)

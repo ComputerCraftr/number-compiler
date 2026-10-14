@@ -66,18 +66,34 @@ def forbid_uniform_context_compilation(
 
 
 def assert_completed_child_work(counters: Mapping[str, int]) -> None:
-    """Require actual provider joins and reject causal/terminal reconstruction."""
-    for name in (
-        "reverse_recursive_completed_child_joins",
-        "reverse_provider_parent_substitutions",
-    ):
-        assert counters.get(name, 0) > 0
+    """Require the live completed-output producer, never retired-owner counters.
+
+    A bounded root square need not make a parent join. Larger scheduler joins
+    are independently asserted in the child-composition regression tests.
+    """
+    assert counters.get("reverse_q19_punctured_t2_applications", 0) > 0
     for name in (
         "source_image_primitive_applications",
         "reverse_recursive_direct_temporal_publications",
         "reverse_recursive_terminal_publications",
     ):
         assert counters.get(name, 0) == 0
+
+
+def q19_application_counts(counters: Mapping[str, int]) -> tuple[int, int, int]:
+    """Capture work performed by the Q19 temporal application owner."""
+    return (
+        counters.get("reverse_q19_punctured_t2_applications", 0),
+        counters.get("reverse_q19_punctured_t4_applications", 0),
+        counters.get("reverse_q19_primitive_pair_applications", 0),
+    )
+
+
+def assert_q19_application_counts_unchanged(
+    counters: Mapping[str, int], before: tuple[int, int, int]
+) -> None:
+    """Check that a cached demand did not reapply its temporal action."""
+    assert q19_application_counts(counters) == before
 
 
 def assert_mirror_scratch_released(term: ReverseAddPoweredTerm) -> None:

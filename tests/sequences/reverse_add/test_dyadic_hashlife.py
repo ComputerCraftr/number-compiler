@@ -64,28 +64,52 @@ def test_hashlife_production_source_has_no_rle_or_generation_padding_carrier() -
 
 
 @pytest.mark.validation
-def test_reverse_hashlife_semantic_action_interning_merges_distinct_tiles() -> None:
-    """Run the N=128 public application before auditing semantic tile reuse."""
+def test_reverse_q19_completed_occurrence_reuses_public_projection() -> None:
+    """The punctured producer publishes an exact output reused by demand."""
     from number_compiler.sequences.reverse_add.power import ReverseAddPoweredTerm
+    from tests.support.reverse_cutover import assert_q19_output_authority
 
     term = ReverseAddPoweredTerm(196, 128)
-    term.digit(term.maximum_width // 3)
+    position = term.maximum_width // 3
+    expected = term.digit(position)
+    workspace, occurrence = assert_q19_output_authority(term)
+    assert occurrence.temporal_steps == 128
+    exact_width = term.width()
+    assert occurrence.output_width == exact_width
+
+    counters = term._ledger.counters
+    t2 = counters.get("reverse_q19_punctured_t2_applications", 0)
+    t4 = counters.get("reverse_q19_punctured_t4_applications", 0)
+    assert 2 * t2 + 4 * t4 > 0
+    assert counters.get("reverse_q19_punctured_emitted_grammar_nodes", 0) > 0
+
+    projection_hits = counters.get("source_image_projection_hits", 0)
+    assert term.digit(position) == expected
+    assert counters.get("source_image_projection_hits", 0) == projection_hits + 1
+
     metrics = term.metrics()
-    # Cold canonical tiles may evaluate unresolved primitive leaves. That work
-    # is reported separately from forbidden generation/continuation replay.
-    assert metrics.hashlife_temporal_leaf_applications == 0
-    assert metrics.tile_scheduler_leaf_function_applications == 0
-    assert metrics.tile_causal_direct_parent_transfers > 0
     assert metrics.higher_concrete_operation_evaluations == 0
     assert metrics.sequential_generation_advances == 0
-    assert metrics.completed_result_entries > 0
-    assert metrics.hashlife_direct_powered_point_queries == 1
+    q19_owner = workspace.adapter._q19_owner
+    assert q19_owner is not None
+    q19_owner.validate(occurrence)
+    issued = q19_owner.ledger.inventory_owner(q19_owner._issued.owner)
+    grammar = q19_owner.ledger.inventory_owner(q19_owner.arena.owners[0])
+    assert q19_owner._issued[(occurrence.root, occurrence.temporal_steps)] is occurrence
+    assert issued.entries > 0
+    assert grammar.entries == len(q19_owner.arena.nodes)
+    assert grammar.nodes == len(q19_owner.arena.nodes)
+    assert (
+        q19_owner._summaries[occurrence.root].symbols
+        == (occurrence.pair_width + 1) // 2
+    )
     assert (
         metrics.hashlife_boundary_cache_entries <= 4 * term.maximum_width.bit_length()
     )
     assert metrics.hashlife_section_cache_entries == 0
     assert metrics.hashlife_leaf_cache_entries == 0
     assert metrics.spacetime_carry_direction == "lsd-to-msd"
+    assert workspace is term._workspace
 
 
 def test_shared_reverse_add_carry_symmetry_is_exact_and_mirror_canonical() -> None:

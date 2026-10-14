@@ -31,3 +31,5 @@ session Shared_Carry_Dynamics in "arithmetic/carry_dynamics" = HOL +
     Shared_Carry_Tape
     Shared_Affine_Birth_Tape
     Port_Valued_Mealy
+    Temporal_Moment_Algebra
+    Temporal_Decimal_Carry_Monoid

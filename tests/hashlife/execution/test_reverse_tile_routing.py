@@ -97,13 +97,19 @@ def test_public_reverse_digits_use_canonical_reachable_images(
         assert counters.get("reverse_q19_primitive_pair_applications", 0) == 0
         assert counters["reverse_q19_point_region_visits"] > 0
     elif generation == 2:
-        assert counters["reverse_source_mod9_digit_reconstructions"] > 0
-        assert counters["reverse_source_ports_source_reads"] > 0
+        assert_q19_output_authority(term)
+        assert counters["reverse_q19_root_bootstrap_publications"] == 1
+        assert counters.get("reverse_q19_punctured_t2_applications", 0) == 0
+        assert counters["reverse_q19_primitive_pair_applications"] == 1
+        assert counters["reverse_q19_point_region_visits"] > 0
     else:
         assert_completed_child_work(counters)
-        assert counters["reverse_recursive_direct_carry_steps"] > 0
-    if generation == 2:
-        assert counters["reverse_source_two_step_pullback_publications"] > 0
+        assert counters["reverse_q19_punctured_emitted_grammar_nodes"] > 0
+        assert (
+            counters.get("reverse_q19_punctured_t2_applications", 0) * 2
+            + counters.get("reverse_q19_punctured_t4_applications", 0) * 4
+            > 0
+        )
     assert counters.get("higher_action_continuation_requests", 0) == 0
     assert counters.get("higher_concrete_operation_evaluations", 0) == 0
     assert counters.get("whole_word_sweeps", 0) == 0

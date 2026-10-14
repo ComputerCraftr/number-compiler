@@ -5,6 +5,7 @@ from typing import Never
 import pytest
 
 from number_compiler.sequences.reverse_add.power import ReverseAddPoweredTerm
+from tests.support.reverse_cutover import assert_q19_output_authority
 
 
 @pytest.mark.validation  # N=64 end-to-end reverse point, width and route poisons.
@@ -29,5 +30,15 @@ def test_reverse_fused_parent_bypasses_retired_provider_and_higher_point_routes(
     term = ReverseAddPoweredTerm(196, 64)
     assert term.digit(0) == 8
     assert term.width() == 31
-    assert term._ledger.counters["powered_absorption_successes"] > 0
-    assert term._ledger.counters.get("provider_fused_point_evaluations", 0) == 0
+    workspace, occurrence = assert_q19_output_authority(term)
+    assert occurrence.temporal_steps == 64
+    assert occurrence.output_width == 31
+    counters = term._ledger.counters
+    assert (
+        2 * counters.get("reverse_q19_punctured_t2_applications", 0)
+        + 4 * counters.get("reverse_q19_punctured_t4_applications", 0)
+        > 0
+    )
+    assert counters.get("source_image_primitive_applications", 0) == 0
+    assert counters.get("provider_fused_point_evaluations", 0) == 0
+    assert workspace is term._workspace

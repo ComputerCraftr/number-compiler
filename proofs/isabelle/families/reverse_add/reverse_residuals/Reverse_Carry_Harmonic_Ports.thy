@@ -1,5 +1,6 @@
 theory Reverse_Carry_Harmonic_Ports
   imports Reverse_Residuals Shared_Carry_Dynamics.Shared_Carry_Tape
+    Shared_Carry_Dynamics.Port_Valued_Mealy
 begin
 
 text \<open>Port-conditioned carry harmonics for the alternating 2,3 radix over
@@ -27,6 +28,19 @@ fun harmonic_emit ::
     ((if c then harmonic_weight k p else 0) +
       harmonic_emit k (\<not> p) (carry_apply d c) ds) mod 5"
 
+fun harmonic_emit_raw ::
+    "harmonic_channel \<Rightarrow> bool \<Rightarrow> bool \<Rightarrow>
+      carry_domain list \<Rightarrow> nat" where
+  "harmonic_emit_raw k p c [] = 0"
+| "harmonic_emit_raw k p c (d # ds) =
+    (if c then harmonic_weight k p else 0) +
+      harmonic_emit_raw k (\<not> p) (carry_apply d c) ds"
+
+lemma harmonic_emit_raw_mod_five:
+  "harmonic_emit k p c ds = harmonic_emit_raw k p c ds mod 5"
+  by (induction ds arbitrary: p c)
+    (simp_all add: mod_add_eq mod_add_left_eq mod_add_right_eq add.assoc)
+
 definition port_action ::
     "bool \<Rightarrow> carry_domain list \<Rightarrow> bool \<Rightarrow> bool \<times> nat \<times> nat" where
   "port_action p ds c =
@@ -47,6 +61,124 @@ theorem harmonic_emit_append:
       harmonic_emit k (advance_phase p xs) (carry_finish c xs) ys) mod 5"
   by (induction xs arbitrary: p c)
     (simp_all add: mod_add_eq mod_add_left_eq mod_add_right_eq add.assoc)
+
+lemma harmonic_emit_raw_append:
+  "harmonic_emit_raw k p c (xs @ ys) =
+    harmonic_emit_raw k p c xs +
+      harmonic_emit_raw k (advance_phase p xs) (carry_finish c xs) ys"
+  by (induction xs arbitrary: p c) (simp_all add: add.assoc)
+
+interpretation identity_nat_emission_shift:
+    additive_shift_action "\<lambda>(_ :: nat) (emission :: nat). emission"
+  by unfold_locales simp_all
+
+text \<open>Do not export the identity instance's generic simp rules into the
+remainder of this theory: doing so makes unrelated recursive definitions
+normalize through the whole Mealy algebra.  The bridge below names only the
+identity laws it uses.\<close>
+
+declare identity_nat_emission_shift.shift_zero[simp del]
+  identity_nat_emission_shift.shift_zero_value[simp del]
+  identity_nat_emission_shift.identity_mealy_left[simp del]
+  identity_nat_emission_shift.identity_mealy_right[simp del]
+
+definition harmonic_emitting_mealy ::
+    "harmonic_channel \<Rightarrow> carry_domain list \<Rightarrow>
+      (bool \<times> bool, nat) port_mealy" where
+  "harmonic_emitting_mealy k ds = \<lparr>
+    mealy_span = length ds,
+    mealy_endpoint = (\<lambda>(p,c). (advance_phase p ds, carry_finish c ds)),
+    mealy_emission = (\<lambda>(p,c). harmonic_emit_raw k p c ds)\<rparr>"
+
+lemma harmonic_emitting_mealy_empty:
+  "harmonic_emitting_mealy k [] = identity_nat_emission_shift.identity_mealy"
+proof (rule port_mealy.equality)
+  show "mealy_span (harmonic_emitting_mealy k []) =
+      mealy_span identity_nat_emission_shift.identity_mealy"
+    by (simp add: harmonic_emitting_mealy_def
+        identity_nat_emission_shift.identity_mealy_def)
+  show "mealy_endpoint (harmonic_emitting_mealy k []) =
+      mealy_endpoint identity_nat_emission_shift.identity_mealy"
+    by (rule ext; case_tac x;
+        simp add: harmonic_emitting_mealy_def
+          identity_nat_emission_shift.identity_mealy_def)
+  show "mealy_emission (harmonic_emitting_mealy k []) =
+      mealy_emission identity_nat_emission_shift.identity_mealy"
+    by (rule ext; simp add: harmonic_emitting_mealy_def
+        identity_nat_emission_shift.identity_mealy_def)
+  show "port_mealy.more (harmonic_emitting_mealy k []) =
+      port_mealy.more identity_nat_emission_shift.identity_mealy"
+    by simp
+qed
+
+theorem harmonic_emitting_mealy_append:
+  "identity_nat_emission_shift.compose_mealy
+      (harmonic_emitting_mealy k xs) (harmonic_emitting_mealy k ys) =
+    harmonic_emitting_mealy k (xs @ ys)"
+proof (rule port_mealy.equality)
+  show "mealy_span
+      (identity_nat_emission_shift.compose_mealy
+        (harmonic_emitting_mealy k xs) (harmonic_emitting_mealy k ys)) =
+      mealy_span (harmonic_emitting_mealy k (xs @ ys))"
+    by (simp add: identity_nat_emission_shift.compose_mealy_def
+        harmonic_emitting_mealy_def)
+  show "mealy_endpoint
+      (identity_nat_emission_shift.compose_mealy
+        (harmonic_emitting_mealy k xs) (harmonic_emitting_mealy k ys)) =
+      mealy_endpoint (harmonic_emitting_mealy k (xs @ ys))"
+    by (rule ext; case_tac x;
+        simp add: identity_nat_emission_shift.compose_mealy_def
+          harmonic_emitting_mealy_def advance_phase_append carry_finish_append)
+  show "mealy_emission
+      (identity_nat_emission_shift.compose_mealy
+        (harmonic_emitting_mealy k xs) (harmonic_emitting_mealy k ys)) =
+      mealy_emission (harmonic_emitting_mealy k (xs @ ys))"
+    by (rule ext; case_tac x;
+        simp add: identity_nat_emission_shift.compose_mealy_def
+          harmonic_emitting_mealy_def harmonic_emit_raw_append)
+  show "port_mealy.more
+      (identity_nat_emission_shift.compose_mealy
+        (harmonic_emitting_mealy k xs) (harmonic_emitting_mealy k ys)) =
+      port_mealy.more (harmonic_emitting_mealy k (xs @ ys))"
+    by simp
+qed
+
+definition harmonic_repeat_word :: "nat \<Rightarrow> carry_domain list \<Rightarrow> carry_domain list" where
+  "harmonic_repeat_word n word = concat (replicate n word)"
+
+lemma harmonic_repeat_word_Suc:
+  "harmonic_repeat_word (Suc n) word = harmonic_repeat_word n word @ word"
+proof -
+  have replicate:
+    "replicate (Suc n) word = replicate n word @ [word]"
+    using replicate_Suc[of n word] replicate_append_same[of n word]
+    by simp
+  show ?thesis
+    using replicate by (simp add: harmonic_repeat_word_def)
+qed
+
+theorem harmonic_emitting_mealy_repeat:
+  "identity_nat_emission_shift.compose_mealy_power n
+      (harmonic_emitting_mealy k word) =
+    harmonic_emitting_mealy k (harmonic_repeat_word n word)"
+proof (induction n)
+  case 0
+  have empty_word: "harmonic_repeat_word 0 word = []"
+    by (simp add: harmonic_repeat_word_def)
+  show ?case
+    by (simp only: identity_nat_emission_shift.compose_mealy_power.simps
+        empty_word harmonic_emitting_mealy_empty)
+next
+  case (Suc n)
+  then show ?case
+    by (simp only: identity_nat_emission_shift.compose_mealy_power.simps
+        harmonic_repeat_word_Suc Suc.IH harmonic_emitting_mealy_append)
+qed
+
+theorem harmonic_emitting_mealy_observes_mod_five:
+  "mealy_emission (harmonic_emitting_mealy k ds) (p,c) mod 5 =
+    harmonic_emit k p c ds"
+  by (simp add: harmonic_emitting_mealy_def harmonic_emit_raw_mod_five)
 
 theorem port_action_spatial_composition:
   "port_action p (xs @ ys) c =
@@ -204,6 +336,9 @@ theorem all_equal_action_ten_period:
 
 ML \<open>
   val checked = @{thms harmonic_emit_append port_action_spatial_composition
+    harmonic_emit_raw_mod_five harmonic_emit_raw_append
+    harmonic_emitting_mealy_empty harmonic_emitting_mealy_append
+    harmonic_emitting_mealy_repeat harmonic_emitting_mealy_observes_mod_five
     prefix_harmonic_ten_period
     first_decisive_harmonic_difference radix2_population radix3_population
     even_odd_linear_inversion occupancy_code_capacity border_code_capacity

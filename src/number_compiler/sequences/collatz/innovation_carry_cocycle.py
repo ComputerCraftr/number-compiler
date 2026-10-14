@@ -70,4 +70,18 @@ class CollatzInnovationCocycle:
         return "sub", 1
 
 
-__all__ = ["CollatzInnovationCocycle"]
+def exact_source_symbol(source: int, modulus: int) -> str:
+    """Project one authenticated source to its signed carry/borrow symbol."""
+    if type(source) is not int or source <= 0:
+        raise ValueError("innovation source must be a positive exact integer")
+    if type(modulus) is not int or modulus < 3 or modulus % 2 == 0:
+        raise ValueError("innovation modulus must be an odd integer at least three")
+    residue = source % (4 * modulus)
+    cocycle = CollatzInnovationCocycle(residue, 4 * modulus)
+    operation, sign = cocycle.operation()
+    return ("B" if operation == "sub" else "N" if sign == -1 else "A") + str(
+        cocycle.kappa(modulus)
+    )
+
+
+__all__ = ["CollatzInnovationCocycle", "exact_source_symbol"]

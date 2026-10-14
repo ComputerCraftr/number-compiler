@@ -1,0 +1,4 @@
+session Double_Reverse_Temporal_Refinement in temporal_double_reverse = Shared_Carry_Dynamics +
+  options [document = false, quick_and_dirty = false]
+  theories
+    Double_Reverse_Temporal_Refinement

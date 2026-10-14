@@ -378,13 +378,20 @@ def clear_payload_audit_contracts(ledger: ResourceLedger) -> None:
 def _store_identity_index(
     ledger: ResourceLedger, container: object
 ) -> dict[int, object]:
-    """Index one exact store's direct objects once for linear validation."""
+    """Index direct payloads, including the shared memo accounting envelope."""
+    from number_compiler.resources.ledger import _DynamicMemoValue
+
     values: dict[int, object] = {}
     if isinstance(container, Mapping):
         for key, item in audit_mapping_items(container):
             values[id(key)] = key
             values[id(item)] = item
             ledger.bump("payload_audit_contract_member_visits", 2)
+            # This is an accounting envelope, not another semantic container.
+            # Do not recursively approve arbitrary nested records or subclasses.
+            if type(item) is _DynamicMemoValue:
+                values[id(item.value)] = item.value
+                ledger.bump("payload_audit_contract_member_visits")
     elif isinstance(container, Sequence) and not isinstance(
         container, (str, bytes, bytearray)
     ):

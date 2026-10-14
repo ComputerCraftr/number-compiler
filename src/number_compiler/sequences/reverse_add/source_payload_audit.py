@@ -797,10 +797,7 @@ def audit_reverse_source_payloads(
                 type(handle) is ReverseSource and handle is root.source
             ) or action_handle_valid(handle):
                 approved.add(id(handle))
-        for cached_image, expected_action in (
-            (root._image, root.root_action),
-            (root._width_image, actions.identity),
-        ):
+        for cached_image, expected_action in ((root._image, root.root_action),):
             if cached_image is None:
                 continue
             cached_valid = False

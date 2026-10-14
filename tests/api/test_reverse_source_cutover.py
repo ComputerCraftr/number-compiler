@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 from typing import Never
 
 import pytest
@@ -20,6 +21,7 @@ from number_compiler.sequences.reverse_add.source_images import (
 )
 from tests.support.reverse_cutover import (
     assert_completed_child_work,
+    assert_q19_output_authority,
     forbid_uniform_context_compilation,
 )
 
@@ -77,7 +79,7 @@ def test_completed_child_constructor_answers_rejected_same_carry_without_legacy_
     term = _checked_cli_term(steps, expected, monkeypatch, capsys)
     counters = term._ledger.counters
     assert_completed_child_work(counters)
-    assert counters.get("reverse_source_completed_child_publications", 0) == 1
+    assert_q19_output_authority(term)
     assert counters.get("tile_causal_point_parent_requests", 0) == 0
     assert counters.get("whole_word_symbol_visits", 0) == 0
     assert counters.get("sequential_generation_advances", 0) == 0
@@ -133,6 +135,68 @@ def test_metrics_leave_missing_constructor_lazy(
     assert report.resource_accounting_mismatch == 0
     assert term._ledger.snapshot() == before
     assert term._workspace is None
+
+
+def test_cli_mirror_and_value_share_completed_output_without_width_replay(
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    from number_compiler.arithmetic.carry import carry_itinerary, event_memory
+
+    monkeypatch.setattr(event_memory, "_pair_step_with_carry", _forbidden)
+    monkeypatch.setattr(
+        carry_itinerary, "reconstruct_pair_from_live_event_suffix", _forbidden
+    )
+    assert (
+        main(
+            [
+                "reverse-add",
+                "--seed",
+                "196",
+                "--nth",
+                "20",
+                "--info",
+                "mirror",
+                "--format",
+                "json",
+            ]
+        )
+        == 0
+    )
+    captured = capsys.readouterr()
+    assert captured.err == ""
+    packet = json.loads(captured.out)
+    assert packet["value"] == "70446464506"
+    assert packet["info"]["mirror"]["palindrome"] is False
+
+
+def test_cli_metrics_only_does_not_construct_guarded_temporal_banks(
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    monkeypatch.setattr(ReverseAddPoweredTerm, "_source_workspace", _forbidden)
+    assert (
+        main(
+            [
+                "reverse-add",
+                "--seed",
+                "196",
+                "--nth-power10",
+                "3",
+                "--info",
+                "metrics",
+                "--no-value",
+                "--format",
+                "json",
+            ]
+        )
+        == 0
+    )
+    captured = capsys.readouterr()
+    assert captured.err == ""
+    packet = json.loads(captured.out)
+    assert packet["value"] is None
+    assert packet["index"] == {"encoding": "power10", "exponent": 3}
 
 
 def test_source_binding_changes_are_rejected() -> None:
@@ -191,9 +255,7 @@ def test_first_unadmitted_growth_uses_completed_child_constructor(
     term = ReverseAddPoweredTerm(1, 4)
     assert term.digits() == (6, 1)
     counters = term._ledger.counters
-    assert counters.get("reverse_source_completed_child_publications", 0) == 1
-    assert counters.get("reverse_recursive_completed_child_joins", 0) > 0
-    assert counters.get("source_image_primitive_applications", 0) == 0
+    assert_completed_child_work(counters)
 
 
 def test_mutated_seed_rejects_before_recursive_authority_or_workspace_allocation() -> (

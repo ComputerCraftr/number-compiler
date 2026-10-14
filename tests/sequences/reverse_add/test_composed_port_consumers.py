@@ -79,17 +79,26 @@ def test_width_and_random_access_do_not_enter_retired_streams(
     assert tuple(workspace.digit(i) for i in (3, 0, 2, 1)) == (1, 5, 6, 7)
 
 
-def test_same_carry_admission_runs_once_for_width_and_digits() -> None:
+def test_q19_occurrence_is_reused_for_width_and_digit_demands() -> None:
     ledger = ResourceLedger()
     workspace = ReverseSourceImageWorkspace(ledger, 1001, 3)
     assert workspace.width() == 4
     assert tuple(workspace.iter_digits()) == (8, 0, 0, 8)
-    before = ledger.counters["reverse_source_chamber_guard_coordinates"]
-    assert before > 0
+    before = (
+        ledger.counters.get("reverse_q19_punctured_t2_applications", 0),
+        ledger.counters.get("reverse_q19_punctured_t4_applications", 0),
+        ledger.counters.get("reverse_q19_primitive_pair_applications", 0),
+    )
+    assert before[0] > 0
+    assert ledger.counters["reverse_q19_root_bootstrap_publications"] == 1
     assert tuple(workspace.digit(i) for i in range(4)) == (8, 0, 0, 8)
     assert tuple(workspace.iter_digits()) == (8, 0, 0, 8)
-    assert ledger.counters.get("reverse_source_chamber_guard_coordinates", 0) == before
-    assert ledger.counters["reverse_source_chamber_admissions"] == 1
+    after = (
+        ledger.counters.get("reverse_q19_punctured_t2_applications", 0),
+        ledger.counters.get("reverse_q19_punctured_t4_applications", 0),
+        ledger.counters.get("reverse_q19_primitive_pair_applications", 0),
+    )
+    assert after == before
 
 
 def test_no_production_predecessor_cursor_remains() -> None:
@@ -103,12 +112,14 @@ def test_projection_rejects_payload_from_different_action() -> None:
     from dataclasses import replace
 
     from number_compiler.hashlife.execution.source_bound_images import SourceImageDemand
-    from number_compiler.sequences.reverse_add.source_images import ReverseImagePayload
 
     workspace = ReverseSourceImageWorkspace(ResourceLedger(), 196, 2)
     workspace.width()
     assert workspace._image is not None
     view = workspace.scheduler._source_image_core().view(workspace._image)
-    forged = replace(view, payload=ReverseImagePayload(workspace.actions.primitive))
+    forged = replace(
+        view,
+        binding=replace(view.binding, action=workspace.actions.primitive),
+    )
     with pytest.raises(ValueError, match="binding disagree"):
         workspace.adapter.project(forged, SourceImageDemand("width"))

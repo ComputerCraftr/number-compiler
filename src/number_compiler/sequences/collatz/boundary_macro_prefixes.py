@@ -1,8 +1,8 @@
-"""Publish exact dyadic cylinders from an admitted Collatz boundary word.
+"""Publish exact dyadic cylinders from admitted Collatz macro words.
 
-The four boundary families have compact run or period-two grammars.  This
-module slices those grammars algebraically, so a long admitted macro can seed
-the existing dyadic source cache without replaying its normalized symbols.
+Boundary and mixed-clock families have compact run grammars. This module
+slices those grammars algebraically, so an admitted macro can seed the
+existing dyadic source cache without replaying its normalized symbols.
 """
 
 from __future__ import annotations
@@ -14,8 +14,13 @@ from number_compiler.hashlife.execution.dyadic_return_runs import (
     RunArithmeticWorkspace,
 )
 from number_compiler.resources.ledger import ResourceLedger
+from number_compiler.sequences.collatz.border_return_grammar import (
+    BorderReturnMacro,
+    validate_border_return_macro,
+)
 from number_compiler.sequences.collatz.boundary_macros import (
     CollatzBoundaryMacro,
+    boundary_macro_26847_phase,
     validate_boundary_macro,
 )
 from number_compiler.sequences.collatz.dyadic_terminal_cocycle import (
@@ -57,8 +62,40 @@ def _alternating_slice(
     return action, ones
 
 
+def _quartet_slice(offset: int, length: int) -> tuple[DyadicTerminalFieldAction, int]:
+    """Slice the cyclic ``1000`` grammar using one powered quartet block."""
+    motif = (1, 0, 0, 0)
+    action = DyadicTerminalFieldAction.identity()
+    ones = 0
+    phase = offset % len(motif)
+    prefix = min(length, (len(motif) - phase) % len(motif)) if phase else 0
+    for bit in motif[phase : phase + prefix]:
+        action = action.then(
+            DyadicTerminalFieldAction.one_run(1)
+            if bit
+            else DyadicTerminalFieldAction.zero_run(1)
+        )
+        ones += bit
+    rest = length - prefix
+    complete, suffix = divmod(rest, len(motif))
+    if complete:
+        cell = DyadicTerminalFieldAction.one_run(1).then(
+            DyadicTerminalFieldAction.zero_run(3)
+        )
+        action = action.then(cell.power(complete))
+        ones += complete
+    for bit in motif[:suffix]:
+        action = action.then(
+            DyadicTerminalFieldAction.one_run(1)
+            if bit
+            else DyadicTerminalFieldAction.zero_run(1)
+        )
+        ones += bit
+    return action, ones
+
+
 def _slice_action(
-    macro: CollatzBoundaryMacro, start: int, length: int
+    macro: CollatzBoundaryMacro | BorderReturnMacro, start: int, length: int
 ) -> tuple[DyadicTerminalFieldAction, int]:
     """Build one exact substring action from the admitted family grammar."""
     stop = start + length
@@ -83,7 +120,12 @@ def _slice_action(
         action = action.then(run)
         ones += count if symbol else 0
 
-    if macro.family == "421":
+    if type(macro) is BorderReturnMacro:
+        cursor = 0
+        for bit, run_length in macro.parts:
+            append_region(cursor, cursor + run_length, bit)
+            cursor += run_length
+    elif macro.family == "421":
         motif_start = 2
         motif_stop = 2 * macro.repetitions
         append_region(0, motif_start, 0)
@@ -96,13 +138,27 @@ def _slice_action(
             action = action.then(pattern)
             ones += count
         append_region(motif_stop, motif_stop + 1, 1)
-    elif macro.family == "4721":
+    elif macro.family in ("4721", "0563"):
         append_region(0, 1, 0)
         append_region(1, macro.normalized_symbols, 1)
+    elif (phase := boundary_macro_26847_phase(macro.family)) is not None:
+        motif_start = 4 - phase
+        motif_stop = macro.normalized_symbols - 1
+        append_region(0, motif_start, 0)
+        first = max(start, motif_start)
+        last = min(stop, motif_stop)
+        if first < last:
+            tail, count = _quartet_slice(first - motif_start, last - first)
+            action = action.then(tail)
+            ones += count
+        append_region(motif_stop, motif_stop + 1, 1)
     elif macro.family == "630":
         append_region(0, 1, 0)
         append_region(1, 2, 1)
         append_region(2, macro.normalized_symbols, 0)
+    elif macro.family == "305":
+        append_region(0, 1, 1)
+        append_region(1, macro.normalized_symbols, 0)
     elif macro.family == "989":
         append_region(0, macro.normalized_symbols, 1)
     else:
@@ -133,7 +189,7 @@ def _root_prefix_widths(maximum_width: int, anchor_bits: int) -> tuple[int, ...]
 
 
 def _preflight_slice(
-    macro: CollatzBoundaryMacro,
+    macro: CollatzBoundaryMacro | BorderReturnMacro,
     width: int,
     scratch: RunArithmeticWorkspace,
 ) -> None:
@@ -144,7 +200,7 @@ def _preflight_slice(
 
 
 def _publish_boundary_macro_prefixes(
-    macro: CollatzBoundaryMacro,
+    macro: CollatzBoundaryMacro | BorderReturnMacro,
     macros: CollatzDyadicMacros,
     scratch: RunArithmeticWorkspace,
     *,
@@ -165,7 +221,12 @@ def _publish_boundary_macro_prefixes(
     exact macro has already advanced the query.  No endpoint is obtained by
     replaying scalar transitions.
     """
-    validate_boundary_macro(macro)
+    if type(macro) is BorderReturnMacro:
+        validate_border_return_macro(macro)
+    elif type(macro) is CollatzBoundaryMacro:
+        validate_boundary_macro(macro)
+    else:
+        raise TypeError("prefix publication requires an issued Collatz macro")
     if (
         type(macros) is not CollatzDyadicMacros
         or type(scratch) is not RunArithmeticWorkspace
@@ -215,10 +276,6 @@ def _publish_boundary_macro_prefixes(
                         )
                     ),
                 )
-                if endpoint <= 2:
-                    macros.frontier.clear()
-                    cache_open = False
-                    break
                 if macros.remember(macro.source, width, ones, endpoint):
                     root_publications += 1
                 largest_root_prefix = (width, action, ones, endpoint)
@@ -256,10 +313,6 @@ def _publish_boundary_macro_prefixes(
                     + action.sum_offset.bit_length()
                     + endpoint.bit_length(),
                 )
-                if endpoint <= 2:
-                    macros.frontier.clear()
-                    cache_open = False
-                    break
                 if macros.remember(anchor, checkpoint, total_ones, endpoint):
                     root_publications += 1
             except BlockContextBudgetExceeded:
@@ -302,7 +355,7 @@ def _publish_boundary_macro_prefixes(
                 + action.gain.bit_length()
                 + action.offset.bit_length(),
             )
-            if width >= 8 and endpoint > 2:
+            if width >= 8:
                 macros.observe(
                     source,
                     width,
@@ -310,11 +363,6 @@ def _publish_boundary_macro_prefixes(
                     endpoint,
                     anchor=anchor if position == 0 else 0,
                 )
-            elif endpoint <= 2:
-                macros.frontier.clear()
-                source = endpoint
-                cache_open = False
-                break
             else:
                 # The existing binary frontier has no offset field. Dropping
                 # even a short, exact affine slice without clearing it would

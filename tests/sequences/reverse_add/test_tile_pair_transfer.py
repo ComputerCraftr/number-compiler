@@ -328,22 +328,43 @@ def test_directional_composition_merges_different_exact_edges() -> None:
 
 @pytest.mark.validation
 @pytest.mark.parametrize("generation", (16, 32))
-def test_public_reverse_uses_directional_future_quotient(generation: int) -> None:
+def test_public_reverse_uses_completed_q19_occurrence(generation: int) -> None:
     from number_compiler.sequences.reverse_add.power import ReverseAddPoweredTerm
+    from tests.support.reverse_cutover import assert_q19_output_authority
 
     term = ReverseAddPoweredTerm(196, generation)
     expected = 196
     for _ in range(generation):
         expected += int(str(expected)[::-1])
     position = term.maximum_width // 3
-    assert term.digit(position) == expected // 10**position % 10
-    metrics = term.metrics()
+    expected_digit = expected // 10**position % 10
+    assert term.digit(position) == expected_digit
+    workspace, occurrence = assert_q19_output_authority(term)
+    assert occurrence.temporal_steps == generation
+    assert occurrence.output_width == len(str(expected))
+
+    # Repeating the same demand consumes the exact admitted projection memo;
+    # it must not republish or reconstruct the completed occurrence.
+    before = dict(workspace.ledger.counters)
+    assert term.digit(position) == expected_digit
+    after = workspace.ledger.counters
     assert (
-        metrics.resource_work_counters["reverse_morphism_directional_leaf_consumers"]
+        after.get("source_image_projection_hits", 0)
+        - before.get("source_image_projection_hits", 0)
+        == 1
+    )
+
+    metrics = term.metrics()
+    counters = metrics.resource_work_counters
+    assert (
+        2 * counters.get("reverse_q19_punctured_t2_applications", 0)
+        + 4 * counters.get("reverse_q19_punctured_t4_applications", 0)
         > 0
     )
+    assert counters.get("reverse_q19_punctured_emitted_grammar_nodes", 0) > 0
+    assert counters.get("source_image_primitive_applications", 0) == 0
     assert metrics.sequential_generation_advances == 0
     assert metrics.resource_accounting_mismatch == 0
     from number_compiler.resources.metric_collection import collect_ledger_metrics
 
-    assert collect_ledger_metrics(term._ledger).forbidden_future_payloads == 0
+    assert collect_ledger_metrics(workspace.ledger).forbidden_future_payloads == 0

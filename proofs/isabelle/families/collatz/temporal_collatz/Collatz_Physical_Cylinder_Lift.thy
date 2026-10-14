@@ -331,6 +331,101 @@ next
   qed
 qed
 
+text \<open>Guarded words compose only at the exact source endpoint.  These
+lemmas expose the chronological seam used by source-certified temporal
+programs; they do not authorize repeating a word at an unrelated source.\<close>
+
+lemma collatz_guarded_normalized_word_admitted_append:
+  "collatz_guarded_normalized_word_admitted (first @ second) source \<longleftrightarrow>
+    collatz_guarded_normalized_word_admitted first source \<and>
+    collatz_guarded_normalized_word_admitted second
+      (collatz_guarded_normalized_word_endpoint first source)"
+proof (induction first arbitrary: source)
+  case Nil
+  then show ?case by simp
+next
+  case (Cons branch tail)
+  then show ?case by simp
+qed
+
+lemma collatz_guarded_normalized_word_endpoint_append:
+  "collatz_guarded_normalized_word_endpoint (first @ second) source =
+    collatz_guarded_normalized_word_endpoint second
+      (collatz_guarded_normalized_word_endpoint first source)"
+  by (induction first arbitrary: source) simp_all
+
+fun collatz_guarded_normalized_successors :: "bool list \<Rightarrow> nat \<Rightarrow> nat list" where
+  "collatz_guarded_normalized_successors [] source = []"
+| "collatz_guarded_normalized_successors (branch # tail) source =
+    collatz_guarded_normalized_source_step branch source #
+      collatz_guarded_normalized_successors tail
+        (collatz_guarded_normalized_source_step branch source)"
+
+lemma collatz_joint_dyadic_atom_sum_endpoint:
+  "collatz_joint_dyadic_sum (collatz_joint_dyadic_atom branch) x =
+    collatz_joint_dyadic_endpoint (collatz_joint_dyadic_atom branch) x"
+  by (cases branch)
+    (simp_all add: collatz_joint_dyadic_sum_def
+      collatz_joint_dyadic_endpoint_def collatz_joint_dyadic_atom_def)
+
+theorem collatz_guarded_joint_action_sums_source_successors:
+  assumes admitted: "collatz_guarded_normalized_word_admitted bits source"
+  shows "collatz_joint_dyadic_sum (collatz_joint_dyadic_word bits)
+      (of_nat source) =
+    of_nat (sum_list (collatz_guarded_normalized_successors bits source))"
+using admitted
+proof (induction bits arbitrary: source)
+  case Nil
+  then show ?case
+    by (simp add: collatz_joint_dyadic_sum_def
+      collatz_joint_dyadic_identity_def)
+next
+  case (Cons branch tail)
+  have split_guard:
+    "branch = odd source \<and>
+      collatz_guarded_normalized_word_admitted tail
+        (collatz_guarded_normalized_source_step branch source)"
+    using Cons.prems[unfolded
+      collatz_guarded_normalized_word_admitted.simps] .
+  have branch: "branch = odd source" using split_guard by blast
+  have tail_admitted:
+    "collatz_guarded_normalized_word_admitted tail
+      (collatz_guarded_normalized_source_step branch source)"
+    using split_guard by blast
+  have tail_sum:
+    "collatz_joint_dyadic_sum (collatz_joint_dyadic_word tail)
+        (of_nat (collatz_guarded_normalized_source_step branch source)) =
+      of_nat (sum_list (collatz_guarded_normalized_successors tail
+        (collatz_guarded_normalized_source_step branch source)))"
+    by (rule Cons.IH[OF tail_admitted])
+  have head_endpoint:
+    "collatz_joint_dyadic_endpoint (collatz_joint_dyadic_atom branch)
+        (of_nat source) =
+      of_nat (collatz_guarded_normalized_source_step branch source)"
+    by (rule collatz_guarded_normalized_atom_exact[OF branch])
+  have head_sum:
+    "collatz_joint_dyadic_sum (collatz_joint_dyadic_atom branch)
+        (of_nat source) =
+      of_nat (collatz_guarded_normalized_source_step branch source)"
+  proof -
+    have action_eq:
+      "collatz_joint_dyadic_sum (collatz_joint_dyadic_atom branch)
+          (of_nat source) =
+       collatz_joint_dyadic_endpoint (collatz_joint_dyadic_atom branch)
+          (of_nat source)"
+      by (rule collatz_joint_dyadic_atom_sum_endpoint)
+    also have "... =
+        of_nat (collatz_guarded_normalized_source_step branch source)"
+      by (rule head_endpoint)
+    finally show ?thesis .
+  qed
+  show ?case
+    using head_sum head_endpoint tail_sum
+    by (simp only: collatz_joint_dyadic_word.simps
+      collatz_joint_dyadic_sum_then collatz_guarded_normalized_successors.simps
+      sum_list.Cons of_nat_add)
+qed
+
 theorem collatz_guarded_normalized_word_physical_endpoint_with_pending_tick:
   assumes admitted: "collatz_guarded_normalized_word_admitted bits source"
     and pending: "pending = odd (collatz_guarded_normalized_word_endpoint bits source)"
@@ -840,6 +935,10 @@ ML \<open>
     @{thms collatz_physical_branch_word_length
       collatz_guarded_normalized_atom_exact
       collatz_guarded_normalized_word_refines_physical
+      collatz_guarded_normalized_word_admitted_append
+      collatz_guarded_normalized_word_endpoint_append
+      collatz_joint_dyadic_atom_sum_endpoint
+      collatz_guarded_joint_action_sums_source_successors
       collatz_guarded_normalized_word_physical_endpoint_with_pending_tick
       collatz_physical_counts_partition collatz_physical_even_count_le
       collatz_physical_odd_count_le physical_collatz_even_cylinder_step

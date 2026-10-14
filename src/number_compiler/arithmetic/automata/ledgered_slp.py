@@ -22,6 +22,7 @@ class LedgerSLPArena(SLPArena):
     """
 
     __slots__ = (
+        "__weakref__",
         "_cleanup_complete",
         "_closed",
         "_nodes_released",
@@ -54,6 +55,7 @@ class LedgerSLPArena(SLPArena):
         self._rep: OwnedMemo[tuple[int, int], int] = OwnedMemo(ledger, self.owners[3])
         try:
             self.empty_id = self._add("EMPTY", 0)
+            ledger.register_execution_root(self)
         except BaseException as error:
             try:
                 self.dispose()

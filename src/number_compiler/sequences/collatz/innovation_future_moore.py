@@ -46,9 +46,30 @@ class GuardedInnovationFutureMoore:
     local_states: tuple[tuple[str, int], ...]
     stabilization_horizon: int
     _authority: object = field(default=_UNISSUED, init=False, repr=False, compare=False)
+    _seal: tuple[object, ...] = field(default=(), init=False, repr=False, compare=False)
+
+    @property
+    def producer_issued(self) -> bool:
+        seal = self._seal
+        return (
+            self._authority is _ISSUED_FUTURE
+            and len(seal) == 8
+            and type(self.modulus) is int
+            and type(self.stabilization_horizon) is int
+            and type(seal[0]) is int
+            and type(seal[7]) is int
+            and seal[0] == self.modulus
+            and self.local_to_global is seal[1]
+            and self.global_outputs is seal[2]
+            and self.global_successors is seal[3]
+            and self.global_representatives is seal[4]
+            and self.local_offsets is seal[5]
+            and self.local_states is seal[6]
+            and seal[7] == self.stabilization_horizon
+        )
 
     def _check_issued(self) -> None:
-        if self._authority is not _ISSUED_FUTURE:
+        if not self.producer_issued:
             raise ValueError(
                 "innovation future graph was not issued by its constructor"
             )
@@ -260,19 +281,41 @@ def innovation_future_moore(
                     f"noncongruent innovation quotient at {state_pair}"
                 )
         object.__setattr__(graph, "_authority", _ISSUED_FUTURE)
+        object.__setattr__(
+            graph,
+            "_seal",
+            (
+                modulus,
+                graph.local_to_global,
+                graph.global_outputs,
+                graph.global_successors,
+                graph.global_representatives,
+                graph.local_offsets,
+                graph.local_states,
+                stabilization,
+            ),
+        )
         return graph
 
     if memo is None:
-        return build()
-    # At most four unminimized phase sets enter this constructor. Refuse before
-    # allocating its refinement dictionaries if the caller's ledger cannot
-    # admit a conservative linear scratch envelope.
-    return memo._get_or_build(
-        "future-moore",
-        (modulus,),
-        build,
-        work_nodes=max(1, 24 * 4 * modulus),
-    )
+        graph = build()
+    else:
+        # At most four unminimized phase sets enter this constructor. Refuse
+        # before allocating refinement dictionaries without a linear scratch
+        # envelope.
+        graph = memo._get_or_build(
+            "future-moore",
+            (modulus,),
+            build,
+            work_nodes=max(1, 24 * 4 * modulus),
+        )
+    if (
+        type(graph) is not GuardedInnovationFutureMoore
+        or not graph.producer_issued
+        or graph.modulus != modulus
+    ):
+        raise ValueError("innovation future memo returned a foreign quotient")
+    return graph
 
 
 __all__ = ["GuardedInnovationFutureMoore", "innovation_future_moore"]

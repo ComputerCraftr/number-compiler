@@ -235,24 +235,27 @@ def test_issued_valid_shaped_action_must_match_admitted_transfer(
 
 
 def test_public_process_lease_cannot_forge_outer_mahler_action(
-    cache: ProcessCache,
+    cache: ProcessCache, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    term, _ = _query()
-    workspace = term.arithmetic_workspace
-    assert workspace is not None
+    _, expected = _query()
     full_key = next(iter(cache._entries))
     partition, local_key = full_key
     valid_wire = cache._entries[full_key][1]
-    with cache.acquire(*partition) as lease:
-        assert lease.put(local_key, valid_wire)
+    retained_record = cache._entries[full_key]
+    with (
+        cache.acquire(*partition) as lease,
+        pytest.raises(CacheRecordIssuerMismatch, match="publisher capability"),
+    ):
+        lease.put(local_key, valid_wire)
 
-    with pytest.raises(CacheRecordIssuerMismatch, match="publisher capability"):
-        mahler_cache.cached_associated_action(workspace)
-    counters = term.ledger.counters
-    assert counters["mahler_hashlife_action_lookups"] == 2
-    assert counters["mahler_hashlife_action_admission_rejections"] == 1
-    assert counters["mahler_hashlife_failed_work"] == 1
-    assert counters["mahler_hashlife_action_process_hits"] == 0
+    assert cache._entries[full_key] is retained_record
+    monkeypatch.setattr(mahler_cache, "_build_action", _forbidden)
+    warm, actual = _query()
+    assert actual == expected
+    counters = warm.ledger.counters
+    assert counters["mahler_hashlife_action_process_hits"] == 1
+    assert counters["mahler_hashlife_action_exact_hits"] == 1
+    assert counters["mahler_hashlife_action_misses"] == 0
     assert cache.stats().active_leases == 0
 
 

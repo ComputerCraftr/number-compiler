@@ -3,11 +3,13 @@
 from __future__ import annotations
 
 from contextvars import ContextVar, Token
+from functools import partial
 from types import TracebackType
 from typing import Self
 from weakref import ReferenceType
 
 from number_compiler.resources.ledger import ResourceLedger
+from number_compiler.resources.lifecycle import cleanup_all
 from number_compiler.resources.stores import LedgerDict, LedgerList
 
 _ACTIVE_CONSTRUCTIONS: ContextVar[tuple[RuntimeConstruction, ...]] = ContextVar(
@@ -127,35 +129,44 @@ class RuntimeConstruction:
 
     def _abort(self) -> None:
         ledger = self.ledger
-        retired_entries = retired_nodes = 0
-        for owner in reversed(self._owners):
-            account = ledger._account(owner)
-            if account.disposed:
-                continue
-            retired_entries += account.entries
-            retired_nodes += account.nodes
-            if isinstance(account.container, (LedgerDict, LedgerList)):
-                # These unpublished stores have no valid external handles.
-                # Clear backing storage before retiring their owner, including
-                # append-only identity arrays; the owner ID is never reused.
-                account.container._data.clear()
-            ledger.release(owner, account.entries, account.nodes)
-            if account.container is not None:
-                ledger._factory_containers.discard(id(account.container))
-            # Drop the ledger's owning references, including bound callbacks.
-            # Factory frames may remain in an exception traceback temporarily;
-            # they are not issued execution roots or live index-owned arenas.
-            account.container = None
-            account.node_count = account.payloads = account.root_resolver = None
-            account.evict = account.composition_count = None
-            account.roots.clear()
-            ledger.mark_disposed(owner)
-        for identity, reference in self._roots.items():
-            ledger._expire_execution_root(identity, reference)
         ledger.bump("runtime_construction_aborts")
-        ledger.bump("runtime_construction_released_entries", retired_entries)
-        ledger.bump("runtime_construction_released_nodes", retired_nodes)
-        ledger.note_store_mutation()
+        try:
+            cleanup_all(
+                (
+                    *(
+                        partial(self._retire_owner, owner)
+                        for owner in reversed(self._owners)
+                    ),
+                    *(
+                        partial(ledger._expire_execution_root, identity, reference)
+                        for identity, reference in self._roots.items()
+                    ),
+                )
+            )
+        finally:
+            ledger.note_store_mutation()
+
+    def _retire_owner(self, owner: int) -> None:
+        ledger = self.ledger
+        account = ledger._account(owner)
+        if account.disposed:
+            return
+        entries, nodes = account.entries, account.nodes
+        if isinstance(account.container, (LedgerDict, LedgerList)):
+            # These unpublished stores have no valid external handles. Owner
+            # IDs are never recycled, including after a partial rollback.
+            account.container._data.clear()
+        ledger.release(owner, entries, nodes)
+        ledger.bump("runtime_construction_released_entries", entries)
+        ledger.bump("runtime_construction_released_nodes", nodes)
+        if account.container is not None:
+            ledger._factory_containers.discard(id(account.container))
+        # Drop owning references and callbacks retained by failed factory frames.
+        account.container = None
+        account.node_count = account.payloads = account.root_resolver = None
+        account.evict = account.composition_count = None
+        account.roots.clear()
+        ledger.mark_disposed(owner)
 
 
 __all__ = ["RuntimeConstruction"]

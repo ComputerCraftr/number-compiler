@@ -230,7 +230,7 @@ def test_public_process_lease_cannot_forge_mahler_source_action(
     source_cache: ProcessCache, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     cold = _prepared(1024)
-    cold.result()
+    expected = associated_action(cold.result())
     with mahler_source_actions.MahlerOccurrenceConsumer(
         cold.ledger, ANTIHYDRA_ARITHMETIC_LAW, shared_cache=True
     ) as consumer:
@@ -238,7 +238,11 @@ def test_public_process_lease_cannot_forge_mahler_source_action(
         assert lease is not None
         wire = lease.get((1024, 8))
         assert type(wire) is tuple
-        assert lease.put((1024, 8), wire)
+        full_key = lease.source_qualification, (1024, 8)
+        retained_record = source_cache._entries[full_key]
+        with pytest.raises(CacheRecordIssuerMismatch, match="publisher capability"):
+            lease.put((1024, 8), wire)
+        assert source_cache._entries[full_key] is retained_record
 
     monkeypatch.setattr(
         AntihydraArithmeticImageWorkspace, "complete_composite_candidate", _unexpected
@@ -246,14 +250,15 @@ def test_public_process_lease_cannot_forge_mahler_source_action(
     monkeypatch.setattr(
         AntihydraArithmeticImageWorkspace, "_run_candidate", _unexpected
     )
-    rejected = _prepared(1024)
-    with pytest.raises(CacheRecordIssuerMismatch, match="publisher capability"):
-        rejected.result()
-    counters = rejected.ledger.counters
+    warm = _prepared(1024)
+    actual = associated_action(warm.result())
+    assert actual == expected
+    counters = warm.ledger.counters
     assert counters["mahler_hashlife_source_action_lookups"] == 1
-    assert counters["mahler_hashlife_source_action_admission_rejections"] == 1
-    assert counters["mahler_hashlife_failed_work"] == 1
-    assert counters["mahler_hashlife_source_action_process_hits"] == 0
+    assert counters["mahler_hashlife_source_action_process_hits"] == 1
+    assert counters["mahler_hashlife_source_action_exact_hits"] == 1
+    assert counters["mahler_hashlife_source_action_applied_hits"] == 1
+    assert not counters.get("antihydra_temporal_balanced_routes", 0)
     assert not counters.get("mahler_hashlife_source_action_publications", 0)
     assert source_cache.stats().active_leases == 0
 

@@ -954,12 +954,12 @@ class SymbolicInnovationArena:
             if frames:
                 self.ledger.release(memo.owner, entries=frames, nodes=frames)
                 pending.clear()
-            memo.clear()
             if summaries:
                 self.ledger.release(
                     memo.owner, entries=len(summaries), nodes=summary_nodes
                 )
                 summaries.clear()
+            memo.clear()
 
 
 def _negative_z_power(ring: CyclotomicRing, exponent: int) -> tuple[int, ...]:

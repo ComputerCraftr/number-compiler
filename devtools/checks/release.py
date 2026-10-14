@@ -631,7 +631,9 @@ def proofs(
             }
         )
         return False
-    build = [executable, "build", "-b", "-j", str(ISABELLE_JOBS)]
+    # Preserve the active theory in the log even if the external guard must
+    # terminate Poly/ML before Isabelle can write its session database.
+    build = [executable, "build", "-v", "-b", "-j", str(ISABELLE_JOBS)]
     for option in ISABELLE_OPTIONS:
         build.extend(("-o", option))
     build.extend(selection)

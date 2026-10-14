@@ -14,6 +14,7 @@ from devtools.verification import exact_oracle, require_exact_oracle
 from number_compiler.arithmetic.carry.carry_monoid import apply_carry_fn
 from number_compiler.arithmetic.carry.event_memory import pair_step
 from number_compiler.arithmetic.fields.radix import reverse_pair_sums, symbol_runs
+from number_compiler.arithmetic.fields.run_pairing import pair_mirror_digit_runs
 from number_compiler.arithmetic.formula.decimal_pair_coordinates import (
     decimal_normalized_coordinates,
     decimal_pair_carry_action,
@@ -74,23 +75,9 @@ def run_successor(source: Runs) -> tuple[Runs, int]:
             _append(digits, alpha + 5 * beta, count - 1)
     if carry:
         _append(digits, 1, 1)
-    out: list[tuple[int, int]] = []
-    left, right = 0, len(digits) - 1
-    left_remaining, right_remaining = digits[left][1], digits[right][1]
-    while left < len(digits) and right >= 0:
-        count = min(left_remaining, right_remaining)
-        _append(out, digits[left][0] + digits[right][0], count)
-        left_remaining -= count
-        right_remaining -= count
-        if left_remaining == 0:
-            left += 1
-            if left < len(digits):
-                left_remaining = digits[left][1]
-        if right_remaining == 0:
-            right -= 1
-            if right >= 0:
-                right_remaining = digits[right][1]
-    result = tuple(out)
+    result, _odd_width, _run_pair_visits = pair_mirror_digit_runs(
+        digits, half_only=False
+    )
     _admit(result)
     return result, carry
 

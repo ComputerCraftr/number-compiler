@@ -12,8 +12,10 @@ from number_compiler.sequences.collatz.joint_temporal_action import JointTempora
 from tests.support.assertions import forbid_explicit_lowering
 
 
-@pytest.mark.parametrize("seed", (1, 16, 27))
-@pytest.mark.parametrize("ticks", (0, 1, 2, 17))
+@pytest.mark.parametrize(
+    "seed", (1, 5, 13, 16, 27, 93, (1 << 160) + 48233076155686138603)
+)
+@pytest.mark.parametrize("ticks", (0, 1, 2, 5, 9, 17, 108))
 def test_accumulator_cli_preserves_normalized_and_physical_clocks(
     seed: int, ticks: int, capsys: pytest.CaptureFixture[str]
 ) -> None:

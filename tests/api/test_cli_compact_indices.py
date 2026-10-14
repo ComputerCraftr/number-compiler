@@ -62,6 +62,35 @@ def test_compact_value_and_info_match_explicit_index(
     assert compact["index_unit"] == ordinary["index_unit"]
 
 
+@pytest.mark.parametrize("seed,entry_ticks", ((5, 5), (13, 9), (1 << 1000, 1000)))
+@pytest.mark.parametrize("exponent", (6, 12))
+def test_collatz_compact_index_uses_exact_terminal_cycle(
+    seed: int,
+    entry_ticks: int,
+    exponent: int,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    assert (
+        cli.main(
+            [
+                "collatz",
+                "--seed",
+                str(seed),
+                "--nth-power10",
+                str(exponent),
+                "--info",
+                "metrics",
+                "--format",
+                "json",
+            ]
+        )
+        == 0
+    )
+    packet = json.loads(capsys.readouterr().out)
+    assert packet["value"] == str((1, 4, 2)[(10**exponent - entry_ticks) % 3])
+    assert packet["index"] == {"encoding": "power10", "exponent": exponent}
+
+
 @pytest.mark.parametrize(
     "family,conflict",
     (

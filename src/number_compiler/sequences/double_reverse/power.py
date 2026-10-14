@@ -1,32 +1,24 @@
 """Exact bounded 2*reverse(n) queries over the shared scheduler and SLPs.
 
-The temporal recurrence is deliberately explicit: the scheduler composes and
-applies one authenticated primitive at a time.  Each primitive acts on a
-ledger-owned straight-line word, so it never constructs the intermediate
-integer or decimal string.  This module makes no logarithmic-time claim about
-the number of temporal steps.
+The scheduler retains exact source authority and a ledgered SLP. Certified
+four-phase cylinders use guarded dyadic temporal Hashlife; other sources keep
+the exact chronological path. Neither path materializes intermediate values.
 """
 
 from __future__ import annotations
 
-from collections.abc import Generator, Iterator, MutableMapping
-from contextlib import ExitStack, closing
-from dataclasses import dataclass
+from collections.abc import Generator, Iterator
+from contextlib import ExitStack
 from typing import Self, cast
 
-from number_compiler.arithmetic.automata.guard import record_slp_metrics
 from number_compiler.arithmetic.automata.ledgered_slp import LedgerSLPArena
-from number_compiler.arithmetic.automata.slp import BimachineSLPProjector, SLPNode
+from number_compiler.arithmetic.automata.slp import BimachineSLPProjector
+from number_compiler.arithmetic.automata.slp_walks import iter_symbols, symbol_at
 from number_compiler.arithmetic.contracts.block_effect import BlockContextBudgetExceeded
 from number_compiler.arithmetic.contracts.input_validation import require_integer
 from number_compiler.arithmetic.contracts.scoped_handles import ArenaToken
 from number_compiler.hashlife.execution.source_bound_images import (
-    SourceImageBinding,
-    SourceImageCandidate,
-    SourceImageDemand,
     SourceImageID,
-    SourceImageProjection,
-    SourceImageView,
 )
 from number_compiler.hashlife.execution.tile_scheduler import TileScheduler
 from number_compiler.resources.ledger import OwnedMemo, ResourceLedger
@@ -36,510 +28,27 @@ from number_compiler.resources.output_stream_metrics import (
     initialize_output_stream_metrics,
     measured_output_stream,
 )
-
-
-@dataclass(frozen=True, slots=True, eq=False)
-class _DoubleReverseSource:
-    issuer: ArenaToken
-    seed: int
-    root: int
-
-
-@dataclass(frozen=True, slots=True)
-class _DoubleReverseAction:
-    steps: int
-
-    def __post_init__(self) -> None:
-        if type(self.steps) is not int or self.steps < 0:
-            raise ValueError("double-reverse action requires nonnegative exact steps")
-
-
-@dataclass(frozen=True, slots=True)
-class _DoubleReverseImage:
-    issuer: ArenaToken
-    source: _DoubleReverseSource
-    action: _DoubleReverseAction
-    root: int
-
-
-def _iter_slp_symbols(
-    arena: LedgerSLPArena,
-    ledger: ResourceLedger,
-    scratch_owner: int,
-    root: int,
-    *,
-    reverse: bool,
-    metric: str | None,
-) -> Generator[int, None, None]:
-    tasks: list[tuple[str, int, int]] = []
-    retained = 0
-
-    def push(task: tuple[str, int, int]) -> None:
-        nonlocal retained
-        ledger.reserve(scratch_owner, entries=1, nodes=1)
-        try:
-            tasks.append(task)
-        except BaseException:
-            ledger.release(scratch_owner, entries=1, nodes=1)
-            raise
-        retained += 1
-
-    try:
-        push(("node", root, 1))
-        while tasks:
-            kind, node_id, count = tasks.pop()
-            ledger.release(scratch_owner, entries=1, nodes=1)
-            retained -= 1
-            if kind == "node" and metric is not None:
-                ledger.bump(metric)
-            if kind == "repeat":
-                if count:
-                    push(("repeat", node_id, count - 1))
-                    push(("node", node_id, 1))
-                continue
-            node: SLPNode = arena.nodes[node_id]
-            if node.kind == "EMPTY":
-                continue
-            if node.kind == "TERM":
-                yield node.symbol
-            elif node.kind == "CONCAT":
-                if reverse:
-                    push(("node", node.left, 1))
-                    push(("node", node.right, 1))
-                else:
-                    push(("node", node.right, 1))
-                    push(("node", node.left, 1))
-            elif node.kind == "REPEAT":
-                push(("repeat", node.child, node.count))
-            else:
-                raise AssertionError(node.kind)
-    finally:
-        if retained:
-            ledger.release(scratch_owner, entries=retained, nodes=retained)
-
-
-class _CarryDFA:
-    start = 0
-
-    @staticmethod
-    def step(state: int, symbol: int) -> int | None:
-        if state not in (0, 1) or not 0 <= symbol <= 9:
-            return None
-        return (2 * symbol + state) // 10
-
-
-class _SuffixNonzeroDFA:
-    start = 0
-
-    @staticmethod
-    def step(state: int, symbol: int) -> int | None:
-        if state not in (0, 1) or not 0 <= symbol <= 9:
-            return None
-        return int(bool(state or symbol))
-
-
-class _DoubleReverseMachine:
-    """Two-sided word law: forward carry and a trailing-zero suffix flag."""
-
-    __slots__ = ("left", "right")
-
-    def __init__(self) -> None:
-        self.left = _CarryDFA()
-        self.right = _SuffixNonzeroDFA()
-
-    @staticmethod
-    def emit(
-        carry: int, symbol: int, suffix_has_nonzero: int
-    ) -> tuple[int, ...] | None:
-        if (
-            carry not in (0, 1)
-            or not 0 <= symbol <= 9
-            or suffix_has_nonzero not in (0, 1)
-        ):
-            return None
-        if symbol == 0 and suffix_has_nonzero == 0:
-            # The corresponding high zero of the reversed numeral is omitted.
-            # If a carry reaches it, this zero emits that final leading digit.
-            return (1,) if carry else ()
-        return ((2 * symbol + carry) % 10,)
-
-
-class _DoubleReverseSourceAdapter:
-    family = "double-reverse"
-    semantic_version = "decimal-2rev-source-image-v1"
-
-    def __init__(
-        self,
-        ledger: ResourceLedger,
-        arena: LedgerSLPArena,
-        projector: BimachineSLPProjector,
-        source: _DoubleReverseSource,
-        issuer: ArenaToken,
-        max_steps: int,
-        max_state_bits: int,
-        projector_memos: tuple[OwnedMemo[object, object], ...],
-        reverse_owner: OwnedMemo[int, int],
-        threshold_owner: OwnedMemo[int, bytes],
-        scratch_owner: int,
-    ) -> None:
-        self.ledger = ledger
-        self.arena = arena
-        self.projector = projector
-        self.source = source
-        self.issuer = issuer
-        self.max_steps = max_steps
-        self.max_state_bits = max_state_bits
-        self.projector_memos = projector_memos
-        self._reverse_owner = reverse_owner
-        self._threshold_owner = threshold_owner
-        self.scratch_owner = scratch_owner
-        self._closed = False
-        self._cleanup_complete = False
-
-    def validate_source(self, source: object) -> None:
-        if type(source) is not _DoubleReverseSource:
-            raise ValueError("double-reverse source is foreign or malformed")
-        exact = source
-        if (
-            exact is not self.source
-            or exact.issuer is not self.issuer
-            or exact.root < 0
-            or exact.root >= len(self.arena.nodes)
-            or type(exact.seed) is not int
-            or exact.seed < 0
-        ):
-            raise ValueError("double-reverse source is foreign or malformed")
-
-    def validate_action(self, action: object) -> None:
-        if type(action) is not _DoubleReverseAction:
-            raise TypeError("double-reverse action has the wrong type")
-        exact = action
-        if exact.steps > self.max_steps:
-            raise ValueError("double-reverse action exceeds its admitted horizon")
-
-    def validate_payload(self, payload: object) -> None:
-        if type(payload) is not _DoubleReverseImage:
-            raise TypeError("double-reverse image has the wrong type")
-        exact = payload
-        if exact.issuer is not self.issuer or exact.source is not self.source:
-            raise ValueError("double-reverse image belongs to another source owner")
-        self.validate_action(exact.action)
-        if (
-            type(exact.root) is not int
-            or not 0 <= exact.root < len(self.arena.nodes)
-            or exact.action.steps > self.max_steps
-        ):
-            raise ValueError("double-reverse image root or horizon is invalid")
-
-    def identity_action(self, source: object) -> _DoubleReverseAction:
-        self.validate_source(source)
-        return _DoubleReverseAction(0)
-
-    def action_children(
-        self, action: object
-    ) -> tuple[_DoubleReverseAction, _DoubleReverseAction] | None:
-        self.validate_action(action)
-        steps = cast(_DoubleReverseAction, action).steps
-        if steps < 2:
-            return None
-        before = steps // 2
-        return _DoubleReverseAction(before), _DoubleReverseAction(steps - before)
-
-    def compose_actions(self, before: object, after: object) -> _DoubleReverseAction:
-        self.validate_action(before)
-        self.validate_action(after)
-        total = (
-            cast(_DoubleReverseAction, before).steps
-            + cast(_DoubleReverseAction, after).steps
-        )
-        self.validate_action(_DoubleReverseAction(total))
-        return _DoubleReverseAction(total)
-
-    def admit_source(self, source: object) -> SourceImageCandidate:
-        self.validate_source(source)
-        exact = cast(_DoubleReverseSource, source)
-        payload = _DoubleReverseImage(
-            self.issuer, exact, _DoubleReverseAction(0), exact.root
-        )
-        width = self.arena.nodes[exact.root].length
-        return SourceImageCandidate(payload, 0, radix=10, precision=width)
-
-    def _apply_word(self, root: int) -> int:
-        # The projector's explicit worklists can retain a constant multiple of
-        # the current grammar size. Reserve that transient storage before work.
-        bound = max(16, 4 * len(self.arena.nodes))
-        with self.ledger.reservation(self.scratch_owner, entries=bound, nodes=bound):
-            carry = self.projector.forward(root, self.projector.machine.left.start)
-            if carry is None:
-                raise ValueError("decimal doubling carry rejected an input symbol")
-            lsd_root = self.projector.apply(root)
-            if carry:
-                lsd_root = self.arena.concat(lsd_root, self.arena.terminal(carry))
-            # The transducer emits little-endian digits; public occurrences use
-            # a canonical most-significant-first grammar.
-            result = self._reverse_grammar(lsd_root)
-        if result == self.arena.empty_id:
-            result = self.arena.terminal(0)
-        width = self.arena.nodes[result].length
-        if not self._fits_state_bits(result, width):
-            raise BlockContextBudgetExceeded(
-                "double-reverse state exceeds the admitted state-bit budget"
-            )
-        self.ledger.bump("double_reverse_spatial_transducer_applications")
-        return result
-
-    def _fits_state_bits(self, root: int, width: int) -> bool:
-        if 4 * width <= self.max_state_bits:
-            return True
-        if 3 * (width - 1) >= self.max_state_bits:
-            return False
-        threshold = self._threshold_digits()
-        if width != len(threshold):
-            return width < len(threshold)
-        with closing(
-            _iter_slp_symbols(
-                self.arena,
-                self.ledger,
-                self.scratch_owner,
-                root,
-                reverse=False,
-                metric="double_reverse_state_comparison_node_visits",
-            )
-        ) as symbols:
-            for index, symbol in enumerate(symbols):
-                threshold_symbol = threshold[index] - ord("0")
-                self.ledger.bump("double_reverse_state_comparison_digits")
-                if symbol != threshold_symbol:
-                    return symbol < threshold_symbol
-        return False
-
-    def _threshold_digits(self) -> bytes:
-        if self.max_state_bits in self._threshold_owner:
-            return self._threshold_owner[self.max_state_bits]
-
-        # Reserve the binary operand, base-10 chunks, and packed decimal bytes
-        # before constructing the cached threshold representation.
-        threshold_bits = self.max_state_bits
-        estimated_digits = 5 * ((threshold_bits + 15) // 16)
-        chunks = (estimated_digits + 8) // 9
-        scratch_nodes = (
-            2 * ((threshold_bits + 29) // 30)
-            + chunks
-            + 2 * ((estimated_digits + 7) // 8)
-        )
-        with self.ledger.reservation(
-            self.scratch_owner, entries=1, nodes=max(1, scratch_nodes)
-        ):
-            remaining = 1 << threshold_bits
-            pieces: list[int] = []
-            while remaining:
-                remaining, piece = divmod(remaining, 1_000_000_000)
-                pieces.append(piece)
-                self.ledger.bump("double_reverse_threshold_divisions")
-            encoded = bytearray(str(pieces[-1]).encode("ascii"))
-            for piece in reversed(pieces[:-1]):
-                encoded.extend(f"{piece:09d}".encode("ascii"))
-            digits = bytes(encoded)
-            self.ledger.bump("double_reverse_threshold_conversion_bytes", len(digits))
-            self._threshold_owner[self.max_state_bits] = digits
-        return digits
-
-    def apply_primitive(
-        self, action: object, source: SourceImageView
-    ) -> SourceImageCandidate:
-        self.validate_action(action)
-        prior = self._view_payload(source)
-        exact_action = cast(_DoubleReverseAction, action)
-        if exact_action.steps == 0:
-            return SourceImageCandidate(
-                prior,
-                0,
-                radix=10,
-                precision=self.arena.nodes[prior.root].length,
-            )
-        if exact_action.steps != 1:
-            raise ValueError("double-reverse primitive must have one step")
-        result = self._apply_word(prior.root)
-        combined = self.compose_actions(prior.action, exact_action)
-        payload = _DoubleReverseImage(self.issuer, self.source, combined, result)
-        return SourceImageCandidate(
-            payload,
-            combined.steps,
-            radix=10,
-            precision=self.arena.nodes[result].length,
-        )
-
-    def apply_composite(
-        self,
-        action: object,
-        source: SourceImageView,
-        demand: SourceImageDemand | None,
-    ) -> None:
-        self.validate_action(action)
-        self._view_payload(source)
-        del demand
-
-    def compose_chronological(
-        self,
-        action: object,
-        source: SourceImageView,
-        before: SourceImageView,
-        after: SourceImageView,
-    ) -> SourceImageCandidate:
-        self.validate_action(action)
-        original = self._view_payload(source)
-        middle = self._view_payload(before)
-        final = self._view_payload(after)
-        children = self.action_children(action)
-        if (
-            children is None
-            or middle.action != self.compose_actions(original.action, children[0])
-            or final.action != self.compose_actions(middle.action, children[1])
-        ):
-            raise ValueError(
-                "double-reverse child images do not compose chronologically"
-            )
-        return SourceImageCandidate(
-            final,
-            final.action.steps,
-            radix=10,
-            precision=self.arena.nodes[final.root].length,
-        )
-
-    def admitted_input_key(self, action: object, source: SourceImageView) -> None:
-        self.validate_action(action)
-        self._view_payload(source)
-
-    def transport_reuse(
-        self,
-        action: object,
-        cached_source: SourceImageView,
-        cached_result: SourceImageView,
-        source: SourceImageView,
-    ) -> SourceImageCandidate:
-        del action, cached_source, cached_result, source
-        raise ValueError("double-reverse images have no relative source transport")
-
-    def project(
-        self, image: SourceImageView, demand: SourceImageDemand
-    ) -> SourceImageProjection:
-        payload = self._view_payload(image)
-        if demand.name != "width" or demand.parameters:
-            raise ValueError("double-reverse supports only the width projection")
-        return SourceImageProjection(self.arena.nodes[payload.root].length)
-
-    def first_failure(self, image: SourceImageView) -> None:
-        self._view_payload(image)
-
-    def audit_image_binding(
-        self,
-        binding: SourceImageBinding,
-        payload: object,
-        failure_prefix: object,
-    ) -> tuple[object, ...]:
-        if failure_prefix is not None:
-            raise ValueError("double-reverse images cannot carry failure prefixes")
-        self.validate_source(binding.source)
-        self.validate_payload(payload)
-        exact = cast(_DoubleReverseImage, payload)
-        if (
-            exact.source is not binding.source
-            or exact.action != binding.action
-            or binding.family != self.family
-            or binding.semantic_version != self.semantic_version
-            or binding.extent != exact.action.steps
-            or binding.radix != 10
-            or binding.orientation != 1
-            or binding.boundary_ports
-            or binding.precision != self.arena.nodes[exact.root].length
-        ):
-            raise ValueError("double-reverse image binding is inconsistent")
-        return (payload,)
-
-    def _view_payload(self, view: SourceImageView) -> _DoubleReverseImage:
-        if type(view) is not SourceImageView:
-            raise TypeError("double-reverse operation needs a scheduler image view")
-        self.validate_source(view.binding.source)
-        self.validate_payload(view.payload)
-        payload = cast(_DoubleReverseImage, view.payload)
-        if (
-            view.binding.family != self.family
-            or view.binding.semantic_version != self.semantic_version
-            or view.binding.source is not self.source
-            or view.binding.action != payload.action
-            or view.binding.extent != payload.action.steps
-            or view.binding.radix != 10
-            or view.binding.orientation != 1
-            or view.binding.boundary_ports
-            or view.binding.precision != self.arena.nodes[payload.root].length
-        ):
-            raise ValueError("double-reverse scheduler binding is stale or foreign")
-        return payload
-
-    @staticmethod
-    def _width_bits(width: int) -> int:
-        # 3.322 bits per decimal digit is a strict upper bound for log2(10).
-        return max(1, (3322 * width + 999) // 1000)
-
-    def _reverse_grammar(self, root: int) -> int:
-        memo = self._reverse_memo
-        if root in memo:
-            return memo[root]
-        tasks: list[tuple[str, int]] = [("visit", root)]
-        values: list[int] = []
-        while tasks:
-            operation, node_id = tasks.pop()
-            node = self.arena.nodes[node_id]
-            if operation == "visit":
-                cached = memo.get(node_id)
-                if cached is not None:
-                    values.append(cached)
-                elif node.kind in ("EMPTY", "TERM"):
-                    memo[node_id] = node_id
-                    values.append(node_id)
-                elif node.kind == "CONCAT":
-                    tasks.append(("join", node_id))
-                    tasks.append(("visit", node.left))
-                    tasks.append(("visit", node.right))
-                elif node.kind == "REPEAT":
-                    tasks.append(("repeat", node_id))
-                    tasks.append(("visit", node.child))
-                else:
-                    raise AssertionError(node.kind)
-            elif operation == "join":
-                left_reversed = values.pop()
-                right_reversed = values.pop()
-                result = self.arena.concat(right_reversed, left_reversed)
-                memo[node_id] = result
-                values.append(result)
-            elif operation == "repeat":
-                child = values.pop()
-                result = self.arena.repeat(child, node.count)
-                memo[node_id] = result
-                values.append(result)
-            else:
-                raise AssertionError(operation)
-        if len(values) != 1:
-            raise AssertionError("double-reverse SLP reversal stack is unbalanced")
-        record_slp_metrics(sections=len(memo))
-        return values[0]
-
-    @property
-    def _reverse_memo(self) -> OwnedMemo[int, int]:
-        return self._reverse_owner
-
-    def dispose(self) -> None:
-        if self._cleanup_complete:
-            return
-        self._closed = True
-        cleanup_all(
-            (
-                *tuple(memo.dispose for memo in self.projector_memos),
-                self._reverse_owner.dispose,
-                self._threshold_owner.dispose,
-            )
-        )
-        self._cleanup_complete = True
+from number_compiler.sequences.double_reverse.source_adapter import (
+    _DoubleReverseAction,
+    _DoubleReverseMachine,
+    _DoubleReverseSource,
+    _DoubleReverseSourceAdapter,
+)
+from number_compiler.sequences.double_reverse.temporal_hashlife import (
+    DoubleReversePortAction,
+    DoubleReverseTemporalHashlife,
+    temporal_action_node_cost,
+)
+from number_compiler.sequences.double_reverse.temporal_ports import (
+    DecimalCarryPort,
+    DoubleReverseClosedForm,
+    closed_form_from_roots,
+    decimal_carry_port,
+)
+from number_compiler.sequences.double_reverse.temporal_square import (
+    DoubleReverseTwoStepMachine,
+    attach_projector_memos,
+)
 
 
 class DoubleReverseTerm:
@@ -547,11 +56,13 @@ class DoubleReverseTerm:
 
     __slots__ = (
         "__weakref__",
+        "_active_symbol_walks",
         "_adapter",
         "_arena",
         "_authority",
         "_cleanup_complete",
         "_closed",
+        "_dispose_resources_complete",
         "_image",
         "_issuer",
         "_ledger",
@@ -594,6 +105,8 @@ class DoubleReverseTerm:
         self._issuer = ArenaToken("double-reverse-term")
         self._closed = False
         self._cleanup_complete = False
+        self._active_symbol_walks = 0
+        self._dispose_resources_complete = False
         with ExitStack() as rollback:
             self._arena = LedgerSLPArena(
                 self._ledger,
@@ -631,11 +144,33 @@ class DoubleReverseTerm:
                 self._scheduler,
                 self._scratch_owner,
                 self._threshold_memo,
+                self._adapter.temporal_hashlife,
+                self._adapter.temporal_memos,
             )
             initialize_output_stream_metrics(
                 self._ledger, "double_reverse_output_stream"
             )
             self._ledger.bump("recursive_output_stream_node_visits", 0)
+            for counter in (
+                "double_reverse_spatial_transducer_applications",
+                "double_reverse_temporal_square_applications",
+                "double_reverse_represented_growth_cells",
+                "double_reverse_hashlife_cones",
+                "double_reverse_hashlife_cone_hits",
+                "double_reverse_hashlife_tile_selections",
+                "double_reverse_hashlife_powered_t2_steps",
+                "double_reverse_hashlife_power_chunks",
+                "double_reverse_boundary_classifications",
+                "double_reverse_boundary_node_visits",
+                "double_reverse_temporal_hashlife_publications",
+                "double_reverse_temporal_port_action_publications",
+                "double_reverse_temporal_port_action_cache_hits",
+                "double_reverse_weighted_carry_port_publications",
+                "double_reverse_temporal_moment_port_publications",
+                "double_reverse_temporal_affine_port_publications",
+                "double_reverse_hashlife_bit_budget_refusals",
+            ):
+                self._ledger.bump(counter, 0)
             self._ledger.register_execution_root(self)
 
     @staticmethod
@@ -661,37 +196,46 @@ class DoubleReverseTerm:
         prefix = f"double-reverse-{ledger.owner_count}"
         machine = _DoubleReverseMachine()
         projector = BimachineSLPProjector(machine, self._arena)
+        square_projector = BimachineSLPProjector(
+            DoubleReverseTwoStepMachine(), self._arena
+        )
         owner_names = (
             "forward",
             "reverse",
             "block",
             "forward-power",
             "reverse-power",
+            "square-forward",
+            "square-reverse",
+            "square-block",
+            "square-forward-power",
+            "square-reverse-power",
             "grammar-reversal",
         )
         owners = tuple(
             ledger.register(prefix + "-" + name, "double_reverse_projector_memo")
             for name in owner_names
         )
+        temporal_owners = tuple(
+            ledger.register(prefix + "-" + name, "double_reverse_temporal_memo")
+            for name in (
+                "temporal-cones",
+                "temporal-slices",
+                "temporal-port-actions",
+            )
+        )
         memo_rows: list[OwnedMemo[object, object]] = []
-        for owner in owners[:5]:
+        for owner in owners[:10]:
             memo: OwnedMemo[object, object] = OwnedMemo(
                 ledger, owner, nodes_per_entry=1
             )
             memo_rows.append(memo)
             rollback.enter_context(cleanup_on_error(memo.dispose))
         memos = cast(tuple[OwnedMemo[object, object], ...], tuple(memo_rows))
-        projector._fwd = cast(MutableMapping[tuple[int, int], int | None], memos[0])
-        projector._rev = cast(MutableMapping[tuple[int, int], int | None], memos[1])
-        projector._block = cast(MutableMapping[tuple[int, int, int], int], memos[2])
-        projector._fwd_power = cast(
-            MutableMapping[tuple[int, int, int], int | None], memos[3]
-        )
-        projector._rev_power = cast(
-            MutableMapping[tuple[int, int, int], int | None], memos[4]
-        )
+        attach_projector_memos(projector, memos[:5])
+        attach_projector_memos(square_projector, memos[5:10])
         reverse_memo: OwnedMemo[int, int] = OwnedMemo(
-            ledger, owners[5], nodes_per_entry=1
+            ledger, owners[10], nodes_per_entry=1
         )
         rollback.enter_context(cleanup_on_error(reverse_memo.dispose))
         threshold_owner = ledger.register(
@@ -704,10 +248,44 @@ class DoubleReverseTerm:
         )
         rollback.enter_context(cleanup_on_error(threshold_memo.dispose))
         scratch_owner = ledger.register(prefix + "-scratch", "double_reverse_workspace")
+        temporal_rows: list[OwnedMemo[object, object]] = []
+        for index, owner in enumerate(temporal_owners):
+            if index < 2:
+                temporal_memo: OwnedMemo[object, object] = OwnedMemo(
+                    ledger, owner, nodes_per_entry=1
+                )
+            else:
+                temporal_memo = OwnedMemo(
+                    ledger,
+                    owner,
+                    node_cost=temporal_action_node_cost,
+                )
+            temporal_rows.append(temporal_memo)
+            rollback.enter_context(cleanup_on_error(temporal_memo.dispose))
+        temporal_memos = cast(
+            tuple[OwnedMemo[object, object], ...], tuple(temporal_rows)
+        )
+        temporal_hashlife = DoubleReverseTemporalHashlife(
+            self._arena,
+            ledger,
+            self._issuer,
+            scratch_owner,
+            cast(OwnedMemo[tuple[int, int], int], temporal_memos[0]),
+            cast(OwnedMemo[tuple[int, int, int], int], temporal_memos[1]),
+            cast(
+                OwnedMemo[tuple[int, int, int], DoubleReversePortAction],
+                temporal_memos[2],
+            ),
+            self.max_steps,
+        )
+        rollback.enter_context(
+            cleanup_on_error(temporal_hashlife.dispose_audit_contract)
+        )
         adapter = _DoubleReverseSourceAdapter(
             ledger,
             self._arena,
             projector,
+            square_projector,
             self._source,
             self._issuer,
             self.max_steps,
@@ -716,6 +294,8 @@ class DoubleReverseTerm:
             reverse_memo,
             threshold_memo,
             scratch_owner,
+            temporal_hashlife,
+            temporal_memos,
         )
         rollback.enter_context(cleanup_on_error(adapter.dispose))
         scheduler = TileScheduler.source_only(ledger)
@@ -747,6 +327,8 @@ class DoubleReverseTerm:
             or self._authority[12] is not self._scheduler
             or self._authority[13] != self._scratch_owner
             or self._authority[14] is not self._threshold_memo
+            or self._authority[15] is not self._adapter.temporal_hashlife
+            or self._authority[16] is not self._adapter.temporal_memos
         ):
             raise ValueError("double-reverse term binding changed")
         if self._image is None:
@@ -791,37 +373,37 @@ class DoubleReverseTerm:
         return self._symbol_at(root, width - position - 1)
 
     def _symbol_at(self, root: int, position: int) -> int:
-        node_id = root
-        offset = position
-        while True:
-            node = self._arena.nodes[node_id]
-            if node.kind == "TERM":
-                return node.symbol
-            if node.kind == "CONCAT":
-                left_length = self._arena.nodes[node.left].length
-                if offset < left_length:
-                    node_id = node.left
-                else:
-                    offset -= left_length
-                    node_id = node.right
-            elif node.kind == "REPEAT":
-                child_length = self._arena.nodes[node.child].length
-                if child_length == 0:
-                    raise AssertionError("empty repetition cannot contain a digit")
-                offset %= child_length
-                node_id = node.child
-            else:
-                raise AssertionError(node.kind)
+        return symbol_at(self._arena, root, position)
 
-    def _iter_symbols(self, root: int, *, reverse: bool) -> Iterator[int]:
-        yield from _iter_slp_symbols(
-            self._arena,
-            self._ledger,
-            self._scratch_owner,
-            root,
-            reverse=reverse,
-            metric="recursive_output_stream_node_visits",
-        )
+    def _iter_symbols(self, root: int, *, reverse: bool) -> Generator[int, None, None]:
+        def record_visit(is_node: bool) -> None:
+            if is_node:
+                self._ledger.bump("recursive_output_stream_node_visits")
+
+        def walk() -> Generator[int, None, None]:
+            self._active_symbol_walks += 1
+            try:
+                yield from iter_symbols(
+                    self._arena,
+                    root,
+                    reverse=reverse,
+                    on_task=record_visit,
+                    reserve_task=lambda: self._ledger.reserve(
+                        self._scratch_owner, entries=1, nodes=1
+                    ),
+                    release_tasks=lambda count: self._ledger.release(
+                        self._scratch_owner, entries=count, nodes=count
+                    ),
+                    check_open=self._check_open,
+                )
+            finally:
+                self._active_symbol_walks -= 1
+                if self._closed and self._active_symbol_walks == 0:
+                    self._mark_scratch_disposed()
+                    if self._dispose_resources_complete:
+                        self._cleanup_complete = True
+
+        return walk()
 
     def iter_digits(self) -> Generator[int, None, None]:
         def source() -> Iterator[int]:
@@ -854,18 +436,69 @@ class DoubleReverseTerm:
         """Return a read-only snapshot; this does not prepare an endpoint."""
         return dict(self._ledger.counters)
 
+    def carry_port(
+        self,
+        *,
+        initial: bool = False,
+        modulus: int | None = None,
+        max_bits: int = 4096,
+    ) -> DecimalCarryPort:
+        """Lazily project the initial or admitted endpoint carry word."""
+        self._check_open()
+        if type(initial) is not bool:
+            raise TypeError("initial selector must be Boolean")
+        root = self._source.root if initial else self._root()
+        result = decimal_carry_port(
+            self._arena,
+            root,
+            modulus=modulus,
+            max_bits=max_bits,
+            ledger=self._ledger,
+            scratch_owner=self._scratch_owner,
+        )
+        self._ledger.bump("double_reverse_weighted_carry_port_publications")
+        return result
+
+    def temporal_closed_form(
+        self, *, modulus: int | None = None, max_bits: int = 4096
+    ) -> DoubleReverseClosedForm:
+        """Lazily project source/endpoint moments and cylinder growth."""
+        self._check_open()
+        endpoint = self._root()
+        result = closed_form_from_roots(
+            self._arena,
+            self._source.root,
+            endpoint,
+            self.generation,
+            modulus=modulus,
+            max_bits=max_bits,
+            ledger=self._ledger,
+            scratch_owner=self._scratch_owner,
+        )
+        self._ledger.bump("double_reverse_temporal_moment_port_publications")
+        if result.affine_gain is not None and result.affine_shift is not None:
+            self._ledger.bump("double_reverse_temporal_affine_port_publications")
+        return result
+
     def dispose(self) -> None:
         if self._cleanup_complete:
             return
         self._closed = True
-        cleanup_all(
-            (
-                self._scheduler.dispose_source_images,
-                self._adapter.dispose,
-                self._arena.dispose,
+        if not self._dispose_resources_complete:
+            cleanup_all(
+                (
+                    self._scheduler.dispose_source_images,
+                    self._adapter.dispose,
+                    self._arena.dispose,
+                )
             )
-        )
-        self._cleanup_complete = True
+            self._dispose_resources_complete = True
+        if self._active_symbol_walks == 0:
+            self._mark_scratch_disposed()
+            self._cleanup_complete = True
+
+    def _mark_scratch_disposed(self) -> None:
+        self._ledger.mark_disposed(self._scratch_owner)
 
     def _check_open(self) -> None:
         if self._closed:

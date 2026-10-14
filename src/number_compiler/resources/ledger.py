@@ -11,6 +11,7 @@ from weakref import ReferenceType, ref
 from number_compiler.arithmetic.contracts.block_effect import BlockContextBudgetExceeded
 from number_compiler.arithmetic.contracts.input_validation import require_integer
 from number_compiler.arithmetic.contracts.scoped_handles import ArenaHandle
+from number_compiler.resources.lifecycle import clear_accounted_store
 from number_compiler.resources.payload_contracts import (
     PayloadAuditContractAudit,
     PayloadAuditContribution,
@@ -811,6 +812,7 @@ class OwnedMemo(MutableMapping[_K, _V], Generic[_K, _V]):
         self.nodes_per_entry = nodes_per_entry
         self.node_cost = node_cost
         self._dynamic_nodes = 0
+        self._pending_clear_entries = self._pending_clear_nodes = 0
         self._disposed = False
         self._data: MutableMapping[_K, _V | _DynamicMemoValue[_V]] = ledger.make_dict(
             owner, nodes_per_entry=nodes_per_entry
@@ -936,16 +938,36 @@ class OwnedMemo(MutableMapping[_K, _V], Generic[_K, _V]):
 
     def clear(self) -> None:
         self._check_open()
-        size = len(self._data)
-        nodes = (
-            self._dynamic_nodes
-            if self.node_cost is not None
-            else size * self.nodes_per_entry
+
+        def measure() -> tuple[int, int]:
+            size = len(self._data)
+            if self.node_cost is None:
+                return size, size * self.nodes_per_entry
+            nodes = 0
+            for value in self._data.values():
+                if not isinstance(value, _DynamicMemoValue):
+                    raise TypeError("dynamic memo entry has invalid cost metadata")
+                nodes += value.nodes
+            return size, nodes
+
+        def clear_store() -> None:
+            try:
+                self._data.clear()
+            finally:
+                if self.node_cost is not None:
+                    self._dynamic_nodes = measure()[1]
+
+        def record_pending(entries: int, nodes: int) -> None:
+            self._pending_clear_entries, self._pending_clear_nodes = entries, nodes
+
+        clear_accounted_store(
+            self.ledger,
+            self.owner,
+            clear_store,
+            measure,
+            (self._pending_clear_entries, self._pending_clear_nodes),
+            record_pending,
         )
-        self._data.clear()
-        if self.node_cost is not None:
-            self._dynamic_nodes = 0
-        self.ledger.release(self.owner, entries=size, nodes=nodes)
 
     def _evict(self) -> None:
         if not self._disposed:

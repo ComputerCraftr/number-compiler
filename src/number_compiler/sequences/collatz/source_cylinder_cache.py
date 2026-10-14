@@ -8,11 +8,12 @@ proved cylinder coefficients; cache lookup admits the complete source germ.
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Self
+from typing import Self, cast
 
 from number_compiler.arithmetic.contracts.block_effect import BlockContextBudgetExceeded
 from number_compiler.arithmetic.fields.blank_ledger import BlankLedger
 from number_compiler.resources.ledger import OwnedMemo, ResourceLedger
+from number_compiler.resources.lifecycle import cleanup_all
 from number_compiler.resources.process_cache import (
     MISSING,
     CacheRecordIssuerMismatch,
@@ -171,6 +172,7 @@ class CollatzDyadicMacros:
             raise TypeError("Collatz macros require a ledger and Boolean cache flag")
         self.ledger = ledger
         self._closed = False
+        self._cleanup_complete = False
         self._bump("primitive_steps", 0)
         for metric in (
             "occurrence_lookups",
@@ -206,55 +208,102 @@ class CollatzDyadicMacros:
             "width_spine_admission_rejections",
             "width_spine_key_operand_bits",
             "width_spine_payload_operand_bits",
+            "mixed_lookups",
+            "mixed_retrieved",
+            "mixed_admitted",
+            "mixed_inapplicable",
+            "mixed_misses",
+            "mixed_publications",
+            "mixed_applied_hits",
+            "mixed_rejected_fit",
+            "mixed_root_tail_rejections",
+            "mixed_bypasses",
+            "mixed_invalid_records",
+            "mixed_key_operand_bits",
+            "mixed_payload_operand_bits",
+            "mixed_validation_operand_bits",
         ):
             self._bump(metric, 0)
         self.shared_cache = shared_cache
         self._interior_records = 0
         prefix = f"collatz-dyadic-{ledger.owner_count}"
-        self.occurrences: OwnedMemo[
-            tuple[int, int], tuple[CollatzDyadicOccurrence, int]
-        ] = OwnedMemo(
-            ledger,
-            ledger.register(prefix + "-occurrences", "query_memo"),
-            evictable=True,
-            nodes_per_entry=2,
-        )
-        self.width_spines: OwnedMemo[tuple[int, int, int], CollatzTapeWidthSummary] = (
-            OwnedMemo(
-                ledger,
-                ledger.register(prefix + "-exact-width-spines", "query_memo"),
-                evictable=True,
-                nodes_per_entry=10,
+        stores: list[OwnedMemo[object, object]] = []
+
+        def make_store(
+            suffix: str,
+            role: str,
+            *,
+            nodes_per_entry: int = 0,
+            evictable: bool = False,
+        ) -> OwnedMemo[object, object]:
+            owner = ledger.register(prefix + suffix, role)
+            try:
+                store: OwnedMemo[object, object] = OwnedMemo(
+                    ledger,
+                    owner,
+                    evictable=evictable,
+                    nodes_per_entry=nodes_per_entry,
+                )
+            except BaseException:
+                # OwnedMemo registers an empty ledger owner before finishing
+                # its own setup. Retire that empty owner if setup is interrupted.
+                ledger.mark_disposed(owner)
+                raise
+            stores.append(store)
+            return store
+
+        try:
+            self.occurrences = cast(
+                OwnedMemo[tuple[int, int], tuple[CollatzDyadicOccurrence, int]],
+                make_store(
+                    "-occurrences", "query_memo", nodes_per_entry=2, evictable=True
+                ),
             )
-        )
-        self.gains: OwnedMemo[int, _CanonicalGain] = OwnedMemo(
-            ledger,
-            ledger.register(prefix + "-gains", "query_memo"),
-            evictable=True,
-        )
-        # A binary frontier of already executed, adjacent source occurrences.
-        # Endpoints are transient construction data, never shared-cache identity.
-        self.frontier: OwnedMemo[
-            int, tuple[int, int, CollatzTapeWidthSummary | None]
-        ] = OwnedMemo(
-            ledger,
-            ledger.register(prefix + "-frontier", "execution_stack"),
-            nodes_per_entry=10,
-        )
-        ledger.register_execution_root(self)
+            self.width_spines = cast(
+                OwnedMemo[tuple[int, int, int], CollatzTapeWidthSummary],
+                make_store(
+                    "-exact-width-spines",
+                    "query_memo",
+                    nodes_per_entry=10,
+                    evictable=True,
+                ),
+            )
+            self.gains = cast(
+                OwnedMemo[int, _CanonicalGain],
+                make_store("-gains", "query_memo", evictable=True),
+            )
+            # A binary frontier of already executed, adjacent source occurrences.
+            # Endpoints are transient construction data, never shared-cache identity.
+            self.frontier = cast(
+                OwnedMemo[int, tuple[int, int, CollatzTapeWidthSummary | None]],
+                make_store("-frontier", "execution_stack", nodes_per_entry=10),
+            )
+            ledger.register_execution_root(self)
+        except BaseException:
+            self._closed = True
+            cleanup_all(store.dispose for store in reversed(stores))
+            raise
 
     def __enter__(self) -> Self:
         self._check_open()
         return self
 
     def __exit__(self, exc_type: object, exc: object, traceback: object) -> None:
-        if self._closed:
+        self.close()
+
+    def close(self) -> None:
+        if self._cleanup_complete:
             return
         self._closed = True
-        self.occurrences.dispose()
-        self.width_spines.dispose()
-        self.gains.dispose()
-        self.frontier.dispose()
+        cleanup_all(
+            (
+                self.frontier.dispose,
+                self.gains.dispose,
+                self.width_spines.dispose,
+                self.occurrences.dispose,
+            )
+        )
+        self._cleanup_complete = True
 
     def _check_open(self) -> None:
         if self._closed:
@@ -697,7 +746,7 @@ class CollatzDyadicMacros:
         or source rediscovery.
         """
         self._check_open()
-        if width < 8 or width & (width - 1) or endpoint <= 2:
+        if width < 8 or width & (width - 1):
             self.frontier.clear()
             return
         if tape_width_summary is not None:
@@ -736,7 +785,13 @@ class CollatzDyadicMacros:
                 self._interior_records += 1
             left = self.frontier.pop(width, None)
             if left is None:
-                self.frontier[width] = (source, ones, tape_width_summary)
+                if endpoint > 2:
+                    self.frontier[width] = (source, ones, tape_width_summary)
+                else:
+                    # The exact finite action is useful even when it reaches
+                    # the cycle. Retain it above, but never join across the
+                    # terminal entry and its subsequent cycle.
+                    self.frontier.clear()
                 break
             source, left_ones, left_summary = left
             ones += left_ones

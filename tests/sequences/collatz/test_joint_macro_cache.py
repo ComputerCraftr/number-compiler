@@ -126,6 +126,33 @@ def test_joint_builder_disposes_batch_owner_if_spine_construction_fails(
     assert ledger.nodes == 0
 
 
+def test_joint_cache_close_retries_failed_store_after_closing_its_peer(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    ledger = ResourceLedger()
+    cache = JointCertifiedMacroCache(ledger, shared_cache=False)
+    original = cache.actions.dispose
+    calls = 0
+
+    def fail_once() -> None:
+        nonlocal calls
+        calls += 1
+        if calls == 1:
+            raise RuntimeError("injected action disposal failure")
+        original()
+
+    monkeypatch.setattr(cache.actions, "dispose", fail_once)
+    with pytest.raises(RuntimeError, match="action disposal failure"):
+        cache.close()
+    assert cache._closed
+    assert not cache.actions._disposed
+    assert cache.frontier._disposed
+
+    cache.close()
+    assert cache.actions._disposed
+    assert ledger.entries == ledger.nodes == 0
+
+
 def test_joint_builder_rejects_reentry_and_reuse_after_exit() -> None:
     ledger = ResourceLedger()
     scratch = RunArithmeticWorkspace.for_ledger(ledger, "collatz_physical")
@@ -136,6 +163,35 @@ def test_joint_builder_rejects_reentry_and_reuse_after_exit() -> None:
         builder.__enter__()
     with pytest.raises(RuntimeError, match="closed"):
         builder.__enter__()
+    assert ledger.entries == ledger.nodes == 0
+
+
+def test_parity_builder_failure_unwinds_previously_opened_query_owners(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from number_compiler.sequences.collatz.innovation_input_tape import (
+        ParityProgramBuilder,
+    )
+    from number_compiler.sequences.collatz.temporal_run_quotient import (
+        compile_collatz_temporal_run_quotient,
+    )
+
+    ledger = ResourceLedger()
+
+    def fail_init(*_args: object, **_kwargs: object) -> None:
+        raise RuntimeError("injected parity allocation failure")
+
+    monkeypatch.setattr(ParityProgramBuilder, "__init__", fail_init)
+    with pytest.raises(RuntimeError, match="injected parity allocation failure"):
+        compile_collatz_temporal_run_quotient(
+            (1 << 128) + 27,
+            256,
+            ledger=ledger,
+            shared_cache=True,
+            include_joint_cocycle=True,
+            include_innovation_tape=True,
+            innovation_modulus=49,
+        )
     assert ledger.entries == ledger.nodes == 0
 
 

@@ -10,10 +10,11 @@ This finite leaf table does not identify arbitrary continuation sections.
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from typing import cast
+from typing import TYPE_CHECKING, cast
 
 from number_compiler.arithmetic.fields.affine_width import nonnegative_affine_width
 from number_compiler.arithmetic.fields.blank_ledger import BlankLedger
+from number_compiler.arithmetic.fields.two_adic import v2_positive
 from number_compiler.resources.ledger import ResourceLedger
 from number_compiler.resources.stores import LedgerDict
 from number_compiler.sequences.collatz.dyadic_terminal_cocycle import (
@@ -24,11 +25,23 @@ from number_compiler.sequences.collatz.tape_width import (
     compose_width_ledger,
 )
 
+if TYPE_CHECKING:
+    from number_compiler.sequences.collatz.innovation_input_tape import (
+        _D8ParityTransition,
+    )
+
 # Odd symbols and target origin: nine centered actions, 127 translated effects.
 D8Prefix = tuple[int, int]
 D8Row = tuple[int, int]
 D8_VISIBLE_ROW = tuple[int, int]
 D8WidthRow = tuple[tuple[D8Prefix, ...], int]
+
+
+def bounded_run_length(residue: int) -> int:
+    """Return the exact homogeneous run capped by one D8 source window."""
+    if residue & 1:
+        return v2_positive(residue + 1)
+    return 8 if residue == 0 else v2_positive(residue)
 
 
 @dataclass(frozen=True, slots=True)
@@ -145,6 +158,65 @@ class D8TemporalTable:
     def for_ledger(cls, ledger: ResourceLedger) -> D8TemporalTable:
         return cls(ledger)
 
+    @classmethod
+    def release_if_unleased(
+        cls, ledger: ResourceLedger, *, has_live_collatz_workspace: bool
+    ) -> None:
+        """Release shared D8 rows after the last live Collatz image owner.
+
+        The ledger owns the stores, so wrapper objects are not leases. Live
+        execution roots are the leases: an interleaved workspace keeps the
+        shared rows available, while the last workspace returns their exact
+        reservations. Empty registrations are harmless and remain reusable.
+        """
+        if type(ledger) is not ResourceLedger:
+            raise TypeError("D8 lifecycle requires its resource ledger")
+        if type(has_live_collatz_workspace) is not bool:
+            raise TypeError("D8 lifecycle lease state must be Boolean")
+        if has_live_collatz_workspace:
+            return
+
+        table_accounts = {
+            account.name: account
+            for account in ledger.inventory()
+            if account.name
+            in (
+                "collatz-physical-d8-local-table",
+                "collatz-physical-d8-width-prefix-table",
+            )
+        }
+        for name, role, nodes_per_entry in (
+            (
+                "collatz-physical-d8-local-table",
+                "collatz_d8_local_table",
+                cls.NODES_PER_ROW,
+            ),
+            (
+                "collatz-physical-d8-width-prefix-table",
+                "collatz_d8_width_prefix_table",
+                cls.WIDTH_PREFIX_NODES_PER_ROW,
+            ),
+        ):
+            account = table_accounts.get(name)
+            if account is None:
+                continue
+            if account.role != role:
+                raise ValueError("D8 lifecycle found another resource owner")
+            store = ledger.registered_container(account.owner)
+            if store is None:
+                continue
+            if (
+                type(store) is not LedgerDict
+                or store.ledger is not ledger
+                or store.owner != account.owner
+                or store.nodes_per_entry != nodes_per_entry
+                or not store.write_once
+            ):
+                raise ValueError("D8 lifecycle found another retained store")
+            for key, value in tuple(store.items()):
+                if not store._rollback_unpublished(key, value):
+                    raise ValueError("D8 lifecycle lost a reserved row")
+
     def _select_row(self, source: int) -> D8Row:
         if type(source) is not int or source <= 0:
             raise ValueError("D8 source must be a positive exact integer")
@@ -174,6 +246,11 @@ class D8TemporalTable:
         # successful publication is a separate event, never a work proxy.
         self.ledger.bump("collatz_physical_temporal_d8_discovery_requests")
         self.ledger.bump("collatz_physical_temporal_d8_discovery_symbols", 8)
+        # The cache owner opts into this diagnostic lane at construction.
+        # Record attempts here, including failures and abandoned root probes,
+        # without creating a cache lane for callers that disabled shared reuse.
+        if "collatz_hashlife_primitive_steps" in self.ledger.counters:
+            self.ledger.bump("collatz_hashlife_primitive_steps", 8)
         try:
             found = d8_row(residue)
             self.rows[residue] = found
@@ -242,6 +319,14 @@ class D8TemporalTable:
             raise ValueError("D8 width-prefix row differs from endpoint row")
         final_gain, final_offset = prefixes[8]
         numerator = final_gain * residue + final_offset
+        representative = residue + 256
+        for step, (gain, offset) in enumerate(prefixes[:-1]):
+            divisor = 1 << step
+            prefix_numerator = gain * representative + offset
+            if prefix_numerator % divisor or ((prefix_numerator // divisor) & 1) != (
+                (odd_mask >> step) & 1
+            ):
+                raise ValueError("D8 width-prefix word differs from its affine rows")
         if (
             not 0 <= odd_mask < 256
             or odd_mask.bit_count() != endpoint_row[0]
@@ -312,6 +397,53 @@ class D8TemporalTable:
         if action is None:
             raise AssertionError("joint D8 transition did not produce its action")
         return advanced, ones, residue, target_origin, width, action
+
+    def transition_with_parity_word(
+        self,
+        frame: D8CylinderFrame,
+        *,
+        with_width: bool = False,
+        with_joint: bool = False,
+    ) -> tuple[
+        D8CylinderFrame,
+        int,
+        int,
+        int,
+        CollatzTapeWidthSummary | None,
+        _D8ParityTransition,
+    ]:
+        """Issue the exact eight-bit word with the same admitted D8 action."""
+        if type(frame) is not D8CylinderFrame:
+            raise TypeError("D8 parity projection requires its exact cylinder frame")
+        if type(with_width) is not bool or type(with_joint) is not bool:
+            raise TypeError("D8 parity demand flags must be Boolean")
+        local = frame.local_word()
+        advanced, ones, residue, origin, width, action = self._transition(
+            frame, with_width=with_width, with_joint=with_joint
+        )
+        row = self._select_row(residue + 256)
+        prefixes, odd_mask = self._select_width_row(residue + 256, row)
+        checked_action = (
+            action
+            if action is not None
+            else DyadicTerminalFieldAction.from_prefixes(prefixes)
+        )
+        endpoint_local = advanced.local_word()
+        if (
+            (action is not None and checked_action != action)
+            or odd_mask.bit_count() != ones
+            or ((odd_mask & 1) != (local & 1))
+        ):
+            raise ValueError("D8 parity word differs from the admitted transition")
+        from number_compiler.sequences.collatz.innovation_input_tape import (
+            _D8ParityTransition,
+        )
+
+        self.ledger.bump("collatz_physical_temporal_d8_word_validation_steps", 8)
+        transition = _D8ParityTransition._issue(
+            local, endpoint_local, odd_mask, checked_action, frame, advanced
+        )
+        return advanced, ones, residue, origin, width, transition
 
     def _width_summary_for_transition(
         self,

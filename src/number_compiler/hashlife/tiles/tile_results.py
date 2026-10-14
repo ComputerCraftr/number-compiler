@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from collections.abc import Callable
-from typing import TYPE_CHECKING, NoReturn, Self, cast
+from typing import TYPE_CHECKING, cast
 
 from number_compiler.arithmetic.formula.summary import BlockSummary
 from number_compiler.hashlife.actions.diamond_actions import PortSignatureID
@@ -22,8 +22,15 @@ from number_compiler.hashlife.tiles.tile_ports import (
     FusedBoundaryContract,
     ResultWiring,
 )
+from number_compiler.hashlife.tiles.tile_result_acquisition import (
+    ResultAcquisitionLeaseOwner,
+)
 from number_compiler.hashlife.tiles.tile_result_lease_inventory import (
     BoundaryOperandLeaseInventory,
+)
+from number_compiler.hashlife.tiles.tile_result_leases import (
+    _RESULT_LEASE_SEAL,
+    ResultLease,
 )
 from number_compiler.hashlife.tiles.tile_result_records import (
     CausalInterfaceKey,
@@ -70,6 +77,7 @@ from number_compiler.resources.cache_gc_metrics import (
     prepare_execution_cache_event,
     record_execution_cache_event,
 )
+from number_compiler.resources.lifecycle import cleanup_all
 from number_compiler.resources.result_cache_kinds import (
     record_cache_removal,
     record_unattributed_post_eviction_miss,
@@ -88,110 +96,7 @@ if TYPE_CHECKING:
     from number_compiler.resources.causal_workspace import CausalTaskWorkspace
 
 
-_RESULT_LEASE_SEAL = object()
 _MISSING = object()
-
-
-class ResultLease:
-    """A completed result whose output tile remains live until close()."""
-
-    __slots__ = (
-        "_boundary_tiles",
-        "_closed",
-        "_issuer",
-        "_key",
-        "_operand_views",
-        "_result",
-        "_tile",
-    )
-
-    def __init__(
-        self,
-        issuer: CompletedResultArena,
-        key: PoweredResultKey,
-        result: CompletedResult,
-        tile: TileLease,
-        seal: object,
-        boundary_tiles: tuple[TileLease, ...] = (),
-        operand_views: tuple[BoundaryTileView, ...] = (),
-    ) -> None:
-        if seal is not _RESULT_LEASE_SEAL:
-            raise TypeError("result leases must be issued by their arena")
-        self._issuer, self._key = issuer, key
-        if type(boundary_tiles) is not tuple or any(
-            type(value) is not TileLease for value in boundary_tiles
-        ):
-            raise TypeError("result boundary leases require exact tile leases")
-        self._result, self._tile = result, tile
-        self._boundary_tiles, self._operand_views = boundary_tiles, operand_views
-        self._closed = False
-
-    def _require_open(self) -> None:
-        if type(self._closed) is not bool or self._closed:
-            raise ValueError("closed or malformed result lease")
-        if (
-            type(self._result) is not CompletedResult
-            or type(self._tile) is not TileLease
-        ):
-            raise ValueError("malformed result lease")
-        if type(self._boundary_tiles) is not tuple or any(
-            type(value) is not TileLease for value in self._boundary_tiles
-        ):
-            raise ValueError("malformed result boundary leases")
-        if type(self._operand_views) is not tuple or any(
-            type(value) is not BoundaryTileView for value in self._operand_views
-        ):
-            raise ValueError("malformed result boundary operand inventory")
-        if type(self._issuer) is not CompletedResultArena:
-            raise ValueError("malformed result lease issuer")
-        self._issuer._validate_leased(
-            self._key,
-            self._result,
-            self._tile,
-            self._boundary_tiles,
-            self._operand_views,
-        )
-
-    @property
-    def result(self) -> CompletedResult:
-        self._require_open()
-        _ = self._tile.tile
-        return self._result
-
-    @property
-    def output(self) -> TileID:
-        self._require_open()
-        return self._tile.tile
-
-    def close(self) -> None:
-        if type(self._closed) is not bool:
-            raise ValueError("malformed result lease")
-        if not self._closed:
-            self._require_open()
-            for tile in reversed(self._boundary_tiles):
-                tile.close()
-            self._tile.close()
-            self._issuer._release_boundary_leases(
-                len(self._boundary_tiles),
-                self._operand_views,
-            )
-            self._closed = True
-
-    def __copy__(self) -> ResultLease:
-        raise TypeError("result leases cannot be copied")
-
-    def __deepcopy__(self, _memo: object) -> ResultLease:
-        raise TypeError("result leases cannot be copied")
-
-    def __reduce__(self) -> NoReturn:
-        raise TypeError("result leases cannot be serialized")
-
-    def __enter__(self) -> Self:
-        _ = self.result
-        return self
-
-    def __exit__(self, *_exception: object) -> None:
-        self.close()
 
 
 class CompletedResultArena:
@@ -280,6 +185,9 @@ class CompletedResultArena:
         self._boundary_lease_count = 0
         prefix = f"completed-results-{len(ledger.inventory())}"
         self._leased_boundary_operands = BoundaryOperandLeaseInventory(ledger, prefix)
+        self._lease_acquisitions = ResultAcquisitionLeaseOwner(ledger, tiles, prefix)
+        self._pending_acquisition_owner = self._lease_acquisitions.owner
+        self._pending_acquisitions = self._lease_acquisitions.records
         self._memo_owner = ledger.register(prefix + "-memo", "completed_result_memo")
         self._reverse_owner = ledger.register(
             prefix + "-reverse", "completed_result_reverse_index"
@@ -565,21 +473,15 @@ class CompletedResultArena:
     ) -> tuple[TileLease, tuple[TileLease, ...]]:
         tiles = self._result_tile_ids(result)
         operand_views = self._result_operand_views(result)
-        leases: list[TileLease] = []
-        if not reserved:
-            self.ledger.reserve(self.tiles._lease_owner, entries=len(tiles))
-        try:
-            for tile in tiles:
-                leases.append(self.tiles._acquire_reserved(tile))
+
+        def acquire_operands() -> None:
             self._leased_boundary_operands.acquire(operand_views)
-        except BaseException:
-            for lease in reversed(leases):
-                lease.close()
-            self.ledger.release(
-                self.tiles._lease_owner,
-                entries=len(tiles) - len(leases),
-            )
-            raise
+
+        leases = self._lease_acquisitions.acquire(
+            tiles,
+            reserved=reserved,
+            after_acquire=acquire_operands,
+        )
         boundary_count = len(leases) - 1
         self._boundary_lease_count += boundary_count
         self.ledger.counters["boundary_tile_lease_peak"] = max(
@@ -588,15 +490,36 @@ class CompletedResultArena:
         )
         return leases[0], tuple(leases[1:])
 
+    def _retry_pending_acquisition_leases(self) -> None:
+        cleanup_all(
+            (
+                self._lease_acquisitions.retry,
+                self._leased_boundary_operands.retry_release,
+            )
+        )
+
     def _release_boundary_leases(
         self,
         count: int,
         operand_views: tuple[BoundaryTileView, ...],
+        *,
+        operands_already_mutated: bool = False,
+        on_operands_mutated: Callable[[], object] | None = None,
     ) -> None:
         if type(count) is not int or not 0 <= count <= self._boundary_lease_count:
             raise ValueError("invalid completed-result boundary lease release")
+        if type(operands_already_mutated) is not bool:
+            raise TypeError("boundary operand release progress must be Boolean")
+        if operands_already_mutated:
+            if on_operands_mutated is not None:
+                raise ValueError("completed operand release cannot mutate again")
+            self._leased_boundary_operands.retry_release()
+        else:
+            self._leased_boundary_operands.release(
+                operand_views,
+                on_mutated=on_operands_mutated,
+            )
         self._boundary_lease_count -= count
-        self._leased_boundary_operands.release(operand_views)
 
     def _lease(self, key: PoweredResultKey, result: CompletedResult) -> ResultLease:
         output, boundaries = self._result_leases(result, reserved=False)
@@ -936,6 +859,9 @@ class CompletedResultArena:
         )
 
     def clear(self) -> None:
+        cleanup_all((self._retry_pending_acquisition_leases, self._clear_memos))
+
+    def _clear_memos(self) -> None:
         entries, reverse_entries = len(self._memo), len(self._reverse)
         retained_nodes = retained_result_memo_nodes(self._memo.values())
         variant_entries = len(self._variants)

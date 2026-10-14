@@ -23,6 +23,7 @@ from number_compiler.hashlife.execution.dyadic_return_records import (
     _SupportNode,
 )
 from number_compiler.resources.ledger import OwnedMemo, ResourceLedger
+from number_compiler.resources.lifecycle import cleanup_all
 from number_compiler.resources.process_cache import (
     MISSING,
     CacheLease,
@@ -189,11 +190,11 @@ class MahlerOccurrenceConsumer:
         self.ledger.bump(self.counter_prefix + suffix, amount)
 
     def close(self) -> None:
-        try:
-            self.records.dispose()
-        finally:
-            if self.lease is not None:
-                self.lease.close()
+        cleanup_all(
+            (self.records.dispose,)
+            if self.lease is None
+            else (self.records.dispose, self.lease.close)
+        )
 
     def _check(self, node: _SupportNode, action: MahlerSourceBoundSafetyAction) -> None:
         """Check consumer consistency, not re-prove the issued source recurrence.

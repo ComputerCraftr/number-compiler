@@ -1,0 +1,386 @@
+"""Structural audit for retained ledger-owned straight-line programs."""
+
+from __future__ import annotations
+
+from collections.abc import Mapping, Sequence
+from dataclasses import dataclass
+
+from number_compiler.arithmetic.automata.ledgered_slp import LedgerSLPArena
+from number_compiler.arithmetic.automata.slp import SLPNode
+from number_compiler.resources.ledger import OwnedMemo, ResourceLedger
+from number_compiler.resources.payload_containers import audit_mapping_items
+from number_compiler.resources.stores import (
+    LedgerDict,
+    LedgerList,
+    _TrackedDict,
+    _TrackedList,
+)
+
+
+@dataclass(frozen=True, slots=True)
+class SLPPayloadAudit:
+    """The exact owner-qualified members validated by the SLP audit."""
+
+    approved: frozenset[tuple[int, int]]
+    invalid: frozenset[tuple[int, int]]
+
+    def approves(self, owner: int, value: object) -> bool:
+        return (owner, id(value)) in self.approved
+
+
+def _node_shape(node: object, index: int, nodes: Sequence[object]) -> bool:
+    if type(node) is not SLPNode:
+        return False
+    record = node
+    if type(record.kind) is not str or any(
+        type(value) is not int
+        for value in (
+            record.id,
+            record.length,
+            record.symbol,
+            record.left,
+            record.right,
+            record.child,
+            record.count,
+        )
+    ):
+        return False
+    if record.id != index or record.length < 0:
+        return False
+    if record.kind == "EMPTY":
+        return (
+            index == 0
+            and record.length == 0
+            and (record.symbol, record.left, record.right, record.child, record.count)
+            == (-1, -1, -1, -1, 0)
+        )
+    if record.kind == "TERM":
+        return (
+            record.length == 1
+            and 0 <= record.symbol < 1 << 64
+            and (record.left, record.right, record.child, record.count)
+            == (-1, -1, -1, 0)
+        )
+    if record.kind == "CONCAT":
+        if (
+            record.symbol != -1
+            or record.child != -1
+            or record.count != 0
+            or not 0 < record.left < index
+            or not 0 < record.right < index
+        ):
+            return False
+        left, right = nodes[record.left], nodes[record.right]
+        return (
+            type(left) is SLPNode
+            and type(right) is SLPNode
+            and record.length == left.length + right.length
+        )
+    if record.kind == "REPEAT":
+        if (
+            record.symbol != -1
+            or record.left != -1
+            or record.right != -1
+            or record.count < 2
+            or not 0 < record.child < index
+        ):
+            return False
+        child = nodes[record.child]
+        return (
+            type(child) is SLPNode
+            and child.kind not in ("EMPTY", "REPEAT")
+            and child.length > 0
+            and record.length == child.length * record.count
+        )
+    return False
+
+
+def _interner_rows(
+    memo: object,
+    ledger: ResourceLedger,
+    owner: int,
+    container: object,
+    kind: str,
+) -> tuple[tuple[object, object], ...] | None:
+    if type(memo) is not OwnedMemo or type(container) is not LedgerDict:
+        return None
+    if (
+        memo.ledger is not ledger
+        or type(memo.owner) is not int
+        or memo.owner != owner
+        or type(memo.nodes_per_entry) is not int
+        or memo.nodes_per_entry != 0
+        or memo.node_cost is not None
+        or memo._data is not container
+        or type(memo._dynamic_nodes) is not int
+        or memo._dynamic_nodes != 0
+        or type(memo._pending_clear_entries) is not int
+        or memo._pending_clear_entries != 0
+        or type(memo._pending_clear_nodes) is not int
+        or memo._pending_clear_nodes != 0
+        or type(memo._disposed) is not bool
+        or container.ledger is not ledger
+        or type(container.owner) is not int
+        or container.owner != owner
+        or type(container.nodes_per_entry) is not int
+        or container.nodes_per_entry != 0
+        or type(container.write_once) is not bool
+        or container.write_once
+        or type(container._sealed) is not bool
+        or not container._sealed
+        or not ledger.is_factory_container(container)
+        or type(container._data) is not _TrackedDict
+        or container._data._ledger is not ledger
+    ):
+        return None
+    try:
+        rows = audit_mapping_items(memo)
+    except (KeyError, TypeError, ValueError, RuntimeError):
+        return None
+    for key, local_id in rows:
+        if type(local_id) is not int or local_id < 0:
+            return None
+        if kind == "term" and (type(key) is not int or not 0 <= key < 1 << 64):
+            return None
+        if kind in ("concat", "repeat") and (
+            type(key) is not tuple
+            or len(key) != 2
+            or any(type(part) is not int or part < 0 for part in key)
+        ):
+            return None
+    return rows
+
+
+def _store_rows(container: object) -> tuple[object, ...] | None:
+    if type(container) is LedgerList:
+        try:
+            return tuple(container)
+        except (RuntimeError, TypeError, ValueError):
+            return None
+    return None
+
+
+def audit_ledger_slp_payloads(
+    ledger: ResourceLedger,
+    roots: Sequence[object],
+    containers: Mapping[int, object],
+) -> SLPPayloadAudit:
+    """Validate SLP root, nodes and interners before numeric payload scanning.
+
+    An ``SLPNode`` class or local integer ID alone grants no exemption. The exact
+    arena root and all four stores must still be ledger registered and agree.
+    """
+    approved: set[tuple[int, int]] = set()
+    invalid: set[tuple[int, int]] = set()
+    inventory = {row.owner: row for row in ledger.inventory()}
+    for arena_value in roots:
+        if type(arena_value) is not LedgerSLPArena:
+            continue
+        arena = arena_value
+        owners_value = arena.owners
+        fallback_owner = (
+            owners_value[0]
+            if type(owners_value) is tuple
+            and owners_value
+            and type(owners_value[0]) is int
+            else 0
+        )
+        try:
+            nodes = arena.nodes
+            memos = (arena._term, arena._cat, arena._rep)
+            if type(nodes) is not LedgerList or any(
+                type(memo) is not OwnedMemo for memo in memos
+            ):
+                raise AttributeError("SLP arena has a foreign retained store")
+            owners = (nodes.owner, *(memo.owner for memo in memos))
+            stores: tuple[object, ...] = (
+                nodes,
+                *(memo._data for memo in memos),
+            )
+        except AttributeError:
+            invalid.add((fallback_owner, id(arena)))
+            continue
+        malformed_owners = (
+            type(owners_value) is not tuple
+            or len(owners_value) != 4
+            or any(type(owner) is not int for owner in owners_value)
+            or any(type(owner) is not int for owner in owners)
+        )
+        if malformed_owners:
+            invalid.update((owner, id(arena)) for owner in owners if type(owner) is int)
+            invalid.add((fallback_owner, id(arena)))
+            continue
+        node_rows = _store_rows(arena.nodes)
+        entries = tuple(
+            _interner_rows(memo, ledger, owner, store, kind)
+            for memo, owner, store, kind in zip(
+                memos,
+                owners[1:],
+                stores[1:],
+                ("term", "concat", "repeat"),
+                strict=True,
+            )
+        )
+        valid = (
+            arena.ledger is ledger
+            and owners_value == owners
+            and len(set(owners)) == 4
+            and type(arena.empty_id) is int
+            and arena.empty_id == 0
+            and type(arena._closed) is bool
+            and type(arena._cleanup_complete) is bool
+            and type(arena._nodes_released) is bool
+            and type(arena.nodes) is LedgerList
+            and arena.nodes.ledger is ledger
+            and type(arena.nodes.owner) is int
+            and arena.nodes.owner == owners[0]
+            and type(arena.nodes.nodes_per_entry) is int
+            and arena.nodes.nodes_per_entry == 1
+            and type(arena.nodes.append_only) is bool
+            and arena.nodes.append_only
+            and type(arena.nodes._sealed) is bool
+            and arena.nodes._sealed
+            and ledger.is_factory_container(arena.nodes)
+            and type(arena.nodes._data) is _TrackedList
+            and arena.nodes._data._ledger is ledger
+            and node_rows is not None
+            and all(rows is not None for rows in entries)
+            and all(owner in inventory for owner in owners)
+            and all(
+                containers.get(owner) is store
+                for owner, store in zip(owners, stores, strict=True)
+            )
+        )
+        if valid:
+            first = inventory[owners[0]]
+            owner_kind = first.role.lower().replace("-", "_").removesuffix("_grammar")
+            suffixes = (
+                ("-slp-nodes", owner_kind + "_grammar"),
+                ("-slp-terminals", owner_kind + "_interner"),
+                ("-slp-concats", owner_kind + "_interner"),
+                ("-slp-repeats", owner_kind + "_interner"),
+            )
+            prefix = first.name.removesuffix(suffixes[0][0])
+            valid = bool(owner_kind) and all(
+                inventory[owner].name == prefix + suffix
+                and inventory[owner].role.lower().replace("-", "_") == role
+                and inventory[owner].scope == first.scope
+                for owner, (suffix, role) in zip(owners, suffixes, strict=True)
+            )
+        closed = arena._closed and arena._cleanup_complete
+        valid &= all(
+            inventory[owner].disposed == closed
+            for owner in owners
+            if owner in inventory
+        )
+        valid &= all(
+            type(memo) is OwnedMemo
+            and type(memo._disposed) is bool
+            and memo._disposed == closed
+            for memo in memos
+        )
+        valid &= arena._nodes_released == closed
+        if node_rows is None:
+            valid = False
+            node_rows = ()
+        if any(rows is None for rows in entries):
+            valid = False
+        if valid and closed:
+            valid &= (
+                not node_rows
+                and all(not rows for rows in entries if rows is not None)
+                and all(
+                    inventory[owner].entries == 0
+                    and inventory[owner].nodes == 0
+                    and inventory[owner].observed_entries == 0
+                    and inventory[owner].observed_nodes == 0
+                    for owner in owners
+                )
+            )
+        elif valid:
+            valid &= not arena._closed and not arena._cleanup_complete
+            valid &= (
+                inventory[owners[0]].entries == len(node_rows)
+                and inventory[owners[0]].nodes == len(node_rows)
+                and inventory[owners[0]].observed_entries == len(node_rows)
+                and inventory[owners[0]].observed_nodes == len(node_rows)
+                and all(
+                    inventory[owner].entries == len(entry_rows)
+                    and inventory[owner].nodes == 0
+                    and inventory[owner].observed_entries == len(entry_rows)
+                    and inventory[owner].observed_nodes == 0
+                    for owner, entry_rows in zip(owners[1:], entries, strict=True)
+                    if entry_rows is not None
+                )
+                and len(node_rows) >= 1
+                and sum(
+                    type(node) is SLPNode and node.kind == "EMPTY" for node in node_rows
+                )
+                == 1
+                and all(
+                    _node_shape(node, index, node_rows)
+                    for index, node in enumerate(node_rows)
+                )
+            )
+        if valid and not closed:
+            term_rows, concat_rows, repeat_rows = entries
+            assert (
+                term_rows is not None
+                and concat_rows is not None
+                and repeat_rows is not None
+            )
+            typed_nodes: list[SLPNode] = []
+            for candidate in node_rows:
+                if type(candidate) is not SLPNode:
+                    valid = False
+                    continue
+                typed_nodes.append(candidate)
+            term_index = dict(term_rows)
+            concat_index = dict(concat_rows)
+            repeat_index = dict(repeat_rows)
+            valid &= (
+                len(term_index) == len(term_rows)
+                and len(concat_index) == len(concat_rows)
+                and len(repeat_index) == len(repeat_rows)
+                and len(term_rows) == sum(node.kind == "TERM" for node in typed_nodes)
+                and len(concat_rows)
+                == sum(node.kind == "CONCAT" for node in typed_nodes)
+                and len(repeat_rows)
+                == sum(node.kind == "REPEAT" for node in typed_nodes)
+            )
+            for node in typed_nodes:
+                if node.kind == "TERM":
+                    valid &= term_index.get(node.symbol) == node.id
+                elif node.kind == "CONCAT":
+                    valid &= concat_index.get((node.left, node.right)) == node.id
+                elif node.kind == "REPEAT":
+                    valid &= repeat_index.get((node.child, node.count)) == node.id
+            for entry_rows, table, kind in zip(
+                (term_rows, concat_rows, repeat_rows),
+                (term_index, concat_index, repeat_index),
+                ("TERM", "CONCAT", "REPEAT"),
+                strict=True,
+            ):
+                valid &= all(
+                    type(local_id) is int
+                    and 0 <= local_id < len(typed_nodes)
+                    and typed_nodes[local_id].kind == kind
+                    and table.get(key) == local_id
+                    for key, local_id in entry_rows
+                )
+
+        destination = approved if valid else invalid
+        for owner, store in zip(owners, stores, strict=True):
+            destination.add((owner, id(store)))
+        for retained_node in node_rows:
+            destination.add((owners[0], id(retained_node)))
+        for owner, maybe_rows in zip(owners[1:], entries, strict=True):
+            if maybe_rows is not None:
+                for key, value in maybe_rows:
+                    destination.update(((owner, id(key)), (owner, id(value))))
+        if not valid:
+            invalid.add((owners[0], id(arena)))
+    return SLPPayloadAudit(frozenset(approved), frozenset(invalid))
+
+
+__all__ = ["SLPPayloadAudit", "audit_ledger_slp_payloads"]

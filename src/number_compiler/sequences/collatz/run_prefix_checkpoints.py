@@ -16,8 +16,43 @@ from number_compiler.sequences.collatz.parity import normalized_collatz
 from number_compiler.sequences.collatz.source_cylinder_cache import (
     CollatzDyadicMacros,
 )
+from number_compiler.sequences.collatz.tape_width import (
+    CollatzWidthSpineAccumulator,
+)
 
 _MIN_CHECKPOINT_WIDTH = 8
+
+
+def observe_temporal_run_prefix(
+    macros: CollatzDyadicMacros | None,
+    width_spine: CollatzWidthSpineAccumulator,
+    *,
+    previous_source: int,
+    previous_width: int,
+    previous_ones: int,
+    current: int,
+    normalized: int,
+    one_symbols: int,
+    anchor: int,
+    share_width: int,
+) -> None:
+    """Publish one already-consumed run prefix at its exact query boundary."""
+    if macros is None or not previous_width < normalized <= share_width:
+        return
+    macros.observe(
+        previous_source,
+        normalized - previous_width,
+        one_symbols - previous_ones,
+        current,
+        anchor=anchor,
+        tape_width_summary=width_spine.segment_summary(
+            previous_source.bit_length(),
+            current.bit_length(),
+            normalized - previous_width,
+            one_symbols - previous_ones,
+        ),
+    )
+    width_spine.reset_segment()
 
 
 def _crosses_root_checkpoint(start: int, width: int, maximum: int) -> bool:

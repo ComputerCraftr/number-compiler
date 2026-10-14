@@ -11,37 +11,18 @@ import sys
 from collections.abc import Mapping
 from dataclasses import dataclass, field, replace
 
+from number_compiler.resources.cellular_diagnostics import (
+    CellularTemporalWork,
+    collect_cellular_work,
+)
 from number_compiler.resources.ledger import ResourceLedger
+from number_compiler.resources.reuse_diagnostics import (
+    CompleteActionReuse,
+    TemporalReuseLane,
+    collect_complete_action_reuse,
+)
 
 METRICS_SCHEMA_VERSION = 8
-
-
-@dataclass(frozen=True, slots=True)
-class TemporalReuseLane:
-    """One owner's requests, reuse and publications in their original units."""
-
-    requests: int | None = None
-    attempts: int | None = None
-    # Exact and transported hits are producer-classified disjoint outcomes.
-    exact_hits: int | None = None
-    transported_hits: int | None = None
-    local_hits: int | None = None
-    process_hits: int | None = None
-    applied_hits: int | None = None
-    applied_parent_hits: int | None = None
-    rejected_fit: int | None = None
-    admission_rejections: int | None = None
-    key_operand_bits: int | None = None
-    # Some older owner lanes have only a literal hit counter. Keep it separate
-    # until that producer classifies the returned value.
-    unclassified_hits: int | None = None
-    misses: int | None = None
-    publications: int | None = None
-    bypasses: int | None = None
-    disabled_bypasses: int | None = None
-    policy_bypasses: int | None = None
-    capacity_bypasses: int | None = None
-    evictions: int | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -194,6 +175,7 @@ class TemporalFamilyWork:
     guarded_prefix_publications: int | None = None
     guarded_prefix_budget_bypasses: int | None = None
     root_checkpoint_work: tuple[tuple[str, int], ...] = field(default=(), kw_only=True)
+    border_return_work: tuple[tuple[str, int], ...] = field(default=(), kw_only=True)
 
 
 @dataclass(frozen=True, slots=True)
@@ -283,10 +265,11 @@ class TemporalMacrocellWork:
     cache_scope: str
     semantic: TemporalReuseLane
     occurrence: TemporalReuseLane
-    source_action: TemporalReuseLane = TemporalReuseLane()
-    joint_action: TemporalReuseLane = TemporalReuseLane()
-    outer_observer: TemporalReuseLane = TemporalReuseLane()
-    width_projection: TemporalReuseLane = TemporalReuseLane()
+    source_action: TemporalReuseLane = field(default_factory=TemporalReuseLane)
+    joint_action: TemporalReuseLane = field(default_factory=TemporalReuseLane)
+    mixed_action: CompleteActionReuse = field(default_factory=CompleteActionReuse)
+    outer_observer: TemporalReuseLane = field(default_factory=TemporalReuseLane)
+    width_projection: TemporalReuseLane = field(default_factory=TemporalReuseLane)
     outer_observer_scope: str | None = None
     merges: int | None = None
     max_level: int | None = None
@@ -326,9 +309,9 @@ class TemporalExecutionDiagnostics:
     """Compact schema-eight view beside the preserved raw work counters."""
 
     schema_version: int = METRICS_SCHEMA_VERSION
-    action: TemporalReuseLane = TemporalReuseLane()
-    application: TemporalReuseLane = TemporalReuseLane()
-    projection: TemporalReuseLane = TemporalReuseLane()
+    action: TemporalReuseLane = field(default_factory=TemporalReuseLane)
+    application: TemporalReuseLane = field(default_factory=TemporalReuseLane)
+    projection: TemporalReuseLane = field(default_factory=TemporalReuseLane)
     construction: TemporalConstruction = TemporalConstruction()
     demand: TemporalDemand = TemporalDemand()
     stream: TemporalStreamDemand = TemporalStreamDemand()
@@ -338,6 +321,7 @@ class TemporalExecutionDiagnostics:
     family_work: tuple[TemporalFamilyWork, ...] = ()
     macrocells: tuple[TemporalMacrocellWork, ...] = ()
     comma: TemporalCommaWork = TemporalCommaWork()
+    cellular: tuple[CellularTemporalWork, ...] = ()
     resources: TemporalResources = TemporalResources()
     reporting: TemporalReportingWork = TemporalReportingWork()
     rendering: TemporalRenderingWork = TemporalRenderingWork()
@@ -525,6 +509,7 @@ def _macrocell_work(counters: Mapping[str, int]) -> tuple[TemporalMacrocellWork,
                     else TemporalReuseLane()
                 ),
                 joint_action=_macrocell_reuse(counters, prefix, "joint"),
+                mixed_action=collect_complete_action_reuse(counters, prefix + "mixed_"),
                 outer_observer=(
                     _macrocell_reuse(counters, prefix, "action")
                     if family == "mahler"
@@ -701,6 +686,13 @@ def collect_temporal_diagnostics(
                         and name.startswith("collatz_temporal_root_checkpoint_")
                     )
                 ),
+                border_return_work=tuple(
+                    sorted(
+                        (name.removeprefix(f"{prefix}_border_return_"), value)
+                        for name, value in counters.items()
+                        if name.startswith(f"{prefix}_border_return_")
+                    )
+                ),
             )
         )
 
@@ -711,6 +703,7 @@ def collect_temporal_diagnostics(
     if bootstrap is not None and (type(bootstrap) is not int or bootstrap < 0):
         raise ValueError("temporal bootstrap scope is invalid")
     return TemporalExecutionDiagnostics(
+        cellular=collect_cellular_work(counters),
         action=TemporalReuseLane(
             requests=None if sole_family is None else sole_family.action_requests,
             exact_hits=None if sole_family is None else sole_family.action_hits,

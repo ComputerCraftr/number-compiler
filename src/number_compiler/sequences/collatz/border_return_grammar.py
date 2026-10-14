@@ -1,0 +1,537 @@
+"""Exact physical 6305 border-return actions, with explicit 8/9 exit ports.
+
+A 3-ending source ``10*q+3`` has the source-certified return
+
+    3 -> 0^(j+1) -> 5 -> 6 -> (3 or 8)
+
+where ``3*q+1 = 2**j*u`` with odd ``u``.  The entire normalized
+action is ``1 0**j 1``.  Its ``j+2`` normalized symbols contain two
+odd symbols, so the physical action costs ``j+4`` ticks.  In physical
+time, ``T**(j+2)(x) = 5*u``; two more ticks reach ``(15*u+1)//2``.
+The upper border ``u mod 4`` decides whether
+the resulting integer ends in 3 again; ``u mod 8`` separates 8->4 from
+8->9.  Neither the zero tail nor the odd half-steps are replayed.
+
+This is an exact finite, source-bound *sequence of returns*. It does not
+assume an indefinitely periodic border grammar or convergence for any source.
+"""
+
+from __future__ import annotations
+
+from collections.abc import Callable
+from dataclasses import dataclass, field
+from typing import TYPE_CHECKING
+
+from number_compiler.arithmetic.fields.blank_ledger import BlankLedger
+from number_compiler.arithmetic.fields.two_adic import v2_positive
+from number_compiler.resources.ledger import ResourceLedger
+from number_compiler.sequences.collatz.dyadic_terminal_cocycle import (
+    DyadicTerminalFieldAction,
+)
+
+if TYPE_CHECKING:
+    from number_compiler.sequences.collatz.temporal_f5_observer import (
+        CollatzF5AffineAction,
+    )
+
+_ISSUER = object()
+_MAX_RETURNS_PER_ACTION = 64
+
+
+@dataclass(frozen=True, slots=True, init=False)
+class BorderReturnMacro:
+    """Sealed, composable 6305 return program, including upper exit guard."""
+
+    family: str
+    source: int
+    endpoint: int
+    physical_ticks: int
+    odd_symbols: int
+    fields: DyadicTerminalFieldAction
+    width_blank: BlankLedger
+    parts: tuple[tuple[int, int], ...]
+    zero_tails: tuple[int, ...]
+    returns: int
+    entry_port: str
+    exit_port: str
+    _binding: tuple[object, ...] = field(repr=False, compare=False)
+    _issuer: object = field(repr=False, compare=False)
+
+    def __init__(self) -> None:
+        raise TypeError("border-return macros require an exact source admission")
+
+    @property
+    def normalized_symbols(self) -> int:
+        return self.fields.steps
+
+    @property
+    def repetitions(self) -> int:
+        return len(self.zero_tails)
+
+    @property
+    def return_physical_ticks(self) -> tuple[int, ...]:
+        """Physical duration of each completed 3-border segment."""
+        return tuple(tail + 4 for tail in self.zero_tails)
+
+    @property
+    def return_normalized_steps(self) -> tuple[int, ...]:
+        """Normalized duration of each completed 3-border segment."""
+        return tuple(tail + 2 for tail in self.zero_tails)
+
+    @property
+    def maximum_repetitions(self) -> int:
+        """Return the finite program cap, not a future convergence bound."""
+        return _MAX_RETURNS_PER_ACTION
+
+    def f5_action(self) -> CollatzF5AffineAction:
+        from number_compiler.sequences.collatz.temporal_f5_observer import (
+            _project_dyadic_fields_f5,
+        )
+
+        return _project_dyadic_fields_f5(self.fields)
+
+    def structural_payload(self) -> tuple[object, ...]:
+        """Structural immutable values only; never publish action objects."""
+        fields = self.fields
+        return (
+            "collatz-6305-border-return-v1",
+            self.family,
+            self.source,
+            self.endpoint,
+            self.physical_ticks,
+            self.odd_symbols,
+            fields.steps,
+            fields.gain,
+            fields.offset,
+            fields.sum_gain,
+            fields.sum_offset,
+            fields.previous_gain,
+            fields.previous_offset,
+            *self.width_blank.as_tuple(),
+            self.parts,
+            self.zero_tails,
+            self.returns,
+            self.entry_port,
+            self.exit_port,
+        )
+
+    def observation(self) -> dict[str, object]:
+        return {
+            "family_word": self.family,
+            "source": self.source,
+            "endpoint": self.endpoint,
+            "physical_ticks": self.physical_ticks,
+            "normalized_symbols": self.normalized_symbols,
+            "odd_symbols": self.odd_symbols,
+            "zero_tail_valuations": self.zero_tails,
+            "return_physical_ticks": self.return_physical_ticks,
+            "return_normalized_steps": self.return_normalized_steps,
+            "return_clock_scope": (
+                "per completed 3-to-3/8 segment; macro totals also include "
+                "any entry and 8/9 exit actions"
+            ),
+            "completed_returns": self.returns,
+            "entry_port": self.entry_port,
+            "exit_port": self.exit_port,
+            "completed_final_division": True,
+            "scope": "authenticated 6305 return/exit graph, not a universal future ID",
+        }
+
+
+def validate_border_return_macro(macro: BorderReturnMacro) -> None:
+    """Reject foreign and changed macro payloads, including border provenance."""
+    if (
+        type(macro) is not BorderReturnMacro
+        or getattr(macro, "_issuer", None) is not _ISSUER
+    ):
+        raise ValueError("border-return macro has no producer authority")
+    binding = (
+        macro.family,
+        macro.source,
+        macro.endpoint,
+        macro.physical_ticks,
+        macro.odd_symbols,
+        macro.fields,
+        macro.width_blank,
+        macro.parts,
+        macro.zero_tails,
+        macro.returns,
+        macro.entry_port,
+        macro.exit_port,
+    )
+    if (
+        macro._binding != binding
+        or macro.family != "6305R"
+        or macro.source <= 0
+        or macro.endpoint <= 0
+        or not macro.zero_tails
+        or len(macro.zero_tails) > _MAX_RETURNS_PER_ACTION
+        or not 0 <= macro.returns <= len(macro.zero_tails)
+        or type(macro.fields) is not DyadicTerminalFieldAction
+        or not macro.fields.producer_issued
+        or type(macro.width_blank) is not BlankLedger
+        or macro.fields.steps + macro.odd_symbols != macro.physical_ticks
+        or sum(macro.return_physical_ticks) > macro.physical_ticks
+        or sum(macro.return_normalized_steps) > macro.fields.steps
+        or macro.fields.endpoint(macro.source) != macro.endpoint
+        or sum(length for _, length in macro.parts) != macro.fields.steps
+        or sum(length for bit, length in macro.parts if bit) != macro.odd_symbols
+        or macro.parts[0][0] != macro.source & 1
+        or macro.width_blank.delta
+        != macro.endpoint.bit_length() - macro.source.bit_length()
+    ):
+        raise ValueError("border-return macro differs from its authenticated program")
+
+
+def select_border_return_macro(
+    source: int,
+    available_physical_ticks: int,
+    *,
+    max_returns: int = _MAX_RETURNS_PER_ACTION,
+    minimum_useful_physical_ticks: int = 0,
+    preflight: Callable[[int], None] | None = None,
+    ledger: ResourceLedger | None = None,
+) -> BorderReturnMacro | None:
+    """Produce one complete cross-family action without scalar Collatz replay.
+
+    A finite number of *border* tests may be necessary; each test is a
+    valuation and residue on the exact upper coordinate, not a scan of the
+    zero tail.  No preview or default modular clock authorizes an exit.
+    """
+    if type(source) is not int or source <= 0:
+        raise ValueError("Collatz border source must be a positive integer")
+    if type(available_physical_ticks) is not int or available_physical_ticks < 0:
+        raise ValueError("Collatz border request needs a nonnegative tick budget")
+    if type(max_returns) is not int or not 1 <= max_returns <= _MAX_RETURNS_PER_ACTION:
+        raise ValueError("border return bound must be between 1 and 64")
+    if (
+        type(minimum_useful_physical_ticks) is not int
+        or minimum_useful_physical_ticks < 0
+    ):
+        raise ValueError("minimum useful physical ticks must be a nonnegative integer")
+
+    if ledger is not None:
+        ledger.bump("collatz_physical_border_return_candidate_checks")
+
+    def account_operands(*values: int) -> None:
+        if ledger is not None:
+            ledger.bump(
+                "collatz_physical_border_return_candidate_operand_bits",
+                sum(value.bit_length() for value in values),
+            )
+
+    def record_refusal() -> None:
+        if ledger is not None:
+            ledger.bump("collatz_physical_border_return_candidate_refusals")
+
+    def below_minimum(candidate_ticks: int) -> bool:
+        """Reject only strictly shorter candidates; ties remain admissible."""
+        account_operands(candidate_ticks, minimum_useful_physical_ticks)
+        if ledger is not None:
+            ledger.bump(
+                "collatz_physical_border_return_candidate_threshold_comparisons"
+            )
+        if candidate_ticks >= minimum_useful_physical_ticks:
+            return False
+        record_refusal()
+        if ledger is not None:
+            ledger.bump("collatz_physical_border_return_candidate_threshold_refusals")
+        return True
+
+    account_operands(source, available_physical_ticks)
+    # No admitted macro can outlast the caller's physical horizon.  Use this
+    # cheap upper bound before residue/valuation classification and before any
+    # preflight or powered-action construction.  Equality is deliberately kept:
+    # `minimum_useful_physical_ticks` is inclusive and preserves tie behavior.
+    if below_minimum(available_physical_ticks):
+        if ledger is not None:
+            ledger.bump(
+                "collatz_physical_border_return_candidate_extent_bound_refusals"
+            )
+        return None
+    if available_physical_ticks < 4:
+        record_refusal()
+        return None
+    if source % 10 not in (0, 3, 5) and source % 20 != 6:
+        record_refusal()
+        return None
+
+    runs: list[tuple[int, int]] = []
+    tails: list[int] = []
+    current = source
+    budget = available_physical_ticks
+    physical = 0
+    normalized = 0
+    returns = 0
+    width = BlankLedger()
+    entry = (
+        "3"
+        if current % 10 == 3
+        else ("6" if current % 20 == 6 else "5" if current % 10 == 5 else "0")
+    )
+    exit_port = "unresolved"
+    final_threshold_admitted = False
+
+    def append(bit: int, count: int, target: int, *, lower: int, upper: int) -> None:
+        nonlocal current, budget, physical, normalized, width
+        if count <= 0:
+            return
+        ticks = count * (2 if bit else 1)
+        if budget < ticks:
+            raise AssertionError("border admission exceeded its physical clock")
+        if runs and runs[-1][0] == bit:
+            old, length = runs[-1]
+            runs[-1] = (old, length + count)
+        else:
+            runs.append((bit, count))
+        before_width = current.bit_length()
+        after_width = target.bit_length()
+        width = width.then(
+            BlankLedger(
+                after_width - before_width, lower - before_width, upper - before_width
+            )
+        )
+        current = target
+        budget -= ticks
+        physical += ticks
+        normalized += count
+
+    # The initial 6->3, 0*->5, and 5->6->(3 or 8) are explicitly
+    # source-authenticated entrance ports.  They are not guessed predecessors.
+    if entry == "6":
+        account_operands(current)
+        append(
+            0,
+            1,
+            current // 2,
+            lower=(current // 2).bit_length(),
+            upper=current.bit_length(),
+        )
+    elif entry == "0":
+        account_operands(current)
+        if ledger is not None:
+            ledger.bump("collatz_physical_border_return_valuation_checks")
+        exponent = v2_positive(current)
+        if budget < exponent:
+            record_refusal()
+            return None
+        account_operands(exponent, budget)
+        append(
+            0,
+            exponent,
+            current >> exponent,
+            lower=(current >> exponent).bit_length(),
+            upper=current.bit_length(),
+        )
+    if current % 10 == 5:
+        if budget < 2:
+            record_refusal()
+            return None
+        account_operands(current, budget)
+        raw = 3 * current + 1
+        append(
+            1,
+            1,
+            raw // 2,
+            lower=min(current, raw // 2).bit_length(),
+            upper=raw.bit_length(),
+        )
+
+    while current % 10 == 3 and len(tails) < max_returns:
+        account_operands(current)
+        q = (current - 3) // 10
+        t = 3 * q + 1
+        account_operands(q, t)
+        if ledger is not None:
+            ledger.bump("collatz_physical_border_return_valuation_checks")
+        exponent = v2_positive(t)
+        if budget < exponent + 4:
+            break
+        odd = t >> exponent
+        physical_before = physical
+        normalized_before = normalized
+        account_operands(exponent, odd, budget)
+        start = current
+        raw = 3 * start + 1
+        account_operands(raw)
+        # One odd step takes two physical ticks.  The exact zero tail is
+        # determined by v2(3*q+1), including exponent zero.
+        append(
+            1,
+            1,
+            raw // 2,
+            lower=min(start, raw // 2).bit_length(),
+            upper=raw.bit_length(),
+        )
+        if exponent:
+            target = 5 * odd
+            append(
+                0,
+                exponent,
+                target,
+                lower=target.bit_length(),
+                upper=current.bit_length(),
+            )
+        if current != 5 * odd:
+            raise AssertionError("border zero tail lost its upper odd coordinate")
+        raw = 15 * odd + 1
+        append(
+            1,
+            1,
+            raw // 2,
+            lower=min(current, raw // 2).bit_length(),
+            upper=raw.bit_length(),
+        )
+        if (
+            physical - physical_before != exponent + 4
+            or normalized - normalized_before != exponent + 2
+        ):
+            raise AssertionError("border return lost its distinct clocks")
+        tails.append(exponent)
+        if odd % 4 == 3:
+            if current % 10 != 3:
+                raise AssertionError("upper borrow return did not reach a 3 digit")
+            returns += 1
+        else:
+            if current % 10 != 8:
+                raise AssertionError("upper carry exit did not reach an 8 digit")
+            break
+
+    if not tails:
+        record_refusal()
+        return None
+
+    if current % 10 == 3:
+        exit_port = "return_to_3" if budget else "return_at_horizon"
+    elif current % 10 == 8:
+        if current % 20 == 8:
+            exit_port = "8_to_4"
+        elif current % 20 == 18:
+            exit_port = "8_to_9"
+        else:
+            raise AssertionError("8 border has an impossible source residue")
+        if budget:
+            # Project the complete 8->9 suffix before mutating the local run
+            # program.  In particular, a rejected candidate never allocates
+            # the potentially large `3**run` endpoint and never preflights the
+            # dyadic coefficient payload it will not publish.
+            projected_physical = physical + 1
+            projected_budget = budget - 1
+            projected_run = 0
+            projected_guard_valuation = 0
+            if exit_port == "8_to_9":
+                projected_current = current // 2
+                projected_guard = projected_current + 1
+                account_operands(projected_current, projected_guard, projected_budget)
+                if ledger is not None:
+                    ledger.bump("collatz_physical_border_return_valuation_checks")
+                projected_guard_valuation = v2_positive(projected_guard)
+                projected_run = min(projected_guard_valuation, projected_budget // 2)
+                projected_physical += 2 * projected_run
+            if below_minimum(projected_physical):
+                return None
+            final_threshold_admitted = True
+            account_operands(current, budget)
+            append(
+                0,
+                1,
+                current // 2,
+                lower=(current // 2).bit_length(),
+                upper=current.bit_length(),
+            )
+            if exit_port == "8_to_9":
+                # A newly produced interior 9 always has the authenticated
+                # incoming 8.  Pump the odd 9->8 return where the budget
+                # contains complete normalized odd steps.
+                guard_valuation = projected_guard_valuation
+                run = projected_run
+                if run:
+                    # Reserve before constructing the potentially large
+                    # powered endpoint, not after `3**run` has allocated it.
+                    if preflight is not None:
+                        preflight(sum(length for _, length in runs) + run)
+                    before = current
+                    account_operands(before, run)
+                    endpoint = (3**run) * ((before + 1) >> run) - 1
+                    account_operands(endpoint)
+                    append(
+                        1,
+                        run,
+                        endpoint,
+                        lower=before.bit_length(),
+                        upper=(2 * endpoint).bit_length(),
+                    )
+                    exit_port = (
+                        "8_to_9_to_8" if run == guard_valuation else "8_to_9_open"
+                    )
+                else:
+                    exit_port = "8_to_9_pending"
+
+    if not runs:
+        return None
+    if not final_threshold_admitted and below_minimum(physical):
+        return None
+    # The resource owner authorizes every coefficient allocation before the
+    # powered field action is constructed, not after its large limbs exist.
+    if preflight is not None:
+        preflight(sum(count for _, count in runs))
+    fields = DyadicTerminalFieldAction.identity()
+    for bit, count in runs:
+        segment = (
+            DyadicTerminalFieldAction.one_run(count)
+            if bit
+            else DyadicTerminalFieldAction.zero_run(count)
+        )
+        fields = fields.then(segment)
+    odd_count = sum(length for bit, length in runs if bit)
+    if (
+        fields.steps != normalized
+        or fields.steps + odd_count != physical
+        or fields.endpoint(source) != current
+    ):
+        raise AssertionError("border-return composed action differs from its exit")
+    binding: tuple[object, ...] = (
+        "6305R",
+        source,
+        current,
+        physical,
+        odd_count,
+        fields,
+        width,
+        tuple(runs),
+        tuple(tails),
+        returns,
+        entry,
+        exit_port,
+    )
+    macro = object.__new__(BorderReturnMacro)
+    for name, value in zip(
+        (
+            "family",
+            "source",
+            "endpoint",
+            "physical_ticks",
+            "odd_symbols",
+            "fields",
+            "width_blank",
+            "parts",
+            "zero_tails",
+            "returns",
+            "entry_port",
+            "exit_port",
+        ),
+        binding,
+        strict=True,
+    ):
+        object.__setattr__(macro, name, value)
+    object.__setattr__(macro, "_binding", binding)
+    object.__setattr__(macro, "_issuer", _ISSUER)
+    validate_border_return_macro(macro)
+    return macro
+
+
+__all__ = [
+    "BorderReturnMacro",
+    "select_border_return_macro",
+    "validate_border_return_macro",
+]

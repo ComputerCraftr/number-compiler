@@ -17,13 +17,18 @@ from number_compiler.arithmetic.automata.ledgered_slp import LedgerSLPArena
 from number_compiler.arithmetic.automata.slp import (
     BimachineSLPProjector,
 )
+from number_compiler.arithmetic.automata.slp_walks import iter_symbols, symbol_at
 from number_compiler.arithmetic.automata.transducer import (
     build_pair_step_bimachine,
 )
 from number_compiler.arithmetic.contracts.scoped_handles import ArenaToken
+from number_compiler.resources.construction_scope import RuntimeConstruction
 from number_compiler.resources.ledger import OwnedMemo, ResourceLedger
 from number_compiler.resources.lifecycle import cleanup_all, cleanup_on_error
 from number_compiler.resources.stores import LedgerList
+from number_compiler.sequences.reverse_add.q19_punctured_producer import (
+    PuncturedPairProducer,
+)
 
 _NEUTRAL = 0
 _LOWER = -1
@@ -150,6 +155,9 @@ class _WordSummary:
     reverse: _Q19
     prefix_forward: _Q19
     prefix_reverse: _Q19
+    first_symbol: int | None
+    last_symbol: int | None
+    runs: int
 
 
 @dataclass(frozen=True, slots=True)
@@ -216,76 +224,98 @@ class ReversePairQ19OutputOwner:
         self._digits = digits_lsd
         self._authority = ArenaToken("reverse-pair-q19-output")
         prefix = f"reverse-pair-q19-{ledger.owner_count}"
-        self.arena = LedgerSLPArena(ledger, prefix, owner_kind="reverse_pair_output")
-        self.machine = _pair_step_law()
-        self.projector = BimachineSLPProjector(self.machine, self.arena)
-        self._projector_owners = tuple(
-            ledger.register(
-                prefix + f"-projector-{name}", "reverse_pair_projector_memo"
+
+        # A construction scope records each ledger owner and weak root as it is
+        # registered, so failure in any intermediate account/store constructor
+        # retires exactly the resources created by this unpublished owner.
+        with RuntimeConstruction(ledger):
+            self.arena = LedgerSLPArena(
+                ledger, prefix, owner_kind="reverse_pair_output"
             )
-            for name in (
-                "forward",
-                "reverse",
-                "block",
-                "forward-power",
-                "reverse-power",
+            self.machine = _pair_step_law()
+            self.projector = BimachineSLPProjector(self.machine, self.arena)
+
+            forward_owner = ledger.register(
+                prefix + "-projector-forward", "reverse_pair_projector_memo"
             )
-        )
-        forward: OwnedMemo[tuple[int, int], int | None] = OwnedMemo(
-            ledger, self._projector_owners[0], nodes_per_entry=1
-        )
-        backward: OwnedMemo[tuple[int, int], int | None] = OwnedMemo(
-            ledger, self._projector_owners[1], nodes_per_entry=1
-        )
-        block: OwnedMemo[tuple[int, int, int], int] = OwnedMemo(
-            ledger, self._projector_owners[2], nodes_per_entry=1
-        )
-        forward_power: OwnedMemo[tuple[int, int, int], int | None] = OwnedMemo(
-            ledger, self._projector_owners[3], nodes_per_entry=1
-        )
-        backward_power: OwnedMemo[tuple[int, int, int], int | None] = OwnedMemo(
-            ledger, self._projector_owners[4], nodes_per_entry=1
-        )
-        self._projector_memos = (
-            forward,
-            backward,
-            block,
-            forward_power,
-            backward_power,
-        )
-        (
-            self.projector._fwd,
-            self.projector._rev,
-            self.projector._block,
-            self.projector._fwd_power,
-            self.projector._rev_power,
-        ) = self._projector_memos
-        self._summary_owner = ledger.register(
-            prefix + "-q19-summaries", "reverse_pair_q19_summary"
-        )
-        self._summaries: OwnedMemo[int, _WordSummary] = OwnedMemo(
-            ledger, self._summary_owner, nodes_per_entry=1
-        )
-        self._issued_owner = ledger.register(
-            prefix + "-issued-occurrences", "reverse_pair_output_occurrence"
-        )
-        self._issued: OwnedMemo[tuple[int, int], ReversePairOutputOccurrence] = (
-            OwnedMemo(ledger, self._issued_owner, nodes_per_entry=1)
-        )
-        self._scratch_owner = ledger.register(
-            prefix + "-workspace", "reverse_pair_output_workspace"
-        )
-        self._disposed = False
-        self._cleanup_complete = False
-        self._binding = (
-            ledger,
-            digits_lsd,
-            base,
-            self._authority,
-            self.arena,
-            self.projector,
-            self.machine,
-        )
+            forward: OwnedMemo[tuple[int, int], int | None] = OwnedMemo(
+                ledger, forward_owner, nodes_per_entry=1
+            )
+            reverse_owner = ledger.register(
+                prefix + "-projector-reverse", "reverse_pair_projector_memo"
+            )
+            backward: OwnedMemo[tuple[int, int], int | None] = OwnedMemo(
+                ledger, reverse_owner, nodes_per_entry=1
+            )
+            block_owner = ledger.register(
+                prefix + "-projector-block", "reverse_pair_projector_memo"
+            )
+            block: OwnedMemo[tuple[int, int, int], int] = OwnedMemo(
+                ledger, block_owner, nodes_per_entry=1
+            )
+            forward_power_owner = ledger.register(
+                prefix + "-projector-forward-power",
+                "reverse_pair_projector_memo",
+            )
+            forward_power: OwnedMemo[tuple[int, int, int], int | None] = OwnedMemo(
+                ledger, forward_power_owner, nodes_per_entry=1
+            )
+            backward_power_owner = ledger.register(
+                prefix + "-projector-reverse-power",
+                "reverse_pair_projector_memo",
+            )
+            backward_power: OwnedMemo[tuple[int, int, int], int | None] = OwnedMemo(
+                ledger, backward_power_owner, nodes_per_entry=1
+            )
+            self._projector_owners = (
+                forward_owner,
+                reverse_owner,
+                block_owner,
+                forward_power_owner,
+                backward_power_owner,
+            )
+            self._projector_memos = (
+                forward,
+                backward,
+                block,
+                forward_power,
+                backward_power,
+            )
+            (
+                self.projector._fwd,
+                self.projector._rev,
+                self.projector._block,
+                self.projector._fwd_power,
+                self.projector._rev_power,
+            ) = self._projector_memos
+            self._summary_owner = ledger.register(
+                prefix + "-q19-summaries", "reverse_pair_q19_summary"
+            )
+            self._summaries = OwnedMemo[int, _WordSummary](
+                ledger, self._summary_owner, nodes_per_entry=1
+            )
+            self._issued_owner = ledger.register(
+                prefix + "-issued-occurrences", "reverse_pair_output_occurrence"
+            )
+            self._issued = OwnedMemo[tuple[int, int], ReversePairOutputOccurrence](
+                ledger, self._issued_owner, nodes_per_entry=1
+            )
+            self._scratch_owner = ledger.register(
+                prefix + "-workspace", "reverse_pair_output_workspace"
+            )
+            self._active_symbol_walks = 0
+            self._disposed = False
+            self._cleanup_complete = False
+            self._dispose_resources_complete = False
+            self._binding = (
+                ledger,
+                digits_lsd,
+                base,
+                self._authority,
+                self.arena,
+                self.projector,
+                self.machine,
+            )
         with ExitStack() as rollback:
             rollback.enter_context(cleanup_on_error(self.dispose))
             ledger.register_execution_root(self)
@@ -428,30 +458,7 @@ class ReversePairQ19OutputOwner:
         return self._issue(root, 1)
 
     def _symbol_at(self, root: int, index: int) -> int:
-        if type(index) is not int or not 0 <= index < self.arena.nodes[root].length:
-            raise IndexError(index)
-        node_id = root
-        offset = index
-        while True:
-            node = self.arena.nodes[node_id]
-            if node.kind == "TERM":
-                return node.symbol
-            if node.kind == "CONCAT":
-                left_length = self.arena.nodes[node.left].length
-                if offset < left_length:
-                    node_id = node.left
-                else:
-                    offset -= left_length
-                    node_id = node.right
-                continue
-            if node.kind == "REPEAT":
-                child_length = self.arena.nodes[node.child].length
-                if child_length == 0:
-                    raise IndexError(index)
-                offset %= child_length
-                node_id = node.child
-                continue
-            raise ValueError("pair output grammar contains an empty symbol")
+        return symbol_at(self.arena, root, index)
 
     def _word_summary(self, root: int) -> _WordSummary:
         found = self._summaries.get(root)
@@ -476,13 +483,19 @@ class ReversePairQ19OutputOwner:
                 continue
             node = self.arena.nodes[node_id]
             if node.kind == "EMPTY":
-                value = _WordSummary(0, identity, identity, identity, identity)
+                value = _WordSummary(
+                    0, identity, identity, identity, identity, None, None, 0
+                )
             elif node.kind == "TERM":
                 if 0 <= node.symbol <= 18:
                     atom = _Q19.atom(node.symbol)
-                    value = _WordSummary(1, atom, atom, identity, identity)
+                    value = _WordSummary(
+                        1, atom, atom, identity, identity, node.symbol, node.symbol, 1
+                    )
                 else:
-                    value = _WordSummary(0, identity, identity, identity, identity)
+                    value = _WordSummary(
+                        0, identity, identity, identity, identity, None, None, 0
+                    )
             elif node.kind == "CONCAT":
                 if not expanded:
                     stack.append((node_id, True))
@@ -505,6 +518,14 @@ class ReversePairQ19OutputOwner:
                     right.reverse.then(left.reverse),
                     prefix_forward,
                     prefix_reverse,
+                    left.first_symbol if left.symbols else right.first_symbol,
+                    right.last_symbol if right.symbols else left.last_symbol,
+                    left.runs
+                    + right.runs
+                    - int(
+                        left.last_symbol is not None
+                        and left.last_symbol == right.first_symbol
+                    ),
                 )
             elif node.kind == "REPEAT":
                 if not expanded:
@@ -513,7 +534,9 @@ class ReversePairQ19OutputOwner:
                     continue
                 child = self._summaries[node.child]
                 if not child.symbols:
-                    value = _WordSummary(0, identity, identity, identity, identity)
+                    value = _WordSummary(
+                        0, identity, identity, identity, identity, None, None, 0
+                    )
                 else:
                     whole_forward = child.forward.repeat(node.count)
                     whole_reverse = child.reverse.repeat(node.count)
@@ -533,6 +556,14 @@ class ReversePairQ19OutputOwner:
                         whole_reverse,
                         prefix_forward,
                         prefix_reverse,
+                        child.first_symbol,
+                        child.last_symbol,
+                        child.runs * node.count
+                        - (
+                            node.count - 1
+                            if child.first_symbol == child.last_symbol
+                            else 0
+                        ),
                     )
             else:  # pragma: no cover - guarded by SLPArena
                 raise AssertionError(node.kind)
@@ -641,6 +672,17 @@ class ReversePairQ19OutputOwner:
         half_index = index if index < half_width else occurrence.pair_width - 1 - index
         return self._symbol_at(occurrence.root, half_index + 1)
 
+    def apply_punctured_pair_block(
+        self, occurrence: ReversePairOutputOccurrence, *, steps: int
+    ) -> ReversePairOutputOccurrence:
+        """Apply one source-independent T2/T4 pullback to an issued Q19 field.
+
+        The output is a completed occurrence in this same ledger-owned SLP
+        owner. This is a bounded temporal law, not an arbitrary-depth Moore
+        quotient.
+        """
+        return PuncturedPairProducer(self).apply(occurrence, steps=steps)
+
     def _range_summary(
         self, root: int, begin: int, end: int, *, reverse: bool = False
     ) -> _Q19:
@@ -710,44 +752,41 @@ class ReversePairQ19OutputOwner:
             value = self._pair_value_at(occurrence, position)
             return (value + int(prefix.domain == _UPPER)) % self.base
 
-    def _iter_symbols(self, root: int, *, reverse: bool = False) -> Iterator[int]:
-        tasks: list[tuple[str, int, bool, int]] = [("NODE", root, reverse, 1)]
-        while tasks:
-            tag, node_id, backwards, remaining = tasks.pop()
-            self._check_open()
-            self.ledger.bump("recursive_output_stream_node_visits")
-            node = self.arena.nodes[node_id]
-            if tag == "REPEAT_REST":
-                if remaining > 0:
-                    tasks.append(("REPEAT_REST", node_id, backwards, remaining - 1))
-                    tasks.append(("NODE", node.child, backwards, 1))
-                continue
-            if node.kind == "EMPTY":
-                continue
-            if node.kind == "TERM":
-                yield node.symbol
-            elif node.kind == "CONCAT":
-                first, second = (
-                    (node.left, node.right) if backwards else (node.right, node.left)
+    def _iter_symbols(
+        self, root: int, *, reverse: bool = False
+    ) -> Generator[int, None, None]:
+        def walk() -> Generator[int, None, None]:
+            self._active_symbol_walks += 1
+            try:
+                yield from iter_symbols(
+                    self.arena,
+                    root,
+                    reverse=reverse,
+                    on_task=lambda _is_node: self.ledger.bump(
+                        "recursive_output_stream_node_visits"
+                    ),
+                    reserve_task=lambda: self.ledger.reserve(
+                        self._scratch_owner, nodes=1
+                    ),
+                    release_tasks=lambda count: self.ledger.release(
+                        self._scratch_owner, nodes=count
+                    ),
+                    check_open=self._check_open,
                 )
-                tasks.append(("NODE", first, backwards, 1))
-                tasks.append(("NODE", second, backwards, 1))
-            elif node.kind == "REPEAT":
-                if node.count:
-                    tasks.append(("REPEAT_REST", node_id, backwards, node.count - 1))
-                    tasks.append(("NODE", node.child, backwards, 1))
-            else:  # pragma: no cover
-                raise AssertionError(node.kind)
+            finally:
+                self._active_symbol_walks -= 1
+                if self._disposed and self._active_symbol_walks == 0:
+                    self._mark_scratch_disposed()
+                    if self._dispose_resources_complete:
+                        self._cleanup_complete = True
+
+        return walk()
 
     def iter_pair_values(
         self, occurrence: ReversePairOutputOccurrence
     ) -> Generator[int, None, None]:
         self.validate(occurrence)
-        with self.ledger.reservation(
-            self._scratch_owner,
-            nodes=16 * (self.arena.nodes[occurrence.root].length + 1),
-        ):
-            yield from self._stream_pair_values(occurrence)
+        yield from self._stream_pair_values(occurrence)
 
     def _stream_pair_values(
         self, occurrence: ReversePairOutputOccurrence
@@ -758,22 +797,22 @@ class ReversePairQ19OutputOwner:
         if parity not in (0, 1):
             raise ValueError("pair output grammar has an invalid parity tag")
         emitted = 0
-        for index, symbol in enumerate(self._iter_symbols(occurrence.root)):
-            if 0 < index < encoded_length - 1:
+        with closing(self._iter_symbols(occurrence.root)) as forward:
+            for index, symbol in enumerate(forward):
+                if 0 < index < encoded_length - 1:
+                    emitted += 1
+                    yield symbol
+        reverse_seen = 0
+        with closing(self._iter_symbols(occurrence.root, reverse=True)) as backward:
+            for index, symbol in enumerate(backward):
+                if not 0 < index < encoded_length - 1:
+                    continue
+                if parity and reverse_seen == 0:
+                    reverse_seen += 1
+                    continue
+                reverse_seen += 1
                 emitted += 1
                 yield symbol
-        reverse_seen = 0
-        for index, symbol in enumerate(
-            self._iter_symbols(occurrence.root, reverse=True)
-        ):
-            if not 0 < index < encoded_length - 1:
-                continue
-            if parity and reverse_seen == 0:
-                reverse_seen += 1
-                continue
-            reverse_seen += 1
-            emitted += 1
-            yield symbol
         if emitted != occurrence.pair_width:
             raise AssertionError("Q19 output grammar stream changed its pair width")
 
@@ -799,22 +838,34 @@ class ReversePairQ19OutputOwner:
         if self._cleanup_complete:
             return
         self._disposed = True
-        cleanup: list[Callable[[], object]] = [
-            self._unregister_payload_audit_contract,
-            self._issued.dispose,
-            self._summaries.dispose,
-            *(memo.dispose for memo in self._projector_memos),
-        ]
+        if not self._dispose_resources_complete:
+            cleanup: list[Callable[[], object]] = [
+                self._unregister_payload_audit_contract,
+                self._issued.dispose,
+                self._summaries.dispose,
+                *(memo.dispose for memo in self._projector_memos),
+            ]
 
-        def dispose_arena() -> None:
-            nodes = self.arena.nodes
-            if type(nodes) is not LedgerList:
-                raise TypeError("pair grammar lost its ledger node store")
-            self.arena.dispose()
+            def dispose_arena() -> None:
+                nodes = self.arena.nodes
+                if type(nodes) is not LedgerList:
+                    raise TypeError("pair grammar lost its ledger node store")
+                self.arena.dispose()
 
-        cleanup.append(dispose_arena)
-        cleanup_all(cleanup)
-        self._cleanup_complete = True
+            def dispose_scratch() -> None:
+                if self._active_symbol_walks == 0:
+                    self._mark_scratch_disposed()
+
+            cleanup.append(dispose_arena)
+            cleanup.append(dispose_scratch)
+            cleanup_all(cleanup)
+            self._dispose_resources_complete = True
+        if self._active_symbol_walks == 0:
+            self._mark_scratch_disposed()
+            self._cleanup_complete = True
+
+    def _mark_scratch_disposed(self) -> None:
+        self.ledger.mark_disposed(self._scratch_owner)
 
     def _unregister_payload_audit_contract(self) -> None:
         self.ledger.remove_payload_audit_contract(self, "reverse_add")

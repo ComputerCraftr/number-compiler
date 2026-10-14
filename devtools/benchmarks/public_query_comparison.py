@@ -215,27 +215,33 @@ def main() -> int:
         "bypass_point_shared_cache": False,
         "rows": [],
         "outcome": "running",
+        "sample_journal": "samples.jsonl",
     }
     retained: list[Sample] = []
-
-    def save_sample(sample: Sample) -> None:
-        retained.append(sample)
-        payload["rows"] = retained
-        output.write_text(json.dumps(payload, indent=2) + "\n")
-
+    payload["rows"] = retained
     output.write_text(json.dumps(payload, indent=2) + "\n")
     try:
-        compare(
-            options.family,
-            options.horizons,
-            options.trials,
-            modes,
-            seed=options.seed,
-            bases=options.bases,
-            position=options.position,
-            max_output_bits=options.max_output_bits,
-            on_sample=save_sample,
-        )
+        # Keep crash evidence without repeatedly serializing all preceding
+        # samples. The watchdog can kill the process before final reporting;
+        # each completed sample is independently recoverable from this journal.
+        with output.with_name("samples.jsonl").open("x", encoding="utf-8") as journal:
+
+            def save_sample(sample: Sample) -> None:
+                retained.append(sample)
+                journal.write(json.dumps(sample) + "\n")
+                journal.flush()
+
+            compare(
+                options.family,
+                options.horizons,
+                options.trials,
+                modes,
+                seed=options.seed,
+                bases=options.bases,
+                position=options.position,
+                max_output_bits=options.max_output_bits,
+                on_sample=save_sample,
+            )
     except BaseException:
         payload["outcome"] = "failed_or_interrupted"
         output.write_text(json.dumps(payload, indent=2) + "\n")

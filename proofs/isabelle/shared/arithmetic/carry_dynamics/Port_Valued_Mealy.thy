@@ -84,6 +84,40 @@ theorem identity_mealy_right [simp]:
   "compose_mealy action identity_mealy = action"
   by (cases action) (simp add: compose_mealy_def identity_mealy_def)
 
+fun compose_mealy_power :: "nat \<Rightarrow> ('p, 'e) port_mealy \<Rightarrow>
+    ('p, 'e) port_mealy" where
+  "compose_mealy_power 0 action = identity_mealy"
+| "compose_mealy_power (Suc n) action =
+    compose_mealy (compose_mealy_power n action) action"
+
+lemma compose_mealy_power_add:
+  "compose_mealy_power (m+n) action =
+    compose_mealy (compose_mealy_power m action)
+      (compose_mealy_power n action)"
+proof (induction n)
+  case 0
+  then show ?case by simp
+next
+  case (Suc n)
+  have index: "m + Suc n = Suc (m+n)" by simp
+  have reassociate:
+    "compose_mealy
+        (compose_mealy (compose_mealy_power m action)
+          (compose_mealy_power n action)) action =
+      compose_mealy (compose_mealy_power m action)
+        (compose_mealy (compose_mealy_power n action) action)"
+    by (rule compose_mealy_associative)
+  show ?case
+    by (simp only: index compose_mealy_power.simps Suc.IH)
+      (simp only: reassociate compose_mealy_power.simps)
+qed
+
+corollary compose_mealy_power_square:
+  "compose_mealy_power (n+n) action =
+    compose_mealy (compose_mealy_power n action)
+      (compose_mealy_power n action)"
+  using compose_mealy_power_add[of n n action] by simp
+
 theorem endpoint_projection_homomorphism:
   "endpoint_projection (compose_mealy left right) =
     compose_endpoint (endpoint_projection left) (endpoint_projection right)"
@@ -145,6 +179,8 @@ ML \<open>
   val checked = @{thms additive_shift_action.compose_mealy_associative
     additive_shift_action.identity_mealy_left
     additive_shift_action.identity_mealy_right
+    additive_shift_action.compose_mealy_power_add
+    additive_shift_action.compose_mealy_power_square
     additive_shift_action.endpoint_projection_homomorphism
     additive_shift_action.endpoint_application_homomorphism
     additive_shift_action.external_shift_commutes_with_composition

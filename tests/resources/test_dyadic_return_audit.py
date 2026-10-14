@@ -36,7 +36,20 @@ def _assert_clean(ledger: ResourceLedger) -> None:
         audit.unbounded_future_integers,
         audit.unknown_payloads,
     ) == (0, 0, 0)
-    assert all(row.accounting_delta == 0 for row in ledger.inventory())
+    # An aborted factory intentionally drops disposed store callbacks; that
+    # gives an unavailable observation, not a measured zero. Accept it only
+    # for empty, rootless retired owners and retain strict checks otherwise.
+    assert all(
+        row.accounting_delta == 0
+        or (
+            row.disposed
+            and row.entries == row.nodes == 0
+            and not row.roots
+            and row.observed_entries is None
+            and row.observed_nodes is None
+        )
+        for row in ledger.inventory()
+    )
 
 
 def _literal_weighted_cycle(

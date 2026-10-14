@@ -83,10 +83,14 @@ def _summary_matches(root: object, index: int) -> bool:
     value = root._summaries[index]
     identity = _Q19.identity()
     if node.kind == "EMPTY" or node.kind == "TERM" and node.symbol > 18:
-        expected = _WordSummary(0, identity, identity, identity, identity)
+        expected = _WordSummary(
+            0, identity, identity, identity, identity, None, None, 0
+        )
     elif node.kind == "TERM":
         atom = _Q19.atom(node.symbol)
-        expected = _WordSummary(1, atom, atom, identity, identity)
+        expected = _WordSummary(
+            1, atom, atom, identity, identity, node.symbol, node.symbol, 1
+        )
     elif node.kind == "CONCAT":
         left = root._summaries[node.left]
         right = root._summaries[node.right]
@@ -101,16 +105,32 @@ def _summary_matches(root: object, index: int) -> bool:
             left.forward.then(right.forward),
             right.reverse.then(left.reverse),
             *prefix,
+            left.first_symbol if left.symbols else right.first_symbol,
+            right.last_symbol if right.symbols else left.last_symbol,
+            left.runs
+            + right.runs
+            - int(
+                left.last_symbol is not None and left.last_symbol == right.first_symbol
+            ),
         )
     elif node.kind == "REPEAT":
         child = root._summaries[node.child]
-        expected = _WordSummary(
-            child.symbols * node.count,
-            child.forward.repeat(node.count),
-            child.reverse.repeat(node.count),
-            child.forward.repeat(node.count - 1).then(child.prefix_forward),
-            child.prefix_reverse.then(child.reverse.repeat(node.count - 1)),
-        )
+        if child.symbols == 0:
+            expected = _WordSummary(
+                0, identity, identity, identity, identity, None, None, 0
+            )
+        else:
+            expected = _WordSummary(
+                child.symbols * node.count,
+                child.forward.repeat(node.count),
+                child.reverse.repeat(node.count),
+                child.forward.repeat(node.count - 1).then(child.prefix_forward),
+                child.prefix_reverse.then(child.reverse.repeat(node.count - 1)),
+                child.first_symbol,
+                child.last_symbol,
+                child.runs * node.count
+                - (node.count - 1 if child.first_symbol == child.last_symbol else 0),
+            )
     else:
         return False
     return value == expected

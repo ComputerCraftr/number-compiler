@@ -31,6 +31,10 @@ probes; its `metrics_schema_version` is also 8.
   bounded D8 transitions, frame materializations, operand-bit work and budget
   bypasses. Missing counters are omitted. These are auxiliary construction
   costs, not occurrence hits or represented transitions.
+- `family_work.border_return_work` reports measured border selector checks,
+  valuations and operand-bit work, together with separately named represented
+  zero-tail symbols and admitted exit/reentry counts. Candidate work includes
+  rejected attempts; represented symbols are not an execution-work estimate.
 - `demand` and `stream` distinguish query counts, spatial visits and emitted
   symbols. A stream visit is not a temporal jump.
 - `observations` exposes measured observer work; `resources` reports entries,
@@ -54,8 +58,9 @@ lookups partition into hits, misses and admission rejections. Older producers wi
 hit does not imply that construction was skipped. `max_level` uses absolute
 depth in the row's explicit `index_unit`: D8 is level 3. Collatz macrocells
 count normalized symbols, whereas the public nth index counts physical ticks.
-Primitive discovery, merges, spatial
-leaf visits and operand-bit work retain their own units. Missing instrumentation
+Primitive discovery increments at evaluation, including a bounded root probe
+whose action is not used; it is not delayed until successful run publication.
+Merges, spatial leaf visits and operand-bit work retain their own units. Missing instrumentation
 remains `null`; a family without this owner has no macrocell row.
 
 Additional macrocell measurements distinguish consumed `applied_parent_hits`
@@ -86,6 +91,19 @@ or a different source endpoint. The extra key-normalization operation is charged
 Occurrence-lane and tree-depth measurements remain `null`; no depth or merge
 count is inferred from a large represented duration. Explicit cache bypass is
 reported in the semantic lane but does not count as a capacity refusal.
+
+The optional `cellular` lane separates `2rev10` spatial transducer applications
+and direct two-step squares from temporal HashLife
+publications, cone misses and cone hits. `represented_two_step_steps` measures
+the number of represented applications of the two-step rule, not executed
+primitive transitions or work saved. `represented_growth_cells` counts output
+growth represented by published actions, not executed seam operations.
+Boundary classifications, boundary-node
+visits and tile selections expose validation and spatial selection work even
+when an action or cone is retrieved from a cache. Weighted carry, moment and affine port
+publications count demanded observation construction. Uninstrumented fields are
+`null`; the collector does not derive a count from temporal depth or render an
+endpoint to fill a field.
 
 Shared reuse is process-local: separate CLI processes start cold. Same-process
 API requests may reuse compatible admitted germs; `shared_cache=False` bypasses
@@ -265,3 +283,21 @@ retrieval, transported admission and consumed application remain distinct.
 It never adds these hits to endpoint-only occurrence or semantic interning
 hits. Uninstrumented fields remain null, and reporting performs no joint
 construction or accumulator observation.
+
+`macrocells[].mixed_action` reports complete guarded periodic actions separately
+from dyadic joint-action reuse. `retrieved` means a process record was found;
+`admitted` means its receiving source and requested extent passed validation;
+`applied_hits` increments only after demanded consumers accept that action.
+Each retrieved record is a bounded bucket of at most eight complete actions.
+`inapplicable` and `rejected_fit` count rejected candidates, so they can exceed
+the number of retrieved buckets. Admission and applied-hit counts are per
+lookup. `publications` counts changed buckets that retain the new action;
+duplicates and capacity-pruned candidates do not increment it. Larger admitted
+actions are considered before smaller ones.
+`root_tail_rejections` counts source-compatible candidates that leave more than
+the root route's bounded remainder. That check precedes action restoration and
+does not count as an admitted or applied hit. A low-bit index collision alone
+cannot produce this refusal: the complete source cylinder must match.
+Key, payload and validation operand-bit counts measure their respective work;
+they do not estimate work saved. These fields are snapshot-only and remain
+null when the owner was not instrumented.

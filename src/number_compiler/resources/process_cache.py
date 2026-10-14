@@ -9,9 +9,10 @@ Complete endpoints and expanded histories are not cache payloads.
 from __future__ import annotations
 
 import sys
+from collections.abc import Callable
 from dataclasses import dataclass
 from threading import RLock
-from typing import Final, Self, cast
+from typing import Final, Self, TypeVar, cast
 
 from number_compiler.arithmetic.contracts.block_effect import (
     BlockContextBudgetExceeded,
@@ -25,6 +26,7 @@ _ENTRY_OVERHEAD: Final = 128
 # Covers one hash-table slot plus the retained pin/authority tuple and scalar
 # fields.  Deep sizes below separately include all caller-supplied key material.
 _LEASE_OVERHEAD: Final = 192
+_UpdateMetadata = TypeVar("_UpdateMetadata")
 
 
 class _Missing:
@@ -233,6 +235,36 @@ class CacheLease:
             token=self._token,
             generation=self._generation,
             issuer=issuer,
+        )
+
+    def update_issued(
+        self,
+        key: tuple[ImmutableValue, ...],
+        issuer: object,
+        update: Callable[[object], tuple[object, _UpdateMetadata]],
+    ) -> tuple[bool | None, _UpdateMetadata | None]:
+        """Atomically transform one payload owned by this exact issuer.
+
+        The updater runs under the cache's existing lock and must be a small,
+        bounded transformation returning ``(replacement, metadata)``. Returning
+        ``MISSING`` as the replacement leaves the record unchanged (reported
+        as ``None``); metadata is still returned for the caller to distinguish
+        an already-retained value from an optional capacity miss. The updated
+        immutable payload is accounted by the same path as :meth:`put_issued`.
+        """
+        self._check_live()
+        if type(issuer) is not object:
+            raise TypeError("cache record issuer must be an exact object capability")
+        if not callable(update):
+            raise TypeError("issued cache updater must be callable")
+        return self._cache._update_issued(
+            self._partition,
+            key,
+            issuer,
+            update,
+            lease_identity=id(self),
+            token=self._token,
+            generation=self._generation,
         )
 
     def stats(self) -> CacheStats:
@@ -542,6 +574,11 @@ class ProcessCache:
         admitted_payload = _validate_immutable(payload, "cache payload")
         with self._lock:
             self._validate_lease(lease_identity, token, partition, generation)
+            old = self._entries.get(full_key)
+            if old is not None and old[4] is not issuer:
+                raise CacheRecordIssuerMismatch(
+                    "process-cache record has another publisher capability"
+                )
             # A disabled store needs no retention estimate. Explicit accounting
             # claims still receive the same validation as enabled publications.
             if not self.enabled and accounted_bytes is None:
@@ -561,7 +598,6 @@ class ProcessCache:
             if not self.enabled:
                 self._bypasses += 1
                 return False
-            old = self._entries.get(full_key)
             extra_entries = int(old is None)
             extra_bytes = cost - (0 if old is None else old[2])
             if not self._make_room(
@@ -590,6 +626,60 @@ class ProcessCache:
             self._entry_bytes += extra_bytes
             self._puts += 1
             return True
+
+    def _update_issued(
+        self,
+        partition: PartitionKey,
+        key: tuple[ImmutableValue, ...],
+        issuer: object,
+        update: Callable[[object], tuple[object, _UpdateMetadata]],
+        *,
+        lease_identity: int,
+        token: int,
+        generation: int,
+    ) -> tuple[bool | None, _UpdateMetadata | None]:
+        """Run one bounded issued-record read/modify/write under the cache lock."""
+        full_key = self._qualified_key(partition, key)
+        with self._lock:
+            self._validate_lease(lease_identity, token, partition, generation)
+            if not self.enabled:
+                self._bypasses += 1
+                return False, None
+            current = self._entries.get(full_key)
+            if current is not None and current[4] is not issuer:
+                raise CacheRecordIssuerMismatch(
+                    "process-cache record has another publisher capability"
+                )
+            previous: object = MISSING if current is None else current[1]
+            result = update(previous)
+            if type(result) is not tuple or len(result) != 2:
+                raise TypeError(
+                    "issued cache updater must return a replacement and metadata"
+                )
+            replacement, metadata = result
+            # RLock permits an updater to call reset(), close its lease, or
+            # publish recursively. Revalidate even on the no-op path so a
+            # stale authority cannot be reported as a successful lookup.
+            self._validate_lease(lease_identity, token, partition, generation)
+            current_after = self._entries.get(full_key)
+            if current_after is not current:
+                # A nested same-key write is already authoritative. Preserve
+                # it and report this outer publication as not stored.
+                return False, metadata
+            if replacement is MISSING:
+                return None, metadata
+            admitted_replacement = cast(ImmutableValue, replacement)
+            stored = self._put(
+                partition,
+                key,
+                admitted_replacement,
+                accounted_bytes=None,
+                lease_identity=lease_identity,
+                token=token,
+                generation=generation,
+                issuer=issuer,
+            )
+            return stored, metadata
 
     def _make_room(
         self,

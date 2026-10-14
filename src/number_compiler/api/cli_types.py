@@ -98,10 +98,15 @@ class ReverseAddObservationOptions:
 
 @dataclass(frozen=True, slots=True)
 class DoubleReverseObservationOptions:
-    info: tuple[Literal["metrics"], ...] = ()
+    info: tuple[Literal["metrics", "closed-form"], ...] = ()
+    modulus: int | None = None
 
     def __post_init__(self) -> None:
         _validate_info_names(self.info)
+        if self.modulus is not None:
+            require_integer(self.modulus, "--modulus", 1)
+            if self.modulus.bit_length() > 4096:
+                raise ValueError("closed-form modulus exceeds bit budget")
 
 
 @dataclass(frozen=True, slots=True)

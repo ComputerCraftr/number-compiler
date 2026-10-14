@@ -49,6 +49,68 @@ def test_output_scope_preserves_consumer_failure_during_failed_cleanup() -> None
     with pytest.raises(ValueError) as caught, closing_output_stream(source):
         raise failure
     assert caught.value is failure
+    assert failure.__notes__ == [
+        "Output iterator cleanup failed: RuntimeError: cleanup failed"
+    ]
+    assert source.closes == 1
+
+
+def test_measured_stream_retains_both_errors_and_counts_one_failed_request() -> None:
+    source = _ClosableDigits(fail_close=True)
+    ledger = ResourceLedger()
+    stream = measured_output_stream(ledger, "test", lambda: source)
+    assert next(stream) == 1
+    failure = ValueError("consumer failed")
+    with pytest.raises(ValueError) as caught:
+        stream.throw(failure)
+    assert caught.value is failure
+    assert failure.__notes__ == [
+        "Output iterator cleanup failed: RuntimeError: cleanup failed"
+    ]
+    assert source.closes == 1
+    assert ledger.counters["test_failures"] == 1
+    assert ledger.counters["test_emitted_digits"] == 1
+
+
+def test_measured_stream_cancel_records_close_failure() -> None:
+    source = _ClosableDigits(fail_close=True)
+    ledger = ResourceLedger()
+    stream = measured_output_stream(ledger, "test", lambda: source)
+    assert next(stream) == 1
+    stream.close()
+    assert source.closes == 1
+    assert ledger.counters["test_cancellations"] == 1
+    assert ledger.counters["test_failures"] == 1
+
+
+@pytest.mark.parametrize("consumer_failure", (False, True))
+def test_failed_instrumentation_preserves_output_and_cleanup_errors(
+    consumer_failure: bool, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    source = _ClosableDigits(fail_close=True)
+    ledger = ResourceLedger()
+    stream = measured_output_stream(ledger, "test", lambda: source)
+    assert next(stream) == 1
+    original = ledger.bump
+
+    def fail_recording(name: str, amount: int = 1) -> None:
+        if name == "test_failures":
+            raise LookupError("counter failed")
+        original(name, amount)
+
+    monkeypatch.setattr(ledger, "bump", fail_recording)
+    primary: BaseException
+    if consumer_failure:
+        primary = ValueError("consumer failed")
+        with pytest.raises(ValueError) as caught:
+            stream.throw(primary)
+        assert caught.value is primary
+        assert any("cleanup failed" in note for note in primary.__notes__)
+    else:
+        with pytest.raises(RuntimeError, match="cleanup failed") as cleanup:
+            tuple(stream)
+        primary = cleanup.value
+    assert any("counter failed" in note for note in primary.__notes__)
     assert source.closes == 1
 
 

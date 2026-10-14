@@ -28,9 +28,10 @@ from number_compiler.arithmetic.functions.finite_observer import (
     minimize_finite_observer,
     partition_representatives,
 )
+from number_compiler.resources.construction_scope import RuntimeConstruction
 from number_compiler.resources.ledger import OwnedMemo, ResourceLedger
 from number_compiler.sequences.collatz.innovation_carry_cocycle import (
-    CollatzInnovationCocycle,
+    exact_source_symbol as _exact_source_symbol,
 )
 
 if TYPE_CHECKING:
@@ -94,29 +95,30 @@ class InnovationObserverMemo:
         self.ledger = ledger
         prefix = f"collatz-innovation-observer-{ledger.owner_count}"
         ledger.require_fresh_owner_names((prefix + "-tables", prefix + "-scratch"))
-        self._owner = ledger.register(prefix + "-tables", "query_memo")
-        self._scratch_owner = ledger.register(
-            prefix + "-scratch", "temporary_workspace"
-        )
-        self._memo: OwnedMemo[tuple[str | int, ...], object] = OwnedMemo(
-            ledger,
-            self._owner,
-            node_cost=lambda key, item: _retained_node_count((key, item)),
-            evictable=True,
-        )
-        self._closed = False
-        ledger.register_execution_root(self)
-        for name in (
-            "lookups",
-            "hits",
-            "misses",
-            "publications",
-            "bypasses",
-            "failures",
-            "refinement_levels",
-            "refinement_state_visits",
-        ):
-            ledger.bump(_COUNTER_PREFIX + name, 0)
+        with RuntimeConstruction(ledger):
+            self._owner = ledger.register(prefix + "-tables", "query_memo")
+            self._scratch_owner = ledger.register(
+                prefix + "-scratch", "temporary_workspace"
+            )
+            self._memo: OwnedMemo[tuple[str | int, ...], object] = OwnedMemo(
+                ledger,
+                self._owner,
+                node_cost=lambda key, item: _retained_node_count((key, item)),
+                evictable=True,
+            )
+            self._closed = False
+            ledger.register_execution_root(self)
+            for name in (
+                "lookups",
+                "hits",
+                "misses",
+                "publications",
+                "bypasses",
+                "failures",
+                "refinement_levels",
+                "refinement_state_visits",
+            ):
+                ledger.bump(_COUNTER_PREFIX + name, 0)
 
     def __enter__(self) -> Self:
         if self._closed:
@@ -195,16 +197,6 @@ def _addition(left: int, right: int, modulus: int, *, negative: bool = False) ->
     )
 
 
-def _exact_source_symbol(source: int, modulus: int) -> str:
-    """Use only the authenticated 4*m source residue, never a future label."""
-    residue = source % (4 * modulus)
-    cocycle = CollatzInnovationCocycle(residue, 4 * modulus)
-    operation, sign = cocycle.operation()
-    return ("B" if operation == "sub" else "N" if sign == -1 else "A") + str(
-        cocycle.kappa(modulus)
-    )
-
-
 def _core_symbols(family: str, phase: int, modulus: int) -> tuple[str, ...]:
     """One *interior* return of the authenticated source's normalized orbit."""
     two = pow(2, -1, modulus)
@@ -240,9 +232,30 @@ class InnovationMooreClock:
     outputs: tuple[tuple[str, ...], ...]  # Moore class -> emitted motif
     successors: tuple[int, ...]  # Moore class -> next class
     _authority: object = field(default=_UNISSUED, init=False, repr=False, compare=False)
+    _seal: tuple[object, ...] = field(default=(), init=False, repr=False, compare=False)
+
+    @property
+    def producer_issued(self) -> bool:
+        seal = self._seal
+        return (
+            self._authority is _ISSUED_CLOCK
+            and len(seal) == 6
+            and type(self.family) is str
+            and type(self.modulus) is int
+            and type(self.multiplier) is int
+            and type(seal[0]) is str
+            and type(seal[1]) is int
+            and type(seal[2]) is int
+            and seal[0] == self.family
+            and seal[1] == self.modulus
+            and seal[2] == self.multiplier
+            and self.classes is seal[3]
+            and self.outputs is seal[4]
+            and self.successors is seal[5]
+        )
 
     def _check_issued(self) -> None:
-        if self._authority is not _ISSUED_CLOCK:
+        if not self.producer_issued:
             raise ValueError("innovation Moore clock was not issued by its constructor")
 
     @property
@@ -393,16 +406,38 @@ def innovation_moore_clock(
         )
 
         object.__setattr__(clock, "_authority", _ISSUED_CLOCK)
+        object.__setattr__(
+            clock,
+            "_seal",
+            (
+                family,
+                modulus,
+                multiplier,
+                clock.classes,
+                clock.outputs,
+                clock.successors,
+            ),
+        )
         return clock
 
     if memo is None:
-        return build()
-    return memo._get_or_build(
-        "local-clock",
-        (family, modulus),
-        build,
-        work_nodes=max(1, 32 * modulus),
-    )
+        clock = build()
+    else:
+        clock = memo._get_or_build(
+            "local-clock",
+            (family, modulus),
+            build,
+            work_nodes=max(1, 32 * modulus),
+        )
+    if (
+        type(clock) is not InnovationMooreClock
+        or not clock.producer_issued
+        or clock.family != family
+        or clock.modulus != modulus
+        or clock.multiplier != multiplier
+    ):
+        raise ValueError("innovation clock memo returned a foreign quotient")
+    return clock
 
 
 @dataclass(frozen=True, slots=True)

@@ -69,7 +69,7 @@ def test_196_orbit_no_growth_pairs_preserve_generic_two_step_path(
     workspace.dispose()
 
 
-def test_admitted_chamber_stream_does_not_repeat_point_prefixes(
+def test_q19_stream_does_not_repeat_point_prefixes(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     from number_compiler.sequences.reverse_add.source_ports import SourceCarryPorts
@@ -85,8 +85,7 @@ def test_admitted_chamber_stream_does_not_repeat_point_prefixes(
 
     monkeypatch.setattr(SourceCarryPorts, "_first_prefix", forbidden)
     assert tuple(workspace.iter_digits()) == (8,) * 257
-    assert (
-        workspace.ledger.counters["reverse_source_ports_stream_region_visits"]
-        < 12 * 257
-    )
+    counters = workspace.ledger.counters
+    assert counters["recursive_output_stream_node_visits"] < 12 * 257
+    assert counters["recursive_output_stream_emitted_digits"] == 257
     workspace.dispose()

@@ -66,7 +66,7 @@ from number_compiler.hashlife.tiles.tile_result_validation import (
     validate_boundary_operands,
 )
 from number_compiler.hashlife.tiles.tile_results import CompletedResultArena
-from number_compiler.hashlife.tiles.tiles import TileID
+from number_compiler.hashlife.tiles.tiles import TileID, TileLease
 from number_compiler.resources.tile_reverse_output_inventory import (
     reverse_bound_output_scalar_slots,
     valid_reverse_bound_output,
@@ -83,8 +83,14 @@ def audit_tile_results(
     inventory = {item.owner: item for item in arena.ledger.inventory()}
     memo_inventory = inventory.get(arena._memo_owner)
     reverse_inventory = inventory.get(arena._reverse_owner)
+    tile_lease_inventory = inventory.get(arena.tiles._lease_owner)
     operand_leases = arena._leased_boundary_operands
     operand_inventory = inventory.get(operand_leases.owner)
+    pending = arena._lease_acquisitions
+    pending_inventory = inventory.get(pending.owner)
+    pending_slots = sum(
+        type(record) is int and record == 1 for record in pending.records
+    )
     observed_memo_nodes = sum(
         result.retained_nodes
         if type(result) is CompletedInterfaceResult
@@ -98,6 +104,11 @@ def audit_tile_results(
         and containers.get(arena._reverse_owner) is arena._reverse
         and containers.get(arena._variant_owner) is arena._variants
         and containers.get(operand_leases.owner) is operand_leases.records
+        and containers.get(pending.owner) is pending.records
+        and pending.ledger is arena.ledger
+        and pending.tiles is arena.tiles
+        and arena._pending_acquisition_owner == pending.owner
+        and arena._pending_acquisitions is pending.records
         and arena.tiles.ledger is arena.ledger
         and arena.interfaces.ledger is arena.ledger
         and arena.tiles._results is arena
@@ -142,8 +153,25 @@ def audit_tile_results(
         and reverse_inventory.entries == len(arena._reverse)
         and reverse_inventory.observed_entries == len(arena._reverse)
         and operand_inventory is not None
-        and operand_inventory.entries == len(operand_leases.records)
+        and operand_inventory.entries
+        == len(operand_leases.records) + operand_leases.pending_release_entries
         and operand_inventory.observed_entries == len(operand_leases.records)
+        and type(operand_leases.pending_release_entries) is int
+        and operand_leases.pending_release_entries >= 0
+        and pending_inventory is not None
+        and tile_lease_inventory is not None
+        and pending_inventory.entries == len(pending.records) + pending.clear_entries
+        and pending_inventory.observed_entries == len(pending.records)
+        and pending_inventory.nodes == len(pending.records) + pending.clear_nodes
+        and type(pending.clear_entries) is int
+        and type(pending.clear_nodes) is int
+        and pending.clear_entries >= 0
+        and pending.clear_nodes >= 0
+        and type(pending.pending_tile_reservations) is int
+        and pending.pending_tile_reservations >= 0
+        and tile_lease_inventory.entries
+        == len(arena.tiles._leases) + pending_slots + pending.pending_tile_reservations
+        and tile_lease_inventory.observed_entries == len(arena.tiles._leases)
         and type(arena._boundary_lease_count) is int
         and 0 <= arena._boundary_lease_count <= len(arena.tiles._leases)
         and arena.ledger.counters.get("boundary_tile_lease_peak", 0)
@@ -188,6 +216,31 @@ def audit_tile_results(
             approved.add(id(view))
         else:
             invalid.add((operand_leases.owner, id(view)))
+
+    for acquisition in pending.records:
+        if acquisition is None:
+            continue
+        if type(acquisition) is int and acquisition == 1:
+            approved.add(id(acquisition))
+            continue
+        if type(acquisition) is TileLease:
+            try:
+                tile = arena.tiles._leases[acquisition._id]
+                valid_pending_lease = (
+                    acquisition._arena is arena.tiles
+                    and acquisition._closed is False
+                    and type(tile) is TileID
+                    and tile.owner is arena.tiles.owner
+                    and tile.local_id in arena.tiles._nodes
+                )
+            except (KeyError, TypeError, AttributeError):
+                valid_pending_lease = False
+            if valid_pending_lease:
+                approved.add(id(acquisition))
+            else:
+                invalid.add((pending.owner, id(acquisition)))
+            continue
+        invalid.add((pending.owner, id(acquisition)))
 
     def admissible_value(
         signature: PortSignatureID, assignment: dict[PortVariable, int]

@@ -5,7 +5,7 @@ from typing import cast
 
 import pytest
 
-from number_compiler.resources.ledger import ResourceLedger
+from number_compiler.resources.ledger import OwnedMemo, ResourceLedger
 from number_compiler.resources.payload_contracts import (
     PayloadAuditContractAudit,
     PayloadAuditContribution,
@@ -26,6 +26,18 @@ class _FamilyRoot:
         self.proposal = PayloadAuditContribution()
 
 
+class _MemoFamilyRoot:
+    __module__ = _FAMILY_MODULE
+
+    def __init__(self, ledger: ResourceLedger, owner: int) -> None:
+        self.ledger = ledger
+        self.memo: OwnedMemo[str, object] = OwnedMemo(
+            ledger, owner, node_cost=lambda _key, _value: 2
+        )
+        self.records = self.memo._data
+        self.proposal = PayloadAuditContribution()
+
+
 def _fixture_validator(ledger: object, root: object) -> PayloadAuditContribution:
     del ledger
     return cast(_FamilyRoot, root).proposal
@@ -42,13 +54,37 @@ def _bound_root() -> tuple[ResourceLedger, _FamilyRoot, int]:
     return ledger, root, owner
 
 
-def _register(ledger: ResourceLedger, root: _FamilyRoot, owner: int) -> None:
+def _register(
+    ledger: ResourceLedger, root: _FamilyRoot | _MemoFamilyRoot, owner: int
+) -> None:
     ledger.register_payload_audit_contract(
         root,
         "antihydra",
         (PayloadAuditStoreBinding(owner, "records", "family_payload"),),
         _fixture_validator,
     )
+
+
+@pytest.mark.parametrize("nested", (False, True))
+def test_dynamic_memo_contract_only_unwraps_accounting_envelope(nested: bool) -> None:
+    ledger = ResourceLedger()
+    owner = ledger.register("dynamic-family-records", "family_payload")
+    root = _MemoFamilyRoot(ledger, owner)
+    ledger.register_execution_root(root)
+    value = object()
+    root.memo["payload"] = (value,) if nested else value
+    root.proposal = PayloadAuditContribution(
+        approved=(PayloadAuditEntry(owner, value),)
+    )
+    _register(ledger, root, owner)
+
+    result = ledger.audit_payload_contracts()
+
+    assert ((owner, id(value)) in result.approved) is not nested
+    assert bool(result.invalid) is nested
+    assert ledger._account(owner).nodes == 3
+    root.memo.clear()
+    assert not result.approved
 
 
 def test_contract_approves_only_concrete_members_of_its_bound_store() -> None:

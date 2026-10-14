@@ -8,8 +8,14 @@ from typing import TYPE_CHECKING
 from number_compiler.sequences.collatz.tape_width import CollatzTapeWidthSummary
 
 if TYPE_CHECKING:
+    from number_compiler.sequences.collatz.border_return_grammar import (
+        BorderReturnMacro,
+    )
     from number_compiler.sequences.collatz.boundary_macros import (
         CollatzBoundaryMacro,
+    )
+    from number_compiler.sequences.collatz.innovation_port_moore import (
+        InnovationTapeObservation,
     )
     from number_compiler.sequences.collatz.joint_temporal_action import (
         CollatzAccumulatorObservation,
@@ -42,7 +48,8 @@ class CollatzTemporalRunQuotient:
     tape_width_summary: CollatzTapeWidthSummary | None = None
     joint_action: CollatzJointRunAction | None = None
     first_boundary: tuple[int, int, int, str] | None = None
-    first_boundary_macro: CollatzBoundaryMacro | None = None
+    first_boundary_macro: CollatzBoundaryMacro | BorderReturnMacro | None = None
+    innovation_observation: InnovationTapeObservation | None = None
 
     def __post_init__(self) -> None:
         if any(
@@ -131,17 +138,53 @@ class CollatzTemporalRunQuotient:
                 raise ValueError("Collatz first boundary witness is malformed")
         if self.first_boundary_macro is not None:
             from number_compiler.sequences.collatz.boundary_macros import (
+                CollatzBoundaryMacro,
                 validate_boundary_macro,
             )
 
             macro = self.first_boundary_macro
-            validate_boundary_macro(macro)
+            from number_compiler.sequences.collatz.border_return_grammar import (
+                BorderReturnMacro,
+                validate_border_return_macro,
+            )
+
+            if type(macro) is BorderReturnMacro:
+                validate_border_return_macro(macro)
+            elif type(macro) is CollatzBoundaryMacro:
+                validate_boundary_macro(macro)
+            else:
+                raise TypeError("Collatz first boundary action has another authority")
             if self.first_boundary is None or (
                 self.first_boundary[1] != macro.source
                 or self.first_boundary[2] != macro.physical_ticks
                 or self.first_boundary[3] != macro.family
             ):
                 raise ValueError("Collatz first boundary action is detached")
+        if self.innovation_observation is not None:
+            from number_compiler.sequences.collatz.innovation_port_moore import (
+                InnovationTapeObservation,
+            )
+
+            observation = self.innovation_observation
+            normalized_endpoint = (
+                self.endpoint
+                if self.phase == 0
+                else (self.endpoint - 1) // 3
+                if self.endpoint % 3 == 1
+                else -1
+            )
+            if (
+                type(observation) is not InnovationTapeObservation
+                or not observation.producer_issued
+                or observation.source != self.source
+                or observation.endpoint != normalized_endpoint
+                or observation.physical_endpoint != self.endpoint
+                or observation.physical_ticks != self.physical_ticks
+                or observation.phase != self.phase
+                or observation.normalized_steps != self.normalized_symbols
+                or observation.one_symbols != self.one_run_symbols
+            ):
+                raise ValueError("Collatz innovation tape is detached from its run")
 
     @property
     def semantic_key(self) -> tuple[object, ...]:
@@ -219,6 +262,19 @@ class CollatzTemporalRunQuotient:
                     macro.fields.offset,
                     macro.fields.sum_gain,
                     macro.fields.sum_offset,
+                )
+            )
+        if self.innovation_observation is not None:
+            bits += sum(
+                max(1, value.bit_length())
+                for value in (
+                    self.innovation_observation.source,
+                    self.innovation_observation.endpoint,
+                    self.innovation_observation.physical_endpoint,
+                    self.innovation_observation.modulus,
+                    self.innovation_observation.physical_ticks,
+                    self.innovation_observation.normalized_steps,
+                    *self.innovation_observation.symbol_counts,
                 )
             )
         return bits
